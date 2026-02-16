@@ -144,17 +144,32 @@ CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_search USING fts5(
 );
 ```
 
-**Why graph.db, not a separate beliefs.db:** Knowledge entries are nodes in
-the graph — they connect projects via shared principles, and future phases will
-add edges (adopted-from, contradicts) between entries and project nodes. A single
-DB means these joins are local, not cross-database. The tradeoff: you can't wipe
-knowledge without touching graph edges. Acceptable — `mother sync` is idempotent
-and rebuilds the knowledge table from project sources.
+**Source naming:** The `source` field uses the registry key from
+`~/.patina/registry.yaml` — a HashMap, so keys are unique by construction.
+Persona uses the literal `'persona'`. Ref repos use their registry key (e.g.,
+`"beads"`); the `[ref:beads]` display format is a CLI presentation concern,
+not stored. The `(id, source)` primary key means two projects can hold a
+belief with the same slug without collision.
+
+**Why graph.db, not a separate beliefs.db:** Knowledge entries link to graph
+nodes via the `source` field (which matches `nodes.id`). Future phases will
+add edges (adopted-from, contradicts) between project nodes — the adoption
+provenance lives in `edges.evidence`, not duplicated in knowledge. A single
+DB means these joins are local, not cross-database. The tradeoff: you can't
+wipe knowledge without touching graph edges. Acceptable — `mother graph sync`
+is idempotent and rebuilds the knowledge table from project sources.
 
 **Why no embedding column:** Cross-project search is exploratory, not
 precision-critical. Per-project `scry --belief` handles vector precision. FTS5
 is sufficient for cross-project discovery. Embeddings would require a
 cross-project oxidize pipeline — future scope per [[mother-owns-ref-repo-indexing]].
+
+**Schema migration:** `CREATE TABLE IF NOT EXISTS` in `Graph::init_schema()`
+is sufficient — knowledge is a rebuildable cache, not source data. graph.db
+has no `PRAGMA user_version` today and doesn't need one for this SPEC. If
+columns change in a future SPEC, `mother graph sync` rebuilds from source
+(same pattern as `patina rebuild` for patina.db). Older binaries that don't
+know about these tables are unaffected — they never query them.
 
 ### Phase B: Mother Sync — Extend `mother graph sync`
 
@@ -168,13 +183,27 @@ Current behavior (unchanged):
 2. Create nodes for all projects and repos
 
 New behavior (added):
-3. For each project, open its `.patina/local/data/patina.db`, read the `beliefs`
-   table (id, statement, entrenchment, status, facets). Insert into `knowledge`
-   with source = registry project name (matches graph node ID), kind = `'belief'`.
+3. For each project, try to open its `.patina/local/data/patina.db` and read
+   the `beliefs` table (id, statement, entrenchment, status, facets). Insert
+   into `knowledge` with source = registry project name (matches graph node
+   ID), kind = `'belief'`.
+   - **No patina.db** (never scraped): skip with warning, continue. Node is
+     still created (step 2) — knowledge comes later when the user scrapes.
+   - **No `beliefs` table** (legacy schema): skip with warning, continue.
+   - **Ref repos**: no patina.db expected — skip knowledge sync. Ref repo
+     belief extraction is future scope per [[mother-owns-ref-repo-indexing]].
 4. Read `~/.patina/layer/surface/beliefs/*.md` — parse YAML frontmatter for
    id, statement, entrenchment, status, facets. Insert into `knowledge` with
    source = `'persona'`, kind = `'value'`.
-5. Clear and rebuild graph.db's `knowledge` + `knowledge_search` tables (idempotent).
+   - **Required fields**: `id` (from filename if missing) and `statement`
+     (first non-empty line after `# heading`, or id as fallback).
+   - **Defaults**: entrenchment = `'medium'`, status = `'active'`, facets = `[]`.
+   - **Malformed files**: warn to stderr, skip file, continue sync.
+5. Wrap the knowledge rebuild in a single SQLite transaction:
+   `BEGIN` → `DELETE FROM knowledge` → `DELETE FROM knowledge_search` →
+   repopulate both tables → `COMMIT`. On failure the transaction rolls back
+   and old data is preserved. CLI/MCP queries during sync see either the old
+   complete state or the new complete state, never partial.
 
 **Code paths:**
 - `src/commands/mother/graph.rs` — extend `sync_from_registry()` with knowledge sync
@@ -231,6 +260,21 @@ LLM consumption.
 
 **Code paths:**
 - `src/mcp/server.rs` — add `mother` tool to `handle_list_tools()` and `handle_tool_call()`
+
+#### Search API contract
+
+Shared by CLI and MCP — both call `Graph::search_knowledge()`.
+
+- **Default limit**: 10 (CLI `--limit`, MCP `limit` param)
+- **Ordering**: FTS5 rank (relevance to query)
+- **Return fields**: id, source, kind, statement, entrenchment, status, facets
+- **CLI display**: statement truncated to 200 chars, one entry per 2 lines
+  (source + id + kind + entrenchment on line 1, statement on line 2)
+- **MCP return**: JSON array of objects with all fields, full statement
+  (no truncation — LLM manages its own token budget)
+- **Empty results**: CLI prints "No results." MCP returns empty array.
+- **No filters in v1**: no facet filter, no kind filter, no source filter.
+  FTS5 query is the only input. Filters are future scope.
 
 #### MCP tool architecture after this SPEC
 
