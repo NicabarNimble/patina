@@ -14,7 +14,7 @@ echo ""
 echo "📦 [1/5] Checking WIT consistency..."
 wit_ok=true
 # Mother-child guest crates: full wit/ tree (mother-child + command + deps)
-for crate_dir in patina-plugin-api patina-plugin-models patina-plugin-repos; do
+for crate_dir in patina-plugin-api plugins/models plugins/repos; do
     if [ -d "$crate_dir/wit" ]; then
         if ! diff -r wit/ "$crate_dir/wit/" > /dev/null 2>&1; then
             echo "   ERROR: $crate_dir/wit/ differs from canonical wit/"
