@@ -309,23 +309,34 @@ Detect when two active beliefs have `attacks` relationships and both are active:
 
 3. In `cross_reference_beliefs()`, after all beliefs are parsed, build the
    bidirectional contest map: if belief A's `## Attacks` lists B (non-defeated)
-   AND B is `status: active`, then A contests B. Symmetrically, if B's
-   `## Attacked-By` lists A (non-defeated) AND A is `status: active`, then
-   B is contested by A. Merge both directions — both A and B get flagged.
+   AND B's `ParsedBelief.status == "active"`, then A contests B. Symmetrically,
+   if B's `## Attacked-By` lists A (non-defeated) AND A's
+   `ParsedBelief.status == "active"`, then B is contested by A. Merge both
+   directions — both A and B get flagged.
 
-4. New column `contested_by TEXT` on beliefs table (comma-separated belief IDs).
+4. **Data flow:** Add `contested_by: Vec<String>` to `BeliefMetrics`. In
+   `cross_reference_beliefs()`, after building the bidirectional contest map,
+   populate each belief's `metrics.contested_by` with the IDs of active beliefs
+   that contest it. In `insert_belief()`, serialize as
+   `metrics.contested_by.join(",")` for the `contested_by TEXT` column (empty
+   string if no contests). This follows the existing pattern: metrics are
+   computed during cross-reference, stored in `BeliefMetrics`, serialized
+   during insert.
+
+5. New column `contested_by TEXT` on beliefs table (comma-separated belief IDs).
    **Escaping:** belief IDs are kebab-case slugs (e.g., `sync-first`) — commas
-   never appear in IDs, so comma separation is safe. Populated during scrape's
-   cross-reference pass. New warning in `health_warnings()`:
-   `contested-by:{other-belief-id}`, read from this column at display time.
-   Uses the existing ALTER TABLE migration pattern (`scrape/beliefs/mod.rs:131-152`).
+   never appear in IDs, so comma separation is safe. New warning in
+   `health_warnings()`: `contested-by:{other-belief-id}`, read from this
+   column at display time. Uses the existing ALTER TABLE migration pattern
+   (`scrape/beliefs/mod.rs:131-152`).
 
-**Code path:** `src/commands/scrape/beliefs/mod.rs` — extend
+**Code path:** `src/commands/scrape/beliefs/mod.rs` — add `attacked_by_ids`,
+`attacks_ids`, and `contested_by` fields to `BeliefMetrics`. Extend
 `extract_file_metrics()` to parse both `## Attacked-By` (collect attacker IDs)
-and `## Attacks` (collect target IDs). Build bidirectional contest map in
-`cross_reference_beliefs()`. `src/commands/belief/mod.rs` — add
-`contested-by:` warning to `health_warnings()`, reading from `contested_by`
-column.
+and `## Attacks` (collect target IDs). Build bidirectional contest map and
+populate `metrics.contested_by` in `cross_reference_beliefs()`. Serialize
+in `insert_belief()`. `src/commands/belief/mod.rs` — add `contested-by:`
+warning to `health_warnings()`, reading from `contested_by` column.
 
 ## Exit Criteria
 
