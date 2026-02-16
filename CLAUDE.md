@@ -107,10 +107,8 @@ patina/
 │   ├── secrets/                # Age encryption, Keychain integration
 │   ├── adapters/               # LLM adapters (Claude, Gemini, OpenCode)
 │   └── ...                     # db, forge, git, models, scanner, workspace
-├── grammar-*/                  # Grammar plugins (WASM, outside workspace)
-├── patina-doctor/              # Doctor as WASM plugin
-├── patina-plugin-api/          # Guest-side WASM bindings
-├── patina-command-api/         # Command world guest API
+├── grammars/                   # Grammar plugins (WASM, outside workspace)
+├── plugins/                    # Workspace plugin crates (sdk, doctor, models, repos)
 ├── layer/                      # Pattern storage (Git as memory)
 │   ├── core/                   # Eternal patterns + core beliefs
 │   ├── surface/                # Specs, architecture, epistemic beliefs

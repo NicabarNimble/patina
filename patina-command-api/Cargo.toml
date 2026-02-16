@@ -1,9 +1,0 @@
-[package]
-name = "patina-command-api"
-version = "0.1.0"
-edition = "2021"
-publish = false
-description = "Guest-side API for Patina WASM command plugins — superseded by patina-sdk"
-
-[dependencies]
-wit-bindgen = "0.41"
