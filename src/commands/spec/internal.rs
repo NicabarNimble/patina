@@ -755,39 +755,13 @@ fn resolve_spec_dir(file_path: &str) -> Option<std::path::PathBuf> {
 
 /// Archive all completed/abandoned specs that still have files in the tree.
 ///
-/// Finds specs with status 'complete' or 'abandoned' whose files still exist,
-/// then archives each one (tag + git rm + commit) in sequence.
+/// Uses the merged filesystem+DB source (get_all_specs) so it catches both
+/// scraped and unscraped stale specs — matching the warning in show_spec_list().
 pub fn archive_stale_specs(dry_run: bool) -> Result<()> {
-    let db_path = Path::new(DB_PATH);
-    if !db_path.exists() {
-        anyhow::bail!("Knowledge database not found. Run 'patina scrape' first.");
-    }
-
-    let conn = Connection::open(db_path).context("Failed to open database")?;
-
-    let mut stmt = conn.prepare(
-        "SELECT p.id, p.file_path, p.status, p.title
-         FROM patterns p
-         WHERE p.file_path LIKE 'layer/surface/build/%'
-           AND p.status IN ('complete', 'abandoned')
-         ORDER BY p.id",
-    )?;
-
-    let rows: Vec<(String, String, String, Option<String>)> = stmt
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, Option<String>>(3)?,
-            ))
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    // Filter to specs whose files still exist in tree
-    let stale: Vec<_> = rows
+    let all_specs = get_all_specs(&ListFilters::default())?;
+    let stale: Vec<_> = all_specs
         .into_iter()
-        .filter(|(_, file_path, _, _)| Path::new(file_path).exists())
+        .filter(|s| matches!(s.status.as_deref(), Some("complete") | Some("abandoned")))
         .collect();
 
     if stale.is_empty() {
@@ -797,24 +771,33 @@ pub fn archive_stale_specs(dry_run: bool) -> Result<()> {
 
     println!("Found {} stale spec(s) to archive:\n", stale.len());
 
-    for (id, file_path, status, title) in &stale {
-        let tag_name = format!("spec/{}", id);
-        let desc = title.as_deref().unwrap_or(id);
+    for spec in &stale {
+        let tag_name = format!("spec/{}", spec.id);
 
         // Skip if tag already exists
         if tag_exists(&tag_name)? {
-            println!("  Skip: {} (tag already exists)", id);
+            println!("  Skip: {} (tag already exists)", spec.id);
             continue;
         }
 
-        let spec_dir = resolve_spec_dir(file_path);
+        // Resolve file path via find_spec (handles both DB and filesystem)
+        let (file_path, _, _) = match find_spec(&spec.id) {
+            Ok(found) => found,
+            Err(e) => {
+                eprintln!("  Skip: {} ({})", spec.id, e);
+                continue;
+            }
+        };
+
+        let status = spec.status.as_deref().unwrap_or("complete");
+        let spec_dir = resolve_spec_dir(&file_path);
 
         if dry_run {
-            println!("  Would archive: {} ({})", id, status);
+            println!("  Would archive: {} ({})", spec.id, status);
             continue;
         }
 
-        archive_spec_inner(id, file_path, status, desc, &spec_dir)?;
+        archive_spec_inner(&spec.id, &file_path, status, &spec.title, &spec_dir)?;
     }
 
     if dry_run {
