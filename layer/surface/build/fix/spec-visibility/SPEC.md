@@ -107,9 +107,21 @@ indicator so the user knows it hasn't been indexed yet.
 2. For each file: parse frontmatter with `parse_spec_file()`, extract title from
    `# heading` in body
 3. Build a map of `id → SpecInfo` from filesystem
+
+**Why only `layer/surface/build/`?** This is the single canonical path for specs.
+The directory structure encodes spec type: `build/{feat,fix,refactor,explore}/<id>/`.
+No other layer paths contain specs — `layer/core/` holds patterns, `layer/surface/
+epistemic/` holds beliefs, `layer/sessions/` holds sessions. The existing DB query
+(`WHERE file_path LIKE 'layer/surface/build/%'`) confirms this is already the
+contract. If a future layer variant introduces specs elsewhere, this scan path is
+the one place to update — and that change would be a spec of its own.
 4. If DB exists: query `patterns` table (existing query), merge into map
-   - DB entries for IDs already in map: supplement with DB data (title from DB
-     may be richer if scrape extracted it)
+   - DB entries for IDs already in map: filesystem wins for all fields. DB data
+     is ignored for these entries — both sources derive title from the same
+     `# heading` in the markdown body, so there's no meaningful divergence. If
+     the filesystem title is empty (malformed file), fall back to `id` as title
+     (same as scrape does today in `scrape/layer/mod.rs:298`). Never fall back
+     to DB title — that creates flip-flopping when scrape timing varies.
    - DB entries for IDs NOT on disk: skip (stale DB entry, file was deleted)
 5. Return merged list
 
@@ -119,9 +131,18 @@ indicator so the user knows it hasn't been indexed yet.
 - Specs in DB but not on disk are excluded (pruned — they'll be cleaned on next scrape)
 - Filter parameters (`--status`, `--target`) apply to merged results
 
-**SpecInfo change:** Add an `unscraped: bool` field (or embed the indicator in the
-status display). This field does not affect JSON output structure beyond adding the
-boolean.
+**SpecInfo change:** Add `unscraped: bool` field to the `SpecInfo` struct. This is
+the single source of truth for the unscraped state — all output paths read it:
+
+- **CLI human output:** Appends `[unscraped]` suffix to the status column.
+  Example: `draft [unscraped]` instead of `draft`.
+- **JSON output (`--json`):** Includes `"unscraped": true` (or `false`) as a
+  top-level field on each spec object. Consumers filter or display as needed.
+- **Internal callers** (e.g., `show_ready_specs`, `find_spec`): Check `unscraped`
+  to decide behavior (e.g., `find_spec` returns file_path from disk scan when
+  `unscraped` is true).
+
+One struct field, consistent everywhere. No ambiguity for downstream consumers.
 
 #### B. `show_spec_list()` — Warn About Stale Completions
 
@@ -132,7 +153,25 @@ After displaying the spec table, check for any specs with `status` in
 ⚠ 1 completed spec still in tree — run `patina spec archive --stale` to archive
 ```
 
-This is a read-path warning only. No automatic archiving.
+**Warning scope and behavior:**
+- **Where it appears:** `show_spec_list()` only — the one command that shows the
+  full inventory. It does NOT appear in `show_ready_specs()`, `show_blocked_specs()`,
+  or `find_spec()`. Those commands have focused jobs; cluttering them with archive
+  warnings violates the single-purpose principle.
+- **JSON output:** The warning is not embedded in JSON. Instead, the `status` field
+  on each spec already conveys `complete`/`abandoned` — JSON consumers can detect
+  stale completions programmatically. The warning is a human-output convenience.
+- **No suppression flag.** The `--no-archive` flag on `spec status` is the explicit
+  opt-in for keeping a completed spec in tree. The warning is the cost of that
+  choice — a gentle nudge, not a blocker. If someone uses `--no-archive`, they're
+  choosing to accept this one-line reminder on `spec list`. The warning has zero
+  impact on exit code or machine-readable output.
+- **Intentional in-tree specs:** If a project wants to keep completed specs for
+  historical context, the warning will persist. This is acceptable — it's a single
+  line, not a wall of alerts. The alternative (a per-spec suppression mechanism)
+  is over-engineering for a case that hasn't been observed in practice. If it
+  becomes a real pattern, a future `keep_in_tree: true` frontmatter field is a
+  trivial addition.
 
 #### C. `show_ready_specs()` — Add DRAFTS Section
 
@@ -156,6 +195,21 @@ DRAFTS (need promotion to ready):
 
 Draft specs are visible but clearly marked as not-ready-to-work.
 
+**DRAFTS section behavior:**
+- **Human output only.** `patina spec ready --json` returns only `ready` and
+  `active` specs — the JSON contract is "actionable now" and agents consuming
+  this should not see drafts mixed in. A human reading terminal output benefits
+  from seeing what's in the pipeline; an agent parsing JSON needs a clean
+  work queue.
+- **No `--no-drafts` flag.** The section is visually separated with a clear
+  "need promotion to ready" label. Adding a suppression flag for a 2-line
+  informational section is over-engineering. If users report confusion, a flag
+  is a trivial follow-up — but the bet is that seeing drafts reduces confusion
+  (fewer "where did my spec go?" moments) rather than adding it.
+- **Draft count in summary.** When drafts exist, the "No specs ready" empty-state
+  message changes to: "No specs ready to work on. 2 draft spec(s) — promote
+  with `patina spec status <id> ready`"
+
 #### D. `find_spec()` — Filesystem Fallback
 
 **Current:** Queries DB only. Bails if spec not found in `patterns` table.
@@ -172,8 +226,9 @@ Draft specs are visible but clearly marked as not-ready-to-work.
 - **`archive` logic** — archive_spec() and archive_stale_specs() unchanged.
 - **`mod.rs` public interface** — all function signatures stay the same. The changes
   are entirely in `internal.rs`.
-- **JSON output structure** — `--json` output adds `unscraped: bool` field, otherwise
-  same shape.
+- **JSON output structure** — `spec list --json` adds `"unscraped": bool` field per
+  spec object, otherwise same shape. `spec ready --json` is unchanged — returns
+  only ready/active specs (no drafts in JSON, see section C).
 
 ### Implementation Notes
 
@@ -193,13 +248,31 @@ This uses `parse_spec_file()` from `src/spec.rs` (already a dependency). Title
 extraction: find first line matching `^# (.+)$` in the body (same regex used in
 `scrape/layer/mod.rs:295-299`).
 
-**Glob approach:** Use `glob` crate or `std::fs` walk. Since we're only looking at
-`layer/surface/build/**/SPEC.md` (a small, bounded directory tree), a simple
-recursive `read_dir` is fine. No need for `ignore::WalkBuilder` — these files are
-always git-tracked, never gitignored.
+**Glob approach:** Use `std::fs` recursive walk (no new dependency). The scan
+covers `layer/surface/build/**/SPEC.md` — a small, bounded tree (typically < 20
+files). No need for `ignore::WalkBuilder` since specs are always git-tracked.
 
-**Error handling:** If a SPEC.md file fails to parse, warn to stderr and skip it.
-Don't fail the entire list because one file has malformed frontmatter.
+**Performance:** No caching. The scan reads < 20 small markdown files on every
+invocation. At ~5KB average per spec file, that's < 100KB of I/O — sub-millisecond
+on any modern filesystem. The DB query it replaces was also uncached. If the spec
+tree ever grows to hundreds of files, caching becomes a separate concern — but
+that growth would itself signal a process problem (too many open specs).
+
+**Error handling — explicit policy:**
+- **File unreadable** (permissions, broken symlink): `eprintln!` warning with path
+  and error, skip file, continue scan. The listing shows all parseable specs.
+- **Frontmatter parse failure** (malformed YAML, missing `---` delimiters):
+  `eprintln!` warning with path and parse error, skip file, continue scan.
+- **Missing `id` field:** Skip with warning. A spec without an id cannot
+  participate in the governance system.
+- **Missing `status` field:** Include in results with `status: None` (same as
+  `SpecInfo` already supports). Displayed as `-` in status column.
+- **`scan_disk_specs()` itself fails** (e.g., `layer/surface/build/` doesn't exist):
+  Return empty vec, not an error. A project with no build directory has no specs
+  — that's a valid state, not a failure.
+
+In all cases: the listing never aborts due to a single bad file. Partial results
+are better than no results.
 
 ## Verification
 
@@ -233,10 +306,11 @@ patina spec ready
 ```bash
 # Existing behavior preserved
 patina spec list --status active    # Shows only active specs
-patina spec list --json             # Valid JSON with unscraped field
-patina spec ready --json            # Valid JSON including drafts
+patina spec list --json             # Valid JSON; each spec has "unscraped" field
+patina spec ready --json            # Valid JSON; ready/active only, NO drafts
+patina spec ready                   # Human output includes DRAFTS section
 patina spec blocked                 # Unchanged behavior
-patina spec status <id> <status>    # Works on unscraped specs
+patina spec status <id> <status>    # Works on unscraped specs (filesystem fallback)
 ```
 
 ### Edge Cases
