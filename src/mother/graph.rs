@@ -10,6 +10,27 @@ use serde::Serialize;
 
 use crate::paths;
 
+/// Sanitize user input for FTS5 MATCH queries.
+///
+/// FTS5 interprets bare tokens as column names if they match (e.g. `llm` matches
+/// the column, causing "no such column" errors). Hyphens are token separators,
+/// and words like AND/OR/NOT are operators.
+///
+/// Fix: split on whitespace and hyphens, quote each non-empty token, join with spaces.
+/// `"secrets-llm-boundary"` → `"secrets" "llm" "boundary"` (implicit AND).
+fn sanitize_fts5_query(query: &str) -> String {
+    query
+        .split(|c: char| c.is_whitespace() || c == '-')
+        .filter(|token| !token.is_empty())
+        .map(|token| {
+            // Strip any existing quotes, then wrap in double quotes
+            let clean = token.replace('"', "");
+            format!("\"{}\"", clean)
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Node types in the graph
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeType {
@@ -801,7 +822,12 @@ impl Graph {
     /// Search knowledge entries via FTS5
     ///
     /// Returns entries ranked by FTS5 relevance, limited to `limit` results.
+    /// User input is sanitized for FTS5: each token is double-quoted to prevent
+    /// column name collisions (e.g. "llm" matching the column) and operator
+    /// misinterpretation (hyphens, AND/OR/NOT).
     pub fn search_knowledge(&self, query: &str, limit: usize) -> Result<Vec<KnowledgeEntry>> {
+        let sanitized = sanitize_fts5_query(query);
+
         let mut stmt = self.conn.prepare(
             r#"
             SELECT k.id, k.source, k.kind, k.statement, k.entrenchment, k.status, k.facets
@@ -814,7 +840,7 @@ impl Graph {
         )?;
 
         let entries = stmt
-            .query_map(params![query, limit as i64], |row| {
+            .query_map(params![sanitized, limit as i64], |row| {
                 Ok(KnowledgeEntry {
                     id: row.get(0)?,
                     source: row.get(1)?,
@@ -1266,6 +1292,74 @@ mod tests {
         // Old entry should be gone (full rebuild)
         let results = graph.search_knowledge("Test belief", 10)?;
         assert!(results.is_empty());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_sanitize_fts5_query() {
+        // Basic words → quoted
+        assert_eq!(sanitize_fts5_query("secrets"), r#""secrets""#);
+        assert_eq!(
+            sanitize_fts5_query("error handling"),
+            r#""error" "handling""#
+        );
+
+        // Hyphens split into separate quoted tokens
+        assert_eq!(
+            sanitize_fts5_query("secrets-llm-boundary"),
+            r#""secrets" "llm" "boundary""#
+        );
+
+        // Mixed hyphens and spaces
+        assert_eq!(
+            sanitize_fts5_query("use-whats-in the tree"),
+            r#""use" "whats" "in" "the" "tree""#
+        );
+
+        // Existing quotes stripped and re-wrapped
+        assert_eq!(
+            sanitize_fts5_query(r#""already quoted""#),
+            r#""already" "quoted""#
+        );
+
+        // Empty / whitespace-only
+        assert_eq!(sanitize_fts5_query(""), "");
+        assert_eq!(sanitize_fts5_query("  "), "");
+    }
+
+    #[test]
+    fn test_search_knowledge_with_column_name_token() -> Result<()> {
+        // Regression: "secrets-llm-boundary" caused "no such column: llm"
+        // because FTS5 interpreted bare `llm` as a column reference.
+        let dir = tempdir()?;
+        let db_path = dir.path().join("graph.db");
+        let conn = Connection::open(&db_path)?;
+        let graph = Graph { conn };
+        graph.init_schema()?;
+
+        let entries = vec![KnowledgeEntry {
+            id: "secrets-llm-boundary".to_string(),
+            source: "patina".to_string(),
+            kind: "belief".to_string(),
+            statement: "Never expose secrets to LLM context windows".to_string(),
+            entrenchment: "high".to_string(),
+            status: "active".to_string(),
+            facets: "[\"security\", \"llm\"]".to_string(),
+        }];
+
+        graph.sync_knowledge(&entries)?;
+
+        // These queries previously crashed with "no such column: llm"
+        let results = graph.search_knowledge("secrets-llm-boundary", 10)?;
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "secrets-llm-boundary");
+
+        let results = graph.search_knowledge("llm", 10)?;
+        assert_eq!(results.len(), 1);
+
+        let results = graph.search_knowledge("secrets llm boundary", 10)?;
+        assert_eq!(results.len(), 1);
 
         Ok(())
     }
