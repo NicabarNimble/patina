@@ -14,6 +14,7 @@ beliefs:
 - belief-identity-is-slug-not-hash
 - mother-is-the-daemon
 - mother-owns-ref-repo-indexing
+- mcp-is-shim-cli-is-product
 ---
 
 # feat: Cross-Project Knowledge — Federated Belief & Value Search
@@ -98,6 +99,22 @@ with weight learning), `edge_usage` (feedback loop). No belief-related tables.
 `query_all_repos()` iterates registered repos and does per-repo semantic search.
 Persona is NOT included in `--all-repos` — it's a separate command entirely.
 
+### MCP tool architecture (`src/mcp/server.rs`)
+
+Four MCP tools exist today. Each is a thin wrapper over library functions —
+per [[mcp-is-shim-cli-is-product]], MCP wraps CLI logic, never implements its own.
+
+| Tool | Role | Scope |
+|------|------|-------|
+| `scry` | Semantic vector search | Project |
+| `assay` | Structural/factual queries | Project |
+| `context` | Composition: layer files + scry + assay + beliefs | Project |
+| (none) | Cross-project knowledge | Mother |
+
+`context` is the aggregation tool — it calls `assay_search()`, `engine.query()`,
+`search_beliefs_fts()`, and reads `layer/` markdown files. Currently ~14K chars
+(~3K tokens) without topic filter. With topic, smaller (only matching content).
+
 ## What To Build
 
 ### Phase A: Knowledge Index in graph.db
@@ -138,68 +155,131 @@ precision-critical. Per-project `scry --belief` handles vector precision. FTS5
 is sufficient for cross-project discovery. Embeddings would require a
 cross-project oxidize pipeline — future scope per [[mother-owns-ref-repo-indexing]].
 
-### Phase B: Mother Sync — Pull From Project Islands
+### Phase B: Mother Sync — Extend `mother graph sync`
 
-Mother indexes knowledge by **pulling** from project databases and persona value
-files. Projects never write into Mother. `patina scrape` stays project-pure.
-See [[mother-design]] for the principle behind this boundary.
+Extend the existing `patina mother graph sync` command to sync knowledge
+alongside nodes. Same registry walk, same `Graph::open()`, one more table.
 
-**New command:** `patina mother sync`
+**Extended command:** `patina mother graph sync`
 
+Current behavior (unchanged):
 1. Walk registered projects from `~/.patina/registry.yaml`
-2. For each project, open its `.patina/local/data/patina.db`, read the `beliefs`
+2. Create nodes for all projects and repos
+
+New behavior (added):
+3. For each project, open its `.patina/local/data/patina.db`, read the `beliefs`
    table (id, statement, entrenchment, status, facets). Insert into `knowledge`
    with source = project UID (from `.patina/uid`), kind = `'belief'`.
-3. Read `~/.patina/layer/surface/beliefs/*.md` — parse YAML frontmatter for
+4. Read `~/.patina/layer/surface/beliefs/*.md` — parse YAML frontmatter for
    id, statement, entrenchment, status, facets. Insert into `knowledge` with
    source = `'persona'`, kind = `'value'`.
-4. Clear and rebuild graph.db's `knowledge` + `knowledge_search` tables (idempotent).
+5. Clear and rebuild graph.db's `knowledge` + `knowledge_search` tables (idempotent).
 
 **Code paths:**
-- `src/commands/mother/mod.rs` — add `sync` subcommand
-- `src/mother/graph.rs` — add `sync_knowledge()` method on `Graph`
+- `src/commands/mother/graph.rs` — extend `sync_from_registry()` with knowledge sync
+- `src/mother/graph.rs` — add `sync_knowledge()` and `search_knowledge()` on `Graph`
 - `src/paths.rs` — add `user_layer::beliefs_dir()` for `~/.patina/layer/surface/beliefs/`
 
-### Phase C: Cross-Project Knowledge Search
+### Phase C: Cross-Project Knowledge Search — CLI + MCP
 
-Mother exposes knowledge search as a CLI command and MCP tool.
+Two interfaces to the same library function (`Graph::search_knowledge()`),
+following the existing pattern where CLI and MCP are both thin wrappers over
+shared Rust library code.
 
-**CLI:** `patina mother search "error handling"`
+#### CLI: `patina mother search "query"`
 
-1. FTS5 search on `knowledge_search` in graph.db
-2. Results tagged with source and kind:
-   `[project-B] belief`, `[persona] value`, `[ref:beads] belief`
-3. Human output shows: ID, statement, source, kind, entrenchment
-4. JSON output for MCP consumption
+Direct human interface. FTS5 search on `knowledge_search` in graph.db.
+No daemon required — opens graph.db directly.
 
-**MCP:** New mode on existing `scry` tool. The LLM calls this during
-conversation when it notices a topic that might have cross-project knowledge.
+```
+$ patina mother search "error handling"
+
+[patina]          explicit-error-types     belief  high
+                  "Prefer explicit error types over string errors..."
+
+[persona]         prefer-result-over-panics value  medium
+                  "I prefer Result<T,E> over panics..."
+
+[bevy-playground] panic-in-systems-is-ok   belief  low
+                  "Bevy systems can panic — the runner catches..."
+
+3 results from 2 projects + persona
+```
+
+**Code paths:**
+- `src/commands/mother/mod.rs` — add `Search` variant to `MotherCommands`
+- `src/commands/mother/graph.rs` — add `search_knowledge()` CLI handler
+
+#### MCP: New `mother` tool
+
+New MCP tool alongside scry, assay, and context. Same pattern — thin wrapper
+over `Graph::search_knowledge()`. Single-purpose: cross-project FTS5 search.
 
 ```json
 {
-  "tool": "scry",
+  "tool": "mother",
   "arguments": {
     "query": "error handling patterns",
-    "mode": "mother-knowledge"
+    "limit": 10
   }
 }
 ```
 
+Returns knowledge entries tagged with source, kind, entrenchment. JSON for
+LLM consumption.
+
 **Code paths:**
-- `src/commands/mother/mod.rs` — add `search` subcommand
-- `src/mother/graph.rs` — add `search_knowledge()` method on `Graph`
-- `src/mcp/server.rs` — add `mother-knowledge` mode to scry tool handler
+- `src/mcp/server.rs` — add `mother` tool to `handle_list_tools()` and `handle_tool_call()`
+
+#### MCP: Extend `context` tool
+
+When a topic is provided, `context` also queries graph.db's knowledge table
+and appends a "Cross-Project Knowledge" section. `context` is already the
+aggregation/composition tool — this adds one more data source.
+
+No topic = no cross-project search (avoids dumping all 150+ entries).
+
+```
+# Core Patterns (matching)
+...
+# Factual Matches
+...
+# Semantic Matches
+...
+# Active Beliefs (this project)
+...
+# Cross-Project Knowledge                    <-- NEW
+- [patina] explicit-error-types (belief, high): "Prefer explicit..."
+- [persona] prefer-result-over-panics (value, medium): "I prefer..."
+```
+
+**Code paths:**
+- `src/commands/context.rs` — add `get_cross_project_knowledge(topic)` call
+  in `get_project_context()` when topic is `Some`
+
+#### MCP tool architecture after this SPEC
+
+| Tool | Role | Scope |
+|------|------|-------|
+| `scry` | Semantic vector search | Project |
+| `assay` | Structural/factual queries | Project |
+| `mother` | Cross-project knowledge search | Mother (graph.db) |
+| `context` | Composition: layer files + scry + assay + beliefs + **mother** | Everything |
+
+`context` becomes the tunable composition layer. Token budget is controlled by
+adjusting how much from each source it includes. The individual tools (scry,
+assay, mother) provide direct access when the LLM needs targeted search.
 
 ## Exit Criteria
 
-1. `patina mother sync` reads project beliefs + persona values, populates
-   graph.db's `knowledge` and `knowledge_search` tables
+1. `patina mother graph sync` syncs knowledge alongside nodes — project beliefs
+   + persona values populate graph.db's `knowledge` and `knowledge_search` tables
 2. `patina mother search "error handling"` returns results tagged with source
    and kind: `[project-name] belief`, `[persona] value`
-3. MCP tool `scry` with `mode: "mother-knowledge"` returns cross-project
-   knowledge during LLM conversation
-4. `patina scrape` is unchanged — no graph.db writes, project stays island
-5. Running `mother sync` twice produces identical graph.db state (idempotent)
+3. MCP tool `mother` returns cross-project knowledge as JSON
+4. MCP tool `context` includes cross-project knowledge section when topic provided
+5. `patina scrape` is unchanged — no graph.db writes, project stays island
+6. Running `mother graph sync` twice produces identical graph.db state (idempotent)
 
 **Verification context:** Run exit criteria post-`patina scrape` on at least one
 registered project. Expected: project beliefs (130+) + 5 persona values.
@@ -209,7 +289,8 @@ Each result shows ID, statement, source, kind, entrenchment.
 
 - Embedding/semantic search in graph.db — FTS5 is sufficient for discovery
 - Belief adoption workflow — follow-up SPEC
-- Mother daemon auto-sync — manual `mother sync` for now
+- Mother daemon auto-sync — manual `mother graph sync` for now
+- Refactoring `context` token budget — separate concern, can be tuned later
 - Everything in [[mother-design]] non-goals (persona migration, multi-persona,
   value grounding, values-to-rules, etc.)
 
@@ -223,6 +304,10 @@ Each result shows ID, statement, source, kind, entrenchment.
 | Project beliefs have rich metrics | `src/commands/scrape/beliefs/mod.rs:23-82` |
 | graph.db has nodes + edges, no knowledge table | `src/mother/graph.rs:186-234` |
 | Scry all-repos doesn't include persona | `src/retrieval/engine.rs:224-261` |
+| MCP tools are library wrappers, not CLI shims | `src/mcp/server.rs` (calls Rust fns directly) |
+| `context` is ~14K chars (~3K tokens) no topic | `patina context \| wc -c` = 14106 |
+| `context` calls assay + scry + reads layer files | `src/commands/context.rs:56-68` |
+| `mother graph sync` already walks registry | `src/commands/mother/graph.rs:16-68` |
 | Mother v2 Phase 2 schema proposed | `git show spec/mother-v2` (archived) |
 | `paths.rs` has no user-layer module | `src/paths.rs` (entire file, no `user_layer`) |
 | Project UID exists at `.patina/uid` | `.patina/uid` (value: `2bdc808e`) |
