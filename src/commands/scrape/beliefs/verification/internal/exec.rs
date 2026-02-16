@@ -250,14 +250,24 @@ fn evaluate_expectation(value: f64, expect: &str) -> Result<bool, String> {
 // ============================================================================
 
 /// Create the belief_verifications table and add aggregate columns to beliefs.
+///
+/// Snapshot-before-drop: renames the existing table to `_prev` so drift detection
+/// can compare previous vs current verification results (Phase 3b).
 pub fn create_tables(conn: &Connection) -> Result<()> {
+    // Crash recovery: drop stale _prev from a previous crashed scrape
+    conn.execute_batch("DROP TABLE IF EXISTS belief_verifications_prev;")?;
+
+    // Guard: skip rename on first-ever scrape (table doesn't exist yet)
+    // If RENAME fails, that's fine — no baseline for drift comparison.
+    let _ =
+        conn.execute_batch("ALTER TABLE belief_verifications RENAME TO belief_verifications_prev;");
+
     // Verification results are transient — recomputed on every scrape.
-    // Drop and recreate to handle schema changes cleanly (no migration needed).
+    // Create fresh table for this scrape run.
     // No FK constraint: Phase 2.5 stores results before Phase 3 inserts beliefs.
     conn.execute_batch(
         r#"
-        DROP TABLE IF EXISTS belief_verifications;
-        CREATE TABLE belief_verifications (
+        CREATE TABLE IF NOT EXISTS belief_verifications (
             belief_id TEXT NOT NULL,
             label TEXT NOT NULL,
             query_type TEXT NOT NULL,

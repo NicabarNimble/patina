@@ -35,6 +35,8 @@ pub struct ProjectConfig {
     pub retrieval: RetrievalSection,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<EnvironmentSection>,
+    #[serde(default)]
+    pub beliefs: BeliefsSection,
 }
 
 impl ProjectConfig {
@@ -195,6 +197,24 @@ pub struct EnvironmentSection {
     /// Detected tools
     #[serde(default)]
     pub detected_tools: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BeliefsSection {
+    #[serde(default = "default_stale_days")]
+    pub stale_days: u32,
+}
+
+fn default_stale_days() -> u32 {
+    90
+}
+
+impl Default for BeliefsSection {
+    fn default() -> Self {
+        Self {
+            stale_days: default_stale_days(),
+        }
+    }
 }
 
 /// Retrieval configuration - RRF fusion parameters
