@@ -6,6 +6,8 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
 use std::path::PathBuf;
 
+use serde::Serialize;
+
 use crate::paths;
 
 /// Node types in the graph
@@ -120,6 +122,18 @@ pub struct EdgeUsageStats {
     pub current_weight: f32,
 }
 
+/// A knowledge entry for cross-project search (beliefs + persona values)
+#[derive(Debug, Clone, Serialize)]
+pub struct KnowledgeEntry {
+    pub id: String,
+    pub source: String,
+    pub kind: String,
+    pub statement: String,
+    pub entrenchment: String,
+    pub status: String,
+    pub facets: String,
+}
+
 // =========================================================================
 // Weight Learning Constants (G2.5)
 // =========================================================================
@@ -231,6 +245,24 @@ impl Graph {
 
             CREATE INDEX IF NOT EXISTS idx_edge_usage_edge ON edge_usage(edge_id);
             CREATE INDEX IF NOT EXISTS idx_edge_usage_query ON edge_usage(query_id);
+
+            -- Cross-project knowledge index (beliefs + persona values)
+            CREATE TABLE IF NOT EXISTS knowledge (
+                id TEXT NOT NULL,
+                source TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                statement TEXT NOT NULL,
+                entrenchment TEXT DEFAULT 'medium',
+                status TEXT DEFAULT 'active',
+                facets TEXT,
+                last_indexed TEXT NOT NULL,
+                PRIMARY KEY (id, source)
+            );
+
+            CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_search USING fts5(
+                id, source, kind, statement, facets,
+                tokenize='porter unicode61'
+            );
             "#,
         )?;
 
@@ -698,6 +730,114 @@ impl Graph {
         })
     }
 
+    // =========================================================================
+    // Knowledge Operations (Cross-Project Beliefs)
+    // =========================================================================
+
+    /// Sync knowledge entries into graph.db (transactional rebuild)
+    ///
+    /// Wraps the entire rebuild in a single SQLite transaction:
+    /// DELETE all → repopulate → COMMIT. On failure, rolls back and
+    /// old data is preserved.
+    pub fn sync_knowledge(&self, entries: &[KnowledgeEntry]) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        self.conn.execute("BEGIN", [])?;
+
+        // Delete existing knowledge (full rebuild)
+        if let Err(e) = self.conn.execute("DELETE FROM knowledge", []) {
+            let _ = self.conn.execute("ROLLBACK", []);
+            return Err(e.into());
+        }
+        if let Err(e) = self.conn.execute("DELETE FROM knowledge_search", []) {
+            let _ = self.conn.execute("ROLLBACK", []);
+            return Err(e.into());
+        }
+
+        // Repopulate
+        for entry in entries {
+            if let Err(e) = self.conn.execute(
+                r#"
+                INSERT INTO knowledge (id, source, kind, statement, entrenchment, status, facets, last_indexed)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                "#,
+                params![
+                    entry.id,
+                    entry.source,
+                    entry.kind,
+                    entry.statement,
+                    entry.entrenchment,
+                    entry.status,
+                    entry.facets,
+                    now
+                ],
+            ) {
+                let _ = self.conn.execute("ROLLBACK", []);
+                return Err(e.into());
+            }
+
+            if let Err(e) = self.conn.execute(
+                r#"
+                INSERT INTO knowledge_search (id, source, kind, statement, facets)
+                VALUES (?1, ?2, ?3, ?4, ?5)
+                "#,
+                params![
+                    entry.id,
+                    entry.source,
+                    entry.kind,
+                    entry.statement,
+                    entry.facets,
+                ],
+            ) {
+                let _ = self.conn.execute("ROLLBACK", []);
+                return Err(e.into());
+            }
+        }
+
+        self.conn.execute("COMMIT", [])?;
+        Ok(())
+    }
+
+    /// Search knowledge entries via FTS5
+    ///
+    /// Returns entries ranked by FTS5 relevance, limited to `limit` results.
+    pub fn search_knowledge(&self, query: &str, limit: usize) -> Result<Vec<KnowledgeEntry>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT k.id, k.source, k.kind, k.statement, k.entrenchment, k.status, k.facets
+            FROM knowledge_search ks
+            JOIN knowledge k ON ks.id = k.id AND ks.source = k.source
+            WHERE knowledge_search MATCH ?1
+            ORDER BY rank
+            LIMIT ?2
+            "#,
+        )?;
+
+        let entries = stmt
+            .query_map(params![query, limit as i64], |row| {
+                Ok(KnowledgeEntry {
+                    id: row.get(0)?,
+                    source: row.get(1)?,
+                    kind: row.get(2)?,
+                    statement: row.get(3)?,
+                    entrenchment: row.get(4)?,
+                    status: row.get(5)?,
+                    facets: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(entries)
+    }
+
+    /// Count knowledge entries
+    pub fn knowledge_count(&self) -> Result<usize> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM knowledge", [], |row| row.get(0))?;
+        Ok(count as usize)
+    }
+
     /// Get edge by ID (for reporting)
     fn get_edge_by_id(&self, edge_id: i64) -> Result<Edge> {
         let edge = self.conn.query_row(
@@ -1016,6 +1156,116 @@ mod tests {
         assert!((change.precision - 1.0).abs() < 0.001);
         // (1 - 0.1) * 1.0 + 0.1 * 2.0 = 0.9 + 0.2 = 1.1
         assert!((change.new_weight - 1.1).abs() < 0.001);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_sync_and_search_knowledge() -> Result<()> {
+        let dir = tempdir()?;
+        let db_path = dir.path().join("graph.db");
+        let conn = Connection::open(&db_path)?;
+        let graph = Graph { conn };
+        graph.init_schema()?;
+
+        let entries = vec![
+            KnowledgeEntry {
+                id: "explicit-error-types".to_string(),
+                source: "patina".to_string(),
+                kind: "belief".to_string(),
+                statement: "Prefer explicit error types over string errors".to_string(),
+                entrenchment: "high".to_string(),
+                status: "active".to_string(),
+                facets: "[\"rust\", \"error-handling\"]".to_string(),
+            },
+            KnowledgeEntry {
+                id: "prefer-result-over-panics".to_string(),
+                source: "persona".to_string(),
+                kind: "value".to_string(),
+                statement: "I prefer Result<T,E> over panics for error handling".to_string(),
+                entrenchment: "medium".to_string(),
+                status: "active".to_string(),
+                facets: "[\"rust\"]".to_string(),
+            },
+        ];
+
+        graph.sync_knowledge(&entries)?;
+        assert_eq!(graph.knowledge_count()?, 2);
+
+        // FTS5 search
+        let results = graph.search_knowledge("error handling", 10)?;
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].source, "patina");
+        assert_eq!(results[0].kind, "belief");
+
+        // Search for something specific
+        let results = graph.search_knowledge("panics", 10)?;
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "prefer-result-over-panics");
+        assert_eq!(results[0].source, "persona");
+        assert_eq!(results[0].kind, "value");
+
+        // Idempotent: sync again with same data → same count
+        graph.sync_knowledge(&entries)?;
+        assert_eq!(graph.knowledge_count()?, 2);
+
+        // Empty results
+        let results = graph.search_knowledge("nonexistent topic xyz", 10)?;
+        assert!(results.is_empty());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_sync_knowledge_rollback_preserves_old_data() -> Result<()> {
+        let dir = tempdir()?;
+        let db_path = dir.path().join("graph.db");
+        let conn = Connection::open(&db_path)?;
+        let graph = Graph { conn };
+        graph.init_schema()?;
+
+        // Initial sync
+        let entries = vec![KnowledgeEntry {
+            id: "test-belief".to_string(),
+            source: "project-a".to_string(),
+            kind: "belief".to_string(),
+            statement: "Test belief".to_string(),
+            entrenchment: "medium".to_string(),
+            status: "active".to_string(),
+            facets: "[]".to_string(),
+        }];
+
+        graph.sync_knowledge(&entries)?;
+        assert_eq!(graph.knowledge_count()?, 1);
+
+        // Sync with new data succeeds
+        let new_entries = vec![
+            KnowledgeEntry {
+                id: "belief-one".to_string(),
+                source: "project-b".to_string(),
+                kind: "belief".to_string(),
+                statement: "First belief".to_string(),
+                entrenchment: "high".to_string(),
+                status: "active".to_string(),
+                facets: "[]".to_string(),
+            },
+            KnowledgeEntry {
+                id: "belief-two".to_string(),
+                source: "project-b".to_string(),
+                kind: "belief".to_string(),
+                statement: "Second belief".to_string(),
+                entrenchment: "low".to_string(),
+                status: "active".to_string(),
+                facets: "[]".to_string(),
+            },
+        ];
+
+        graph.sync_knowledge(&new_entries)?;
+        assert_eq!(graph.knowledge_count()?, 2);
+
+        // Old entry should be gone (full rebuild)
+        let results = graph.search_knowledge("Test belief", 10)?;
+        assert!(results.is_empty());
 
         Ok(())
     }
