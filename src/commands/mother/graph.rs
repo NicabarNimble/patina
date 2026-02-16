@@ -527,6 +527,71 @@ pub fn learn_weights(alpha: f32) -> Result<()> {
     Ok(())
 }
 
+/// Search cross-project knowledge via CLI
+///
+/// FTS5 search across all synced knowledge in graph.db.
+/// Per SPEC: statement truncated to 200 chars, one entry per 2 lines.
+pub fn search_knowledge_cli(query: &str, limit: usize) -> Result<()> {
+    let graph = Graph::open()?;
+    let results = graph.search_knowledge(query, limit)?;
+
+    if results.is_empty() {
+        println!("No results.");
+        return Ok(());
+    }
+
+    // Count unique sources for summary
+    let mut source_set = std::collections::HashSet::new();
+    let mut has_persona = false;
+
+    for entry in &results {
+        source_set.insert(entry.source.clone());
+        if entry.source == "persona" {
+            has_persona = true;
+        }
+    }
+
+    println!();
+    for entry in &results {
+        // Line 1: [source] id kind entrenchment
+        let source_display = if entry.source == "persona" {
+            "[persona]".to_string()
+        } else {
+            format!("[{}]", entry.source)
+        };
+
+        println!(
+            "{:<20} {:<30} {:<8} {}",
+            source_display,
+            truncate(&entry.id, 30),
+            entry.kind,
+            entry.entrenchment
+        );
+
+        // Line 2: statement (truncated to 200 chars)
+        let stmt_display = if entry.statement.len() > 200 {
+            format!("{}...", &entry.statement[..197])
+        } else {
+            entry.statement.clone()
+        };
+        println!("{:20} \"{}\"", "", stmt_display);
+        println!();
+    }
+
+    // Unique project count (excluding persona)
+    let unique_projects = source_set.len() - if has_persona { 1 } else { 0 };
+    let persona_suffix = if has_persona { " + persona" } else { "" };
+    println!(
+        "{} results from {} project{}{}",
+        results.len(),
+        unique_projects,
+        if unique_projects != 1 { "s" } else { "" },
+        persona_suffix
+    );
+
+    Ok(())
+}
+
 /// Show edge usage statistics
 pub fn show_stats() -> Result<()> {
     let graph = Graph::open()?;

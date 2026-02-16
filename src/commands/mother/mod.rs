@@ -86,6 +86,19 @@ pub enum MotherCommands {
     /// Graph operations — manage cross-project relationships
     #[command(subcommand)]
     Graph(GraphCommands),
+
+    /// Search cross-project knowledge (beliefs + persona values)
+    ///
+    /// FTS5 search across all synced knowledge in graph.db.
+    /// Run `patina mother graph sync` first to populate the index.
+    Search {
+        /// Search query
+        query: String,
+
+        /// Maximum results to return
+        #[arg(long, default_value = "10")]
+        limit: usize,
+    },
 }
 
 /// Graph subcommands (nested under `patina mother graph`)
@@ -172,7 +185,8 @@ pub fn execute_cli(
             println!("  patina mother start    Start the daemon");
             println!("  patina mother stop     Stop the daemon (not yet implemented)");
             println!("  patina mother status   Show daemon status (not yet implemented)");
-            println!("  patina mother graph    Graph operations\n");
+            println!("  patina mother graph    Graph operations");
+            println!("  patina mother search   Cross-project knowledge search\n");
             println!("Run 'patina mother --help' for details.");
             Ok(())
         }
@@ -187,6 +201,7 @@ pub fn execute_cli(
         Some(MotherCommands::Stop) => stop_daemon(),
         Some(MotherCommands::Status) => show_status(),
         Some(MotherCommands::Graph(graph_cmd)) => execute_graph(graph_cmd),
+        Some(MotherCommands::Search { query, limit }) => graph::search_knowledge_cli(&query, limit),
     }
 }
 
