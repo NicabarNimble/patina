@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Version:** 0.17.0 — Three pillars: epistemic (complete), mother (architecture shipped), distribution.
+**Version:** 0.23.1 — Three pillars: epistemic (complete), mother (architecture shipped), distribution (grammar plugins + SDK shipped).
 
 ---
 
@@ -12,7 +12,7 @@ A local-first RAG network: portable project knowledge + personal mother.
 - **Reference Repos:** `patina repo add <url>` - lightweight index in `~/.patina/cache/repos/`
 - **Mother:** `~/.patina/` - registry, personas, `patina mother start` daemon
 
-**Completed infrastructure:** Scrape pipeline, oxidize embeddings, query/scry, Mother daemon, persona, rebuild command, MCP server, hybrid retrieval (MRR 0.624), model management, feedback loop, assay structural queries, spec work-item system (ready queue, auto-release), WASM plugin system (WIT component model, command world, doctor extraction), version consolidation, security hardening. All working.
+**Completed infrastructure:** Scrape pipeline, oxidize embeddings, query/scry, Mother daemon, persona, rebuild command, MCP server, hybrid retrieval (MRR 0.624), model management, feedback loop, assay structural queries, spec work-item system (ready queue, auto-release), WASM plugin system (WIT component model, 4 worlds: command/task/pipeline/mother-child), patina-sdk on crates.io, 9 grammar pipeline plugins, doctor/models/repos children, version consolidation, security hardening, workspace cleanup (10 root dirs). All working.
 
 ---
 
@@ -58,7 +58,7 @@ A local-first RAG network: portable project knowledge + personal mother.
 | assay | Query (factual) | Structural signals, FTS5 search, temporal, belief grounding |
 | scry | Query (semantic) | Multi-domain vector similarity — meaning, not keywords |
 
-**Next:** Mother v2 — cross-project belief index ([[mother-v2]] Phase 2), plugin extraction of more commands via [[patina-platform]]. Mother daemon shipped (lifecycle, child registry, heartbeat, graph routing). WASM plugin system shipped (WIT component model, command world, doctor/models/repos children). Next: federated belief search, environment ownership, grammar plugins.
+**Next:** Mother v2 — cross-project belief index ([[cross-project-beliefs]], Phase 2), belief truthfulness/staleness ([[belief-truthfulness]]), git tag-aware knowledge diff ([[git-tag-system]]). Plugin ecosystem complete: 4 worlds, SDK published, 9 grammar plugins, 3 mother children. Next: federated belief search, environment ownership.
 
 **Values alignment:**
 - [unix-philosophy](unix-philosophy.md): One tool, one job
@@ -75,9 +75,9 @@ A local-first RAG network: portable project knowledge + personal mother.
 
 | Pillar | Current | Target |
 |--------|---------|--------|
-| **Epistemic** | **COMPLETE** (v0.10.0) — 105 beliefs, verification, grounding, forge | E5/E6 deferred to mother scope |
-| **Mother** | v0.16.0 daemon + v0.17.0 WASM plugins | Federated query, persona fusion, environment ownership |
-| **Distribution** | 66MB binary (16MB wasmtime) | Slim binary, grammar plugins, `patina setup`, Homebrew |
+| **Epistemic** | **COMPLETE** (v0.10.0) — 128 beliefs, verification, grounding, forge | Truthfulness/staleness ([[belief-truthfulness]]), federated search |
+| **Mother** | v0.16.0 daemon + v0.21.0 plugin ecosystem complete | Federated belief search ([[cross-project-beliefs]]), environment ownership |
+| **Distribution** | v0.23.0 grammar plugins + v0.22.0 SDK on crates.io | Slim binary (dynamic ONNX), `patina setup`, Homebrew |
 
 **Milestones:**
 ```
@@ -102,6 +102,15 @@ A local-first RAG network: portable project knowledge + personal mother.
 0.16.1 ✓ Refactor: Version Consolidation (ReleaseStrategy, BumpType, auto-release)
 0.16.2 ✓ Refactor: Security Hardening
 0.17.0 ✓ Feat: Plugin System (WASM component model, command world, doctor extraction)
+0.18.0 ✓ Feat: Host HTTP Interface (patina:host/http)
+0.19.0 ✓ Feat: Task World (patina:task)
+0.20.0 ✓ Feat: Pipeline World (patina:pipeline)
+0.21.0 ✓ Feat: Plugin Ecosystem Complete (4 worlds, trap handling, WIT enforcement)
+0.21.1 ✓ Fix: Collapse Spec Complete + Archive into One Command
+0.21.2 ✓ Feat: Plugin Template Polish
+0.22.0 ✓ Feat: Patina SDK — Consolidated Plugin Crate on crates.io
+0.23.0 ✓ Feat: Grammar Extraction — 9 Grammars as Pipeline Plugins
+0.23.1 ✓ Fix: Workspace Cleanup — 26 Root Dirs → 10
 1.0.0  - All pillars complete
 ```
 
@@ -140,4 +149,4 @@ patina spec list --status X    # Filter by status (draft, ready, active, complet
 - [reference/spec-architectural-alignment.md](../surface/build/reference/spec-architectural-alignment.md) - Command/library alignment
 - [reference/spec-assay.md](../surface/build/reference/spec-assay.md) - Structural queries + signals
 
-**Archived specs:** `git tag -l 'spec/*'` (53+ archived specs, viewable via `git show spec/<name>:path`)
+**Archived specs:** `git tag -l 'spec/*'` (55+ archived specs, viewable via `git show spec/<name>:path`)
