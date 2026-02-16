@@ -114,6 +114,35 @@ This applies at all three layers:
 - **Tooling**: `patina spec discover <target> "note"` (future)
 - **Structural**: `discoveries` field in frontmatter, warned at close time (future)
 
+### 7. Ground Every Assertion
+
+Every testable claim in a SPEC must carry its evidence inline. An ungrounded assertion is a hypothesis masquerading as a contract — and review becomes the testing mechanism. See [[ground-assertions-or-pay-review-tax]].
+
+Three forms of grounding:
+
+**Verification commands** — run the command during spec creation, document timing and expected output:
+```
+Bad:  "Run `rg 'foo'` — should return zero"
+Good: "Run `rg 'foo' src/ tests/` post-commit — targets only
+       actionable locations. Should return zero."
+```
+
+**Invariants** — every "doesn't change" claim needs a one-line justification:
+```
+Bad:  "build.rs files — do not change"
+Good: "build.rs files — paths are crate-relative; cargo runs build.rs
+       from crate root, so internal paths survive the directory move"
+```
+
+**Prerequisites** — state execution context before the command, not after a reviewer discovers it:
+```
+Bad:  "cargo package -p my-crate"
+Good: "cargo package -p my-crate (post-commit; validates manifest
+       and include/exclude globs, no registry credentials needed)"
+```
+
+The cost of grounding is one sentence per assertion. The cost of NOT grounding is 2-3 review cycles per assertion — and the cycles compound because each fix can introduce new unstated assumptions.
+
 ## Relationship to Other Patterns
 
 **[[dependable-rust]]**: SPECs are the external interface for work. Like a module's public API, the SPEC is small, stable, and authoritative. Implementation details (how the AI gets there) are internal. The contract (what gets built) is the SPEC.
