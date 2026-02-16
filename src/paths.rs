@@ -402,9 +402,7 @@ mod tests {
     #[test]
     fn test_user_layer_paths() {
         let beliefs = user_layer::beliefs_dir();
-        assert!(beliefs
-            .to_string_lossy()
-            .contains("layer/surface/beliefs"));
+        assert!(beliefs.to_string_lossy().contains("layer/surface/beliefs"));
         assert!(beliefs.starts_with(patina_home()));
     }
 
