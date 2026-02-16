@@ -65,7 +65,29 @@ pub fn sync_from_registry() -> Result<()> {
     let mut beliefs_synced = 0;
     let mut values_synced = 0;
 
-    // For each project, try to open patina.db and read beliefs
+    // Collect beliefs from current project (auto-detected, may not be in registry)
+    if let Ok(project_root) = patina::session::SessionManager::find_project_root() {
+        let project_name = project_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
+        let db_path = project_root.join(".patina/local/data/patina.db");
+        match collect_project_beliefs(project_name, &db_path) {
+            Ok(entries) => {
+                let count = entries.len();
+                beliefs_synced += count;
+                if count > 0 {
+                    println!("  + {} beliefs from {} (current)", count, project_name);
+                }
+                knowledge.extend(entries);
+            }
+            Err(e) => {
+                eprintln!("  ⚠ {} (current): {}", project_name, e);
+            }
+        }
+    }
+
+    // For each registered project, try to open patina.db and read beliefs
     for (name, entry) in &registry.projects {
         let db_path = Path::new(&entry.path).join(".patina/local/data/patina.db");
         match collect_project_beliefs(name, &db_path) {
@@ -179,9 +201,15 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Kno
                 source: project_name.to_string(),
                 kind: "belief".to_string(),
                 statement: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-                entrenchment: row.get::<_, Option<String>>(2)?.unwrap_or_else(|| "medium".to_string()),
-                status: row.get::<_, Option<String>>(3)?.unwrap_or_else(|| "active".to_string()),
-                facets: row.get::<_, Option<String>>(4)?.unwrap_or_else(|| "[]".to_string()),
+                entrenchment: row
+                    .get::<_, Option<String>>(2)?
+                    .unwrap_or_else(|| "medium".to_string()),
+                status: row
+                    .get::<_, Option<String>>(3)?
+                    .unwrap_or_else(|| "active".to_string()),
+                facets: row
+                    .get::<_, Option<String>>(4)?
+                    .unwrap_or_else(|| "[]".to_string()),
             })
         })?
         .filter_map(|r| r.ok())
@@ -206,12 +234,7 @@ fn collect_persona_values() -> Result<Vec<KnowledgeEntry>> {
 
     let dir_entries: Vec<_> = std::fs::read_dir(&beliefs_dir)?
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .map(|ext| ext == "md")
-                .unwrap_or(false)
-        })
+        .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
         .collect();
 
     for dir_entry in dir_entries {
@@ -236,10 +259,10 @@ fn parse_persona_value(path: &Path) -> Result<KnowledgeEntry> {
     let content = std::fs::read_to_string(path)?;
 
     // Split frontmatter from body
-    let (frontmatter, body) = if content.starts_with("---") {
-        if let Some(end) = content[3..].find("---") {
-            let fm = &content[3..3 + end];
-            let body = &content[3 + end + 3..];
+    let (frontmatter, body) = if let Some(stripped) = content.strip_prefix("---") {
+        if let Some(end) = stripped.find("---") {
+            let fm = &stripped[..end];
+            let body = &stripped[end + 3..];
             (fm.trim(), body)
         } else {
             anyhow::bail!("unclosed frontmatter");
@@ -252,15 +275,12 @@ fn parse_persona_value(path: &Path) -> Result<KnowledgeEntry> {
     let yaml: serde_yaml::Value = serde_yaml::from_str(frontmatter)?;
 
     // Extract id (required — fall back to filename stem)
-    let id = yaml["id"]
-        .as_str()
-        .map(String::from)
-        .unwrap_or_else(|| {
-            path.file_stem()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string()
-        });
+    let id = yaml["id"].as_str().map(String::from).unwrap_or_else(|| {
+        path.file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string()
+    });
 
     // Extract statement: first non-empty line after # heading in body
     let statement = extract_statement(body).unwrap_or_else(|| id.clone());
