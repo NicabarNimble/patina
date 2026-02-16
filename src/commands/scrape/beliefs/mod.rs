@@ -64,6 +64,21 @@ struct BeliefMetrics {
     grounding_commit_count: i32, // Commits above similarity threshold
     grounding_session_count: i32, // Sessions above similarity threshold
     grounding_forge_count: i32, // Forge issues/PRs above similarity threshold
+
+    // Temporal: staleness detection (Phase A)
+    last_file_touch: Option<String>, // file mtime → YYYY-MM-DD (weakest signal)
+    last_frontmatter_revision: Option<String>, // from `revised` frontmatter field
+    last_session_citation: Option<String>, // MAX date from citing session filenames
+    last_verification_run: Option<String>, // today's date if belief has verification queries
+    last_activity: Option<String>,   // computed: strong ?? last_file_touch ?? NULL
+
+    // Health score (Phase B)
+    health_score: f64, // 0.0-1.0 composite score
+
+    // Contradiction detection (Phase C)
+    attacked_by_ids: Vec<String>, // non-defeated attacker belief IDs from ## Attacked-By
+    attacks_ids: Vec<String>,     // non-defeated target belief IDs from ## Attacks
+    contested_by: Vec<String>,    // active beliefs that contest this one (bidirectional)
 }
 
 /// Create materialized views for belief events
@@ -96,7 +111,18 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
             grounding_code_count INTEGER DEFAULT 0,
             grounding_commit_count INTEGER DEFAULT 0,
             grounding_session_count INTEGER DEFAULT 0,
-            grounding_forge_count INTEGER DEFAULT 0
+            grounding_forge_count INTEGER DEFAULT 0,
+            -- Belief truthfulness: temporal signals
+            last_file_touch TEXT,
+            last_frontmatter_revision TEXT,
+            last_session_citation TEXT,
+            last_verification_run TEXT,
+            last_activity TEXT,
+            -- Belief truthfulness: health score
+            health_score REAL DEFAULT 0.0,
+            -- Belief truthfulness: drift + contradiction
+            verification_drifted INTEGER DEFAULT 0,
+            contested_by TEXT DEFAULT ''
         );
 
         -- FTS5 for belief content search
@@ -143,6 +169,17 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
         ("grounding_commit_count", "INTEGER DEFAULT 0"),
         ("grounding_session_count", "INTEGER DEFAULT 0"),
         ("grounding_forge_count", "INTEGER DEFAULT 0"),
+        // Belief truthfulness: temporal signals
+        ("last_file_touch", "TEXT"),
+        ("last_frontmatter_revision", "TEXT"),
+        ("last_session_citation", "TEXT"),
+        ("last_verification_run", "TEXT"),
+        ("last_activity", "TEXT"),
+        // Belief truthfulness: health score
+        ("health_score", "REAL DEFAULT 0.0"),
+        // Belief truthfulness: drift + contradiction
+        ("verification_drifted", "INTEGER DEFAULT 0"),
+        ("contested_by", "TEXT DEFAULT ''"),
     ];
 
     for (col_name, col_type) in &columns_to_add {
@@ -161,6 +198,15 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
 fn parse_belief_file(path: &Path) -> Result<ParsedBelief> {
     let content = std::fs::read_to_string(path)?;
     let file_path = path.to_string_lossy().to_string();
+
+    // Extract last_file_touch from file mtime (free — already reading file)
+    let last_file_touch = std::fs::metadata(path)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .map(|t| {
+            let dt: chrono::DateTime<chrono::Utc> = t.into();
+            dt.format("%Y-%m-%d").to_string()
+        });
 
     // Defaults
     let mut id = path
@@ -274,6 +320,10 @@ fn parse_belief_file(path: &Path) -> Result<ParsedBelief> {
     // Check for endorsed field in frontmatter (default: true for existing beliefs)
     metrics.endorsed = true; // All beliefs created via skill are user-initiated
 
+    // Set temporal signals from file-level data
+    metrics.last_file_touch = last_file_touch;
+    metrics.last_frontmatter_revision = revised.clone(); // already YYYY-MM-DD from frontmatter
+
     // Parse verification queries from ## Verification section
     let verification_queries = verification::parse_verification_blocks(&content);
 
@@ -322,6 +372,7 @@ fn extract_statement(content: &str, id: &str) -> String {
 /// Extract per-file metrics from belief markdown content
 fn extract_file_metrics(content: &str) -> BeliefMetrics {
     let mut metrics = BeliefMetrics::default();
+    let wikilink_re = Regex::new(r"\[\[([^\]]+)\]\]").unwrap();
 
     // Parse sections by heading
     let mut current_section = "";
@@ -351,6 +402,19 @@ fn extract_file_metrics(content: &str) -> BeliefMetrics {
             s if s.starts_with("## Attacked-By") => {
                 if trimmed.contains("status: defeated") {
                     metrics.defeated_attacks += 1;
+                } else {
+                    // Phase C: collect non-defeated attacker IDs from [[wikilinks]]
+                    for cap in wikilink_re.captures_iter(trimmed) {
+                        metrics.attacked_by_ids.push(cap[1].to_string());
+                    }
+                }
+            }
+            s if s.starts_with("## Attacks") => {
+                // Phase C: collect non-defeated target IDs from [[wikilinks]]
+                if !trimmed.contains("status: defeated") {
+                    for cap in wikilink_re.captures_iter(trimmed) {
+                        metrics.attacks_ids.push(cap[1].to_string());
+                    }
                 }
             }
             _ => {}
@@ -507,9 +571,13 @@ fn is_external_source(link: &str) -> bool {
 }
 
 /// Cross-reference beliefs against each other and session files.
-/// Computes cited_by_beliefs and cited_by_sessions for each belief.
+/// Computes cited_by_beliefs, cited_by_sessions, last_session_citation,
+/// and contested_by for each belief.
 fn cross_reference_beliefs(beliefs: &mut [ParsedBelief], project_root: &Path) {
     let sessions_dir = project_root.join("layer/sessions");
+
+    // Regex for extracting date from session filenames: YYYYMMDD-HHMMSS.md
+    let session_date_re = Regex::new(r"^(\d{4})(\d{2})(\d{2})-\d{6}").unwrap();
 
     // Collect all belief IDs for reference
     let belief_ids: Vec<String> = beliefs.iter().map(|b| b.id.clone()).collect();
@@ -520,8 +588,10 @@ fn cross_reference_beliefs(beliefs: &mut [ParsedBelief], project_root: &Path) {
         .map(|b| (b.id.clone(), b.content.clone()))
         .collect();
 
-    // Read session files once, build reverse index: belief_id → citation count
+    // Read session files once, build reverse index: belief_id → (citation_count, max_date)
     let mut session_citations: std::collections::HashMap<String, i32> =
+        std::collections::HashMap::new();
+    let mut session_max_dates: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
 
     if sessions_dir.exists() {
@@ -529,16 +599,70 @@ fn cross_reference_beliefs(beliefs: &mut [ParsedBelief], project_root: &Path) {
             for entry in entries.filter_map(|e| e.ok()) {
                 let path = entry.path();
                 if path.extension().map(|ext| ext == "md").unwrap_or(false) {
+                    // Extract date from session filename (skip non-matching filenames)
+                    let session_date = path.file_stem().and_then(|s| s.to_str()).and_then(|name| {
+                        session_date_re
+                            .captures(name)
+                            .map(|cap| format!("{}-{}-{}", &cap[1], &cap[2], &cap[3]))
+                    });
+
                     if let Ok(session_content) = std::fs::read_to_string(&path) {
                         for bid in &belief_ids {
                             if session_content.contains(bid.as_str()) {
                                 *session_citations.entry(bid.clone()).or_insert(0) += 1;
+
+                                // Track MAX session date per belief
+                                if let Some(ref date) = session_date {
+                                    let entry = session_max_dates.entry(bid.clone()).or_default();
+                                    if entry.is_empty() || date.as_str() > entry.as_str() {
+                                        *entry = date.clone();
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    // Build status map for contest detection (Phase C)
+    let status_map: std::collections::HashMap<String, String> = beliefs
+        .iter()
+        .map(|b| (b.id.clone(), b.status.clone()))
+        .collect();
+
+    // Build bidirectional contest map (Phase C)
+    // A contests B if: A's ## Attacks lists B (non-defeated) AND B is active
+    // B is contested by A if: B's ## Attacked-By lists A (non-defeated) AND A is active
+    let mut contest_map: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+
+    for belief in beliefs.iter() {
+        // From ## Attacks: belief attacks these targets
+        for target_id in &belief.metrics.attacks_ids {
+            if status_map.get(target_id).map(|s| s.as_str()) == Some("active") {
+                contest_map
+                    .entry(target_id.clone())
+                    .or_default()
+                    .push(belief.id.clone());
+            }
+        }
+        // From ## Attacked-By: belief is attacked by these
+        for attacker_id in &belief.metrics.attacked_by_ids {
+            if status_map.get(attacker_id).map(|s| s.as_str()) == Some("active") {
+                contest_map
+                    .entry(belief.id.clone())
+                    .or_default()
+                    .push(attacker_id.clone());
+            }
+        }
+    }
+
+    // Deduplicate contest entries
+    for ids in contest_map.values_mut() {
+        ids.sort();
+        ids.dedup();
     }
 
     // Cross-reference beliefs against each other
@@ -561,6 +685,16 @@ fn cross_reference_beliefs(beliefs: &mut [ParsedBelief], project_root: &Path) {
         belief.metrics.cited_by_sessions = session_citations.get(bid).copied().unwrap_or(0);
         belief.metrics.evidence_verified = verified;
         belief.metrics.external_sources += external;
+
+        // Set last_session_citation from MAX date
+        belief.metrics.last_session_citation = session_max_dates.get(bid).cloned();
+        // Filter out empty strings
+        if belief.metrics.last_session_citation.as_deref() == Some("") {
+            belief.metrics.last_session_citation = None;
+        }
+
+        // Set contested_by from bidirectional map (Phase C)
+        belief.metrics.contested_by = contest_map.get(bid).cloned().unwrap_or_default();
     }
 }
 
@@ -919,12 +1053,17 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
     // 3. Insert materialized view
     let facets_str = belief.facets.join(", ");
 
+    let contested_by_str = belief.metrics.contested_by.join(",");
+
     conn.execute(
         "INSERT INTO beliefs (id, statement, persona, facets, confidence, entrenchment, status, extracted, revised, file_path,
          cited_by_beliefs, cited_by_sessions, applied_in, evidence_count, evidence_verified, defeated_attacks, external_sources, endorsed,
          verification_total, verification_passed, verification_failed, verification_errored,
-         grounding_score, grounding_code_count, grounding_commit_count, grounding_session_count, grounding_forge_count)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
+         grounding_score, grounding_code_count, grounding_commit_count, grounding_session_count, grounding_forge_count,
+         last_file_touch, last_frontmatter_revision, last_session_citation, last_verification_run, last_activity,
+         health_score, contested_by)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27,
+                 ?28, ?29, ?30, ?31, ?32, ?33, ?34)",
         rusqlite::params![
             &belief.id,
             &belief.statement,
@@ -953,6 +1092,14 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
             belief.metrics.grounding_commit_count,
             belief.metrics.grounding_session_count,
             belief.metrics.grounding_forge_count,
+            // 7 new belief-truthfulness params (verification_drifted is DEFAULT 0, not passed)
+            &belief.metrics.last_file_touch,
+            &belief.metrics.last_frontmatter_revision,
+            &belief.metrics.last_session_citation,
+            &belief.metrics.last_verification_run,
+            &belief.metrics.last_activity,
+            belief.metrics.health_score,
+            &contested_by_str,
         ],
     )?;
 
@@ -964,6 +1111,61 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
     )?;
 
     Ok(())
+}
+
+/// Compute last_activity using the fallback algorithm from the spec:
+/// strong = MAX(last_frontmatter_revision, last_session_citation, last_verification_run)
+/// last_activity = strong ?? last_file_touch ?? NULL
+fn compute_last_activity(metrics: &BeliefMetrics) -> Option<String> {
+    // Collect the three strong signals
+    let strong_signals: Vec<&str> = [
+        metrics.last_frontmatter_revision.as_deref(),
+        metrics.last_session_citation.as_deref(),
+        metrics.last_verification_run.as_deref(),
+    ]
+    .iter()
+    .filter_map(|s| *s)
+    .collect();
+
+    // MAX of strong signals (string comparison works for YYYY-MM-DD)
+    let strong = strong_signals.iter().max().map(|s| s.to_string());
+
+    // Fallback: last_file_touch participates ONLY when ALL strong signals are NULL
+    if strong.is_some() {
+        strong
+    } else {
+        metrics.last_file_touch.clone()
+    }
+}
+
+/// Compute health score per spec Phase B formula:
+/// health = w_use * use_score + w_truth * truth_score + w_fresh * freshness_score
+fn compute_health_score(metrics: &BeliefMetrics, stale_days: u32) -> f64 {
+    const W_USE: f64 = 0.3;
+    const W_TRUTH: f64 = 0.4;
+    const W_FRESH: f64 = 0.3;
+
+    let use_score = ((metrics.cited_by_beliefs + metrics.cited_by_sessions) as f64 / 3.0).min(1.0);
+    let truth_score = metrics.evidence_verified as f64 / (metrics.evidence_count.max(1)) as f64;
+
+    let freshness_score = match &metrics.last_activity {
+        Some(date_str) => {
+            let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+            if let Ok(activity_date) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+                if let Ok(today_date) = chrono::NaiveDate::parse_from_str(&today, "%Y-%m-%d") {
+                    let days = (today_date - activity_date).num_days().max(0) as f64;
+                    (1.0 - (days / stale_days as f64).min(1.0)).max(0.0)
+                } else {
+                    0.0
+                }
+            } else {
+                0.0
+            }
+        }
+        None => 0.0, // NULL last_activity → maximally stale
+    };
+
+    W_USE * use_score + W_TRUTH * truth_score + W_FRESH * freshness_score
 }
 
 /// Main entry point for belief scraping
@@ -981,6 +1183,10 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
             database_size_kb: 0,
         });
     }
+
+    // Load config for stale_days (each command loads independently per spec)
+    let config = patina::project::load(Path::new(".")).unwrap_or_default();
+    let stale_days = config.beliefs.stale_days;
 
     // Initialize unified database with eventlog
     let conn = database::initialize(db_path)?;
@@ -1045,6 +1251,7 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     // Executes SQL queries from ## Verification sections, stores per-query results,
     // and computes aggregates. Runs on every scrape (D5: always verify).
     let data_freshness = if full { "full" } else { "incremental" };
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let mut verified_count = 0;
     for belief in &mut all_beliefs {
         if !belief.verification_queries.is_empty() {
@@ -1056,6 +1263,8 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
             );
             belief.verification = aggregates;
             verified_count += 1;
+            // Set last_verification_run to today for beliefs with verification queries
+            belief.metrics.last_verification_run = Some(today.clone());
         }
     }
     if verified_count > 0 {
@@ -1081,6 +1290,13 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
         }
     }
 
+    // Compute last_activity and health_score BEFORE Phase 3
+    // (both insert and Phase 3a update paths use the same values)
+    for belief in &mut all_beliefs {
+        belief.metrics.last_activity = compute_last_activity(&belief.metrics);
+        belief.metrics.health_score = compute_health_score(&belief.metrics, stale_days);
+    }
+
     // Phase 3: Insert beliefs into database
     for belief in &all_beliefs {
         // Skip if already processed AND not doing full scrape
@@ -1096,6 +1312,59 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
             processed_count += 1;
         }
     }
+
+    // Phase 3a: Push temporal updates for skipped beliefs (incremental only)
+    // Temporal signals change even when the belief file doesn't —
+    // a new session may cite it, or verification results may differ.
+    if !full {
+        for belief in &all_beliefs {
+            if processed.contains(&belief.id) {
+                let contested_by_str = belief.metrics.contested_by.join(",");
+                let _ = conn.execute(
+                    "UPDATE beliefs SET last_file_touch = ?1, last_frontmatter_revision = ?2, last_session_citation = ?3, last_verification_run = ?4, last_activity = ?5, health_score = ?6, contested_by = ?7 WHERE id = ?8",
+                    rusqlite::params![
+                        &belief.metrics.last_file_touch,
+                        &belief.metrics.last_frontmatter_revision,
+                        &belief.metrics.last_session_citation,
+                        &belief.metrics.last_verification_run,
+                        &belief.metrics.last_activity,
+                        belief.metrics.health_score,
+                        &contested_by_str,
+                        belief.id,
+                    ],
+                );
+            }
+        }
+    }
+
+    // Phase 3b: Apply verification drift flags
+    // Compares _prev (snapshot from start of scrape) with current results.
+    // Reset all → flag only pass→non-pass transitions.
+    let _ = conn.execute("UPDATE beliefs SET verification_drifted = 0", []);
+    let drift_result = conn.execute_batch(
+        r#"
+        UPDATE beliefs SET verification_drifted = 1
+          WHERE id IN (SELECT DISTINCT p.belief_id
+            FROM belief_verifications_prev p
+            JOIN belief_verifications c ON p.belief_id = c.belief_id AND p.label = c.label
+            WHERE p.last_status = 'pass' AND c.last_status != 'pass');
+        "#,
+    );
+    // Ignore error (no _prev table on first scrape — expected)
+    if drift_result.is_ok() {
+        let drifted: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM beliefs WHERE verification_drifted = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        if drifted > 0 {
+            println!("  Verification drift detected: {} beliefs", drifted);
+        }
+    }
+    // Clean up _prev table
+    let _ = conn.execute_batch("DROP TABLE IF EXISTS belief_verifications_prev;");
 
     println!(
         "  Processed {} beliefs ({} skipped)",
@@ -1204,5 +1473,273 @@ Prefer synchronous code.
         assert_eq!(belief.entrenchment, "high");
         assert_eq!(belief.status, "active");
         assert_eq!(belief.statement, "Prefer synchronous code.");
+    }
+
+    // =========================================================================
+    // Belief Truthfulness Tests (per spec Verification Plan)
+    // =========================================================================
+
+    #[test]
+    fn test_last_activity_max() {
+        // All four signals present → MAX of strong signals wins
+        let mut m = BeliefMetrics::default();
+        m.last_frontmatter_revision = Some("2026-01-10".to_string());
+        m.last_session_citation = Some("2026-02-05".to_string());
+        m.last_verification_run = Some("2026-01-20".to_string());
+        m.last_file_touch = Some("2026-02-16".to_string());
+        assert_eq!(
+            compute_last_activity(&m),
+            Some("2026-02-05".to_string()) // session citation is MAX of strong
+        );
+
+        // Only file touch → fallback
+        let mut m2 = BeliefMetrics::default();
+        m2.last_file_touch = Some("2026-02-16".to_string());
+        assert_eq!(compute_last_activity(&m2), Some("2026-02-16".to_string()));
+
+        // All NULL → NULL
+        let m3 = BeliefMetrics::default();
+        assert_eq!(compute_last_activity(&m3), None);
+
+        // Strong signal present → file touch ignored
+        let mut m4 = BeliefMetrics::default();
+        m4.last_frontmatter_revision = Some("2025-06-01".to_string());
+        m4.last_file_touch = Some("2026-02-16".to_string()); // much more recent but weak
+        assert_eq!(
+            compute_last_activity(&m4),
+            Some("2025-06-01".to_string()) // strong signal wins, not file touch
+        );
+    }
+
+    #[test]
+    fn test_session_filename_parsing() {
+        let re = Regex::new(r"^(\d{4})(\d{2})(\d{2})-\d{6}").unwrap();
+
+        // Standard format
+        let name = "20260215-230959";
+        let cap = re.captures(name).unwrap();
+        let date = format!("{}-{}-{}", &cap[1], &cap[2], &cap[3]);
+        assert_eq!(date, "2026-02-15");
+
+        // With suffix (e.g., -init)
+        let name2 = "20250812-123323-init";
+        let cap2 = re.captures(name2).unwrap();
+        let date2 = format!("{}-{}-{}", &cap2[1], &cap2[2], &cap2[3]);
+        assert_eq!(date2, "2025-08-12");
+
+        // Non-matching filename → skip
+        assert!(re.captures("session_summary_july27").is_none());
+        assert!(re.captures("notes").is_none());
+    }
+
+    #[test]
+    fn test_health_score_computation() {
+        // Zero-evidence: max possible score is 0.6 (use + freshness, no truth)
+        let mut m = BeliefMetrics::default();
+        m.cited_by_beliefs = 3;
+        m.cited_by_sessions = 3; // use_score = min(1.0, 6/3) = 1.0
+        m.evidence_count = 0;
+        m.evidence_verified = 0;
+        m.last_activity = Some("2026-02-16".to_string()); // fresh
+        let score = compute_health_score(&m, 90);
+        assert!(
+            score <= 0.61,
+            "zero-evidence max should be ~0.6, got {}",
+            score
+        );
+        assert!(score >= 0.59, "zero-evidence should be ~0.6, got {}", score);
+
+        // All-healthy: near 1.0
+        let mut m2 = BeliefMetrics::default();
+        m2.cited_by_beliefs = 3;
+        m2.cited_by_sessions = 3;
+        m2.evidence_count = 3;
+        m2.evidence_verified = 3;
+        m2.last_activity = Some("2026-02-16".to_string());
+        let score2 = compute_health_score(&m2, 90);
+        assert!(
+            score2 > 0.95,
+            "all-healthy should be near 1.0, got {}",
+            score2
+        );
+
+        // All-stale: freshness = 0.0
+        let mut m3 = BeliefMetrics::default();
+        m3.cited_by_beliefs = 3;
+        m3.cited_by_sessions = 3;
+        m3.evidence_count = 3;
+        m3.evidence_verified = 3;
+        m3.last_activity = Some("2025-01-01".to_string()); // very old
+        let score3 = compute_health_score(&m3, 90);
+        // freshness = 0.0, use = 1.0, truth = 1.0 → 0.3 + 0.4 + 0.0 = 0.7
+        assert!(
+            (score3 - 0.7).abs() < 0.01,
+            "stale should be 0.7, got {}",
+            score3
+        );
+
+        // NULL last_activity → freshness = 0.0
+        let mut m4 = BeliefMetrics::default();
+        m4.cited_by_beliefs = 3;
+        m4.cited_by_sessions = 3;
+        m4.evidence_count = 3;
+        m4.evidence_verified = 3;
+        m4.last_activity = None;
+        let score4 = compute_health_score(&m4, 90);
+        assert!(
+            (score4 - 0.7).abs() < 0.01,
+            "null activity should be 0.7, got {}",
+            score4
+        );
+    }
+
+    #[test]
+    fn test_verification_drift_detection() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+
+        // Create _prev table with a passing result
+        conn.execute_batch(
+            "CREATE TABLE belief_verifications_prev (
+                belief_id TEXT NOT NULL, label TEXT NOT NULL,
+                query_type TEXT, query_text TEXT, expectation TEXT,
+                last_status TEXT NOT NULL, last_result TEXT, last_error TEXT,
+                last_run_at TEXT, data_freshness TEXT,
+                PRIMARY KEY (belief_id, label)
+            );
+            INSERT INTO belief_verifications_prev VALUES
+                ('belief-a', 'check-1', 'sql', 'SELECT 1', '= 1', 'pass', '1', NULL, '2026-01-01', 'full'),
+                ('belief-b', 'check-2', 'sql', 'SELECT 1', '= 1', 'pass', '1', NULL, '2026-01-01', 'full'),
+                ('belief-c', 'check-3', 'sql', 'SELECT 1', '= 1', 'error', '0', 'err', '2026-01-01', 'full');
+            ",
+        ).unwrap();
+
+        // Create current table: belief-a drifted (pass→contested), belief-b stayed pass, belief-c error→pass (not drift)
+        conn.execute_batch(
+            "CREATE TABLE belief_verifications (
+                belief_id TEXT NOT NULL, label TEXT NOT NULL,
+                query_type TEXT, query_text TEXT, expectation TEXT,
+                last_status TEXT NOT NULL, last_result TEXT, last_error TEXT,
+                last_run_at TEXT, data_freshness TEXT,
+                PRIMARY KEY (belief_id, label)
+            );
+            INSERT INTO belief_verifications VALUES
+                ('belief-a', 'check-1', 'sql', 'SELECT 0', '= 1', 'contested', '0', NULL, '2026-02-01', 'full'),
+                ('belief-b', 'check-2', 'sql', 'SELECT 1', '= 1', 'pass', '1', NULL, '2026-02-01', 'full'),
+                ('belief-c', 'check-3', 'sql', 'SELECT 1', '= 1', 'pass', '1', NULL, '2026-02-01', 'full');
+            ",
+        ).unwrap();
+
+        // Query drifted belief IDs
+        let drifted: Vec<String> = conn
+            .prepare(
+                "SELECT DISTINCT p.belief_id
+                 FROM belief_verifications_prev p
+                 JOIN belief_verifications c ON p.belief_id = c.belief_id AND p.label = c.label
+                 WHERE p.last_status = 'pass' AND c.last_status != 'pass'",
+            )
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert_eq!(drifted, vec!["belief-a"]); // only pass→contested counts
+    }
+
+    #[test]
+    fn test_attacked_by_parsing() {
+        let content = r#"---
+id: test-belief
+---
+
+# test-belief
+
+Test statement.
+
+## Attacked-By
+
+- [[attacker-one]] (status: active, confidence: 0.3, scope: "narrow")
+- [[attacker-two]] (status: defeated, confidence: 0.1)
+- plain text without wikilink (should be skipped)
+- [[attacker-three]]
+
+## Attacks
+
+- [[target-one]] (status: active)
+- [[target-two]] (status: defeated)
+- [[target-three]]
+"#;
+        let metrics = extract_file_metrics(content);
+
+        // Attacked-By: attacker-two is defeated → excluded
+        assert_eq!(
+            metrics.attacked_by_ids,
+            vec!["attacker-one", "attacker-three"]
+        );
+        assert_eq!(metrics.defeated_attacks, 1); // attacker-two
+
+        // Attacks: target-two is defeated → excluded
+        assert_eq!(metrics.attacks_ids, vec!["target-one", "target-three"]);
+    }
+
+    #[test]
+    fn test_contested_bidirectional() {
+        // A attacks B (both active) → B should be flagged as contested by A
+        // B attacked-by A (both active) → same result, bidirectional merge
+        let content_a = r#"---
+id: belief-a
+status: active
+---
+
+# belief-a
+
+Statement A.
+
+## Attacks
+
+- [[belief-b]] (status: active)
+"#;
+        let content_b = r#"---
+id: belief-b
+status: active
+---
+
+# belief-b
+
+Statement B.
+
+## Attacked-By
+
+- [[belief-a]] (status: active)
+"#;
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path_a = temp_dir.path().join("belief-a.md");
+        let path_b = temp_dir.path().join("belief-b.md");
+        std::fs::write(&path_a, content_a).unwrap();
+        std::fs::write(&path_b, content_b).unwrap();
+
+        let mut beliefs = vec![
+            parse_belief_file(&path_a).unwrap(),
+            parse_belief_file(&path_b).unwrap(),
+        ];
+
+        // Cross-reference (no sessions dir needed for this test)
+        cross_reference_beliefs(&mut beliefs, temp_dir.path());
+
+        // B should be contested by A (from both A's ## Attacks and B's ## Attacked-By)
+        let b = &beliefs[1];
+        assert!(
+            b.metrics.contested_by.contains(&"belief-a".to_string()),
+            "belief-b should be contested by belief-a, got {:?}",
+            b.metrics.contested_by
+        );
+
+        // A is NOT contested by B (B attacks nothing, B's Attacked-By lists A not the reverse)
+        let a = &beliefs[0];
+        assert!(
+            a.metrics.contested_by.is_empty(),
+            "belief-a should not be contested, got {:?}",
+            a.metrics.contested_by
+        );
     }
 }
