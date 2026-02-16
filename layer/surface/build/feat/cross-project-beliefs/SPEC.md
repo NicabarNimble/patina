@@ -232,32 +232,6 @@ LLM consumption.
 **Code paths:**
 - `src/mcp/server.rs` — add `mother` tool to `handle_list_tools()` and `handle_tool_call()`
 
-#### MCP: Extend `context` tool
-
-When a topic is provided, `context` also queries graph.db's knowledge table
-and appends a "Cross-Project Knowledge" section. `context` is already the
-aggregation/composition tool — this adds one more data source.
-
-No topic = no cross-project search (avoids dumping all 150+ entries).
-
-```
-# Core Patterns (matching)
-...
-# Factual Matches
-...
-# Semantic Matches
-...
-# Active Beliefs (this project)
-...
-# Cross-Project Knowledge                    <-- NEW
-- [patina] explicit-error-types (belief, high): "Prefer explicit..."
-- [persona] prefer-result-over-panics (value, medium): "I prefer..."
-```
-
-**Code paths:**
-- `src/commands/context.rs` — add `get_cross_project_knowledge(topic)` call
-  in `get_project_context()` when topic is `Some`
-
 #### MCP tool architecture after this SPEC
 
 | Tool | Role | Scope |
@@ -265,11 +239,11 @@ No topic = no cross-project search (avoids dumping all 150+ entries).
 | `scry` | Semantic vector search | Project |
 | `assay` | Structural/factual queries | Project |
 | `mother` | Cross-project knowledge search | Mother (graph.db) |
-| `context` | Composition: layer files + scry + assay + beliefs + **mother** | Everything |
+| `context` | Composition: layer files + scry + assay + beliefs | Project |
 
-`context` becomes the tunable composition layer. Token budget is controlled by
-adjusting how much from each source it includes. The individual tools (scry,
-assay, mother) provide direct access when the LLM needs targeted search.
+The individual tools (scry, assay, mother) provide direct access for targeted
+search. `context` remains project-scoped — integrating mother into context is
+a follow-up composition concern (see Non-Goals).
 
 ## Exit Criteria
 
@@ -278,9 +252,8 @@ assay, mother) provide direct access when the LLM needs targeted search.
 2. `patina mother search "error handling"` returns results tagged with source
    and kind: `[project-name] belief`, `[persona] value`
 3. MCP tool `mother` returns cross-project knowledge as JSON
-4. MCP tool `context` includes cross-project knowledge section when topic provided
-5. `patina scrape` is unchanged — no graph.db writes, project stays island
-6. Running `mother graph sync` twice produces identical graph.db state (idempotent)
+4. `patina scrape` is unchanged — no graph.db writes, project stays island
+5. Running `mother graph sync` twice produces identical graph.db state (idempotent)
 
 **Verification context:** Run exit criteria post-`patina scrape` on at least one
 registered project. Expected: project beliefs (130+) + 5 persona values.
@@ -291,6 +264,8 @@ Each result shows ID, statement, source, kind, entrenchment.
 - Embedding/semantic search in graph.db — FTS5 is sufficient for discovery
 - Belief adoption workflow — follow-up SPEC
 - Mother daemon auto-sync — manual `mother graph sync` for now
+- Extending `context` to include cross-project knowledge — composition concern,
+  follow-up after mechanism proves out
 - Refactoring `context` token budget — separate concern, can be tuned later
 - Everything in [[mother-design]] non-goals (persona migration, multi-persona,
   value grounding, values-to-rules, etc.)
@@ -307,7 +282,7 @@ Each result shows ID, statement, source, kind, entrenchment.
 | Scry all-repos doesn't include persona | `src/retrieval/engine.rs:224-261` |
 | MCP tools are library wrappers, not CLI shims | `src/mcp/server.rs` (calls Rust fns directly) |
 | `context` is ~14K chars (~3K tokens) no topic | `patina context \| wc -c` = 14106 |
-| `context` calls assay + scry + reads layer files | `src/commands/context.rs:56-68` |
+| `context` calls assay + scry + reads layer files | `src/commands/context.rs:56-68` (not modified by this SPEC) |
 | `mother graph sync` already walks registry | `src/commands/mother/graph.rs:16-68` |
 | Graph node IDs are registry names, not UIDs | `src/commands/mother/graph.rs:35-46` (uses `name` from registry) |
 | Mother v2 Phase 2 schema proposed | `git show spec/mother-v2` (archived) |
