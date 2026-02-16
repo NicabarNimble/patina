@@ -95,27 +95,47 @@ beliefs (
 Add temporal awareness to belief metrics during scrape:
 
 1. **Last-activity tracking** — four nullable component columns on the beliefs
-   table, plus a computed `last_activity` column as their MAX:
+   table, plus a computed `last_activity` column as their MAX.
+
+   **All dates stored as ISO 8601 `YYYY-MM-DD` TEXT.** This ensures MAX()
+   comparison works across all sources. Sources that provide higher precision
+   (timestamps, RFC 3339) are truncated to date-only.
 
    - `last_file_touch TEXT` — `std::fs::metadata(path).modified()` during
-     `parse_belief_file()` (free — already reading the file)
-   - `last_frontmatter_revision TEXT` — from `revised` YAML field (already parsed
+     `parse_belief_file()`, converted to `YYYY-MM-DD` (free — already reading file)
+   - `last_frontmatter_revision TEXT` — from `revised` YAML field (already `YYYY-MM-DD`
      at `scrape/beliefs/mod.rs:257-263`)
    - `last_session_citation TEXT` — during `cross_reference_beliefs()` (line 528-541),
      the code already iterates session files checking `contains(bid)`. Session
-     filenames ARE timestamps (`20260215-230959.md`). Track the MAX filename per
-     belief — zero extra I/O, just a string comparison in the existing loop.
-   - `last_verification_run TEXT` — from `belief_verifications.last_run_at` (already
-     stored at `verification/internal/exec.rs:299`)
-   - `last_activity TEXT` — MAX of the four above, computed after all signals collected.
+     filenames are `YYYYMMDD-HHMMSS.md` — convert to `YYYY-MM-DD` and track MAX
+     per belief. Zero extra I/O, just a string parse in the existing loop.
+   - `last_verification_run TEXT` — `chrono::Utc::now()` formatted as `YYYY-MM-DD`
+     (exec.rs:299 already uses chrono; just format differently for this column)
+   - `last_activity TEXT` — MAX of the four non-NULL values above, computed after
+     all signals collected. If all four are NULL, `last_activity` is NULL (belief
+     has no temporal signal — will appear stale).
 
    Storing pre-MAX components keeps audit output explainable (future `--show-activity`
    can display why a belief is stale) and avoids re-deriving during display.
 
 2. **Staleness threshold** — belief is "stale" if last_activity > N days ago.
-   Configurable via `.patina/config.toml` `[beliefs] stale_days = 90`. Audit
-   summary emits freshness stats: "32/128 beliefs stale (>90d), median age 143d"
-   for immediate signal without hardcoding policy.
+   Configurable via `.patina/config.toml` `[beliefs] stale_days = 90`.
+
+   **Prerequisite:** `ProjectConfig` (`src/project/internal.rs:18-38`) has no
+   `BeliefsSection`. Add one:
+   ```rust
+   #[derive(Debug, Clone, Serialize, Deserialize)]
+   pub struct BeliefsSection {
+       #[serde(default = "default_stale_days")]
+       pub stale_days: u32,
+   }
+   fn default_stale_days() -> u32 { 90 }
+   ```
+   Add `#[serde(default)] pub beliefs: BeliefsSection` to `ProjectConfig`.
+   Re-export from `project/mod.rs`.
+
+   Audit summary emits freshness stats: "32/128 beliefs stale (>90d), median
+   age 143d" for immediate signal without hardcoding policy.
 
 3. **Verification drift** — snapshot-before-drop approach.
 
@@ -124,11 +144,14 @@ Add temporal awareness to belief metrics during scrape:
    "previous results" to compare against — `data_freshness` is just the string
    "full" or "incremental", not a temporal marker.
 
-   **Implementation:** Before the DROP, rename the table:
+   **Implementation:** Before the DROP, rename the table if it exists:
    ```sql
+   -- Guard: skip on first-ever scrape (table doesn't exist yet)
    ALTER TABLE belief_verifications RENAME TO belief_verifications_prev;
    ```
-   After the new verification run completes, diff:
+   If the RENAME fails (first scrape, no prior table), skip drift detection
+   entirely — there's nothing to compare against. After the new verification
+   run completes, diff:
    ```sql
    SELECT p.belief_id, p.label
    FROM belief_verifications_prev p
@@ -154,6 +177,8 @@ Add temporal awareness to belief metrics during scrape:
 
 ### Phase B: Health Score
 
+**Depends on Phase A** — requires `last_activity` and `stale_days` config.
+
 Compute a single 0.0-1.0 health score per belief from the existing metrics:
 
 ```
@@ -168,6 +193,9 @@ where:
 Weights: `w_use = 0.3, w_truth = 0.4, w_fresh = 0.3` (tunable via config, not CLI).
 Linear freshness curve — don't optimize the math until real score distributions
 are observed.
+
+**NULL last_activity:** If all four activity signals are NULL, freshness = 0.0
+(maximally stale). Health score still computes from use + truth dimensions.
 
 Store as `health_score REAL` column on beliefs table. Compute during scrape,
 expose via:
@@ -191,6 +219,14 @@ Detect when two active beliefs have `attacks` relationships and both are active:
    already parses `## Attacked-By` sections and counts defeated attacks. Extend
    it to also collect non-defeated attacker IDs into a new `BeliefMetrics` field:
    `attacked_by_ids: Vec<String>`.
+
+   **Attacked-By entry formats** (from actual belief files):
+   - Structured: `- [[belief-id]] (status: active, confidence: 0.3, scope: "...")`
+   - Unstructured: `- plain text description` (no wikilink — skip these)
+
+   Extract `[[belief-id]]` via the existing `\[\[([^\]]+)\]\]` regex pattern
+   (already used in `verify_evidence_section()` at line 368). Only collect IDs
+   from entries that do NOT contain `status: defeated`.
 
 2. In `cross_reference_beliefs()`, after all beliefs are parsed, check each
    `attacked_by_ids` entry: if the attacking belief is also `status: active`
@@ -236,6 +272,9 @@ in `cross_reference_beliefs()`. `src/commands/belief/mod.rs` — add
 | cross_reference_beliefs reads all session files | `scrape/beliefs/mod.rs:528-541` |
 | Session filenames are timestamps (YYYYMMDD-HHMMSS.md) | `layer/sessions/` directory convention |
 | extract_file_metrics parses Attacked-By for defeated count | `scrape/beliefs/mod.rs:350-354` |
+| Attacked-By uses `[[id]] (status: active/defeated)` format | `layer/surface/epistemic/beliefs/sync-first.md:60` |
+| ProjectConfig has no BeliefsSection for stale_days | `src/project/internal.rs:18-38` |
+| Wikilink regex already exists in verify_evidence_section | `scrape/beliefs/mod.rs:368` |
 
 ### Amendment History
 
@@ -246,4 +285,7 @@ in `cross_reference_beliefs()`. `src/commands/belief/mod.rs` — add
   (reuses parsing, adds one `contested_by TEXT` column). Added `low-health` warning
   to Phase B. Grounded all claims against actual line numbers. UX review confirmed
   terminal width constraint: show `last_activity` in main table, component columns
-  behind future `--verbose` flag only.
+  behind future `--verbose` flag only. Second pass: normalized all dates to
+  ISO 8601 `YYYY-MM-DD`, added BeliefsSection config prerequisite, first-scrape
+  guard for RENAME, NULL last_activity → freshness 0.0, Attacked-By parsing
+  format documented from real belief files, Phase B explicit dependency on A.
