@@ -194,7 +194,7 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Kno
         .unwrap_or(false);
 
     if !table_exists {
-        anyhow::bail!("no beliefs table (legacy schema)");
+        anyhow::bail!("no beliefs table — run `patina scrape --rebuild`");
     }
 
     let mut stmt = conn.prepare(
