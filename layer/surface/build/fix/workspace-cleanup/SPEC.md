@@ -306,11 +306,12 @@ The SDK's `include` field uses relative paths. No release scripts or automation
    `rg '../patina-sdk' plugins/`
    (Every plugin Cargo.toml should now say `path = "../sdk"`, not `"../patina-sdk"`.)
 3. Confirm symlinks: `ls -la plugins/*/wit` — should show `../../wit`.
-4. Confirm SDK crate still resolves after the move: `cargo check -p patina-sdk`.
-   (`cargo publish --dry-run` and `cargo package` both refuse dirty working
-   trees. `cargo check` validates dependency resolution, manifest parsing, and
-   compilation without that constraint. Full publish validation happens via
-   `cargo publish -p patina-sdk --dry-run` after the phase is committed.)
+4. Confirm SDK is still publishable from its new location:
+   `cargo publish -p patina-sdk --dry-run`
+   (All phase verification runs post-commit — see "Verification after every
+   phase" preamble above — so the working tree is clean and `--dry-run`
+   succeeds. This validates manifest, include/exclude globs, and dependency
+   resolution from the new `plugins/sdk/` path.)
 
 **Root:** 18 → 15 dirs.
 
@@ -492,9 +493,11 @@ Node.js. No source code references patina-metal. No one uses the launch config
    - `resources/bench/` — `patina-commits-v1.json` benchmark ground truth
      (records file relevance at a past commit)
 
-   If the command produces any output, those are NEW stale references that
-   need investigation. The exclusions cover only archival knowledge and
-   benchmark data — not code, config, or scripts.
+   If the command produces any output, each match needs triage:
+   - **Code, config, or script?** Update or remove the reference — it's stale.
+   - **Documentation (outside `layer/`)?** Update the doc in this same commit.
+   - **New archival file?** Add its directory to the exclusion globs with
+     a comment explaining why, then re-run to confirm zero matches.
 
 **Root:** 11 → 10 dirs.
 
