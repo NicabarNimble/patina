@@ -312,19 +312,30 @@ Moving weights to config is a future decision gated on observed distributions.
 
 Store as `health_score REAL` column on beliefs table. Compute during scrape,
 expose via:
-- `--sort health` sort mode in belief audit
+- `--sort health` sort mode in belief audit — **ascending order** (lowest
+  health first), matching `--sort weak` convention. Users want to see the
+  beliefs needing attention at the top.
 - `--stale` flag filters beliefs where `last_activity` exceeds `stale_days`
   (the simple, honest definition — matches Phase A's staleness threshold exactly).
-  This is NOT tied to the freshness component of health_score.
+  This is NOT tied to the freshness component of health_score. Composable with
+  `--warnings-only` via AND: `--stale --warnings-only` shows stale beliefs that
+  also have other warnings.
 - `low-health` warning in `health_warnings()` when health_score < 0.4
+- `verify-drifted` warning in `health_warnings()` when `verification_drifted = 1`.
+  This distinguishes "previously passing, now failing" (drift) from "always
+  failing" (`verify-contested`). Both may fire for the same belief — they are
+  not mutually exclusive.
 
 Compute and expose only — health score does not gate any automated action.
 Collect feedback from real audit usage before refining weights or adding
 nonlinear curves.
 
-**Code path:** `src/commands/belief/mod.rs` — add sort mode, stale filter,
-low-health warning. `src/commands/scrape/beliefs/mod.rs` — compute
-health_score during scrape after all signals collected (Phase A fields required).
+**Code path:** `src/commands/belief/mod.rs` — add `health` sort mode (ascending),
+`--stale` filter, `low-health` warning, `verify-drifted` warning. Read
+`verification_drifted` and `health_score` columns in `BeliefRow` (with
+`has_*` column-existence checks for graceful degradation on pre-scrape DBs).
+`src/commands/scrape/beliefs/mod.rs` — compute health_score before Phase 3
+so both insert and Phase 3a update paths use the same value.
 
 ### Phase C: Contradiction Detection
 
@@ -382,8 +393,25 @@ warning to `health_warnings()`, reading from `contested_by` column.
 
 1. `patina belief audit --stale` shows beliefs with no activity in 90+ days
 2. `patina belief audit --sort health` ranks beliefs by computed health score
-3. Verification drift is detected: previously-passing queries that now fail
+3. Verification drift is detected and surfaced as `verify-drifted` warning
 4. Active attack pairs flagged in audit warnings
+
+## Expected Behavior on First Use
+
+**Staleness (`--stale`):** On a young project where all beliefs were created
+within `stale_days` (default 90), `--stale` returns no results. This is
+correct — no beliefs ARE stale yet. The flag becomes useful as the project
+ages and beliefs stop being revised or cited. Mention this in `patina version`
+release notes so users don't think the flag is broken.
+
+**Drift (Phase A.3):** First scrape has no baseline (`_prev` table). Drift
+detection starts producing results on the second scrape when a comparison
+baseline exists.
+
+**Contests (Phase C):** Contest detection only fires when beliefs have
+populated `## Attacks` or `## Attacked-By` sections with `[[wikilink]]`
+references to other active beliefs. Empty sections (the current default)
+produce zero results.
 
 ## Verification Plan
 
