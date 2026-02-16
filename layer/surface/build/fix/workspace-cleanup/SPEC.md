@@ -193,6 +193,25 @@ grammar-typescript/ → grammars/typescript/
    - `print_list()` (lines 150, 170): Same path format change
 3. Update `CLAUDE.md` (line 110) and `README.md` (lines 233-237): Change
    `grammar-*/` → `grammars/` in project structure diagrams
+4. Fix stale doc comment in `grammars/cairo/src/parser.rs` (line 1): Change
+   `//! Cairo language parser — ported from patina-metal/src/cairo.rs.` to
+   `//! Cairo language parser — native Rust implementation using cairo-lang-parser.`
+   (The patina-metal reference is historically stale; the parser has been a
+   standalone grammar plugin since extraction. This also eliminates a false
+   positive in Phase D's `rg 'patina-metal'` verification.)
+5. Update vendored-file exclusions for the new grammar locations. After the
+   move, 8 of 9 grammar crates contain vendored tree-sitter C sources at
+   `grammars/<lang>/grammars/<lang>/src/` (grammar-cairo has no vendored C).
+   Without these entries, GitHub Linguist counts tens of thousands of C lines
+   as first-party code, and ripgrep/fd traverses them on every search.
+
+   - `.gitattributes`: Add `grammars/*/grammars/** linguist-vendored`
+     (existing `patina-metal/grammars/**` entry stays until Phase D removes it)
+   - `.ignore`: Add `grammars/*/grammars/` before the existing `layer/dust/` line
+     (existing `patina-metal/grammars/*/` entry stays until Phase D removes it)
+   - `.gitignore`: Add `grammars/*/target/` after the existing `/target/` line
+     (grammar WASM build artifacts — each crate has its own target/ directory;
+     existing `patina-metal/grammars/**/Cargo.lock` stays until Phase D)
 
 **What does NOT change:**
 - Grammar `Cargo.toml` contents (crate names stay `grammar-c`, deps, targets)
@@ -453,10 +472,21 @@ Node.js. No source code references patina-metal. No one uses the launch config
 **Verification:**
 1. Build, test, pre-push:
    `cargo build --release && cargo test --workspace && ./resources/git/pre-push-checks.sh`
-2. Confirm no stale references: `rg 'patina-metal' --glob '!target/**' --glob '!layer/sessions/**' --glob '!layer/surface/epistemic/**'`
-   (Remaining matches should be only in `resources/bench/patina-commits-v1.json`
-   and possibly `layer/surface/reference-patina-metal.md` / `layer/surface/architecture-patina-metal.md`
-   which are historical surface docs, not actionable references.)
+2. Confirm no unexpected stale references:
+   ```bash
+   rg 'patina-metal' --glob '!target/**' --glob '!layer/**' --glob '!resources/bench/**'
+   ```
+   This should produce **zero matches**. All known residual `patina-metal`
+   references live in excluded directories:
+   - `layer/` — historical knowledge: session archives, surface docs
+     (`reference-patina-metal.md`, `architecture-patina-metal.md`,
+     `analysis-patina-database.md`), belief evidence, reports, and this spec
+   - `resources/bench/` — `patina-commits-v1.json` benchmark ground truth
+     (records file relevance at a past commit)
+
+   If the command produces any output, those are NEW stale references that
+   need investigation. The exclusions cover only archival knowledge and
+   benchmark data — not code, config, or scripts.
 
 **Root:** 11 → 10 dirs.
 
