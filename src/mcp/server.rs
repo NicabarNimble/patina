@@ -245,6 +245,25 @@ fn handle_list_tools(req: &Request) -> Response {
                     }
                 },
                 {
+                    "name": "mother",
+                    "description": "Search cross-project knowledge - federated FTS5 search over project beliefs and persona values indexed in Mother's graph.db. Returns knowledge entries from all registered projects and persona. Run `mother graph sync` to populate the index. For project-scoped semantic search, use scry instead.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "Search query text (FTS5 full-text search)"
+                            },
+                            "limit": {
+                                "type": "integer",
+                                "default": 10,
+                                "description": "Maximum results to return (default: 10)"
+                            }
+                        },
+                        "required": ["query"]
+                    }
+                },
+                {
                     "name": "assay",
                     "description": "Query codebase structure - modules, imports, functions, call graph. Use for exact structural questions like 'list all modules', 'what imports X', 'show largest files'. For semantic similarity, use scry instead. Use 'derive' to compute/view structural signals (usage, activity, centrality). Use 'search' for ranked FTS5 text search, 'cochange' for temporal co-change analysis, 'belief' for belief grounding.",
                     "inputSchema": {
@@ -566,6 +585,28 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
         "context" => {
             let topic = args.get("topic").and_then(|v| v.as_str());
             match get_project_context(topic) {
+                Ok(text) => Response::success(
+                    req.id.clone(),
+                    serde_json::json!({
+                        "content": [{ "type": "text", "text": text }]
+                    }),
+                ),
+                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            }
+        }
+        "mother" => {
+            let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+            let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
+
+            if query.is_empty() {
+                return Response::error(
+                    req.id.clone(),
+                    -32602,
+                    "mother tool requires 'query' parameter",
+                );
+            }
+
+            match handle_mother_search(query, limit) {
                 Ok(text) => Response::success(
                     req.id.clone(),
                     serde_json::json!({
@@ -1725,6 +1766,38 @@ fn handle_detail(query_id: &str, rank: usize) -> Result<String> {
 
     output.push_str(&format!("\n\n---\nQuery ID: {}\n", query_id));
     Ok(output)
+}
+
+/// Handle mother search — cross-project knowledge FTS5 search
+///
+/// Thin wrapper over Graph::search_knowledge(). Returns JSON array per SPEC.
+fn handle_mother_search(query: &str, limit: usize) -> Result<String> {
+    use patina::mother::Graph;
+
+    let graph = Graph::open()?;
+    let results = graph.search_knowledge(query, limit)?;
+
+    if results.is_empty() {
+        return Ok("[]".to_string());
+    }
+
+    // Return JSON array with all fields, full statement (no truncation)
+    let json_results: Vec<serde_json::Value> = results
+        .iter()
+        .map(|entry| {
+            serde_json::json!({
+                "id": entry.id,
+                "source": entry.source,
+                "kind": entry.kind,
+                "statement": entry.statement,
+                "entrenchment": entry.entrenchment,
+                "status": entry.status,
+                "facets": entry.facets
+            })
+        })
+        .collect();
+
+    Ok(serde_json::to_string_pretty(&json_results)?)
 }
 
 /// Format full detail content based on event type
