@@ -302,7 +302,11 @@ The SDK's `include` field uses relative paths. No release scripts or automation
    `rg '../patina-sdk' plugins/`
    (Every plugin Cargo.toml should now say `path = "../sdk"`, not `"../patina-sdk"`.)
 3. Confirm symlinks: `ls -la plugins/*/wit` — should show `../../wit`.
-4. Confirm publishing still works: `cargo publish -p patina-sdk --dry-run`.
+4. Confirm packaging still works: `cargo package -p patina-sdk`.
+   (`cargo publish --dry-run` requires a clean working tree and would fail
+   after uncommitted `git mv` operations. `cargo package` validates the same
+   packaging logic — manifest, include/exclude, dependency resolution — without
+   the clean-tree requirement.)
 
 **Root:** 18 → 15 dirs.
 
