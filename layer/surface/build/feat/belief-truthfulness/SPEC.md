@@ -518,3 +518,13 @@ produce zero results.
   but counted in stale total. CREATE TABLE: new columns must appear in both
   CREATE TABLE and ALTER TABLE paths. Belief count: aligned problem statement
   and evidence table to dated snapshot (129 as of 2026-02-16).
+  Fifth pass (UX edge case review grounded in real repo stats: 130 beliefs all
+  <31 days old, 80% lack verification, 0 populated Attacks/Attacked-By). Fixed
+  last_file_touch as true fallback-only (not co-equal in MAX) — prevents fresh
+  clone from masking staleness. Added Phase 3a: targeted UPDATEs for skipped
+  beliefs during incremental scrape so temporal signals stay current without
+  requiring --rebuild. Added verify-drifted warning to health_warnings() so
+  drift is surfaced to users (closes Exit Criteria #3 fully). Specified --sort
+  health as ascending (worst first). Defined --stale + --warnings-only as AND
+  composition. Added "Expected Behavior on First Use" section documenting
+  expected lag for staleness, drift baseline, and contest detection.
