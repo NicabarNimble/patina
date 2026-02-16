@@ -310,12 +310,11 @@ The SDK's `include` field uses relative paths. No release scripts or automation
    `rg '../patina-sdk' plugins/`
    (Every plugin Cargo.toml should now say `path = "../sdk"`, not `"../patina-sdk"`.)
 3. Confirm symlinks: `ls -la plugins/*/wit` — should show `../../wit`.
-4. Confirm SDK is still publishable from its new location:
-   `cargo publish -p patina-sdk --dry-run`
-   (All phase verification runs post-commit — see "Verification after every
-   phase" preamble above — so the working tree is clean and `--dry-run`
-   succeeds. This validates manifest, include/exclude globs, and dependency
-   resolution from the new `plugins/sdk/` path.)
+4. Confirm SDK packaging from new location: `cargo package -p patina-sdk`
+   (Validates manifest, include/exclude globs, and tarball creation from
+   `plugins/sdk/`. No registry credentials required — unlike `cargo publish
+   --dry-run`, `cargo package` never contacts crates.io. Runs post-commit
+   per the global verification preamble, so the working tree is clean.)
 
 **Root:** 18 → 15 dirs.
 
@@ -485,23 +484,20 @@ Node.js. No source code references patina-metal. No one uses the launch config
 **Verification:**
 1. Build, test, pre-push:
    `cargo build --release && cargo test --workspace && ./resources/git/pre-push-checks.sh`
-2. Confirm no unexpected stale references:
+2. Confirm no stale references in code, config, scripts, or docs:
    ```bash
-   rg 'patina-metal' --glob '!target/**' --glob '!layer/**' --glob '!resources/bench/**'
+   rg 'patina-metal' \
+     src/ grammars/ plugins/ tests/ scripts/ examples/ \
+     resources/git/ resources/scripts/ \
+     Cargo.toml .gitignore .gitattributes .ignore README.md CLAUDE.md
    ```
-   This should produce **zero matches**. All known residual `patina-metal`
-   references live in excluded directories:
-   - `layer/` — historical knowledge: session archives, surface docs
-     (`reference-patina-metal.md`, `architecture-patina-metal.md`,
-     `analysis-patina-database.md`), belief evidence, reports, and this spec
-   - `resources/bench/` — `patina-commits-v1.json` benchmark ground truth
-     (records file relevance at a past commit)
+   This should produce **zero matches**. The search targets only actionable
+   locations — not archival knowledge (`layer/`), benchmark data
+   (`resources/bench/`), or build artifacts (`target/`). Historical
+   references in those directories are expected and harmless.
 
-   If the command produces any output, each match needs triage:
-   - **Code, config, or script?** Update or remove the reference — it's stale.
-   - **Documentation (outside `layer/`)?** Update the doc in this same commit.
-   - **New archival file?** Add its directory to the exclusion globs with
-     a comment explaining why, then re-run to confirm zero matches.
+   If the command produces matches, the reference is stale — update or
+   remove it. Every searched location is actionable by definition.
 
 **Root:** 11 → 10 dirs.
 
