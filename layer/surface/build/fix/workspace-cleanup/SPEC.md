@@ -117,7 +117,7 @@ across the repo (excluding target/, .patina/, and the crate dirs themselves):
 | `resources/grammar-defaults.toml` | Language names only ("rust", "go"), not dir paths | **Safe — no change** |
 | `resources/git/pre-push-checks.sh` | WIT checks for 6 patina-* crate paths | **Script — must update** |
 | `Cargo.toml` | 8 workspace member paths | **Config — must update** |
-| `.gitignore` | `patina-metal/grammars/**/Cargo.lock` | **Config — remove line** |
+| `.gitignore` | `patina-metal/grammars/**/Cargo.lock` | **Config — remove in Phase D** |
 | `tests/*/Cargo.toml` (3 files) | `../../patina-pipeline-api`, `../../patina-task-api` | **Config — must update** |
 | `CLAUDE.md` (line 110) | `grammar-*/` in project structure diagram | **Docs — update in Phase A** |
 | `README.md` (lines 232-237) | `patina-metal/`, `patina-plugin-api/`, `patina-doctor/`, etc. | **Docs — update in Phases A, B, C, D** |
