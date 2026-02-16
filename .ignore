@@ -1,5 +1,6 @@
 # Exclude all grammar subdirectories (third-party tree-sitter implementations)
 patina-metal/grammars/*/
+grammars/*/grammars/
 
 # Exclude dust layer (archived/historical content)
 layer/dust/

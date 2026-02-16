@@ -1,6 +1,6 @@
 //! Grammar plugin installer — copies pre-built WASM plugins to ~/.patina/pipeline/.
 //!
-//! Source: grammar-*/ directories adjacent to the patina executable or repo root.
+//! Source: grammars/<lang>/ directories adjacent to the patina executable or repo root.
 //! Target: ~/.patina/pipeline/grammar-<name>/plugin.{wasm,toml}
 
 use std::path::{Path, PathBuf};
@@ -73,7 +73,7 @@ pub fn install(options: GrammarOptions) -> Result<()> {
         }
 
         // Find source artifacts
-        let grammar_dir = source_root.join(format!("grammar-{}", name));
+        let grammar_dir = source_root.join(format!("grammars/{}", name));
         let source_toml = grammar_dir.join("plugin.toml");
         let wasm_name = format!("grammar_{}.wasm", name);
         let source_wasm = grammar_dir
@@ -147,7 +147,7 @@ fn print_list(grammars: &[&str], pipeline_dir: &Path, source_root: &Path) {
         let installed =
             target_dir.join("plugin.wasm").exists() && target_dir.join("plugin.toml").exists();
 
-        let grammar_dir = source_root.join(format!("grammar-{}", name));
+        let grammar_dir = source_root.join(format!("grammars/{}", name));
         let wasm_name = format!("grammar_{}.wasm", name);
         let source_wasm = grammar_dir
             .join("target")
@@ -167,7 +167,7 @@ fn print_list(grammars: &[&str], pipeline_dir: &Path, source_root: &Path) {
                 .metadata()
                 .map(|m| format_size(m.len()))
                 .unwrap_or_else(|_| "?".into());
-            ("available", sz, format!("grammar-{}/", name))
+            ("available", sz, format!("grammars/{}/", name))
         } else {
             ("missing", "-".to_string(), "-".to_string())
         };
@@ -198,7 +198,7 @@ fn find_source_root() -> Result<PathBuf> {
             ];
             for candidate in &candidates {
                 let resolved = candidate.canonicalize().unwrap_or(candidate.clone());
-                if resolved.join("grammar-rust").join("plugin.toml").exists() {
+                if resolved.join("grammars/rust").join("plugin.toml").exists() {
                     return Ok(resolved);
                 }
             }
@@ -207,22 +207,22 @@ fn find_source_root() -> Result<PathBuf> {
 
     // Fall back to current working directory
     let cwd = std::env::current_dir()?;
-    if cwd.join("grammar-rust").join("plugin.toml").exists() {
+    if cwd.join("grammars/rust").join("plugin.toml").exists() {
         return Ok(cwd);
     }
 
     // Walk up from cwd
     let mut dir = cwd.as_path();
     while let Some(parent) = dir.parent() {
-        if parent.join("grammar-rust").join("plugin.toml").exists() {
+        if parent.join("grammars/rust").join("plugin.toml").exists() {
             return Ok(parent.to_path_buf());
         }
         dir = parent;
     }
 
     bail!(
-        "Cannot find grammar build artifacts (grammar-*/plugin.toml).\n\
-         Run this command from the patina repo root, or ensure grammar-*/\n\
+        "Cannot find grammar build artifacts (grammars/*/plugin.toml).\n\
+         Run this command from the patina repo root, or ensure grammars/\n\
          directories exist alongside the patina binary."
     )
 }
