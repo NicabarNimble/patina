@@ -62,6 +62,7 @@ pub fn sync_from_registry() -> Result<()> {
     println!("📚 Syncing knowledge...\n");
 
     let mut knowledge: Vec<KnowledgeEntry> = Vec::new();
+    let mut synced_sources: Vec<String> = Vec::new();
     let mut beliefs_synced = 0;
     let mut values_synced = 0;
 
@@ -76,12 +77,15 @@ pub fn sync_from_registry() -> Result<()> {
             Ok(entries) => {
                 let count = entries.len();
                 beliefs_synced += count;
+                synced_sources.push(project_name.to_string());
                 if count > 0 {
                     println!("  + {} beliefs from {} (current)", count, project_name);
                 }
                 knowledge.extend(entries);
             }
             Err(e) => {
+                // Failed sources are NOT added to synced_sources,
+                // so their previously indexed data is preserved.
                 eprintln!("  ⚠ {} (current): {}", project_name, e);
             }
         }
@@ -94,6 +98,7 @@ pub fn sync_from_registry() -> Result<()> {
             Ok(entries) => {
                 let count = entries.len();
                 beliefs_synced += count;
+                synced_sources.push(name.clone());
                 if count > 0 {
                     println!("  + {} beliefs from {}", count, name);
                 }
@@ -111,6 +116,7 @@ pub fn sync_from_registry() -> Result<()> {
     match collect_persona_values() {
         Ok(entries) => {
             values_synced = entries.len();
+            synced_sources.push("persona".to_string());
             if values_synced > 0 {
                 println!("  + {} values from persona", values_synced);
             }
@@ -121,8 +127,9 @@ pub fn sync_from_registry() -> Result<()> {
         }
     }
 
-    // Sync all knowledge in a single transaction
-    graph.sync_knowledge(&knowledge)?;
+    // Sync knowledge — only rebuilds entries for successfully collected sources.
+    // Failed sources retain their previously indexed data.
+    graph.sync_knowledge(&knowledge, &synced_sources)?;
 
     println!();
     println!(
