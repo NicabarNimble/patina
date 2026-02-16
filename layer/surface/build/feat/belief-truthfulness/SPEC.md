@@ -171,14 +171,41 @@ Add temporal awareness to belief metrics during scrape:
    JOIN belief_verifications c ON p.belief_id = c.belief_id AND p.label = c.label
    WHERE p.last_status = 'pass' AND c.last_status != 'pass'
    ```
-   Flag matched beliefs with `verification_drifted = 1`. Drop the `_prev` table.
+   Collect drifted belief IDs into a `Vec<String>`. The drift result is applied
+   via **post-insert UPDATE** (Phase 3b), not via `insert_belief()`. This
+   decouples drift detection from the insert pipeline and works identically
+   for both full and incremental scrapes.
 
-   **Reset semantics:** `verification_drifted` resets to 0 on every scrape, then
-   is set to 1 only for beliefs where drift is detected. On full scrape, the
-   DELETE+INSERT cycle in `insert_belief()` handles this naturally (default 0).
-   On incremental scrape, explicitly `UPDATE beliefs SET verification_drifted = 0`
-   before the drift detection pass, so beliefs that recovered (contested→pass)
-   are cleared. The flag reflects current-scrape drift, not historical.
+   **Phase 3b: Apply drift flags** (runs in `run()` after Phase 3 inserts):
+   ```sql
+   UPDATE beliefs SET verification_drifted = 0;  -- reset all
+   UPDATE beliefs SET verification_drifted = 1
+     WHERE id IN (SELECT DISTINCT p.belief_id
+       FROM belief_verifications_prev p
+       JOIN belief_verifications c ON p.belief_id = c.belief_id AND p.label = c.label
+       WHERE p.last_status = 'pass' AND c.last_status != 'pass');
+   DROP TABLE IF EXISTS belief_verifications_prev;
+   ```
+   The UPDATE-all-then-set pattern works for both full scrape (beliefs just
+   inserted with DEFAULT 0, then flagged) and incremental scrape (skipped
+   beliefs reset to 0, then re-flagged if still drifted). No modification
+   to `ParsedBelief` or `BeliefMetrics` needed — drift is a DB-only concern.
+   The `verification_drifted` column is NOT passed through `insert_belief()`;
+   it uses `DEFAULT 0` on INSERT and is set exclusively by Phase 3b UPDATE.
+
+   **Crash recovery:** A crash between RENAME and verification completion
+   loses one cycle's drift comparison. This is acceptable — drift is an
+   informational signal, not a constraint, and the next successful scrape
+   restores the comparison baseline. The `DROP IF EXISTS _prev` at the
+   start of `create_tables()` cleans up stale _prev tables from incomplete
+   runs.
+
+   **Scope of comparison:** The INNER JOIN on `(belief_id, label)` compares
+   only queries present in both the previous and current runs. Deleted or
+   renamed queries are not drift — they are editorial changes by the belief
+   author. Only queries that existed before AND still exist now participate
+   in pass→non-pass comparison. Similarly, newly added queries have no
+   previous baseline and are excluded.
 
    This delivers drift detection with minimal pipeline change. An append-only
    history table is deferred until there's proven need for trend analysis.
@@ -187,13 +214,13 @@ Add temporal awareness to belief metrics during scrape:
 
 **Code paths:**
 - `src/commands/scrape/beliefs/mod.rs` — extend `BeliefMetrics` with four
-  `last_*` fields plus `last_activity` and `verification_drifted`. Add columns
-  to `create_materialized_views()`. Populate `last_file_touch` in
+  `last_*` fields plus `last_activity`. Add columns to
+  `create_materialized_views()`. Populate `last_file_touch` in
   `parse_belief_file()`, `last_session_citation` in `cross_reference_beliefs()`,
-  `last_frontmatter_revision` from existing `revised` field.
+  `last_frontmatter_revision` from existing `revised` field. After Phase 3
+  inserts, run Phase 3b drift UPDATE if `_prev` table exists.
 - `src/commands/scrape/beliefs/verification/internal/exec.rs` — in
-  `create_tables()`, rename before drop. After `run_verification_queries()`
-  loop in `beliefs/mod.rs`, run drift diff query and set flags.
+  `create_tables()`, rename before drop (snapshot for drift comparison).
 
 ### Phase B: Health Score
 
@@ -292,9 +319,15 @@ column.
 
 ### Migration safety
 - All 8 new columns use the existing `ALTER TABLE ... ADD COLUMN` ignore-if-exists
-  pattern at `scrape/beliefs/mod.rs:131-152`. No destructive migration.
+  pattern at `scrape/beliefs/mod.rs:131-152`. No destructive migration. New
+  columns must ALSO appear in the `CREATE TABLE IF NOT EXISTS` statement at
+  `scrape/beliefs/mod.rs:74-100` so fresh databases get them without needing
+  the ALTER TABLE path.
 - `insert_belief()` (`scrape/beliefs/mod.rs:862-967`) must be updated to include
-  all new columns in the INSERT statement — 8 new params.
+  7 new columns in the INSERT statement — `last_file_touch`, `last_frontmatter_revision`,
+  `last_session_citation`, `last_verification_run`, `last_activity`, `health_score`,
+  `contested_by`. The 8th column (`verification_drifted`) uses `DEFAULT 0` on INSERT
+  and is set exclusively by Phase 3b UPDATE — it is NOT passed through `insert_belief()`.
 - Existing `patina belief audit` must not break when new columns are NULL
   (pre-scrape state). All new `BeliefRow` fields default to 0/empty/NULL.
 
@@ -305,7 +338,8 @@ column.
 - `test_health_score_computation` — zero-evidence (max 0.6), all-healthy (near 1.0),
   all-stale (freshness 0.0), NULL last_activity (freshness 0.0)
 - `test_verification_drift_detection` — pass→contested flags drift, pass→pass no flag,
-  no _prev table → skip, error→pass → no flag (only pass→non-pass counts)
+  no _prev table → skip, error→pass → no flag (only pass→non-pass counts),
+  deleted query (in _prev but not current) → no flag (editorial, not drift)
 - `test_attacked_by_parsing` — extract `[[id]]` from structured entries, skip
   unstructured entries, skip `status: defeated` entries
 - `test_contested_bidirectional` — A attacks B, B attacked-by A, both active → both flagged
