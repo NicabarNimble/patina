@@ -242,13 +242,38 @@ Add temporal awareness to belief metrics during scrape:
 
    New column: `verification_drifted INTEGER DEFAULT 0` on beliefs table.
 
+**Phase 3a: Push temporal updates for skipped beliefs** (incremental only).
+During incremental scrape, Phase 3 skips `insert_belief()` for already-known
+beliefs. But temporal signals change even when the belief file doesn't — a
+new session may cite it, or verification results may differ. To keep staleness
+signals current, run targeted UPDATEs for skipped beliefs:
+
+```rust
+// For each belief skipped by Phase 3 (already in DB):
+UPDATE beliefs SET
+  last_file_touch = ?1,
+  last_frontmatter_revision = ?2,
+  last_session_citation = ?3,
+  last_verification_run = ?4,
+  last_activity = ?5,
+  health_score = ?6,
+  contested_by = ?7
+WHERE id = ?8
+```
+
+This follows the existing pattern at `beliefs/mod.rs:1068-1081` where
+verification aggregates are pushed via direct UPDATE for skipped beliefs.
+Health score must be computed BEFORE Phase 3 so both insert and update
+paths use the same values.
+
 **Code paths:**
 - `src/commands/scrape/beliefs/mod.rs` — extend `BeliefMetrics` with four
   `last_*` fields plus `last_activity`. Add columns to
   `create_materialized_views()`. Populate `last_file_touch` in
   `parse_belief_file()`, `last_session_citation` in `cross_reference_beliefs()`,
-  `last_frontmatter_revision` from existing `revised` field. After Phase 3
-  inserts, run Phase 3b drift UPDATE if `_prev` table exists.
+  `last_frontmatter_revision` from existing `revised` field. Compute
+  `health_score` before Phase 3. Phase 3a pushes temporal fields + health_score
+  + contested_by for skipped beliefs. Phase 3b applies drift UPDATE.
 - `src/commands/scrape/beliefs/verification/internal/exec.rs` — in
   `create_tables()`, rename before drop (snapshot for drift comparison).
 
