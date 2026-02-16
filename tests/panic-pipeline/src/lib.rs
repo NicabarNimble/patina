@@ -4,7 +4,7 @@
 //! The host MUST catch the wasmtime trap and return a clean error —
 //! never crash, never unwrap() across the WASM boundary.
 
-use patina_pipeline_api::{register_pipeline, PipelinePlugin};
+use patina_sdk::{register_pipeline, PipelinePlugin};
 
 #[derive(Default)]
 struct PanicPipeline;

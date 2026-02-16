@@ -10,5 +10,5 @@ description = "Minimal pipeline plugin for conformance testing"
 crate-type = ["cdylib"]
 
 [dependencies]
-patina-pipeline-api = { path = "../../patina-pipeline-api" }
+patina-sdk = { path = "../../plugins/sdk", features = ["pipeline"] }
 serde_json = "1.0"

@@ -2496,34 +2496,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-command-api"
-version = "0.1.0"
-dependencies = [
- "wit-bindgen",
-]
-
-[[package]]
 name = "patina-doctor"
 version = "0.1.0"
 dependencies = [
  "patina-sdk",
  "serde_json",
-]
-
-[[package]]
-name = "patina-pipeline-api"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "wit-bindgen",
-]
-
-[[package]]
-name = "patina-plugin-api"
-version = "0.1.0"
-dependencies = [
- "wit-bindgen",
 ]
 
 [[package]]
@@ -2548,13 +2525,6 @@ version = "0.21.0"
 dependencies = [
  "serde",
  "serde_json",
- "wit-bindgen",
-]
-
-[[package]]
-name = "patina-task-api"
-version = "0.1.0"
-dependencies = [
  "wit-bindgen",
 ]
 
