@@ -22,7 +22,7 @@ beliefs:
 
 ## Problem
 
-126 beliefs exist. `patina belief audit` computes per-belief metrics (citations,
+100+ beliefs exist (129 as of 2026-02-16). `patina belief audit` computes per-belief metrics (citations,
 evidence, verification, grounding) — but all metrics are point-in-time snapshots.
 There is no mechanism to detect:
 
@@ -99,7 +99,10 @@ Add temporal awareness to belief metrics during scrape:
 
    **All dates stored as ISO 8601 `YYYY-MM-DD` TEXT.** This ensures MAX()
    comparison works across all sources. Sources that provide higher precision
-   (timestamps, RFC 3339) are truncated to date-only.
+   (timestamps, RFC 3339) are truncated to date-only. **All timestamp-to-date
+   conversions use `chrono::Utc`** (consistent with `exec.rs:299` and codebase
+   convention). This avoids off-by-one date issues near UTC midnight when
+   local timezone differs from UTC.
 
    - `last_file_touch TEXT` — `std::fs::metadata(path).modified()` during
      `parse_belief_file()`, converted to `YYYY-MM-DD` (free — already reading file).
@@ -391,7 +394,7 @@ warning to `health_warnings()`, reading from `contested_by` column.
 
 | Claim | Source |
 |-------|--------|
-| 128 beliefs, all static metrics | `patina belief audit` output |
+| 100+ beliefs (129 as of 2026-02-16), all static metrics | `patina belief audit` output |
 | health_warnings has 7 static checks | `src/commands/belief/mod.rs:101-125` |
 | BeliefMetrics has no temporal fields | `src/commands/scrape/beliefs/mod.rs:44-67` |
 | beliefs table has no last_activity | `src/commands/scrape/beliefs/mod.rs:70-100` |
@@ -434,3 +437,19 @@ warning to `health_warnings()`, reading from `contested_by` column.
   health cap (0.6 max) as intentional policy, added bidirectional contest detection
   via ## Attacks parsing, documented comma-safety of kebab-case IDs, added full
   verification plan with 6 unit tests and integration test.
+- **2026-02-16** (session 20260216-073845): Fourth pass (11-concern review from
+  outside agent + code audit). Resolved drift detection data flow: post-insert
+  UPDATE approach (Phase 3b) decouples drift from insert pipeline,
+  verification_drifted is DB-only (DEFAULT 0 on INSERT, set by UPDATE), 7 new
+  insert_belief() params not 8. Crash recovery: acknowledged as acceptable
+  one-cycle signal loss. INNER JOIN scope: deleted/renamed queries are editorial
+  not drift. Health weights: hardcoded constants, configurable only when real
+  distributions motivate it. Config plumbing: both scrape run() and audit
+  run_audit() load ProjectConfig independently via crate::project::load().
+  Phase C data flow: contested_by: Vec<String> on BeliefMetrics, serialized in
+  insert_belief(), follows existing cross-reference → insert pattern. Timezone:
+  mandated chrono::Utc for all timestamp-to-date conversions. Median age:
+  computed over non-NULL last_activity beliefs only, NULL excluded from median
+  but counted in stale total. CREATE TABLE: new columns must appear in both
+  CREATE TABLE and ALTER TABLE paths. Belief count: aligned problem statement
+  and evidence table to dated snapshot (129 as of 2026-02-16).
