@@ -1,7 +1,6 @@
-//! Cairo language parser — ported from patina-metal/src/cairo.rs.
+//! Cairo language parser — native Rust implementation using cairo-lang-parser.
 //!
 //! Uses cairo-lang-parser's SimpleParserDatabase for AST extraction.
-//! Self-contained: no dependency on patina-metal or patina-ai.
 
 use cairo_lang_parser::utils::SimpleParserDatabase;
 use cairo_lang_syntax::node::kind::SyntaxKind;

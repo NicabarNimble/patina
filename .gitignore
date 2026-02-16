@@ -1,4 +1,5 @@
 /target/
+grammars/*/target/
 .cargo/
 libduckdb/
 libduckdb-*.zip
