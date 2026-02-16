@@ -272,6 +272,43 @@ appropriate views.
                 └─────────────────────────────────┘
 ```
 
+### Data-Flow Contract
+
+`patina measure` reads **only measurement events** from eventlog. It never reads
+materialized tables (beliefs, function_facts, usearch index) directly. This keeps
+the contract clean and makes replay semantics obvious.
+
+**The rule:** Producers snapshot their summary metrics into measurement events at
+run time. `patina measure` reads those snapshots. Detail commands (belief audit,
+eval) read their own tables for per-item drill-down.
+
+```
+                         ┌───────────────────────┐
+patina scrape ──────────►│ beliefs table          │◄──── patina belief audit
+       │                 │ (per-belief detail)    │      (reads table directly)
+       │                 └───────────────────────┘
+       │
+       └── measure.believe ──► eventlog ◄──── patina measure
+           (summary snapshot)                 (reads events only)
+```
+
+**Concrete example for believe:** When scrape runs, it computes the beliefs table
+(per-belief metrics as today) AND emits a `measure.believe` event containing the
+summary: `{total: 130, stale: 4, floating: 2, median_health: 0.73, ...}`. When
+the user runs `patina measure`, it reads that event — not the beliefs table.
+
+**Consequence:** If you modify a belief file after scrape, `patina measure` shows
+stale data until the next scrape. This is the same staleness behavior as
+`patina belief audit` today — both depend on scrape to refresh.
+
+**Why events-only for measure?**
+- **History is free** — eventlog is append-only, so every scrape/eval/oxidize run
+  creates a timestamped snapshot. Trend detection reads the event timeline.
+- **Uniform contract** — all verbs work the same way. No special cases for "believe
+  reads a table but search reads events."
+- **Replay** — `patina measure --verb believe` always returns the same answer for the
+  same eventlog state. No dependency on whether tables have been rebuilt.
+
 ### Measurement Event Schema
 
 All measurements are eventlog events with `event_type = "measure.<verb>"`:
@@ -364,6 +401,55 @@ measure::record_measurement(
 )?;
 ```
 
+### Doctor Coexistence
+
+`patina doctor` keeps its own CLI and its own UX. It is not subsumed by
+`patina measure`. The long-term relationship:
+
+- **Doctor remains a distinct command** — users run `patina doctor` for environment
+  health (tools, adapter, config). Its output format, exit codes, and WASM plugin
+  contract are unchanged.
+- **Doctor becomes a measurement producer** — after Phase 3, doctor's `run()` calls
+  `measure::record_measurement()` to emit capture-freshness and foundation-health
+  events. These events appear in `patina measure` alongside core measurements.
+- **Doctor is not invoked by measure** — `patina measure` reads doctor's stored
+  measurement events. It does not call doctor at measurement time. Doctor runs on
+  its own schedule (user-invoked or future: mother-daemon tick).
+
+```
+User runs:  patina doctor    → environment health check + emits measure events
+User runs:  patina measure   → reads doctor's stored events in foundation section
+```
+
+This follows the producer/consumer split: doctor produces, measure consumes. Doctor
+proving the plugin measurement API (Phase 3) is what validates that any third-party
+plugin can do the same.
+
+### MCP Exposure
+
+`measure` becomes an MCP tool in Phase 2, alongside `scry`, `assay`, and `context`.
+AI agents are a primary consumer of the project-user view — an LLM using Patina via
+MCP should be able to check project health before making recommendations.
+
+**MCP tool: `measure`**
+- Returns the user view as structured JSON (same data as `patina measure --json`)
+- Accepts optional `verb` parameter to filter to one verb
+- Does NOT expose the maintainer view (`--system`) — agents don't need system
+  coverage maps, and exposing them would leak implementation details into agent context
+- Registered in the MCP server alongside existing tools
+
+**Example MCP interaction:**
+```json
+{"tool": "measure", "params": {}}
+→ {"verbs": {"capture": {"status": "measured", "health": "94%", ...}, ...}}
+
+{"tool": "measure", "params": {"verb": "believe"}}
+→ {"verb": "believe", "latest": {...}, "history": [...], "thresholds": {...}}
+```
+
+This follows [[mcp-is-shim-cli-is-product]]: the MCP tool wraps the CLI's user view
+logic. No separate implementation.
+
 ### CLI Surface: `patina measure`
 
 #### User View (default)
@@ -423,6 +509,41 @@ $ patina measure
 - Action items are inline, not a separate section
 - Plugin contributions are visible but not prominent
 - No tool internals — user doesn't see "P@10" or "MRR", they see "good" or "degraded"
+
+#### First-Run / Empty State
+
+When no measurement events exist (fresh project, never scraped):
+
+```
+$ patina measure
+
+  Project Measurement Health
+
+  VERB       STATUS     HEALTH     LAST RUN        ACTION NEEDED
+  ─────      ──────     ──────     ────────        ─────────────
+  capture    no data    —          never           run `patina scrape`
+  index      no data    —          never           run `patina oxidize`
+  search     no data    —          never           (available after scrape + oxidize)
+  believe    no data    —          never           create beliefs in layer/surface/epistemic/beliefs/
+  evolve     no data    —          never           start a session with /session-start
+
+  No measurements recorded yet.
+
+  Getting started:
+    1. patina scrape        — capture your project's code and history
+    2. patina oxidize       — build search indexes
+    3. patina eval          — measure search quality
+    4. patina belief audit  — review belief health
+
+  Each command now records measurements automatically.
+```
+
+**Exit status:** 0. No data is not an error — it's an onboarding state. `--ci` mode
+also exits 0 when no data exists (can't regress from nothing). `--ci` only exits
+non-zero when a previously-recorded metric crosses a threshold.
+
+Partial data is handled naturally: if only scrape has run, capture shows "measured"
+and the rest show "no data". Each verb independently reflects its own state.
 
 #### Maintainer View
 
@@ -489,10 +610,96 @@ $ patina measure --system
 - Regression detection: compares latest run to previous, flags declines
 - `STORED` column: confirms measurements are in eventlog, not just printed
 
+#### Verb Drill-Down: `patina measure --verb <name>`
+
+Filters to one verb. Shows the verb's detail section from the appropriate view
+(user or system), plus extended measurement history. Does not launch or replace
+the verb's detail command — just shows what measure knows and points you there.
+
+```
+$ patina measure --verb believe
+
+  Believe — Measurement Detail
+
+  Latest (measure.believe from 2026-02-16 12:14):
+    beliefs:         130 total
+    healthy:         118 (health ≥ 0.4)
+    stale:           4 (>30d)
+    floating:        2
+    verify-drift:    0
+    median health:   0.73
+    evidence rate:   79% verified
+
+  History (last 5 snapshots):
+    2026-02-16  scrape  total=130 stale=4  floating=2  median_health=0.73
+    2026-02-15  scrape  total=129 stale=4  floating=3  median_health=0.71
+    2026-02-14  scrape  total=129 stale=5  floating=3  median_health=0.70
+    2026-02-12  scrape  total=127 stale=5  floating=3  median_health=0.69
+    2026-02-10  scrape  total=125 stale=6  floating=4  median_health=0.68
+
+    Trend: health ↑0.05, stale ↓2, floating ↓2 over 6 days
+
+  Thresholds (from config or defaults):
+    health_threshold:  0.4     (12 beliefs below)
+    stale_days:        30      (from [beliefs] config)
+
+  For per-belief detail: patina belief audit
+  For stale beliefs:     patina belief audit --stale
+  For grounding:         patina belief audit --grounding
+```
+
+**Accepted flags:**
+- `--verb <name>` — required, one of: capture, index, search, believe, evolve
+- `--history <N>` — number of historical snapshots to show (default: 5)
+- `--system` — show maintainer-level detail (raw metric names, tool/mode breakdown)
+- `--json` — machine-readable output
+
+The `--verb` view is the middle level of the three-level hierarchy. It bridges the
+system summary (`patina measure`) and the item-level detail command (e.g.,
+`patina belief audit`). For verbs without a detail command (capture, index, evolve),
+the `--verb` view is the deepest available view.
+
 ### What "Good" Looks Like — Per Verb
 
 These thresholds define when a verb's status shows `covered` vs `partial` vs `gap`
 for the maintainer view, and `healthy` vs `needs attention` for the user view.
+
+#### Threshold Provenance
+
+Thresholds ship as **compiled defaults** in the measure command. Project config
+can override any threshold via `[measure.<verb>]` sections. This follows the same
+pattern as `[beliefs].stale_days` — sensible default, project-overridable.
+
+```toml
+# .patina/config.toml — all fields optional, defaults shown
+
+[measure.capture]
+parse_success_good = 0.95      # above this = healthy
+parse_success_warn = 0.90      # below this = needs attention
+freshness_commits = 5          # commits behind HEAD before warning
+
+[measure.index]
+embedding_coverage_warn = 0.95 # below this = needs attention
+
+[measure.search]
+nl_p5_good = 0.60
+nl_p5_warn = 0.40
+nl_mrr_good = 0.50
+nl_mrr_warn = 0.30
+train_test_gap_max = 15.0      # pp, above = overfit warning
+
+[measure.believe]
+health_threshold = 0.4         # reuses belief-truthfulness semantics
+# stale_days inherited from [beliefs].stale_days — not duplicated
+
+[measure.evolve]
+distillation_good = 0.30
+distillation_warn = 0.15
+stagnation_days = 30           # no growth for this long = warning
+```
+
+Phase 4 regression detection uses the same thresholds — `--ci` exits non-zero when
+any metric crosses its `warn` boundary. No separate CI config needed.
 
 #### Capture
 
@@ -526,20 +733,33 @@ for the maintainer view, and `healthy` vs `needs attention` for the user view.
 
 | Metric | Good | Needs attention | Source |
 |--------|------|-----------------|--------|
-| Low-health count | 0 beliefs < 0.4 | > 10% of beliefs | beliefs table |
-| Verify-drifted count | 0 | Any | beliefs table |
-| Evidence verified rate | > 70% | < 50% | beliefs table |
-| Floating count | 0 | > 10% of beliefs | beliefs table |
-| Median activity age | < stale_days | > stale_days | beliefs table |
+| Low-health count | 0 beliefs < 0.4 | > 10% of beliefs | measure.believe event (snapshotted by scrape) |
+| Verify-drifted count | 0 | Any | measure.believe event |
+| Evidence verified rate | > 70% | < 50% | measure.believe event |
+| Floating count | 0 | > 10% of beliefs | measure.believe event |
+| Median activity age | < stale_days | > stale_days | measure.believe event |
 
 #### Evolve
 
 | Metric | Good | Needs attention | Source |
 |--------|------|-----------------|--------|
-| Session→belief distillation | > 30% | < 15% | session archive metadata |
-| Entrenchment changes | ≥ 1/month | 0 for 60+ days | eventlog belief events |
-| Layer growth | Positive (net new beliefs) | Stagnant for 30+ days | layer file counts |
-| Orphaned patterns | 0 surface patterns > 90d without maturation or archive | > 5 | layer file dates |
+| Session→belief distillation | > 30% | < 15% | session archive `## Beliefs Captured` counts |
+| Entrenchment changes | ≥ 1/month | 0 for 60+ days | **new: scrape emits entrenchment-diff events** |
+| Layer growth | Positive (net new beliefs) | Stagnant for 30+ days | layer file counts (core/surface/dust) |
+| Orphaned patterns | 0 surface patterns > 90d without maturation or archive | > 5 | layer file `created` dates in frontmatter |
+
+**Entrenchment change instrumentation (required for Phase 1):** Today's eventlog
+has `belief.surface` events that are full-replace snapshots — no change history.
+Scrape must compare the current entrenchment value in the belief file against the
+previous `belief.surface` event's entrenchment field. When they differ, scrape
+emits a `measure.evolve` event with `mode: "entrenchment-change"` and metrics:
+`{belief_id: "...", old: "medium", new: "high"}`. This is cheap — scrape already
+reads both the file and the previous event — and gives real maturation history.
+
+Without this instrumentation, Phase 1 cannot credibly claim "all verbs have a
+producer" for evolve. Distillation rate (from session archives) and layer growth
+(from file counts) are available today. Entrenchment change detection is the one
+piece of new instrumentation this spec requires.
 
 ## Implementation Phases
 
@@ -554,12 +774,16 @@ Build the storage and schema. Make core tools write measurement events.
       extracted, coverage rate)
 - [ ] `patina oxidize` writes index measurement events (documents embedded,
       coverage, model used)
+- [ ] `patina scrape` emits evolve measurement: entrenchment-change detection by
+      comparing current belief file entrenchment to previous `belief.surface` event
 - [ ] Session lifecycle writes evolve measurement events at session-end
-      (distillation: did this session produce beliefs?)
-- [ ] `patina measure` reads measurement events — basic verb-by-verb summary
+      (distillation: did this session produce beliefs? layer file count deltas)
+- [ ] `patina measure` reads measurement events only (not tables) — basic
+      verb-by-verb summary with empty-state onboarding guidance
 
 **Exit criteria:** All 5 verbs have at least one measurement event producer.
 `patina measure` displays a summary table. All events stored in eventlog.
+Empty-state shows onboarding guidance, not errors.
 
 ### Phase 2 — Consumer Views
 
@@ -570,10 +794,14 @@ Build the two distinct CLI experiences.
 - [ ] `patina measure --system` — maintainer view: full tool inventory, raw metrics,
       measurement history, regression detection
 - [ ] `patina measure --json` — machine-readable output for both views
-- [ ] `patina measure --verb search` — drill into one verb
+- [ ] `patina measure --verb <name>` — verb drill-down with history and thresholds
+- [ ] `patina measure --verb <name> --history <N>` — configurable history depth
+- [ ] MCP `measure` tool — wraps user view as JSON, optional verb parameter
 
 **Exit criteria:** Both views render correctly. User view uses health language
 ("good", "needs attention"). Maintainer view shows raw metrics and history.
+`--verb` shows detail + history + links to detail commands. MCP tool returns
+user view JSON.
 
 ### Phase 3 — Plugin Measurement API
 
@@ -631,6 +859,86 @@ No verb has fewer than 3 metrics.
 - **[[patina-identity]]** — `patina measure` is protocol tooling. It uses the protocol
   (reads eventlog, reads beliefs) but isn't the protocol itself. Extraction path:
   command plugin once formats stabilize.
+
+## Verification Plan
+
+Per-phase verification. Each phase has concrete checks that must pass before the
+phase is complete.
+
+### Phase 1 Verification
+
+```verify
+-- Every verb has at least one measurement event
+SELECT COUNT(DISTINCT json_extract(data, '$.verb')) FROM eventlog WHERE event_type LIKE 'measure.%';
+expect: = 5
+label: all-verbs-have-producers
+```
+
+```verify
+-- Measurement events have required schema fields
+SELECT COUNT(*) FROM eventlog WHERE event_type LIKE 'measure.%' AND (json_extract(data, '$.verb') IS NULL OR json_extract(data, '$.tool') IS NULL OR json_extract(data, '$.metrics') IS NULL);
+expect: = 0
+label: measurement-schema-valid
+```
+
+Manual verification:
+- `patina measure` exits 0 and shows all 5 verbs
+- `patina measure` on a fresh project (no events) shows onboarding guidance
+- `patina measure --json` produces valid JSON with all 5 verbs
+- Scrape emits `measure.capture` and `measure.believe` events
+- Oxidize emits `measure.index` events
+- Eval emits `measure.search` events (at least one mode)
+- Session-end emits `measure.evolve` events
+- Scrape detects entrenchment changes and emits evolve measurement
+
+### Phase 2 Verification
+
+Manual verification:
+- User view contains NO raw metric names (P@10, MRR, co-retrieval) — uses
+  "good", "needs attention", percentages
+- Maintainer view (`--system`) contains raw metric names and tool/mode detail
+- `--verb believe` shows history and thresholds
+- `--verb` for a verb with no events shows "no data" not an error
+- `--json` output for both views validates against a JSON schema
+- MCP `measure` tool returns user view JSON (same structure as `--json`)
+
+### Phase 3 Verification
+
+```verify
+-- Plugin-sourced measurement events exist
+SELECT COUNT(*) FROM eventlog WHERE event_type LIKE 'measure.%' AND json_extract(data, '$.source') != 'core';
+expect: >= 1
+label: plugin-measurements-stored
+```
+
+Manual verification:
+- Doctor plugin emits measurement events via WIT `record-measurement`
+- `patina measure` shows doctor in plugin section of both views
+- SDK integration test: minimal plugin calls `record-measurement`, event appears
+- Plugin cannot set `source: "core"` — host overrides with plugin name
+
+### Phase 4 Verification
+
+Manual verification:
+- Inject a declining metric (manually write measure event with lower P@5)
+- `patina measure --system` shows regression flag with delta
+- `patina measure` (user view) shows action item about declining quality
+- `--ci` exits non-zero when regression detected
+- `--ci` exits 0 when no regression
+- `--ci` exits 0 when no data (fresh project)
+- Threshold overrides in config.toml are respected by `--ci`
+
+### Phase 5 Verification
+
+Per sub-spec — each verb enrichment defines its own verification. The system-level
+check:
+
+```verify
+-- Every verb has at least 3 distinct metrics
+SELECT json_extract(data, '$.verb') as verb, COUNT(DISTINCT k.key) as metric_count FROM eventlog, json_each(json_extract(data, '$.metrics')) as k WHERE event_type LIKE 'measure.%' GROUP BY verb HAVING metric_count < 3;
+expect: = 0
+label: all-verbs-have-depth
+```
 
 ## Risks
 
