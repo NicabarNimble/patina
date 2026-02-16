@@ -79,3 +79,38 @@ interface layer {
     /// Check adapter for updates. Returns current version string or error.
     check-adapter-version: func(adapter-name: string) -> result<option<string>, string>;
 }
+
+/// Capability-gated access to Patina's query engines.
+///
+/// Command plugins use this to call scry (semantic search), context
+/// (project patterns/beliefs), or assay (structural queries) from
+/// inside WASM. The host checks the plugin's granted query kinds
+/// at both load time (manifest validation) and call time (defense
+/// in depth). Params and results are JSON strings — typed enums
+/// live in the guest API crate, not at the WIT boundary.
+interface query {
+    /// Execute a query against a Patina engine.
+    ///
+    /// `kind` — one of "scry", "context", "assay".
+    /// `params` — JSON object with kind-specific parameters.
+    /// Returns the query result as a string, or an error message.
+    query: func(kind: string, params: string) -> result<string, string>;
+}
+
+/// Domain-allowlisted HTTP for plugins.
+///
+/// The host controls TLS, domain enforcement, and credential injection.
+/// Plugins never make raw network calls — they call these functions
+/// and the host enforces the allowlist from the plugin manifest.
+interface http {
+    record http-response {
+        status: u16,
+        body: string,
+    }
+
+    /// POST to an allowed domain. Host enforces domain allowlist.
+    http-post: func(url: string, body: string, content-type: string) -> result<http-response, string>;
+
+    /// GET from an allowed domain.
+    http-get: func(url: string) -> result<http-response, string>;
+}

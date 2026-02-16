@@ -1,0 +1,7 @@
+# Default grammar plugins for `patina setup grammars`.
+#
+# Each entry maps a grammar name to its plugin metadata.
+# These are installed to ~/.patina/pipeline/grammar-<name>/plugin.{wasm,toml}
+
+[grammars]
+default = ["rust", "go", "python", "javascript", "typescript", "c", "cpp", "solidity", "cairo"]

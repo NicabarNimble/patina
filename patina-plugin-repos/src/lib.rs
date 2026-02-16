@@ -7,9 +7,8 @@
 //! - "report_repo"     → host tells child about a repo (name, path, last_indexed)
 //! - "check_freshness" → return staleness state for all known repos
 
-use patina_plugin_api::{
-    host_log, register_plugin, ChildHealth, HealthStatus, MotherChildPlugin, Toy,
-};
+use patina_sdk::mother_child::host_log;
+use patina_sdk::{register_plugin, ChildHealth, HealthStatus, MotherChildPlugin, Toy};
 
 /// Staleness threshold in seconds (24 hours).
 const STALE_THRESHOLD_SECS: u64 = 86400;

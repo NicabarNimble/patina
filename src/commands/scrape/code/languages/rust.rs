@@ -24,10 +24,7 @@ impl RustProcessor {
 
         // Set up tree-sitter parser for Rust
         let mut parser = Parser::new();
-        let metal = patina_metal::Metal::Rust;
-        let language = metal
-            .tree_sitter_language_for_ext("rs")
-            .ok_or_else(|| anyhow::anyhow!("No Rust parser available"))?;
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         parser
             .set_language(&language)
             .context("Failed to set Rust language")?;

@@ -8,7 +8,7 @@
 //! - "resolve_model" → returns expected model directory path
 //! - "model_status"  → returns tri-state status (cached/local/unknown)
 
-use patina_plugin_api::{register_plugin, ChildHealth, HealthStatus, MotherChildPlugin};
+use patina_sdk::{register_plugin, ChildHealth, HealthStatus, MotherChildPlugin};
 
 #[derive(Default)]
 struct ModelsChild;

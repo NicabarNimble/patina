@@ -1,0 +1,13 @@
+[package]
+name = "panic-pipeline"
+version = "0.1.0"
+edition = "2021"
+description = "Pipeline plugin that deliberately panics — conformance test for WASM trap handling"
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+patina-pipeline-api = { path = "../../patina-pipeline-api" }

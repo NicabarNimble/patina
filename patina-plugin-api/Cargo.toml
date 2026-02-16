@@ -2,7 +2,8 @@
 name = "patina-plugin-api"
 version = "0.1.0"
 edition = "2021"
-description = "Guest-side API for Patina WASM plugins"
+publish = false
+description = "Guest-side API for Patina WASM plugins — superseded by patina-sdk"
 
 [dependencies]
 wit-bindgen = "0.41"

@@ -45,6 +45,25 @@ pub mod host_log {
     }
 }
 
+/// Host HTTP — domain-allowlisted HTTP access for plugins.
+///
+/// The host controls domain enforcement, TLS, and credential injection.
+/// Plugin code calls these functions; the host validates URLs against
+/// the domain allowlist from `[capabilities].host_http` in plugin.toml.
+pub mod host_http {
+    pub use super::patina::host::http::HttpResponse;
+
+    /// HTTP GET from an allowed domain.
+    pub fn get(url: &str) -> Result<HttpResponse, String> {
+        super::patina::host::http::http_get(url)
+    }
+
+    /// HTTP POST to an allowed domain.
+    pub fn post(url: &str, body: &str, content_type: &str) -> Result<HttpResponse, String> {
+        super::patina::host::http::http_post(url, body, content_type)
+    }
+}
+
 // =========================================================================
 // Plugin trait
 // =========================================================================
@@ -99,7 +118,11 @@ use std::cell::UnsafeCell;
 /// because `static` items must be `Sync`, but WASM's single-threaded
 /// execution model makes this sound.
 struct WasmCell<T>(UnsafeCell<T>);
+#[cfg(not(target_feature = "atomics"))]
 unsafe impl<T> Sync for WasmCell<T> {}
+
+#[cfg(target_feature = "atomics")]
+compile_error!("WasmCell assumes single-threaded WASM. Use thread_local! with atomics.");
 
 static PLUGIN: WasmCell<Option<Box<dyn MotherChildPlugin>>> = WasmCell(UnsafeCell::new(None));
 

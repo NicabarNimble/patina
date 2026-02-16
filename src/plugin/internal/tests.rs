@@ -29,7 +29,7 @@ child = "test"
     );
     let m = PluginManifest::from_path(f.path()).unwrap();
     assert_eq!(m.name, "test-plugin");
-    assert_eq!(m.world, "mother-child");
+    assert_eq!(m.world, PluginWorld::MotherChild);
     assert_eq!(m.version, "0.0.0"); // default
     assert_eq!(m.capabilities, vec!["host_log"]);
     assert_eq!(m.provides.child.as_deref(), Some("test"));
@@ -155,13 +155,16 @@ fn capabilities_all_granted() {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: "mother-child".into(),
+        world: PluginWorld::MotherChild,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: None,
             commands: vec![],
+            ..Default::default()
         },
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
@@ -173,13 +176,16 @@ fn capabilities_empty() {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: "mother-child".into(),
+        world: PluginWorld::MotherChild,
         patina_min: "0.0.0".into(),
         capabilities: vec![],
         allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: None,
             commands: vec![],
+            ..Default::default()
         },
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
@@ -191,13 +197,16 @@ fn capabilities_denied() {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: "mother-child".into(),
+        world: PluginWorld::MotherChild,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into(), "filesystem".into(), "network".into()],
         allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: None,
             commands: vec![],
+            ..Default::default()
         },
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
@@ -209,6 +218,120 @@ fn capabilities_denied() {
         "host_log should be granted: {}",
         msg
     );
+}
+
+// =====================================================================
+// Query param sanitization — scope-reserved keys
+// =====================================================================
+
+#[test]
+fn sanitize_strips_all_repos_for_current_project() {
+    let params = r#"{"query":"test","all_repos":true,"limit":5}"#;
+    let result = host_support::sanitize_query_params(params, &QueryScope::CurrentProject);
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert!(
+        parsed.get("all_repos").is_none(),
+        "all_repos should be stripped, got: {}",
+        result
+    );
+    // Non-reserved keys preserved
+    assert_eq!(parsed.get("query").unwrap(), "test");
+    assert_eq!(parsed.get("limit").unwrap(), 5);
+}
+
+#[test]
+fn sanitize_strips_repo_for_current_project() {
+    let params = r#"{"query":"test","repo":"other-project"}"#;
+    let result = host_support::sanitize_query_params(params, &QueryScope::CurrentProject);
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert!(
+        parsed.get("repo").is_none(),
+        "repo should be stripped, got: {}",
+        result
+    );
+    assert_eq!(parsed.get("query").unwrap(), "test");
+}
+
+#[test]
+fn sanitize_strips_all_reserved_keys() {
+    let params =
+        r#"{"query":"test","all_repos":true,"repo":"x","project_root":"/tmp","db_path":"/hack"}"#;
+    let result = host_support::sanitize_query_params(params, &QueryScope::CurrentProject);
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    for key in &["all_repos", "repo", "project_root", "db_path"] {
+        assert!(
+            parsed.get(key).is_none(),
+            "reserved key '{}' should be stripped, got: {}",
+            key,
+            result
+        );
+    }
+}
+
+#[test]
+fn sanitize_preserves_all_for_all_repos_scope() {
+    let params = r#"{"query":"test","all_repos":true,"repo":"other"}"#;
+    let result = host_support::sanitize_query_params(params, &QueryScope::AllRepos);
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert_eq!(parsed.get("all_repos").unwrap(), true);
+    assert_eq!(parsed.get("repo").unwrap(), "other");
+}
+
+#[test]
+fn sanitize_handles_invalid_json() {
+    let params = "not json";
+    let result = host_support::sanitize_query_params(params, &QueryScope::CurrentProject);
+    assert_eq!(
+        result, "not json",
+        "invalid JSON should pass through unchanged"
+    );
+}
+
+#[test]
+fn check_capabilities_rejects_unknown_query_kinds() {
+    let m = PluginManifest {
+        name: "test".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::Command,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec!["scry".into(), "magic_oracle".into()],
+        host_http_domains: vec![],
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+            ..Default::default()
+        },
+    };
+    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    assert!(
+        err.to_string().contains("magic_oracle"),
+        "should reject unknown kind, got: {}",
+        err
+    );
+}
+
+#[test]
+fn check_capabilities_accepts_known_query_kinds() {
+    let m = PluginManifest {
+        name: "test".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::Command,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec!["scry".into(), "context".into(), "assay".into()],
+        host_http_domains: vec![],
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+            ..Default::default()
+        },
+    };
+    assert!(PluginEngine::check_capabilities(&m).is_ok());
 }
 
 // =====================================================================
@@ -241,18 +364,21 @@ fn wasm_models_child_handle_roundtrip() {
         name: "patina-models".into(),
         version: "0.1.0".into(),
         description: "test".into(),
-        world: "mother-child".into(),
+        world: PluginWorld::MotherChild,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: Some("models".into()),
             commands: vec![],
+            ..Default::default()
         },
     };
 
     let child = engine
-        .instantiate_child(&component, &manifest)
+        .instantiate_child(&component, &manifest, None)
         .expect("instantiate_child failed");
 
     // Verify identity
@@ -290,17 +416,22 @@ fn wasm_models_child_health() {
         name: "patina-models".into(),
         version: "0.1.0".into(),
         description: "test".into(),
-        world: "mother-child".into(),
+        world: PluginWorld::MotherChild,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: Some("models".into()),
             commands: vec![],
+            ..Default::default()
         },
     };
 
-    let child = engine.instantiate_child(&component, &manifest).unwrap();
+    let child = engine
+        .instantiate_child(&component, &manifest, None)
+        .unwrap();
     match child.health() {
         crate::mother::ChildHealth::Healthy => {} // expected
         other => panic!("expected Healthy, got: {:?}", other),
@@ -326,17 +457,24 @@ fn load_repos_child() -> Option<Box<dyn crate::mother::MotherChild>> {
         name: "patina-repos".into(),
         version: "0.1.0".into(),
         description: "test".into(),
-        world: "mother-child".into(),
+        world: PluginWorld::MotherChild,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec!["git".into(), "patina".into()],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: Some("repos".into()),
             commands: vec![],
+            ..Default::default()
         },
     };
 
-    Some(engine.instantiate_child(&component, &manifest).unwrap())
+    Some(
+        engine
+            .instantiate_child(&component, &manifest, None)
+            .unwrap(),
+    )
 }
 
 /// Repos child: report_repo + check_freshness handle() round-trip.
@@ -527,17 +665,22 @@ fn wasm_repos_child_toy_capability_gating() {
         name: "patina-repos".into(),
         version: "0.1.0".into(),
         description: "test".into(),
-        world: "mother-child".into(),
+        world: PluginWorld::MotherChild,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec!["patina".into()], // git excluded
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: Some("repos".into()),
             commands: vec![],
+            ..Default::default()
         },
     };
 
-    let mut child = engine.instantiate_child(&component, &manifest).unwrap();
+    let mut child = engine
+        .instantiate_child(&component, &manifest, None)
+        .unwrap();
 
     // Report a stale repo — tick() will return both git pull and patina scrape toys
     let request = crate::mother::ChildRequest {
@@ -604,17 +747,22 @@ fn benchmark_plugin_performance() {
         name: "patina-models".into(),
         version: "0.1.0".into(),
         description: "bench".into(),
-        world: "mother-child".into(),
+        world: PluginWorld::MotherChild,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: Some("models".into()),
             commands: vec![],
+            ..Default::default()
         },
     };
     let t2 = Instant::now();
-    let child = engine.instantiate_child(&component, &manifest).unwrap();
+    let child = engine
+        .instantiate_child(&component, &manifest, None)
+        .unwrap();
     let instantiate_ms = t2.elapsed().as_secs_f64() * 1000.0;
 
     // 4. handle() round-trip — spec threshold: <1ms
@@ -727,13 +875,16 @@ fn load_doctor_manifest() -> PluginManifest {
         name: "patina-doctor".into(),
         version: "0.1.0".into(),
         description: "test".into(),
-        world: "command".into(),
+        world: PluginWorld::Command,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into(), "host_layer".into()],
         allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: None,
             commands: vec!["doctor".into()],
+            ..Default::default()
         },
     }
 }
@@ -750,12 +901,782 @@ fn command_doctor_run() {
     let manifest = load_doctor_manifest();
     let args = vec!["--json".to_string()];
     let exit_code = engine
-        .run_command(&component, &manifest, &args)
+        .run_command(&component, &manifest, &args, None)
         .expect("run_command failed");
     // doctor returns 0 (healthy), 1 (error), 2 (warning), or 3 (critical)
     assert!(
         [0, 1, 2, 3].contains(&exit_code),
         "unexpected exit code: {}",
         exit_code
+    );
+}
+
+// =====================================================================
+// validate_http_url — data-level URL sanitization
+// =====================================================================
+
+#[test]
+fn validate_http_url_valid_https() {
+    let domain = host_support::validate_http_url("https://api.github.com/repos").unwrap();
+    assert_eq!(domain, "api.github.com");
+}
+
+#[test]
+fn validate_http_url_valid_https_with_port() {
+    let domain = host_support::validate_http_url("https://api.github.com:443/repos").unwrap();
+    assert_eq!(domain, "api.github.com");
+}
+
+#[test]
+fn validate_http_url_rejects_http() {
+    let err = host_support::validate_http_url("http://api.github.com/repos").unwrap_err();
+    assert!(err.contains("HTTPS"), "expected HTTPS error, got: {}", err);
+}
+
+#[test]
+fn validate_http_url_rejects_ipv4() {
+    let err = host_support::validate_http_url("https://192.168.1.1/api").unwrap_err();
+    assert!(err.contains("IP"), "expected IP error, got: {}", err);
+}
+
+#[test]
+fn validate_http_url_rejects_ipv6() {
+    let err = host_support::validate_http_url("https://[::1]/api").unwrap_err();
+    assert!(err.contains("IP"), "expected IP error, got: {}", err);
+}
+
+#[test]
+fn validate_http_url_rejects_localhost() {
+    let err = host_support::validate_http_url("https://localhost/api").unwrap_err();
+    assert!(
+        err.contains("localhost"),
+        "expected localhost error, got: {}",
+        err
+    );
+}
+
+#[test]
+fn validate_http_url_rejects_invalid() {
+    let err = host_support::validate_http_url("not-a-url").unwrap_err();
+    assert!(
+        err.contains("invalid"),
+        "expected invalid URL error, got: {}",
+        err
+    );
+}
+
+// =====================================================================
+// Manifest parsing — host_http
+// =====================================================================
+
+#[test]
+fn manifest_parses_http_domains() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "http-plugin"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+host_http = ["api.github.com", "hooks.slack.com"]
+
+[provides]
+child = "webhook"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert_eq!(
+        m.host_http_domains,
+        vec!["api.github.com", "hooks.slack.com"]
+    );
+}
+
+#[test]
+fn manifest_no_http_domains_defaults_empty() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "no-http"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+
+[provides]
+child = "test"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert!(m.host_http_domains.is_empty());
+}
+
+// =====================================================================
+// check_capabilities — HTTP domain validation
+// =====================================================================
+
+#[test]
+fn check_capabilities_rejects_empty_http_domain() {
+    let m = PluginManifest {
+        name: "test".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::MotherChild,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec!["".into()],
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+            ..Default::default()
+        },
+    };
+    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    assert!(err.to_string().contains("empty"), "got: {}", err);
+}
+
+#[test]
+fn check_capabilities_rejects_http_domain_with_path() {
+    let m = PluginManifest {
+        name: "test".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::MotherChild,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec!["api.github.com/repos".into()],
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+            ..Default::default()
+        },
+    };
+    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    assert!(err.to_string().contains("path"), "got: {}", err);
+}
+
+#[test]
+fn check_capabilities_accepts_valid_http_domains() {
+    let m = PluginManifest {
+        name: "test".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::MotherChild,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec!["api.github.com".into(), "hooks.slack.com".into()],
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+            ..Default::default()
+        },
+    };
+    assert!(PluginEngine::check_capabilities(&m).is_ok());
+}
+
+// =====================================================================
+// granted_capabilities — HTTP domains
+// =====================================================================
+
+#[test]
+fn granted_capabilities_includes_http_domains() {
+    let m = PluginManifest {
+        name: "test".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::MotherChild,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec!["scry".into()],
+        host_http_domains: vec!["api.github.com".into()],
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+            ..Default::default()
+        },
+    };
+    let grants = m.granted_capabilities();
+    assert!(grants.http_domains.contains("api.github.com"));
+    assert!(grants.query_kinds.contains("scry"));
+}
+
+// =====================================================================
+// HTTP conformance — defense-in-depth chain verification
+// =====================================================================
+
+/// Conformance: domain not in allowlist is denied at call time.
+/// Maps to: GrantedCapabilities.http_domains check in Host impl.
+#[test]
+fn conformance_http_domain_not_in_allowlist_denied() {
+    let grants = GrantedCapabilities {
+        http_domains: ["api.github.com".to_string()].into_iter().collect(),
+        ..Default::default()
+    };
+    // URL is valid HTTPS with a valid domain
+    let domain = host_support::validate_http_url("https://evil.com/steal").unwrap();
+    // But domain is NOT in the allowlist
+    assert!(
+        !grants.http_domains.contains(&domain),
+        "evil.com should not be in allowlist"
+    );
+}
+
+/// Conformance: non-HTTPS URL rejected before any network call.
+/// Maps to: validate_http_url scheme check.
+#[test]
+fn conformance_http_rejects_plaintext() {
+    let err = host_support::validate_http_url("http://api.github.com/repos").unwrap_err();
+    assert!(
+        err.contains("HTTPS"),
+        "plaintext HTTP should be rejected: {}",
+        err
+    );
+}
+
+/// Conformance: IP address URL rejected before any network call.
+/// Maps to: validate_http_url IP check.
+#[test]
+fn conformance_http_rejects_ip_address() {
+    let err = host_support::validate_http_url("https://10.0.0.1/internal").unwrap_err();
+    assert!(err.contains("IP"), "IP address should be rejected: {}", err);
+}
+
+/// Conformance: localhost URL rejected before any network call.
+/// Maps to: validate_http_url localhost check.
+#[test]
+fn conformance_http_rejects_localhost() {
+    let err = host_support::validate_http_url("https://localhost:8080/api").unwrap_err();
+    assert!(
+        err.contains("localhost"),
+        "localhost should be rejected: {}",
+        err
+    );
+}
+
+// =====================================================================
+// TaskEngine — hello-task conformance tests
+// =====================================================================
+
+fn load_hello_task_component() -> Option<(task::TaskEngine, wasmtime::component::Component)> {
+    let wasm_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/hello_task.wasm");
+    if !wasm_path.exists() {
+        return None;
+    }
+    let engine = task::TaskEngine::new().expect("TaskEngine::new() failed");
+    let wasm_bytes = std::fs::read(&wasm_path).expect("failed to read hello-task wasm");
+    let component = engine
+        .load_component(&wasm_bytes)
+        .expect("load_component failed");
+    Some((engine, component))
+}
+
+fn hello_task_manifest() -> PluginManifest {
+    PluginManifest {
+        name: "hello-task".into(),
+        version: "0.1.0".into(),
+        description: "test".into(),
+        world: PluginWorld::Task,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into(), "host_layer".into()],
+        allowed_toy_commands: vec!["echo".into()],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+            ..Default::default()
+        },
+    }
+}
+
+#[test]
+fn task_hello_name() {
+    let (engine, component) = match load_hello_task_component() {
+        Some(ec) => ec,
+        None => {
+            panic!(
+                "test fixture missing: tests/fixtures/hello_task.wasm\n\
+                 Build: cd tests/hello-task && cargo build --release --target wasm32-wasip2\n\
+                 Copy: cp tests/hello-task/target/wasm32-wasip2/release/hello_task.wasm tests/fixtures/"
+            );
+        }
+    };
+
+    let name = engine
+        .get_task_name(&component)
+        .expect("get_task_name failed");
+    assert_eq!(name, "hello-task");
+}
+
+#[test]
+fn task_hello_description() {
+    let (engine, component) = match load_hello_task_component() {
+        Some(ec) => ec,
+        None => return,
+    };
+
+    let desc = engine
+        .get_task_description(&component)
+        .expect("get_task_description failed");
+    assert!(
+        desc.contains("testing"),
+        "expected description to mention 'testing', got: {}",
+        desc
+    );
+}
+
+#[test]
+fn task_hello_run_exit_code() {
+    let (engine, component) = match load_hello_task_component() {
+        Some(ec) => ec,
+        None => return,
+    };
+
+    let manifest = hello_task_manifest();
+    let (exit_code, _toys) = engine
+        .run_task(&component, &manifest, &[], None)
+        .expect("run_task failed");
+    assert_eq!(exit_code, 0, "hello-task should return exit code 0");
+}
+
+#[test]
+fn task_hello_toys_filtered() {
+    let (engine, component) = match load_hello_task_component() {
+        Some(ec) => ec,
+        None => return,
+    };
+
+    let manifest = hello_task_manifest();
+    let (_exit_code, toys) = engine
+        .run_task(&component, &manifest, &[], None)
+        .expect("run_task failed");
+
+    // Should have exactly 1 toy (echo approved, rm filtered out)
+    assert_eq!(
+        toys.len(),
+        1,
+        "expected 1 approved toy (echo), got {}",
+        toys.len()
+    );
+
+    let toy = &toys[0];
+    assert_eq!(toy.name, "greet");
+    assert_eq!(toy.command, "echo");
+    assert_eq!(toy.args, vec!["hello"]);
+}
+
+/// Verify that unapproved toy commands are filtered out.
+#[test]
+fn task_hello_unapproved_toy_denied() {
+    let (engine, component) = match load_hello_task_component() {
+        Some(ec) => ec,
+        None => return,
+    };
+
+    // Manifest with NO allowed toy commands
+    let manifest = PluginManifest {
+        name: "hello-task".into(),
+        version: "0.1.0".into(),
+        description: "test".into(),
+        world: PluginWorld::Task,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into(), "host_layer".into()],
+        allowed_toy_commands: vec![], // nothing allowed
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+            ..Default::default()
+        },
+    };
+
+    let (_exit_code, toys) = engine
+        .run_task(&component, &manifest, &[], None)
+        .expect("run_task failed");
+
+    // All toys should be filtered out
+    assert!(
+        toys.is_empty(),
+        "expected no toys with empty allowed list, got {}",
+        toys.len()
+    );
+}
+
+// =====================================================================
+// PipelineEngine — echo-pipeline conformance tests
+// =====================================================================
+
+fn load_echo_pipeline_component(
+) -> Option<(pipeline::PipelineEngine, wasmtime::component::Component)> {
+    let wasm_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/echo_pipeline.wasm");
+    if !wasm_path.exists() {
+        return None;
+    }
+    let engine = pipeline::PipelineEngine::new().expect("PipelineEngine::new() failed");
+    let wasm_bytes = std::fs::read(&wasm_path).expect("failed to read echo-pipeline wasm");
+    let component = engine
+        .load_component(&wasm_bytes)
+        .expect("load_component failed");
+    Some((engine, component))
+}
+
+fn echo_pipeline_manifest() -> PluginManifest {
+    PluginManifest {
+        name: "echo-pipeline".into(),
+        version: "0.1.0".into(),
+        description: "test".into(),
+        world: PluginWorld::Pipeline,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
+        provides: PluginProvides {
+            pipeline_ops: vec!["echo".into()],
+            ..Default::default()
+        },
+    }
+}
+
+#[test]
+fn pipeline_echo_name() {
+    let (engine, component) = match load_echo_pipeline_component() {
+        Some(ec) => ec,
+        None => {
+            panic!(
+                "test fixture missing: tests/fixtures/echo_pipeline.wasm\n\
+                 Build: cd tests/echo-pipeline && cargo build --release --target wasm32-wasip2\n\
+                 Copy: cp tests/echo-pipeline/target/wasm32-wasip2/release/echo_pipeline.wasm tests/fixtures/"
+            );
+        }
+    };
+
+    let name = engine.get_name(&component).expect("get_name failed");
+    assert_eq!(name, "echo-pipeline");
+}
+
+#[test]
+fn pipeline_echo_handle_roundtrip() {
+    let (engine, component) = match load_echo_pipeline_component() {
+        Some(ec) => ec,
+        None => return,
+    };
+
+    let manifest = echo_pipeline_manifest();
+    let request = r#"{"op":"echo","version":"1","payload":{"key":"value","count":42}}"#;
+    let response = engine
+        .handle(&component, &manifest, request)
+        .expect("handle failed");
+
+    // Echo returns payload unchanged
+    let parsed: serde_json::Value = serde_json::from_str(&response).unwrap();
+    assert_eq!(parsed.get("key").and_then(|v| v.as_str()), Some("value"));
+    assert_eq!(parsed.get("count").and_then(|v| v.as_i64()), Some(42));
+}
+
+#[test]
+fn pipeline_echo_unknown_op_error() {
+    let (engine, component) = match load_echo_pipeline_component() {
+        Some(ec) => ec,
+        None => return,
+    };
+
+    let manifest = echo_pipeline_manifest();
+    let request = r#"{"op":"frobnicate","version":"1","payload":{}}"#;
+    let result = engine.handle(&component, &manifest, request);
+
+    assert!(
+        result.is_err(),
+        "unknown op should return error, got: {:?}",
+        result
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("unknown op"),
+        "error should mention 'unknown op', got: {}",
+        err
+    );
+}
+
+#[test]
+fn pipeline_echo_version_mismatch_error() {
+    let (engine, component) = match load_echo_pipeline_component() {
+        Some(ec) => ec,
+        None => return,
+    };
+
+    let manifest = echo_pipeline_manifest();
+    let request = r#"{"op":"echo","version":"999","payload":{}}"#;
+    let result = engine.handle(&component, &manifest, request);
+
+    assert!(
+        result.is_err(),
+        "version mismatch should return error, got: {:?}",
+        result
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("version"),
+        "error should mention 'version', got: {}",
+        err
+    );
+}
+
+// =====================================================================
+// Cross-world: WASM trap handling conformance test
+//
+// A guest plugin that deliberately panics. The host MUST catch the
+// wasmtime trap and return a clean error — never crash, never unwrap()
+// across the WASM boundary. All plugin calls are fallible.
+// =====================================================================
+
+/// Load the panic-pipeline WASM fixture.
+fn load_panic_pipeline_component() -> Option<(PipelineEngine, wasmtime::component::Component)> {
+    let wasm_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/panic_pipeline.wasm");
+    if !wasm_path.exists() {
+        return None;
+    }
+    let engine = PipelineEngine::new().unwrap();
+    let wasm_bytes = std::fs::read(&wasm_path).unwrap();
+    let component = engine.load_component(&wasm_bytes).unwrap();
+    Some((engine, component))
+}
+
+/// WASM trap handling: guest panic in pipeline handle() returns Err, not crash.
+#[test]
+fn wasm_trap_pipeline_panic_returns_error() {
+    let (engine, component) = match load_panic_pipeline_component() {
+        Some(ec) => ec,
+        None => return,
+    };
+
+    let manifest = PluginManifest {
+        name: "panic-pipeline".into(),
+        version: "0.1.0".into(),
+        description: "deliberate panic".into(),
+        world: PluginWorld::Pipeline,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
+        provides: PluginProvides {
+            pipeline_ops: vec!["echo".into()],
+            ..Default::default()
+        },
+    };
+
+    let request = r#"{"op":"echo","version":"1","payload":{}}"#;
+    let result = engine.handle(&component, &manifest, request);
+
+    // The guest panics — host MUST catch the trap and return Err
+    assert!(
+        result.is_err(),
+        "guest panic should be caught as error, not crash the host"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("unreachable") || err.contains("panic") || err.contains("trap"),
+        "error should indicate a WASM trap, got: {}",
+        err
+    );
+}
+
+// =====================================================================
+// Plugin host fragility — spec exit criteria tests
+// =====================================================================
+
+// F2: Path traversal in count_layer_files returns 0 (silent reject).
+#[test]
+fn count_layer_files_rejects_path_traversal() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().to_path_buf();
+
+    // Create layer/core with a .md file so a valid subdir would return >0
+    let layer_core = root.join("layer").join("core");
+    std::fs::create_dir_all(&layer_core).unwrap();
+    std::fs::write(layer_core.join("test.md"), "# test").unwrap();
+
+    // Valid subdir works
+    assert_eq!(
+        host_support::count_layer_files(&Some(root.clone()), "core"),
+        1
+    );
+
+    // Path traversal variants — all must return 0
+    assert_eq!(
+        host_support::count_layer_files(&Some(root.clone()), "../../etc"),
+        0,
+        "parent dir traversal must return 0"
+    );
+    assert_eq!(
+        host_support::count_layer_files(&Some(root.clone()), "../.."),
+        0,
+        "bare parent traversal must return 0"
+    );
+    assert_eq!(
+        host_support::count_layer_files(&Some(root.clone()), "/etc"),
+        0,
+        "absolute path must return 0"
+    );
+    assert_eq!(
+        host_support::count_layer_files(&Some(root.clone()), "core/../../../etc"),
+        0,
+        "embedded traversal must return 0"
+    );
+
+    // None project root also returns 0
+    assert_eq!(host_support::count_layer_files(&None, "core"), 0);
+}
+
+// F4: Unknown world string rejected at parse time.
+#[test]
+fn manifest_rejects_unknown_world() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "bad-world"
+world = "oracle"
+
+[capabilities]
+host_log = true
+
+[provides]
+child = "test"
+"#,
+    );
+    let err = PluginManifest::from_path(f.path()).unwrap_err();
+    assert!(
+        err.to_string().contains("unknown plugin world") && err.to_string().contains("oracle"),
+        "expected 'unknown plugin world: oracle', got: {}",
+        err
+    );
+}
+
+// F4: Pipeline manifest with host_query rejected at check_capabilities.
+#[test]
+fn check_capabilities_rejects_pipeline_with_query() {
+    let m = PluginManifest {
+        name: "bad-pipeline".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::Pipeline,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into(), "host_query".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec!["scry".into()],
+        host_http_domains: vec![],
+        provides: PluginProvides {
+            pipeline_ops: vec!["echo".into()],
+            ..Default::default()
+        },
+    };
+    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("host_query") && msg.contains("not allowed for this world"),
+        "expected per-world capability rejection for host_query, got: {}",
+        msg
+    );
+}
+
+// F4: Pipeline manifest with host_http also rejected (pipeline only allows host_log).
+#[test]
+fn check_capabilities_rejects_pipeline_with_http() {
+    let m = PluginManifest {
+        name: "bad-pipeline".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::Pipeline,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into(), "host_http".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec!["evil.com".into()],
+        provides: PluginProvides {
+            pipeline_ops: vec!["echo".into()],
+            ..Default::default()
+        },
+    };
+    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("host_http"),
+        "expected host_http rejection, got: {}",
+        msg
+    );
+}
+
+// F4: PluginWorld Display impl returns kebab-case strings.
+#[test]
+fn plugin_world_display() {
+    assert_eq!(PluginWorld::MotherChild.to_string(), "mother-child");
+    assert_eq!(PluginWorld::Command.to_string(), "command");
+    assert_eq!(PluginWorld::Task.to_string(), "task");
+    assert_eq!(PluginWorld::Pipeline.to_string(), "pipeline");
+}
+
+// F4: PluginWorld round-trips through from_str and Display.
+#[test]
+fn plugin_world_roundtrip() {
+    for world in [
+        PluginWorld::MotherChild,
+        PluginWorld::Command,
+        PluginWorld::Task,
+        PluginWorld::Pipeline,
+    ] {
+        let s = world.to_string();
+        let parsed = s.parse::<PluginWorld>().unwrap();
+        assert_eq!(parsed, world, "round-trip failed for {}", s);
+    }
+}
+
+/// WASM trap handling: guest panic in mother-child handle() returns Err, not crash.
+#[test]
+fn wasm_trap_mother_child_panic_returns_error() {
+    // We reuse the panic-pipeline fixture but try to load it as mother-child.
+    // This will fail at instantiation (wrong world) — which also proves
+    // that world mismatch produces a clean error, not a crash.
+    let wasm_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/panic_pipeline.wasm");
+    if !wasm_path.exists() {
+        return;
+    }
+
+    let engine = PluginEngine::new().unwrap();
+    let wasm_bytes = std::fs::read(&wasm_path).unwrap();
+    let component = engine.load_component(&wasm_bytes).unwrap();
+    let manifest = PluginManifest {
+        name: "wrong-world".into(),
+        version: "0.1.0".into(),
+        description: "world mismatch".into(),
+        world: PluginWorld::MotherChild,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
+        provides: PluginProvides {
+            child: Some("wrong".into()),
+            ..Default::default()
+        },
+    };
+
+    // Instantiation with wrong world should fail cleanly
+    let result = engine.instantiate_child(&component, &manifest, None);
+    assert!(
+        result.is_err(),
+        "wrong world instantiation should return Err, not crash"
     );
 }

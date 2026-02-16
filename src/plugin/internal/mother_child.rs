@@ -7,8 +7,10 @@ use anyhow::Result;
 use wasmtime::component::{Component, Linker};
 use wasmtime::Store;
 
-use super::{wasm_engine, PluginManifest};
+use super::{wasm_engine, GrantedCapabilities, PluginManifest};
 use crate::mother::{ChildHealth, ChildRequest, ChildResponse, MotherHost, Toy};
+
+use super::command::QueryDispatchFn;
 
 // =========================================================================
 // Bindgen — generates types from WIT definitions
@@ -19,12 +21,21 @@ use crate::mother::{ChildHealth, ChildRequest, ChildResponse, MotherHost, Toy};
 /// stays internal — WasmChild bridges to our crate::mother::MotherChild trait.
 mod bindings {
     /// State passed to WASM plugins via Store<HostState>.
-    /// Contains WASI context (wasm32-wasip2 components always import basic WASI)
-    /// and plugin name for log prefix.
+    /// Contains WASI context (wasm32-wasip2 components always import basic WASI),
+    /// plugin name for log prefix, and HTTP client for domain-allowlisted access.
     pub struct HostState {
         pub plugin_name: String,
         pub wasi: wasmtime_wasi::WasiCtx,
         pub wasi_table: wasmtime::component::ResourceTable,
+        /// Cached project root — computed once at store creation.
+        pub project_root: Option<std::path::PathBuf>,
+        /// Resolved capabilities for call-time gating.
+        pub grants: super::GrantedCapabilities,
+        /// Query dispatch — provided by binary crate, handles engine calls.
+        /// None for plugins without query grants.
+        pub query_fn: Option<super::QueryDispatchFn>,
+        /// Pre-configured HTTP client with cross-domain redirect rejection.
+        pub http_client: reqwest::blocking::Client,
     }
 
     // WasiView is required for wasmtime-wasi to satisfy WASI imports
@@ -42,7 +53,7 @@ mod bindings {
         world: "mother-child",
     });
 
-    // Implement the generated Host trait for patina:host/log
+    // patina:host/log — delegates to host_support
     impl patina::host::log::Host for HostState {
         fn log(&mut self, level: patina::host::log::LogLevel, message: String) {
             let level_str = match level {
@@ -51,12 +62,89 @@ mod bindings {
                 patina::host::log::LogLevel::Warn => "WARN",
                 patina::host::log::LogLevel::Error => "ERROR",
             };
-            eprintln!("[plugin:{}] {}: {}", self.plugin_name, level_str, message);
+            super::super::host_support::log(&self.plugin_name, level_str, &message);
         }
     }
 
-    // patina:host/types only defines types (no functions) — empty Host trait
+    // patina:host/types — no functions, empty Host trait
     impl patina::host::types::Host for HostState {}
+
+    // patina:host/layer — delegates to host_support
+    impl patina::host::layer::Host for HostState {
+        fn find_project_root(&mut self) -> Option<String> {
+            super::super::host_support::find_project_root(&self.project_root)
+        }
+        fn read_config(&mut self) -> Result<String, String> {
+            super::super::host_support::read_config(&self.project_root)
+        }
+        fn detect_environment(&mut self) -> Result<String, String> {
+            super::super::host_support::detect_environment()
+        }
+        fn get_stored_tools(&mut self) -> Vec<String> {
+            super::super::host_support::get_stored_tools(&self.project_root)
+        }
+        fn count_layer_files(&mut self, subdir: String) -> u32 {
+            super::super::host_support::count_layer_files(&self.project_root, &subdir)
+        }
+        fn get_project_uid(&mut self) -> Option<String> {
+            super::super::host_support::get_project_uid(&self.project_root)
+        }
+        fn check_adapter_version(
+            &mut self,
+            adapter_name: String,
+        ) -> Result<Option<String>, String> {
+            super::super::host_support::check_adapter_version(&self.project_root, &adapter_name)
+        }
+    }
+
+    // patina:host/query — delegates to host_support
+    impl patina::host::query::Host for HostState {
+        fn query(&mut self, kind: String, params: String) -> Result<String, String> {
+            super::super::host_support::query(
+                &self.plugin_name,
+                &self.grants,
+                &mut self.query_fn,
+                &kind,
+                &params,
+            )
+        }
+    }
+
+    // patina:host/http — delegates to host_support
+    impl patina::host::http::Host for HostState {
+        fn http_post(
+            &mut self,
+            url: String,
+            body: String,
+            content_type: String,
+        ) -> Result<patina::host::http::HttpResponse, String> {
+            let r = super::super::host_support::http_post(
+                &self.http_client,
+                &self.grants,
+                &self.plugin_name,
+                &url,
+                &body,
+                &content_type,
+            )?;
+            Ok(patina::host::http::HttpResponse {
+                status: r.status,
+                body: r.body,
+            })
+        }
+
+        fn http_get(&mut self, url: String) -> Result<patina::host::http::HttpResponse, String> {
+            let r = super::super::host_support::http_get(
+                &self.http_client,
+                &self.grants,
+                &self.plugin_name,
+                &url,
+            )?;
+            Ok(patina::host::http::HttpResponse {
+                status: r.status,
+                body: r.body,
+            })
+        }
+    }
 }
 
 use bindings::HostState;
@@ -107,10 +195,30 @@ impl PluginEngine {
 
     /// Check that a plugin's requested capabilities are granted.
     ///
-    /// Phase 1: host_log is always granted. All others are denied.
+    /// Phase 1: host_log, host_layer are always granted. All others denied.
+    /// Phase 2: host_query validated — kinds must be known.
     /// Future: reads from ~/.patina/plugin-config/grants.toml.
     pub fn check_capabilities(manifest: &PluginManifest) -> Result<()> {
-        // Capabilities that are always granted (no config needed)
+        // F4: Per-world capability enforcement — reject capabilities
+        // that the manifest's world doesn't support.
+        let allowed = manifest.world.allowed_capabilities();
+        let world_denied: Vec<&str> = manifest
+            .capabilities
+            .iter()
+            .filter(|cap| !allowed.contains(&cap.as_str()))
+            .map(|s| s.as_str())
+            .collect();
+
+        if !world_denied.is_empty() {
+            anyhow::bail!(
+                "plugin '{}' (world '{}') requests capabilities not allowed for this world: {}",
+                manifest.name,
+                manifest.world,
+                world_denied.join(", ")
+            );
+        }
+
+        // Boolean capabilities that are always granted (no config needed)
         let auto_granted = ["host_log", "host_layer"];
 
         let denied: Vec<&str> = manifest
@@ -127,26 +235,83 @@ impl PluginEngine {
                 denied.join(", ")
             );
         }
+
+        // Load-time validation: host_query kinds must be known
+        const KNOWN_QUERY_KINDS: &[&str] = &["scry", "context", "assay"];
+        let unknown: Vec<&str> = manifest
+            .host_query_kinds
+            .iter()
+            .filter(|k| !KNOWN_QUERY_KINDS.contains(&k.as_str()))
+            .map(|s| s.as_str())
+            .collect();
+
+        if !unknown.is_empty() {
+            anyhow::bail!(
+                "plugin '{}' requests unknown query kinds: {}",
+                manifest.name,
+                unknown.join(", ")
+            );
+        }
+
+        // Load-time validation: host_http domains must be valid
+        for domain in &manifest.host_http_domains {
+            if domain.is_empty() {
+                anyhow::bail!(
+                    "plugin '{}' has empty HTTP domain in host_http",
+                    manifest.name
+                );
+            }
+            if !domain.is_ascii() {
+                anyhow::bail!(
+                    "plugin '{}' has non-ASCII HTTP domain '{}' in host_http",
+                    manifest.name,
+                    domain
+                );
+            }
+            if domain.contains('/') {
+                anyhow::bail!(
+                    "plugin '{}' has path component in HTTP domain '{}' in host_http",
+                    manifest.name,
+                    domain
+                );
+            }
+        }
+
         Ok(())
     }
 
     /// Instantiate a MotherChild from a WASM component + manifest.
     /// Returns Box<dyn MotherChild> for ChildRegistry compatibility.
+    ///
+    /// `query_fn`: Optional query dispatch provided by the binary crate.
+    /// Required if the plugin has host_query capabilities. The host impl
+    /// handles gating; this function handles actual engine dispatch.
     pub fn instantiate_child(
         &self,
         component: &Component,
         manifest: &PluginManifest,
+        query_fn: Option<QueryDispatchFn>,
     ) -> Result<Box<dyn crate::mother::MotherChild>> {
         // Check capabilities before instantiation
         Self::check_capabilities(manifest)?;
 
+        // Build resolved capabilities for call-time gating
+        let grants = manifest.granted_capabilities();
+
+        // Build HTTP client with cross-domain redirect rejection (G5: shared builder).
+        let http_client = super::host_support::build_http_client()?;
+
         // Minimal WASI context — no filesystem access, no env inheritance.
-        // Phase 1: plugins are sandboxed to pure computation + host log.
         let wasi = wasmtime_wasi::WasiCtxBuilder::new().build();
+        let project_root = crate::session::SessionManager::find_project_root().ok();
         let host_state = HostState {
             plugin_name: manifest.name.clone(),
             wasi,
             wasi_table: wasmtime::component::ResourceTable::new(),
+            project_root,
+            grants,
+            query_fn,
+            http_client,
         };
         let mut store = Store::new(wasm_engine(), host_state);
 
@@ -197,7 +362,13 @@ impl crate::mother::MotherChild for WasmChild {
     fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
         // Host capabilities come through WASM imports (patina:host/log),
         // not the Rust MotherHost reference.
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|e| {
+            eprintln!(
+                "[plugin:{}] WARN: mutex was poisoned, recovering. Previous call may have panicked.",
+                self.name
+            );
+            e.into_inner()
+        });
         let WasmChildInner { store, instance } = &mut *inner;
         match instance.call_on_load(store)? {
             Ok(()) => Ok(()),
@@ -206,13 +377,25 @@ impl crate::mother::MotherChild for WasmChild {
     }
 
     fn on_unload(&mut self) {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|e| {
+            eprintln!(
+                "[plugin:{}] WARN: mutex was poisoned, recovering. Previous call may have panicked.",
+                self.name
+            );
+            e.into_inner()
+        });
         let WasmChildInner { store, instance } = &mut *inner;
         let _ = instance.call_on_unload(store);
     }
 
     fn health(&self) -> ChildHealth {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|e| {
+            eprintln!(
+                "[plugin:{}] WARN: mutex was poisoned, recovering. Previous call may have panicked.",
+                self.name
+            );
+            e.into_inner()
+        });
         let WasmChildInner { store, instance } = &mut *inner;
         match instance.call_health(store) {
             Ok(h) => {
@@ -240,7 +423,13 @@ impl crate::mother::MotherChild for WasmChild {
     }
 
     fn handle(&self, request: &ChildRequest) -> Result<ChildResponse> {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|e| {
+            eprintln!(
+                "[plugin:{}] WARN: mutex was poisoned, recovering. Previous call may have panicked.",
+                self.name
+            );
+            e.into_inner()
+        });
         let WasmChildInner { store, instance } = &mut *inner;
         let payload_json = serde_json::to_string(&request.payload)?;
         let result = instance.call_handle(store, &request.action, &payload_json)?;
@@ -253,7 +442,13 @@ impl crate::mother::MotherChild for WasmChild {
     }
 
     fn tick(&mut self) -> Vec<Toy> {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|e| {
+            eprintln!(
+                "[plugin:{}] WARN: mutex was poisoned, recovering. Previous call may have panicked.",
+                self.name
+            );
+            e.into_inner()
+        });
         let WasmChildInner { store, instance } = &mut *inner;
         match instance.call_tick(store) {
             Ok(wasm_toys) => wasm_toys

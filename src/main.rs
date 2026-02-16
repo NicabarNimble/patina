@@ -404,6 +404,12 @@ enum Commands {
         command: Option<commands::belief::BeliefCommands>,
     },
 
+    /// First-run setup for components (grammars, etc.)
+    Setup {
+        #[command(subcommand)]
+        command: SetupCommands,
+    },
+
     /// Manage spec lifecycle (archive completed specs)
     Spec {
         #[command(subcommand)]
@@ -641,6 +647,13 @@ enum ScrapeCommands {
 
 #[derive(Subcommand)]
 enum BenchCommands {
+    /// Benchmark grammar plugin overhead (compiled-in vs WASM)
+    Grammar {
+        /// Maximum number of files to benchmark
+        #[arg(long)]
+        files: Option<usize>,
+    },
+
     /// Benchmark retrieval quality
     Retrieval {
         /// Path to query set JSON file
@@ -880,9 +893,170 @@ enum BumpType {
 }
 
 #[derive(Subcommand)]
+enum SetupCommands {
+    /// Install default grammar plugins to ~/.patina/pipeline/
+    Grammars {
+        /// Show what would be installed without doing it
+        #[arg(long)]
+        list: bool,
+
+        /// Install only specific grammars (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        only: Option<Vec<String>>,
+
+        /// Force reinstall even if already present
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Subcommand)]
 enum PluginCommands {
     /// List installed plugins
     List,
+    /// Run a plugin by name
+    Run {
+        /// Plugin name (matches <name>.wasm in plugins dir)
+        name: String,
+        /// Arguments passed to the plugin
+        #[arg(last = true)]
+        args: Vec<String>,
+    },
+    /// Create a new plugin project from template
+    Init {
+        /// Plugin name (valid Rust crate name, e.g. "review-bot")
+        name: String,
+        /// Plugin world: mother-child, command, task, pipeline
+        #[arg(long)]
+        world: String,
+        /// Build the plugin after scaffolding
+        #[arg(long)]
+        build: bool,
+        /// Build in release mode (requires --build)
+        #[arg(long, requires = "build")]
+        release: bool,
+    },
+}
+
+/// Build a query dispatch closure for command plugins.
+///
+/// Returns None if the plugin has no host_query grants. Otherwise,
+/// returns a closure that dispatches to context/scry/assay engines.
+fn make_query_dispatch(
+    manifest: &patina::plugin::PluginManifest,
+) -> Option<patina::plugin::QueryDispatchFn> {
+    if manifest.host_query_kinds.is_empty() {
+        return None;
+    }
+
+    // Lazy QueryEngine — created on first scry call
+    let mut query_engine: Option<retrieval::QueryEngine> = None;
+
+    Some(Box::new(move |kind: &str, params: &str| {
+        let args: serde_json::Value =
+            serde_json::from_str(params).map_err(|e| format!("invalid params: {}", e))?;
+
+        match kind {
+            "context" => {
+                let topic = args.get("topic").and_then(|v| v.as_str());
+                commands::context::get_project_context(topic).map_err(|e| format!("context: {}", e))
+            }
+            "scry" => {
+                let query_str = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+                if query_str.is_empty() {
+                    return Err("scry requires 'query' parameter".to_string());
+                }
+                let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
+                let all_repos = args
+                    .get("all_repos")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
+
+                let engine = query_engine.get_or_insert_with(retrieval::QueryEngine::new);
+                let options = retrieval::QueryOptions { repo, all_repos };
+                let results = engine
+                    .query_with_options(query_str, limit, &options)
+                    .map_err(|e| format!("scry: {}", e))?;
+
+                // JSON array for structured guest consumption
+                let json_results: Vec<serde_json::Value> = results
+                    .iter()
+                    .map(|r| {
+                        serde_json::json!({
+                            "score": r.fused_score,
+                            "doc_id": r.doc_id,
+                            "content": r.content,
+                        })
+                    })
+                    .collect();
+                serde_json::to_string(&json_results).map_err(|e| format!("serialize: {}", e))
+            }
+            "assay" => {
+                use commands::assay::{AssayOptions, QueryType};
+
+                let query_type = args
+                    .get("query_type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("inventory");
+                let pattern = args
+                    .get("pattern")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
+                let all_repos = args
+                    .get("all_repos")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
+                let query = args.get("query").and_then(|v| v.as_str()).map(String::from);
+
+                let qt = match query_type {
+                    "imports" => QueryType::Imports,
+                    "importers" => QueryType::Importers,
+                    "functions" => QueryType::Functions,
+                    "callers" => QueryType::Callers,
+                    "callees" => QueryType::Callees,
+                    "derive" => QueryType::Derive,
+                    "search" => {
+                        let q = query.or_else(|| pattern.clone()).unwrap_or_default();
+                        if q.is_empty() {
+                            return Err("assay search requires 'query' or 'pattern'".into());
+                        }
+                        QueryType::Search { query: q }
+                    }
+                    "cochange" => {
+                        let file = pattern.clone().unwrap_or_default();
+                        if file.is_empty() {
+                            return Err("assay cochange requires 'pattern'".into());
+                        }
+                        QueryType::Cochange { file }
+                    }
+                    "belief" => {
+                        let id = pattern.clone().unwrap_or_default();
+                        if id.is_empty() {
+                            return Err("assay belief requires 'pattern'".into());
+                        }
+                        QueryType::Belief { id }
+                    }
+                    _ => QueryType::Inventory,
+                };
+
+                let options = AssayOptions {
+                    query_type: qt,
+                    pattern,
+                    limit,
+                    json: true,
+                    repo,
+                    all_repos,
+                    ..Default::default()
+                };
+
+                commands::assay::execute_query(&options).map_err(|e| format!("assay: {}", e))
+            }
+            _ => Err(format!("unknown query kind: {}", kind)),
+        }
+    }))
 }
 
 fn main() -> Result<()> {
@@ -1095,6 +1269,9 @@ fn main() -> Result<()> {
             }
         }
         Some(Commands::Bench { command }) => match command {
+            BenchCommands::Grammar { files } => {
+                commands::bench::execute_grammar(files)?;
+            }
             BenchCommands::Retrieval {
                 query_set,
                 limit,
@@ -1176,20 +1353,24 @@ fn main() -> Result<()> {
                         name: "patina-doctor".into(),
                         version: "0.0.0".into(),
                         description: String::new(),
-                        world: "command".into(),
+                        world: patina::plugin::PluginWorld::Command,
                         patina_min: "0.0.0".into(),
                         capabilities: vec!["host_log".into(), "host_layer".into()],
                         allowed_toy_commands: vec![],
+                        host_query_kinds: vec![],
+                        host_http_domains: vec![],
                         provides: patina::plugin::PluginProvides {
                             child: None,
                             commands: vec!["doctor".into()],
+                            ..Default::default()
                         },
                     }
                 };
                 let engine = patina::plugin::CommandEngine::new()?;
                 let wasm_bytes = std::fs::read(&plugin_wasm)?;
                 let component = engine.load_component(&wasm_bytes)?;
-                engine.run_command(&component, &manifest, &args)?
+                let query_fn = make_query_dispatch(&manifest);
+                engine.run_command(&component, &manifest, &args, query_fn)?
             } else {
                 // Fall back to compiled-in doctor
                 #[cfg(feature = "bundled-doctor")]
@@ -1210,6 +1391,168 @@ fn main() -> Result<()> {
         }
         Some(Commands::Plugin { command }) => match command {
             PluginCommands::List => commands::plugin::execute_list()?,
+            PluginCommands::Init {
+                name,
+                world,
+                build,
+                release,
+            } => {
+                let world: patina::plugin::PluginWorld = world.parse()?;
+                let cwd = std::env::current_dir()?;
+                let project_dir = patina::plugin::scaffold::scaffold(&cwd, &name, &world)?;
+
+                let profile = if release { "release" } else { "debug" };
+                let artifact = project_dir
+                    .join(format!("target/wasm32-wasip2/{}", profile))
+                    .join(format!("{}.wasm", name.replace('-', "_")));
+
+                println!("Created {} plugin: {}", world, project_dir.display());
+                println!();
+                println!("  cd {}", name);
+                if release {
+                    println!("  cargo build --target wasm32-wasip2 --release");
+                } else {
+                    println!("  cargo build --target wasm32-wasip2");
+                }
+                println!();
+                println!("Artifact will be at: {}", artifact.display());
+
+                if build {
+                    // Proactive rustup check before attempting the build
+                    let has_target = std::process::Command::new("rustup")
+                        .args(["target", "list", "--installed"])
+                        .output()
+                        .map(|o| {
+                            String::from_utf8_lossy(&o.stdout)
+                                .lines()
+                                .any(|l| l.trim() == "wasm32-wasip2")
+                        })
+                        .unwrap_or(false);
+
+                    if !has_target {
+                        eprintln!("Missing wasm32-wasip2 target. Install it:");
+                        eprintln!("  rustup target add wasm32-wasip2");
+                        std::process::exit(1);
+                    }
+
+                    println!();
+                    println!("Building ({})...", profile);
+                    let mut cargo_args = vec!["build", "--target", "wasm32-wasip2"];
+                    if release {
+                        cargo_args.push("--release");
+                    }
+
+                    let status = std::process::Command::new("cargo")
+                        .args(&cargo_args)
+                        .current_dir(&project_dir)
+                        .status();
+
+                    match status {
+                        Ok(s) if s.success() => {
+                            println!("Built: {}", artifact.display());
+                        }
+                        Ok(s) => {
+                            eprintln!("Build failed (exit code {})", s.code().unwrap_or(-1));
+                            std::process::exit(1);
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to run cargo: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+            }
+            PluginCommands::Run { name, args } => {
+                let plugins_dir = patina::paths::plugin::plugins_dir();
+                let wasm_path = plugins_dir.join(format!("{}.wasm", name));
+                let toml_path = plugins_dir.join(format!("{}.toml", name));
+
+                if !wasm_path.exists() {
+                    anyhow::bail!(
+                        "plugin '{}' not found at {}\nInstall: cp {}.wasm {}",
+                        name,
+                        wasm_path.display(),
+                        name,
+                        plugins_dir.display()
+                    );
+                }
+
+                let manifest = if toml_path.exists() {
+                    patina::plugin::PluginEngine::load_manifest(&toml_path)?
+                } else {
+                    anyhow::bail!(
+                        "plugin manifest not found at {}\nTask and command plugins require a plugin.toml",
+                        toml_path.display()
+                    );
+                };
+
+                let wasm_bytes = std::fs::read(&wasm_path)?;
+
+                // Auto-detect world from manifest and dispatch
+                match &manifest.world {
+                    patina::plugin::PluginWorld::Task => {
+                        let engine = patina::plugin::TaskEngine::new()?;
+                        let component = engine.load_component(&wasm_bytes)?;
+                        let query_fn = make_query_dispatch(&manifest);
+                        let (exit_code, toys) =
+                            engine.run_task(&component, &manifest, &args, query_fn)?;
+
+                        // Execute approved toys
+                        for toy in &toys {
+                            eprintln!(
+                                "[task:{}] executing toy '{}': {} {}",
+                                name,
+                                toy.name,
+                                toy.command,
+                                toy.args.join(" ")
+                            );
+                            let status = std::process::Command::new(&toy.command)
+                                .args(&toy.args)
+                                .status();
+                            match status {
+                                Ok(s) if s.success() => {
+                                    eprintln!("[task:{}] toy '{}' succeeded", name, toy.name);
+                                }
+                                Ok(s) => {
+                                    eprintln!(
+                                        "[task:{}] toy '{}' failed with exit code {}",
+                                        name,
+                                        toy.name,
+                                        s.code().unwrap_or(-1)
+                                    );
+                                }
+                                Err(e) => {
+                                    eprintln!(
+                                        "[task:{}] toy '{}' failed to execute: {}",
+                                        name, toy.name, e
+                                    );
+                                }
+                            }
+                        }
+
+                        if exit_code != 0 {
+                            std::process::exit(exit_code);
+                        }
+                    }
+                    patina::plugin::PluginWorld::Command => {
+                        let engine = patina::plugin::CommandEngine::new()?;
+                        let component = engine.load_component(&wasm_bytes)?;
+                        let query_fn = make_query_dispatch(&manifest);
+                        let exit_code =
+                            engine.run_command(&component, &manifest, &args, query_fn)?;
+                        if exit_code != 0 {
+                            std::process::exit(exit_code);
+                        }
+                    }
+                    other => {
+                        anyhow::bail!(
+                            "plugin '{}' has world '{}' — only 'task' and 'command' are supported by `plugin run`",
+                            name, other
+
+                        );
+                    }
+                }
+            }
         },
         Some(Commands::Repo {
             command,
@@ -1251,9 +1594,25 @@ fn main() -> Result<()> {
         Some(Commands::Belief { command }) => {
             commands::belief::execute(command)?;
         }
+        Some(Commands::Setup { command }) => match command {
+            SetupCommands::Grammars { list, only, force } => {
+                let options = commands::setup::GrammarOptions { list, only, force };
+                commands::setup::execute_grammars(options)?;
+            }
+        },
         Some(Commands::Spec { command }) => match command {
-            commands::spec::SpecCommands::Archive { id, dry_run } => {
-                commands::spec::archive(&id, dry_run)?;
+            commands::spec::SpecCommands::Archive { id, dry_run, stale } => {
+                if stale {
+                    commands::spec::archive_stale(dry_run)?;
+                } else if let Some(id) = id {
+                    commands::spec::archive(&id, dry_run)?;
+                } else {
+                    anyhow::bail!(
+                        "Spec ID required. Usage:\n  \
+                         patina spec archive <id>\n  \
+                         patina spec archive --stale"
+                    );
+                }
             }
             commands::spec::SpecCommands::Ready { json } => {
                 commands::spec::ready(json)?;
@@ -1261,8 +1620,13 @@ fn main() -> Result<()> {
             commands::spec::SpecCommands::Blocked { json } => {
                 commands::spec::blocked(json)?;
             }
-            commands::spec::SpecCommands::Status { id, status, major } => {
-                commands::spec::status(&id, &status, major)?;
+            commands::spec::SpecCommands::Status {
+                id,
+                status,
+                major,
+                no_archive,
+            } => {
+                commands::spec::status(&id, &status, major, no_archive)?;
             }
             commands::spec::SpecCommands::List {
                 status,

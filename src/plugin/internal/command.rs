@@ -5,7 +5,14 @@ use wasmtime::component::{Component, Linker};
 use wasmtime::Store;
 
 use super::mother_child::PluginEngine;
-use super::{wasm_engine, PluginManifest};
+use super::{wasm_engine, GrantedCapabilities, PluginManifest};
+
+/// Query dispatch function type.
+///
+/// Provided by the binary crate at runtime since query engines
+/// (retrieval, commands) live in the binary, not the library.
+/// The host impl handles gating; this function handles dispatch.
+pub type QueryDispatchFn = Box<dyn FnMut(&str, &str) -> Result<String, String> + Send>;
 
 // =========================================================================
 // Command world — bindgen + host functions + CommandEngine
@@ -16,13 +23,18 @@ use super::{wasm_engine, PluginManifest};
 /// import patina:host/layer (project data access) while
 /// mother-child plugins do not.
 mod command_bindings {
-    /// Host state for command plugins — includes layer access.
+    /// Host state for command plugins — includes layer and query access.
     pub struct CommandHostState {
         pub plugin_name: String,
         pub wasi: wasmtime_wasi::WasiCtx,
         pub wasi_table: wasmtime::component::ResourceTable,
         /// Cached project root — computed once at store creation.
         pub project_root: Option<std::path::PathBuf>,
+        /// Resolved capabilities for call-time gating.
+        pub grants: super::GrantedCapabilities,
+        /// Query dispatch — provided by binary crate, handles engine calls.
+        /// None for plugins without query grants (probe, etc).
+        pub query_fn: Option<super::QueryDispatchFn>,
     }
 
     impl wasmtime_wasi::WasiView for CommandHostState {
@@ -39,7 +51,7 @@ mod command_bindings {
         world: "command",
     });
 
-    // patina:host/log — same implementation as mother-child
+    // patina:host/log — delegates to host_support
     impl patina::host::log::Host for CommandHostState {
         fn log(&mut self, level: patina::host::log::LogLevel, message: String) {
             let level_str = match level {
@@ -48,87 +60,48 @@ mod command_bindings {
                 patina::host::log::LogLevel::Warn => "WARN",
                 patina::host::log::LogLevel::Error => "ERROR",
             };
-            eprintln!("[plugin:{}] {}: {}", self.plugin_name, level_str, message);
+            super::super::host_support::log(&self.plugin_name, level_str, &message);
         }
     }
 
-    // patina:host/layer — read-only project data access.
-    //
-    // Re-entrancy invariant: these implementations MUST NOT acquire the
-    // store Mutex or call WASM methods on the same instance.
-    // All calls go to the Patina core library, never back into WASM.
+    // patina:host/layer — delegates to host_support
     impl patina::host::layer::Host for CommandHostState {
         fn find_project_root(&mut self) -> Option<String> {
-            self.project_root
-                .as_ref()
-                .map(|p| p.to_string_lossy().to_string())
+            super::super::host_support::find_project_root(&self.project_root)
         }
-
         fn read_config(&mut self) -> Result<String, String> {
-            let root = self
-                .project_root
-                .as_ref()
-                .ok_or_else(|| "no project root".to_string())?;
-            let config = crate::project::load_with_migration(root)
-                .map_err(|e| format!("load config: {}", e))?;
-            serde_json::to_string(&config).map_err(|e| format!("serialize config: {}", e))
+            super::super::host_support::read_config(&self.project_root)
         }
-
         fn detect_environment(&mut self) -> Result<String, String> {
-            let env = crate::environment::Environment::detect()
-                .map_err(|e| format!("detect env: {}", e))?;
-            serde_json::to_string(&env).map_err(|e| format!("serialize env: {}", e))
+            super::super::host_support::detect_environment()
         }
-
         fn get_stored_tools(&mut self) -> Vec<String> {
-            let root = match self.project_root.as_ref() {
-                Some(r) => r,
-                None => return vec![],
-            };
-            let config = match crate::project::load_with_migration(root) {
-                Ok(c) => c,
-                Err(_) => return vec![],
-            };
-            config
-                .environment
-                .map(|e| e.detected_tools)
-                .unwrap_or_default()
+            super::super::host_support::get_stored_tools(&self.project_root)
         }
-
         fn count_layer_files(&mut self, subdir: String) -> u32 {
-            let root = match self.project_root.as_ref() {
-                Some(r) => r,
-                None => return 0,
-            };
-            let path = root.join("layer").join(&subdir);
-            if let Ok(entries) = std::fs::read_dir(path) {
-                entries
-                    .filter_map(Result::ok)
-                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
-                    .count() as u32
-            } else {
-                0
-            }
+            super::super::host_support::count_layer_files(&self.project_root, &subdir)
         }
-
         fn get_project_uid(&mut self) -> Option<String> {
-            let root = self.project_root.as_ref()?;
-            crate::project::get_uid(root)
+            super::super::host_support::get_project_uid(&self.project_root)
         }
-
         fn check_adapter_version(
             &mut self,
             adapter_name: String,
         ) -> Result<Option<String>, String> {
-            let root = self
-                .project_root
-                .as_ref()
-                .ok_or_else(|| "no project root".to_string())?;
-            let adapter = crate::adapters::get_adapter(&adapter_name);
-            adapter
-                .check_for_updates(root)
-                .map(|opt| opt.map(|(current, _)| current))
-                .map_err(|e| format!("adapter check: {}", e))
+            super::super::host_support::check_adapter_version(&self.project_root, &adapter_name)
+        }
+    }
+
+    // patina:host/query — delegates to host_support
+    impl patina::host::query::Host for CommandHostState {
+        fn query(&mut self, kind: String, params: String) -> Result<String, String> {
+            super::super::host_support::query(
+                &self.plugin_name,
+                &self.grants,
+                &mut self.query_fn,
+                &kind,
+                &params,
+            )
         }
     }
 }
@@ -163,11 +136,16 @@ impl CommandEngine {
     ///
     /// Checks capabilities from the manifest before execution — matches
     /// PluginEngine::instantiate_child() pattern.
+    ///
+    /// `query_fn`: Optional query dispatch provided by the binary crate.
+    /// Required if the plugin has host_query capabilities. The host impl
+    /// handles gating; this function handles actual engine dispatch.
     pub fn run_command(
         &self,
         component: &Component,
         manifest: &PluginManifest,
         args: &[String],
+        query_fn: Option<QueryDispatchFn>,
     ) -> Result<i32> {
         // Check capabilities before execution — matches PluginEngine pattern
         PluginEngine::check_capabilities(manifest)?;
@@ -177,11 +155,14 @@ impl CommandEngine {
             .inherit_stderr()
             .build();
         let project_root = crate::session::SessionManager::find_project_root().ok();
+        let grants = manifest.granted_capabilities();
         let host_state = command_bindings::CommandHostState {
             plugin_name: manifest.name.clone(),
             wasi,
             wasi_table: wasmtime::component::ResourceTable::new(),
             project_root,
+            grants,
+            query_fn,
         };
         let mut store = Store::new(wasm_engine(), host_state);
         let instance = command_bindings::Command::instantiate(&mut store, component, &self.linker)?;
@@ -195,14 +176,7 @@ impl CommandEngine {
 
     /// Get the command name from a WASM plugin.
     pub fn get_command_name(&self, component: &Component) -> Result<String> {
-        let wasi = wasmtime_wasi::WasiCtxBuilder::new().build();
-        let project_root = crate::session::SessionManager::find_project_root().ok();
-        let host_state = command_bindings::CommandHostState {
-            plugin_name: "probe".to_string(),
-            wasi,
-            wasi_table: wasmtime::component::ResourceTable::new(),
-            project_root,
-        };
+        let host_state = Self::probe_host_state();
         let mut store = Store::new(wasm_engine(), host_state);
         let instance = command_bindings::Command::instantiate(&mut store, component, &self.linker)?;
         instance.call_init(&mut store)?;
@@ -211,17 +185,24 @@ impl CommandEngine {
 
     /// Get the command description from a WASM plugin.
     pub fn get_command_description(&self, component: &Component) -> Result<String> {
-        let wasi = wasmtime_wasi::WasiCtxBuilder::new().build();
-        let project_root = crate::session::SessionManager::find_project_root().ok();
-        let host_state = command_bindings::CommandHostState {
-            plugin_name: "probe".to_string(),
-            wasi,
-            wasi_table: wasmtime::component::ResourceTable::new(),
-            project_root,
-        };
+        let host_state = Self::probe_host_state();
         let mut store = Store::new(wasm_engine(), host_state);
         let instance = command_bindings::Command::instantiate(&mut store, component, &self.linker)?;
         instance.call_init(&mut store)?;
         instance.call_description(&mut store)
+    }
+
+    /// Minimal host state for probing plugin metadata (name/description).
+    fn probe_host_state() -> command_bindings::CommandHostState {
+        let wasi = wasmtime_wasi::WasiCtxBuilder::new().build();
+        let project_root = crate::session::SessionManager::find_project_root().ok();
+        command_bindings::CommandHostState {
+            plugin_name: "probe".to_string(),
+            wasi,
+            wasi_table: wasmtime::component::ResourceTable::new(),
+            project_root,
+            grants: GrantedCapabilities::default(),
+            query_fn: None,
+        }
     }
 }
