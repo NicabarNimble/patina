@@ -1,7 +1,7 @@
 ---
 type: fix
 id: spec-visibility
-status: ready
+status: complete
 created: 2026-02-16
 sessions:
   origin: 20260216-104145
