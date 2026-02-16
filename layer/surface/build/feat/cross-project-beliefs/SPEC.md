@@ -101,7 +101,7 @@ Persona is NOT included in `--all-repos` — it's a separate command entirely.
 
 ### MCP tool architecture (`src/mcp/server.rs`)
 
-Four MCP tools exist today. Each is a thin wrapper over library functions —
+Three MCP tools exist today. Each is a thin wrapper over library functions —
 per [[mcp-is-shim-cli-is-product]], MCP wraps CLI logic, never implements its own.
 
 | Tool | Role | Scope |
@@ -109,7 +109,8 @@ per [[mcp-is-shim-cli-is-product]], MCP wraps CLI logic, never implements its ow
 | `scry` | Semantic vector search | Project |
 | `assay` | Structural/factual queries | Project |
 | `context` | Composition: layer files + scry + assay + beliefs | Project |
-| (none) | Cross-project knowledge | Mother |
+
+No cross-project knowledge tool exists — that's what this SPEC builds.
 
 `context` is the aggregation tool — it calls `assay_search()`, `engine.query()`,
 `search_beliefs_fts()`, and reads `layer/` markdown files. Currently ~14K chars
@@ -169,7 +170,7 @@ Current behavior (unchanged):
 New behavior (added):
 3. For each project, open its `.patina/local/data/patina.db`, read the `beliefs`
    table (id, statement, entrenchment, status, facets). Insert into `knowledge`
-   with source = project UID (from `.patina/uid`), kind = `'belief'`.
+   with source = registry project name (matches graph node ID), kind = `'belief'`.
 4. Read `~/.patina/layer/surface/beliefs/*.md` — parse YAML frontmatter for
    id, statement, entrenchment, status, facets. Insert into `knowledge` with
    source = `'persona'`, kind = `'value'`.
@@ -308,7 +309,7 @@ Each result shows ID, statement, source, kind, entrenchment.
 | `context` is ~14K chars (~3K tokens) no topic | `patina context \| wc -c` = 14106 |
 | `context` calls assay + scry + reads layer files | `src/commands/context.rs:56-68` |
 | `mother graph sync` already walks registry | `src/commands/mother/graph.rs:16-68` |
+| Graph node IDs are registry names, not UIDs | `src/commands/mother/graph.rs:35-46` (uses `name` from registry) |
 | Mother v2 Phase 2 schema proposed | `git show spec/mother-v2` (archived) |
 | `paths.rs` has no user-layer module | `src/paths.rs` (entire file, no `user_layer`) |
-| Project UID exists at `.patina/uid` | `.patina/uid` (value: `2bdc808e`) |
-| No `~/.patina/uid` exists | filesystem check — literal `'persona'` as source |
+| No `~/.patina/uid` exists for persona | filesystem check — literal `'persona'` as source |
