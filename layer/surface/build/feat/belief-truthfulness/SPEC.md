@@ -102,15 +102,23 @@ Add temporal awareness to belief metrics during scrape:
    (timestamps, RFC 3339) are truncated to date-only.
 
    - `last_file_touch TEXT` — `std::fs::metadata(path).modified()` during
-     `parse_belief_file()`, converted to `YYYY-MM-DD` (free — already reading file)
+     `parse_belief_file()`, converted to `YYYY-MM-DD` (free — already reading file).
+     **Caveat:** file mtime resets on `git clone` and may be touched by formatters
+     or tooling. This is the weakest signal — treat as fallback when other signals
+     are NULL. `last_frontmatter_revision` is the authoritative content-change signal.
    - `last_frontmatter_revision TEXT` — from `revised` YAML field (already `YYYY-MM-DD`
      at `scrape/beliefs/mod.rs:257-263`)
    - `last_session_citation TEXT` — during `cross_reference_beliefs()` (line 528-541),
-     the code already iterates session files checking `contains(bid)`. Session
-     filenames are `YYYYMMDD-HHMMSS.md` — convert to `YYYY-MM-DD` and track MAX
-     per belief. Zero extra I/O, just a string parse in the existing loop.
-   - `last_verification_run TEXT` — `chrono::Utc::now()` formatted as `YYYY-MM-DD`
-     (exec.rs:299 already uses chrono; just format differently for this column)
+     the code already iterates session files checking `contains(bid)`. Extract date
+     from filename using regex `^(\d{4})(\d{2})(\d{2})-\d{6}` → `YYYY-MM-DD`.
+     Track MAX per belief. Zero extra I/O, just a string parse in the existing loop.
+     **Non-matching filenames** (e.g., `session_summary_july27.md`, `*-init.md`
+     suffixed files) are silently skipped for date extraction — they still count
+     as citations in `cited_by_sessions` but don't contribute to the timestamp.
+   - `last_verification_run TEXT` — set to today's date (`YYYY-MM-DD`) only for
+     beliefs that HAVE verification queries (i.e., `verification_total > 0`).
+     Beliefs with no `## Verification` section get NULL — they have no verification
+     signal. This is per-belief freshness, not per-scrape.
    - `last_activity TEXT` — MAX of the four non-NULL values above, computed after
      all signals collected. If all four are NULL, `last_activity` is NULL (belief
      has no temporal signal — will appear stale).
@@ -132,7 +140,9 @@ Add temporal awareness to belief metrics during scrape:
    fn default_stale_days() -> u32 { 90 }
    ```
    Add `#[serde(default)] pub beliefs: BeliefsSection` to `ProjectConfig`.
-   Re-export from `project/mod.rs`.
+   Re-export from `project/mod.rs`. Existing config.toml files without a
+   `[beliefs]` section will deserialize with the default (90) — no migration
+   needed. `patina init` templates should include the section for discoverability.
 
    Audit summary emits freshness stats: "32/128 beliefs stale (>90d), median
    age 143d" for immediate signal without hardcoding policy.
@@ -144,14 +154,17 @@ Add temporal awareness to belief metrics during scrape:
    "previous results" to compare against — `data_freshness` is just the string
    "full" or "incremental", not a temporal marker.
 
-   **Implementation:** Before the DROP, rename the table if it exists:
+   **Implementation:** At the start of `create_tables()`:
    ```sql
+   -- Crash recovery: drop stale _prev from a previous crashed scrape
+   DROP TABLE IF EXISTS belief_verifications_prev;
    -- Guard: skip on first-ever scrape (table doesn't exist yet)
    ALTER TABLE belief_verifications RENAME TO belief_verifications_prev;
    ```
    If the RENAME fails (first scrape, no prior table), skip drift detection
    entirely — there's nothing to compare against. After the new verification
-   run completes, diff:
+   run completes, diff (within the same SQLite connection — no concurrent
+   access risk since SQLite serializes writers):
    ```sql
    SELECT p.belief_id, p.label
    FROM belief_verifications_prev p
@@ -159,6 +172,13 @@ Add temporal awareness to belief metrics during scrape:
    WHERE p.last_status = 'pass' AND c.last_status != 'pass'
    ```
    Flag matched beliefs with `verification_drifted = 1`. Drop the `_prev` table.
+
+   **Reset semantics:** `verification_drifted` resets to 0 on every scrape, then
+   is set to 1 only for beliefs where drift is detected. On full scrape, the
+   DELETE+INSERT cycle in `insert_belief()` handles this naturally (default 0).
+   On incremental scrape, explicitly `UPDATE beliefs SET verification_drifted = 0`
+   before the drift detection pass, so beliefs that recovered (contested→pass)
+   are cleared. The flag reflects current-scrape drift, not historical.
 
    This delivers drift detection with minimal pipeline change. An append-only
    history table is deferred until there's proven need for trend analysis.
@@ -197,10 +217,19 @@ are observed.
 **NULL last_activity:** If all four activity signals are NULL, freshness = 0.0
 (maximally stale). Health score still computes from use + truth dimensions.
 
+**Zero-evidence beliefs:** `truth_score = 0 / max(1, 0) = 0.0`. With weights
+0.3 + 0.4(0) + 0.3, max possible score is 0.6 (perfect use + freshness, no
+truth). **This is intentional** — beliefs without evidence are hypotheses and
+SHOULD score lower. The `no-evidence` warning already flags these; the health
+score reinforces it quantitatively. If this proves too punitive in practice,
+adjust `w_truth` in config — don't add special-case logic.
+
 Store as `health_score REAL` column on beliefs table. Compute during scrape,
 expose via:
 - `--sort health` sort mode in belief audit
-- `--stale` flag to filter beliefs where freshness < 0.3
+- `--stale` flag filters beliefs where `last_activity` exceeds `stale_days`
+  (the simple, honest definition — matches Phase A's staleness threshold exactly).
+  This is NOT tied to the freshness component of health_score.
 - `low-health` warning in `health_warnings()` when health_score < 0.4
 
 Compute and expose only — health score does not gate any automated action.
@@ -228,20 +257,29 @@ Detect when two active beliefs have `attacks` relationships and both are active:
    (already used in `verify_evidence_section()` at line 368). Only collect IDs
    from entries that do NOT contain `status: defeated`.
 
-2. In `cross_reference_beliefs()`, after all beliefs are parsed, check each
-   `attacked_by_ids` entry: if the attacking belief is also `status: active`
-   and the attack is not `defeated`, flag both as "contested".
+2. Also parse `## Attacks` sections (same format as `## Attacked-By`, already
+   present in belief files — see `sync-first.md:53-56`). Collect non-defeated
+   target IDs into `attacks_ids: Vec<String>`.
 
-3. New column `contested_by TEXT` on beliefs table (comma-separated attacker IDs).
-   Populated during scrape's cross-reference pass. New warning in
-   `health_warnings()`: `contested-by:{other-belief-id}`, read from this column
-   at display time. Uses the existing ALTER TABLE migration pattern
-   (`scrape/beliefs/mod.rs:131-152`).
+3. In `cross_reference_beliefs()`, after all beliefs are parsed, build the
+   bidirectional contest map: if belief A's `## Attacks` lists B (non-defeated)
+   AND B is `status: active`, then A contests B. Symmetrically, if B's
+   `## Attacked-By` lists A (non-defeated) AND A is `status: active`, then
+   B is contested by A. Merge both directions — both A and B get flagged.
+
+4. New column `contested_by TEXT` on beliefs table (comma-separated belief IDs).
+   **Escaping:** belief IDs are kebab-case slugs (e.g., `sync-first`) — commas
+   never appear in IDs, so comma separation is safe. Populated during scrape's
+   cross-reference pass. New warning in `health_warnings()`:
+   `contested-by:{other-belief-id}`, read from this column at display time.
+   Uses the existing ALTER TABLE migration pattern (`scrape/beliefs/mod.rs:131-152`).
 
 **Code path:** `src/commands/scrape/beliefs/mod.rs` — extend
-`extract_file_metrics()` to collect attacker IDs. Add cross-reference pass
-in `cross_reference_beliefs()`. `src/commands/belief/mod.rs` — add
-`contested-by:` warning to `health_warnings()`.
+`extract_file_metrics()` to parse both `## Attacked-By` (collect attacker IDs)
+and `## Attacks` (collect target IDs). Build bidirectional contest map in
+`cross_reference_beliefs()`. `src/commands/belief/mod.rs` — add
+`contested-by:` warning to `health_warnings()`, reading from `contested_by`
+column.
 
 ## Exit Criteria
 
@@ -249,6 +287,34 @@ in `cross_reference_beliefs()`. `src/commands/belief/mod.rs` — add
 2. `patina belief audit --sort health` ranks beliefs by computed health score
 3. Verification drift is detected: previously-passing queries that now fail
 4. Active attack pairs flagged in audit warnings
+
+## Verification Plan
+
+### Migration safety
+- All 8 new columns use the existing `ALTER TABLE ... ADD COLUMN` ignore-if-exists
+  pattern at `scrape/beliefs/mod.rs:131-152`. No destructive migration.
+- `insert_belief()` (`scrape/beliefs/mod.rs:862-967`) must be updated to include
+  all new columns in the INSERT statement — 8 new params.
+- Existing `patina belief audit` must not break when new columns are NULL
+  (pre-scrape state). All new `BeliefRow` fields default to 0/empty/NULL.
+
+### Unit tests (add to `scrape/beliefs/mod.rs::tests`)
+- `test_last_activity_max` — MAX of 4 signals, NULL handling, all-NULL → NULL
+- `test_session_filename_parsing` — `20260215-230959.md` → `2026-02-15`,
+  `session_summary_july27.md` → skip, `20250812-123323-init.md` → `2025-08-12`
+- `test_health_score_computation` — zero-evidence (max 0.6), all-healthy (near 1.0),
+  all-stale (freshness 0.0), NULL last_activity (freshness 0.0)
+- `test_verification_drift_detection` — pass→contested flags drift, pass→pass no flag,
+  no _prev table → skip, error→pass → no flag (only pass→non-pass counts)
+- `test_attacked_by_parsing` — extract `[[id]]` from structured entries, skip
+  unstructured entries, skip `status: defeated` entries
+- `test_contested_bidirectional` — A attacks B, B attacked-by A, both active → both flagged
+
+### Integration test
+- Full scrape + audit cycle: `cargo build --release && cargo install --path . &&
+  patina scrape --rebuild && patina belief audit --sort health --stale`
+- Verify: no panics, new columns populated, summary stats line present,
+  `--stale` filter works, `--sort health` orders correctly
 
 ## Non-Goals
 
@@ -275,6 +341,11 @@ in `cross_reference_beliefs()`. `src/commands/belief/mod.rs` — add
 | Attacked-By uses `[[id]] (status: active/defeated)` format | `layer/surface/epistemic/beliefs/sync-first.md:60` |
 | ProjectConfig has no BeliefsSection for stale_days | `src/project/internal.rs:18-38` |
 | Wikilink regex already exists in verify_evidence_section | `scrape/beliefs/mod.rs:368` |
+| `## Attacks` sections exist with `[[id]]` entries | `layer/surface/epistemic/beliefs/sync-first.md:53-56` |
+| Non-standard session filenames exist (`*-init.md`, freeform) | `layer/sessions/` (20+ non-standard files) |
+| Belief IDs are kebab-case slugs (no commas) | `layer/surface/epistemic/beliefs/` naming convention |
+| SQLite serializes writers (no concurrent access risk) | SQLite WAL mode documentation |
+| File mtime resets on git clone | Git behavior (does not preserve mtime) |
 
 ### Amendment History
 
@@ -289,3 +360,13 @@ in `cross_reference_beliefs()`. `src/commands/belief/mod.rs` — add
   ISO 8601 `YYYY-MM-DD`, added BeliefsSection config prerequisite, first-scrape
   guard for RENAME, NULL last_activity → freshness 0.0, Attacked-By parsing
   format documented from real belief files, Phase B explicit dependency on A.
+  Third pass (10-concern review): aligned --stale with stale_days (not freshness
+  component), documented last_file_touch as weakest signal (git clone resets mtime),
+  specified session filename regex with skip-on-mismatch for non-standard names,
+  clarified last_verification_run is per-belief (NULL when no queries), added crash
+  recovery (DROP _prev on startup) and SQLite writer serialization note, defined
+  verification_drifted reset semantics (cleared each scrape, only pass→non-pass),
+  noted serde default handles missing config section, called out zero-evidence
+  health cap (0.6 max) as intentional policy, added bidirectional contest detection
+  via ## Attacks parsing, documented comma-safety of kebab-case IDs, added full
+  verification plan with 6 unit tests and integration test.
