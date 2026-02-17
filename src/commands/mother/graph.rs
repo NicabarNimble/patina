@@ -311,6 +311,7 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
 ///
 /// Returns (supports, attacks) tuples with source_project name attached.
 /// Schema version guard: if tables don't exist, returns empty.
+#[allow(clippy::type_complexity)]
 fn collect_belief_edges(
     project_name: &str,
     db_path: &Path,
