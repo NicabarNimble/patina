@@ -258,6 +258,16 @@ fn handle_list_tools(req: &Request) -> Response {
                                 "type": "integer",
                                 "default": 10,
                                 "description": "Maximum results to return (default: 10)"
+                            },
+                            "mode": {
+                                "type": "string",
+                                "enum": ["search", "supports", "attacks", "projects"],
+                                "default": "search",
+                                "description": "Query mode: 'search' (default — FTS5 keyword search), 'supports' (beliefs supporting belief_id), 'attacks' (beliefs attacking belief_id), 'projects' (projects holding belief_id)"
+                            },
+                            "belief_id": {
+                                "type": "string",
+                                "description": "Belief ID for supports/attacks/projects modes"
                             }
                         },
                         "required": ["query"]
@@ -595,25 +605,55 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
             }
         }
         "mother" => {
+            let mode = args.get("mode").and_then(|v| v.as_str()).unwrap_or("search");
             let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
             let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
+            let belief_id = args.get("belief_id").and_then(|v| v.as_str()).unwrap_or("");
 
-            if query.is_empty() {
-                return Response::error(
+            match mode {
+                "search" => {
+                    if query.is_empty() {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            "mother tool requires 'query' parameter",
+                        );
+                    }
+
+                    match handle_mother_search(query, limit) {
+                        Ok(text) => Response::success(
+                            req.id.clone(),
+                            serde_json::json!({
+                                "content": [{ "type": "text", "text": text }]
+                            }),
+                        ),
+                        Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                    }
+                }
+                "supports" | "attacks" | "projects" => {
+                    if belief_id.is_empty() {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            &format!("mode '{}' requires 'belief_id' parameter", mode),
+                        );
+                    }
+
+                    match handle_mother_query(mode, belief_id) {
+                        Ok(text) => Response::success(
+                            req.id.clone(),
+                            serde_json::json!({
+                                "content": [{ "type": "text", "text": text }]
+                            }),
+                        ),
+                        Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                    }
+                }
+                _ => Response::error(
                     req.id.clone(),
                     -32602,
-                    "mother tool requires 'query' parameter",
-                );
-            }
-
-            match handle_mother_search(query, limit) {
-                Ok(text) => Response::success(
-                    req.id.clone(),
-                    serde_json::json!({
-                        "content": [{ "type": "text", "text": text }]
-                    }),
+                    &format!("unknown mode '{}'", mode),
                 ),
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
             }
         }
         "assay" => {
@@ -1766,6 +1806,60 @@ fn handle_detail(query_id: &str, rank: usize) -> Result<String> {
 
     output.push_str(&format!("\n\n---\nQuery ID: {}\n", query_id));
     Ok(output)
+}
+
+/// Handle mother query — supports/attacks/projects modes
+fn handle_mother_query(mode: &str, belief_id: &str) -> Result<String> {
+    use patina::mother::Graph;
+
+    let graph = Graph::open()?;
+
+    match mode {
+        "supports" => {
+            let supports = graph.query_supports(belief_id)?;
+            let json_results: Vec<serde_json::Value> = supports
+                .iter()
+                .map(|(from, source)| {
+                    serde_json::json!({
+                        "from_belief": from,
+                        "to_belief": belief_id,
+                        "source_project": source
+                    })
+                })
+                .collect();
+            Ok(serde_json::to_string_pretty(&json_results)?)
+        }
+        "attacks" => {
+            let attacks = graph.query_attacks(belief_id)?;
+            let json_results: Vec<serde_json::Value> = attacks
+                .iter()
+                .map(|(from, source, defeated)| {
+                    serde_json::json!({
+                        "from_belief": from,
+                        "to_belief": belief_id,
+                        "source_project": source,
+                        "defeated": defeated
+                    })
+                })
+                .collect();
+            Ok(serde_json::to_string_pretty(&json_results)?)
+        }
+        "projects" => {
+            let projects = graph.query_projects(belief_id)?;
+            let json_results: Vec<serde_json::Value> = projects
+                .iter()
+                .map(|(source, entrenchment)| {
+                    serde_json::json!({
+                        "belief_id": belief_id,
+                        "source": source,
+                        "entrenchment": entrenchment
+                    })
+                })
+                .collect();
+            Ok(serde_json::to_string_pretty(&json_results)?)
+        }
+        _ => anyhow::bail!("unknown mode '{}'", mode),
+    }
 }
 
 /// Handle mother search — cross-project belief FTS5 search
