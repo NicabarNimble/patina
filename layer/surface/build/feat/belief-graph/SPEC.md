@@ -195,10 +195,13 @@ CREATE TABLE IF NOT EXISTS belief_attacks (
 -- from: SELECT DISTINCT source FROM beliefs WHERE id = ?
 -- Phase E write path: during sync, for each project's beliefs, insert
 -- (belief_id, project, originated). originated = 1 when the belief's
--- patina.db row has no `## Origin` section (native belief). originated = 0
--- when `## Origin` exists (imported). The scraper detects this by checking
--- for `## Origin` in parse_belief_file() and storing an `imported` flag
--- in patina.db beliefs table (new boolean column, Phase E only).
+-- frontmatter has no `imported_from` field (native belief). originated = 0
+-- when `imported_from` exists (imported via `patina belief import`).
+-- The scraper reads this from YAML frontmatter in parse_belief_file()
+-- and stores an `imported` boolean in patina.db beliefs table (new
+-- column, Phase E only). Detection is by frontmatter key, NOT by
+-- presence of a `## Origin` section — hand-authored Origin sections
+-- must not trigger the imported flag.
 CREATE TABLE IF NOT EXISTS belief_applied_in (
     belief_id TEXT NOT NULL,
     project TEXT NOT NULL,
@@ -224,10 +227,23 @@ opposite perspectives. The scraper writes edges from **both** sections:
 - `## Attacked-By` on belief B: `(from_belief=A, to_belief=B)` (reverse lookup)
 
 Deduplication: the PK `(from_belief, to_belief, source_project)` handles
-this via `INSERT OR REPLACE`. If both A's `## Attacks` and B's
-`## Attacked-By` mention the same relationship within one project, the
-last write wins. In practice they agree (or should — the scraper can
-warn on status mismatches).
+this. When both A's `## Attacks` and B's `## Attacked-By` describe the
+same edge within one project, the `defeated` flag must agree. If they
+disagree, the merge rule is: **`defeated=1` wins** (conservative — if
+either side claims the attack was resolved, honor the resolution). The
+scraper implements this as:
+
+1. First write: `INSERT OR IGNORE` — creates the row with whichever
+   `defeated` value comes first (alphabetical processing order).
+2. Upgrade only: `UPDATE belief_attacks SET defeated = 1 WHERE
+   from_belief = ? AND to_belief = ? AND defeated = 0` — if any
+   subsequent mention claims `defeated=1`, upgrade. Never downgrade.
+3. Diagnostic: when a mismatch is detected (one section says defeated,
+   the other doesn't), emit to stderr:
+   `⚠ <belief-id>: defeated status conflict for attack <from>→<to>
+   (## Attacks says <X>, ## Attacked-By says <Y>) — using defeated=1`
+
+This makes the flag deterministic regardless of processing order.
 
 **Current scraper behavior** (`extract_file_metrics()` lines 402-419):
 - `## Attacks` with `status: defeated` → `defeated_attacks` count only,
@@ -298,9 +314,9 @@ CREATE TABLE IF NOT EXISTS belief_attacks (
 
 Both tables are dropped and rebuilt each full scrape (same as the `beliefs`
 table pattern). `insert_belief()` writes edges from both `## Attacks` and
-`## Attacked-By` sections; dedup via PK means the same edge from opposite
-perspectives resolves to one row (`INSERT OR REPLACE`). If `defeated` status
-disagrees between sections, last-processed belief wins (alphabetical order).
+`## Attacked-By` sections. Dedup uses the same `defeated=1` wins rule as
+graph.db: `INSERT OR IGNORE` + `UPDATE ... SET defeated = 1 WHERE defeated = 0`.
+See Phase B defeated flag semantics for the full merge rule and diagnostic.
 
 **Code paths:**
 - `src/commands/scrape/beliefs/mod.rs` — add `## Supports` parsing to
@@ -437,16 +453,29 @@ Workflow:
    `mother graph sync`" or "belief file not found at {path}".
 3. Write to local `layer/surface/epistemic/beliefs/<belief-id>.md`
 4. Reset entrenchment to `low` (must earn local evidence)
-5. Append `## Origin` section with provenance:
+5. Add `imported_from` to YAML frontmatter (machine-readable import marker):
+   ```yaml
+   imported_from: <source-project>
+   import_date: <YYYY-MM-DD>
+   ```
+   This frontmatter field is the authoritative import signal — the scraper
+   checks `imported_from` (not `## Origin`) to set the `imported` flag in
+   patina.db. Hand-authored `## Origin` sections are narrative, not markers.
+6. Append `## Origin` section with human-readable provenance:
    ```markdown
    ## Origin
    - Imported from: <source-project>
    - Original entrenchment: <original-entrenchment>
    - Import date: <date>
-   - Import session: [[session-YYYYMMDD-HHMMSS]]
    ```
-6. Add `belief_applied_in` record in graph.db on next sync
-7. Print confirmation with belief statement and reminder:
+   If an active session exists (`.patina/local/active-session.md` has a
+   valid `id:` field), append `- Import session: [[session-<id>]]`.
+   If no session is active, omit the session line — the `import_date`
+   frontmatter field provides the timestamp. The import command reads
+   the active session via `get_active_session_id()` (same function used
+   by `mcp/server.rs` for query logging). It does NOT create a session.
+7. Add `belief_applied_in` record in graph.db on next sync
+8. Print confirmation with belief statement and reminder:
    `Run 'patina scrape' to index the imported belief for local audit.`
    Import does NOT auto-scrape — it only writes the markdown file.
    The belief won't appear in `patina belief audit` or local patina.db
@@ -733,3 +762,32 @@ phase ordering, scope discipline. Read all 10 referenced files (SPEC +
 - **`belief_applied_in` DDL placement**: Shown under Phase B with
   "DEFERRED to Phase E" comment. Clear enough — the DDL is documentation
   of final state, not a Phase B instruction.
+
+### Review Pass 5 — Human-Identified Gaps (same session)
+
+21. **Defeated race is nondeterministic** — Both `## Attacks` and
+    `## Attacked-By` produce the same edge row via `INSERT OR REPLACE`,
+    so the final `defeated` flag depended on alphabetical processing
+    order when the two sections disagreed. Fixed: deterministic merge
+    rule — `defeated=1` wins (conservative: if either side claims
+    resolution, honor it). Implementation: `INSERT OR IGNORE` + upgrade-
+    only `UPDATE ... SET defeated = 1 WHERE defeated = 0`. Diagnostic
+    emitted to stderr on conflict. Applied to both graph.db and patina.db
+    edge dedup sections.
+
+22. **Import detection conflates `## Origin` section with machine import**
+    — `belief_applied_in` write path used "presence of `## Origin` section"
+    to detect imports, but hand-authored beliefs can include `## Origin`
+    for narrative purposes. Fixed: machine-readable `imported_from` field
+    in YAML frontmatter is the authoritative signal. The scraper checks
+    frontmatter, not section headings. `## Origin` section is human-
+    readable provenance only.
+
+23. **Session backlink in import has no producer** — Import step 5 wrote
+    `Import session: [[session-YYYYMMDD-HHMMSS]]` but `patina belief
+    import` doesn't create sessions. The wikilink would be dead if no
+    session was active. Fixed: import reads active session ID via
+    `get_active_session_id()` (existing function, used by MCP query
+    logging). If a session is active, appends the link. If not, omits
+    the session line — `import_date` in frontmatter provides the
+    timestamp regardless.
