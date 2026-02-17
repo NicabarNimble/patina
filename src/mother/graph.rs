@@ -161,6 +161,7 @@ pub struct BeliefEntry {
     pub evidence_verified: i32,
     pub health_score: f64,
     pub contested_by: String,
+    pub imported: bool,
 }
 
 // =========================================================================
@@ -839,8 +840,8 @@ impl Graph {
                 r#"
                 INSERT INTO beliefs (id, source, kind, statement, entrenchment, status, facets,
                     cited_by_beliefs, cited_by_sessions, applied_in,
-                    evidence_count, evidence_verified, health_score, contested_by, last_indexed)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                    evidence_count, evidence_verified, health_score, contested_by, imported, last_indexed)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
                 "#,
                 params![
                     entry.id,
@@ -857,6 +858,7 @@ impl Graph {
                     entry.evidence_verified,
                     entry.health_score,
                     entry.contested_by,
+                    entry.imported as i32,
                     now
                 ],
             ) {
@@ -972,7 +974,8 @@ impl Graph {
             r#"
             SELECT b.id, b.source, b.kind, b.statement, b.entrenchment, b.status, b.facets,
                    b.cited_by_beliefs, b.cited_by_sessions, b.applied_in,
-                   b.evidence_count, b.evidence_verified, b.health_score, b.contested_by
+                   b.evidence_count, b.evidence_verified, b.health_score, b.contested_by,
+                   b.imported
             FROM belief_search bs
             JOIN beliefs b ON bs.id = b.id AND bs.source = b.source
             WHERE belief_search MATCH ?1
@@ -998,6 +1001,7 @@ impl Graph {
                     evidence_verified: row.get(11)?,
                     health_score: row.get(12)?,
                     contested_by: row.get::<_, Option<String>>(13)?.unwrap_or_default(),
+                    imported: row.get::<_, i32>(14).unwrap_or(0) != 0,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -1102,7 +1106,8 @@ impl Graph {
             r#"
             SELECT b.id, b.source, b.kind, b.statement, b.entrenchment, b.status, b.facets,
                    b.cited_by_beliefs, b.cited_by_sessions, b.applied_in,
-                   b.evidence_count, b.evidence_verified, b.health_score, b.contested_by
+                   b.evidence_count, b.evidence_verified, b.health_score, b.contested_by,
+                   b.imported
             FROM beliefs b
             WHERE b.id = ?1 AND b.source = ?2
             "#,
@@ -1123,6 +1128,7 @@ impl Graph {
                     evidence_verified: row.get(11)?,
                     health_score: row.get(12)?,
                     contested_by: row.get::<_, Option<String>>(13)?.unwrap_or_default(),
+                    imported: row.get::<_, i32>(14).unwrap_or(0) != 0,
                 })
             },
         );
@@ -1140,6 +1146,49 @@ impl Graph {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e.into()),
         }
+    }
+
+    /// Sync belief_applied_in table (Phase E provenance)
+    ///
+    /// Per-source rebuild: deletes rows for synced sources, then repopulates.
+    pub fn sync_belief_applied_in(
+        &self,
+        entries: &[BeliefEntry],
+        synced_sources: &[String],
+    ) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        self.conn.execute("BEGIN", [])?;
+
+        // Delete rows for synced sources (per-source rebuild)
+        for source in synced_sources {
+            if let Err(e) = self.conn.execute(
+                "DELETE FROM belief_applied_in WHERE project = ?1",
+                params![source],
+            ) {
+                let _ = self.conn.execute("ROLLBACK", []);
+                return Err(e.into());
+            }
+        }
+
+        // Re-insert from synced entries
+        for entry in entries {
+            // originated = 1 when imported = 0 (native), 0 when imported = 1
+            let originated = if entry.imported { 0 } else { 1 };
+            if let Err(e) = self.conn.execute(
+                r#"
+                INSERT OR IGNORE INTO belief_applied_in (belief_id, project, originated, last_indexed)
+                VALUES (?1, ?2, ?3, ?4)
+                "#,
+                params![entry.id, entry.source, originated, now],
+            ) {
+                let _ = self.conn.execute("ROLLBACK", []);
+                return Err(e.into());
+            }
+        }
+
+        self.conn.execute("COMMIT", [])?;
+        Ok(())
     }
 
     /// Count belief entries
@@ -1496,6 +1545,7 @@ mod tests {
             evidence_verified: 0,
             health_score: 0.0,
             contested_by: String::new(),
+            imported: false,
         }
     }
 

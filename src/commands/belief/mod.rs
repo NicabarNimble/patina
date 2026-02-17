@@ -34,6 +34,24 @@ pub enum BeliefCommands {
         #[arg(long)]
         stale: bool,
     },
+
+    /// Import a belief from another project
+    ///
+    /// Copies a belief from a source project into the current project's
+    /// layer/surface/epistemic/beliefs/ directory, resetting entrenchment
+    /// to 'low' and adding provenance metadata.
+    Import {
+        /// Belief ID to import
+        belief_id: String,
+
+        /// Source project name (as registered in mother's graph)
+        #[arg(long)]
+        from: String,
+
+        /// Overwrite if belief already exists locally
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 pub fn execute(command: Option<BeliefCommands>) -> Result<()> {
@@ -51,7 +69,172 @@ pub fn execute(command: Option<BeliefCommands>) -> Result<()> {
             grounding,
             stale,
         } => run_audit(&sort, warnings_only, grounding, stale),
+        BeliefCommands::Import {
+            belief_id,
+            from,
+            force,
+        } => run_import(&belief_id, &from, force),
     }
+}
+
+/// Import a belief from another project
+fn run_import(belief_id: &str, from: &str, force: bool) -> Result<()> {
+    use patina::mother::Graph;
+
+    let beliefs_dir = Path::new("layer/surface/epistemic/beliefs");
+    let local_path = beliefs_dir.join(format!("{}.md", belief_id));
+
+    // Guard: refuse if belief already exists locally (unless --force)
+    if local_path.exists() && !force {
+        anyhow::bail!(
+            "Belief '{}' already exists locally at {}.\nUse --force to overwrite.",
+            belief_id,
+            local_path.display()
+        );
+    }
+
+    // Open graph and look up the belief
+    let graph = Graph::open()?;
+
+    let (entry, source_path) = graph.get_belief(belief_id, from)?.ok_or_else(|| {
+        anyhow::anyhow!(
+            "Belief '{}' not found in project '{}' in graph.db.\n\
+                 Check: patina mother graph query projects {}\n\
+                 Or sync: patina mother graph sync",
+            belief_id,
+            from,
+            belief_id,
+        )
+    })?;
+
+    // Resolve source file on disk
+    let source_file = source_path
+        .join("layer/surface/epistemic/beliefs")
+        .join(format!("{}.md", belief_id));
+
+    if !source_file.exists() {
+        anyhow::bail!(
+            "Source belief file not found: {}\n\
+             The project path in graph.db may be stale.\n\
+             Try: patina repo register {} {}",
+            source_file.display(),
+            from,
+            source_path.display(),
+        );
+    }
+
+    // Read the source file
+    let source_content = std::fs::read_to_string(&source_file)
+        .with_context(|| format!("reading {}", source_file.display()))?;
+
+    // Rewrite the frontmatter: reset entrenchment to low, add imported_from
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let new_content = rewrite_imported_belief(&source_content, &entry.entrenchment, from, &today);
+
+    // Ensure target directory exists
+    if !beliefs_dir.exists() {
+        std::fs::create_dir_all(beliefs_dir)
+            .with_context(|| format!("creating {}", beliefs_dir.display()))?;
+    }
+
+    // Write the imported belief
+    std::fs::write(&local_path, &new_content)
+        .with_context(|| format!("writing {}", local_path.display()))?;
+
+    println!("✅ Imported belief '{}' from project '{}'", belief_id, from);
+    println!(
+        "   Entrenchment reset to 'low' (was '{}')",
+        entry.entrenchment
+    );
+    println!("   Written to: {}", local_path.display());
+    println!();
+    println!("Run 'patina scrape' to index the imported belief.");
+
+    Ok(())
+}
+
+/// Rewrite a belief's frontmatter for import:
+/// - Reset entrenchment to 'low'
+/// - Add imported_from and import_date
+/// - Append ## Origin section
+fn rewrite_imported_belief(
+    content: &str,
+    original_entrenchment: &str,
+    from: &str,
+    today: &str,
+) -> String {
+    let mut output = String::new();
+
+    // Parse and rewrite frontmatter
+    if let Some(after_start) = content.strip_prefix("---") {
+        if let Some(end) = after_start.find("---") {
+            let frontmatter = &after_start[..end];
+            let body = &after_start[end + 3..];
+
+            output.push_str("---\n");
+
+            // Rewrite frontmatter lines
+            let mut wrote_entrenchment = false;
+            let mut wrote_imported_from = false;
+            for line in frontmatter.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("entrenchment:") {
+                    output.push_str("entrenchment: low\n");
+                    wrote_entrenchment = true;
+                } else if trimmed.starts_with("imported_from:") {
+                    // Replace existing
+                    output.push_str(&format!("imported_from: {}\n", from));
+                    wrote_imported_from = true;
+                } else if trimmed.starts_with("import_date:") {
+                    // Skip — will be re-added with imported_from
+                } else if !trimmed.is_empty() {
+                    output.push_str(line);
+                    output.push('\n');
+                }
+            }
+
+            // Add fields if not already present
+            if !wrote_entrenchment {
+                output.push_str("entrenchment: low\n");
+            }
+            if !wrote_imported_from {
+                output.push_str(&format!("imported_from: {}\n", from));
+            }
+            output.push_str(&format!("import_date: {}\n", today));
+
+            output.push_str("---");
+            output.push_str(body);
+        } else {
+            // Malformed frontmatter — pass through
+            output.push_str(content);
+        }
+    } else {
+        // No frontmatter — add one
+        output.push_str(&format!(
+            "---\nentrenchment: low\nimported_from: {}\nimport_date: {}\n---\n",
+            from, today
+        ));
+        output.push_str(content);
+    }
+
+    // Append ## Origin section if not already present
+    if !output.contains("## Origin") {
+        output.push_str("\n## Origin\n\n");
+        output.push_str(&format!("- Imported from: {}\n", from));
+        output.push_str(&format!(
+            "- Original entrenchment: {}\n",
+            original_entrenchment
+        ));
+        output.push_str(&format!("- Import date: {}\n", today));
+
+        // Append session backlink if active
+        if let Some(session_id) = crate::commands::scry::internal::logging::get_active_session_id()
+        {
+            output.push_str(&format!("- Import session: [[session-{}]]\n", session_id));
+        }
+    }
+
+    output
 }
 
 struct BeliefRow {

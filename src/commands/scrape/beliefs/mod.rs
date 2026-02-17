@@ -39,6 +39,8 @@ struct ParsedBelief {
     verification_queries: Vec<verification::VerificationQuery>,
     // Verification aggregates (computed during Phase 2.5)
     verification: verification::VerificationAggregates,
+    // Phase E: imported flag (from imported_from frontmatter)
+    imported: bool,
 }
 
 /// Computed use/truth metrics for a belief — all derived from files on disk
@@ -199,6 +201,8 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
         // Belief truthfulness: drift + contradiction
         ("verification_drifted", "INTEGER DEFAULT 0"),
         ("contested_by", "TEXT DEFAULT ''"),
+        // Belief-graph Phase E: import detection
+        ("imported", "INTEGER DEFAULT 0"),
     ];
 
     for (col_name, col_type) in &columns_to_add {
@@ -330,6 +334,21 @@ fn parse_belief_file(path: &Path) -> Result<ParsedBelief> {
         }
     }
 
+    // Detect imported_from frontmatter (Phase E: sole authoritative import signal)
+    let mut imported = false;
+    if let Some(after_start) = content.strip_prefix("---") {
+        if let Some(end) = after_start.find("---") {
+            let frontmatter = &after_start[..end];
+            if let Some(re) = regex::RegexBuilder::new(r"^imported_from:\s*\S+")
+                .multi_line(true)
+                .build()
+                .ok()
+            {
+                imported = re.is_match(frontmatter);
+            }
+        }
+    }
+
     // Extract one-sentence statement (line after # id heading)
     let statement = extract_statement(&content, &id);
 
@@ -361,6 +380,7 @@ fn parse_belief_file(path: &Path) -> Result<ParsedBelief> {
         metrics,
         verification_queries,
         verification: verification::VerificationAggregates::default(),
+        imported,
     })
 }
 
@@ -1110,9 +1130,9 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
          verification_total, verification_passed, verification_failed, verification_errored,
          grounding_score, grounding_code_count, grounding_commit_count, grounding_session_count, grounding_forge_count,
          last_file_touch, last_frontmatter_revision, last_session_citation, last_verification_run, last_activity,
-         health_score, contested_by)
+         health_score, contested_by, imported)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27,
-                 ?28, ?29, ?30, ?31, ?32, ?33, ?34)",
+                 ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35)",
         rusqlite::params![
             &belief.id,
             &belief.statement,
@@ -1149,6 +1169,7 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
             &belief.metrics.last_activity,
             belief.metrics.health_score,
             &contested_by_str,
+            belief.imported as i32,
         ],
     )?;
 

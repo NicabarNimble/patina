@@ -141,6 +141,10 @@ pub fn sync_from_registry() -> Result<()> {
     // Failed sources retain their previously indexed data.
     graph.sync_beliefs(&knowledge, &synced_sources)?;
 
+    // Populate belief_applied_in from synced beliefs (Phase E)
+    // Per-source rebuild: delete then re-insert for each synced source
+    sync_belief_applied_in(&graph, &knowledge, &synced_sources)?;
+
     // =========================================================================
     // Edge sync: collect belief relationship edges from projects
     // =========================================================================
@@ -223,6 +227,16 @@ pub fn sync_from_registry() -> Result<()> {
     Ok(())
 }
 
+/// Sync belief_applied_in table from synced beliefs (Phase E)
+fn sync_belief_applied_in(
+    graph: &patina::mother::Graph,
+    entries: &[BeliefEntry],
+    synced_sources: &[String],
+) -> Result<()> {
+    graph.sync_belief_applied_in(entries, synced_sources)?;
+    Ok(())
+}
+
 /// Detect project domains from file extensions
 fn detect_project_domains(project_root: &Path) -> Vec<String> {
     let mut domains = Vec::new();
@@ -272,7 +286,7 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
     let mut stmt = conn.prepare(
         "SELECT id, statement, entrenchment, status, facets,
                 cited_by_beliefs, cited_by_sessions, applied_in,
-                evidence_count, evidence_verified, health_score, contested_by
+                evidence_count, evidence_verified, health_score, contested_by, imported
          FROM beliefs WHERE status != 'archived'",
     )?;
 
@@ -299,6 +313,7 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
                 evidence_verified: row.get::<_, Option<i32>>(9)?.unwrap_or(0),
                 health_score: row.get::<_, Option<f64>>(10)?.unwrap_or(0.0),
                 contested_by: row.get::<_, Option<String>>(11)?.unwrap_or_default(),
+                imported: row.get::<_, Option<i32>>(12)?.unwrap_or(0) != 0,
             })
         })?
         .filter_map(|r| r.ok())
@@ -496,6 +511,7 @@ fn parse_persona_value(path: &Path) -> Result<BeliefEntry> {
         evidence_verified: 0,
         health_score: 0.0,
         contested_by: String::new(),
+        imported: false,
     })
 }
 
@@ -814,7 +830,11 @@ pub fn query_beliefs_cli(command: super::QueryCommands) -> Result<()> {
                 return Ok(());
             }
 
-            println!("\n  Beliefs matching \"{}\" ({} results)\n", query, results.len());
+            println!(
+                "\n  Beliefs matching \"{}\" ({} results)\n",
+                query,
+                results.len()
+            );
 
             for entry in &results {
                 let source_display = if entry.source == "persona" {
@@ -851,10 +871,17 @@ pub fn query_beliefs_cli(command: super::QueryCommands) -> Result<()> {
                 return Ok(());
             }
 
-            println!("\n  Beliefs supporting \"{}\" ({} edges)\n", belief_id, supports.len());
+            println!(
+                "\n  Beliefs supporting \"{}\" ({} edges)\n",
+                belief_id,
+                supports.len()
+            );
 
             for (from_belief, source_project) in &supports {
-                println!("  {} ← {} (from {})", belief_id, from_belief, source_project);
+                println!(
+                    "  {} ← {} (from {})",
+                    belief_id, from_belief, source_project
+                );
             }
             println!();
 
@@ -868,7 +895,11 @@ pub fn query_beliefs_cli(command: super::QueryCommands) -> Result<()> {
                 return Ok(());
             }
 
-            println!("\n  Beliefs attacking \"{}\" ({} edges)\n", belief_id, attacks.len());
+            println!(
+                "\n  Beliefs attacking \"{}\" ({} edges)\n",
+                belief_id,
+                attacks.len()
+            );
 
             for (from_belief, source_project, defeated) in &attacks {
                 let status = if *defeated { "defeated" } else { "active" };
@@ -889,7 +920,11 @@ pub fn query_beliefs_cli(command: super::QueryCommands) -> Result<()> {
                 return Ok(());
             }
 
-            println!("\n  Projects with \"{}\" ({} found)\n", belief_id, projects.len());
+            println!(
+                "\n  Projects with \"{}\" ({} found)\n",
+                belief_id,
+                projects.len()
+            );
 
             for (source, entrenchment) in &projects {
                 println!("  {} (entrenchment: {})", source, entrenchment);
