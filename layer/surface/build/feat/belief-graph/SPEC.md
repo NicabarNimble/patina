@@ -55,7 +55,8 @@ graph.db. Real-world testing revealed three issues:
 | Need | Already Have | Where |
 |------|-------------|-------|
 | Belief metadata (33 columns) | `beliefs` table with metrics, health, grounding | patina.db per project |
-| Supports/Attacks parsing | Scraper parses `## Supports`, `## Attacks`, `## Attacked-By` | `src/commands/scrape/beliefs/mod.rs` |
+| Attacks/Attacked-By parsing | Scraper parses `## Attacks`, `## Attacked-By` into `attacks_ids`/`attacked_by_ids` Vec<String> | `src/commands/scrape/beliefs/mod.rs:extract_file_metrics()` |
+| Supports parsing | **Not yet parsed** — scraper skips `## Supports` sections (only counts `cited_by_beliefs` via cross-reference) | Phase B must add parsing |
 | Cross-project sync | `mother graph sync` reads beliefs from each project | `src/commands/mother/graph.rs` |
 | Graph nodes + edges | `nodes` + `edges` tables with typed edges and weight learning | graph.db |
 | Edge usage + learning | `edge_usage` table, `mother graph learn` with EMA weights | graph.db |
@@ -65,8 +66,10 @@ graph.db. Real-world testing revealed three issues:
 | FTS5 query sanitization | `sanitize_fts5_query()` quotes tokens | `src/mother/graph.rs` |
 | Per-source rebuild | `sync_knowledge()` preserves unsynced sources | `src/mother/graph.rs` |
 
-**The heavy lifting is done.** Scraper parses relationships. Graph has
-node/edge infrastructure with weight learning. The work is: richer sync,
+**Most infrastructure exists.** Scraper parses `## Attacks`/`## Attacked-By`
+into ID vectors; `## Supports` parsing is new but follows the same pattern
+(~10 lines). Graph has node/edge infrastructure with weight learning. The
+work is: supports parsing, relationship output tables, richer sync,
 belief-aware edges, import command, query subcommands.
 
 ## What To Build
@@ -121,26 +124,29 @@ the `## Supports` and `## Attacks` sections that the scraper already parses.
 
 ```sql
 -- Belief-to-belief edges (cross-project relationships)
+-- source_project = the project whose belief markdown declared this relationship
 CREATE TABLE IF NOT EXISTS belief_supports (
     from_belief TEXT NOT NULL,
-    from_source TEXT NOT NULL,
     to_belief TEXT NOT NULL,
-    source_project TEXT NOT NULL,  -- which project declared this relationship
+    source_project TEXT NOT NULL,
     last_indexed TEXT NOT NULL,
-    PRIMARY KEY (from_belief, from_source, to_belief, source_project)
+    PRIMARY KEY (from_belief, to_belief, source_project)
 );
 
 CREATE TABLE IF NOT EXISTS belief_attacks (
     from_belief TEXT NOT NULL,
-    from_source TEXT NOT NULL,
     to_belief TEXT NOT NULL,
     source_project TEXT NOT NULL,
     defeated INTEGER DEFAULT 0,   -- from ## Attacked-By status
     last_indexed TEXT NOT NULL,
-    PRIMARY KEY (from_belief, from_source, to_belief, source_project)
+    PRIMARY KEY (from_belief, to_belief, source_project)
 );
 
 -- Belief provenance (which projects have this belief)
+-- Note: before Phase E, this is derivable from beliefs.source.
+-- After Phase E imports, a belief can exist in multiple projects
+-- with different sources, making this table necessary.
+-- Can be deferred from Phase B to Phase E if desired.
 CREATE TABLE IF NOT EXISTS belief_applied_in (
     belief_id TEXT NOT NULL,
     project TEXT NOT NULL,
@@ -150,9 +156,13 @@ CREATE TABLE IF NOT EXISTS belief_applied_in (
 );
 ```
 
-**Where edge data comes from:** The scraper already parses `## Supports` and
-`## Attacks` sections in belief markdown files. Currently it only stores
-aggregated counts (`cited_by_beliefs`) and CSV (`contested_by`) in patina.db.
+**Where edge data comes from:** The scraper parses `## Attacks` and
+`## Attacked-By` sections into `attacks_ids` and `attacked_by_ids` Vec<String>
+in memory (`extract_file_metrics()` lines 402-419), but only writes aggregated
+counts (`cited_by_beliefs`, `contested_by` CSV) to patina.db. `## Supports`
+sections are **not currently parsed** — `cited_by_beliefs` is computed by
+cross-referencing all belief file content for ID mentions, not by parsing
+`## Supports` specifically.
 
 Two options for getting the raw relationship data into mother:
 
@@ -161,17 +171,22 @@ Two options for getting the raw relationship data into mother:
 sections to extract `[[wikilink]]` targets. Duplicates scraper parsing but
 keeps mother independent of patina.db schema details.
 
-**Option 2: Add relationship tables to patina.db.** Extend scraper to write
-`belief_supports` and `belief_attacks` tables in patina.db. Mother reads
-structured data, no markdown parsing. Cleaner but requires scraper change.
+**Option 2: Add relationship tables to patina.db.** Extend scraper to:
+(a) parse `## Supports` sections the same way `## Attacks` is parsed (~10
+lines in `extract_file_metrics()`), and (b) write `belief_supports` and
+`belief_attacks` tables in patina.db from the parsed ID vectors. Mother reads
+structured data, no markdown parsing.
 
-**Recommendation:** Option 2. The scraper already does the parsing — it should
-write the structured result. Mother reads structured data. Per
+**Recommendation:** Option 2. The scraper already parses `## Attacks` and
+`## Attacked-By` — adding `## Supports` is the same pattern. Writing parsed
+results to tables keeps mother's interface to patina.db clean. Per
 [[dependable-rust]]: keep each module's interface small and stable.
 
 **Code paths:**
-- `src/commands/scrape/beliefs/mod.rs` — add `belief_supports` and
-  `belief_attacks` tables to patina.db (scraper already has the parsed data)
+- `src/commands/scrape/beliefs/mod.rs` — add `## Supports` parsing to
+  `extract_file_metrics()` (new `supports_ids: Vec<String>` field on
+  `BeliefMetrics`), add `belief_supports` and `belief_attacks` tables to
+  `create_materialized_views()`, write edges in `insert_belief()`
 - `src/mother/graph.rs` — add edge tables to `init_schema()`, add
   `sync_belief_edges()` method
 - `src/commands/mother/graph.rs` — extend `sync_from_registry()` to read
@@ -192,8 +207,9 @@ health_score, contested_by`
 
 **Edge sync:** After syncing belief rows, read `belief_supports` and
 `belief_attacks` from each project's patina.db and insert into graph.db's
-edge tables. Per-source rebuild: only delete edges for successfully synced
-sources, per [[commit-44b1b338]] pattern.
+edge tables. Per-source rebuild: delete edges where `source_project = ?`
+for successfully synced sources only, per [[commit-44b1b338]] pattern.
+Similarly, `belief_applied_in` deletes where `project = ?` for synced sources.
 
 **Code paths:**
 - `src/commands/mother/graph.rs` — update `collect_project_beliefs()` to
@@ -270,8 +286,8 @@ Workflow:
 
 ## What Doesn't Change
 
-- **Scraper** — already parses everything we need (Phase B adds 2 output
-  tables, no parsing changes)
+- **Scraper parsing** — `## Attacks`/`## Attacked-By` parsing unchanged
+  (Phase B adds `## Supports` parsing + 2 output tables)
 - **Belief markdown format** — no structural changes
 - **Assay/Scry** — stay project-scoped, no `--projects` flags
 - **`mother graph link/unlink/learn/stats`** — project-level edges unchanged
@@ -282,7 +298,7 @@ Workflow:
 
 | Layer | Does | Doesn't |
 |-------|------|---------|
-| **Scraper** | Parse beliefs, compute metrics, write patina.db + relationship tables | Push to mother |
+| **Scraper** | Parse beliefs (incl. new `## Supports` parsing), compute metrics, write patina.db + relationship tables | Push to mother |
 | **Mother graph sync** | Read patina.db + edges, populate graph.db | Create synthetic edges |
 | **Mother graph query** | Join belief + edge tables, surface candidates | Auto-export or auto-promote |
 | **belief import** | Human-triggered fetch, local write, entrenchment reset | Skip human decision |
@@ -324,3 +340,51 @@ See [[session-20260216-155323]] for detailed mapping.
 - Extending `context` MCP tool with cross-project beliefs
 - `EVOLVES_FROM` edge type (future: belief lineage tracking)
 - Core layer changes (existing core/*.md files stay as-is)
+
+## Implementability Review Notes
+
+*Session: [[session-20260216-211931]]*
+
+### Issues Found and Fixed
+
+1. **Scraper `## Supports` parsing gap** — Reuse Map claimed scraper already
+   parses `## Supports`. Verified against `extract_file_metrics()` (line
+   373-425): it only parses `## Attacks` and `## Attacked-By`. `## Supports`
+   is not parsed; `cited_by_beliefs` is computed by cross-referencing all
+   belief content, not by reading `## Supports` sections. Fixed: Reuse Map,
+   Phase B description, code paths, "What Doesn't Change", and Layer
+   Responsibilities all updated to reflect this.
+
+2. **Redundant `from_source` column in edge tables** — `belief_supports`
+   and `belief_attacks` had both `from_source` and `source_project`.
+   `from_source` (the project that owns `from_belief`) is always the same
+   project that declared the relationship (`source_project`), since you can
+   only declare supports/attacks in your own belief files. Removed
+   `from_source`; simplified PK to `(from_belief, to_belief, source_project)`.
+
+3. **`belief_applied_in` deferral** — Before Phase E (import), this table
+   is derivable from `beliefs.source` since each belief exists in exactly one
+   project. Added note that it can be deferred from Phase B to Phase E.
+
+4. **Per-source rebuild for edges** — SPEC referenced the per-source pattern
+   but didn't specify which column to use for edge deletion. Added: delete
+   edges where `source_project = ?` for supports/attacks, `project = ?` for
+   applied_in.
+
+### Verified OK
+
+- **Schema correctness**: graph.db `beliefs` table columns align with
+  patina.db fields available for sync. FTS5 table rename is clean.
+- **Code path accuracy**: All referenced files, function names, and line
+  ranges verified against current code (post-fix commits).
+- **Phase D/E CLI integration**: `Query` variant in `GraphCommands` and
+  `Import` variant in `BeliefCommands` add cleanly, no naming conflicts.
+  MCP `mode` parameter is backward-compatible (default = `search` = current).
+- **`KnowledgeEntry` → `BeliefEntry` rename**: struct at `graph.rs:148`,
+  re-exported at `commands/mother/graph.rs:8`. Clean rename path.
+- **Exit criteria**: all 7 are testable with concrete commands.
+- **Per-source rebuild**: works for belief rows and edge tables via
+  `source_project`/`project` column filtering.
+- **Phase B feasibility (Option 2)**: `## Attacks` parsing pattern at
+  lines 411-419 of scraper provides exact template for `## Supports`.
+  Writing to new tables follows `insert_belief()` pattern.
