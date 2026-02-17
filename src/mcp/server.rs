@@ -605,7 +605,10 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
             }
         }
         "mother" => {
-            let mode = args.get("mode").and_then(|v| v.as_str()).unwrap_or("search");
+            let mode = args
+                .get("mode")
+                .and_then(|v| v.as_str())
+                .unwrap_or("search");
             let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
             let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
             let belief_id = args.get("belief_id").and_then(|v| v.as_str()).unwrap_or("");
@@ -649,11 +652,7 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
                     }
                 }
-                _ => Response::error(
-                    req.id.clone(),
-                    -32602,
-                    &format!("unknown mode '{}'", mode),
-                ),
+                _ => Response::error(req.id.clone(), -32602, &format!("unknown mode '{}'", mode)),
             }
         }
         "assay" => {

@@ -339,10 +339,9 @@ fn parse_belief_file(path: &Path) -> Result<ParsedBelief> {
     if let Some(after_start) = content.strip_prefix("---") {
         if let Some(end) = after_start.find("---") {
             let frontmatter = &after_start[..end];
-            if let Some(re) = regex::RegexBuilder::new(r"^imported_from:\s*\S+")
+            if let Ok(re) = regex::RegexBuilder::new(r"^imported_from:\s*\S+")
                 .multi_line(true)
                 .build()
-                .ok()
             {
                 imported = re.is_match(frontmatter);
             }
