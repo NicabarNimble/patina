@@ -255,10 +255,12 @@ and to sync belief edges.
 **Current sync reads 5 columns:**
 `id, statement, entrenchment, status, facets`
 
-**New sync reads 12 columns:**
+**Phase C sync reads 12 columns (Phase E adds a 13th):**
 `id, statement, entrenchment, status, facets, cited_by_beliefs,
 cited_by_sessions, applied_in, evidence_count, evidence_verified,
 health_score, contested_by`
+Phase E extends this to 13 columns by adding `imported` — see Phase E
+sync changes. `BeliefEntry` struct grows correspondingly in each phase.
 
 **Edge sync:** After syncing belief rows, read `belief_supports` and
 `belief_attacks` from each project's patina.db and insert into graph.db's
@@ -293,10 +295,11 @@ entry if its path matches `project_root`. Pre-existing bug, fix here.
 
 **Code paths:**
 - `src/commands/mother/graph.rs` — update `collect_project_beliefs()` to
-  read 12 columns, add `collect_belief_edges()`, add dedup guard
+  read 12 columns (Phase E extends to 13), add `collect_belief_edges()`,
+  add dedup guard
 - `src/mother/graph.rs` — update `BeliefEntry` struct (renamed from
-  `KnowledgeEntry` in Phase A) with additional metric fields, update
-  `sync_beliefs()` signature
+  `KnowledgeEntry` in Phase A) with 12 metric fields (Phase E adds
+  `imported`), update `sync_beliefs()` signature
 
 ### Phase D: `mother graph query` — Belief-Aware Graph Traversal
 
@@ -459,7 +462,8 @@ See [[session-20260216-155323]] for detailed mapping.
 1. `patina scrape` writes `belief_supports` and `belief_attacks` tables to
    patina.db alongside existing `beliefs` table
 2. `mother graph sync` populates graph.db `beliefs` table with 12 columns
-   (metrics included) + belief edge tables from relationship data
+   after Phase C (13 after Phase E adds `imported`) + belief edge tables
+   from relationship data. Phase E also populates `belief_applied_in`.
 3. `mother graph query belief "error handling"` returns beliefs with
    metrics (health_score, evidence_count, etc.)
 4. `mother graph query supports <belief-id>` returns supporting beliefs
@@ -483,7 +487,7 @@ See [[session-20260216-155323]] for detailed mapping.
 
 ## Review History
 
-*27 findings across 6 passes, all resolved. Details in session archives.*
+*30 findings across 7 passes, all resolved. Details in session archives.*
 
 | Pass | Session | Findings | Focus |
 |------|---------|----------|-------|
