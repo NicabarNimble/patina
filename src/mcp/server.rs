@@ -246,7 +246,7 @@ fn handle_list_tools(req: &Request) -> Response {
                 },
                 {
                     "name": "mother",
-                    "description": "Search cross-project knowledge - federated FTS5 search over project beliefs and persona values indexed in Mother's graph.db. Returns knowledge entries from all registered projects and persona. Run `mother graph sync` to populate the index. For project-scoped semantic search, use scry instead.",
+                    "description": "Search cross-project knowledge - federated FTS5 search over project beliefs and persona values indexed in Mother's graph.db. Returns belief entries from all registered projects and persona. Run `mother graph sync` to populate the index. For project-scoped semantic search, use scry instead.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -1768,20 +1768,20 @@ fn handle_detail(query_id: &str, rank: usize) -> Result<String> {
     Ok(output)
 }
 
-/// Handle mother search — cross-project knowledge FTS5 search
+/// Handle mother search — cross-project belief FTS5 search
 ///
-/// Thin wrapper over Graph::search_knowledge(). Returns JSON array per SPEC.
+/// Thin wrapper over Graph::search_beliefs(). Returns JSON array per SPEC.
 fn handle_mother_search(query: &str, limit: usize) -> Result<String> {
     use patina::mother::Graph;
 
     let graph = Graph::open()?;
-    let results = graph.search_knowledge(query, limit)?;
+    let results = graph.search_beliefs(query, limit)?;
 
     if results.is_empty() {
         return Ok("[]".to_string());
     }
 
-    // Return JSON array with all fields, full statement (no truncation)
+    // Return JSON array with all fields including metrics
     let json_results: Vec<serde_json::Value> = results
         .iter()
         .map(|entry| {
@@ -1792,7 +1792,14 @@ fn handle_mother_search(query: &str, limit: usize) -> Result<String> {
                 "statement": entry.statement,
                 "entrenchment": entry.entrenchment,
                 "status": entry.status,
-                "facets": entry.facets
+                "facets": entry.facets,
+                "cited_by_beliefs": entry.cited_by_beliefs,
+                "cited_by_sessions": entry.cited_by_sessions,
+                "applied_in": entry.applied_in,
+                "evidence_count": entry.evidence_count,
+                "evidence_verified": entry.evidence_verified,
+                "health_score": entry.health_score,
+                "contested_by": entry.contested_by
             })
         })
         .collect();

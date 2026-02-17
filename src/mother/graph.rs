@@ -143,9 +143,9 @@ pub struct EdgeUsageStats {
     pub current_weight: f32,
 }
 
-/// A knowledge entry for cross-project search (beliefs + persona values)
+/// A belief entry for cross-project search (beliefs + persona values)
 #[derive(Debug, Clone, Serialize)]
-pub struct KnowledgeEntry {
+pub struct BeliefEntry {
     pub id: String,
     pub source: String,
     pub kind: String,
@@ -153,6 +153,14 @@ pub struct KnowledgeEntry {
     pub entrenchment: String,
     pub status: String,
     pub facets: String,
+    // Metrics (synced from patina.db)
+    pub cited_by_beliefs: i32,
+    pub cited_by_sessions: i32,
+    pub applied_in: i32,
+    pub evidence_count: i32,
+    pub evidence_verified: i32,
+    pub health_score: f64,
+    pub contested_by: String,
 }
 
 // =========================================================================
@@ -267,8 +275,12 @@ impl Graph {
             CREATE INDEX IF NOT EXISTS idx_edge_usage_edge ON edge_usage(edge_id);
             CREATE INDEX IF NOT EXISTS idx_edge_usage_query ON edge_usage(query_id);
 
-            -- Cross-project knowledge index (beliefs + persona values)
-            CREATE TABLE IF NOT EXISTS knowledge (
+            -- Migration: drop legacy knowledge tables (rebuildable cache)
+            DROP TABLE IF EXISTS knowledge;
+            DROP TABLE IF EXISTS knowledge_search;
+
+            -- Cross-project belief index (beliefs + persona values)
+            CREATE TABLE IF NOT EXISTS beliefs (
                 id TEXT NOT NULL,
                 source TEXT NOT NULL,
                 kind TEXT NOT NULL,
@@ -276,13 +288,48 @@ impl Graph {
                 entrenchment TEXT DEFAULT 'medium',
                 status TEXT DEFAULT 'active',
                 facets TEXT,
+                cited_by_beliefs INTEGER DEFAULT 0,
+                cited_by_sessions INTEGER DEFAULT 0,
+                applied_in INTEGER DEFAULT 0,
+                evidence_count INTEGER DEFAULT 0,
+                evidence_verified INTEGER DEFAULT 0,
+                health_score REAL DEFAULT 0.0,
+                contested_by TEXT DEFAULT '',
+                imported INTEGER DEFAULT 0,
                 last_indexed TEXT NOT NULL,
                 PRIMARY KEY (id, source)
             );
 
-            CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_search USING fts5(
+            CREATE VIRTUAL TABLE IF NOT EXISTS belief_search USING fts5(
                 id, source, kind, statement, facets,
                 tokenize='porter unicode61'
+            );
+
+            -- Belief-to-belief relationship edges
+            CREATE TABLE IF NOT EXISTS belief_supports (
+                from_belief TEXT NOT NULL,
+                to_belief TEXT NOT NULL,
+                source_project TEXT NOT NULL,
+                last_indexed TEXT NOT NULL,
+                PRIMARY KEY (from_belief, to_belief, source_project)
+            );
+
+            CREATE TABLE IF NOT EXISTS belief_attacks (
+                from_belief TEXT NOT NULL,
+                to_belief TEXT NOT NULL,
+                source_project TEXT NOT NULL,
+                defeated INTEGER DEFAULT 0,
+                last_indexed TEXT NOT NULL,
+                PRIMARY KEY (from_belief, to_belief, source_project)
+            );
+
+            -- Belief provenance (Phase E populates this)
+            CREATE TABLE IF NOT EXISTS belief_applied_in (
+                belief_id TEXT NOT NULL,
+                project TEXT NOT NULL,
+                originated INTEGER DEFAULT 0,
+                last_indexed TEXT NOT NULL,
+                PRIMARY KEY (belief_id, project)
             );
             "#,
         )?;
@@ -752,10 +799,10 @@ impl Graph {
     }
 
     // =========================================================================
-    // Knowledge Operations (Cross-Project Beliefs)
+    // Belief Operations (Cross-Project Beliefs)
     // =========================================================================
 
-    /// Sync knowledge entries into graph.db (per-source rebuild)
+    /// Sync belief entries into graph.db (per-source rebuild)
     ///
     /// Only deletes entries for sources that were successfully collected.
     /// Sources that failed collection retain their previously indexed data.
@@ -763,9 +810,9 @@ impl Graph {
     ///
     /// `synced_sources` is the set of source names that were successfully collected
     /// (even if they returned 0 entries — 0 means "delete old, insert nothing").
-    pub fn sync_knowledge(
+    pub fn sync_beliefs(
         &self,
-        entries: &[KnowledgeEntry],
+        entries: &[BeliefEntry],
         synced_sources: &[String],
     ) -> Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
@@ -776,13 +823,13 @@ impl Graph {
         for source in synced_sources {
             if let Err(e) = self
                 .conn
-                .execute("DELETE FROM knowledge WHERE source = ?1", params![source])
+                .execute("DELETE FROM beliefs WHERE source = ?1", params![source])
             {
                 let _ = self.conn.execute("ROLLBACK", []);
                 return Err(e.into());
             }
             if let Err(e) = self.conn.execute(
-                "DELETE FROM knowledge_search WHERE source = ?1",
+                "DELETE FROM belief_search WHERE source = ?1",
                 params![source],
             ) {
                 let _ = self.conn.execute("ROLLBACK", []);
@@ -794,8 +841,10 @@ impl Graph {
         for entry in entries {
             if let Err(e) = self.conn.execute(
                 r#"
-                INSERT INTO knowledge (id, source, kind, statement, entrenchment, status, facets, last_indexed)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                INSERT INTO beliefs (id, source, kind, statement, entrenchment, status, facets,
+                    cited_by_beliefs, cited_by_sessions, applied_in,
+                    evidence_count, evidence_verified, health_score, contested_by, last_indexed)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
                 "#,
                 params![
                     entry.id,
@@ -805,6 +854,13 @@ impl Graph {
                     entry.entrenchment,
                     entry.status,
                     entry.facets,
+                    entry.cited_by_beliefs,
+                    entry.cited_by_sessions,
+                    entry.applied_in,
+                    entry.evidence_count,
+                    entry.evidence_verified,
+                    entry.health_score,
+                    entry.contested_by,
                     now
                 ],
             ) {
@@ -814,7 +870,7 @@ impl Graph {
 
             if let Err(e) = self.conn.execute(
                 r#"
-                INSERT INTO knowledge_search (id, source, kind, statement, facets)
+                INSERT INTO belief_search (id, source, kind, statement, facets)
                 VALUES (?1, ?2, ?3, ?4, ?5)
                 "#,
                 params![
@@ -834,21 +890,96 @@ impl Graph {
         Ok(())
     }
 
-    /// Search knowledge entries via FTS5
+    /// Sync belief relationship edges into graph.db (per-source rebuild)
+    ///
+    /// Deletes edges for successfully synced sources, then repopulates.
+    pub fn sync_belief_edges(
+        &self,
+        supports: &[(String, String, String)],  // (from, to, source_project)
+        attacks: &[(String, String, String, bool)],  // (from, to, source_project, defeated)
+        synced_sources: &[String],
+    ) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        self.conn.execute("BEGIN", [])?;
+
+        // Delete edges for successfully synced sources
+        for source in synced_sources {
+            if let Err(e) = self.conn.execute(
+                "DELETE FROM belief_supports WHERE source_project = ?1",
+                params![source],
+            ) {
+                let _ = self.conn.execute("ROLLBACK", []);
+                return Err(e.into());
+            }
+            if let Err(e) = self.conn.execute(
+                "DELETE FROM belief_attacks WHERE source_project = ?1",
+                params![source],
+            ) {
+                let _ = self.conn.execute("ROLLBACK", []);
+                return Err(e.into());
+            }
+        }
+
+        // Insert supports edges
+        for (from, to, source) in supports {
+            if let Err(e) = self.conn.execute(
+                r#"
+                INSERT OR IGNORE INTO belief_supports (from_belief, to_belief, source_project, last_indexed)
+                VALUES (?1, ?2, ?3, ?4)
+                "#,
+                params![from, to, source, now],
+            ) {
+                let _ = self.conn.execute("ROLLBACK", []);
+                return Err(e.into());
+            }
+        }
+
+        // Insert attacks edges with defeated merge rule: defeated=1 wins
+        for (from, to, source, defeated) in attacks {
+            if let Err(e) = self.conn.execute(
+                r#"
+                INSERT OR IGNORE INTO belief_attacks (from_belief, to_belief, source_project, defeated, last_indexed)
+                VALUES (?1, ?2, ?3, ?4, ?5)
+                "#,
+                params![from, to, source, *defeated as i32, now],
+            ) {
+                let _ = self.conn.execute("ROLLBACK", []);
+                return Err(e.into());
+            }
+            // Defeated=1 wins: upgrade non-defeated to defeated if needed
+            if *defeated {
+                if let Err(e) = self.conn.execute(
+                    "UPDATE belief_attacks SET defeated = 1 WHERE from_belief = ?1 AND to_belief = ?2 AND source_project = ?3 AND defeated = 0",
+                    params![from, to, source],
+                ) {
+                    let _ = self.conn.execute("ROLLBACK", []);
+                    return Err(e.into());
+                }
+            }
+        }
+
+        self.conn.execute("COMMIT", [])?;
+        Ok(())
+    }
+
+    /// Search belief entries via FTS5
     ///
     /// Returns entries ranked by FTS5 relevance, limited to `limit` results.
     /// User input is sanitized for FTS5: each token is double-quoted to prevent
     /// column name collisions (e.g. "llm" matching the column) and operator
     /// misinterpretation (hyphens, AND/OR/NOT).
-    pub fn search_knowledge(&self, query: &str, limit: usize) -> Result<Vec<KnowledgeEntry>> {
+    pub fn search_beliefs(&self, query: &str, limit: usize) -> Result<Vec<BeliefEntry>> {
         let sanitized = sanitize_fts5_query(query);
 
         let mut stmt = self.conn.prepare(
             r#"
-            SELECT k.id, k.source, k.kind, k.statement, k.entrenchment, k.status, k.facets
-            FROM knowledge_search ks
-            JOIN knowledge k ON ks.id = k.id AND ks.source = k.source
-            WHERE knowledge_search MATCH ?1
+            SELECT b.id, b.source, b.kind, b.statement, b.entrenchment, b.status, b.facets,
+                   b.cited_by_beliefs, b.cited_by_sessions, b.applied_in,
+                   b.evidence_count, b.evidence_verified, b.health_score, b.contested_by
+            FROM belief_search bs
+            JOIN beliefs b ON bs.id = b.id AND bs.source = b.source
+            WHERE belief_search MATCH ?1
             ORDER BY rank
             LIMIT ?2
             "#,
@@ -856,7 +987,7 @@ impl Graph {
 
         let entries = stmt
             .query_map(params![sanitized, limit as i64], |row| {
-                Ok(KnowledgeEntry {
+                Ok(BeliefEntry {
                     id: row.get(0)?,
                     source: row.get(1)?,
                     kind: row.get(2)?,
@@ -864,6 +995,13 @@ impl Graph {
                     entrenchment: row.get(4)?,
                     status: row.get(5)?,
                     facets: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
+                    cited_by_beliefs: row.get(7)?,
+                    cited_by_sessions: row.get(8)?,
+                    applied_in: row.get(9)?,
+                    evidence_count: row.get(10)?,
+                    evidence_verified: row.get(11)?,
+                    health_score: row.get(12)?,
+                    contested_by: row.get::<_, Option<String>>(13)?.unwrap_or_default(),
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -871,11 +1009,11 @@ impl Graph {
         Ok(entries)
     }
 
-    /// Count knowledge entries
-    pub fn knowledge_count(&self) -> Result<usize> {
+    /// Count belief entries
+    pub fn belief_count(&self) -> Result<usize> {
         let count: i64 = self
             .conn
-            .query_row("SELECT COUNT(*) FROM knowledge", [], |row| row.get(0))?;
+            .query_row("SELECT COUNT(*) FROM beliefs", [], |row| row.get(0))?;
         Ok(count as usize)
     }
 
@@ -1201,8 +1339,27 @@ mod tests {
         Ok(())
     }
 
+    fn make_belief_entry(id: &str, source: &str, kind: &str, statement: &str, entrenchment: &str, status: &str, facets: &str) -> BeliefEntry {
+        BeliefEntry {
+            id: id.to_string(),
+            source: source.to_string(),
+            kind: kind.to_string(),
+            statement: statement.to_string(),
+            entrenchment: entrenchment.to_string(),
+            status: status.to_string(),
+            facets: facets.to_string(),
+            cited_by_beliefs: 0,
+            cited_by_sessions: 0,
+            applied_in: 0,
+            evidence_count: 0,
+            evidence_verified: 0,
+            health_score: 0.0,
+            contested_by: String::new(),
+        }
+    }
+
     #[test]
-    fn test_sync_and_search_knowledge() -> Result<()> {
+    fn test_sync_and_search_beliefs() -> Result<()> {
         let dir = tempdir()?;
         let db_path = dir.path().join("graph.db");
         let conn = Connection::open(&db_path)?;
@@ -1210,49 +1367,41 @@ mod tests {
         graph.init_schema()?;
 
         let entries = vec![
-            KnowledgeEntry {
-                id: "explicit-error-types".to_string(),
-                source: "patina".to_string(),
-                kind: "belief".to_string(),
-                statement: "Prefer explicit error types over string errors".to_string(),
-                entrenchment: "high".to_string(),
-                status: "active".to_string(),
-                facets: "[\"rust\", \"error-handling\"]".to_string(),
-            },
-            KnowledgeEntry {
-                id: "prefer-result-over-panics".to_string(),
-                source: "persona".to_string(),
-                kind: "value".to_string(),
-                statement: "I prefer Result<T,E> over panics for error handling".to_string(),
-                entrenchment: "medium".to_string(),
-                status: "active".to_string(),
-                facets: "[\"rust\"]".to_string(),
-            },
+            make_belief_entry(
+                "explicit-error-types", "patina", "belief",
+                "Prefer explicit error types over string errors",
+                "high", "active", "[\"rust\", \"error-handling\"]",
+            ),
+            make_belief_entry(
+                "prefer-result-over-panics", "persona", "value",
+                "I prefer Result<T,E> over panics for error handling",
+                "medium", "active", "[\"rust\"]",
+            ),
         ];
 
         let sources = vec!["patina".to_string(), "persona".to_string()];
-        graph.sync_knowledge(&entries, &sources)?;
-        assert_eq!(graph.knowledge_count()?, 2);
+        graph.sync_beliefs(&entries, &sources)?;
+        assert_eq!(graph.belief_count()?, 2);
 
         // FTS5 search
-        let results = graph.search_knowledge("error handling", 10)?;
+        let results = graph.search_beliefs("error handling", 10)?;
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].source, "patina");
         assert_eq!(results[0].kind, "belief");
 
         // Search for something specific
-        let results = graph.search_knowledge("panics", 10)?;
+        let results = graph.search_beliefs("panics", 10)?;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].id, "prefer-result-over-panics");
         assert_eq!(results[0].source, "persona");
         assert_eq!(results[0].kind, "value");
 
         // Idempotent: sync again with same data → same count
-        graph.sync_knowledge(&entries, &sources)?;
-        assert_eq!(graph.knowledge_count()?, 2);
+        graph.sync_beliefs(&entries, &sources)?;
+        assert_eq!(graph.belief_count()?, 2);
 
         // Empty results
-        let results = graph.search_knowledge("nonexistent topic xyz", 10)?;
+        let results = graph.search_beliefs("nonexistent topic xyz", 10)?;
         assert!(results.is_empty());
 
         Ok(())
@@ -1267,55 +1416,40 @@ mod tests {
         graph.init_schema()?;
 
         // Sync project-a beliefs
-        let entries_a = vec![KnowledgeEntry {
-            id: "test-belief".to_string(),
-            source: "project-a".to_string(),
-            kind: "belief".to_string(),
-            statement: "Test belief from project A".to_string(),
-            entrenchment: "medium".to_string(),
-            status: "active".to_string(),
-            facets: "[]".to_string(),
-        }];
+        let entries_a = vec![make_belief_entry(
+            "test-belief", "project-a", "belief",
+            "Test belief from project A", "medium", "active", "[]",
+        )];
 
-        graph.sync_knowledge(&entries_a, &["project-a".to_string()])?;
-        assert_eq!(graph.knowledge_count()?, 1);
+        graph.sync_beliefs(&entries_a, &["project-a".to_string()])?;
+        assert_eq!(graph.belief_count()?, 1);
 
         // Sync project-b beliefs — project-a should be preserved
         let entries_b = vec![
-            KnowledgeEntry {
-                id: "belief-one".to_string(),
-                source: "project-b".to_string(),
-                kind: "belief".to_string(),
-                statement: "First belief".to_string(),
-                entrenchment: "high".to_string(),
-                status: "active".to_string(),
-                facets: "[]".to_string(),
-            },
-            KnowledgeEntry {
-                id: "belief-two".to_string(),
-                source: "project-b".to_string(),
-                kind: "belief".to_string(),
-                statement: "Second belief".to_string(),
-                entrenchment: "low".to_string(),
-                status: "active".to_string(),
-                facets: "[]".to_string(),
-            },
+            make_belief_entry(
+                "belief-one", "project-b", "belief",
+                "First belief", "high", "active", "[]",
+            ),
+            make_belief_entry(
+                "belief-two", "project-b", "belief",
+                "Second belief", "low", "active", "[]",
+            ),
         ];
 
-        graph.sync_knowledge(&entries_b, &["project-b".to_string()])?;
+        graph.sync_beliefs(&entries_b, &["project-b".to_string()])?;
         // project-a (1) + project-b (2) = 3 total
-        assert_eq!(graph.knowledge_count()?, 3);
+        assert_eq!(graph.belief_count()?, 3);
 
         // project-a belief still searchable
-        let results = graph.search_knowledge("project A", 10)?;
+        let results = graph.search_beliefs("project A", 10)?;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].source, "project-a");
 
         // Re-sync project-a with 0 entries → old project-a entries deleted
-        graph.sync_knowledge(&[], &["project-a".to_string()])?;
-        assert_eq!(graph.knowledge_count()?, 2); // only project-b remains
+        graph.sync_beliefs(&[], &["project-a".to_string()])?;
+        assert_eq!(graph.belief_count()?, 2); // only project-b remains
 
-        let results = graph.search_knowledge("project A", 10)?;
+        let results = graph.search_beliefs("project A", 10)?;
         assert!(results.is_empty());
 
         Ok(())
@@ -1354,7 +1488,7 @@ mod tests {
     }
 
     #[test]
-    fn test_search_knowledge_with_column_name_token() -> Result<()> {
+    fn test_search_beliefs_with_column_name_token() -> Result<()> {
         // Regression: "secrets-llm-boundary" caused "no such column: llm"
         // because FTS5 interpreted bare `llm` as a column reference.
         let dir = tempdir()?;
@@ -1363,27 +1497,23 @@ mod tests {
         let graph = Graph { conn };
         graph.init_schema()?;
 
-        let entries = vec![KnowledgeEntry {
-            id: "secrets-llm-boundary".to_string(),
-            source: "patina".to_string(),
-            kind: "belief".to_string(),
-            statement: "Never expose secrets to LLM context windows".to_string(),
-            entrenchment: "high".to_string(),
-            status: "active".to_string(),
-            facets: "[\"security\", \"llm\"]".to_string(),
-        }];
+        let entries = vec![make_belief_entry(
+            "secrets-llm-boundary", "patina", "belief",
+            "Never expose secrets to LLM context windows",
+            "high", "active", "[\"security\", \"llm\"]",
+        )];
 
-        graph.sync_knowledge(&entries, &["patina".to_string()])?;
+        graph.sync_beliefs(&entries, &["patina".to_string()])?;
 
         // These queries previously crashed with "no such column: llm"
-        let results = graph.search_knowledge("secrets-llm-boundary", 10)?;
+        let results = graph.search_beliefs("secrets-llm-boundary", 10)?;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].id, "secrets-llm-boundary");
 
-        let results = graph.search_knowledge("llm", 10)?;
+        let results = graph.search_beliefs("llm", 10)?;
         assert_eq!(results.len(), 1);
 
-        let results = graph.search_knowledge("secrets llm boundary", 10)?;
+        let results = graph.search_beliefs("secrets llm boundary", 10)?;
         assert_eq!(results.len(), 1);
 
         Ok(())
