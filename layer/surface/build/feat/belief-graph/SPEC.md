@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS beliefs (
     evidence_verified INTEGER DEFAULT 0,
     health_score REAL DEFAULT 0.0,
     contested_by TEXT DEFAULT '',
+    imported INTEGER DEFAULT 0,    -- Phase E: 1 = imported via `belief import`
     last_indexed TEXT NOT NULL,
     PRIMARY KEY (id, source)
 );
@@ -398,7 +399,11 @@ Phase E sync changes:
 - `collect_project_beliefs()`: add `imported` to SELECT (13th column)
 - `sync_from_registry()`: after syncing belief rows, populate
   `belief_applied_in` table: `originated = 1` when `imported = 0`
-  (native belief), `originated = 0` when `imported = 1`
+  (native belief), `originated = 0` when `imported = 1`.
+  Per-source rebuild: `DELETE FROM belief_applied_in WHERE project = ?`
+  for each successfully synced source before re-inserting, same pattern
+  as edge tables' `source_project` cleanup. This prevents stale rows
+  when a project removes or renames a belief.
 
 **Code paths:**
 - `src/commands/belief/mod.rs` — add `Import` subcommand
