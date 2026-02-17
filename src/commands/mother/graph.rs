@@ -298,9 +298,7 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
                 evidence_count: row.get::<_, Option<i32>>(8)?.unwrap_or(0),
                 evidence_verified: row.get::<_, Option<i32>>(9)?.unwrap_or(0),
                 health_score: row.get::<_, Option<f64>>(10)?.unwrap_or(0.0),
-                contested_by: row
-                    .get::<_, Option<String>>(11)?
-                    .unwrap_or_default(),
+                contested_by: row.get::<_, Option<String>>(11)?.unwrap_or_default(),
             })
         })?
         .filter_map(|r| r.ok())
@@ -317,8 +315,8 @@ fn collect_belief_edges(
     project_name: &str,
     db_path: &Path,
 ) -> Result<(
-    Vec<(String, String, String)>,        // supports: (from, to, source_project)
-    Vec<(String, String, String, bool)>,  // attacks: (from, to, source_project, defeated)
+    Vec<(String, String, String)>, // supports: (from, to, source_project)
+    Vec<(String, String, String, bool)>, // attacks: (from, to, source_project, defeated)
 )> {
     use rusqlite::Connection;
 
@@ -387,7 +385,10 @@ fn detect_dangling_edges(graph: &Graph) -> Result<()> {
     let dangling = graph.find_dangling_edges()?;
 
     if !dangling.is_empty() {
-        eprintln!("  ⚠ {} dangling edges (referencing unknown beliefs):", dangling.len());
+        eprintln!(
+            "  ⚠ {} dangling edges (referencing unknown beliefs):",
+            dangling.len()
+        );
         for (edge_type, from, to, source) in &dangling {
             eprintln!("    {} {} → {} (from {})", edge_type, from, to, source);
         }
