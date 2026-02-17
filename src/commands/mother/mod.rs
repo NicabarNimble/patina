@@ -86,6 +86,19 @@ pub enum MotherCommands {
     /// Graph operations — manage cross-project relationships
     #[command(subcommand)]
     Graph(GraphCommands),
+
+    /// Search cross-project beliefs (beliefs + persona values)
+    ///
+    /// FTS5 search across all synced beliefs in graph.db.
+    /// Run `patina mother graph sync` first to populate the index.
+    Search {
+        /// Search query
+        query: String,
+
+        /// Maximum results to return
+        #[arg(long, default_value = "10")]
+        limit: usize,
+    },
 }
 
 /// Graph subcommands (nested under `patina mother graph`)
@@ -158,6 +171,51 @@ pub enum GraphCommands {
         #[arg(long, default_value = "0.1")]
         alpha: f32,
     },
+
+    /// Query the belief graph
+    ///
+    /// Search beliefs, find supports/attacks edges, and discover which
+    /// projects hold a belief.
+    #[command(subcommand)]
+    Query(QueryCommands),
+}
+
+/// Query subcommands (nested under `patina mother graph query`)
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum QueryCommands {
+    /// Search beliefs by text (FTS5)
+    ///
+    /// Returns beliefs with metrics (health_score, evidence_count, etc.)
+    Belief {
+        /// Search query
+        query: String,
+
+        /// Maximum results
+        #[arg(long, default_value = "10")]
+        limit: usize,
+    },
+
+    /// Show beliefs that support a given belief
+    ///
+    /// Returns supporting beliefs across all projects.
+    Supports {
+        /// Belief ID to query
+        belief_id: String,
+    },
+
+    /// Show beliefs that attack a given belief
+    ///
+    /// Returns attacking beliefs with defeated status.
+    Attacks {
+        /// Belief ID to query
+        belief_id: String,
+    },
+
+    /// Show which projects have a given belief
+    Projects {
+        /// Belief ID to query
+        belief_id: String,
+    },
 }
 
 /// Execute mother command from CLI
@@ -172,7 +230,8 @@ pub fn execute_cli(
             println!("  patina mother start    Start the daemon");
             println!("  patina mother stop     Stop the daemon (not yet implemented)");
             println!("  patina mother status   Show daemon status (not yet implemented)");
-            println!("  patina mother graph    Graph operations\n");
+            println!("  patina mother graph    Graph operations");
+            println!("  patina mother search   Cross-project belief search\n");
             println!("Run 'patina mother --help' for details.");
             Ok(())
         }
@@ -187,6 +246,7 @@ pub fn execute_cli(
         Some(MotherCommands::Stop) => stop_daemon(),
         Some(MotherCommands::Status) => show_status(),
         Some(MotherCommands::Graph(graph_cmd)) => execute_graph(graph_cmd),
+        Some(MotherCommands::Search { query, limit }) => graph::search_beliefs_cli(&query, limit),
     }
 }
 
@@ -208,6 +268,7 @@ fn execute_graph(command: GraphCommands) -> Result<()> {
         } => graph::remove_link(&from, &to, &edge_type),
         GraphCommands::Stats => graph::show_stats(),
         GraphCommands::Learn { alpha } => graph::learn_weights(alpha),
+        GraphCommands::Query(query_cmd) => graph::query_beliefs_cli(query_cmd),
     }
 }
 

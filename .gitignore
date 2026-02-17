@@ -1,5 +1,6 @@
 /target/
 grammars/*/target/
+grammars/*/Cargo.lock
 plugins/*/target/
 .cargo/
 libduckdb/

@@ -18,7 +18,7 @@ use super::scry::internal::enrichment::{enrich_results, SearchResults};
 pub enum BeliefCommands {
     /// Show all beliefs ranked by use/truth metrics (default)
     Audit {
-        /// Sort by: "use" (default), "truth", "weak"
+        /// Sort by: "use" (default), "truth", "weak", "health", "grounding"
         #[arg(long, default_value = "use")]
         sort: String,
 
@@ -29,6 +29,28 @@ pub enum BeliefCommands {
         /// Show semantic grounding — nearest code/commits/sessions for each belief (E4.6a)
         #[arg(long)]
         grounding: bool,
+
+        /// Show only stale beliefs (last_activity > stale_days threshold)
+        #[arg(long)]
+        stale: bool,
+    },
+
+    /// Import a belief from another project
+    ///
+    /// Copies a belief from a source project into the current project's
+    /// layer/surface/epistemic/beliefs/ directory, resetting entrenchment
+    /// to 'low' and adding provenance metadata.
+    Import {
+        /// Belief ID to import
+        belief_id: String,
+
+        /// Source project name (as registered in mother's graph)
+        #[arg(long)]
+        from: String,
+
+        /// Overwrite if belief already exists locally
+        #[arg(long)]
+        force: bool,
     },
 }
 
@@ -37,6 +59,7 @@ pub fn execute(command: Option<BeliefCommands>) -> Result<()> {
         sort: "use".to_string(),
         warnings_only: false,
         grounding: false,
+        stale: false,
     });
 
     match cmd {
@@ -44,8 +67,174 @@ pub fn execute(command: Option<BeliefCommands>) -> Result<()> {
             sort,
             warnings_only,
             grounding,
-        } => run_audit(&sort, warnings_only, grounding),
+            stale,
+        } => run_audit(&sort, warnings_only, grounding, stale),
+        BeliefCommands::Import {
+            belief_id,
+            from,
+            force,
+        } => run_import(&belief_id, &from, force),
     }
+}
+
+/// Import a belief from another project
+fn run_import(belief_id: &str, from: &str, force: bool) -> Result<()> {
+    use patina::mother::Graph;
+
+    let beliefs_dir = Path::new("layer/surface/epistemic/beliefs");
+    let local_path = beliefs_dir.join(format!("{}.md", belief_id));
+
+    // Guard: refuse if belief already exists locally (unless --force)
+    if local_path.exists() && !force {
+        anyhow::bail!(
+            "Belief '{}' already exists locally at {}.\nUse --force to overwrite.",
+            belief_id,
+            local_path.display()
+        );
+    }
+
+    // Open graph and look up the belief
+    let graph = Graph::open()?;
+
+    let (entry, source_path) = graph.get_belief(belief_id, from)?.ok_or_else(|| {
+        anyhow::anyhow!(
+            "Belief '{}' not found in project '{}' in graph.db.\n\
+                 Check: patina mother graph query projects {}\n\
+                 Or sync: patina mother graph sync",
+            belief_id,
+            from,
+            belief_id,
+        )
+    })?;
+
+    // Resolve source file on disk
+    let source_file = source_path
+        .join("layer/surface/epistemic/beliefs")
+        .join(format!("{}.md", belief_id));
+
+    if !source_file.exists() {
+        anyhow::bail!(
+            "Source belief file not found: {}\n\
+             The project path in graph.db may be stale.\n\
+             Try: patina repo register {} {}",
+            source_file.display(),
+            from,
+            source_path.display(),
+        );
+    }
+
+    // Read the source file
+    let source_content = std::fs::read_to_string(&source_file)
+        .with_context(|| format!("reading {}", source_file.display()))?;
+
+    // Rewrite the frontmatter: reset entrenchment to low, add imported_from
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let new_content = rewrite_imported_belief(&source_content, &entry.entrenchment, from, &today);
+
+    // Ensure target directory exists
+    if !beliefs_dir.exists() {
+        std::fs::create_dir_all(beliefs_dir)
+            .with_context(|| format!("creating {}", beliefs_dir.display()))?;
+    }
+
+    // Write the imported belief
+    std::fs::write(&local_path, &new_content)
+        .with_context(|| format!("writing {}", local_path.display()))?;
+
+    println!("✅ Imported belief '{}' from project '{}'", belief_id, from);
+    println!(
+        "   Entrenchment reset to 'low' (was '{}')",
+        entry.entrenchment
+    );
+    println!("   Written to: {}", local_path.display());
+    println!();
+    println!("Run 'patina scrape' to index the imported belief.");
+
+    Ok(())
+}
+
+/// Rewrite a belief's frontmatter for import:
+/// - Reset entrenchment to 'low'
+/// - Add imported_from and import_date
+/// - Append ## Origin section
+fn rewrite_imported_belief(
+    content: &str,
+    original_entrenchment: &str,
+    from: &str,
+    today: &str,
+) -> String {
+    let mut output = String::new();
+
+    // Parse and rewrite frontmatter
+    if let Some(after_start) = content.strip_prefix("---") {
+        if let Some(end) = after_start.find("---") {
+            let frontmatter = &after_start[..end];
+            let body = &after_start[end + 3..];
+
+            output.push_str("---\n");
+
+            // Rewrite frontmatter lines
+            let mut wrote_entrenchment = false;
+            let mut wrote_imported_from = false;
+            for line in frontmatter.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("entrenchment:") {
+                    output.push_str("entrenchment: low\n");
+                    wrote_entrenchment = true;
+                } else if trimmed.starts_with("imported_from:") {
+                    // Replace existing
+                    output.push_str(&format!("imported_from: {}\n", from));
+                    wrote_imported_from = true;
+                } else if trimmed.starts_with("import_date:") {
+                    // Skip — will be re-added with imported_from
+                } else if !trimmed.is_empty() {
+                    output.push_str(line);
+                    output.push('\n');
+                }
+            }
+
+            // Add fields if not already present
+            if !wrote_entrenchment {
+                output.push_str("entrenchment: low\n");
+            }
+            if !wrote_imported_from {
+                output.push_str(&format!("imported_from: {}\n", from));
+            }
+            output.push_str(&format!("import_date: {}\n", today));
+
+            output.push_str("---");
+            output.push_str(body);
+        } else {
+            // Malformed frontmatter — pass through
+            output.push_str(content);
+        }
+    } else {
+        // No frontmatter — add one
+        output.push_str(&format!(
+            "---\nentrenchment: low\nimported_from: {}\nimport_date: {}\n---\n",
+            from, today
+        ));
+        output.push_str(content);
+    }
+
+    // Append ## Origin section if not already present
+    if !output.contains("## Origin") {
+        output.push_str("\n## Origin\n\n");
+        output.push_str(&format!("- Imported from: {}\n", from));
+        output.push_str(&format!(
+            "- Original entrenchment: {}\n",
+            original_entrenchment
+        ));
+        output.push_str(&format!("- Import date: {}\n", today));
+
+        // Append session backlink if active
+        if let Some(session_id) = crate::commands::scry::internal::logging::get_active_session_id()
+        {
+            output.push_str(&format!("- Import session: [[session-{}]]\n", session_id));
+        }
+    }
+
+    output
 }
 
 struct BeliefRow {
@@ -66,6 +255,11 @@ struct BeliefRow {
     grounding_code_count: i32,
     grounding_commit_count: i32,
     grounding_session_count: i32,
+    // Belief truthfulness
+    health_score: f64,
+    last_activity: Option<String>,
+    verification_drifted: bool,
+    contested_by: String,
 }
 
 impl BeliefRow {
@@ -98,38 +292,54 @@ impl BeliefRow {
         }
     }
 
-    fn health_warnings(&self) -> Vec<&'static str> {
-        let mut warnings = Vec::new();
+    fn health_warnings(&self) -> Vec<String> {
+        let mut warnings: Vec<String> = Vec::new();
         if self.evidence_count == 0 {
-            warnings.push("no-evidence");
+            warnings.push("no-evidence".to_string());
         }
         if self.evidence_verified == 0 && self.evidence_count > 0 {
-            warnings.push("unverified");
+            warnings.push("unverified".to_string());
         }
         if self.total_use() == 0 {
-            warnings.push("unused");
+            warnings.push("unused".to_string());
         }
         if self.applied_in == 0 {
-            warnings.push("no-applications");
+            warnings.push("no-applications".to_string());
         }
         if self.verification_failed > 0 {
-            warnings.push("verify-contested");
+            warnings.push("verify-contested".to_string());
         }
         if self.verification_errored > 0 {
-            warnings.push("verify-error");
+            warnings.push("verify-error".to_string());
+        }
+        if self.verification_drifted {
+            warnings.push("verify-drifted".to_string());
         }
         if self.grounding_total() == 0 && self.grounding_score == 0.0 {
-            warnings.push("floating");
+            warnings.push("floating".to_string());
+        }
+        if self.health_score < 0.4 {
+            warnings.push("low-health".to_string());
+        }
+        // Phase C: contested-by warnings
+        if !self.contested_by.is_empty() {
+            for id in self.contested_by.split(',').filter(|s| !s.is_empty()) {
+                warnings.push(format!("contested-by:{}", id));
+            }
         }
         warnings
     }
 }
 
-fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result<()> {
+fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool, stale: bool) -> Result<()> {
     let db_path = Path::new(database::PATINA_DB);
     if !db_path.exists() {
         anyhow::bail!("No database found. Run `patina scrape` first.");
     }
+
+    // Load config for stale_days (each command loads independently per spec)
+    let config = patina::project::load(Path::new(".")).unwrap_or_default();
+    let stale_days = config.beliefs.stale_days;
 
     let conn = Connection::open(db_path)?;
 
@@ -147,6 +357,7 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
     let order_clause = match sort_by {
         "truth" => "evidence_count DESC, evidence_verified DESC",
         "weak" => "(cited_by_beliefs + cited_by_sessions) ASC, evidence_count ASC",
+        "health" => "health_score ASC", // ascending: worst health first
         "grounding" => "grounding_score DESC, (grounding_code_count + grounding_commit_count + grounding_session_count) DESC",
         _ => "(cited_by_beliefs + cited_by_sessions) DESC, evidence_count DESC", // "use" default
     };
@@ -161,9 +372,14 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
         .prepare("SELECT grounding_score FROM beliefs LIMIT 1")
         .is_ok();
 
+    // Check if truthfulness columns exist
+    let has_truthfulness = conn
+        .prepare("SELECT health_score FROM beliefs LIMIT 1")
+        .is_ok();
+
     let sql = format!(
         "SELECT id, entrenchment, cited_by_beliefs, cited_by_sessions, applied_in,
-                evidence_count, evidence_verified, defeated_attacks{}{}
+                evidence_count, evidence_verified, defeated_attacks{}{}{}
          FROM beliefs
          ORDER BY {}",
         if has_verification {
@@ -173,6 +389,11 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
         },
         if has_grounding {
             ", grounding_score, grounding_code_count, grounding_commit_count, grounding_session_count"
+        } else {
+            ""
+        },
+        if has_truthfulness {
+            ", health_score, last_activity, verification_drifted, contested_by"
         } else {
             ""
         },
@@ -188,6 +409,11 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
                 v_offset + 4
             } else {
                 v_offset
+            };
+            let t_offset = if has_grounding {
+                g_offset + 4
+            } else {
+                g_offset
             };
 
             Ok(BeliefRow {
@@ -239,6 +465,26 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
                 } else {
                     0
                 },
+                health_score: if has_truthfulness {
+                    row.get(t_offset)?
+                } else {
+                    0.0
+                },
+                last_activity: if has_truthfulness {
+                    row.get(t_offset + 1)?
+                } else {
+                    None
+                },
+                verification_drifted: if has_truthfulness {
+                    row.get::<_, i32>(t_offset + 2).unwrap_or(0) == 1
+                } else {
+                    false
+                },
+                contested_by: if has_truthfulness {
+                    row.get::<_, String>(t_offset + 3).unwrap_or_default()
+                } else {
+                    String::new()
+                },
             })
         })?
         .filter_map(|r| r.ok())
@@ -249,28 +495,79 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
         return Ok(());
     }
 
-    // Filter if warnings_only
-    let display_rows: Vec<&BeliefRow> = if warnings_only {
-        rows.iter()
-            .filter(|r| !r.health_warnings().is_empty())
-            .collect()
-    } else {
-        rows.iter().collect()
+    // Compute stale threshold date for --stale filter
+    let stale_threshold = {
+        let today = chrono::Utc::now().date_naive();
+        today - chrono::Duration::days(stale_days as i64)
     };
+
+    // Apply filters: --stale AND --warnings-only compose via AND
+    let display_rows: Vec<&BeliefRow> = rows
+        .iter()
+        .filter(|r| {
+            if stale {
+                // Stale = last_activity exceeds stale_days OR last_activity is NULL
+                match &r.last_activity {
+                    Some(date_str) => {
+                        if let Ok(date) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+                            date <= stale_threshold
+                        } else {
+                            true // unparseable → treat as stale
+                        }
+                    }
+                    None => true, // NULL → stale
+                }
+            } else {
+                true
+            }
+        })
+        .filter(|r| {
+            if warnings_only {
+                !r.health_warnings().is_empty()
+            } else {
+                true
+            }
+        })
+        .collect();
 
     // Print header
     println!(
-        "\n  Belief Audit — {} beliefs (sorted by {})\n",
+        "\n  Belief Audit — {} beliefs (sorted by {}{})\n",
         rows.len(),
-        sort_by
+        sort_by,
+        if stale {
+            format!(", stale >{}d", stale_days)
+        } else {
+            String::new()
+        }
     );
     println!(
-        "  {:<36} {:>5} {:>5} {:>4} {:>4} {:>4} {:>4} {:>5} {:>9} {:>7} WARNINGS",
-        "BELIEF", "B-USE", "S-USE", "EVID", "VERI", "DEFT", "APPL", "V-OK", "ENTRENCH", "GROUND"
+        "  {:<36} {:>5} {:>5} {:>4} {:>4} {:>4} {:>4} {:>5} {:>5} {:>9} {:>7} WARNINGS",
+        "BELIEF",
+        "B-USE",
+        "S-USE",
+        "EVID",
+        "VERI",
+        "DEFT",
+        "APPL",
+        "V-OK",
+        "HLTH",
+        "ENTRENCH",
+        "GROUND"
     );
     println!(
-        "  {:<36} {:>5} {:>5} {:>4} {:>4} {:>4} {:>4} {:>5} {:>9} {:>7} ────────",
-        "──────", "─────", "─────", "────", "────", "────", "────", "─────", "─────────", "───────"
+        "  {:<36} {:>5} {:>5} {:>4} {:>4} {:>4} {:>4} {:>5} {:>5} {:>9} {:>7} ────────",
+        "──────",
+        "─────",
+        "─────",
+        "────",
+        "────",
+        "────",
+        "────",
+        "─────",
+        "─────",
+        "─────────",
+        "───────"
     );
 
     let mut warning_count = 0;
@@ -292,8 +589,10 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
             row.id.clone()
         };
 
+        let health_display = format!("{:.2}", row.health_score);
+
         println!(
-            "  {:<36} {:>5} {:>5} {:>4} {:>4} {:>4} {:>4} {:>5} {:>9} {:>7} {}",
+            "  {:<36} {:>5} {:>5} {:>4} {:>4} {:>4} {:>4} {:>5} {:>5} {:>9} {:>7} {}",
             display_id,
             row.cited_by_beliefs,
             row.cited_by_sessions,
@@ -302,6 +601,7 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
             row.defeated_attacks,
             row.applied_in,
             row.v_ok_display(),
+            health_display,
             row.entrenchment,
             row.grounding_display(),
             warning_str,
@@ -330,6 +630,32 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
     let grounded: usize = rows.iter().filter(|r| r.grounding_total() > 0).count();
     let floating: usize = rows.len() - grounded;
 
+    // Freshness stats
+    let stale_count = rows
+        .iter()
+        .filter(|r| match &r.last_activity {
+            Some(date_str) => chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
+                .map(|d| d <= stale_threshold)
+                .unwrap_or(true),
+            None => true,
+        })
+        .count();
+
+    // Median activity age (non-NULL last_activity only)
+    let today_naive = chrono::Utc::now().date_naive();
+    let mut activity_ages: Vec<i64> = rows
+        .iter()
+        .filter_map(|r| r.last_activity.as_ref())
+        .filter_map(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+        .map(|d| (today_naive - d).num_days())
+        .collect();
+    activity_ages.sort();
+    let median_age = if activity_ages.is_empty() {
+        None
+    } else {
+        Some(activity_ages[activity_ages.len() / 2])
+    };
+
     println!("\n  ── Summary ──");
     println!("  Total beliefs: {}", rows.len());
     println!(
@@ -357,6 +683,23 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
     if grounded > 0 || floating > 0 {
         println!("  Grounding: {} grounded, {} floating", grounded, floating);
     }
+    // Freshness summary line
+    if let Some(median) = median_age {
+        println!(
+            "  Freshness: {}/{} beliefs stale (>{}d), median activity age {}d",
+            stale_count,
+            rows.len(),
+            stale_days,
+            median
+        );
+    } else {
+        println!(
+            "  Freshness: {}/{} beliefs stale (>{}d)",
+            stale_count,
+            rows.len(),
+            stale_days
+        );
+    }
     if warning_count > 0 {
         println!("\n  Warnings: {}", warning_count);
         if with_no_evidence > 0 {
@@ -379,6 +722,18 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
         }
         if total_errored > 0 {
             println!("    {} beliefs with verification errors", total_errored);
+        }
+        let drifted_count = rows.iter().filter(|r| r.verification_drifted).count();
+        if drifted_count > 0 {
+            println!("    {} beliefs with verification drift", drifted_count);
+        }
+        let low_health_count = rows.iter().filter(|r| r.health_score < 0.4).count();
+        if low_health_count > 0 {
+            println!("    {} beliefs with low health (<0.4)", low_health_count);
+        }
+        let contested_count = rows.iter().filter(|r| !r.contested_by.is_empty()).count();
+        if contested_count > 0 {
+            println!("    {} beliefs with active contradictions", contested_count);
         }
     }
     println!();

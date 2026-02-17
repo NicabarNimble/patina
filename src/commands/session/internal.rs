@@ -739,12 +739,18 @@ fn parse_insertions(summary: &str) -> usize {
         .unwrap_or(0)
 }
 
-/// Truncate a string to max_len, appending "..." if truncated.
+/// Truncate a string to max_len bytes, appending "..." if truncated.
+/// Rounds down to the nearest char boundary to avoid panicking on multi-byte UTF-8.
 fn truncate(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
     } else {
-        format!("{}...", &s[..max_len])
+        // Find the last char boundary at or before max_len
+        let mut end = max_len;
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}...", &s[..end])
     }
 }
 

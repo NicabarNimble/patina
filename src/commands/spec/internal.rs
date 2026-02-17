@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
+use regex::Regex;
 use rusqlite::Connection;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
@@ -72,36 +74,60 @@ pub fn show_ready_specs(json: bool) -> Result<()> {
     let specs = get_ready_specs()?;
 
     if json {
+        // JSON contract: ready/active only, no drafts
         println!("{}", serde_json::to_string_pretty(&specs)?);
         return Ok(());
     }
 
+    // Get draft specs from merged filesystem+DB source
+    let draft_filters = ListFilters {
+        status: Some("draft".to_string()),
+        target: None,
+    };
+    let drafts = get_all_specs(&draft_filters).unwrap_or_default();
+
     if specs.is_empty() {
-        println!("No specs ready to work on.");
-        println!("\nHint: Specs need status 'ready' or 'active' with all blockers complete.");
-        return Ok(());
-    }
+        if drafts.is_empty() {
+            println!("No specs ready to work on.");
+            println!("\nHint: Specs need status 'ready' or 'active' with all blockers complete.");
+        } else {
+            println!("No specs ready to work on. {} draft spec(s) \u{2014} promote with `patina spec status <id> ready`", drafts.len());
+        }
+    } else {
+        // Group by status for display
+        let ready: Vec<_> = specs.iter().filter(|s| s.status == "ready").collect();
+        let active: Vec<_> = specs.iter().filter(|s| s.status == "active").collect();
 
-    // Group by status for display
-    let ready: Vec<_> = specs.iter().filter(|s| s.status == "ready").collect();
-    let active: Vec<_> = specs.iter().filter(|s| s.status == "active").collect();
+        if !ready.is_empty() {
+            println!("READY (can start now):");
+            for spec in &ready {
+                let target = spec.target.as_deref().unwrap_or("-");
+                println!("  {:<28} {:<10} {}", spec.id, target, spec.title);
+            }
+        }
 
-    if !ready.is_empty() {
-        println!("READY (can start now):");
-        for spec in &ready {
-            let target = spec.target.as_deref().unwrap_or("-");
-            println!("  {:<28} {:<10} {}", spec.id, target, spec.title);
+        if !active.is_empty() {
+            if !ready.is_empty() {
+                println!();
+            }
+            println!("ACTIVE (in progress):");
+            for spec in &active {
+                let target = spec.target.as_deref().unwrap_or("-");
+                println!("  {:<28} {:<10} {}", spec.id, target, spec.title);
+            }
         }
     }
 
-    if !active.is_empty() {
-        if !ready.is_empty() {
+    // DRAFTS section — human output only
+    if !drafts.is_empty() {
+        if !specs.is_empty() {
             println!();
         }
-        println!("ACTIVE (in progress):");
-        for spec in &active {
+        println!("DRAFTS (need promotion to ready):");
+        for spec in &drafts {
             let target = spec.target.as_deref().unwrap_or("-");
-            println!("  {:<28} {:<10} {}", spec.id, target, spec.title);
+            let suffix = if spec.unscraped { " [unscraped]" } else { "" };
+            println!("  {:<28} {:<10} {}{}", spec.id, target, spec.title, suffix);
         }
     }
 
@@ -247,6 +273,7 @@ pub struct SpecInfo {
     pub status: Option<String>,
     pub target: Option<String>,
     pub title: String,
+    pub unscraped: bool,
 }
 
 /// Filter options for spec list
@@ -256,53 +283,139 @@ pub struct ListFilters {
     pub target: Option<String>,
 }
 
-/// Query all specs with optional filters
+/// Scan layer/surface/build/ for SPEC.md files and parse frontmatter.
+/// Returns specs found on disk, keyed by id. Returns empty vec if build dir missing.
+fn scan_disk_specs() -> Vec<SpecInfo> {
+    let build_dir = Path::new("layer/surface/build");
+    if !build_dir.exists() {
+        return Vec::new();
+    }
+
+    let title_re = Regex::new(r"^# (.+)$").unwrap();
+    let mut specs = Vec::new();
+
+    // Recursive walk of layer/surface/build/ looking for SPEC.md files
+    fn walk_for_specs(dir: &Path, title_re: &Regex, specs: &mut Vec<SpecInfo>) {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(e) => {
+                eprintln!("Warning: cannot read {}: {}", dir.display(), e);
+                return;
+            }
+        };
+
+        for entry in entries {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            let path = entry.path();
+
+            if path.is_dir() {
+                walk_for_specs(&path, title_re, specs);
+            } else if path.file_name().and_then(|n| n.to_str()) == Some("SPEC.md") {
+                let content = match std::fs::read_to_string(&path) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!("Warning: cannot read {}: {}", path.display(), e);
+                        continue;
+                    }
+                };
+
+                let (frontmatter, body) = match parse_spec_file(&content) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("Warning: cannot parse {}: {}", path.display(), e);
+                        continue;
+                    }
+                };
+
+                if frontmatter.id.is_empty() {
+                    eprintln!("Warning: missing id in {}", path.display());
+                    continue;
+                }
+
+                // Extract title from first # heading in body
+                let title = body
+                    .lines()
+                    .find_map(|line| title_re.captures(line).map(|c| c[1].to_string()))
+                    .unwrap_or_else(|| frontmatter.id.clone());
+
+                specs.push(SpecInfo {
+                    id: frontmatter.id,
+                    status: frontmatter.status,
+                    target: frontmatter.target,
+                    title,
+                    unscraped: true, // disk-only until merged with DB
+                });
+            }
+        }
+    }
+
+    walk_for_specs(build_dir, &title_re, &mut specs);
+    specs
+}
+
+/// Query all specs with optional filters.
+///
+/// Merges filesystem scan (truth for existence) with DB query (supplementary).
+/// Filesystem wins for all fields. DB entries without matching disk files are excluded.
 pub fn get_all_specs(filters: &ListFilters) -> Result<Vec<SpecInfo>> {
+    // 1. Scan filesystem — truth for spec existence
+    let disk_specs = scan_disk_specs();
+    let mut spec_map: HashMap<String, SpecInfo> =
+        disk_specs.into_iter().map(|s| (s.id.clone(), s)).collect();
+
+    // 2. Merge with DB if it exists (supplementary data)
     let db_path = Path::new(DB_PATH);
-    if !db_path.exists() {
-        anyhow::bail!("Knowledge database not found. Run 'patina scrape' first.");
+    if db_path.exists() {
+        if let Ok(conn) = Connection::open(db_path) {
+            let mut stmt = conn.prepare(
+                "SELECT p.id, p.status, p.target, p.title
+                 FROM patterns p
+                 WHERE p.file_path LIKE 'layer/surface/build/%'
+                   AND p.status IS NOT NULL",
+            )?;
+
+            let db_specs = stmt
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+
+            for (id, _status, _target, _title) in db_specs {
+                // Only mark as scraped if spec exists on disk
+                if let Some(spec) = spec_map.get_mut(&id) {
+                    spec.unscraped = false;
+                }
+                // DB entries not on disk are excluded (stale)
+            }
+        }
     }
 
-    let conn = Connection::open(db_path).context("Failed to open database")?;
+    // 3. Collect, filter, sort
+    let mut specs: Vec<SpecInfo> = spec_map.into_values().collect();
 
-    // Build query with optional filters
-    let mut sql = String::from(
-        "SELECT p.id, p.status, p.target, p.title
-         FROM patterns p
-         WHERE p.file_path LIKE 'layer/surface/build/%'
-           AND p.status IS NOT NULL",
-    );
-
-    let mut params: Vec<String> = Vec::new();
-
-    if let Some(status) = &filters.status {
-        sql.push_str(" AND p.status = ?");
-        params.push(status.clone());
+    // Apply filters
+    if let Some(status_filter) = &filters.status {
+        specs.retain(|s| s.status.as_deref() == Some(status_filter.as_str()));
+    }
+    if let Some(target_filter) = &filters.target {
+        specs.retain(|s| s.target.as_deref() == Some(target_filter.as_str()));
     }
 
-    if let Some(target) = &filters.target {
-        sql.push_str(" AND p.target = ?");
-        params.push(target.clone());
-    }
-
-    sql.push_str(" ORDER BY p.status, p.target, p.id");
-
-    let mut stmt = conn.prepare(&sql)?;
-
-    // Convert params to references for rusqlite
-    let param_refs: Vec<&dyn rusqlite::ToSql> =
-        params.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
-
-    let specs = stmt
-        .query_map(param_refs.as_slice(), |row| {
-            Ok(SpecInfo {
-                id: row.get(0)?,
-                status: row.get::<_, Option<String>>(1)?,
-                target: row.get(2)?,
-                title: row.get(3)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+    // Sort by status, target, id (matches original ORDER BY)
+    specs.sort_by(|a, b| {
+        a.status
+            .cmp(&b.status)
+            .then(a.target.cmp(&b.target))
+            .then(a.id.cmp(&b.id))
+    });
 
     Ok(specs)
 }
@@ -325,19 +438,37 @@ pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
     }
 
     // Header
-    println!("{:<28} {:<10} {:<10} TITLE", "ID", "STATUS", "TARGET");
+    println!("{:<28} {:<22} {:<10} TITLE", "ID", "STATUS", "TARGET");
     println!("{:-<80}", "");
 
     for spec in &specs {
-        let status = spec.status.as_deref().unwrap_or("-");
+        let status_raw = spec.status.as_deref().unwrap_or("-");
+        let status_display = if spec.unscraped {
+            format!("{} [unscraped]", status_raw)
+        } else {
+            status_raw.to_string()
+        };
         let target = spec.target.as_deref().unwrap_or("-");
         println!(
-            "{:<28} {:<10} {:<10} {}",
-            spec.id, status, target, spec.title
+            "{:<28} {:<22} {:<10} {}",
+            spec.id, status_display, target, spec.title
         );
     }
 
     println!("\n{} spec(s)", specs.len());
+
+    // Warn about completed/abandoned specs still in tree
+    let stale_count = specs
+        .iter()
+        .filter(|s| matches!(s.status.as_deref(), Some("complete") | Some("abandoned")))
+        .count();
+    if stale_count > 0 {
+        let noun = if stale_count == 1 { "spec" } else { "specs" };
+        eprintln!(
+            "\n\u{26a0} {} completed/abandoned {} still in tree \u{2014} run `patina spec archive --stale` to archive",
+            stale_count, noun
+        );
+    }
 
     Ok(())
 }
@@ -624,39 +755,13 @@ fn resolve_spec_dir(file_path: &str) -> Option<std::path::PathBuf> {
 
 /// Archive all completed/abandoned specs that still have files in the tree.
 ///
-/// Finds specs with status 'complete' or 'abandoned' whose files still exist,
-/// then archives each one (tag + git rm + commit) in sequence.
+/// Uses the merged filesystem+DB source (get_all_specs) so it catches both
+/// scraped and unscraped stale specs — matching the warning in show_spec_list().
 pub fn archive_stale_specs(dry_run: bool) -> Result<()> {
-    let db_path = Path::new(DB_PATH);
-    if !db_path.exists() {
-        anyhow::bail!("Knowledge database not found. Run 'patina scrape' first.");
-    }
-
-    let conn = Connection::open(db_path).context("Failed to open database")?;
-
-    let mut stmt = conn.prepare(
-        "SELECT p.id, p.file_path, p.status, p.title
-         FROM patterns p
-         WHERE p.file_path LIKE 'layer/surface/build/%'
-           AND p.status IN ('complete', 'abandoned')
-         ORDER BY p.id",
-    )?;
-
-    let rows: Vec<(String, String, String, Option<String>)> = stmt
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, Option<String>>(3)?,
-            ))
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    // Filter to specs whose files still exist in tree
-    let stale: Vec<_> = rows
+    let all_specs = get_all_specs(&ListFilters::default())?;
+    let stale: Vec<_> = all_specs
         .into_iter()
-        .filter(|(_, file_path, _, _)| Path::new(file_path).exists())
+        .filter(|s| matches!(s.status.as_deref(), Some("complete") | Some("abandoned")))
         .collect();
 
     if stale.is_empty() {
@@ -666,24 +771,33 @@ pub fn archive_stale_specs(dry_run: bool) -> Result<()> {
 
     println!("Found {} stale spec(s) to archive:\n", stale.len());
 
-    for (id, file_path, status, title) in &stale {
-        let tag_name = format!("spec/{}", id);
-        let desc = title.as_deref().unwrap_or(id);
+    for spec in &stale {
+        let tag_name = format!("spec/{}", spec.id);
 
         // Skip if tag already exists
         if tag_exists(&tag_name)? {
-            println!("  Skip: {} (tag already exists)", id);
+            println!("  Skip: {} (tag already exists)", spec.id);
             continue;
         }
 
-        let spec_dir = resolve_spec_dir(file_path);
+        // Resolve file path via find_spec (handles both DB and filesystem)
+        let (file_path, _, _) = match find_spec(&spec.id) {
+            Ok(found) => found,
+            Err(e) => {
+                eprintln!("  Skip: {} ({})", spec.id, e);
+                continue;
+            }
+        };
+
+        let status = spec.status.as_deref().unwrap_or("complete");
+        let spec_dir = resolve_spec_dir(&file_path);
 
         if dry_run {
-            println!("  Would archive: {} ({})", id, status);
+            println!("  Would archive: {} ({})", spec.id, status);
             continue;
         }
 
-        archive_spec_inner(id, file_path, status, desc, &spec_dir)?;
+        archive_spec_inner(&spec.id, &file_path, status, &spec.title, &spec_dir)?;
     }
 
     if dry_run {
@@ -693,38 +807,75 @@ pub fn archive_stale_specs(dry_run: bool) -> Result<()> {
     Ok(())
 }
 
-/// Find a spec by its frontmatter id in the patterns table
+/// Find a spec by its frontmatter id.
+///
+/// Tries DB first, falls back to filesystem scan for unscraped specs.
 fn find_spec(id: &str) -> Result<(String, Option<String>, Option<String>)> {
+    // Try DB first
     let db_path = Path::new(".patina/local/data/patina.db");
-    if !db_path.exists() {
-        anyhow::bail!("Knowledge database not found. Run 'patina scrape' first.");
-    }
-
-    let conn = Connection::open(db_path).context("Failed to open database")?;
-
-    let result = conn.query_row(
-        "SELECT file_path, status, title FROM patterns WHERE id = ?1",
-        rusqlite::params![id],
-        |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, Option<String>>(1)?,
-                row.get::<_, Option<String>>(2)?,
-            ))
-        },
-    );
-
-    match result {
-        Ok(row) => Ok(row),
-        Err(rusqlite::Error::QueryReturnedNoRows) => {
-            anyhow::bail!(
-                "Spec '{}' not found in patterns table.\n\
-                 Run 'patina scrape' to index specs, or check the id.",
-                id
+    if db_path.exists() {
+        if let Ok(conn) = Connection::open(db_path) {
+            let result = conn.query_row(
+                "SELECT file_path, status, title FROM patterns WHERE id = ?1",
+                rusqlite::params![id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                },
             );
+
+            match result {
+                Ok(row) => return Ok(row),
+                Err(rusqlite::Error::QueryReturnedNoRows) => {
+                    // Fall through to filesystem scan
+                }
+                Err(e) => return Err(e).context("Failed to query patterns table"),
+            }
         }
-        Err(e) => Err(e).context("Failed to query patterns table"),
     }
+
+    // Filesystem fallback: scan disk for matching spec
+    let disk_specs = scan_disk_specs();
+    for spec in disk_specs {
+        if spec.id == id {
+            // Reconstruct file_path from the spec id by scanning for the actual file
+            let build_dir = Path::new("layer/surface/build");
+            if let Some(path) = find_spec_file_on_disk(build_dir, id) {
+                return Ok((path, spec.status, Some(spec.title)));
+            }
+        }
+    }
+
+    anyhow::bail!(
+        "Spec '{}' not found.\n\
+         Check the id, or create it under layer/surface/build/.",
+        id
+    );
+}
+
+/// Find the file path for a spec id on disk.
+fn find_spec_file_on_disk(dir: &Path, target_id: &str) -> Option<String> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(found) = find_spec_file_on_disk(&path, target_id) {
+                return Some(found);
+            }
+        } else if path.file_name().and_then(|n| n.to_str()) == Some("SPEC.md") {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok((fm, _)) = parse_spec_file(&content) {
+                    if fm.id == target_id {
+                        return Some(path.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Check if a git tag exists

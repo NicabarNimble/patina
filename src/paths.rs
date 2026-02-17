@@ -198,6 +198,16 @@ pub mod plugin {
     }
 }
 
+/// User-level layer paths (~/.patina/layer/)
+pub mod user_layer {
+    use super::*;
+
+    /// User-level beliefs directory: `~/.patina/layer/surface/beliefs/`
+    pub fn beliefs_dir() -> PathBuf {
+        patina_home().join("layer/surface/beliefs")
+    }
+}
+
 /// Mother paths (cross-project graph and federation)
 pub mod mother {
     use super::*;
@@ -387,6 +397,13 @@ mod tests {
 
         let pid = serve::pid_path();
         assert!(pid.to_string_lossy().ends_with("run/mother.pid"));
+    }
+
+    #[test]
+    fn test_user_layer_paths() {
+        let beliefs = user_layer::beliefs_dir();
+        assert!(beliefs.to_string_lossy().contains("layer/surface/beliefs"));
+        assert!(beliefs.starts_with(patina_home()));
     }
 
     #[test]

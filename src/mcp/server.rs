@@ -245,6 +245,35 @@ fn handle_list_tools(req: &Request) -> Response {
                     }
                 },
                 {
+                    "name": "mother",
+                    "description": "Search cross-project knowledge - federated FTS5 search over project beliefs and persona values indexed in Mother's graph.db. Returns belief entries from all registered projects and persona. Run `mother graph sync` to populate the index. For project-scoped semantic search, use scry instead.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "Search query text (FTS5 full-text search)"
+                            },
+                            "limit": {
+                                "type": "integer",
+                                "default": 10,
+                                "description": "Maximum results to return (default: 10)"
+                            },
+                            "mode": {
+                                "type": "string",
+                                "enum": ["search", "supports", "attacks", "projects"],
+                                "default": "search",
+                                "description": "Query mode: 'search' (default — FTS5 keyword search), 'supports' (beliefs supporting belief_id), 'attacks' (beliefs attacking belief_id), 'projects' (projects holding belief_id)"
+                            },
+                            "belief_id": {
+                                "type": "string",
+                                "description": "Belief ID for supports/attacks/projects modes"
+                            }
+                        },
+                        "required": ["query"]
+                    }
+                },
+                {
                     "name": "assay",
                     "description": "Query codebase structure - modules, imports, functions, call graph. Use for exact structural questions like 'list all modules', 'what imports X', 'show largest files'. For semantic similarity, use scry instead. Use 'derive' to compute/view structural signals (usage, activity, centrality). Use 'search' for ranked FTS5 text search, 'cochange' for temporal co-change analysis, 'belief' for belief grounding.",
                     "inputSchema": {
@@ -573,6 +602,57 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                     }),
                 ),
                 Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            }
+        }
+        "mother" => {
+            let mode = args
+                .get("mode")
+                .and_then(|v| v.as_str())
+                .unwrap_or("search");
+            let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+            let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
+            let belief_id = args.get("belief_id").and_then(|v| v.as_str()).unwrap_or("");
+
+            match mode {
+                "search" => {
+                    if query.is_empty() {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            "mother tool requires 'query' parameter",
+                        );
+                    }
+
+                    match handle_mother_search(query, limit) {
+                        Ok(text) => Response::success(
+                            req.id.clone(),
+                            serde_json::json!({
+                                "content": [{ "type": "text", "text": text }]
+                            }),
+                        ),
+                        Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                    }
+                }
+                "supports" | "attacks" | "projects" => {
+                    if belief_id.is_empty() {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            &format!("mode '{}' requires 'belief_id' parameter", mode),
+                        );
+                    }
+
+                    match handle_mother_query(mode, belief_id) {
+                        Ok(text) => Response::success(
+                            req.id.clone(),
+                            serde_json::json!({
+                                "content": [{ "type": "text", "text": text }]
+                            }),
+                        ),
+                        Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                    }
+                }
+                _ => Response::error(req.id.clone(), -32602, &format!("unknown mode '{}'", mode)),
             }
         }
         "assay" => {
@@ -1725,6 +1805,99 @@ fn handle_detail(query_id: &str, rank: usize) -> Result<String> {
 
     output.push_str(&format!("\n\n---\nQuery ID: {}\n", query_id));
     Ok(output)
+}
+
+/// Handle mother query — supports/attacks/projects modes
+fn handle_mother_query(mode: &str, belief_id: &str) -> Result<String> {
+    use patina::mother::Graph;
+
+    let graph = Graph::open()?;
+
+    match mode {
+        "supports" => {
+            let supports = graph.query_supports(belief_id)?;
+            let json_results: Vec<serde_json::Value> = supports
+                .iter()
+                .map(|(from, source)| {
+                    serde_json::json!({
+                        "from_belief": from,
+                        "to_belief": belief_id,
+                        "source_project": source
+                    })
+                })
+                .collect();
+            Ok(serde_json::to_string_pretty(&json_results)?)
+        }
+        "attacks" => {
+            let attacks = graph.query_attacks(belief_id)?;
+            let json_results: Vec<serde_json::Value> = attacks
+                .iter()
+                .map(|(from, source, defeated)| {
+                    serde_json::json!({
+                        "from_belief": from,
+                        "to_belief": belief_id,
+                        "source_project": source,
+                        "defeated": defeated
+                    })
+                })
+                .collect();
+            Ok(serde_json::to_string_pretty(&json_results)?)
+        }
+        "projects" => {
+            let projects = graph.query_projects(belief_id)?;
+            let json_results: Vec<serde_json::Value> = projects
+                .iter()
+                .map(|(source, entrenchment)| {
+                    serde_json::json!({
+                        "belief_id": belief_id,
+                        "source": source,
+                        "entrenchment": entrenchment
+                    })
+                })
+                .collect();
+            Ok(serde_json::to_string_pretty(&json_results)?)
+        }
+        _ => anyhow::bail!("unknown mode '{}'", mode),
+    }
+}
+
+/// Handle mother search — cross-project belief FTS5 search
+///
+/// Thin wrapper over Graph::search_beliefs(). Returns JSON array per SPEC.
+fn handle_mother_search(query: &str, limit: usize) -> Result<String> {
+    use patina::mother::Graph;
+
+    let graph = Graph::open()?;
+    let results = graph.search_beliefs(query, limit)?;
+
+    if results.is_empty() {
+        return Ok("[]".to_string());
+    }
+
+    // Return JSON array with all fields including metrics
+    let json_results: Vec<serde_json::Value> = results
+        .iter()
+        .map(|entry| {
+            serde_json::json!({
+                "id": entry.id,
+                "source": entry.source,
+                "kind": entry.kind,
+                "statement": entry.statement,
+                "entrenchment": entry.entrenchment,
+                "status": entry.status,
+                "facets": entry.facets,
+                "cited_by_beliefs": entry.cited_by_beliefs,
+                "cited_by_sessions": entry.cited_by_sessions,
+                "applied_in": entry.applied_in,
+                "evidence_count": entry.evidence_count,
+                "evidence_verified": entry.evidence_verified,
+                "health_score": entry.health_score,
+                "contested_by": entry.contested_by
+            })
+        })
+        .collect();
+
+    Ok(serde_json::to_string_pretty(&json_results)?)
 }
 
 /// Format full detail content based on event type
