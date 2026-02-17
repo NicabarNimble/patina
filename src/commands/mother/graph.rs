@@ -55,19 +55,22 @@ pub fn sync_from_registry() -> Result<()> {
     }
 
     // =========================================================================
-    // Knowledge sync: collect beliefs from projects + persona values
+    // Belief sync: collect beliefs from projects + persona values
     // =========================================================================
 
     println!();
-    println!("📚 Syncing knowledge...\n");
+    println!("📚 Syncing beliefs...\n");
 
     let mut knowledge: Vec<BeliefEntry> = Vec::new();
     let mut synced_sources: Vec<String> = Vec::new();
     let mut beliefs_synced = 0;
     let mut values_synced = 0;
 
+    // Detect current project root for dedup guard
+    let current_project_root = patina::session::SessionManager::find_project_root().ok();
+
     // Collect beliefs from current project (auto-detected, may not be in registry)
-    if let Ok(project_root) = patina::session::SessionManager::find_project_root() {
+    if let Some(ref project_root) = current_project_root {
         let project_name = project_root
             .file_name()
             .and_then(|n| n.to_str())
@@ -92,8 +95,15 @@ pub fn sync_from_registry() -> Result<()> {
     }
 
     // For each registered project, try to open patina.db and read beliefs
+    // Dedup guard: skip registry entry if its path matches current project root
     for (name, entry) in &registry.projects {
-        let db_path = Path::new(&entry.path).join(".patina/local/data/patina.db");
+        let registry_path = Path::new(&entry.path);
+        if let Some(ref project_root) = current_project_root {
+            if registry_path == project_root.as_path() {
+                continue; // Already collected as current project
+            }
+        }
+        let db_path = registry_path.join(".patina/local/data/patina.db");
         match collect_project_beliefs(name, &db_path) {
             Ok(entries) => {
                 let count = entries.len();
@@ -140,7 +150,7 @@ pub fn sync_from_registry() -> Result<()> {
     let mut edge_synced_sources: Vec<String> = Vec::new();
 
     // Collect edges from current project
-    if let Ok(project_root) = patina::session::SessionManager::find_project_root() {
+    if let Some(ref project_root) = current_project_root {
         let project_name = project_root
             .file_name()
             .and_then(|n| n.to_str())
@@ -162,9 +172,15 @@ pub fn sync_from_registry() -> Result<()> {
         }
     }
 
-    // Collect edges from registered projects
+    // Collect edges from registered projects (dedup guard: skip current project)
     for (name, entry) in &registry.projects {
-        let db_path = Path::new(&entry.path).join(".patina/local/data/patina.db");
+        let registry_path = Path::new(&entry.path);
+        if let Some(ref project_root) = current_project_root {
+            if registry_path == project_root.as_path() {
+                continue;
+            }
+        }
+        let db_path = registry_path.join(".patina/local/data/patina.db");
         match collect_belief_edges(name, &db_path) {
             Ok((s, a)) => {
                 let count = s.len() + a.len();

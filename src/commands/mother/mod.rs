@@ -186,7 +186,7 @@ pub fn execute_cli(
             println!("  patina mother stop     Stop the daemon (not yet implemented)");
             println!("  patina mother status   Show daemon status (not yet implemented)");
             println!("  patina mother graph    Graph operations");
-            println!("  patina mother search   Cross-project knowledge search\n");
+            println!("  patina mother search   Cross-project belief search\n");
             println!("Run 'patina mother --help' for details.");
             Ok(())
         }
