@@ -498,10 +498,11 @@ See [[session-20260216-155323]] for detailed mapping.
 | A: Belief nodes in graph.db | DONE | [[session-20260217-055500]] | [[commit-ff2e1f25]] |
 | B: Belief relationship edges | DONE | same | [[commit-f3db3826]] |
 | C: Richer sync + dedup fix | DONE | same | [[commit-17166a84]] |
-| D: `mother graph query` | TODO | — | — |
-| E: `patina belief import` | TODO | — | — |
+| D: `mother graph query` | DONE | [[session-20260217-064044]] | [[commit-d6fec949]] |
+| E: `patina belief import` | PARTIAL | same | [[commit-18ab1879]] |
 
-**Session 1 verified exit criteria 1, 2, 7.** Criteria 3–6 require Phases D+E.
+**Session 1 verified exit criteria 1, 2, 7.** Session 2 verified criteria 1, 2, 4.
+**Remaining:** Exit criteria 3 (import with scrape+audit roundtrip), 5 (tests), 6 (CI checks) need final verification. Phase E code is complete but needs fmt/clippy/test pass.
 
 ## Review History
 
