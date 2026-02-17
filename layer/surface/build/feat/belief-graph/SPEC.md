@@ -246,8 +246,8 @@ scraper implements this as:
 This makes the flag deterministic regardless of processing order.
 
 **Current scraper behavior** (`extract_file_metrics()` lines 402-419):
-- `## Attacks` with `status: defeated` → `defeated_attacks` count only,
-  NOT added to `attacks_ids`. **Change needed:** also emit edge row with
+- `## Attacks` with `status: defeated` → silently skipped (not in
+  `attacks_ids`, not counted). **Change needed:** also emit edge row with
   `defeated=1`.
 - `## Attacked-By` with `status: defeated` → `defeated_attacks` count,
   NOT added to `attacked_by_ids`. **Change needed:** also emit edge row
@@ -312,18 +312,24 @@ CREATE TABLE IF NOT EXISTS belief_attacks (
 );
 ```
 
-Both tables are dropped and rebuilt each full scrape (same as the `beliefs`
-table pattern). `insert_belief()` writes edges from both `## Attacks` and
-`## Attacked-By` sections. Dedup uses the same `defeated=1` wins rule as
-graph.db: `INSERT OR IGNORE` + `UPDATE ... SET defeated = 1 WHERE defeated = 0`.
-See Phase B defeated flag semantics for the full merge rule and diagnostic.
+Both tables are rebuilt each scrape run (full or incremental). Since
+`cross_reference_beliefs()` always processes all beliefs and computes fresh
+relationship data, edge tables are always rebuilt from scratch — this is
+cheap (O(beliefs × edges_per_belief)) and avoids stale edge data after
+incremental runs. Edge writes happen in a **separate pass** after the
+Phase 3 insert loop, iterating ALL beliefs (not just newly inserted ones).
+This ensures edges are correct after both full and incremental scrapes.
+Dedup uses the same `defeated=1` wins rule as graph.db: `INSERT OR IGNORE`
+\+ `UPDATE ... SET defeated = 1 WHERE defeated = 0`. See Phase B defeated
+flag semantics for the full merge rule and diagnostic.
 
 **Code paths:**
 - `src/commands/scrape/beliefs/mod.rs` — add `## Supports` parsing to
   `extract_file_metrics()` (new `supports_ids: Vec<String>` field on
   `BeliefMetrics`; also capture defeated entry IDs for edge rows), add
   `belief_supports` and `belief_attacks` tables to
-  `create_materialized_views()`, write edges in `insert_belief()`
+  `create_materialized_views()`, write edges in a separate pass after
+  Phase 3 (not inside `insert_belief()`)
 - `src/mother/graph.rs` — add edge tables to `init_schema()`, add
   `sync_belief_edges()` method
 - `src/commands/mother/graph.rs` — extend `sync_from_registry()` to read
@@ -383,9 +389,17 @@ resolve on next full sync or get overwritten by per-source rebuild.
 Only log if count > 0: `⚠ {N} dangling edge(s) — target beliefs not
 in graph.db (run 'mother graph sync' after 'patina scrape' in all projects)`.
 
+**Dedup: current project vs registry.** If the current project (auto-detected
+via `find_project_root()`) is also in the registry, beliefs would be collected
+twice with the same `(id, source)` pair, causing a PK violation in
+`sync_beliefs()`. Fix: skip the registry entry if its resolved path matches
+`project_root`. This is a pre-existing bug in `sync_from_registry()` — fix
+during Phase C since this function is already being extended.
+
 **Code paths:**
 - `src/commands/mother/graph.rs` — update `collect_project_beliefs()` to
-  read 12 columns, add `collect_belief_edges()` function
+  read 12 columns, add `collect_belief_edges()` function, add dedup guard
+  (skip registry entry matching current project root)
 - `src/mother/graph.rs` — update `BeliefEntry` struct (renamed from
   `KnowledgeEntry` in Phase A) with additional metric fields, update
   `sync_beliefs()` signature
@@ -791,3 +805,56 @@ phase ordering, scope discipline. Read all 10 referenced files (SPEC +
     logging). If a session is active, appends the link. If not, omits
     the session line — `import_date` in frontmatter provides the
     timestamp regardless.
+
+### Review Pass 6 — Code-Grounded Review (session [[session-20260216-221447]])
+
+**Scope:** Read all 6 referenced source files + 3 session archives. Verified
+code references, function names, line numbers, struct definitions, phase
+ordering, and cross-referencing behavior against current codebase.
+
+24. **`## Attacks` defeated behavior misdescribed** — SPEC claimed
+    `## Attacks` with `status: defeated` increments `defeated_attacks`.
+    Actual code (`extract_file_metrics()` line 414): defeated entries are
+    silently skipped — no counter, no ID capture. Only `## Attacked-By`
+    increments `defeated_attacks` (line 404). Fixed: corrected current-
+    behavior description. Change request (emit edge row) unchanged.
+
+25. **Edge table rebuild timing ambiguity** — SPEC said "dropped and
+    rebuilt each full scrape" but `cross_reference_beliefs()` runs on
+    every scrape (full and incremental), computing fresh relationship
+    data for ALL beliefs. Rebuilding edges only on full scrape leaves
+    them stale after incremental runs. Fixed: changed to "each scrape
+    run (full or incremental)" with rationale (cheap, avoids staleness).
+
+26. **Pre-existing duplicate collection in `sync_from_registry()`** —
+    If the current project (auto-detected, named by `file_name()`) is
+    also in the registry, beliefs are collected twice with the same
+    `(id, source)` pair. The `sync_knowledge()` transaction hits a PK
+    violation on the second INSERT and ROLLBACKs. Pre-existing bug, not
+    introduced by this SPEC. Fixed: added dedup guard to Phase C code
+    paths (skip registry entry matching current project root).
+
+27. **Edge writes must be a separate pass from `insert_belief()`** —
+    On incremental scrape, `insert_belief()` only runs for new beliefs.
+    If edge tables are rebuilt every scrape but edges are written inside
+    `insert_belief()`, existing beliefs' edges would be lost. Fixed:
+    clarified that edge writes happen in a separate pass after Phase 3,
+    iterating ALL beliefs. Updated code paths accordingly.
+
+### Review Pass 6 — Verified OK
+
+- **Phase A rename scope**: All 5 files confirmed. `KnowledgeEntry` at
+  `graph.rs:148`, re-export at `mod.rs:39`, call sites at
+  `commands/mother/graph.rs:8,132,148`, `mcp/server.rs:609`.
+- **`get_active_session_id()`**: Exists in `mcp/server.rs` and
+  `commands/scry/internal/logging.rs`. SPEC reference valid.
+- **`collect_project_beliefs()` reads 5 columns**: Confirmed at line 200.
+- **`extract_file_metrics()` line references**: `## Attacked-By` at
+  402-410, `## Attacks` at 412-418. Correct.
+- **FTS5 lifecycle**: `DROP TABLE IF EXISTS` on virtual table removes
+  shadow tables. Clean rename path confirmed.
+- **Phase ordering**: A,B (parallelizable) → C → D,E (parallelizable).
+- **Exit criteria**: All 7 testable with concrete commands.
+- **MCP backward compatibility**: `mode` default `search` preserves
+  existing behavior. Error codes documented.
+- **Non-goals**: Comprehensive, no scope creep risk.
