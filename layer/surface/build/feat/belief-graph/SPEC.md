@@ -147,9 +147,32 @@ CREATE VIRTUAL TABLE IF NOT EXISTS belief_search USING fts5(
 Add edge tables for belief-to-belief relationships. These edges come from
 the `## Supports` and `## Attacks` sections that the scraper already parses.
 
+**Belief ID semantics in edges:** Edge tables reference beliefs by ID only
+(not by `(id, source)` pair), because edges model relationships between
+belief *concepts*, not project-specific instances. Per Dung's framework,
+"explicit-error-types SUPPORTS sync-first" is a statement about the
+argument structure, regardless of which project holds each belief.
+
+This is safe because:
+- Before Phase E, each belief ID exists in exactly one project. No ambiguity.
+- After Phase E, an imported belief is the *same concept* in a new project
+  (same ID, same statement, `## Origin` links back). The support/attack
+  relationship applies equally to the original and the imported copy.
+- `source_project` identifies who *declared* the relationship, not which
+  copy of the belief is involved. This is sufficient for per-source rebuild
+  and provenance.
+
+If two unrelated projects independently create beliefs with the same ID
+but different meanings, the edges become ambiguous. This is a naming
+collision, not an architecture bug — belief IDs are human-chosen slugs
+per [[belief-identity-is-slug-not-hash]], and collisions indicate the
+beliefs should be renamed. `mother graph query supports <id>` would
+surface the collision by showing contradictory relationships.
+
 ```sql
 -- Belief-to-belief edges (cross-project relationships)
 -- source_project = the project whose belief markdown declared this relationship
+-- from_belief/to_belief reference belief concepts by ID (not project-scoped)
 CREATE TABLE IF NOT EXISTS belief_supports (
     from_belief TEXT NOT NULL,
     to_belief TEXT NOT NULL,
@@ -162,24 +185,59 @@ CREATE TABLE IF NOT EXISTS belief_attacks (
     from_belief TEXT NOT NULL,
     to_belief TEXT NOT NULL,
     source_project TEXT NOT NULL,
-    defeated INTEGER DEFAULT 0,   -- from ## Attacked-By status
+    defeated INTEGER DEFAULT 0,
     last_indexed TEXT NOT NULL,
     PRIMARY KEY (from_belief, to_belief, source_project)
 );
 
 -- Belief provenance (which projects have this belief)
--- Note: before Phase E, this is derivable from beliefs.source.
--- After Phase E imports, a belief can exist in multiple projects
--- with different sources, making this table necessary.
--- Can be deferred from Phase B to Phase E if desired.
+-- DEFERRED to Phase E. Until imports exist, `query projects` derives
+-- from: SELECT DISTINCT source FROM beliefs WHERE id = ?
+-- Phase E write path: during sync, for each project's beliefs, insert
+-- (belief_id, project, originated). originated = 1 when the belief's
+-- patina.db row has no `## Origin` section (native belief). originated = 0
+-- when `## Origin` exists (imported). The scraper detects this by checking
+-- for `## Origin` in parse_belief_file() and storing an `imported` flag
+-- in patina.db beliefs table (new boolean column, Phase E only).
 CREATE TABLE IF NOT EXISTS belief_applied_in (
     belief_id TEXT NOT NULL,
     project TEXT NOT NULL,
-    originated INTEGER DEFAULT 0, -- 1 if this is where the belief was created
+    originated INTEGER DEFAULT 0, -- 1 = created here, 0 = imported
     last_indexed TEXT NOT NULL,
     PRIMARY KEY (belief_id, project)
 );
 ```
+
+**`defeated` flag semantics:** The `defeated INTEGER` column maps the
+`(status: defeated)` annotation in belief markdown. In practice:
+
+| Section | Entry | Meaning | `defeated` value |
+|---------|-------|---------|------------------|
+| `## Attacks` | `- [[B]] (status: defeated, ...)` | A attacked B, B won | 1 |
+| `## Attacks` | `- [[B]]` or `(status: active)` | A attacks B, unresolved | 0 |
+| `## Attacked-By` | `- [[A]] (status: defeated)` | A attacked me, I won | 1 (same edge) |
+| `## Attacked-By` | `- [[A]] (status: active)` | A attacks me, unresolved | 0 (same edge) |
+
+Both `## Attacks` and `## Attacked-By` describe the same edge from
+opposite perspectives. The scraper writes edges from **both** sections:
+- `## Attacks` on belief A: `(from_belief=A, to_belief=B)`
+- `## Attacked-By` on belief B: `(from_belief=A, to_belief=B)` (reverse lookup)
+
+Deduplication: the PK `(from_belief, to_belief, source_project)` handles
+this via `INSERT OR REPLACE`. If both A's `## Attacks` and B's
+`## Attacked-By` mention the same relationship within one project, the
+last write wins. In practice they agree (or should — the scraper can
+warn on status mismatches).
+
+**Current scraper behavior** (`extract_file_metrics()` lines 402-419):
+- `## Attacks` with `status: defeated` → `defeated_attacks` count only,
+  NOT added to `attacks_ids`. **Change needed:** also emit edge row with
+  `defeated=1`.
+- `## Attacked-By` with `status: defeated` → `defeated_attacks` count,
+  NOT added to `attacked_by_ids`. **Change needed:** also emit edge row
+  with `defeated=1`, reversing to `(from_belief=attacker, to_belief=self)`.
+- Non-defeated entries → already in `attacks_ids` / `attacked_by_ids`.
+  Write as edge rows with `defeated=0`.
 
 **Where edge data comes from:** The scraper parses `## Attacks` and
 `## Attacked-By` sections into `attacks_ids` and `attacked_by_ids` Vec<String>
@@ -260,6 +318,27 @@ let table_exists: bool = conn.query_row(
 ```
 If missing, skip edge sync for that project (log warning), sync belief rows
 only. No version pragma needed — table existence is the version signal.
+
+**Dangling edge detection:** After all projects have been synced (both
+belief rows and edges), run a validation pass:
+```sql
+-- Find edges whose endpoints don't exist in graph.db beliefs table
+SELECT 'supports' AS type, s.from_belief, s.to_belief, s.source_project
+FROM belief_supports s
+WHERE s.from_belief NOT IN (SELECT id FROM beliefs)
+   OR s.to_belief NOT IN (SELECT id FROM beliefs)
+UNION ALL
+SELECT 'attacks', a.from_belief, a.to_belief, a.source_project
+FROM belief_attacks a
+WHERE a.from_belief NOT IN (SELECT id FROM beliefs)
+   OR a.to_belief NOT IN (SELECT id FROM beliefs);
+```
+**Action:** Log warnings to stderr, do NOT auto-delete. The target belief
+may exist in a project that hasn't been synced yet, or whose `patina scrape`
+hasn't run. Dangling edges are stale data, not corrupted data — they'll
+resolve on next full sync or get overwritten by per-source rebuild.
+Only log if count > 0: `⚠ {N} dangling edge(s) — target beliefs not
+in graph.db (run 'mother graph sync' after 'patina scrape' in all projects)`.
 
 **Code paths:**
 - `src/commands/mother/graph.rs` — update `collect_project_beliefs()` to
@@ -351,6 +430,22 @@ Workflow:
 - Refuse if belief already exists locally (use `--force` to overwrite)
 - Refuse if source project not found in mother's graph
 - Refuse if belief-id not found in source project
+
+**Path portability:** Import requires the source project to be on the
+local filesystem at the path stored in graph.db's `nodes` table. This
+is a deliberate local-first constraint — Patina doesn't fetch from
+remote sources. If the path doesn't exist (project on another machine,
+moved directory, etc.), the error is:
+```
+Error: source project 'foo' path does not exist: /old/path/foo
+  The registry path may be stale. Options:
+  - If the project moved: update registry with `patina repo register`
+  - If the project is remote: clone it locally first, then register
+```
+No git clone fallback. No network access during import. The registry
+(`~/.patina/registry.yaml`) stores local paths; if a path goes stale,
+the human updates it. This matches how `mother graph sync` already
+works — it reads from local paths and skips projects it can't access.
 
 **Code paths:**
 - `src/commands/belief/mod.rs` — add `Import` subcommand
@@ -513,6 +608,37 @@ See [[session-20260216-155323]] for detailed mapping.
     spec for invalid values. Added: -32602 error for unknown modes,
     `belief_id` parameter requirement for supports/attacks modes, tool
     description update.
+
+### Review Pass 3 — Interconnected Design Gaps (same session)
+
+13. **Belief ID ambiguity in edge tables** — Edge tables use belief IDs
+    without source qualifier, but `beliefs` table PK is `(id, source)`.
+    Resolved: edges model *conceptual* relationships per Dung's framework,
+    not project-scoped instances. Same-ID-different-meaning collisions are
+    naming bugs surfaced by `query supports`. Added: full rationale section
+    before edge DDL, reference to [[belief-identity-is-slug-not-hash]].
+
+14. **`defeated` flag semantics** — Table had `defeated INTEGER` with no
+    mapping from markdown. Added: full truth table mapping
+    `(status: defeated)` annotations from both `## Attacks` and
+    `## Attacked-By` sections. Documented that both sections describe the
+    same edge from opposite perspectives. Noted scraper changes needed:
+    currently defeated entries are counted but not emitted as edge rows.
+
+15. **Import path portability** — Phase E assumed local filesystem access
+    without documenting the constraint. Added: explicit local-first
+    constraint, error message template for stale paths, no git clone
+    fallback, matches existing sync behavior.
+
+16. **`belief_applied_in` write path** — No concrete data flow from import
+    to table. Resolved: deferred to Phase E, with concrete write path:
+    sync reads `imported` flag from patina.db (scraper detects `## Origin`
+    section), populates `originated` column. Before Phase E, `query
+    projects` derives from `beliefs.source`.
+
+17. **Dangling edge validation** — Edges could reference deleted beliefs
+    indefinitely. Added: post-sync validation query, warn-not-delete
+    policy (target may exist in unsynced project), actionable message.
 
 ### Verified OK
 
