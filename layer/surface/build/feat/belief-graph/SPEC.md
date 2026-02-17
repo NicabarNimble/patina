@@ -110,12 +110,37 @@ CREATE VIRTUAL TABLE IF NOT EXISTS belief_search USING fts5(
 ```
 
 **Schema migration:** `knowledge` → `beliefs`, `knowledge_search` →
-`belief_search`. Since these are rebuildable caches, migration is:
-drop old tables if exist, create new tables, next sync repopulates.
+`belief_search`. graph.db is a rebuildable cache, so migration is:
+
+1. In `init_schema()`: `DROP TABLE IF EXISTS knowledge; DROP TABLE IF
+   EXISTS knowledge_search;` then create new `beliefs` + `belief_search`
+   tables. Old tables are cleaned up on first open after upgrade.
+2. All function renames (`sync_knowledge` → `sync_beliefs`, etc.) and
+   struct renames (`KnowledgeEntry` → `BeliefEntry`) happen in the same
+   commit to prevent partial-rename compilation failures.
+3. **Files requiring coordinated rename** (all reference `knowledge*` or
+   `KnowledgeEntry` by name):
+   - `src/mother/graph.rs` — schema DDL, struct, 4 methods
+   - `src/mother/mod.rs` — re-export `KnowledgeEntry`
+   - `src/commands/mother/graph.rs` — calls `sync_knowledge()`,
+     `KnowledgeEntry` in `collect_project_beliefs()`
+   - `src/commands/mother/mod.rs` — help text
+   - `src/mcp/server.rs` — tool description, `handle_mother_search()`
+4. **Backward compatibility:** An old binary opening the migrated graph.db
+   will execute `CREATE TABLE IF NOT EXISTS knowledge` (succeeds, empty),
+   and return empty search results until re-synced. No crash. This is
+   acceptable because graph.db data is always rebuildable via
+   `mother graph sync`.
 
 **Code paths:**
-- `src/mother/graph.rs` — update `init_schema()`, rename `sync_knowledge()`
-  → `sync_beliefs()`, update `search_knowledge()` → `search_beliefs()`
+- `src/mother/graph.rs` — update `init_schema()` (drop old + create new),
+  rename `sync_knowledge()` → `sync_beliefs()`, `search_knowledge()` →
+  `search_beliefs()`, `knowledge_count()` → `belief_count()`,
+  `KnowledgeEntry` → `BeliefEntry`
+- `src/mother/mod.rs` — update re-export
+- `src/commands/mother/graph.rs` — update all call sites
+- `src/commands/mother/mod.rs` — update help text
+- `src/mcp/server.rs` — update tool description and handler
 
 ### Phase B: Belief Relationship Edges
 
@@ -182,6 +207,17 @@ structured data, no markdown parsing.
 results to tables keeps mother's interface to patina.db clean. Per
 [[dependable-rust]]: keep each module's interface small and stable.
 
+**`## Supports` parsing semantics:** Audit of 131 belief files shows 234
+supports entries: 228 (97.4%) use `[[wikilink]]` format, 6 (2.6%) use bare
+`belief-name: explanation` format without wikilinks. The parser should:
+1. Extract `[[id]]` targets using the existing `wikilink_re` regex (same
+   as `## Attacks` parsing)
+2. For entries with no `[[wikilink]]`, attempt to extract a bare belief ID
+   from the first token before `:` or ` ` (same `belief-name: explanation`
+   pattern seen in the 6 outliers)
+3. Emit a `⚠ <belief-id>: ## Supports entry without [[wikilink]]: "<line>"`
+   diagnostic to stderr so users know an edge was skipped or inferred
+
 **Code paths:**
 - `src/commands/scrape/beliefs/mod.rs` — add `## Supports` parsing to
   `extract_file_metrics()` (new `supports_ids: Vec<String>` field on
@@ -211,6 +247,20 @@ edge tables. Per-source rebuild: delete edges where `source_project = ?`
 for successfully synced sources only, per [[commit-44b1b338]] pattern.
 Similarly, `belief_applied_in` deletes where `project = ?` for synced sources.
 
+**Schema version guard:** A project's patina.db may not have the
+`belief_supports`/`belief_attacks` tables yet (scraper hasn't been updated,
+or hasn't re-run since update). `collect_belief_edges()` must check for
+table existence before querying, using the same pattern as
+`collect_project_beliefs()` line 188-196:
+```rust
+let table_exists: bool = conn.query_row(
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='belief_supports'",
+    [], |_| Ok(true),
+).unwrap_or(false);
+```
+If missing, skip edge sync for that project (log warning), sync belief rows
+only. No version pragma needed — table existence is the version signal.
+
 **Code paths:**
 - `src/commands/mother/graph.rs` — update `collect_project_beliefs()` to
   read 12 columns, add `collect_belief_edges()` function
@@ -235,12 +285,25 @@ patina mother graph query attacks <belief-id>
   → Shows which beliefs attack this one, with defeated status
 
 patina mother graph query projects <belief-id>
-  → SELECT from belief_applied_in WHERE belief_id = ?
+  → Before Phase E: SELECT DISTINCT source FROM beliefs WHERE id = ?
+  → After Phase E: SELECT from belief_applied_in WHERE belief_id = ?
   → Shows which projects have this belief
 ```
 
 **MCP:** Update the existing `mother` MCP tool to accept a `mode` parameter:
 `search` (default, current behavior), `supports`, `attacks`, `projects`.
+
+MCP backward compatibility:
+- `mode` parameter is optional; omitting it defaults to `search` (existing
+  behavior). Existing clients that don't send `mode` see no change.
+- Unknown `mode` values return JSON-RPC error -32602 (Invalid params) with
+  message: `"unknown mode '{value}' — valid: search, supports, attacks,
+  projects"`. This matches the existing validation pattern for the `query`
+  parameter (`server.rs:601-606`).
+- `supports` and `attacks` modes require a `belief_id` parameter (not
+  `query`). If `belief_id` is missing, return -32602 with
+  `"mode '{mode}' requires 'belief_id' parameter"`.
+- Tool description in `tools/list` updated to document all modes.
 
 **Code paths:**
 - `src/commands/mother/graph.rs` — add `query_beliefs_cli()` with subcommands
@@ -259,8 +322,12 @@ patina belief import --from <project> <belief-id>
 
 Workflow:
 1. Query mother's graph for the belief (must exist in graph.db)
-2. Fetch the source belief markdown from the source project's
-   `layer/surface/epistemic/beliefs/<belief-id>.md`
+2. Resolve the source project's filesystem path via `Graph::get_node(project)`
+   → `node.path` (stored in `nodes` table during `mother graph sync`).
+   The source file is at `{node.path}/layer/surface/epistemic/beliefs/{belief-id}.md`.
+   If `get_node()` returns None or the file doesn't exist at the resolved
+   path, fail with actionable error: "project not in graph — run
+   `mother graph sync`" or "belief file not found at {path}".
 3. Write to local `layer/surface/epistemic/beliefs/<belief-id>.md`
 4. Reset entrenchment to `low` (must earn local evidence)
 5. Append `## Origin` section with provenance:
@@ -272,7 +339,13 @@ Workflow:
    - Import session: [[session-YYYYMMDD-HHMMSS]]
    ```
 6. Add `belief_applied_in` record in graph.db on next sync
-7. Print confirmation with belief statement
+7. Print confirmation with belief statement and reminder:
+   `Run 'patina scrape' to index the imported belief for local audit.`
+   Import does NOT auto-scrape — it only writes the markdown file.
+   The belief won't appear in `patina belief audit` or local patina.db
+   until the user runs `patina scrape`. This is intentional: import is
+   a write-to-layer operation, scrape is a separate pipeline step.
+   Per [[unix-philosophy]]: one tool, one job.
 
 **Guards:**
 - Refuse if belief already exists locally (use `--force` to overwrite)
@@ -283,6 +356,33 @@ Workflow:
 - `src/commands/belief/mod.rs` — add `Import` subcommand
 - `src/mother/graph.rs` — add `get_belief()` method to fetch single belief
   with source project path from nodes table
+
+## Project Identity
+
+Edge tables key on `source_project TEXT` — a project name that must be
+stable and unique. Current identity sources:
+
+- **Current project:** `project_root.file_name()` — the directory basename
+  (`commands/mother/graph.rs:28-31`). Fragile: renaming the directory
+  changes the name, orphaning edges in graph.db.
+- **Registered projects:** registry key in `~/.patina/registry.yaml`
+  (`HashMap<String, ProjectEntry>`). More stable: user chose the name.
+- **Persona:** hardcoded `"persona"` string. Stable.
+
+**Decision:** Use the registry key as canonical identity. For the current
+project (auto-detected, may not be in registry), use `file_name()` as
+today — this is the same value that becomes the registry key when the
+project is registered. If a project renames its directory, `mother graph
+sync` will create a new node and the old node's edges become orphaned
+(acceptable: sync again to rebuild). Name collisions between projects:
+the registry `HashMap` enforces uniqueness for registered projects; two
+unregistered projects with the same directory name would collide, but
+only the current project is auto-detected, so this can't happen in
+a single sync run.
+
+**Future:** if identity drift becomes a real problem, add a `[patina]`
+`project_id` field to `.patina/config.toml` as the authoritative name.
+Not needed now — directory basenames have been stable in practice.
 
 ## What Doesn't Change
 
@@ -370,6 +470,49 @@ See [[session-20260216-155323]] for detailed mapping.
    but didn't specify which column to use for edge deletion. Added: delete
    edges where `source_project = ?` for supports/attacks, `project = ?` for
    applied_in.
+
+### Review Pass 2 — Design Gaps (same session)
+
+5. **Schema migration path** — SPEC said "drop old, create new" but didn't
+   enumerate which files reference `knowledge*` names or how to coordinate
+   the rename. Added: full file list (5 files), explicit DROP sequence in
+   init_schema(), backward compatibility analysis (old binary creates empty
+   tables, no crash), single-commit rename requirement.
+
+6. **Schema version guard for patina.db** — Mother reads `belief_supports`
+   from patina.db, but that table may not exist yet. Added: table-existence
+   check pattern (matching existing `collect_project_beliefs()` guard),
+   skip edge sync with warning if tables missing. No version pragma needed.
+
+7. **`## Supports` parsing semantics** — Audited all 131 belief files:
+   228/234 entries (97.4%) use `[[wikilink]]` format, 6 use bare
+   `belief-name: explanation`. Added: wikilink-first extraction, bare ID
+   fallback, stderr diagnostic for skipped entries.
+
+8. **Project identity stability** — `source_project` in edge tables uses
+   directory basename, which changes on rename. Added: Project Identity
+   section documenting current derivation, why registry key is canonical,
+   why collisions can't happen in practice, and future escape hatch
+   (`project_id` in config.toml).
+
+9. **Phase D/E timing for `belief_applied_in`** — Phase D `query projects`
+   depended on `belief_applied_in` table, which was deferred to Phase E.
+   Fixed: Phase D derives from `SELECT DISTINCT source FROM beliefs` until
+   Phase E creates `belief_applied_in`.
+
+10. **Import path discovery** — SPEC step 2 said "fetch from source project"
+    without specifying how CLI finds the path. Added: resolve via
+    `Graph::get_node(project).path`, error messages for missing node or
+    missing file.
+
+11. **Scrape-after-import visibility** — Imported belief won't appear in
+    audit until `patina scrape` runs. Added: explicit reminder in import
+    output, rationale (import writes layer, scrape is separate pipeline).
+
+12. **MCP unknown mode validation** — New `mode` parameter had no error
+    spec for invalid values. Added: -32602 error for unknown modes,
+    `belief_id` parameter requirement for supports/attacks modes, tool
+    description update.
 
 ### Verified OK
 
