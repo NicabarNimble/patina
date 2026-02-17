@@ -127,9 +127,65 @@ pub fn sync_from_registry() -> Result<()> {
         }
     }
 
-    // Sync knowledge — only rebuilds entries for successfully collected sources.
+    // Sync beliefs — only rebuilds entries for successfully collected sources.
     // Failed sources retain their previously indexed data.
     graph.sync_beliefs(&knowledge, &synced_sources)?;
+
+    // =========================================================================
+    // Edge sync: collect belief relationship edges from projects
+    // =========================================================================
+
+    let mut supports_edges: Vec<(String, String, String)> = Vec::new();
+    let mut attacks_edges: Vec<(String, String, String, bool)> = Vec::new();
+    let mut edge_synced_sources: Vec<String> = Vec::new();
+
+    // Collect edges from current project
+    if let Ok(project_root) = patina::session::SessionManager::find_project_root() {
+        let project_name = project_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
+        let db_path = project_root.join(".patina/local/data/patina.db");
+        match collect_belief_edges(project_name, &db_path) {
+            Ok((s, a)) => {
+                let count = s.len() + a.len();
+                if count > 0 {
+                    println!("  + {} edges from {} (current)", count, project_name);
+                }
+                edge_synced_sources.push(project_name.to_string());
+                supports_edges.extend(s);
+                attacks_edges.extend(a);
+            }
+            Err(_) => {
+                // Edge tables may not exist yet — not an error
+            }
+        }
+    }
+
+    // Collect edges from registered projects
+    for (name, entry) in &registry.projects {
+        let db_path = Path::new(&entry.path).join(".patina/local/data/patina.db");
+        match collect_belief_edges(name, &db_path) {
+            Ok((s, a)) => {
+                let count = s.len() + a.len();
+                if count > 0 {
+                    println!("  + {} edges from {}", count, name);
+                }
+                edge_synced_sources.push(name.clone());
+                supports_edges.extend(s);
+                attacks_edges.extend(a);
+            }
+            Err(_) => {
+                // Edge tables may not exist yet — not an error
+            }
+        }
+    }
+
+    // Sync edges into graph.db
+    graph.sync_belief_edges(&supports_edges, &attacks_edges, &edge_synced_sources)?;
+
+    // Dangling edge detection: warn about edges referencing non-existent beliefs
+    detect_dangling_edges(&graph)?;
 
     println!();
     println!(
@@ -142,7 +198,7 @@ pub fn sync_from_registry() -> Result<()> {
         graph.edge_count()?
     );
     println!(
-        "   Knowledge: {} beliefs + {} values = {} total",
+        "   Beliefs: {} beliefs + {} values = {} total",
         beliefs_synced,
         values_synced,
         graph.belief_count()?
@@ -235,6 +291,93 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
         .collect();
 
     Ok(entries)
+}
+
+/// Collect belief edges from a project's patina.db
+///
+/// Returns (supports, attacks) tuples with source_project name attached.
+/// Schema version guard: if tables don't exist, returns empty.
+fn collect_belief_edges(
+    project_name: &str,
+    db_path: &Path,
+) -> Result<(
+    Vec<(String, String, String)>,        // supports: (from, to, source_project)
+    Vec<(String, String, String, bool)>,  // attacks: (from, to, source_project, defeated)
+)> {
+    use rusqlite::Connection;
+
+    if !db_path.exists() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+
+    let conn = Connection::open(db_path)?;
+
+    // Schema version guard: check if edge tables exist
+    let supports_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='belief_supports'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if !supports_exists {
+        return Ok((Vec::new(), Vec::new()));
+    }
+
+    let attacks_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='belief_attacks'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    // Collect supports
+    let mut supports = Vec::new();
+    {
+        let mut stmt = conn.prepare("SELECT from_belief, to_belief FROM belief_supports")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in rows.filter_map(|r| r.ok()) {
+            supports.push((row.0, row.1, project_name.to_string()));
+        }
+    }
+
+    // Collect attacks (if table exists)
+    let mut attacks = Vec::new();
+    if attacks_exists {
+        let mut stmt =
+            conn.prepare("SELECT from_belief, to_belief, defeated FROM belief_attacks")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i32>(2)? != 0,
+            ))
+        })?;
+        for row in rows.filter_map(|r| r.ok()) {
+            attacks.push((row.0, row.1, project_name.to_string(), row.2));
+        }
+    }
+
+    Ok((supports, attacks))
+}
+
+/// Detect dangling edges: edges referencing belief IDs not in the beliefs table.
+/// Logs warnings to stderr, does NOT auto-delete.
+fn detect_dangling_edges(graph: &Graph) -> Result<()> {
+    let dangling = graph.find_dangling_edges()?;
+
+    if !dangling.is_empty() {
+        eprintln!("  ⚠ {} dangling edges (referencing unknown beliefs):", dangling.len());
+        for (edge_type, from, to, source) in &dangling {
+            eprintln!("    {} {} → {} (from {})", edge_type, from, to, source);
+        }
+    }
+
+    Ok(())
 }
 
 /// Collect persona values from ~/.patina/layer/surface/beliefs/*.md

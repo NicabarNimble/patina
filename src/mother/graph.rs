@@ -1009,6 +1009,37 @@ impl Graph {
         Ok(entries)
     }
 
+    /// Find dangling edges: edges referencing belief IDs not in the beliefs table
+    pub fn find_dangling_edges(&self) -> Result<Vec<(String, String, String, String)>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT 'supports' AS type, s.from_belief, s.to_belief, s.source_project
+            FROM belief_supports s
+            WHERE s.from_belief NOT IN (SELECT id FROM beliefs)
+               OR s.to_belief NOT IN (SELECT id FROM beliefs)
+            UNION ALL
+            SELECT 'attacks', a.from_belief, a.to_belief, a.source_project
+            FROM belief_attacks a
+            WHERE a.from_belief NOT IN (SELECT id FROM beliefs)
+               OR a.to_belief NOT IN (SELECT id FROM beliefs)
+            "#,
+        )?;
+
+        let dangling = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(dangling)
+    }
+
     /// Count belief entries
     pub fn belief_count(&self) -> Result<usize> {
         let count: i64 = self
