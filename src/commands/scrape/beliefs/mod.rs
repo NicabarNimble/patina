@@ -79,6 +79,11 @@ struct BeliefMetrics {
     attacked_by_ids: Vec<String>, // non-defeated attacker belief IDs from ## Attacked-By
     attacks_ids: Vec<String>,     // non-defeated target belief IDs from ## Attacks
     contested_by: Vec<String>,    // active beliefs that contest this one (bidirectional)
+
+    // Relationship edges (belief-graph Phase B)
+    supports_ids: Vec<String>,            // belief IDs from ## Supports section
+    defeated_attack_targets: Vec<String>, // defeated targets from ## Attacks (for edge rows)
+    defeated_attacker_ids: Vec<String>,   // defeated attackers from ## Attacked-By (for edge rows)
 }
 
 /// Create materialized views for belief events
@@ -138,6 +143,20 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_beliefs_persona ON beliefs(persona);
         CREATE INDEX IF NOT EXISTS idx_beliefs_status ON beliefs(status);
         CREATE INDEX IF NOT EXISTS idx_beliefs_entrenchment ON beliefs(entrenchment);
+
+        -- Belief relationship edges (belief-graph Phase B)
+        CREATE TABLE IF NOT EXISTS belief_supports (
+            from_belief TEXT NOT NULL,
+            to_belief TEXT NOT NULL,
+            PRIMARY KEY (from_belief, to_belief)
+        );
+
+        CREATE TABLE IF NOT EXISTS belief_attacks (
+            from_belief TEXT NOT NULL,
+            to_belief TEXT NOT NULL,
+            defeated INTEGER DEFAULT 0,
+            PRIMARY KEY (from_belief, to_belief)
+        );
 
         -- E4.6a-fix: Multi-hop code grounding (belief → commit → file → function)
         CREATE TABLE IF NOT EXISTS belief_code_reach (
@@ -402,6 +421,10 @@ fn extract_file_metrics(content: &str) -> BeliefMetrics {
             s if s.starts_with("## Attacked-By") => {
                 if trimmed.contains("status: defeated") {
                     metrics.defeated_attacks += 1;
+                    // Capture defeated attacker IDs for edge rows (defeated=1)
+                    for cap in wikilink_re.captures_iter(trimmed) {
+                        metrics.defeated_attacker_ids.push(cap[1].to_string());
+                    }
                 } else {
                     // Phase C: collect non-defeated attacker IDs from [[wikilinks]]
                     for cap in wikilink_re.captures_iter(trimmed) {
@@ -410,10 +433,33 @@ fn extract_file_metrics(content: &str) -> BeliefMetrics {
                 }
             }
             s if s.starts_with("## Attacks") => {
-                // Phase C: collect non-defeated target IDs from [[wikilinks]]
-                if !trimmed.contains("status: defeated") {
+                if trimmed.contains("status: defeated") {
+                    // Capture defeated target IDs for edge rows (defeated=1)
+                    for cap in wikilink_re.captures_iter(trimmed) {
+                        metrics.defeated_attack_targets.push(cap[1].to_string());
+                    }
+                } else {
+                    // Phase C: collect non-defeated target IDs from [[wikilinks]]
                     for cap in wikilink_re.captures_iter(trimmed) {
                         metrics.attacks_ids.push(cap[1].to_string());
+                    }
+                }
+            }
+            s if s.starts_with("## Supports") => {
+                // Parse supported belief IDs from [[wikilinks]]
+                let mut found_link = false;
+                for cap in wikilink_re.captures_iter(trimmed) {
+                    metrics.supports_ids.push(cap[1].to_string());
+                    found_link = true;
+                }
+                // Warn on non-link entries
+                if !found_link {
+                    // Extract bare belief ID: first token before ':' or space
+                    let entry = trimmed.trim_start_matches("- ").trim_start_matches("* ");
+                    let bare_id = entry.split(&[':', ' '][..]).next().unwrap_or("").trim();
+                    if !bare_id.is_empty() {
+                        eprintln!("  warning: ## Supports entry without [[wikilink]]: {}", bare_id);
+                        metrics.supports_ids.push(bare_id.to_string());
                     }
                 }
             }
@@ -1378,6 +1424,79 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     // (expected; next oxidize+scrape cycle will fix this).
     if let Err(e) = compute_belief_grounding(&conn) {
         eprintln!("  Warning: grounding computation failed: {}", e);
+    }
+
+    // Phase 4: Write belief relationship edges (belief-graph Phase B)
+    // Separate pass after all beliefs are inserted. Iterates ALL beliefs
+    // because cross_reference_beliefs() always computes fresh data for all.
+    conn.execute("DELETE FROM belief_supports", [])?;
+    conn.execute("DELETE FROM belief_attacks", [])?;
+
+    let mut supports_written = 0;
+    let mut attacks_written = 0;
+
+    for belief in &all_beliefs {
+        // Supports edges (from this belief to supported beliefs)
+        for target_id in &belief.metrics.supports_ids {
+            conn.execute(
+                "INSERT OR IGNORE INTO belief_supports (from_belief, to_belief) VALUES (?1, ?2)",
+                rusqlite::params![&belief.id, target_id],
+            )?;
+            supports_written += 1;
+        }
+
+        // Attacks edges — non-defeated (from this belief to targets, defeated=0)
+        for target_id in &belief.metrics.attacks_ids {
+            conn.execute(
+                "INSERT OR IGNORE INTO belief_attacks (from_belief, to_belief, defeated) VALUES (?1, ?2, 0)",
+                rusqlite::params![&belief.id, target_id],
+            )?;
+            // Defeated=1 wins: if already inserted as defeated, don't downgrade
+            attacks_written += 1;
+        }
+
+        // Attacks edges — defeated targets from ## Attacks (defeated=1)
+        for target_id in &belief.metrics.defeated_attack_targets {
+            conn.execute(
+                "INSERT OR IGNORE INTO belief_attacks (from_belief, to_belief, defeated) VALUES (?1, ?2, 1)",
+                rusqlite::params![&belief.id, target_id],
+            )?;
+            // Upgrade to defeated if already exists as non-defeated
+            conn.execute(
+                "UPDATE belief_attacks SET defeated = 1 WHERE from_belief = ?1 AND to_belief = ?2 AND defeated = 0",
+                rusqlite::params![&belief.id, target_id],
+            )?;
+            attacks_written += 1;
+        }
+
+        // Attacked-By edges — non-defeated (reverse: from attacker to this belief, defeated=0)
+        for attacker_id in &belief.metrics.attacked_by_ids {
+            conn.execute(
+                "INSERT OR IGNORE INTO belief_attacks (from_belief, to_belief, defeated) VALUES (?1, ?2, 0)",
+                rusqlite::params![attacker_id, &belief.id],
+            )?;
+            attacks_written += 1;
+        }
+
+        // Attacked-By edges — defeated (reverse: from attacker to this belief, defeated=1)
+        for attacker_id in &belief.metrics.defeated_attacker_ids {
+            conn.execute(
+                "INSERT OR IGNORE INTO belief_attacks (from_belief, to_belief, defeated) VALUES (?1, ?2, 1)",
+                rusqlite::params![attacker_id, &belief.id],
+            )?;
+            conn.execute(
+                "UPDATE belief_attacks SET defeated = 1 WHERE from_belief = ?1 AND to_belief = ?2 AND defeated = 0",
+                rusqlite::params![attacker_id, &belief.id],
+            )?;
+            attacks_written += 1;
+        }
+    }
+
+    if supports_written > 0 || attacks_written > 0 {
+        println!(
+            "  Wrote {} supports + {} attacks edges",
+            supports_written, attacks_written
+        );
     }
 
     // Prune stale entries: delete DB entries for IDs that no longer exist on disk
