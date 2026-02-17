@@ -276,10 +276,37 @@ supports entries: 228 (97.4%) use `[[wikilink]]` format, 6 (2.6%) use bare
 3. Emit a `⚠ <belief-id>: ## Supports entry without [[wikilink]]: "<line>"`
    diagnostic to stderr so users know an edge was skipped or inferred
 
+**patina.db edge tables** (created in `create_materialized_views()`):
+
+```sql
+-- Per-project belief relationship tables (scraper output)
+-- Simpler than graph.db: no source_project (always current project),
+-- no last_indexed (rebuilt each scrape)
+CREATE TABLE IF NOT EXISTS belief_supports (
+    from_belief TEXT NOT NULL,
+    to_belief TEXT NOT NULL,
+    PRIMARY KEY (from_belief, to_belief)
+);
+
+CREATE TABLE IF NOT EXISTS belief_attacks (
+    from_belief TEXT NOT NULL,
+    to_belief TEXT NOT NULL,
+    defeated INTEGER DEFAULT 0,
+    PRIMARY KEY (from_belief, to_belief)
+);
+```
+
+Both tables are dropped and rebuilt each full scrape (same as the `beliefs`
+table pattern). `insert_belief()` writes edges from both `## Attacks` and
+`## Attacked-By` sections; dedup via PK means the same edge from opposite
+perspectives resolves to one row (`INSERT OR REPLACE`). If `defeated` status
+disagrees between sections, last-processed belief wins (alphabetical order).
+
 **Code paths:**
 - `src/commands/scrape/beliefs/mod.rs` — add `## Supports` parsing to
   `extract_file_metrics()` (new `supports_ids: Vec<String>` field on
-  `BeliefMetrics`), add `belief_supports` and `belief_attacks` tables to
+  `BeliefMetrics`; also capture defeated entry IDs for edge rows), add
+  `belief_supports` and `belief_attacks` tables to
   `create_materialized_views()`, write edges in `insert_belief()`
 - `src/mother/graph.rs` — add edge tables to `init_schema()`, add
   `sync_belief_edges()` method
@@ -343,8 +370,9 @@ in graph.db (run 'mother graph sync' after 'patina scrape' in all projects)`.
 **Code paths:**
 - `src/commands/mother/graph.rs` — update `collect_project_beliefs()` to
   read 12 columns, add `collect_belief_edges()` function
-- `src/mother/graph.rs` — update `KnowledgeEntry` → `BeliefEntry` struct
-  with additional fields, update `sync_beliefs()` signature
+- `src/mother/graph.rs` — update `BeliefEntry` struct (renamed from
+  `KnowledgeEntry` in Phase A) with additional metric fields, update
+  `sync_beliefs()` signature
 
 ### Phase D: `mother graph query` — Belief-Aware Graph Traversal
 
@@ -481,8 +509,10 @@ Not needed now — directory basenames have been stable in practice.
 
 ## What Doesn't Change
 
-- **Scraper parsing** — `## Attacks`/`## Attacked-By` parsing unchanged
-  (Phase B adds `## Supports` parsing + 2 output tables)
+- **Scraper parsing** — `## Attacks`/`## Attacked-By` section detection and
+  wikilink extraction logic unchanged. Phase B extends output: adds
+  `## Supports` parsing (~10 lines), captures defeated entry IDs for edge
+  rows (currently counted but IDs discarded), writes 2 new output tables
 - **Belief markdown format** — no structural changes
 - **Assay/Scry** — stay project-scoped, no `--projects` flags
 - **`mother graph link/unlink/learn/stats`** — project-level edges unchanged
@@ -657,3 +687,49 @@ See [[session-20260216-155323]] for detailed mapping.
 - **Phase B feasibility (Option 2)**: `## Attacks` parsing pattern at
   lines 411-419 of scraper provides exact template for `## Supports`.
   Writing to new tables follows `insert_belief()` pattern.
+
+### Review Pass 4 — Final Review (session [[session-20260216-214628]])
+
+**Scope:** Completeness, internal consistency, exit criteria precision,
+phase ordering, scope discipline. Read all 10 referenced files (SPEC +
+4 layer/core docs + 5 source files), checked 6 review criteria.
+
+18. **"What Doesn't Change" vs defeated-entry behavior** — Claimed
+    "Scraper parsing — `## Attacks`/`## Attacked-By` parsing unchanged"
+    but Phase B changes `extract_file_metrics()` to capture defeated entry
+    IDs for edge rows (currently counted but IDs discarded). Fixed:
+    qualified the claim to "section detection and wikilink extraction
+    logic unchanged; output extended."
+
+19. **Phase C struct rename phrasing ambiguity** — Line 346 said
+    "update `KnowledgeEntry` → `BeliefEntry` struct" which could be read
+    as performing the rename in Phase C (already done in Phase A). Fixed:
+    "update `BeliefEntry` struct (renamed from `KnowledgeEntry` in Phase A)
+    with additional metric fields."
+
+20. **Missing patina.db edge table DDL** — Phase B specified graph.db edge
+    tables but not patina.db's `belief_supports`/`belief_attacks` tables.
+    These differ from graph.db: no `source_project` (always current project),
+    no `last_indexed` (rebuilt each scrape). Fixed: added explicit DDL,
+    dedup behavior (INSERT OR REPLACE via PK), and rebuild semantics.
+
+### Review Pass 4 — Verified OK
+
+- **Completeness**: All 5 phases traceable from SPEC text to specific
+  files and functions. No engineer stop-and-ask points remaining.
+- **Internal consistency**: No contradictions between original text and
+  review amendments (passes 1-3). Three minor issues found and fixed
+  (findings 18-20).
+- **Exit criteria**: All 7 criteria verifiable with concrete commands.
+  Criteria 1 and 3 could include specific SQL verification but are
+  unambiguous as written.
+- **Phase ordering**: A→C, B→C, C→D, A+C→E. Correct. Phases D and E
+  can be parallelized (independent command modules, independent Graph
+  methods). No circular dependencies.
+- **Scope discipline**: 5 phases, ~10 files, one coherent capability
+  (belief relationships via mother). Phase E (import) is the most
+  independent piece but too small to justify a separate SPEC. Phased
+  structure provides internal scoping per [[spec-driven-design]].
+- **`belief_applied_in` DDL placement**: Shown under Phase B with
+  "DEFERRED to Phase E" comment. Clear enough — the DDL is documentation
+  of final state, not a Phase B instruction.
