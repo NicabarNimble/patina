@@ -5,7 +5,8 @@
 use anyhow::{bail, Result};
 use std::path::Path;
 
-use patina::mother::{EdgeType, Graph, NodeType, MIN_SAMPLES};
+use patina::mother::{BeliefEntry, EdgeType, Graph, NodeType, MIN_SAMPLES};
+use patina::paths;
 
 use crate::commands::repo::internal::Registry;
 
@@ -53,6 +54,159 @@ pub fn sync_from_registry() -> Result<()> {
         println!("  + {} (reference)", name);
     }
 
+    // =========================================================================
+    // Belief sync: collect beliefs from projects + persona values
+    // =========================================================================
+
+    println!();
+    println!("📚 Syncing beliefs...\n");
+
+    let mut knowledge: Vec<BeliefEntry> = Vec::new();
+    let mut synced_sources: Vec<String> = Vec::new();
+    let mut beliefs_synced = 0;
+    let mut values_synced = 0;
+
+    // Detect current project root for dedup guard
+    let current_project_root = patina::session::SessionManager::find_project_root().ok();
+
+    // Collect beliefs from current project (auto-detected, may not be in registry)
+    if let Some(ref project_root) = current_project_root {
+        let project_name = project_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
+        let db_path = project_root.join(".patina/local/data/patina.db");
+        match collect_project_beliefs(project_name, &db_path) {
+            Ok(entries) => {
+                let count = entries.len();
+                beliefs_synced += count;
+                synced_sources.push(project_name.to_string());
+                if count > 0 {
+                    println!("  + {} beliefs from {} (current)", count, project_name);
+                }
+                knowledge.extend(entries);
+            }
+            Err(e) => {
+                // Failed sources are NOT added to synced_sources,
+                // so their previously indexed data is preserved.
+                eprintln!("  ⚠ {} (current): {}", project_name, e);
+            }
+        }
+    }
+
+    // For each registered project, try to open patina.db and read beliefs
+    // Dedup guard: skip registry entry if its path matches current project root
+    for (name, entry) in &registry.projects {
+        let registry_path = Path::new(&entry.path);
+        if let Some(ref project_root) = current_project_root {
+            if registry_path == project_root.as_path() {
+                continue; // Already collected as current project
+            }
+        }
+        let db_path = registry_path.join(".patina/local/data/patina.db");
+        match collect_project_beliefs(name, &db_path) {
+            Ok(entries) => {
+                let count = entries.len();
+                beliefs_synced += count;
+                synced_sources.push(name.clone());
+                if count > 0 {
+                    println!("  + {} beliefs from {}", count, name);
+                }
+                knowledge.extend(entries);
+            }
+            Err(e) => {
+                eprintln!("  ⚠ {}: {}", name, e);
+            }
+        }
+    }
+
+    // Ref repos: skip knowledge sync entirely (per SPEC)
+
+    // Read persona values from ~/.patina/layer/surface/beliefs/
+    match collect_persona_values() {
+        Ok(entries) => {
+            values_synced = entries.len();
+            synced_sources.push("persona".to_string());
+            if values_synced > 0 {
+                println!("  + {} values from persona", values_synced);
+            }
+            knowledge.extend(entries);
+        }
+        Err(e) => {
+            eprintln!("  ⚠ persona: {}", e);
+        }
+    }
+
+    // Sync beliefs — only rebuilds entries for successfully collected sources.
+    // Failed sources retain their previously indexed data.
+    graph.sync_beliefs(&knowledge, &synced_sources)?;
+
+    // Populate belief_applied_in from synced beliefs (Phase E)
+    // Per-source rebuild: delete then re-insert for each synced source
+    sync_belief_applied_in(&graph, &knowledge, &synced_sources)?;
+
+    // =========================================================================
+    // Edge sync: collect belief relationship edges from projects
+    // =========================================================================
+
+    let mut supports_edges: Vec<(String, String, String)> = Vec::new();
+    let mut attacks_edges: Vec<(String, String, String, bool)> = Vec::new();
+    let mut edge_synced_sources: Vec<String> = Vec::new();
+
+    // Collect edges from current project
+    if let Some(ref project_root) = current_project_root {
+        let project_name = project_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
+        let db_path = project_root.join(".patina/local/data/patina.db");
+        match collect_belief_edges(project_name, &db_path) {
+            Ok((s, a)) => {
+                let count = s.len() + a.len();
+                if count > 0 {
+                    println!("  + {} edges from {} (current)", count, project_name);
+                }
+                edge_synced_sources.push(project_name.to_string());
+                supports_edges.extend(s);
+                attacks_edges.extend(a);
+            }
+            Err(_) => {
+                // Edge tables may not exist yet — not an error
+            }
+        }
+    }
+
+    // Collect edges from registered projects (dedup guard: skip current project)
+    for (name, entry) in &registry.projects {
+        let registry_path = Path::new(&entry.path);
+        if let Some(ref project_root) = current_project_root {
+            if registry_path == project_root.as_path() {
+                continue;
+            }
+        }
+        let db_path = registry_path.join(".patina/local/data/patina.db");
+        match collect_belief_edges(name, &db_path) {
+            Ok((s, a)) => {
+                let count = s.len() + a.len();
+                if count > 0 {
+                    println!("  + {} edges from {}", count, name);
+                }
+                edge_synced_sources.push(name.clone());
+                supports_edges.extend(s);
+                attacks_edges.extend(a);
+            }
+            Err(_) => {
+                // Edge tables may not exist yet — not an error
+            }
+        }
+    }
+
+    // Sync edges into graph.db
+    graph.sync_belief_edges(&supports_edges, &attacks_edges, &edge_synced_sources)?;
+
+    // Dangling edge detection: warn about edges referencing non-existent beliefs
+    detect_dangling_edges(&graph)?;
+
     println!();
     println!(
         "✅ Synced {} projects, {} repos",
@@ -63,7 +217,23 @@ pub fn sync_from_registry() -> Result<()> {
         graph.node_count()?,
         graph.edge_count()?
     );
+    println!(
+        "   Beliefs: {} beliefs + {} values = {} total",
+        beliefs_synced,
+        values_synced,
+        graph.belief_count()?
+    );
 
+    Ok(())
+}
+
+/// Sync belief_applied_in table from synced beliefs (Phase E)
+fn sync_belief_applied_in(
+    graph: &patina::mother::Graph,
+    entries: &[BeliefEntry],
+    synced_sources: &[String],
+) -> Result<()> {
+    graph.sync_belief_applied_in(entries, synced_sources)?;
     Ok(())
 }
 
@@ -85,6 +255,276 @@ fn detect_project_domains(project_root: &Path) -> Vec<String> {
     }
 
     domains
+}
+
+/// Collect beliefs from a project's patina.db
+///
+/// Opens the project's patina.db and reads the beliefs table (12 columns).
+/// Returns empty vec with warning on missing db or missing table.
+fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<BeliefEntry>> {
+    use rusqlite::Connection;
+
+    if !db_path.exists() {
+        anyhow::bail!("no patina.db (not yet scraped)");
+    }
+
+    let conn = Connection::open(db_path)?;
+
+    // Check if beliefs table exists (might be legacy schema)
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='beliefs'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if !table_exists {
+        anyhow::bail!("no beliefs table — run `patina scrape --rebuild`");
+    }
+
+    let mut stmt = conn.prepare(
+        "SELECT id, statement, entrenchment, status, facets,
+                cited_by_beliefs, cited_by_sessions, applied_in,
+                evidence_count, evidence_verified, health_score, contested_by, imported
+         FROM beliefs WHERE status != 'archived'",
+    )?;
+
+    let entries: Vec<BeliefEntry> = stmt
+        .query_map([], |row| {
+            Ok(BeliefEntry {
+                id: row.get(0)?,
+                source: project_name.to_string(),
+                kind: "belief".to_string(),
+                statement: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                entrenchment: row
+                    .get::<_, Option<String>>(2)?
+                    .unwrap_or_else(|| "medium".to_string()),
+                status: row
+                    .get::<_, Option<String>>(3)?
+                    .unwrap_or_else(|| "active".to_string()),
+                facets: row
+                    .get::<_, Option<String>>(4)?
+                    .unwrap_or_else(|| "[]".to_string()),
+                cited_by_beliefs: row.get::<_, Option<i32>>(5)?.unwrap_or(0),
+                cited_by_sessions: row.get::<_, Option<i32>>(6)?.unwrap_or(0),
+                applied_in: row.get::<_, Option<i32>>(7)?.unwrap_or(0),
+                evidence_count: row.get::<_, Option<i32>>(8)?.unwrap_or(0),
+                evidence_verified: row.get::<_, Option<i32>>(9)?.unwrap_or(0),
+                health_score: row.get::<_, Option<f64>>(10)?.unwrap_or(0.0),
+                contested_by: row.get::<_, Option<String>>(11)?.unwrap_or_default(),
+                imported: row.get::<_, Option<i32>>(12)?.unwrap_or(0) != 0,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(entries)
+}
+
+/// Collect belief edges from a project's patina.db
+///
+/// Returns (supports, attacks) tuples with source_project name attached.
+/// Schema version guard: if tables don't exist, returns empty.
+#[allow(clippy::type_complexity)]
+fn collect_belief_edges(
+    project_name: &str,
+    db_path: &Path,
+) -> Result<(
+    Vec<(String, String, String)>, // supports: (from, to, source_project)
+    Vec<(String, String, String, bool)>, // attacks: (from, to, source_project, defeated)
+)> {
+    use rusqlite::Connection;
+
+    if !db_path.exists() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+
+    let conn = Connection::open(db_path)?;
+
+    // Schema version guard: check if edge tables exist
+    let supports_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='belief_supports'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if !supports_exists {
+        return Ok((Vec::new(), Vec::new()));
+    }
+
+    let attacks_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='belief_attacks'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    // Collect supports
+    let mut supports = Vec::new();
+    {
+        let mut stmt = conn.prepare("SELECT from_belief, to_belief FROM belief_supports")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in rows.filter_map(|r| r.ok()) {
+            supports.push((row.0, row.1, project_name.to_string()));
+        }
+    }
+
+    // Collect attacks (if table exists)
+    let mut attacks = Vec::new();
+    if attacks_exists {
+        let mut stmt =
+            conn.prepare("SELECT from_belief, to_belief, defeated FROM belief_attacks")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i32>(2)? != 0,
+            ))
+        })?;
+        for row in rows.filter_map(|r| r.ok()) {
+            attacks.push((row.0, row.1, project_name.to_string(), row.2));
+        }
+    }
+
+    Ok((supports, attacks))
+}
+
+/// Detect dangling edges: edges referencing belief IDs not in the beliefs table.
+/// Logs warnings to stderr, does NOT auto-delete.
+fn detect_dangling_edges(graph: &Graph) -> Result<()> {
+    let dangling = graph.find_dangling_edges()?;
+
+    if !dangling.is_empty() {
+        eprintln!(
+            "  ⚠ {} dangling edges (referencing unknown beliefs):",
+            dangling.len()
+        );
+        for (edge_type, from, to, source) in &dangling {
+            eprintln!("    {} {} → {} (from {})", edge_type, from, to, source);
+        }
+    }
+
+    Ok(())
+}
+
+/// Collect persona values from ~/.patina/layer/surface/beliefs/*.md
+///
+/// Parses YAML frontmatter for id, statement, entrenchment, status, facets.
+/// Required: id (from filename if missing) + statement (first non-empty line after heading).
+/// Malformed files: warn to stderr, skip, continue.
+fn collect_persona_values() -> Result<Vec<BeliefEntry>> {
+    let beliefs_dir = paths::user_layer::beliefs_dir();
+
+    if !beliefs_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut entries = Vec::new();
+
+    let dir_entries: Vec<_> = std::fs::read_dir(&beliefs_dir)?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
+        .collect();
+
+    for dir_entry in dir_entries {
+        let path = dir_entry.path();
+        match parse_persona_value(&path) {
+            Ok(entry) => entries.push(entry),
+            Err(e) => {
+                eprintln!(
+                    "  ⚠ persona file {}: {}",
+                    path.file_name().unwrap_or_default().to_string_lossy(),
+                    e
+                );
+            }
+        }
+    }
+
+    Ok(entries)
+}
+
+/// Parse a single persona value markdown file
+fn parse_persona_value(path: &Path) -> Result<BeliefEntry> {
+    let content = std::fs::read_to_string(path)?;
+
+    // Split frontmatter from body
+    let (frontmatter, body) = if let Some(stripped) = content.strip_prefix("---") {
+        if let Some(end) = stripped.find("---") {
+            let fm = &stripped[..end];
+            let body = &stripped[end + 3..];
+            (fm.trim(), body)
+        } else {
+            anyhow::bail!("unclosed frontmatter");
+        }
+    } else {
+        anyhow::bail!("no frontmatter");
+    };
+
+    // Parse frontmatter as YAML
+    let yaml: serde_yaml::Value = serde_yaml::from_str(frontmatter)?;
+
+    // Extract id (required — fall back to filename stem)
+    let id = yaml["id"].as_str().map(String::from).unwrap_or_else(|| {
+        path.file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string()
+    });
+
+    // Extract statement: first non-empty line after # heading in body
+    let statement = extract_statement(body).unwrap_or_else(|| id.clone());
+
+    // Defaults per SPEC: entrenchment=medium, status=active, facets=[]
+    let entrenchment = yaml["entrenchment"]
+        .as_str()
+        .unwrap_or("medium")
+        .to_string();
+    let status = yaml["status"].as_str().unwrap_or("active").to_string();
+    let facets = if let Some(seq) = yaml["facets"].as_sequence() {
+        let tags: Vec<String> = seq
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
+        serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string())
+    } else {
+        "[]".to_string()
+    };
+
+    Ok(BeliefEntry {
+        id,
+        source: "persona".to_string(),
+        kind: "value".to_string(),
+        statement,
+        entrenchment,
+        status,
+        facets,
+        cited_by_beliefs: 0,
+        cited_by_sessions: 0,
+        applied_in: 0,
+        evidence_count: 0,
+        evidence_verified: 0,
+        health_score: 0.0,
+        contested_by: String::new(),
+        imported: false,
+    })
+}
+
+/// Extract statement from markdown body: first non-empty, non-heading line
+fn extract_statement(body: &str) -> Option<String> {
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        return Some(trimmed.to_string());
+    }
+    None
 }
 
 /// Show graph state
@@ -308,6 +748,192 @@ pub fn learn_weights(alpha: f32) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Search cross-project knowledge via CLI
+///
+/// FTS5 search across all synced knowledge in graph.db.
+/// Per SPEC: statement truncated to 200 chars, one entry per 2 lines.
+pub fn search_beliefs_cli(query: &str, limit: usize) -> Result<()> {
+    let graph = Graph::open()?;
+    let results = graph.search_beliefs(query, limit)?;
+
+    if results.is_empty() {
+        println!("No results.");
+        return Ok(());
+    }
+
+    // Count unique sources for summary
+    let mut source_set = std::collections::HashSet::new();
+    let mut has_persona = false;
+
+    for entry in &results {
+        source_set.insert(entry.source.clone());
+        if entry.source == "persona" {
+            has_persona = true;
+        }
+    }
+
+    println!();
+    for entry in &results {
+        // Line 1: [source] id kind entrenchment
+        let source_display = if entry.source == "persona" {
+            "[persona]".to_string()
+        } else {
+            format!("[{}]", entry.source)
+        };
+
+        println!(
+            "{:<20} {:<30} {:<8} {}",
+            source_display,
+            truncate(&entry.id, 30),
+            entry.kind,
+            entry.entrenchment
+        );
+
+        // Line 2: statement (truncated to 200 chars)
+        let stmt_display = if entry.statement.len() > 200 {
+            format!("{}...", &entry.statement[..197])
+        } else {
+            entry.statement.clone()
+        };
+        println!("{:20} \"{}\"", "", stmt_display);
+        println!();
+    }
+
+    // Unique project count (excluding persona)
+    let unique_projects = source_set.len() - if has_persona { 1 } else { 0 };
+    let persona_suffix = if has_persona { " + persona" } else { "" };
+    println!(
+        "{} results from {} project{}{}",
+        results.len(),
+        unique_projects,
+        if unique_projects != 1 { "s" } else { "" },
+        persona_suffix
+    );
+
+    Ok(())
+}
+
+/// Query the belief graph — CLI entry point for `mother graph query` subcommands
+pub fn query_beliefs_cli(command: super::QueryCommands) -> Result<()> {
+    use patina::mother::Graph;
+
+    let graph = Graph::open()?;
+
+    match command {
+        super::QueryCommands::Belief { query, limit } => {
+            let results = graph.search_beliefs(&query, limit)?;
+
+            if results.is_empty() {
+                println!("No beliefs found for \"{}\".", query);
+                return Ok(());
+            }
+
+            println!(
+                "\n  Beliefs matching \"{}\" ({} results)\n",
+                query,
+                results.len()
+            );
+
+            for entry in &results {
+                let source_display = if entry.source == "persona" {
+                    "[persona]".to_string()
+                } else {
+                    format!("[{}]", entry.source)
+                };
+
+                println!(
+                    "  {:<18} {:<35} {} health={:.2} evid={} cited={}",
+                    source_display,
+                    truncate(&entry.id, 35),
+                    entry.entrenchment,
+                    entry.health_score,
+                    entry.evidence_count,
+                    entry.cited_by_beliefs + entry.cited_by_sessions,
+                );
+
+                let stmt_display = if entry.statement.len() > 100 {
+                    format!("{}...", &entry.statement[..97])
+                } else {
+                    entry.statement.clone()
+                };
+                println!("  {:18} \"{}\"\n", "", stmt_display);
+            }
+
+            Ok(())
+        }
+        super::QueryCommands::Supports { belief_id } => {
+            let supports = graph.query_supports(&belief_id)?;
+
+            if supports.is_empty() {
+                println!("No beliefs support \"{}\".", belief_id);
+                return Ok(());
+            }
+
+            println!(
+                "\n  Beliefs supporting \"{}\" ({} edges)\n",
+                belief_id,
+                supports.len()
+            );
+
+            for (from_belief, source_project) in &supports {
+                println!(
+                    "  {} ← {} (from {})",
+                    belief_id, from_belief, source_project
+                );
+            }
+            println!();
+
+            Ok(())
+        }
+        super::QueryCommands::Attacks { belief_id } => {
+            let attacks = graph.query_attacks(&belief_id)?;
+
+            if attacks.is_empty() {
+                println!("No beliefs attack \"{}\".", belief_id);
+                return Ok(());
+            }
+
+            println!(
+                "\n  Beliefs attacking \"{}\" ({} edges)\n",
+                belief_id,
+                attacks.len()
+            );
+
+            for (from_belief, source_project, defeated) in &attacks {
+                let status = if *defeated { "defeated" } else { "active" };
+                println!(
+                    "  {} ← {} ({}, from {})",
+                    belief_id, from_belief, status, source_project
+                );
+            }
+            println!();
+
+            Ok(())
+        }
+        super::QueryCommands::Projects { belief_id } => {
+            let projects = graph.query_projects(&belief_id)?;
+
+            if projects.is_empty() {
+                println!("Belief \"{}\" not found in any project.", belief_id);
+                return Ok(());
+            }
+
+            println!(
+                "\n  Projects with \"{}\" ({} found)\n",
+                belief_id,
+                projects.len()
+            );
+
+            for (source, entrenchment) in &projects {
+                println!("  {} (entrenchment: {})", source, entrenchment);
+            }
+            println!();
+
+            Ok(())
+        }
+    }
 }
 
 /// Show edge usage statistics

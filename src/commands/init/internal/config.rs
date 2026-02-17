@@ -81,6 +81,7 @@ pub fn create_project_config(
             arch: environment.arch.clone(),
             detected_tools,
         }),
+        beliefs: Default::default(),
     };
 
     // Save using project module
