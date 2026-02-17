@@ -5,6 +5,7 @@ status: active
 created: 2026-02-16
 sessions:
   origin: 20260216-155323
+  build-1: 20260217-055500
 related:
 - layer/surface/build/feat/cross-project-beliefs/SPEC.md
 - layer/surface/build/feat/mother-design/SPEC.md
@@ -489,6 +490,18 @@ See [[session-20260216-155323]] for detailed mapping.
 - Extending `context` MCP tool with cross-project beliefs
 - `EVOLVES_FROM` edge type (future: belief lineage tracking)
 - Core layer changes (existing core/*.md files stay as-is)
+
+## Build Progress
+
+| Phase | Status | Session | Commits |
+|-------|--------|---------|---------|
+| A: Belief nodes in graph.db | DONE | [[session-20260217-055500]] | [[commit-ff2e1f25]] |
+| B: Belief relationship edges | DONE | same | [[commit-f3db3826]] |
+| C: Richer sync + dedup fix | DONE | same | [[commit-17166a84]] |
+| D: `mother graph query` | TODO | — | — |
+| E: `patina belief import` | TODO | — | — |
+
+**Session 1 verified exit criteria 1, 2, 7.** Criteria 3–6 require Phases D+E.
 
 ## Review History
 
