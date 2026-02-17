@@ -799,6 +799,108 @@ pub fn search_beliefs_cli(query: &str, limit: usize) -> Result<()> {
     Ok(())
 }
 
+/// Query the belief graph — CLI entry point for `mother graph query` subcommands
+pub fn query_beliefs_cli(command: super::QueryCommands) -> Result<()> {
+    use patina::mother::Graph;
+
+    let graph = Graph::open()?;
+
+    match command {
+        super::QueryCommands::Belief { query, limit } => {
+            let results = graph.search_beliefs(&query, limit)?;
+
+            if results.is_empty() {
+                println!("No beliefs found for \"{}\".", query);
+                return Ok(());
+            }
+
+            println!("\n  Beliefs matching \"{}\" ({} results)\n", query, results.len());
+
+            for entry in &results {
+                let source_display = if entry.source == "persona" {
+                    "[persona]".to_string()
+                } else {
+                    format!("[{}]", entry.source)
+                };
+
+                println!(
+                    "  {:<18} {:<35} {} health={:.2} evid={} cited={}",
+                    source_display,
+                    truncate(&entry.id, 35),
+                    entry.entrenchment,
+                    entry.health_score,
+                    entry.evidence_count,
+                    entry.cited_by_beliefs + entry.cited_by_sessions,
+                );
+
+                let stmt_display = if entry.statement.len() > 100 {
+                    format!("{}...", &entry.statement[..97])
+                } else {
+                    entry.statement.clone()
+                };
+                println!("  {:18} \"{}\"\n", "", stmt_display);
+            }
+
+            Ok(())
+        }
+        super::QueryCommands::Supports { belief_id } => {
+            let supports = graph.query_supports(&belief_id)?;
+
+            if supports.is_empty() {
+                println!("No beliefs support \"{}\".", belief_id);
+                return Ok(());
+            }
+
+            println!("\n  Beliefs supporting \"{}\" ({} edges)\n", belief_id, supports.len());
+
+            for (from_belief, source_project) in &supports {
+                println!("  {} ← {} (from {})", belief_id, from_belief, source_project);
+            }
+            println!();
+
+            Ok(())
+        }
+        super::QueryCommands::Attacks { belief_id } => {
+            let attacks = graph.query_attacks(&belief_id)?;
+
+            if attacks.is_empty() {
+                println!("No beliefs attack \"{}\".", belief_id);
+                return Ok(());
+            }
+
+            println!("\n  Beliefs attacking \"{}\" ({} edges)\n", belief_id, attacks.len());
+
+            for (from_belief, source_project, defeated) in &attacks {
+                let status = if *defeated { "defeated" } else { "active" };
+                println!(
+                    "  {} ← {} ({}, from {})",
+                    belief_id, from_belief, status, source_project
+                );
+            }
+            println!();
+
+            Ok(())
+        }
+        super::QueryCommands::Projects { belief_id } => {
+            let projects = graph.query_projects(&belief_id)?;
+
+            if projects.is_empty() {
+                println!("Belief \"{}\" not found in any project.", belief_id);
+                return Ok(());
+            }
+
+            println!("\n  Projects with \"{}\" ({} found)\n", belief_id, projects.len());
+
+            for (source, entrenchment) in &projects {
+                println!("  {} (entrenchment: {})", source, entrenchment);
+            }
+            println!();
+
+            Ok(())
+        }
+    }
+}
+
 /// Show edge usage statistics
 pub fn show_stats() -> Result<()> {
     let graph = Graph::open()?;

@@ -1036,6 +1036,112 @@ impl Graph {
         Ok(dangling)
     }
 
+    /// Query beliefs that support a given belief (across all projects)
+    pub fn query_supports(&self, belief_id: &str) -> Result<Vec<(String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT from_belief, source_project FROM belief_supports WHERE to_belief = ?1 ORDER BY source_project, from_belief",
+        )?;
+
+        let results = stmt
+            .query_map(params![belief_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Query beliefs that attack a given belief (across all projects)
+    pub fn query_attacks(&self, belief_id: &str) -> Result<Vec<(String, String, bool)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT from_belief, source_project, defeated FROM belief_attacks WHERE to_belief = ?1 ORDER BY source_project, from_belief",
+        )?;
+
+        let results = stmt
+            .query_map(params![belief_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i32>(2)? != 0,
+                ))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Query which projects have a given belief
+    pub fn query_projects(&self, belief_id: &str) -> Result<Vec<(String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT source, entrenchment FROM beliefs WHERE id = ?1 ORDER BY source",
+        )?;
+
+        let results = stmt
+            .query_map(params![belief_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Get a single belief by ID (with source project path from nodes table)
+    ///
+    /// Returns the belief entry and the source project's filesystem path.
+    /// Used by `belief import` to locate the source file.
+    pub fn get_belief(
+        &self,
+        belief_id: &str,
+        source: &str,
+    ) -> Result<Option<(BeliefEntry, PathBuf)>> {
+        // Get belief
+        let entry = self.conn.query_row(
+            r#"
+            SELECT b.id, b.source, b.kind, b.statement, b.entrenchment, b.status, b.facets,
+                   b.cited_by_beliefs, b.cited_by_sessions, b.applied_in,
+                   b.evidence_count, b.evidence_verified, b.health_score, b.contested_by
+            FROM beliefs b
+            WHERE b.id = ?1 AND b.source = ?2
+            "#,
+            params![belief_id, source],
+            |row| {
+                Ok(BeliefEntry {
+                    id: row.get(0)?,
+                    source: row.get(1)?,
+                    kind: row.get(2)?,
+                    statement: row.get(3)?,
+                    entrenchment: row.get(4)?,
+                    status: row.get(5)?,
+                    facets: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
+                    cited_by_beliefs: row.get(7)?,
+                    cited_by_sessions: row.get(8)?,
+                    applied_in: row.get(9)?,
+                    evidence_count: row.get(10)?,
+                    evidence_verified: row.get(11)?,
+                    health_score: row.get(12)?,
+                    contested_by: row.get::<_, Option<String>>(13)?.unwrap_or_default(),
+                })
+            },
+        );
+
+        match entry {
+            Ok(e) => {
+                // Get project path from nodes table
+                let path: String = self.conn.query_row(
+                    "SELECT path FROM nodes WHERE id = ?1",
+                    params![source],
+                    |row| row.get(0),
+                )?;
+                Ok(Some((e, PathBuf::from(path))))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
     /// Count belief entries
     pub fn belief_count(&self) -> Result<usize> {
         let count: i64 = self
