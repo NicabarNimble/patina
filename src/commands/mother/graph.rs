@@ -5,7 +5,7 @@
 use anyhow::{bail, Result};
 use std::path::Path;
 
-use patina::mother::{EdgeType, Graph, KnowledgeEntry, NodeType, MIN_SAMPLES};
+use patina::mother::{BeliefEntry, EdgeType, Graph, NodeType, MIN_SAMPLES};
 use patina::paths;
 
 use crate::commands::repo::internal::Registry;
@@ -61,7 +61,7 @@ pub fn sync_from_registry() -> Result<()> {
     println!();
     println!("📚 Syncing knowledge...\n");
 
-    let mut knowledge: Vec<KnowledgeEntry> = Vec::new();
+    let mut knowledge: Vec<BeliefEntry> = Vec::new();
     let mut synced_sources: Vec<String> = Vec::new();
     let mut beliefs_synced = 0;
     let mut values_synced = 0;
@@ -129,7 +129,7 @@ pub fn sync_from_registry() -> Result<()> {
 
     // Sync knowledge — only rebuilds entries for successfully collected sources.
     // Failed sources retain their previously indexed data.
-    graph.sync_knowledge(&knowledge, &synced_sources)?;
+    graph.sync_beliefs(&knowledge, &synced_sources)?;
 
     println!();
     println!(
@@ -145,7 +145,7 @@ pub fn sync_from_registry() -> Result<()> {
         "   Knowledge: {} beliefs + {} values = {} total",
         beliefs_synced,
         values_synced,
-        graph.knowledge_count()?
+        graph.belief_count()?
     );
 
     Ok(())
@@ -173,9 +173,9 @@ fn detect_project_domains(project_root: &Path) -> Vec<String> {
 
 /// Collect beliefs from a project's patina.db
 ///
-/// Opens the project's patina.db and reads the beliefs table.
+/// Opens the project's patina.db and reads the beliefs table (12 columns).
 /// Returns empty vec with warning on missing db or missing table.
-fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<KnowledgeEntry>> {
+fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<BeliefEntry>> {
     use rusqlite::Connection;
 
     if !db_path.exists() {
@@ -198,12 +198,15 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Kno
     }
 
     let mut stmt = conn.prepare(
-        "SELECT id, statement, entrenchment, status, facets FROM beliefs WHERE status != 'archived'",
+        "SELECT id, statement, entrenchment, status, facets,
+                cited_by_beliefs, cited_by_sessions, applied_in,
+                evidence_count, evidence_verified, health_score, contested_by
+         FROM beliefs WHERE status != 'archived'",
     )?;
 
-    let entries: Vec<KnowledgeEntry> = stmt
+    let entries: Vec<BeliefEntry> = stmt
         .query_map([], |row| {
-            Ok(KnowledgeEntry {
+            Ok(BeliefEntry {
                 id: row.get(0)?,
                 source: project_name.to_string(),
                 kind: "belief".to_string(),
@@ -217,6 +220,15 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Kno
                 facets: row
                     .get::<_, Option<String>>(4)?
                     .unwrap_or_else(|| "[]".to_string()),
+                cited_by_beliefs: row.get::<_, Option<i32>>(5)?.unwrap_or(0),
+                cited_by_sessions: row.get::<_, Option<i32>>(6)?.unwrap_or(0),
+                applied_in: row.get::<_, Option<i32>>(7)?.unwrap_or(0),
+                evidence_count: row.get::<_, Option<i32>>(8)?.unwrap_or(0),
+                evidence_verified: row.get::<_, Option<i32>>(9)?.unwrap_or(0),
+                health_score: row.get::<_, Option<f64>>(10)?.unwrap_or(0.0),
+                contested_by: row
+                    .get::<_, Option<String>>(11)?
+                    .unwrap_or_default(),
             })
         })?
         .filter_map(|r| r.ok())
@@ -230,7 +242,7 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Kno
 /// Parses YAML frontmatter for id, statement, entrenchment, status, facets.
 /// Required: id (from filename if missing) + statement (first non-empty line after heading).
 /// Malformed files: warn to stderr, skip, continue.
-fn collect_persona_values() -> Result<Vec<KnowledgeEntry>> {
+fn collect_persona_values() -> Result<Vec<BeliefEntry>> {
     let beliefs_dir = paths::user_layer::beliefs_dir();
 
     if !beliefs_dir.exists() {
@@ -262,7 +274,7 @@ fn collect_persona_values() -> Result<Vec<KnowledgeEntry>> {
 }
 
 /// Parse a single persona value markdown file
-fn parse_persona_value(path: &Path) -> Result<KnowledgeEntry> {
+fn parse_persona_value(path: &Path) -> Result<BeliefEntry> {
     let content = std::fs::read_to_string(path)?;
 
     // Split frontmatter from body
@@ -308,7 +320,7 @@ fn parse_persona_value(path: &Path) -> Result<KnowledgeEntry> {
         "[]".to_string()
     };
 
-    Ok(KnowledgeEntry {
+    Ok(BeliefEntry {
         id,
         source: "persona".to_string(),
         kind: "value".to_string(),
@@ -316,6 +328,13 @@ fn parse_persona_value(path: &Path) -> Result<KnowledgeEntry> {
         entrenchment,
         status,
         facets,
+        cited_by_beliefs: 0,
+        cited_by_sessions: 0,
+        applied_in: 0,
+        evidence_count: 0,
+        evidence_verified: 0,
+        health_score: 0.0,
+        contested_by: String::new(),
     })
 }
 
@@ -558,9 +577,9 @@ pub fn learn_weights(alpha: f32) -> Result<()> {
 ///
 /// FTS5 search across all synced knowledge in graph.db.
 /// Per SPEC: statement truncated to 200 chars, one entry per 2 lines.
-pub fn search_knowledge_cli(query: &str, limit: usize) -> Result<()> {
+pub fn search_beliefs_cli(query: &str, limit: usize) -> Result<()> {
     let graph = Graph::open()?;
-    let results = graph.search_knowledge(query, limit)?;
+    let results = graph.search_beliefs(query, limit)?;
 
     if results.is_empty() {
         println!("No results.");

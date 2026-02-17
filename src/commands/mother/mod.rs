@@ -87,9 +87,9 @@ pub enum MotherCommands {
     #[command(subcommand)]
     Graph(GraphCommands),
 
-    /// Search cross-project knowledge (beliefs + persona values)
+    /// Search cross-project beliefs (beliefs + persona values)
     ///
-    /// FTS5 search across all synced knowledge in graph.db.
+    /// FTS5 search across all synced beliefs in graph.db.
     /// Run `patina mother graph sync` first to populate the index.
     Search {
         /// Search query
@@ -201,7 +201,7 @@ pub fn execute_cli(
         Some(MotherCommands::Stop) => stop_daemon(),
         Some(MotherCommands::Status) => show_status(),
         Some(MotherCommands::Graph(graph_cmd)) => execute_graph(graph_cmd),
-        Some(MotherCommands::Search { query, limit }) => graph::search_knowledge_cli(&query, limit),
+        Some(MotherCommands::Search { query, limit }) => graph::search_beliefs_cli(&query, limit),
     }
 }
 
