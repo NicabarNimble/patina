@@ -499,10 +499,17 @@ See [[session-20260216-155323]] for detailed mapping.
 | B: Belief relationship edges | DONE | same | [[commit-f3db3826]] |
 | C: Richer sync + dedup fix | DONE | same | [[commit-17166a84]] |
 | D: `mother graph query` | DONE | [[session-20260217-064044]] | [[commit-d6fec949]] |
-| E: `patina belief import` | PARTIAL | same | [[commit-18ab1879]] |
+| E: `patina belief import` | DONE | [[session-20260217-070309]] | [[commit-18ab1879]], [[commit-cb2d3c57]] |
 
-**Session 1 verified exit criteria 1, 2, 7.** Session 2 verified criteria 1, 2, 4.
-**Remaining:** Exit criteria 3 (import with scrape+audit roundtrip), 5 (tests), 6 (CI checks) need final verification. Phase E code is complete but needs fmt/clippy/test pass.
+**All exit criteria verified:**
+1. `patina scrape` writes `belief_supports` + `belief_attacks` to patina.db (234 supports, 71 attacks)
+2. `mother graph sync` populates graph.db `beliefs` (13 cols) + edge tables + `belief_applied_in`
+3. `mother graph query belief "error handling"` returns beliefs with metrics
+4. `mother graph query supports dependable-rust` returns 18 supporting beliefs
+5. `patina belief import --from patina beliefs-are-the-product --force` writes with entrenchment=low, `imported_from` frontmatter, `## Origin` + session backlink
+6. After `patina scrape --rebuild`, imported belief shows `imported=1` in patina.db, visible in `patina belief audit`
+7. Per-source rebuild preserved (tested in Session 1)
+CI: fmt, clippy, 418 tests pass.
 
 ## Review History
 
