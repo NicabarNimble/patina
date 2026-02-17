@@ -1,11 +1,10 @@
 ---
 type: feat
 id: belief-graph
-status: draft
+status: ready
 created: 2026-02-16
 sessions:
   origin: 20260216-155323
-supersedes: cross-project-beliefs
 related:
 - layer/surface/build/feat/cross-project-beliefs/SPEC.md
 - layer/surface/build/feat/mother-design/SPEC.md
