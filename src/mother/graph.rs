@@ -810,11 +810,7 @@ impl Graph {
     ///
     /// `synced_sources` is the set of source names that were successfully collected
     /// (even if they returned 0 entries — 0 means "delete old, insert nothing").
-    pub fn sync_beliefs(
-        &self,
-        entries: &[BeliefEntry],
-        synced_sources: &[String],
-    ) -> Result<()> {
+    pub fn sync_beliefs(&self, entries: &[BeliefEntry], synced_sources: &[String]) -> Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
 
         self.conn.execute("BEGIN", [])?;
@@ -895,8 +891,8 @@ impl Graph {
     /// Deletes edges for successfully synced sources, then repopulates.
     pub fn sync_belief_edges(
         &self,
-        supports: &[(String, String, String)],  // (from, to, source_project)
-        attacks: &[(String, String, String, bool)],  // (from, to, source_project, defeated)
+        supports: &[(String, String, String)], // (from, to, source_project)
+        attacks: &[(String, String, String, bool)], // (from, to, source_project, defeated)
         synced_sources: &[String],
     ) -> Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
@@ -1370,7 +1366,15 @@ mod tests {
         Ok(())
     }
 
-    fn make_belief_entry(id: &str, source: &str, kind: &str, statement: &str, entrenchment: &str, status: &str, facets: &str) -> BeliefEntry {
+    fn make_belief_entry(
+        id: &str,
+        source: &str,
+        kind: &str,
+        statement: &str,
+        entrenchment: &str,
+        status: &str,
+        facets: &str,
+    ) -> BeliefEntry {
         BeliefEntry {
             id: id.to_string(),
             source: source.to_string(),
@@ -1399,14 +1403,22 @@ mod tests {
 
         let entries = vec![
             make_belief_entry(
-                "explicit-error-types", "patina", "belief",
+                "explicit-error-types",
+                "patina",
+                "belief",
                 "Prefer explicit error types over string errors",
-                "high", "active", "[\"rust\", \"error-handling\"]",
+                "high",
+                "active",
+                "[\"rust\", \"error-handling\"]",
             ),
             make_belief_entry(
-                "prefer-result-over-panics", "persona", "value",
+                "prefer-result-over-panics",
+                "persona",
+                "value",
                 "I prefer Result<T,E> over panics for error handling",
-                "medium", "active", "[\"rust\"]",
+                "medium",
+                "active",
+                "[\"rust\"]",
             ),
         ];
 
@@ -1448,8 +1460,13 @@ mod tests {
 
         // Sync project-a beliefs
         let entries_a = vec![make_belief_entry(
-            "test-belief", "project-a", "belief",
-            "Test belief from project A", "medium", "active", "[]",
+            "test-belief",
+            "project-a",
+            "belief",
+            "Test belief from project A",
+            "medium",
+            "active",
+            "[]",
         )];
 
         graph.sync_beliefs(&entries_a, &["project-a".to_string()])?;
@@ -1458,12 +1475,22 @@ mod tests {
         // Sync project-b beliefs — project-a should be preserved
         let entries_b = vec![
             make_belief_entry(
-                "belief-one", "project-b", "belief",
-                "First belief", "high", "active", "[]",
+                "belief-one",
+                "project-b",
+                "belief",
+                "First belief",
+                "high",
+                "active",
+                "[]",
             ),
             make_belief_entry(
-                "belief-two", "project-b", "belief",
-                "Second belief", "low", "active", "[]",
+                "belief-two",
+                "project-b",
+                "belief",
+                "Second belief",
+                "low",
+                "active",
+                "[]",
             ),
         ];
 
@@ -1529,9 +1556,13 @@ mod tests {
         graph.init_schema()?;
 
         let entries = vec![make_belief_entry(
-            "secrets-llm-boundary", "patina", "belief",
+            "secrets-llm-boundary",
+            "patina",
+            "belief",
             "Never expose secrets to LLM context windows",
-            "high", "active", "[\"security\", \"llm\"]",
+            "high",
+            "active",
+            "[\"security\", \"llm\"]",
         )];
 
         graph.sync_beliefs(&entries, &["patina".to_string()])?;

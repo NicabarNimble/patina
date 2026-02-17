@@ -81,9 +81,9 @@ struct BeliefMetrics {
     contested_by: Vec<String>,    // active beliefs that contest this one (bidirectional)
 
     // Relationship edges (belief-graph Phase B)
-    supports_ids: Vec<String>,            // belief IDs from ## Supports section
+    supports_ids: Vec<String>, // belief IDs from ## Supports section
     defeated_attack_targets: Vec<String>, // defeated targets from ## Attacks (for edge rows)
-    defeated_attacker_ids: Vec<String>,   // defeated attackers from ## Attacked-By (for edge rows)
+    defeated_attacker_ids: Vec<String>, // defeated attackers from ## Attacked-By (for edge rows)
 }
 
 /// Create materialized views for belief events
@@ -458,7 +458,10 @@ fn extract_file_metrics(content: &str) -> BeliefMetrics {
                     let entry = trimmed.trim_start_matches("- ").trim_start_matches("* ");
                     let bare_id = entry.split(&[':', ' '][..]).next().unwrap_or("").trim();
                     if !bare_id.is_empty() {
-                        eprintln!("  warning: ## Supports entry without [[wikilink]]: {}", bare_id);
+                        eprintln!(
+                            "  warning: ## Supports entry without [[wikilink]]: {}",
+                            bare_id
+                        );
                         metrics.supports_ids.push(bare_id.to_string());
                     }
                 }
