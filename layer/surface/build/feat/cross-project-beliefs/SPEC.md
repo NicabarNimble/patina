@@ -1,7 +1,7 @@
 ---
 type: feat
 id: cross-project-beliefs
-status: active
+status: complete
 created: 2026-02-15
 sessions:
   origin: 20260215-083121
