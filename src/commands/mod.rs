@@ -16,6 +16,7 @@ pub mod plugin;
 pub mod rebuild;
 pub mod repo;
 pub mod report;
+pub mod schema;
 pub mod scrape;
 pub mod scry;
 pub mod secrets;

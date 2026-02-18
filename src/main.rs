@@ -416,6 +416,12 @@ enum Commands {
         command: commands::spec::SpecCommands,
     },
 
+    /// Manage fact schemas (install, list, show)
+    Schema {
+        #[command(subcommand)]
+        command: commands::schema::SchemaCommands,
+    },
+
     /// Query codebase structure (modules, imports, call graph)
     Assay {
         #[command(subcommand)]
@@ -1635,6 +1641,17 @@ fn main() -> Result<()> {
                 json,
             } => {
                 commands::spec::list(status, target, json)?;
+            }
+        },
+        Some(Commands::Schema { command }) => match command {
+            commands::schema::SchemaCommands::Install { path } => {
+                commands::schema::install(&path)?;
+            }
+            commands::schema::SchemaCommands::List { json } => {
+                commands::schema::list(json)?;
+            }
+            commands::schema::SchemaCommands::Show { name, json } => {
+                commands::schema::show(&name, json)?;
             }
         },
         Some(Commands::Serve { host, port, mcp }) => {
