@@ -1,18 +1,17 @@
 ---
 type: feat
 id: fact-schema-registry
-status: draft
+status: ready
 created: 2026-02-17
 sessions:
   origin: 20260217-114500
-  revised: 20260217-224547
 related:
-  - layer/surface/build/feat/patina-polymorphic-extraction/SPEC.md
+- layer/surface/build/feat/patina-polymorphic-extraction/SPEC.md
 beliefs:
-  - beliefs-are-the-product
-  - patina-identity
-  - unix-philosophy
-  - dependable-rust
+- beliefs-are-the-product
+- patina-identity
+- unix-philosophy
+- dependable-rust
 ---
 
 # feat: Fact Schema Registry — Declarative Data Contracts for Patina
