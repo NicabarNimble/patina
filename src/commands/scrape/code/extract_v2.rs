@@ -104,6 +104,7 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
     let mut _files_processed = 0;
     let mut forge_issues_inserted = 0;
     let mut forge_prs_inserted = 0;
+    let mut forge_skipped = 0;
 
     // Process each file and collect data
     for (file_path, language) in all_files {
@@ -160,6 +161,7 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                         match crate::commands::scrape::forge::insert_issues(conn, &[issue]) {
                             Ok(stats) => {
                                 forge_issues_inserted += stats.inserted;
+                                forge_skipped += stats.skipped;
                                 _files_processed += 1;
                             }
                             Err(e) => {
@@ -176,6 +178,7 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                         match crate::commands::scrape::forge::insert_prs(conn, &[pr]) {
                             Ok(stats) => {
                                 forge_prs_inserted += stats.inserted;
+                                forge_skipped += stats.skipped;
                                 _files_processed += 1;
                             }
                             Err(e) => {
@@ -328,10 +331,17 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
     );
 
     if forge_issues_inserted > 0 || forge_prs_inserted > 0 {
-        println!(
-            "  📊 Forge via pipeline: {} issues, {} PRs",
-            forge_issues_inserted, forge_prs_inserted
-        );
+        if forge_skipped > 0 {
+            println!(
+                "  📊 Forge via pipeline: {} issues, {} PRs ({} unchanged)",
+                forge_issues_inserted, forge_prs_inserted, forge_skipped
+            );
+        } else {
+            println!(
+                "  📊 Forge via pipeline: {} issues, {} PRs",
+                forge_issues_inserted, forge_prs_inserted
+            );
+        }
     }
 
     if files_with_errors > 0 {
