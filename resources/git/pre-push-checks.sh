@@ -46,32 +46,50 @@ fi
 echo "   ✓ WIT files consistent across all crates"
 echo ""
 
-# Step 2: WIT host.wit hard link enforcement
+# Step 2: WIT host.wit symlink enforcement
 # Per [[wit-deps-must-be-hard-links-verified]]: all world-level
-# deps/patina-host/host.wit MUST be hard links to canonical.
+# deps/patina-host/host.wit must point back to the canonical file.
 # Stale copies cause silent build failures when new imports are added.
-echo "📦 [2/5] Checking WIT host.wit hard links..."
+# Pure shell — no python3 (per [[patina-identity]]: Rust-first, no Python).
+echo "📦 [2/5] Checking WIT host.wit symlinks..."
 CANONICAL="wit/deps/patina-host/host.wit"
 wit_link_ok=true
+
+# Resolve a path through symlinks to its absolute canonical form. Pure shell.
+# For symlinks: resolve the target relative to the link's directory, then canonicalize.
+resolve_real() {
+    local path="$1"
+    # Follow symlinks manually
+    while [ -L "$path" ]; do
+        local target
+        target=$(readlink "$path")
+        if [[ "$target" == /* ]]; then
+            path="$target"
+        else
+            path="$(dirname "$path")/$target"
+        fi
+    done
+    # Now path is a real file — resolve its directory
+    local dir
+    dir=$(cd "$(dirname "$path")" && pwd -P)
+    echo "$dir/$(basename "$path")"
+}
+
 if [ ! -f "$CANONICAL" ]; then
     echo "   ERROR: canonical $CANONICAL not found"
     wit_link_ok=false
 else
-    # Get canonical inode (macOS: stat -f %i, Linux: stat -c %i)
-    if stat -f "%i" "$CANONICAL" > /dev/null 2>&1; then
-        CANONICAL_INODE=$(stat -f "%i" "$CANONICAL")
-        STAT_FMT="-f %i"
-    else
-        CANONICAL_INODE=$(stat -c "%i" "$CANONICAL")
-        STAT_FMT="-c %i"
-    fi
-
-    # Check world-level deps AND guest crate deps — same canonical file
+    CANONICAL_REAL=$(resolve_real "$CANONICAL")
+    # Check world-level deps AND SDK mirror deps — same canonical file
     COPIES=(
         "wit/mother-child/deps/patina-host/host.wit"
         "wit/command/deps/patina-host/host.wit"
         "wit/task/deps/patina-host/host.wit"
         "wit/pipeline/deps/patina-host/host.wit"
+        "plugins/sdk/wit/mother-child/deps/patina-host/host.wit"
+        "plugins/sdk/wit/command/deps/patina-host/host.wit"
+        "plugins/sdk/wit/task/deps/patina-host/host.wit"
+        "plugins/sdk/wit/pipeline/deps/patina-host/host.wit"
     )
     for COPY in "${COPIES[@]}"; do
         if [ ! -f "$COPY" ]; then
@@ -79,31 +97,34 @@ else
             wit_link_ok=false
             continue
         fi
-
-        COPY_INODE=$(stat $STAT_FMT "$COPY")
-        if [ "$CANONICAL_INODE" != "$COPY_INODE" ]; then
-            # Strategy 2 fallback: check content match
-            if diff -q "$CANONICAL" "$COPY" > /dev/null 2>&1; then
-                echo "   WARN: $COPY matches content but is NOT a hard link"
-                echo "         (inode $COPY_INODE != canonical $CANONICAL_INODE)"
-                echo "         Fix: rm $COPY && ln $CANONICAL $COPY"
-                wit_link_ok=false
-            else
-                echo "   ERROR: $COPY content DIFFERS from canonical!"
-                echo "         This is a split-brain — plugins compile against different host imports."
-                echo "         Fix: rm $COPY && ln $CANONICAL $COPY"
-                wit_link_ok=false
-            fi
+        if [ ! -L "$COPY" ]; then
+            echo "   ERROR: $COPY is not a symlink (expected -> $CANONICAL)"
+            echo "         Fix: rm $COPY && ln -s <relative-path-to-canonical> $COPY"
+            wit_link_ok=false
+            continue
+        fi
+        SYM_TARGET=$(readlink "$COPY")
+        if [[ "$SYM_TARGET" == /* ]]; then
+            echo "   ERROR: $COPY uses an absolute symlink target ($SYM_TARGET)"
+            echo "         Fix: rm $COPY && ln -s <relative-path> $COPY"
+            wit_link_ok=false
+            continue
+        fi
+        COPY_REAL=$(resolve_real "$COPY")
+        if [ "$COPY_REAL" != "$CANONICAL_REAL" ]; then
+            echo "   ERROR: $COPY resolves to $COPY_REAL (expected $CANONICAL_REAL)"
+            echo "         Fix: rm $COPY && ln -s <relative-path-to-canonical> $COPY"
+            wit_link_ok=false
         fi
     done
 fi
 if [ "$wit_link_ok" = false ]; then
     echo ""
-    echo "❌ WIT host.wit hard link check failed!"
-    echo "   All world deps must be hard links to $CANONICAL"
+    echo "❌ WIT host.wit symlink check failed!"
+    echo "   All world deps must be symlinks to $CANONICAL"
     exit 1
 fi
-echo "   ✓ All world host.wit files are hard links to canonical"
+echo "   ✓ All host.wit symlinks resolve to canonical"
 echo ""
 
 # Step 3: Check formatting (CI uses --check, not --fix)
