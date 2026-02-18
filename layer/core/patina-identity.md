@@ -152,7 +152,7 @@ Non-negotiable properties of the system:
 
 ### 1. Rust-first runtime
 
-No Python subprocess dependencies. No Node.js. No shell scripts at runtime. Embeddings run through ONNX Runtime via `ort` crate. Cross-platform: same vector space on Mac/Linux/Windows.
+No Python subprocess dependencies. No Node.js. No shell scripts at runtime. Embeddings run through ONNX Runtime via `ort` crate. Cross-platform: same vector space on Mac/Linux/Windows, but Patina itself targets macOS and Linux (symlinks, Unix sockets, and filesystem invariants are POSIX-only assumptions).
 
 ### 2. Local-first data
 
