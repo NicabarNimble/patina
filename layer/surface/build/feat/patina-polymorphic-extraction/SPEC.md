@@ -1,7 +1,7 @@
 ---
 type: feat
 id: patina-polymorphic-extraction
-status: draft
+status: complete
 created: 2026-02-17
 sessions:
   origin: 20260217-081150
