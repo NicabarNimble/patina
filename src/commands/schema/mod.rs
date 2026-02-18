@@ -35,6 +35,43 @@ pub enum SchemaCommands {
         #[arg(long)]
         json: bool,
     },
+
+    /// Scaffold a new schema package (WIT + schema.toml)
+    New {
+        /// Schema name (lowercase, e.g., "workspace")
+        name: String,
+
+        /// Schema version (default: 1.0.0)
+        #[arg(long, default_value = "1.0.0")]
+        version: String,
+
+        /// Schema description
+        #[arg(long, default_value = "")]
+        description: String,
+
+        /// Fact names (comma-separated, e.g., "item,event")
+        #[arg(long)]
+        facts: Option<String>,
+    },
+
+    /// Generate code from installed schemas
+    Generate {
+        /// Generate Rust types with serde derives
+        #[arg(long)]
+        types: bool,
+
+        /// Generate SQLite migration DDL
+        #[arg(long)]
+        migrations: bool,
+
+        /// Generate embedding offset + corpus config
+        #[arg(long)]
+        embeddings: bool,
+
+        /// Schema name (generates for all if omitted)
+        #[arg(long)]
+        schema: Option<String>,
+    },
 }
 
 /// Install a schema package from a local path to .patina/schemas/<name>/
@@ -50,4 +87,24 @@ pub fn list(json: bool) -> anyhow::Result<()> {
 /// Show details of an installed schema
 pub fn show(name: &str, json: bool) -> anyhow::Result<()> {
     internal::show_schema(name, json)
+}
+
+/// Scaffold a new schema package under wit/schema/<name>/
+pub fn new_schema(
+    name: &str,
+    version: &str,
+    description: &str,
+    facts: Option<&str>,
+) -> anyhow::Result<()> {
+    internal::new_schema(name, version, description, facts)
+}
+
+/// Generate code from installed schemas
+pub fn generate(
+    types: bool,
+    migrations: bool,
+    embeddings: bool,
+    schema: Option<&str>,
+) -> anyhow::Result<()> {
+    internal::generate(types, migrations, embeddings, schema)
 }
