@@ -1364,6 +1364,7 @@ fn main() -> Result<()> {
                             commands: vec!["doctor".into()],
                             ..Default::default()
                         },
+                        schemas: std::collections::HashMap::new(),
                     }
                 };
                 let engine = patina::plugin::CommandEngine::new()?;

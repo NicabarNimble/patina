@@ -145,6 +145,43 @@ fn manifest_invalid_toml() {
     assert!(PluginManifest::from_path(f.path()).is_err());
 }
 
+#[test]
+fn manifest_parses_schemas_section() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "grammar-forge"
+world = "pipeline"
+
+[provides]
+pipeline_ops = ["parse"]
+languages = ["forge-issue", "forge-pr"]
+
+[schemas.forge]
+package = "patina:schema/forge@1.0.0"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert_eq!(m.schemas.len(), 1);
+    assert_eq!(
+        m.schemas.get("forge").unwrap(),
+        "patina:schema/forge@1.0.0"
+    );
+}
+
+#[test]
+fn manifest_no_schemas_is_empty() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "test"
+world = "pipeline"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert!(m.schemas.is_empty());
+}
+
 // =====================================================================
 // check_capabilities
 // =====================================================================
@@ -166,6 +203,7 @@ fn capabilities_all_granted() {
             commands: vec![],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
 }
@@ -187,6 +225,7 @@ fn capabilities_empty() {
             commands: vec![],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
 }
@@ -208,6 +247,7 @@ fn capabilities_denied() {
             commands: vec![],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
@@ -304,6 +344,7 @@ fn check_capabilities_rejects_unknown_query_kinds() {
             commands: vec![],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
     assert!(
@@ -330,6 +371,7 @@ fn check_capabilities_accepts_known_query_kinds() {
             commands: vec![],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
 }
@@ -375,6 +417,7 @@ fn wasm_models_child_handle_roundtrip() {
             commands: vec![],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
 
     let child = engine
@@ -427,6 +470,7 @@ fn wasm_models_child_health() {
             commands: vec![],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
 
     let child = engine
@@ -468,6 +512,7 @@ fn load_repos_child() -> Option<Box<dyn crate::mother::MotherChild>> {
             commands: vec![],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
 
     Some(
@@ -676,6 +721,7 @@ fn wasm_repos_child_toy_capability_gating() {
             commands: vec![],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
 
     let mut child = engine
@@ -758,6 +804,7 @@ fn benchmark_plugin_performance() {
             commands: vec![],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
     let t2 = Instant::now();
     let child = engine
@@ -886,6 +933,7 @@ fn load_doctor_manifest() -> PluginManifest {
             commands: vec!["doctor".into()],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     }
 }
 
@@ -1032,6 +1080,7 @@ fn check_capabilities_rejects_empty_http_domain() {
             commands: vec![],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
     assert!(err.to_string().contains("empty"), "got: {}", err);
@@ -1054,6 +1103,7 @@ fn check_capabilities_rejects_http_domain_with_path() {
             commands: vec![],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
     assert!(err.to_string().contains("path"), "got: {}", err);
@@ -1076,6 +1126,7 @@ fn check_capabilities_accepts_valid_http_domains() {
             commands: vec![],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
 }
@@ -1101,6 +1152,7 @@ fn granted_capabilities_includes_http_domains() {
             commands: vec![],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
     let grants = m.granted_capabilities();
     assert!(grants.http_domains.contains("api.github.com"));
@@ -1194,6 +1246,7 @@ fn hello_task_manifest() -> PluginManifest {
             commands: vec![],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     }
 }
 
@@ -1297,6 +1350,7 @@ fn task_hello_unapproved_toy_denied() {
             commands: vec![],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
 
     let (_exit_code, toys) = engine
@@ -1345,6 +1399,7 @@ fn echo_pipeline_manifest() -> PluginManifest {
             pipeline_ops: vec!["echo".into()],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     }
 }
 
@@ -1475,6 +1530,7 @@ fn wasm_trap_pipeline_panic_returns_error() {
             pipeline_ops: vec!["echo".into()],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
 
     let request = r#"{"op":"echo","version":"1","payload":{}}"#;
@@ -1581,6 +1637,7 @@ fn check_capabilities_rejects_pipeline_with_query() {
             pipeline_ops: vec!["echo".into()],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
@@ -1608,6 +1665,7 @@ fn check_capabilities_rejects_pipeline_with_http() {
             pipeline_ops: vec!["echo".into()],
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
@@ -1671,6 +1729,7 @@ fn wasm_trap_mother_child_panic_returns_error() {
             child: Some("wrong".into()),
             ..Default::default()
         },
+        schemas: std::collections::HashMap::new(),
     };
 
     // Instantiation with wrong world should fail cleanly
