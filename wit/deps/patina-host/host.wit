@@ -114,3 +114,21 @@ interface http {
     /// GET from an allowed domain.
     http-get: func(url: string) -> result<http-response, string>;
 }
+
+/// Read-only access to installed fact schemas.
+///
+/// Plugins and commands use this to discover what fact types are
+/// registered and query their metadata (field types, index hints,
+/// embedding config). The host reads from .patina/schemas/.
+interface schema {
+    /// List installed schema names (e.g., ["forge"]).
+    list-schemas: func() -> list<string>;
+
+    /// Get schema metadata as JSON string.
+    /// Returns the parsed schema.toml content for the named schema.
+    get-schema: func(name: string) -> result<string, string>;
+
+    /// Get field types for a specific fact within a schema.
+    /// Returns JSON object mapping field names to WIT type strings.
+    get-field-types: func(schema-name: string, fact-name: string) -> result<string, string>;
+}
