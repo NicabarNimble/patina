@@ -823,11 +823,7 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
     let index = Index::new(&index_options)?;
     index.load(&index_path)?;
 
-    const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
-    const FORGE_ID_OFFSET: i64 = 5_000_000_000;
-    const CODE_ID_OFFSET: i64 = 1_000_000_000;
-    const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
-    const COMMIT_ID_OFFSET: i64 = 3_000_000_000;
+    use patina::embeddings::offsets::*;
     const SEARCH_LIMIT: usize = 20;
     const MIN_SCORE: f32 = 0.85;
 

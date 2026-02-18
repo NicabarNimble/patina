@@ -241,7 +241,7 @@ pub fn scry_belief(belief_id: &str, options: &ScryOptions) -> Result<Vec<ScryRes
         )
         .with_context(|| format!("Belief '{}' not found in database", belief_id))?;
 
-    const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
+    use patina::embeddings::offsets::BELIEF_ID_OFFSET;
     let belief_index = (BELIEF_ID_OFFSET + rowid) as u64;
 
     // Load knowledge/semantic index (beliefs live in vector space)

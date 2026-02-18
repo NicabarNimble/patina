@@ -25,12 +25,7 @@ pub fn enrich_results(
 ) -> Result<Vec<ScryResult>> {
     let mut enriched = Vec::new();
 
-    // ID offsets to distinguish different content types in semantic index
-    const CODE_ID_OFFSET: i64 = 1_000_000_000;
-    const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
-    const COMMIT_ID_OFFSET: i64 = 3_000_000_000;
-    const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
-    const FORGE_ID_OFFSET: i64 = 5_000_000_000;
+    use patina::embeddings::offsets::*;
 
     match dimension {
         "knowledge" | "semantic" | "sessions" => {
