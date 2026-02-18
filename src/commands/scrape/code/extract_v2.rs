@@ -17,7 +17,7 @@ use anyhow::Result;
 use ignore::WalkBuilder;
 
 use super::database::Database;
-use super::extracted_data::ExtractedData;
+use super::extracted_data::{ExtractedData, ExtractedPayload};
 use super::languages::Language;
 use super::types::FilePath;
 
@@ -107,15 +107,37 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
         let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
         match process_file_with_plugins(&relative_path, &content, language, ext, &pipeline_plugins)
         {
-            Ok(extracted) => {
-                all_symbols.extend(extracted.symbols);
-                all_functions.extend(extracted.functions);
-                all_types.extend(extracted.types);
-                all_imports.extend(extracted.imports);
-                all_call_edges.extend(extracted.call_edges);
-                all_constants.extend(extracted.constants);
-                all_members.extend(extracted.members);
-                _files_processed += 1;
+            Ok(payload) => {
+                // #[non_exhaustive] requires wildcard arm for future variants
+                #[allow(unreachable_patterns)]
+                match payload {
+                    ExtractedPayload::Code(extracted) => {
+                        all_symbols.extend(extracted.symbols);
+                        all_functions.extend(extracted.functions);
+                        all_types.extend(extracted.types);
+                        all_imports.extend(extracted.imports);
+                        all_call_edges.extend(extracted.call_edges);
+                        all_constants.extend(extracted.constants);
+                        all_members.extend(extracted.members);
+                        _files_processed += 1;
+                    }
+                    ExtractedPayload::Issue(_) | ExtractedPayload::PullRequest(_) => {
+                        // Phase B will wire these to forge insert functions.
+                        // For now, log and count as processed.
+                        eprintln!(
+                            "  [pipeline] non-code payload from {} (routing not yet wired)",
+                            relative_path
+                        );
+                        _files_processed += 1;
+                    }
+                    _ => {
+                        // #[non_exhaustive] catch-all for future variants
+                        eprintln!(
+                            "  [pipeline] unknown payload kind from {} — skipping",
+                            relative_path
+                        );
+                    }
+                }
             }
             Err(e) => {
                 eprintln!("  ⚠️  Processing error in {}: {}", relative_path, e);
@@ -224,13 +246,18 @@ fn build_parse_envelope(content: &[u8], language: &str, path: &str) -> String {
 }
 
 /// Try pipeline plugin first, fall back to built-in processor.
+///
+/// Deserialization order for plugin responses:
+/// 1. Try `ExtractedPayload` (JSON has `kind` field)
+/// 2. Try `ExtractedData` → wrap as `ExtractedPayload::Code` (backward compat)
+/// 3. Fall through to built-in processor
 fn process_file_with_plugins(
     file_path: &str,
     content: &[u8],
     language: Language,
     ext: &str,
     pipeline_plugins: &HashMap<String, LoadedPipelinePlugin>,
-) -> Result<ExtractedData> {
+) -> Result<ExtractedPayload> {
     // Plugin-first dispatch: check if a pipeline plugin claims this extension
     if let Some(plugin) = pipeline_plugins.get(ext) {
         let request = build_parse_envelope(content, ext, file_path);
@@ -239,8 +266,13 @@ fn process_file_with_plugins(
             .handle(&plugin.component, &plugin.manifest, &request)
         {
             Ok(response) => {
+                // 1. Try ExtractedPayload (has "kind" field)
+                if let Ok(payload) = serde_json::from_str::<ExtractedPayload>(&response) {
+                    return Ok(payload);
+                }
+                // 2. Try ExtractedData (no "kind" field — backward compat)
                 match serde_json::from_str::<ExtractedData>(&response) {
-                    Ok(extracted) => return Ok(extracted),
+                    Ok(extracted) => return Ok(ExtractedPayload::Code(extracted)),
                     Err(e) => {
                         eprintln!(
                             "  [pipeline:{}] parse response failed for {}: {}",
@@ -261,7 +293,7 @@ fn process_file_with_plugins(
     }
 
     // Built-in Rust fallback — other languages require pipeline plugins
-    process_file_by_language(file_path, content, language)
+    process_file_by_language(file_path, content, language).map(ExtractedPayload::Code)
 }
 
 /// Compiled-in Rust fallback. All other languages dispatch via pipeline plugins.

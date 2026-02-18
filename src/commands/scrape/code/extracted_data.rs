@@ -5,9 +5,47 @@
 //!
 //! This replaces SQL string generation with type-safe structs that can be
 //! directly inserted into the database using prepared statements.
+//!
+//! ## Polymorphic Pipeline Contract
+//!
+//! `ExtractedPayload` is the tagged union that plugins return. The host
+//! deserializes by `kind` and routes to the correct insert path.
+//! This is a **bridge type** — will be superseded by schema-generated
+//! variants once [[fact-schema-registry]] lands.
 
 use super::database::{CodeSymbol, FunctionFact, ImportFact, TypeFact};
 use super::types::CallGraphEntry;
+
+use patina::forge;
+
+/// Pipeline-facing issue type. Re-exports `forge::Issue` since the fields
+/// are identical. Will be replaced by schema-generated type in
+/// [[fact-schema-registry]].
+pub type ExtractedIssue = forge::Issue;
+
+/// Pipeline-facing pull request type. Re-exports `forge::PullRequest` since
+/// the fields are identical. Will be replaced by schema-generated type in
+/// [[fact-schema-registry]].
+pub type ExtractedPullRequest = forge::PullRequest;
+
+/// Pipeline plugins return JSON matching one of these variants.
+/// If no `kind` field is present, defaults to Code (backward compat).
+///
+/// Bridge type: will be superseded by schema-generated variants
+/// once [[fact-schema-registry]] lands. Keep `#[non_exhaustive]`.
+#[derive(Debug, serde::Deserialize)]
+#[non_exhaustive]
+#[serde(tag = "kind")]
+pub enum ExtractedPayload {
+    #[serde(rename = "code")]
+    Code(ExtractedData),
+
+    #[serde(rename = "issue")]
+    Issue(ExtractedIssue),
+
+    #[serde(rename = "pull-request")]
+    PullRequest(ExtractedPullRequest),
+}
 
 /// Represents a constant, macro, enum value, or static variable
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
