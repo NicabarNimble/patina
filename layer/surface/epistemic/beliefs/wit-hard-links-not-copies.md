@@ -7,16 +7,16 @@ entrenchment: medium
 status: active
 endorsed: true
 extracted: 2026-02-13
-revised: 2026-02-13
+revised: 2026-02-18
 ---
 
 # wit-hard-links-not-copies
 
-WIT files across workspaces should be hard links, not copies — hard links eliminate sync drift by making the canonical source and all consumers the same inode.
+WIT files across workspaces must share a single source of truth — implemented today with relative symlinks to the canonical host interface so git operations can't desync the copies.
 
 ## Statement
 
-WIT files across workspaces should be hard links, not copies — hard links eliminate sync drift by making the canonical source and all consumers the same inode.
+WIT files across workspaces should never be standalone copies. They must reference the canonical file so edits propagate automatically. Originally we used hard links; after git checkouts repeatedly broke inodes, we moved to relative symlinks that survive git writes while keeping file-system level sharing.
 
 ## Evidence
 
@@ -32,15 +32,14 @@ WIT files across workspaces should be hard links, not copies — hard links elim
 
 ## Attacked-By
 
-- Hard links break if one copy is deleted and recreated (e.g., by `git checkout` or editor save-as-new-file). Symlinks would survive this but introduce their own issues (relative path resolution across directories).
+- Relative symlinks require deliberate path management when directories move. The hook + helper script must be updated alongside any layout change or the symlink targets will dangle.
 
 ## Applied-In
 
-- `wit/deps/patina-host/host.wit` ↔ `patina-plugin-api/wit/deps/patina-host/host.wit` (same inode)
-- `wit/mother-child/deps/patina-host/host.wit` ↔ `patina-plugin-api/wit/mother-child/deps/patina-host/host.wit` (same inode)
-- `wit/mother-child/mother-child.wit` ↔ `patina-plugin-api/wit/mother-child/mother-child.wit` (same inode)
-- Pre-push check `resources/git/pre-push-checks.sh` validates WIT consistency as safety net
+- All eight `deps/patina-host/host.wit` consumers (four worlds + SDK mirrors) are symlinks to `wit/deps/patina-host/host.wit`.
+- Pre-push check `resources/git/pre-push-checks.sh` validates symlink targets via `readlink` + `cd/pwd -P` (pure shell, no Python) so platform tooling never drifts.
 
 ## Revision Log
 
 - 2026-02-13: Created — metrics computed by `patina scrape`
+- 2026-02-18: Revised — switch from hard links to relative symlinks to survive git rewrites.
