@@ -411,14 +411,12 @@ pub fn execute_raw() -> Result<()> {
 
 /// Build a map from corpus key to doc_id (for result enrichment in raw E5 eval)
 ///
-/// Uses the same ID offset scheme as oxidize and enrichment modules.
+/// Uses ID offsets from `patina::embeddings::offsets`.
 fn build_key_to_doc_id(
     conn: &Connection,
     corpus: &[(i64, String)],
 ) -> Result<std::collections::HashMap<i64, String>> {
-    const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
-    const COMMIT_ID_OFFSET: i64 = 3_000_000_000;
-    const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
+    use patina::embeddings::offsets::{BELIEF_ID_OFFSET, COMMIT_ID_OFFSET, PATTERN_ID_OFFSET};
 
     let mut map = std::collections::HashMap::new();
 

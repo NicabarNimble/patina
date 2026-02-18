@@ -416,6 +416,12 @@ enum Commands {
         command: commands::spec::SpecCommands,
     },
 
+    /// Manage fact schemas (install, list, show)
+    Schema {
+        #[command(subcommand)]
+        command: commands::schema::SchemaCommands,
+    },
+
     /// Query codebase structure (modules, imports, call graph)
     Assay {
         #[command(subcommand)]
@@ -1364,6 +1370,7 @@ fn main() -> Result<()> {
                             commands: vec!["doctor".into()],
                             ..Default::default()
                         },
+                        schemas: std::collections::HashMap::new(),
                     }
                 };
                 let engine = patina::plugin::CommandEngine::new()?;
@@ -1634,6 +1641,33 @@ fn main() -> Result<()> {
                 json,
             } => {
                 commands::spec::list(status, target, json)?;
+            }
+        },
+        Some(Commands::Schema { command }) => match command {
+            commands::schema::SchemaCommands::Install { path } => {
+                commands::schema::install(&path)?;
+            }
+            commands::schema::SchemaCommands::List { json } => {
+                commands::schema::list(json)?;
+            }
+            commands::schema::SchemaCommands::Show { name, json } => {
+                commands::schema::show(&name, json)?;
+            }
+            commands::schema::SchemaCommands::New {
+                name,
+                version,
+                description,
+                facts,
+            } => {
+                commands::schema::new_schema(&name, &version, &description, facts.as_deref())?;
+            }
+            commands::schema::SchemaCommands::Generate {
+                types,
+                migrations,
+                embeddings,
+                schema,
+            } => {
+                commands::schema::generate(types, migrations, embeddings, schema.as_deref())?;
             }
         },
         Some(Commands::Serve { host, port, mcp }) => {

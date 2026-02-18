@@ -5,6 +5,7 @@
 
 mod database;
 pub mod models;
+pub mod offsets;
 mod onnx;
 mod similarity;
 

@@ -109,6 +109,9 @@ pub struct PluginManifest {
     /// E.g., ["api.github.com", "hooks.slack.com"]. Empty means no HTTP access.
     pub host_http_domains: Vec<String>,
     pub provides: PluginProvides,
+    /// Schema packages this plugin references (from [schemas.<name>].package).
+    /// Maps schema name → package string (e.g., "forge" → "patina:schema/forge@1.0.0").
+    pub schemas: std::collections::HashMap<String, String>,
 }
 
 // =========================================================================
@@ -270,6 +273,23 @@ impl PluginManifest {
             })
             .unwrap_or_default();
 
+        // Parse [schemas.<name>].package — schema package references
+        let schemas = table
+            .get("schemas")
+            .and_then(|v| v.as_table())
+            .map(|schemas_table| {
+                schemas_table
+                    .iter()
+                    .filter_map(|(name, v)| {
+                        v.as_table()
+                            .and_then(|t| t.get("package"))
+                            .and_then(|p| p.as_str())
+                            .map(|pkg| (name.clone(), pkg.to_string()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
         Ok(Self {
             name,
             version,
@@ -286,6 +306,7 @@ impl PluginManifest {
                 pipeline_ops,
                 languages,
             },
+            schemas,
         })
     }
 

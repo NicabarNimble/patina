@@ -387,10 +387,9 @@ fn build_projection_index(
 pub(crate) fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)>> {
     let mut events = Vec::new();
 
-    // ID offsets match the enrichment module (enrich_results in scry/internal/enrichment.rs)
-    const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
-    const COMMIT_ID_OFFSET: i64 = 3_000_000_000;
-    const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
+    use patina::embeddings::offsets::{
+        BELIEF_ID_OFFSET, COMMIT_ID_OFFSET, FORGE_ID_OFFSET, PATTERN_ID_OFFSET,
+    };
 
     // E5-base-v2 has a 512 token window (~2000 chars). Use up to 1500 chars
     // of content for beliefs/patterns to maximize semantic signal per item.
@@ -577,11 +576,53 @@ pub(crate) fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<
 
     let belief_count = events.len() - pattern_count - commit_count;
 
+    // 4. Forge facts (issues + PRs) from eventlog
+    //
+    // Forge events are stored in eventlog with event_type 'forge.issue' or 'forge.pr'.
+    // Key is FORGE_ID_OFFSET + seq so enrichment can look them back up by seq.
+    let forge_count = {
+        let mut stmt = conn.prepare(
+            "SELECT seq, event_type, source_id,
+                    json_extract(data, '$.title') as title,
+                    json_extract(data, '$.body') as body
+             FROM eventlog
+             WHERE event_type IN ('forge.issue', 'forge.pr')
+             ORDER BY seq",
+        )?;
+
+        let mut count = 0;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let seq: i64 = row.get(0)?;
+            let event_type: String = row.get(1)?;
+            let source_id: String = row.get(2)?;
+            let title: String = row.get::<_, Option<String>>(3)?.unwrap_or_default();
+            let body: String = row.get::<_, Option<String>>(4)?.unwrap_or_default();
+
+            let kind = if event_type == "forge.pr" {
+                "PR"
+            } else {
+                "Issue"
+            };
+
+            let mut desc = format!("{} #{}: {}", kind, source_id, title);
+            if !body.is_empty() {
+                let preview: String = body.chars().take(MAX_CONTENT_CHARS).collect();
+                desc.push_str(&format!(". {}", preview));
+            }
+
+            events.push((FORGE_ID_OFFSET + seq, desc));
+            count += 1;
+        }
+        count
+    };
+
     println!(
-        "   Knowledge corpus: {} patterns + {} commits + {} beliefs = {} items",
+        "   Knowledge corpus: {} patterns + {} commits + {} beliefs + {} forge = {} items",
         pattern_count,
         commit_count,
         belief_count,
+        forge_count,
         events.len()
     );
 

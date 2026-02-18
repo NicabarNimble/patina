@@ -100,6 +100,10 @@ pub struct SpecFrontmatter {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub beliefs: Vec<String>,
 
+    /// Schema references (fact types this spec introduces)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub schemas: Vec<String>,
+
     /// External references
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub references: Vec<String>,

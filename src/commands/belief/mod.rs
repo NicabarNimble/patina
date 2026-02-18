@@ -777,10 +777,7 @@ fn run_grounding_report(conn: &Connection, rows: &[BeliefRow]) -> Result<()> {
         .load(&index_path)
         .context("Failed to load semantic index")?;
 
-    const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
-    const CODE_ID_OFFSET: i64 = 1_000_000_000;
-    const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
-    const COMMIT_ID_OFFSET: i64 = 3_000_000_000;
+    use patina::embeddings::offsets::*;
     const GROUNDING_LIMIT: usize = 20; // Search this many neighbors
     const DISPLAY_LIMIT: usize = 3; // Show top 3 per type
 
