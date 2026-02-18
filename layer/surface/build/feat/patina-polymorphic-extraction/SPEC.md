@@ -1,13 +1,15 @@
 ---
-type: feature
+type: feat
 id: patina-polymorphic-extraction
 status: draft
 created: 2026-02-17
 sessions:
   origin: 20260217-081150
   review-1: 20260217-070309
+  review-2: 20260217-164506
 related:
-  - belief-graph
+  - fact-schema-registry
+  - fact-crdt-substrate
 beliefs:
   - unix-philosophy
   - dependable-rust
@@ -15,7 +17,7 @@ beliefs:
   - patina-identity
 ---
 
-# feature: Polymorphic Extraction — Extensible Pipeline Plugin Contract
+# feat: Polymorphic Extraction — Extensible Pipeline Plugin Contract
 
 > The pipeline plugin system (v0.17.0) lets people extend Patina beyond its
 > core scope. But the pipeline world only speaks code — `ExtractedData` has
@@ -72,17 +74,53 @@ system. Forge had no choice: the pipeline couldn't accept its data.
 
 **The pipeline infrastructure exists. The plugin contract is the gap.**
 
+## Spec Staircase
+
+This spec is the first step in a three-spec chain. Each step assumes the
+previous one left the right seams:
+
+```
+1. polymorphic-extraction  →  open the pipeline contract beyond code
+2. fact-schema-registry    →  make fact types declarative (WIT schemas)
+3. fact-crdt-substrate     →  make fact storage sync-able via Mother
+```
+
+The tagged union introduced in Phase A is a **bridge**, not a destination.
+[[fact-schema-registry]] will generate variants from schema metadata instead
+of hard-coding them. [[fact-crdt-substrate]] will route facts into a CRDT
+store before materializing into SQLite. The host's routing match (Phase B)
+will evolve from a hand-written `match` to schema-driven dispatch.
+
+Decisions in this spec are shaped by what comes next:
+
+- The tagged union must stay open so schema-defined kinds can land without
+  binary edits (don't seal the enum).
+- The host handles all impure concerns (dedup, storage, FTS5, eventlog) so
+  plugins remain pure compute — this split is what makes WASM viable and
+  what the CRDT substrate assumes.
+- Staging under `.patina/local/data/` aligns with the CRDT spec's replica
+  path (`.patina/local/data/facts/`) and the existing `paths::project::data_dir`.
+
+This spec focuses on the minimal plumbing so schema/CRDT work can land
+incrementally without rewrites.
+
 ## What To Build
 
 ### Phase A: Polymorphic `ExtractedPayload`
 
-Define the tagged union. Start with `Code` + `Issue` + `PullRequest` —
-enough to prove the contract, not more.
+Define the tagged union as a **bridge type**. Start with `Code` + `Issue` +
+`PullRequest` — enough to prove the contract. This enum will be superseded
+by schema-generated variants once [[fact-schema-registry]] lands; keep it
+`#[non_exhaustive]` so downstream code doesn't assume a closed set.
 
 ```rust
 /// Pipeline plugins return JSON matching one of these variants.
 /// If no `kind` field is present, defaults to Code (backward compat).
+///
+/// Bridge type: will be superseded by schema-generated variants
+/// once [[fact-schema-registry]] lands. Keep #[non_exhaustive].
 #[derive(Debug, Deserialize)]
+#[non_exhaustive]
 #[serde(tag = "kind")]
 pub enum ExtractedPayload {
     #[serde(rename = "code")]
@@ -153,9 +191,16 @@ Split forge into two concerns per [[unix-philosophy]]:
    pipeline.
 
 **Staging format:** Forge connector writes one JSON file per issue/PR to
-a known directory (e.g., `.patina/local/forge/{owner}-{repo}/issues/123.json`,
-`.../prs/456.json`). The pipeline plugin reads these files during
-`patina scrape`.
+the canonical derived-data tree: `.patina/local/data/forge/{owner}-{repo}/issues/123.json`,
+`.../prs/456.json` (via `paths::project::data_dir`). This aligns with the
+CRDT spec's replica path and keeps forge artifacts under the same
+rebuildable/replicable contract as the DB. The pipeline plugin reads
+these files during `patina scrape`.
+
+**Two-verb flow:** `patina scrape forge` = fetch to staging (connector).
+`patina scrape` = process staging alongside source files (pipeline).
+No extra flag needed — `extract_v2` learns to scan the staging tree
+automatically, the same way it walks the source tree today.
 
 **Incremental:** The connector already tracks `since` timestamps and
 `forge_refs` backlog. This doesn't change — it still controls *what gets
@@ -166,11 +211,13 @@ They just write to disk instead of directly to the DB.
 
 **Code paths:**
 - `src/commands/scrape/forge/mod.rs` — change `run()` to write JSON files
-  instead of calling `insert_issues()` / `insert_prs()` directly
-- New plugin: `grammar-forge` — claims staged JSON format, returns
-  `ExtractedPayload::Issue` / `ExtractedPayload::PullRequest`
-- `src/commands/scrape/code/extract_v2.rs` — ensure staged directory is
-  included in file discovery
+  to `paths::project::data_dir().join("forge")` instead of calling
+  `insert_issues()` / `insert_prs()` directly
+- New plugin: `grammar-forge` — claims staged JSON format (e.g., `.forge-issue`,
+  `.forge-pr` extensions on staged files), returns `ExtractedPayload::Issue` /
+  `ExtractedPayload::PullRequest`
+- `src/commands/scrape/code/extract_v2.rs` — extend file discovery to scan
+  the staging tree under `data_dir()` alongside the source tree
 
 ### Phase D: Verify End-to-End
 
@@ -209,20 +256,20 @@ Prove the contract works and forge migration is complete:
 
 ## Non-Goals
 
-- Defining new data types (email, calendar, etc.) — plugin authors do
-  that by adding variants to `ExtractedPayload` and writing plugins
+- Defining new data types beyond Code/Issue/PR — that's [[fact-schema-registry]]
 - Changing the WIT interface (returns string — JSON schema is the
   extension point)
 - Building external connectors (gh-sync, slack-export, etc.)
 - Renaming `code_fts` to `fts` — follow-up if needed
 - Embedding forge data in oxidize (enrichment code exists but corpus
   isn't built — separate concern)
+- Schema-driven kind registration — deferred to [[fact-schema-registry]]
+- CRDT storage or Mother sync — deferred to [[fact-crdt-substrate]]
 - Real-time sync / push notifications
 
 ## Plugin Author Extension Pattern
 
-Once this spec is complete, a plugin author extends capture to their
-domain by:
+**With this spec only (bridge path):** A plugin author extends capture by:
 
 1. Add variant to `ExtractedPayload` enum (e.g., `Email(ExtractedEmail)`)
 2. Define the struct with the fields their domain needs
@@ -232,22 +279,34 @@ domain by:
    new kind
 6. Write a connector if their data source needs fetching (API, sync, etc.)
 
-Each step is small, isolated, and follows the pattern established by
-forge. The plugin author owns the domain knowledge. Patina owns the
-pipeline contract.
+Steps 1-4 require binary changes. This is acceptable as a bridge — forge
+proves the contract works end-to-end.
 
-## Open Questions
+**With [[fact-schema-registry]] (target path):** Steps 1-4 are replaced
+by a single schema declaration (`patina schema new <kind>`). The host
+auto-generates structs, tables, and routing from the schema. Plugin
+authors only write steps 5-6. No binary changes needed for new fact types.
 
-- Should the staging directory be `.patina/local/forge/` or somewhere
-  else? It needs to survive between `scrape forge` (fetch) and
-  `scrape` (index) runs.
-- Should the forge plugin be a WASM plugin (`grammar-forge`) or a
-  built-in Rust handler? WASM is consistent with the architecture but
-  adds compilation overhead for JSON parsing. Built-in is simpler for
-  the proof.
-- Should `patina scrape` auto-include the staging directory, or require
-  explicit `patina scrape --include-forge`? Auto-include is simpler.
-- Steps 1-4 of the extension pattern require changes to the Patina
-  binary. Should the host eventually support dynamic kind registration
-  (plugin declares its schema at load time) to eliminate binary changes?
-  That's a future spec if needed.
+## Resolved Decisions
+
+**Staging directory:** `.patina/local/data/forge/{owner}-{repo}/` — under
+`paths::project::data_dir`, aligned with the CRDT spec's replica path and
+the canonical derived-data contract. Not a bespoke `.patina/local/forge/`.
+
+**WASM vs built-in:** WASM pipeline plugin (`grammar-forge`). The host
+handles all impure concerns (dedup, storage, FTS5, eventlog). The plugin
+is pure compute: parse staged JSON → emit typed payload. This split is
+what the staircase assumes — [[fact-crdt-substrate]] will own persistence,
+[[fact-schema-registry]] will own validation, and the plugin stays in the
+pipeline world with `log` as its only capability.
+
+**Auto-include vs flag:** Auto-include, no flag. `patina scrape forge`
+fills the staging directory. `patina scrape` scans it alongside source
+files. Two verbs, one pipeline. `extract_v2` learns to walk the staging
+tree under `data_dir()` — deterministic end-to-end proof without a second
+toggle.
+
+**Dynamic kind registration:** Deferred to [[fact-schema-registry]], which
+will generate host code and routing metadata from WIT schema packages. The
+tagged union here is a bridge; the enum is `#[non_exhaustive]` so
+schema-defined kinds can land without breaking the host match.
