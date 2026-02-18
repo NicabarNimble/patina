@@ -1,7 +1,7 @@
 ---
 type: feat
 id: spec-launcher-tmux
-status: active
+status: complete
 created: 2026-02-18
 updated: 2026-02-18
 related:
