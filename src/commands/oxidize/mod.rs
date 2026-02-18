@@ -387,10 +387,7 @@ fn build_projection_index(
 pub(crate) fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)>> {
     let mut events = Vec::new();
 
-    // ID offsets match the enrichment module (enrich_results in scry/internal/enrichment.rs)
-    const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
-    const COMMIT_ID_OFFSET: i64 = 3_000_000_000;
-    const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
+    use patina::embeddings::offsets::{BELIEF_ID_OFFSET, COMMIT_ID_OFFSET, PATTERN_ID_OFFSET};
 
     // E5-base-v2 has a 512 token window (~2000 chars). Use up to 1500 chars
     // of content for beliefs/patterns to maximize semantic signal per item.
