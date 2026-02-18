@@ -1653,6 +1653,22 @@ fn main() -> Result<()> {
             commands::schema::SchemaCommands::Show { name, json } => {
                 commands::schema::show(&name, json)?;
             }
+            commands::schema::SchemaCommands::New {
+                name,
+                version,
+                description,
+                facts,
+            } => {
+                commands::schema::new_schema(&name, &version, &description, facts.as_deref())?;
+            }
+            commands::schema::SchemaCommands::Generate {
+                types,
+                migrations,
+                embeddings,
+                schema,
+            } => {
+                commands::schema::generate(types, migrations, embeddings, schema.as_deref())?;
+            }
         },
         Some(Commands::Serve { host, port, mcp }) => {
             // Deprecated: delegate to mother start with warning
