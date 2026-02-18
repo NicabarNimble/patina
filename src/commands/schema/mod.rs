@@ -99,6 +99,25 @@ pub fn new_schema(
     internal::new_schema(name, version, description, facts)
 }
 
+/// List installed schemas as JSON value (for MCP)
+pub fn list_value() -> anyhow::Result<serde_json::Value> {
+    internal::list_schemas_value()
+}
+
+/// Show schema details as JSON value (for MCP)
+pub fn show_value(name: &str) -> anyhow::Result<serde_json::Value> {
+    internal::show_schema_value(name)
+}
+
+/// Validate a fact against its schema before DB insertion (EC3)
+pub fn validate_fact(
+    schema_name: &str,
+    fact_name: &str,
+    data: &serde_json::Value,
+) -> anyhow::Result<()> {
+    internal::validate_fact(schema_name, fact_name, data)
+}
+
 /// Generate code from installed schemas
 pub fn generate(
     types: bool,

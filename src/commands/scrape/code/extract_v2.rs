@@ -157,6 +157,16 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                         _files_processed += 1;
                     }
                     ExtractedPayload::Issue(issue) => {
+                        // EC3: Validate against schema before DB insert
+                        if let Ok(json) = serde_json::to_value(&issue) {
+                            if let Err(e) =
+                                crate::commands::schema::validate_fact("forge", "issue", &json)
+                            {
+                                eprintln!("  [pipeline] {} rejected: {}", relative_path, e);
+                                files_with_errors += 1;
+                                continue;
+                            }
+                        }
                         let conn = db.connection();
                         match crate::commands::scrape::forge::insert_issues(conn, &[issue]) {
                             Ok(stats) => {
@@ -174,6 +184,18 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                         }
                     }
                     ExtractedPayload::PullRequest(pr) => {
+                        // EC3: Validate against schema before DB insert
+                        if let Ok(json) = serde_json::to_value(&pr) {
+                            if let Err(e) = crate::commands::schema::validate_fact(
+                                "forge",
+                                "pull-request",
+                                &json,
+                            ) {
+                                eprintln!("  [pipeline] {} rejected: {}", relative_path, e);
+                                files_with_errors += 1;
+                                continue;
+                            }
+                        }
                         let conn = db.connection();
                         match crate::commands::scrape::forge::insert_prs(conn, &[pr]) {
                             Ok(stats) => {
@@ -234,6 +256,16 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                         #[allow(unreachable_patterns)]
                         match payload {
                             ExtractedPayload::Issue(issue) => {
+                                // EC3: Validate against schema before DB insert
+                                if let Ok(json) = serde_json::to_value(&issue) {
+                                    if let Err(e) = crate::commands::schema::validate_fact(
+                                        "forge", "issue", &json,
+                                    ) {
+                                        eprintln!("  [pipeline] {} rejected: {}", display_path, e);
+                                        files_with_errors += 1;
+                                        continue;
+                                    }
+                                }
                                 let conn = db.connection();
                                 match crate::commands::scrape::forge::insert_issues(conn, &[issue])
                                 {
@@ -251,6 +283,18 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                                 }
                             }
                             ExtractedPayload::PullRequest(pr) => {
+                                // EC3: Validate against schema before DB insert
+                                if let Ok(json) = serde_json::to_value(&pr) {
+                                    if let Err(e) = crate::commands::schema::validate_fact(
+                                        "forge",
+                                        "pull-request",
+                                        &json,
+                                    ) {
+                                        eprintln!("  [pipeline] {} rejected: {}", display_path, e);
+                                        files_with_errors += 1;
+                                        continue;
+                                    }
+                                }
                                 let conn = db.connection();
                                 match crate::commands::scrape::forge::insert_prs(conn, &[pr]) {
                                     Ok(stats) => {
