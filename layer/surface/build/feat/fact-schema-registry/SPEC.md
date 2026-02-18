@@ -17,6 +17,8 @@ beliefs:
 - patina-identity
 - unix-philosophy
 - dependable-rust
+schemas:
+- forge
 ---
 
 # feat: Fact Schema Registry — Declarative Data Contracts for Patina

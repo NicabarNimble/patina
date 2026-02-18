@@ -309,6 +309,28 @@ fn handle_list_tools(req: &Request) -> Response {
                             }
                         }
                     }
+                },
+                {
+                    "name": "schemas.list",
+                    "description": "List installed fact schemas - shows all schema packages installed in the current project with their versions, packages, and fact types. Use this to discover what fact types are available for querying.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "schemas.show",
+                    "description": "Show details of an installed fact schema - returns full metadata including facts, embedding config, and index definitions. Use this to understand the structure of a specific fact type before querying or emitting facts.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Schema name (e.g., 'forge')"
+                            }
+                        },
+                        "required": ["name"]
+                    }
                 }
             ]
         }),
@@ -749,6 +771,40 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         "content": [{ "type": "text", "text": text }]
                     }),
                 ),
+                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            }
+        }
+        "schemas.list" => match crate::commands::schema::list_value() {
+            Ok(schemas) => {
+                let text = serde_json::to_string_pretty(&schemas).unwrap_or_default();
+                Response::success(
+                    req.id.clone(),
+                    serde_json::json!({
+                        "content": [{ "type": "text", "text": text }]
+                    }),
+                )
+            }
+            Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+        },
+        "schemas.show" => {
+            let schema_name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            if schema_name.is_empty() {
+                return Response::error(
+                    req.id.clone(),
+                    -32602,
+                    "schemas.show requires 'name' parameter",
+                );
+            }
+            match crate::commands::schema::show_value(schema_name) {
+                Ok(schema) => {
+                    let text = serde_json::to_string_pretty(&schema).unwrap_or_default();
+                    Response::success(
+                        req.id.clone(),
+                        serde_json::json!({
+                            "content": [{ "type": "text", "text": text }]
+                        }),
+                    )
+                }
                 Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
             }
         }
