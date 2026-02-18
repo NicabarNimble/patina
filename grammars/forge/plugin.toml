@@ -8,3 +8,6 @@ patina_min = "0.25.0"
 [provides]
 pipeline_ops = ["parse"]
 languages = ["forge-issue", "forge-pr"]
+
+[schemas.forge]
+package = "patina:schema/forge@1.0.0"
