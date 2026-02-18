@@ -5,7 +5,7 @@
 use anyhow::{bail, Context, Result};
 use std::env;
 use std::fs;
-use std::io::{self, Read as _, Write};
+use std::io::{self, IsTerminal, Read as _, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -167,8 +167,48 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         adapters::generate_bootstrap(&adapter_name, &project_path)?;
     }
 
-    // Step 9: Launch adapter
-    launch_adapter_cli(&adapter_name, &project_path)?;
+    // Step 9: Resolve tmux decision and launch adapter
+    let env_disabled = std::env::var("PATINA_TMUX")
+        .map(|v| v == "0")
+        .unwrap_or(false);
+    let is_tty = std::io::stdout().is_terminal();
+    let inside_tmux = std::env::var_os("TMUX").is_some();
+    let tmux_in_path = which::which("tmux").is_ok();
+
+    let (tmux_version_ok, detected_version) = if tmux_in_path {
+        super::check_tmux_version()
+    } else {
+        (false, String::new())
+    };
+
+    let decision = super::resolve_tmux_decision(
+        options.no_tmux,
+        env_disabled,
+        is_tty,
+        inside_tmux,
+        tmux_in_path,
+        tmux_version_ok,
+    );
+
+    // Emit warnings for discoverable reasons
+    match &decision {
+        super::TmuxDecision::Off(super::OffReason::NotInPath) => {
+            eprintln!(
+                "Warning: tmux not found — launching {} directly",
+                adapter_name
+            );
+        }
+        super::TmuxDecision::Off(super::OffReason::TmuxTooOld) => {
+            eprintln!(
+                "Warning: tmux {} too old (need ≥ 1.9) — launching {} directly",
+                detected_version, adapter_name
+            );
+        }
+        _ => {}
+    }
+
+    let session_name = super::derive_session_name(&project_path);
+    launch_adapter_cli(&adapter_name, &project_path, &decision, &session_name)?;
 
     Ok(())
 }
@@ -495,15 +535,48 @@ fn initialize_project(project_path: &Path, adapter_name: &str) -> Result<bool> {
     Ok(true) // Continue to launch
 }
 
-/// Launch the adapter CLI
-fn launch_adapter_cli(adapter_name: &str, project_path: &Path) -> Result<()> {
-    println!("\nLaunching {}...\n", adapter_name);
-
+/// Launch the adapter CLI, optionally wrapped in tmux
+fn launch_adapter_cli(
+    adapter_name: &str,
+    project_path: &Path,
+    decision: &super::TmuxDecision,
+    session_name: &str,
+) -> Result<()> {
     // Use exec to replace current process (Unix-style)
     // On Windows, we'd spawn and wait instead
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
+
+        match decision {
+            super::TmuxDecision::Auto => {
+                eprintln!(
+                    "Launching {} in tmux session: {}",
+                    adapter_name, session_name
+                );
+                eprintln!("  Reconnect: tmux attach -t {}", session_name);
+                io::stderr().flush().ok();
+
+                let err = Command::new("tmux")
+                    .args(["new-session", "-A", "-s", session_name, "-c"])
+                    .arg(project_path.as_os_str()) // non-UTF-8 safe
+                    .arg(adapter_name)
+                    .current_dir(project_path)
+                    .exec();
+                // exec only returns on error — fall back to direct launch
+                eprintln!(
+                    "Warning: failed to exec tmux ({}) — launching {} directly (no session created)",
+                    err, adapter_name
+                );
+                io::stderr().flush().ok();
+                // fall through to direct exec below
+            }
+            super::TmuxDecision::Off(_) => {
+                println!("\nLaunching {}...\n", adapter_name);
+            }
+        }
+
+        // Direct exec (Off path, or Auto fallback after tmux exec failure)
         let err = Command::new(adapter_name).current_dir(project_path).exec();
         // exec only returns on error
         bail!("Failed to exec {}: {}", adapter_name, err);
@@ -511,6 +584,8 @@ fn launch_adapter_cli(adapter_name: &str, project_path: &Path) -> Result<()> {
 
     #[cfg(not(unix))]
     {
+        // tmux not available on non-Unix — always direct launch
+        println!("\nLaunching {}...\n", adapter_name);
         let status = Command::new(adapter_name)
             .current_dir(project_path)
             .status()
