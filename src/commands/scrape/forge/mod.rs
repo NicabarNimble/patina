@@ -554,10 +554,9 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
 
     // Discover PR refs from commits (for numbers mentioned in commit messages)
     // These are PRs we know the number of but haven't fetched yet.
-    // NOTE: Sync still writes directly to DB for resolved refs.
-    // Will migrate to staging in a follow-up session.
+    // Resolved refs are written to staging for pipeline processing.
     let repo_spec = format!("{}/{}", detected.owner, detected.repo);
-    let sync_stats = forge::sync::run(&conn, reader.as_ref(), &repo_spec)?;
+    let sync_stats = forge::sync::run(&conn, reader.as_ref(), &repo_spec, &staging_dir)?;
 
     if sync_stats.discovered > 0 || sync_stats.resolved > 0 {
         println!(
