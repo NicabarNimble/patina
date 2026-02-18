@@ -17,10 +17,11 @@ use anyhow::Result;
 use ignore::WalkBuilder;
 
 use super::database::Database;
-use super::extracted_data::ExtractedData;
+use super::extracted_data::{ExtractedData, ExtractedPayload};
 use super::languages::Language;
 use super::types::FilePath;
 
+use patina::paths;
 use patina::plugin::{PipelineEngine, PluginManifest};
 
 /// Process all source files and extract metadata using safe database operations
@@ -30,6 +31,9 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
     // Open database connection
     let mut db = Database::open(db_path)?;
     db.init_schema()?;
+
+    // Ensure forge materialized views exist for Issue/PullRequest routing
+    crate::commands::scrape::forge::create_materialized_views(db.connection())?;
 
     // Find all supported language files
     let mut all_files: Vec<(PathBuf, Language)> = Vec::new();
@@ -51,13 +55,41 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
     }
 
     println!("  Found {} source files", all_files.len());
-    if all_files.is_empty() {
-        println!("  No source files found. Is this a code repository?");
-        return Ok(0);
-    }
 
     // Discover pipeline plugins from ~/.patina/pipeline/
     let pipeline_plugins = discover_pipeline_plugins();
+
+    // Scan staging tree for forge data (.forge-issue, .forge-pr files)
+    // These are written by `patina scrape forge` and processed by grammar-forge plugin
+    let staging_dir = paths::project::data_dir(work_dir).join("forge");
+    let mut staged_files: Vec<PathBuf> = Vec::new();
+    if staging_dir.is_dir() {
+        for entry in WalkBuilder::new(&staging_dir)
+            .hidden(false)
+            .git_ignore(false)
+            .build()
+        {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            let path = entry.path();
+            if path.is_file() {
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if pipeline_plugins.contains_key(ext) {
+                    staged_files.push(path.to_path_buf());
+                }
+            }
+        }
+        if !staged_files.is_empty() {
+            println!("  Found {} staged forge files", staged_files.len());
+        }
+    }
+
+    if all_files.is_empty() && staged_files.is_empty() {
+        println!("  No source files found. Is this a code repository?");
+        return Ok(0);
+    }
 
     // Collect all extracted data in memory first
     let mut all_symbols = Vec::new();
@@ -70,6 +102,9 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
 
     let mut files_with_errors = 0;
     let mut _files_processed = 0;
+    let mut forge_issues_inserted = 0;
+    let mut forge_prs_inserted = 0;
+    let mut forge_skipped = 0;
 
     // Process each file and collect data
     for (file_path, language) in all_files {
@@ -107,20 +142,163 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
         let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
         match process_file_with_plugins(&relative_path, &content, language, ext, &pipeline_plugins)
         {
-            Ok(extracted) => {
-                all_symbols.extend(extracted.symbols);
-                all_functions.extend(extracted.functions);
-                all_types.extend(extracted.types);
-                all_imports.extend(extracted.imports);
-                all_call_edges.extend(extracted.call_edges);
-                all_constants.extend(extracted.constants);
-                all_members.extend(extracted.members);
-                _files_processed += 1;
+            Ok(payload) => {
+                // #[non_exhaustive] requires wildcard arm for future variants
+                #[allow(unreachable_patterns)]
+                match payload {
+                    ExtractedPayload::Code(extracted) => {
+                        all_symbols.extend(extracted.symbols);
+                        all_functions.extend(extracted.functions);
+                        all_types.extend(extracted.types);
+                        all_imports.extend(extracted.imports);
+                        all_call_edges.extend(extracted.call_edges);
+                        all_constants.extend(extracted.constants);
+                        all_members.extend(extracted.members);
+                        _files_processed += 1;
+                    }
+                    ExtractedPayload::Issue(issue) => {
+                        let conn = db.connection();
+                        match crate::commands::scrape::forge::insert_issues(conn, &[issue]) {
+                            Ok(stats) => {
+                                forge_issues_inserted += stats.inserted;
+                                forge_skipped += stats.skipped;
+                                _files_processed += 1;
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "  [pipeline] forge issue insert failed for {}: {}",
+                                    relative_path, e
+                                );
+                                files_with_errors += 1;
+                            }
+                        }
+                    }
+                    ExtractedPayload::PullRequest(pr) => {
+                        let conn = db.connection();
+                        match crate::commands::scrape::forge::insert_prs(conn, &[pr]) {
+                            Ok(stats) => {
+                                forge_prs_inserted += stats.inserted;
+                                forge_skipped += stats.skipped;
+                                _files_processed += 1;
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "  [pipeline] forge PR insert failed for {}: {}",
+                                    relative_path, e
+                                );
+                                files_with_errors += 1;
+                            }
+                        }
+                    }
+                    _ => {
+                        // #[non_exhaustive] catch-all for future variants
+                        eprintln!(
+                            "  [pipeline] unknown payload kind from {} — skipping",
+                            relative_path
+                        );
+                    }
+                }
             }
             Err(e) => {
                 eprintln!("  ⚠️  Processing error in {}: {}", relative_path, e);
                 db.mark_skipped(&relative_path, &e.to_string())?;
                 files_with_errors += 1;
+            }
+        }
+    }
+
+    // Process staged forge files through pipeline plugins
+    for file_path in staged_files {
+        let display_path = file_path.to_string_lossy().to_string();
+        let content = match std::fs::read(&file_path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("  ⚠️  Failed to read staged file {}: {}", display_path, e);
+                files_with_errors += 1;
+                continue;
+            }
+        };
+
+        let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+        // Staged files dispatch directly to plugin by extension (no Language detection)
+        if let Some(plugin) = pipeline_plugins.get(ext) {
+            let request = build_parse_envelope(&content, ext, &display_path);
+            match plugin
+                .engine
+                .handle(&plugin.component, &plugin.manifest, &request)
+            {
+                Ok(response) => {
+                    // Try ExtractedPayload (has "kind" field) — expected for forge plugins
+                    if let Ok(payload) = serde_json::from_str::<ExtractedPayload>(&response) {
+                        #[allow(unreachable_patterns)]
+                        match payload {
+                            ExtractedPayload::Issue(issue) => {
+                                let conn = db.connection();
+                                match crate::commands::scrape::forge::insert_issues(conn, &[issue])
+                                {
+                                    Ok(stats) => {
+                                        forge_issues_inserted += stats.inserted;
+                                        _files_processed += 1;
+                                    }
+                                    Err(e) => {
+                                        eprintln!(
+                                            "  [pipeline] forge issue insert failed for {}: {}",
+                                            display_path, e
+                                        );
+                                        files_with_errors += 1;
+                                    }
+                                }
+                            }
+                            ExtractedPayload::PullRequest(pr) => {
+                                let conn = db.connection();
+                                match crate::commands::scrape::forge::insert_prs(conn, &[pr]) {
+                                    Ok(stats) => {
+                                        forge_prs_inserted += stats.inserted;
+                                        _files_processed += 1;
+                                    }
+                                    Err(e) => {
+                                        eprintln!(
+                                            "  [pipeline] forge PR insert failed for {}: {}",
+                                            display_path, e
+                                        );
+                                        files_with_errors += 1;
+                                    }
+                                }
+                            }
+                            ExtractedPayload::Code(extracted) => {
+                                // Unlikely for forge files, but handle gracefully
+                                all_symbols.extend(extracted.symbols);
+                                all_functions.extend(extracted.functions);
+                                all_types.extend(extracted.types);
+                                all_imports.extend(extracted.imports);
+                                all_call_edges.extend(extracted.call_edges);
+                                all_constants.extend(extracted.constants);
+                                all_members.extend(extracted.members);
+                                _files_processed += 1;
+                            }
+                            _ => {
+                                eprintln!(
+                                    "  [pipeline] unknown payload kind from {} — skipping",
+                                    display_path
+                                );
+                            }
+                        }
+                    } else {
+                        eprintln!(
+                            "  [pipeline:{}] invalid response for staged file {}: not ExtractedPayload",
+                            plugin.manifest.name, display_path
+                        );
+                        files_with_errors += 1;
+                    }
+                }
+                Err(e) => {
+                    eprintln!(
+                        "  [pipeline:{}] handle failed for staged file {}: {}",
+                        plugin.manifest.name, display_path, e
+                    );
+                    files_with_errors += 1;
+                }
             }
         }
     }
@@ -140,6 +318,20 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
         "  ✅ Inserted: {} symbols, {} functions, {} types, {} imports, {} call edges, {} constants, {} members",
         symbols_count, functions_count, types_count, imports_count, edges_count, constants_count, members_count
     );
+
+    if forge_issues_inserted > 0 || forge_prs_inserted > 0 {
+        if forge_skipped > 0 {
+            println!(
+                "  📊 Forge via pipeline: {} issues, {} PRs ({} unchanged)",
+                forge_issues_inserted, forge_prs_inserted, forge_skipped
+            );
+        } else {
+            println!(
+                "  📊 Forge via pipeline: {} issues, {} PRs",
+                forge_issues_inserted, forge_prs_inserted
+            );
+        }
+    }
 
     if files_with_errors > 0 {
         println!(
@@ -224,13 +416,18 @@ fn build_parse_envelope(content: &[u8], language: &str, path: &str) -> String {
 }
 
 /// Try pipeline plugin first, fall back to built-in processor.
+///
+/// Deserialization order for plugin responses:
+/// 1. Try `ExtractedPayload` (JSON has `kind` field)
+/// 2. Try `ExtractedData` → wrap as `ExtractedPayload::Code` (backward compat)
+/// 3. Fall through to built-in processor
 fn process_file_with_plugins(
     file_path: &str,
     content: &[u8],
     language: Language,
     ext: &str,
     pipeline_plugins: &HashMap<String, LoadedPipelinePlugin>,
-) -> Result<ExtractedData> {
+) -> Result<ExtractedPayload> {
     // Plugin-first dispatch: check if a pipeline plugin claims this extension
     if let Some(plugin) = pipeline_plugins.get(ext) {
         let request = build_parse_envelope(content, ext, file_path);
@@ -239,8 +436,13 @@ fn process_file_with_plugins(
             .handle(&plugin.component, &plugin.manifest, &request)
         {
             Ok(response) => {
+                // 1. Try ExtractedPayload (has "kind" field)
+                if let Ok(payload) = serde_json::from_str::<ExtractedPayload>(&response) {
+                    return Ok(payload);
+                }
+                // 2. Try ExtractedData (no "kind" field — backward compat)
                 match serde_json::from_str::<ExtractedData>(&response) {
-                    Ok(extracted) => return Ok(extracted),
+                    Ok(extracted) => return Ok(ExtractedPayload::Code(extracted)),
                     Err(e) => {
                         eprintln!(
                             "  [pipeline:{}] parse response failed for {}: {}",
@@ -261,7 +463,7 @@ fn process_file_with_plugins(
     }
 
     // Built-in Rust fallback — other languages require pipeline plugins
-    process_file_by_language(file_path, content, language)
+    process_file_by_language(file_path, content, language).map(ExtractedPayload::Code)
 }
 
 /// Compiled-in Rust fallback. All other languages dispatch via pipeline plugins.
