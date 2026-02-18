@@ -31,6 +31,9 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
     let mut db = Database::open(db_path)?;
     db.init_schema()?;
 
+    // Ensure forge materialized views exist for Issue/PullRequest routing
+    crate::commands::scrape::forge::create_materialized_views(db.connection())?;
+
     // Find all supported language files
     let mut all_files: Vec<(PathBuf, Language)> = Vec::new();
 
@@ -70,6 +73,8 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
 
     let mut files_with_errors = 0;
     let mut _files_processed = 0;
+    let mut forge_issues_inserted = 0;
+    let mut forge_prs_inserted = 0;
 
     // Process each file and collect data
     for (file_path, language) in all_files {
@@ -121,14 +126,37 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                         all_members.extend(extracted.members);
                         _files_processed += 1;
                     }
-                    ExtractedPayload::Issue(_) | ExtractedPayload::PullRequest(_) => {
-                        // Phase B will wire these to forge insert functions.
-                        // For now, log and count as processed.
-                        eprintln!(
-                            "  [pipeline] non-code payload from {} (routing not yet wired)",
-                            relative_path
-                        );
-                        _files_processed += 1;
+                    ExtractedPayload::Issue(issue) => {
+                        let conn = db.connection();
+                        match crate::commands::scrape::forge::insert_issues(conn, &[issue]) {
+                            Ok(stats) => {
+                                forge_issues_inserted += stats.inserted;
+                                _files_processed += 1;
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "  [pipeline] forge issue insert failed for {}: {}",
+                                    relative_path, e
+                                );
+                                files_with_errors += 1;
+                            }
+                        }
+                    }
+                    ExtractedPayload::PullRequest(pr) => {
+                        let conn = db.connection();
+                        match crate::commands::scrape::forge::insert_prs(conn, &[pr]) {
+                            Ok(stats) => {
+                                forge_prs_inserted += stats.inserted;
+                                _files_processed += 1;
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "  [pipeline] forge PR insert failed for {}: {}",
+                                    relative_path, e
+                                );
+                                files_with_errors += 1;
+                            }
+                        }
                     }
                     _ => {
                         // #[non_exhaustive] catch-all for future variants
@@ -162,6 +190,13 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
         "  ✅ Inserted: {} symbols, {} functions, {} types, {} imports, {} call edges, {} constants, {} members",
         symbols_count, functions_count, types_count, imports_count, edges_count, constants_count, members_count
     );
+
+    if forge_issues_inserted > 0 || forge_prs_inserted > 0 {
+        println!(
+            "  📊 Forge via pipeline: {} issues, {} PRs",
+            forge_issues_inserted, forge_prs_inserted
+        );
+    }
 
     if files_with_errors > 0 {
         println!(

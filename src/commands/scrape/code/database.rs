@@ -111,6 +111,12 @@ impl Database {
         })
     }
 
+    /// Get reference to underlying connection for cross-module operations
+    /// (e.g., forge insert routing from pipeline host).
+    pub fn connection(&self) -> &rusqlite::Connection {
+        self.db.connection()
+    }
+
     /// Initialize schema with proper types
     pub fn init_schema(&mut self) -> Result<()> {
         // Use a transaction for atomic schema creation

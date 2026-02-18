@@ -155,3 +155,107 @@ impl ExtractedData {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deserialize_code_payload_with_kind() {
+        let json = r#"{
+            "kind": "code",
+            "symbols": [],
+            "functions": [],
+            "types": [],
+            "imports": [],
+            "call_edges": [],
+            "constants": [],
+            "members": []
+        }"#;
+        let payload: ExtractedPayload = serde_json::from_str(json).unwrap();
+        assert!(matches!(payload, ExtractedPayload::Code(_)));
+    }
+
+    #[test]
+    fn deserialize_code_payload_without_kind_fallback() {
+        // Backward compat: no "kind" field → must fail ExtractedPayload,
+        // caller wraps as Code
+        let json = r#"{
+            "symbols": [],
+            "functions": [],
+            "types": [],
+            "imports": [],
+            "call_edges": [],
+            "constants": [],
+            "members": []
+        }"#;
+        // ExtractedPayload requires "kind" — this should fail
+        assert!(serde_json::from_str::<ExtractedPayload>(json).is_err());
+        // But ExtractedData should succeed
+        let data: ExtractedData = serde_json::from_str(json).unwrap();
+        assert!(data.symbols.is_empty());
+    }
+
+    #[test]
+    fn deserialize_issue_payload() {
+        let json = r#"{
+            "kind": "issue",
+            "number": 42,
+            "title": "Fix the bug",
+            "body": "Something is broken",
+            "state": "open",
+            "author": "alice",
+            "labels": ["bug"],
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-02T00:00:00Z",
+            "url": "https://github.com/owner/repo/issues/42"
+        }"#;
+        let payload: ExtractedPayload = serde_json::from_str(json).unwrap();
+        match payload {
+            ExtractedPayload::Issue(issue) => {
+                assert_eq!(issue.number, 42);
+                assert_eq!(issue.title, "Fix the bug");
+                assert_eq!(issue.labels, vec!["bug"]);
+            }
+            _ => panic!("expected Issue variant"),
+        }
+    }
+
+    #[test]
+    fn deserialize_pull_request_payload() {
+        let json = r#"{
+            "kind": "pull-request",
+            "number": 99,
+            "title": "Add feature",
+            "body": "Implements the thing",
+            "state": "merged",
+            "author": "bob",
+            "labels": ["enhancement"],
+            "created_at": "2026-02-01T00:00:00Z",
+            "merged_at": "2026-02-05T00:00:00Z",
+            "url": "https://github.com/owner/repo/pull/99",
+            "linked_issues": [42],
+            "comments": [],
+            "approvals": 2
+        }"#;
+        let payload: ExtractedPayload = serde_json::from_str(json).unwrap();
+        match payload {
+            ExtractedPayload::PullRequest(pr) => {
+                assert_eq!(pr.number, 99);
+                assert_eq!(pr.title, "Add feature");
+                assert_eq!(pr.linked_issues, vec![42]);
+                assert_eq!(pr.approvals, 2);
+            }
+            _ => panic!("expected PullRequest variant"),
+        }
+    }
+
+    #[test]
+    fn deserialize_unknown_kind_fails() {
+        let json = r#"{
+            "kind": "email",
+            "subject": "Hello"
+        }"#;
+        assert!(serde_json::from_str::<ExtractedPayload>(json).is_err());
+    }
+}

@@ -49,7 +49,9 @@ fn pr_event_exists(conn: &Connection, number: i64, updated_at: &str) -> Result<b
 }
 
 /// Create materialized views for forge events.
-fn create_materialized_views(conn: &Connection) -> Result<()> {
+/// Public so the pipeline host can ensure tables exist before routing
+/// Issue/PullRequest payloads.
+pub fn create_materialized_views(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
         -- Forge issues view (materialized from forge.issue events)
@@ -125,7 +127,8 @@ pub struct InsertStats {
 
 /// Insert issues into eventlog and materialized views.
 /// Deduplicates on (number, updated_at) to avoid duplicate events.
-fn insert_issues(conn: &Connection, issues: &[Issue]) -> Result<InsertStats> {
+/// Public for pipeline host routing (ExtractedPayload::Issue).
+pub fn insert_issues(conn: &Connection, issues: &[Issue]) -> Result<InsertStats> {
     let mut inserted = 0;
     let mut skipped = 0;
 
@@ -191,7 +194,8 @@ fn insert_issues(conn: &Connection, issues: &[Issue]) -> Result<InsertStats> {
 
 /// Insert PRs into eventlog and materialized views.
 /// Deduplicates on (number, updated_at) to avoid duplicate events.
-fn insert_prs(conn: &Connection, prs: &[PullRequest]) -> Result<InsertStats> {
+/// Public for pipeline host routing (ExtractedPayload::PullRequest).
+pub fn insert_prs(conn: &Connection, prs: &[PullRequest]) -> Result<InsertStats> {
     let mut inserted = 0;
     let mut skipped = 0;
 
