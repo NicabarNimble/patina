@@ -82,6 +82,13 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
     let fts_count = super::database::populate_fts5(&conn)?;
     println!("   Indexed {} symbols", fts_count);
 
+    // Populate forge FTS5 from eventlog (idempotent — runs after code FTS5)
+    let issue_fts = super::forge::populate_fts5_issues(&conn).unwrap_or(0);
+    let pr_fts = super::forge::populate_fts5_prs(&conn).unwrap_or(0);
+    if issue_fts > 0 || pr_fts > 0 {
+        println!("   Indexed {} issues, {} PRs in FTS5", issue_fts, pr_fts);
+    }
+
     // Get database size
     let metadata = std::fs::metadata(&config.db_path)?;
     let database_size_kb = metadata.len() / 1024;

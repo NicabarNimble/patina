@@ -303,17 +303,6 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
         }
     }
 
-    // Populate FTS5 for forge data processed through the pipeline
-    if forge_issues_inserted > 0 || forge_prs_inserted > 0 {
-        let conn = db.connection();
-        let issue_fts = crate::commands::scrape::forge::populate_fts5_issues(conn).unwrap_or(0);
-        let pr_fts = crate::commands::scrape::forge::populate_fts5_prs(conn).unwrap_or(0);
-        println!(
-            "  Indexed forge in FTS5: {} issues, {} PRs",
-            issue_fts, pr_fts
-        );
-    }
-
     // Bulk insert all collected data
     println!("  💾 Writing to database using bulk operations...");
 

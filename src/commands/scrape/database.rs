@@ -34,8 +34,8 @@ pub fn populate_fts5(conn: &Connection) -> Result<usize> {
         [],
     )?;
 
-    // Clear existing FTS5 data
-    conn.execute("DELETE FROM code_fts", [])?;
+    // Clear existing code FTS5 data (preserve forge.issue / forge.pr entries)
+    conn.execute("DELETE FROM code_fts WHERE event_type LIKE 'code.%'", [])?;
 
     // Populate from code events in eventlog
     // Note: Exclude 'code.symbol' to avoid duplication - functions/types already
