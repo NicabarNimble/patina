@@ -36,9 +36,16 @@ pub struct SyncStats {
 /// Sync forge data incrementally with rate limiting.
 ///
 /// Discovers refs from commits, resolves them via API with pacing.
+/// Resolved refs are written to staging files (`.forge-issue`/`.forge-pr`)
+/// instead of direct DB insert — they flow through the pipeline on next `patina scrape`.
 /// Safe to interrupt - progress is saved after each item.
-pub fn run(conn: &Connection, reader: &dyn ForgeReader, repo: &str) -> Result<SyncStats> {
-    internal::sync_forge(conn, reader, repo)
+pub fn run(
+    conn: &Connection,
+    reader: &dyn ForgeReader,
+    repo: &str,
+    staging_dir: &Path,
+) -> Result<SyncStats> {
+    internal::sync_forge(conn, reader, repo, staging_dir)
 }
 
 /// Check sync status without making changes.
@@ -55,8 +62,9 @@ pub fn sync_limited(
     reader: &dyn ForgeReader,
     repo: &str,
     limit: usize,
+    staging_dir: &Path,
 ) -> Result<SyncStats> {
-    internal::sync_with_limit(conn, reader, repo, limit)
+    internal::sync_with_limit(conn, reader, repo, limit, staging_dir)
 }
 
 /// Start background sync process (fork to detached process).
@@ -64,8 +72,13 @@ pub fn sync_limited(
 /// Returns immediately with the child PID. Sync runs in background.
 /// Use `is_running()` and `status()` to check progress.
 /// Log output goes to `~/.patina/logs/forge-sync-{repo}.log`.
-pub fn start_background(db_path: &Path, repo: &str, detected: &Forge) -> Result<u32> {
-    internal::start_background_sync(db_path, repo, detected)
+pub fn start_background(
+    db_path: &Path,
+    repo: &str,
+    detected: &Forge,
+    staging_dir: &Path,
+) -> Result<u32> {
+    internal::start_background_sync(db_path, repo, detected, staging_dir)
 }
 
 /// Check if sync is currently running for a repo.
