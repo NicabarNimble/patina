@@ -326,6 +326,11 @@ pub mod project {
     pub fn backups_dir(root: &Path) -> PathBuf {
         root.join(".patina/local/backups")
     }
+
+    /// Installed schemas directory: `.patina/schemas/`
+    pub fn schemas_dir(root: &Path) -> PathBuf {
+        root.join(".patina/schemas")
+    }
 }
 
 #[cfg(test)]
