@@ -163,10 +163,7 @@ package = "patina:schema/forge@1.0.0"
     );
     let m = PluginManifest::from_path(f.path()).unwrap();
     assert_eq!(m.schemas.len(), 1);
-    assert_eq!(
-        m.schemas.get("forge").unwrap(),
-        "patina:schema/forge@1.0.0"
-    );
+    assert_eq!(m.schemas.get("forge").unwrap(), "patina:schema/forge@1.0.0");
 }
 
 #[test]
