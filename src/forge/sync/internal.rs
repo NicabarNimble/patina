@@ -11,7 +11,7 @@ use std::time::Duration;
 use anyhow::{bail, Result};
 use rusqlite::Connection;
 
-use crate::forge::{ForgeReader, Issue, IssueState, PrState, PullRequest};
+use crate::forge::{ForgeReader, Issue, PullRequest};
 
 use super::SyncStats;
 
@@ -127,6 +127,7 @@ pub(crate) fn sync_forge(
     conn: &Connection,
     reader: &dyn ForgeReader,
     repo: &str,
+    staging_dir: &std::path::Path,
 ) -> Result<SyncStats> {
     // Discover PR refs from commits (instant, local)
     // Issues are bulk-fetched by scrape forge, not discovered here
@@ -161,7 +162,7 @@ pub(crate) fn sync_forge(
         // Always wait - simple, correct, unbreakable
         sleep(DELAY_BETWEEN_REQUESTS);
 
-        match resolve_ref(conn, reader, repo, *ref_num) {
+        match resolve_ref(conn, reader, repo, *ref_num, staging_dir) {
             Ok(was_cached) => {
                 resolved += 1;
                 if was_cached {
@@ -209,13 +210,14 @@ pub(crate) fn drain_forge(
     conn: &Connection,
     reader: &dyn ForgeReader,
     repo: &str,
+    staging_dir: &std::path::Path,
 ) -> Result<SyncStats> {
     let mut total = SyncStats::default();
     let mut batch_num = 0;
 
     loop {
         batch_num += 1;
-        let stats = sync_forge(conn, reader, repo)?;
+        let stats = sync_forge(conn, reader, repo, staging_dir)?;
 
         total.discovered += stats.discovered;
         total.resolved += stats.resolved;
@@ -248,6 +250,7 @@ pub(crate) fn sync_with_limit(
     reader: &dyn ForgeReader,
     repo: &str,
     limit: usize,
+    staging_dir: &std::path::Path,
 ) -> Result<SyncStats> {
     let mut total = SyncStats::default();
     let mut resolved_count = 0;
@@ -267,7 +270,7 @@ pub(crate) fn sync_with_limit(
         for ref_num in &pending_refs {
             sleep(DELAY_BETWEEN_REQUESTS);
 
-            match resolve_ref(conn, reader, repo, *ref_num) {
+            match resolve_ref(conn, reader, repo, *ref_num, staging_dir) {
                 Ok(was_cached) => {
                     total.resolved += 1;
                     resolved_count += 1;
@@ -300,6 +303,7 @@ pub(crate) fn start_background_sync(
     db_path: &std::path::Path,
     repo: &str,
     detected: &crate::forge::Forge,
+    staging_dir: &std::path::Path,
 ) -> Result<u32> {
     use std::os::unix::io::AsRawFd;
 
@@ -355,7 +359,7 @@ pub(crate) fn start_background_sync(
             let result = (|| -> Result<SyncStats> {
                 let conn = rusqlite::Connection::open(db_path)?;
                 let reader = crate::forge::reader(detected);
-                drain_forge(&conn, reader.as_ref(), repo)
+                drain_forge(&conn, reader.as_ref(), repo, staging_dir)
             })();
 
             // Log result
@@ -395,6 +399,7 @@ pub(crate) fn start_background_sync(
     _db_path: &std::path::Path,
     _repo: &str,
     _detected: &crate::forge::Forge,
+    _staging_dir: &std::path::Path,
 ) -> Result<u32> {
     bail!("Background sync not supported on this platform. Use --limit instead.")
 }
@@ -488,11 +493,15 @@ fn count_failed_refs(conn: &Connection, repo: &str) -> Result<usize> {
 // ============================================================================
 
 /// Resolve a single ref. Returns true if it was a cache hit (no API call).
+///
+/// Resolved refs are written to staging files instead of direct DB insert.
+/// They flow through the pipeline on next `patina scrape`.
 fn resolve_ref(
     conn: &Connection,
     reader: &dyn ForgeReader,
     repo: &str,
     ref_num: i64,
+    staging_dir: &std::path::Path,
 ) -> Result<bool> {
     // Check if it's a known issue first (no API call needed)
     if is_known_issue(conn, ref_num)? {
@@ -509,7 +518,7 @@ fn resolve_ref(
     // Try as PR first (more common in commit refs like "Merge PR #123")
     match reader.get_pull_request(ref_num) {
         Ok(pr) => {
-            insert_pr(conn, &pr)?;
+            write_pr_staging(staging_dir, &pr)?;
             mark_resolved(conn, repo, ref_num, "pr")?;
             return Ok(false);
         }
@@ -521,7 +530,7 @@ fn resolve_ref(
     // Try as issue
     match reader.get_issue(ref_num) {
         Ok(issue) => {
-            insert_issue(conn, &issue)?;
+            write_issue_staging(staging_dir, &issue)?;
             mark_resolved(conn, repo, ref_num, "issue")?;
             Ok(false)
         }
@@ -580,67 +589,27 @@ fn mark_failed(conn: &Connection, repo: &str, ref_num: i64, error: &str) -> Resu
 }
 
 // ============================================================================
-// Database insertion - store fetched PRs/issues
+// Staging writes - resolved refs go to staging files for pipeline processing
 // ============================================================================
 
-/// Insert a PR into forge_prs table.
-fn insert_pr(conn: &Connection, pr: &PullRequest) -> Result<()> {
-    let labels_json = serde_json::to_string(&pr.labels)?;
-    let linked_json = serde_json::to_string(&pr.linked_issues)?;
-    let state_str = match pr.state {
-        PrState::Open => "open",
-        PrState::Merged => "merged",
-        PrState::Closed => "closed",
-    };
-
-    conn.execute(
-        r#"
-        INSERT OR REPLACE INTO forge_prs
-        (number, title, body, state, labels, author, created_at, merged_at, url, linked_issues, approvals)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-        "#,
-        rusqlite::params![
-            pr.number,
-            &pr.title,
-            &pr.body,
-            state_str,
-            &labels_json,
-            &pr.author,
-            &pr.created_at,
-            &pr.merged_at,
-            &pr.url,
-            &linked_json,
-            pr.approvals,
-        ],
-    )?;
+/// Write a PR to staging as a `.forge-pr` file.
+/// Flows through the grammar-forge pipeline plugin on next `patina scrape`.
+fn write_pr_staging(staging_dir: &std::path::Path, pr: &PullRequest) -> Result<()> {
+    let prs_dir = staging_dir.join("prs");
+    std::fs::create_dir_all(&prs_dir)?;
+    let file_path = prs_dir.join(format!("{}.forge-pr", pr.number));
+    let json = serde_json::to_string_pretty(pr)?;
+    std::fs::write(&file_path, json)?;
     Ok(())
 }
 
-/// Insert an issue into forge_issues table.
-fn insert_issue(conn: &Connection, issue: &Issue) -> Result<()> {
-    let labels_json = serde_json::to_string(&issue.labels)?;
-    let state_str = match issue.state {
-        IssueState::Open => "open",
-        IssueState::Closed => "closed",
-    };
-
-    conn.execute(
-        r#"
-        INSERT OR REPLACE INTO forge_issues
-        (number, title, body, state, labels, author, created_at, updated_at, url)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-        "#,
-        rusqlite::params![
-            issue.number,
-            &issue.title,
-            &issue.body,
-            state_str,
-            &labels_json,
-            &issue.author,
-            &issue.created_at,
-            &issue.updated_at,
-            &issue.url,
-        ],
-    )?;
+/// Write an issue to staging as a `.forge-issue` file.
+/// Flows through the grammar-forge pipeline plugin on next `patina scrape`.
+fn write_issue_staging(staging_dir: &std::path::Path, issue: &Issue) -> Result<()> {
+    let issues_dir = staging_dir.join("issues");
+    std::fs::create_dir_all(&issues_dir)?;
+    let file_path = issues_dir.join(format!("{}.forge-issue", issue.number));
+    let json = serde_json::to_string_pretty(issue)?;
+    std::fs::write(&file_path, json)?;
     Ok(())
 }

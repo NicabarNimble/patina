@@ -408,8 +408,16 @@ fn execute_forge_background(working_dir: Option<&PathBuf>, repo_spec: &str) -> R
     let remote_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let detected = patina::forge::detect(&remote_url);
 
+    // Compute staging directory for resolved refs
+    let work_dir = working_dir
+        .cloned()
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let staging_dir = patina::paths::project::data_dir(&work_dir)
+        .join("forge")
+        .join(format!("{}-{}", detected.owner, detected.repo));
+
     // Start background sync
-    let pid = patina::forge::sync::start_background(&db_path, repo_spec, &detected)?;
+    let pid = patina::forge::sync::start_background(&db_path, repo_spec, &detected, &staging_dir)?;
 
     let log_path = patina::forge::sync::log_path(repo_spec);
 
@@ -444,11 +452,20 @@ fn execute_forge_limited(
     let remote_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let detected = patina::forge::detect(&remote_url);
 
+    // Compute staging directory for resolved refs
+    let work_dir = working_dir
+        .cloned()
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let staging_dir = patina::paths::project::data_dir(&work_dir)
+        .join("forge")
+        .join(format!("{}-{}", detected.owner, detected.repo));
+
     println!("🔄 Syncing up to {} refs in foreground...", limit);
 
     let conn = database::initialize(&db_path)?;
     let reader = patina::forge::reader(&detected);
-    let stats = patina::forge::sync::sync_limited(&conn, reader.as_ref(), repo_spec, limit)?;
+    let stats =
+        patina::forge::sync::sync_limited(&conn, reader.as_ref(), repo_spec, limit, &staging_dir)?;
 
     println!("\n📊 Forge Sync Summary:");
     println!("  • Discovered: {}", stats.discovered);
