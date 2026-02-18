@@ -17,6 +17,7 @@ use std::time::Instant;
 use super::database;
 use super::ScrapeStats;
 use patina::forge::{self, ForgeKind, Issue, IssueState, PrState, PullRequest};
+use patina::paths;
 
 /// Check if we already have this issue at this updated_at timestamp.
 /// Prevents duplicate events from repeated scrapes.
@@ -369,6 +370,48 @@ impl Default for ForgeScrapeConfig {
     }
 }
 
+/// Write issues to staging directory as individual JSON files.
+///
+/// Each issue is written to:
+///   `.patina/local/data/forge/{owner}-{repo}/issues/{number}.forge-issue`
+///
+/// The `.forge-issue` extension is claimed by the `grammar-forge` pipeline
+/// plugin, which reads the JSON and returns `ExtractedPayload::Issue`.
+fn write_issues_staging(staging_dir: &Path, issues: &[Issue]) -> Result<usize> {
+    let issues_dir = staging_dir.join("issues");
+    std::fs::create_dir_all(&issues_dir)?;
+
+    let mut written = 0;
+    for issue in issues {
+        let file_path = issues_dir.join(format!("{}.forge-issue", issue.number));
+        let json = serde_json::to_string_pretty(issue)?;
+        std::fs::write(&file_path, json)?;
+        written += 1;
+    }
+    Ok(written)
+}
+
+/// Write PRs to staging directory as individual JSON files.
+///
+/// Each PR is written to:
+///   `.patina/local/data/forge/{owner}-{repo}/prs/{number}.forge-pr`
+///
+/// The `.forge-pr` extension is claimed by the `grammar-forge` pipeline
+/// plugin, which reads the JSON and returns `ExtractedPayload::PullRequest`.
+fn write_prs_staging(staging_dir: &Path, prs: &[PullRequest]) -> Result<usize> {
+    let prs_dir = staging_dir.join("prs");
+    std::fs::create_dir_all(&prs_dir)?;
+
+    let mut written = 0;
+    for pr in prs {
+        let file_path = prs_dir.join(format!("{}.forge-pr", pr.number));
+        let json = serde_json::to_string_pretty(pr)?;
+        std::fs::write(&file_path, json)?;
+        written += 1;
+    }
+    Ok(written)
+}
+
 /// Main entry point for forge scraping.
 pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
     let start = Instant::now();
@@ -438,7 +481,7 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
         }
     }
 
-    // Initialize database
+    // Initialize database (still needed for incremental timestamps and sync)
     let conn = database::initialize(db_path)?;
     create_materialized_views(&conn)?;
 
@@ -450,6 +493,15 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
     };
 
     let forge_name = format!("{}/{}", detected.owner, detected.repo);
+
+    // Compute staging directory: .patina/local/data/forge/{owner}-{repo}/
+    let work_dir = config
+        .working_dir
+        .clone()
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let staging_dir = paths::project::data_dir(&work_dir)
+        .join("forge")
+        .join(format!("{}-{}", detected.owner, detected.repo));
 
     // Get reader for bulk fetches
     let reader = forge::reader(&detected);
@@ -470,59 +522,40 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
         );
     }
 
-    // Bulk fetch issues
+    // Bulk fetch issues → write to staging
     let issues = reader.list_issues(config.limit, since.as_deref())?;
     let issue_count = if issues.is_empty() {
         println!("  No new issues to process");
         0
     } else {
         println!("  Fetched {}/{} issues", issues.len(), issue_count_expected);
-        let stats = insert_issues(&conn, &issues)?;
-        if stats.skipped > 0 {
-            println!(
-                "  Inserted {} new events, {} unchanged (dedup)",
-                stats.inserted, stats.skipped
-            );
-        } else {
-            println!("  Inserted {} issues", stats.inserted);
-        }
+        let written = write_issues_staging(&staging_dir, &issues)?;
+        println!("  Staged {} issues to {}", written, staging_dir.display());
 
         // Update last scrape timestamp from issues
         if let Some(latest) = issues.iter().max_by_key(|i| &i.updated_at) {
             update_last_scrape(&conn, &latest.updated_at)?;
         }
 
-        // Populate FTS5 index for issues
-        let issue_fts_count = populate_fts5_issues(&conn)?;
-        println!("  Indexed {} issues in FTS5", issue_fts_count);
-        stats.inserted
+        written
     };
 
-    // Bulk fetch PRs (same pattern as issues)
+    // Bulk fetch PRs → write to staging
     let prs = reader.list_pull_requests(config.limit, since.as_deref())?;
     let pr_count = if prs.is_empty() {
         println!("  No new PRs to process");
         0
     } else {
         println!("  Fetched {}/{} PRs", prs.len(), pr_count_expected);
-        let stats = insert_prs(&conn, &prs)?;
-        if stats.skipped > 0 {
-            println!(
-                "  Inserted {} new events, {} unchanged (dedup)",
-                stats.inserted, stats.skipped
-            );
-        } else {
-            println!("  Inserted {} PRs", stats.inserted);
-        }
-
-        // Populate FTS5 index for PRs
-        let pr_fts_count = populate_fts5_prs(&conn)?;
-        println!("  Indexed {} PRs in FTS5", pr_fts_count);
-        stats.inserted
+        let written = write_prs_staging(&staging_dir, &prs)?;
+        println!("  Staged {} PRs to {}", written, staging_dir.display());
+        written
     };
 
     // Discover PR refs from commits (for numbers mentioned in commit messages)
-    // These are PRs we know the number of but haven't fetched yet
+    // These are PRs we know the number of but haven't fetched yet.
+    // NOTE: Sync still writes directly to DB for resolved refs.
+    // Will migrate to staging in a follow-up session.
     let repo_spec = format!("{}/{}", detected.owner, detected.repo);
     let sync_stats = forge::sync::run(&conn, reader.as_ref(), &repo_spec)?;
 
@@ -541,6 +574,8 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
             println!("  ({} refs failed - see warnings above)", sync_stats.errors);
         }
     }
+
+    println!("  Run `patina scrape` to index staged forge data through the pipeline");
 
     let elapsed = start.elapsed();
     let db_size = std::fs::metadata(db_path)
