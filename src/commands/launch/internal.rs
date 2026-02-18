@@ -558,7 +558,7 @@ fn launch_adapter_cli(
                 io::stderr().flush().ok();
 
                 let err = Command::new("tmux")
-                    .args(["new-session", "-A", "-s", session_name, "-c"])
+                    .args(["new-session", "-A", "-D", "-s", session_name, "-c"])
                     .arg(project_path.as_os_str()) // non-UTF-8 safe
                     .arg(adapter_name)
                     .current_dir(project_path)
