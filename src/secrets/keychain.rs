@@ -37,25 +37,61 @@ mod platform {
 
     /// Store an age identity in the macOS Keychain.
     ///
-    /// The identity is stored as a generic password with Touch ID protection.
+    /// Uses `kSecAttrAccessibleAlwaysThisDeviceOnly`:
+    /// - Hardware-encrypted by the M-chip Secure Enclave (device-specific key)
+    /// - Accessible to any process on this device: SSH, daemons, post-reboot
+    /// - Cannot be backed up to iCloud or restored to a different device
+    ///
+    /// Deprecated on iOS (stolen phones rebooted = bypassed), correct for a
+    /// stationary Mac where the device itself is the authentication factor.
+    ///
+    /// Deletes any existing item first to upgrade old access policies.
     pub fn store_identity(identity: &str) -> Result<()> {
-        use security_framework::passwords::set_generic_password;
+        use security_framework::access_control::SecAccessControl;
+        use security_framework::passwords::{
+            delete_generic_password, set_generic_password_options, PasswordOptions,
+        };
+        use security_framework_sys::access_control::{
+            kSecAttrAccessibleAlwaysThisDeviceOnly, SecAccessControlCreateWithFlags,
+        };
 
-        log_debug("set_generic_password: attempting");
-        let result = set_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, identity.as_bytes());
+        // Delete any existing item first — SecItemAdd fails on duplicates.
+        // Silently ignore "not found" errors on fresh installs.
+        let _ = delete_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
+        log_debug("store_identity: cleared existing item");
 
-        match &result {
-            Ok(()) => log_debug("set_generic_password: success"),
-            Err(e) => log_debug(&format!("set_generic_password: error: {}", e)),
-        }
+        // Build SecAccessControl with AlwaysThisDeviceOnly, no user-presence flags.
+        // kCFAllocatorDefault is null; CFStringRef casts to CFTypeRef as raw pointer.
+        let ac = unsafe {
+            use core_foundation::base::TCFType;
+            let ac_ref = SecAccessControlCreateWithFlags(
+                std::ptr::null(),
+                kSecAttrAccessibleAlwaysThisDeviceOnly as *const _,
+                0, // no user-presence flags — no Touch ID prompt on read
+                std::ptr::null_mut(),
+            );
+            if ac_ref.is_null() {
+                return Err(anyhow::anyhow!("SecAccessControlCreateWithFlags returned null"));
+            }
+            SecAccessControl::wrap_under_create_rule(ac_ref)
+        };
 
-        result.context("Failed to store identity in Keychain")?;
+        let mut opts = PasswordOptions::new_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
+        opts.set_access_control(ac);
+
+        log_debug("set_generic_password_options: attempting (AlwaysThisDeviceOnly)");
+        set_generic_password_options(identity.as_bytes(), opts)
+            .context("Failed to store identity in Keychain")?;
+
+        log_debug("store_identity: success");
         Ok(())
     }
 
     /// Retrieve the age identity from the macOS Keychain.
     ///
-    /// This will trigger Touch ID if the item is protected.
+    /// No Touch ID prompt — items stored with the current policy
+    /// (kSecAttrAccessibleAlwaysThisDeviceOnly) are accessible without user
+    /// presence. Re-run `patina secrets setup-claude` to upgrade legacy items.
     pub fn get_identity() -> Result<String> {
         use security_framework::passwords::get_generic_password;
 

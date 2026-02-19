@@ -2466,7 +2466,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "patina-ai"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "age",
  "anyhow",
@@ -2476,6 +2476,7 @@ dependencies = [
  "clap",
  "colored",
  "console",
+ "core-foundation",
  "dirs 5.0.1",
  "fastrand",
  "glob",
@@ -2492,6 +2493,7 @@ dependencies = [
  "rusqlite",
  "safetensors",
  "security-framework",
+ "security-framework-sys",
  "serde",
  "serde_json",
  "serde_yaml",
