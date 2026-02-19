@@ -354,22 +354,10 @@ fn list_recipients() -> Result<()> {
 fn setup_claude() -> Result<()> {
     let project_root = env::current_dir().ok();
 
-    // Check if already configured (try vault lookup — may trigger Touch ID)
-    match secrets::get_global_secret("claude-oauth") {
-        Ok(Some(_)) => {
-            println!("claude-oauth already in global vault.");
-            println!();
-            print!("Replace it? [y/N]: ");
-            io::stdout().flush()?;
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-            if input.trim().to_lowercase() != "y" {
-                return Ok(());
-            }
-        }
-        Ok(None) | Err(_) => {
-            // Not found or vault error — proceed with setup
-        }
+    // Check if already configured — inform, then overwrite
+    let replacing = matches!(secrets::get_global_secret("claude-oauth"), Ok(Some(_)));
+    if replacing {
+        println!("Replacing existing claude-oauth in global vault.\n");
     }
 
     println!("Setup Claude Code auth for headless/SSH sessions");
