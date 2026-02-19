@@ -60,6 +60,9 @@ pub enum SecretsCommands {
 
     /// Scan all tracked files for exposed secrets
     Audit,
+
+    /// Set up Claude Code auth token for headless/SSH sessions
+    SetupClaude,
 }
 
 /// Flags for bare `patina secrets` command
@@ -144,6 +147,7 @@ pub fn execute(command: SecretsCommands) -> Result<()> {
         SecretsCommands::ListRecipients => list_recipients(),
         SecretsCommands::Check => check_staged(),
         SecretsCommands::Audit => audit_tracked(),
+        SecretsCommands::SetupClaude => setup_claude(),
     }
 }
 
@@ -339,6 +343,82 @@ fn list_recipients() -> Result<()> {
             println!("  {}", r);
         }
     }
+
+    Ok(())
+}
+
+/// Guided setup for Claude Code authentication token.
+///
+/// Walks the user through generating and storing a long-lived OAuth token
+/// so the launcher can inject it for headless/SSH/tmux sessions.
+fn setup_claude() -> Result<()> {
+    let project_root = env::current_dir().ok();
+
+    // Check if already configured (try vault lookup — may trigger Touch ID)
+    match secrets::get_global_secret("claude-oauth") {
+        Ok(Some(_)) => {
+            println!("claude-oauth already in global vault.");
+            println!();
+            print!("Replace it? [y/N]: ");
+            io::stdout().flush()?;
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            if input.trim().to_lowercase() != "y" {
+                return Ok(());
+            }
+        }
+        Ok(None) | Err(_) => {
+            // Not found or vault error — proceed with setup
+        }
+    }
+
+    println!("Setup Claude Code auth for headless/SSH sessions");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!();
+    println!("Step 1: Generate a long-lived token (requires browser):");
+    println!("  $ claude setup-token");
+    println!();
+    println!("  This opens a browser for OAuth, then prints a token");
+    println!("  starting with sk-ant-oat01-... (valid ~1 year).");
+    println!();
+    println!("Step 2: Paste the token below.");
+    println!();
+
+    // Masked interactive prompt
+    eprint!("Token: ");
+    let token = secrets::prompt_for_value("claude-oauth")?;
+
+    if token.is_empty() {
+        bail!("Token cannot be empty");
+    }
+
+    // Basic sanity check on token format
+    if !token.starts_with("sk-ant-") {
+        eprintln!();
+        eprintln!("Warning: token doesn't start with sk-ant- — are you sure this is correct?");
+        print!("Continue anyway? [y/N]: ");
+        io::stdout().flush()?;
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        if input.trim().to_lowercase() != "y" {
+            return Ok(());
+        }
+    }
+
+    // Store with the right name, env var, and global flag
+    secrets::add_secret(
+        "claude-oauth",
+        &token,
+        Some("CLAUDE_CODE_OAUTH_TOKEN"),
+        true, // global
+        project_root.as_deref(),
+    )?;
+
+    println!();
+    println!("Done! The token will be injected automatically when you run:");
+    println!("  $ patina          (Claude adapter)");
+    println!();
+    println!("To remove: patina secrets --remove claude-oauth --global");
 
     Ok(())
 }
