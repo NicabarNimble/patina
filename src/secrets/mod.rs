@@ -559,4 +559,21 @@ mod tests {
         assert!(path.to_string_lossy().ends_with("secrets.toml"));
         assert!(path.to_string_lossy().contains(".patina"));
     }
+
+    #[test]
+    fn test_get_global_secret_no_vault() {
+        // When no vault exists, get_global_secret returns Ok(None)
+        // This test relies on the test environment not having ~/.patina/vault.age
+        // or having a session cache running. In CI, neither exists.
+        // If a real vault exists on the dev machine, this still passes because
+        // "nonexistent-secret-name" won't be in it.
+        let result = super::get_global_secret("nonexistent-test-secret-xyzzy");
+        // Either Ok(None) — secret not found — or Err from vault issues,
+        // but never panics
+        match result {
+            Ok(None) => {} // expected in most environments
+            Ok(Some(_)) => panic!("unexpected secret found for random test name"),
+            Err(_) => {} // acceptable: vault exists but identity unavailable in CI
+        }
+    }
 }
