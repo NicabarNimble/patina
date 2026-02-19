@@ -232,16 +232,15 @@ injection.
 
 | Platform | Identity Source | Notes |
 |---|---|---|
-| macOS (GUI) | Keychain + Touch ID | Primary path |
-| macOS (SSH) | Keychain (may prompt) or session cache | Touch ID may not work over SSH; session cache avoids it |
+| macOS (GUI) | Keychain | Primary path |
+| macOS (SSH) | Keychain | Works — see spec-secrets-keychain-ssh |
 | Linux | `PATINA_IDENTITY` env var | No Keychain; user exports identity |
 | CI | `PATINA_IDENTITY` env var | Same as Linux |
 
-On macOS over SSH: Touch ID prompts may fail silently if there's no
-GUI session. The session cache (`patina serve`) is the recommended
-path — unlock once locally, SSH sessions use the cached secrets for
-10 minutes. If no cache and no Touch ID, falls back to
-`PATINA_IDENTITY` env var.
+On macOS over SSH: the Keychain item is stored with
+`kSecAttrAccessibleAlwaysThisDeviceOnly` (see `spec-secrets-keychain-ssh`),
+so SSH sessions decrypt the vault without Touch ID or session cache.
+No `PATINA_IDENTITY` env var needed on macOS.
 
 ### Error Handling
 
