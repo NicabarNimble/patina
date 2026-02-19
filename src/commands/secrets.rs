@@ -397,6 +397,12 @@ fn setup_claude() -> Result<()> {
         project_root.as_deref(),
     )?;
 
+    // Migrate the identity to AlwaysThisDeviceOnly so SSH sessions can read it.
+    // Re-stores the existing key with the correct Keychain access policy.
+    if let Ok(key) = secrets::export_identity() {
+        let _ = secrets::import_identity(&key);
+    }
+
     if replacing {
         println!("Token updated.");
     } else {
