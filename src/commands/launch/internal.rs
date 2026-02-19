@@ -654,6 +654,10 @@ fn launch_adapter_cli(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // Serialize env-var tests to avoid races (env is process-global)
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_resolve_current_dir() {
@@ -668,6 +672,87 @@ mod tests {
         // This should work if home dir exists
         if let Ok(p) = path {
             assert!(p.is_absolute());
+        }
+    }
+
+    // --- try_get_claude_token conflict guards ---
+
+    #[test]
+    fn test_claude_token_blocked_by_anthropic_api_key() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        // Save and set
+        let prev = env::var("ANTHROPIC_API_KEY").ok();
+        env::set_var("ANTHROPIC_API_KEY", "sk-ant-test");
+        // Clear the other to avoid interference
+        let prev_oauth = env::var("CLAUDE_CODE_OAUTH_TOKEN").ok();
+        env::remove_var("CLAUDE_CODE_OAUTH_TOKEN");
+
+        let result = try_get_claude_token();
+        assert!(
+            result.is_none(),
+            "should skip when ANTHROPIC_API_KEY is set"
+        );
+
+        // Restore
+        match prev {
+            Some(v) => env::set_var("ANTHROPIC_API_KEY", v),
+            None => env::remove_var("ANTHROPIC_API_KEY"),
+        }
+        match prev_oauth {
+            Some(v) => env::set_var("CLAUDE_CODE_OAUTH_TOKEN", v),
+            None => env::remove_var("CLAUDE_CODE_OAUTH_TOKEN"),
+        }
+    }
+
+    #[test]
+    fn test_claude_token_blocked_by_existing_oauth_token() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        // Save and set
+        let prev_api = env::var("ANTHROPIC_API_KEY").ok();
+        env::remove_var("ANTHROPIC_API_KEY");
+        let prev = env::var("CLAUDE_CODE_OAUTH_TOKEN").ok();
+        env::set_var("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-existing");
+
+        let result = try_get_claude_token();
+        assert!(
+            result.is_none(),
+            "should skip when CLAUDE_CODE_OAUTH_TOKEN already set"
+        );
+
+        // Restore
+        match prev {
+            Some(v) => env::set_var("CLAUDE_CODE_OAUTH_TOKEN", v),
+            None => env::remove_var("CLAUDE_CODE_OAUTH_TOKEN"),
+        }
+        match prev_api {
+            Some(v) => env::set_var("ANTHROPIC_API_KEY", v),
+            None => env::remove_var("ANTHROPIC_API_KEY"),
+        }
+    }
+
+    #[test]
+    fn test_claude_token_clean_env_no_vault() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        // Save and clear both
+        let prev_api = env::var("ANTHROPIC_API_KEY").ok();
+        let prev_oauth = env::var("CLAUDE_CODE_OAUTH_TOKEN").ok();
+        env::remove_var("ANTHROPIC_API_KEY");
+        env::remove_var("CLAUDE_CODE_OAUTH_TOKEN");
+
+        // No vault exists in test environment → returns None (not an error)
+        let result = try_get_claude_token();
+        // Result is None because there's no vault (or we might get a decrypt error
+        // which is also caught and returns None)
+        assert!(result.is_none(), "should return None when no vault exists");
+
+        // Restore
+        match prev_api {
+            Some(v) => env::set_var("ANTHROPIC_API_KEY", v),
+            None => env::remove_var("ANTHROPIC_API_KEY"),
+        }
+        match prev_oauth {
+            Some(v) => env::set_var("CLAUDE_CODE_OAUTH_TOKEN", v),
+            None => env::remove_var("CLAUDE_CODE_OAUTH_TOKEN"),
         }
     }
 }
