@@ -463,6 +463,34 @@ pub fn list_recipients(project_root: &Path) -> Result<Vec<String>> {
 }
 
 // =============================================================================
+// Single-Secret Accessor
+// =============================================================================
+
+/// Get a single secret from the global vault only.
+///
+/// Decrypts ONLY `~/.patina/vault.age` — never touches project vaults.
+/// Checks session cache first (via `patina serve` if running) to avoid
+/// redundant Touch ID prompts.
+///
+/// Returns `Ok(None)` if the secret doesn't exist or the vault doesn't exist.
+/// Returns `Err` only on actual decryption failure (missing identity, corrupted vault).
+pub fn get_global_secret(name: &str) -> Result<Option<String>> {
+    // 1. Check session cache first (no Touch ID)
+    if let Some(cached) = session::get_cached_secrets() {
+        return Ok(cached.get(name).cloned());
+    }
+
+    // 2. Cache miss — decrypt global vault only
+    let global_path = paths::secrets::vault_path();
+    if !global_path.exists() {
+        return Ok(None);
+    }
+
+    let vault_data = vault::decrypt_vault(&global_path)?;
+    Ok(vault_data.values.get(name).cloned())
+}
+
+// =============================================================================
 // Helper Functions
 // =============================================================================
 
