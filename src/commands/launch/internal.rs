@@ -535,6 +535,34 @@ fn initialize_project(project_path: &Path, adapter_name: &str) -> Result<bool> {
     Ok(true) // Continue to launch
 }
 
+/// Try to get the Claude OAuth token from the global secrets vault.
+///
+/// Checks conflict guards first (ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN),
+/// then attempts vault lookup. Returns None on any failure — never propagates errors.
+fn try_get_claude_token() -> Option<String> {
+    // Conflict guard: ANTHROPIC_API_KEY takes priority
+    if env::var("ANTHROPIC_API_KEY").is_ok() {
+        eprintln!("patina: ANTHROPIC_API_KEY set — skipping vault token injection (API key takes priority)");
+        return None;
+    }
+
+    // Conflict guard: CLAUDE_CODE_OAUTH_TOKEN already set externally
+    if env::var("CLAUDE_CODE_OAUTH_TOKEN").is_ok() {
+        eprintln!("patina: CLAUDE_CODE_OAUTH_TOKEN already set — skipping vault token injection");
+        return None;
+    }
+
+    // Attempt vault lookup — catch all errors
+    match patina::secrets::get_global_secret("claude-oauth") {
+        Ok(Some(token)) => Some(token),
+        Ok(None) => None,
+        Err(e) => {
+            eprintln!("patina: failed to read claude-oauth from vault — {}", e);
+            None
+        }
+    }
+}
+
 /// Launch the adapter CLI, optionally wrapped in tmux
 fn launch_adapter_cli(
     adapter_name: &str,
@@ -542,6 +570,14 @@ fn launch_adapter_cli(
     decision: &super::TmuxDecision,
     session_name: &str,
 ) -> Result<()> {
+    // Inject Claude auth token if available (adapter-gated)
+    // All warnings print HERE — before exec/tmux takes over stderr.
+    let claude_token = if adapter_name == "claude" {
+        try_get_claude_token()
+    } else {
+        None
+    };
+
     // Use exec to replace current process (Unix-style)
     // On Windows, we'd spawn and wait instead
     #[cfg(unix)]
@@ -557,12 +593,17 @@ fn launch_adapter_cli(
                 eprintln!("  Reconnect: tmux attach -t {}", session_name);
                 io::stderr().flush().ok();
 
-                let err = Command::new("tmux")
-                    .args(["new-session", "-A", "-D", "-s", session_name, "-c"])
-                    .arg(project_path.as_os_str()) // non-UTF-8 safe
-                    .arg(adapter_name)
-                    .current_dir(project_path)
-                    .exec();
+                let mut cmd = Command::new("tmux");
+                cmd.args(["new-session", "-A", "-D", "-s", session_name, "-c"]);
+                cmd.arg(project_path.as_os_str()); // non-UTF-8 safe
+                cmd.arg(adapter_name);
+                cmd.current_dir(project_path);
+                if let Some(ref token) = claude_token {
+                    cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
+                }
+                io::stderr().flush().ok();
+
+                let err = cmd.exec();
                 // exec only returns on error — fall back to direct launch
                 eprintln!(
                     "Warning: failed to exec tmux ({}) — launching {} directly (no session created)",
@@ -577,7 +618,14 @@ fn launch_adapter_cli(
         }
 
         // Direct exec (Off path, or Auto fallback after tmux exec failure)
-        let err = Command::new(adapter_name).current_dir(project_path).exec();
+        let mut cmd = Command::new(adapter_name);
+        cmd.current_dir(project_path);
+        if let Some(ref token) = claude_token {
+            cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
+        }
+        io::stderr().flush().ok();
+
+        let err = cmd.exec();
         // exec only returns on error
         bail!("Failed to exec {}: {}", adapter_name, err);
     }
@@ -586,8 +634,13 @@ fn launch_adapter_cli(
     {
         // tmux not available on non-Unix — always direct launch
         println!("\nLaunching {}...\n", adapter_name);
-        let status = Command::new(adapter_name)
-            .current_dir(project_path)
+        let mut cmd = Command::new(adapter_name);
+        cmd.current_dir(project_path);
+        if let Some(ref token) = claude_token {
+            cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
+        }
+
+        let status = cmd
             .status()
             .with_context(|| format!("Failed to run {}", adapter_name))?;
 
