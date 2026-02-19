@@ -106,6 +106,14 @@ pub fn check_status(project_root: Option<&Path>) -> Result<SecretsStatus> {
 // Secret Management
 // =============================================================================
 
+/// Result of adding a secret, for callers to display as they see fit.
+pub struct AddResult {
+    /// The env var name mapped to this secret.
+    pub env_var: String,
+    /// Whether a new vault was created (first secret).
+    pub created_vault: bool,
+}
+
 /// Add a secret to the vault.
 ///
 /// - `global = true`: add to global vault (~/.patina/)
@@ -116,7 +124,7 @@ pub fn add_secret(
     env: Option<&str>,
     global: bool,
     project_root: Option<&Path>,
-) -> Result<()> {
+) -> Result<AddResult> {
     // Validate name
     if !registry::is_valid_secret_name(name) {
         bail!(
@@ -161,11 +169,12 @@ pub fn add_secret(
     };
 
     // Check if vault exists, init if not
-    if !vault_path.exists() {
-        println!("Vault not found. Creating...");
-        let recipient = vault::init_vault(&vault_path, &recipients_path)?;
-        println!("✓ Saved public key: {}", recipient);
-    }
+    let created_vault = if !vault_path.exists() {
+        let _recipient = vault::init_vault(&vault_path, &recipients_path)?;
+        true
+    } else {
+        false
+    };
 
     // Load and update vault (requires decrypt → Touch ID)
     let mut vault_data = vault::decrypt_vault(&vault_path)?;
@@ -177,9 +186,10 @@ pub fn add_secret(
     reg.insert(name, &env_var);
     reg.save_to(&registry_path)?;
 
-    println!("✓ Added {} → {}", name, env_var);
-
-    Ok(())
+    Ok(AddResult {
+        env_var,
+        created_vault,
+    })
 }
 
 /// Remove a secret from the vault.
