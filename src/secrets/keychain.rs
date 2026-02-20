@@ -37,15 +37,15 @@ mod platform {
 
     /// Store an age identity in the macOS Keychain.
     ///
-    /// Uses `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` via raw
-    /// `SecItemAdd` — avoids `SecAccessControlCreateWithFlags` which fails
-    /// with -34018 on macOS 26 for ad-hoc signed binaries.
+    /// Uses `kSecAttrAccessibleAlwaysThisDeviceOnly` via raw `SecItemAdd` —
+    /// avoids `SecAccessControlCreateWithFlags` which fails with -34018 on
+    /// macOS 26 for ad-hoc signed binaries.
     ///
     /// Policy properties:
-    /// - Available after first unlock (always true on a logged-in Mac)
-    /// - Accessible over SSH, daemons, post-reboot (once user logs in once)
+    /// - Always accessible: SSH sessions, daemons, post-reboot (no login required)
+    /// - Hardware-encrypted by M-chip Secure Enclave (device-unique key)
     /// - Device-bound: cannot sync to iCloud or restore to another device
-    /// - Not deprecated (unlike `AlwaysThisDeviceOnly`)
+    /// - Deprecated on iOS (stolen phone threat model), correct for stationary Mac
     ///
     /// Deletes any existing item first to upgrade old access policies.
     pub fn store_identity(identity: &str) -> Result<()> {
@@ -54,7 +54,7 @@ mod platform {
         use core_foundation::string::CFString;
         use core_foundation::string::CFStringRef;
         use security_framework::passwords::delete_generic_password;
-        use security_framework_sys::access_control::kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
+        use security_framework_sys::access_control::kSecAttrAccessibleAlwaysThisDeviceOnly;
         use security_framework_sys::item::{
             kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword, kSecValueData,
         };
@@ -89,7 +89,7 @@ mod platform {
                 CFString::from(KEYCHAIN_SERVICE).into_CFType(),
                 CFString::from(KEYCHAIN_ACCOUNT).into_CFType(),
                 CFData::from_buffer(identity.as_bytes()).into_CFType(),
-                CFString::wrap_under_get_rule(kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
+                CFString::wrap_under_get_rule(kSecAttrAccessibleAlwaysThisDeviceOnly)
                     .into_CFType(),
             ]
         };
@@ -98,7 +98,7 @@ mod platform {
             &keys.iter().cloned().zip(values).collect::<Vec<_>>(),
         );
 
-        log_debug("SecItemAdd: attempting (AfterFirstUnlockThisDeviceOnly, raw)");
+        log_debug("SecItemAdd: attempting (AlwaysThisDeviceOnly, raw)");
         let status = unsafe { SecItemAdd(dict.as_concrete_TypeRef(), std::ptr::null_mut()) };
         if status != 0 {
             anyhow::bail!(
@@ -113,10 +113,9 @@ mod platform {
 
     /// Retrieve the age identity from the macOS Keychain.
     ///
-    /// No Touch ID prompt — items stored with the current policy
-    /// (AfterFirstUnlockThisDeviceOnly) are accessible without user presence
-    /// after the first login. Re-run `patina secrets setup-claude` to upgrade
-    /// legacy items.
+    /// No Touch ID prompt — items stored with AlwaysThisDeviceOnly are
+    /// accessible without user presence, including over SSH and after reboot.
+    /// Re-run `patina secrets setup-claude` to upgrade legacy items.
     pub fn get_identity() -> Result<String> {
         use security_framework::passwords::get_generic_password;
 
