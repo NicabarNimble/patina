@@ -13,6 +13,7 @@ sessions:
 - 20260218-225007
 - 20260219-083531
 - 20260220-120045
+- 20260220-143431
 ---
 
 # fix: Keychain SSH Access via Raw SecItemAdd (macOS 26 Regression)
@@ -241,12 +242,81 @@ model change (notarized releases vs `cargo install`). Out of scope.
 
 ## Exit Criteria
 
-- [ ] Code changes applied to `src/secrets/keychain.rs`
-- [ ] Build and install: `cargo build --release && cargo install --path .`
-- [ ] Migration completed: `patina secrets --export-key | --import-key`
-- [ ] Local vault test: `patina secrets run -- printenv CLAUDE_CODE_OAUTH_TOKEN`
+- [x] Code changes applied to `src/secrets/keychain.rs` (store_identity)
+- [x] Build and install: `cargo build --release && cargo install --path .`
+- [x] Migration completed: `patina secrets --export-key | --import-key`
+- [x] Local vault test: `patina secrets run -- printenv CLAUDE_CODE_OAUTH_TOKEN`
 - [ ] SSH test: New session over Tailscale, `patina launch` works
-- [ ] Beliefs updated: raw-keychain-over-access-control, keychain-always-this-device-only
-- [ ] Session notes linked: 20260218-225007, 20260219-083531, 20260220-120045
-- [ ] Commit with proper message and Co-Authored-By
+- [x] Beliefs updated: raw-keychain-over-access-control, keychain-always-this-device-only
+- [x] Session notes linked: 20260218-225007, 20260219-083531, 20260220-120045
+- [x] Commit with proper message (a4f68d52)
 - [ ] spec-launcher-auth unblocked (can proceed with token injection testing)
+
+## Continuation: Feb 20 Afternoon - API Mismatch Discovery
+
+### The Hidden Problem
+
+Commit a4f68d52 fixed `store_identity()` but SSH access **still failed**:
+
+```
+Error: No identity available for decryption
+Caused by:
+    1: User interaction is not allowed.
+```
+
+Fresh SSH session testing revealed the issue persisted despite using raw `SecItemAdd` + `AlwaysThisDeviceOnly`.
+
+### Root Cause: Storage/Retrieval API Asymmetry
+
+**Session 20260220-143431** identified the asymmetry:
+
+**Storage (lines 51-112):** ✅ Raw `SecItemAdd` with full control
+```rust
+SecItemAdd(dict.as_concrete_TypeRef(), std::ptr::null_mut())
+```
+
+**Retrieval (lines 114-135):** ❌ High-level wrapper loses control
+```rust
+use security_framework::passwords::get_generic_password;
+let password = get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
+```
+
+The high-level `get_generic_password()` from `security_framework` crate likely sets query attributes (like `kSecUseAuthenticationUI`) that macOS interprets as requiring user interaction, even though the item was stored with `AlwaysThisDeviceOnly`.
+
+SSH contexts are flagged by macOS as "non-interactive", so any query implying user interaction gets blocked with "User interaction is not allowed."
+
+### Solution: Raw SecItemCopyMatching
+
+Updated both `get_identity()` and `has_identity()` to use raw `SecItemCopyMatching` with explicit authentication UI control:
+
+**Key addition:**
+```rust
+extern "C" {
+    static kSecMatchLimitOne: CFStringRef;
+    static kSecUseAuthenticationUI: CFStringRef;
+    static kSecUseAuthenticationUIFail: CFStringRef;
+}
+```
+
+**Query attributes:**
+```rust
+kSecUseAuthenticationUI → kSecUseAuthenticationUIFail
+```
+
+This tells macOS: "don't prompt for interaction, just fail if auth required". Combined with `AlwaysThisDeviceOnly` items, this should work in SSH contexts without triggering interaction requirements.
+
+### Files Changed (Feb 20 afternoon)
+
+| File | Lines | Change |
+|------|-------|--------|
+| `src/secrets/keychain.rs:114-184` | `get_identity()` | Replaced `get_generic_password()` with raw `SecItemCopyMatching` |
+| `src/secrets/keychain.rs:186-234` | `has_identity()` | Same approach for consistency |
+
+### Updated Exit Criteria
+
+- [x] Retrieval API updated to raw `SecItemCopyMatching`
+- [x] Build and install: `cargo build --release && cargo install --path .`
+- [ ] SSH test: Fresh session, `patina secrets run -- printenv CLAUDE_CODE_OAUTH_TOKEN`
+- [ ] SSH launcher test: `patina launch` works without login prompt
+- [ ] Commit retrieval fix
+- [ ] Update beliefs with API symmetry requirement
