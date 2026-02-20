@@ -113,86 +113,25 @@ mod platform {
 
     /// Retrieve the age identity from the macOS Keychain.
     ///
-    /// Uses raw `SecItemCopyMatching` with explicit authentication UI control —
-    /// avoids high-level wrappers that may set query attributes incompatible
-    /// with SSH/headless contexts.
-    ///
     /// No Touch ID prompt — items stored with AlwaysThisDeviceOnly are
     /// accessible without user presence, including over SSH and after reboot.
     /// Re-run `patina secrets setup-claude` to upgrade legacy items.
     pub fn get_identity() -> Result<String> {
-        use core_foundation::base::TCFType;
-        use core_foundation::string::CFString;
-        use core_foundation::string::CFStringRef;
-        use security_framework_sys::item::{
-            kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword,
-            kSecReturnData, kSecMatchLimit,
-        };
-        use security_framework_sys::keychain_item::SecItemCopyMatching;
+        use security_framework::passwords::get_generic_password;
 
-        // Constants not exported by security-framework-sys.
-        // Declare them from the Security framework directly.
-        extern "C" {
-            static kSecMatchLimitOne: CFStringRef;
-            static kSecUseAuthenticationUI: CFStringRef;
-            static kSecUseAuthenticationUIFail: CFStringRef;
+        log_debug("get_generic_password: attempting (may trigger Touch ID)");
+        let result = get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
+
+        match &result {
+            Ok(_) => log_debug("get_generic_password: success"),
+            Err(e) => log_debug(&format!("get_generic_password: error: {}", e)),
         }
 
-        // Build raw SecItemCopyMatching query with explicit auth UI control.
-        // kSecUseAuthenticationUIFail tells macOS: "don't prompt, just fail if auth required"
-        // Combined with AlwaysThisDeviceOnly items, this works in SSH without interaction.
-        let keys = unsafe {
-            [
-                CFString::wrap_under_get_rule(kSecClass),
-                CFString::wrap_under_get_rule(kSecAttrService),
-                CFString::wrap_under_get_rule(kSecAttrAccount),
-                CFString::wrap_under_get_rule(kSecReturnData),
-                CFString::wrap_under_get_rule(kSecMatchLimit),
-                CFString::wrap_under_get_rule(kSecUseAuthenticationUI),
-            ]
-        };
-        let values: Vec<core_foundation::base::CFType> = unsafe {
-            vec![
-                CFString::wrap_under_get_rule(kSecClassGenericPassword).into_CFType(),
-                CFString::from(KEYCHAIN_SERVICE).into_CFType(),
-                CFString::from(KEYCHAIN_ACCOUNT).into_CFType(),
-                core_foundation::boolean::CFBoolean::true_value().into_CFType(),
-                CFString::wrap_under_get_rule(kSecMatchLimitOne).into_CFType(),
-                CFString::wrap_under_get_rule(kSecUseAuthenticationUIFail).into_CFType(),
-            ]
-        };
+        let password = result.context(
+            "Failed to retrieve identity from Keychain. Run: patina secrets --import-key",
+        )?;
 
-        let dict = core_foundation::dictionary::CFDictionary::from_CFType_pairs(
-            &keys.iter().cloned().zip(values).collect::<Vec<_>>(),
-        );
-
-        log_debug("SecItemCopyMatching: attempting (AlwaysThisDeviceOnly, no auth UI)");
-        let mut result: core_foundation::base::CFTypeRef = std::ptr::null();
-        let status = unsafe {
-            SecItemCopyMatching(
-                dict.as_concrete_TypeRef(),
-                &mut result as *mut core_foundation::base::CFTypeRef,
-            )
-        };
-
-        if status != 0 {
-            log_debug(&format!("SecItemCopyMatching: error status {}", status));
-            anyhow::bail!(
-                "Failed to retrieve identity from Keychain. Run: patina secrets --import-key"
-            );
-        }
-
-        log_debug("SecItemCopyMatching: success");
-
-        // Result is CFData, extract bytes
-        let data: core_foundation::data::CFData = unsafe {
-            core_foundation::data::CFData::wrap_under_create_rule(
-                result as core_foundation::data::CFDataRef,
-            )
-        };
-
-        let bytes = data.bytes();
-        String::from_utf8(bytes.to_vec()).context("Keychain identity is not valid UTF-8")
+        String::from_utf8(password).context("Keychain identity is not valid UTF-8")
     }
 
     /// Delete the age identity from the macOS Keychain.
@@ -213,58 +152,12 @@ mod platform {
 
     /// Check if an identity exists in the Keychain.
     ///
-    /// Uses raw `SecItemCopyMatching` to avoid authentication UI prompts.
     /// Does not trigger Touch ID - just checks existence.
     pub fn has_identity() -> bool {
-        use core_foundation::base::TCFType;
-        use core_foundation::string::CFString;
-        use core_foundation::string::CFStringRef;
-        use security_framework_sys::item::{
-            kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword,
-            kSecMatchLimit,
-        };
-        use security_framework_sys::keychain_item::SecItemCopyMatching;
+        use security_framework::passwords::get_generic_password;
 
-        extern "C" {
-            static kSecMatchLimitOne: CFStringRef;
-            static kSecUseAuthenticationUI: CFStringRef;
-            static kSecUseAuthenticationUIFail: CFStringRef;
-        }
-
-        // Query without returning data, just check existence
-        let keys = unsafe {
-            [
-                CFString::wrap_under_get_rule(kSecClass),
-                CFString::wrap_under_get_rule(kSecAttrService),
-                CFString::wrap_under_get_rule(kSecAttrAccount),
-                CFString::wrap_under_get_rule(kSecMatchLimit),
-                CFString::wrap_under_get_rule(kSecUseAuthenticationUI),
-            ]
-        };
-        let values: Vec<core_foundation::base::CFType> = unsafe {
-            vec![
-                CFString::wrap_under_get_rule(kSecClassGenericPassword).into_CFType(),
-                CFString::from(KEYCHAIN_SERVICE).into_CFType(),
-                CFString::from(KEYCHAIN_ACCOUNT).into_CFType(),
-                CFString::wrap_under_get_rule(kSecMatchLimitOne).into_CFType(),
-                CFString::wrap_under_get_rule(kSecUseAuthenticationUIFail).into_CFType(),
-            ]
-        };
-
-        let dict = core_foundation::dictionary::CFDictionary::from_CFType_pairs(
-            &keys.iter().cloned().zip(values).collect::<Vec<_>>(),
-        );
-
-        log_debug("has_identity: checking existence (no auth UI)");
-        let mut result: core_foundation::base::CFTypeRef = std::ptr::null();
-        let status = unsafe {
-            SecItemCopyMatching(
-                dict.as_concrete_TypeRef(),
-                &mut result as *mut core_foundation::base::CFTypeRef,
-            )
-        };
-
-        let exists = status == 0;
+        log_debug("has_identity: checking existence (no Touch ID)");
+        let exists = get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).is_ok();
         log_debug(&format!("has_identity: {}", exists));
         exists
     }
