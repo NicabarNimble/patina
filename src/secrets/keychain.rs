@@ -37,51 +37,75 @@ mod platform {
 
     /// Store an age identity in the macOS Keychain.
     ///
-    /// Uses `kSecAttrAccessibleAlwaysThisDeviceOnly`:
-    /// - Hardware-encrypted by the M-chip Secure Enclave (device-specific key)
-    /// - Accessible to any process on this device: SSH, daemons, post-reboot
-    /// - Cannot be backed up to iCloud or restored to a different device
+    /// Uses `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` via raw
+    /// `SecItemAdd` — avoids `SecAccessControlCreateWithFlags` which fails
+    /// with -34018 on macOS 26 for ad-hoc signed binaries.
     ///
-    /// Deprecated on iOS (stolen phones rebooted = bypassed), correct for a
-    /// stationary Mac where the device itself is the authentication factor.
+    /// Policy properties:
+    /// - Available after first unlock (always true on a logged-in Mac)
+    /// - Accessible over SSH, daemons, post-reboot (once user logs in once)
+    /// - Device-bound: cannot sync to iCloud or restore to another device
+    /// - Not deprecated (unlike `AlwaysThisDeviceOnly`)
     ///
     /// Deletes any existing item first to upgrade old access policies.
     pub fn store_identity(identity: &str) -> Result<()> {
-        use security_framework::access_control::SecAccessControl;
-        use security_framework::passwords::{
-            delete_generic_password, set_generic_password_options, PasswordOptions,
+        use core_foundation::base::TCFType;
+        use core_foundation::data::CFData;
+        use core_foundation::string::CFString;
+        use core_foundation::string::CFStringRef;
+        use security_framework::passwords::delete_generic_password;
+        use security_framework_sys::access_control::kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
+        use security_framework_sys::item::{
+            kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword, kSecValueData,
         };
-        use security_framework_sys::access_control::{
-            kSecAttrAccessibleAlwaysThisDeviceOnly, SecAccessControlCreateWithFlags,
-        };
+        use security_framework_sys::keychain_item::SecItemAdd;
+
+        // kSecAttrAccessible is not exported by security-framework-sys.
+        // Declare it from the Security framework directly.
+        extern "C" {
+            static kSecAttrAccessible: CFStringRef;
+        }
 
         // Delete any existing item first — SecItemAdd fails on duplicates.
         // Silently ignore "not found" errors on fresh installs.
         let _ = delete_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
         log_debug("store_identity: cleared existing item");
 
-        // Build SecAccessControl with AlwaysThisDeviceOnly, no user-presence flags.
-        // kCFAllocatorDefault is null; CFStringRef casts to CFTypeRef as raw pointer.
-        let ac = unsafe {
-            use core_foundation::base::TCFType;
-            let ac_ref = SecAccessControlCreateWithFlags(
-                std::ptr::null(),
-                kSecAttrAccessibleAlwaysThisDeviceOnly as *const _,
-                0, // no user-presence flags — no Touch ID prompt on read
-                std::ptr::null_mut(),
-            );
-            if ac_ref.is_null() {
-                return Err(anyhow::anyhow!("SecAccessControlCreateWithFlags returned null"));
-            }
-            SecAccessControl::wrap_under_create_rule(ac_ref)
+        // Build raw SecItemAdd dictionary with kSecAttrAccessible directly.
+        // This bypasses SecAccessControlCreateWithFlags which is broken on
+        // macOS 26 for ad-hoc signed binaries (error -34018).
+        let keys = unsafe {
+            [
+                CFString::wrap_under_get_rule(kSecClass),
+                CFString::wrap_under_get_rule(kSecAttrService),
+                CFString::wrap_under_get_rule(kSecAttrAccount),
+                CFString::wrap_under_get_rule(kSecValueData),
+                CFString::wrap_under_get_rule(kSecAttrAccessible),
+            ]
+        };
+        let values: Vec<core_foundation::base::CFType> = unsafe {
+            vec![
+                CFString::wrap_under_get_rule(kSecClassGenericPassword).into_CFType(),
+                CFString::from(KEYCHAIN_SERVICE).into_CFType(),
+                CFString::from(KEYCHAIN_ACCOUNT).into_CFType(),
+                CFData::from_buffer(identity.as_bytes()).into_CFType(),
+                CFString::wrap_under_get_rule(kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
+                    .into_CFType(),
+            ]
         };
 
-        let mut opts = PasswordOptions::new_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
-        opts.set_access_control(ac);
+        let dict = core_foundation::dictionary::CFDictionary::from_CFType_pairs(
+            &keys.iter().cloned().zip(values).collect::<Vec<_>>(),
+        );
 
-        log_debug("set_generic_password_options: attempting (AlwaysThisDeviceOnly)");
-        set_generic_password_options(identity.as_bytes(), opts)
-            .context("Failed to store identity in Keychain")?;
+        log_debug("SecItemAdd: attempting (AfterFirstUnlockThisDeviceOnly, raw)");
+        let status = unsafe { SecItemAdd(dict.as_concrete_TypeRef(), std::ptr::null_mut()) };
+        if status != 0 {
+            anyhow::bail!(
+                "Failed to store identity in Keychain (SecItemAdd status: {})",
+                status
+            );
+        }
 
         log_debug("store_identity: success");
         Ok(())
@@ -90,8 +114,9 @@ mod platform {
     /// Retrieve the age identity from the macOS Keychain.
     ///
     /// No Touch ID prompt — items stored with the current policy
-    /// (kSecAttrAccessibleAlwaysThisDeviceOnly) are accessible without user
-    /// presence. Re-run `patina secrets setup-claude` to upgrade legacy items.
+    /// (AfterFirstUnlockThisDeviceOnly) are accessible without user presence
+    /// after the first login. Re-run `patina secrets setup-claude` to upgrade
+    /// legacy items.
     pub fn get_identity() -> Result<String> {
         use security_framework::passwords::get_generic_password;
 
