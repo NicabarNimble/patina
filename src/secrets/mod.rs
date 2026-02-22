@@ -38,6 +38,7 @@
 //! secrets::run_with_secrets(Some(project_root), &["cargo", "test"])?;
 //! ```
 
+mod encrypted_file;
 mod identity;
 mod keychain;
 mod recipients;
