@@ -131,7 +131,25 @@ pub fn get_identity() -> Result<String> {
     let data = std::fs::read(&path)
         .with_context(|| format!("Failed to read encrypted identity: {}", path.display()))?;
 
-    // 2. Sanity-check file length
+    // 2. Check permissions (warn if too permissive)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let metadata = std::fs::metadata(&path)?;
+        let perms = metadata.permissions();
+        let mode = perms.mode() & 0o777;
+
+        if mode != 0o600 {
+            eprintln!(
+                "⚠️  Warning: Identity file has permissive permissions ({:o})",
+                mode
+            );
+            eprintln!("   Recommended: chmod 600 {}", path.display());
+            eprintln!("   File is encrypted but permissions should be owner-only.");
+        }
+    }
+
+    // 3. Sanity-check file length
     if data.len() < MIN_FILE_LEN {
         bail!(
             "Corrupted identity file (too short: {} bytes, expected ≥ {}).\n\
@@ -141,7 +159,7 @@ pub fn get_identity() -> Result<String> {
         );
     }
 
-    // 3. Verify magic header
+    // 4. Verify magic header
     if &data[0..6] != MAGIC {
         bail!(
             "Invalid encrypted identity file (missing magic header).\n\
@@ -149,7 +167,7 @@ pub fn get_identity() -> Result<String> {
         );
     }
 
-    // 4. Check version
+    // 5. Check version
     let version = data[6];
     if version != VERSION {
         bail!(
@@ -160,22 +178,22 @@ pub fn get_identity() -> Result<String> {
         );
     }
 
-    // 5. Parse payload (safe - we validated length)
+    // 6. Parse payload (safe - we validated length)
     let payload = &data[7..];
     let salt = &payload[0..SALT_LEN];
     let nonce_bytes = &payload[SALT_LEN..SALT_LEN + NONCE_LEN];
     let ciphertext = &payload[SALT_LEN + NONCE_LEN..];
 
-    // 6. Get current machine ID
+    // 7. Get current machine ID
     let machine_id = get_machine_id().context(
         "Failed to get machine ID. If you've changed hardware or reinstalled OS,\n\
          you may need to re-import your identity: patina secrets --import-key",
     )?;
 
-    // 7. Derive key (same salt as encryption)
+    // 8. Derive key (same salt as encryption)
     let key = derive_key(&machine_id, salt)?;
 
-    // 8. Decrypt with ChaCha20-Poly1305
+    // 9. Decrypt with ChaCha20-Poly1305
     let cipher = ChaCha20Poly1305::new(&key.into());
     let nonce = Nonce::from_slice(nonce_bytes);
     let plaintext = cipher.decrypt(nonce, ciphertext).map_err(|_| {
