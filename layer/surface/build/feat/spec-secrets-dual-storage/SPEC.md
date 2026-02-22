@@ -93,9 +93,28 @@ Use platform-specific best security when available, with universal fallback:
 
 | Platform | Context | Storage | Security | LLM-Safe? |
 |----------|---------|---------|----------|-----------|
-| **macOS** | Console | Keychain | Hardware-backed (Secure Enclave) | ✅ Yes |
+| **macOS** | Console | Keychain* | Hardware-backed (Secure Enclave) | ✅ Yes |
 | **macOS** | SSH | Encrypted file | Machine-bound (software) | ✅ Yes |
 | **Linux** | Any | Encrypted file | Machine-bound (software) | ✅ Yes |
+
+**\*Phase 1 Implementation Note:**
+
+The table above shows the **design goal**, but Phase 1 does **not yet deliver Keychain optimization on macOS console**:
+
+- **Phase 1 (initial ship):** Always use encrypted file on macOS (skip Keychain)
+  - Rationale: Can't reliably detect console vs. remote contexts yet
+  - `is_remote_session()` returns `true` by default (conservative)
+  - Result: macOS console uses encrypted file (safe, ~10ms slower)
+
+- **Phase 2 (future optimization):** Add positive console detection
+  - Detect: TTY ownership, launchd session type, `TERM_PROGRAM`
+  - Then: `is_remote_session()` returns `false` on confirmed console
+  - Result: macOS console uses Keychain (faster, Secure Enclave)
+
+**Why Phase 1 skips Keychain:**
+- Prevents -25308 errors in unknown contexts (mosh, VS Code Remote, Codespaces)
+- Better safe (encrypted file everywhere) than fast (Keychain) but broken
+- See lines 345-408 for remote detection logic
 
 ### Encrypted File Design
 
@@ -426,9 +445,9 @@ fn debug_log(msg: &str) {
     }
 }
 
-// ✅ CORRECT: Log metadata only, structured format
-debug_log(&format!("event=secrets.get source=keychain result=ok identity_length={}", identity.len()));
-debug_log("event=secrets.store dest=encrypted_file result=ok");
+// ✅ CORRECT: Log metadata only, structured format with quoted values
+debug_log(&format!(r#"event="secrets.get" source="keychain" result="ok" identity_length={}"#, identity.len()));
+debug_log(r#"event="secrets.store" dest="encrypted_file" result="ok""#);
 
 // ❌ WRONG: Never log secret values
 debug_log(&format!("Retrieved identity: {}", identity));  // LEAKS SECRET!
@@ -436,10 +455,11 @@ debug_log(&format!("Encrypted data: {:?}", encrypted));    // Leaks ciphertext
 ```
 
 **Format convention (Phase 1):**
-- Use `key=value` pairs separated by spaces
+- Use `key="value"` pairs separated by spaces (quoted values for easy grepping)
 - Keys: `event`, `source`, `dest`, `result`, `error`, `reason`
-- Example: `"event=secrets.get source=keychain result=ok"`
-- Grep-able but structured: tests match field patterns, not freeform prose
+- Example: `r#"event="secrets.get" source="keychain" result="ok""#`
+- Grep-able: `grep 'event="secrets.get"'` matches exact value without word boundaries
+- Numbers unquoted: `identity_length=74` (not `identity_length="74"`)
 
 **Future (Phase 2): Switch to tracing crate**
 ```toml
@@ -656,7 +676,7 @@ To prevent partial writes, permission leaks, and concurrent corruption:
            let mode = perms.mode() & 0o777;
            if mode & 0o077 != 0 {
                debug_log(&format!(
-                   "event=secrets.permissions path={} mode={:o} expected=0600 warning=\"too permissive\"",
+                   r#"event="secrets.permissions" path="{}" mode={:o} expected="0600" warning="too permissive""#,
                    path.display(), mode
                ));
            }
@@ -736,14 +756,14 @@ pub fn get_identity() -> Result<String> {
                 let enc_path = identity_enc_path();
                 if !enc_path.exists() {
                     // Log metadata only (never log secret bytes)
-                    debug_log("event=secrets.migrate source=keychain dest=encrypted_file reason=auto_migration");
+                    debug_log(r#"event="secrets.migrate" source="keychain" dest="encrypted_file" reason="auto_migration""#);
 
                     // Write encrypted file (side effect in getter)
                     if let Err(e) = encrypted_file::store_identity(&identity) {
                         // Log failure but continue (Keychain still works)
-                        debug_log(&format!("event=secrets.migrate result=failed error={}", e));
+                        debug_log(&format!(r#"event="secrets.migrate" result="failed" error="{}""#, e));
                     } else {
-                        debug_log(&format!("event=secrets.migrate result=ok path={}", enc_path.display()));
+                        debug_log(&format!(r#"event="secrets.migrate" result="ok" path="{}""#, enc_path.display()));
                     }
                 }
                 return Ok(identity); // Secure Enclave path
