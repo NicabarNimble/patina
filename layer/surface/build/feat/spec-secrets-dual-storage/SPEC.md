@@ -651,6 +651,10 @@ To prevent partial writes, permission leaks, and concurrent corruption:
 **`src/secrets/keychain.rs`**:
 - Keep existing implementation (no changes)
 - Used only on macOS console via storage.rs orchestrator
+- **Important constants** (referenced in tests/examples):
+  - `KEYCHAIN_SERVICE = "patina"` (line 25)
+  - `KEYCHAIN_ACCOUNT = "Patina Secrets"` (line 27)
+  - If these change, update test examples that hardcode service/account names
 
 **`src/secrets/identity.rs`**:
 - Update to use `storage::get_identity()` instead of `keychain::get_identity()`
@@ -923,7 +927,9 @@ patina secrets --export-key --stdout | patina secrets --import-key
 
 # Should create both:
 ls ~/.patina/identity.enc  # Exists
-security find-generic-password -s "patina"  # Exists
+security find-generic-password -s "patina" -a "Patina Secrets"  # Exists
+# Note: Service/account from KEYCHAIN_SERVICE and KEYCHAIN_ACCOUNT constants
+# (src/secrets/keychain.rs lines 25, 27)
 
 # Both work:
 patina secrets run -- echo "console"  # Keychain
