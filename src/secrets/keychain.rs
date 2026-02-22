@@ -89,8 +89,7 @@ mod platform {
                 CFString::from(KEYCHAIN_SERVICE).into_CFType(),
                 CFString::from(KEYCHAIN_ACCOUNT).into_CFType(),
                 CFData::from_buffer(identity.as_bytes()).into_CFType(),
-                CFString::wrap_under_get_rule(kSecAttrAccessibleAlwaysThisDeviceOnly)
-                    .into_CFType(),
+                CFString::wrap_under_get_rule(kSecAttrAccessibleAlwaysThisDeviceOnly).into_CFType(),
             ]
         };
 
