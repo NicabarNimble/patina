@@ -345,46 +345,66 @@ pub fn store_identity(identity: &str) -> Result<()> {
 pub fn get_identity() -> Result<String> {
     #[cfg(target_os = "macos")]
     {
-        // macOS console: Try Keychain first (best security)
-        if !is_ssh_session() {
+        // macOS: Only try Keychain if we're confident it's local console
+        // Phase 1: Skip Keychain optimization (always use encrypted file)
+        // Rationale: is_remote_session() returns true conservatively,
+        //            so we skip Keychain everywhere for now (safe, slightly slower)
+        if !is_remote_session() {
+            // Future Phase 2: When we add positive console detection,
+            // this branch will use Keychain on confirmed local console
             if let Ok(identity) = keychain::get_identity() {
                 return Ok(identity); // Secure Enclave path
             }
         }
-        // Fall through to encrypted file
+        // Fall through to encrypted file (used everywhere in Phase 1)
     }
 
     // Universal fallback: encrypted file
     encrypted_file::get_identity()
 }
 
-fn is_ssh_session() -> bool {
-    // Conservative detection: default to encrypted file (safe fallback)
-    // Only return false (use Keychain) when we're CONFIDENT it's a true console session
+fn is_remote_session() -> bool {
+    // CONSERVATIVE: Default to true (remote/encrypted file)
+    // Only return false (local console/Keychain) when we have POSITIVE signals
     //
     // Rationale: Wrong guess → slower (file instead of Keychain), not broken (-25308)
-    // This prevents -25308 errors even if we mis-detect remote contexts
+    // Better to skip Keychain optimization than hit -25308 errors
     //
-    // Positive signals for TRUE CONSOLE (all must be absent for Keychain):
+    // Known remote indicators (if ANY present → definitely remote):
     // - SSH_CONNECTION (standard SSH)
-    // - SSH_TTY (SSH with TTY)
+    // - SSH_TTY (SSH with PTY)
     // - SSH_CLIENT (alternate SSH var)
-    // - Future: Check controlling TTY owned by loginwindow (macOS-specific)
-    // - Future: Check launchd session type (macOS-specific)
+    // - CI=true (GitHub Actions, GitLab CI, etc.)
+    // - CODESPACES=true (GitHub Codespaces)
     //
-    // Edge cases that should use encrypted file:
-    // - mosh sessions (no SSH_* vars, but still remote)
-    // - VS Code Remote (may not set SSH_*)
-    // - GitHub Actions (CI context)
-    // - tmux/screen spawned from SSH (SSH_* may persist)
+    // Edge cases WITHOUT these vars (still remote, would break with Keychain):
+    // - mosh (no SSH_* vars, but remote terminal)
+    // - VS Code Remote (may not set SSH_* consistently)
+    // - Custom SSH wrappers that scrub environment
+    // - tmux/screen (SSH_* may or may not persist)
     //
-    // Phase 1: Simple check (good enough for 90% of cases)
-    std::env::var("SSH_CONNECTION").is_ok()
+    // Phase 1: Detect known remote indicators OR default to remote (conservative)
+    if std::env::var("SSH_CONNECTION").is_ok()
         || std::env::var("SSH_TTY").is_ok()
         || std::env::var("SSH_CLIENT").is_ok()
+        || std::env::var("CI").is_ok()
+        || std::env::var("CODESPACES").is_ok()
+    {
+        return true; // Definitely remote
+    }
 
-    // Phase 2 (future): Add TTY ownership check for macOS
-    // Phase 3 (future): Add launchd session type check for macOS
+    // Phase 1 conservative default: Treat unknown as remote
+    // This skips Keychain optimization for mosh, VS Code Remote, etc.
+    // but prevents -25308 errors
+    true
+
+    // Phase 2 (future): Add POSITIVE console detection
+    // Only return false (use Keychain) if we detect:
+    // - macOS: Controlling TTY owned by loginwindow process
+    // - macOS: launchd session type is "Aqua" (not "Background" or "LoginWindow")
+    // - macOS: TERM_PROGRAM is "Apple_Terminal" or "iTerm.app"
+    //
+    // Until then: encrypted file everywhere (safe, slightly slower)
 }
 ```
 
@@ -396,55 +416,54 @@ To prevent secret leakage via logs (including with `PATINA_LOG=1`):
 
 **CRITICAL: Never log secret bytes, only metadata**
 
+**Current approach (Phase 1):** Simple `eprintln!` with structured format
+
 ```rust
-// ✅ CORRECT: Log metadata only
-log::info!(
+// Helper function (matches existing pattern in src/secrets/keychain.rs)
+fn debug_log(msg: &str) {
+    if std::env::var("PATINA_LOG").is_ok() {
+        eprintln!("[DEBUG secrets::encrypted_file] {}", msg);
+    }
+}
+
+// ✅ CORRECT: Log metadata only, structured format
+debug_log(&format!("event=secrets.get source=keychain result=ok identity_length={}", identity.len()));
+debug_log("event=secrets.store dest=encrypted_file result=ok");
+
+// ❌ WRONG: Never log secret values
+debug_log(&format!("Retrieved identity: {}", identity));  // LEAKS SECRET!
+debug_log(&format!("Encrypted data: {:?}", encrypted));    // Leaks ciphertext
+```
+
+**Format convention (Phase 1):**
+- Use `key=value` pairs separated by spaces
+- Keys: `event`, `source`, `dest`, `result`, `error`, `reason`
+- Example: `"event=secrets.get source=keychain result=ok"`
+- Grep-able but structured: tests match field patterns, not freeform prose
+
+**Future (Phase 2): Switch to tracing crate**
+```toml
+# Add to Cargo.toml when we want proper structured logging
+[dependencies]
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+```
+
+Then use proper structured syntax:
+```rust
+tracing::info!(
     event = "secrets.get",
     source = "keychain",
     result = "ok",
-    identity_length = identity.len()  // OK: length, not content
-);
-
-log::info!(
-    event = "secrets.store",
-    dest = "encrypted_file",
-    path = %path.display(),  // OK: file path, not file contents
-    result = "ok"
-);
-
-// ❌ WRONG: Never log secret values
-log::debug!("Retrieved identity: {}", identity);  // LEAKS SECRET!
-log::debug!("Encrypted data: {:?}", encrypted);    // Leaks ciphertext (may reveal length patterns)
-```
-
-**Structured Log Fields (for testing):**
-
-Instead of grepping human text, emit structured fields:
-
-```rust
-// Field naming convention: event.operation
-log::info!(
-    event = "secrets.get",      // Event type
-    source = "keychain",        // Source: "keychain" | "encrypted_file" | "env_var"
-    result = "ok",              // Result: "ok" | "failed"
-    error = %e                  // Error details if failed (no secrets in error messages)
-);
-
-log::info!(
-    event = "secrets.store",
-    dest = "encrypted_file",
-    path = %path.display(),
-    result = "ok"
-);
-
-log::info!(
-    event = "secrets.migrate",
-    source = "keychain",
-    dest = "encrypted_file",
-    reason = "auto_migration",
-    result = "ok"
+    identity_length = identity.len()
 );
 ```
+
+**Why Phase 1 approach:**
+- Matches existing `PATINA_LOG` pattern in codebase
+- No new dependencies
+- Still provides structured fields (grep-able key=value)
+- Easy migration to `tracing` later
 
 **Testing with Structured Logs (Staged Approach):**
 
@@ -485,6 +504,9 @@ use sha2::Sha256;
 
 const SALT_LEN: usize = 32;
 const NONCE_LEN: usize = 12;
+const TAG_LEN: usize = 16;  // ChaCha20-Poly1305 auth tag
+const HEADER_LEN: usize = 7; // b"PATINA" (6) + version (1)
+const MIN_FILE_LEN: usize = HEADER_LEN + SALT_LEN + NONCE_LEN + TAG_LEN; // 67 bytes
 
 pub fn store_identity(identity: &str) -> Result<()> {
     // 1. Generate random salt (32 bytes)
@@ -498,13 +520,23 @@ pub fn store_identity(identity: &str) -> Result<()> {
 
 pub fn get_identity() -> Result<String> {
     // 1. Read ~/.patina/identity.enc
-    // 2. Verify magic header: data[0..6] == b"PATINA"
-    // 3. Check version: data[6] == 0x01 (reject if > 0x01)
-    // 4. Parse payload: [salt][nonce][ciphertext] from data[7..]
-    // 5. Get current machine ID
-    // 6. Derive key via HKDF-SHA256(machine_id, salt, "patina-identity-v1")
-    // 7. Decrypt with ChaCha20-Poly1305
-    // 8. Return plaintext (or recovery error if machine ID changed)
+    // 2. Sanity-check file length (must be at least HEADER + SALT + NONCE + TAG = 67 bytes)
+    //    if data.len() < MIN_FILE_LEN {
+    //        bail!("Corrupted identity file (too short: {} bytes, expected ≥ {}).
+    //               May have been truncated. Recovery: re-run setup-claude",
+    //               data.len(), MIN_FILE_LEN);
+    //    }
+    // 3. Verify magic header: data[0..6] == b"PATINA"
+    // 4. Check version: data[6] == 0x01 (reject if > 0x01)
+    // 5. Parse payload (now safe - we know there's enough data):
+    //    let payload = &data[7..];
+    //    let salt = &payload[0..32];
+    //    let nonce = &payload[32..44];
+    //    let ciphertext = &payload[44..]; // includes 16-byte tag
+    // 6. Get current machine ID
+    // 7. Derive key via HKDF-SHA256(machine_id, salt, "patina-identity-v1")
+    // 8. Decrypt with ChaCha20-Poly1305
+    // 9. Return plaintext (or recovery error if machine ID changed)
 }
 
 fn get_machine_id() -> Result<Vec<u8>> {
@@ -623,13 +655,10 @@ To prevent partial writes, permission leaks, and concurrent corruption:
            let perms = std::fs::metadata(&path)?.permissions();
            let mode = perms.mode() & 0o777;
            if mode & 0o077 != 0 {
-               log::warn!(
-                   event = "secrets.permissions",
-                   path = %path.display(),
-                   mode = format!("{:o}", mode),
-                   expected = "0600",
-                   warning = "File permissions too permissive (should be -rw-------)"
-               );
+               debug_log(&format!(
+                   "event=secrets.permissions path={} mode={:o} expected=0600 warning=\"too permissive\"",
+                   path.display(), mode
+               ));
            }
        }
 
@@ -699,33 +728,22 @@ Existing macOS users have Keychain-only entries. To make SSH work immediately wi
 pub fn get_identity() -> Result<String> {
     #[cfg(target_os = "macos")]
     {
-        if !is_ssh_session() {
+        // Phase 1: is_remote_session() returns true everywhere (conservative)
+        // So this branch never executes - encrypted file used everywhere
+        if !is_remote_session() {
             if let Ok(identity) = keychain::get_identity() {
                 // On-demand migration: if encrypted file missing, create it now
                 let enc_path = identity_enc_path();
                 if !enc_path.exists() {
                     // Log metadata only (never log secret bytes)
-                    log::info!(
-                        event = "secrets.migrate",
-                        source = "keychain",
-                        dest = "encrypted_file",
-                        reason = "auto_migration"
-                    );
+                    debug_log("event=secrets.migrate source=keychain dest=encrypted_file reason=auto_migration");
 
                     // Write encrypted file (side effect in getter)
                     if let Err(e) = encrypted_file::store_identity(&identity) {
                         // Log failure but continue (Keychain still works)
-                        log::warn!(
-                            event = "secrets.migrate",
-                            result = "failed",
-                            error = %e
-                        );
+                        debug_log(&format!("event=secrets.migrate result=failed error={}", e));
                     } else {
-                        log::info!(
-                            event = "secrets.migrate",
-                            result = "ok",
-                            path = %enc_path.display()
-                        );
+                        debug_log(&format!("event=secrets.migrate result=ok path={}", enc_path.display()));
                     }
                 }
                 return Ok(identity); // Secure Enclave path
@@ -740,7 +758,7 @@ pub fn get_identity() -> Result<String> {
 
 **Safety Net 3: SSH-First Detection (clear guidance)**
 - **When:** SSH session calls `get_identity()` and encrypted file doesn't exist
-- **Trigger:** SSH context detected (via `is_ssh_session()`) + file missing
+- **Trigger:** Remote context detected (via `is_remote_session()`) + file missing
 - **Action:** Show clear guidance (covers both migration and initial setup)
 
 **Note:** Cannot use `security find-generic-password` to detect Keychain existence
@@ -755,13 +773,13 @@ pub fn get_identity() -> Result<String> {
     if !path.exists() {
         #[cfg(target_os = "macos")]
         {
-            // If in SSH context, show migration/setup guidance
-            // Note: Can't detect if Keychain exists from SSH (security blocks it)
-            if is_ssh_session() {
+            // If in remote context, show migration/setup guidance
+            // Note: Can't detect if Keychain exists from remote (security blocks it)
+            if is_remote_session() {
                 bail!(
                     r#"Encrypted identity file not found: ~/.patina/identity.enc
 
-You're connecting via SSH, but the encrypted identity file doesn't exist yet.
+You're connecting remotely (SSH/mosh/VS Code Remote), but the encrypted identity file doesn't exist yet.
 
 SETUP REQUIRED (one-time):
   Run any patina secrets command from a local console (not SSH):
@@ -1055,12 +1073,15 @@ This section captures decisions made during spec review (sessions 20260222-13265
 
 Decisions from first agent review:
 
-### 1. SSH Detection Strategy (Conservative)
-- **Default to encrypted file** (safe fallback)
-- Only use Keychain when confident it's true console (no SSH_* vars)
-- Prevents -25308 even if we mis-detect remote contexts
-- Phase 1: Check `SSH_CONNECTION`, `SSH_TTY`, `SSH_CLIENT`
-- Future: Add TTY ownership and launchd session checks (macOS)
+### 1. Remote Detection Strategy (Conservative)
+- **Phase 1: Always use encrypted file** (skip Keychain optimization everywhere)
+- Prevents -25308 even in unknown contexts (mosh, VS Code Remote, Codespaces)
+- Detects known remote indicators: `SSH_*`, `CI`, `CODESPACES`
+- **Defaults to remote** (conservative) when indicators absent
+- **Phase 2 (future):** Add positive console detection to enable Keychain:
+  - macOS: TTY owned by loginwindow, launchd session type "Aqua", TERM_PROGRAM
+  - Until then: encrypted file everywhere (safe, ~10ms slower than Keychain)
+- **Manual override:** Set `PATINA_USE_KEYCHAIN=1` to force Keychain (at your own risk)
 
 ### 2. Machine ID Robustness
 - **macOS:** IOPlatformUUID → error (no fallback - /var/lib/dbus doesn't exist)
