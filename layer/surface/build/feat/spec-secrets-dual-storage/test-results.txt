@@ -26,9 +26,11 @@ Test 5 (Corruption): PASS
   - Helpful context: "May have been truncated" ✓
   - Recovery hint: "re-run setup-claude" ✓
 
-Test 6 (Permissions): SKIP
-  - File still functions with 0644 permissions ✓
-  - No warning displayed (feature not yet implemented, per spec note)
+Test 6 (Permissions): PASS
+  - File functions with 0644 permissions ✓
+  - Warning displayed: "⚠️  Warning: Identity file has permissive permissions (644)" ✓
+  - Warning includes fix hint: "Recommended: chmod 600 ~/.patina/identity.enc" ✓
+  - No warning with correct 0600 permissions ✓
 
 Test 7 (SSH): PASS
   - No -25308 Keychain error ✓
@@ -44,9 +46,10 @@ Bugs found: NONE
 Bugs fixed: NONE
 
 Summary:
-- Required tests (1-6): 5 PASS, 1 SKIP (permission warnings not implemented)
+- Required tests (1-6): 6 PASS, 0 SKIP
 - Optional tests (7-8): 1 PASS, 1 SKIP (no Linux VM)
 - Critical functionality: ALL PASS
+- Exit criteria: 7/8 (87.5%)
 - Zero bugs found during testing
 - Implementation matches spec architecture (storage.rs orchestrator per dependable-rust)
 - Ready to ship: YES
