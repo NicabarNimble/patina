@@ -2,12 +2,9 @@
 //!
 //! Resolution order:
 //! 1. PATINA_IDENTITY env var (for CI/headless)
-//! 2. macOS Keychain (Touch ID protected) - Phase 1: skipped, Phase 2: console only
-//! 3. Encrypted file (machine-bound, works everywhere)
+//! 2. Storage orchestrator (encrypted file → Keychain with auto-migration)
 
-use crate::secrets::encrypted_file;
-use crate::secrets::keychain;
-use crate::secrets::recipients;
+use crate::secrets::{encrypted_file, keychain, recipients, storage};
 use age::secrecy::ExposeSecret;
 use age::x25519;
 use anyhow::{bail, Context, Result};
@@ -36,10 +33,9 @@ pub fn get_identity() -> Result<x25519::Identity> {
 
 /// Get the identity as a string (zeroized on drop).
 ///
-/// Dual storage strategy (Phase 1):
-/// 1. PATINA_IDENTITY env var (escape hatch)
-/// 2. Encrypted file (universal, works everywhere)
-/// 3. Keychain (Phase 1: skipped, Phase 2: macOS console only)
+/// Resolution order:
+/// 1. PATINA_IDENTITY env var (escape hatch for CI/headless)
+/// 2. Storage orchestrator (handles encrypted file → Keychain with auto-migration)
 pub fn get_identity_string() -> Result<Zeroizing<String>> {
     // 1. Check env first (CI/headless path, escape hatch)
     if let Ok(identity) = std::env::var(IDENTITY_ENV_VAR) {
@@ -47,44 +43,13 @@ pub fn get_identity_string() -> Result<Zeroizing<String>> {
             log_debug("source = PATINA_IDENTITY (env var)");
             return Ok(Zeroizing::new(identity));
         }
-        log_debug("PATINA_IDENTITY set but empty, falling back");
+        log_debug("PATINA_IDENTITY set but empty, falling back to storage");
     }
 
-    // 2. Try encrypted file (universal path)
-    if encrypted_file::has_identity() {
-        log_debug("source = encrypted_file");
-        return Ok(Zeroizing::new(encrypted_file::get_identity()?));
-    }
-
-    // 3. Fall back to Keychain (legacy, pre-dual-storage users)
-    #[cfg(target_os = "macos")]
-    {
-        if keychain::has_identity() {
-            log_debug("source = Keychain (legacy, migrating)");
-            let identity = keychain::get_identity()?;
-
-            // Auto-migrate: Create encrypted file for future use
-            if let Err(e) = encrypted_file::store_identity(&identity) {
-                log_debug(&format!("Auto-migration failed: {} (continuing)", e));
-            } else {
-                log_debug("Auto-migration succeeded (encrypted file created)");
-            }
-
-            return Ok(Zeroizing::new(identity));
-        }
-    }
-
-    // No identity found anywhere
-    bail!(
-        "No identity found.\n\
-         \n\
-         Setup:\n\
-         1. Import existing identity: patina secrets --import-key\n\
-         2. Or generate new: patina secrets setup-claude\n\
-         \n\
-         Temporary workaround:\n\
-         export PATINA_IDENTITY='AGE-SECRET-KEY-1...'"
-    )
+    // 2. Delegate to storage orchestrator
+    // Storage handles: encrypted file → Keychain with auto-migration
+    log_debug("delegating to storage orchestrator");
+    Ok(Zeroizing::new(storage::get_identity()?))
 }
 
 /// Get the public key (recipient) for the current identity.
@@ -105,60 +70,24 @@ pub fn generate_identity() -> (Zeroizing<String>, String) {
     )
 }
 
-/// Store an identity (dual storage strategy).
+/// Store an identity using dual-storage strategy.
 ///
+/// Validates format, then delegates to storage orchestrator.
 /// - macOS: Writes to BOTH Keychain and encrypted file
 /// - Linux: Writes to encrypted file only
-///
-/// This ensures SSH works immediately after setup (no migration needed).
 pub fn store_identity(identity: &str) -> Result<()> {
     // Validate before storing
     if !recipients::is_valid_age_identity(identity) {
         bail!("Invalid age identity format. Expected AGE-SECRET-KEY-1...");
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        // macOS: Write to both storages
-        let keychain_result = keychain::store_identity(identity);
-        let file_result = encrypted_file::store_identity(identity);
-
-        // Require at least one to succeed
-        match (keychain_result, file_result) {
-            (Ok(()), Ok(())) => {
-                log_debug("Stored in both Keychain and encrypted file");
-                Ok(())
-            }
-            (Ok(()), Err(e)) => {
-                log_debug(&format!("Keychain OK, encrypted file failed: {}", e));
-                Ok(()) // Keychain works, acceptable
-            }
-            (Err(_), Ok(())) => {
-                log_debug("Encrypted file OK, Keychain failed (acceptable)");
-                Ok(()) // Encrypted file works, acceptable
-            }
-            (Err(e1), Err(e2)) => {
-                bail!(
-                    "Failed to store identity in both storages.\n\
-                     Keychain error: {}\n\
-                     Encrypted file error: {}",
-                    e1,
-                    e2
-                )
-            }
-        }
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        // Linux/other: Only encrypted file available
-        encrypted_file::store_identity(identity)
-    }
+    // Delegate to storage orchestrator
+    storage::store_identity(identity)
 }
 
 /// Import an identity from a string.
 ///
-/// Validates and stores in Keychain.
+/// Validates and stores using dual-storage strategy.
 pub fn import_identity(identity: &str) -> Result<String> {
     let identity = identity.trim();
 
@@ -173,22 +102,22 @@ pub fn import_identity(identity: &str) -> Result<String> {
 
     let recipient = parsed.to_public().to_string();
 
-    // Store in Keychain
-    keychain::store_identity(identity).context("Failed to store identity in Keychain")?;
+    // Store using dual-storage strategy (delegates to storage orchestrator)
+    store_identity(identity).context("Failed to store identity")?;
 
     Ok(recipient)
 }
 
-/// Export the identity from Keychain (zeroized on drop).
+/// Export the identity from storage (zeroized on drop).
 ///
 /// Returns the identity string for backup.
 pub fn export_identity() -> Result<Zeroizing<String>> {
-    Ok(Zeroizing::new(keychain::get_identity()?))
+    get_identity_string()
 }
 
 /// Check if an identity is available.
 ///
-/// Checks env var, encrypted file, then Keychain (legacy).
+/// Checks env var first, then delegates to storage orchestrator.
 pub fn has_identity() -> bool {
     // Check env var
     if let Ok(identity) = std::env::var(IDENTITY_ENV_VAR) {
@@ -197,21 +126,8 @@ pub fn has_identity() -> bool {
         }
     }
 
-    // Check encrypted file
-    if encrypted_file::has_identity() {
-        return true;
-    }
-
-    // Check Keychain (legacy, pre-dual-storage)
-    #[cfg(target_os = "macos")]
-    {
-        return keychain::has_identity();
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        false
-    }
+    // Delegate to storage orchestrator
+    storage::has_identity()
 }
 
 /// Identity source for display/debugging.
