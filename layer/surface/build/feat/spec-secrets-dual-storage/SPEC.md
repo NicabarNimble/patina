@@ -231,24 +231,20 @@ let key = HKDF-SHA256(
 fn get_machine_id() -> Result<Vec<u8>> {
     #[cfg(target_os = "macos")]
     {
-        // Try IOPlatformUUID first
+        // macOS: Only IOPlatformUUID (no fallback)
+        // Note: /var/lib/dbus/machine-id does NOT exist on macOS
         if let Ok(uuid) = get_ioplatform_uuid() {
             return Ok(uuid.into_bytes());
         }
-        // Fall back to D-Bus machine-id
-        if let Ok(id) = read_machine_id("/var/lib/dbus/machine-id") {
-            return Ok(id);
-        }
-        bail!("Cannot determine machine ID (see error message above)");
+        bail!("Cannot determine machine ID (IOPlatformUUID failed - see error above)");
     }
 
     #[cfg(target_os = "linux")]
     {
-        // Try /etc/machine-id first
+        // Linux: Try /etc/machine-id first, fall back to D-Bus
         if let Ok(id) = read_machine_id("/etc/machine-id") {
             return Ok(id);
         }
-        // Fall back to D-Bus machine-id
         if let Ok(id) = read_machine_id("/var/lib/dbus/machine-id") {
             return Ok(id);
         }
@@ -491,20 +487,24 @@ const SALT_LEN: usize = 32;
 const NONCE_LEN: usize = 12;
 
 pub fn store_identity(identity: &str) -> Result<()> {
-    // 1. Generate random salt
-    // 2. Get machine ID
-    // 3. Derive key via HKDF-SHA256
-    // 4. Encrypt with ChaCha20-Poly1305
-    // 5. Write [salt][nonce][ciphertext+tag] to ~/.patina/identity.enc
+    // 1. Generate random salt (32 bytes)
+    // 2. Generate random nonce (12 bytes)
+    // 3. Get machine ID (platform-specific)
+    // 4. Derive key via HKDF-SHA256(machine_id, salt, "patina-identity-v1")
+    // 5. Encrypt with ChaCha20-Poly1305
+    // 6. Write [b"PATINA"][0x01][salt][nonce][ciphertext+tag] to ~/.patina/identity.enc
+    //    ^^^^^^^^^^^^^^^^^^ CRITICAL: Must include header (7 bytes)
 }
 
 pub fn get_identity() -> Result<String> {
     // 1. Read ~/.patina/identity.enc
-    // 2. Parse [salt][nonce][ciphertext]
-    // 3. Get current machine ID
-    // 4. Derive key via HKDF-SHA256
-    // 5. Decrypt with ChaCha20-Poly1305
-    // 6. Return plaintext (or recovery error if machine ID changed)
+    // 2. Verify magic header: data[0..6] == b"PATINA"
+    // 3. Check version: data[6] == 0x01 (reject if > 0x01)
+    // 4. Parse payload: [salt][nonce][ciphertext] from data[7..]
+    // 5. Get current machine ID
+    // 6. Derive key via HKDF-SHA256(machine_id, salt, "patina-identity-v1")
+    // 7. Decrypt with ChaCha20-Poly1305
+    // 8. Return plaintext (or recovery error if machine ID changed)
 }
 
 fn get_machine_id() -> Result<Vec<u8>> {
@@ -559,7 +559,8 @@ To prevent partial writes, permission leaks, and concurrent corruption:
            file.set_permissions(perms)?;
        }
 
-       // Write encrypted data
+       // Write encrypted data (includes PATINA header + version + payload)
+       // Format: [b"PATINA"][0x01][salt][nonce][ciphertext+tag]
        file.write_all(&encrypted_data)?;
 
        // Ensure data is on disk before rename (prevent corruption on crash)
@@ -735,39 +736,54 @@ pub fn get_identity() -> Result<String> {
 
 **Safety Net 3: SSH-First Detection (clear guidance)**
 - **When:** SSH session calls `get_identity()` and encrypted file doesn't exist
-- **Trigger:** Detect Keychain entry exists (via `security find-generic-password`, even if we can't read it due to -25308)
-- **Action:** Show clear one-time migration prompt
+- **Trigger:** SSH context detected (via `is_ssh_session()`) + file missing
+- **Action:** Show clear guidance (covers both migration and initial setup)
+
+**Note:** Cannot use `security find-generic-password` to detect Keychain existence
+from SSH, because that command also fails with -25308 (same security policy).
+Instead, show helpful guidance unconditionally when file missing in SSH context.
 
 ```rust
 // In encrypted_file::get_identity() when file missing
-#[cfg(target_os = "macos")]
-{
-    // Check if Keychain entry exists (can't read from SSH, but can detect)
-    let keychain_exists = Command::new("security")
-        .args(["find-generic-password", "-s", "patina", "-a", "claude"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+pub fn get_identity() -> Result<String> {
+    let path = identity_enc_path();
 
-    if keychain_exists {
-        bail!(
-            r#"Encrypted identity file not found: ~/.patina/identity.enc
+    if !path.exists() {
+        #[cfg(target_os = "macos")]
+        {
+            // If in SSH context, show migration/setup guidance
+            // Note: Can't detect if Keychain exists from SSH (security blocks it)
+            if is_ssh_session() {
+                bail!(
+                    r#"Encrypted identity file not found: ~/.patina/identity.enc
 
-This is your first SSH use after upgrading to dual-storage secrets.
+You're connecting via SSH, but the encrypted identity file doesn't exist yet.
 
-ONE-TIME MIGRATION REQUIRED:
-  Run any patina command from a local console (not SSH):
-    patina secrets run -- echo "migration complete"
+SETUP REQUIRED (one-time):
+  Run any patina secrets command from a local console (not SSH):
+    patina secrets setup-claude
+  OR:
+    patina secrets run -- echo "setup complete"
 
-  This will copy your Keychain identity to encrypted file for SSH use.
+  This will create the encrypted file for SSH access.
 
 Why: macOS Keychain blocks SSH access (security policy).
-      Dual-storage gives you Keychain on console, encrypted file over SSH.
+     Dual-storage gives you Keychain on console, encrypted file over SSH.
+
+If you've already setup secrets:
+  - This is likely your first SSH use after upgrading to dual-storage
+  - Running from console once will migrate your existing Keychain entry
 
 See: layer/surface/build/feat/spec-secrets-dual-storage/SPEC.md
 "#
-        );
+                );
+            }
+        }
+
+        bail!("Encrypted identity file not found: {}", path.display());
     }
+
+    // ... continue with decryption ...
 }
 ```
 
@@ -1041,7 +1057,7 @@ Decisions from first agent review:
 - Future: Add TTY ownership and launchd session checks (macOS)
 
 ### 2. Machine ID Robustness
-- **macOS:** IOPlatformUUID → /var/lib/dbus/machine-id → error
+- **macOS:** IOPlatformUUID → error (no fallback - /var/lib/dbus doesn't exist)
 - **Linux:** /etc/machine-id → /var/lib/dbus/machine-id → error
 - **Validation:** Non-empty + format check (UUID or 32 hex chars)
 - **Never generate:** Error if all sources fail (defeats machine-binding)
