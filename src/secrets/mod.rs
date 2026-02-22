@@ -44,6 +44,7 @@ mod keychain;
 mod recipients;
 mod registry;
 mod session;
+mod storage;
 mod vault;
 
 // Public exports
