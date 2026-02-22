@@ -1,8 +1,13 @@
 ---
 type: feat
 id: spec-secrets-dual-storage
-status: draft
+status: implementing
 created: 2026-02-22
+implementation:
+  phase: 1-of-2
+  session: 20260222-160458
+  commits: [a280ba73, 3bd5e3ad]
+  progress: core-complete-testing-pending
 replaces:
 - layer/surface/build/fix/spec-keychain-macos26-regression/SPEC.md
 - layer/surface/build/fix/spec-secrets-keychain-ssh/SPEC.md
@@ -11,6 +16,8 @@ related:
 beliefs: []
 sessions:
 - 20260222-054702
+- 20260222-132656
+- 20260222-160458
 ---
 
 # feat: Dual Storage Strategy for LLM-Safe Secrets
@@ -695,23 +702,24 @@ To prevent partial writes, permission leaks, and concurrent corruption:
 - [x] Permission validation on read (warn if too permissive)
 - [ ] Concurrent write locking (deferred to Phase 2 if needed)
 
-### Modified Files
+### Implementation Checklist
 
-**`src/secrets/keychain.rs`**:
-- Keep existing implementation (no changes)
-- Used only on macOS console via storage.rs orchestrator
-- **Important constants** (referenced in tests/examples):
-  - `KEYCHAIN_SERVICE = "patina"` (line 25)
-  - `KEYCHAIN_ACCOUNT = "Patina Secrets"` (line 27)
-  - If these change, update test examples that hardcode service/account names
+**New Files:**
+- [x] `src/secrets/encrypted_file.rs` - File format, encryption, machine ID (508 lines) - [[commit-a280ba73]]
+- [x] `src/secrets/storage.rs` - Orchestrator for dual-storage strategy (234 lines) - [[commit-3bd5e3ad]]
 
-**`src/secrets/identity.rs`**:
-- Update to use `storage::get_identity()` instead of `keychain::get_identity()`
-- Keep PATINA_IDENTITY env var as escape hatch
+**Modified Files:**
+- [x] `src/secrets/identity.rs` - Delegates to storage.rs orchestrator - [[commit-3bd5e3ad]]
+- [x] `src/secrets/mod.rs` - Register storage module - [[commit-3bd5e3ad]]
+- [x] `Cargo.toml` - Add chacha20poly1305, hkdf, rand deps - [[commit-a280ba73]]
+- [ ] `src/commands/secrets/setup_claude.rs` - Update UX to show dual-write on macOS
 
-**`src/commands/secrets/setup_claude.rs`**:
-- Update UX to show dual-write on macOS
-- Show file-only on Linux
+**No Changes Needed:**
+- [x] `src/secrets/keychain.rs` - Keep existing implementation (no changes)
+  - Used only on macOS via storage.rs orchestrator
+  - **Important constants** (referenced in tests/examples):
+    - `KEYCHAIN_SERVICE = "patina"` (line 25)
+    - `KEYCHAIN_ACCOUNT = "Patina Secrets"` (line 27)
 
 ### Dependencies
 
