@@ -101,11 +101,16 @@ pub fn get_identity() -> Result<String> {
 
             // Auto-migrate: Create encrypted file for future use
             // This is "Safety Net 2" from spec - eager on-demand migration
-            debug_log(r#"event="secrets.migrate" source="keychain" dest="encrypted_file" reason="auto_migration""#);
+            debug_log(
+                r#"event="secrets.migrate" source="keychain" dest="encrypted_file" reason="auto_migration""#,
+            );
 
             if let Err(e) = encrypted_file::store_identity(&identity) {
                 // Log failure but continue (Keychain still works)
-                debug_log(&format!(r#"event="secrets.migrate" result="failed" error="{}""#, e));
+                debug_log(&format!(
+                    r#"event="secrets.migrate" result="failed" error="{}""#,
+                    e
+                ));
             } else {
                 debug_log(r#"event="secrets.migrate" result="ok""#);
             }
@@ -138,7 +143,7 @@ pub fn has_identity() -> bool {
     // Check Keychain (legacy, pre-dual-storage)
     #[cfg(target_os = "macos")]
     {
-        return keychain::has_identity();
+        keychain::has_identity()
     }
 
     #[cfg(not(target_os = "macos"))]

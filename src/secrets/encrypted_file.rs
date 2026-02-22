@@ -308,8 +308,8 @@ fn get_ioplatform_uuid() -> Result<String> {
 /// Read machine ID from file (Linux)
 #[cfg(target_os = "linux")]
 fn read_machine_id_file(path: &str) -> Result<String> {
-    let content = std::fs::read_to_string(path)
-        .with_context(|| format!("Failed to read {}", path))?;
+    let content =
+        std::fs::read_to_string(path).with_context(|| format!("Failed to read {}", path))?;
     let trimmed = content.trim();
     if trimmed.is_empty() {
         bail!("{} is empty", path);
@@ -364,8 +364,8 @@ fn write_atomic(path: &PathBuf, data: &[u8]) -> Result<()> {
     // Set restrictive permissions before writing (owner read/write only)
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
         use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
         let mut perms = file.metadata()?.permissions();
         perms.set_mode(0o600); // -rw------- (owner-only)
         std::fs::set_permissions(&temp_path, perms)?;
