@@ -540,15 +540,14 @@ can work on it or defer it. Creation is the entry point.
 - [x] Tags follow `spec/<id>-paused-N` / `spec/<id>-blocked-N` convention
 - [x] Tag N derived from existing tags (D2)
 - [x] Invalid transitions rejected (draft → paused, paused → complete)
-- [~] YAML rollback on failure (D1) — implemented in `pause`, missing in `block`
+- [x] YAML rollback on failure (D1) — `with_yaml_rollback()` used by both `pause` and `block`
 - [x] All mutation commands support `--json` output
 
 **Implementation deviations** (session [[session-20260223-162443]]):
 
-1. **`with_yaml_rollback()` not extracted as shared function.** Design section 5
-   proposed a generic wrapper. Implemented inline in `pause_spec()` only.
-   `block_spec()` lacks rollback — if tagging fails after YAML mutation, the
-   file is left in the blocked state. Fix: add rollback to `block_spec()`.
+1. ~~**`with_yaml_rollback()` not extracted as shared function.**~~ **Resolved** (session
+   [[session-20260223-170149]]). Extracted `with_yaml_rollback()` as shared function.
+   Both `pause_spec()` and `block_spec()` now use it for YAML rollback on failure.
 
 2. **`complete_spec()` and `abandon_spec()` don't use `mutate_spec()`.** They
    do their own read/parse/write because `complete` needs the frontmatter for
@@ -556,11 +555,9 @@ can work on it or defer it. Creation is the entry point.
    `archive_spec_inner()`. Same behavior, different code path. Acceptable —
    `mutate_spec()` is for the simpler commands.
 
-3. **Private `create_spec_tag()` not fully replaced.** New commands use
-   `patina::git::create_tag_at()` but the old private `create_spec_tag()`
-   still exists in `internal.rs` (used by `archive_spec_inner()` and
-   `complete_spec()`). Incomplete dedup — should delegate to
-   `patina::git::create_tag_at()`.
+3. ~~**Private `create_spec_tag()` not fully replaced.**~~ **Resolved** (session
+   [[session-20260223-170149]]). Removed `create_spec_tag()`, all call sites now
+   use `patina::git::create_tag_at()` directly.
 
 4. **`--force` flag not added to `promote`.** Design mentioned
    `spec promote --force` for manual overrides. Not implemented — promote
