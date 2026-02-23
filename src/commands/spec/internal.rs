@@ -645,8 +645,10 @@ pub fn update_spec_status(id: &str, new_status: &str, major: bool, no_archive: b
             if should_archive {
                 // Tag HEAD~1 (the parent commit still has the spec file).
                 // Created after the release commit so no orphaned tag on failure.
-                create_spec_tag(id, title_str, "HEAD~1")?;
-                println!("  Archived: spec/{}", id);
+                let archive_tag = format!("spec/{}", id);
+                println!("Creating tag: {} (on HEAD~1)", archive_tag);
+                patina::git::create_tag_at(&archive_tag, &format!("Archived spec: {}", title_str), "HEAD~1")?;
+                println!("  Archived: {}", archive_tag);
             }
         } else {
             println!("\n  Spec type '{}' → no version bump", frontmatter.r#type);
@@ -660,32 +662,6 @@ pub fn update_spec_status(id: &str, new_status: &str, major: bool, no_archive: b
         archive_spec_inner(id, &file_path, new_status, title_str, &spec_dir)?;
     }
 
-    Ok(())
-}
-
-/// Create an annotated spec tag on HEAD (preserves spec content for recovery)
-/// Create an annotated spec tag on the given git ref.
-///
-/// `git_ref` determines which commit the tag points to (e.g., "HEAD~1"
-/// to tag the parent commit that still contains the spec file).
-fn create_spec_tag(id: &str, description: &str, git_ref: &str) -> Result<()> {
-    let tag_name = format!("spec/{}", id);
-    println!("Creating tag: {} (on {})", tag_name, git_ref);
-    let output = Command::new("git")
-        .args([
-            "tag",
-            "-a",
-            &tag_name,
-            "-m",
-            &format!("Archived spec: {}", description),
-            git_ref,
-        ])
-        .output()
-        .context("Failed to create spec tag")?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("git tag failed: {}", stderr);
-    }
     Ok(())
 }
 
@@ -797,7 +773,8 @@ fn archive_spec_inner(
 
     // 3. Tag HEAD~1 (the parent commit that still has the spec file).
     // Created after commit so no orphaned tag if git rm or commit fails.
-    create_spec_tag(id, description, "HEAD~1")?;
+    println!("Creating tag: {} (on HEAD~1)", tag_name);
+    patina::git::create_tag_at(&tag_name, &format!("Archived spec: {}", description), "HEAD~1")?;
 
     println!(
         "\n✓ Archived: {}\n  Tag: {}\n  Recover: git show {}:{}",
@@ -1143,7 +1120,9 @@ pub fn complete_spec(id: &str, major: bool, json: bool) -> Result<()> {
         prepared.execute(title_str, &file_path, archive_dir)?;
 
         // Tag HEAD~1 (parent commit still has spec file)
-        create_spec_tag(id, title_str, "HEAD~1")?;
+        let archive_tag_name = format!("spec/{}", id);
+        println!("Creating tag: {} (on HEAD~1)", archive_tag_name);
+        patina::git::create_tag_at(&archive_tag_name, &format!("Archived spec: {}", title_str), "HEAD~1")?;
     } else {
         // No release (explore type) — archive as standalone commit
         archive_spec_inner(id, &file_path, "complete", title_str, &spec_dir)?;
