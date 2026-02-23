@@ -527,21 +527,54 @@ can work on it or defer it. Creation is the entry point.
 6. Log in active session
 
 **Exit criteria:**
-- [ ] `spec status` deprecated — prints redirect message
-- [ ] `spec promote` advances draft→ready→active, tags on active
-- [ ] `spec complete` triggers release + archive + tag
-- [ ] `spec abandon` archives + tags, accepts optional reason
-- [ ] `paused` and `blocked` are valid statuses
-- [ ] `spec pause` enforces one-paused-spec rule
-- [ ] `spec pause` creates WIP commit (if dirty) + tag + updates YAML + DB
-- [ ] `spec pause` with clean tree skips WIP commit, still tags
-- [ ] `spec resume` reads `paused_at_tag`, shows context diffs, restores active
-- [ ] `spec block` appends to `blocked_by` list + updates DB inline
-- [ ] Tags follow `spec/<id>-paused-N` / `spec/<id>-blocked-N` convention
-- [ ] Tag N derived from existing tags (D2)
-- [ ] Invalid transitions rejected (draft → paused, paused → complete)
-- [ ] YAML rollback on failure (D1)
-- [ ] All mutation commands support `--json` output
+- [x] `spec status` deprecated — prints redirect message
+- [x] `spec promote` advances draft→ready→active, tags on active
+- [x] `spec complete` triggers release + archive + tag
+- [x] `spec abandon` archives + tags, accepts optional reason
+- [x] `paused` and `blocked` are valid statuses
+- [x] `spec pause` enforces one-paused-spec rule
+- [x] `spec pause` creates WIP commit (if dirty) + tag + updates YAML + DB
+- [x] `spec pause` with clean tree skips WIP commit, still tags
+- [x] `spec resume` reads `paused_at_tag`, shows context diffs, restores active
+- [x] `spec block` appends to `blocked_by` list + updates DB inline
+- [x] Tags follow `spec/<id>-paused-N` / `spec/<id>-blocked-N` convention
+- [x] Tag N derived from existing tags (D2)
+- [x] Invalid transitions rejected (draft → paused, paused → complete)
+- [~] YAML rollback on failure (D1) — implemented in `pause`, missing in `block`
+- [x] All mutation commands support `--json` output
+
+**Implementation deviations** (session [[session-20260223-162443]]):
+
+1. **`with_yaml_rollback()` not extracted as shared function.** Design section 5
+   proposed a generic wrapper. Implemented inline in `pause_spec()` only.
+   `block_spec()` lacks rollback — if tagging fails after YAML mutation, the
+   file is left in the blocked state. Fix: add rollback to `block_spec()`.
+
+2. **`complete_spec()` and `abandon_spec()` don't use `mutate_spec()`.** They
+   do their own read/parse/write because `complete` needs the frontmatter for
+   release bump detection and `abandon` needs to pass the file path to
+   `archive_spec_inner()`. Same behavior, different code path. Acceptable —
+   `mutate_spec()` is for the simpler commands.
+
+3. **Private `create_spec_tag()` not fully replaced.** New commands use
+   `patina::git::create_tag_at()` but the old private `create_spec_tag()`
+   still exists in `internal.rs` (used by `archive_spec_inner()` and
+   `complete_spec()`). Incomplete dedup — should delegate to
+   `patina::git::create_tag_at()`.
+
+4. **`--force` flag not added to `promote`.** Design mentioned
+   `spec promote --force` for manual overrides. Not implemented — promote
+   only does valid transitions, no override needed. Revisit if edge cases
+   emerge.
+
+5. **`paused_at_tag` reused for block tag ref.** `block_spec()` stores the
+   block tag in `paused_at_tag` so `resume` can find it. Field name is
+   misleading for blocked specs. Could rename to `state_change_tag` but
+   that's a YAML schema change — defer.
+
+6. **`blocked_by` list not cleared on resume.** Deliberate: preserves
+   provenance (who blocked whom). `spec_deps` DB entries are cleared.
+   YAML keeps historical record. Design didn't explicitly decide this.
 
 ### Phase 2: Spec Split
 
