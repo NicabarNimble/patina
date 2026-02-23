@@ -6,6 +6,8 @@
 
 ## 1. The Fresh Idea
 
+> Requires: Phase 0 (spec-create), Phase 3 (spec next), Phase 6 (/spec skill)
+
 User discovers a problem during work and wants to capture it.
 
 ```
@@ -39,6 +41,8 @@ Claude: Sounds good. It's sitting in draft — `spec next` will surface it
 disruption — user stays on their current work.
 
 ## 2. The Morning Startup
+
+> Requires: Phase 1 (pause/block statuses), Phase 3 (spec next), Phase 5 (session integration)
 
 User begins a session and needs to know what to work on.
 
@@ -80,6 +84,8 @@ Queue pressure showed the paused spec. Context diffs helped the LLM
 reconstruct where work left off. No archaeology needed.
 
 ## 3. The Wander-and-Return
+
+> Requires: Phase 0 (spec create), Phase 1 (pause/block commands)
 
 User is mid-implementation and discovers a prerequisite is missing.
 
@@ -124,6 +130,8 @@ No workflow disruption. The draft sits in the queue until the user is ready.
 
 ## 4. The Block
 
+> Requires: Phase 1 (block command, get_blocked_specs fix)
+
 User hits a real dependency — can't continue without another spec landing.
 
 ```
@@ -160,6 +168,8 @@ The LLM helped frame it (mutations before queries) and updated the spec.
 No status change — still active, just refined the implementation plan.
 
 ## 5. The Split
+
+> Requires: Phase 2 (spec split)
 
 User realizes a spec is half-done and half-wrong.
 
@@ -205,6 +215,8 @@ split` shipped the working half (real release) and sent the rest back to
 draft. No work lost — provenance chain tracks the lineage.
 
 ## 6. The Completion
+
+> Requires: Phase 1 (complete command), Phase 3 (spec next), Phase 5 (session integration)
 
 User finishes a spec and sees the cascade.
 
