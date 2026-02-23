@@ -155,11 +155,12 @@ pub struct BlockedSpec {
     pub blocked_by: Vec<Blocker>,
 }
 
-/// Query specs that are blocked by incomplete dependencies
+/// Query specs that are blocked by incomplete dependencies or have status='blocked'.
 ///
 /// Returns specs where:
 /// - File is in layer/surface/build/ (actual specs, not beliefs)
 /// - Has at least one blocker with status not in ('complete', 'done')
+///   OR has status = 'blocked' (set by `spec block` command)
 pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
     let db_path = Path::new(DB_PATH);
     if !db_path.exists() {
@@ -168,7 +169,7 @@ pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
 
     let conn = Connection::open(db_path).context("Failed to open database")?;
 
-    // Get all specs with incomplete blockers
+    // Get specs with incomplete blockers via spec_deps
     let mut stmt = conn.prepare(
         r#"
         SELECT p.id, p.status, p.target, p.title, d.depends_on, b.status
@@ -184,6 +185,7 @@ pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
 
     // Group by spec
     let mut specs: Vec<BlockedSpec> = Vec::new();
+    let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut current_id: Option<String> = None;
 
     let rows = stmt.query_map([], |row| {
@@ -201,7 +203,7 @@ pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
         let (id, status, target, title, blocker_id, blocker_status) = row?;
 
         if current_id.as_ref() != Some(&id) {
-            // New spec
+            seen_ids.insert(id.clone());
             specs.push(BlockedSpec {
                 id: id.clone(),
                 status,
@@ -214,13 +216,46 @@ pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
             });
             current_id = Some(id);
         } else {
-            // Add blocker to current spec
             if let Some(spec) = specs.last_mut() {
                 spec.blocked_by.push(Blocker {
                     id: blocker_id,
                     status: blocker_status,
                 });
             }
+        }
+    }
+
+    // Also include specs with status='blocked' not already found via spec_deps
+    let mut stmt2 = conn.prepare(
+        r#"
+        SELECT p.id, p.status, p.target, p.title
+        FROM patterns p
+        WHERE p.file_path LIKE 'layer/surface/build/%'
+          AND p.status = 'blocked'
+        ORDER BY p.id
+        "#,
+    )?;
+
+    let blocked_rows = stmt2
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+
+    for row in blocked_rows {
+        let (id, status, target, title) = row?;
+        if !seen_ids.contains(&id) {
+            specs.push(BlockedSpec {
+                id,
+                status,
+                target,
+                title,
+                blocked_by: vec![], // No spec_deps but status is blocked
+            });
         }
     }
 
@@ -490,6 +525,25 @@ const VALID_STATUSES: &[&str] = &["draft", "ready", "active", "paused", "blocked
 /// the spec is auto-archived (tag + git rm) as part of the release commit
 /// or as a standalone commit if no release is needed.
 pub fn update_spec_status(id: &str, new_status: &str, major: bool, no_archive: bool) -> Result<()> {
+    // Deprecation redirect
+    let redirect = match new_status {
+        "ready" | "active" => Some(format!("patina spec promote {}", id)),
+        "paused" => Some(format!("patina spec pause {} --reason \"...\"", id)),
+        "blocked" => Some(format!("patina spec block {} --by <blocker> --reason \"...\"", id)),
+        "complete" => Some(if major {
+            format!("patina spec complete {} --major", id)
+        } else {
+            format!("patina spec complete {}", id)
+        }),
+        "abandoned" => Some(format!("patina spec abandon {}", id)),
+        _ => None,
+    };
+    if let Some(cmd) = redirect {
+        eprintln!("Warning: `spec status` is deprecated.");
+        eprintln!("  Use: {}", cmd);
+        eprintln!();
+    }
+
     // 1. Validate new status
     if !VALID_STATUSES.contains(&new_status) {
         anyhow::bail!(
@@ -1529,24 +1583,14 @@ pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<(
     Ok(())
 }
 
-/// Check if a git tag exists
+/// Check if a git tag exists (delegates to patina::git::tag_exists)
 fn tag_exists(tag: &str) -> Result<bool> {
-    let output = Command::new("git")
-        .args(["tag", "-l", tag])
-        .output()
-        .context("Failed to list git tags")?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(!stdout.trim().is_empty())
+    patina::git::tag_exists(tag)
 }
 
-/// Check if working tree is clean (no uncommitted tracked changes)
+/// Check if working tree is clean for tracked files (delegates to patina::git::is_clean_tracked)
 fn is_tree_clean() -> Result<bool> {
-    let output = Command::new("git")
-        .args(["status", "--porcelain", "-uno"])
-        .output()
-        .context("Failed to check git status")?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(stdout.trim().is_empty())
+    patina::git::is_clean_tracked()
 }
 
 #[cfg(test)]
