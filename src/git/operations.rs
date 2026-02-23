@@ -642,9 +642,7 @@ pub fn has_merge_conflicts() -> Result<bool> {
         .context("Failed to find git directory")?;
 
     let git_dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    Ok(std::path::Path::new(&git_dir)
-        .join("MERGE_HEAD")
-        .exists())
+    Ok(std::path::Path::new(&git_dir).join("MERGE_HEAD").exists())
 }
 
 /// Check if working tree is clean for tracked files only (ignores untracked)

@@ -236,15 +236,14 @@ pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
         "#,
     )?;
 
-    let blocked_rows = stmt2
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, Option<String>>(2)?,
-                row.get::<_, String>(3)?,
-            ))
-        })?;
+    let blocked_rows = stmt2.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, Option<String>>(2)?,
+            row.get::<_, String>(3)?,
+        ))
+    })?;
 
     for row in blocked_rows {
         let (id, status, target, title) = row?;
@@ -513,7 +512,15 @@ pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
 // ============================================================================
 
 /// Valid spec statuses (state machine: draft → ready → active → paused/blocked → complete/abandoned)
-const VALID_STATUSES: &[&str] = &["draft", "ready", "active", "paused", "blocked", "complete", "abandoned"];
+const VALID_STATUSES: &[&str] = &[
+    "draft",
+    "ready",
+    "active",
+    "paused",
+    "blocked",
+    "complete",
+    "abandoned",
+];
 
 /// Update a spec's status in both file and database
 ///
@@ -529,7 +536,10 @@ pub fn update_spec_status(id: &str, new_status: &str, major: bool, no_archive: b
     let redirect = match new_status {
         "ready" | "active" => Some(format!("patina spec promote {}", id)),
         "paused" => Some(format!("patina spec pause {} --reason \"...\"", id)),
-        "blocked" => Some(format!("patina spec block {} --by <blocker> --reason \"...\"", id)),
+        "blocked" => Some(format!(
+            "patina spec block {} --by <blocker> --reason \"...\"",
+            id
+        )),
         "complete" => Some(if major {
             format!("patina spec complete {} --major", id)
         } else {
@@ -985,22 +995,21 @@ fn next_tag_number(id: &str, prefix: &str) -> Result<u32> {
 /// Promote a spec: draft → ready, or ready → active.
 /// When promoting to active, creates tag spec/<id>-start.
 pub fn promote_spec(id: &str, json: bool) -> Result<()> {
-    let (file_path, fm) = mutate_spec(id, |fm| {
-        match fm.status.as_deref() {
-            Some("draft") => {
-                fm.status = Some("ready".to_string());
-                Ok(())
-            }
-            Some("ready") => {
-                fm.status = Some("active".to_string());
-                Ok(())
-            }
-            Some(s) => anyhow::bail!(
-                "Cannot promote '{}' — status is '{}'. Only draft and ready specs can be promoted.",
-                id, s
-            ),
-            None => anyhow::bail!("Spec '{}' has no status", id),
+    let (file_path, fm) = mutate_spec(id, |fm| match fm.status.as_deref() {
+        Some("draft") => {
+            fm.status = Some("ready".to_string());
+            Ok(())
         }
+        Some("ready") => {
+            fm.status = Some("active".to_string());
+            Ok(())
+        }
+        Some(s) => anyhow::bail!(
+            "Cannot promote '{}' — status is '{}'. Only draft and ready specs can be promoted.",
+            id,
+            s
+        ),
+        None => anyhow::bail!("Spec '{}' has no status", id),
     })?;
 
     let new_status = fm.status.as_deref().unwrap_or("unknown");
@@ -1017,7 +1026,10 @@ pub fn promote_spec(id: &str, json: bool) -> Result<()> {
         .output()
         .context("Failed to stage spec file")?;
     if !output.status.success() {
-        anyhow::bail!("git add failed: {}", String::from_utf8_lossy(&output.stderr));
+        anyhow::bail!(
+            "git add failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     let commit_msg = format!("spec: promote {} to {}", id, new_status);
@@ -1059,7 +1071,9 @@ pub fn complete_spec(id: &str, major: bool, json: bool) -> Result<()> {
     match old_status.as_deref() {
         Some("active") => {}
         Some(s) => anyhow::bail!(
-            "Cannot complete '{}' — status is '{}', expected 'active'", id, s
+            "Cannot complete '{}' — status is '{}', expected 'active'",
+            id,
+            s
         ),
         None => anyhow::bail!("Spec '{}' has no status", id),
     }
@@ -1219,7 +1233,9 @@ pub fn pause_spec(id: &str, reason: &str, json: bool) -> Result<()> {
     match old_status.as_deref() {
         Some("active") => {}
         Some(s) => anyhow::bail!(
-            "Cannot pause '{}' — status is '{}', expected 'active'", id, s
+            "Cannot pause '{}' — status is '{}', expected 'active'",
+            id,
+            s
         ),
         None => anyhow::bail!("Spec '{}' has no status", id),
     }
@@ -1235,7 +1251,9 @@ pub fn pause_spec(id: &str, reason: &str, json: bool) -> Result<()> {
             "{} is already paused.\n  Resume, split, or abandon it first:\n    \
              patina spec resume {}\n    \
              patina spec abandon {}",
-            already_paused.id, already_paused.id, already_paused.id
+            already_paused.id,
+            already_paused.id,
+            already_paused.id
         );
     }
 
@@ -1291,7 +1309,10 @@ pub fn pause_spec(id: &str, reason: &str, json: bool) -> Result<()> {
             .output()
             .context("Failed to stage spec file")?;
         if !output.status.success() {
-            anyhow::bail!("git add failed: {}", String::from_utf8_lossy(&output.stderr));
+            anyhow::bail!(
+                "git add failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
         let commit_msg = format!("spec: pause {} — {}", id, reason);
         let output = Command::new("git")
@@ -1344,7 +1365,9 @@ pub fn resume_spec(id: &str, force: bool, json: bool) -> Result<()> {
     match status_str {
         "paused" | "blocked" => {}
         s => anyhow::bail!(
-            "Cannot resume '{}' — status is '{}', expected 'paused' or 'blocked'", id, s
+            "Cannot resume '{}' — status is '{}', expected 'paused' or 'blocked'",
+            id,
+            s
         ),
     }
 
@@ -1361,18 +1384,16 @@ pub fn resume_spec(id: &str, force: bool, json: bool) -> Result<()> {
         let incomplete: Vec<_> = fm_snapshot
             .blocked_by
             .iter()
-            .filter_map(|blocker_id| {
-                match find_spec(blocker_id) {
-                    Ok((_, blocker_status, _)) => {
-                        let s = blocker_status.as_deref().unwrap_or("unknown");
-                        if s != "complete" && s != "done" {
-                            Some(format!("{} ({})", blocker_id, s))
-                        } else {
-                            None
-                        }
+            .filter_map(|blocker_id| match find_spec(blocker_id) {
+                Ok((_, blocker_status, _)) => {
+                    let s = blocker_status.as_deref().unwrap_or("unknown");
+                    if s != "complete" && s != "done" {
+                        Some(format!("{} ({})", blocker_id, s))
+                    } else {
+                        None
                     }
-                    Err(_) => Some(format!("{} (not found)", blocker_id)),
                 }
+                Err(_) => Some(format!("{} (not found)", blocker_id)),
             })
             .collect();
 
@@ -1422,7 +1443,10 @@ pub fn resume_spec(id: &str, force: bool, json: bool) -> Result<()> {
         .output()
         .context("Failed to stage spec file")?;
     if !output.status.success() {
-        anyhow::bail!("git add failed: {}", String::from_utf8_lossy(&output.stderr));
+        anyhow::bail!(
+            "git add failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
     let commit_msg = format!("spec: resume {}", id);
     let output = Command::new("git")
@@ -1461,7 +1485,10 @@ pub fn resume_spec(id: &str, force: bool, json: bool) -> Result<()> {
             // What you accomplished before pausing
             let start_tag = format!("spec/{}-start", id);
             if patina::git::tag_exists(&start_tag)? {
-                println!("\n--- Your work before pause ({}..{}) ---", start_tag, pause_tag);
+                println!(
+                    "\n--- Your work before pause ({}..{}) ---",
+                    start_tag, pause_tag
+                );
                 let output = Command::new("git")
                     .args(["diff", "--stat", &format!("{}..{}", start_tag, pause_tag)])
                     .output();
@@ -1501,15 +1528,15 @@ pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<(
     match old_status.as_deref() {
         Some("active") => {}
         Some(s) => anyhow::bail!(
-            "Cannot block '{}' — status is '{}', expected 'active'", id, s
+            "Cannot block '{}' — status is '{}', expected 'active'",
+            id,
+            s
         ),
         None => anyhow::bail!("Spec '{}' has no status", id),
     }
 
     // 2. Validate blocker spec exists
-    let _ = find_spec(blocker).with_context(|| {
-        format!("Blocker spec '{}' not found", blocker)
-    })?;
+    let _ = find_spec(blocker).with_context(|| format!("Blocker spec '{}' not found", blocker))?;
 
     // 3. Update YAML
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
@@ -1548,7 +1575,10 @@ pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<(
         .output()
         .context("Failed to stage spec file")?;
     if !output.status.success() {
-        anyhow::bail!("git add failed: {}", String::from_utf8_lossy(&output.stderr));
+        anyhow::bail!(
+            "git add failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
     let commit_msg = format!("spec: block {} (waiting on {})", id, blocker);
     let output = Command::new("git")
@@ -1577,7 +1607,10 @@ pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<(
         println!("  Blocked by: {}", blocker);
         println!("  Reason: {}", reason);
         println!("  Tag: {}", tag_name);
-        println!("  Unblock: patina spec resume {} (when {} is complete)", id, blocker);
+        println!(
+            "  Unblock: patina spec resume {} (when {} is complete)",
+            id, blocker
+        );
     }
 
     Ok(())
