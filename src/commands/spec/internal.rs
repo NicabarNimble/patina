@@ -1278,11 +1278,164 @@ pub fn pause_spec(id: &str, reason: &str, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// Resume a paused or blocked spec
+/// Resume a paused or blocked spec.
+///
+/// For blocked specs: checks all blockers are complete (or --force).
+/// Shows context diffs from paused_at_tag. Clears pause/block fields.
 pub fn resume_spec(id: &str, force: bool, json: bool) -> Result<()> {
-    // Step 10: will be implemented after block
-    let _ = (id, force, json);
-    anyhow::bail!("spec resume not yet implemented")
+    // 1. Find spec and validate status
+    let (file_path, old_status, _title) = find_spec(id)?;
+    let status_str = old_status.as_deref().unwrap_or("");
+
+    match status_str {
+        "paused" | "blocked" => {}
+        s => anyhow::bail!(
+            "Cannot resume '{}' — status is '{}', expected 'paused' or 'blocked'", id, s
+        ),
+    }
+
+    // 2. Read current frontmatter to get paused_at_tag and check blockers
+    let content = std::fs::read_to_string(&file_path)
+        .with_context(|| format!("Failed to read {}", file_path))?;
+    let (fm_snapshot, _) = parse_spec_file(&content)
+        .with_context(|| format!("Failed to parse frontmatter in {}", file_path))?;
+
+    let paused_at_tag = fm_snapshot.paused_at_tag.clone();
+
+    // 3. If blocked, check all blockers are complete
+    if status_str == "blocked" && !force {
+        let incomplete: Vec<_> = fm_snapshot
+            .blocked_by
+            .iter()
+            .filter_map(|blocker_id| {
+                match find_spec(blocker_id) {
+                    Ok((_, blocker_status, _)) => {
+                        let s = blocker_status.as_deref().unwrap_or("unknown");
+                        if s != "complete" && s != "done" {
+                            Some(format!("{} ({})", blocker_id, s))
+                        } else {
+                            None
+                        }
+                    }
+                    Err(_) => Some(format!("{} (not found)", blocker_id)),
+                }
+            })
+            .collect();
+
+        if !incomplete.is_empty() {
+            anyhow::bail!(
+                "Cannot resume '{}' — still blocked by:\n  {}\n\n  \
+                 Use --force to override.",
+                id,
+                incomplete.join("\n  ")
+            );
+        }
+    }
+
+    // 4. Update YAML: status=active, clear pause/block fields
+    let tag_n = next_tag_number(id, "resumed")?;
+    let tag_name = format!("spec/{}-resumed-{}", id, tag_n);
+
+    let (file_path, _fm) = mutate_spec(id, |fm| {
+        fm.status = Some("active".to_string());
+        fm.paused_reason = None;
+        fm.paused_date = None;
+        fm.paused_at_tag = None;
+        fm.blocked_reason = None;
+        fm.blocked_date = None;
+        // Note: blocked_by list is NOT cleared — it's historical record
+        Ok(())
+    })?;
+
+    // 5. Clear spec_deps if was blocked
+    if status_str == "blocked" {
+        let db_path = Path::new(DB_PATH);
+        if db_path.exists() {
+            let conn = Connection::open(db_path).context("Failed to open database")?;
+            conn.execute(
+                "DELETE FROM spec_deps WHERE spec_id = ?1",
+                rusqlite::params![id],
+            )?;
+        }
+    }
+
+    // 6. Create annotated tag
+    patina::git::create_tag_at(&tag_name, &format!("Resumed {}", id), "HEAD")?;
+
+    // 7. Git commit
+    let output = Command::new("git")
+        .args(["add", &file_path])
+        .output()
+        .context("Failed to stage spec file")?;
+    if !output.status.success() {
+        anyhow::bail!("git add failed: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    let commit_msg = format!("spec: resume {}", id);
+    let output = Command::new("git")
+        .args(["commit", "-m", &commit_msg])
+        .output()
+        .context("Failed to commit")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.contains("nothing to commit") {
+            anyhow::bail!("git commit failed: {}", stderr);
+        }
+    }
+
+    // 8. Show context diffs (non-JSON mode)
+    if !json {
+        println!("Resumed: {} → active", id);
+        println!("  Tag: {}", tag_name);
+
+        if let Some(ref pause_tag) = paused_at_tag {
+            // What changed while away
+            println!("\n--- Changes since pause ({}) ---", pause_tag);
+            let output = Command::new("git")
+                .args(["diff", "--stat", &format!("{}..HEAD", pause_tag)])
+                .output();
+            if let Ok(output) = output {
+                let diff = String::from_utf8_lossy(&output.stdout);
+                if diff.trim().is_empty() {
+                    println!("  (no changes)");
+                } else {
+                    for line in diff.lines() {
+                        println!("  {}", line);
+                    }
+                }
+            }
+
+            // What you accomplished before pausing
+            let start_tag = format!("spec/{}-start", id);
+            if patina::git::tag_exists(&start_tag)? {
+                println!("\n--- Your work before pause ({}..{}) ---", start_tag, pause_tag);
+                let output = Command::new("git")
+                    .args(["diff", "--stat", &format!("{}..{}", start_tag, pause_tag)])
+                    .output();
+                if let Ok(output) = output {
+                    let diff = String::from_utf8_lossy(&output.stdout);
+                    if diff.trim().is_empty() {
+                        println!("  (no changes)");
+                    } else {
+                        for line in diff.lines() {
+                            println!("  {}", line);
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        let result = serde_json::json!({
+            "command": "resume",
+            "spec_id": id,
+            "new_status": "active",
+            "previous_status": status_str,
+            "tag": tag_name,
+            "paused_at_tag": paused_at_tag,
+        });
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    }
+
+    Ok(())
 }
 
 /// Block an active spec on another spec.
