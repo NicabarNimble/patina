@@ -277,6 +277,22 @@ impl PluginEngine {
             }
         }
 
+        // Load-time validation: host_secrets domains must be in host_http
+        let http_set: std::collections::HashSet<&str> = manifest
+            .host_http_domains
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        for domain in manifest.host_secrets.keys() {
+            if !http_set.contains(domain.as_str()) {
+                anyhow::bail!(
+                    "plugin '{}': domain '{}' in host_secrets but not in host_http",
+                    manifest.name,
+                    domain
+                );
+            }
+        }
+
         Ok(())
     }
 

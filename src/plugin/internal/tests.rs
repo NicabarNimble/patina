@@ -195,6 +195,7 @@ fn capabilities_all_granted() {
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
         host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -217,6 +218,7 @@ fn capabilities_empty() {
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
         host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -239,6 +241,7 @@ fn capabilities_denied() {
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
         host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -336,6 +339,7 @@ fn check_capabilities_rejects_unknown_query_kinds() {
         allowed_toy_commands: vec![],
         host_query_kinds: vec!["scry".into(), "magic_oracle".into()],
         host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -363,6 +367,7 @@ fn check_capabilities_accepts_known_query_kinds() {
         allowed_toy_commands: vec![],
         host_query_kinds: vec!["scry".into(), "context".into(), "assay".into()],
         host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -409,6 +414,7 @@ fn wasm_models_child_handle_roundtrip() {
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
         host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: Some("models".into()),
             commands: vec![],
@@ -462,6 +468,7 @@ fn wasm_models_child_health() {
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
         host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: Some("models".into()),
             commands: vec![],
@@ -504,6 +511,7 @@ fn load_repos_child() -> Option<Box<dyn crate::mother::MotherChild>> {
         allowed_toy_commands: vec!["git".into(), "patina".into()],
         host_query_kinds: vec![],
         host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: Some("repos".into()),
             commands: vec![],
@@ -713,6 +721,7 @@ fn wasm_repos_child_toy_capability_gating() {
         allowed_toy_commands: vec!["patina".into()], // git excluded
         host_query_kinds: vec![],
         host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: Some("repos".into()),
             commands: vec![],
@@ -796,6 +805,7 @@ fn benchmark_plugin_performance() {
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
         host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: Some("models".into()),
             commands: vec![],
@@ -925,6 +935,7 @@ fn load_doctor_manifest() -> PluginManifest {
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
         host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: None,
             commands: vec!["doctor".into()],
@@ -1072,6 +1083,7 @@ fn check_capabilities_rejects_empty_http_domain() {
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
         host_http_domains: vec!["".into()],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -1095,6 +1107,7 @@ fn check_capabilities_rejects_http_domain_with_path() {
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
         host_http_domains: vec!["api.github.com/repos".into()],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -1118,6 +1131,7 @@ fn check_capabilities_accepts_valid_http_domains() {
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
         host_http_domains: vec!["api.github.com".into(), "hooks.slack.com".into()],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -1144,6 +1158,7 @@ fn granted_capabilities_includes_http_domains() {
         allowed_toy_commands: vec![],
         host_query_kinds: vec!["scry".into()],
         host_http_domains: vec!["api.github.com".into()],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -1238,6 +1253,7 @@ fn hello_task_manifest() -> PluginManifest {
         allowed_toy_commands: vec!["echo".into()],
         host_query_kinds: vec![],
         host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -1342,6 +1358,7 @@ fn task_hello_unapproved_toy_denied() {
         allowed_toy_commands: vec![], // nothing allowed
         host_query_kinds: vec![],
         host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -1392,6 +1409,7 @@ fn echo_pipeline_manifest() -> PluginManifest {
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
         host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             pipeline_ops: vec!["echo".into()],
             ..Default::default()
@@ -1523,6 +1541,7 @@ fn wasm_trap_pipeline_panic_returns_error() {
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
         host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             pipeline_ops: vec!["echo".into()],
             ..Default::default()
@@ -1630,6 +1649,7 @@ fn check_capabilities_rejects_pipeline_with_query() {
         allowed_toy_commands: vec![],
         host_query_kinds: vec!["scry".into()],
         host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             pipeline_ops: vec!["echo".into()],
             ..Default::default()
@@ -1658,6 +1678,7 @@ fn check_capabilities_rejects_pipeline_with_http() {
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
         host_http_domains: vec!["evil.com".into()],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             pipeline_ops: vec!["echo".into()],
             ..Default::default()
@@ -1722,6 +1743,7 @@ fn wasm_trap_mother_child_panic_returns_error() {
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
         host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
         provides: PluginProvides {
             child: Some("wrong".into()),
             ..Default::default()
@@ -1735,4 +1757,269 @@ fn wasm_trap_mother_child_panic_returns_error() {
         result.is_err(),
         "wrong world instantiation should return Err, not crash"
     );
+}
+
+// =====================================================================
+// Credential injection — manifest parsing
+// =====================================================================
+
+#[test]
+fn manifest_parses_host_secrets() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "cred-plugin"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+host_http = ["api.github.com"]
+
+[capabilities.host_secrets]
+"api.github.com" = { secret = "github-token", location = "bearer" }
+
+[provides]
+child = "cred"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert_eq!(m.host_secrets.len(), 1);
+    let mapping = m.host_secrets.get("api.github.com").unwrap();
+    assert_eq!(mapping.secret_name, "github-token");
+    assert!(matches!(mapping.location, InjectionLocation::Bearer));
+}
+
+#[test]
+fn manifest_no_host_secrets_defaults_empty() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "no-cred"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+host_http = ["api.github.com"]
+
+[provides]
+child = "test"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert!(m.host_secrets.is_empty());
+}
+
+#[test]
+fn manifest_host_secrets_skips_unknown_location() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "bad-loc"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+host_http = ["api.github.com"]
+
+[capabilities.host_secrets]
+"api.github.com" = { secret = "github-token", location = "magic" }
+
+[provides]
+child = "test"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    // Unknown location should be skipped with a warning
+    assert!(m.host_secrets.is_empty());
+}
+
+// =====================================================================
+// Credential injection — check_capabilities validation
+// =====================================================================
+
+#[test]
+fn check_capabilities_rejects_host_secrets_domain_not_in_host_http() {
+    let mut secrets = std::collections::HashMap::new();
+    secrets.insert(
+        "api.github.com".to_string(),
+        CredentialMapping {
+            secret_name: "github-token".to_string(),
+            location: InjectionLocation::Bearer,
+        },
+    );
+    let m = PluginManifest {
+        name: "test".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::MotherChild,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![], // no host_http — should fail
+        host_secrets: secrets,
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+            ..Default::default()
+        },
+        schemas: std::collections::HashMap::new(),
+    };
+    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("api.github.com") && msg.contains("host_secrets") && msg.contains("host_http"),
+        "expected domain mismatch error, got: {}",
+        msg
+    );
+}
+
+#[test]
+fn check_capabilities_accepts_host_secrets_with_matching_host_http() {
+    let mut secrets = std::collections::HashMap::new();
+    secrets.insert(
+        "api.github.com".to_string(),
+        CredentialMapping {
+            secret_name: "github-token".to_string(),
+            location: InjectionLocation::Bearer,
+        },
+    );
+    let m = PluginManifest {
+        name: "test".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::MotherChild,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec!["api.github.com".into()],
+        host_secrets: secrets,
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+            ..Default::default()
+        },
+        schemas: std::collections::HashMap::new(),
+    };
+    assert!(PluginEngine::check_capabilities(&m).is_ok());
+}
+
+// =====================================================================
+// Credential injection — granted_capabilities
+// =====================================================================
+
+#[test]
+fn granted_capabilities_includes_credential_mappings() {
+    let mut secrets = std::collections::HashMap::new();
+    secrets.insert(
+        "api.github.com".to_string(),
+        CredentialMapping {
+            secret_name: "github-token".to_string(),
+            location: InjectionLocation::Bearer,
+        },
+    );
+    let m = PluginManifest {
+        name: "test".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::MotherChild,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec!["api.github.com".into()],
+        host_secrets: secrets,
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+            ..Default::default()
+        },
+        schemas: std::collections::HashMap::new(),
+    };
+    let grants = m.granted_capabilities();
+    assert!(grants.credential_mappings.contains_key("api.github.com"));
+    assert_eq!(
+        grants.credential_mappings["api.github.com"].secret_name,
+        "github-token"
+    );
+}
+
+// =====================================================================
+// Credential injection — leak detection
+// =====================================================================
+
+#[test]
+fn leak_check_redacts_secret_in_body() {
+    let body = r#"{"token":"ghp_abc123secret","user":"test"}"#;
+    let result = host_support::leak_check(body, "github-token", "ghp_abc123secret");
+    assert!(
+        result.contains("[REDACTED]"),
+        "expected [REDACTED] in body, got: {}",
+        result
+    );
+    assert!(
+        !result.contains("ghp_abc123secret"),
+        "secret should not appear in result: {}",
+        result
+    );
+}
+
+#[test]
+fn leak_check_no_leak_returns_unchanged() {
+    let body = r#"{"user":"test","status":"ok"}"#;
+    let result = host_support::leak_check(body, "github-token", "ghp_abc123secret");
+    assert_eq!(result, body, "body should be unchanged when no leak");
+}
+
+#[test]
+fn leak_check_redacts_multiple_occurrences() {
+    let body = "token=ghp_xxx and again ghp_xxx end";
+    let result = host_support::leak_check(body, "test-secret", "ghp_xxx");
+    assert_eq!(
+        result, "token=[REDACTED] and again [REDACTED] end",
+        "all occurrences should be redacted"
+    );
+}
+
+// =====================================================================
+// Credential injection — no injection without mapping
+// =====================================================================
+
+#[test]
+fn no_credential_mapping_means_no_injection() {
+    // GrantedCapabilities with http_domains but no credential_mappings
+    let grants = GrantedCapabilities {
+        http_domains: ["api.github.com".to_string()].into_iter().collect(),
+        credential_mappings: std::collections::HashMap::new(),
+        ..Default::default()
+    };
+    // Verify no credential mapping for the domain
+    assert!(
+        grants.credential_mappings.get("api.github.com").is_none(),
+        "should have no credential mapping"
+    );
+}
+
+#[test]
+fn credential_mapping_only_for_mapped_domain() {
+    let mut creds = std::collections::HashMap::new();
+    creds.insert(
+        "api.github.com".to_string(),
+        CredentialMapping {
+            secret_name: "github-token".to_string(),
+            location: InjectionLocation::Bearer,
+        },
+    );
+    let grants = GrantedCapabilities {
+        http_domains: ["api.github.com".to_string(), "api.other.com".to_string()]
+            .into_iter()
+            .collect(),
+        credential_mappings: creds,
+        ..Default::default()
+    };
+    // api.github.com has mapping
+    assert!(grants.credential_mappings.get("api.github.com").is_some());
+    // api.other.com does NOT have mapping
+    assert!(grants.credential_mappings.get("api.other.com").is_none());
 }

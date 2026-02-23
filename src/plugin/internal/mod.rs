@@ -87,6 +87,24 @@ pub(super) fn wasm_engine() -> &'static Engine {
 }
 
 // =========================================================================
+// Credential injection types
+// =========================================================================
+
+/// How to inject a credential into an HTTP request.
+#[derive(Debug, Clone)]
+pub enum InjectionLocation {
+    /// Authorization: Bearer {value}
+    Bearer,
+}
+
+/// Maps a domain to a vault secret and injection method.
+#[derive(Debug, Clone)]
+pub struct CredentialMapping {
+    pub secret_name: String,
+    pub location: InjectionLocation,
+}
+
+// =========================================================================
 // Plugin manifest (plugin.toml)
 // =========================================================================
 
@@ -108,6 +126,9 @@ pub struct PluginManifest {
     /// HTTP domains this plugin is allowed to access (from [capabilities].host_http).
     /// E.g., ["api.github.com", "hooks.slack.com"]. Empty means no HTTP access.
     pub host_http_domains: Vec<String>,
+    /// Credential mappings per domain (from [capabilities.host_secrets]).
+    /// Maps domain → secret name + injection location.
+    pub host_secrets: std::collections::HashMap<String, CredentialMapping>,
     pub provides: PluginProvides,
     /// Schema packages this plugin references (from [schemas.<name>].package).
     /// Maps schema name → package string (e.g., "forge" → "patina:schema/forge@1.0.0").
@@ -137,6 +158,9 @@ pub struct GrantedCapabilities {
     pub query_kinds: std::collections::HashSet<String>,
     pub query_scope: QueryScope,
     pub http_domains: std::collections::HashSet<String>,
+    /// Credential mappings: domain → secret name + injection location.
+    /// Empty means no credential injection.
+    pub credential_mappings: std::collections::HashMap<String, CredentialMapping>,
 }
 
 /// What the plugin provides to the system.
@@ -237,6 +261,41 @@ impl PluginManifest {
             })
             .unwrap_or_default();
 
+        // Parse [capabilities.host_secrets] — credential mappings per domain
+        let host_secrets = cap_table
+            .and_then(|cap| cap.get("host_secrets"))
+            .and_then(|v| v.as_table())
+            .map(|secrets_table| {
+                secrets_table
+                    .iter()
+                    .filter_map(|(domain, v)| {
+                        let t = v.as_table()?;
+                        let secret_name =
+                            t.get("secret").and_then(|s| s.as_str())?.to_string();
+                        let location_str =
+                            t.get("location").and_then(|s| s.as_str()).unwrap_or("bearer");
+                        let location = match location_str {
+                            "bearer" => InjectionLocation::Bearer,
+                            other => {
+                                eprintln!(
+                                    "warning: unknown injection location '{}' for domain '{}', skipping",
+                                    other, domain
+                                );
+                                return None;
+                            }
+                        };
+                        Some((
+                            domain.clone(),
+                            CredentialMapping {
+                                secret_name,
+                                location,
+                            },
+                        ))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
         // Parse provides
         let provides_table = table.get("provides").and_then(|v| v.as_table());
         let child = provides_table
@@ -300,6 +359,7 @@ impl PluginManifest {
             allowed_toy_commands,
             host_query_kinds,
             host_http_domains,
+            host_secrets,
             provides: PluginProvides {
                 child,
                 commands,
@@ -322,6 +382,7 @@ impl PluginManifest {
     pub fn granted_capabilities(&self) -> GrantedCapabilities {
         let query_kinds = self.host_query_kinds.iter().cloned().collect();
         let http_domains = self.host_http_domains.iter().cloned().collect();
+        let credential_mappings = self.host_secrets.clone();
 
         // Parse query_scope from capabilities table if present.
         // For now, default to CurrentProject — AllRepos requires explicit opt-in.
@@ -331,6 +392,7 @@ impl PluginManifest {
             query_kinds,
             query_scope,
             http_domains,
+            credential_mappings,
         }
     }
 }

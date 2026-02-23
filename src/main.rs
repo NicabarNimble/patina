@@ -1370,6 +1370,7 @@ fn main() -> Result<()> {
                         allowed_toy_commands: vec![],
                         host_query_kinds: vec![],
                         host_http_domains: vec![],
+                        host_secrets: std::collections::HashMap::new(),
                         provides: patina::plugin::PluginProvides {
                             child: None,
                             commands: vec!["doctor".into()],
