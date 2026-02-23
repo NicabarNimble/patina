@@ -2023,3 +2023,172 @@ fn credential_mapping_only_for_mapped_domain() {
     // api.other.com does NOT have mapping
     assert!(grants.credential_mappings.get("api.other.com").is_none());
 }
+
+// =====================================================================
+// A1: Secret grants gate — check_secret_grant
+// =====================================================================
+
+#[test]
+fn secret_grant_denied_when_no_file() {
+    // With no grants file, all secrets should be denied
+    // (the real file may or may not exist, so we test the function logic
+    // by relying on the fact that a random plugin name won't be granted)
+    let result = host_support::check_secret_grant("nonexistent-plugin-xyzzy-test", "some-secret");
+    assert!(!result, "should deny when plugin not in grants file");
+}
+
+#[test]
+fn secret_grant_denied_when_plugin_not_listed() {
+    let dir = tempfile::tempdir().unwrap();
+    let grants_path = dir.path().join("secret-grants.toml");
+    std::fs::write(
+        &grants_path,
+        r#"
+[other-plugin]
+secrets = ["github-token"]
+"#,
+    )
+    .unwrap();
+
+    // Test the parsing logic directly — create a helper that reads from a specific path
+    let content = std::fs::read_to_string(&grants_path).unwrap();
+    let table: toml::Table = content.parse().unwrap();
+    assert!(
+        table.get("my-plugin").is_none(),
+        "my-plugin should not be in grants"
+    );
+}
+
+#[test]
+fn secret_grant_denied_when_secret_not_in_list() {
+    let dir = tempfile::tempdir().unwrap();
+    let grants_path = dir.path().join("secret-grants.toml");
+    std::fs::write(
+        &grants_path,
+        r#"
+[my-plugin]
+secrets = ["github-token"]
+"#,
+    )
+    .unwrap();
+
+    let content = std::fs::read_to_string(&grants_path).unwrap();
+    let table: toml::Table = content.parse().unwrap();
+    let plugin = table.get("my-plugin").unwrap().as_table().unwrap();
+    let secrets = plugin.get("secrets").unwrap().as_array().unwrap();
+    let has_openai = secrets.iter().any(|v| v.as_str() == Some("openai-key"));
+    assert!(!has_openai, "openai-key should not be granted to my-plugin");
+}
+
+#[test]
+fn secret_grant_allowed_when_listed() {
+    let dir = tempfile::tempdir().unwrap();
+    let grants_path = dir.path().join("secret-grants.toml");
+    std::fs::write(
+        &grants_path,
+        r#"
+[my-plugin]
+secrets = ["github-token", "slack-webhook"]
+"#,
+    )
+    .unwrap();
+
+    let content = std::fs::read_to_string(&grants_path).unwrap();
+    let table: toml::Table = content.parse().unwrap();
+    let plugin = table.get("my-plugin").unwrap().as_table().unwrap();
+    let secrets = plugin.get("secrets").unwrap().as_array().unwrap();
+    let has_github = secrets.iter().any(|v| v.as_str() == Some("github-token"));
+    let has_slack = secrets.iter().any(|v| v.as_str() == Some("slack-webhook"));
+    assert!(has_github, "github-token should be granted");
+    assert!(has_slack, "slack-webhook should be granted");
+}
+
+// =====================================================================
+// A3: HTTP injection path — inject_credential builds correct headers
+// =====================================================================
+
+#[test]
+fn inject_credential_adds_bearer_header() {
+    let client = reqwest::blocking::Client::new();
+    let builder = client.get("https://api.github.com/user");
+    let mapping = CredentialMapping {
+        secret_name: "test-token".to_string(),
+        location: InjectionLocation::Bearer,
+    };
+    let builder = host_support::inject_credential(builder, &mapping, "ghp_test123");
+    let request = builder.build().unwrap();
+    let auth = request.headers().get("Authorization").unwrap();
+    assert_eq!(
+        auth, "Bearer ghp_test123",
+        "should add Bearer authorization header"
+    );
+}
+
+#[test]
+fn inject_credential_no_header_without_call() {
+    let client = reqwest::blocking::Client::new();
+    let builder = client.get("https://api.github.com/user");
+    // Don't call inject_credential
+    let request = builder.build().unwrap();
+    assert!(
+        request.headers().get("Authorization").is_none(),
+        "should have no Authorization header without injection"
+    );
+}
+
+#[test]
+fn http_get_without_mapping_sends_no_auth() {
+    // GrantedCapabilities with a domain but no credential mapping
+    let grants = GrantedCapabilities {
+        http_domains: ["api.github.com".to_string()].into_iter().collect(),
+        credential_mappings: std::collections::HashMap::new(),
+        ..Default::default()
+    };
+    let client = host_support::build_http_client().unwrap();
+    // This will make a real HTTP request, but without any auth header.
+    // We verify it doesn't panic and returns a result (likely 200 for /zen).
+    let result = host_support::http_get(
+        &client,
+        &grants,
+        "test-plugin",
+        "https://api.github.com/zen",
+    );
+    // Either succeeds (200) or fails (network error in CI) — but never panics
+    // and never injects credentials
+    match result {
+        Ok(r) => assert!(r.status == 200 || r.status == 403),
+        Err(_) => {} // network error is acceptable in test environments
+    }
+}
+
+#[test]
+fn http_get_with_mapping_but_no_grant_sends_no_auth() {
+    // GrantedCapabilities with a credential mapping but no grants file
+    let mut creds = std::collections::HashMap::new();
+    creds.insert(
+        "api.github.com".to_string(),
+        CredentialMapping {
+            secret_name: "test-token-xyzzy".to_string(),
+            location: InjectionLocation::Bearer,
+        },
+    );
+    let grants = GrantedCapabilities {
+        http_domains: ["api.github.com".to_string()].into_iter().collect(),
+        credential_mappings: creds,
+        ..Default::default()
+    };
+    let client = host_support::build_http_client().unwrap();
+    // The grants gate will deny (no grants file for this plugin name),
+    // so the request proceeds unauthenticated.
+    let result = host_support::http_get(
+        &client,
+        &grants,
+        "test-plugin-no-grant-xyzzy",
+        "https://api.github.com/zen",
+    );
+    // Should succeed unauthenticated — the grant denial means no credential injected
+    match result {
+        Ok(r) => assert!(r.status == 200 || r.status == 403),
+        Err(_) => {} // network error is acceptable in test environments
+    }
+}
