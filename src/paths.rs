@@ -196,6 +196,14 @@ pub mod plugin {
     pub fn work_dir(name: &str) -> PathBuf {
         plugins_dir().join(name).join("work")
     }
+
+    /// Secret grants file: `~/.patina/plugin-config/secret-grants.toml`
+    /// Maps plugin names to allowed secret names for credential injection.
+    pub fn secret_grants_path() -> PathBuf {
+        patina_home()
+            .join("plugin-config")
+            .join("secret-grants.toml")
+    }
 }
 
 /// User-level layer paths (~/.patina/layer/)

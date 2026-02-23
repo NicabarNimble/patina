@@ -11,9 +11,11 @@ beliefs:
 - defense-in-depth-over-perfect-isolation
 - storage-encryption-vs-runtime-isolation
 - bearer-token-forces-plaintext-exposure
+- two-layer-capability-grants
 sessions:
 - 20260222-165738
 - 20260222-200024
+- 20260223-061011
 ---
 
 # feat: WASM Host-Boundary Credential Injection
@@ -113,9 +115,11 @@ misconfigured services).
 
 Credential mappings are validated at **two points** (defense in depth):
 
-**Load-time** (plugin manifest parsing):
+**Load-time** (plugin manifest parsing in `check_capabilities`):
 - Every domain in `host_secrets` must also be in `host_http` allowlist
-- Secret names validated against vault (warn if missing, don't block load)
+- Secret names probed against vault via `get_global_secret()` — warn if
+  missing or decryption fails, don't block load. Surfaces misconfig at
+  plugin load rather than first HTTP call.
 - Injection location must be a supported type
 
 **Call-time** (host_support.rs):
@@ -254,9 +258,98 @@ And: Request sent without credentials for unmapped domain
 | Plugin reads credential from WASM memory | Credential never enters WASM linear memory | Mitigated |
 | Plugin extracts credential from response | Leak detection scans and redacts | Mitigated |
 | Plugin calls unmapped domain with credential | Domain must be in both host_http AND host_secrets | Mitigated |
-| Manifest declares secret it shouldn't access | Vault access is per-user — if the secret is in your vault, you authorized it | Acceptable |
+| Manifest declares secret it shouldn't access | Secret grants gate: `resolve_credential` checks `~/.patina/plugin-config/secret-grants.toml` before decrypting. Ungated plugins get no secrets. | Mitigated |
 | Credential lingers in host memory | Decrypted only for request duration, Rust ownership drops it after | Mitigated |
 | Multiple plugins share same secret | Each plugin has independent mapping, host decrypts per-call | No cross-plugin leakage |
+
+## Addendum: Post-Review Fixes (2026-02-23)
+
+Three findings from agent review, all addressed in this spec:
+
+### A1. Secret Grants Gate (P1 — supply-chain risk)
+
+`resolve_credential` must check a user-maintained allowlist before decrypting
+any secret. Without this, a malicious plugin manifest can name any well-known
+vault key and exfiltrate it to any declared domain.
+
+**Fix:** `resolve_credential` reads `~/.patina/plugin-config/secret-grants.toml`
+before calling `get_global_secret()`. Format:
+
+```toml
+[patina-github]
+secrets = ["github-token"]
+
+[my-custom-plugin]
+secrets = ["slack-webhook", "openai-key"]
+```
+
+Rules:
+- If the file doesn't exist: deny all secret access, log actionable message
+  (`"no secret-grants.toml — run 'patina plugin grant <plugin> <secret>' to allow"`)
+- If the file exists but the plugin isn't listed: deny, warn
+- If the plugin is listed but the secret isn't in its `secrets` array: deny, warn
+- Only when plugin + secret both match: proceed to `get_global_secret()`
+
+This implements the second layer of [[two-layer-capability-grants]]: manifest
+declares what the plugin wants, host decides what to allow.
+
+### A2. Load-Time Vault Probe (P2 — silent misconfig)
+
+The spec already stated "Secret names validated against vault (warn if missing,
+don't block load)" under Capability Validation, but the implementation skipped
+this. Fix: `check_capabilities` calls `get_global_secret()` for each secret
+in `host_secrets` and emits a warning if the secret is missing or decryption
+fails. This surfaces misconfigurations at plugin load time, not at first HTTP
+call.
+
+### A3. HTTP Injection Path Test (P3 — regression risk)
+
+The test suite covers manifest parsing and the pure `leak_check` helper but
+nothing exercises the actual `http_get`/`http_post` injection path. A regression
+(forgetting to call `inject_credential` or `leak_check`) would compile and
+all tests would still pass.
+
+**Fix:** Add unit tests that construct `GrantedCapabilities` with credential
+mappings and call `http_get`/`http_post` against a localhost test server (or
+verify the request builder state). At minimum, test that:
+- `http_get` with a credential mapping adds the Authorization header
+- `http_get` with a credential mapping leak-checks the response
+- `http_get` without a mapping sends no Authorization header
+
+### Exit Criteria (addendum)
+
+**7. Secret grants gate blocks ungated plugins**
+```
+Given: A plugin with host_secrets for "github-token"
+And: No secret-grants.toml exists (or plugin not listed)
+When: Plugin calls host_http_get for the mapped domain
+Then: No credential is injected (request sent unauthenticated)
+And: Warning logged with actionable message about granting
+```
+
+**8. Secret grants gate allows gated plugins**
+```
+Given: A plugin "my-plugin" with host_secrets for "github-token"
+And: secret-grants.toml lists my-plugin with secrets = ["github-token"]
+When: Plugin calls host_http_get for the mapped domain
+Then: Credential is injected normally
+```
+
+**9. Load-time vault probe warns on missing secret**
+```
+Given: A plugin with host_secrets referencing "nonexistent-secret"
+When: Plugin is loaded (check_capabilities)
+Then: Warning logged: "secret 'nonexistent-secret' not found in vault"
+And: Plugin loads successfully (not blocked)
+```
+
+**10. HTTP injection path has automated test coverage**
+```
+Given: Unit test constructs GrantedCapabilities with credential mapping
+When: http_get is called against a test endpoint
+Then: Test verifies Authorization header was added to the request
+And: Test verifies leak_check was applied to response body
+```
 
 ## Reference
 

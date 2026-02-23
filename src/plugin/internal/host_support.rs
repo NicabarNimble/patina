@@ -256,16 +256,78 @@ pub(super) struct HttpResult {
     pub body: String,
 }
 
-/// Resolve a credential for a domain: decrypt from vault, return value.
+/// Check if a plugin is granted access to a specific secret.
 ///
-/// Returns None if no mapping, secret missing, or decryption fails.
-/// Logs warnings for missing/failed secrets — never errors out.
+/// Reads `~/.patina/plugin-config/secret-grants.toml`. Format:
+/// ```toml
+/// [my-plugin]
+/// secrets = ["github-token"]
+/// ```
+///
+/// Returns true only if the file exists, the plugin is listed, and the
+/// secret is in the plugin's `secrets` array. Denies by default.
+pub(super) fn check_secret_grant(plugin_name: &str, secret_name: &str) -> bool {
+    let grants_path = crate::paths::plugin::secret_grants_path();
+    let content = match std::fs::read_to_string(&grants_path) {
+        Ok(c) => c,
+        Err(_) => {
+            eprintln!(
+                "[plugin:{}] no secret-grants.toml — run 'patina plugin grant {} {}' to allow",
+                plugin_name, plugin_name, secret_name
+            );
+            return false;
+        }
+    };
+    let table: toml::Table = match content.parse() {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!(
+                "[plugin:{}] failed to parse secret-grants.toml: {}",
+                plugin_name, e
+            );
+            return false;
+        }
+    };
+    let plugin_section = match table.get(plugin_name).and_then(|v| v.as_table()) {
+        Some(t) => t,
+        None => {
+            eprintln!(
+                "[plugin:{}] not listed in secret-grants.toml — run 'patina plugin grant {} {}' to allow",
+                plugin_name, plugin_name, secret_name
+            );
+            return false;
+        }
+    };
+    let allowed = plugin_section
+        .get("secrets")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().any(|v| v.as_str() == Some(secret_name)))
+        .unwrap_or(false);
+    if !allowed {
+        eprintln!(
+            "[plugin:{}] secret '{}' not granted — run 'patina plugin grant {} {}' to allow",
+            plugin_name, secret_name, plugin_name, secret_name
+        );
+    }
+    allowed
+}
+
+/// Resolve a credential for a domain: check grants, decrypt from vault, return value.
+///
+/// Returns None if no mapping, not granted, secret missing, or decryption fails.
+/// Logs warnings for each denial — never errors out.
 fn resolve_credential(
     plugin_name: &str,
     grants: &GrantedCapabilities,
     domain: &str,
 ) -> Option<(String, String)> {
     let mapping = grants.credential_mappings.get(domain)?;
+
+    // Secret grants gate: check user-maintained allowlist before decrypting
+    if !check_secret_grant(plugin_name, &mapping.secret_name) {
+        return None;
+    }
+
     match crate::secrets::get_global_secret(&mapping.secret_name) {
         Ok(Some(value)) => Some((mapping.secret_name.clone(), value)),
         Ok(None) => {
@@ -286,7 +348,7 @@ fn resolve_credential(
 }
 
 /// Inject credential into a request builder based on the mapping's location.
-fn inject_credential(
+pub(super) fn inject_credential(
     builder: reqwest::blocking::RequestBuilder,
     mapping: &CredentialMapping,
     value: &str,
