@@ -8,6 +8,8 @@ related:
 beliefs:
 - patina-identity
 - transport-security-by-trust-boundary
+- storage-encryption-vs-runtime-isolation
+- defense-in-depth-over-perfect-isolation
 ---
 
 # fix: Launcher Auth — Long-Lived Token via Patina Secrets
@@ -232,15 +234,14 @@ injection.
 
 | Platform | Identity Source | Notes |
 |---|---|---|
-| macOS (GUI) | Keychain | Primary path |
-| macOS (SSH) | Keychain | Works — see spec-secrets-keychain-ssh |
-| Linux | `PATINA_IDENTITY` env var | No Keychain; user exports identity |
-| CI | `PATINA_IDENTITY` env var | Same as Linux |
+| macOS (GUI) | Encrypted file (Keychain fallback) | Primary path — see spec-secrets-dual-storage |
+| macOS (SSH) | Encrypted file | Machine-bound ChaCha20-Poly1305 |
+| Linux | Encrypted file | Machine-bound via /etc/machine-id |
+| CI | `PATINA_IDENTITY` env var | No encrypted file; user exports identity |
 
-On macOS over SSH: the Keychain item is stored with
-`kSecAttrAccessibleAlwaysThisDeviceOnly` (see `spec-secrets-keychain-ssh`),
-so SSH sessions decrypt the vault without Touch ID or session cache.
-No `PATINA_IDENTITY` env var needed on macOS.
+Identity resolution uses encrypted file (`~/.patina/identity.enc`) as primary
+on all platforms, with Keychain as legacy fallback with auto-migration on macOS.
+See completed spec-secrets-dual-storage (v0.28.0) for details.
 
 ### Error Handling
 
