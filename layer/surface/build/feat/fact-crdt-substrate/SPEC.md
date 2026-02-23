@@ -6,8 +6,8 @@ created: 2026-02-17
 sessions:
   origin: 20260217-115200
 related:
-  - layer/surface/build/feat/fact-schema-registry/SPEC.md
-  - layer/surface/build/feat/patina-polymorphic-extraction/SPEC.md
+  - src/eventlog.rs
+  - src/commands/scrape/forge/mod.rs
 beliefs:
   - beliefs-are-the-product
   - work-triages-specs
@@ -93,3 +93,23 @@ connectors/plugins ──> CRDT fact store (per schema) ──> materializer ─
 4. Belief audit uses CRDT change feed to update grounding metrics within one
    minute of fact ingestion (no manual scrape).
 5. Docs and tooling describe backup/compact flows for CRDT stores.
+
+## Alignment Audit (2026-02-23, session 20260223-132543)
+
+**Disposition: DEFER**
+
+Reviewed against spec-workflow-rigor architectural decisions. No conflicts — this
+spec is orthogonal to the spec/session lifecycle work.
+
+**Dead references removed:**
+- `fact-schema-registry/SPEC.md` — spec does not exist in tree (abandoned/never created)
+- `patina-polymorphic-extraction/SPEC.md` — spec does not exist in tree (abandoned/never created)
+- Replaced with actual code paths: `src/eventlog.rs`, `src/commands/scrape/forge/mod.rs`
+
+**Architecture gap:** When implemented, should follow the three-layer capability
+pattern ([[plugins-are-three-prong-bundles]]): `patina fact` CLI + MCP tools +
+adapter skill. No CRDT code or dependencies exist yet — entirely aspirational.
+
+**No urgency.** Depends on schema registry work and Mother daemon maturation.
+Existing eventlog + materialized view pattern (forge_issues, beliefs table)
+is working. CRDT layer is a future optimization for sync/replication.
