@@ -1285,11 +1285,95 @@ pub fn resume_spec(id: &str, force: bool, json: bool) -> Result<()> {
     anyhow::bail!("spec resume not yet implemented")
 }
 
-/// Block an active spec on another spec
+/// Block an active spec on another spec.
+///
+/// Appends to blocked_by list, updates spec_deps, creates annotated tag.
 pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<()> {
-    // Step 9: will be implemented after pause
-    let _ = (id, blocker, reason, json);
-    anyhow::bail!("spec block not yet implemented")
+    // 1. Validate spec is active
+    let (_file_path, old_status, _title) = find_spec(id)?;
+    match old_status.as_deref() {
+        Some("active") => {}
+        Some(s) => anyhow::bail!(
+            "Cannot block '{}' — status is '{}', expected 'active'", id, s
+        ),
+        None => anyhow::bail!("Spec '{}' has no status", id),
+    }
+
+    // 2. Validate blocker spec exists
+    let _ = find_spec(blocker).with_context(|| {
+        format!("Blocker spec '{}' not found", blocker)
+    })?;
+
+    // 3. Update YAML
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let tag_n = next_tag_number(id, "blocked")?;
+    let tag_name = format!("spec/{}-blocked-{}", id, tag_n);
+
+    let (file_path, _fm) = mutate_spec(id, |fm| {
+        fm.status = Some("blocked".to_string());
+        // Append blocker to blocked_by list (D3: don't overwrite)
+        if !fm.blocked_by.contains(&blocker.to_string()) {
+            fm.blocked_by.push(blocker.to_string());
+        }
+        fm.blocked_reason = Some(reason.to_string());
+        fm.blocked_date = Some(today.clone());
+        fm.paused_at_tag = Some(tag_name.clone());
+        Ok(())
+    })?;
+
+    // 4. Update spec_deps in DB
+    let db_path = Path::new(DB_PATH);
+    if db_path.exists() {
+        let conn = Connection::open(db_path).context("Failed to open database")?;
+        conn.execute(
+            "INSERT OR IGNORE INTO spec_deps (spec_id, depends_on) VALUES (?1, ?2)",
+            rusqlite::params![id, blocker],
+        )?;
+    }
+
+    // 5. Create annotated tag
+    let tag_msg = format!("{} (blocked by {})", reason, blocker);
+    patina::git::create_tag_at(&tag_name, &tag_msg, "HEAD")?;
+
+    // 6. Git commit
+    let output = Command::new("git")
+        .args(["add", &file_path])
+        .output()
+        .context("Failed to stage spec file")?;
+    if !output.status.success() {
+        anyhow::bail!("git add failed: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    let commit_msg = format!("spec: block {} (waiting on {})", id, blocker);
+    let output = Command::new("git")
+        .args(["commit", "-m", &commit_msg])
+        .output()
+        .context("Failed to commit")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.contains("nothing to commit") {
+            anyhow::bail!("git commit failed: {}", stderr);
+        }
+    }
+
+    if json {
+        let result = serde_json::json!({
+            "command": "block",
+            "spec_id": id,
+            "new_status": "blocked",
+            "blocker": blocker,
+            "reason": reason,
+            "tag": tag_name,
+        });
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        println!("Blocked: {} → blocked", id);
+        println!("  Blocked by: {}", blocker);
+        println!("  Reason: {}", reason);
+        println!("  Tag: {}", tag_name);
+        println!("  Unblock: patina spec resume {} (when {} is complete)", id, blocker);
+    }
+
+    Ok(())
 }
 
 /// Check if a git tag exists
