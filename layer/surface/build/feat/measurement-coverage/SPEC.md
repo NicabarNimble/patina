@@ -7,11 +7,17 @@ sessions:
   origin: 20260216-091624
 related:
 - layer/core/patina-identity.md
-- layer/surface/build/feat/belief-truthfulness/SPEC.md
+- spec/belief-truthfulness (archived, recoverable via git show)
+- src/commands/eval/mod.rs
+- src/commands/belief/mod.rs
+- plugins/doctor/src/lib.rs
+- wit/deps/patina-host/host.wit
 beliefs:
 - measure-the-measurement
 - measure-first
 - error-analysis-over-architecture
+- plugins-are-three-prong-bundles
+- mcp-is-shim-cli-is-product
 ---
 
 # feat: Measurement Coverage System
@@ -963,3 +969,25 @@ label: all-verbs-have-depth
 5. **Eval history bootstrap** — Existing eval runs have no stored history. Phase 1
    starts fresh — history begins when the measurement events start flowing. No
    attempt to backfill.
+
+## Alignment Audit (2026-02-23, session 20260223-132543)
+
+**Disposition: ALIGN (minor)**
+
+Reviewed against spec-workflow-rigor architectural decisions. Best-aligned spec
+in the tree — no conflicts, already has the three-layer pattern (CLI Phase 1-2,
+MCP Phase 2, Plugin API Phase 3).
+
+**Reference fixes:**
+- `belief-truthfulness/SPEC.md` was completed and archived (tag: `spec/belief-truthfulness`).
+  Updated `related:` to reference the git tag instead of the dead file path.
+- Added actual code paths to `related:` for traceability.
+- Added `plugins-are-three-prong-bundles` and `mcp-is-shim-cli-is-product` to beliefs.
+
+**Code references verified:** All file paths and line numbers in the spec body
+are accurate (eval/mod.rs, bench/mod.rs, belief/mod.rs, scrape/beliefs/*,
+plugins/doctor, report/internal.rs, patina-identity.md, WIT host interfaces).
+
+**No structural changes needed.** This spec is ready to implement once
+workflow-rigor Phase 1 lands (no hard dependency, but measurement events for
+spec transitions would benefit from the new tag/status infrastructure).
