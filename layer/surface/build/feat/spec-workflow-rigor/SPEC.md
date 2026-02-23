@@ -1,7 +1,7 @@
 ---
 type: feat
 id: spec-workflow-rigor
-status: ready
+status: active
 created: 2026-02-23
 sessions:
 - 20260222-054702
