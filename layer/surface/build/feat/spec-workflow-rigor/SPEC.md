@@ -604,6 +604,18 @@ can work on it or defer it. Creation is the entry point.
    with default text "Remaining work from split". CLI commands shouldn't block
    on interactive input — flags are composable.
 
+2. **Flag name `--new-id` instead of `--id`.** Spec said `--id <new-id>`.
+   Used `--new-id` because `<id>` is already the positional arg for the spec
+   being split — `--id` would be ambiguous. Better UX, minor deviation.
+
+3. **No `--major` flag on split.** `complete_spec()` accepts `--major` for
+   1.0.0 bumps. `split_spec()` always uses `BumpType::from_spec_type()` —
+   no major override. Edge case — fixable if needed.
+
+4. **New spec gets a `## Recovery` section.** Spec didn't mention this.
+   Added so the new draft contains the exact `git show` command to recover
+   parent content. Strictly additive.
+
 ### Phase 3: Queue System — `spec next`
 
 **Goal:** The return path. Guide user + LLM to the right work.
@@ -632,6 +644,19 @@ can work on it or defer it. Creation is the entry point.
 - [x] `spec ready` shows impact and paused/blocked status
 - [x] `spec list` shows age for paused/blocked specs
 - [x] Paused spec shown with "resolve before pausing another"
+
+**Implementation deviations** (session [[session-20260223-170149]]):
+
+1. **Impact is a tiebreaker, not its own rank tier.** Spec listed "Impact:
+   blocks N other specs" as a separate ranking level. Implemented as a
+   tiebreaker within each priority tier (active > unblocked > paused > ready
+   > draft). High-impact specs surface first within their category — more
+   useful than a flat impact-only tier.
+
+2. **`spec ready` JSON output unchanged.** Enhanced view (paused section,
+   unblocked section, impact counts) only appears in human output. JSON
+   contract still returns only ready/active specs from `get_ready_specs()`.
+   Deliberate — JSON consumers shouldn't get unexpected shape changes.
 
 ### Phase 4: Session Hardening
 
