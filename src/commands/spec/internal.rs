@@ -477,8 +477,8 @@ pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
 // Status Update (spec-as-work-item Phase 4)
 // ============================================================================
 
-/// Valid spec statuses (state machine: draft → ready → active → complete)
-const VALID_STATUSES: &[&str] = &["draft", "ready", "active", "complete", "abandoned"];
+/// Valid spec statuses (state machine: draft → ready → active → paused/blocked → complete/abandoned)
+const VALID_STATUSES: &[&str] = &["draft", "ready", "active", "paused", "blocked", "complete", "abandoned"];
 
 /// Update a spec's status in both file and database
 ///
