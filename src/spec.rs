@@ -64,7 +64,7 @@ pub struct SpecFrontmatter {
     #[serde(default)]
     pub id: String,
 
-    /// Status: draft, ready, active, complete, abandoned
+    /// Status: draft, ready, active, paused, blocked, complete, abandoned
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
 
@@ -115,6 +115,30 @@ pub struct SpecFrontmatter {
     /// Current milestone being worked on
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_milestone: Option<String>,
+
+    /// Why this spec was paused (required on pause)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paused_reason: Option<String>,
+
+    /// When paused (ISO 8601 date, UTC)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paused_date: Option<String>,
+
+    /// Tag ref for resume diffs
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paused_at_tag: Option<String>,
+
+    /// Why this spec was blocked
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocked_reason: Option<String>,
+
+    /// When blocked (ISO 8601 date, UTC)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocked_date: Option<String>,
+
+    /// Parent spec ID (set by split)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub split_from: Option<String>,
 }
 
 // ============================================================================
