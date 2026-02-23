@@ -1,7 +1,7 @@
 ---
 type: feat
 id: git-tag-system
-status: active
+status: draft
 created: 2026-02-15
 blocked_by:
 - spec-workflow-rigor
