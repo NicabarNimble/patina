@@ -1155,11 +1155,127 @@ pub fn abandon_spec(id: &str, reason: Option<&str>, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// Pause an active spec with reason
+/// Pause an active spec with reason.
+///
+/// Enforces one-paused-spec rule, creates WIP commit if dirty,
+/// tags with spec/<id>-paused-<N>, rolls back YAML on failure.
 pub fn pause_spec(id: &str, reason: &str, json: bool) -> Result<()> {
-    // Step 8: will be implemented after abandon
-    let _ = (id, reason, json);
-    anyhow::bail!("spec pause not yet implemented")
+    // 1. Find spec and validate status
+    let (file_path, old_status, _title) = find_spec(id)?;
+    match old_status.as_deref() {
+        Some("active") => {}
+        Some(s) => anyhow::bail!(
+            "Cannot pause '{}' — status is '{}', expected 'active'", id, s
+        ),
+        None => anyhow::bail!("Spec '{}' has no status", id),
+    }
+
+    // 2. One-paused-spec rule: check no other spec is already paused
+    let all_specs = get_all_specs(&ListFilters::default())?;
+    let paused: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("paused") && s.id != id)
+        .collect();
+    if let Some(already_paused) = paused.first() {
+        anyhow::bail!(
+            "{} is already paused.\n  Resume, split, or abandon it first:\n    \
+             patina spec resume {}\n    \
+             patina spec abandon {}",
+            already_paused.id, already_paused.id, already_paused.id
+        );
+    }
+
+    // 3. Check no merge conflicts
+    if patina::git::has_merge_conflicts()? {
+        anyhow::bail!(
+            "Cannot pause — unresolved merge conflicts exist.\n  \
+             Resolve conflicts before pausing."
+        );
+    }
+
+    // 4. WIP commit if tracked files are dirty
+    if !patina::git::is_clean_tracked()? {
+        let wip_msg = format!("WIP: {} paused — {}", id, reason);
+        patina::git::add_all()?;
+        patina::git::commit(&wip_msg)?;
+    }
+
+    // 5. Save original file for rollback
+    let original_content = std::fs::read_to_string(&file_path)
+        .with_context(|| format!("Failed to read {}", file_path))?;
+
+    // 6. Update YAML: status=paused, set pause fields
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let tag_n = next_tag_number(id, "paused")?;
+    let tag_name = format!("spec/{}-paused-{}", id, tag_n);
+
+    let (file_path, _fm) = match mutate_spec(id, |fm| {
+        fm.status = Some("paused".to_string());
+        fm.paused_reason = Some(reason.to_string());
+        fm.paused_date = Some(today.clone());
+        fm.paused_at_tag = Some(tag_name.clone());
+        Ok(())
+    }) {
+        Ok(result) => result,
+        Err(e) => {
+            // Rollback YAML
+            let _ = std::fs::write(&file_path, &original_content);
+            return Err(e);
+        }
+    };
+
+    // 7. Create annotated tag
+    if let Err(e) = patina::git::create_tag_at(&tag_name, reason, "HEAD") {
+        let _ = std::fs::write(&file_path, &original_content);
+        return Err(e);
+    }
+
+    // 8. Git commit the spec file change
+    let commit_result = (|| -> Result<()> {
+        let output = Command::new("git")
+            .args(["add", &file_path])
+            .output()
+            .context("Failed to stage spec file")?;
+        if !output.status.success() {
+            anyhow::bail!("git add failed: {}", String::from_utf8_lossy(&output.stderr));
+        }
+        let commit_msg = format!("spec: pause {} — {}", id, reason);
+        let output = Command::new("git")
+            .args(["commit", "-m", &commit_msg])
+            .output()
+            .context("Failed to commit")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if !stderr.contains("nothing to commit") {
+                anyhow::bail!("git commit failed: {}", stderr);
+            }
+        }
+        Ok(())
+    })();
+
+    if let Err(e) = commit_result {
+        let _ = std::fs::write(&file_path, &original_content);
+        return Err(e);
+    }
+
+    if json {
+        let result = serde_json::json!({
+            "command": "pause",
+            "spec_id": id,
+            "new_status": "paused",
+            "reason": reason,
+            "tag": tag_name,
+            "paused_date": today,
+        });
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        println!("Paused: {} → paused", id);
+        println!("  Reason: {}", reason);
+        println!("  Tag: {}", tag_name);
+        println!("  Resume: patina spec resume {}", id);
+    }
+
+    Ok(())
 }
 
 /// Resume a paused or blocked spec
