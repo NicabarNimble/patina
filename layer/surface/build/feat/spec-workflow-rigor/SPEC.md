@@ -279,21 +279,13 @@ patina session list
 1. Should `patina session list` also query archived sessions in
    `layer/sessions/`, or only active + `.patina/local/`?
 2. Should `patina doctor` check for stale sessions as part of health checks?
-3. Is pre-commit hook the right trigger for auto git metric capture, or a
-   background file watcher? (Deferred — see below.)
-
 ## Deferred (needs own spec if pursued)
 
 - **Session state machine** — Formal states: `created → active → paused →
   ended`. Transitions validated in Rust. Would prevent stale sessions
   structurally but changes the fundamental model (file-as-state →
-  state-as-data). The Phase 3 fixes may make it unnecessary. Park it.
-- **Eventlog consumer in patina-review** — Give the eventlog its first
-  reader. Premature until the eventlog has more consumers writing to it.
-- **Pre-commit hook for auto git metric capture** — Opt-in hook appending
-  git context to active session. Manual `/session-update` stays for
-  narrative — hook captures facts. Premature until session hardening
-  proves the value.
+  state-as-data). The Phase 3 fixes may make it unnecessary — try the
+  cheap fix before the expensive redesign.
 
 ## Non-Goals
 
@@ -302,6 +294,10 @@ patina session list
 - No complex priority algorithms
 - No multi-project coordination (that's Mother's job)
 - No automatic unblocking (human decides when to unblock)
+- No pre-commit hook for auto git metric capture (abandoned — marginal
+  value over manual `/session-update`, adds hook complexity)
+- No eventlog consumer (measurement concern — belongs with
+  measurement-coverage, not workflow rigor)
 
 ## Success Metrics
 
