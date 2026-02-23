@@ -1,7 +1,7 @@
 ---
 type: feat
 id: spec-workflow-rigor
-status: paused
+status: active
 created: 2026-02-23
 sessions:
 - 20260222-054702
@@ -24,9 +24,6 @@ beliefs:
 - active-is-a-black-hole
 - specs-orthogonal-to-sessions
 - plugins-are-three-prong-bundles
-paused_reason: Testing pause/resume cycle
-paused_date: 2026-02-23
-paused_at_tag: spec/spec-workflow-rigor-paused-1
 ---
 
 # feat: Workflow Rigor — Pause, Block, Split, Resume
