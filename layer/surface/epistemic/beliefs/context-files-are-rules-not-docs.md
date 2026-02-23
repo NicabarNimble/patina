@@ -20,7 +20,7 @@ Context files (CLAUDE.md, AGENTS.md) should contain behavioral rules and pointer
 
 ## Evidence
 
-- [[session-20260223-152707]]: ETH Zurich eval-AGENTS.md paper (Feb 2026) — context files reduce task success rates while increasing cost 20%+; LLM-generated files hurt -3%, developer-written help +4%; recommendation is minimal requirements only (weight: 0.9)
+- [[session-20260223-152707]]: "Evaluating AGENTS.md: Are Repository-Level Context Files Helpful for Coding Agents?" (Gloaguen et al., ETH Zurich, Feb 2026) — context files reduce task success rates while increasing cost 20%+; LLM-generated files hurt -3%, developer-written help +4%; recommendation is minimal requirements only (weight: 0.9)
 - [[session-20260223-152707]]: Anthropic Skills Guide — progressive disclosure principle: frontmatter always loaded, SKILL.md on trigger, references on demand. Don't inline what can be discovered. (weight: 0.7)
 - [[commit-50e7af6c]]: Applied to Patina CLAUDE.md — trimmed 155 → 44 lines, cut inline docs (architecture, project structure, key commands), kept behavioral rules and pointers (weight: 0.9)
 
@@ -35,7 +35,7 @@ Context files (CLAUDE.md, AGENTS.md) should contain behavioral rules and pointer
 
 ## Attacked-By
 
-- ETH paper caveat: when repos have no other documentation, context files DO help (+2.7%). Projects with unique conventions not in training data (like Patina) may need more context than generic repos.
+- "Evaluating AGENTS.md" caveat: when repos have no other documentation, context files DO help (+2.7%). Projects with unique conventions not in training data (like Patina) may need more context than generic repos.
 
 ## Applied-In
 
