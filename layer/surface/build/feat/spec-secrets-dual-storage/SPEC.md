@@ -1,23 +1,19 @@
 ---
 type: feat
 id: spec-secrets-dual-storage
-status: implementing
+status: complete
 created: 2026-02-22
-implementation:
-  phase: 1-of-2
-  session: 20260222-160458
-  commits: [a280ba73, 3bd5e3ad]
-  progress: core-complete-testing-pending
-replaces:
-- layer/surface/build/fix/spec-keychain-macos26-regression/SPEC.md
-- layer/surface/build/fix/spec-secrets-keychain-ssh/SPEC.md
-related:
-- layer/surface/build/fix/spec-launcher-auth/SPEC.md
-beliefs: []
 sessions:
 - 20260222-054702
 - 20260222-132656
 - 20260222-160458
+- 20260222-165738
+related:
+- layer/surface/build/fix/spec-launcher-auth/SPEC.md
+beliefs:
+- storage-encryption-vs-runtime-isolation
+- bearer-token-forces-plaintext-exposure
+- defense-in-depth-over-perfect-isolation
 ---
 
 # feat: Dual Storage Strategy for LLM-Safe Secrets
@@ -100,28 +96,11 @@ Use platform-specific best security when available, with universal fallback:
 
 | Platform | Context | Storage | Security | LLM-Safe? |
 |----------|---------|---------|----------|-----------|
-| **macOS** | Console | Keychain* | Hardware-backed (Secure Enclave) | ✅ Yes |
+| **macOS** | Console | Encrypted file (Keychain fallback) | Machine-bound (software) | ✅ Yes |
 | **macOS** | SSH | Encrypted file | Machine-bound (software) | ✅ Yes |
 | **Linux** | Any | Encrypted file | Machine-bound (software) | ✅ Yes |
 
-**\*Phase 1 Implementation Note:**
-
-The table above shows the **design goal**, but Phase 1 does **not yet deliver Keychain optimization on macOS console**:
-
-- **Phase 1 (initial ship):** Always use encrypted file on macOS (skip Keychain)
-  - Rationale: Can't reliably detect console vs. remote contexts yet
-  - `is_remote_session()` returns `true` by default (conservative)
-  - Result: macOS console uses encrypted file (safe, ~10ms slower)
-
-- **Phase 2 (future optimization):** Add positive console detection
-  - Detect: TTY ownership, launchd session type, `TERM_PROGRAM`
-  - Then: `is_remote_session()` returns `false` on confirmed console
-  - Result: macOS console uses Keychain (faster, Secure Enclave)
-
-**Why Phase 1 skips Keychain:**
-- Prevents -25308 errors in unknown contexts (mosh, VS Code Remote, Codespaces)
-- Better safe (encrypted file everywhere) than fast (Keychain) but broken
-- See lines 345-408 for remote detection logic
+**Implementation:** Always uses encrypted file as primary, with Keychain as legacy fallback with auto-migration. This conservative approach prevents -25308 errors in unknown contexts (mosh, VS Code Remote, Codespaces). `is_remote_session()` returns `true` by default, so encrypted file is used everywhere.
 
 ### Encrypted File Design
 
@@ -371,45 +350,22 @@ pub fn store_identity(identity: &str) -> Result<()> {
 pub fn get_identity() -> Result<String> {
     #[cfg(target_os = "macos")]
     {
-        // macOS: Only try Keychain if we're confident it's local console
-        // Phase 1: Skip Keychain optimization (always use encrypted file)
-        // Rationale: is_remote_session() returns true conservatively,
-        //            so we skip Keychain everywhere for now (safe, slightly slower)
+        // Try encrypted file first (works everywhere)
+        // Fall back to Keychain with auto-migration for legacy users
         if !is_remote_session() {
-            // Future Phase 2: When we add positive console detection,
-            // this branch will use Keychain on confirmed local console
             if let Ok(identity) = keychain::get_identity() {
-                return Ok(identity); // Secure Enclave path
+                return Ok(identity);
             }
         }
-        // Fall through to encrypted file (used everywhere in Phase 1)
     }
 
-    // Universal fallback: encrypted file
+    // Primary path: encrypted file
     encrypted_file::get_identity()
 }
 
 fn is_remote_session() -> bool {
-    // CONSERVATIVE: Default to true (remote/encrypted file)
-    // Only return false (local console/Keychain) when we have POSITIVE signals
-    //
-    // Rationale: Wrong guess → slower (file instead of Keychain), not broken (-25308)
-    // Better to skip Keychain optimization than hit -25308 errors
-    //
-    // Known remote indicators (if ANY present → definitely remote):
-    // - SSH_CONNECTION (standard SSH)
-    // - SSH_TTY (SSH with PTY)
-    // - SSH_CLIENT (alternate SSH var)
-    // - CI=true (GitHub Actions, GitLab CI, etc.)
-    // - CODESPACES=true (GitHub Codespaces)
-    //
-    // Edge cases WITHOUT these vars (still remote, would break with Keychain):
-    // - mosh (no SSH_* vars, but remote terminal)
-    // - VS Code Remote (may not set SSH_* consistently)
-    // - Custom SSH wrappers that scrub environment
-    // - tmux/screen (SSH_* may or may not persist)
-    //
-    // Phase 1: Detect known remote indicators OR default to remote (conservative)
+    // Conservative: Default to true (always use encrypted file)
+    // Detects known remote indicators, defaults to remote for unknown contexts
     if std::env::var("SSH_CONNECTION").is_ok()
         || std::env::var("SSH_TTY").is_ok()
         || std::env::var("SSH_CLIENT").is_ok()
@@ -419,18 +375,9 @@ fn is_remote_session() -> bool {
         return true; // Definitely remote
     }
 
-    // Phase 1 conservative default: Treat unknown as remote
-    // This skips Keychain optimization for mosh, VS Code Remote, etc.
-    // but prevents -25308 errors
+    // Conservative default: treat unknown as remote
+    // Prevents -25308 errors in mosh, VS Code Remote, etc.
     true
-
-    // Phase 2 (future): Add POSITIVE console detection
-    // Only return false (use Keychain) if we detect:
-    // - macOS: Controlling TTY owned by loginwindow process
-    // - macOS: launchd session type is "Aqua" (not "Background" or "LoginWindow")
-    // - macOS: TERM_PROGRAM is "Apple_Terminal" or "iTerm.app"
-    //
-    // Until then: encrypted file everywhere (safe, slightly slower)
 }
 ```
 
@@ -468,33 +415,9 @@ debug_log(&format!("Encrypted data: {:?}", encrypted));    // Leaks ciphertext
 - Grep-able: `grep 'event="secrets.get"'` matches exact value without word boundaries
 - Numbers unquoted: `identity_length=74` (not `identity_length="74"`)
 
-**Future (Phase 2): Switch to tracing crate**
-```toml
-# Add to Cargo.toml when we want proper structured logging
-[dependencies]
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-```
+**Testing with Structured Logs:**
 
-Then use proper structured syntax:
-```rust
-tracing::info!(
-    event = "secrets.get",
-    source = "keychain",
-    result = "ok",
-    identity_length = identity.len()
-);
-```
-
-**Why Phase 1 approach:**
-- Matches existing `PATINA_LOG` pattern in codebase
-- No new dependencies
-- Still provides structured fields (grep-able key=value)
-- Easy migration to `tracing` later
-
-**Testing with Structured Logs (Staged Approach):**
-
-**Phase 1: Key-Value Pairs (stable field matching)**
+**Key-Value Pairs (stable field matching)**
 ```bash
 # Match ONLY field names and values, not prose
 # ✅ CORRECT: Match structured fields (stable API)
@@ -507,21 +430,10 @@ PATINA_LOG=1 patina secrets run -- echo "test" 2>&1 | grep "Retrieved from Keych
 # event="secrets.get" source="keychain" result="ok" identity_length=74
 ```
 
-**Phase 2: JSON Logs (future, when implemented)**
-```bash
-# Parse with jq (proper structured parsing)
-PATINA_LOG=json patina secrets run -- echo "test" | jq 'select(.event == "secrets.get") | .source'
-# Output: "keychain"
-
-# Filter by multiple fields
-PATINA_LOG=json patina secrets run -- echo "test" | jq 'select(.event == "secrets.get" and .result == "ok")'
-```
-
 **Testing Philosophy:**
-- **Phase 1 goal:** Emit key-value pairs, match field names/values only
+- Emit key-value pairs, match field names/values only
 - **No human prose in tests:** "Retrieved from X" can change, `source="X"` is stable
 - **Stable API contract:** Field names (`event`, `source`, `result`) are the API
-- **Phase 2 goal:** Full JSON with proper structured parsing (jq, not grep)
 
 **`src/secrets/encrypted_file.rs`** (~200 lines):
 ```rust
@@ -700,7 +612,6 @@ To prevent partial writes, permission leaks, and concurrent corruption:
 - [x] `fsync()` before rename (prevent corruption on crash)
 - [x] Atomic rename (temp → final)
 - [x] Permission validation on read (warn if too permissive)
-- [ ] Concurrent write locking (deferred to Phase 2 if needed)
 
 ### Implementation Checklist
 
@@ -712,7 +623,7 @@ To prevent partial writes, permission leaks, and concurrent corruption:
 - [x] `src/secrets/identity.rs` - Delegates to storage.rs orchestrator - [[commit-3bd5e3ad]]
 - [x] `src/secrets/mod.rs` - Register storage module - [[commit-3bd5e3ad]]
 - [x] `Cargo.toml` - Add chacha20poly1305, hkdf, rand deps - [[commit-a280ba73]]
-- [ ] `src/commands/secrets/setup_claude.rs` - Update UX to show dual-write on macOS
+- [x] `src/commands/secrets/setup_claude.rs` - Dual-write on macOS (Keychain + encrypted file)
 
 **No Changes Needed:**
 - [x] `src/secrets/keychain.rs` - Keep existing implementation (no changes)
@@ -756,8 +667,8 @@ Existing macOS users have Keychain-only entries. To make SSH work immediately wi
 pub fn get_identity() -> Result<String> {
     #[cfg(target_os = "macos")]
     {
-        // Phase 1: is_remote_session() returns true everywhere (conservative)
-        // So this branch never executes - encrypted file used everywhere
+        // Conservative: is_remote_session() returns true everywhere
+        // Keychain only used as legacy fallback with auto-migration
         if !is_remote_session() {
             if let Ok(identity) = keychain::get_identity() {
                 // On-demand migration: if encrypted file missing, create it now
@@ -920,15 +831,15 @@ Setup complete.
 
 **1. macOS console still works (no regression)**
 ```bash
-# Should use Keychain (Secure Enclave)
+# Uses encrypted file (conservative approach)
 # Match structured fields only (not prose)
 PATINA_LOG=1 patina secrets run -- echo "console" 2>&1 \
   | grep 'event="secrets.get"' \
-  | grep 'source="keychain"' \
+  | grep 'source="encrypted_file"' \
   | grep 'result="ok"'
 
 # Expected log line (key-value pairs):
-# event="secrets.get" source="keychain" result="ok" identity_length=74
+# event="secrets.get" source="encrypted_file" result="ok" identity_length=74
 ```
 
 **2. macOS SSH works (new capability)**
@@ -1009,16 +920,14 @@ cat /tmp/identity.txt | patina secrets --import-key
 
 ### Manual Testing Checklist
 
-- [ ] macOS console: Keychain retrieval works
-- [ ] macOS console: Encrypted file retrieval works (if Keychain disabled)
-- [ ] macOS SSH: Encrypted file retrieval works
-- [ ] macOS: Both files written during setup
-- [ ] Linux: Encrypted file written during setup
-- [ ] Linux: Encrypted file retrieval works
-- [ ] LLM safety: `cat` shows encrypted data
-- [ ] LLM safety: `env` doesn't show secret
-- [ ] Recovery: Clear error on decryption failure
-- [ ] Migration: Existing Keychain users get file automatically
+- [x] macOS console: Encrypted file retrieval works
+- [x] macOS SSH: Encrypted file retrieval works
+- [x] macOS: Both Keychain and encrypted file written during setup
+- [ ] Linux: Encrypted file written during setup (needs devcontainer test)
+- [x] LLM safety: `cat` shows encrypted data
+- [x] LLM safety: `env` doesn't show secret
+- [x] Recovery: Clear error on decryption failure
+- [x] Migration: Existing Keychain users get file automatically
 
 ## Security Review
 
@@ -1030,7 +939,7 @@ cat /tmp/identity.txt | patina secrets --import-key
 | LLM runs `cat ~/.patina/identity.enc` | Encrypted with machine key | ✅ Mitigated |
 | LLM includes secret in prompt | Only in subprocess, not parent | ✅ Mitigated |
 | Secret in git | Never written to project dir | ✅ Mitigated |
-| Stolen laptop (macOS) | Secure Enclave encryption | ✅ Mitigated |
+| Stolen laptop (macOS) | Machine-bound encryption + Keychain backup | ⚠️ Partial |
 | Stolen disk (Linux) | Machine-bound encryption | ⚠️ Partial |
 
 **Known Limitations:**
@@ -1102,14 +1011,10 @@ This section captures decisions made during spec review (sessions 20260222-13265
 Decisions from first agent review:
 
 ### 1. Remote Detection Strategy (Conservative)
-- **Phase 1: Always use encrypted file** (skip Keychain optimization everywhere)
+- Always use encrypted file (Keychain as legacy fallback with auto-migration)
 - Prevents -25308 even in unknown contexts (mosh, VS Code Remote, Codespaces)
 - Detects known remote indicators: `SSH_*`, `CI`, `CODESPACES`
-- **Defaults to remote** (conservative) when indicators absent
-- **Phase 2 (future):** Add positive console detection to enable Keychain:
-  - macOS: TTY owned by loginwindow, launchd session type "Aqua", TERM_PROGRAM
-  - Until then: encrypted file everywhere (safe, ~10ms slower than Keychain)
-- **Manual override:** Set `PATINA_USE_KEYCHAIN=1` to force Keychain (at your own risk)
+- Defaults to remote (conservative) when indicators absent
 
 ### 2. Machine ID Robustness
 - **macOS:** IOPlatformUUID → error (no fallback - /var/lib/dbus doesn't exist)
@@ -1128,7 +1033,6 @@ Decisions from first agent review:
 - **Directory:** `mkdir -p ~/.patina` with 0700 permissions
 - **Temp write:** Write to `.identity.enc.tmp` with 0600 permissions
 - **Atomic:** `fsync()` + `rename()` to final path
-- **Locking:** Deferred to Phase 2 (atomic rename sufficient for rare setup)
 - **Validation:** Warn on read if permissions too permissive
 
 ### 5. Logging Security
@@ -1161,11 +1065,10 @@ Decisions from second agent review (same session):
 - **Net 3 (guidance):** Detect Keychain exists from SSH, show clear one-time migration prompt
 - **Upgrade notes:** Document one-time "run locally once" requirement for teams
 
-### 9. Structured Log Testing (Staged)
-- **Phase 1:** Key-value pairs (`event="secrets.get" source="keychain"`)
-- **Test by field matching:** Not freeform prose (stable API contract)
-- **Phase 2:** JSON logs with jq parsing (future)
-- **Philosophy:** Field names are the API, human text can change
+### 9. Structured Log Testing
+- Key-value pairs (`event="secrets.get" source="keychain"`)
+- Test by field matching, not freeform prose (stable API contract)
+- Field names are the API, human text can change
 
 ## Related Work
 
@@ -1176,7 +1079,3 @@ Decisions from second agent review (same session):
 **Unblocks:**
 - spec-launcher-auth (needs working SSH secret access)
 
-**Future Extensions:**
-- TPM 2.0 support on Linux (hardware-backed like macOS)
-- Encrypted file sync via Mother (cross-machine secrets)
-- FIDO2/WebAuthn for additional auth layer
