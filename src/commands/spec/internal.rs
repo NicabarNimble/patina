@@ -543,10 +543,21 @@ pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
 
     for spec in &specs {
         let status_raw = spec.status.as_deref().unwrap_or("-");
+        // Add age suffix for paused/blocked specs
+        let age_suffix = if status_raw == "paused" || status_raw == "blocked" {
+            let age = spec_age_days_from_list(spec);
+            if age > 0 {
+                format!(" ({}d)", age)
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
         let status_display = if spec.unscraped {
             format!("{} [unscraped]", status_raw)
         } else {
-            status_raw.to_string()
+            format!("{}{}", status_raw, age_suffix)
         };
         let target = spec.target.as_deref().unwrap_or("-");
         println!(
@@ -568,6 +579,23 @@ pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
             "\n\u{26a0} {} completed/abandoned {} still in tree \u{2014} run `patina spec archive --stale` to archive",
             stale_count, noun
         );
+    }
+
+    // One-paused-spec constraint status
+    let paused_count = specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("paused"))
+        .count();
+    if paused_count > 0 {
+        let paused_spec = specs
+            .iter()
+            .find(|s| s.status.as_deref() == Some("paused"));
+        if let Some(spec) = paused_spec {
+            eprintln!(
+                "\nPaused: {} — resolve before pausing another",
+                spec.id
+            );
+        }
     }
 
     Ok(())
