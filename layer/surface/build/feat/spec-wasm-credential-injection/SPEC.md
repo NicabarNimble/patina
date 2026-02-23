@@ -1,8 +1,12 @@
 ---
 type: feat
 id: spec-wasm-credential-injection
-status: draft
+status: complete
 created: 2026-02-23
+sessions:
+- 20260222-165738
+- 20260222-200024
+- 20260223-061011
 related:
 - layer/surface/build/fix/spec-launcher-auth/SPEC.md
 beliefs:
@@ -12,10 +16,6 @@ beliefs:
 - storage-encryption-vs-runtime-isolation
 - bearer-token-forces-plaintext-exposure
 - two-layer-capability-grants
-sessions:
-- 20260222-165738
-- 20260222-200024
-- 20260223-061011
 ---
 
 # feat: WASM Host-Boundary Credential Injection
