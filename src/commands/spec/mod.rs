@@ -154,6 +154,31 @@ pub enum SpecCommands {
         #[arg(long)]
         json: bool,
     },
+
+    /// Split a spec: ship done work, draft remainder as new spec
+    Split {
+        /// Spec ID to split
+        id: String,
+
+        /// Override new spec ID (defaults to <id>-v2, -v3, etc.)
+        #[arg(long)]
+        new_id: Option<String>,
+
+        /// Description for the new spec's remaining work
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Recommend the next spec to work on
+    Next {
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Archive a completed spec: tag, remove, commit
@@ -215,6 +240,16 @@ pub fn resume(id: &str, force: bool, json: bool) -> Result<()> {
 /// Block an active spec on another spec
 pub fn block(id: &str, by: &str, reason: &str, json: bool) -> Result<()> {
     internal::block_spec(id, by, reason, json)
+}
+
+/// Split a spec: ship done work, draft remainder as new spec
+pub fn split(id: &str, new_id: Option<&str>, description: Option<&str>, json: bool) -> Result<()> {
+    internal::split_spec(id, new_id, description, json)
+}
+
+/// Recommend the next spec to work on
+pub fn next(json: bool) -> Result<()> {
+    internal::next_spec(json)
 }
 
 #[cfg(test)]
