@@ -215,13 +215,11 @@ pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
                 }],
             });
             current_id = Some(id);
-        } else {
-            if let Some(spec) = specs.last_mut() {
-                spec.blocked_by.push(Blocker {
-                    id: blocker_id,
-                    status: blocker_status,
-                });
-            }
+        } else if let Some(spec) = specs.last_mut() {
+            spec.blocked_by.push(Blocker {
+                id: blocker_id,
+                status: blocker_status,
+            });
         }
     }
 
