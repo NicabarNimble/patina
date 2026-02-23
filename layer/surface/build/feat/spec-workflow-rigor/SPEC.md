@@ -19,6 +19,8 @@ beliefs:
 - stale-context-is-hostile-context
 - process-checkpoints-over-tooling
 - git-is-the-knowledge-substrate
+- mutation-completes-query
+- active-is-a-black-hole
 sessions:
 - 20260222-054702
 - 20260223-084803
@@ -198,19 +200,35 @@ earn its way through the lifecycle again.
 
 ### Queue Pressure
 
-Paused and blocked specs can't hide. The queue system applies pressure:
+**One paused spec at a time.** This is the core constraint. If you have
+two paused specs, you're not pausing — you're avoiding. The queue isn't
+working. Want to pause another? Resolve the existing one first: resume
+it, split it, or abandon it.
+
+Blocked is different — multiple blocked specs are fine because blocking
+is a dependency, not a choice. But pausing is a choice, and the system
+limits it.
+
+```
+$ patina spec pause another-spec --reason "New idea"
+Error: spec-git-tag-system is already paused.
+  Resume, split, or abandon it first:
+    patina spec resume spec-git-tag-system
+    patina spec split spec-git-tag-system
+    patina spec status spec-git-tag-system abandoned
+```
 
 **In `spec list`:**
 ```
 ID                    STATUS              AGE
 spec-workflow-rigor   active              -
-spec-git-tag-system   paused (12d)        ⚠ stale — resume, split, or abandon
+spec-git-tag-system   paused (12d)        ⚠ resolve before pausing another
 spec-knowledge-evo    blocked             waiting on spec-workflow-rigor
 ```
 
 **In `spec next`:**
 - Active specs first (current work)
-- Paused specs with age warnings ("paused 12 days — decision needed")
+- Paused spec with age ("paused 12 days — resume, split, or abandon")
 - Blocked specs with blocker status ("blocker spec-Y is now complete — resume?")
 - Drafts available to promote
 
@@ -218,7 +236,7 @@ spec-knowledge-evo    blocked             waiting on spec-workflow-rigor
 ```
 Spec landscape:
   Active:  spec-workflow-rigor
-  Paused:  spec-git-tag-system (12d) ⚠ — resume, split, or abandon?
+  Paused:  spec-git-tag-system (12d) ⚠ — resolve before starting new work
   Blocked: spec-knowledge-evo (waiting on spec-workflow-rigor)
   Drafts:  2 available
 
@@ -236,11 +254,72 @@ pub blocks: Vec<String>,
 
 // New fields:
 pub paused_reason: Option<String>,     // why paused (required on pause)
-pub paused_date: Option<String>,       // when paused (auto-set)
+pub paused_date: Option<String>,       // when paused (ISO 8601 UTC, D6)
+pub paused_at_tag: Option<String>,     // tag ref for resume diffs (D4)
 pub blocked_reason: Option<String>,    // why blocked
-pub blocked_date: Option<String>,      // when blocked (auto-set)
+pub blocked_date: Option<String>,      // when blocked (ISO 8601 UTC, D6)
 pub split_from: Option<String>,        // parent spec ID (set by split)
 ```
+
+## Design Decisions
+
+Resolved during external review. These are rules, not open questions.
+
+### D1: WIP commit on pause — what if the tree is clean?
+
+If the tree is clean, skip the WIP commit. Still create the tag. The tag
+is the bookmark; the WIP commit is optional context. If you're mid-merge
+or have unresolved conflicts, `spec pause` refuses — that's a
+precondition, not an edge case.
+
+**Preconditions for `spec pause`:**
+- Spec must be `active`
+- No unresolved merge conflicts
+- No other spec already paused (one-paused-spec rule)
+
+**If tagging or committing fails:** Roll back any YAML changes. The spec
+stays `active`. User sees the error and retries.
+
+### D2: Tag counter sequencing
+
+Derive N by parsing existing tags: `git tag -l "spec/<id>-paused-*"`.
+Count gives next N. Stateless — no counter in YAML, no DB state. Survives
+rebases and manual tag deletions because tags are append-only in practice.
+If a gap exists (paused-1, paused-3), that's fine — N is a sequence, not
+a count.
+
+### D3: `spec block` and the existing `blocked_by` / `spec_deps` relationship
+
+`blocked_by` is already the field. `spec block` automates what you'd
+hand-edit. The command writes YAML AND updates the DB inline (same pattern
+as `update_spec_status()` which already does both). No scrape needed.
+Multiple blockers are represented as a list — `blocked_by: [spec-A, spec-B]`.
+`spec block` appends to the list; it doesn't overwrite.
+
+### D4: Resume discovers the correct pause tag
+
+Store the tag reference in YAML: `paused_at_tag: spec/X-paused-3`. Resume
+reads it directly — no tag parsing, no ambiguity after multiple pause/resume
+loops. The field is cleared on resume.
+
+### D5: Split — new spec ID and path
+
+Default new ID: `<parent-id>-v2` (or `-v3`, `-v4` if splits cascade).
+User can override with `--id <custom-id>`. New spec lives in the standard
+path: `layer/surface/build/feat/<new-id>/SPEC.md`. Version number in the
+ID is a suffix for provenance, not semver.
+
+### D6: Dates — format, timezone
+
+ISO 8601, UTC. Same as every other date in the system (`created`, session
+timestamps, `SpecFrontmatter.created`). Example: `2026-02-23`.
+
+### D7: Session integration contract
+
+The interface between session skills and queue data is defined during
+Phase 5 implementation, based on the CLI output stabilized in Phases 1-4.
+Specifying a JSON schema before the commands exist would be speculative.
+Phase 5 wraps whatever the CLI produces.
 
 ## Implementation
 
@@ -259,53 +338,68 @@ the basic commands.
   `split_from` to `SpecFrontmatter` (all optional, skip_serializing_if)
 
 **New command: `patina spec pause <id> --reason "..."`:**
-1. Validate spec is `active`
-2. Create WIP commit if uncommitted changes exist
-3. Update YAML: status → `paused`, set `paused_reason` and `paused_date`
-4. Create annotated tag: `spec/<id>-paused-<N>`
-5. Git commit: `spec: pause <id> — <reason>`
-6. Log in active session
+1. Check no other spec is already paused (one-paused-spec rule)
+2. Validate spec is `active`, no unresolved merge conflicts (D1)
+3. Create WIP commit if uncommitted changes exist; skip if tree clean (D1)
+4. Update YAML: status → `paused`, set `paused_reason`, `paused_date`,
+   `paused_at_tag` (D4)
+5. Derive tag N from existing tags (D2), create annotated tag:
+   `spec/<id>-paused-<N>` with reason as message
+6. Update DB inline (same as `update_spec_status()`)
+7. Git commit: `spec: pause <id> — <reason>`
+8. Log in active session
+9. If any step fails after YAML mutation, roll back YAML (D1)
 
 **New command: `patina spec resume <id>`:**
 1. Validate spec is `paused` or `blocked`
-2. If `blocked`: check all blockers complete (error if not, `--force` to override)
-3. Update YAML: status → `active`, clear pause/block fields
-4. Create annotated tag: `spec/<id>-resumed-<N>`
-5. Git commit: `spec: resume <id>`
-6. Show context diffs:
-   - `git diff spec/<id>-paused-<N>..HEAD` — what changed while away
-   - `git diff spec/<id>-start..spec/<id>-paused-<N>` — what you accomplished
-7. Log in active session
+2. If `blocked`: check all blockers complete (error if not, `--force`)
+3. Read `paused_at_tag` from YAML for diff reference (D4)
+4. Update YAML: status → `active`, clear pause/block fields
+5. Derive tag N, create annotated tag: `spec/<id>-resumed-<N>`
+6. Update DB inline
+7. Git commit: `spec: resume <id>`
+8. Show context diffs:
+   - `git diff <paused_at_tag>..HEAD` — what changed while away
+   - `git diff spec/<id>-start..<paused_at_tag>` — what you accomplished
+9. Log in active session
 
 **New command: `patina spec block <id> --by <blocker> --reason "..."`:**
 1. Validate spec is `active`
-2. Update YAML: status → `blocked`, set `blocked_by`, `blocked_reason`, `blocked_date`
-3. Create annotated tag: `spec/<id>-blocked-<N>`
-4. Git commit: `spec: block <id> (waiting on <blocker>)`
-5. Log in active session
+2. Update YAML: status → `blocked`, append to `blocked_by` list (D3),
+   set `blocked_reason`, `blocked_date`, `paused_at_tag`
+3. Derive tag N, create annotated tag: `spec/<id>-blocked-<N>`
+4. Update DB inline (patterns table + spec_deps insert) (D3)
+5. Git commit: `spec: block <id> (waiting on <blocker>)`
+6. Log in active session
 
 **Exit criteria:**
 - [ ] `paused` and `blocked` are valid statuses
-- [ ] `spec pause` creates WIP commit + tag + updates YAML
-- [ ] `spec resume` checks blockers, shows context diffs, restores active
-- [ ] `spec block` sets blocked_by + creates tag
+- [ ] `spec pause` enforces one-paused-spec rule
+- [ ] `spec pause` creates WIP commit (if dirty) + tag + updates YAML + DB
+- [ ] `spec pause` with clean tree skips WIP commit, still tags
+- [ ] `spec resume` reads `paused_at_tag`, shows context diffs, restores active
+- [ ] `spec block` appends to `blocked_by` list + updates DB inline
 - [ ] Tags follow `spec/<id>-paused-N` / `spec/<id>-blocked-N` convention
+- [ ] Tag N derived from existing tags (D2)
 - [ ] Invalid transitions rejected (draft → paused, paused → complete)
+- [ ] YAML rollback on failure (D1)
 
 ### Phase 2: Spec Split
 
 **Goal:** Ship done work, draft remaining work as new spec.
 
-**New command: `patina spec split <id>`:**
+**New command: `patina spec split <id> [--id <new-id>]`:**
 1. Validate spec is `active` or `paused`
 2. Prompt: "Describe what's done" (used for release commit)
 3. Tag current state: `spec/<id>-v<N>-complete`
 4. Complete original spec (normal release flow: version bump, archive, tag)
-5. Create new spec directory: `layer/surface/build/feat/<new-id>/SPEC.md`
+5. New ID defaults to `<parent-id>-v2` (or `-v3` etc.), user can
+   override with `--id` (D5)
+6. Create new spec directory: `layer/surface/build/feat/<new-id>/SPEC.md`
    - Frontmatter includes `split_from: <parent-id>`
    - Status: `draft`
    - Body: user-provided description of remaining work
-6. Git commit: `spec: split <id> — ship v<N>, draft remainder as <new-id>`
+7. Git commit: `spec: split <id> — ship v<N>, draft remainder as <new-id>`
 
 **Exit criteria:**
 - [ ] `spec split` completes original spec with release
@@ -335,13 +429,13 @@ the basic commands.
 
 **Enhance `spec list`:**
 - Show age for paused/blocked specs
-- Flag stale paused specs (>7 days)
+- Show one-paused-spec constraint status
 
 **Exit criteria:**
 - [ ] `spec next` recommends a spec with reasoning
-- [ ] `spec ready` shows impact and age warnings
+- [ ] `spec ready` shows impact and paused/blocked status
 - [ ] `spec list` shows age for paused/blocked specs
-- [ ] Paused specs >7 days flagged as stale
+- [ ] Paused spec shown with "resolve before pausing another"
 
 ### Phase 4: Session Hardening
 
@@ -442,12 +536,18 @@ git show spec/my-spec:layer/surface/build/feat/my-spec/SPEC.md
 # → Original spec recovered
 ```
 
-**Test 4: Queue pressure**
+**Test 4: One-paused-spec constraint**
 ```bash
-patina spec pause old-spec --reason "Exploring alternatives"
-# ... 12 days pass ...
-patina spec next
-# → "old-spec has been paused for 12 days. Resume, split, or abandon?"
+patina spec pause spec-A --reason "Exploring alternatives"
+# → Success: spec-A paused
+
+patina spec pause spec-B --reason "New idea"
+# → Error: spec-A is already paused.
+#   Resume, split, or abandon it first.
+
+patina spec status spec-A abandoned
+patina spec pause spec-B --reason "New idea"
+# → Success: spec-B paused (spec-A resolved)
 ```
 
 **Test 5: Context recovery on resume**
@@ -465,11 +565,17 @@ patina spec resume my-spec
 1. Should `patina session list` also query archived sessions in
    `layer/sessions/`, or only active + `.patina/local/`?
 2. Should `patina doctor` check for stale sessions and paused specs?
-3. What's the right staleness threshold for paused specs — 7 days? 14 days?
-4. Should `spec split` auto-generate the new spec ID (e.g., `<id>-v2`)
-   or prompt the user for a name?
-5. Should `spec pause` require a WIP commit, or allow pausing with a
-   clean tree (no uncommitted work)?
+
+## Resolved Questions
+
+3. ~~Staleness threshold for paused specs~~ → **No day-based threshold.**
+   Pressure comes from the one-paused-spec constraint: you can't pause
+   another until you resolve the existing one. The queue itself is the
+   pressure, not a timer.
+4. ~~Split auto-generate ID or prompt?~~ → **Default `<id>-v2`, override
+   with `--id`.** (D5)
+5. ~~WIP commit required on pause?~~ → **Optional.** If tree is clean,
+   skip WIP commit, still create tag. Tag is the bookmark. (D1)
 
 ## Deferred (needs own spec if pursued)
 
@@ -511,7 +617,7 @@ After:
 **Queue keeps things moving:**
 - "Which spec should I work on?" → `spec next`
 - "What's blocked on what?" → `spec blocked`
-- "This has been paused too long" → `spec list` with age warnings
+- "I want to pause this and start something else" → must resolve existing pause first
 - "Is this session stale?" → `session list`
 
 **Git preserves everything:**
