@@ -1648,6 +1648,29 @@ fn main() -> Result<()> {
             } => {
                 commands::spec::list(status, target, json)?;
             }
+            commands::spec::SpecCommands::Promote { id, json } => {
+                commands::spec::promote(&id, json)?;
+            }
+            commands::spec::SpecCommands::Complete { id, major, json } => {
+                commands::spec::complete(&id, major, json)?;
+            }
+            commands::spec::SpecCommands::Abandon { id, reason, json } => {
+                commands::spec::abandon(&id, reason.as_deref(), json)?;
+            }
+            commands::spec::SpecCommands::Pause { id, reason, json } => {
+                commands::spec::pause(&id, &reason, json)?;
+            }
+            commands::spec::SpecCommands::Resume { id, force, json } => {
+                commands::spec::resume(&id, force, json)?;
+            }
+            commands::spec::SpecCommands::Block {
+                id,
+                by,
+                reason,
+                json,
+            } => {
+                commands::spec::block(&id, &by, &reason, json)?;
+            }
         },
         Some(Commands::Schema { command }) => match command {
             commands::schema::SchemaCommands::Install { path } => {

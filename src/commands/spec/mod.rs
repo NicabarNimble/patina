@@ -58,13 +58,97 @@ pub enum SpecCommands {
 
     /// List all specs with optional filters
     List {
-        /// Filter by status (draft, ready, active, complete, abandoned)
+        /// Filter by status (draft, ready, active, paused, blocked, complete, abandoned)
         #[arg(long)]
         status: Option<String>,
 
         /// Filter by target version (e.g., v0.12.0)
         #[arg(long)]
         target: Option<String>,
+
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Promote a spec: draft → ready, or ready → active
+    Promote {
+        /// Spec ID to promote
+        id: String,
+
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Complete an active spec (release + archive)
+    Complete {
+        /// Spec ID to complete
+        id: String,
+
+        /// Force major version bump (for 1.0.0 moments)
+        #[arg(long)]
+        major: bool,
+
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Abandon a spec (archive, no release)
+    Abandon {
+        /// Spec ID to abandon
+        id: String,
+
+        /// Reason for abandoning
+        #[arg(long)]
+        reason: Option<String>,
+
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Pause an active spec with reason
+    Pause {
+        /// Spec ID to pause
+        id: String,
+
+        /// Why this spec is being paused (required)
+        #[arg(long)]
+        reason: String,
+
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Resume a paused or blocked spec
+    Resume {
+        /// Spec ID to resume
+        id: String,
+
+        /// Force resume even if blockers aren't complete
+        #[arg(long)]
+        force: bool,
+
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Block an active spec on another spec
+    Block {
+        /// Spec ID to block
+        id: String,
+
+        /// Blocking spec ID
+        #[arg(long)]
+        by: String,
+
+        /// Reason for blocking
+        #[arg(long)]
+        reason: String,
 
         /// Output as JSON (for agent use)
         #[arg(long)]
@@ -101,6 +185,36 @@ pub fn status(id: &str, new_status: &str, major: bool, no_archive: bool) -> Resu
 pub fn list(status: Option<String>, target: Option<String>, json: bool) -> Result<()> {
     let filters = internal::ListFilters { status, target };
     internal::show_spec_list(&filters, json)
+}
+
+/// Promote a spec: draft → ready, ready → active
+pub fn promote(id: &str, json: bool) -> Result<()> {
+    internal::promote_spec(id, json)
+}
+
+/// Complete an active spec (release + archive)
+pub fn complete(id: &str, major: bool, json: bool) -> Result<()> {
+    internal::complete_spec(id, major, json)
+}
+
+/// Abandon a spec (archive, no release)
+pub fn abandon(id: &str, reason: Option<&str>, json: bool) -> Result<()> {
+    internal::abandon_spec(id, reason, json)
+}
+
+/// Pause an active spec with reason
+pub fn pause(id: &str, reason: &str, json: bool) -> Result<()> {
+    internal::pause_spec(id, reason, json)
+}
+
+/// Resume a paused or blocked spec
+pub fn resume(id: &str, force: bool, json: bool) -> Result<()> {
+    internal::resume_spec(id, force, json)
+}
+
+/// Block an active spec on another spec
+pub fn block(id: &str, by: &str, reason: &str, json: bool) -> Result<()> {
+    internal::block_spec(id, by, reason, json)
 }
 
 #[cfg(test)]

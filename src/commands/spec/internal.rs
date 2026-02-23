@@ -928,6 +928,111 @@ fn next_tag_number(id: &str, prefix: &str) -> Result<u32> {
     Ok(tags.len() as u32 + 1)
 }
 
+/// Promote a spec: draft → ready, or ready → active.
+/// When promoting to active, creates tag spec/<id>-start.
+pub fn promote_spec(id: &str, json: bool) -> Result<()> {
+    let (file_path, fm) = mutate_spec(id, |fm| {
+        match fm.status.as_deref() {
+            Some("draft") => {
+                fm.status = Some("ready".to_string());
+                Ok(())
+            }
+            Some("ready") => {
+                fm.status = Some("active".to_string());
+                Ok(())
+            }
+            Some(s) => anyhow::bail!(
+                "Cannot promote '{}' — status is '{}'. Only draft and ready specs can be promoted.",
+                id, s
+            ),
+            None => anyhow::bail!("Spec '{}' has no status", id),
+        }
+    })?;
+
+    let new_status = fm.status.as_deref().unwrap_or("unknown");
+
+    // If promoted to active, create start tag
+    if new_status == "active" {
+        let tag_name = format!("spec/{}-start", id);
+        patina::git::create_tag_at(&tag_name, &format!("Spec {} activated", id), "HEAD")?;
+    }
+
+    // Git commit
+    let output = Command::new("git")
+        .args(["add", &file_path])
+        .output()
+        .context("Failed to stage spec file")?;
+    if !output.status.success() {
+        anyhow::bail!("git add failed: {}", String::from_utf8_lossy(&output.stderr));
+    }
+
+    let commit_msg = format!("spec: promote {} to {}", id, new_status);
+    let output = Command::new("git")
+        .args(["commit", "-m", &commit_msg])
+        .output()
+        .context("Failed to commit")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // If nothing to commit (file unchanged in git's view), that's ok
+        if !stderr.contains("nothing to commit") {
+            anyhow::bail!("git commit failed: {}", stderr);
+        }
+    }
+
+    if json {
+        let result = serde_json::json!({
+            "command": "promote",
+            "spec_id": id,
+            "new_status": new_status,
+            "file": file_path,
+        });
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        println!("Promoted: {} → {}", id, new_status);
+        println!("  File: {}", file_path);
+        if new_status == "active" {
+            println!("  Tag: spec/{}-start", id);
+        }
+    }
+
+    Ok(())
+}
+
+/// Complete an active spec (release + archive + tag)
+pub fn complete_spec(id: &str, major: bool, json: bool) -> Result<()> {
+    // Step 6: will be implemented next
+    let _ = (id, major, json);
+    anyhow::bail!("spec complete not yet implemented")
+}
+
+/// Abandon a spec (archive + tag, no release)
+pub fn abandon_spec(id: &str, reason: Option<&str>, json: bool) -> Result<()> {
+    // Step 7: will be implemented after complete
+    let _ = (id, reason, json);
+    anyhow::bail!("spec abandon not yet implemented")
+}
+
+/// Pause an active spec with reason
+pub fn pause_spec(id: &str, reason: &str, json: bool) -> Result<()> {
+    // Step 8: will be implemented after abandon
+    let _ = (id, reason, json);
+    anyhow::bail!("spec pause not yet implemented")
+}
+
+/// Resume a paused or blocked spec
+pub fn resume_spec(id: &str, force: bool, json: bool) -> Result<()> {
+    // Step 10: will be implemented after block
+    let _ = (id, force, json);
+    anyhow::bail!("spec resume not yet implemented")
+}
+
+/// Block an active spec on another spec
+pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<()> {
+    // Step 9: will be implemented after pause
+    let _ = (id, blocker, reason, json);
+    anyhow::bail!("spec block not yet implemented")
+}
+
 /// Check if a git tag exists
 fn tag_exists(tag: &str) -> Result<bool> {
     let output = Command::new("git")
