@@ -21,10 +21,13 @@ beliefs:
 - git-is-the-knowledge-substrate
 - mutation-completes-query
 - active-is-a-black-hole
+- specs-orthogonal-to-sessions
+- plugins-are-three-prong-bundles
 sessions:
 - 20260222-054702
 - 20260223-084803
 - 20260223-092355
+- 20260223-120524
 ---
 
 # feat: Workflow Rigor — Pause, Block, Split, Resume
@@ -95,14 +98,119 @@ originally written without knowing about:
 - Full archive system: git tag + git rm + commit + recovery path
 
 **What's missing:**
-- No mutation commands (`spec block`, `spec unblock`)
+- No mutation commands — query side exists (ready, blocked, list) but
+  mutation side doesn't (pause, resume, block, complete, abandon)
 - No `paused` or `blocked` status values
-- No `spec pause`, `spec resume`, `spec split`, `spec next` commands
+- `spec status` does too many jobs (setter, release trigger, archive
+  trigger, escape hatch) — violates unix-philosophy
 - No git tags for state transitions (only archive tags today)
 - No queue pressure (paused specs can hide forever)
+- No `spec create` — specs are hand-created, no templates
 - Session hardening (session list, stale warning, atomic flip)
+- No MCP tools for spec operations
+- No unified `/spec` skill for LLM discovery
 
 ## Solution
+
+### Architecture: Three-Layer Capability
+
+Every spec operation is exposed through three layers. This is the
+[[plugins-are-three-prong-bundles]] pattern:
+
+```
+┌─────────────────────────────────────────────┐
+│  Adapter Skill (/spec)                      │  ← WHEN to act (LLM judgment)
+│  Single skill describes full capability.    │
+│  LLM reads once, knows what's available.    │
+├─────────────────────────────────────────────┤
+│  MCP Tools (JSON-RPC typed parameters)      │  ← HOW to call (interface)
+│  Same operations as CLI, structured I/O.    │
+│  LLM calls these directly.                 │
+├─────────────────────────────────────────────┤
+│  CLI Commands (Rust, deterministic)         │  ← WHAT happens (execution)
+│  Explicit params, --json output.            │
+│  Machine-first, no inference.               │
+└─────────────────────────────────────────────┘
+```
+
+The CLI is the single implementation. MCP tools call the same Rust
+functions. The skill teaches the LLM when to use which tool. All three
+layers ship together.
+
+**Design for plugin extraction:** Keep all spec logic behind the
+`commands/spec/mod.rs` interface (dependable-rust pattern). The public
+API shape today becomes the WIT contract when spec moves to a WASM
+plugin. Don't scatter spec logic across other modules.
+
+### Command Decomposition
+
+Decompose `spec status` into single-purpose commands. Each command does
+one thing ([[unix-philosophy]]). This completes the mutation side that
+the query commands are missing ([[mutation-completes-query]]).
+
+**Query commands** (read-only):
+
+| Command | Do X |
+|---|---|
+| `spec list` | Show all specs with filters |
+| `spec ready` | Show actionable specs (unblocked, ready/active) |
+| `spec blocked` | Show blocked specs with blocker status |
+| `spec next` | Recommend next spec to work on |
+
+**Mutation commands** (each does exactly one thing):
+
+| Command | Transition | Side effects |
+|---|---|---|
+| `spec create` | → draft | Scaffold from template + git commit |
+| `spec promote` | draft→ready→active | Advance one step, no side effects |
+| `spec pause` | active→paused | WIP commit + tag + reason |
+| `spec resume` | paused/blocked→active | Context diffs + tag |
+| `spec block` | active→blocked | Tag + blocked_by + spec_deps |
+| `spec complete` | active→complete | Release + archive + tag |
+| `spec abandon` | any→abandoned | Archive + tag |
+| `spec split` | active/paused→complete+draft | Release parent + scaffold child |
+
+**What disappears:**
+- `spec status` — replaced by `promote`, `complete`, `abandon`. No more
+  one command doing 5 jobs. The escape hatch becomes
+  `spec promote --force` for manual overrides.
+- `spec archive` — absorbed into `complete` and `abandon` (they auto-
+  archive). Keep `spec archive --stale` as a cleanup utility.
+
+**All mutation commands support `--json`** for structured output that
+MCP tools and adapter skills can parse.
+
+### `/spec` Skill — Single Discovery Point
+
+One skill describes the full capability. The LLM reads it once and
+knows the entire surface area:
+
+```
+/spec — Manage spec lifecycle
+
+MUTATIONS (change state):
+  create   — scaffold new spec from conversation context
+  promote  — advance: draft → ready → active
+  pause    — park active work (reason required)
+  resume   — restore paused/blocked work (shows context diffs)
+  block    — mark blocked by another spec
+  complete — ship it (release + archive)
+  abandon  — kill it (archive)
+  split    — ship done half, draft the rest
+
+QUERIES (read-only):
+  list     — all specs with filters (--status, --target, --json)
+  ready    — what can be worked on now
+  blocked  — what's stuck and why
+  next     — recommended next spec
+
+All commands support --json for structured output.
+```
+
+The skill includes guidance on WHEN to invoke each command (e.g.,
+"when the user identifies a bug during spec work, offer to pause
+the current spec and create a fix spec"). Drill-down to individual
+command help via `patina spec <command> --help`.
 
 ### State Machine
 
@@ -126,7 +234,10 @@ draft ──→ ready ──→ active ──→ complete (release + archive + t
 ```
 
 **New statuses:** `paused`, `blocked`
-**New operations:** `pause`, `resume`, `block`, `unblock`, `split`, `next`
+**New commands:** `create`, `promote`, `pause`, `resume`, `block`,
+`complete`, `abandon`, `split`, `next`
+**Replaces:** `spec status` (decomposed into single-purpose commands)
+**Removes:** `spec archive` (absorbed into `complete`/`abandon`)
 
 ### Paused vs Blocked
 
@@ -323,19 +434,66 @@ Phase 5 wraps whatever the CLI produces.
 
 ## Implementation
 
-### Phase 1: State Machine — `paused` + `blocked` statuses
+### Phase 0: Spec Scaffolding — `spec create`
 
-**Goal:** Add `paused` and `blocked` to `VALID_STATUSES` and wire up
-the basic commands.
+> **Carved out as its own spec.** `spec create` is the entry point to
+> the entire lifecycle and needs its own spec covering: templates by
+> type, LLM-driven parameter inference, the `/spec` skill definition,
+> and MCP tool registration. This spec (`spec-workflow-rigor`) is
+> `blocked_by: [spec-create]` once that spec exists.
+
+**Why it matters:** Without `spec create`, the natural flow breaks.
+Working on spec A → discover bug → `spec pause A` → ... now what?
+You need `spec create fix the-bug` to scaffold the fix spec before you
+can work on it or defer it. Creation is the entry point.
+
+### Phase 1: Command Decomposition + State Machine
+
+**Goal:** Decompose `spec status` into single-purpose commands. Add
+`paused` and `blocked` statuses. Wire up the full mutation set.
+
+**Changes to `src/commands/spec/mod.rs`:**
+- Add new subcommands: `Promote`, `Pause`, `Resume`, `Block`,
+  `Complete`, `Abandon` (and later `Split`, `Next`)
+- Deprecate `Status` subcommand — print message redirecting to the
+  new commands. Remove after one release cycle.
+- Keep `Archive` only as `archive --stale` cleanup utility
 
 **Changes to `src/commands/spec/internal.rs`:**
 - Add `"paused"` and `"blocked"` to `VALID_STATUSES`
-- `update_spec_status()`: validate transitions (can't go from `draft`
-  directly to `paused`; must be `active` first)
+- Refactor `update_spec_status()` into focused internal functions that
+  each new command calls
+- Add transition validation: `paused`/`blocked` can only be set via
+  their dedicated commands, not directly
 
 **Changes to `src/spec.rs`:**
 - Add `paused_reason`, `paused_date`, `blocked_reason`, `blocked_date`,
   `split_from` to `SpecFrontmatter` (all optional, skip_serializing_if)
+
+**New git helpers in `src/git/operations.rs`:**
+- `list_matching_tags(glob) -> Vec<String>` — for tag counter (D2)
+- `create_tag_at(name, message, git_ref)` — tag a specific ref
+- `has_merge_conflicts() -> bool` — check for `.git/MERGE_HEAD`
+
+**New command: `patina spec promote <id>`:**
+1. Validate current status allows promotion (draft→ready, ready→active)
+2. Update YAML + DB (same pattern as current `update_spec_status()`)
+3. If promoting to active: create tag `spec/<id>-start`
+4. Git commit: `spec: promote <id> to <status>`
+5. `--json` output
+
+**New command: `patina spec complete <id>`:**
+1. Validate spec is `active`
+2. Delegate to `ReleaseStrategy` for version management
+3. Auto-archive (tag + git rm + commit)
+4. Git tag: `spec/<id>` (same as current archive flow)
+5. `--json` output with release info
+
+**New command: `patina spec abandon <id> [--reason "..."]`:**
+1. Validate spec exists (any status except already abandoned)
+2. Auto-archive (tag + git rm + commit)
+3. Git tag: `spec/<id>` with reason annotation
+4. `--json` output
 
 **New command: `patina spec pause <id> --reason "..."`:**
 1. Check no other spec is already paused (one-paused-spec rule)
@@ -373,6 +531,10 @@ the basic commands.
 6. Log in active session
 
 **Exit criteria:**
+- [ ] `spec status` deprecated — prints redirect message
+- [ ] `spec promote` advances draft→ready→active, tags on active
+- [ ] `spec complete` triggers release + archive + tag
+- [ ] `spec abandon` archives + tags, accepts optional reason
 - [ ] `paused` and `blocked` are valid statuses
 - [ ] `spec pause` enforces one-paused-spec rule
 - [ ] `spec pause` creates WIP commit (if dirty) + tag + updates YAML + DB
@@ -383,6 +545,7 @@ the basic commands.
 - [ ] Tag N derived from existing tags (D2)
 - [ ] Invalid transitions rejected (draft → paused, paused → complete)
 - [ ] YAML rollback on failure (D1)
+- [ ] All mutation commands support `--json` output
 
 ### Phase 2: Spec Split
 
@@ -464,11 +627,19 @@ CLI returns structured summary to stdout that the skill can use directly.
 Fewer LLM interpretation steps. Skill markdown stays the same — just
 relies less on file reads.
 
+**4e. Fix development branch assumption:**
+Session system (`session/internal.rs`) hardcodes `work` as the development
+branch. Release system (`release/internal.rs`) expects `patina` branch.
+They disagree. Fix: read the development branch from `.patina/config.toml`
+(e.g., `[project] branch = "patina"`) and use it consistently in both
+session start branch-switching and release safeguard checks.
+
 **Exit criteria:**
 - [ ] `patina session list` shows active/stale/recent sessions
 - [ ] `session start` warns when archiving a session >24h old
 - [ ] `session end` flips status before archiving (atomic-first)
 - [ ] Session CLI commands return structured summary to stdout
+- [ ] Session and release agree on development branch (configurable)
 
 ### Phase 5: Session Integration
 
@@ -494,13 +665,53 @@ relies less on file reads.
 - [ ] `/session-update` tracks spec status changes
 - [ ] `/session-end` suggests next spec and confirms pause reasons
 
+### Phase 6: MCP Tools + `/spec` Skill
+
+**Goal:** Expose all spec commands as MCP tools and write the unified
+`/spec` adapter skill. Completes the 3-prong bundle.
+
+**6a. MCP tool registration:**
+Register each spec command as an MCP tool in `src/mcp/`. Same Rust
+functions the CLI calls — MCP is just a different entry point. Each
+tool has typed parameters and returns structured JSON.
+
+Tools: `spec_list`, `spec_ready`, `spec_blocked`, `spec_next`,
+`spec_create`, `spec_promote`, `spec_pause`, `spec_resume`,
+`spec_block`, `spec_complete`, `spec_abandon`, `spec_split`
+
+**6b. `/spec` adapter skill:**
+Single skill definition in `resources/claude/spec.md` (and equivalent
+for other adapters). Describes the full capability with:
+- Command menu (mutations + queries)
+- When to invoke each command (LLM judgment guidance)
+- How to fill parameters from conversation context
+- How to present results to the user
+
+**6c. Plugin manifest (design only):**
+Document the shape of a future plugin manifest that bundles CLI
+commands, MCP tools, and skill definition. Don't implement the plugin
+runtime — just ensure the spec system's interfaces are clean enough
+that extraction to WASM is possible later.
+
+**Exit criteria:**
+- [ ] All spec commands available as MCP tools
+- [ ] `/spec` skill works with Claude adapter
+- [ ] LLM can discover, select, and invoke spec tools from conversation
+- [ ] Plugin interface shape documented (WIT contract sketch)
+
 ## Testing
 
 ### Manual Test Cases
 
-**Test 1: Pause and resume**
+**Test 1: Promote through lifecycle**
 ```bash
-patina spec status my-spec active
+patina spec promote my-spec          # draft → ready
+patina spec promote my-spec          # ready → active (tags spec/my-spec-start)
+patina spec promote my-spec          # Error: already active, use complete/pause/block
+```
+
+**Test 2: Pause and resume**
+```bash
 patina spec pause my-spec --reason "Discovered need for auth first"
 # → WIP commit, tag spec/my-spec-paused-1, status: paused
 
@@ -511,7 +722,7 @@ patina spec resume my-spec
 # → Shows context diffs, status: active, tag spec/my-spec-resumed-1
 ```
 
-**Test 2: Block and unblock**
+**Test 3: Block and unblock**
 ```bash
 patina spec block my-spec --by auth-spec --reason "Need auth first"
 # → status: blocked, blocked_by: [auth-spec], tag spec/my-spec-blocked-1
@@ -519,12 +730,21 @@ patina spec block my-spec --by auth-spec --reason "Need auth first"
 patina spec resume my-spec
 # → Error: Still blocked by auth-spec (draft)
 
-patina spec status auth-spec complete
+patina spec complete auth-spec
 patina spec resume my-spec
 # → Success: status active, context diffs shown
 ```
 
-**Test 3: Split**
+**Test 4: Complete and abandon**
+```bash
+patina spec complete my-spec
+# → Release (version bump) + archive (tag + git rm) + commit
+
+patina spec abandon other-spec --reason "Superseded by new approach"
+# → Archive (tag + git rm) + commit, no release
+```
+
+**Test 5: Split**
 ```bash
 patina spec split my-spec
 # → Prompts for what's done
@@ -536,7 +756,7 @@ git show spec/my-spec:layer/surface/build/feat/my-spec/SPEC.md
 # → Original spec recovered
 ```
 
-**Test 4: One-paused-spec constraint**
+**Test 6: One-paused-spec constraint**
 ```bash
 patina spec pause spec-A --reason "Exploring alternatives"
 # → Success: spec-A paused
@@ -545,7 +765,7 @@ patina spec pause spec-B --reason "New idea"
 # → Error: spec-A is already paused.
 #   Resume, split, or abandon it first.
 
-patina spec status spec-A abandoned
+patina spec abandon spec-A --reason "No longer needed"
 patina spec pause spec-B --reason "New idea"
 # → Success: spec-B paused (spec-A resolved)
 ```
@@ -656,11 +876,24 @@ with `paused`, `blocked`, `split`, and git-backed state transitions.
 ## Key Files
 
 ```
+# Spec system (CLI layer)
 src/spec.rs                          — SpecFrontmatter struct (add new fields)
-src/commands/spec/mod.rs             — public API, clap subcommands (add new commands)
-src/commands/spec/internal.rs        — all logic: VALID_STATUSES, state transitions,
-                                       ready/blocked queries, archive system
+src/commands/spec/mod.rs             — public API, clap subcommands (decompose into commands)
+src/commands/spec/internal.rs        — all logic: transitions, queries, archive
+src/git/operations.rs                — git helpers (add tag listing, ref-based tagging)
+src/release/                         — ReleaseStrategy (used by spec complete)
+
+# MCP layer (Phase 6)
+src/mcp/                             — MCP tool registration for spec commands
+
+# Skill layer (Phase 6)
+resources/claude/spec.md             — /spec skill definition (unified discovery)
+
+# Session system (Phase 4-5)
 src/commands/session/mod.rs          — session public API
 src/commands/session/internal.rs     — session lifecycle logic
-resources/claude/session-*.md        — skill instructions
+resources/claude/session-*.md        — session skill instructions
+
+# Future: plugin extraction
+src/commands/spec/mod.rs             — public API becomes WIT contract shape
 ```
