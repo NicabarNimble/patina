@@ -124,7 +124,10 @@ pub fn show_ready_specs(json: bool) -> Result<()> {
                 } else {
                     String::new()
                 };
-                println!("  {:<28} {:<10} {}{}", spec.id, target, spec.title, impact_str);
+                println!(
+                    "  {:<28} {:<10} {}{}",
+                    spec.id, target, spec.title, impact_str
+                );
             }
             printed_section = true;
         }
@@ -142,7 +145,10 @@ pub fn show_ready_specs(json: bool) -> Result<()> {
                 } else {
                     String::new()
                 };
-                println!("  {:<28} {:<10} {}{}", spec.id, target, spec.title, impact_str);
+                println!(
+                    "  {:<28} {:<10} {}{}",
+                    spec.id, target, spec.title, impact_str
+                );
             }
             printed_section = true;
         }
@@ -587,14 +593,9 @@ pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
         .filter(|s| s.status.as_deref() == Some("paused"))
         .count();
     if paused_count > 0 {
-        let paused_spec = specs
-            .iter()
-            .find(|s| s.status.as_deref() == Some("paused"));
+        let paused_spec = specs.iter().find(|s| s.status.as_deref() == Some("paused"));
         if let Some(spec) = paused_spec {
-            eprintln!(
-                "\nPaused: {} — resolve before pausing another",
-                spec.id
-            );
+            eprintln!("\nPaused: {} — resolve before pausing another", spec.id);
         }
     }
 
@@ -743,7 +744,11 @@ pub fn update_spec_status(id: &str, new_status: &str, major: bool, no_archive: b
                 // Created after the release commit so no orphaned tag on failure.
                 let archive_tag = format!("spec/{}", id);
                 println!("Creating tag: {} (on HEAD~1)", archive_tag);
-                patina::git::create_tag_at(&archive_tag, &format!("Archived spec: {}", title_str), "HEAD~1")?;
+                patina::git::create_tag_at(
+                    &archive_tag,
+                    &format!("Archived spec: {}", title_str),
+                    "HEAD~1",
+                )?;
                 println!("  Archived: {}", archive_tag);
             }
         } else {
@@ -870,7 +875,11 @@ fn archive_spec_inner(
     // 3. Tag HEAD~1 (the parent commit that still has the spec file).
     // Created after commit so no orphaned tag if git rm or commit fails.
     println!("Creating tag: {} (on HEAD~1)", tag_name);
-    patina::git::create_tag_at(&tag_name, &format!("Archived spec: {}", description), "HEAD~1")?;
+    patina::git::create_tag_at(
+        &tag_name,
+        &format!("Archived spec: {}", description),
+        "HEAD~1",
+    )?;
 
     println!(
         "\n✓ Archived: {}\n  Tag: {}\n  Recover: git show {}:{}",
@@ -1218,7 +1227,11 @@ pub fn complete_spec(id: &str, major: bool, json: bool) -> Result<()> {
         // Tag HEAD~1 (parent commit still has spec file)
         let archive_tag_name = format!("spec/{}", id);
         println!("Creating tag: {} (on HEAD~1)", archive_tag_name);
-        patina::git::create_tag_at(&archive_tag_name, &format!("Archived spec: {}", title_str), "HEAD~1")?;
+        patina::git::create_tag_at(
+            &archive_tag_name,
+            &format!("Archived spec: {}", title_str),
+            "HEAD~1",
+        )?;
     } else {
         // No release (explore type) — archive as standalone commit
         archive_spec_inner(id, &file_path, "complete", title_str, &spec_dir)?;
@@ -1698,7 +1711,12 @@ pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<(
 /// Split a spec: complete original with release, create new draft for remaining work.
 ///
 /// Flow: validate → tag → complete original → create new spec → commit
-pub fn split_spec(id: &str, new_id: Option<&str>, description: Option<&str>, json: bool) -> Result<()> {
+pub fn split_spec(
+    id: &str,
+    new_id: Option<&str>,
+    description: Option<&str>,
+    json: bool,
+) -> Result<()> {
     // 1. Find spec and validate status (active or paused)
     let (file_path, old_status, title) = find_spec(id)?;
     match old_status.as_deref() {
@@ -1722,7 +1740,11 @@ pub fn split_spec(id: &str, new_id: Option<&str>, description: Option<&str>, jso
     let version_tags = patina::git::list_matching_tags(&format!("spec/{}-v*-complete", id))?;
     let version_n = version_tags.len() as u32 + 1;
     let version_tag = format!("spec/{}-v{}-complete", id, version_n);
-    patina::git::create_tag_at(&version_tag, &format!("Split point: {} v{}", id, version_n), "HEAD")?;
+    patina::git::create_tag_at(
+        &version_tag,
+        &format!("Split point: {} v{}", id, version_n),
+        "HEAD",
+    )?;
 
     // 4. Complete original spec (release + archive)
     //    Set status to complete first, then delegate to release strategy
@@ -2012,7 +2034,10 @@ pub fn next_spec(json: bool) -> Result<()> {
             } else {
                 String::new()
             };
-            println!("  {:<28} {:<10} {}{}", rec.id, rec.status, rec.reason, impact_str);
+            println!(
+                "  {:<28} {:<10} {}{}",
+                rec.id, rec.status, rec.reason, impact_str
+            );
         }
     }
 
@@ -2049,10 +2074,11 @@ fn load_dep_counts() -> HashMap<String, usize> {
         Ok(c) => c,
         Err(_) => return HashMap::new(),
     };
-    let mut stmt = match conn.prepare("SELECT depends_on, COUNT(*) FROM spec_deps GROUP BY depends_on") {
-        Ok(s) => s,
-        Err(_) => return HashMap::new(),
-    };
+    let mut stmt =
+        match conn.prepare("SELECT depends_on, COUNT(*) FROM spec_deps GROUP BY depends_on") {
+            Ok(s) => s,
+            Err(_) => return HashMap::new(),
+        };
     stmt.query_map([], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, usize>(1)?))
     })
