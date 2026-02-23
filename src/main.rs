@@ -1671,6 +1671,17 @@ fn main() -> Result<()> {
             } => {
                 commands::spec::block(&id, &by, &reason, json)?;
             }
+            commands::spec::SpecCommands::Split {
+                id,
+                new_id,
+                description,
+                json,
+            } => {
+                commands::spec::split(&id, new_id.as_deref(), description.as_deref(), json)?;
+            }
+            commands::spec::SpecCommands::Next { json } => {
+                commands::spec::next(json)?;
+            }
         },
         Some(Commands::Schema { command }) => match command {
             commands::schema::SchemaCommands::Install { path } => {

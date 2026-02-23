@@ -1595,6 +1595,371 @@ pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<(
     Ok(())
 }
 
+// ============================================================================
+// Spec Split (spec-workflow-rigor Phase 2)
+// ============================================================================
+
+/// Split a spec: complete original with release, create new draft for remaining work.
+///
+/// Flow: validate → tag → complete original → create new spec → commit
+pub fn split_spec(id: &str, new_id: Option<&str>, description: Option<&str>, json: bool) -> Result<()> {
+    // 1. Find spec and validate status (active or paused)
+    let (file_path, old_status, title) = find_spec(id)?;
+    match old_status.as_deref() {
+        Some("active") | Some("paused") => {}
+        Some(s) => anyhow::bail!(
+            "Cannot split '{}' — status is '{}', expected 'active' or 'paused'",
+            id,
+            s
+        ),
+        None => anyhow::bail!("Spec '{}' has no status", id),
+    }
+
+    // 2. Read frontmatter for spec type
+    let content = std::fs::read_to_string(&file_path)
+        .with_context(|| format!("Failed to read {}", file_path))?;
+    let (frontmatter, _body) = parse_spec_file(&content)
+        .with_context(|| format!("Failed to parse frontmatter in {}", file_path))?;
+    let spec_type = frontmatter.r#type.clone();
+
+    // 3. Tag current state: spec/<id>-v<N>-complete
+    let version_tags = patina::git::list_matching_tags(&format!("spec/{}-v*-complete", id))?;
+    let version_n = version_tags.len() as u32 + 1;
+    let version_tag = format!("spec/{}-v{}-complete", id, version_n);
+    patina::git::create_tag_at(&version_tag, &format!("Split point: {} v{}", id, version_n), "HEAD")?;
+
+    // 4. Complete original spec (release + archive)
+    //    Set status to complete first, then delegate to release strategy
+    let title_str = title.as_deref().unwrap_or(id);
+
+    {
+        // Update status to complete
+        let (mut fm_clone, body_clone) = parse_spec_file(&content)?;
+        fm_clone.status = Some("complete".to_string());
+        let new_content = serialize_spec_file(&fm_clone, &body_clone)?;
+        std::fs::write(&file_path, &new_content)
+            .with_context(|| format!("Failed to write {}", file_path))?;
+
+        // Update DB
+        let db_path = Path::new(DB_PATH);
+        if db_path.exists() {
+            let conn = Connection::open(db_path).context("Failed to open database")?;
+            conn.execute(
+                "UPDATE patterns SET status = 'complete' WHERE id = ?1",
+                rusqlite::params![id],
+            )?;
+        }
+
+        // Pre-check archive tag
+        let archive_tag = format!("spec/{}", id);
+        if tag_exists(&archive_tag)? {
+            anyhow::bail!(
+                "Tag '{}' already exists. Spec may have been archived previously.",
+                archive_tag
+            );
+        }
+        let spec_dir = resolve_spec_dir(&file_path);
+
+        // Release strategy
+        let strategy = ReleaseStrategy::from_project(Path::new("."));
+        let bump = BumpType::from_spec_type(&spec_type);
+
+        if let Some(bump) = bump {
+            let prepared = strategy.preflight(bump, &file_path)?;
+            let archive_dir = spec_dir
+                .as_ref()
+                .and_then(|d| d.to_str())
+                .or(Some(&file_path));
+            prepared.execute(title_str, &file_path, archive_dir)?;
+
+            // Tag parent commit (still has spec file)
+            println!("Creating tag: {} (on HEAD~1)", archive_tag);
+            patina::git::create_tag_at(
+                &archive_tag,
+                &format!("Archived spec: {}", title_str),
+                "HEAD~1",
+            )?;
+        } else {
+            // No release (explore type) — archive as standalone commit
+            archive_spec_inner(id, &file_path, "complete", title_str, &spec_dir)?;
+        }
+    }
+
+    // 5. Determine new spec ID
+    let derived_id = if let Some(explicit) = new_id {
+        explicit.to_string()
+    } else {
+        // Default: <id>-v2, -v3, etc.
+        let mut n = 2u32;
+        loop {
+            let candidate = format!("{}-v{}", id, n);
+            let candidate_dir = format!("layer/surface/build/{}/{}", spec_type, candidate);
+            if !Path::new(&candidate_dir).exists() {
+                break candidate;
+            }
+            n += 1;
+        }
+    };
+
+    // 6. Create new spec directory + SPEC.md
+    let new_spec_dir = format!("layer/surface/build/{}/{}", spec_type, derived_id);
+    std::fs::create_dir_all(&new_spec_dir)
+        .with_context(|| format!("Failed to create directory {}", new_spec_dir))?;
+
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let desc_text = description.unwrap_or("Remaining work from split");
+    let new_spec_content = format!(
+        "---\ntype: {}\nid: {}\nstatus: draft\ncreated: {}\nsplit_from: {}\n---\n\n# {}\n\n{}\n\n## Recovery\n\nParent spec content: `git show {}:{}`\n",
+        spec_type,
+        derived_id,
+        today,
+        id,
+        derived_id,
+        desc_text,
+        version_tag,
+        file_path,
+    );
+
+    let new_spec_path = format!("{}/SPEC.md", new_spec_dir);
+    std::fs::write(&new_spec_path, &new_spec_content)
+        .with_context(|| format!("Failed to write {}", new_spec_path))?;
+
+    // 7. Git commit the new spec
+    let output = Command::new("git")
+        .args(["add", &new_spec_path])
+        .output()
+        .context("Failed to stage new spec")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git add failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let commit_msg = format!(
+        "spec: split {} — ship v{}, draft remainder as {}",
+        id, version_n, derived_id
+    );
+    let output = Command::new("git")
+        .args(["commit", "-m", &commit_msg])
+        .output()
+        .context("Failed to commit")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.contains("nothing to commit") {
+            anyhow::bail!("git commit failed: {}", stderr);
+        }
+    }
+
+    if json {
+        let result = serde_json::json!({
+            "command": "split",
+            "original_spec_id": id,
+            "new_spec_id": derived_id,
+            "version_tag": version_tag,
+            "archive_tag": format!("spec/{}", id),
+            "new_spec_path": new_spec_path,
+            "status": "completed",
+        });
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        println!("Split: {}", id);
+        println!("  Completed: {} → archived (spec/{})", id, id);
+        println!("  Version tag: {}", version_tag);
+        println!("  New draft: {} ({})", derived_id, new_spec_path);
+        println!("  Recover parent: git show {}:{}", version_tag, file_path);
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// Spec Next / Queue System (spec-workflow-rigor Phase 3)
+// ============================================================================
+
+/// Recommend the next spec to work on based on priority ranking.
+///
+/// Ranking: active > blocked-ready-to-resume > paused-with-age > impact > drafts
+pub fn next_spec(json: bool) -> Result<()> {
+    let all_specs = get_all_specs(&ListFilters::default())?;
+
+    if all_specs.is_empty() {
+        if json {
+            println!("{{}}");
+        } else {
+            println!("No specs found.");
+        }
+        return Ok(());
+    }
+
+    // Load blocked specs to check for unblocked ones
+    let blocked_specs = get_blocked_specs().unwrap_or_default();
+
+    // Load spec_deps for impact scoring
+    let db_path = Path::new(DB_PATH);
+    let dep_counts: HashMap<String, usize> = if db_path.exists() {
+        if let Ok(conn) = Connection::open(db_path) {
+            let mut stmt = conn
+                .prepare("SELECT depends_on, COUNT(*) FROM spec_deps GROUP BY depends_on")
+                .unwrap_or_else(|_| conn.prepare("SELECT 1, 0 WHERE 0").unwrap());
+            stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, usize>(1)?))
+            })
+            .ok()
+            .map(|rows| rows.flatten().collect())
+            .unwrap_or_default()
+        } else {
+            HashMap::new()
+        }
+    } else {
+        HashMap::new()
+    };
+
+    #[derive(Debug, Serialize)]
+    struct Recommendation {
+        id: String,
+        status: String,
+        reason: String,
+        priority: u32,
+        impact: usize,
+    }
+
+    let mut recommendations: Vec<Recommendation> = Vec::new();
+
+    for spec in &all_specs {
+        let status = spec.status.as_deref().unwrap_or("unknown");
+        let impact = dep_counts.get(&spec.id).copied().unwrap_or(0);
+
+        match status {
+            "active" => {
+                recommendations.push(Recommendation {
+                    id: spec.id.clone(),
+                    status: status.to_string(),
+                    reason: "Currently active — continue working".to_string(),
+                    priority: 1,
+                    impact,
+                });
+            }
+            "blocked" => {
+                // Check if blockers are now complete
+                let spec_blocked = blocked_specs.iter().find(|b| b.id == spec.id);
+                let all_blockers_done = spec_blocked
+                    .map(|b| {
+                        b.blocked_by.is_empty()
+                            || b.blocked_by
+                                .iter()
+                                .all(|bl| bl.status == "complete" || bl.status == "done")
+                    })
+                    .unwrap_or(false);
+
+                if all_blockers_done {
+                    recommendations.push(Recommendation {
+                        id: spec.id.clone(),
+                        status: status.to_string(),
+                        reason: "Blockers complete — ready to resume".to_string(),
+                        priority: 2,
+                        impact,
+                    });
+                }
+            }
+            "paused" => {
+                let age = spec_age_days_from_list(spec);
+                let reason = if age > 14 {
+                    format!("Paused {} days — overdue for attention", age)
+                } else {
+                    format!("Paused {} days", age)
+                };
+                recommendations.push(Recommendation {
+                    id: spec.id.clone(),
+                    status: status.to_string(),
+                    reason,
+                    priority: if age > 14 { 3 } else { 4 },
+                    impact,
+                });
+            }
+            "ready" => {
+                recommendations.push(Recommendation {
+                    id: spec.id.clone(),
+                    status: status.to_string(),
+                    reason: if impact > 0 {
+                        format!("Ready to start — blocks {} other spec(s)", impact)
+                    } else {
+                        "Ready to start".to_string()
+                    },
+                    priority: 5,
+                    impact,
+                });
+            }
+            "draft" => {
+                recommendations.push(Recommendation {
+                    id: spec.id.clone(),
+                    status: status.to_string(),
+                    reason: "Draft — promote to ready when prepared".to_string(),
+                    priority: 6,
+                    impact,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    // Sort by priority (ascending), then by impact (descending)
+    recommendations.sort_by(|a, b| a.priority.cmp(&b.priority).then(b.impact.cmp(&a.impact)));
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&recommendations)?);
+        return Ok(());
+    }
+
+    if recommendations.is_empty() {
+        println!("No actionable specs found.");
+        return Ok(());
+    }
+
+    // Top recommendation
+    let top = &recommendations[0];
+    println!("RECOMMENDED: {}", top.id);
+    println!("  Status: {}", top.status);
+    println!("  Reason: {}", top.reason);
+    if top.impact > 0 {
+        println!("  Impact: blocks {} other spec(s)", top.impact);
+    }
+
+    // Show the rest as alternatives
+    if recommendations.len() > 1 {
+        println!("\nOther specs:");
+        for rec in &recommendations[1..] {
+            let impact_str = if rec.impact > 0 {
+                format!(" (blocks {})", rec.impact)
+            } else {
+                String::new()
+            };
+            println!("  {:<28} {:<10} {}{}", rec.id, rec.status, rec.reason, impact_str);
+        }
+    }
+
+    Ok(())
+}
+
+/// Compute age in days for a spec from the all-specs list.
+/// Uses the spec's frontmatter paused_date/blocked_date by re-reading the file.
+fn spec_age_days_from_list(spec: &SpecInfo) -> i64 {
+    // Try to find the spec file and read paused_date or blocked_date
+    if let Ok((file_path, _, _)) = find_spec(&spec.id) {
+        if let Ok(content) = std::fs::read_to_string(&file_path) {
+            if let Ok((fm, _)) = parse_spec_file(&content) {
+                let date_str = fm.paused_date.as_deref().or(fm.blocked_date.as_deref());
+                if let Some(date_str) = date_str {
+                    if let Ok(date) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+                        let today = chrono::Utc::now().date_naive();
+                        return (today - date).num_days();
+                    }
+                }
+            }
+        }
+    }
+    0
+}
+
 /// Check if a git tag exists (delegates to patina::git::tag_exists)
 fn tag_exists(tag: &str) -> Result<bool> {
     patina::git::tag_exists(tag)
