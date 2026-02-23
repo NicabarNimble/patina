@@ -495,10 +495,15 @@ pub fn fetch(remote: &str) -> Result<()> {
     Ok(())
 }
 
-/// Create an annotated git tag
+/// Create an annotated git tag on HEAD
 pub fn create_tag(name: &str, message: &str) -> Result<()> {
+    create_tag_at(name, message, "HEAD")
+}
+
+/// Create an annotated git tag on a specific git ref
+pub fn create_tag_at(name: &str, message: &str, git_ref: &str) -> Result<()> {
     let output = Command::new("git")
-        .args(["tag", "-a", name, "-m", message])
+        .args(["tag", "-a", name, "-m", message, git_ref])
         .output()
         .context("Failed to create git tag")?;
 
@@ -612,6 +617,44 @@ pub fn log_oneline(count: usize) -> Result<String> {
         .context("Failed to get recent commits")?;
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// List tags matching a glob pattern (e.g., "spec/my-spec-paused-*")
+pub fn list_matching_tags(pattern: &str) -> Result<Vec<String>> {
+    let output = Command::new("git")
+        .args(["tag", "-l", pattern])
+        .output()
+        .context("Failed to list git tags")?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(|l| l.to_string())
+        .collect())
+}
+
+/// Check if there are unresolved merge conflicts (.git/MERGE_HEAD exists)
+pub fn has_merge_conflicts() -> Result<bool> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--git-dir"])
+        .output()
+        .context("Failed to find git directory")?;
+
+    let git_dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(std::path::Path::new(&git_dir)
+        .join("MERGE_HEAD")
+        .exists())
+}
+
+/// Check if working tree is clean for tracked files only (ignores untracked)
+pub fn is_clean_tracked() -> Result<bool> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain", "-uno"])
+        .output()
+        .context("Failed to check git status")?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().is_empty())
 }
 
 #[cfg(test)]
