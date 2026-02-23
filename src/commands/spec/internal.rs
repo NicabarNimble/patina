@@ -70,6 +70,9 @@ pub fn get_ready_specs() -> Result<Vec<ReadySpec>> {
 }
 
 /// Display ready specs (human-readable or JSON)
+///
+/// Enhanced view: shows impact counts, paused specs with age, and
+/// blocked specs whose blockers completed (Phase 3 enhancements).
 pub fn show_ready_specs(json: bool) -> Result<()> {
     let specs = get_ready_specs()?;
 
@@ -79,21 +82,34 @@ pub fn show_ready_specs(json: bool) -> Result<()> {
         return Ok(());
     }
 
-    // Get draft specs from merged filesystem+DB source
+    // Load impact counts (how many specs each spec blocks)
+    let dep_counts = load_dep_counts();
+
+    // Get additional spec groups for the enhanced view
+    let all_specs = get_all_specs(&ListFilters::default()).unwrap_or_default();
     let draft_filters = ListFilters {
         status: Some("draft".to_string()),
         target: None,
     };
     let drafts = get_all_specs(&draft_filters).unwrap_or_default();
+    let paused: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("paused"))
+        .collect();
+    let blocked_specs = get_blocked_specs().unwrap_or_default();
+    let unblocked: Vec<_> = blocked_specs
+        .iter()
+        .filter(|b| {
+            b.blocked_by.is_empty()
+                || b.blocked_by
+                    .iter()
+                    .all(|bl| bl.status == "complete" || bl.status == "done")
+        })
+        .collect();
 
-    if specs.is_empty() {
-        if drafts.is_empty() {
-            println!("No specs ready to work on.");
-            println!("\nHint: Specs need status 'ready' or 'active' with all blockers complete.");
-        } else {
-            println!("No specs ready to work on. {} draft spec(s) \u{2014} promote with `patina spec status <id> ready`", drafts.len());
-        }
-    } else {
+    let mut printed_section = false;
+
+    if !specs.is_empty() {
         // Group by status for display
         let ready: Vec<_> = specs.iter().filter(|s| s.status == "ready").collect();
         let active: Vec<_> = specs.iter().filter(|s| s.status == "active").collect();
@@ -102,25 +118,77 @@ pub fn show_ready_specs(json: bool) -> Result<()> {
             println!("READY (can start now):");
             for spec in &ready {
                 let target = spec.target.as_deref().unwrap_or("-");
-                println!("  {:<28} {:<10} {}", spec.id, target, spec.title);
+                let impact = dep_counts.get(&spec.id).copied().unwrap_or(0);
+                let impact_str = if impact > 0 {
+                    format!(" [blocks {}]", impact)
+                } else {
+                    String::new()
+                };
+                println!("  {:<28} {:<10} {}{}", spec.id, target, spec.title, impact_str);
             }
+            printed_section = true;
         }
 
         if !active.is_empty() {
-            if !ready.is_empty() {
+            if printed_section {
                 println!();
             }
             println!("ACTIVE (in progress):");
             for spec in &active {
                 let target = spec.target.as_deref().unwrap_or("-");
-                println!("  {:<28} {:<10} {}", spec.id, target, spec.title);
+                let impact = dep_counts.get(&spec.id).copied().unwrap_or(0);
+                let impact_str = if impact > 0 {
+                    format!(" [blocks {}]", impact)
+                } else {
+                    String::new()
+                };
+                println!("  {:<28} {:<10} {}{}", spec.id, target, spec.title, impact_str);
             }
+            printed_section = true;
         }
+    } else if drafts.is_empty() && paused.is_empty() && unblocked.is_empty() {
+        println!("No specs ready to work on.");
+        println!("\nHint: Specs need status 'ready' or 'active' with all blockers complete.");
+        return Ok(());
     }
 
-    // DRAFTS section — human output only
+    // UNBLOCKED section — blocked specs whose blockers are now complete
+    if !unblocked.is_empty() {
+        if printed_section {
+            println!();
+        }
+        println!("UNBLOCKED (blockers complete — resume with `patina spec resume <id>`):");
+        for spec in &unblocked {
+            let target = spec.target.as_deref().unwrap_or("-");
+            println!("  {:<28} {:<10} {}", spec.id, target, spec.title);
+        }
+        printed_section = true;
+    }
+
+    // PAUSED section — with age warnings
+    if !paused.is_empty() {
+        if printed_section {
+            println!();
+        }
+        println!("PAUSED (resolve before pausing another):");
+        for spec in &paused {
+            let target = spec.target.as_deref().unwrap_or("-");
+            let age = spec_age_days_from_list(spec);
+            let age_str = if age > 14 {
+                format!(" ({} days — overdue)", age)
+            } else if age > 0 {
+                format!(" ({} days)", age)
+            } else {
+                String::new()
+            };
+            println!("  {:<28} {:<10} {}{}", spec.id, target, spec.title, age_str);
+        }
+        printed_section = true;
+    }
+
+    // DRAFTS section
     if !drafts.is_empty() {
-        if !specs.is_empty() {
+        if printed_section {
             println!();
         }
         println!("DRAFTS (need promotion to ready):");
@@ -1795,24 +1863,7 @@ pub fn next_spec(json: bool) -> Result<()> {
     let blocked_specs = get_blocked_specs().unwrap_or_default();
 
     // Load spec_deps for impact scoring
-    let db_path = Path::new(DB_PATH);
-    let dep_counts: HashMap<String, usize> = if db_path.exists() {
-        if let Ok(conn) = Connection::open(db_path) {
-            let mut stmt = conn
-                .prepare("SELECT depends_on, COUNT(*) FROM spec_deps GROUP BY depends_on")
-                .unwrap_or_else(|_| conn.prepare("SELECT 1, 0 WHERE 0").unwrap());
-            stmt.query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, usize>(1)?))
-            })
-            .ok()
-            .map(|rows| rows.flatten().collect())
-            .unwrap_or_default()
-        } else {
-            HashMap::new()
-        }
-    } else {
-        HashMap::new()
-    };
+    let dep_counts = load_dep_counts();
 
     #[derive(Debug, Serialize)]
     struct Recommendation {
@@ -1958,6 +2009,28 @@ fn spec_age_days_from_list(spec: &SpecInfo) -> i64 {
         }
     }
     0
+}
+
+/// Load dependency counts from spec_deps: how many specs depend on each spec.
+fn load_dep_counts() -> HashMap<String, usize> {
+    let db_path = Path::new(DB_PATH);
+    if !db_path.exists() {
+        return HashMap::new();
+    }
+    let conn = match Connection::open(db_path) {
+        Ok(c) => c,
+        Err(_) => return HashMap::new(),
+    };
+    let mut stmt = match conn.prepare("SELECT depends_on, COUNT(*) FROM spec_deps GROUP BY depends_on") {
+        Ok(s) => s,
+        Err(_) => return HashMap::new(),
+    };
+    stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, usize>(1)?))
+    })
+    .ok()
+    .map(|rows| rows.flatten().collect())
+    .unwrap_or_default()
 }
 
 /// Check if a git tag exists (delegates to patina::git::tag_exists)
