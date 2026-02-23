@@ -172,10 +172,17 @@ Flip `status: active → completed` as the first mutation in `end_session()`,
 before computing metrics or archiving. If later steps fail, the session is
 at least marked done.
 
+**3d. Richer CLI output for skills:**
+Currently: skill markdown tells the LLM to run CLI, then separately read
+the output file. Proposed: CLI returns a structured summary to stdout that
+the skill can use directly. Fewer LLM interpretation steps, less chance of
+skipping. Skill markdown stays the same — just relies less on file reads.
+
 **Exit criteria:**
 - [ ] `patina session list` shows active/stale/recent sessions
 - [ ] `session start` warns when archiving a session >24h old
 - [ ] `session end` flips status before archiving (atomic-first)
+- [ ] Session CLI commands return structured summary to stdout
 
 ### Phase 4: Database & Queue Queries
 
@@ -267,6 +274,27 @@ patina session list
 # → Shows active sessions, flags stale (>24h)
 ```
 
+## Open Questions
+
+1. Should `patina session list` also query archived sessions in
+   `layer/sessions/`, or only active + `.patina/local/`?
+2. Should `patina doctor` check for stale sessions as part of health checks?
+3. Is pre-commit hook the right trigger for auto git metric capture, or a
+   background file watcher? (Deferred — see below.)
+
+## Deferred (needs own spec if pursued)
+
+- **Session state machine** — Formal states: `created → active → paused →
+  ended`. Transitions validated in Rust. Would prevent stale sessions
+  structurally but changes the fundamental model (file-as-state →
+  state-as-data). The Phase 3 fixes may make it unnecessary. Park it.
+- **Eventlog consumer in patina-review** — Give the eventlog its first
+  reader. Premature until the eventlog has more consumers writing to it.
+- **Pre-commit hook for auto git metric capture** — Opt-in hook appending
+  git context to active session. Manual `/session-update` stays for
+  narrative — hook captures facts. Premature until session hardening
+  proves the value.
+
 ## Non-Goals
 
 - No automatic dependency resolution (Temporal-style orchestration)
@@ -274,8 +302,6 @@ patina session list
 - No complex priority algorithms
 - No multi-project coordination (that's Mother's job)
 - No automatic unblocking (human decides when to unblock)
-- No eventlog consumer in patina-review (premature — needs its own spec)
-- No pre-commit hook for auto git metric capture (premature)
 
 ## Success Metrics
 
