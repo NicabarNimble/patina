@@ -982,6 +982,24 @@ where
     Ok((file_path, frontmatter))
 }
 
+/// Save file content, execute action, rollback file on failure.
+/// Used by pause_spec and block_spec where YAML is mutated before git
+/// operations that could fail (D1 rollback pattern from design.md).
+fn with_yaml_rollback<T, F>(file_path: &str, action: F) -> Result<T>
+where
+    F: FnOnce() -> Result<T>,
+{
+    let original = std::fs::read_to_string(file_path)
+        .with_context(|| format!("Failed to read {} for rollback backup", file_path))?;
+    match action() {
+        Ok(val) => Ok(val),
+        Err(e) => {
+            let _ = std::fs::write(file_path, &original);
+            Err(e)
+        }
+    }
+}
+
 /// Derive the next tag sequence number from existing tags.
 /// e.g., list_matching_tags("spec/{id}-paused-*") → count existing → N+1
 fn next_tag_number(id: &str, prefix: &str) -> Result<u32> {
@@ -1270,38 +1288,22 @@ pub fn pause_spec(id: &str, reason: &str, json: bool) -> Result<()> {
         patina::git::commit(&wip_msg)?;
     }
 
-    // 5. Save original file for rollback
-    let original_content = std::fs::read_to_string(&file_path)
-        .with_context(|| format!("Failed to read {}", file_path))?;
-
-    // 6. Update YAML: status=paused, set pause fields
+    // 5. Update YAML, tag, and commit — with rollback on failure
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let tag_n = next_tag_number(id, "paused")?;
     let tag_name = format!("spec/{}-paused-{}", id, tag_n);
 
-    let (file_path, _fm) = match mutate_spec(id, |fm| {
-        fm.status = Some("paused".to_string());
-        fm.paused_reason = Some(reason.to_string());
-        fm.paused_date = Some(today.clone());
-        fm.paused_at_tag = Some(tag_name.clone());
-        Ok(())
-    }) {
-        Ok(result) => result,
-        Err(e) => {
-            // Rollback YAML
-            let _ = std::fs::write(&file_path, &original_content);
-            return Err(e);
-        }
-    };
+    with_yaml_rollback(&file_path, || {
+        let (file_path, _fm) = mutate_spec(id, |fm| {
+            fm.status = Some("paused".to_string());
+            fm.paused_reason = Some(reason.to_string());
+            fm.paused_date = Some(today.clone());
+            fm.paused_at_tag = Some(tag_name.clone());
+            Ok(())
+        })?;
 
-    // 7. Create annotated tag
-    if let Err(e) = patina::git::create_tag_at(&tag_name, reason, "HEAD") {
-        let _ = std::fs::write(&file_path, &original_content);
-        return Err(e);
-    }
+        patina::git::create_tag_at(&tag_name, reason, "HEAD")?;
 
-    // 8. Git commit the spec file change
-    let commit_result = (|| -> Result<()> {
         let output = Command::new("git")
             .args(["add", &file_path])
             .output()
@@ -1323,13 +1325,9 @@ pub fn pause_spec(id: &str, reason: &str, json: bool) -> Result<()> {
                 anyhow::bail!("git commit failed: {}", stderr);
             }
         }
-        Ok(())
-    })();
 
-    if let Err(e) = commit_result {
-        let _ = std::fs::write(&file_path, &original_content);
-        return Err(e);
-    }
+        Ok(())
+    })?;
 
     if json {
         let result = serde_json::json!({
@@ -1522,7 +1520,7 @@ pub fn resume_spec(id: &str, force: bool, json: bool) -> Result<()> {
 /// Appends to blocked_by list, updates spec_deps, creates annotated tag.
 pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<()> {
     // 1. Validate spec is active
-    let (_file_path, old_status, _title) = find_spec(id)?;
+    let (spec_file_path, old_status, _title) = find_spec(id)?;
     match old_status.as_deref() {
         Some("active") => {}
         Some(s) => anyhow::bail!(
@@ -1536,59 +1534,63 @@ pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<(
     // 2. Validate blocker spec exists
     let _ = find_spec(blocker).with_context(|| format!("Blocker spec '{}' not found", blocker))?;
 
-    // 3. Update YAML
+    // 3. Update YAML, DB, tag, and commit — with rollback on failure
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let tag_n = next_tag_number(id, "blocked")?;
     let tag_name = format!("spec/{}-blocked-{}", id, tag_n);
 
-    let (file_path, _fm) = mutate_spec(id, |fm| {
-        fm.status = Some("blocked".to_string());
-        // Append blocker to blocked_by list (D3: don't overwrite)
-        if !fm.blocked_by.contains(&blocker.to_string()) {
-            fm.blocked_by.push(blocker.to_string());
+    with_yaml_rollback(&spec_file_path, || {
+        let (file_path, _fm) = mutate_spec(id, |fm| {
+            fm.status = Some("blocked".to_string());
+            // Append blocker to blocked_by list (D3: don't overwrite)
+            if !fm.blocked_by.contains(&blocker.to_string()) {
+                fm.blocked_by.push(blocker.to_string());
+            }
+            fm.blocked_reason = Some(reason.to_string());
+            fm.blocked_date = Some(today.clone());
+            fm.paused_at_tag = Some(tag_name.clone());
+            Ok(())
+        })?;
+
+        // Update spec_deps in DB
+        let db_path = Path::new(DB_PATH);
+        if db_path.exists() {
+            let conn = Connection::open(db_path).context("Failed to open database")?;
+            conn.execute(
+                "INSERT OR IGNORE INTO spec_deps (spec_id, depends_on) VALUES (?1, ?2)",
+                rusqlite::params![id, blocker],
+            )?;
         }
-        fm.blocked_reason = Some(reason.to_string());
-        fm.blocked_date = Some(today.clone());
-        fm.paused_at_tag = Some(tag_name.clone());
+
+        // Create annotated tag
+        let tag_msg = format!("{} (blocked by {})", reason, blocker);
+        patina::git::create_tag_at(&tag_name, &tag_msg, "HEAD")?;
+
+        // Git commit
+        let output = Command::new("git")
+            .args(["add", &file_path])
+            .output()
+            .context("Failed to stage spec file")?;
+        if !output.status.success() {
+            anyhow::bail!(
+                "git add failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        let commit_msg = format!("spec: block {} (waiting on {})", id, blocker);
+        let output = Command::new("git")
+            .args(["commit", "-m", &commit_msg])
+            .output()
+            .context("Failed to commit")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if !stderr.contains("nothing to commit") {
+                anyhow::bail!("git commit failed: {}", stderr);
+            }
+        }
+
         Ok(())
     })?;
-
-    // 4. Update spec_deps in DB
-    let db_path = Path::new(DB_PATH);
-    if db_path.exists() {
-        let conn = Connection::open(db_path).context("Failed to open database")?;
-        conn.execute(
-            "INSERT OR IGNORE INTO spec_deps (spec_id, depends_on) VALUES (?1, ?2)",
-            rusqlite::params![id, blocker],
-        )?;
-    }
-
-    // 5. Create annotated tag
-    let tag_msg = format!("{} (blocked by {})", reason, blocker);
-    patina::git::create_tag_at(&tag_name, &tag_msg, "HEAD")?;
-
-    // 6. Git commit
-    let output = Command::new("git")
-        .args(["add", &file_path])
-        .output()
-        .context("Failed to stage spec file")?;
-    if !output.status.success() {
-        anyhow::bail!(
-            "git add failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-    let commit_msg = format!("spec: block {} (waiting on {})", id, blocker);
-    let output = Command::new("git")
-        .args(["commit", "-m", &commit_msg])
-        .output()
-        .context("Failed to commit")?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !stderr.contains("nothing to commit") {
-            anyhow::bail!("git commit failed: {}", stderr);
-        }
-    }
 
     if json {
         let result = serde_json::json!({
