@@ -878,6 +878,56 @@ fn find_spec_file_on_disk(dir: &Path, target_id: &str) -> Option<String> {
     None
 }
 
+// ============================================================================
+// Shared Mutation Infrastructure (spec-workflow-rigor Phase 1)
+// ============================================================================
+
+use patina::spec::SpecFrontmatter;
+
+/// Core YAML + DB status update. Reads the spec file, applies a mutation
+/// closure to the frontmatter, writes the file back, and updates the DB.
+/// Returns the file path and mutated frontmatter.
+fn mutate_spec<F>(id: &str, mutate: F) -> Result<(String, SpecFrontmatter)>
+where
+    F: FnOnce(&mut SpecFrontmatter) -> Result<()>,
+{
+    let (file_path, _, _) = find_spec(id)?;
+
+    let content = std::fs::read_to_string(&file_path)
+        .with_context(|| format!("Failed to read {}", file_path))?;
+
+    let (mut frontmatter, body) = parse_spec_file(&content)
+        .with_context(|| format!("Failed to parse frontmatter in {}", file_path))?;
+
+    mutate(&mut frontmatter)?;
+
+    let new_content = serialize_spec_file(&frontmatter, &body)?;
+    std::fs::write(&file_path, &new_content)
+        .with_context(|| format!("Failed to write {}", file_path))?;
+
+    // Update DB status if DB exists
+    let db_path = Path::new(DB_PATH);
+    if db_path.exists() {
+        if let Some(ref status) = frontmatter.status {
+            let conn = Connection::open(db_path).context("Failed to open database")?;
+            conn.execute(
+                "UPDATE patterns SET status = ?1 WHERE id = ?2",
+                rusqlite::params![status, id],
+            )?;
+        }
+    }
+
+    Ok((file_path, frontmatter))
+}
+
+/// Derive the next tag sequence number from existing tags.
+/// e.g., list_matching_tags("spec/{id}-paused-*") → count existing → N+1
+fn next_tag_number(id: &str, prefix: &str) -> Result<u32> {
+    let pattern = format!("spec/{}-{}-*", id, prefix);
+    let tags = patina::git::list_matching_tags(&pattern)?;
+    Ok(tags.len() as u32 + 1)
+}
+
 /// Check if a git tag exists
 fn tag_exists(tag: &str) -> Result<bool> {
     let output = Command::new("git")
