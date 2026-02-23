@@ -1,12 +1,13 @@
 ---
 type: feat
 id: spec-workflow-rigor
-status: draft
+status: ready
 created: 2026-02-23
-priority: high
-consolidates:
-- spec-blocking-queue
-- session-hardening
+sessions:
+- 20260222-054702
+- 20260223-084803
+- 20260223-092355
+- 20260223-120524
 related:
 - layer/core/spec-driven-design.md
 - src/spec.rs
@@ -23,11 +24,6 @@ beliefs:
 - active-is-a-black-hole
 - specs-orthogonal-to-sessions
 - plugins-are-three-prong-bundles
-sessions:
-- 20260222-054702
-- 20260223-084803
-- 20260223-092355
-- 20260223-120524
 ---
 
 # feat: Workflow Rigor — Pause, Block, Split, Resume
