@@ -1,18 +1,18 @@
 ---
 type: fix
 id: spec-keychain-macos26-regression
-status: active
+status: abandoned
 created: 2026-02-20
+sessions:
+- 20260218-225007
+- 20260219-083531
+- 20260220-120045
 related:
 - layer/surface/build/fix/spec-secrets-keychain-ssh/SPEC.md
 - layer/surface/build/fix/spec-launcher-auth/SPEC.md
 beliefs:
 - raw-keychain-over-access-control
 - keychain-always-this-device-only
-sessions:
-- 20260218-225007
-- 20260219-083531
-- 20260220-120045
 ---
 
 # fix: Keychain SSH Access via Raw SecItemAdd (macOS 26 Regression)
