@@ -1000,16 +1000,159 @@ pub fn promote_spec(id: &str, json: bool) -> Result<()> {
 
 /// Complete an active spec (release + archive + tag)
 pub fn complete_spec(id: &str, major: bool, json: bool) -> Result<()> {
-    // Step 6: will be implemented next
-    let _ = (id, major, json);
-    anyhow::bail!("spec complete not yet implemented")
+    // 1. Find spec and validate status
+    let (file_path, old_status, title) = find_spec(id)?;
+    match old_status.as_deref() {
+        Some("active") => {}
+        Some(s) => anyhow::bail!(
+            "Cannot complete '{}' — status is '{}', expected 'active'", id, s
+        ),
+        None => anyhow::bail!("Spec '{}' has no status", id),
+    }
+
+    // 2. Read and update status to complete
+    let content = std::fs::read_to_string(&file_path)
+        .with_context(|| format!("Failed to read {}", file_path))?;
+    let (mut frontmatter, body) = parse_spec_file(&content)
+        .with_context(|| format!("Failed to parse frontmatter in {}", file_path))?;
+    frontmatter.status = Some("complete".to_string());
+    let new_content = serialize_spec_file(&frontmatter, &body)?;
+    std::fs::write(&file_path, &new_content)
+        .with_context(|| format!("Failed to write {}", file_path))?;
+
+    // 3. Update DB
+    let db_path = Path::new(DB_PATH);
+    if db_path.exists() {
+        let conn = Connection::open(db_path).context("Failed to open database")?;
+        conn.execute(
+            "UPDATE patterns SET status = 'complete' WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+    }
+
+    let title_str = title.as_deref().unwrap_or(id);
+
+    // 4. Pre-check archive tag
+    let tag_name = format!("spec/{}", id);
+    if tag_exists(&tag_name)? {
+        anyhow::bail!(
+            "Tag '{}' already exists. Spec may have been archived previously.",
+            tag_name
+        );
+    }
+    let spec_dir = resolve_spec_dir(&file_path);
+
+    // 5. Delegate to release strategy
+    let strategy = ReleaseStrategy::from_project(Path::new("."));
+    let bump = if major {
+        Some(BumpType::Major)
+    } else {
+        BumpType::from_spec_type(&frontmatter.r#type)
+    };
+
+    if let Some(bump) = bump {
+        let prepared = strategy.preflight(bump, &file_path)?;
+        let archive_dir = spec_dir
+            .as_ref()
+            .and_then(|d| d.to_str())
+            .or(Some(&file_path));
+        prepared.execute(title_str, &file_path, archive_dir)?;
+
+        // Tag HEAD~1 (parent commit still has spec file)
+        create_spec_tag(id, title_str, "HEAD~1")?;
+    } else {
+        // No release (explore type) — archive as standalone commit
+        archive_spec_inner(id, &file_path, "complete", title_str, &spec_dir)?;
+    }
+
+    if json {
+        let result = serde_json::json!({
+            "command": "complete",
+            "spec_id": id,
+            "new_status": "complete",
+            "archived": true,
+            "tag": format!("spec/{}", id),
+        });
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        println!("Completed: {} → complete", id);
+        println!("  Archived: spec/{}", id);
+        println!("  Recover: git show spec/{}:{}", id, file_path);
+    }
+
+    Ok(())
 }
 
 /// Abandon a spec (archive + tag, no release)
 pub fn abandon_spec(id: &str, reason: Option<&str>, json: bool) -> Result<()> {
-    // Step 7: will be implemented after complete
-    let _ = (id, reason, json);
-    anyhow::bail!("spec abandon not yet implemented")
+    // 1. Find spec and validate status
+    let (file_path, old_status, title) = find_spec(id)?;
+    match old_status.as_deref() {
+        Some("complete") => anyhow::bail!("Spec '{}' is already complete", id),
+        Some("abandoned") => anyhow::bail!("Spec '{}' is already abandoned", id),
+        None => anyhow::bail!("Spec '{}' has no status", id),
+        _ => {} // draft, ready, active, paused, blocked — all can be abandoned
+    }
+
+    // 2. Update status to abandoned
+    let content = std::fs::read_to_string(&file_path)
+        .with_context(|| format!("Failed to read {}", file_path))?;
+    let (mut frontmatter, body) = parse_spec_file(&content)
+        .with_context(|| format!("Failed to parse frontmatter in {}", file_path))?;
+    frontmatter.status = Some("abandoned".to_string());
+    let new_content = serialize_spec_file(&frontmatter, &body)?;
+    std::fs::write(&file_path, &new_content)
+        .with_context(|| format!("Failed to write {}", file_path))?;
+
+    // 3. Update DB
+    let db_path = Path::new(DB_PATH);
+    if db_path.exists() {
+        let conn = Connection::open(db_path).context("Failed to open database")?;
+        conn.execute(
+            "UPDATE patterns SET status = 'abandoned' WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+    }
+
+    // 4. Pre-check archive tag
+    let tag_name = format!("spec/{}", id);
+    if tag_exists(&tag_name)? {
+        anyhow::bail!(
+            "Tag '{}' already exists. Spec may have been archived previously.",
+            tag_name
+        );
+    }
+
+    // 5. Archive (tag + git rm + commit)
+    let title_str = title.as_deref().unwrap_or(id);
+    let description = if let Some(r) = reason {
+        format!("{} — {}", title_str, r)
+    } else {
+        title_str.to_string()
+    };
+    let spec_dir = resolve_spec_dir(&file_path);
+    archive_spec_inner(id, &file_path, "abandoned", &description, &spec_dir)?;
+
+    if json {
+        let result = serde_json::json!({
+            "command": "abandon",
+            "spec_id": id,
+            "new_status": "abandoned",
+            "reason": reason,
+            "archived": true,
+            "tag": format!("spec/{}", id),
+        });
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        println!("Abandoned: {}", id);
+        if let Some(r) = reason {
+            println!("  Reason: {}", r);
+        }
+        println!("  Archived: spec/{}", id);
+        println!("  Recover: git show spec/{}:{}", id, file_path);
+    }
+
+    Ok(())
 }
 
 /// Pause an active spec with reason
