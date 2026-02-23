@@ -591,11 +591,18 @@ can work on it or defer it. Creation is the entry point.
 7. Git commit: `spec: split <id> — ship v<N>, draft remainder as <new-id>`
 
 **Exit criteria:**
-- [ ] `spec split` completes original spec with release
-- [ ] New draft spec created with `split_from` provenance
-- [ ] Parent archived with tag `spec/<id>-v<N>-complete`
-- [ ] New spec references parent tag for recovery
-- [ ] `git show spec/<id>:...` recovers original spec content
+- [x] `spec split` completes original spec with release
+- [x] New draft spec created with `split_from` provenance
+- [x] Parent archived with tag `spec/<id>-v<N>-complete`
+- [x] New spec references parent tag for recovery
+- [x] `git show spec/<id>:...` recovers original spec content
+
+**Implementation deviations** (session [[session-20260223-170149]]):
+
+1. **No interactive prompt for "describe what's done".** Spec step 2 said
+   "Prompt: describe what's done." Implemented as `--description` flag instead,
+   with default text "Remaining work from split". CLI commands shouldn't block
+   on interactive input — flags are composable.
 
 ### Phase 3: Queue System — `spec next`
 
@@ -621,10 +628,10 @@ can work on it or defer it. Creation is the entry point.
 - Show one-paused-spec constraint status
 
 **Exit criteria:**
-- [ ] `spec next` recommends a spec with reasoning
-- [ ] `spec ready` shows impact and paused/blocked status
-- [ ] `spec list` shows age for paused/blocked specs
-- [ ] Paused spec shown with "resolve before pausing another"
+- [x] `spec next` recommends a spec with reasoning
+- [x] `spec ready` shows impact and paused/blocked status
+- [x] `spec list` shows age for paused/blocked specs
+- [x] Paused spec shown with "resolve before pausing another"
 
 ### Phase 4: Session Hardening
 
