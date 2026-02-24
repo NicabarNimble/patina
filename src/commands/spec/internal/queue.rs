@@ -183,8 +183,8 @@ pub fn next_spec_value() -> Result<serde_json::Value> {
 /// Uses the spec's frontmatter paused_date/blocked_date by re-reading the file.
 pub fn spec_age_days_from_list(spec: &SpecInfo) -> i64 {
     // Try to find the spec file and read paused_date or blocked_date
-    if let Ok((file_path, _, _)) = find_spec(&spec.id) {
-        if let Ok(content) = std::fs::read_to_string(&file_path) {
+    if let Ok(found) = find_spec(&spec.id) {
+        if let Ok(content) = std::fs::read_to_string(&found.file_path) {
             if let Ok((fm, _)) = parse_spec_file(&content) {
                 let date_str = fm.paused_date.as_deref().or(fm.blocked_date.as_deref());
                 if let Some(date_str) = date_str {

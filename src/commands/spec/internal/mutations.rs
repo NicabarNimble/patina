@@ -22,19 +22,19 @@ pub(super) fn mutate_spec<F>(id: &str, mutate: F) -> Result<(String, SpecFrontma
 where
     F: FnOnce(&mut SpecFrontmatter) -> Result<()>,
 {
-    let (file_path, _, _) = find_spec(id)?;
+    let found = find_spec(id)?;
 
-    let content = std::fs::read_to_string(&file_path)
-        .with_context(|| format!("Failed to read {}", file_path))?;
+    let content = std::fs::read_to_string(&found.file_path)
+        .with_context(|| format!("Failed to read {}", found.file_path))?;
 
     let (mut frontmatter, body) = parse_spec_file(&content)
-        .with_context(|| format!("Failed to parse frontmatter in {}", file_path))?;
+        .with_context(|| format!("Failed to parse frontmatter in {}", found.file_path))?;
 
     mutate(&mut frontmatter)?;
 
     let new_content = serialize_spec_file(&frontmatter, &body)?;
-    std::fs::write(&file_path, &new_content)
-        .with_context(|| format!("Failed to write {}", file_path))?;
+    std::fs::write(&found.file_path, &new_content)
+        .with_context(|| format!("Failed to write {}", found.file_path))?;
 
     // Update DB status if DB exists
     let db_path = Path::new(DB_PATH);
@@ -48,7 +48,7 @@ where
         }
     }
 
-    Ok((file_path, frontmatter))
+    Ok((found.file_path, frontmatter))
 }
 
 /// Save file content, execute action, rollback file on failure.
@@ -186,8 +186,8 @@ pub fn complete_spec(id: &str, major: bool, json: bool) -> Result<()> {
 /// Complete an active spec and return structured result (for MCP).
 pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
     // 1. Find spec and validate status
-    let (file_path, old_status, title) = find_spec(id)?;
-    match old_status.as_deref() {
+    let found = find_spec(id)?;
+    match found.status.as_deref() {
         Some("active") => {}
         Some(s) => anyhow::bail!(
             "Cannot complete '{}' — status is '{}', expected 'active'",
@@ -198,14 +198,14 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
     }
 
     // 2. Read and update status to complete
-    let content = std::fs::read_to_string(&file_path)
-        .with_context(|| format!("Failed to read {}", file_path))?;
+    let content = std::fs::read_to_string(&found.file_path)
+        .with_context(|| format!("Failed to read {}", found.file_path))?;
     let (mut frontmatter, body) = parse_spec_file(&content)
-        .with_context(|| format!("Failed to parse frontmatter in {}", file_path))?;
+        .with_context(|| format!("Failed to parse frontmatter in {}", found.file_path))?;
     frontmatter.status = Some("complete".to_string());
     let new_content = serialize_spec_file(&frontmatter, &body)?;
-    std::fs::write(&file_path, &new_content)
-        .with_context(|| format!("Failed to write {}", file_path))?;
+    std::fs::write(&found.file_path, &new_content)
+        .with_context(|| format!("Failed to write {}", found.file_path))?;
 
     // 3. Update DB
     let db_path = Path::new(DB_PATH);
@@ -217,7 +217,7 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
         )?;
     }
 
-    let title_str = title.as_deref().unwrap_or(id);
+    let title_str = found.title.as_deref().unwrap_or(id);
 
     // 4. Pre-check archive tag
     let tag_name = format!("spec/{}", id);
@@ -227,7 +227,7 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
             tag_name
         );
     }
-    let spec_dir = resolve_spec_dir(&file_path);
+    let spec_dir = resolve_spec_dir(&found.file_path);
 
     // 5. Delegate to release strategy
     let strategy = ReleaseStrategy::from_project(Path::new("."));
@@ -238,12 +238,12 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
     };
 
     if let Some(bump) = bump {
-        let prepared = strategy.preflight(bump, &file_path)?;
+        let prepared = strategy.preflight(bump, &found.file_path)?;
         let archive_dir = spec_dir
             .as_ref()
             .and_then(|d| d.to_str())
-            .or(Some(&file_path));
-        prepared.execute(title_str, &file_path, archive_dir)?;
+            .or(Some(&found.file_path));
+        prepared.execute(title_str, &found.file_path, archive_dir)?;
 
         // Tag HEAD~1 (parent commit still has spec file)
         let archive_tag_name = format!("spec/{}", id);
@@ -255,7 +255,7 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
         )?;
     } else {
         // No release (explore type) — archive as standalone commit
-        archive_spec_inner(id, &file_path, "complete", title_str, &spec_dir)?;
+        archive_spec_inner(id, &found.file_path, "complete", title_str, &spec_dir)?;
     }
 
     Ok(serde_json::json!({
@@ -264,7 +264,7 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
         "new_status": "complete",
         "archived": true,
         "tag": format!("spec/{}", id),
-        "file": file_path,
+        "file": found.file_path,
     }))
 }
 
@@ -290,8 +290,8 @@ pub fn abandon_spec(id: &str, reason: Option<&str>, json: bool) -> Result<()> {
 /// Abandon a spec and return structured result (for MCP).
 pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<serde_json::Value> {
     // 1. Find spec and validate status
-    let (file_path, old_status, title) = find_spec(id)?;
-    match old_status.as_deref() {
+    let found = find_spec(id)?;
+    match found.status.as_deref() {
         Some("complete") => anyhow::bail!("Spec '{}' is already complete", id),
         Some("abandoned") => anyhow::bail!("Spec '{}' is already abandoned", id),
         None => anyhow::bail!("Spec '{}' has no status", id),
@@ -299,14 +299,14 @@ pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<serde_json::
     }
 
     // 2. Update status to abandoned
-    let content = std::fs::read_to_string(&file_path)
-        .with_context(|| format!("Failed to read {}", file_path))?;
+    let content = std::fs::read_to_string(&found.file_path)
+        .with_context(|| format!("Failed to read {}", found.file_path))?;
     let (mut frontmatter, body) = parse_spec_file(&content)
-        .with_context(|| format!("Failed to parse frontmatter in {}", file_path))?;
+        .with_context(|| format!("Failed to parse frontmatter in {}", found.file_path))?;
     frontmatter.status = Some("abandoned".to_string());
     let new_content = serialize_spec_file(&frontmatter, &body)?;
-    std::fs::write(&file_path, &new_content)
-        .with_context(|| format!("Failed to write {}", file_path))?;
+    std::fs::write(&found.file_path, &new_content)
+        .with_context(|| format!("Failed to write {}", found.file_path))?;
 
     // 3. Update DB
     let db_path = Path::new(DB_PATH);
@@ -328,14 +328,14 @@ pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<serde_json::
     }
 
     // 5. Archive (tag + git rm + commit)
-    let title_str = title.as_deref().unwrap_or(id);
+    let title_str = found.title.as_deref().unwrap_or(id);
     let description = if let Some(r) = reason {
         format!("{} — {}", title_str, r)
     } else {
         title_str.to_string()
     };
-    let spec_dir = resolve_spec_dir(&file_path);
-    archive_spec_inner(id, &file_path, "abandoned", &description, &spec_dir)?;
+    let spec_dir = resolve_spec_dir(&found.file_path);
+    archive_spec_inner(id, &found.file_path, "abandoned", &description, &spec_dir)?;
 
     Ok(serde_json::json!({
         "command": "abandon",
@@ -344,7 +344,7 @@ pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<serde_json::
         "reason": reason,
         "archived": true,
         "tag": format!("spec/{}", id),
-        "file": file_path,
+        "file": found.file_path,
     }))
 }
 
@@ -371,8 +371,8 @@ pub fn pause_spec(id: &str, reason: &str, json: bool) -> Result<()> {
 /// Pause an active spec and return structured result (for MCP).
 pub fn pause_spec_value(id: &str, reason: &str) -> Result<serde_json::Value> {
     // 1. Find spec and validate status
-    let (file_path, old_status, _title) = find_spec(id)?;
-    match old_status.as_deref() {
+    let found = find_spec(id)?;
+    match found.status.as_deref() {
         Some("active") => {}
         Some(s) => anyhow::bail!(
             "Cannot pause '{}' — status is '{}', expected 'active'",
@@ -419,7 +419,7 @@ pub fn pause_spec_value(id: &str, reason: &str) -> Result<serde_json::Value> {
     let tag_n = next_tag_number(id, "paused")?;
     let tag_name = format!("spec/{}-paused-{}", id, tag_n);
 
-    with_yaml_rollback(&file_path, || {
+    with_yaml_rollback(&found.file_path, || {
         let (file_path, _fm) = mutate_spec(id, |fm| {
             fm.status = Some("paused".to_string());
             fm.paused_reason = Some(reason.to_string());
@@ -508,8 +508,8 @@ pub fn resume_spec(id: &str, force: bool, json: bool) -> Result<()> {
 /// Resume a paused or blocked spec and return structured result (for MCP).
 pub fn resume_spec_value(id: &str, force: bool) -> Result<serde_json::Value> {
     // 1. Find spec and validate status
-    let (file_path, old_status, _title) = find_spec(id)?;
-    let status_str = old_status.as_deref().unwrap_or("");
+    let found = find_spec(id)?;
+    let status_str = found.status.as_deref().unwrap_or("");
 
     match status_str {
         "paused" | "blocked" => {}
@@ -521,10 +521,10 @@ pub fn resume_spec_value(id: &str, force: bool) -> Result<serde_json::Value> {
     }
 
     // 2. Read current frontmatter to get paused_at_tag and check blockers
-    let content = std::fs::read_to_string(&file_path)
-        .with_context(|| format!("Failed to read {}", file_path))?;
+    let content = std::fs::read_to_string(&found.file_path)
+        .with_context(|| format!("Failed to read {}", found.file_path))?;
     let (fm_snapshot, _) = parse_spec_file(&content)
-        .with_context(|| format!("Failed to parse frontmatter in {}", file_path))?;
+        .with_context(|| format!("Failed to parse frontmatter in {}", found.file_path))?;
 
     let paused_at_tag = fm_snapshot.paused_at_tag.clone();
 
@@ -534,8 +534,8 @@ pub fn resume_spec_value(id: &str, force: bool) -> Result<serde_json::Value> {
             .blocked_by
             .iter()
             .filter_map(|blocker_id| match find_spec(blocker_id) {
-                Ok((_, blocker_status, _)) => {
-                    let s = blocker_status.as_deref().unwrap_or("unknown");
+                Ok(blocker) => {
+                    let s = blocker.status.as_deref().unwrap_or("unknown");
                     if s != "complete" && s != "done" {
                         Some(format!("{} ({})", blocker_id, s))
                     } else {
@@ -626,8 +626,8 @@ pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<(
 /// Block an active spec and return structured result (for MCP).
 pub fn block_spec_value(id: &str, blocker: &str, reason: &str) -> Result<serde_json::Value> {
     // 1. Validate spec is active
-    let (spec_file_path, old_status, _title) = find_spec(id)?;
-    match old_status.as_deref() {
+    let found = find_spec(id)?;
+    match found.status.as_deref() {
         Some("active") => {}
         Some(s) => anyhow::bail!(
             "Cannot block '{}' — status is '{}', expected 'active'",
@@ -645,7 +645,7 @@ pub fn block_spec_value(id: &str, blocker: &str, reason: &str) -> Result<serde_j
     let tag_n = next_tag_number(id, "blocked")?;
     let tag_name = format!("spec/{}-blocked-{}", id, tag_n);
 
-    with_yaml_rollback(&spec_file_path, || {
+    with_yaml_rollback(&found.file_path, || {
         let (file_path, _fm) = mutate_spec(id, |fm| {
             fm.status = Some("blocked".to_string());
             // Append blocker to blocked_by list (D3: don't overwrite)

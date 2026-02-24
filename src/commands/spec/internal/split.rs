@@ -49,8 +49,8 @@ pub fn split_spec_value(
     description: Option<&str>,
 ) -> Result<serde_json::Value> {
     // 1. Find spec and validate status (active or paused)
-    let (file_path, old_status, title) = find_spec(id)?;
-    match old_status.as_deref() {
+    let found = find_spec(id)?;
+    match found.status.as_deref() {
         Some("active") | Some("paused") => {}
         Some(s) => anyhow::bail!(
             "Cannot split '{}' — status is '{}', expected 'active' or 'paused'",
@@ -61,10 +61,10 @@ pub fn split_spec_value(
     }
 
     // 2. Read frontmatter for spec type
-    let content = std::fs::read_to_string(&file_path)
-        .with_context(|| format!("Failed to read {}", file_path))?;
+    let content = std::fs::read_to_string(&found.file_path)
+        .with_context(|| format!("Failed to read {}", found.file_path))?;
     let (frontmatter, _body) = parse_spec_file(&content)
-        .with_context(|| format!("Failed to parse frontmatter in {}", file_path))?;
+        .with_context(|| format!("Failed to parse frontmatter in {}", found.file_path))?;
     let spec_type = frontmatter.r#type.clone();
 
     // 3. Tag current state: spec/<id>-v<N>-complete
@@ -79,15 +79,15 @@ pub fn split_spec_value(
 
     // 4. Complete original spec (release + archive)
     //    Set status to complete first, then delegate to release strategy
-    let title_str = title.as_deref().unwrap_or(id);
+    let title_str = found.title.as_deref().unwrap_or(id);
 
     {
         // Update status to complete
         let (mut fm_clone, body_clone) = parse_spec_file(&content)?;
         fm_clone.status = Some("complete".to_string());
         let new_content = serialize_spec_file(&fm_clone, &body_clone)?;
-        std::fs::write(&file_path, &new_content)
-            .with_context(|| format!("Failed to write {}", file_path))?;
+        std::fs::write(&found.file_path, &new_content)
+            .with_context(|| format!("Failed to write {}", found.file_path))?;
 
         // Update DB
         let db_path = Path::new(DB_PATH);
@@ -107,19 +107,19 @@ pub fn split_spec_value(
                 archive_tag
             );
         }
-        let spec_dir = resolve_spec_dir(&file_path);
+        let spec_dir = resolve_spec_dir(&found.file_path);
 
         // Release strategy
         let strategy = ReleaseStrategy::from_project(Path::new("."));
         let bump = BumpType::from_spec_type(&spec_type);
 
         if let Some(bump) = bump {
-            let prepared = strategy.preflight(bump, &file_path)?;
+            let prepared = strategy.preflight(bump, &found.file_path)?;
             let archive_dir = spec_dir
                 .as_ref()
                 .and_then(|d| d.to_str())
-                .or(Some(&file_path));
-            prepared.execute(title_str, &file_path, archive_dir)?;
+                .or(Some(&found.file_path));
+            prepared.execute(title_str, &found.file_path, archive_dir)?;
 
             // Tag parent commit (still has spec file)
             println!("Creating tag: {} (on HEAD~1)", archive_tag);
@@ -130,7 +130,7 @@ pub fn split_spec_value(
             )?;
         } else {
             // No release (explore type) — archive as standalone commit
-            archive_spec_inner(id, &file_path, "complete", title_str, &spec_dir)?;
+            archive_spec_inner(id, &found.file_path, "complete", title_str, &spec_dir)?;
         }
     }
 
@@ -166,7 +166,7 @@ pub fn split_spec_value(
         derived_id,
         desc_text,
         version_tag,
-        file_path,
+        found.file_path,
     );
 
     let new_spec_path = format!("{}/SPEC.md", new_spec_dir);
@@ -187,7 +187,7 @@ pub fn split_spec_value(
         "version_tag": version_tag,
         "archive_tag": format!("spec/{}", id),
         "new_spec_path": new_spec_path,
-        "original_file": file_path,
+        "original_file": found.file_path,
         "status": "completed",
     }))
 }
