@@ -965,6 +965,52 @@ world spec-plugin {
   describes mod.rs) all route through the same interface. Plugin extraction
   replaces the dispatch, not the logic.
 
+### Phase 7: Completion Cleanup
+
+**Goal:** Wire the last adapter seam, remove deprecated code, complete spec.
+
+**7a. Wire `/spec` skill command:**
+The `/spec` skill definition existed at `resources/claude/spec.md` since Phase 6
+but wasn't deployed to `.claude/commands/spec.md`. Wired into both deployment
+paths: `templates.rs` (used by `adapter refresh`) and `session_scripts.rs`
+(used by `init_project`/`update_adapter_files`). Added compile-time embed,
+template installation, and test assertions.
+
+**7b. Remove `spec status` subcommand:**
+Deprecated in Phase 1 (printed redirect messages). Removed:
+- `SpecCommands::Status` variant from `mod.rs`
+- `pub fn status()` from `mod.rs`
+- `update_spec_status()` from `internal.rs` (160 lines)
+- `VALID_STATUSES` constant (only consumer was removed function)
+- Dispatch case in `main.rs`
+- Tests for `Status` variant and `VALID_STATUSES`
+- Updated stale `patina spec status <id> complete` references in
+  `version/mod.rs` and `version/internal.rs`
+
+**7c. Spec completion:**
+Run `patina spec complete spec-workflow-rigor` to trigger release + archive.
+
+**Exit criteria:**
+- [x] `/spec` skill deployed via `adapter refresh` and `init_project`
+- [x] `spec status` subcommand fully removed
+- [x] Stale references to `spec status` updated
+- [x] Spec completed with release + archive
+
+**Implementation deviations:**
+
+1. **Two deployment paths required wiring.** Expected only one file
+   (`.claude/commands/spec.md`). Discovered the template system has two paths:
+   `session_scripts.rs` (for init/update) and `templates.rs` (for adapter
+   refresh). Both needed the spec.md embed. The templates.rs path is canonical
+   for `adapter refresh` which is the primary deployment mechanism.
+
+2. **`VALID_STATUSES` removed despite spec saying "Keep."** The prompt said
+   "Keep VALID_STATUSES constant (still used by other code)." Compiler showed
+   it was only used by `update_spec_status()` and a self-referential test —
+   no other consumers. Dead code removed. The valid status list is enforced
+   by individual mutation commands' transition validation, not a central
+   constant.
+
 ## Testing
 
 ### Manual Test Cases
