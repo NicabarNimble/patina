@@ -949,8 +949,14 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
         }
         // Spec query tools
         "spec.list" => {
-            let status = args.get("status").and_then(|v| v.as_str()).map(String::from);
-            let target = args.get("target").and_then(|v| v.as_str()).map(String::from);
+            let status = args
+                .get("status")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let target = args
+                .get("target")
+                .and_then(|v| v.as_str())
+                .map(String::from);
             let filters = crate::commands::spec::ListFilters { status, target };
             match crate::commands::spec::get_all_specs(&filters) {
                 Ok(specs) => {
@@ -1005,7 +1011,11 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
         "spec.promote" => {
             let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
             if id.is_empty() {
-                return Response::error(req.id.clone(), -32602, "spec.promote requires 'id' parameter");
+                return Response::error(
+                    req.id.clone(),
+                    -32602,
+                    "spec.promote requires 'id' parameter",
+                );
             }
             match crate::commands::spec::promote_spec_value(id) {
                 Ok(result) => {
@@ -1024,7 +1034,11 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
             let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
             let major = args.get("major").and_then(|v| v.as_bool()).unwrap_or(false);
             if id.is_empty() {
-                return Response::error(req.id.clone(), -32602, "spec.complete requires 'id' parameter");
+                return Response::error(
+                    req.id.clone(),
+                    -32602,
+                    "spec.complete requires 'id' parameter",
+                );
             }
             match crate::commands::spec::complete_spec_value(id, major) {
                 Ok(result) => {
@@ -1043,7 +1057,11 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
             let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
             let reason = args.get("reason").and_then(|v| v.as_str());
             if id.is_empty() {
-                return Response::error(req.id.clone(), -32602, "spec.abandon requires 'id' parameter");
+                return Response::error(
+                    req.id.clone(),
+                    -32602,
+                    "spec.abandon requires 'id' parameter",
+                );
             }
             match crate::commands::spec::abandon_spec_value(id, reason) {
                 Ok(result) => {
@@ -1062,10 +1080,18 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
             let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
             let reason = args.get("reason").and_then(|v| v.as_str()).unwrap_or("");
             if id.is_empty() {
-                return Response::error(req.id.clone(), -32602, "spec.pause requires 'id' parameter");
+                return Response::error(
+                    req.id.clone(),
+                    -32602,
+                    "spec.pause requires 'id' parameter",
+                );
             }
             if reason.is_empty() {
-                return Response::error(req.id.clone(), -32602, "spec.pause requires 'reason' parameter");
+                return Response::error(
+                    req.id.clone(),
+                    -32602,
+                    "spec.pause requires 'reason' parameter",
+                );
             }
             match crate::commands::spec::pause_spec_value(id, reason) {
                 Ok(result) => {
@@ -1084,7 +1110,11 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
             let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
             let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
             if id.is_empty() {
-                return Response::error(req.id.clone(), -32602, "spec.resume requires 'id' parameter");
+                return Response::error(
+                    req.id.clone(),
+                    -32602,
+                    "spec.resume requires 'id' parameter",
+                );
             }
             match crate::commands::spec::resume_spec_value(id, force) {
                 Ok(result) => {
@@ -1104,13 +1134,25 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
             let by = args.get("by").and_then(|v| v.as_str()).unwrap_or("");
             let reason = args.get("reason").and_then(|v| v.as_str()).unwrap_or("");
             if id.is_empty() {
-                return Response::error(req.id.clone(), -32602, "spec.block requires 'id' parameter");
+                return Response::error(
+                    req.id.clone(),
+                    -32602,
+                    "spec.block requires 'id' parameter",
+                );
             }
             if by.is_empty() {
-                return Response::error(req.id.clone(), -32602, "spec.block requires 'by' parameter");
+                return Response::error(
+                    req.id.clone(),
+                    -32602,
+                    "spec.block requires 'by' parameter",
+                );
             }
             if reason.is_empty() {
-                return Response::error(req.id.clone(), -32602, "spec.block requires 'reason' parameter");
+                return Response::error(
+                    req.id.clone(),
+                    -32602,
+                    "spec.block requires 'reason' parameter",
+                );
             }
             match crate::commands::spec::block_spec_value(id, by, reason) {
                 Ok(result) => {
@@ -1130,7 +1172,11 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
             let new_id = args.get("new_id").and_then(|v| v.as_str());
             let description = args.get("description").and_then(|v| v.as_str());
             if id.is_empty() {
-                return Response::error(req.id.clone(), -32602, "spec.split requires 'id' parameter");
+                return Response::error(
+                    req.id.clone(),
+                    -32602,
+                    "spec.split requires 'id' parameter",
+                );
             }
             match crate::commands::spec::split_spec_value(id, new_id, description) {
                 Ok(result) => {
