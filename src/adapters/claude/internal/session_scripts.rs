@@ -19,6 +19,9 @@ const SESSION_END_MD: &str = include_str!("../../../../resources/claude/session-
 // Embed patina-review command from resources
 const PATINA_REVIEW_MD: &str = include_str!("../../../../resources/claude/patina-review.md");
 
+// Embed /spec skill from resources
+const SPEC_MD: &str = include_str!("../../../../resources/claude/spec.md");
+
 /// Thin wrapper scripts that forward to `patina session` commands.
 /// Deployed to .claude/bin/ for backward compatibility.
 const WRAPPER_START: &str = "#!/bin/bash\nexec patina session start \"$@\"\n";
@@ -49,6 +52,9 @@ pub fn create_session_scripts(project_path: &Path) -> Result<()> {
 
     // patina-review command (no shell script, just prompt)
     fs::write(commands_path.join("patina-review.md"), PATINA_REVIEW_MD)?;
+
+    // /spec skill (no shell script, just prompt — uses MCP tools)
+    fs::write(commands_path.join("spec.md"), SPEC_MD)?;
 
     Ok(())
 }
