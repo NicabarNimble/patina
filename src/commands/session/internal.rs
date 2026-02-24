@@ -57,6 +57,7 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
     let adapter = resolve_adapter(adapter, project_root)?;
     let session_path = project_root.join(ACTIVE_SESSION_PATH);
     let last_update_path = project_root.join(LAST_UPDATE_PATH);
+    let dev_branch = dev_branch_name(project_root);
 
     // 1. Handle incomplete previous session
     if session_path.exists() {
@@ -111,28 +112,31 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
         println!();
     }
 
-    // 5. Smart branch handling
+    // 5. Smart branch handling (dev branch from config, fallback "work")
     if git::is_git_repo().unwrap_or(false) {
-        let is_work_related = branch == "work" || is_ancestor_of_head("work");
+        let is_dev_related = branch == dev_branch || is_ancestor_of_head(&dev_branch);
 
-        if !is_work_related {
+        if !is_dev_related {
             if branch == "main" || branch == "master" {
-                // Switch to work branch
-                if git::branch_exists("work").unwrap_or(false) {
-                    git::checkout("work")?;
-                    println!("Switched to work branch from {}", branch);
+                // Switch to dev branch
+                if git::branch_exists(&dev_branch).unwrap_or(false) {
+                    git::checkout(&dev_branch)?;
+                    println!("Switched to {} branch from {}", dev_branch, branch);
                 } else {
-                    git::checkout_new_branch("work", &branch)?;
-                    println!("Created and switched to work branch from {}", branch);
+                    git::checkout_new_branch(&dev_branch, &branch)?;
+                    println!(
+                        "Created and switched to {} branch from {}",
+                        dev_branch, branch
+                    );
                 }
             } else {
                 println!("On unrelated branch: {}", branch);
                 println!(
-                    "  Consider: git checkout work or git checkout -b work/{}",
-                    branch
+                    "  Consider: git checkout {} or git checkout -b {}/{}",
+                    dev_branch, dev_branch, branch
                 );
             }
-        } else if branch != "work" {
+        } else if branch != dev_branch {
             println!("Staying on work sub-branch: {}", branch);
         }
     }
@@ -227,8 +231,11 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
     if git::is_git_repo().unwrap_or(false) {
         println!();
         println!("Session Strategy:");
-        if branch == "work" {
-            println!("- You're on the 'work' branch - all sessions happen here");
+        if branch == dev_branch {
+            println!(
+                "- You're on the '{}' branch - all sessions happen here",
+                dev_branch
+            );
         } else {
             println!(
                 "- You're on '{}' (work sub-branch) - perfect for isolated experiments",
@@ -1301,6 +1308,15 @@ fn session_summary_json(s: &SessionSummary, now: &chrono::DateTime<Utc>) -> serd
         "created": s.created,
         "age": format_session_age(&s.created, now),
     })
+}
+
+/// Get the configured development branch name.
+///
+/// Reads from .patina/config.toml [project] branch, falls back to "work".
+fn dev_branch_name(project_root: &Path) -> String {
+    patina::project::load(project_root)
+        .map(|c| c.project.branch)
+        .unwrap_or_else(|_| "work".to_string())
 }
 
 /// Resolve adapter name from explicit flag or project config.
