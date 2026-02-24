@@ -48,7 +48,7 @@ pub fn hotfix(description: &str) -> Result<()> {
     prepared.execute(description, "Cargo.toml", None)?;
 
     println!("\n  Consider creating a spec for traceability:");
-    println!("    patina spec status <id> complete");
+    println!("    patina spec complete <id>");
 
     println!("\n  Rebuild to use new version:");
     println!("    cargo build --release && cargo install --path .");

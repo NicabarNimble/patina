@@ -1633,14 +1633,6 @@ fn main() -> Result<()> {
             commands::spec::SpecCommands::Blocked { json } => {
                 commands::spec::blocked(json)?;
             }
-            commands::spec::SpecCommands::Status {
-                id,
-                status,
-                major,
-                no_archive,
-            } => {
-                commands::spec::status(&id, &status, major, no_archive)?;
-            }
             commands::spec::SpecCommands::List {
                 status,
                 target,
