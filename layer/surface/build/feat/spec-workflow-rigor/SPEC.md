@@ -705,27 +705,47 @@ session start branch-switching and release safeguard checks.
    `(21d stale)` suffix on ACTIVE line and `(completed, 2d ago)` on RECENT.
    Implementation shows `(Nd ago)` for all entries, with `(Nd ago, never ended)`
    for STALE entries. ACTIVE line shows age since creation, not staleness.
-   Deliberate — clearer UX: age is always shown consistently, "never ended"
-   distinguishes stale from active.
+   Deliberate — spec example conflated ACTIVE with STALE (showed a stale
+   session on the ACTIVE line). Implementation separates the three categories
+   cleanly: ACTIVE = current session, STALE = never ended, RECENT = archived.
 
 2. **`session list` scans all 748 archived sessions.** Spec mentions querying
    `layer/sessions/` but doesn't address performance. Implementation reads
    all `.md` files sorted by filename descending, stops collecting RECENT
    after 5 but continues scanning for STALE (they could be anywhere).
    Acceptable — 748 files parse in <100ms, and stale detection requires
-   full scan. Could optimize with index later if session count grows.
+   full scan. Could optimize with session index later if count grows.
 
-3. **`session update` richer output includes commit wikilinks.** Spec says
-   "structured summary to stdout" but doesn't specify format. Implementation
-   adds `[[commit-SHA]]` wikilinks in the markdown section and prints commit
-   SHAs + changed file paths to stdout. Additive enhancement — makes the
-   session update markdown immediately useful for knowledge graph tracing.
+3. **4d underspecified — "richer CLI output" interpreted as additive stdout.**
+   Spec said "CLI returns structured summary to stdout that the skill can use
+   directly. Fewer LLM interpretation steps." Implementation adds: previous
+   session reference printed in `session start` stdout, commit SHAs + changed
+   file paths printed in `session update`, `[[commit-SHA]]` wikilinks in
+   the update markdown section. But spec also said "Skill markdown stays the
+   same — just relies less on file reads." The skill definitions in
+   `resources/claude/session-*.md` were **not updated** to rely on stdout
+   instead of file reads. Gap — skills still instruct the LLM to read
+   `.patina/local/active-session.md` and `last-session.md`. The CLI is
+   richer but the skill-side wiring is deferred. Natural fit for Phase 5
+   (Session Integration) which rewrites the skill instructions anyway.
 
-4. **Atomic status flip uses `completed` intermediate state.** Spec says
+4. **4d focused on `start` and `update`, barely touched `end`.** Spec said
+   all three commands get richer output. `session end` already had the
+   richest output (session summary, metrics, tag range, beliefs, archive
+   confirmation). No meaningful changes needed — it was already structured.
+   Minor deviation from spec's "all three" framing.
+
+5. **Atomic status flip uses `completed` intermediate state.** Spec says
    `status: active → completed` then archive flips to `archived`.
-   Implementation does exactly this: first mutation is `active → completed`,
-   archive step handles both `completed → archived` and `active → archived`
-   for robustness. Matches spec intent.
+   Implementation does exactly this. Archive step handles both
+   `completed → archived` and `active → archived` for robustness (covers
+   edge case where atomic flip didn't run). Matches spec intent.
+
+6. **`session list` spec example has no `--json` flag.** Spec says "New
+   subcommand querying..." but doesn't mention JSON output. Implementation
+   adds `--json` for consistency with all other Patina list/query commands
+   (`spec list --json`, `spec ready --json`, etc.). Additive — follows
+   project convention.
 
 ### Phase 5: Session Integration
 
