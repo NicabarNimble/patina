@@ -41,8 +41,7 @@ doing manual read-parse-mutate-write-DB.
 
 **Stringly-typed returns.** All 7 `_value()` functions return
 `serde_json::Value`. Callers do `result["file"].as_str().unwrap_or("")`.
-Misspell `"file"` as `"flie"` and the compiler won't catch it. Six of
-the seven share the same shape: `spec_id`, `new_status`, `tag`, `file`.
+Misspell `"file"` as `"flie"` and the compiler won't catch it.
 
 **Noise and ergonomic nits.** 7 fossil `// ====` section banners from
 the pre-split era. `archive_spec_inner` takes `&Option<PathBuf>` instead
@@ -59,32 +58,58 @@ These are zero-judgment changes done before the real refactoring:
 - Change `archive_spec_inner` signature from `&Option<PathBuf>` to
   `Option<&Path>`, update 5 call sites to `spec_dir.as_deref()`
 
-### Refactor 1: `FoundSpec` becomes a loaded spec, `mutate_spec` takes it
+### Refactor 1: Two-tier `find_spec` + `mutate_spec` takes `FoundSpec`
 
-**Core idea:** `FoundSpec` already has `file_path`, `status`, `title`.
-Extend it with `content` and `frontmatter` so it's a fully loaded spec.
-Then `mutate_spec` always takes `FoundSpec` — it never does its own
-lookup. One responsibility: mutate what you hand it.
+**The problem with "always load":** `find_spec` is also used by
+read-only flows — `archive_spec` (status validation), `archive_stale_specs`
+(fan-out loop over all stale specs), `spec_age_days_from_list` (called
+per-spec during list/ready views), and `block_spec_value` line 596
+(blocker existence check). Forcing a full `read_to_string + parse` for
+every call inflates latency in fan-out paths and wastes memory for
+callers that only need `file_path` and `status`.
+
+**Solution: two functions, not one mutant.**
+
+Keep `find_spec` lightweight (DB query or filesystem lookup, returns
+current `FoundSpec { file_path, status, title }`). Add `load_spec`:
 
 ```rust
-pub(super) struct FoundSpec {
+pub(super) struct LoadedSpec {
     pub file_path: String,
     pub status: Option<String>,
     pub title: Option<String>,
     pub content: String,
     pub frontmatter: SpecFrontmatter,
+    pub body: String,
+}
+
+/// Load a spec fully from disk (read + parse). For mutations.
+pub(super) fn load_spec(id: &str) -> Result<LoadedSpec> {
+    let found = find_spec(id)?;
+    let content = std::fs::read_to_string(&found.file_path)
+        .with_context(|| format!("Failed to read {}", found.file_path))?;
+    let (frontmatter, body) = parse_spec_file(&content)
+        .with_context(|| format!("Failed to parse {}", found.file_path))?;
+    Ok(LoadedSpec {
+        file_path: found.file_path,
+        status: found.status,
+        title: found.title,
+        content,
+        frontmatter,
+        body,
+    })
 }
 ```
 
-`find_spec` already reads the file for the filesystem fallback path.
-For the DB path, add the `read_to_string + parse_spec_file` after the
-DB query succeeds. One read per operation, always.
+Read-only callers keep using `find_spec`. Mutation callers use `load_spec`.
+No behavior change for `archive_stale_specs`, `spec_age_days_from_list`,
+or blocker existence checks.
 
-**`mutate_spec` new signature:**
+**`mutate_spec` takes `LoadedSpec`:**
 
 ```rust
 pub(super) fn mutate_spec<F>(
-    found: FoundSpec,
+    loaded: LoadedSpec,
     mutate: F,
 ) -> Result<MutationOutput>
 where
@@ -99,24 +124,44 @@ pub(super) struct MutationOutput {
 }
 ```
 
-Named fields, not `(String, SpecFrontmatter, SpecFrontmatter)` where
-you need a comment to know which is which.
+Implementation: clone `loaded.frontmatter` as `pre`, apply closure to
+get `post`, serialize `(post, loaded.body)`, write file, update DB.
+No `find_spec` inside. No `id` parameter needed — but see "ID
+source-of-truth" below.
 
-`mutate_spec` clones the frontmatter before mutation (that's `pre`),
-applies the closure (that's `post`), writes the file, updates the DB.
-No `find_spec` inside. No `id` parameter — it gets `id` from
-`found.frontmatter.id`.
+`SpecFrontmatter` already derives `Clone` (src/spec.rs:57). The struct
+is 16 fields, mostly `Option<String>` and small `Vec<String>`. Clone
+cost is negligible for single-spec mutation paths. No fan-out.
 
-**Convenience wrapper** for the one caller (`promote_spec_value`) that
-doesn't pre-query:
+**Convenience wrapper** for `promote_spec_value` (the one caller that
+doesn't pre-validate):
 
 ```rust
-pub(super) fn find_and_mutate<F>(id: &str, mutate: F) -> Result<MutationOutput>
+pub(super) fn load_and_mutate<F>(id: &str, mutate: F) -> Result<MutationOutput>
 where
     F: FnOnce(&mut SpecFrontmatter) -> Result<()>,
 {
-    let found = find_spec(id)?;
-    mutate_spec(found, mutate)
+    let loaded = load_spec(id)?;
+    mutate_spec(loaded, mutate)
+}
+```
+
+**ID source-of-truth invariant:** Today `mutate_spec` takes an explicit
+`id: &str` from the caller, uses it for the DB UPDATE. The new design
+infers id from `loaded.frontmatter.id`. These could diverge if
+`find_spec` returns a file whose frontmatter ID doesn't match the
+lookup key. This can't happen via the DB path (DB stores the frontmatter
+ID). It *could* happen via the filesystem fallback if two specs share
+an ID in their frontmatter (a data bug). Defense: `load_spec` asserts
+`frontmatter.id == id` after parse. Bail with a clear error if they
+diverge. Cost: one string comparison per load.
+
+```rust
+if frontmatter.id != id {
+    anyhow::bail!(
+        "Frontmatter ID '{}' doesn't match lookup key '{}' in {}",
+        frontmatter.id, id, found.file_path
+    );
 }
 ```
 
@@ -125,8 +170,65 @@ where
 - The manual read-parse-mutate-write-DB in `split_spec_value`
 - The extra `read_to_string + parse_spec_file` in `resume_spec_value`
   (use `pre.paused_at_tag` and `pre.blocked_by` from `MutationOutput`)
-- The `resume` ordering problem: validate with `found.status` and
-  `found.frontmatter.blocked_by` before calling `mutate_spec`
+
+**`resume_spec_value` ordering:** The blocker check currently happens
+before mutation. With `LoadedSpec`, `resume_spec_value` does:
+1. `load_spec(id)` — gets `loaded.frontmatter.blocked_by` and
+   `loaded.frontmatter.paused_at_tag`
+2. Validate `loaded.status` (paused or blocked)
+3. Check blockers using `loaded.frontmatter.blocked_by` (calls
+   `find_spec` per blocker — lightweight, only needs status)
+4. `mutate_spec(loaded, ...)` — one write, no re-reads
+
+The pre-mutation data comes from `loaded` before it's consumed by
+`mutate_spec`. The `MutationOutput.pre` field is also available after
+mutation for anything the return payload needs.
+
+### Rollback interaction with `with_yaml_rollback`
+
+`pause_spec_value` and `block_spec_value` use `with_yaml_rollback`,
+which reads the file content before the closure and restores it on
+failure. Currently:
+
+```
+with_yaml_rollback(file_path, || {
+    mutate_spec(id, |fm| { ... })?;   // re-reads file inside
+    git_create_tag(...)?;              // can fail
+    git_stage_and_commit(...)?;        // can fail
+})
+```
+
+`with_yaml_rollback` owns the pre-mutation content. `mutate_spec`
+re-reads (redundantly) and writes. If git ops fail after the write,
+`with_yaml_rollback` restores from its backup. This works but is
+wasteful.
+
+With `LoadedSpec`, the flow becomes:
+
+```
+let loaded = load_spec(id)?;         // one read
+let original_content = loaded.content.clone();  // backup for rollback
+
+// with_yaml_rollback now takes the backup explicitly:
+with_content_rollback(&loaded.file_path, &original_content, || {
+    mutate_spec(loaded, |fm| { ... })?;  // writes, no re-read
+    git_create_tag(...)?;
+    git_stage_and_commit(...)?;
+})
+```
+
+Or simpler: `mutate_spec` stores `loaded.content` and handles its own
+rollback internally if the closure fails, making `with_yaml_rollback`
+unnecessary for mutation paths. The rollback is file-write-level:
+`mutate_spec` writes `serialize(post, body)`, so on failure it writes
+back `loaded.content`. But `pause` and `block` do git ops *after* the
+YAML write that can also fail — the rollback scope is wider than
+`mutate_spec`.
+
+**Decision: keep `with_yaml_rollback` but pass the backup content
+explicitly.** Rename to `with_content_rollback(file_path, backup, action)`
+to make the contract clear. `LoadedSpec.content` is the backup. No
+redundant reads.
 
 ### Refactor 2: Extract `release_and_archive` helper
 
@@ -134,81 +236,172 @@ where
 release+archive logic (~20 lines). Extract to:
 
 ```rust
+/// Release (version bump + archive) or archive-only for a completed spec.
 pub(super) fn release_and_archive(
     id: &str,
     file_path: &str,
     frontmatter: &SpecFrontmatter,
     title: &str,
-    bump: Option<BumpType>,  // caller decides, not the helper
+    bump: Option<BumpType>,
 ) -> Result<()>
 ```
 
-Caller passes `bump` directly — `complete_spec_value` computes it from
-the `major` CLI flag, `split_spec_value` always uses
+**Responsibilities (exhaustive):**
+1. Pre-check: bail if `spec/{id}` tag already exists
+2. Resolve spec directory from file_path
+3. If `bump` is `Some`: `ReleaseStrategy::from_project` -> `preflight`
+   -> `execute` (this stages, commits, and tags the release). Then
+   `create_tag_at("spec/{id}", ..., "HEAD~1")` for archive tag.
+4. If `bump` is `None`: delegate to `archive_spec_inner` (which does
+   `git rm -rf` + `commit` + `create_tag_at`).
+
+**Does NOT:** call `mutate_spec`, validate status, or stage files.
+Caller handles mutation before calling this. This helper is
+archive-side only.
+
+**Overlap with `archive_spec_inner`:** `release_and_archive` calls
+`archive_spec_inner` for the no-release path. It does NOT duplicate
+`archive_spec_inner`'s git rm / commit / tag logic — it delegates.
+For the release path, `ReleaseStrategy::execute` handles staging and
+committing; this helper only adds the archive tag afterward.
+
+Caller passes `bump` directly — `complete_spec_value` computes it
+from the `major` CLI flag, `split_spec_value` always uses
 `BumpType::from_spec_type(...)`. The helper doesn't know about CLI
-flags. Separation of concerns.
+flags.
 
-Place in `archive.rs` alongside `archive_spec_inner`. Both callers
-import via `super::archive::release_and_archive`.
+Place in `archive.rs` alongside `archive_spec_inner`.
 
-### Refactor 3: Typed `MutationResult` for `_value()` functions
+### Refactor 3: Typed results for `_value()` functions
 
-One struct, not seven. Six of seven share the same shape:
+**Payload inventory (grounded against current code):**
+
+| Function | Fields |
+|----------|--------|
+| `promote_spec_value` | command, spec_id, new_status, file |
+| `complete_spec_value` | command, spec_id, new_status, archived, tag, file |
+| `abandon_spec_value` | command, spec_id, new_status, reason, archived, tag, file |
+| `pause_spec_value` | command, spec_id, new_status, reason, tag, paused_date |
+| `resume_spec_value` | command, spec_id, new_status, previous_status, tag, paused_at_tag |
+| `block_spec_value` | command, spec_id, new_status, blocker, reason, tag |
+| `split_spec_value` | command, original_spec_id, new_spec_id, version_tag, archive_tag, new_spec_path, original_file, status |
+
+**Common base** (all 6 mutations share): `command`, `spec_id`, `new_status`.
+**Frequent** (5 of 6): `tag`. **Frequent** (4 of 6): `file`.
+**Command-specific**: `reason` (3), `archived` (2), `blocker` (1),
+`previous_status` (1), `paused_at_tag` (1), `paused_date` (1).
+
+`split` is structurally different (two spec IDs, two tags, a path).
+
+**Design: base struct + `#[serde(flatten)]` detail enum.**
 
 ```rust
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct MutationResult {
     pub command: &'static str,
     pub spec_id: String,
     pub new_status: String,
-    pub file: String,
-    pub tag: Option<String>,
-    pub archived: bool,
-    // Command-specific extras
-    pub reason: Option<String>,
-    pub previous_status: Option<String>,
-    pub blocker: Option<String>,
+    #[serde(flatten)]
+    pub detail: MutationDetail,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum MutationDetail {
+    Promote {
+        file: String,
+    },
+    Complete {
+        file: String,
+        tag: String,
+        archived: bool,
+    },
+    Abandon {
+        file: String,
+        tag: String,
+        archived: bool,
+        reason: Option<String>,
+    },
+    Pause {
+        tag: String,
+        reason: String,
+        paused_date: String,
+    },
+    Resume {
+        tag: String,
+        previous_status: String,
+        paused_at_tag: Option<String>,
+    },
+    Block {
+        tag: String,
+        blocker: String,
+        reason: String,
+    },
 }
 ```
 
-`split_spec_value` is the outlier (has `new_spec_id`, `version_tag`,
-`archive_tag`, `new_spec_path`, `original_file`). It gets its own:
+No silent field drops — every current payload field has a home. No
+`Option` soup — each variant carries exactly its fields. The enum is
+`#[serde(untagged)]` so JSON output is flat (no wrapper key),
+preserving the current MCP contract.
+
+`SplitResult` stays separate (different shape, different file).
+
+**CLI wrappers** access detail fields via match:
 
 ```rust
-#[derive(Serialize)]
-pub struct SplitResult {
-    pub command: &'static str,
-    pub original_spec_id: String,
-    pub new_spec_id: String,
-    pub version_tag: String,
-    pub archive_tag: String,
-    pub new_spec_path: String,
-    pub original_file: String,
+let result = promote_spec_value(id)?;
+match &result.detail {
+    MutationDetail::Promote { file } => {
+        println!("Promoted: {} → {}", id, result.new_status);
+        println!("  File: {}", file);
+    }
+    _ => unreachable!(),
 }
 ```
 
-Two structs total. CLI wrappers access fields directly (`result.file`
-instead of `result["file"].as_str().unwrap_or("")`). MCP layer calls
-`serde_json::to_value(&result)?` at the boundary.
+Or — simpler — each `_spec()` wrapper already knows what command it
+called, so it can destructure directly. The `unreachable!` is safe
+because the wrapper and `_value()` are coupled by design.
+
+**MCP layer:** `serde_json::to_value(&result)?` at the boundary.
+Current JSON shape preserved.
+
+**`next_spec_value` stays as `serde_json::Value`** — it returns an
+array of `Recommendation` structs that are already typed (local
+struct with `#[derive(Serialize)]` in `queue.rs:88`). Its return type
+is fine; the problem was only in the mutation functions.
 
 ## Implementation Order
 
 ```
-1. cleanup: remove banners + archive_spec_inner signature     [mechanical]
-2. refactor: FoundSpec loaded, mutate_spec takes it            [Refactor 1]
+1. cleanup: remove banners + archive_spec_inner signature      [mechanical]
+2. refactor: add load_spec, mutate_spec takes LoadedSpec       [Refactor 1]
+   - add LoadedSpec, load_spec, MutationOutput
+   - mutate_spec takes LoadedSpec, returns MutationOutput
+   - add load_and_mutate convenience wrapper
+   - add ID assertion in load_spec
+   - rename with_yaml_rollback → with_content_rollback
+   - update all _value() callers
+   - split_spec_value uses mutate_spec (no more manual path)
+   - resume_spec_value uses loaded.frontmatter (no triple-read)
 3. refactor: extract release_and_archive helper                [Refactor 2]
-4. refactor: MutationResult + SplitResult typed returns        [Refactor 3]
+4. refactor: MutationResult + MutationDetail + SplitResult     [Refactor 3]
 ```
 
 Commit 2 is the one that matters. Everything else is either trivial
-cleanup or optional polish.
+cleanup or type-safety polish.
 
 ## Exit Criteria
 
 - [ ] No manual read-parse-mutate-write-DB outside `mutate_spec`
 - [ ] No double `find_spec` calls in any `_value()` function
 - [ ] `resume_spec_value` reads the spec file exactly once
+- [ ] `find_spec` remains lightweight (no file reads) for read-only callers
+- [ ] `load_spec` asserts `frontmatter.id == lookup_key`
+- [ ] `with_content_rollback` takes explicit backup (no redundant reads)
 - [ ] `_value()` functions return `MutationResult` or `SplitResult`
+- [ ] Every current JSON field has a home (no silent drops)
 - [ ] `archive_spec_inner` takes `Option<&Path>`
 - [ ] Zero `// ====` section banners in `internal/` files
 - [ ] `complete_spec_value` and `split_spec_value` share release logic
@@ -219,10 +412,13 @@ cleanup or optional polish.
 ## Key Files
 
 ```
-src/commands/spec/internal/mutations.rs  — mutate_spec, MutationResult, find_and_mutate
-src/commands/spec/internal/split.rs      — uses mutate_spec, SplitResult
-src/commands/spec/internal/archive.rs    — FoundSpec loaded, release_and_archive, signature fix
-src/commands/spec/internal/queue.rs      — MutationResult for next_spec_value (or keep json?)
+src/commands/spec/internal/mutations.rs  — mutate_spec, MutationOutput, MutationResult,
+                                           MutationDetail, load_and_mutate,
+                                           with_content_rollback
+src/commands/spec/internal/split.rs      — uses mutate_spec via load_spec, SplitResult
+src/commands/spec/internal/archive.rs    — LoadedSpec, load_spec, find_spec (unchanged),
+                                           release_and_archive, signature fix
+src/commands/spec/internal/queue.rs      — no changes (next_spec_value already typed)
 src/commands/spec/internal/queries.rs    — banner removal only
 src/commands/spec/internal/mod.rs        — re-export MutationResult, SplitResult
 src/mcp/spec_tools.rs                   — serde_json::to_value at boundary
@@ -233,6 +429,7 @@ src/mcp/spec_tools.rs                   — serde_json::to_value at boundary
 - Changing public CLI behavior or output format
 - Restructuring the module layout (that was spec-module-split)
 - Adding new spec commands or features
+- Loading full content in `find_spec` (read-only paths stay lightweight)
 
 ## Provenance
 
@@ -240,7 +437,10 @@ Identified by Gjengset-style code review after spec-module-split
 (v0.30.1). All items are pre-existing issues the split exposed. Previous
 session (20260224-141429) fixed 4 items (git helper, FoundSpec struct,
 mutate_spec usage, git API consolidation). This spec covers the
-remaining issues with the feedback incorporated from a second review
-pass that caught over-counting (7 fixes were really 3 refactors +
-mechanical cleanup) and design mistakes (Option<FoundSpec> parameter,
-tuple returns, 7 result structs, major:bool leaking into helpers).
+remaining issues with feedback incorporated from two review passes
+that caught: over-counting (7 fixes → 3 refactors + mechanical),
+design mistakes (Option<FoundSpec> → two-tier find/load, tuple returns
+→ named struct, 7 result structs → enum, major:bool → Option<BumpType>),
+and potential pitfalls (fan-out latency for loaded find_spec, ID
+source-of-truth drift, rollback interaction with loaded content,
+silent field drops in typed results).
