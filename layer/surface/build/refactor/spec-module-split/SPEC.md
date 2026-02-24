@@ -1,20 +1,20 @@
 ---
 type: refactor
 id: spec-module-split
-status: draft
+status: ready
 created: 2026-02-24
+blocks:
+- spec-create
 sessions:
   origin: 20260224-053924
 related:
-  - src/commands/spec/mod.rs
-  - src/commands/spec/internal.rs
-  - src/release/mod.rs
+- src/commands/spec/mod.rs
+- src/commands/spec/internal.rs
+- src/release/mod.rs
 beliefs:
-  - dependable-rust
-  - unix-philosophy
-  - plugins-are-three-prong-bundles
-blocks:
-  - spec-create
+- dependable-rust
+- unix-philosophy
+- plugins-are-three-prong-bundles
 ---
 
 # refactor: Spec Module Split — internal.rs → internal/
