@@ -69,6 +69,37 @@ where
     }
 }
 
+/// Stage a file and commit. Tolerates "nothing to commit" (idempotent).
+///
+/// Used by spec mutations that update YAML and need a git commit.
+/// Unlike archive_spec_inner (which uses git rm and strict commit),
+/// this handles the case where the file hasn't actually changed.
+pub(super) fn git_stage_and_commit(file_path: &str, message: &str) -> Result<()> {
+    let output = Command::new("git")
+        .args(["add", file_path])
+        .output()
+        .context("Failed to stage spec file")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git add failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let output = Command::new("git")
+        .args(["commit", "-m", message])
+        .output()
+        .context("Failed to commit")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.contains("nothing to commit") {
+            anyhow::bail!("git commit failed: {}", stderr);
+        }
+    }
+
+    Ok(())
+}
+
 /// Derive the next tag sequence number from existing tags.
 /// e.g., list_matching_tags("spec/{id}-paused-*") → count existing → N+1
 pub(super) fn next_tag_number(id: &str, prefix: &str) -> Result<u32> {
@@ -125,28 +156,8 @@ pub fn promote_spec_value(id: &str) -> Result<serde_json::Value> {
     }
 
     // Git commit
-    let output = Command::new("git")
-        .args(["add", &file_path])
-        .output()
-        .context("Failed to stage spec file")?;
-    if !output.status.success() {
-        anyhow::bail!(
-            "git add failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
     let commit_msg = format!("spec: promote {} to {}", id, new_status);
-    let output = Command::new("git")
-        .args(["commit", "-m", &commit_msg])
-        .output()
-        .context("Failed to commit")?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !stderr.contains("nothing to commit") {
-            anyhow::bail!("git commit failed: {}", stderr);
-        }
-    }
+    git_stage_and_commit(&file_path, &commit_msg)?;
 
     Ok(serde_json::json!({
         "command": "promote",
@@ -419,27 +430,8 @@ pub fn pause_spec_value(id: &str, reason: &str) -> Result<serde_json::Value> {
 
         patina::git::create_tag_at(&tag_name, reason, "HEAD")?;
 
-        let output = Command::new("git")
-            .args(["add", &file_path])
-            .output()
-            .context("Failed to stage spec file")?;
-        if !output.status.success() {
-            anyhow::bail!(
-                "git add failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
         let commit_msg = format!("spec: pause {} — {}", id, reason);
-        let output = Command::new("git")
-            .args(["commit", "-m", &commit_msg])
-            .output()
-            .context("Failed to commit")?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            if !stderr.contains("nothing to commit") {
-                anyhow::bail!("git commit failed: {}", stderr);
-            }
-        }
+        git_stage_and_commit(&file_path, &commit_msg)?;
 
         Ok(())
     })?;
@@ -595,27 +587,8 @@ pub fn resume_spec_value(id: &str, force: bool) -> Result<serde_json::Value> {
     patina::git::create_tag_at(&tag_name, &format!("Resumed {}", id), "HEAD")?;
 
     // 7. Git commit
-    let output = Command::new("git")
-        .args(["add", &file_path])
-        .output()
-        .context("Failed to stage spec file")?;
-    if !output.status.success() {
-        anyhow::bail!(
-            "git add failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
     let commit_msg = format!("spec: resume {}", id);
-    let output = Command::new("git")
-        .args(["commit", "-m", &commit_msg])
-        .output()
-        .context("Failed to commit")?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !stderr.contains("nothing to commit") {
-            anyhow::bail!("git commit failed: {}", stderr);
-        }
-    }
+    git_stage_and_commit(&file_path, &commit_msg)?;
 
     Ok(serde_json::json!({
         "command": "resume",
@@ -700,27 +673,8 @@ pub fn block_spec_value(id: &str, blocker: &str, reason: &str) -> Result<serde_j
         patina::git::create_tag_at(&tag_name, &tag_msg, "HEAD")?;
 
         // Git commit
-        let output = Command::new("git")
-            .args(["add", &file_path])
-            .output()
-            .context("Failed to stage spec file")?;
-        if !output.status.success() {
-            anyhow::bail!(
-                "git add failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
         let commit_msg = format!("spec: block {} (waiting on {})", id, blocker);
-        let output = Command::new("git")
-            .args(["commit", "-m", &commit_msg])
-            .output()
-            .context("Failed to commit")?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            if !stderr.contains("nothing to commit") {
-                anyhow::bail!("git commit failed: {}", stderr);
-            }
-        }
+        git_stage_and_commit(&file_path, &commit_msg)?;
 
         Ok(())
     })?;
