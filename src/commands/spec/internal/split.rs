@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::path::Path;
-use std::process::Command;
 
 use patina::release::{BumpType, ReleaseStrategy};
 use patina::spec::{parse_spec_file, serialize_spec_file};
 
 use super::archive::{archive_spec_inner, find_spec, resolve_spec_dir};
+use super::mutations::git_stage_and_commit;
 use super::queue::tag_exists;
 use super::DB_PATH;
 
@@ -174,30 +174,11 @@ pub fn split_spec_value(
         .with_context(|| format!("Failed to write {}", new_spec_path))?;
 
     // 7. Git commit the new spec
-    let output = Command::new("git")
-        .args(["add", &new_spec_path])
-        .output()
-        .context("Failed to stage new spec")?;
-    if !output.status.success() {
-        anyhow::bail!(
-            "git add failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
     let commit_msg = format!(
         "spec: split {} — ship v{}, draft remainder as {}",
         id, version_n, derived_id
     );
-    let output = Command::new("git")
-        .args(["commit", "-m", &commit_msg])
-        .output()
-        .context("Failed to commit")?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !stderr.contains("nothing to commit") {
-            anyhow::bail!("git commit failed: {}", stderr);
-        }
-    }
+    git_stage_and_commit(&new_spec_path, &commit_msg)?;
 
     Ok(serde_json::json!({
         "command": "split",
