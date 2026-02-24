@@ -53,23 +53,6 @@ pub enum SpecCommands {
         json: bool,
     },
 
-    /// Update a spec's status (draft → ready → active → complete)
-    Status {
-        /// Spec ID to update
-        id: String,
-
-        /// New status (draft, ready, active, complete, abandoned)
-        status: String,
-
-        /// Force major version bump on complete (for 1.0.0 moments)
-        #[arg(long)]
-        major: bool,
-
-        /// Skip auto-archive on complete/abandoned (preserve spec in tree)
-        #[arg(long)]
-        no_archive: bool,
-    },
-
     /// List all specs with optional filters
     List {
         /// Filter by status (draft, ready, active, paused, blocked, complete, abandoned)
@@ -215,11 +198,6 @@ pub fn blocked(json: bool) -> Result<()> {
     internal::show_blocked_specs(json)
 }
 
-/// Update a spec's status
-pub fn status(id: &str, new_status: &str, major: bool, no_archive: bool) -> Result<()> {
-    internal::update_spec_status(id, new_status, major, no_archive)
-}
-
 /// List all specs with optional filters
 pub fn list(status: Option<String>, target: Option<String>, json: bool) -> Result<()> {
     let filters = internal::ListFilters { status, target };
@@ -281,36 +259,6 @@ mod tests {
     fn parse(args: &[&str]) -> Result<SpecCommands, clap::Error> {
         TestCli::try_parse_from(std::iter::once("patina-spec").chain(args.iter().copied()))
             .map(|cli| cli.command)
-    }
-
-    #[test]
-    fn status_with_no_archive_flag() {
-        let cmd = parse(&["status", "my-spec", "complete", "--no-archive"]).unwrap();
-        match cmd {
-            SpecCommands::Status {
-                id,
-                status,
-                no_archive,
-                major,
-            } => {
-                assert_eq!(id, "my-spec");
-                assert_eq!(status, "complete");
-                assert!(no_archive);
-                assert!(!major);
-            }
-            _ => panic!("expected Status"),
-        }
-    }
-
-    #[test]
-    fn status_defaults_archive_on() {
-        let cmd = parse(&["status", "my-spec", "complete"]).unwrap();
-        match cmd {
-            SpecCommands::Status { no_archive, .. } => {
-                assert!(!no_archive, "--no-archive should default to false");
-            }
-            _ => panic!("expected Status"),
-        }
     }
 
     #[test]
