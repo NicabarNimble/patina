@@ -202,7 +202,7 @@ pub fn archive_stale_specs(dry_run: bool) -> Result<()> {
 /// Tries DB first, falls back to filesystem scan for unscraped specs.
 pub(super) fn find_spec(id: &str) -> Result<(String, Option<String>, Option<String>)> {
     // Try DB first
-    let db_path = Path::new(".patina/local/data/patina.db");
+    let db_path = Path::new(super::DB_PATH);
 
     if db_path.exists() {
         if let Ok(conn) = Connection::open(db_path) {
