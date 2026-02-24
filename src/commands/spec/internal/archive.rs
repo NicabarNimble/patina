@@ -92,7 +92,7 @@ pub(super) fn archive_spec_inner(
     } else {
         file_path.to_string()
     };
-    // -f needed because the spec file may have just been modified (status update) on disk
+    // `git rm -rf` — no patina::git helper for rm (single call site, not worth abstracting)
     println!("Removing: {}", remove_target);
     let output = Command::new("git")
         .args(["rm", "-rf", &remove_target])
@@ -109,14 +109,7 @@ pub(super) fn archive_spec_inner(
         tag_name, status, tag_name, tag_name, file_path
     );
     println!("Committing archive");
-    let output = Command::new("git")
-        .args(["commit", "-m", &commit_msg])
-        .output()
-        .context("Failed to commit archive")?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("git commit failed: {}", stderr);
-    }
+    patina::git::commit(&commit_msg)?;
 
     // 3. Tag HEAD~1 (the parent commit that still has the spec file).
     // Created after commit so no orphaned tag if git rm or commit fails.
