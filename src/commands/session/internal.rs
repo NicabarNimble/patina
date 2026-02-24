@@ -409,6 +409,9 @@ pub fn update_session(project_root: &Path) -> Result<()> {
         }
     }
 
+    // Spec status changes (Phase 5: session integration)
+    show_spec_status_in_update(&changed_files);
+
     // 7. Append update section to active session markdown
     let now = Local::now();
     let time_str = now.format("%H:%M").to_string();
@@ -1085,6 +1088,50 @@ fn show_spec_landscape() {
     } else if !drafts.is_empty() {
         println!();
         println!("Recommended: promote a draft to ready");
+    }
+}
+
+/// Show spec status changes in session update.
+///
+/// Checks for SPEC.md files in changed files (indicates spec status mutations),
+/// and warns about paused specs that are aging.
+fn show_spec_status_in_update(changed_files: &[String]) {
+    // Check if any spec files were changed this session
+    let spec_changes: Vec<_> = changed_files
+        .iter()
+        .filter(|f| f.starts_with("layer/surface/build/") && f.ends_with("SPEC.md"))
+        .collect();
+
+    if !spec_changes.is_empty() {
+        println!();
+        println!("Spec files changed this session:");
+        for f in &spec_changes {
+            println!("  {}", f);
+        }
+    }
+
+    // Warn about paused specs aging
+    if let Ok(all_specs) = spec::get_all_specs(&spec::ListFilters::default()) {
+        let paused: Vec<_> = all_specs
+            .iter()
+            .filter(|s| s.status.as_deref() == Some("paused"))
+            .collect();
+        if !paused.is_empty() {
+            println!();
+            for s in &paused {
+                let age = spec::spec_age_days_from_list(s);
+                if age > 14 {
+                    println!(
+                        "Warning: {} paused for {}d — overdue for resolution",
+                        s.id, age
+                    );
+                } else if age > 0 {
+                    println!("Paused spec: {} ({}d) — resolve before pausing another", s.id, age);
+                } else {
+                    println!("Paused spec: {} — resolve before pausing another", s.id);
+                }
+            }
+        }
     }
 }
 
