@@ -18,8 +18,8 @@ use super::queue::{is_tree_clean, tag_exists};
 /// to `archive_spec_inner` for the actual git operations.
 pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
     // 1. Find spec in patterns table by id
-    let (file_path, status, title) = find_spec(id)?;
-    let status_str = status.as_deref().unwrap_or("");
+    let found = find_spec(id)?;
+    let status_str = found.status.as_deref().unwrap_or("");
 
     // 2. Validate status allows archiving
     if status_str != "complete" && status_str != "abandoned" {
@@ -40,12 +40,12 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
              View with: git show {}:{}",
             tag_name,
             tag_name,
-            file_path
+            found.file_path
         );
     }
 
     // Resolve spec directory (parent of SPEC.md)
-    let spec_dir = resolve_spec_dir(&file_path);
+    let spec_dir = resolve_spec_dir(&found.file_path);
 
     if dry_run {
         println!("Dry run — would perform these changes:\n");
@@ -53,10 +53,10 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
         if let Some(dir) = &spec_dir {
             println!("  Remove: {}/", dir.display());
         } else {
-            println!("  Remove: {}", file_path);
+            println!("  Remove: {}", found.file_path);
         }
         println!("  Commit: docs: archive {} ({})", tag_name, status_str);
-        println!("\nRecover with: git show {}:{}", tag_name, file_path);
+        println!("\nRecover with: git show {}:{}", tag_name, found.file_path);
         return Ok(());
     }
 
@@ -69,8 +69,8 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
     }
 
     // 5. Delegate to inner (tag, rm, commit)
-    let desc = title.as_deref().unwrap_or(id);
-    archive_spec_inner(id, &file_path, status_str, desc, &spec_dir)
+    let desc = found.title.as_deref().unwrap_or(id);
+    archive_spec_inner(id, &found.file_path, status_str, desc, &spec_dir)
 }
 
 /// Core archive logic: tag + git rm + commit.
@@ -171,8 +171,8 @@ pub fn archive_stale_specs(dry_run: bool) -> Result<()> {
         }
 
         // Resolve file path via find_spec (handles both DB and filesystem)
-        let (file_path, _, _) = match find_spec(&spec.id) {
-            Ok(found) => found,
+        let found = match find_spec(&spec.id) {
+            Ok(f) => f,
             Err(e) => {
                 eprintln!("  Skip: {} ({})", spec.id, e);
                 continue;
@@ -180,14 +180,14 @@ pub fn archive_stale_specs(dry_run: bool) -> Result<()> {
         };
 
         let status = spec.status.as_deref().unwrap_or("complete");
-        let spec_dir = resolve_spec_dir(&file_path);
+        let spec_dir = resolve_spec_dir(&found.file_path);
 
         if dry_run {
             println!("  Would archive: {} ({})", spec.id, status);
             continue;
         }
 
-        archive_spec_inner(&spec.id, &file_path, status, &spec.title, &spec_dir)?;
+        archive_spec_inner(&spec.id, &found.file_path, status, &spec.title, &spec_dir)?;
     }
 
     if dry_run {
@@ -197,10 +197,17 @@ pub fn archive_stale_specs(dry_run: bool) -> Result<()> {
     Ok(())
 }
 
+/// Result of finding a spec by id.
+pub(super) struct FoundSpec {
+    pub file_path: String,
+    pub status: Option<String>,
+    pub title: Option<String>,
+}
+
 /// Find a spec by its frontmatter id.
 ///
 /// Tries DB first, falls back to filesystem scan for unscraped specs.
-pub(super) fn find_spec(id: &str) -> Result<(String, Option<String>, Option<String>)> {
+pub(super) fn find_spec(id: &str) -> Result<FoundSpec> {
     // Try DB first
     let db_path = Path::new(super::DB_PATH);
 
@@ -210,16 +217,16 @@ pub(super) fn find_spec(id: &str) -> Result<(String, Option<String>, Option<Stri
                 "SELECT file_path, status, title FROM patterns WHERE id = ?1",
                 rusqlite::params![id],
                 |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, Option<String>>(1)?,
-                        row.get::<_, Option<String>>(2)?,
-                    ))
+                    Ok(FoundSpec {
+                        file_path: row.get::<_, String>(0)?,
+                        status: row.get::<_, Option<String>>(1)?,
+                        title: row.get::<_, Option<String>>(2)?,
+                    })
                 },
             );
 
             match result {
-                Ok(row) => return Ok(row),
+                Ok(found) => return Ok(found),
                 Err(rusqlite::Error::QueryReturnedNoRows) => {
                     // Fall through to filesystem scan
                 }
@@ -235,7 +242,11 @@ pub(super) fn find_spec(id: &str) -> Result<(String, Option<String>, Option<Stri
             // Reconstruct file_path from the spec id by scanning for the actual file
             let build_dir = Path::new("layer/surface/build");
             if let Some(path) = find_spec_file_on_disk(build_dir, id) {
-                return Ok((path, spec.status, Some(spec.title)));
+                return Ok(FoundSpec {
+                    file_path: path,
+                    status: spec.status,
+                    title: Some(spec.title),
+                });
             }
         }
     }
