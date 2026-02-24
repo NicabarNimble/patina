@@ -500,7 +500,17 @@ pub fn end_session(project_root: &Path) -> Result<()> {
     let starting_commit = read_session_field(&session_path, "**Starting Commit**: ")?;
     let adapter = read_session_field(&session_path, "**LLM**: ")?;
 
-    // 3. Create end session tag
+    // 3. Atomic status flip — mark completed FIRST, before any other mutations.
+    //    If later steps (metrics, archive) fail, the session is at least marked done.
+    {
+        let content = fs::read_to_string(&session_path)?;
+        let updated = content.replacen("status: active", "status: completed", 1);
+        if updated != content {
+            fs::write(&session_path, &updated)?;
+        }
+    }
+
+    // 4. Create end session tag
     let end_tag = format!("session-{}-{}-end", session_id, adapter);
     if git::is_git_repo().unwrap_or(false) {
         match git::create_tag(&end_tag, &format!("Session end: {}", session_title)) {
@@ -612,7 +622,10 @@ pub fn end_session(project_root: &Path) -> Result<()> {
     let session_content = fs::read_to_string(&session_path)?;
     let archived_content = if session_content.starts_with("---") {
         // YAML frontmatter — update status for archive
-        session_content.replacen("status: active", "status: archived", 1)
+        // Status may be "completed" (from atomic flip) or "active" (legacy path)
+        session_content
+            .replacen("status: completed", "status: archived", 1)
+            .replacen("status: active", "status: archived", 1)
     } else {
         // Legacy format — archive as-is
         session_content
