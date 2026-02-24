@@ -1016,6 +1016,186 @@ fn extract_user_prompts(project_root: &Path, session_path: &Path) -> Vec<String>
     prompts
 }
 
+pub fn list_sessions(project_root: &Path, json_output: bool) -> Result<()> {
+    let session_path = project_root.join(ACTIVE_SESSION_PATH);
+    let sessions_dir = project_root.join(SESSIONS_DIR);
+
+    // 1. Check for active session
+    let active = if session_path.exists() {
+        let content = fs::read_to_string(&session_path)?;
+        parse_session_summary(&content)
+    } else {
+        None
+    };
+
+    // 2. Scan layer/sessions/ for archived + stale
+    let mut stale: Vec<SessionSummary> = Vec::new();
+    let mut recent: Vec<SessionSummary> = Vec::new();
+
+    if sessions_dir.is_dir() {
+        let mut entries: Vec<_> = fs::read_dir(&sessions_dir)?
+            .flatten()
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .map_or(false, |ext| ext == "md")
+            })
+            .collect();
+
+        // Sort by filename descending (newest first, since filenames are timestamps)
+        entries.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+
+        for entry in &entries {
+            let content = match fs::read_to_string(entry.path()) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            let Some(summary) = parse_session_summary(&content) else {
+                continue;
+            };
+
+            if summary.status == "active" {
+                stale.push(summary);
+            } else if recent.len() < 5 {
+                recent.push(summary);
+            }
+
+            // Stop scanning after we have enough recent + checked all stale candidates
+            // (stale could be anywhere, but in practice they're rare)
+            if recent.len() >= 5 && stale.len() >= 20 {
+                break;
+            }
+        }
+    }
+
+    let now = Utc::now();
+
+    if json_output {
+        let json = json!({
+            "active": active.as_ref().map(|s| session_summary_json(s, &now)),
+            "stale": stale.iter().map(|s| session_summary_json(s, &now)).collect::<Vec<_>>(),
+            "recent": recent.iter().map(|s| session_summary_json(s, &now)).collect::<Vec<_>>(),
+        });
+        println!("{}", serde_json::to_string_pretty(&json)?);
+        return Ok(());
+    }
+
+    // Human output
+    let mut any_output = false;
+
+    if let Some(ref s) = active {
+        let age = format_session_age(&s.created, &now);
+        println!("ACTIVE  {}  {} ({})", s.id, s.title, age);
+        any_output = true;
+    }
+
+    if !stale.is_empty() {
+        if any_output {
+            println!();
+        }
+        for s in &stale {
+            let age = format_session_age(&s.created, &now);
+            println!("STALE   {}  {} ({}, never ended)", s.id, s.title, age);
+        }
+        any_output = true;
+    }
+
+    if !recent.is_empty() {
+        if any_output {
+            println!();
+        }
+        for s in &recent {
+            let age = format_session_age(&s.created, &now);
+            println!("RECENT  {}  {} ({})", s.id, s.title, age);
+        }
+        any_output = true;
+    }
+
+    if !any_output {
+        println!("No sessions found.");
+    }
+
+    Ok(())
+}
+
+/// Lightweight session summary for list display.
+struct SessionSummary {
+    id: String,
+    title: String,
+    status: String,
+    created: String,
+}
+
+/// Parse a session file into a lightweight summary.
+/// Handles both YAML frontmatter (new) and legacy `**Field**: value` format.
+fn parse_session_summary(content: &str) -> Option<SessionSummary> {
+    // Try YAML frontmatter first
+    if let Some(fm) = parse_session_frontmatter(content) {
+        return Some(SessionSummary {
+            id: fm.id,
+            title: fm.title,
+            status: fm.status,
+            created: fm.created,
+        });
+    }
+
+    // Legacy format: extract from **Field**: value lines
+    let mut id = None;
+    let mut title = None;
+    let mut created = None;
+
+    for line in content.lines() {
+        if let Some(v) = line.strip_prefix("**ID**: ") {
+            id = Some(v.trim().to_string());
+        } else if let Some(v) = line.strip_prefix("# Session: ") {
+            title = Some(v.trim().to_string());
+        } else if let Some(v) = line.strip_prefix("**Started**: ") {
+            created = Some(v.trim().to_string());
+        }
+    }
+
+    Some(SessionSummary {
+        id: id?,
+        title: title.unwrap_or_else(|| "untitled".to_string()),
+        status: "archived".to_string(), // legacy sessions are all completed
+        created: created.unwrap_or_default(),
+    })
+}
+
+/// Format a session's age from its created timestamp to now.
+fn format_session_age(created: &str, now: &chrono::DateTime<Utc>) -> String {
+    let Ok(created_dt) = chrono::DateTime::parse_from_rfc3339(created)
+        .or_else(|_| chrono::DateTime::parse_from_rfc3339(&format!("{}+00:00", created.trim_end_matches('Z'))))
+    else {
+        // Try parsing just the date portion from the ID
+        return "unknown age".to_string();
+    };
+
+    let duration = *now - created_dt.with_timezone(&Utc);
+    let days = duration.num_days();
+    let hours = duration.num_hours();
+
+    if days > 0 {
+        format!("{}d ago", days)
+    } else if hours > 0 {
+        format!("{}h ago", hours)
+    } else {
+        "just now".to_string()
+    }
+}
+
+/// Convert a SessionSummary to JSON value.
+fn session_summary_json(s: &SessionSummary, now: &chrono::DateTime<Utc>) -> serde_json::Value {
+    json!({
+        "id": s.id,
+        "title": s.title,
+        "status": s.status,
+        "created": s.created,
+        "age": format_session_age(&s.created, now),
+    })
+}
+
 /// Resolve adapter name from explicit flag or project config.
 ///
 /// Resolution chain: --adapter flag > config.adapters.default.

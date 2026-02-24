@@ -37,6 +37,13 @@ pub enum SessionCommands {
 
     /// End the active session (tag, classify, archive)
     End,
+
+    /// List active, stale, and recent sessions
+    List {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Execute a session subcommand
@@ -52,6 +59,7 @@ pub fn execute(command: SessionCommands) -> Result<()> {
         SessionCommands::Update => update(&project_root),
         SessionCommands::Note { content } => note(&project_root, &content),
         SessionCommands::End => end(&project_root),
+        SessionCommands::List { json } => list(&project_root, json),
     }
 }
 
@@ -84,4 +92,12 @@ pub fn note(project_root: &Path, content: &str) -> Result<()> {
 /// archives to layer/sessions/, writes session.ended event.
 pub fn end(project_root: &Path) -> Result<()> {
     internal::end_session(project_root)
+}
+
+/// List active, stale, and recent sessions
+///
+/// Shows active session with age, stale sessions (>24h, never ended),
+/// and recent completed sessions.
+pub fn list(project_root: &Path, json: bool) -> Result<()> {
+    internal::list_sessions(project_root, json)
 }
