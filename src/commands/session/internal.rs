@@ -1075,10 +1075,7 @@ fn show_spec_landscape() {
         let top = &paused[0];
         let age = spec::spec_age_days_from_list(top);
         println!();
-        println!(
-            "Recommended: resume {} (paused {}d)",
-            top.id, age
-        );
+        println!("Recommended: resume {} (paused {}d)", top.id, age);
     } else if !ready.is_empty() {
         // Pick highest-impact ready spec
         let dep_counts = spec::load_dep_counts();
@@ -1129,7 +1126,10 @@ fn show_spec_status_in_update(changed_files: &[String]) {
                         s.id, age
                     );
                 } else if age > 0 {
-                    println!("Paused spec: {} ({}d) — resolve before pausing another", s.id, age);
+                    println!(
+                        "Paused spec: {} ({}d) — resolve before pausing another",
+                        s.id, age
+                    );
                 } else {
                     println!("Paused spec: {} — resolve before pausing another", s.id);
                 }
@@ -1178,7 +1178,6 @@ fn show_spec_end_summary(changed_files: &[String]) {
                 println!("  {} — ready to resume", s.id);
             }
         }
-
     }
 
     // Next spec recommendation
