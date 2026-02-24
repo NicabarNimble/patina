@@ -83,8 +83,9 @@ patina spec create feat my-feature
 ## Solution
 
 **Prerequisite:** spec-module-split must be complete first. This spec
-assumes `internal/` directory and `types.rs` with `SpecType` registry
-already exist. `create.rs` lands as a new file in the split structure.
+assumes `internal/` directory already exists. `create.rs` and `types.rs`
+(SpecType registry + body templates) land as new files in the split
+structure.
 
 ### `patina spec create <type> <id> [options]`
 

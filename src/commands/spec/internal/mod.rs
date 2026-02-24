@@ -7,7 +7,6 @@ mod mutations;
 mod queries;
 mod queue;
 mod split;
-pub(crate) mod types;
 
 pub(crate) const DB_PATH: &str = ".patina/local/data/patina.db";
 

@@ -282,14 +282,21 @@ Implementation order:
 
 ## Exit Criteria
 
-- [ ] `internal/` directory with 7 files (mod, types, queries, mutations, split, archive, queue)
-- [ ] `mod.rs` public API identical — no signature changes, same re-exports
-- [ ] `SpecType` registry with 4 types in `types.rs`
-- [ ] `BumpType::from_spec_type()` delegates to registry (single source of truth)
-- [ ] Body templates for each type as `&'static str` constants
-- [ ] All existing tests pass (4 unit tests + mod.rs clap tests)
-- [ ] `cargo clippy` clean
-- [ ] `internal.rs` deleted (replaced by `internal/`)
+- [x] `internal/` directory with 6 files (mod, queries, mutations, split, archive, queue)
+- [x] `mod.rs` public API identical — no signature changes, same re-exports
+- [x] All existing tests pass (4 unit tests + mod.rs clap tests)
+- [x] `cargo clippy` clean
+- [x] `internal.rs` deleted (replaced by `internal/`)
+
+### Deferred to spec-create
+
+- `types.rs` (SpecType registry, body templates) — deferred because it
+  has no callers until `create.rs` uses it. Dead code violates project
+  belief `dead-code-requires-decision`. Design preserved in this SPEC.md
+  section "Extract SpecType registry into types.rs".
+- `BumpType::from_spec_type()` delegation — `release/mod.rs` is in the
+  lib crate and cannot import from the binary crate's `types.rs`.
+  Delegation possible when types move to the lib crate.
 
 ## Key Files
 
