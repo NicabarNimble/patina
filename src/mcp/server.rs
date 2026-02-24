@@ -311,6 +311,179 @@ fn handle_list_tools(req: &Request) -> Response {
                     }
                 },
                 {
+                    "name": "spec.list",
+                    "description": "List all specs with optional filters. Returns specs from the filesystem merged with DB data.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "status": {
+                                "type": "string",
+                                "description": "Filter by status (draft, ready, active, paused, blocked, complete, abandoned)"
+                            },
+                            "target": {
+                                "type": "string",
+                                "description": "Filter by target version (e.g., v0.12.0)"
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "spec.ready",
+                    "description": "Show specs ready to work on — status ready/active with all blockers complete.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "spec.blocked",
+                    "description": "Show specs blocked by incomplete dependencies, with blocker details.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "spec.next",
+                    "description": "Recommend the next spec to work on. Ranks by: active > unblocked > paused (by age) > ready (by impact) > draft.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "spec.promote",
+                    "description": "Promote a spec: draft → ready, or ready → active. Creates git tag on activation.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Spec ID to promote"
+                            }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
+                    "name": "spec.complete",
+                    "description": "Complete an active spec — triggers release (version bump) + archive (git tag + remove).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Spec ID to complete"
+                            },
+                            "major": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "Force major version bump (for 1.0.0 moments)"
+                            }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
+                    "name": "spec.abandon",
+                    "description": "Abandon a spec — archive without release. Any non-terminal status can be abandoned.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Spec ID to abandon"
+                            },
+                            "reason": {
+                                "type": "string",
+                                "description": "Reason for abandoning"
+                            }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
+                    "name": "spec.pause",
+                    "description": "Pause an active spec. Enforces one-paused-spec rule. Creates WIP commit if dirty, tags state.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Spec ID to pause"
+                            },
+                            "reason": {
+                                "type": "string",
+                                "description": "Why this spec is being paused"
+                            }
+                        },
+                        "required": ["id", "reason"]
+                    }
+                },
+                {
+                    "name": "spec.resume",
+                    "description": "Resume a paused or blocked spec. For blocked specs, checks all blockers are complete (or use force).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Spec ID to resume"
+                            },
+                            "force": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "Force resume even if blockers aren't complete"
+                            }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
+                    "name": "spec.block",
+                    "description": "Block an active spec on another spec. Appends to blocked_by list, updates dependency tracking.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Spec ID to block"
+                            },
+                            "by": {
+                                "type": "string",
+                                "description": "Blocking spec ID"
+                            },
+                            "reason": {
+                                "type": "string",
+                                "description": "Reason for blocking"
+                            }
+                        },
+                        "required": ["id", "by", "reason"]
+                    }
+                },
+                {
+                    "name": "spec.split",
+                    "description": "Split a spec: complete original with release, create new draft for remaining work.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Spec ID to split"
+                            },
+                            "new_id": {
+                                "type": "string",
+                                "description": "Override new spec ID (defaults to <id>-v2, -v3, etc.)"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Description for the new spec's remaining work"
+                            }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
                     "name": "schemas.list",
                     "description": "List installed fact schemas - shows all schema packages installed in the current project with their versions, packages, and fact types. Use this to discover what fact types are available for querying.",
                     "inputSchema": {
@@ -771,6 +944,204 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         "content": [{ "type": "text", "text": text }]
                     }),
                 ),
+                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            }
+        }
+        // Spec query tools
+        "spec.list" => {
+            let status = args.get("status").and_then(|v| v.as_str()).map(String::from);
+            let target = args.get("target").and_then(|v| v.as_str()).map(String::from);
+            let filters = crate::commands::spec::ListFilters { status, target };
+            match crate::commands::spec::get_all_specs(&filters) {
+                Ok(specs) => {
+                    let text = serde_json::to_string_pretty(&specs).unwrap_or_default();
+                    Response::success(
+                        req.id.clone(),
+                        serde_json::json!({
+                            "content": [{ "type": "text", "text": text }]
+                        }),
+                    )
+                }
+                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            }
+        }
+        "spec.ready" => match crate::commands::spec::get_ready_specs() {
+            Ok(specs) => {
+                let text = serde_json::to_string_pretty(&specs).unwrap_or_default();
+                Response::success(
+                    req.id.clone(),
+                    serde_json::json!({
+                        "content": [{ "type": "text", "text": text }]
+                    }),
+                )
+            }
+            Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+        },
+        "spec.blocked" => match crate::commands::spec::get_blocked_specs() {
+            Ok(specs) => {
+                let text = serde_json::to_string_pretty(&specs).unwrap_or_default();
+                Response::success(
+                    req.id.clone(),
+                    serde_json::json!({
+                        "content": [{ "type": "text", "text": text }]
+                    }),
+                )
+            }
+            Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+        },
+        "spec.next" => match crate::commands::spec::next_spec_value() {
+            Ok(result) => {
+                let text = serde_json::to_string_pretty(&result).unwrap_or_default();
+                Response::success(
+                    req.id.clone(),
+                    serde_json::json!({
+                        "content": [{ "type": "text", "text": text }]
+                    }),
+                )
+            }
+            Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+        },
+        // Spec mutation tools
+        "spec.promote" => {
+            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            if id.is_empty() {
+                return Response::error(req.id.clone(), -32602, "spec.promote requires 'id' parameter");
+            }
+            match crate::commands::spec::promote_spec_value(id) {
+                Ok(result) => {
+                    let text = serde_json::to_string_pretty(&result).unwrap_or_default();
+                    Response::success(
+                        req.id.clone(),
+                        serde_json::json!({
+                            "content": [{ "type": "text", "text": text }]
+                        }),
+                    )
+                }
+                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            }
+        }
+        "spec.complete" => {
+            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let major = args.get("major").and_then(|v| v.as_bool()).unwrap_or(false);
+            if id.is_empty() {
+                return Response::error(req.id.clone(), -32602, "spec.complete requires 'id' parameter");
+            }
+            match crate::commands::spec::complete_spec_value(id, major) {
+                Ok(result) => {
+                    let text = serde_json::to_string_pretty(&result).unwrap_or_default();
+                    Response::success(
+                        req.id.clone(),
+                        serde_json::json!({
+                            "content": [{ "type": "text", "text": text }]
+                        }),
+                    )
+                }
+                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            }
+        }
+        "spec.abandon" => {
+            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let reason = args.get("reason").and_then(|v| v.as_str());
+            if id.is_empty() {
+                return Response::error(req.id.clone(), -32602, "spec.abandon requires 'id' parameter");
+            }
+            match crate::commands::spec::abandon_spec_value(id, reason) {
+                Ok(result) => {
+                    let text = serde_json::to_string_pretty(&result).unwrap_or_default();
+                    Response::success(
+                        req.id.clone(),
+                        serde_json::json!({
+                            "content": [{ "type": "text", "text": text }]
+                        }),
+                    )
+                }
+                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            }
+        }
+        "spec.pause" => {
+            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let reason = args.get("reason").and_then(|v| v.as_str()).unwrap_or("");
+            if id.is_empty() {
+                return Response::error(req.id.clone(), -32602, "spec.pause requires 'id' parameter");
+            }
+            if reason.is_empty() {
+                return Response::error(req.id.clone(), -32602, "spec.pause requires 'reason' parameter");
+            }
+            match crate::commands::spec::pause_spec_value(id, reason) {
+                Ok(result) => {
+                    let text = serde_json::to_string_pretty(&result).unwrap_or_default();
+                    Response::success(
+                        req.id.clone(),
+                        serde_json::json!({
+                            "content": [{ "type": "text", "text": text }]
+                        }),
+                    )
+                }
+                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            }
+        }
+        "spec.resume" => {
+            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+            if id.is_empty() {
+                return Response::error(req.id.clone(), -32602, "spec.resume requires 'id' parameter");
+            }
+            match crate::commands::spec::resume_spec_value(id, force) {
+                Ok(result) => {
+                    let text = serde_json::to_string_pretty(&result).unwrap_or_default();
+                    Response::success(
+                        req.id.clone(),
+                        serde_json::json!({
+                            "content": [{ "type": "text", "text": text }]
+                        }),
+                    )
+                }
+                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            }
+        }
+        "spec.block" => {
+            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let by = args.get("by").and_then(|v| v.as_str()).unwrap_or("");
+            let reason = args.get("reason").and_then(|v| v.as_str()).unwrap_or("");
+            if id.is_empty() {
+                return Response::error(req.id.clone(), -32602, "spec.block requires 'id' parameter");
+            }
+            if by.is_empty() {
+                return Response::error(req.id.clone(), -32602, "spec.block requires 'by' parameter");
+            }
+            if reason.is_empty() {
+                return Response::error(req.id.clone(), -32602, "spec.block requires 'reason' parameter");
+            }
+            match crate::commands::spec::block_spec_value(id, by, reason) {
+                Ok(result) => {
+                    let text = serde_json::to_string_pretty(&result).unwrap_or_default();
+                    Response::success(
+                        req.id.clone(),
+                        serde_json::json!({
+                            "content": [{ "type": "text", "text": text }]
+                        }),
+                    )
+                }
+                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            }
+        }
+        "spec.split" => {
+            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let new_id = args.get("new_id").and_then(|v| v.as_str());
+            let description = args.get("description").and_then(|v| v.as_str());
+            if id.is_empty() {
+                return Response::error(req.id.clone(), -32602, "spec.split requires 'id' parameter");
+            }
+            match crate::commands::spec::split_spec_value(id, new_id, description) {
+                Ok(result) => {
+                    let text = serde_json::to_string_pretty(&result).unwrap_or_default();
+                    Response::success(
+                        req.id.clone(),
+                        serde_json::json!({
+                            "content": [{ "type": "text", "text": text }]
+                        }),
+                    )
+                }
                 Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
             }
         }
