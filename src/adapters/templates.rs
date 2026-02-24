@@ -393,6 +393,7 @@ mod tests {
         assert!(templates_dir
             .join(".claude/commands/patina-review.md")
             .exists());
+        assert!(templates_dir.join(".claude/commands/spec.md").exists());
         // Deprecated commands should not exist
         assert!(!templates_dir.join(".claude/bin/launch.sh").exists());
         assert!(!templates_dir.join(".claude/bin/persona-start.sh").exists());
