@@ -17,9 +17,10 @@ End the current Patina session with Git work classification:
    - Tag the session end point for preservation
 
 3. The command will show:
-   - "Session archived: <ID>.md"
-   - Work classification
+   - Work classification and session metrics
    - Session tags: session-[timestamp]-start..session-[timestamp]-end
+   - Specs unblocked by this session's work (if any)
+   - Next spec recommendation for the following session
 
 4. After archiving, you can:
    - View session work: `git log session-[timestamp]-start..session-[timestamp]-end`

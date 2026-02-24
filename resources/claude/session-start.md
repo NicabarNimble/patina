@@ -7,10 +7,11 @@ Start a new Patina development session with Git branch creation:
 
 3. Read the newly created `.patina/local/active-session.md` file
 
-4. Note the session tracking:
-   - If on work or work sub-branch: stays on current branch
-   - If on main/master: switches to work branch
-   - Session tagged as: `session-[timestamp]-start`
+4. Note the session context printed to stdout:
+   - Branch handling and session tag
+   - Spec landscape: active, paused, blocked, and draft specs
+   - Recommended next spec to work on
+   - Previous session reference and beliefs
 
 5. If we've been discussing work already in this conversation:
    - Update the Goals section with specific tasks we've identified
