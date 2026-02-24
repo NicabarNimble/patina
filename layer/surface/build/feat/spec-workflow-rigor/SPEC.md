@@ -767,9 +767,36 @@ session start branch-switching and release safeguard checks.
 - Suggest next spec to work on
 
 **Exit criteria:**
-- [ ] `/session-start` shows spec landscape with recommendations
-- [ ] `/session-update` tracks spec status changes
-- [ ] `/session-end` suggests next spec and confirms pause reasons
+- [x] `/session-start` shows spec landscape with recommendations
+- [x] `/session-update` tracks spec status changes
+- [x] `/session-end` suggests next spec and confirms pause reasons
+
+**Implementation deviations** (session [[session-20260223-201417]]):
+
+1. **Wired into data functions, not CLI print functions.** Spec said "Run
+   `patina spec next`, show spec landscape." Implementation calls
+   `get_all_specs()`, `get_blocked_specs()`, and `load_dep_counts()` directly
+   instead of the CLI-facing `next_spec()` / `show_ready_specs()` which print
+   to stdout. Required re-exporting data functions from `spec/mod.rs` as
+   `pub(crate)`. Cleaner — avoids mixing two commands' stdout output.
+
+2. **Recommendation logic simplified from `next_spec`.** Full `next_spec()`
+   has 6 priority tiers with impact tiebreaking. Session landscape uses a
+   simpler 4-tier check: active > paused > ready (by impact) > draft.
+   Sufficient for session context — users who want full ranking use
+   `patina spec next` directly.
+
+3. **`/session-end` does not confirm pause reasons.** Spec exit criterion says
+   "confirms pause reasons." Since `spec pause` requires `--reason` (mandatory
+   flag), a paused spec without a reason cannot exist. Checking for missing
+   reasons is dead code. Removed the check — the constraint is enforced at
+   mutation time, not at session end.
+
+4. **Skill markdown updated to reference stdout, resolving Phase 4 D3.** Phase 4
+   deviation D3 noted that skill instructions still told the LLM to read files
+   for info already in stdout. Updated all three session skills to reference
+   stdout for: branch/tag (start), commit SHAs/files (update), spec
+   landscape/recommendations (start/end), and unblocked specs (end).
 
 ### Phase 6: MCP Tools + `/spec` Skill
 
