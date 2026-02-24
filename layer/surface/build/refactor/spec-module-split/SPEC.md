@@ -60,9 +60,9 @@ data — not scattered across modules.
 Follow the established re-export pattern. Comparison:
 
 ```
-assay/internal/mod.rs:   10 submodules, pub(super) + pub(crate) re-exports
-scry/internal/mod.rs:     7 submodules, pub mod re-exports
-eval/internal/mod.rs:     4 submodules, pub(crate) mod declarations
+assay/internal/mod.rs:   9 submodules (10 files), pub(super) + pub(crate) re-exports
+scry/internal/mod.rs:    6 submodules (7 files), pub mod re-exports
+eval/internal/mod.rs:    4 submodules (5 files), pub(crate) mod declarations
 ```
 
 Proposed structure for spec:
@@ -238,18 +238,28 @@ Single source of truth. The match arm disappears.
 Functions call each other across sections. These become cross-module
 calls within `internal/`:
 
+- `queries.rs` calls `spec_age_days_from_list()` from `queue.rs`
+- `queries.rs` calls `load_dep_counts()` from `queue.rs`
+- `archive.rs` calls `scan_disk_specs()` from `queries.rs`
+  (find_spec filesystem fallback)
+- `archive.rs` calls `get_all_specs()` from `queries.rs`
+  (archive_stale_specs)
+- `archive.rs` calls `tag_exists()` from `queue.rs`
+- `archive.rs` calls `is_tree_clean()` from `queue.rs`
 - `mutations.rs` calls `find_spec()` from `archive.rs`
 - `mutations.rs` calls `get_all_specs()` from `queries.rs`
   (pause checks one-paused-spec rule)
-- `mutations.rs` calls `get_blocked_specs()` from `queries.rs`
-  (resume checks blockers)
+- `mutations.rs` calls `tag_exists()` from `queue.rs`
+  (complete/abandon pre-check archive tag)
 - `split.rs` calls `find_spec()` from `archive.rs`
 - `split.rs` calls `archive_spec_inner()` from `archive.rs`
+- `split.rs` calls `resolve_spec_dir()` from `archive.rs`
+- `split.rs` calls `tag_exists()` from `queue.rs`
 - `queue.rs` calls `get_all_specs()` from `queries.rs`
 - `queue.rs` calls `get_blocked_specs()` from `queries.rs`
+- `queue.rs` calls `find_spec()` from `archive.rs`
+  (spec_age_days_from_list reads frontmatter)
 - `queue.rs` calls `load_dep_counts()` (self)
-- `queries.rs` calls `spec_age_days_from_list()` from `queue.rs`
-- `queries.rs` calls `load_dep_counts()` from `queue.rs`
 
 All resolved via `super::` imports within `internal/` or `pub(super)`
 visibility.

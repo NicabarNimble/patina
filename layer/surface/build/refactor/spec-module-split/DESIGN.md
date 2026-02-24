@@ -267,10 +267,13 @@ use patina::spec::parse_spec_file;
 
 use super::DB_PATH;
 use super::queries::{get_all_specs, scan_disk_specs, ListFilters, SpecInfo};
+use super::queue::{tag_exists, is_tree_clean};
 ```
 
 **Cross-module note:** `find_spec()` is called by mutations.rs,
-split.rs, and queue.rs. Make it `pub(super)`.
+split.rs, and queue.rs. Make it `pub(super)`. `tag_exists()` and
+`is_tree_clean()` are called by `archive_spec()` and
+`archive_stale_specs()` — import from `queue.rs`.
 
 ## Step 6: Extract mutations.rs
 
@@ -301,7 +304,7 @@ use patina::spec::{parse_spec_file, serialize_spec_file, SpecFrontmatter};
 
 use super::DB_PATH;
 use super::archive::{archive_spec_inner, find_spec, resolve_spec_dir};
-use super::queries::{get_all_specs, get_blocked_specs, ListFilters};
+use super::queries::{get_all_specs, ListFilters};
 use super::queue::tag_exists;
 ```
 
