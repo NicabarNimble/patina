@@ -32,10 +32,10 @@ pub(crate) use mutations::{
 pub(crate) use split::split_spec_value;
 
 // Functions called only from spec/mod.rs function bodies — pub(super) suffices
-pub(super) use queries::{show_blocked_specs, show_ready_specs, show_spec_list};
+pub(super) use archive::{archive_spec, archive_stale_specs};
 pub(super) use mutations::{
     abandon_spec, block_spec, complete_spec, pause_spec, promote_spec, resume_spec,
 };
-pub(super) use archive::{archive_spec, archive_stale_specs};
-pub(super) use split::split_spec;
+pub(super) use queries::{show_blocked_specs, show_ready_specs, show_spec_list};
 pub(super) use queue::next_spec;
+pub(super) use split::split_spec;
