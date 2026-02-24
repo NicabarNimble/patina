@@ -10,6 +10,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
+use crate::commands::spec;
 use patina::git;
 
 /// Path to active session file (transient, gitignored)
@@ -252,6 +253,9 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
 
     // Previous session beliefs
     show_previous_session_beliefs(project_root);
+
+    // Spec landscape (Phase 5: session integration)
+    show_spec_landscape();
 
     // Previous session reference (printed so skill can use stdout directly)
     let last_session_path = project_root.join(LAST_SESSION_PATH);
@@ -967,6 +971,120 @@ fn show_previous_session_beliefs(project_root: &Path) {
         } else {
             println!("Previous session \"{}\": no beliefs captured", prev_title);
         }
+    }
+}
+
+/// Show spec landscape: active, paused, blocked, drafts, and recommended next.
+///
+/// Wires into spec data functions (Phase 5 session integration).
+/// Errors are swallowed — spec landscape is informational, not blocking.
+fn show_spec_landscape() {
+    let all_specs = match spec::get_all_specs(&spec::ListFilters::default()) {
+        Ok(specs) => specs,
+        Err(_) => return, // DB not initialized or no specs — skip silently
+    };
+
+    if all_specs.is_empty() {
+        return;
+    }
+
+    let active: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("active"))
+        .collect();
+    let paused: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("paused"))
+        .collect();
+    let blocked: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("blocked"))
+        .collect();
+    let ready: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("ready"))
+        .collect();
+    let drafts: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("draft"))
+        .collect();
+
+    println!();
+    println!("Spec landscape:");
+
+    for s in &active {
+        println!("  Active:  {}", s.id);
+    }
+
+    // Blocked specs with blocker info
+    if !blocked.is_empty() {
+        let blocked_specs = spec::get_blocked_specs().unwrap_or_default();
+        for s in &blocked {
+            let blocker_info = blocked_specs
+                .iter()
+                .find(|b| b.id == s.id)
+                .map(|b| {
+                    b.blocked_by
+                        .iter()
+                        .map(|bl| format!("{} ({})", bl.id, bl.status))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .unwrap_or_default();
+            if blocker_info.is_empty() {
+                println!("  Blocked: {}", s.id);
+            } else {
+                println!("  Blocked: {} (waiting on {})", s.id, blocker_info);
+            }
+        }
+    }
+
+    for s in &paused {
+        let age = spec::spec_age_days_from_list(s);
+        let age_str = if age > 0 {
+            format!(" ({}d)", age)
+        } else {
+            String::new()
+        };
+        let warning = if age > 14 { " — overdue" } else { "" };
+        println!(
+            "  Paused:  {}{} — resolve before starting new work{}",
+            s.id, age_str, warning
+        );
+    }
+
+    if !ready.is_empty() {
+        println!("  Ready:   {} available", ready.len());
+    }
+
+    if !drafts.is_empty() {
+        println!("  Drafts:  {} available", drafts.len());
+    }
+
+    // Recommendation (lightweight version of next_spec logic)
+    if !active.is_empty() {
+        println!();
+        println!("Recommended: continue {} (active)", active[0].id);
+    } else if !paused.is_empty() {
+        let top = &paused[0];
+        let age = spec::spec_age_days_from_list(top);
+        println!();
+        println!(
+            "Recommended: resume {} (paused {}d)",
+            top.id, age
+        );
+    } else if !ready.is_empty() {
+        // Pick highest-impact ready spec
+        let dep_counts = spec::load_dep_counts();
+        let top = ready
+            .iter()
+            .max_by_key(|s| dep_counts.get(&s.id).copied().unwrap_or(0))
+            .unwrap();
+        println!();
+        println!("Recommended: start {} (ready)", top.id);
+    } else if !drafts.is_empty() {
+        println!();
+        println!("Recommended: promote a draft to ready");
     }
 }
 

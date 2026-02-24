@@ -2046,7 +2046,7 @@ pub fn next_spec(json: bool) -> Result<()> {
 
 /// Compute age in days for a spec from the all-specs list.
 /// Uses the spec's frontmatter paused_date/blocked_date by re-reading the file.
-fn spec_age_days_from_list(spec: &SpecInfo) -> i64 {
+pub(crate) fn spec_age_days_from_list(spec: &SpecInfo) -> i64 {
     // Try to find the spec file and read paused_date or blocked_date
     if let Ok((file_path, _, _)) = find_spec(&spec.id) {
         if let Ok(content) = std::fs::read_to_string(&file_path) {
@@ -2065,7 +2065,7 @@ fn spec_age_days_from_list(spec: &SpecInfo) -> i64 {
 }
 
 /// Load dependency counts from spec_deps: how many specs depend on each spec.
-fn load_dep_counts() -> HashMap<String, usize> {
+pub(crate) fn load_dep_counts() -> HashMap<String, usize> {
     let db_path = Path::new(DB_PATH);
     if !db_path.exists() {
         return HashMap::new();
