@@ -213,12 +213,17 @@ fn run_safeguard_checks(new_version: &str, spec_path: &str) -> Result<()> {
     // 5. Index stale check
     check_index_freshness()?;
 
-    // Non-blocking warning: not on patina branch
+    // Non-blocking warning: not on dev branch (from config, fallback "work")
     let branch = git::current_branch()?;
-    if branch != "patina" {
+    let dev_branch = std::env::current_dir()
+        .ok()
+        .and_then(|p| crate::project::load(&p).ok())
+        .map(|c| c.project.branch)
+        .unwrap_or_else(|| "work".to_string());
+    if branch != dev_branch {
         eprintln!(
-            "  Warning: Not on 'patina' branch (currently on '{}')",
-            branch
+            "  Warning: Not on '{}' branch (currently on '{}')",
+            dev_branch, branch
         );
     }
 
