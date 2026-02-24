@@ -1,0 +1,243 @@
+use anyhow::Result;
+use rusqlite::Connection;
+use serde::Serialize;
+use std::collections::HashMap;
+use std::path::Path;
+
+use patina::spec::parse_spec_file;
+
+use super::archive::find_spec;
+use super::queries::{get_all_specs, get_blocked_specs, ListFilters, SpecInfo};
+use super::DB_PATH;
+
+// ============================================================================
+// Spec Next / Queue System (spec-workflow-rigor Phase 3)
+// ============================================================================
+
+/// Recommend the next spec to work on based on priority ranking.
+///
+/// Ranking: active > blocked-ready-to-resume > paused-with-age > impact > drafts
+pub fn next_spec(json: bool) -> Result<()> {
+    let result = next_spec_value()?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        return Ok(());
+    }
+
+    let recommendations = match result.as_array() {
+        Some(arr) => arr,
+        None => {
+            println!("No specs found.");
+            return Ok(());
+        }
+    };
+
+    if recommendations.is_empty() {
+        println!("No actionable specs found.");
+        return Ok(());
+    }
+
+    // Top recommendation
+    let top = &recommendations[0];
+    println!("RECOMMENDED: {}", top["id"].as_str().unwrap_or(""));
+    println!("  Status: {}", top["status"].as_str().unwrap_or(""));
+    println!("  Reason: {}", top["reason"].as_str().unwrap_or(""));
+    let impact = top["impact"].as_u64().unwrap_or(0);
+    if impact > 0 {
+        println!("  Impact: blocks {} other spec(s)", impact);
+    }
+
+    // Show the rest as alternatives
+    if recommendations.len() > 1 {
+        println!("\nOther specs:");
+        for rec in &recommendations[1..] {
+            let impact = rec["impact"].as_u64().unwrap_or(0);
+            let impact_str = if impact > 0 {
+                format!(" (blocks {})", impact)
+            } else {
+                String::new()
+            };
+            println!(
+                "  {:<28} {:<10} {}{}",
+                rec["id"].as_str().unwrap_or(""),
+                rec["status"].as_str().unwrap_or(""),
+                rec["reason"].as_str().unwrap_or(""),
+                impact_str
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Recommend the next spec and return structured result (for MCP).
+pub fn next_spec_value() -> Result<serde_json::Value> {
+    let all_specs = get_all_specs(&ListFilters::default())?;
+
+    if all_specs.is_empty() {
+        return Ok(serde_json::json!([]));
+    }
+
+    // Load blocked specs to check for unblocked ones
+    let blocked_specs = get_blocked_specs().unwrap_or_default();
+
+    // Load spec_deps for impact scoring
+    let dep_counts = load_dep_counts();
+
+    #[derive(Debug, Serialize)]
+    struct Recommendation {
+        id: String,
+        status: String,
+        reason: String,
+        priority: u32,
+        impact: usize,
+    }
+
+    let mut recommendations: Vec<Recommendation> = Vec::new();
+
+    for spec in &all_specs {
+        let status = spec.status.as_deref().unwrap_or("unknown");
+        let impact = dep_counts.get(&spec.id).copied().unwrap_or(0);
+
+        match status {
+            "active" => {
+                recommendations.push(Recommendation {
+                    id: spec.id.clone(),
+                    status: status.to_string(),
+                    reason: "Currently active — continue working".to_string(),
+                    priority: 1,
+                    impact,
+                });
+            }
+            "blocked" => {
+                // Check if blockers are now complete
+                let spec_blocked = blocked_specs.iter().find(|b| b.id == spec.id);
+                let all_blockers_done = spec_blocked
+                    .map(|b| {
+                        b.blocked_by.is_empty()
+                            || b.blocked_by
+                                .iter()
+                                .all(|bl| bl.status == "complete" || bl.status == "done")
+                    })
+                    .unwrap_or(false);
+
+                if all_blockers_done {
+                    recommendations.push(Recommendation {
+                        id: spec.id.clone(),
+                        status: status.to_string(),
+                        reason: "Blockers complete — ready to resume".to_string(),
+                        priority: 2,
+                        impact,
+                    });
+                }
+            }
+            "paused" => {
+                let age = spec_age_days_from_list(spec);
+                let reason = if age > 14 {
+                    format!("Paused {} days — overdue for attention", age)
+                } else {
+                    format!("Paused {} days", age)
+                };
+                recommendations.push(Recommendation {
+                    id: spec.id.clone(),
+                    status: status.to_string(),
+                    reason,
+                    priority: if age > 14 { 3 } else { 4 },
+                    impact,
+                });
+            }
+            "ready" => {
+                recommendations.push(Recommendation {
+                    id: spec.id.clone(),
+                    status: status.to_string(),
+                    reason: if impact > 0 {
+                        format!("Ready to start — blocks {} other spec(s)", impact)
+                    } else {
+                        "Ready to start".to_string()
+                    },
+                    priority: 5,
+                    impact,
+                });
+            }
+            "draft" => {
+                recommendations.push(Recommendation {
+                    id: spec.id.clone(),
+                    status: status.to_string(),
+                    reason: "Draft — promote to ready when prepared".to_string(),
+                    priority: 6,
+                    impact,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    // Sort by priority (ascending), then by impact (descending)
+    recommendations.sort_by(|a, b| a.priority.cmp(&b.priority).then(b.impact.cmp(&a.impact)));
+
+    Ok(serde_json::to_value(&recommendations)?)
+}
+
+/// Compute age in days for a spec from the all-specs list.
+/// Uses the spec's frontmatter paused_date/blocked_date by re-reading the file.
+pub fn spec_age_days_from_list(spec: &SpecInfo) -> i64 {
+    // Try to find the spec file and read paused_date or blocked_date
+    if let Ok((file_path, _, _)) = find_spec(&spec.id) {
+        if let Ok(content) = std::fs::read_to_string(&file_path) {
+            if let Ok((fm, _)) = parse_spec_file(&content) {
+                let date_str = fm.paused_date.as_deref().or(fm.blocked_date.as_deref());
+                if let Some(date_str) = date_str {
+                    if let Ok(date) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+                        let today = chrono::Utc::now().date_naive();
+                        return (today - date).num_days();
+                    }
+                }
+            }
+        }
+    }
+    0
+}
+
+/// Load dependency counts from spec_deps: how many specs depend on each spec.
+pub fn load_dep_counts() -> HashMap<String, usize> {
+    let db_path = Path::new(DB_PATH);
+    if !db_path.exists() {
+        return HashMap::new();
+    }
+    let conn = match Connection::open(db_path) {
+        Ok(c) => c,
+        Err(_) => return HashMap::new(),
+    };
+    let mut stmt =
+        match conn.prepare("SELECT depends_on, COUNT(*) FROM spec_deps GROUP BY depends_on") {
+            Ok(s) => s,
+            Err(_) => return HashMap::new(),
+        };
+    stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, usize>(1)?))
+    })
+    .ok()
+    .map(|rows| rows.flatten().collect())
+    .unwrap_or_default()
+}
+
+/// Check if a git tag exists (delegates to patina::git::tag_exists)
+pub fn tag_exists(tag: &str) -> Result<bool> {
+    patina::git::tag_exists(tag)
+}
+
+/// Check if working tree is clean for tracked files (delegates to patina::git::is_clean_tracked)
+pub fn is_tree_clean() -> Result<bool> {
+    patina::git::is_clean_tracked()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_tag_name_format() {
+        let id = "session-092-hardening";
+        let tag = format!("spec/{}", id);
+        assert_eq!(tag, "spec/session-092-hardening");
+    }
+}

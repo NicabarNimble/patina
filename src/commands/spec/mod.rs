@@ -2,7 +2,7 @@
 //!
 //! This module follows the dependable-rust pattern:
 //! - Public interface (this file): clean API for spec operations
-//! - Internal implementation: all logic in internal.rs
+//! - Internal implementation: all logic in internal/
 
 mod internal;
 
