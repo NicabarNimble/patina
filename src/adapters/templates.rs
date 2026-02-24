@@ -35,6 +35,9 @@ mod claude_templates {
     pub const SESSION_END_MD: &str = include_str!("../../resources/claude/session-end.md");
     pub const PATINA_REVIEW_MD: &str = include_str!("../../resources/claude/patina-review.md");
 
+    // /spec skill
+    pub const SPEC_MD: &str = include_str!("../../resources/claude/spec.md");
+
     // Skills - epistemic-beliefs
     pub const SKILL_EPISTEMIC_BELIEFS_MD: &str =
         include_str!("../../resources/claude/skills/epistemic-beliefs/SKILL.md");
@@ -162,6 +165,7 @@ fn install_claude_templates(adapters_dir: &Path) -> Result<()> {
         commands_dir.join("patina-review.md"),
         claude_templates::PATINA_REVIEW_MD,
     )?;
+    fs::write(commands_dir.join("spec.md"), claude_templates::SPEC_MD)?;
 
     // Write skills - epistemic-beliefs
     let epistemic_beliefs_dir = skills_dir.join("epistemic-beliefs");
@@ -352,6 +356,7 @@ mod tests {
         // Verify command definitions are embedded correctly
         assert!(!claude_templates::SESSION_START_MD.is_empty());
         assert!(!claude_templates::SESSION_END_MD.is_empty());
+        assert!(!claude_templates::SPEC_MD.is_empty());
         // Skills
         assert!(!claude_templates::SKILL_EPISTEMIC_BELIEFS_MD.is_empty());
         assert!(!claude_templates::SKILL_EPISTEMIC_BELIEFS_CREATE_SH.is_empty());
