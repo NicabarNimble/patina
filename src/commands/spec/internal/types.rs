@@ -1,3 +1,6 @@
+// Scaffolded for spec-create — will be used when that spec is implemented.
+#![allow(dead_code)]
+
 use patina::release::BumpType;
 
 /// A registered spec type with all its conventions.
