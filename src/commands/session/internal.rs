@@ -1136,15 +1136,11 @@ pub fn list_sessions(project_root: &Path, json_output: bool) -> Result<()> {
     if sessions_dir.is_dir() {
         let mut entries: Vec<_> = fs::read_dir(&sessions_dir)?
             .flatten()
-            .filter(|e| {
-                e.path()
-                    .extension()
-                    .map_or(false, |ext| ext == "md")
-            })
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
             .collect();
 
         // Sort by filename descending (newest first, since filenames are timestamps)
-        entries.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+        entries.sort_by_key(|b| std::cmp::Reverse(b.file_name()));
 
         for entry in &entries {
             let content = match fs::read_to_string(entry.path()) {
@@ -1266,9 +1262,9 @@ fn parse_session_summary(content: &str) -> Option<SessionSummary> {
 
 /// Format a session's age from its created timestamp to now.
 fn format_session_age(created: &str, now: &chrono::DateTime<Utc>) -> String {
-    let Ok(created_dt) = chrono::DateTime::parse_from_rfc3339(created)
-        .or_else(|_| chrono::DateTime::parse_from_rfc3339(&format!("{}+00:00", created.trim_end_matches('Z'))))
-    else {
+    let Ok(created_dt) = chrono::DateTime::parse_from_rfc3339(created).or_else(|_| {
+        chrono::DateTime::parse_from_rfc3339(&format!("{}+00:00", created.trim_end_matches('Z')))
+    }) else {
         // Try parsing just the date portion from the ID
         return "unknown age".to_string();
     };
@@ -1289,10 +1285,7 @@ fn format_session_age(created: &str, now: &chrono::DateTime<Utc>) -> String {
 /// Compute a session's age in hours from its created timestamp.
 fn session_age_hours(created: &str) -> i64 {
     let Ok(created_dt) = chrono::DateTime::parse_from_rfc3339(created).or_else(|_| {
-        chrono::DateTime::parse_from_rfc3339(&format!(
-            "{}+00:00",
-            created.trim_end_matches('Z')
-        ))
+        chrono::DateTime::parse_from_rfc3339(&format!("{}+00:00", created.trim_end_matches('Z')))
     }) else {
         return 0;
     };
