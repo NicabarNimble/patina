@@ -7,7 +7,7 @@ sessions:
   origin: 20260224-053924
 related:
   - src/commands/spec/mod.rs
-  - src/commands/spec/internal.rs
+  - src/commands/spec/internal/
   - src/spec.rs
   - src/mcp/server.rs
   - resources/claude/spec.md
@@ -17,13 +17,15 @@ beliefs:
   - unix-philosophy
   - plugins-are-three-prong-bundles
   - mutation-completes-query
+blocked_by:
+  - spec-module-split
 ---
 
 # feat: Spec Create — Scaffold Specs from the CLI
 
 > Today specs are hand-created: `mkdir`, write frontmatter, add body,
 > commit. Every time. `spec create` makes it one command — scaffold the
-> directory, populate frontmatter, open for editing. Completes the
+> directory, populate frontmatter, commit, print path. Completes the
 > mutation side of the spec lifecycle that spec-workflow-rigor left as
 > Phase 0.
 
@@ -80,6 +82,10 @@ patina spec create feat my-feature
 
 ## Solution
 
+**Prerequisite:** spec-module-split must be complete first. This spec
+assumes `internal/` directory and `types.rs` with `SpecType` registry
+already exist. `create.rs` lands as a new file in the split structure.
+
 ### `patina spec create <type> <id> [options]`
 
 Single command that scaffolds a spec directory, writes SPEC.md with
@@ -103,7 +109,7 @@ Edit: $EDITOR layer/surface/build/feat/my-feature/SPEC.md
 | `type` | yes | Spec type: feat, fix, refactor, explore |
 | `id` | yes | Spec identifier (kebab-case) |
 | `--title` | no | Human title (defaults to `<type>: <id>`) |
-| `--description` | no | One-line description for the body |
+| `--description` | no | One-line description for the blockquote |
 | `--blocked-by` | no | Spec IDs this is blocked by |
 | `--related` | no | Related file paths |
 | `--json` | no | Structured output |
@@ -111,99 +117,89 @@ Edit: $EDITOR layer/surface/build/feat/my-feature/SPEC.md
 ### Behavior
 
 1. **Validate inputs:**
-   - `type` must be one of: `feat`, `fix`, `refactor`, `explore`
-   - `id` must be kebab-case (lowercase, hyphens, no spaces)
-   - Directory must not already exist
-   - Id must not conflict with an archived spec tag
+   - `type` must be valid — uses `types::lookup()` from the registry
+     (provided by spec-module-split). Unknown types rejected with the
+     list of valid types in the error message.
+   - `id` must be kebab-case: `^[a-z][a-z0-9-]*$`
+   - Directory must not already exist on disk
+   - `spec/<id>` tag must not exist (prevents collision with archived specs)
 
 2. **Resolve directory path:**
-   - `layer/surface/build/<type>/<id>/SPEC.md`
-   - Create the directory
+   - Uses `spec_type.directory` from the registry to build:
+     `layer/surface/build/<directory>/<id>/SPEC.md`
+   - Create the directory with `std::fs::create_dir_all`
 
-3. **Populate frontmatter:**
-   - `type`, `id`, `status: draft`, `created: <today>`
-   - `sessions.origin: <active-session-id>` if a session is active
-   - `blocked_by`, `related`, `beliefs` from flags (empty if not given)
+3. **Populate frontmatter via `SpecFrontmatter`:**
+   - Build a `SpecFrontmatter` struct (from `src/spec.rs`)
+   - Set: `type`, `id`, `status: "draft"`, `created: <today>`
+   - Set `sessions` to `Sessions::Structured { origin: <active-session-id> }`
+     if a session is active (read from `.patina/local/active-session.md`)
+   - Set `blocked_by`, `related` from flags (empty if not given)
+   - Serialize with `serialize_spec_file()` — same contract as every
+     other spec mutation
 
-4. **Write body template:**
-   ```markdown
-   # <type>: <title>
-
-   > <description or "TODO: problem statement">
-
-   ## Problem
-
-   ## Solution
-
-   ## Exit Criteria
-
-   - [ ]
-
-   ## Key Files
-
-   ```
-   ```
+4. **Write body from type template:**
+   - Use `spec_type.body_template` from the registry
+   - Prepend `# <type>: <title>` heading and blockquote description
+   - Body templates have section headings only — no content
 
 5. **Git commit:**
    - `git add <path>`
    - `git commit -m "spec: draft <id>"`
 
 6. **Update database:**
-   - Insert into patterns table (same as scrape would)
-   - Avoids requiring a scrape after creation
+   - Insert into patterns table: id, file_path, status, title, type
+   - Same INSERT pattern as scrape uses
+   - Avoids requiring a `patina scrape` after creation
 
-### Type Validation
+### Three-Prong Bundle: CLI + MCP + Skill
 
-Spec types map to release bumps via `BumpType::from_spec_type()`:
+Following the [[plugins-are-three-prong-bundles]] pattern established
+by spec-workflow-rigor Phase 6:
 
-| Type | Bump | Directory |
-|------|------|-----------|
-| `feat` | minor | `layer/surface/build/feat/<id>/` |
-| `fix` | patch | `layer/surface/build/fix/<id>/` |
-| `refactor` | patch | `layer/surface/build/refactor/<id>/` |
-| `explore` | none | `layer/surface/build/explore/<id>/` |
+**CLI command** (`src/commands/spec/mod.rs`):
+- New `SpecCommands::Create` variant
+- `pub fn create()` delegates to `internal::create_spec()`
 
-Unknown types are rejected. This keeps the directory structure
-predictable and the release system reliable.
+**Implementation** (`src/commands/spec/internal/create.rs`):
+- `create_spec(type, id, title, description, blocked_by, related, json)`
+  — human output
+- `create_spec_value(type, id, title, description, blocked_by, related)`
+  — returns `serde_json::Value` for MCP
 
-### MCP Tool: `spec.create`
-
-Register as the 12th spec MCP tool in `src/mcp/server.rs`.
-
-```json
-{
-  "name": "spec.create",
-  "description": "Create a new spec draft",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "spec_type": { "type": "string", "description": "feat, fix, refactor, explore" },
-      "id": { "type": "string", "description": "Spec identifier (kebab-case)" },
-      "title": { "type": "string", "description": "Human title" },
-      "description": { "type": "string", "description": "One-line problem statement" },
-      "blocked_by": { "type": "array", "items": { "type": "string" } }
-    },
-    "required": ["spec_type", "id"]
+**MCP tool** (`src/mcp/server.rs`):
+- Register `spec.create` as the 12th spec tool
+- Schema:
+  ```json
+  {
+    "name": "spec.create",
+    "description": "Create a new spec draft — scaffold directory, write frontmatter, commit.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "spec_type": { "type": "string", "description": "Spec type: feat, fix, refactor, explore" },
+        "id": { "type": "string", "description": "Spec identifier (kebab-case)" },
+        "title": { "type": "string", "description": "Human title" },
+        "description": { "type": "string", "description": "One-line problem statement" },
+        "blocked_by": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["spec_type", "id"]
+    }
   }
-}
-```
+  ```
+- Handler calls `create_spec_value()` and returns result
 
-Follows the `_value()` pattern established in spec-workflow-rigor
-Phase 6 — `create_spec_value()` returns `serde_json::Value`, the
-CLI function delegates to it for both JSON and human output.
-
-### `/spec` Skill Update
-
-The skill at `resources/claude/spec.md` already mentions `create` in
-the judgment guidance section. Add it to the mutations list:
-
-```
-- `spec.create` — Scaffold a new spec. Use when the user says "let's
-  spec this out" or when pausing current work to address a discovered
-  issue. Infer type from context (bug → fix, new capability → feat).
-  Parameters: spec_type (required), id (required), title, description,
-  blocked_by.
-```
+**Skill update** (`resources/claude/spec.md`):
+- Add `spec.create` to the mutations section:
+  ```
+  - `spec.create` — Scaffold a new spec. Use when the user says "let's
+    spec this out" or when pausing current work to address a discovered
+    issue. Infer type from context (bug → fix, new capability → feat).
+    Parameters: spec_type (required), id (required), title, description,
+    blocked_by.
+  ```
+- Skill file is compile-time embedded via `include_str!` in
+  `templates.rs` — rebuild deploys the update
 
 ### Session Integration
 
@@ -212,15 +208,18 @@ automatically set `sessions.origin` in the new spec's frontmatter.
 This links the spec to the conversation that spawned it — useful for
 provenance when reviewing specs later.
 
+Detection: parse the active-session file's YAML frontmatter for the
+`id` field. Same approach used by `patina session` commands.
+
 ## Key Files
 
 ```
 src/commands/spec/mod.rs              — add SpecCommands::Create, pub fn create()
-src/commands/spec/internal.rs         — create_spec(), create_spec_value()
-src/spec.rs                           — SpecFrontmatter (no changes needed)
+src/commands/spec/internal/create.rs  — create_spec(), create_spec_value() [NEW]
+src/commands/spec/internal/mod.rs     — add mod create, re-export
 src/main.rs                           — dispatch SpecCommands::Create
-src/mcp/server.rs                     — register spec.create tool
-resources/claude/spec.md              — update /spec skill
+src/mcp/server.rs                     — register spec.create tool + handler
+resources/claude/spec.md              — add create to /spec skill mutations
 src/adapters/templates.rs             — spec.md re-embedded on build
 ```
 
@@ -230,9 +229,10 @@ src/adapters/templates.rs             — spec.md re-embedded on build
 - [ ] `patina spec create fix my-bug --title "Fix the bug"` uses custom title
 - [ ] `patina spec create feat duplicate` fails if directory or tag exists
 - [ ] `patina spec create unknown my-spec` fails with valid type list
+- [ ] Body uses type-appropriate template from registry
 - [ ] `--json` output includes path, type, id, status
 - [ ] `--blocked-by other-spec` sets frontmatter field
-- [ ] MCP tool `spec.create` registered and functional
+- [ ] MCP tool `spec.create` registered and functional (12th tool)
 - [ ] `/spec create` works via skill (LLM can discover and invoke)
 - [ ] Session origin auto-detected from active session
 - [ ] Database updated without requiring `patina scrape`
@@ -240,9 +240,9 @@ src/adapters/templates.rs             — spec.md re-embedded on build
 ## Non-Goals
 
 - No interactive prompts — all params via flags (composable CLI)
-- No template customization — single template per type
+- No template customization — body templates are system data in `types.rs`
 - No `--editor` flag to open in $EDITOR — print path, user opens
-- No spec type creation (adding new types beyond feat/fix/refactor/explore)
+- No spec type creation (adding new types beyond the 4 in the registry)
 - No LLM-generated body content — scaffold is mechanical, writing is human+LLM
 
 ## Provenance
@@ -251,5 +251,7 @@ Carved out as Phase 0 of spec-workflow-rigor (Feb 2026). The spec
 said: "spec create is the entry point to the entire lifecycle and
 needs its own spec." 52+ commits implemented Phases 1-7 without it.
 The absence was felt every time a new spec was hand-created during
-that work — this session alone created two specs by hand
-(adapter-refresh-preserves-user-state and this one).
+that work — three specs were hand-created in a single session
+(adapter-refresh-preserves-user-state, spec-create, spec-module-split).
+Blocked by spec-module-split so that `create.rs` lands in the clean
+`internal/` directory structure alongside its siblings.
