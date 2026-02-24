@@ -841,10 +841,129 @@ runtime — just ensure the spec system's interfaces are clean enough
 that extraction to WASM is possible later.
 
 **Exit criteria:**
-- [ ] All spec commands available as MCP tools
-- [ ] `/spec` skill works with Claude adapter
-- [ ] LLM can discover, select, and invoke spec tools from conversation
-- [ ] Plugin interface shape documented (WIT contract sketch)
+- [x] All spec commands available as MCP tools
+- [x] `/spec` skill works with Claude adapter
+- [x] LLM can discover, select, and invoke spec tools from conversation
+- [x] Plugin interface shape documented (WIT contract sketch)
+
+**Implementation deviations** (session [[session-20260223-220302]]):
+
+1. **Tool naming uses dots not underscores.** Spec listed tools as `spec_list`,
+   `spec_ready`, etc. Implementation uses `spec.list`, `spec.ready` — matching
+   the existing `schemas.list`/`schemas.show` convention in the MCP server.
+   Dots are idiomatic for MCP tool namespacing.
+
+2. **`spec_create` not registered.** Spec listed 12 tools including `spec_create`.
+   Phase 0 carved out `spec create` as its own spec — it doesn't exist yet.
+   11 tools registered (4 query + 7 mutation), matching what the CLI provides.
+
+3. **Query tools return serialized JSON text, not structured MCP content.**
+   All MCP tools wrap results in `{"content": [{"type": "text", "text": ...}]}`
+   per MCP protocol. Query results are `serde_json::to_string_pretty()` of the
+   Rust types (SpecInfo, ReadySpec, BlockedSpec). Mutation results are the same
+   `serde_json::Value` the CLI's `--json` path produces. The text wrapping is
+   the established pattern (schemas.list, schemas.show do the same).
+
+4. **`_value()` pattern applied to all mutations + next_spec.** Spec's approach
+   (a) said "add _value() variants." Implementation extracts the JSON block and
+   has the original function delegate to the _value() variant for both JSON and
+   human output. Slightly more refactoring than "extract" — the original functions
+   now parse from the Value for their human-readable printing. Cleaner separation.
+
+5. **Skill is Claude-only, not multi-adapter.** Spec said "resources/claude/spec.md
+   (and equivalent for other adapters)." Only Claude adapter skill created — no
+   other adapters exist yet. Will scaffold others when adapters are added.
+
+6. **Plugin manifest is inline in SPEC.md, not a separate design doc.** Spec said
+   "document the shape" — a separate file would be over-engineering for a sketch
+   that exists to prove the interface is clean. Inline keeps it co-located with
+   the spec that motivated it.
+
+**Plugin manifest design (6c):**
+
+The spec system's current `mod.rs` public API maps cleanly to a WIT contract.
+Each public function becomes a WIT function export. The types already derive
+Serialize, so they cross the WASM boundary as JSON.
+
+```wit
+// Hypothetical spec-plugin WIT contract
+package patina:spec@0.1.0;
+
+interface queries {
+    record spec-info {
+        id: string,
+        status: option<string>,
+        target: option<string>,
+        title: string,
+        unscraped: bool,
+    }
+
+    record ready-spec {
+        id: string,
+        status: string,
+        target: option<string>,
+        title: string,
+    }
+
+    record blocker { id: string, status: string }
+    record blocked-spec {
+        id: string,
+        status: string,
+        target: option<string>,
+        title: string,
+        blocked-by: list<blocker>,
+    }
+
+    record recommendation {
+        id: string,
+        status: string,
+        reason: string,
+        priority: u32,
+        impact: u32,
+    }
+
+    record list-filters {
+        status: option<string>,
+        target: option<string>,
+    }
+
+    list-specs: func(filters: list-filters) -> result<list<spec-info>, string>;
+    ready-specs: func() -> result<list<ready-spec>, string>;
+    blocked-specs: func() -> result<list<blocked-spec>, string>;
+    next-spec: func() -> result<list<recommendation>, string>;
+}
+
+interface mutations {
+    record mutation-result {
+        command: string,
+        spec-id: string,
+        new-status: string,
+        // Additional fields vary by command — JSON blob
+        details: string,
+    }
+
+    promote: func(id: string) -> result<mutation-result, string>;
+    complete: func(id: string, major: bool) -> result<mutation-result, string>;
+    abandon: func(id: string, reason: option<string>) -> result<mutation-result, string>;
+    pause: func(id: string, reason: string) -> result<mutation-result, string>;
+    resume: func(id: string, force: bool) -> result<mutation-result, string>;
+    block: func(id: string, by: string, reason: string) -> result<mutation-result, string>;
+    split: func(id: string, new-id: option<string>, description: option<string>) -> result<mutation-result, string>;
+}
+
+world spec-plugin {
+    export queries;
+    export mutations;
+}
+```
+
+**Key observations for extraction:**
+- `spec/mod.rs` public API is already the WIT shape — each `pub fn` maps 1:1
+- Types derive Serialize → cross WASM boundary as JSON (serde_json::Value)
+- `internal.rs` stays behind the black-box boundary — only `mod.rs` exports matter
+- The three prongs (CLI dispatches to mod.rs, MCP dispatches to mod.rs, skill
+  describes mod.rs) all route through the same interface. Plugin extraction
+  replaces the dispatch, not the logic.
 
 ## Testing
 
