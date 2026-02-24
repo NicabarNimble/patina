@@ -6,6 +6,20 @@
 
 mod internal;
 
+// Data types and functions re-exported for session integration (Phase 5)
+pub(crate) use internal::{
+    get_all_specs, get_blocked_specs, load_dep_counts, spec_age_days_from_list, ListFilters,
+};
+
+// Query data functions re-exported for MCP (Phase 6)
+pub(crate) use internal::{get_ready_specs, next_spec_value};
+
+// Mutation _value() functions re-exported for MCP (Phase 6)
+pub(crate) use internal::{
+    abandon_spec_value, block_spec_value, complete_spec_value, pause_spec_value,
+    promote_spec_value, resume_spec_value, split_spec_value,
+};
+
 use anyhow::Result;
 
 /// Spec CLI subcommands (used by main.rs via clap)
