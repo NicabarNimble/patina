@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: spec-module-split
-status: ready
+status: active
 created: 2026-02-24
 blocks:
 - spec-create
