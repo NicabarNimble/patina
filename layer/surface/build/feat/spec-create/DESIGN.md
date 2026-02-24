@@ -264,6 +264,10 @@ pub fn create_spec_value(
     }
 
     // 10. Update database
+    // Minimal INSERT — only columns needed for spec queries (list, ready, blocked).
+    // Scrape fills in remaining columns (created, tags, refs, purpose) on next run.
+    // INSERT OR REPLACE is safe: directory-exists check above guarantees no prior row
+    // (only stale DB rows could conflict, and those get cleaned up by scrape).
     let db_path = Path::new(DB_PATH);
     if db_path.exists() {
         if let Ok(conn) = Connection::open(db_path) {
@@ -372,28 +376,34 @@ In `src/mcp/server.rs`, add to the tools array (after `spec.split`):
 }
 ```
 
-Add the handler in the match block (after `spec.split`):
+Add the handler in the match block (after `spec.split`).
+
+**Pattern:** Match the existing handler style — `args.get()` for
+parameter extraction, `Response::error` for validation failures,
+`Response::success` / `Response::error` for results.
 
 ```rust
 "spec.create" => {
-    let spec_type = params
-        .and_then(|p| p.get("spec_type"))
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            anyhow::anyhow!("spec.create requires 'spec_type' parameter")
-        })?;
-    let id = params
-        .and_then(|p| p.get("id"))
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            anyhow::anyhow!("spec.create requires 'id' parameter")
-        })?;
-    let title = params.and_then(|p| p.get("title")).and_then(|v| v.as_str());
-    let description = params
-        .and_then(|p| p.get("description"))
-        .and_then(|v| v.as_str());
-    let blocked_by: Vec<String> = params
-        .and_then(|p| p.get("blocked_by"))
+    let spec_type = args.get("spec_type").and_then(|v| v.as_str()).unwrap_or("");
+    let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    if spec_type.is_empty() {
+        return Response::error(
+            req.id.clone(),
+            -32602,
+            "spec.create requires 'spec_type' parameter",
+        );
+    }
+    if id.is_empty() {
+        return Response::error(
+            req.id.clone(),
+            -32602,
+            "spec.create requires 'id' parameter",
+        );
+    }
+    let title = args.get("title").and_then(|v| v.as_str());
+    let description = args.get("description").and_then(|v| v.as_str());
+    let blocked_by: Vec<String> = args
+        .get("blocked_by")
         .and_then(|v| v.as_array())
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
         .unwrap_or_default();
@@ -403,9 +413,14 @@ Add the handler in the match block (after `spec.split`):
     ) {
         Ok(result) => {
             let text = serde_json::to_string_pretty(&result).unwrap_or_default();
-            Response::tool_result(request.id, &text, false)
+            Response::success(
+                req.id.clone(),
+                serde_json::json!({
+                    "content": [{ "type": "text", "text": text }]
+                }),
+            )
         }
-        Err(e) => Response::tool_result(request.id, &format!("Error: {}", e), true),
+        Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
     }
 }
 ```
