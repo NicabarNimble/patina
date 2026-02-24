@@ -693,11 +693,39 @@ They disagree. Fix: read the development branch from `.patina/config.toml`
 session start branch-switching and release safeguard checks.
 
 **Exit criteria:**
-- [ ] `patina session list` shows active/stale/recent sessions
-- [ ] `session start` warns when archiving a session >24h old
-- [ ] `session end` flips status before archiving (atomic-first)
-- [ ] Session CLI commands return structured summary to stdout
-- [ ] Session and release agree on development branch (configurable)
+- [x] `patina session list` shows active/stale/recent sessions
+- [x] `session start` warns when archiving a session >24h old
+- [x] `session end` flips status before archiving (atomic-first)
+- [x] Session CLI commands return structured summary to stdout
+- [x] Session and release agree on development branch (configurable)
+
+**Implementation deviations** (session [[session-20260223-185307]]):
+
+1. **`session list` output format differs from spec example.** Spec shows
+   `(21d stale)` suffix on ACTIVE line and `(completed, 2d ago)` on RECENT.
+   Implementation shows `(Nd ago)` for all entries, with `(Nd ago, never ended)`
+   for STALE entries. ACTIVE line shows age since creation, not staleness.
+   Deliberate — clearer UX: age is always shown consistently, "never ended"
+   distinguishes stale from active.
+
+2. **`session list` scans all 748 archived sessions.** Spec mentions querying
+   `layer/sessions/` but doesn't address performance. Implementation reads
+   all `.md` files sorted by filename descending, stops collecting RECENT
+   after 5 but continues scanning for STALE (they could be anywhere).
+   Acceptable — 748 files parse in <100ms, and stale detection requires
+   full scan. Could optimize with index later if session count grows.
+
+3. **`session update` richer output includes commit wikilinks.** Spec says
+   "structured summary to stdout" but doesn't specify format. Implementation
+   adds `[[commit-SHA]]` wikilinks in the markdown section and prints commit
+   SHAs + changed file paths to stdout. Additive enhancement — makes the
+   session update markdown immediately useful for knowledge graph tracing.
+
+4. **Atomic status flip uses `completed` intermediate state.** Spec says
+   `status: active → completed` then archive flips to `archived`.
+   Implementation does exactly this: first mutation is `active → completed`,
+   archive step handles both `completed → archived` and `active → archived`
+   for robustness. Matches spec intent.
 
 ### Phase 5: Session Integration
 
@@ -840,8 +868,12 @@ patina spec resume my-spec
 
 ## Open Questions
 
-1. Should `patina session list` also query archived sessions in
-   `layer/sessions/`, or only active + `.patina/local/`?
+1. ~~Should `patina session list` also query archived sessions in
+   `layer/sessions/`, or only active + `.patina/local/`?~~ → **Yes, query
+   both.** Implementation scans `layer/sessions/` for STALE (status: active,
+   never ended) and RECENT (last 5 archived), plus `.patina/local/active-session.md`
+   for ACTIVE. All three categories are useful: ACTIVE shows current work,
+   STALE surfaces forgotten sessions, RECENT provides continuity context.
 2. Should `patina doctor` check for stale sessions and paused specs?
 
 ## Resolved Questions
