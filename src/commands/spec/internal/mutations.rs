@@ -75,28 +75,10 @@ where
 /// Unlike archive_spec_inner (which uses git rm and strict commit),
 /// this handles the case where the file hasn't actually changed.
 pub(super) fn git_stage_and_commit(file_path: &str, message: &str) -> Result<()> {
-    let output = Command::new("git")
-        .args(["add", file_path])
-        .output()
-        .context("Failed to stage spec file")?;
-    if !output.status.success() {
-        anyhow::bail!(
-            "git add failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+    patina::git::add_paths(&[file_path])?;
+    if patina::git::has_staged_changes()? {
+        patina::git::commit(message)?;
     }
-
-    let output = Command::new("git")
-        .args(["commit", "-m", message])
-        .output()
-        .context("Failed to commit")?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !stderr.contains("nothing to commit") {
-            anyhow::bail!("git commit failed: {}", stderr);
-        }
-    }
-
     Ok(())
 }
 
@@ -435,6 +417,7 @@ pub fn resume_spec(id: &str, force: bool, json: bool) -> Result<()> {
 
         if let Some(pause_tag) = paused_at_tag {
             // What changed while away
+            // `git diff --stat` for display — no patina::git helper for range diffs
             println!("\n--- Changes since pause ({}) ---", pause_tag);
             let output = Command::new("git")
                 .args(["diff", "--stat", &format!("{}..HEAD", pause_tag)])
