@@ -798,6 +798,20 @@ session start branch-switching and release safeguard checks.
    stdout for: branch/tag (start), commit SHAs/files (update), spec
    landscape/recommendations (start/end), and unblocked specs (end).
 
+5. **`/session-update` doesn't show blocking/unblocking events.** Spec said
+   "Show blocking/unblocking events." Implementation only shows which SPEC.md
+   files were changed and warns about paused specs aging. No before/after
+   status comparison — that would require snapshotting spec states at session
+   start, adding state management complexity for minimal value. The
+   changed-files approach is lighter and sufficient.
+
+6. **Unblock detection is state-based, not event-based.** Spec said "If spec
+   completed, show what it unblocks." Implementation queries
+   `get_blocked_specs()` for specs whose blockers are all complete — it doesn't
+   know if *this session* caused the unblock. Semantic difference that rarely
+   matters in practice since the output is still correct ("these specs are now
+   unblocked"). Event-based detection would require a session-start snapshot.
+
 ### Phase 6: MCP Tools + `/spec` Skill
 
 **Goal:** Expose all spec commands as MCP tools and write the unified
