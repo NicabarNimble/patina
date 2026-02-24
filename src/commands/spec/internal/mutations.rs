@@ -197,29 +197,15 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
         None => anyhow::bail!("Spec '{}' has no status", id),
     }
 
-    // 2. Read and update status to complete
-    let content = std::fs::read_to_string(&found.file_path)
-        .with_context(|| format!("Failed to read {}", found.file_path))?;
-    let (mut frontmatter, body) = parse_spec_file(&content)
-        .with_context(|| format!("Failed to parse frontmatter in {}", found.file_path))?;
-    frontmatter.status = Some("complete".to_string());
-    let new_content = serialize_spec_file(&frontmatter, &body)?;
-    std::fs::write(&found.file_path, &new_content)
-        .with_context(|| format!("Failed to write {}", found.file_path))?;
-
-    // 3. Update DB
-    let db_path = Path::new(DB_PATH);
-    if db_path.exists() {
-        let conn = Connection::open(db_path).context("Failed to open database")?;
-        conn.execute(
-            "UPDATE patterns SET status = 'complete' WHERE id = ?1",
-            rusqlite::params![id],
-        )?;
-    }
+    // 2. Update status via mutate_spec (handles read→parse→mutate→write→DB)
+    let (file_path, frontmatter) = mutate_spec(id, |fm| {
+        fm.status = Some("complete".to_string());
+        Ok(())
+    })?;
 
     let title_str = found.title.as_deref().unwrap_or(id);
 
-    // 4. Pre-check archive tag
+    // 3. Pre-check archive tag
     let tag_name = format!("spec/{}", id);
     if tag_exists(&tag_name)? {
         anyhow::bail!(
@@ -227,9 +213,9 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
             tag_name
         );
     }
-    let spec_dir = resolve_spec_dir(&found.file_path);
+    let spec_dir = resolve_spec_dir(&file_path);
 
-    // 5. Delegate to release strategy
+    // 4. Delegate to release strategy
     let strategy = ReleaseStrategy::from_project(Path::new("."));
     let bump = if major {
         Some(BumpType::Major)
@@ -238,12 +224,12 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
     };
 
     if let Some(bump) = bump {
-        let prepared = strategy.preflight(bump, &found.file_path)?;
+        let prepared = strategy.preflight(bump, &file_path)?;
         let archive_dir = spec_dir
             .as_ref()
             .and_then(|d| d.to_str())
-            .or(Some(&found.file_path));
-        prepared.execute(title_str, &found.file_path, archive_dir)?;
+            .or(Some(&file_path));
+        prepared.execute(title_str, &file_path, archive_dir)?;
 
         // Tag HEAD~1 (parent commit still has spec file)
         let archive_tag_name = format!("spec/{}", id);
@@ -255,7 +241,7 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
         )?;
     } else {
         // No release (explore type) — archive as standalone commit
-        archive_spec_inner(id, &found.file_path, "complete", title_str, &spec_dir)?;
+        archive_spec_inner(id, &file_path, "complete", title_str, &spec_dir)?;
     }
 
     Ok(serde_json::json!({
@@ -264,7 +250,7 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
         "new_status": "complete",
         "archived": true,
         "tag": format!("spec/{}", id),
-        "file": found.file_path,
+        "file": file_path,
     }))
 }
 
@@ -298,27 +284,13 @@ pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<serde_json::
         _ => {} // draft, ready, active, paused, blocked — all can be abandoned
     }
 
-    // 2. Update status to abandoned
-    let content = std::fs::read_to_string(&found.file_path)
-        .with_context(|| format!("Failed to read {}", found.file_path))?;
-    let (mut frontmatter, body) = parse_spec_file(&content)
-        .with_context(|| format!("Failed to parse frontmatter in {}", found.file_path))?;
-    frontmatter.status = Some("abandoned".to_string());
-    let new_content = serialize_spec_file(&frontmatter, &body)?;
-    std::fs::write(&found.file_path, &new_content)
-        .with_context(|| format!("Failed to write {}", found.file_path))?;
+    // 2. Update status via mutate_spec (handles read→parse→mutate→write→DB)
+    let (file_path, _fm) = mutate_spec(id, |fm| {
+        fm.status = Some("abandoned".to_string());
+        Ok(())
+    })?;
 
-    // 3. Update DB
-    let db_path = Path::new(DB_PATH);
-    if db_path.exists() {
-        let conn = Connection::open(db_path).context("Failed to open database")?;
-        conn.execute(
-            "UPDATE patterns SET status = 'abandoned' WHERE id = ?1",
-            rusqlite::params![id],
-        )?;
-    }
-
-    // 4. Pre-check archive tag
+    // 3. Pre-check archive tag
     let tag_name = format!("spec/{}", id);
     if tag_exists(&tag_name)? {
         anyhow::bail!(
@@ -327,15 +299,15 @@ pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<serde_json::
         );
     }
 
-    // 5. Archive (tag + git rm + commit)
+    // 4. Archive (tag + git rm + commit)
     let title_str = found.title.as_deref().unwrap_or(id);
     let description = if let Some(r) = reason {
         format!("{} — {}", title_str, r)
     } else {
         title_str.to_string()
     };
-    let spec_dir = resolve_spec_dir(&found.file_path);
-    archive_spec_inner(id, &found.file_path, "abandoned", &description, &spec_dir)?;
+    let spec_dir = resolve_spec_dir(&file_path);
+    archive_spec_inner(id, &file_path, "abandoned", &description, &spec_dir)?;
 
     Ok(serde_json::json!({
         "command": "abandon",
@@ -344,7 +316,7 @@ pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<serde_json::
         "reason": reason,
         "archived": true,
         "tag": format!("spec/{}", id),
-        "file": found.file_path,
+        "file": file_path,
     }))
 }
 
