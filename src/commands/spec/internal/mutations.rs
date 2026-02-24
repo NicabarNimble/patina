@@ -1,0 +1,736 @@
+use anyhow::{Context, Result};
+use rusqlite::Connection;
+use std::path::Path;
+use std::process::Command;
+
+use patina::release::{BumpType, ReleaseStrategy};
+use patina::spec::{parse_spec_file, serialize_spec_file, SpecFrontmatter};
+
+use super::archive::{archive_spec_inner, find_spec, resolve_spec_dir};
+use super::queries::{get_all_specs, ListFilters};
+use super::queue::tag_exists;
+use super::DB_PATH;
+
+// ============================================================================
+// Shared Mutation Infrastructure (spec-workflow-rigor Phase 1)
+// ============================================================================
+
+/// Core YAML + DB status update. Reads the spec file, applies a mutation
+/// closure to the frontmatter, writes the file back, and updates the DB.
+/// Returns the file path and mutated frontmatter.
+pub(super) fn mutate_spec<F>(id: &str, mutate: F) -> Result<(String, SpecFrontmatter)>
+where
+    F: FnOnce(&mut SpecFrontmatter) -> Result<()>,
+{
+    let (file_path, _, _) = find_spec(id)?;
+
+    let content = std::fs::read_to_string(&file_path)
+        .with_context(|| format!("Failed to read {}", file_path))?;
+
+    let (mut frontmatter, body) = parse_spec_file(&content)
+        .with_context(|| format!("Failed to parse frontmatter in {}", file_path))?;
+
+    mutate(&mut frontmatter)?;
+
+    let new_content = serialize_spec_file(&frontmatter, &body)?;
+    std::fs::write(&file_path, &new_content)
+        .with_context(|| format!("Failed to write {}", file_path))?;
+
+    // Update DB status if DB exists
+    let db_path = Path::new(DB_PATH);
+    if db_path.exists() {
+        if let Some(ref status) = frontmatter.status {
+            let conn = Connection::open(db_path).context("Failed to open database")?;
+            conn.execute(
+                "UPDATE patterns SET status = ?1 WHERE id = ?2",
+                rusqlite::params![status, id],
+            )?;
+        }
+    }
+
+    Ok((file_path, frontmatter))
+}
+
+/// Save file content, execute action, rollback file on failure.
+/// Used by pause_spec and block_spec where YAML is mutated before git
+/// operations that could fail (D1 rollback pattern from design.md).
+pub(super) fn with_yaml_rollback<T, F>(file_path: &str, action: F) -> Result<T>
+where
+    F: FnOnce() -> Result<T>,
+{
+    let original = std::fs::read_to_string(file_path)
+        .with_context(|| format!("Failed to read {} for rollback backup", file_path))?;
+    match action() {
+        Ok(val) => Ok(val),
+        Err(e) => {
+            let _ = std::fs::write(file_path, &original);
+            Err(e)
+        }
+    }
+}
+
+/// Derive the next tag sequence number from existing tags.
+/// e.g., list_matching_tags("spec/{id}-paused-*") → count existing → N+1
+pub(super) fn next_tag_number(id: &str, prefix: &str) -> Result<u32> {
+    let pattern = format!("spec/{}-{}-*", id, prefix);
+    let tags = patina::git::list_matching_tags(&pattern)?;
+    Ok(tags.len() as u32 + 1)
+}
+
+/// Promote a spec: draft → ready, or ready → active.
+/// When promoting to active, creates tag spec/<id>-start.
+pub fn promote_spec(id: &str, json: bool) -> Result<()> {
+    let result = promote_spec_value(id)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        let new_status = result["new_status"].as_str().unwrap_or("unknown");
+        let file_path = result["file"].as_str().unwrap_or("");
+        println!("Promoted: {} → {}", id, new_status);
+        println!("  File: {}", file_path);
+        if new_status == "active" {
+            println!("  Tag: spec/{}-start", id);
+        }
+    }
+
+    Ok(())
+}
+
+/// Promote a spec and return structured result (for MCP).
+pub fn promote_spec_value(id: &str) -> Result<serde_json::Value> {
+    let (file_path, fm) = mutate_spec(id, |fm| match fm.status.as_deref() {
+        Some("draft") => {
+            fm.status = Some("ready".to_string());
+            Ok(())
+        }
+        Some("ready") => {
+            fm.status = Some("active".to_string());
+            Ok(())
+        }
+        Some(s) => anyhow::bail!(
+            "Cannot promote '{}' — status is '{}'. Only draft and ready specs can be promoted.",
+            id,
+            s
+        ),
+        None => anyhow::bail!("Spec '{}' has no status", id),
+    })?;
+
+    let new_status = fm.status.as_deref().unwrap_or("unknown");
+
+    // If promoted to active, create start tag
+    if new_status == "active" {
+        let tag_name = format!("spec/{}-start", id);
+        patina::git::create_tag_at(&tag_name, &format!("Spec {} activated", id), "HEAD")?;
+    }
+
+    // Git commit
+    let output = Command::new("git")
+        .args(["add", &file_path])
+        .output()
+        .context("Failed to stage spec file")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git add failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let commit_msg = format!("spec: promote {} to {}", id, new_status);
+    let output = Command::new("git")
+        .args(["commit", "-m", &commit_msg])
+        .output()
+        .context("Failed to commit")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.contains("nothing to commit") {
+            anyhow::bail!("git commit failed: {}", stderr);
+        }
+    }
+
+    Ok(serde_json::json!({
+        "command": "promote",
+        "spec_id": id,
+        "new_status": new_status,
+        "file": file_path,
+    }))
+}
+
+/// Complete an active spec (release + archive + tag)
+pub fn complete_spec(id: &str, major: bool, json: bool) -> Result<()> {
+    let result = complete_spec_value(id, major)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        let file_path = result["file"].as_str().unwrap_or("");
+        println!("Completed: {} → complete", id);
+        println!("  Archived: spec/{}", id);
+        println!("  Recover: git show spec/{}:{}", id, file_path);
+    }
+
+    Ok(())
+}
+
+/// Complete an active spec and return structured result (for MCP).
+pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
+    // 1. Find spec and validate status
+    let (file_path, old_status, title) = find_spec(id)?;
+    match old_status.as_deref() {
+        Some("active") => {}
+        Some(s) => anyhow::bail!(
+            "Cannot complete '{}' — status is '{}', expected 'active'",
+            id,
+            s
+        ),
+        None => anyhow::bail!("Spec '{}' has no status", id),
+    }
+
+    // 2. Read and update status to complete
+    let content = std::fs::read_to_string(&file_path)
+        .with_context(|| format!("Failed to read {}", file_path))?;
+    let (mut frontmatter, body) = parse_spec_file(&content)
+        .with_context(|| format!("Failed to parse frontmatter in {}", file_path))?;
+    frontmatter.status = Some("complete".to_string());
+    let new_content = serialize_spec_file(&frontmatter, &body)?;
+    std::fs::write(&file_path, &new_content)
+        .with_context(|| format!("Failed to write {}", file_path))?;
+
+    // 3. Update DB
+    let db_path = Path::new(DB_PATH);
+    if db_path.exists() {
+        let conn = Connection::open(db_path).context("Failed to open database")?;
+        conn.execute(
+            "UPDATE patterns SET status = 'complete' WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+    }
+
+    let title_str = title.as_deref().unwrap_or(id);
+
+    // 4. Pre-check archive tag
+    let tag_name = format!("spec/{}", id);
+    if tag_exists(&tag_name)? {
+        anyhow::bail!(
+            "Tag '{}' already exists. Spec may have been archived previously.",
+            tag_name
+        );
+    }
+    let spec_dir = resolve_spec_dir(&file_path);
+
+    // 5. Delegate to release strategy
+    let strategy = ReleaseStrategy::from_project(Path::new("."));
+    let bump = if major {
+        Some(BumpType::Major)
+    } else {
+        BumpType::from_spec_type(&frontmatter.r#type)
+    };
+
+    if let Some(bump) = bump {
+        let prepared = strategy.preflight(bump, &file_path)?;
+        let archive_dir = spec_dir
+            .as_ref()
+            .and_then(|d| d.to_str())
+            .or(Some(&file_path));
+        prepared.execute(title_str, &file_path, archive_dir)?;
+
+        // Tag HEAD~1 (parent commit still has spec file)
+        let archive_tag_name = format!("spec/{}", id);
+        println!("Creating tag: {} (on HEAD~1)", archive_tag_name);
+        patina::git::create_tag_at(
+            &archive_tag_name,
+            &format!("Archived spec: {}", title_str),
+            "HEAD~1",
+        )?;
+    } else {
+        // No release (explore type) — archive as standalone commit
+        archive_spec_inner(id, &file_path, "complete", title_str, &spec_dir)?;
+    }
+
+    Ok(serde_json::json!({
+        "command": "complete",
+        "spec_id": id,
+        "new_status": "complete",
+        "archived": true,
+        "tag": format!("spec/{}", id),
+        "file": file_path,
+    }))
+}
+
+/// Abandon a spec (archive + tag, no release)
+pub fn abandon_spec(id: &str, reason: Option<&str>, json: bool) -> Result<()> {
+    let result = abandon_spec_value(id, reason)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        let file_path = result["file"].as_str().unwrap_or("");
+        println!("Abandoned: {}", id);
+        if let Some(r) = reason {
+            println!("  Reason: {}", r);
+        }
+        println!("  Archived: spec/{}", id);
+        println!("  Recover: git show spec/{}:{}", id, file_path);
+    }
+
+    Ok(())
+}
+
+/// Abandon a spec and return structured result (for MCP).
+pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<serde_json::Value> {
+    // 1. Find spec and validate status
+    let (file_path, old_status, title) = find_spec(id)?;
+    match old_status.as_deref() {
+        Some("complete") => anyhow::bail!("Spec '{}' is already complete", id),
+        Some("abandoned") => anyhow::bail!("Spec '{}' is already abandoned", id),
+        None => anyhow::bail!("Spec '{}' has no status", id),
+        _ => {} // draft, ready, active, paused, blocked — all can be abandoned
+    }
+
+    // 2. Update status to abandoned
+    let content = std::fs::read_to_string(&file_path)
+        .with_context(|| format!("Failed to read {}", file_path))?;
+    let (mut frontmatter, body) = parse_spec_file(&content)
+        .with_context(|| format!("Failed to parse frontmatter in {}", file_path))?;
+    frontmatter.status = Some("abandoned".to_string());
+    let new_content = serialize_spec_file(&frontmatter, &body)?;
+    std::fs::write(&file_path, &new_content)
+        .with_context(|| format!("Failed to write {}", file_path))?;
+
+    // 3. Update DB
+    let db_path = Path::new(DB_PATH);
+    if db_path.exists() {
+        let conn = Connection::open(db_path).context("Failed to open database")?;
+        conn.execute(
+            "UPDATE patterns SET status = 'abandoned' WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+    }
+
+    // 4. Pre-check archive tag
+    let tag_name = format!("spec/{}", id);
+    if tag_exists(&tag_name)? {
+        anyhow::bail!(
+            "Tag '{}' already exists. Spec may have been archived previously.",
+            tag_name
+        );
+    }
+
+    // 5. Archive (tag + git rm + commit)
+    let title_str = title.as_deref().unwrap_or(id);
+    let description = if let Some(r) = reason {
+        format!("{} — {}", title_str, r)
+    } else {
+        title_str.to_string()
+    };
+    let spec_dir = resolve_spec_dir(&file_path);
+    archive_spec_inner(id, &file_path, "abandoned", &description, &spec_dir)?;
+
+    Ok(serde_json::json!({
+        "command": "abandon",
+        "spec_id": id,
+        "new_status": "abandoned",
+        "reason": reason,
+        "archived": true,
+        "tag": format!("spec/{}", id),
+        "file": file_path,
+    }))
+}
+
+/// Pause an active spec with reason.
+///
+/// Enforces one-paused-spec rule, creates WIP commit if dirty,
+/// tags with spec/<id>-paused-<N>, rolls back YAML on failure.
+pub fn pause_spec(id: &str, reason: &str, json: bool) -> Result<()> {
+    let result = pause_spec_value(id, reason)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        let tag_name = result["tag"].as_str().unwrap_or("");
+        println!("Paused: {} → paused", id);
+        println!("  Reason: {}", reason);
+        println!("  Tag: {}", tag_name);
+        println!("  Resume: patina spec resume {}", id);
+    }
+
+    Ok(())
+}
+
+/// Pause an active spec and return structured result (for MCP).
+pub fn pause_spec_value(id: &str, reason: &str) -> Result<serde_json::Value> {
+    // 1. Find spec and validate status
+    let (file_path, old_status, _title) = find_spec(id)?;
+    match old_status.as_deref() {
+        Some("active") => {}
+        Some(s) => anyhow::bail!(
+            "Cannot pause '{}' — status is '{}', expected 'active'",
+            id,
+            s
+        ),
+        None => anyhow::bail!("Spec '{}' has no status", id),
+    }
+
+    // 2. One-paused-spec rule: check no other spec is already paused
+    let all_specs = get_all_specs(&ListFilters::default())?;
+    let paused: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("paused") && s.id != id)
+        .collect();
+    if let Some(already_paused) = paused.first() {
+        anyhow::bail!(
+            "{} is already paused.\n  Resume, split, or abandon it first:\n    \
+             patina spec resume {}\n    \
+             patina spec abandon {}",
+            already_paused.id,
+            already_paused.id,
+            already_paused.id
+        );
+    }
+
+    // 3. Check no merge conflicts
+    if patina::git::has_merge_conflicts()? {
+        anyhow::bail!(
+            "Cannot pause — unresolved merge conflicts exist.\n  \
+             Resolve conflicts before pausing."
+        );
+    }
+
+    // 4. WIP commit if tracked files are dirty
+    if !patina::git::is_clean_tracked()? {
+        let wip_msg = format!("WIP: {} paused — {}", id, reason);
+        patina::git::add_all()?;
+        patina::git::commit(&wip_msg)?;
+    }
+
+    // 5. Update YAML, tag, and commit — with rollback on failure
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let tag_n = next_tag_number(id, "paused")?;
+    let tag_name = format!("spec/{}-paused-{}", id, tag_n);
+
+    with_yaml_rollback(&file_path, || {
+        let (file_path, _fm) = mutate_spec(id, |fm| {
+            fm.status = Some("paused".to_string());
+            fm.paused_reason = Some(reason.to_string());
+            fm.paused_date = Some(today.clone());
+            fm.paused_at_tag = Some(tag_name.clone());
+            Ok(())
+        })?;
+
+        patina::git::create_tag_at(&tag_name, reason, "HEAD")?;
+
+        let output = Command::new("git")
+            .args(["add", &file_path])
+            .output()
+            .context("Failed to stage spec file")?;
+        if !output.status.success() {
+            anyhow::bail!(
+                "git add failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        let commit_msg = format!("spec: pause {} — {}", id, reason);
+        let output = Command::new("git")
+            .args(["commit", "-m", &commit_msg])
+            .output()
+            .context("Failed to commit")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if !stderr.contains("nothing to commit") {
+                anyhow::bail!("git commit failed: {}", stderr);
+            }
+        }
+
+        Ok(())
+    })?;
+
+    Ok(serde_json::json!({
+        "command": "pause",
+        "spec_id": id,
+        "new_status": "paused",
+        "reason": reason,
+        "tag": tag_name,
+        "paused_date": today,
+    }))
+}
+
+/// Resume a paused or blocked spec.
+///
+/// For blocked specs: checks all blockers are complete (or --force).
+/// Shows context diffs from paused_at_tag. Clears pause/block fields.
+pub fn resume_spec(id: &str, force: bool, json: bool) -> Result<()> {
+    let result = resume_spec_value(id, force)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        let tag_name = result["tag"].as_str().unwrap_or("");
+        let paused_at_tag = result["paused_at_tag"].as_str();
+        println!("Resumed: {} → active", id);
+        println!("  Tag: {}", tag_name);
+
+        if let Some(pause_tag) = paused_at_tag {
+            // What changed while away
+            println!("\n--- Changes since pause ({}) ---", pause_tag);
+            let output = Command::new("git")
+                .args(["diff", "--stat", &format!("{}..HEAD", pause_tag)])
+                .output();
+            if let Ok(output) = output {
+                let diff = String::from_utf8_lossy(&output.stdout);
+                if diff.trim().is_empty() {
+                    println!("  (no changes)");
+                } else {
+                    for line in diff.lines() {
+                        println!("  {}", line);
+                    }
+                }
+            }
+
+            // What you accomplished before pausing
+            let start_tag = format!("spec/{}-start", id);
+            if patina::git::tag_exists(&start_tag).unwrap_or(false) {
+                println!(
+                    "\n--- Your work before pause ({}..{}) ---",
+                    start_tag, pause_tag
+                );
+                let output = Command::new("git")
+                    .args(["diff", "--stat", &format!("{}..{}", start_tag, pause_tag)])
+                    .output();
+                if let Ok(output) = output {
+                    let diff = String::from_utf8_lossy(&output.stdout);
+                    if diff.trim().is_empty() {
+                        println!("  (no changes)");
+                    } else {
+                        for line in diff.lines() {
+                            println!("  {}", line);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Resume a paused or blocked spec and return structured result (for MCP).
+pub fn resume_spec_value(id: &str, force: bool) -> Result<serde_json::Value> {
+    // 1. Find spec and validate status
+    let (file_path, old_status, _title) = find_spec(id)?;
+    let status_str = old_status.as_deref().unwrap_or("");
+
+    match status_str {
+        "paused" | "blocked" => {}
+        s => anyhow::bail!(
+            "Cannot resume '{}' — status is '{}', expected 'paused' or 'blocked'",
+            id,
+            s
+        ),
+    }
+
+    // 2. Read current frontmatter to get paused_at_tag and check blockers
+    let content = std::fs::read_to_string(&file_path)
+        .with_context(|| format!("Failed to read {}", file_path))?;
+    let (fm_snapshot, _) = parse_spec_file(&content)
+        .with_context(|| format!("Failed to parse frontmatter in {}", file_path))?;
+
+    let paused_at_tag = fm_snapshot.paused_at_tag.clone();
+
+    // 3. If blocked, check all blockers are complete
+    if status_str == "blocked" && !force {
+        let incomplete: Vec<_> = fm_snapshot
+            .blocked_by
+            .iter()
+            .filter_map(|blocker_id| match find_spec(blocker_id) {
+                Ok((_, blocker_status, _)) => {
+                    let s = blocker_status.as_deref().unwrap_or("unknown");
+                    if s != "complete" && s != "done" {
+                        Some(format!("{} ({})", blocker_id, s))
+                    } else {
+                        None
+                    }
+                }
+                Err(_) => Some(format!("{} (not found)", blocker_id)),
+            })
+            .collect();
+
+        if !incomplete.is_empty() {
+            anyhow::bail!(
+                "Cannot resume '{}' — still blocked by:\n  {}\n\n  \
+                 Use --force to override.",
+                id,
+                incomplete.join("\n  ")
+            );
+        }
+    }
+
+    // 4. Update YAML: status=active, clear pause/block fields
+    let tag_n = next_tag_number(id, "resumed")?;
+    let tag_name = format!("spec/{}-resumed-{}", id, tag_n);
+
+    let (file_path, _fm) = mutate_spec(id, |fm| {
+        fm.status = Some("active".to_string());
+        fm.paused_reason = None;
+        fm.paused_date = None;
+        fm.paused_at_tag = None;
+        fm.blocked_reason = None;
+        fm.blocked_date = None;
+        // Note: blocked_by list is NOT cleared — it's historical record
+        Ok(())
+    })?;
+
+    // 5. Clear spec_deps if was blocked
+    if status_str == "blocked" {
+        let db_path = Path::new(DB_PATH);
+        if db_path.exists() {
+            let conn = Connection::open(db_path).context("Failed to open database")?;
+            conn.execute(
+                "DELETE FROM spec_deps WHERE spec_id = ?1",
+                rusqlite::params![id],
+            )?;
+        }
+    }
+
+    // 6. Create annotated tag
+    patina::git::create_tag_at(&tag_name, &format!("Resumed {}", id), "HEAD")?;
+
+    // 7. Git commit
+    let output = Command::new("git")
+        .args(["add", &file_path])
+        .output()
+        .context("Failed to stage spec file")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git add failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let commit_msg = format!("spec: resume {}", id);
+    let output = Command::new("git")
+        .args(["commit", "-m", &commit_msg])
+        .output()
+        .context("Failed to commit")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.contains("nothing to commit") {
+            anyhow::bail!("git commit failed: {}", stderr);
+        }
+    }
+
+    Ok(serde_json::json!({
+        "command": "resume",
+        "spec_id": id,
+        "new_status": "active",
+        "previous_status": status_str,
+        "tag": tag_name,
+        "paused_at_tag": paused_at_tag,
+    }))
+}
+
+/// Block an active spec on another spec.
+///
+/// Appends to blocked_by list, updates spec_deps, creates annotated tag.
+pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<()> {
+    let result = block_spec_value(id, blocker, reason)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        let tag_name = result["tag"].as_str().unwrap_or("");
+        println!("Blocked: {} → blocked", id);
+        println!("  Blocked by: {}", blocker);
+        println!("  Reason: {}", reason);
+        println!("  Tag: {}", tag_name);
+        println!(
+            "  Unblock: patina spec resume {} (when {} is complete)",
+            id, blocker
+        );
+    }
+
+    Ok(())
+}
+
+/// Block an active spec and return structured result (for MCP).
+pub fn block_spec_value(id: &str, blocker: &str, reason: &str) -> Result<serde_json::Value> {
+    // 1. Validate spec is active
+    let (spec_file_path, old_status, _title) = find_spec(id)?;
+    match old_status.as_deref() {
+        Some("active") => {}
+        Some(s) => anyhow::bail!(
+            "Cannot block '{}' — status is '{}', expected 'active'",
+            id,
+            s
+        ),
+        None => anyhow::bail!("Spec '{}' has no status", id),
+    }
+
+    // 2. Validate blocker spec exists
+    let _ = find_spec(blocker).with_context(|| format!("Blocker spec '{}' not found", blocker))?;
+
+    // 3. Update YAML, DB, tag, and commit — with rollback on failure
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let tag_n = next_tag_number(id, "blocked")?;
+    let tag_name = format!("spec/{}-blocked-{}", id, tag_n);
+
+    with_yaml_rollback(&spec_file_path, || {
+        let (file_path, _fm) = mutate_spec(id, |fm| {
+            fm.status = Some("blocked".to_string());
+            // Append blocker to blocked_by list (D3: don't overwrite)
+            if !fm.blocked_by.contains(&blocker.to_string()) {
+                fm.blocked_by.push(blocker.to_string());
+            }
+            fm.blocked_reason = Some(reason.to_string());
+            fm.blocked_date = Some(today.clone());
+            fm.paused_at_tag = Some(tag_name.clone());
+            Ok(())
+        })?;
+
+        // Update spec_deps in DB
+        let db_path = Path::new(DB_PATH);
+        if db_path.exists() {
+            let conn = Connection::open(db_path).context("Failed to open database")?;
+            conn.execute(
+                "INSERT OR IGNORE INTO spec_deps (spec_id, depends_on) VALUES (?1, ?2)",
+                rusqlite::params![id, blocker],
+            )?;
+        }
+
+        // Create annotated tag
+        let tag_msg = format!("{} (blocked by {})", reason, blocker);
+        patina::git::create_tag_at(&tag_name, &tag_msg, "HEAD")?;
+
+        // Git commit
+        let output = Command::new("git")
+            .args(["add", &file_path])
+            .output()
+            .context("Failed to stage spec file")?;
+        if !output.status.success() {
+            anyhow::bail!(
+                "git add failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        let commit_msg = format!("spec: block {} (waiting on {})", id, blocker);
+        let output = Command::new("git")
+            .args(["commit", "-m", &commit_msg])
+            .output()
+            .context("Failed to commit")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if !stderr.contains("nothing to commit") {
+                anyhow::bail!("git commit failed: {}", stderr);
+            }
+        }
+
+        Ok(())
+    })?;
+
+    Ok(serde_json::json!({
+        "command": "block",
+        "spec_id": id,
+        "new_status": "blocked",
+        "blocker": blocker,
+        "reason": reason,
+        "tag": tag_name,
+    }))
+}
