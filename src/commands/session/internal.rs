@@ -60,10 +60,25 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
 
     // 1. Handle incomplete previous session
     if session_path.exists() {
-        println!("Found incomplete session, cleaning up...");
-        let line_count = fs::read_to_string(&session_path)
-            .map(|s| s.lines().count())
-            .unwrap_or(0);
+        // Check for stale session (>24h old)
+        let content = fs::read_to_string(&session_path).unwrap_or_default();
+        if let Some(summary) = parse_session_summary(&content) {
+            let age_hours = session_age_hours(&summary.created);
+            if age_hours >= 24 {
+                let days = age_hours / 24;
+                println!(
+                    "Warning: Previous session is {}d old — archiving stale session",
+                    days
+                );
+                println!("  {} ({})", summary.title, summary.id);
+            } else {
+                println!("Found incomplete session, cleaning up...");
+            }
+        } else {
+            println!("Found incomplete session, cleaning up...");
+        }
+
+        let line_count = content.lines().count();
         if line_count > 10 {
             // Archive non-trivial session (mark as archived in YAML)
             if let Ok(old_id) = read_session_id(&session_path) {
@@ -71,7 +86,6 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
                     .join(SESSIONS_DIR)
                     .join(format!("{}.md", old_id));
                 fs::create_dir_all(project_root.join(SESSIONS_DIR))?;
-                let content = fs::read_to_string(&session_path)?;
                 let archived = content.replacen("status: active", "status: archived", 1);
                 fs::write(&archive_path, archived)?;
                 println!("  Archived to {}/{}.md", SESSIONS_DIR, old_id);
@@ -1183,6 +1197,19 @@ fn format_session_age(created: &str, now: &chrono::DateTime<Utc>) -> String {
     } else {
         "just now".to_string()
     }
+}
+
+/// Compute a session's age in hours from its created timestamp.
+fn session_age_hours(created: &str) -> i64 {
+    let Ok(created_dt) = chrono::DateTime::parse_from_rfc3339(created).or_else(|_| {
+        chrono::DateTime::parse_from_rfc3339(&format!(
+            "{}+00:00",
+            created.trim_end_matches('Z')
+        ))
+    }) else {
+        return 0;
+    };
+    (Utc::now() - created_dt.with_timezone(&Utc)).num_hours()
 }
 
 /// Convert a SessionSummary to JSON value.
