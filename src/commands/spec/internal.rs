@@ -1093,6 +1093,25 @@ fn next_tag_number(id: &str, prefix: &str) -> Result<u32> {
 /// Promote a spec: draft → ready, or ready → active.
 /// When promoting to active, creates tag spec/<id>-start.
 pub fn promote_spec(id: &str, json: bool) -> Result<()> {
+    let result = promote_spec_value(id)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        let new_status = result["new_status"].as_str().unwrap_or("unknown");
+        let file_path = result["file"].as_str().unwrap_or("");
+        println!("Promoted: {} → {}", id, new_status);
+        println!("  File: {}", file_path);
+        if new_status == "active" {
+            println!("  Tag: spec/{}-start", id);
+        }
+    }
+
+    Ok(())
+}
+
+/// Promote a spec and return structured result (for MCP).
+pub fn promote_spec_value(id: &str) -> Result<serde_json::Value> {
     let (file_path, fm) = mutate_spec(id, |fm| match fm.status.as_deref() {
         Some("draft") => {
             fm.status = Some("ready".to_string());
@@ -1137,33 +1156,37 @@ pub fn promote_spec(id: &str, json: bool) -> Result<()> {
         .context("Failed to commit")?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        // If nothing to commit (file unchanged in git's view), that's ok
         if !stderr.contains("nothing to commit") {
             anyhow::bail!("git commit failed: {}", stderr);
         }
     }
 
+    Ok(serde_json::json!({
+        "command": "promote",
+        "spec_id": id,
+        "new_status": new_status,
+        "file": file_path,
+    }))
+}
+
+/// Complete an active spec (release + archive + tag)
+pub fn complete_spec(id: &str, major: bool, json: bool) -> Result<()> {
+    let result = complete_spec_value(id, major)?;
+
     if json {
-        let result = serde_json::json!({
-            "command": "promote",
-            "spec_id": id,
-            "new_status": new_status,
-            "file": file_path,
-        });
         println!("{}", serde_json::to_string_pretty(&result)?);
     } else {
-        println!("Promoted: {} → {}", id, new_status);
-        println!("  File: {}", file_path);
-        if new_status == "active" {
-            println!("  Tag: spec/{}-start", id);
-        }
+        let file_path = result["file"].as_str().unwrap_or("");
+        println!("Completed: {} → complete", id);
+        println!("  Archived: spec/{}", id);
+        println!("  Recover: git show spec/{}:{}", id, file_path);
     }
 
     Ok(())
 }
 
-/// Complete an active spec (release + archive + tag)
-pub fn complete_spec(id: &str, major: bool, json: bool) -> Result<()> {
+/// Complete an active spec and return structured result (for MCP).
+pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
     // 1. Find spec and validate status
     let (file_path, old_status, title) = find_spec(id)?;
     match old_status.as_deref() {
@@ -1237,17 +1260,28 @@ pub fn complete_spec(id: &str, major: bool, json: bool) -> Result<()> {
         archive_spec_inner(id, &file_path, "complete", title_str, &spec_dir)?;
     }
 
+    Ok(serde_json::json!({
+        "command": "complete",
+        "spec_id": id,
+        "new_status": "complete",
+        "archived": true,
+        "tag": format!("spec/{}", id),
+        "file": file_path,
+    }))
+}
+
+/// Abandon a spec (archive + tag, no release)
+pub fn abandon_spec(id: &str, reason: Option<&str>, json: bool) -> Result<()> {
+    let result = abandon_spec_value(id, reason)?;
+
     if json {
-        let result = serde_json::json!({
-            "command": "complete",
-            "spec_id": id,
-            "new_status": "complete",
-            "archived": true,
-            "tag": format!("spec/{}", id),
-        });
         println!("{}", serde_json::to_string_pretty(&result)?);
     } else {
-        println!("Completed: {} → complete", id);
+        let file_path = result["file"].as_str().unwrap_or("");
+        println!("Abandoned: {}", id);
+        if let Some(r) = reason {
+            println!("  Reason: {}", r);
+        }
         println!("  Archived: spec/{}", id);
         println!("  Recover: git show spec/{}:{}", id, file_path);
     }
@@ -1255,8 +1289,8 @@ pub fn complete_spec(id: &str, major: bool, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// Abandon a spec (archive + tag, no release)
-pub fn abandon_spec(id: &str, reason: Option<&str>, json: bool) -> Result<()> {
+/// Abandon a spec and return structured result (for MCP).
+pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<serde_json::Value> {
     // 1. Find spec and validate status
     let (file_path, old_status, title) = find_spec(id)?;
     match old_status.as_deref() {
@@ -1305,26 +1339,15 @@ pub fn abandon_spec(id: &str, reason: Option<&str>, json: bool) -> Result<()> {
     let spec_dir = resolve_spec_dir(&file_path);
     archive_spec_inner(id, &file_path, "abandoned", &description, &spec_dir)?;
 
-    if json {
-        let result = serde_json::json!({
-            "command": "abandon",
-            "spec_id": id,
-            "new_status": "abandoned",
-            "reason": reason,
-            "archived": true,
-            "tag": format!("spec/{}", id),
-        });
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        println!("Abandoned: {}", id);
-        if let Some(r) = reason {
-            println!("  Reason: {}", r);
-        }
-        println!("  Archived: spec/{}", id);
-        println!("  Recover: git show spec/{}:{}", id, file_path);
-    }
-
-    Ok(())
+    Ok(serde_json::json!({
+        "command": "abandon",
+        "spec_id": id,
+        "new_status": "abandoned",
+        "reason": reason,
+        "archived": true,
+        "tag": format!("spec/{}", id),
+        "file": file_path,
+    }))
 }
 
 /// Pause an active spec with reason.
@@ -1332,6 +1355,23 @@ pub fn abandon_spec(id: &str, reason: Option<&str>, json: bool) -> Result<()> {
 /// Enforces one-paused-spec rule, creates WIP commit if dirty,
 /// tags with spec/<id>-paused-<N>, rolls back YAML on failure.
 pub fn pause_spec(id: &str, reason: &str, json: bool) -> Result<()> {
+    let result = pause_spec_value(id, reason)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        let tag_name = result["tag"].as_str().unwrap_or("");
+        println!("Paused: {} → paused", id);
+        println!("  Reason: {}", reason);
+        println!("  Tag: {}", tag_name);
+        println!("  Resume: patina spec resume {}", id);
+    }
+
+    Ok(())
+}
+
+/// Pause an active spec and return structured result (for MCP).
+pub fn pause_spec_value(id: &str, reason: &str) -> Result<serde_json::Value> {
     // 1. Find spec and validate status
     let (file_path, old_status, _title) = find_spec(id)?;
     match old_status.as_deref() {
@@ -1417,24 +1457,14 @@ pub fn pause_spec(id: &str, reason: &str, json: bool) -> Result<()> {
         Ok(())
     })?;
 
-    if json {
-        let result = serde_json::json!({
-            "command": "pause",
-            "spec_id": id,
-            "new_status": "paused",
-            "reason": reason,
-            "tag": tag_name,
-            "paused_date": today,
-        });
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        println!("Paused: {} → paused", id);
-        println!("  Reason: {}", reason);
-        println!("  Tag: {}", tag_name);
-        println!("  Resume: patina spec resume {}", id);
-    }
-
-    Ok(())
+    Ok(serde_json::json!({
+        "command": "pause",
+        "spec_id": id,
+        "new_status": "paused",
+        "reason": reason,
+        "tag": tag_name,
+        "paused_date": today,
+    }))
 }
 
 /// Resume a paused or blocked spec.
@@ -1442,6 +1472,62 @@ pub fn pause_spec(id: &str, reason: &str, json: bool) -> Result<()> {
 /// For blocked specs: checks all blockers are complete (or --force).
 /// Shows context diffs from paused_at_tag. Clears pause/block fields.
 pub fn resume_spec(id: &str, force: bool, json: bool) -> Result<()> {
+    let result = resume_spec_value(id, force)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        let tag_name = result["tag"].as_str().unwrap_or("");
+        let paused_at_tag = result["paused_at_tag"].as_str();
+        println!("Resumed: {} → active", id);
+        println!("  Tag: {}", tag_name);
+
+        if let Some(pause_tag) = paused_at_tag {
+            // What changed while away
+            println!("\n--- Changes since pause ({}) ---", pause_tag);
+            let output = Command::new("git")
+                .args(["diff", "--stat", &format!("{}..HEAD", pause_tag)])
+                .output();
+            if let Ok(output) = output {
+                let diff = String::from_utf8_lossy(&output.stdout);
+                if diff.trim().is_empty() {
+                    println!("  (no changes)");
+                } else {
+                    for line in diff.lines() {
+                        println!("  {}", line);
+                    }
+                }
+            }
+
+            // What you accomplished before pausing
+            let start_tag = format!("spec/{}-start", id);
+            if patina::git::tag_exists(&start_tag).unwrap_or(false) {
+                println!(
+                    "\n--- Your work before pause ({}..{}) ---",
+                    start_tag, pause_tag
+                );
+                let output = Command::new("git")
+                    .args(["diff", "--stat", &format!("{}..{}", start_tag, pause_tag)])
+                    .output();
+                if let Ok(output) = output {
+                    let diff = String::from_utf8_lossy(&output.stdout);
+                    if diff.trim().is_empty() {
+                        println!("  (no changes)");
+                    } else {
+                        for line in diff.lines() {
+                            println!("  {}", line);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Resume a paused or blocked spec and return structured result (for MCP).
+pub fn resume_spec_value(id: &str, force: bool) -> Result<serde_json::Value> {
     // 1. Find spec and validate status
     let (file_path, old_status, _title) = find_spec(id)?;
     let status_str = old_status.as_deref().unwrap_or("");
@@ -1544,69 +1630,41 @@ pub fn resume_spec(id: &str, force: bool, json: bool) -> Result<()> {
         }
     }
 
-    // 8. Show context diffs (non-JSON mode)
-    if !json {
-        println!("Resumed: {} → active", id);
-        println!("  Tag: {}", tag_name);
-
-        if let Some(ref pause_tag) = paused_at_tag {
-            // What changed while away
-            println!("\n--- Changes since pause ({}) ---", pause_tag);
-            let output = Command::new("git")
-                .args(["diff", "--stat", &format!("{}..HEAD", pause_tag)])
-                .output();
-            if let Ok(output) = output {
-                let diff = String::from_utf8_lossy(&output.stdout);
-                if diff.trim().is_empty() {
-                    println!("  (no changes)");
-                } else {
-                    for line in diff.lines() {
-                        println!("  {}", line);
-                    }
-                }
-            }
-
-            // What you accomplished before pausing
-            let start_tag = format!("spec/{}-start", id);
-            if patina::git::tag_exists(&start_tag)? {
-                println!(
-                    "\n--- Your work before pause ({}..{}) ---",
-                    start_tag, pause_tag
-                );
-                let output = Command::new("git")
-                    .args(["diff", "--stat", &format!("{}..{}", start_tag, pause_tag)])
-                    .output();
-                if let Ok(output) = output {
-                    let diff = String::from_utf8_lossy(&output.stdout);
-                    if diff.trim().is_empty() {
-                        println!("  (no changes)");
-                    } else {
-                        for line in diff.lines() {
-                            println!("  {}", line);
-                        }
-                    }
-                }
-            }
-        }
-    } else {
-        let result = serde_json::json!({
-            "command": "resume",
-            "spec_id": id,
-            "new_status": "active",
-            "previous_status": status_str,
-            "tag": tag_name,
-            "paused_at_tag": paused_at_tag,
-        });
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    }
-
-    Ok(())
+    Ok(serde_json::json!({
+        "command": "resume",
+        "spec_id": id,
+        "new_status": "active",
+        "previous_status": status_str,
+        "tag": tag_name,
+        "paused_at_tag": paused_at_tag,
+    }))
 }
 
 /// Block an active spec on another spec.
 ///
 /// Appends to blocked_by list, updates spec_deps, creates annotated tag.
 pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<()> {
+    let result = block_spec_value(id, blocker, reason)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        let tag_name = result["tag"].as_str().unwrap_or("");
+        println!("Blocked: {} → blocked", id);
+        println!("  Blocked by: {}", blocker);
+        println!("  Reason: {}", reason);
+        println!("  Tag: {}", tag_name);
+        println!(
+            "  Unblock: patina spec resume {} (when {} is complete)",
+            id, blocker
+        );
+    }
+
+    Ok(())
+}
+
+/// Block an active spec and return structured result (for MCP).
+pub fn block_spec_value(id: &str, blocker: &str, reason: &str) -> Result<serde_json::Value> {
     // 1. Validate spec is active
     let (spec_file_path, old_status, _title) = find_spec(id)?;
     match old_status.as_deref() {
@@ -1680,28 +1738,14 @@ pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<(
         Ok(())
     })?;
 
-    if json {
-        let result = serde_json::json!({
-            "command": "block",
-            "spec_id": id,
-            "new_status": "blocked",
-            "blocker": blocker,
-            "reason": reason,
-            "tag": tag_name,
-        });
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        println!("Blocked: {} → blocked", id);
-        println!("  Blocked by: {}", blocker);
-        println!("  Reason: {}", reason);
-        println!("  Tag: {}", tag_name);
-        println!(
-            "  Unblock: patina spec resume {} (when {} is complete)",
-            id, blocker
-        );
-    }
-
-    Ok(())
+    Ok(serde_json::json!({
+        "command": "block",
+        "spec_id": id,
+        "new_status": "blocked",
+        "blocker": blocker,
+        "reason": reason,
+        "tag": tag_name,
+    }))
 }
 
 // ============================================================================
@@ -1717,6 +1761,31 @@ pub fn split_spec(
     description: Option<&str>,
     json: bool,
 ) -> Result<()> {
+    let result = split_spec_value(id, new_id, description)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        let derived_id = result["new_spec_id"].as_str().unwrap_or("");
+        let version_tag = result["version_tag"].as_str().unwrap_or("");
+        let new_spec_path = result["new_spec_path"].as_str().unwrap_or("");
+        let file_path = result["original_file"].as_str().unwrap_or("");
+        println!("Split: {}", id);
+        println!("  Completed: {} → archived (spec/{})", id, id);
+        println!("  Version tag: {}", version_tag);
+        println!("  New draft: {} ({})", derived_id, new_spec_path);
+        println!("  Recover parent: git show {}:{}", version_tag, file_path);
+    }
+
+    Ok(())
+}
+
+/// Split a spec and return structured result (for MCP).
+pub fn split_spec_value(
+    id: &str,
+    new_id: Option<&str>,
+    description: Option<&str>,
+) -> Result<serde_json::Value> {
     // 1. Find spec and validate status (active or paused)
     let (file_path, old_status, title) = find_spec(id)?;
     match old_status.as_deref() {
@@ -1868,26 +1937,16 @@ pub fn split_spec(
         }
     }
 
-    if json {
-        let result = serde_json::json!({
-            "command": "split",
-            "original_spec_id": id,
-            "new_spec_id": derived_id,
-            "version_tag": version_tag,
-            "archive_tag": format!("spec/{}", id),
-            "new_spec_path": new_spec_path,
-            "status": "completed",
-        });
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        println!("Split: {}", id);
-        println!("  Completed: {} → archived (spec/{})", id, id);
-        println!("  Version tag: {}", version_tag);
-        println!("  New draft: {} ({})", derived_id, new_spec_path);
-        println!("  Recover parent: git show {}:{}", version_tag, file_path);
-    }
-
-    Ok(())
+    Ok(serde_json::json!({
+        "command": "split",
+        "original_spec_id": id,
+        "new_spec_id": derived_id,
+        "version_tag": version_tag,
+        "archive_tag": format!("spec/{}", id),
+        "new_spec_path": new_spec_path,
+        "original_file": file_path,
+        "status": "completed",
+    }))
 }
 
 // ============================================================================
@@ -1898,15 +1957,65 @@ pub fn split_spec(
 ///
 /// Ranking: active > blocked-ready-to-resume > paused-with-age > impact > drafts
 pub fn next_spec(json: bool) -> Result<()> {
+    let result = next_spec_value()?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        return Ok(());
+    }
+
+    let recommendations = match result.as_array() {
+        Some(arr) => arr,
+        None => {
+            println!("No specs found.");
+            return Ok(());
+        }
+    };
+
+    if recommendations.is_empty() {
+        println!("No actionable specs found.");
+        return Ok(());
+    }
+
+    // Top recommendation
+    let top = &recommendations[0];
+    println!("RECOMMENDED: {}", top["id"].as_str().unwrap_or(""));
+    println!("  Status: {}", top["status"].as_str().unwrap_or(""));
+    println!("  Reason: {}", top["reason"].as_str().unwrap_or(""));
+    let impact = top["impact"].as_u64().unwrap_or(0);
+    if impact > 0 {
+        println!("  Impact: blocks {} other spec(s)", impact);
+    }
+
+    // Show the rest as alternatives
+    if recommendations.len() > 1 {
+        println!("\nOther specs:");
+        for rec in &recommendations[1..] {
+            let impact = rec["impact"].as_u64().unwrap_or(0);
+            let impact_str = if impact > 0 {
+                format!(" (blocks {})", impact)
+            } else {
+                String::new()
+            };
+            println!(
+                "  {:<28} {:<10} {}{}",
+                rec["id"].as_str().unwrap_or(""),
+                rec["status"].as_str().unwrap_or(""),
+                rec["reason"].as_str().unwrap_or(""),
+                impact_str
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Recommend the next spec and return structured result (for MCP).
+pub fn next_spec_value() -> Result<serde_json::Value> {
     let all_specs = get_all_specs(&ListFilters::default())?;
 
     if all_specs.is_empty() {
-        if json {
-            println!("{{}}");
-        } else {
-            println!("No specs found.");
-        }
-        return Ok(());
+        return Ok(serde_json::json!([]));
     }
 
     // Load blocked specs to check for unblocked ones
@@ -2006,42 +2115,7 @@ pub fn next_spec(json: bool) -> Result<()> {
     // Sort by priority (ascending), then by impact (descending)
     recommendations.sort_by(|a, b| a.priority.cmp(&b.priority).then(b.impact.cmp(&a.impact)));
 
-    if json {
-        println!("{}", serde_json::to_string_pretty(&recommendations)?);
-        return Ok(());
-    }
-
-    if recommendations.is_empty() {
-        println!("No actionable specs found.");
-        return Ok(());
-    }
-
-    // Top recommendation
-    let top = &recommendations[0];
-    println!("RECOMMENDED: {}", top.id);
-    println!("  Status: {}", top.status);
-    println!("  Reason: {}", top.reason);
-    if top.impact > 0 {
-        println!("  Impact: blocks {} other spec(s)", top.impact);
-    }
-
-    // Show the rest as alternatives
-    if recommendations.len() > 1 {
-        println!("\nOther specs:");
-        for rec in &recommendations[1..] {
-            let impact_str = if rec.impact > 0 {
-                format!(" (blocks {})", rec.impact)
-            } else {
-                String::new()
-            };
-            println!(
-                "  {:<28} {:<10} {}{}",
-                rec.id, rec.status, rec.reason, impact_str
-            );
-        }
-    }
-
-    Ok(())
+    Ok(serde_json::to_value(&recommendations)?)
 }
 
 /// Compute age in days for a spec from the all-specs list.
