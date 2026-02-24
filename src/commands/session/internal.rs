@@ -647,6 +647,9 @@ pub fn end_session(project_root: &Path) -> Result<()> {
         session_tag, end_tag
     );
 
+    // Spec integration (Phase 5: next suggestion + unblock detection)
+    show_spec_end_summary(&changed_files);
+
     // 8. Count beliefs captured during this session
     let (beliefs_captured, beliefs_summary) = count_beliefs_captured(project_root, &changed_files);
     println!();
@@ -1132,6 +1135,84 @@ fn show_spec_status_in_update(changed_files: &[String]) {
                 }
             }
         }
+    }
+}
+
+/// Show spec summary at session end: next recommendation and unblock detection.
+///
+/// If spec files were changed, detects completed specs and shows what they unblock.
+/// Always shows the next recommended spec.
+fn show_spec_end_summary(changed_files: &[String]) {
+    let all_specs = match spec::get_all_specs(&spec::ListFilters::default()) {
+        Ok(specs) => specs,
+        Err(_) => return,
+    };
+
+    if all_specs.is_empty() {
+        return;
+    }
+
+    // Check for spec completions in changed files
+    let spec_changes: Vec<_> = changed_files
+        .iter()
+        .filter(|f| f.starts_with("layer/surface/build/") && f.ends_with("SPEC.md"))
+        .collect();
+
+    if !spec_changes.is_empty() {
+        // Check what specs got completed/paused this session
+        let blocked_specs = spec::get_blocked_specs().unwrap_or_default();
+        let unblocked: Vec<_> = blocked_specs
+            .iter()
+            .filter(|b| {
+                b.blocked_by.is_empty()
+                    || b.blocked_by
+                        .iter()
+                        .all(|bl| bl.status == "complete" || bl.status == "done")
+            })
+            .collect();
+
+        if !unblocked.is_empty() {
+            println!();
+            println!("Specs unblocked:");
+            for s in &unblocked {
+                println!("  {} — ready to resume", s.id);
+            }
+        }
+
+    }
+
+    // Next spec recommendation
+    let active: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("active"))
+        .collect();
+    let paused: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("paused"))
+        .collect();
+    let ready: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("ready"))
+        .collect();
+    let drafts: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("draft"))
+        .collect();
+
+    println!();
+    println!("Next session:");
+    if !active.is_empty() {
+        println!("  Continue: {} (active)", active[0].id);
+    } else if !paused.is_empty() {
+        let top = &paused[0];
+        let age = spec::spec_age_days_from_list(top);
+        println!("  Resume: {} (paused {}d)", top.id, age);
+    } else if !ready.is_empty() {
+        println!("  Start: {} (ready)", ready[0].id);
+    } else if !drafts.is_empty() {
+        println!("  Promote a draft to ready");
+    } else {
+        println!("  No specs queued — create a new spec");
     }
 }
 
