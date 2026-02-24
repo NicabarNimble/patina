@@ -223,7 +223,7 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
     println!("  Branch: {}", branch);
     println!("  Tag: {}", session_tag);
 
-    // Git coaching
+    // Git coaching (concise — skill reads stdout directly)
     if git::is_git_repo().unwrap_or(false) {
         println!();
         println!("Session Strategy:");
@@ -246,15 +246,22 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
     // Previous session beliefs
     show_previous_session_beliefs(project_root);
 
-    // Prompt LLM to fill in context
-    println!();
+    // Previous session reference (printed so skill can use stdout directly)
     let last_session_path = project_root.join(LAST_SESSION_PATH);
     if last_session_path.exists() {
+        if let Ok(content) = fs::read_to_string(&last_session_path) {
+            println!();
+            for line in content.lines() {
+                println!("{}", line);
+            }
+        }
+        println!();
         println!(
             "Please read {} and fill in the Previous Session Context section above.",
             LAST_SESSION_PATH
         );
     } else {
+        println!();
         println!("No previous session found. Starting fresh.");
     }
     println!(
@@ -362,7 +369,36 @@ pub fn update_session(project_root: &Path) -> Result<()> {
         println!("Session Health: Good (active development)");
     }
 
-    // 6. Append update section to active session markdown
+    // 6. Get commit list and files changed for structured output
+    let session_tag = read_session_field(&session_path, "**Session Tag**: ").unwrap_or_default();
+    let changed_files = if !session_tag.is_empty() {
+        git::files_changed_since(&session_tag).unwrap_or_default()
+    } else {
+        vec![]
+    };
+    let commit_list = git::log_oneline(commits_this_session.min(20)).unwrap_or_default();
+
+    // Print structured commit/file info for skill consumption
+    if !commit_list.is_empty() {
+        println!();
+        println!("Commits this session:");
+        for line in commit_list.lines() {
+            println!("  {}", line);
+        }
+    }
+
+    if !changed_files.is_empty() {
+        println!();
+        println!("Files changed this session ({}):", changed_files.len());
+        for f in changed_files.iter().take(20) {
+            println!("  {}", f);
+        }
+        if changed_files.len() > 20 {
+            println!("  ... and {} more", changed_files.len() - 20);
+        }
+    }
+
+    // 7. Append update section to active session markdown
     let now = Local::now();
     let time_str = now.format("%H:%M").to_string();
     let mut update_section = format!(
@@ -371,10 +407,41 @@ pub fn update_session(project_root: &Path) -> Result<()> {
     );
     update_section.push_str("\n**Git Activity:**\n");
     update_section.push_str(&format!(
-        "- Commits this session: {}\n",
-        commits_this_session
+        "- Commits this session: {}{}\n",
+        commits_this_session,
+        if !commit_list.is_empty() {
+            format!(
+                " ({})",
+                commit_list
+                    .lines()
+                    .map(|l| {
+                        let sha = l.split_whitespace().next().unwrap_or("");
+                        format!("[[commit-{}]]", sha)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        } else {
+            String::new()
+        }
     ));
-    update_section.push_str(&format!("- Files changed: {}\n", total_changes));
+    update_section.push_str(&format!(
+        "- Files changed: {}\n",
+        if !changed_files.is_empty() {
+            format!(
+                "{} (`{}`)",
+                changed_files.len(),
+                changed_files
+                    .iter()
+                    .take(4)
+                    .map(|f| f.rsplit('/').next().unwrap_or(f).to_string())
+                    .collect::<Vec<_>>()
+                    .join("`, `")
+            )
+        } else {
+            total_changes.to_string()
+        }
+    ));
     update_section.push_str(&format!("- Last commit: {}\n", last_commit_time));
     update_section.push('\n');
 
