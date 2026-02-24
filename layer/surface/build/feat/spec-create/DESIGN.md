@@ -4,14 +4,15 @@ Step-by-step implementation guide. Read SPEC.md first for the full
 rationale — this doc is the mechanical "how."
 
 **Prerequisite:** spec-module-split must be complete. This walkthrough
-assumes `src/commands/spec/internal/` exists with `types.rs` providing
-the `SpecType` registry and `lookup()` function.
+assumes `src/commands/spec/internal/` directory exists. `types.rs`
+(SpecType registry + body templates) is created as part of this spec
+— it has no callers until `create.rs` uses it.
 
 ## Before You Start
 
 ```bash
 # Verify prerequisite
-ls src/commands/spec/internal/types.rs   # must exist
+ls src/commands/spec/internal/mod.rs     # must exist (from spec-module-split)
 cargo test -p patina                     # all green
 
 # Understand the pattern — read one existing mutation
@@ -20,13 +21,26 @@ cat src/commands/spec/internal/mutations.rs | head -80
 
 Read these files in order:
 1. `src/commands/spec/mod.rs` — where Create variant goes
-2. `src/commands/spec/internal/types.rs` — registry you'll call
-3. `src/commands/spec/internal/mutations.rs` — `_value()` pattern to follow
-4. `src/spec.rs` — `SpecFrontmatter` + `serialize_spec_file()`
-5. `src/mcp/server.rs` — where MCP tool gets registered
-6. `resources/claude/spec.md` — skill definition to update
+2. `src/commands/spec/internal/mutations.rs` — `_value()` pattern to follow
+3. `src/spec.rs` — `SpecFrontmatter` + `serialize_spec_file()`
+4. `src/mcp/server.rs` — where MCP tool gets registered
+5. `resources/claude/spec.md` — skill definition to update
 
-## Step 1: Add SpecCommands::Create to mod.rs
+## Step 1: Create internal/types.rs
+
+New file: `src/commands/spec/internal/types.rs` — the SpecType registry.
+This is created here (not in spec-module-split) because it has no
+callers until `create.rs` uses it. See spec-module-split SPEC.md
+section "Extract SpecType registry into types.rs" for the full design
+(struct, constants, lookup function, body templates).
+
+Add to `internal/mod.rs`:
+
+```rust
+pub(crate) mod types;
+```
+
+## Step 2: Add SpecCommands::Create to mod.rs
 
 In `src/commands/spec/mod.rs`, add the new variant to `SpecCommands`:
 
@@ -78,7 +92,7 @@ pub fn create(
 }
 ```
 
-## Step 2: Dispatch in main.rs
+## Step 3: Dispatch in main.rs
 
 Find the `SpecCommands` match block in `src/main.rs` and add:
 
@@ -102,7 +116,7 @@ SpecCommands::Create {
 ),
 ```
 
-## Step 3: Create internal/create.rs
+## Step 4: Create internal/create.rs
 
 New file: `src/commands/spec/internal/create.rs`
 
@@ -338,7 +352,7 @@ mod create;
 pub(super) use create::{create_spec, create_spec_value};
 ```
 
-## Step 4: Register MCP Tool
+## Step 5: Register MCP Tool
 
 In `src/mcp/server.rs`, add to the tools array (after `spec.split`):
 
@@ -431,7 +445,7 @@ This requires adding `create_spec_value` to the parent mod.rs re-exports:
 pub(crate) use internal::create_spec_value;
 ```
 
-## Step 5: Update /spec Skill
+## Step 6: Update /spec Skill
 
 In `resources/claude/spec.md`, add to the MUTATIONS section (before
 `spec.promote`):
@@ -447,7 +461,7 @@ In `resources/claude/spec.md`, add to the MUTATIONS section (before
 The skill file is compile-time embedded via `include_str!` in
 `src/adapters/templates.rs`. A `cargo build` picks up the change.
 
-## Step 6: Add Clap Tests
+## Step 7: Add Clap Tests
 
 In `src/commands/spec/mod.rs`, add to the test module:
 
