@@ -425,6 +425,29 @@ expect: = 0
 label: all-verbs-have-depth
 ```
 
+## Storage: Same Eventlog, Not a New One
+
+Measurement events go into the existing `patina.db` eventlog table — same
+append-only store everything else uses. No new database.
+
+**Current state (2026-02-25):** `patina.db` is 260 MB total. The eventlog has
+416K events, of which 97% (403K) are `code.*` events from scrape. Everything
+else — git, sessions, beliefs, scry, forge — is 13K events (3%).
+
+Measurement events are low-frequency: ~1 event per tool run, maybe 5-10 per
+session. Over a year, a few thousand events. This is noise next to the code
+analysis data that dominates the eventlog.
+
+**If size becomes a concern later:**
+1. **Rebuild** — `patina.db` is a rebuild cache. Delete it, re-scrape, fresh.
+   This already works today.
+2. **Compaction** — Future `patina eventlog compact --older-than 90d` could
+   prune old events while keeping materialized views intact. Not needed now.
+3. **Selective scrape** — The `code.*` events are the size driver (97%).
+   Measurement events won't move the needle.
+
+No special storage design needed. The eventlog handles this.
+
 ## Risks
 
 1. **Event volume** — Measurement events are low-frequency (one per tool run).
