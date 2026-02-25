@@ -394,20 +394,22 @@ cleanup or type-safety polish.
 
 ## Exit Criteria
 
-- [ ] No manual read-parse-mutate-write-DB outside `mutate_spec`
-- [ ] No double `find_spec` calls in any `_value()` function
-- [ ] `resume_spec_value` reads the spec file exactly once
-- [ ] `find_spec` remains lightweight (no file reads) for read-only callers
-- [ ] `load_spec` asserts `frontmatter.id == lookup_key`
-- [ ] `with_content_rollback` takes explicit backup (no redundant reads)
-- [ ] `_value()` functions return `MutationResult` or `SplitResult`
-- [ ] Every current JSON field has a home (no silent drops)
-- [ ] `archive_spec_inner` takes `Option<&Path>`
-- [ ] Zero `// ====` section banners in `internal/` files
-- [ ] `complete_spec_value` and `split_spec_value` share release logic
-- [ ] All existing tests pass
-- [ ] `cargo clippy` clean
-- [ ] Pre-push checks green
+- [x] No manual read-parse-mutate-write-DB outside `mutate_spec`
+- [x] No double `find_spec` calls in any `_value()` function
+- [x] `resume_spec_value` reads the spec file exactly once
+- [x] `find_spec` remains lightweight (no file reads) for read-only callers
+- [x] `load_spec` asserts `frontmatter.id == lookup_key`
+- [x] `with_content_rollback` takes explicit backup (no redundant reads)
+- [x] `_value()` functions return `MutationResult` or `SplitResult`
+- [x] Every current JSON field has a home (no silent drops)
+- [x] `archive_spec_inner` takes `Option<&Path>`
+- [x] Zero `// ====` section banners in `internal/` files
+- [x] `complete_spec_value` and `split_spec_value` share release logic
+- [x] All existing tests pass
+- [x] `cargo clippy` clean
+- [x] Pre-push checks green
+
+All 4 steps complete. Spec ready for promote → complete.
 
 ## Key Files
 
