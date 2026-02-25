@@ -5,8 +5,7 @@ status: draft
 created: 2026-02-22
 priority: high
 scope: belief-lifecycle
-blocked_by:
-- spec-workflow-rigor
+blocked_by: []  # spec-workflow-rigor completed 2026-02-24
 related:
 - src/mother/graph.rs
 - src/commands/belief/mod.rs
