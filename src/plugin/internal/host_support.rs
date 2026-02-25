@@ -11,7 +11,7 @@
 use std::path::PathBuf;
 
 use super::command::QueryDispatchFn;
-use super::{GrantedCapabilities, QueryScope};
+use super::{CredentialMapping, GrantedCapabilities, InjectionLocation, QueryScope};
 
 // =========================================================================
 // Log host support
@@ -256,6 +256,121 @@ pub(super) struct HttpResult {
     pub body: String,
 }
 
+/// Check if a plugin is granted access to a specific secret.
+///
+/// Reads `~/.patina/plugin-config/secret-grants.toml`. Format:
+/// ```toml
+/// [my-plugin]
+/// secrets = ["github-token"]
+/// ```
+///
+/// Returns true only if the file exists, the plugin is listed, and the
+/// secret is in the plugin's `secrets` array. Denies by default.
+pub(super) fn check_secret_grant(plugin_name: &str, secret_name: &str) -> bool {
+    let grants_path = crate::paths::plugin::secret_grants_path();
+    let content = match std::fs::read_to_string(&grants_path) {
+        Ok(c) => c,
+        Err(_) => {
+            eprintln!(
+                "[plugin:{}] no secret-grants.toml — run 'patina plugin grant {} {}' to allow",
+                plugin_name, plugin_name, secret_name
+            );
+            return false;
+        }
+    };
+    let table: toml::Table = match content.parse() {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!(
+                "[plugin:{}] failed to parse secret-grants.toml: {}",
+                plugin_name, e
+            );
+            return false;
+        }
+    };
+    let plugin_section = match table.get(plugin_name).and_then(|v| v.as_table()) {
+        Some(t) => t,
+        None => {
+            eprintln!(
+                "[plugin:{}] not listed in secret-grants.toml — run 'patina plugin grant {} {}' to allow",
+                plugin_name, plugin_name, secret_name
+            );
+            return false;
+        }
+    };
+    let allowed = plugin_section
+        .get("secrets")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().any(|v| v.as_str() == Some(secret_name)))
+        .unwrap_or(false);
+    if !allowed {
+        eprintln!(
+            "[plugin:{}] secret '{}' not granted — run 'patina plugin grant {} {}' to allow",
+            plugin_name, secret_name, plugin_name, secret_name
+        );
+    }
+    allowed
+}
+
+/// Resolve a credential for a domain: check grants, decrypt from vault, return value.
+///
+/// Returns None if no mapping, not granted, secret missing, or decryption fails.
+/// Logs warnings for each denial — never errors out.
+fn resolve_credential(
+    plugin_name: &str,
+    grants: &GrantedCapabilities,
+    domain: &str,
+) -> Option<(String, String)> {
+    let mapping = grants.credential_mappings.get(domain)?;
+
+    // Secret grants gate: check user-maintained allowlist before decrypting
+    if !check_secret_grant(plugin_name, &mapping.secret_name) {
+        return None;
+    }
+
+    match crate::secrets::get_global_secret(&mapping.secret_name) {
+        Ok(Some(value)) => Some((mapping.secret_name.clone(), value)),
+        Ok(None) => {
+            eprintln!(
+                "[plugin:{}] secret '{}' not found in vault, sending unauthenticated",
+                plugin_name, mapping.secret_name
+            );
+            None
+        }
+        Err(e) => {
+            eprintln!(
+                "[plugin:{}] failed to decrypt secret '{}': {}, sending unauthenticated",
+                plugin_name, mapping.secret_name, e
+            );
+            None
+        }
+    }
+}
+
+/// Inject credential into a request builder based on the mapping's location.
+pub(super) fn inject_credential(
+    builder: reqwest::blocking::RequestBuilder,
+    mapping: &CredentialMapping,
+    value: &str,
+) -> reqwest::blocking::RequestBuilder {
+    match mapping.location {
+        InjectionLocation::Bearer => builder.header("Authorization", format!("Bearer {}", value)),
+    }
+}
+
+/// Scan response body for leaked credential values, replacing with [REDACTED].
+pub(super) fn leak_check(body: &str, secret_name: &str, secret_value: &str) -> String {
+    if body.contains(secret_value) {
+        eprintln!(
+            "[host] credential leak detected in response: secret '{}' found in body, redacting",
+            secret_name
+        );
+        body.replace(secret_value, "[REDACTED]")
+    } else {
+        body.to_string()
+    }
+}
+
 /// Domain-allowlisted HTTP POST.
 ///
 /// Defense in depth: domains are validated at load time (check_capabilities)
@@ -276,14 +391,35 @@ pub(super) fn http_post(
             domain, plugin_name
         ));
     }
-    let response = http_client
+
+    // Credential injection: look up mapping, decrypt, inject header
+    let credential = resolve_credential(plugin_name, grants, &domain);
+
+    let mut request = http_client
         .post(url)
         .header("Content-Type", content_type)
-        .body(body.to_string())
+        .body(body.to_string());
+
+    if let Some((ref _name, ref value)) = credential {
+        if let Some(mapping) = grants.credential_mappings.get(&domain) {
+            request = inject_credential(request, mapping, value);
+        }
+    }
+
+    let response = request
         .send()
         .map_err(|e| format!("HTTP POST failed: {}", e))?;
     let status = response.status().as_u16();
     let resp_body = response.text().map_err(|e| format!("read body: {}", e))?;
+
+    // Leak detection: scan response for injected credential value
+    let resp_body = match credential {
+        Some((ref secret_name, ref secret_value)) => {
+            leak_check(&resp_body, secret_name, secret_value)
+        }
+        None => resp_body,
+    };
+
     Ok(HttpResult {
         status,
         body: resp_body,
@@ -304,12 +440,32 @@ pub(super) fn http_get(
             domain, plugin_name
         ));
     }
-    let response = http_client
-        .get(url)
+
+    // Credential injection: look up mapping, decrypt, inject header
+    let credential = resolve_credential(plugin_name, grants, &domain);
+
+    let mut request = http_client.get(url);
+
+    if let Some((ref _name, ref value)) = credential {
+        if let Some(mapping) = grants.credential_mappings.get(&domain) {
+            request = inject_credential(request, mapping, value);
+        }
+    }
+
+    let response = request
         .send()
         .map_err(|e| format!("HTTP GET failed: {}", e))?;
     let status = response.status().as_u16();
     let resp_body = response.text().map_err(|e| format!("read body: {}", e))?;
+
+    // Leak detection: scan response for injected credential value
+    let resp_body = match credential {
+        Some((ref secret_name, ref secret_value)) => {
+            leak_check(&resp_body, secret_name, secret_value)
+        }
+        None => resp_body,
+    };
+
     Ok(HttpResult {
         status,
         body: resp_body,

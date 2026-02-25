@@ -5,7 +5,7 @@ resolver = "2"
 
 [package]
 name = "patina-ai"
-version = "0.27.0"
+version = "0.29.1"
 edition = "2021"
 license = "MIT"
 description = "Context orchestration for AI development - captures and evolves patterns over time"
@@ -106,9 +106,16 @@ console = "0.15"  # Masked input for secrets (already in tree)
 zeroize = "1.8"  # Zero key material after use (already in tree via age)
 atty = "0.2"  # TTY detection for interactive prompts
 
-# macOS-only: Keychain integration for Touch ID protected secrets
+# Encrypted file storage (dual-storage spec)
+chacha20poly1305 = "0.10"  # Authenticated encryption
+hkdf = "0.12"  # Key derivation
+rand = "0.8"  # Secure random for salt/nonce
+
+# macOS-only: Keychain integration for secrets
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3.5"
+security-framework-sys = "2.16"
+core-foundation = "0.10"
 
 # Unix-only: fork/setsid for background sync
 [target.'cfg(unix)'.dependencies]

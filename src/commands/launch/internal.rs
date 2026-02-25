@@ -5,7 +5,7 @@
 use anyhow::{bail, Context, Result};
 use std::env;
 use std::fs;
-use std::io::{self, Read as _, Write};
+use std::io::{self, IsTerminal, Read as _, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -167,8 +167,48 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         adapters::generate_bootstrap(&adapter_name, &project_path)?;
     }
 
-    // Step 9: Launch adapter
-    launch_adapter_cli(&adapter_name, &project_path)?;
+    // Step 9: Resolve tmux decision and launch adapter
+    let env_disabled = std::env::var("PATINA_TMUX")
+        .map(|v| v == "0")
+        .unwrap_or(false);
+    let is_tty = std::io::stdout().is_terminal();
+    let inside_tmux = std::env::var_os("TMUX").is_some();
+    let tmux_in_path = which::which("tmux").is_ok();
+
+    let (tmux_version_ok, detected_version) = if tmux_in_path {
+        super::check_tmux_version()
+    } else {
+        (false, String::new())
+    };
+
+    let decision = super::resolve_tmux_decision(
+        options.no_tmux,
+        env_disabled,
+        is_tty,
+        inside_tmux,
+        tmux_in_path,
+        tmux_version_ok,
+    );
+
+    // Emit warnings for discoverable reasons
+    match &decision {
+        super::TmuxDecision::Off(super::OffReason::NotInPath) => {
+            eprintln!(
+                "Warning: tmux not found — launching {} directly",
+                adapter_name
+            );
+        }
+        super::TmuxDecision::Off(super::OffReason::TmuxTooOld) => {
+            eprintln!(
+                "Warning: tmux {} too old (need ≥ 1.9) — launching {} directly",
+                detected_version, adapter_name
+            );
+        }
+        _ => {}
+    }
+
+    let session_name = super::derive_session_name(&project_path);
+    launch_adapter_cli(&adapter_name, &project_path, &decision, &session_name)?;
 
     Ok(())
 }
@@ -495,24 +535,112 @@ fn initialize_project(project_path: &Path, adapter_name: &str) -> Result<bool> {
     Ok(true) // Continue to launch
 }
 
-/// Launch the adapter CLI
-fn launch_adapter_cli(adapter_name: &str, project_path: &Path) -> Result<()> {
-    println!("\nLaunching {}...\n", adapter_name);
+/// Try to get the Claude OAuth token from the global secrets vault.
+///
+/// Checks conflict guards first (ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN),
+/// then attempts vault lookup. Returns None on any failure — never propagates errors.
+fn try_get_claude_token() -> Option<String> {
+    // Conflict guard: ANTHROPIC_API_KEY takes priority
+    if env::var("ANTHROPIC_API_KEY").is_ok() {
+        eprintln!("patina: ANTHROPIC_API_KEY set — skipping vault token injection (API key takes priority)");
+        return None;
+    }
+
+    // Conflict guard: CLAUDE_CODE_OAUTH_TOKEN already set externally
+    if env::var("CLAUDE_CODE_OAUTH_TOKEN").is_ok() {
+        eprintln!("patina: CLAUDE_CODE_OAUTH_TOKEN already set — skipping vault token injection");
+        return None;
+    }
+
+    // Attempt vault lookup — catch all errors
+    match patina::secrets::get_global_secret("claude-oauth") {
+        Ok(Some(token)) => Some(token),
+        Ok(None) => None,
+        Err(e) => {
+            eprintln!("patina: failed to read claude-oauth from vault — {}", e);
+            None
+        }
+    }
+}
+
+/// Launch the adapter CLI, optionally wrapped in tmux
+fn launch_adapter_cli(
+    adapter_name: &str,
+    project_path: &Path,
+    decision: &super::TmuxDecision,
+    session_name: &str,
+) -> Result<()> {
+    // Inject Claude auth token if available (adapter-gated)
+    // All warnings print HERE — before exec/tmux takes over stderr.
+    let claude_token = if adapter_name == "claude" {
+        try_get_claude_token()
+    } else {
+        None
+    };
 
     // Use exec to replace current process (Unix-style)
     // On Windows, we'd spawn and wait instead
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
-        let err = Command::new(adapter_name).current_dir(project_path).exec();
+
+        match decision {
+            super::TmuxDecision::Auto => {
+                eprintln!(
+                    "Launching {} in tmux session: {}",
+                    adapter_name, session_name
+                );
+                eprintln!("  Reconnect: tmux attach -t {}", session_name);
+                io::stderr().flush().ok();
+
+                let mut cmd = Command::new("tmux");
+                cmd.args(["new-session", "-A", "-D", "-s", session_name, "-c"]);
+                cmd.arg(project_path.as_os_str()); // non-UTF-8 safe
+                cmd.arg(adapter_name);
+                cmd.current_dir(project_path);
+                if let Some(ref token) = claude_token {
+                    cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
+                }
+                io::stderr().flush().ok();
+
+                let err = cmd.exec();
+                // exec only returns on error — fall back to direct launch
+                eprintln!(
+                    "Warning: failed to exec tmux ({}) — launching {} directly (no session created)",
+                    err, adapter_name
+                );
+                io::stderr().flush().ok();
+                // fall through to direct exec below
+            }
+            super::TmuxDecision::Off(_) => {
+                println!("\nLaunching {}...\n", adapter_name);
+            }
+        }
+
+        // Direct exec (Off path, or Auto fallback after tmux exec failure)
+        let mut cmd = Command::new(adapter_name);
+        cmd.current_dir(project_path);
+        if let Some(ref token) = claude_token {
+            cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
+        }
+        io::stderr().flush().ok();
+
+        let err = cmd.exec();
         // exec only returns on error
         bail!("Failed to exec {}: {}", adapter_name, err);
     }
 
     #[cfg(not(unix))]
     {
-        let status = Command::new(adapter_name)
-            .current_dir(project_path)
+        // tmux not available on non-Unix — always direct launch
+        println!("\nLaunching {}...\n", adapter_name);
+        let mut cmd = Command::new(adapter_name);
+        cmd.current_dir(project_path);
+        if let Some(ref token) = claude_token {
+            cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
+        }
+
+        let status = cmd
             .status()
             .with_context(|| format!("Failed to run {}", adapter_name))?;
 
@@ -526,6 +654,10 @@ fn launch_adapter_cli(adapter_name: &str, project_path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // Serialize env-var tests to avoid races (env is process-global)
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_resolve_current_dir() {
@@ -540,6 +672,89 @@ mod tests {
         // This should work if home dir exists
         if let Ok(p) = path {
             assert!(p.is_absolute());
+        }
+    }
+
+    // --- try_get_claude_token conflict guards ---
+
+    #[test]
+    fn test_claude_token_blocked_by_anthropic_api_key() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        // Save and set
+        let prev = env::var("ANTHROPIC_API_KEY").ok();
+        env::set_var("ANTHROPIC_API_KEY", "sk-ant-test");
+        // Clear the other to avoid interference
+        let prev_oauth = env::var("CLAUDE_CODE_OAUTH_TOKEN").ok();
+        env::remove_var("CLAUDE_CODE_OAUTH_TOKEN");
+
+        let result = try_get_claude_token();
+        assert!(
+            result.is_none(),
+            "should skip when ANTHROPIC_API_KEY is set"
+        );
+
+        // Restore
+        match prev {
+            Some(v) => env::set_var("ANTHROPIC_API_KEY", v),
+            None => env::remove_var("ANTHROPIC_API_KEY"),
+        }
+        match prev_oauth {
+            Some(v) => env::set_var("CLAUDE_CODE_OAUTH_TOKEN", v),
+            None => env::remove_var("CLAUDE_CODE_OAUTH_TOKEN"),
+        }
+    }
+
+    #[test]
+    fn test_claude_token_blocked_by_existing_oauth_token() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        // Save and set
+        let prev_api = env::var("ANTHROPIC_API_KEY").ok();
+        env::remove_var("ANTHROPIC_API_KEY");
+        let prev = env::var("CLAUDE_CODE_OAUTH_TOKEN").ok();
+        env::set_var("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-existing");
+
+        let result = try_get_claude_token();
+        assert!(
+            result.is_none(),
+            "should skip when CLAUDE_CODE_OAUTH_TOKEN already set"
+        );
+
+        // Restore
+        match prev {
+            Some(v) => env::set_var("CLAUDE_CODE_OAUTH_TOKEN", v),
+            None => env::remove_var("CLAUDE_CODE_OAUTH_TOKEN"),
+        }
+        match prev_api {
+            Some(v) => env::set_var("ANTHROPIC_API_KEY", v),
+            None => env::remove_var("ANTHROPIC_API_KEY"),
+        }
+    }
+
+    #[test]
+    fn test_claude_token_clean_env_attempts_vault() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        // Save and clear both
+        let prev_api = env::var("ANTHROPIC_API_KEY").ok();
+        let prev_oauth = env::var("CLAUDE_CODE_OAUTH_TOKEN").ok();
+        env::remove_var("ANTHROPIC_API_KEY");
+        env::remove_var("CLAUDE_CODE_OAUTH_TOKEN");
+
+        // With clean env, function should reach the vault lookup path
+        // without panicking. Result depends on environment:
+        // - No vault → None
+        // - Vault with claude-oauth → Some(token)
+        // - Vault without claude-oauth → None
+        // The key assertion: no conflict guard fires, no panic.
+        let _result = try_get_claude_token();
+
+        // Restore
+        match prev_api {
+            Some(v) => env::set_var("ANTHROPIC_API_KEY", v),
+            None => env::remove_var("ANTHROPIC_API_KEY"),
+        }
+        match prev_oauth {
+            Some(v) => env::set_var("CLAUDE_CODE_OAUTH_TOKEN", v),
+            None => env::remove_var("CLAUDE_CODE_OAUTH_TOKEN"),
         }
     }
 }

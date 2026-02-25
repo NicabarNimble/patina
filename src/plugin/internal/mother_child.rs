@@ -277,6 +277,38 @@ impl PluginEngine {
             }
         }
 
+        // Load-time validation: host_secrets domains must be in host_http
+        let http_set: std::collections::HashSet<&str> = manifest
+            .host_http_domains
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        for (domain, mapping) in &manifest.host_secrets {
+            if !http_set.contains(domain.as_str()) {
+                anyhow::bail!(
+                    "plugin '{}': domain '{}' in host_secrets but not in host_http",
+                    manifest.name,
+                    domain
+                );
+            }
+            // Load-time vault probe: warn if secret missing, don't block load
+            match crate::secrets::get_global_secret(&mapping.secret_name) {
+                Ok(Some(_)) => {} // secret exists, all good
+                Ok(None) => {
+                    eprintln!(
+                        "[plugin:{}] warning: secret '{}' not found in vault (domain '{}')",
+                        manifest.name, mapping.secret_name, domain
+                    );
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[plugin:{}] warning: could not probe secret '{}': {}",
+                        manifest.name, mapping.secret_name, e
+                    );
+                }
+            }
+        }
+
         Ok(())
     }
 

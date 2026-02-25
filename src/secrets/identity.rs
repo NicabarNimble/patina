@@ -2,10 +2,9 @@
 //!
 //! Resolution order:
 //! 1. PATINA_IDENTITY env var (for CI/headless)
-//! 2. macOS Keychain (Touch ID protected)
+//! 2. Storage orchestrator (encrypted file → Keychain with auto-migration)
 
-use crate::secrets::keychain;
-use crate::secrets::recipients;
+use crate::secrets::{encrypted_file, keychain, recipients, storage};
 use age::secrecy::ExposeSecret;
 use age::x25519;
 use anyhow::{bail, Context, Result};
@@ -34,20 +33,23 @@ pub fn get_identity() -> Result<x25519::Identity> {
 
 /// Get the identity as a string (zeroized on drop).
 ///
-/// Useful for export operations.
+/// Resolution order:
+/// 1. PATINA_IDENTITY env var (escape hatch for CI/headless)
+/// 2. Storage orchestrator (handles encrypted file → Keychain with auto-migration)
 pub fn get_identity_string() -> Result<Zeroizing<String>> {
-    // 1. Check env first (CI/headless path)
+    // 1. Check env first (CI/headless path, escape hatch)
     if let Ok(identity) = std::env::var(IDENTITY_ENV_VAR) {
         if !identity.is_empty() {
             log_debug("source = PATINA_IDENTITY (env var)");
             return Ok(Zeroizing::new(identity));
         }
-        log_debug("PATINA_IDENTITY set but empty, falling back to Keychain");
+        log_debug("PATINA_IDENTITY set but empty, falling back to storage");
     }
 
-    // 2. Fall back to Keychain (Mac with Touch ID)
-    log_debug("source = Keychain");
-    Ok(Zeroizing::new(keychain::get_identity()?))
+    // 2. Delegate to storage orchestrator
+    // Storage handles: encrypted file → Keychain with auto-migration
+    log_debug("delegating to storage orchestrator");
+    Ok(Zeroizing::new(storage::get_identity()?))
 }
 
 /// Get the public key (recipient) for the current identity.
@@ -68,19 +70,24 @@ pub fn generate_identity() -> (Zeroizing<String>, String) {
     )
 }
 
-/// Store an identity in the Keychain.
+/// Store an identity using dual-storage strategy.
+///
+/// Validates format, then delegates to storage orchestrator.
+/// - macOS: Writes to BOTH Keychain and encrypted file
+/// - Linux: Writes to encrypted file only
 pub fn store_identity(identity: &str) -> Result<()> {
     // Validate before storing
     if !recipients::is_valid_age_identity(identity) {
         bail!("Invalid age identity format. Expected AGE-SECRET-KEY-1...");
     }
 
-    keychain::store_identity(identity)
+    // Delegate to storage orchestrator
+    storage::store_identity(identity)
 }
 
 /// Import an identity from a string.
 ///
-/// Validates and stores in Keychain.
+/// Validates and stores using dual-storage strategy.
 pub fn import_identity(identity: &str) -> Result<String> {
     let identity = identity.trim();
 
@@ -95,22 +102,22 @@ pub fn import_identity(identity: &str) -> Result<String> {
 
     let recipient = parsed.to_public().to_string();
 
-    // Store in Keychain
-    keychain::store_identity(identity).context("Failed to store identity in Keychain")?;
+    // Store using dual-storage strategy (delegates to storage orchestrator)
+    store_identity(identity).context("Failed to store identity")?;
 
     Ok(recipient)
 }
 
-/// Export the identity from Keychain (zeroized on drop).
+/// Export the identity from storage (zeroized on drop).
 ///
 /// Returns the identity string for backup.
 pub fn export_identity() -> Result<Zeroizing<String>> {
-    Ok(Zeroizing::new(keychain::get_identity()?))
+    get_identity_string()
 }
 
 /// Check if an identity is available.
 ///
-/// Checks env var first, then Keychain.
+/// Checks env var first, then delegates to storage orchestrator.
 pub fn has_identity() -> bool {
     // Check env var
     if let Ok(identity) = std::env::var(IDENTITY_ENV_VAR) {
@@ -119,8 +126,8 @@ pub fn has_identity() -> bool {
         }
     }
 
-    // Check Keychain
-    keychain::has_identity()
+    // Delegate to storage orchestrator
+    storage::has_identity()
 }
 
 /// Identity source for display/debugging.
@@ -128,7 +135,9 @@ pub fn has_identity() -> bool {
 pub enum IdentitySource {
     /// From PATINA_IDENTITY env var
     Environment,
-    /// From macOS Keychain
+    /// From encrypted file (machine-bound)
+    EncryptedFile,
+    /// From macOS Keychain (legacy or dual-storage)
     Keychain,
 }
 
@@ -136,6 +145,7 @@ impl std::fmt::Display for IdentitySource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             IdentitySource::Environment => write!(f, "PATINA_IDENTITY"),
+            IdentitySource::EncryptedFile => write!(f, "Encrypted File"),
             IdentitySource::Keychain => write!(f, "macOS Keychain"),
         }
     }
@@ -150,9 +160,17 @@ pub fn get_identity_source() -> Option<IdentitySource> {
         }
     }
 
-    // Check Keychain
-    if keychain::has_identity() {
-        return Some(IdentitySource::Keychain);
+    // Check encrypted file
+    if encrypted_file::has_identity() {
+        return Some(IdentitySource::EncryptedFile);
+    }
+
+    // Check Keychain (legacy)
+    #[cfg(target_os = "macos")]
+    {
+        if keychain::has_identity() {
+            return Some(IdentitySource::Keychain);
+        }
     }
 
     None

@@ -60,6 +60,9 @@ pub enum SecretsCommands {
 
     /// Scan all tracked files for exposed secrets
     Audit,
+
+    /// Set up Claude Code auth token for headless/SSH sessions
+    SetupClaude,
 }
 
 /// Flags for bare `patina secrets` command
@@ -144,6 +147,7 @@ pub fn execute(command: SecretsCommands) -> Result<()> {
         SecretsCommands::ListRecipients => list_recipients(),
         SecretsCommands::Check => check_staged(),
         SecretsCommands::Audit => audit_tracked(),
+        SecretsCommands::SetupClaude => setup_claude(),
     }
 }
 
@@ -232,7 +236,12 @@ fn add(name: &str, env: Option<&str>, from_stdin: bool, global: bool) -> Result<
         bail!("Secret value cannot be empty");
     }
 
-    secrets::add_secret(name, &secret_value, env, global, project_root.as_deref())
+    let result = secrets::add_secret(name, &secret_value, env, global, project_root.as_deref())?;
+    if result.created_vault {
+        println!("Vault created.");
+    }
+    println!("Added {} -> {}", name, result.env_var);
+    Ok(())
 }
 
 /// Run command with secrets
@@ -338,6 +347,66 @@ fn list_recipients() -> Result<()> {
         for r in recipients {
             println!("  {}", r);
         }
+    }
+
+    Ok(())
+}
+
+/// Guided setup for Claude Code authentication token.
+///
+/// Walks the user through generating and storing a long-lived OAuth token
+/// so the launcher can inject it for headless/SSH/tmux sessions.
+fn setup_claude() -> Result<()> {
+    let project_root = env::current_dir().ok();
+    let replacing = matches!(secrets::get_global_secret("claude-oauth"), Ok(Some(_)));
+
+    // First-time users need instructions; repeat users just need the prompt
+    if !replacing {
+        println!("Claude Code headless auth setup");
+        println!();
+        println!("  1. Run: claude setup-token");
+        println!("     (opens browser once, generates a ~1 year token)");
+        println!();
+        println!("  2. Paste the token below");
+        println!();
+    }
+
+    eprint!("Token: ");
+    let token = secrets::prompt_for_value("claude-oauth")?;
+
+    if token.is_empty() {
+        bail!("Token cannot be empty");
+    }
+
+    if !token.starts_with("sk-ant-") {
+        eprintln!("Warning: doesn't look like a Claude token (expected sk-ant-...)");
+        print!("Save anyway? [y/N]: ");
+        io::stdout().flush()?;
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        if input.trim().to_lowercase() != "y" {
+            return Ok(());
+        }
+    }
+
+    let _result = secrets::add_secret(
+        "claude-oauth",
+        &token,
+        Some("CLAUDE_CODE_OAUTH_TOKEN"),
+        true,
+        project_root.as_deref(),
+    )?;
+
+    // Migrate the identity to AlwaysThisDeviceOnly so SSH sessions can read it.
+    // Re-stores the existing key with the correct Keychain access policy.
+    if let Ok(key) = secrets::export_identity() {
+        let _ = secrets::import_identity(&key);
+    }
+
+    if replacing {
+        println!("Token updated.");
+    } else {
+        println!("Token saved. It will be used automatically by `patina`.");
     }
 
     Ok(())

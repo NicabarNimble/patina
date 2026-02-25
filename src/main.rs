@@ -62,6 +62,10 @@ struct Cli {
     #[arg(long = "adapter", global = true)]
     adapter: Option<String>,
 
+    /// Disable tmux session wrapping (launch adapter directly)
+    #[arg(long = "no-tmux", global = true)]
+    no_tmux: bool,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -1083,6 +1087,7 @@ fn main() -> Result<()> {
                 adapter: cli.adapter,
                 auto_start_mother: true,
                 auto_init: true,
+                no_tmux: cli.no_tmux,
             };
             commands::launch::execute(options)?;
         }
@@ -1365,6 +1370,7 @@ fn main() -> Result<()> {
                         allowed_toy_commands: vec![],
                         host_query_kinds: vec![],
                         host_http_domains: vec![],
+                        host_secrets: std::collections::HashMap::new(),
                         provides: patina::plugin::PluginProvides {
                             child: None,
                             commands: vec!["doctor".into()],

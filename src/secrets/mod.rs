@@ -38,11 +38,13 @@
 //! secrets::run_with_secrets(Some(project_root), &["cargo", "test"])?;
 //! ```
 
+mod encrypted_file;
 mod identity;
 mod keychain;
 mod recipients;
 mod registry;
 mod session;
+mod storage;
 mod vault;
 
 // Public exports
@@ -106,6 +108,14 @@ pub fn check_status(project_root: Option<&Path>) -> Result<SecretsStatus> {
 // Secret Management
 // =============================================================================
 
+/// Result of adding a secret, for callers to display as they see fit.
+pub struct AddResult {
+    /// The env var name mapped to this secret.
+    pub env_var: String,
+    /// Whether a new vault was created (first secret).
+    pub created_vault: bool,
+}
+
 /// Add a secret to the vault.
 ///
 /// - `global = true`: add to global vault (~/.patina/)
@@ -116,7 +126,7 @@ pub fn add_secret(
     env: Option<&str>,
     global: bool,
     project_root: Option<&Path>,
-) -> Result<()> {
+) -> Result<AddResult> {
     // Validate name
     if !registry::is_valid_secret_name(name) {
         bail!(
@@ -161,11 +171,12 @@ pub fn add_secret(
     };
 
     // Check if vault exists, init if not
-    if !vault_path.exists() {
-        println!("Vault not found. Creating...");
-        let recipient = vault::init_vault(&vault_path, &recipients_path)?;
-        println!("✓ Saved public key: {}", recipient);
-    }
+    let created_vault = if !vault_path.exists() {
+        let _recipient = vault::init_vault(&vault_path, &recipients_path)?;
+        true
+    } else {
+        false
+    };
 
     // Load and update vault (requires decrypt → Touch ID)
     let mut vault_data = vault::decrypt_vault(&vault_path)?;
@@ -177,9 +188,10 @@ pub fn add_secret(
     reg.insert(name, &env_var);
     reg.save_to(&registry_path)?;
 
-    println!("✓ Added {} → {}", name, env_var);
-
-    Ok(())
+    Ok(AddResult {
+        env_var,
+        created_vault,
+    })
 }
 
 /// Remove a secret from the vault.
@@ -463,6 +475,34 @@ pub fn list_recipients(project_root: &Path) -> Result<Vec<String>> {
 }
 
 // =============================================================================
+// Single-Secret Accessor
+// =============================================================================
+
+/// Get a single secret from the global vault only.
+///
+/// Decrypts ONLY `~/.patina/vault.age` — never touches project vaults.
+/// Checks session cache first (via `patina serve` if running) to avoid
+/// redundant Touch ID prompts.
+///
+/// Returns `Ok(None)` if the secret doesn't exist or the vault doesn't exist.
+/// Returns `Err` only on actual decryption failure (missing identity, corrupted vault).
+pub fn get_global_secret(name: &str) -> Result<Option<String>> {
+    // 1. Check session cache first (no Touch ID)
+    if let Some(cached) = session::get_cached_secrets() {
+        return Ok(cached.get(name).cloned());
+    }
+
+    // 2. Cache miss — decrypt global vault only
+    let global_path = paths::secrets::vault_path();
+    if !global_path.exists() {
+        return Ok(None);
+    }
+
+    let vault_data = vault::decrypt_vault(&global_path)?;
+    Ok(vault_data.values.get(name).cloned())
+}
+
+// =============================================================================
 // Helper Functions
 // =============================================================================
 
@@ -530,5 +570,22 @@ mod tests {
         let path = paths::secrets::registry_path();
         assert!(path.to_string_lossy().ends_with("secrets.toml"));
         assert!(path.to_string_lossy().contains(".patina"));
+    }
+
+    #[test]
+    fn test_get_global_secret_no_vault() {
+        // When no vault exists, get_global_secret returns Ok(None)
+        // This test relies on the test environment not having ~/.patina/vault.age
+        // or having a session cache running. In CI, neither exists.
+        // If a real vault exists on the dev machine, this still passes because
+        // "nonexistent-secret-name" won't be in it.
+        let result = super::get_global_secret("nonexistent-test-secret-xyzzy");
+        // Either Ok(None) — secret not found — or Err from vault issues,
+        // but never panics
+        match result {
+            Ok(None) => {} // expected in most environments
+            Ok(Some(_)) => panic!("unexpected secret found for random test name"),
+            Err(_) => {} // acceptable: vault exists but identity unavailable in CI
+        }
     }
 }

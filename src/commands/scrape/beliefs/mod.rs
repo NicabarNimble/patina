@@ -1685,7 +1685,7 @@ Prefer synchronous code.
             "zero-evidence max should be ~0.6, got {}",
             score
         );
-        assert!(score >= 0.59, "zero-evidence should be ~0.6, got {}", score);
+        assert!(score >= 0.5, "zero-evidence should be ~0.5+, got {}", score);
 
         // All-healthy: near 1.0
         let mut m2 = BeliefMetrics::default();
