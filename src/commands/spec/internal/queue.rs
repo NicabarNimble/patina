@@ -10,24 +10,25 @@ use super::archive::find_spec;
 use super::queries::{get_all_specs, get_blocked_specs, ListFilters, SpecInfo};
 use super::DB_PATH;
 
+#[derive(Debug, Serialize)]
+pub(crate) struct Recommendation {
+    pub id: String,
+    pub status: String,
+    pub reason: String,
+    pub priority: u32,
+    pub impact: usize,
+}
+
 /// Recommend the next spec to work on based on priority ranking.
 ///
 /// Ranking: active > blocked-ready-to-resume > paused-with-age > impact > drafts
 pub fn next_spec(json: bool) -> Result<()> {
-    let result = next_spec_value()?;
+    let recommendations = next_spec_value()?;
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
+        println!("{}", serde_json::to_string_pretty(&recommendations)?);
         return Ok(());
     }
-
-    let recommendations = match result.as_array() {
-        Some(arr) => arr,
-        None => {
-            println!("No specs found.");
-            return Ok(());
-        }
-    };
 
     if recommendations.is_empty() {
         println!("No actionable specs found.");
@@ -36,30 +37,25 @@ pub fn next_spec(json: bool) -> Result<()> {
 
     // Top recommendation
     let top = &recommendations[0];
-    println!("RECOMMENDED: {}", top["id"].as_str().unwrap_or(""));
-    println!("  Status: {}", top["status"].as_str().unwrap_or(""));
-    println!("  Reason: {}", top["reason"].as_str().unwrap_or(""));
-    let impact = top["impact"].as_u64().unwrap_or(0);
-    if impact > 0 {
-        println!("  Impact: blocks {} other spec(s)", impact);
+    println!("RECOMMENDED: {}", top.id);
+    println!("  Status: {}", top.status);
+    println!("  Reason: {}", top.reason);
+    if top.impact > 0 {
+        println!("  Impact: blocks {} other spec(s)", top.impact);
     }
 
     // Show the rest as alternatives
     if recommendations.len() > 1 {
         println!("\nOther specs:");
         for rec in &recommendations[1..] {
-            let impact = rec["impact"].as_u64().unwrap_or(0);
-            let impact_str = if impact > 0 {
-                format!(" (blocks {})", impact)
+            let impact_str = if rec.impact > 0 {
+                format!(" (blocks {})", rec.impact)
             } else {
                 String::new()
             };
             println!(
                 "  {:<28} {:<10} {}{}",
-                rec["id"].as_str().unwrap_or(""),
-                rec["status"].as_str().unwrap_or(""),
-                rec["reason"].as_str().unwrap_or(""),
-                impact_str
+                rec.id, rec.status, rec.reason, impact_str
             );
         }
     }
@@ -68,11 +64,11 @@ pub fn next_spec(json: bool) -> Result<()> {
 }
 
 /// Recommend the next spec and return structured result (for MCP).
-pub fn next_spec_value() -> Result<serde_json::Value> {
+pub fn next_spec_value() -> Result<Vec<Recommendation>> {
     let all_specs = get_all_specs(&ListFilters::default())?;
 
     if all_specs.is_empty() {
-        return Ok(serde_json::json!([]));
+        return Ok(Vec::new());
     }
 
     // Load blocked specs to check for unblocked ones
@@ -80,15 +76,6 @@ pub fn next_spec_value() -> Result<serde_json::Value> {
 
     // Load spec_deps for impact scoring
     let dep_counts = load_dep_counts();
-
-    #[derive(Debug, Serialize)]
-    struct Recommendation {
-        id: String,
-        status: String,
-        reason: String,
-        priority: u32,
-        impact: usize,
-    }
 
     let mut recommendations: Vec<Recommendation> = Vec::new();
 
@@ -172,7 +159,7 @@ pub fn next_spec_value() -> Result<serde_json::Value> {
     // Sort by priority (ascending), then by impact (descending)
     recommendations.sort_by(|a, b| a.priority.cmp(&b.priority).then(b.impact.cmp(&a.impact)));
 
-    Ok(serde_json::to_value(&recommendations)?)
+    Ok(recommendations)
 }
 
 /// Compute age in days for a spec from the all-specs list.
