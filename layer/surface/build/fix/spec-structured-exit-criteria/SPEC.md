@@ -1,15 +1,16 @@
 ---
 type: fix
 id: spec-structured-exit-criteria
-status: draft
+status: ready
 created: 2026-02-25
 sessions:
   origin: 20260224-212321
 related:
-  - spec-precompletion-gate
+- spec-precompletion-gate
 beliefs:
-  - spec-is-contract
-  - specs-require-zero-ambiguity
+- spec-is-contract
+- specs-require-zero-ambiguity
+exit_criteria: []
 ---
 # fix: Structured exit criteria in spec frontmatter
 
