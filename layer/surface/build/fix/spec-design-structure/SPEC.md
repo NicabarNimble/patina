@@ -1,7 +1,7 @@
 ---
 type: fix
 id: spec-design-structure
-status: ready
+status: active
 created: 2026-02-25
 sessions:
   origin: 20260224-212321
