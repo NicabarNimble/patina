@@ -3,6 +3,7 @@ use rusqlite::Connection;
 use std::path::Path;
 use std::process::Command;
 
+use patina::release::{BumpType, ReleaseStrategy};
 use patina::spec::{parse_spec_file, SpecFrontmatter};
 
 use super::queries::{get_all_specs, scan_disk_specs, ListFilters};
@@ -120,6 +121,54 @@ pub(super) fn archive_spec_inner(
         "\n✓ Archived: {}\n  Tag: {}\n  Recover: git show {}:{}",
         id, tag_name, tag_name, file_path
     );
+
+    Ok(())
+}
+
+/// Release (version bump + archive) or archive-only for a completed spec.
+///
+/// Shared logic between complete_spec_value and split_spec_value.
+/// Caller handles mutation before calling this — this helper is archive-side only.
+pub(super) fn release_and_archive(
+    id: &str,
+    file_path: &str,
+    _frontmatter: &SpecFrontmatter,
+    title: &str,
+    bump: Option<BumpType>,
+) -> Result<()> {
+    // 1. Pre-check: bail if spec/{id} tag already exists
+    let tag_name = format!("spec/{}", id);
+    if tag_exists(&tag_name)? {
+        anyhow::bail!(
+            "Tag '{}' already exists. Spec may have been archived previously.",
+            tag_name
+        );
+    }
+
+    // 2. Resolve spec directory from file_path
+    let spec_dir = resolve_spec_dir(file_path);
+
+    if let Some(bump) = bump {
+        // 3. Release path: preflight → execute → archive tag on HEAD~1
+        let strategy = ReleaseStrategy::from_project(Path::new("."));
+        let prepared = strategy.preflight(bump, file_path)?;
+        let archive_dir = spec_dir
+            .as_ref()
+            .and_then(|d| d.to_str())
+            .or(Some(file_path));
+        prepared.execute(title, file_path, archive_dir)?;
+
+        // Tag HEAD~1 (parent commit still has spec file)
+        println!("Creating tag: {} (on HEAD~1)", tag_name);
+        patina::git::create_tag_at(
+            &tag_name,
+            &format!("Archived spec: {}", title),
+            "HEAD~1",
+        )?;
+    } else {
+        // 4. No release (explore type) — delegate to archive_spec_inner
+        archive_spec_inner(id, file_path, "complete", title, spec_dir.as_deref())?;
+    }
 
     Ok(())
 }
