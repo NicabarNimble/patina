@@ -3,6 +3,8 @@ type: feat
 id: spec-knowledge-evolution
 status: draft
 created: 2026-02-22
+blocked_by:
+- test-blocker
 sessions:
 - 20260222-054702
 - 20260223-120524
