@@ -1,7 +1,7 @@
 ---
 type: fix
 id: spec-precompletion-gate
-status: ready
+status: active
 created: 2026-02-25
 blocked_by:
 - spec-structured-exit-criteria
