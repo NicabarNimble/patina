@@ -435,7 +435,7 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                 },
                 {
                     "name": "spec.set",
-                    "description": "Set a metadata field on a spec. For list fields (beliefs, related, references), prefix value with + to add or - to remove. For scalar fields (target), set directly or pass empty string to clear.",
+                    "description": "Set a metadata field on a spec. For list fields (beliefs, related, references, blocked_by), prefix value with + to add or - to remove. For scalar fields (target), set directly or pass empty string to clear.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -445,7 +445,7 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                             },
                             "field": {
                                 "type": "string",
-                                "description": "Field to set (beliefs, related, references, target)"
+                                "description": "Field to set (beliefs, related, references, blocked_by, target)"
                             },
                             "value": {
                                 "type": "string",
