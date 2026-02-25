@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use regex::Regex;
 use rusqlite::Connection;
 use serde::Serialize;
@@ -318,106 +318,73 @@ pub struct BlockedSpec {
     pub blocked_by: Vec<Blocker>,
 }
 
-/// Query specs that are blocked by incomplete dependencies or have status='blocked'.
+/// Query specs that are blocked by incomplete dependencies or have status='blocked'
+/// (filesystem truth).
 ///
 /// Returns specs where:
-/// - File is in layer/surface/build/ (actual specs, not beliefs)
-/// - Has at least one blocker with status not in ('complete', 'done')
+/// - Exists on disk in layer/surface/build/ (filesystem = truth for existence)
+/// - Has at least one blocker (from frontmatter) with status not in ('complete', 'done')
 ///   OR has status = 'blocked' (set by `spec block` command)
 pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
-    let db_path = Path::new(DB_PATH);
-    if !db_path.exists() {
-        anyhow::bail!("Knowledge database not found. Run 'patina scrape' first.");
-    }
+    let all_specs = get_all_specs(&ListFilters::default())?;
 
-    let conn = Connection::open(db_path).context("Failed to open database")?;
+    // Build status lookup for blocker resolution
+    let status_map: HashMap<String, String> = all_specs
+        .iter()
+        .filter_map(|s| {
+            s.status
+                .as_ref()
+                .map(|st| (s.id.clone(), st.clone()))
+        })
+        .collect();
 
-    // Get specs with incomplete blockers via spec_deps
-    let mut stmt = conn.prepare(
-        r#"
-        SELECT p.id, p.status, p.target, p.title, d.depends_on, b.status
-        FROM patterns p
-        JOIN spec_deps d ON d.spec_id = p.id
-        JOIN patterns b ON d.depends_on = b.id
-        WHERE p.file_path LIKE 'layer/surface/build/%'
-          AND p.status IS NOT NULL
-          AND b.status NOT IN ('complete', 'done')
-        ORDER BY p.id, d.depends_on
-        "#,
-    )?;
-
-    // Group by spec
     let mut specs: Vec<BlockedSpec> = Vec::new();
-    let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut current_id: Option<String> = None;
 
-    let rows = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,         // spec id
-            row.get::<_, String>(1)?,         // spec status
-            row.get::<_, Option<String>>(2)?, // spec target
-            row.get::<_, String>(3)?,         // spec title
-            row.get::<_, String>(4)?,         // blocker id
-            row.get::<_, String>(5)?,         // blocker status
-        ))
-    })?;
+    for spec in &all_specs {
+        let status = spec.status.as_deref().unwrap_or("");
 
-    for row in rows {
-        let (id, status, target, title, blocker_id, blocker_status) = row?;
+        // Resolve blockers from frontmatter blocked_by
+        let incomplete_blockers: Vec<Blocker> = spec
+            .blocked_by
+            .iter()
+            .filter_map(|blocker_id| {
+                let blocker_status = status_map
+                    .get(blocker_id)
+                    .cloned()
+                    // Not on disk = archived = treat as done
+                    .unwrap_or_else(|| "complete".to_string());
+                if blocker_status != "complete" && blocker_status != "done" {
+                    Some(Blocker {
+                        id: blocker_id.clone(),
+                        status: blocker_status,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
 
-        if current_id.as_ref() != Some(&id) {
-            seen_ids.insert(id.clone());
+        if !incomplete_blockers.is_empty() {
             specs.push(BlockedSpec {
-                id: id.clone(),
-                status,
-                target,
-                title,
-                blocked_by: vec![Blocker {
-                    id: blocker_id,
-                    status: blocker_status,
-                }],
+                id: spec.id.clone(),
+                status: status.to_string(),
+                target: spec.target.clone(),
+                title: spec.title.clone(),
+                blocked_by: incomplete_blockers,
             });
-            current_id = Some(id);
-        } else if let Some(spec) = specs.last_mut() {
-            spec.blocked_by.push(Blocker {
-                id: blocker_id,
-                status: blocker_status,
+        } else if status == "blocked" {
+            // status='blocked' but no incomplete blockers in frontmatter
+            specs.push(BlockedSpec {
+                id: spec.id.clone(),
+                status: status.to_string(),
+                target: spec.target.clone(),
+                title: spec.title.clone(),
+                blocked_by: vec![],
             });
         }
     }
 
-    // Also include specs with status='blocked' not already found via spec_deps
-    let mut stmt2 = conn.prepare(
-        r#"
-        SELECT p.id, p.status, p.target, p.title
-        FROM patterns p
-        WHERE p.file_path LIKE 'layer/surface/build/%'
-          AND p.status = 'blocked'
-        ORDER BY p.id
-        "#,
-    )?;
-
-    let blocked_rows = stmt2.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, Option<String>>(2)?,
-            row.get::<_, String>(3)?,
-        ))
-    })?;
-
-    for row in blocked_rows {
-        let (id, status, target, title) = row?;
-        if !seen_ids.contains(&id) {
-            specs.push(BlockedSpec {
-                id,
-                status,
-                target,
-                title,
-                blocked_by: vec![], // No spec_deps but status is blocked
-            });
-        }
-    }
+    specs.sort_by(|a, b| a.id.cmp(&b.id));
 
     Ok(specs)
 }
