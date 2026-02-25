@@ -4,62 +4,81 @@ use std::path::Path;
 use std::process::Command;
 
 use patina::release::{BumpType, ReleaseStrategy};
-use patina::spec::{parse_spec_file, serialize_spec_file, SpecFrontmatter};
+use patina::spec::{serialize_spec_file, SpecFrontmatter};
 
-use super::archive::{archive_spec_inner, find_spec, resolve_spec_dir};
+use super::archive::{archive_spec_inner, find_spec, load_spec, resolve_spec_dir, LoadedSpec};
 use super::queries::{get_all_specs, ListFilters};
 use super::queue::tag_exists;
 use super::DB_PATH;
 
-/// Core YAML + DB status update. Reads the spec file, applies a mutation
+/// Result of a spec mutation: pre/post frontmatter + file path.
+pub(super) struct MutationOutput {
+    pub file_path: String,
+    pub pre: SpecFrontmatter,
+    pub post: SpecFrontmatter,
+}
+
+/// Core YAML + DB status update. Takes a fully loaded spec, applies a mutation
 /// closure to the frontmatter, writes the file back, and updates the DB.
-/// Returns the file path and mutated frontmatter.
-pub(super) fn mutate_spec<F>(id: &str, mutate: F) -> Result<(String, SpecFrontmatter)>
+pub(super) fn mutate_spec<F>(loaded: LoadedSpec, mutate: F) -> Result<MutationOutput>
 where
     F: FnOnce(&mut SpecFrontmatter) -> Result<()>,
 {
-    let found = find_spec(id)?;
+    let pre = loaded.frontmatter.clone();
+    let mut post = loaded.frontmatter;
 
-    let content = std::fs::read_to_string(&found.file_path)
-        .with_context(|| format!("Failed to read {}", found.file_path))?;
+    mutate(&mut post)?;
 
-    let (mut frontmatter, body) = parse_spec_file(&content)
-        .with_context(|| format!("Failed to parse frontmatter in {}", found.file_path))?;
-
-    mutate(&mut frontmatter)?;
-
-    let new_content = serialize_spec_file(&frontmatter, &body)?;
-    std::fs::write(&found.file_path, &new_content)
-        .with_context(|| format!("Failed to write {}", found.file_path))?;
+    let new_content = serialize_spec_file(&post, &loaded.body)?;
+    std::fs::write(&loaded.file_path, &new_content)
+        .with_context(|| format!("Failed to write {}", loaded.file_path))?;
 
     // Update DB status if DB exists
     let db_path = Path::new(DB_PATH);
     if db_path.exists() {
-        if let Some(ref status) = frontmatter.status {
+        if let Some(ref status) = post.status {
             let conn = Connection::open(db_path).context("Failed to open database")?;
             conn.execute(
                 "UPDATE patterns SET status = ?1 WHERE id = ?2",
-                rusqlite::params![status, id],
+                rusqlite::params![status, pre.id],
             )?;
         }
     }
 
-    Ok((found.file_path, frontmatter))
+    Ok(MutationOutput {
+        file_path: loaded.file_path,
+        pre,
+        post,
+    })
 }
 
-/// Save file content, execute action, rollback file on failure.
+/// Convenience: load + mutate in one call. For callers that don't need
+/// to inspect the loaded spec before mutating (e.g., promote_spec_value).
+pub(super) fn load_and_mutate<F>(id: &str, mutate: F) -> Result<MutationOutput>
+where
+    F: FnOnce(&mut SpecFrontmatter) -> Result<()>,
+{
+    let loaded = load_spec(id)?;
+    mutate_spec(loaded, mutate)
+}
+
+/// Execute action with file rollback on failure. Takes explicit backup
+/// content instead of re-reading the file.
+///
 /// Used by pause_spec and block_spec where YAML is mutated before git
 /// operations that could fail (D1 rollback pattern from design.md).
-pub(super) fn with_yaml_rollback<T, F>(file_path: &str, action: F) -> Result<T>
+pub(super) fn with_content_rollback<T, F>(
+    file_path: &str,
+    backup: &str,
+    action: F,
+) -> Result<T>
 where
     F: FnOnce() -> Result<T>,
 {
-    let original = std::fs::read_to_string(file_path)
-        .with_context(|| format!("Failed to read {} for rollback backup", file_path))?;
     match action() {
         Ok(val) => Ok(val),
         Err(e) => {
-            let _ = std::fs::write(file_path, &original);
+            let _ = std::fs::write(file_path, backup);
             Err(e)
         }
     }
@@ -108,7 +127,7 @@ pub fn promote_spec(id: &str, json: bool) -> Result<()> {
 
 /// Promote a spec and return structured result (for MCP).
 pub fn promote_spec_value(id: &str) -> Result<serde_json::Value> {
-    let (file_path, fm) = mutate_spec(id, |fm| match fm.status.as_deref() {
+    let out = load_and_mutate(id, |fm| match fm.status.as_deref() {
         Some("draft") => {
             fm.status = Some("ready".to_string());
             Ok(())
@@ -125,7 +144,7 @@ pub fn promote_spec_value(id: &str) -> Result<serde_json::Value> {
         None => anyhow::bail!("Spec '{}' has no status", id),
     })?;
 
-    let new_status = fm.status.as_deref().unwrap_or("unknown");
+    let new_status = out.post.status.as_deref().unwrap_or("unknown");
 
     // If promoted to active, create start tag
     if new_status == "active" {
@@ -135,13 +154,13 @@ pub fn promote_spec_value(id: &str) -> Result<serde_json::Value> {
 
     // Git commit
     let commit_msg = format!("spec: promote {} to {}", id, new_status);
-    git_stage_and_commit(&file_path, &commit_msg)?;
+    git_stage_and_commit(&out.file_path, &commit_msg)?;
 
     Ok(serde_json::json!({
         "command": "promote",
         "spec_id": id,
         "new_status": new_status,
-        "file": file_path,
+        "file": out.file_path,
     }))
 }
 
@@ -163,9 +182,9 @@ pub fn complete_spec(id: &str, major: bool, json: bool) -> Result<()> {
 
 /// Complete an active spec and return structured result (for MCP).
 pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
-    // 1. Find spec and validate status
-    let found = find_spec(id)?;
-    match found.status.as_deref() {
+    // 1. Load spec and validate status
+    let loaded = load_spec(id)?;
+    match loaded.status.as_deref() {
         Some("active") => {}
         Some(s) => anyhow::bail!(
             "Cannot complete '{}' — status is '{}', expected 'active'",
@@ -175,13 +194,13 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
         None => anyhow::bail!("Spec '{}' has no status", id),
     }
 
-    // 2. Update status via mutate_spec (handles read→parse→mutate→write→DB)
-    let (file_path, frontmatter) = mutate_spec(id, |fm| {
+    let title_str = loaded.title.as_deref().unwrap_or(id).to_string();
+
+    // 2. Update status via mutate_spec (write + DB)
+    let out = mutate_spec(loaded, |fm| {
         fm.status = Some("complete".to_string());
         Ok(())
     })?;
-
-    let title_str = found.title.as_deref().unwrap_or(id);
 
     // 3. Pre-check archive tag
     let tag_name = format!("spec/{}", id);
@@ -191,23 +210,23 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
             tag_name
         );
     }
-    let spec_dir = resolve_spec_dir(&file_path);
+    let spec_dir = resolve_spec_dir(&out.file_path);
 
     // 4. Delegate to release strategy
     let strategy = ReleaseStrategy::from_project(Path::new("."));
     let bump = if major {
         Some(BumpType::Major)
     } else {
-        BumpType::from_spec_type(&frontmatter.r#type)
+        BumpType::from_spec_type(&out.post.r#type)
     };
 
     if let Some(bump) = bump {
-        let prepared = strategy.preflight(bump, &file_path)?;
+        let prepared = strategy.preflight(bump, &out.file_path)?;
         let archive_dir = spec_dir
             .as_ref()
             .and_then(|d| d.to_str())
-            .or(Some(&file_path));
-        prepared.execute(title_str, &file_path, archive_dir)?;
+            .or(Some(&out.file_path));
+        prepared.execute(&title_str, &out.file_path, archive_dir)?;
 
         // Tag HEAD~1 (parent commit still has spec file)
         let archive_tag_name = format!("spec/{}", id);
@@ -219,7 +238,7 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
         )?;
     } else {
         // No release (explore type) — archive as standalone commit
-        archive_spec_inner(id, &file_path, "complete", title_str, spec_dir.as_deref())?;
+        archive_spec_inner(id, &out.file_path, "complete", &title_str, spec_dir.as_deref())?;
     }
 
     Ok(serde_json::json!({
@@ -228,7 +247,7 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
         "new_status": "complete",
         "archived": true,
         "tag": format!("spec/{}", id),
-        "file": file_path,
+        "file": out.file_path,
     }))
 }
 
@@ -253,17 +272,19 @@ pub fn abandon_spec(id: &str, reason: Option<&str>, json: bool) -> Result<()> {
 
 /// Abandon a spec and return structured result (for MCP).
 pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<serde_json::Value> {
-    // 1. Find spec and validate status
-    let found = find_spec(id)?;
-    match found.status.as_deref() {
+    // 1. Load spec and validate status
+    let loaded = load_spec(id)?;
+    match loaded.status.as_deref() {
         Some("complete") => anyhow::bail!("Spec '{}' is already complete", id),
         Some("abandoned") => anyhow::bail!("Spec '{}' is already abandoned", id),
         None => anyhow::bail!("Spec '{}' has no status", id),
         _ => {} // draft, ready, active, paused, blocked — all can be abandoned
     }
 
-    // 2. Update status via mutate_spec (handles read→parse→mutate→write→DB)
-    let (file_path, _fm) = mutate_spec(id, |fm| {
+    let title_str = loaded.title.as_deref().unwrap_or(id).to_string();
+
+    // 2. Update status via mutate_spec (write + DB)
+    let out = mutate_spec(loaded, |fm| {
         fm.status = Some("abandoned".to_string());
         Ok(())
     })?;
@@ -278,14 +299,13 @@ pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<serde_json::
     }
 
     // 4. Archive (tag + git rm + commit)
-    let title_str = found.title.as_deref().unwrap_or(id);
     let description = if let Some(r) = reason {
         format!("{} — {}", title_str, r)
     } else {
-        title_str.to_string()
+        title_str
     };
-    let spec_dir = resolve_spec_dir(&file_path);
-    archive_spec_inner(id, &file_path, "abandoned", &description, spec_dir.as_deref())?;
+    let spec_dir = resolve_spec_dir(&out.file_path);
+    archive_spec_inner(id, &out.file_path, "abandoned", &description, spec_dir.as_deref())?;
 
     Ok(serde_json::json!({
         "command": "abandon",
@@ -294,7 +314,7 @@ pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<serde_json::
         "reason": reason,
         "archived": true,
         "tag": format!("spec/{}", id),
-        "file": file_path,
+        "file": out.file_path,
     }))
 }
 
@@ -320,9 +340,9 @@ pub fn pause_spec(id: &str, reason: &str, json: bool) -> Result<()> {
 
 /// Pause an active spec and return structured result (for MCP).
 pub fn pause_spec_value(id: &str, reason: &str) -> Result<serde_json::Value> {
-    // 1. Find spec and validate status
-    let found = find_spec(id)?;
-    match found.status.as_deref() {
+    // 1. Load spec and validate status
+    let loaded = load_spec(id)?;
+    match loaded.status.as_deref() {
         Some("active") => {}
         Some(s) => anyhow::bail!(
             "Cannot pause '{}' — status is '{}', expected 'active'",
@@ -368,9 +388,11 @@ pub fn pause_spec_value(id: &str, reason: &str) -> Result<serde_json::Value> {
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let tag_n = next_tag_number(id, "paused")?;
     let tag_name = format!("spec/{}-paused-{}", id, tag_n);
+    let backup = loaded.content.clone();
+    let file_path_for_rollback = loaded.file_path.clone();
 
-    with_yaml_rollback(&found.file_path, || {
-        let (file_path, _fm) = mutate_spec(id, |fm| {
+    with_content_rollback(&file_path_for_rollback, &backup, || {
+        let out = mutate_spec(loaded, |fm| {
             fm.status = Some("paused".to_string());
             fm.paused_reason = Some(reason.to_string());
             fm.paused_date = Some(today.clone());
@@ -381,7 +403,7 @@ pub fn pause_spec_value(id: &str, reason: &str) -> Result<serde_json::Value> {
         patina::git::create_tag_at(&tag_name, reason, "HEAD")?;
 
         let commit_msg = format!("spec: pause {} — {}", id, reason);
-        git_stage_and_commit(&file_path, &commit_msg)?;
+        git_stage_and_commit(&out.file_path, &commit_msg)?;
 
         Ok(())
     })?;
@@ -458,11 +480,11 @@ pub fn resume_spec(id: &str, force: bool, json: bool) -> Result<()> {
 
 /// Resume a paused or blocked spec and return structured result (for MCP).
 pub fn resume_spec_value(id: &str, force: bool) -> Result<serde_json::Value> {
-    // 1. Find spec and validate status
-    let found = find_spec(id)?;
-    let status_str = found.status.as_deref().unwrap_or("");
+    // 1. Load spec and validate status
+    let loaded = load_spec(id)?;
+    let status_str = loaded.status.as_deref().unwrap_or("").to_string();
 
-    match status_str {
+    match status_str.as_str() {
         "paused" | "blocked" => {}
         s => anyhow::bail!(
             "Cannot resume '{}' — status is '{}', expected 'paused' or 'blocked'",
@@ -471,17 +493,12 @@ pub fn resume_spec_value(id: &str, force: bool) -> Result<serde_json::Value> {
         ),
     }
 
-    // 2. Read current frontmatter to get paused_at_tag and check blockers
-    let content = std::fs::read_to_string(&found.file_path)
-        .with_context(|| format!("Failed to read {}", found.file_path))?;
-    let (fm_snapshot, _) = parse_spec_file(&content)
-        .with_context(|| format!("Failed to parse frontmatter in {}", found.file_path))?;
+    // 2. Get paused_at_tag and check blockers from loaded frontmatter (no re-read)
+    let paused_at_tag = loaded.frontmatter.paused_at_tag.clone();
 
-    let paused_at_tag = fm_snapshot.paused_at_tag.clone();
-
-    // 3. If blocked, check all blockers are complete
     if status_str == "blocked" && !force {
-        let incomplete: Vec<_> = fm_snapshot
+        let incomplete: Vec<_> = loaded
+            .frontmatter
             .blocked_by
             .iter()
             .filter_map(|blocker_id| match find_spec(blocker_id) {
@@ -507,11 +524,11 @@ pub fn resume_spec_value(id: &str, force: bool) -> Result<serde_json::Value> {
         }
     }
 
-    // 4. Update YAML: status=active, clear pause/block fields
+    // 3. Update YAML: status=active, clear pause/block fields
     let tag_n = next_tag_number(id, "resumed")?;
     let tag_name = format!("spec/{}-resumed-{}", id, tag_n);
 
-    let (file_path, _fm) = mutate_spec(id, |fm| {
+    let out = mutate_spec(loaded, |fm| {
         fm.status = Some("active".to_string());
         fm.paused_reason = None;
         fm.paused_date = None;
@@ -522,7 +539,7 @@ pub fn resume_spec_value(id: &str, force: bool) -> Result<serde_json::Value> {
         Ok(())
     })?;
 
-    // 5. Clear spec_deps if was blocked
+    // 4. Clear spec_deps if was blocked
     if status_str == "blocked" {
         let db_path = Path::new(DB_PATH);
         if db_path.exists() {
@@ -534,12 +551,12 @@ pub fn resume_spec_value(id: &str, force: bool) -> Result<serde_json::Value> {
         }
     }
 
-    // 6. Create annotated tag
+    // 5. Create annotated tag
     patina::git::create_tag_at(&tag_name, &format!("Resumed {}", id), "HEAD")?;
 
-    // 7. Git commit
+    // 6. Git commit
     let commit_msg = format!("spec: resume {}", id);
-    git_stage_and_commit(&file_path, &commit_msg)?;
+    git_stage_and_commit(&out.file_path, &commit_msg)?;
 
     Ok(serde_json::json!({
         "command": "resume",
@@ -576,9 +593,9 @@ pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<(
 
 /// Block an active spec and return structured result (for MCP).
 pub fn block_spec_value(id: &str, blocker: &str, reason: &str) -> Result<serde_json::Value> {
-    // 1. Validate spec is active
-    let found = find_spec(id)?;
-    match found.status.as_deref() {
+    // 1. Load spec and validate status
+    let loaded = load_spec(id)?;
+    match loaded.status.as_deref() {
         Some("active") => {}
         Some(s) => anyhow::bail!(
             "Cannot block '{}' — status is '{}', expected 'active'",
@@ -588,16 +605,18 @@ pub fn block_spec_value(id: &str, blocker: &str, reason: &str) -> Result<serde_j
         None => anyhow::bail!("Spec '{}' has no status", id),
     }
 
-    // 2. Validate blocker spec exists
+    // 2. Validate blocker spec exists (lightweight find_spec, no load)
     let _ = find_spec(blocker).with_context(|| format!("Blocker spec '{}' not found", blocker))?;
 
     // 3. Update YAML, DB, tag, and commit — with rollback on failure
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let tag_n = next_tag_number(id, "blocked")?;
     let tag_name = format!("spec/{}-blocked-{}", id, tag_n);
+    let backup = loaded.content.clone();
+    let file_path_for_rollback = loaded.file_path.clone();
 
-    with_yaml_rollback(&found.file_path, || {
-        let (file_path, _fm) = mutate_spec(id, |fm| {
+    with_content_rollback(&file_path_for_rollback, &backup, || {
+        let out = mutate_spec(loaded, |fm| {
             fm.status = Some("blocked".to_string());
             // Append blocker to blocked_by list (D3: don't overwrite)
             if !fm.blocked_by.contains(&blocker.to_string()) {
@@ -625,7 +644,7 @@ pub fn block_spec_value(id: &str, blocker: &str, reason: &str) -> Result<serde_j
 
         // Git commit
         let commit_msg = format!("spec: block {} (waiting on {})", id, blocker);
-        git_stage_and_commit(&file_path, &commit_msg)?;
+        git_stage_and_commit(&out.file_path, &commit_msg)?;
 
         Ok(())
     })?;
