@@ -145,6 +145,26 @@ mod bindings {
             })
         }
     }
+
+    // patina:host/measure — delegates to host_support
+    impl patina::host::measure::Host for HostState {
+        fn record_measurement(
+            &mut self,
+            verb: String,
+            tool: String,
+            mode: String,
+            metrics_json: String,
+        ) -> Result<(), String> {
+            super::super::host_support::record_measurement(
+                &self.project_root,
+                &self.plugin_name,
+                &verb,
+                &tool,
+                &mode,
+                &metrics_json,
+            )
+        }
+    }
 }
 
 use bindings::HostState;
@@ -219,7 +239,7 @@ impl PluginEngine {
         }
 
         // Boolean capabilities that are always granted (no config needed)
-        let auto_granted = ["host_log", "host_layer"];
+        let auto_granted = ["host_log", "host_layer", "host_measure"];
 
         let denied: Vec<&str> = manifest
             .capabilities

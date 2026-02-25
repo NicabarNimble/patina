@@ -143,6 +143,26 @@ mod task_bindings {
             })
         }
     }
+
+    // patina:host/measure — delegates to host_support
+    impl patina::host::measure::Host for TaskHostState {
+        fn record_measurement(
+            &mut self,
+            verb: String,
+            tool: String,
+            mode: String,
+            metrics_json: String,
+        ) -> Result<(), String> {
+            super::super::host_support::record_measurement(
+                &self.project_root,
+                &self.plugin_name,
+                &verb,
+                &tool,
+                &mode,
+                &metrics_json,
+            )
+        }
+    }
 }
 
 /// Task plugin engine — loads and runs task world WASM plugins.

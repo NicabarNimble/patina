@@ -104,6 +104,26 @@ mod command_bindings {
             )
         }
     }
+
+    // patina:host/measure — delegates to host_support
+    impl patina::host::measure::Host for CommandHostState {
+        fn record_measurement(
+            &mut self,
+            verb: String,
+            tool: String,
+            mode: String,
+            metrics_json: String,
+        ) -> Result<(), String> {
+            super::super::host_support::record_measurement(
+                &self.project_root,
+                &self.plugin_name,
+                &verb,
+                &tool,
+                &mode,
+                &metrics_json,
+            )
+        }
+    }
 }
 
 /// Command plugin engine — loads and runs command world WASM plugins.
