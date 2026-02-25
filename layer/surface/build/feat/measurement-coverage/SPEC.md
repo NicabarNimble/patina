@@ -415,9 +415,11 @@ measure::record_measurement(
 - **Doctor remains a distinct command** — users run `patina doctor` for environment
   health (tools, adapter, config). Its output format, exit codes, and WASM plugin
   contract are unchanged.
-- **Doctor becomes a measurement producer** — after Phase 3, doctor's `run()` calls
-  `measure::record_measurement()` to emit capture-freshness and foundation-health
-  events. These events appear in `patina measure` alongside core measurements.
+- **Doctor becomes the first measurement producer** — in Phase 1, doctor's `run()`
+  calls `measure::record_measurement()` to emit capture-freshness and foundation-health
+  events. Doctor is the proof of concept for the WIT measurement interface because
+  it's already a WASM plugin. These events appear in `patina measure` alongside
+  core measurements once Phase 3 ships.
 - **Doctor is not invoked by measure** — `patina measure` reads doctor's stored
   measurement events. It does not call doctor at measurement time. Doctor runs on
   its own schedule (user-invoked or future: mother-daemon tick).
@@ -428,12 +430,12 @@ User runs:  patina measure   → reads doctor's stored events in foundation sect
 ```
 
 This follows the producer/consumer split: doctor produces, measure consumes. Doctor
-proving the plugin measurement API (Phase 3) is what validates that any third-party
+proving the plugin measurement API (Phase 1) is what validates that any third-party
 plugin can do the same.
 
 ### MCP Exposure
 
-`measure` becomes an MCP tool in Phase 2, alongside `scry`, `assay`, and `context`.
+`measure` becomes an MCP tool in Phase 3, alongside `scry`, `assay`, and `context`.
 AI agents are a primary consumer of the project-user view — an LLM using Patina via
 MCP should be able to check project health before making recommendations.
 
@@ -769,32 +771,67 @@ piece of new instrumentation this spec requires.
 
 ## Implementation Phases
 
-### Phase 1 — Measurement Event Infrastructure
+### Phase 1 — WIT Measurement Interface + Event Schema (The Bucket)
 
-Build the storage and schema. Make core tools write measurement events.
+The foundation. Define the measurement contract and build the host-side
+infrastructure that both core tools and WASM plugins use to report metrics.
+Everything else in this spec is a producer or consumer of this interface.
+
+**Why WIT first:** Everything in Patina is heading toward WIT/WASM plugins.
+Spec commands, grammars, doctor — all plugins or becoming plugins. If we build
+measurement emission into core tools first (old Phase 1) and add the plugin
+interface later, we'd have two code paths: one for core, one for plugins.
+Instead, build the bucket first. Core tools and plugins use the same interface
+from day one.
 
 - [ ] Define `measure.*` event_type convention in eventlog
+- [ ] Define measurement event schema (verb, tool, mode, metrics, source)
+- [ ] Add `patina:host/measure@0.1.0` interface to WIT
+- [ ] Implement host-side: `record-measurement` validates and writes to eventlog
+      (verb must be one of 5 protocol verbs, metrics must be numeric,
+      source is always the plugin name — plugins can't impersonate core)
+- [ ] Add `measure` to command world imports
+- [ ] Add `measure` to mother-child world imports
+- [ ] Update `patina-sdk` crate with measurement convenience functions
+- [ ] Migrate doctor plugin to use measurement API (proof of concept —
+      doctor is already a WASM plugin, making it the natural first producer)
+- [ ] Core-side helper: `patina::measure::emit()` for compiled-in tools
+      (writes the same event schema, source = "core")
+
+**Exit criteria:** Doctor plugin writes measurements via WIT `record-measurement`.
+Events land in eventlog with correct schema. `patina-sdk` has convenience
+functions. Any plugin developer can emit measurements using only the SDK docs.
+Core tools have a helper to emit the same event format.
+
+### Phase 2 — Core Tool Emission
+
+Wire existing tools into the measurement bucket. Each tool emits events
+as a side effect of running — no new commands yet, just data flowing.
+
 - [ ] `patina eval` writes measurement events after each run (all modes)
 - [ ] `patina bench` writes measurement events after each run
 - [ ] `patina scrape` writes capture measurement events (files parsed, functions
       extracted, coverage rate)
+- [ ] `patina scrape` writes believe measurement events (belief summary snapshot:
+      total, stale, floating, median_health)
 - [ ] `patina oxidize` writes index measurement events (documents embedded,
       coverage, model used)
 - [ ] `patina scrape` emits evolve measurement: entrenchment-change detection by
       comparing current belief file entrenchment to previous `belief.surface` event
 - [ ] Session lifecycle writes evolve measurement events at session-end
       (distillation: did this session produce beliefs? layer file count deltas)
-- [ ] `patina measure` reads measurement events only (not tables) — basic
-      verb-by-verb summary with empty-state onboarding guidance
 
 **Exit criteria:** All 5 verbs have at least one measurement event producer.
-`patina measure` displays a summary table. All events stored in eventlog.
-Empty-state shows onboarding guidance, not errors.
+All events stored in eventlog with valid schema. Running existing tools now
+leaves a measurement trail without any workflow changes.
 
-### Phase 2 — Consumer Views
+### Phase 3 — Consumer Views (`patina measure`)
 
-Build the two distinct CLI experiences.
+Build the read side. One command, two views, querying what's already in
+the eventlog from Phases 1-2.
 
+- [ ] `patina measure` reads measurement events only (not tables) — basic
+      verb-by-verb summary with empty-state onboarding guidance
 - [ ] `patina measure` (default) — user view: project health, natural language,
       action items, hides internals
 - [ ] `patina measure --system` — maintainer view: full tool inventory, raw metrics,
@@ -803,28 +840,12 @@ Build the two distinct CLI experiences.
 - [ ] `patina measure --verb <name>` — verb drill-down with history and thresholds
 - [ ] `patina measure --verb <name> --history <N>` — configurable history depth
 - [ ] MCP `measure` tool — wraps user view as JSON, optional verb parameter
+- [ ] `patina measure` includes plugin-contributed measurements in both views
 
 **Exit criteria:** Both views render correctly. User view uses health language
 ("good", "needs attention"). Maintainer view shows raw metrics and history.
 `--verb` shows detail + history + links to detail commands. MCP tool returns
-user view JSON.
-
-### Phase 3 — Plugin Measurement API
-
-Enable WASM plugins to report measurements.
-
-- [ ] Add `patina:host/measure@0.1.0` interface to WIT
-- [ ] Implement host-side: `record-measurement` writes to eventlog
-- [ ] Add `measure` to command world imports
-- [ ] Add `measure` to mother-child world imports
-- [ ] Update `patina-sdk` crate with measurement convenience functions
-- [ ] Migrate doctor plugin to use measurement API (proof of concept)
-- [ ] `patina measure` includes plugin-contributed measurements in both views
-
-**Exit criteria:** Doctor plugin writes measurements via WIT interface.
-`patina measure` shows plugin measurements alongside core measurements.
-A third-party plugin developer can add measurements to their plugin using
-only the SDK docs.
+user view JSON. Plugin measurements appear alongside core measurements.
 
 ### Phase 4 — Regression Detection
 
@@ -871,13 +892,13 @@ No verb has fewer than 3 metrics.
 Per-phase verification. Each phase has concrete checks that must pass before the
 phase is complete.
 
-### Phase 1 Verification
+### Phase 1 Verification (WIT Interface + Schema)
 
 ```verify
--- Every verb has at least one measurement event
-SELECT COUNT(DISTINCT json_extract(data, '$.verb')) FROM eventlog WHERE event_type LIKE 'measure.%';
-expect: = 5
-label: all-verbs-have-producers
+-- Plugin-sourced measurement events exist
+SELECT COUNT(*) FROM eventlog WHERE event_type LIKE 'measure.%' AND json_extract(data, '$.source') != 'core';
+expect: >= 1
+label: plugin-measurements-stored
 ```
 
 ```verify
@@ -888,18 +909,34 @@ label: measurement-schema-valid
 ```
 
 Manual verification:
-- `patina measure` exits 0 and shows all 5 verbs
-- `patina measure` on a fresh project (no events) shows onboarding guidance
-- `patina measure --json` produces valid JSON with all 5 verbs
+- Doctor plugin emits measurement events via WIT `record-measurement`
+- Events land in eventlog with correct schema (verb, tool, mode, metrics, source)
+- SDK integration test: minimal plugin calls `record-measurement`, event appears
+- Plugin cannot set `source: "core"` — host overrides with plugin name
+- Core-side `patina::measure::emit()` helper writes same event format
+
+### Phase 2 Verification (Core Tool Emission)
+
+```verify
+-- Every verb has at least one measurement event
+SELECT COUNT(DISTINCT json_extract(data, '$.verb')) FROM eventlog WHERE event_type LIKE 'measure.%';
+expect: = 5
+label: all-verbs-have-producers
+```
+
+Manual verification:
 - Scrape emits `measure.capture` and `measure.believe` events
 - Oxidize emits `measure.index` events
 - Eval emits `measure.search` events (at least one mode)
 - Session-end emits `measure.evolve` events
 - Scrape detects entrenchment changes and emits evolve measurement
 
-### Phase 2 Verification
+### Phase 3 Verification (Consumer Views)
 
 Manual verification:
+- `patina measure` exits 0 and shows all 5 verbs
+- `patina measure` on a fresh project (no events) shows onboarding guidance
+- `patina measure --json` produces valid JSON with all 5 verbs
 - User view contains NO raw metric names (P@10, MRR, co-retrieval) — uses
   "good", "needs attention", percentages
 - Maintainer view (`--system`) contains raw metric names and tool/mode detail
@@ -907,21 +944,7 @@ Manual verification:
 - `--verb` for a verb with no events shows "no data" not an error
 - `--json` output for both views validates against a JSON schema
 - MCP `measure` tool returns user view JSON (same structure as `--json`)
-
-### Phase 3 Verification
-
-```verify
--- Plugin-sourced measurement events exist
-SELECT COUNT(*) FROM eventlog WHERE event_type LIKE 'measure.%' AND json_extract(data, '$.source') != 'core';
-expect: >= 1
-label: plugin-measurements-stored
-```
-
-Manual verification:
-- Doctor plugin emits measurement events via WIT `record-measurement`
-- `patina measure` shows doctor in plugin section of both views
-- SDK integration test: minimal plugin calls `record-measurement`, event appears
-- Plugin cannot set `source: "core"` — host overrides with plugin name
+- Plugin measurements appear alongside core measurements in both views
 
 ### Phase 4 Verification
 
@@ -988,6 +1011,9 @@ MCP Phase 2, Plugin API Phase 3).
 are accurate (eval/mod.rs, bench/mod.rs, belief/mod.rs, scrape/beliefs/*,
 plugins/doctor, report/internal.rs, patina-identity.md, WIT host interfaces).
 
-**No structural changes needed.** This spec is ready to implement once
-workflow-rigor Phase 1 lands (no hard dependency, but measurement events for
-spec transitions would benefit from the new tag/status infrastructure).
+**Structural change (2026-02-25, session 20260225-143514):** Restructured phases
+to lead with WIT interface as Phase 1 (was Phase 3). Rationale: everything in
+Patina is heading toward WIT/WASM plugins. The measurement interface is the bucket
+that all producers — core and plugin — emit into. Building the bucket first means
+core tools and plugins use the same contract from day one, avoiding two code paths.
+Doctor plugin (already WASM) is the Phase 1 proof of concept.
