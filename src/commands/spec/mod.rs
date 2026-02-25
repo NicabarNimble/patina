@@ -218,6 +218,7 @@ pub enum SpecCommands {
         field: String,
 
         /// Value (+value to add, -value to remove for lists; value for scalars)
+        #[arg(allow_hyphen_values = true)]
         value: String,
 
         /// Output as JSON (for agent use)
