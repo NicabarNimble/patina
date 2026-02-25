@@ -66,6 +66,12 @@ pub enum MutationDetail {
         blocker: String,
         reason: String,
     },
+    Set {
+        file: String,
+        field: String,
+        action: String,
+        value: String,
+    },
 }
 
 /// Core YAML + DB status update. Takes a fully loaded spec, applies a mutation
@@ -208,6 +214,119 @@ pub fn promote_spec_value(id: &str) -> Result<MutationResult> {
         new_status: new_status.to_string(),
         detail: MutationDetail::Promote {
             file: out.file_path,
+        },
+    })
+}
+
+/// Apply add/remove to a Vec<String> field.
+fn apply_list_mutation(list: &mut Vec<String>, action: &str, value: &str) {
+    if action == "added" {
+        if !list.iter().any(|v| v == value) {
+            list.push(value.to_string());
+        }
+    } else {
+        list.retain(|v| v != value);
+    }
+}
+
+/// Set a metadata field on a spec.
+///
+/// Supported fields: beliefs, related, references (Vec — use +/- prefix),
+/// target (scalar — set directly, empty string clears).
+pub fn set_spec(id: &str, field: &str, value: &str, json: bool) -> Result<()> {
+    let result = set_spec_value(id, field, value)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else if let MutationDetail::Set {
+        ref action,
+        ref value,
+        ref field,
+        ..
+    } = result.detail
+    {
+        match action.as_str() {
+            "added" => println!("Added '{}' to {} on {}", value, field, id),
+            "removed" => println!("Removed '{}' from {} on {}", value, field, id),
+            "set" => println!("Set {} to '{}' on {}", field, value, id),
+            "cleared" => println!("Cleared {} on {}", field, id),
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
+/// Set a metadata field and return structured result (for MCP).
+pub fn set_spec_value(id: &str, field: &str, value: &str) -> Result<MutationResult> {
+    const VEC_FIELDS: &[&str] = &["beliefs", "related", "references"];
+    const SCALAR_FIELDS: &[&str] = &["target"];
+
+    let is_vec = VEC_FIELDS.contains(&field);
+    let is_scalar = SCALAR_FIELDS.contains(&field);
+
+    if !is_vec && !is_scalar {
+        anyhow::bail!(
+            "Cannot set field '{}'. Supported fields: beliefs, related, references, target",
+            field
+        );
+    }
+
+    let (action, clean_value): (&str, String) = if is_vec {
+        if let Some(v) = value.strip_prefix('+') {
+            ("added", v.to_string())
+        } else if let Some(v) = value.strip_prefix('-') {
+            ("removed", v.to_string())
+        } else {
+            anyhow::bail!(
+                "List field '{}' requires +value (append) or -value (remove) prefix",
+                field
+            );
+        }
+    } else if value.is_empty() {
+        ("cleared", String::new())
+    } else {
+        ("set", value.to_string())
+    };
+
+    let result_value = clean_value.clone();
+
+    let out = load_and_mutate(id, |fm| {
+        match field {
+            "beliefs" => apply_list_mutation(&mut fm.beliefs, action, &clean_value),
+            "related" => apply_list_mutation(&mut fm.related, action, &clean_value),
+            "references" => apply_list_mutation(&mut fm.references, action, &clean_value),
+            "target" => {
+                fm.target = if clean_value.is_empty() {
+                    None
+                } else {
+                    Some(clean_value)
+                };
+            }
+            _ => unreachable!(),
+        }
+        Ok(())
+    })?;
+
+    let new_status = out
+        .post
+        .status
+        .as_deref()
+        .unwrap_or("unknown")
+        .to_string();
+
+    let commit_msg = format!("spec: set {} on {}", field, id);
+    git_stage_and_commit(&out.file_path, &commit_msg)?;
+
+    Ok(MutationResult {
+        command: "set",
+        spec_id: id.to_string(),
+        new_status,
+        detail: MutationDetail::Set {
+            file: out.file_path,
+            field: field.to_string(),
+            action: action.to_string(),
+            value: result_value,
         },
     })
 }

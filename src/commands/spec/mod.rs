@@ -209,6 +209,22 @@ pub enum SpecCommands {
         json: bool,
     },
 
+    /// Set a metadata field on a spec
+    Set {
+        /// Spec ID
+        id: String,
+
+        /// Field to set (beliefs, related, references, target)
+        field: String,
+
+        /// Value (+value to add, -value to remove for lists; value for scalars)
+        value: String,
+
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Recommend the next spec to work on
     Next {
         /// Output as JSON (for agent use)
@@ -289,6 +305,11 @@ pub fn block(id: &str, by: &str, reason: &str, json: bool) -> Result<()> {
 /// Split a spec: ship done work, draft remainder as new spec
 pub fn split(id: &str, new_id: Option<&str>, description: Option<&str>, json: bool) -> Result<()> {
     internal::split_spec(id, new_id, description, json)
+}
+
+/// Set a metadata field on a spec
+pub fn set(id: &str, field: &str, value: &str, json: bool) -> Result<()> {
+    internal::set_spec(id, field, value, json)
 }
 
 /// Show full spec context (body, design, key files)
@@ -418,6 +439,44 @@ mod tests {
                 assert!(!stale);
             }
             _ => panic!("expected Archive"),
+        }
+    }
+
+    #[test]
+    fn set_basic() {
+        let cmd = parse(&["set", "my-spec", "beliefs", "+some-belief"]).unwrap();
+        match cmd {
+            SpecCommands::Set {
+                id,
+                field,
+                value,
+                json,
+            } => {
+                assert_eq!(id, "my-spec");
+                assert_eq!(field, "beliefs");
+                assert_eq!(value, "+some-belief");
+                assert!(!json);
+            }
+            _ => panic!("expected Set"),
+        }
+    }
+
+    #[test]
+    fn set_with_json() {
+        let cmd = parse(&["set", "my-spec", "target", "v0.33.0", "--json"]).unwrap();
+        match cmd {
+            SpecCommands::Set {
+                id,
+                field,
+                value,
+                json,
+            } => {
+                assert_eq!(id, "my-spec");
+                assert_eq!(field, "target");
+                assert_eq!(value, "v0.33.0");
+                assert!(json);
+            }
+            _ => panic!("expected Set"),
         }
     }
 }
