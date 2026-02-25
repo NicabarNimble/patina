@@ -86,6 +86,28 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                 Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
             }
         }
+        "spec.check" => {
+            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            if id.is_empty() {
+                return Response::error(
+                    req.id.clone(),
+                    -32602,
+                    "spec.check requires 'id' parameter",
+                );
+            }
+            match crate::commands::spec::check_spec_value(id) {
+                Ok(result) => {
+                    let text = serde_json::to_string_pretty(&result).unwrap_or_default();
+                    Response::success(
+                        req.id.clone(),
+                        serde_json::json!({
+                            "content": [{ "type": "text", "text": text }]
+                        }),
+                    )
+                }
+                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            }
+        }
         // Spec mutation tools
         "spec.promote" => {
             let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");

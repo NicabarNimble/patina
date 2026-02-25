@@ -365,6 +365,20 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                     }
                 },
                 {
+                    "name": "spec.check",
+                    "description": "Check exit criteria status for a spec. Returns pass/fail with details on which criteria are checked/unchecked. Specs without exit_criteria pass by default.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Spec ID to check"
+                            }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
                     "name": "spec.create",
                     "description": "Create a new spec draft — scaffold directory, write frontmatter, commit.",
                     "inputSchema": {
