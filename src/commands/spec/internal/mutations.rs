@@ -14,6 +14,7 @@ use super::DB_PATH;
 /// Result of a spec mutation: pre/post frontmatter + file path.
 pub(super) struct MutationOutput {
     pub file_path: String,
+    #[allow(dead_code)] // consumed by Step 4 (typed MutationResult)
     pub pre: SpecFrontmatter,
     pub post: SpecFrontmatter,
 }
