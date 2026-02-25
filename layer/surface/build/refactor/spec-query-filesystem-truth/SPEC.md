@@ -58,8 +58,8 @@ src/commands/spec/internal/queue.rs     — next_spec_value calls get_all_specs,
 
 ## Exit Criteria
 
-- [ ] `get_ready_specs()` uses filesystem truth (not DB-only query)
-- [ ] `get_blocked_specs()` uses filesystem truth
-- [ ] Unscraped specs appear in ready/blocked output when they qualify
-- [ ] Archived specs don't appear in ready/blocked (no disk file = not included)
-- [ ] `load_dep_counts()` still works for impact scoring (DB is supplementary, not removed)
+- [x] `get_ready_specs()` uses filesystem truth (not DB-only query)
+- [x] `get_blocked_specs()` uses filesystem truth
+- [x] Unscraped specs appear in ready/blocked output when they qualify
+- [x] Archived specs don't appear in ready/blocked (no disk file = not included)
+- [x] `load_dep_counts()` still works for impact scoring (DB is supplementary, not removed)
