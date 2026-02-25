@@ -1,0 +1,158 @@
+//! MCP server - stdio transport
+
+use anyhow::Result;
+use std::io::{BufRead, BufReader, Write};
+
+use super::protocol::{Request, Response};
+use crate::retrieval::QueryEngine;
+
+mod assay;
+mod scry;
+mod spec;
+mod tools;
+
+/// Check project secrets compliance before starting MCP server.
+///
+/// For v2 (age-encrypted vaults), validates:
+/// 1. Identity is available (PATINA_IDENTITY env or Keychain)
+/// 2. Global or project vault exists
+///
+/// Returns Ok(()) if compliant (or no vaults configured).
+fn check_secrets_gate() -> Result<()> {
+    use patina::secrets;
+
+    let project_root = std::env::current_dir().ok();
+    let status = secrets::check_status(project_root.as_deref())?;
+
+    // Check if any vault exists
+    let has_global = status.global.exists;
+    let has_project = status.project.as_ref().map(|p| p.exists).unwrap_or(false);
+
+    // No vaults - pass the gate (no secrets configured)
+    if !has_global && !has_project {
+        return Ok(());
+    }
+
+    eprintln!("Checking secrets...");
+
+    // Check identity
+    if status.identity_source.is_none() {
+        eprintln!("  ✗ No identity configured");
+        anyhow::bail!(
+            "\n❌ Cannot start MCP server.\n   Run: patina secrets add <name> to create vault and identity"
+        );
+    }
+    eprintln!("  ✓ Identity via {}", status.identity_source.unwrap());
+
+    if has_global {
+        eprintln!(
+            "  ✓ Global vault ({} recipients)",
+            status.global.recipient_count
+        );
+    }
+
+    if has_project {
+        let project = status.project.unwrap();
+        eprintln!("  ✓ Project vault ({} recipients)", project.recipient_count);
+    }
+
+    Ok(())
+}
+
+/// Run MCP server over stdio
+pub fn run_mcp_server() -> Result<()> {
+    // Gate: validate secrets before starting
+    check_secrets_gate()?;
+
+    let stdin = std::io::stdin();
+    let mut stdout = std::io::stdout();
+    let reader = BufReader::new(stdin.lock());
+
+    // Initialize query engine
+    let engine = QueryEngine::new();
+
+    eprintln!("patina: MCP server ready");
+
+    for line in reader.lines() {
+        let line = line?;
+        if line.is_empty() {
+            continue;
+        }
+
+        let request: Request = match serde_json::from_str(&line) {
+            Ok(r) => r,
+            Err(e) => {
+                let resp = Response::error(None, -32700, &format!("Parse error: {}", e));
+                writeln!(stdout, "{}", serde_json::to_string(&resp)?)?;
+                stdout.flush()?;
+                continue;
+            }
+        };
+
+        // Validate JSON-RPC version
+        if request.jsonrpc != "2.0" {
+            let resp = Response::error(
+                request.id.clone(),
+                -32600,
+                &format!(
+                    "Invalid JSON-RPC version: expected 2.0, got {}",
+                    request.jsonrpc
+                ),
+            );
+            writeln!(stdout, "{}", serde_json::to_string(&resp)?)?;
+            stdout.flush()?;
+            continue;
+        }
+
+        let response = dispatch(&request, &engine);
+        writeln!(stdout, "{}", serde_json::to_string(&response)?)?;
+        stdout.flush()?;
+    }
+
+    Ok(())
+}
+
+fn dispatch(req: &Request, engine: &QueryEngine) -> Response {
+    match req.method.as_str() {
+        "initialize" => handle_initialize(req, engine),
+        "initialized" => Response::success(req.id.clone(), serde_json::json!({})),
+        "tools/list" => tools::handle_list_tools(req),
+        "tools/call" => handle_tool_call(req, engine),
+        _ => Response::error(req.id.clone(), -32601, "Method not found"),
+    }
+}
+
+fn handle_initialize(req: &Request, engine: &QueryEngine) -> Response {
+    Response::success(
+        req.id.clone(),
+        serde_json::json!({
+            "protocolVersion": "2024-11-05",
+            "capabilities": {
+                "tools": {}
+            },
+            "serverInfo": {
+                "name": "patina",
+                "version": env!("CARGO_PKG_VERSION"),
+                "oracles": engine.available_oracles()
+            }
+        }),
+    )
+}
+
+fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
+    let name = req
+        .params
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let args = req.params.get("arguments").cloned().unwrap_or_default();
+
+    match name {
+        "scry" => scry::handle_scry(req, &args, engine),
+        "context" => scry::handle_context(req, &args),
+        "mother" => scry::handle_mother(req, &args),
+        "assay" => assay::handle(req, &args),
+        n if n.starts_with("spec.") || n.starts_with("schemas.") => spec::handle(req, n, &args),
+        _ => Response::error(req.id.clone(), -32602, &format!("Unknown tool: {}", name)),
+    }
+}
