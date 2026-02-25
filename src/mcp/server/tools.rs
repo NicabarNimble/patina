@@ -384,6 +384,20 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                     }
                 },
                 {
+                    "name": "spec.history",
+                    "description": "Show spec lifecycle history from git tags — chronological timeline with timestamps, state transitions, and time-in-state calculations. Works for archived specs.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Spec ID to show history for"
+                            }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
                     "name": "spec.create",
                     "description": "Create a new spec draft — scaffold directory, write frontmatter, commit.",
                     "inputSchema": {

@@ -18,8 +18,8 @@ pub(crate) const DB_PATH: &str = ".patina/local/data/patina.db";
 
 // Query types + functions re-exported pub(crate) by parent for session/MCP
 pub(crate) use queries::{
-    check_spec_value, get_all_specs, get_blocked_specs, get_ready_specs, show_spec_value,
-    ListFilters,
+    check_spec_value, get_all_specs, get_blocked_specs, get_ready_specs, history_spec_value,
+    show_spec_value, ListFilters,
 };
 
 // Queue functions re-exported pub(crate) by parent for session/MCP
@@ -44,7 +44,7 @@ pub(super) use mutations::{
     abandon_spec, block_spec, complete_spec, pause_spec, promote_spec, resume_spec, set_spec,
 };
 pub(super) use queries::{
-    check_spec, show_blocked_specs, show_ready_specs, show_spec, show_spec_list,
+    check_spec, history_spec, show_blocked_specs, show_ready_specs, show_spec, show_spec_list,
 };
 pub(super) use queue::next_spec;
 pub(super) use split::split_spec;
