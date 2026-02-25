@@ -22,7 +22,13 @@ beliefs:
 - mcp-is-shim-cli-is-product
 - eventlog-is-truth
 - eventlog-is-infrastructure
-exit_criteria: []
+exit_criteria:
+- Doctor plugin emits measurement via WIT record-measurement, events in eventlog
+- Core measure::emit() helper exists and is used by at least one compiled-in tool
+- All 5 protocol verbs have at least one measurement producer
+- patina measure displays project health from both measure.* and existing events
+- patina measure --system shows raw metrics with history
+- MCP measure tool returns JSON health summary
 ---
 
 # feat: Measurement Coverage System
@@ -155,9 +161,10 @@ patterns_modified, lines_changed. Session productivity measurement, already stor
 2. **Core tools that compute metrics don't emit** — eval, bench, oxidize, belief audit
    all compute valuable numbers and throw them away.
 
-3. **No standard event type for measurements** — existing measurement-like data is
-   scattered across `belief.surface`, `session.ended`, `scry.*` with no convention
-   that says "this is a measurement event."
+3. **No unified consumer** — measurement data is scattered across `belief.surface`,
+   `session.ended`, `scry.*`, `git.commit` with no single view that aggregates
+   "how healthy is this project?" Existing events are correctly typed — the gap
+   is a consumer that reads across them, not a new event type for what's already stored.
 
 ## Design
 
@@ -192,7 +199,8 @@ interface measure {
 Host validates: verb is one of 5 protocol verbs, metrics are numeric JSON,
 source is always the plugin name (host overrides — plugins can't impersonate core).
 
-Added to both `command` and `mother-child` world imports.
+Added to `command`, `mother-child`, and `task` world imports. Not added to
+`pipeline` (pure compute, no side effects).
 
 #### For compiled-in core tools — Rust helper
 
@@ -260,6 +268,25 @@ snapshot. Trend detection reads the event timeline.
 
 ### Read Side: `patina measure`
 
+#### Dual-Source Query Pattern
+
+`patina measure` reads from TWO sources, not just `measure.*` events:
+
+1. **`measure.*` events** — new events from tools that currently discard metrics
+   (eval → `measure.search`, bench → `measure.search`, oxidize → `measure.index`,
+   doctor plugin → `measure.capture`). These use the standard measurement schema.
+
+2. **Existing typed events** — events that already carry measurement data under
+   their own event types. These are NOT duplicated as `measure.*`:
+   - `belief.surface` → believe verb (grounding, evidence, health metrics)
+   - `session.ended` → evolve verb (commits, files_changed, beliefs_captured)
+   - `scry.query` + feedback views → search verb (retrieval precision)
+   - `git.commit` file counts → capture verb (coverage proxy)
+
+This means existing tools don't need to change their event types. Scrape still
+emits `belief.surface`, sessions still emit `session.ended`. The measurement
+system adds NEW events where none exist, and READS existing events where they do.
+
 One command, two views:
 
 **User view** (default) — "Is Patina understanding my project?"
@@ -305,9 +332,11 @@ Thresholds ship as compiled defaults, overridable via `[measure.<verb>]` config:
 ### Doctor Coexistence
 
 Doctor remains its own command. Doctor becomes the **first measurement producer** —
-in Phase 1, doctor's `run()` calls `measure::record_measurement()` to emit
-capture-freshness and foundation-health events. Doctor is the proof of concept
-for the WIT interface because it's already a WASM plugin.
+in Phase 1, doctor's `run()` calls the WIT `record-measurement` function to emit
+capture-freshness and foundation-health events. Doctor is a WASM plugin — it
+uses the WIT interface, not the Rust `measure::emit()` helper (which is for
+compiled-in core tools only). This distinction matters: doctor proves the plugin
+path, eval/bench prove the core path.
 
 `patina measure` reads doctor's stored events. It does not invoke doctor.
 Producer/consumer split: doctor produces, measure consumes.
@@ -329,12 +358,19 @@ two code paths. Build the bucket first — one contract, used everywhere.
 - [ ] Implement host-side: `record-measurement` validates and writes to eventlog
 - [ ] Add `measure` to command world imports
 - [ ] Add `measure` to mother-child world imports
+- [ ] Add `measure` to task world imports
 - [ ] Update `patina-sdk` crate with measurement convenience functions
 - [ ] Core-side helper: `patina::measure::emit()` for compiled-in tools
-- [ ] Migrate doctor plugin to use measurement API (proof of concept)
+- [ ] Migrate doctor plugin to use WIT measurement API (proof of concept)
+- [ ] Add `host_measure` capability to manifest parsing
 
-**Exit criteria:** Doctor plugin writes measurements via WIT `record-measurement`.
-Events land in eventlog with correct schema. Core tools have `emit()` helper.
+**Exit criteria:**
+- [ ] Doctor plugin calls WIT `record-measurement`, events appear in eventlog
+- [ ] Events have required schema: verb, tool, mode, metrics, source
+- [ ] Host validates verb (one of 5), overrides source with plugin name
+- [ ] `measure::emit()` compiles and is callable from core tool code
+- [ ] `cargo build --release` succeeds, `patina doctor` emits measurement events
+- [ ] Pre-push checks pass
 
 ### Phase 2 — Core Tool Emission
 
@@ -349,8 +385,13 @@ of running — no new commands yet, just data flowing.
 - [ ] `patina scrape` emits evolve: entrenchment-change detection
 - [ ] Session lifecycle emits evolve measurements at session-end
 
-**Exit criteria:** All 5 verbs have at least one measurement producer.
-Running existing tools leaves a measurement trail without workflow changes.
+**Exit criteria:**
+- [ ] `patina eval` emits `measure.search` events (P@5, MRR persisted)
+- [ ] `patina bench` emits `measure.search` events (Recall@K, latency persisted)
+- [ ] `patina scrape` emits `measure.capture` events (files parsed, coverage)
+- [ ] `patina oxidize` emits `measure.index` events (documents embedded, coverage)
+- [ ] All 5 verbs have at least one event source (measure.* or existing typed events)
+- [ ] Running existing tools leaves a measurement trail without workflow changes
 
 ### Phase 3 — Consumer Views (`patina measure`)
 
@@ -363,7 +404,12 @@ Build the read side. One command, two views, querying eventlog.
 - [ ] MCP `measure` tool — user view as JSON
 - [ ] Plugin measurements appear alongside core measurements
 
-**Exit criteria:** Both views render correctly. MCP tool works.
+**Exit criteria:**
+- [ ] `patina measure` renders user view from both measure.* and existing events
+- [ ] `patina measure --system` renders maintainer view with raw metrics
+- [ ] `patina measure --json` outputs machine-readable JSON
+- [ ] MCP `measure` tool returns JSON health summary
+- [ ] Empty state handled gracefully (no measurements yet)
 
 ### Phase 4 — Regression Detection
 
@@ -372,14 +418,21 @@ Build the read side. One command, two views, querying eventlog.
 - [ ] Trend arrows in maintainer view
 - [ ] `patina measure --ci` exits non-zero on regression
 
-**Exit criteria:** Regressions detected and surfaced in both views.
+**Exit criteria:**
+- [ ] Regressions detected by comparing latest to previous for each tool+mode
+- [ ] Trend arrows visible in `--system` view
+- [ ] `patina measure --ci` exits non-zero on regression
+- [ ] Thresholds configurable via `[measure.<verb>]` in project config
 
-### Phase 5 — Per-Verb Enrichment (separate sub-specs)
+### Future — Per-Verb Enrichment (separate sub-specs, not in scope)
 
-- [ ] Capture: tree-sitter parse error tracking, per-language coverage
-- [ ] Index: projection quality metric stored
-- [ ] Evolve: pattern lifecycle tracking
-- [ ] Search: per-project queryset generation with stored results
+These are separate specs that depend on Phases 1-3 being complete. Listed here
+for visibility, not tracked as tasks in this spec:
+
+- Capture: tree-sitter parse error tracking, per-language coverage
+- Index: projection quality metric stored
+- Evolve: pattern lifecycle tracking
+- Search: per-project queryset generation with stored results
 
 ### Future — TUI Dashboard
 
@@ -410,19 +463,17 @@ label: measurement-schema-valid
 ### Phase 2
 
 ```verify
--- Every verb has at least one measurement event
+-- measure.* events exist for at least 3 verbs (search, capture, index are new emitters)
 SELECT COUNT(DISTINCT json_extract(data, '$.verb')) FROM eventlog WHERE event_type LIKE 'measure.%';
-expect: = 5
-label: all-verbs-have-producers
+expect: >= 3
+label: new-measurement-producers-active
 ```
 
-### Phase 5
-
 ```verify
--- Every verb has at least 3 distinct metrics
-SELECT json_extract(data, '$.verb') as verb, COUNT(DISTINCT k.key) as metric_count FROM eventlog, json_each(json_extract(data, '$.metrics')) as k WHERE event_type LIKE 'measure.%' GROUP BY verb HAVING metric_count < 3;
-expect: = 0
-label: all-verbs-have-depth
+-- Existing event types still serve as measurement sources (not duplicated)
+SELECT COUNT(*) FROM eventlog WHERE event_type = 'belief.surface';
+expect: >= 1
+label: existing-belief-measurements-intact
 ```
 
 ## Storage: Same Eventlog, Not a New One
@@ -481,3 +532,15 @@ No special storage design needed. The eventlog handles this.
   - Reframed as "core plugin" (Obsidian model) — infrastructure that ships
     with the system, not optional.
   - TODO: split spec apart and add more organization in next session.
+- 2026-02-25: Design clarification (session 20260225-173127):
+  - Added phase-gated exit criteria (Phases 1-4) and frontmatter exit criteria.
+  - Clarified dual-source read pattern: `patina measure` queries BOTH `measure.*`
+    events AND existing typed events (belief.surface, session.ended, scry.*).
+    Existing events are not duplicated — new measure.* events only for tools
+    that currently discard metrics (eval, bench, oxidize, doctor).
+  - Fixed doctor/WIT vs core/emit confusion: doctor uses WIT `record-measurement`,
+    core tools use `measure::emit()`. Two paths, one event schema.
+  - Added task world to WIT imports (command + mother-child + task, not pipeline).
+  - Moved Phase 5 (per-verb enrichment) to "future sub-specs, not in scope."
+  - Gap 3 reframed: not "no standard event type" but "no unified consumer."
+  - Created DESIGN.md for Phase 1 implementation.
