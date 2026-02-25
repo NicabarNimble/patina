@@ -242,31 +242,54 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<MutationResult> {
     }
 
     let title_str = loaded.title.as_deref().unwrap_or(id).to_string();
+    let pre_status = loaded.status.clone().unwrap_or_default();
+    let backup = loaded.content.clone();
+    let file_path = loaded.file_path.clone();
 
-    // 2. Update status via mutate_spec (write + DB)
-    let out = mutate_spec(loaded, |fm| {
-        fm.status = Some("complete".to_string());
-        Ok(())
-    })?;
-
-    // 3. Release + archive
+    // Compute bump type before mutation (type doesn't change)
     let bump = if major {
         Some(BumpType::Major)
     } else {
-        BumpType::from_spec_type(&out.post.r#type)
+        BumpType::from_spec_type(&loaded.frontmatter.r#type)
     };
-    release_and_archive(id, &out.file_path, &out.post, &title_str, bump)?;
 
-    Ok(MutationResult {
-        command: "complete",
-        spec_id: id.to_string(),
-        new_status: "complete".to_string(),
-        detail: MutationDetail::Complete {
-            file: out.file_path,
-            tag: format!("spec/{}", id),
-            archived: true,
-        },
-    })
+    // 2. Mutate + release + archive — with rollback on failure
+    let result = with_content_rollback(&file_path, &backup, || {
+        let out = mutate_spec(loaded, |fm| {
+            fm.status = Some("complete".to_string());
+            Ok(())
+        })?;
+
+        release_and_archive(id, &out.file_path, &out.post, &title_str, bump)?;
+        Ok(())
+    });
+
+    match result {
+        Ok(()) => Ok(MutationResult {
+            command: "complete",
+            spec_id: id.to_string(),
+            new_status: "complete".to_string(),
+            detail: MutationDetail::Complete {
+                file: file_path,
+                tag: format!("spec/{}", id),
+                archived: true,
+            },
+        }),
+        Err(e) => {
+            // with_content_rollback already restored the YAML file.
+            // Also restore DB status to pre-mutation value.
+            let db_path = Path::new(DB_PATH);
+            if db_path.exists() {
+                if let Ok(conn) = Connection::open(db_path) {
+                    let _ = conn.execute(
+                        "UPDATE patterns SET status = ?1 WHERE id = ?2",
+                        rusqlite::params![pre_status, id],
+                    );
+                }
+            }
+            Err(e)
+        }
+    }
 }
 
 /// Abandon a spec (archive + tag, no release)
@@ -299,48 +322,71 @@ pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<MutationResu
     }
 
     let title_str = loaded.title.as_deref().unwrap_or(id).to_string();
+    let pre_status = loaded.status.clone().unwrap_or_default();
+    let backup = loaded.content.clone();
+    let file_path = loaded.file_path.clone();
 
-    // 2. Update status via mutate_spec (write + DB)
-    let out = mutate_spec(loaded, |fm| {
-        fm.status = Some("abandoned".to_string());
+    // 2. Mutate + archive — with rollback on failure
+    let result = with_content_rollback(&file_path, &backup, || {
+        let out = mutate_spec(loaded, |fm| {
+            fm.status = Some("abandoned".to_string());
+            Ok(())
+        })?;
+
+        // Pre-check archive tag
+        let tag_name = format!("spec/{}", id);
+        if tag_exists(&tag_name)? {
+            anyhow::bail!(
+                "Tag '{}' already exists. Spec may have been archived previously.",
+                tag_name
+            );
+        }
+
+        // Archive (tag + git rm + commit)
+        let description = if let Some(r) = reason {
+            format!("{} — {}", title_str, r)
+        } else {
+            title_str.clone()
+        };
+        let spec_dir = resolve_spec_dir(&out.file_path);
+        archive_spec_inner(
+            id,
+            &out.file_path,
+            "abandoned",
+            &description,
+            spec_dir.as_deref(),
+        )?;
+
         Ok(())
-    })?;
+    });
 
-    // 3. Pre-check archive tag
-    let tag_name = format!("spec/{}", id);
-    if tag_exists(&tag_name)? {
-        anyhow::bail!(
-            "Tag '{}' already exists. Spec may have been archived previously.",
-            tag_name
-        );
+    match result {
+        Ok(()) => Ok(MutationResult {
+            command: "abandon",
+            spec_id: id.to_string(),
+            new_status: "abandoned".to_string(),
+            detail: MutationDetail::Abandon {
+                file: file_path,
+                tag: format!("spec/{}", id),
+                archived: true,
+                reason: reason.map(|s| s.to_string()),
+            },
+        }),
+        Err(e) => {
+            // with_content_rollback already restored the YAML file.
+            // Also restore DB status to pre-mutation value.
+            let db_path = Path::new(DB_PATH);
+            if db_path.exists() {
+                if let Ok(conn) = Connection::open(db_path) {
+                    let _ = conn.execute(
+                        "UPDATE patterns SET status = ?1 WHERE id = ?2",
+                        rusqlite::params![pre_status, id],
+                    );
+                }
+            }
+            Err(e)
+        }
     }
-
-    // 4. Archive (tag + git rm + commit)
-    let description = if let Some(r) = reason {
-        format!("{} — {}", title_str, r)
-    } else {
-        title_str
-    };
-    let spec_dir = resolve_spec_dir(&out.file_path);
-    archive_spec_inner(
-        id,
-        &out.file_path,
-        "abandoned",
-        &description,
-        spec_dir.as_deref(),
-    )?;
-
-    Ok(MutationResult {
-        command: "abandon",
-        spec_id: id.to_string(),
-        new_status: "abandoned".to_string(),
-        detail: MutationDetail::Abandon {
-            file: out.file_path,
-            tag: format!("spec/{}", id),
-            archived: true,
-            reason: reason.map(|s| s.to_string()),
-        },
-    })
 }
 
 /// Pause an active spec with reason.
