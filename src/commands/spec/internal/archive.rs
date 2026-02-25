@@ -275,13 +275,11 @@ pub(super) fn find_spec(id: &str) -> Result<FoundSpec> {
         }
     }
 
-    // Filesystem fallback: scan disk for matching spec
+    // Filesystem fallback: scan disk for matching spec (one walk, not two)
     let disk_specs = scan_disk_specs();
     for spec in disk_specs {
         if spec.id == id {
-            // Reconstruct file_path from the spec id by scanning for the actual file
-            let build_dir = Path::new("layer/surface/build");
-            if let Some(path) = find_spec_file_on_disk(build_dir, id) {
+            if let Some(path) = spec.file_path {
                 return Ok(FoundSpec {
                     file_path: path,
                     status: spec.status,
@@ -307,28 +305,6 @@ pub(super) fn find_spec(id: &str) -> Result<FoundSpec> {
          Check the id, or create it under layer/surface/build/.",
         id
     );
-}
-
-/// Find the file path for a spec id on disk.
-fn find_spec_file_on_disk(dir: &Path, target_id: &str) -> Option<String> {
-    let entries = std::fs::read_dir(dir).ok()?;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            if let Some(found) = find_spec_file_on_disk(&path, target_id) {
-                return Some(found);
-            }
-        } else if path.file_name().and_then(|n| n.to_str()) == Some("SPEC.md") {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok((fm, _)) = parse_spec_file(&content) {
-                    if fm.id == target_id {
-                        return Some(path.to_string_lossy().to_string());
-                    }
-                }
-            }
-        }
-    }
-    None
 }
 
 /// Determine archived spec status from the archive commit message.
