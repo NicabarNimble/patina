@@ -12,7 +12,7 @@ pub(crate) use internal::{
 };
 
 // Query data functions re-exported for MCP (Phase 6)
-pub(crate) use internal::{get_ready_specs, next_spec_value};
+pub(crate) use internal::{get_ready_specs, next_spec_value, show_spec_value};
 
 // Mutation _value() functions re-exported for MCP (Phase 6)
 pub(crate) use internal::{
@@ -199,6 +199,16 @@ pub enum SpecCommands {
         json: bool,
     },
 
+    /// Show full spec context (body, design, key files)
+    Show {
+        /// Spec ID to show
+        id: String,
+
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Recommend the next spec to work on
     Next {
         /// Output as JSON (for agent use)
@@ -279,6 +289,11 @@ pub fn block(id: &str, by: &str, reason: &str, json: bool) -> Result<()> {
 /// Split a spec: ship done work, draft remainder as new spec
 pub fn split(id: &str, new_id: Option<&str>, description: Option<&str>, json: bool) -> Result<()> {
     internal::split_spec(id, new_id, description, json)
+}
+
+/// Show full spec context (body, design, key files)
+pub fn show(id: &str, json: bool) -> Result<()> {
+    internal::show_spec(id, json)
 }
 
 /// Recommend the next spec to work on

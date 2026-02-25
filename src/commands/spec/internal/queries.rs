@@ -5,8 +5,9 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-use patina::spec::parse_spec_file;
+use patina::spec::{parse_spec_file, SpecFrontmatter};
 
+use super::archive::load_spec;
 use super::queue::{load_dep_counts, spec_age_days_from_list};
 use super::DB_PATH;
 
@@ -587,4 +588,156 @@ pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Full spec context for a single spec
+#[derive(Debug, Clone, Serialize)]
+pub struct ShowResult {
+    pub id: String,
+    pub frontmatter: SpecFrontmatter,
+    pub body: String,
+    pub design: Option<String>,
+    pub files: Vec<String>,
+}
+
+/// Load full spec context: frontmatter + body + DESIGN.md + key files
+pub fn show_spec_value(id: &str) -> Result<ShowResult> {
+    let loaded = load_spec(id)?;
+
+    // Check for DESIGN.md in the same directory as SPEC.md
+    let design = Path::new(&loaded.file_path)
+        .parent()
+        .map(|dir| dir.join("DESIGN.md"))
+        .filter(|p| p.exists())
+        .and_then(|p| std::fs::read_to_string(p).ok());
+
+    // Extract key files from ## Key Files section
+    let files = extract_key_files(&loaded.body);
+
+    Ok(ShowResult {
+        id: loaded.frontmatter.id.clone(),
+        frontmatter: loaded.frontmatter,
+        body: loaded.body,
+        design,
+        files,
+    })
+}
+
+/// Display full spec context (human-readable or JSON)
+pub fn show_spec(id: &str, json: bool) -> Result<()> {
+    let result = show_spec_value(id)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        return Ok(());
+    }
+
+    // Human-readable output
+    let status = result
+        .frontmatter
+        .status
+        .as_deref()
+        .unwrap_or("unknown");
+    println!("{} [{}]", result.id, status);
+    println!();
+    println!("{}", result.body.trim());
+
+    if let Some(design) = &result.design {
+        println!("\n--- DESIGN.md ---\n");
+        println!("{}", design.trim());
+    }
+
+    if !result.files.is_empty() {
+        println!("\nKey files:");
+        for f in &result.files {
+            println!("  {}", f);
+        }
+    }
+
+    Ok(())
+}
+
+/// Extract file paths from the ## Key Files section.
+///
+/// Looks for a fenced code block (```) under a `## Key Files` heading
+/// and extracts non-empty lines, taking only the first whitespace-delimited
+/// token from each line (to skip inline comments like "— description").
+fn extract_key_files(body: &str) -> Vec<String> {
+    let mut files = Vec::new();
+    let mut in_key_files = false;
+    let mut in_fence = false;
+
+    for line in body.lines() {
+        if line.starts_with("## Key Files") {
+            in_key_files = true;
+            continue;
+        }
+        if in_key_files && !in_fence && line.starts_with("## ") {
+            // Hit next section
+            break;
+        }
+        if in_key_files && line.trim_start().starts_with("```") {
+            if in_fence {
+                break; // Closing fence — done
+            }
+            in_fence = true;
+            continue;
+        }
+        if in_key_files && in_fence {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() {
+                // Take first token (file path), skip trailing comments
+                if let Some(path) = trimmed.split_whitespace().next() {
+                    files.push(path.to_string());
+                }
+            }
+        }
+    }
+
+    files
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_key_files_basic() {
+        let body = r#"
+## Problem
+
+Some problem description.
+
+## Key Files
+
+```
+src/commands/spec/internal/queries.rs  — new show_spec_value()
+src/mcp/server.rs                      — new spec.show tool handler
+```
+
+## Exit Criteria
+"#;
+        let files = extract_key_files(body);
+        assert_eq!(
+            files,
+            vec![
+                "src/commands/spec/internal/queries.rs",
+                "src/mcp/server.rs",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_extract_key_files_empty() {
+        let body = "## Problem\n\nNo key files section here.\n";
+        let files = extract_key_files(body);
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn test_extract_key_files_no_fence() {
+        let body = "## Key Files\n\nJust text, no code fence.\n\n## Exit Criteria\n";
+        let files = extract_key_files(body);
+        assert!(files.is_empty());
+    }
 }

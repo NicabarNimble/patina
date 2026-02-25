@@ -1690,6 +1690,9 @@ fn main() -> Result<()> {
             } => {
                 commands::spec::split(&id, new_id.as_deref(), description.as_deref(), json)?;
             }
+            commands::spec::SpecCommands::Show { id, json } => {
+                commands::spec::show(&id, json)?;
+            }
             commands::spec::SpecCommands::Next { json } => {
                 commands::spec::next(json)?;
             }
