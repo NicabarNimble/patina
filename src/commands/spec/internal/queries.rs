@@ -79,7 +79,10 @@ pub fn check_spec(id: &str, json: bool) -> Result<()> {
         return Ok(());
     }
 
-    println!("Exit criteria: {}/{} complete", result.checked, result.total);
+    println!(
+        "Exit criteria: {}/{} complete",
+        result.checked, result.total
+    );
 
     // Reload to get full criteria list for display
     let loaded = load_spec(id)?;
