@@ -131,11 +131,7 @@ pub fn get_ready_specs() -> Result<Vec<ReadySpec>> {
     // Build status lookup for blocker resolution
     let status_map: HashMap<String, String> = all_specs
         .iter()
-        .filter_map(|s| {
-            s.status
-                .as_ref()
-                .map(|st| (s.id.clone(), st.clone()))
-        })
+        .filter_map(|s| s.status.as_ref().map(|st| (s.id.clone(), st.clone())))
         .collect();
 
     let mut specs: Vec<ReadySpec> = all_specs
@@ -331,11 +327,7 @@ pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
     // Build status lookup for blocker resolution
     let status_map: HashMap<String, String> = all_specs
         .iter()
-        .filter_map(|s| {
-            s.status
-                .as_ref()
-                .map(|st| (s.id.clone(), st.clone()))
-        })
+        .filter_map(|s| s.status.as_ref().map(|st| (s.id.clone(), st.clone())))
         .collect();
 
     let mut specs: Vec<BlockedSpec> = Vec::new();
