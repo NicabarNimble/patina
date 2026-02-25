@@ -378,7 +378,9 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
     if !preserved_files.is_empty() {
         println!("\n📁 Restoring user files...");
         restore_user_files(&adapter_dir, &preserved_files)?;
-        println!("  ✓ Restored {} user files", preserved_files.len());
+        for (path, _) in &preserved_files {
+            println!("  ✓ Restored {}", path);
+        }
     }
 
     // Step 6: Commit if not in no_commit mode
@@ -416,7 +418,11 @@ const TEMPLATE_COMMANDS: &[&str] = &[
     "session-note.md",
     "session-end.md",
     "patina-review.md",
+    "spec.md",
 ];
+
+/// Root-level user files to preserve across refresh (explicit allowlist)
+const USER_ROOT_FILES: &[&str] = &["settings.local.json"];
 
 /// Template-managed skill directories (not user-created)
 const TEMPLATE_SKILLS: &[&str] = &["epistemic-beliefs"];
@@ -475,6 +481,15 @@ fn preserve_user_files(adapter_dir: &std::path::Path) -> Result<Vec<(String, Vec
                     )?;
                 }
             }
+        }
+    }
+
+    // Preserve root-level user files (settings, config)
+    for filename in USER_ROOT_FILES {
+        let path = adapter_dir.join(filename);
+        if path.exists() {
+            let content = std::fs::read(&path)?;
+            preserved.push((filename.to_string(), content));
         }
     }
 
