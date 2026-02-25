@@ -107,6 +107,32 @@ compute (parsers, chunkers). They have `host_log` only. If a pipeline plugin
 needs to report metrics, the host can measure it externally (timing, output
 size) without the plugin knowing.
 
+## Backward Compatibility: Existing Plugins
+
+Adding `import patina:host/measure` to world definitions does NOT break
+existing plugins compiled against the old WIT:
+
+1. **Host-side (linker):** `add_to_linker()` registers the `measure` host
+   functions on the linker. Old plugin components don't import `measure`,
+   so wasmtime never calls those functions. The linker has extra capabilities
+   that the guest doesn't use — this is safe and normal.
+
+2. **Guest-side (old WASM binaries):** Old `.wasm` files were compiled against
+   the old world definition (without `measure`). They instantiate fine because
+   the component model is additive for imports — the host provides more than
+   the guest needs.
+
+3. **Guest-side (rebuilding old plugins):** When an old plugin's SDK dependency
+   is updated, `wit_bindgen::generate!()` regenerates bindings that include
+   the `measure` import. The plugin doesn't need to call it — the generated
+   bindings produce a no-op stub. The plugin compiles and runs as before.
+
+4. **New plugins:** Opt in by setting `host_measure = true` in plugin.toml
+   and calling `measure::record_measurement()` from the SDK. Without the
+   capability declared, the plugin simply doesn't call the function.
+
+**No breaking change. No migration required. Additive only.**
+
 ## Step 3: Host-Side Logic
 
 **File:** `src/plugin/internal/host_support.rs`
@@ -181,7 +207,10 @@ pub(super) fn record_measurement(
     });
 
     let event_type = format!("measure.{}", verb);
-    let source_id = format!("{}:{}", tool, mode);
+    // Include plugin_name in source_id to prevent collision between plugins
+    // that use the same tool:mode strings. Core tools use "tool:mode" only
+    // (no namespace needed — tool names are unique within the binary).
+    let source_id = format!("plugin:{}:{}:{}", plugin_name, tool, mode);
     let timestamp = chrono::Utc::now().to_rfc3339();
 
     crate::eventlog::insert_event(
@@ -202,6 +231,10 @@ pub(super) fn record_measurement(
 - Host opens the DB per call. Measurement events are infrequent — no need to
   cache the connection on HostState (unlike HTTP client which is cached).
 - Source is always `plugin_name`, not caller-controlled. Security property.
+- `source_id` uses `plugin:<name>:<tool>:<mode>` format for plugins, vs
+  `<tool>:<mode>` for core tools. This prevents two plugins from colliding
+  on the same tool:mode key. The `data.source` field also carries the plugin
+  name, but source_id is indexed — it's the aggregation key.
 - Verb validation is strict (must be one of 5). Tool/mode are freeform strings.
 - Metrics must be a flat JSON object with numeric values only. No nested objects.
 
@@ -556,6 +589,39 @@ sqlite3 .patina/local/data/patina.db \
 # Pre-push checks
 ./resources/git/pre-push-checks.sh
 ```
+
+## Phase 2 Guidance: Connection Management
+
+The Phase 1 design has two connection strategies:
+
+- **WIT path (plugins):** Host opens patina.db per `record_measurement()` call.
+  Fine for Phase 1 — doctor emits 1 event per run.
+- **Core path (compiled-in tools):** `measure::emit()` takes `&Connection`.
+  Caller manages lifecycle. Fine for any volume.
+
+For Phase 2, core tools (eval, bench, scrape, oxidize) already open patina.db
+for their own purposes. They pass the existing connection to `measure::emit()`.
+No new DB opens, no I/O regression.
+
+If a future plugin emits many events per invocation (unlikely for measurement —
+it's one event per tool run, not per query), the host_support function could
+be refactored to accept an optional cached connection on HostState. But this
+is a Phase 2+ concern and the current design supports it without breaking
+changes — just add an `Option<Connection>` field to HostState and check it
+before opening a new one.
+
+## Project-Root Requirement
+
+Both paths require a project root to locate patina.db. In contexts where no
+project root exists (theoretical `--global` flag, remote analysis):
+
+- **WIT path:** Returns `Err("no project root")` — plugin gets an error, can
+  log and continue. Doctor already handles this (line 86: returns exit code 1).
+- **Core path:** Caller doesn't call `measure::emit()` if there's no DB.
+
+This is intentional. Patina is project-scoped (see `layer/core/safety-boundaries.md`).
+Measurement data belongs to a project. A future global metrics store (e.g., in
+Mother's graph.db) would be a separate interface, not a change to this one.
 
 ## Files Changed (Summary)
 
