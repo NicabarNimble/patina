@@ -1,14 +1,11 @@
 use anyhow::{Context, Result};
-use rusqlite::Connection;
 use std::path::Path;
 
 use patina::release::{BumpType, ReleaseStrategy};
-use patina::spec::{parse_spec_file, serialize_spec_file};
 
-use super::archive::{archive_spec_inner, find_spec, resolve_spec_dir};
-use super::mutations::git_stage_and_commit;
+use super::archive::{archive_spec_inner, load_spec, resolve_spec_dir};
+use super::mutations::{git_stage_and_commit, mutate_spec};
 use super::queue::tag_exists;
-use super::DB_PATH;
 
 /// Split a spec: complete original with release, create new draft for remaining work.
 ///
@@ -44,9 +41,9 @@ pub fn split_spec_value(
     new_id: Option<&str>,
     description: Option<&str>,
 ) -> Result<serde_json::Value> {
-    // 1. Find spec and validate status (active or paused)
-    let found = find_spec(id)?;
-    match found.status.as_deref() {
+    // 1. Load spec and validate status (active or paused)
+    let loaded = load_spec(id)?;
+    match loaded.status.as_deref() {
         Some("active") | Some("paused") => {}
         Some(s) => anyhow::bail!(
             "Cannot split '{}' — status is '{}', expected 'active' or 'paused'",
@@ -56,14 +53,10 @@ pub fn split_spec_value(
         None => anyhow::bail!("Spec '{}' has no status", id),
     }
 
-    // 2. Read frontmatter for spec type
-    let content = std::fs::read_to_string(&found.file_path)
-        .with_context(|| format!("Failed to read {}", found.file_path))?;
-    let (frontmatter, _body) = parse_spec_file(&content)
-        .with_context(|| format!("Failed to parse frontmatter in {}", found.file_path))?;
-    let spec_type = frontmatter.r#type.clone();
+    let spec_type = loaded.frontmatter.r#type.clone();
+    let title_str = loaded.title.as_deref().unwrap_or(id).to_string();
 
-    // 3. Tag current state: spec/<id>-v<N>-complete
+    // 2. Tag current state: spec/<id>-v<N>-complete
     let version_tags = patina::git::list_matching_tags(&format!("spec/{}-v*-complete", id))?;
     let version_n = version_tags.len() as u32 + 1;
     let version_tag = format!("spec/{}-v{}-complete", id, version_n);
@@ -73,61 +66,44 @@ pub fn split_spec_value(
         "HEAD",
     )?;
 
-    // 4. Complete original spec (release + archive)
-    //    Set status to complete first, then delegate to release strategy
-    let title_str = found.title.as_deref().unwrap_or(id);
+    // 3. Complete original spec via mutate_spec (replaces manual read-parse-mutate-write-DB)
+    let original_file = loaded.file_path.clone();
+    let out = mutate_spec(loaded, |fm| {
+        fm.status = Some("complete".to_string());
+        Ok(())
+    })?;
 
-    {
-        // Update status to complete
-        let (mut fm_clone, body_clone) = parse_spec_file(&content)?;
-        fm_clone.status = Some("complete".to_string());
-        let new_content = serialize_spec_file(&fm_clone, &body_clone)?;
-        std::fs::write(&found.file_path, &new_content)
-            .with_context(|| format!("Failed to write {}", found.file_path))?;
+    // 4. Pre-check archive tag, then release + archive
+    let archive_tag = format!("spec/{}", id);
+    if tag_exists(&archive_tag)? {
+        anyhow::bail!(
+            "Tag '{}' already exists. Spec may have been archived previously.",
+            archive_tag
+        );
+    }
+    let spec_dir = resolve_spec_dir(&out.file_path);
 
-        // Update DB
-        let db_path = Path::new(DB_PATH);
-        if db_path.exists() {
-            let conn = Connection::open(db_path).context("Failed to open database")?;
-            conn.execute(
-                "UPDATE patterns SET status = 'complete' WHERE id = ?1",
-                rusqlite::params![id],
-            )?;
-        }
+    let strategy = ReleaseStrategy::from_project(Path::new("."));
+    let bump = BumpType::from_spec_type(&spec_type);
 
-        // Pre-check archive tag
-        let archive_tag = format!("spec/{}", id);
-        if tag_exists(&archive_tag)? {
-            anyhow::bail!(
-                "Tag '{}' already exists. Spec may have been archived previously.",
-                archive_tag
-            );
-        }
-        let spec_dir = resolve_spec_dir(&found.file_path);
+    if let Some(bump) = bump {
+        let prepared = strategy.preflight(bump, &out.file_path)?;
+        let archive_dir = spec_dir
+            .as_ref()
+            .and_then(|d| d.to_str())
+            .or(Some(&out.file_path));
+        prepared.execute(&title_str, &out.file_path, archive_dir)?;
 
-        // Release strategy
-        let strategy = ReleaseStrategy::from_project(Path::new("."));
-        let bump = BumpType::from_spec_type(&spec_type);
-
-        if let Some(bump) = bump {
-            let prepared = strategy.preflight(bump, &found.file_path)?;
-            let archive_dir = spec_dir
-                .as_ref()
-                .and_then(|d| d.to_str())
-                .or(Some(&found.file_path));
-            prepared.execute(title_str, &found.file_path, archive_dir)?;
-
-            // Tag parent commit (still has spec file)
-            println!("Creating tag: {} (on HEAD~1)", archive_tag);
-            patina::git::create_tag_at(
-                &archive_tag,
-                &format!("Archived spec: {}", title_str),
-                "HEAD~1",
-            )?;
-        } else {
-            // No release (explore type) — archive as standalone commit
-            archive_spec_inner(id, &found.file_path, "complete", title_str, spec_dir.as_deref())?;
-        }
+        // Tag parent commit (still has spec file)
+        println!("Creating tag: {} (on HEAD~1)", archive_tag);
+        patina::git::create_tag_at(
+            &archive_tag,
+            &format!("Archived spec: {}", title_str),
+            "HEAD~1",
+        )?;
+    } else {
+        // No release (explore type) — archive as standalone commit
+        archive_spec_inner(id, &out.file_path, "complete", &title_str, spec_dir.as_deref())?;
     }
 
     // 5. Determine new spec ID
@@ -162,7 +138,7 @@ pub fn split_spec_value(
         derived_id,
         desc_text,
         version_tag,
-        found.file_path,
+        original_file,
     );
 
     let new_spec_path = format!("{}/SPEC.md", new_spec_dir);
@@ -183,7 +159,7 @@ pub fn split_spec_value(
         "version_tag": version_tag,
         "archive_tag": format!("spec/{}", id),
         "new_spec_path": new_spec_path,
-        "original_file": found.file_path,
+        "original_file": original_file,
         "status": "completed",
     }))
 }
