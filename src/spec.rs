@@ -54,7 +54,20 @@ pub struct SpecMilestoneEntry {
 ///
 /// Each criterion has a stable id for programmatic reference, human text,
 /// checked state, and an optional verify command/instruction.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+///
+/// Accepts both string shorthand and full struct form in YAML:
+///
+/// ```yaml
+/// exit_criteria:
+/// - All tests pass                              # string shorthand
+/// - id: rollback-db                             # full struct
+///   text: DB rolls back on failure
+///   checked: false
+/// ```
+///
+/// String shorthand auto-generates id by slugifying the text.
+/// Follows the same pattern as `Sessions` (untagged enum for flexible input).
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct ExitCriterion {
     pub id: String,
     pub text: String,
@@ -62,6 +75,73 @@ pub struct ExitCriterion {
     pub checked: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verify: Option<String>,
+}
+
+impl<'de> serde::Deserialize<'de> for ExitCriterion {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de;
+
+        struct ExitCriterionVisitor;
+
+        impl<'de> de::Visitor<'de> for ExitCriterionVisitor {
+            type Value = ExitCriterion;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a string or an ExitCriterion object")
+            }
+
+            fn visit_str<E: de::Error>(self, text: &str) -> std::result::Result<Self::Value, E> {
+                Ok(ExitCriterion {
+                    id: slugify(text),
+                    text: text.to_string(),
+                    checked: false,
+                    verify: None,
+                })
+            }
+
+            fn visit_map<M: de::MapAccess<'de>>(
+                self,
+                map: M,
+            ) -> std::result::Result<Self::Value, M::Error> {
+                #[derive(Deserialize)]
+                struct Inner {
+                    id: String,
+                    text: String,
+                    #[serde(default)]
+                    checked: bool,
+                    #[serde(default)]
+                    verify: Option<String>,
+                }
+                let inner =
+                    Inner::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                Ok(ExitCriterion {
+                    id: inner.id,
+                    text: inner.text,
+                    checked: inner.checked,
+                    verify: inner.verify,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(ExitCriterionVisitor)
+    }
+}
+
+/// Slugify text into a kebab-case id.
+///
+/// "All tests pass" → "all-tests-pass"
+/// "DB rolls back on failure" → "db-rolls-back-on-failure"
+fn slugify(text: &str) -> String {
+    text.chars()
+        .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 /// Complete spec frontmatter - the canonical contract for spec files
@@ -347,6 +427,45 @@ exit_criteria:
         let output = serialize_spec_file(&frontmatter, &body).expect("should serialize");
         let (fm2, _) = parse_spec_file(&output).expect("should re-parse");
         assert_eq!(fm2.exit_criteria, frontmatter.exit_criteria);
+    }
+
+    #[test]
+    fn test_exit_criteria_string_shorthand() {
+        let content = r#"---
+type: fix
+id: test-shorthand
+status: draft
+exit_criteria:
+  - All tests pass
+  - .git directory under 400 MB after cleanup
+  - id: explicit-id
+    text: "Explicit struct form works too"
+    checked: true
+---
+
+# Test string shorthand
+"#;
+
+        let (frontmatter, _) = parse_spec_file(content).expect("should parse mixed formats");
+        assert_eq!(frontmatter.exit_criteria.len(), 3);
+
+        // String shorthand: auto-generated id, unchecked
+        let c0 = &frontmatter.exit_criteria[0];
+        assert_eq!(c0.id, "all-tests-pass");
+        assert_eq!(c0.text, "All tests pass");
+        assert!(!c0.checked);
+        assert!(c0.verify.is_none());
+
+        // String with special chars: slugified
+        let c1 = &frontmatter.exit_criteria[1];
+        assert_eq!(c1.id, "git-directory-under-400-mb-after-cleanup");
+        assert_eq!(c1.text, ".git directory under 400 MB after cleanup");
+        assert!(!c1.checked);
+
+        // Full struct form still works
+        let c2 = &frontmatter.exit_criteria[2];
+        assert_eq!(c2.id, "explicit-id");
+        assert!(c2.checked);
     }
 
     #[test]
