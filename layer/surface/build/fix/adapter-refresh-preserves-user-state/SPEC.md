@@ -1,16 +1,16 @@
 ---
 type: fix
 id: adapter-refresh-preserves-user-state
-status: draft
+status: ready
 created: 2026-02-24
 sessions:
   origin: 20260224-053924
 related:
-  - src/commands/adapter.rs
-  - src/adapters/templates.rs
+- src/commands/adapter.rs
+- src/adapters/templates.rs
 beliefs:
-  - safety-boundaries
-  - plugins-are-three-prong-bundles
+- safety-boundaries
+- plugins-are-three-prong-bundles
 ---
 
 # fix: Adapter Refresh Preserves User State
