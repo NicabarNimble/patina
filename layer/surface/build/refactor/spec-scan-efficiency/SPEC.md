@@ -51,7 +51,7 @@ src/commands/spec/internal/archive.rs  — consolidate find_spec filesystem path
 
 ## Exit Criteria
 
-- [ ] `spec_age_days_from_list()` reads from SpecInfo fields, not filesystem
-- [ ] `show_ready_specs()` performs exactly one `get_all_specs()` call
-- [ ] `find_spec()` filesystem fallback does one walk, not two
-- [ ] No behavioral change — same output for all commands
+- [x] `spec_age_days_from_list()` reads from SpecInfo fields, not filesystem
+- [x] `show_ready_specs()` performs exactly one `get_all_specs()` call
+- [x] `find_spec()` filesystem fallback does one walk, not two
+- [x] No behavioral change — same output for all commands
