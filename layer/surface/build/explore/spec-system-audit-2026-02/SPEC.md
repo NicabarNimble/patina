@@ -7,6 +7,7 @@ sessions:
   origin: 20260225-104204
 related:
 - spec-next-typed
+- spec-history
 exit_criteria: []
 ---
 # explore: Spec System Audit — Full Expert Review Findings
