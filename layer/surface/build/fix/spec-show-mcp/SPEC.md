@@ -1,12 +1,12 @@
 ---
 type: fix
 id: spec-show-mcp
-status: draft
+status: ready
 created: 2026-02-25
 sessions:
   origin: 20260224-212321
 beliefs:
-  - specs-as-context-sources
+- specs-as-context-sources
 ---
 # fix: Add spec.show MCP tool returning body + metadata
 
