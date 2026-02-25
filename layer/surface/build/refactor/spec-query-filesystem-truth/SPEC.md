@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: spec-query-filesystem-truth
-status: draft
+status: ready
 created: 2026-02-25
 sessions:
   origin: 20260225-104204
