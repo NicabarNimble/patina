@@ -3,10 +3,14 @@
 Step-by-step implementation guide. Read SPEC.md first for the full
 rationale — this doc is the mechanical "how."
 
-**Prerequisite:** spec-module-split must be complete. This walkthrough
-assumes `src/commands/spec/internal/` directory exists. `types.rs`
-(SpecType registry + body templates) is created as part of this spec
-— it has no callers until `create.rs` uses it.
+**Prerequisite:** spec-module-split is complete (v0.30.1). The
+`src/commands/spec/internal/` directory exists. `create.rs` lands as
+a new file in the split structure.
+
+**Type system decision:** No `types.rs` registry. Instead, a thin
+`SpecType` enum lives in `src/spec.rs` (lib crate) with `FromStr` +
+`as_str()`. See [[boundary-string-internal-enum]] and
+[[adding-type-is-not-migrating-model]] for rationale.
 
 ## Before You Start
 
@@ -20,24 +24,97 @@ cat src/commands/spec/internal/mutations.rs | head -80
 ```
 
 Read these files in order:
-1. `src/commands/spec/mod.rs` — where Create variant goes
-2. `src/commands/spec/internal/mutations.rs` — `_value()` pattern to follow
-3. `src/spec.rs` — `SpecFrontmatter` + `serialize_spec_file()`
+1. `src/spec.rs` — `SpecFrontmatter`, `serialize_spec_file()`, and new `SpecType` enum
+2. `src/commands/spec/mod.rs` — where Create variant goes
+3. `src/commands/spec/internal/mutations.rs` — `MutationResult`/`_value()` pattern to follow
 4. `src/mcp/server.rs` — where MCP tool gets registered
 5. `resources/claude/spec.md` — skill definition to update
 
-## Step 1: Create internal/types.rs
+## Step 1: Add SpecType enum to src/spec.rs
 
-New file: `src/commands/spec/internal/types.rs` — the SpecType registry.
-This is created here (not in spec-module-split) because it has no
-callers until `create.rs` uses it. See spec-module-split SPEC.md
-section "Extract SpecType registry into types.rs" for the full design
-(struct, constants, lookup function, body templates).
-
-Add to `internal/mod.rs`:
+Add to `src/spec.rs` (lib crate), after the existing types but before
+Parse/Serialize section:
 
 ```rust
-pub(crate) mod types;
+/// Canonical list of valid spec types (for error messages, help text, tests).
+pub const SPEC_TYPES: &[&str] = &["feat", "fix", "refactor", "explore"];
+
+/// Typed spec type — parse from string at boundaries, match internally.
+///
+/// Follows [[boundary-string-internal-enum]]: SpecFrontmatter.r#type stays
+/// String for serde compatibility; this enum is used for validation and
+/// exhaustive matching in new code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpecType {
+    Feat,
+    Fix,
+    Refactor,
+    Explore,
+}
+
+/// Error when parsing an invalid spec type string.
+#[derive(Debug)]
+pub struct SpecTypeError {
+    pub got: String,
+}
+
+impl std::fmt::Display for SpecTypeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "invalid spec type \"{}\" (expected one of: {})",
+            self.got,
+            SPEC_TYPES.join(", ")
+        )
+    }
+}
+
+impl std::error::Error for SpecTypeError {}
+
+impl std::str::FromStr for SpecType {
+    type Err = SpecTypeError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "feat" => Ok(SpecType::Feat),
+            "fix" => Ok(SpecType::Fix),
+            "refactor" => Ok(SpecType::Refactor),
+            "explore" => Ok(SpecType::Explore),
+            _ => Err(SpecTypeError { got: s.to_string() }),
+        }
+    }
+}
+
+impl SpecType {
+    /// Canonical string form (matches YAML frontmatter values).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SpecType::Feat => "feat",
+            SpecType::Fix => "fix",
+            SpecType::Refactor => "refactor",
+            SpecType::Explore => "explore",
+        }
+    }
+}
+```
+
+Add tests in the existing `#[cfg(test)]` block:
+
+```rust
+#[test]
+fn test_spec_type_roundtrip() {
+    for &name in SPEC_TYPES {
+        let t: SpecType = name.parse().expect(name);
+        assert_eq!(t.as_str(), name);
+    }
+}
+
+#[test]
+fn test_spec_type_invalid() {
+    let err = "unknown".parse::<SpecType>().unwrap_err();
+    assert!(err.to_string().contains("unknown"));
+    assert!(err.to_string().contains("feat"));
+}
 ```
 
 ## Step 2: Add SpecCommands::Create to mod.rs
@@ -92,6 +169,12 @@ pub fn create(
 }
 ```
 
+Add re-exports in `spec/mod.rs`:
+
+```rust
+pub(crate) use internal::create_spec_value;
+```
+
 ## Step 3: Dispatch in main.rs
 
 Find the `SpecCommands` match block in `src/main.rs` and add:
@@ -105,48 +188,77 @@ SpecCommands::Create {
     blocked_by,
     related,
     json,
-} => spec::create(
-    &r#type,
-    &id,
-    title.as_deref(),
-    description.as_deref(),
-    blocked_by,
-    related,
-    json,
-),
+} => {
+    commands::spec::create(
+        &r#type,
+        &id,
+        title.as_deref(),
+        description.as_deref(),
+        blocked_by,
+        related,
+        json,
+    )?;
+}
 ```
 
 ## Step 4: Create internal/create.rs
 
 New file: `src/commands/spec/internal/create.rs`
 
-### Imports
+Key differences from DESIGN v1:
+- **No `types::lookup()`** — parse `SpecType` directly from string
+- **No `serde_json::Value` return** — typed `CreateResult` struct
+- **No `std::process::Command` for git** — use `patina::git::*` helpers
+- **Body templates** — match on `SpecType` enum locally
+
+### CreateResult (typed return, follows MutationResult pattern)
 
 ```rust
-use anyhow::{Context, Result};
-use rusqlite::Connection;
-use std::path::Path;
-use std::process::Command;
-
-use patina::spec::{serialize_spec_file, Sessions, SpecFrontmatter};
-
-use super::DB_PATH;
-use super::types;
+#[derive(Debug, Serialize)]
+pub struct CreateResult {
+    pub command: &'static str,
+    pub spec_id: String,
+    pub spec_type: String,
+    pub status: &'static str,
+    pub path: String,
+    pub directory: String,
+    pub session_origin: Option<String>,
+}
 ```
 
-### Validation Helpers
+### Body templates (match on SpecType)
 
 ```rust
-/// Validate kebab-case identifier: lowercase, hyphens, starts with letter.
-fn is_valid_id(id: &str) -> bool {
-    let re = regex::Regex::new(r"^[a-z][a-z0-9-]*$").unwrap();
-    re.is_match(id)
+fn body_template(spec_type: SpecType) -> &'static str {
+    match spec_type {
+        SpecType::Feat => "## Problem\n\n## Solution\n\n## Exit Criteria\n\n## Non-Goals\n",
+        SpecType::Fix => "## Problem\n\n## Root Cause\n\n## Fix\n\n## Exit Criteria\n",
+        SpecType::Refactor => "## Current State\n\n## Target State\n\n## Steps\n\n## Exit Criteria\n",
+        SpecType::Explore => "## Question\n\n## Findings\n\n## Conclusions\n",
+    }
 }
+```
 
-/// Read the active session ID from .patina/local/active-session.md
+### Core flow
+
+1. Parse type: `let spec_type: SpecType = type_str.parse()?`
+2. Validate id: regex `^[a-z][a-z0-9-]*$`
+3. Check directory doesn't exist: `layer/surface/build/{spec_type.as_str()}/{id}/`
+4. Check archive tag doesn't exist: `spec/{id}`
+5. Create directory: `std::fs::create_dir_all`
+6. Build `SpecFrontmatter` struct with `serialize_spec_file()`
+7. Build body: `# {type}: {title}\n\n> {description}\n\n{template}`
+8. Write SPEC.md
+9. Git commit: `patina::git::add_paths()` + `patina::git::commit()`
+   (uses `git_stage_and_commit` helper from mutations.rs)
+10. Update DB: INSERT OR REPLACE into patterns table
+11. Return `CreateResult`
+
+### Session detection
+
+```rust
 fn active_session_id() -> Option<String> {
     let content = std::fs::read_to_string(".patina/local/active-session.md").ok()?;
-    // Parse YAML frontmatter for id field
     let content = content.strip_prefix("---")?;
     let end = content.find("\n---")?;
     let frontmatter: serde_yaml::Value = serde_yaml::from_str(&content[..end]).ok()?;
@@ -154,301 +266,24 @@ fn active_session_id() -> Option<String> {
 }
 ```
 
-### Core Implementation
-
-```rust
-/// Create a new spec draft and return structured result.
-///
-/// Flow: validate → mkdir → write SPEC.md → git commit → update DB
-pub fn create_spec_value(
-    spec_type: &str,
-    id: &str,
-    title: Option<&str>,
-    description: Option<&str>,
-    blocked_by: Vec<String>,
-    related: Vec<String>,
-) -> Result<serde_json::Value> {
-    // 1. Validate type via registry
-    let st = types::lookup(spec_type).ok_or_else(|| {
-        let valid: Vec<_> = types::SPEC_TYPES.iter().map(|t| t.name).collect();
-        anyhow::anyhow!(
-            "Unknown spec type '{}'. Valid types: {}",
-            spec_type,
-            valid.join(", ")
-        )
-    })?;
-
-    // 2. Validate id
-    if !is_valid_id(id) {
-        anyhow::bail!(
-            "Invalid spec id '{}'. Must be kebab-case: lowercase letters, \
-             digits, hyphens. Must start with a letter.",
-            id
-        );
-    }
-
-    // 3. Check directory doesn't exist
-    let spec_dir = format!("layer/surface/build/{}/{}", st.directory, id);
-    if Path::new(&spec_dir).exists() {
-        anyhow::bail!(
-            "Directory already exists: {}\n  \
-             A spec with this id may already exist.",
-            spec_dir
-        );
-    }
-
-    // 4. Check archived tag doesn't exist
-    let archive_tag = format!("spec/{}", id);
-    if patina::git::tag_exists(&archive_tag)? {
-        anyhow::bail!(
-            "Tag '{}' already exists — a spec with this id was previously \
-             archived.\n  View it: git show {}",
-            archive_tag,
-            archive_tag
-        );
-    }
-
-    // 5. Create directory
-    std::fs::create_dir_all(&spec_dir)
-        .with_context(|| format!("Failed to create directory {}", spec_dir))?;
-
-    // 6. Build frontmatter
-    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-    let title_str = title.unwrap_or_else(|| {
-        // Can't return a reference to a local, so we'll handle below
-        id
-    });
-    // Build a proper title if none provided
-    let display_title = match title {
-        Some(t) => t.to_string(),
-        None => format!("{}: {}", spec_type, id),
-    };
-
-    let sessions = active_session_id().map(|sid| Sessions::Structured {
-        origin: Some(sid),
-        work: vec![],
-        updated: None,
-    });
-
-    let frontmatter = SpecFrontmatter {
-        r#type: spec_type.to_string(),
-        id: id.to_string(),
-        status: Some("draft".to_string()),
-        created: Some(today.clone()),
-        sessions,
-        blocked_by,
-        related,
-        ..Default::default()
-    };
-
-    // 7. Build body from template
-    let desc_line = description.unwrap_or("TODO: problem statement");
-    let body = format!(
-        "\n\n# {}\n\n> {}\n\n{}",
-        display_title, desc_line, st.body_template
-    );
-
-    // 8. Write SPEC.md
-    let spec_path = format!("{}/SPEC.md", spec_dir);
-    let content = serialize_spec_file(&frontmatter, &body)?;
-    std::fs::write(&spec_path, &content)
-        .with_context(|| format!("Failed to write {}", spec_path))?;
-
-    // 9. Git commit
-    let output = Command::new("git")
-        .args(["add", &spec_path])
-        .output()
-        .context("Failed to stage spec file")?;
-    if !output.status.success() {
-        anyhow::bail!(
-            "git add failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-    let commit_msg = format!("spec: draft {}", id);
-    let output = Command::new("git")
-        .args(["commit", "-m", &commit_msg])
-        .output()
-        .context("Failed to commit")?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !stderr.contains("nothing to commit") {
-            anyhow::bail!("git commit failed: {}", stderr);
-        }
-    }
-
-    // 10. Update database
-    // Minimal INSERT — only columns needed for spec queries (list, ready, blocked).
-    // Scrape fills in remaining columns (created, tags, refs, purpose) on next run.
-    // INSERT OR REPLACE is safe: directory-exists check above guarantees no prior row
-    // (only stale DB rows could conflict, and those get cleaned up by scrape).
-    let db_path = Path::new(DB_PATH);
-    if db_path.exists() {
-        if let Ok(conn) = Connection::open(db_path) {
-            let _ = conn.execute(
-                "INSERT OR REPLACE INTO patterns (id, file_path, status, title, layer) \
-                 VALUES (?1, ?2, ?3, ?4, 'surface')",
-                rusqlite::params![
-                    id,
-                    spec_path,
-                    "draft",
-                    display_title,
-                ],
-            );
-        }
-    }
-
-    Ok(serde_json::json!({
-        "command": "create",
-        "spec_id": id,
-        "spec_type": spec_type,
-        "status": "draft",
-        "path": spec_path,
-        "directory": spec_dir,
-        "session": active_session_id(),
-    }))
-}
-```
-
-### CLI Wrapper
-
-```rust
-/// Create a new spec draft (human-readable or JSON output).
-pub fn create_spec(
-    spec_type: &str,
-    id: &str,
-    title: Option<&str>,
-    description: Option<&str>,
-    blocked_by: Vec<String>,
-    related: Vec<String>,
-    json: bool,
-) -> Result<()> {
-    let result = create_spec_value(spec_type, id, title, description, blocked_by, related)?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        let path = result["path"].as_str().unwrap_or("");
-        let session = result["session"].as_str().unwrap_or("none");
-        println!("Created: {}", path);
-        println!("  Type:    {}", spec_type);
-        println!("  Status:  draft");
-        println!("  Session: {}", session);
-        println!("\nEdit: $EDITOR {}", path);
-    }
-
-    Ok(())
-}
-```
-
 ### Wire into internal/mod.rs
-
-Add to `internal/mod.rs`:
 
 ```rust
 mod create;
 
-// Add to re-exports:
-pub(super) use create::{create_spec, create_spec_value};
+// Re-exports:
+pub(crate) use create::create_spec_value;
+pub(super) use create::create_spec;
 ```
 
 ## Step 5: Register MCP Tool
 
-In `src/mcp/server.rs`, add to the tools array (after `spec.split`):
-
-```json
-{
-    "name": "spec.create",
-    "description": "Create a new spec draft — scaffold directory, write frontmatter, commit.",
-    "inputSchema": {
-        "type": "object",
-        "properties": {
-            "spec_type": {
-                "type": "string",
-                "description": "Spec type: feat, fix, refactor, explore"
-            },
-            "id": {
-                "type": "string",
-                "description": "Spec identifier (kebab-case)"
-            },
-            "title": {
-                "type": "string",
-                "description": "Human title"
-            },
-            "description": {
-                "type": "string",
-                "description": "One-line problem statement"
-            },
-            "blocked_by": {
-                "type": "array",
-                "items": { "type": "string" },
-                "description": "Spec IDs this is blocked by"
-            }
-        },
-        "required": ["spec_type", "id"]
-    }
-}
-```
-
-Add the handler in the match block (after `spec.split`).
-
-**Pattern:** Match the existing handler style — `args.get()` for
-parameter extraction, `Response::error` for validation failures,
-`Response::success` / `Response::error` for results.
-
-```rust
-"spec.create" => {
-    let spec_type = args.get("spec_type").and_then(|v| v.as_str()).unwrap_or("");
-    let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
-    if spec_type.is_empty() {
-        return Response::error(
-            req.id.clone(),
-            -32602,
-            "spec.create requires 'spec_type' parameter",
-        );
-    }
-    if id.is_empty() {
-        return Response::error(
-            req.id.clone(),
-            -32602,
-            "spec.create requires 'id' parameter",
-        );
-    }
-    let title = args.get("title").and_then(|v| v.as_str());
-    let description = args.get("description").and_then(|v| v.as_str());
-    let blocked_by: Vec<String> = args
-        .get("blocked_by")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-        .unwrap_or_default();
-
-    match crate::commands::spec::create_spec_value(
-        spec_type, id, title, description, blocked_by, vec![],
-    ) {
-        Ok(result) => {
-            let text = serde_json::to_string_pretty(&result).unwrap_or_default();
-            Response::success(
-                req.id.clone(),
-                serde_json::json!({
-                    "content": [{ "type": "text", "text": text }]
-                }),
-            )
-        }
-        Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
-    }
-}
-```
-
-This requires adding `create_spec_value` to the parent mod.rs re-exports:
-
-```rust
-pub(crate) use internal::create_spec_value;
-```
+In `src/mcp/server.rs`, add tool schema (after `spec.split`) and handler.
+Handler calls `crate::commands::spec::create_spec_value()`.
 
 ## Step 6: Update /spec Skill
 
-In `resources/claude/spec.md`, add to the MUTATIONS section (before
-`spec.promote`):
+In `resources/claude/spec.md`, add to the MUTATIONS section:
 
 ```markdown
 - `spec.create` — Scaffold a new spec. Use when the user says "let's
@@ -457,9 +292,6 @@ In `resources/claude/spec.md`, add to the MUTATIONS section (before
   Parameters: spec_type (required), id (required), title, description,
   blocked_by.
 ```
-
-The skill file is compile-time embedded via `include_str!` in
-`src/adapters/templates.rs`. A `cargo build` picks up the change.
 
 ## Step 7: Add Clap Tests
 
@@ -504,13 +336,16 @@ fn create_with_options() {
 ## Commit Strategy
 
 ```
-1. spec: add SpecCommands::Create + create.rs implementation
-   (CLI command, internal function, mod.rs wiring)
+1. feat: add SpecType enum to src/spec.rs
+   (enum, FromStr, SpecTypeError, SPEC_TYPES constant, tests)
 
-2. spec: register spec.create MCP tool
+2. feat: add spec create command
+   (create.rs, SpecCommands::Create, main.rs dispatch, clap tests)
+
+3. feat: register spec.create MCP tool
    (server.rs schema + handler, mod.rs re-export)
 
-3. spec: add create to /spec skill
+4. docs: add create to /spec skill
    (resources/claude/spec.md update)
 ```
 
@@ -549,6 +384,9 @@ patina spec create explore test-explore --json
 # MCP test (via patina mcp server or direct)
 # Verify spec.create appears in tools/list response
 
+# Pre-push checks
+./resources/git/pre-push-checks.sh
+
 # Cleanup
 rm -rf layer/surface/build/feat/test-spec-create
 rm -rf layer/surface/build/fix/test-fix
@@ -583,9 +421,23 @@ Beliefs are intellectual provenance added during spec writing, not at
 scaffold time. The frontmatter field exists (from SpecFrontmatter) but
 we don't expose it as a CLI flag. Users add beliefs by editing SPEC.md.
 
-### D5: Body template comes from registry, title/description from CLI
+### D5: Body template via SpecType match, not registry
 
-The registry provides section headings (Problem, Solution, etc.). The
-CLI provides the `# type: title` heading and `> description` blockquote.
-These are concatenated: heading + blockquote + template. This keeps the
-template reusable and the per-spec content parameterized.
+Body templates are matched on the `SpecType` enum directly in create.rs.
+Only one consumer (create) uses templates — a shared registry would be
+premature abstraction. The match is exhaustive, so adding a new type
+forces a compiler error.
+
+### D6: SpecType in lib, not bin
+
+`SpecType` lives in `src/spec.rs` (lib crate) alongside `SpecFrontmatter`.
+This allows `BumpType` (also in lib) to adopt it later via
+`impl From<SpecType> for Option<BumpType>`. `SpecFrontmatter.r#type`
+stays `String` — no serde migration needed.
+
+### D7: CreateResult over serde_json::Value
+
+Follows the `MutationResult`/`SplitResult` pattern from
+spec-mutation-cleanup (v0.30.2). Typed struct with `#[derive(Serialize)]`
+gives compile-time field guarantees while still serializing to JSON
+for MCP via `serde_json::to_string_pretty`.
