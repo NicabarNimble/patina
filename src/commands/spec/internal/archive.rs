@@ -8,10 +8,6 @@ use patina::spec::parse_spec_file;
 use super::queries::{get_all_specs, scan_disk_specs, ListFilters};
 use super::queue::{is_tree_clean, tag_exists};
 
-// ============================================================================
-// Status Update (spec-as-work-item Phase 4)
-// ============================================================================
-
 /// Archive a completed or abandoned spec: create spec/<id> tag, remove file, commit
 ///
 /// Public entry point — validates status, checks clean tree, then delegates
@@ -70,7 +66,7 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
 
     // 5. Delegate to inner (tag, rm, commit)
     let desc = found.title.as_deref().unwrap_or(id);
-    archive_spec_inner(id, &found.file_path, status_str, desc, &spec_dir)
+    archive_spec_inner(id, &found.file_path, status_str, desc, spec_dir.as_deref())
 }
 
 /// Core archive logic: tag + git rm + commit.
@@ -82,7 +78,7 @@ pub(super) fn archive_spec_inner(
     file_path: &str,
     status: &str,
     description: &str,
-    spec_dir: &Option<std::path::PathBuf>,
+    spec_dir: Option<&Path>,
 ) -> Result<()> {
     let tag_name = format!("spec/{}", id);
 
@@ -180,7 +176,7 @@ pub fn archive_stale_specs(dry_run: bool) -> Result<()> {
             continue;
         }
 
-        archive_spec_inner(&spec.id, &found.file_path, status, &spec.title, &spec_dir)?;
+        archive_spec_inner(&spec.id, &found.file_path, status, &spec.title, spec_dir.as_deref())?;
     }
 
     if dry_run {

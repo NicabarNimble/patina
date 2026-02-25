@@ -10,10 +10,6 @@ use super::archive::find_spec;
 use super::queries::{get_all_specs, get_blocked_specs, ListFilters, SpecInfo};
 use super::DB_PATH;
 
-// ============================================================================
-// Spec Next / Queue System (spec-workflow-rigor Phase 3)
-// ============================================================================
-
 /// Recommend the next spec to work on based on priority ranking.
 ///
 /// Ranking: active > blocked-ready-to-resume > paused-with-age > impact > drafts
