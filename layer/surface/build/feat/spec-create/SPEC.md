@@ -82,10 +82,17 @@ patina spec create feat my-feature
 
 ## Solution
 
-**Prerequisite:** spec-module-split must be complete first. This spec
-assumes `internal/` directory already exists. `create.rs` and `types.rs`
-(SpecType registry + body templates) land as new files in the split
-structure.
+**Prerequisite:** spec-module-split must be complete first (done: v0.30.1).
+This spec assumes `internal/` directory already exists. `create.rs` lands
+as a new file in the split structure.
+
+**Type system decision (session 20260224-195035):** Instead of a `types.rs`
+registry in the bin crate, add a thin `SpecType` enum to `src/spec.rs`
+(lib crate). Rationale: registry can't centralize BumpType (lib/bin
+boundary), identity mapping doesn't need indirection, and the
+[[boundary-string-internal-enum]] pattern keeps `SpecFrontmatter.r#type`
+as String while parsing to enum at the boundary. See also
+[[adding-type-is-not-migrating-model]].
 
 ### `patina spec create <type> <id> [options]`
 
@@ -118,16 +125,15 @@ Edit: $EDITOR layer/surface/build/feat/my-feature/SPEC.md
 ### Behavior
 
 1. **Validate inputs:**
-   - `type` must be valid — uses `types::lookup()` from the registry
-     (provided by spec-module-split). Unknown types rejected with the
-     list of valid types in the error message.
+   - `type` must parse to `SpecType` enum (from `src/spec.rs`).
+     Unknown types rejected with `SPEC_TYPES` list in the error message.
    - `id` must be kebab-case: `^[a-z][a-z0-9-]*$`
    - Directory must not already exist on disk
    - `spec/<id>` tag must not exist (prevents collision with archived specs)
 
 2. **Resolve directory path:**
-   - Uses `spec_type.directory` from the registry to build:
-     `layer/surface/build/<directory>/<id>/SPEC.md`
+   - Uses `spec_type.as_str()` to build:
+     `layer/surface/build/<type>/<id>/SPEC.md`
    - Create the directory with `std::fs::create_dir_all`
 
 3. **Populate frontmatter via `SpecFrontmatter`:**
@@ -140,7 +146,7 @@ Edit: $EDITOR layer/surface/build/feat/my-feature/SPEC.md
      other spec mutation
 
 4. **Write body from type template:**
-   - Use `spec_type.body_template` from the registry
+   - Match on `SpecType` enum for body template selection
    - Prepend `# <type>: <title>` heading and blockquote description
    - Body templates have section headings only — no content
 
@@ -166,7 +172,7 @@ by spec-workflow-rigor Phase 6:
 - `create_spec(type, id, title, description, blocked_by, related, json)`
   — human output
 - `create_spec_value(type, id, title, description, blocked_by, related)`
-  — returns `serde_json::Value` for MCP
+  — returns typed `CreateResult` for MCP (follows MutationResult pattern)
 
 **MCP tool** (`src/mcp/server.rs`):
 - Register `spec.create` as the 12th spec tool
@@ -215,8 +221,9 @@ Detection: parse the active-session file's YAML frontmatter for the
 ## Key Files
 
 ```
+src/spec.rs                           — add SpecType enum, SPEC_TYPES, FromStr, SpecTypeError
 src/commands/spec/mod.rs              — add SpecCommands::Create, pub fn create()
-src/commands/spec/internal/create.rs  — create_spec(), create_spec_value() [NEW]
+src/commands/spec/internal/create.rs  — create_spec(), create_spec_value(), CreateResult [NEW]
 src/commands/spec/internal/mod.rs     — add mod create, re-export
 src/main.rs                           — dispatch SpecCommands::Create
 src/mcp/server.rs                     — register spec.create tool + handler
