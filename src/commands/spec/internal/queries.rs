@@ -119,47 +119,46 @@ pub struct ReadySpec {
     pub title: String,
 }
 
-/// Query specs ready to work on
+/// Query specs ready to work on (filesystem truth).
 ///
 /// Returns specs where:
-/// - File is in layer/surface/build/ (actual specs, not beliefs)
+/// - Exists on disk in layer/surface/build/ (filesystem = truth for existence)
 /// - status IN ('ready', 'active')
-/// - All blocked_by specs have status 'complete' or 'done'
+/// - All blocked_by specs (from frontmatter) have status 'complete' or 'done'
 pub fn get_ready_specs() -> Result<Vec<ReadySpec>> {
-    let db_path = Path::new(DB_PATH);
-    if !db_path.exists() {
-        anyhow::bail!("Knowledge database not found. Run 'patina scrape' first.");
-    }
+    let all_specs = get_all_specs(&ListFilters::default())?;
 
-    let conn = Connection::open(db_path).context("Failed to open database")?;
+    // Build status lookup for blocker resolution
+    let status_map: HashMap<String, String> = all_specs
+        .iter()
+        .filter_map(|s| {
+            s.status
+                .as_ref()
+                .map(|st| (s.id.clone(), st.clone()))
+        })
+        .collect();
 
-    let mut stmt = conn.prepare(
-        r#"
-        SELECT p.id, p.status, p.target, p.title
-        FROM patterns p
-        WHERE p.file_path LIKE 'layer/surface/build/%'
-          AND p.status IS NOT NULL
-          AND p.status IN ('ready', 'active')
-          AND NOT EXISTS (
-            SELECT 1 FROM spec_deps d
-            JOIN patterns blocker ON d.depends_on = blocker.id
-            WHERE d.spec_id = p.id
-              AND blocker.status NOT IN ('complete', 'done')
-          )
-        ORDER BY p.target, p.id
-        "#,
-    )?;
-
-    let specs = stmt
-        .query_map([], |row| {
-            Ok(ReadySpec {
-                id: row.get(0)?,
-                status: row.get(1)?,
-                target: row.get(2)?,
-                title: row.get(3)?,
+    let mut specs: Vec<ReadySpec> = all_specs
+        .iter()
+        .filter(|s| matches!(s.status.as_deref(), Some("ready") | Some("active")))
+        .filter(|s| {
+            // All blockers must be complete/done (or not found on disk = archived = done)
+            s.blocked_by.iter().all(|blocker_id| {
+                match status_map.get(blocker_id).map(|s| s.as_str()) {
+                    Some("complete") | Some("done") | None => true,
+                    _ => false,
+                }
             })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+        })
+        .map(|s| ReadySpec {
+            id: s.id.clone(),
+            status: s.status.clone().unwrap_or_default(),
+            target: s.target.clone(),
+            title: s.title.clone(),
+        })
+        .collect();
+
+    specs.sort_by(|a, b| a.target.cmp(&b.target).then(a.id.cmp(&b.id)));
 
     Ok(specs)
 }
@@ -474,6 +473,9 @@ pub struct SpecInfo {
     /// File path on disk — avoids double-walk in find_spec fallback
     #[serde(skip)]
     pub file_path: Option<String>,
+    /// Frontmatter blocked_by — filesystem truth for dependency resolution
+    #[serde(skip)]
+    pub blocked_by: Vec<String>,
 }
 
 /// Filter options for spec list
@@ -551,6 +553,7 @@ pub(super) fn scan_disk_specs() -> Vec<SpecInfo> {
                     paused_date: frontmatter.paused_date,
                     blocked_date: frontmatter.blocked_date,
                     file_path: Some(file_path),
+                    blocked_by: frontmatter.blocked_by,
                 });
             }
         }
