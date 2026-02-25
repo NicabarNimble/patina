@@ -8,6 +8,7 @@ sessions:
 related:
 - spec-next-typed
 - spec-history
+- spec-query-filesystem-truth
 exit_criteria: []
 ---
 # explore: Spec System Audit — Full Expert Review Findings
