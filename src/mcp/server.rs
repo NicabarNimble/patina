@@ -509,6 +509,11 @@ fn handle_list_tools(req: &Request) -> Response {
                                 "type": "array",
                                 "items": { "type": "string" },
                                 "description": "Spec IDs this is blocked by"
+                            },
+                            "related": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Related spec IDs"
                             }
                         },
                         "required": ["spec_type", "id"]
@@ -1236,6 +1241,15 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         .collect()
                 })
                 .unwrap_or_default();
+            let related: Vec<String> = args
+                .get("related")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
             if spec_type.is_empty() {
                 return Response::error(
                     req.id.clone(),
@@ -1256,7 +1270,7 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                 title,
                 description,
                 blocked_by,
-                Vec::new(),
+                related,
             ) {
                 Ok(result) => {
                     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
