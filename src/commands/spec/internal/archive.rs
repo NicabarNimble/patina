@@ -176,7 +176,13 @@ pub fn archive_stale_specs(dry_run: bool) -> Result<()> {
             continue;
         }
 
-        archive_spec_inner(&spec.id, &found.file_path, status, &spec.title, spec_dir.as_deref())?;
+        archive_spec_inner(
+            &spec.id,
+            &found.file_path,
+            status,
+            &spec.title,
+            spec_dir.as_deref(),
+        )?;
     }
 
     if dry_run {

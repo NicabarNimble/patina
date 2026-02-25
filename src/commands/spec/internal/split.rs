@@ -103,7 +103,13 @@ pub fn split_spec_value(
         )?;
     } else {
         // No release (explore type) — archive as standalone commit
-        archive_spec_inner(id, &out.file_path, "complete", &title_str, spec_dir.as_deref())?;
+        archive_spec_inner(
+            id,
+            &out.file_path,
+            "complete",
+            &title_str,
+            spec_dir.as_deref(),
+        )?;
     }
 
     // 5. Determine new spec ID
