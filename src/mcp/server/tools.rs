@@ -234,7 +234,7 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                 },
                 {
                     "name": "spec.complete",
-                    "description": "Complete an active spec — triggers release (version bump) + archive (git tag + remove).",
+                    "description": "Complete an active spec — triggers release (version bump) + archive (git tag + remove). Validates exit criteria are met unless force is true.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -246,6 +246,11 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                                 "type": "boolean",
                                 "default": false,
                                 "description": "Force major version bump (for 1.0.0 moments)"
+                            },
+                            "force": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "Bypass exit criteria check"
                             }
                         },
                         "required": ["id"]

@@ -1662,8 +1662,13 @@ fn main() -> Result<()> {
             commands::spec::SpecCommands::Promote { id, json } => {
                 commands::spec::promote(&id, json)?;
             }
-            commands::spec::SpecCommands::Complete { id, major, json } => {
-                commands::spec::complete(&id, major, json)?;
+            commands::spec::SpecCommands::Complete {
+                id,
+                major,
+                force,
+                json,
+            } => {
+                commands::spec::complete(&id, major, force, json)?;
             }
             commands::spec::SpecCommands::Abandon { id, reason, json } => {
                 commands::spec::abandon(&id, reason.as_deref(), json)?;
