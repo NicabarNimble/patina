@@ -3,9 +3,10 @@ type: feat
 id: spec-knowledge-evolution
 status: draft
 created: 2026-02-22
-priority: high
-scope: belief-lifecycle
-blocked_by: []  # spec-workflow-rigor completed 2026-02-24
+sessions:
+- 20260222-054702
+- 20260223-120524
+- 20260223-132543
 related:
 - src/mother/graph.rs
 - src/commands/belief/mod.rs
@@ -20,10 +21,7 @@ beliefs:
 - refutation-is-discovery
 - build-correct-not-temporary
 - knowledge-evolution-first-class
-sessions:
-- 20260222-054702
-- 20260223-120524
-- 20260223-132543
+exit_criteria: []
 ---
 
 # feat: Belief Lifecycle — Hypothesis, Validation, Refutation
