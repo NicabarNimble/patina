@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: mcp-server-split
-status: ready
+status: active
 created: 2026-02-25
 sessions:
   origin: 20260225-082251
