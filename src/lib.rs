@@ -6,6 +6,7 @@ pub mod eventlog;
 pub mod forge;
 pub mod git;
 pub mod layer;
+pub mod measure;
 pub mod migration;
 pub mod models;
 pub mod mother;
