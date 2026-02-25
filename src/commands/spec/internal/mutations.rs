@@ -18,6 +18,7 @@ use super::DB_PATH;
 /// Result of a spec mutation: pre/post frontmatter + file path.
 pub(super) struct MutationOutput {
     pub file_path: String,
+    #[allow(dead_code)] // structurally correct; available for future assertions
     pub pre: SpecFrontmatter,
     pub post: SpecFrontmatter,
 }
@@ -158,11 +159,11 @@ pub fn promote_spec(id: &str, json: bool) -> Result<()> {
     if json {
         println!("{}", serde_json::to_string_pretty(&result)?);
     } else {
-        let new_status = result["new_status"].as_str().unwrap_or("unknown");
-        let file_path = result["file"].as_str().unwrap_or("");
-        println!("Promoted: {} → {}", id, new_status);
-        println!("  File: {}", file_path);
-        if new_status == "active" {
+        println!("Promoted: {} → {}", id, result.new_status);
+        if let MutationDetail::Promote { ref file } = result.detail {
+            println!("  File: {}", file);
+        }
+        if result.new_status == "active" {
             println!("  Tag: spec/{}-start", id);
         }
     }
@@ -171,7 +172,7 @@ pub fn promote_spec(id: &str, json: bool) -> Result<()> {
 }
 
 /// Promote a spec and return structured result (for MCP).
-pub fn promote_spec_value(id: &str) -> Result<serde_json::Value> {
+pub fn promote_spec_value(id: &str) -> Result<MutationResult> {
     let out = load_and_mutate(id, |fm| match fm.status.as_deref() {
         Some("draft") => {
             fm.status = Some("ready".to_string());
@@ -201,12 +202,14 @@ pub fn promote_spec_value(id: &str) -> Result<serde_json::Value> {
     let commit_msg = format!("spec: promote {} to {}", id, new_status);
     git_stage_and_commit(&out.file_path, &commit_msg)?;
 
-    Ok(serde_json::json!({
-        "command": "promote",
-        "spec_id": id,
-        "new_status": new_status,
-        "file": out.file_path,
-    }))
+    Ok(MutationResult {
+        command: "promote",
+        spec_id: id.to_string(),
+        new_status: new_status.to_string(),
+        detail: MutationDetail::Promote {
+            file: out.file_path,
+        },
+    })
 }
 
 /// Complete an active spec (release + archive + tag)
@@ -215,18 +218,17 @@ pub fn complete_spec(id: &str, major: bool, json: bool) -> Result<()> {
 
     if json {
         println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        let file_path = result["file"].as_str().unwrap_or("");
+    } else if let MutationDetail::Complete { ref file, .. } = result.detail {
         println!("Completed: {} → complete", id);
         println!("  Archived: spec/{}", id);
-        println!("  Recover: git show spec/{}:{}", id, file_path);
+        println!("  Recover: git show spec/{}:{}", id, file);
     }
 
     Ok(())
 }
 
 /// Complete an active spec and return structured result (for MCP).
-pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
+pub fn complete_spec_value(id: &str, major: bool) -> Result<MutationResult> {
     // 1. Load spec and validate status
     let loaded = load_spec(id)?;
     match loaded.status.as_deref() {
@@ -255,14 +257,16 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
     };
     release_and_archive(id, &out.file_path, &out.post, &title_str, bump)?;
 
-    Ok(serde_json::json!({
-        "command": "complete",
-        "spec_id": id,
-        "new_status": "complete",
-        "archived": true,
-        "tag": format!("spec/{}", id),
-        "file": out.file_path,
-    }))
+    Ok(MutationResult {
+        command: "complete",
+        spec_id: id.to_string(),
+        new_status: "complete".to_string(),
+        detail: MutationDetail::Complete {
+            file: out.file_path,
+            tag: format!("spec/{}", id),
+            archived: true,
+        },
+    })
 }
 
 /// Abandon a spec (archive + tag, no release)
@@ -271,21 +275,20 @@ pub fn abandon_spec(id: &str, reason: Option<&str>, json: bool) -> Result<()> {
 
     if json {
         println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        let file_path = result["file"].as_str().unwrap_or("");
+    } else if let MutationDetail::Abandon { ref file, .. } = result.detail {
         println!("Abandoned: {}", id);
         if let Some(r) = reason {
             println!("  Reason: {}", r);
         }
         println!("  Archived: spec/{}", id);
-        println!("  Recover: git show spec/{}:{}", id, file_path);
+        println!("  Recover: git show spec/{}:{}", id, file);
     }
 
     Ok(())
 }
 
 /// Abandon a spec and return structured result (for MCP).
-pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<serde_json::Value> {
+pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<MutationResult> {
     // 1. Load spec and validate status
     let loaded = load_spec(id)?;
     match loaded.status.as_deref() {
@@ -327,15 +330,17 @@ pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<serde_json::
         spec_dir.as_deref(),
     )?;
 
-    Ok(serde_json::json!({
-        "command": "abandon",
-        "spec_id": id,
-        "new_status": "abandoned",
-        "reason": reason,
-        "archived": true,
-        "tag": format!("spec/{}", id),
-        "file": out.file_path,
-    }))
+    Ok(MutationResult {
+        command: "abandon",
+        spec_id: id.to_string(),
+        new_status: "abandoned".to_string(),
+        detail: MutationDetail::Abandon {
+            file: out.file_path,
+            tag: format!("spec/{}", id),
+            archived: true,
+            reason: reason.map(|s| s.to_string()),
+        },
+    })
 }
 
 /// Pause an active spec with reason.
@@ -347,11 +352,10 @@ pub fn pause_spec(id: &str, reason: &str, json: bool) -> Result<()> {
 
     if json {
         println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        let tag_name = result["tag"].as_str().unwrap_or("");
+    } else if let MutationDetail::Pause { ref tag, .. } = result.detail {
         println!("Paused: {} → paused", id);
         println!("  Reason: {}", reason);
-        println!("  Tag: {}", tag_name);
+        println!("  Tag: {}", tag);
         println!("  Resume: patina spec resume {}", id);
     }
 
@@ -359,7 +363,7 @@ pub fn pause_spec(id: &str, reason: &str, json: bool) -> Result<()> {
 }
 
 /// Pause an active spec and return structured result (for MCP).
-pub fn pause_spec_value(id: &str, reason: &str) -> Result<serde_json::Value> {
+pub fn pause_spec_value(id: &str, reason: &str) -> Result<MutationResult> {
     // 1. Load spec and validate status
     let loaded = load_spec(id)?;
     match loaded.status.as_deref() {
@@ -428,14 +432,16 @@ pub fn pause_spec_value(id: &str, reason: &str) -> Result<serde_json::Value> {
         Ok(())
     })?;
 
-    Ok(serde_json::json!({
-        "command": "pause",
-        "spec_id": id,
-        "new_status": "paused",
-        "reason": reason,
-        "tag": tag_name,
-        "paused_date": today,
-    }))
+    Ok(MutationResult {
+        command: "pause",
+        spec_id: id.to_string(),
+        new_status: "paused".to_string(),
+        detail: MutationDetail::Pause {
+            tag: tag_name,
+            reason: reason.to_string(),
+            paused_date: today,
+        },
+    })
 }
 
 /// Resume a paused or blocked spec.
@@ -447,11 +453,14 @@ pub fn resume_spec(id: &str, force: bool, json: bool) -> Result<()> {
 
     if json {
         println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        let tag_name = result["tag"].as_str().unwrap_or("");
-        let paused_at_tag = result["paused_at_tag"].as_str();
+    } else if let MutationDetail::Resume {
+        ref tag,
+        ref paused_at_tag,
+        ..
+    } = result.detail
+    {
         println!("Resumed: {} → active", id);
-        println!("  Tag: {}", tag_name);
+        println!("  Tag: {}", tag);
 
         if let Some(pause_tag) = paused_at_tag {
             // What changed while away
@@ -499,7 +508,7 @@ pub fn resume_spec(id: &str, force: bool, json: bool) -> Result<()> {
 }
 
 /// Resume a paused or blocked spec and return structured result (for MCP).
-pub fn resume_spec_value(id: &str, force: bool) -> Result<serde_json::Value> {
+pub fn resume_spec_value(id: &str, force: bool) -> Result<MutationResult> {
     // 1. Load spec and validate status
     let loaded = load_spec(id)?;
     let status_str = loaded.status.as_deref().unwrap_or("").to_string();
@@ -578,14 +587,16 @@ pub fn resume_spec_value(id: &str, force: bool) -> Result<serde_json::Value> {
     let commit_msg = format!("spec: resume {}", id);
     git_stage_and_commit(&out.file_path, &commit_msg)?;
 
-    Ok(serde_json::json!({
-        "command": "resume",
-        "spec_id": id,
-        "new_status": "active",
-        "previous_status": status_str,
-        "tag": tag_name,
-        "paused_at_tag": paused_at_tag,
-    }))
+    Ok(MutationResult {
+        command: "resume",
+        spec_id: id.to_string(),
+        new_status: "active".to_string(),
+        detail: MutationDetail::Resume {
+            tag: tag_name,
+            previous_status: status_str,
+            paused_at_tag,
+        },
+    })
 }
 
 /// Block an active spec on another spec.
@@ -596,12 +607,11 @@ pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<(
 
     if json {
         println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        let tag_name = result["tag"].as_str().unwrap_or("");
+    } else if let MutationDetail::Block { ref tag, .. } = result.detail {
         println!("Blocked: {} → blocked", id);
         println!("  Blocked by: {}", blocker);
         println!("  Reason: {}", reason);
-        println!("  Tag: {}", tag_name);
+        println!("  Tag: {}", tag);
         println!(
             "  Unblock: patina spec resume {} (when {} is complete)",
             id, blocker
@@ -612,7 +622,7 @@ pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<(
 }
 
 /// Block an active spec and return structured result (for MCP).
-pub fn block_spec_value(id: &str, blocker: &str, reason: &str) -> Result<serde_json::Value> {
+pub fn block_spec_value(id: &str, blocker: &str, reason: &str) -> Result<MutationResult> {
     // 1. Load spec and validate status
     let loaded = load_spec(id)?;
     match loaded.status.as_deref() {
@@ -669,12 +679,14 @@ pub fn block_spec_value(id: &str, blocker: &str, reason: &str) -> Result<serde_j
         Ok(())
     })?;
 
-    Ok(serde_json::json!({
-        "command": "block",
-        "spec_id": id,
-        "new_status": "blocked",
-        "blocker": blocker,
-        "reason": reason,
-        "tag": tag_name,
-    }))
+    Ok(MutationResult {
+        command: "block",
+        spec_id: id.to_string(),
+        new_status: "blocked".to_string(),
+        detail: MutationDetail::Block {
+            tag: tag_name,
+            blocker: blocker.to_string(),
+            reason: reason.to_string(),
+        },
+    })
 }

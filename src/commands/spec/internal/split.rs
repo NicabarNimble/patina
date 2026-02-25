@@ -34,15 +34,17 @@ pub fn split_spec(
     if json {
         println!("{}", serde_json::to_string_pretty(&result)?);
     } else {
-        let derived_id = result["new_spec_id"].as_str().unwrap_or("");
-        let version_tag = result["version_tag"].as_str().unwrap_or("");
-        let new_spec_path = result["new_spec_path"].as_str().unwrap_or("");
-        let file_path = result["original_file"].as_str().unwrap_or("");
         println!("Split: {}", id);
         println!("  Completed: {} → archived (spec/{})", id, id);
-        println!("  Version tag: {}", version_tag);
-        println!("  New draft: {} ({})", derived_id, new_spec_path);
-        println!("  Recover parent: git show {}:{}", version_tag, file_path);
+        println!("  Version tag: {}", result.version_tag);
+        println!(
+            "  New draft: {} ({})",
+            result.new_spec_id, result.new_spec_path
+        );
+        println!(
+            "  Recover parent: git show {}:{}",
+            result.version_tag, result.original_file
+        );
     }
 
     Ok(())
@@ -53,7 +55,7 @@ pub fn split_spec_value(
     id: &str,
     new_id: Option<&str>,
     description: Option<&str>,
-) -> Result<serde_json::Value> {
+) -> Result<SplitResult> {
     // 1. Load spec and validate status (active or paused)
     let loaded = load_spec(id)?;
     match loaded.status.as_deref() {
@@ -136,14 +138,14 @@ pub fn split_spec_value(
     );
     git_stage_and_commit(&new_spec_path, &commit_msg)?;
 
-    Ok(serde_json::json!({
-        "command": "split",
-        "original_spec_id": id,
-        "new_spec_id": derived_id,
-        "version_tag": version_tag,
-        "archive_tag": format!("spec/{}", id),
-        "new_spec_path": new_spec_path,
-        "original_file": original_file,
-        "status": "completed",
-    }))
+    Ok(SplitResult {
+        command: "split",
+        original_spec_id: id.to_string(),
+        new_spec_id: derived_id,
+        version_tag,
+        archive_tag: format!("spec/{}", id),
+        new_spec_path,
+        original_file,
+        status: "completed",
+    })
 }
