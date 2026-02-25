@@ -10,10 +10,6 @@ use patina::spec::parse_spec_file;
 use super::queue::{load_dep_counts, spec_age_days_from_list};
 use super::DB_PATH;
 
-// ============================================================================
-// Ready Queue (spec-as-work-item Phase 2)
-// ============================================================================
-
 /// A spec ready to work on (status=ready/active, all blockers complete)
 #[derive(Debug, Clone, Serialize)]
 pub struct ReadySpec {
@@ -207,10 +203,6 @@ pub fn show_ready_specs(json: bool) -> Result<()> {
     Ok(())
 }
 
-// ============================================================================
-// Blocked View (spec-as-work-item Phase 3)
-// ============================================================================
-
 /// A blocker preventing a spec from being ready
 #[derive(Debug, Clone, Serialize)]
 pub struct Blocker {
@@ -366,10 +358,6 @@ pub fn show_blocked_specs(json: bool) -> Result<()> {
 
     Ok(())
 }
-
-// ============================================================================
-// Spec List (spec-as-work-item v0.13.0)
-// ============================================================================
 
 /// Spec info for list display
 #[derive(Debug, Clone, Serialize)]

@@ -11,10 +11,6 @@ use super::queries::{get_all_specs, ListFilters};
 use super::queue::tag_exists;
 use super::DB_PATH;
 
-// ============================================================================
-// Shared Mutation Infrastructure (spec-workflow-rigor Phase 1)
-// ============================================================================
-
 /// Core YAML + DB status update. Reads the spec file, applies a mutation
 /// closure to the frontmatter, writes the file back, and updates the DB.
 /// Returns the file path and mutated frontmatter.
@@ -223,7 +219,7 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
         )?;
     } else {
         // No release (explore type) — archive as standalone commit
-        archive_spec_inner(id, &file_path, "complete", title_str, &spec_dir)?;
+        archive_spec_inner(id, &file_path, "complete", title_str, spec_dir.as_deref())?;
     }
 
     Ok(serde_json::json!({
@@ -289,7 +285,7 @@ pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<serde_json::
         title_str.to_string()
     };
     let spec_dir = resolve_spec_dir(&file_path);
-    archive_spec_inner(id, &file_path, "abandoned", &description, &spec_dir)?;
+    archive_spec_inner(id, &file_path, "abandoned", &description, spec_dir.as_deref())?;
 
     Ok(serde_json::json!({
         "command": "abandon",

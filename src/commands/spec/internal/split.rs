@@ -10,10 +10,6 @@ use super::mutations::git_stage_and_commit;
 use super::queue::tag_exists;
 use super::DB_PATH;
 
-// ============================================================================
-// Spec Split (spec-workflow-rigor Phase 2)
-// ============================================================================
-
 /// Split a spec: complete original with release, create new draft for remaining work.
 ///
 /// Flow: validate → tag → complete original → create new spec → commit
@@ -130,7 +126,7 @@ pub fn split_spec_value(
             )?;
         } else {
             // No release (explore type) — archive as standalone commit
-            archive_spec_inner(id, &found.file_path, "complete", title_str, &spec_dir)?;
+            archive_spec_inner(id, &found.file_path, "complete", title_str, spec_dir.as_deref())?;
         }
     }
 
