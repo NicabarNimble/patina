@@ -1,7 +1,7 @@
 ---
 type: feat
 id: spec-create
-status: ready
+status: active
 created: 2026-02-24
 blocked_by:
 - spec-module-split
