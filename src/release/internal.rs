@@ -135,11 +135,12 @@ fn preflight_external(bump: BumpType) -> Result<PreparedRelease> {
 
 /// Blocking safeguard checks before any Cargo release.
 ///
-/// `spec_path` is excluded from the dirty-tree check — we just updated
-/// its status and will include it in the release commit.
+/// `spec_path` and `Cargo.lock` are excluded from the dirty-tree check —
+/// both are managed by the release pipeline and will be included in the
+/// release commit.
 ///
 /// Checks (all blocking):
-/// 1. Clean working tree (excluding spec_path)
+/// 1. Clean working tree (excluding spec_path and Cargo.lock)
 /// 2. Not behind remote
 /// 3. Not diverged from remote
 /// 4. Target tag doesn't already exist
@@ -147,7 +148,7 @@ fn preflight_external(bump: BumpType) -> Result<PreparedRelease> {
 fn run_safeguard_checks(new_version: &str, spec_path: &str) -> Result<()> {
     use crate::git;
 
-    // 1. Dirty tree check (excluding untracked files and the spec file we're releasing)
+    // 1. Dirty tree check (excluding untracked files, spec file, and Cargo.lock)
     let dirty = git::status_porcelain()?;
     let unexpected: Vec<&str> = dirty
         .lines()
@@ -163,7 +164,7 @@ fn run_safeguard_checks(new_version: &str, spec_path: &str) -> Result<()> {
                 .split(" -> ")
                 .next()
                 .unwrap_or("");
-            !path.is_empty() && path != spec_path
+            !path.is_empty() && path != spec_path && path != "Cargo.lock"
         })
         .collect();
 
@@ -289,8 +290,18 @@ fn execute_cargo(
         .as_deref()
         .expect("Cargo preflight always sets old_version");
 
-    // 1. Update Cargo.toml
+    // 1. Update Cargo.toml + regenerate Cargo.lock
     update_cargo_version(new_version)?;
+    let lock_output = Command::new("cargo")
+        .args(["update", "--workspace"])
+        .output()
+        .context("Failed to regenerate Cargo.lock")?;
+    if !lock_output.status.success() {
+        anyhow::bail!(
+            "cargo update --workspace failed: {}",
+            String::from_utf8_lossy(&lock_output.stderr)
+        );
+    }
 
     // 2. Stage files
     if let Some(dir) = archive_dir {
@@ -304,7 +315,7 @@ fn execute_cargo(
             anyhow::bail!("git rm failed: {}", String::from_utf8_lossy(&output.stderr));
         }
         let output = Command::new("git")
-            .args(["add", "Cargo.toml"])
+            .args(["add", "Cargo.toml", "Cargo.lock"])
             .output()
             .context("Failed to stage Cargo.toml")?;
         if !output.status.success() {
@@ -316,7 +327,7 @@ fn execute_cargo(
     } else {
         // Normal mode: stage Cargo.toml + spec file
         let output = Command::new("git")
-            .args(["add", "Cargo.toml", spec_path])
+            .args(["add", "Cargo.toml", "Cargo.lock", spec_path])
             .output()
             .context("Failed to stage files")?;
         if !output.status.success() {
