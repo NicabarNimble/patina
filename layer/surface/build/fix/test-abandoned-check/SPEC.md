@@ -1,7 +1,7 @@
 ---
 type: fix
 id: test-abandoned-check
-status: ready
+status: active
 created: 2026-02-25
 sessions:
   origin: 20260225-100913
