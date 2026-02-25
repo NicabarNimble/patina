@@ -3,6 +3,8 @@ use rusqlite::Connection;
 use std::path::Path;
 use std::process::Command;
 
+use serde::Serialize;
+
 use patina::release::BumpType;
 use patina::spec::{serialize_spec_file, SpecFrontmatter};
 
@@ -16,9 +18,53 @@ use super::DB_PATH;
 /// Result of a spec mutation: pre/post frontmatter + file path.
 pub(super) struct MutationOutput {
     pub file_path: String,
-    #[allow(dead_code)] // consumed by Step 4 (typed MutationResult)
     pub pre: SpecFrontmatter,
     pub post: SpecFrontmatter,
+}
+
+/// Typed result for spec mutation commands (replaces serde_json::Value).
+#[derive(Debug, Serialize)]
+pub struct MutationResult {
+    pub command: &'static str,
+    pub spec_id: String,
+    pub new_status: String,
+    #[serde(flatten)]
+    pub detail: MutationDetail,
+}
+
+/// Command-specific fields for each mutation type.
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum MutationDetail {
+    Promote {
+        file: String,
+    },
+    Complete {
+        file: String,
+        tag: String,
+        archived: bool,
+    },
+    Abandon {
+        file: String,
+        tag: String,
+        archived: bool,
+        reason: Option<String>,
+    },
+    Pause {
+        tag: String,
+        reason: String,
+        paused_date: String,
+    },
+    Resume {
+        tag: String,
+        previous_status: String,
+        paused_at_tag: Option<String>,
+    },
+    Block {
+        tag: String,
+        blocker: String,
+        reason: String,
+    },
 }
 
 /// Core YAML + DB status update. Takes a fully loaded spec, applies a mutation

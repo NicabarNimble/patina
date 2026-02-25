@@ -1,10 +1,24 @@
 use anyhow::{Context, Result};
+use serde::Serialize;
 use std::path::Path;
 
 use patina::release::BumpType;
 
 use super::archive::{load_spec, release_and_archive};
 use super::mutations::{git_stage_and_commit, mutate_spec};
+
+/// Typed result for spec split command (replaces serde_json::Value).
+#[derive(Debug, Serialize)]
+pub struct SplitResult {
+    pub command: &'static str,
+    pub original_spec_id: String,
+    pub new_spec_id: String,
+    pub version_tag: String,
+    pub archive_tag: String,
+    pub new_spec_path: String,
+    pub original_file: String,
+    pub status: &'static str,
+}
 
 /// Split a spec: complete original with release, create new draft for remaining work.
 ///
