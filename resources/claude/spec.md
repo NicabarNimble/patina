@@ -24,19 +24,25 @@ is unavailable or when the user requests human-readable output.
 
 **MUTATIONS (change state, confirm with user first):**
 
-- `spec.create` — Create a new spec. Use when the user says "let's
-  spec this out" or when pausing current work to address a discovered
-  issue. Infer type from context (bug → fix, new capability → feat).
+- `spec.create` — Create a new spec and fill it in. Triggers on any
+  signal that work should be tracked: "this should be fixed", "we need
+  to handle X", "let's clean this up", "I wonder why Y happens", "spec
+  this", "that's a bug", "we should add", "let's plan out". You do NOT
+  need the user to say "create a spec" — recognize the intent and offer.
+  Infer type from context: bug/broken/wrong → fix, new capability/add →
+  feat, cleanup/restructure → refactor, question/investigate → explore.
   Parameters: spec_type (required), id (required), title, description,
   blocked_by.
 
-  **After scaffolding, always fill in the body.** The CLI creates empty
-  section headings — your job is to populate them from conversation
-  context. Read the created SPEC.md, write substantive content into
-  every section (Problem, Solution, Exit Criteria, etc.), then commit.
-  The spec should be useful immediately, not a skeleton that needs
-  manual editing. If you lack context for a section, write what you
-  know and mark gaps explicitly.
+  **After scaffolding, always fill in the body:**
+  1. Read the created SPEC.md (the CLI writes empty section headings)
+  2. Write substantive content into every section from conversation
+     context — Problem, Solution/Root Cause/Fix, Exit Criteria, etc.
+  3. For exit criteria, write specific checkable items, not vague goals
+  4. If you lack context for a section, write what you know and mark
+     gaps with "TODO: clarify with user"
+  5. Commit the populated spec
+  The spec should be useful immediately — never leave a skeleton.
 
 - `spec.promote` — Advance: draft -> ready -> active. Use when a spec
   is reviewed and ready to progress. Promoting to active creates a git tag.
@@ -71,9 +77,20 @@ is unavailable or when the user requests human-readable output.
 
 ## Judgment Guidance
 
-**Proactive suggestions:**
-- When the user identifies a bug during spec work, offer to pause the
-  current spec and work on a fix.
+**Proactive spec creation — don't wait for magic words:**
+- When the user describes a problem, a feature need, a cleanup, or an
+  investigation, offer to create a spec. Signals include:
+  - Bug reports: "this is broken", "that's wrong", "it crashes when"
+  - Feature ideas: "we should add", "it would be nice if", "we need"
+  - Refactor needs: "this is messy", "let's clean up", "should restructure"
+  - Investigations: "I wonder why", "we should look into", "not sure how"
+  - Mid-work discoveries: "wait, this other thing is broken too"
+- Suggest the type and a kebab-case id. Example: "That sounds like a
+  fix spec — want me to create `fix/db-rollback-on-failure`?"
+- When a bug is found during active spec work, offer to pause the
+  current spec and create a fix spec for the discovered issue.
+
+**Other proactive suggestions:**
 - When a spec's exit criteria are all checked, suggest completing it.
 - At session start, run spec.next to orient the conversation.
 - When finishing work, check if any blocked specs are now unblocked.
@@ -102,3 +119,25 @@ is unavailable or when the user requests human-readable output.
 - For mutations: Confirm the state change, show the git tag created,
   and suggest the natural next action (e.g., after pause, suggest what
   to work on next).
+
+## Example: Create Workflow
+
+User says: "the complete command leaves the DB in a bad state when
+git operations fail"
+
+You recognize this as a bug → fix spec. Respond:
+
+> That sounds like a fix spec. Want me to create
+> `fix/spec-complete-atomicity`?
+
+If user confirms:
+1. Call `spec.create` with type=fix, id=spec-complete-atomicity,
+   title="Spec complete atomicity gap",
+   description="complete_spec_value updates DB before release, leaving
+   inconsistent state on failure"
+2. Read the created SPEC.md
+3. Fill in Problem (what the user described + what you know from the
+   codebase), Root Cause (trace it in code), Fix (proposed approach),
+   Exit Criteria (specific testable items)
+4. Commit: `git add ... && git commit -m "spec: flesh out spec-complete-atomicity"`
+5. Tell the user what you wrote and ask if anything needs adjusting
