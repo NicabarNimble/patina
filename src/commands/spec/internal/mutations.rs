@@ -308,12 +308,7 @@ pub fn set_spec_value(id: &str, field: &str, value: &str) -> Result<MutationResu
         Ok(())
     })?;
 
-    let new_status = out
-        .post
-        .status
-        .as_deref()
-        .unwrap_or("unknown")
-        .to_string();
+    let new_status = out.post.status.as_deref().unwrap_or("unknown").to_string();
 
     let commit_msg = format!("spec: set {} on {}", field, id);
     git_stage_and_commit(&out.file_path, &commit_msg)?;
