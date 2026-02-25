@@ -275,11 +275,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
             let field = args.get("field").and_then(|v| v.as_str()).unwrap_or("");
             let value = args.get("value").and_then(|v| v.as_str()).unwrap_or("");
             if id.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.set requires 'id' parameter",
-                );
+                return Response::error(req.id.clone(), -32602, "spec.set requires 'id' parameter");
             }
             if field.is_empty() {
                 return Response::error(
