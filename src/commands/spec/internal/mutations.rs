@@ -67,11 +67,7 @@ where
 ///
 /// Used by pause_spec and block_spec where YAML is mutated before git
 /// operations that could fail (D1 rollback pattern from design.md).
-pub(super) fn with_content_rollback<T, F>(
-    file_path: &str,
-    backup: &str,
-    action: F,
-) -> Result<T>
+pub(super) fn with_content_rollback<T, F>(file_path: &str, backup: &str, action: F) -> Result<T>
 where
     F: FnOnce() -> Result<T>,
 {
@@ -238,7 +234,13 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
         )?;
     } else {
         // No release (explore type) — archive as standalone commit
-        archive_spec_inner(id, &out.file_path, "complete", &title_str, spec_dir.as_deref())?;
+        archive_spec_inner(
+            id,
+            &out.file_path,
+            "complete",
+            &title_str,
+            spec_dir.as_deref(),
+        )?;
     }
 
     Ok(serde_json::json!({
@@ -305,7 +307,13 @@ pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<serde_json::
         title_str
     };
     let spec_dir = resolve_spec_dir(&out.file_path);
-    archive_spec_inner(id, &out.file_path, "abandoned", &description, spec_dir.as_deref())?;
+    archive_spec_inner(
+        id,
+        &out.file_path,
+        "abandoned",
+        &description,
+        spec_dir.as_deref(),
+    )?;
 
     Ok(serde_json::json!({
         "command": "abandon",
