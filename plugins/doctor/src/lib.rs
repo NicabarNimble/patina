@@ -6,7 +6,7 @@
 //!
 //! Proves the command world: CLI subcommand that runs without Mother daemon.
 
-use patina_sdk::command::{layer, query};
+use patina_sdk::command::{layer, measure, query};
 use patina_sdk::{register_command, CommandPlugin};
 
 /// JSON structures for health check output.
@@ -161,6 +161,24 @@ impl CommandPlugin for DoctorPlugin {
         health.sessions = session_count;
         health.uid = uid;
         health.beliefs = beliefs;
+
+        // Emit measurement event
+        let capture_metrics = serde_json::json!({
+            "missing_tools": health.missing_tools.len(),
+            "new_tools": health.new_tools.len(),
+            "layer_patterns": health.layer_patterns,
+            "sessions": health.sessions,
+            "beliefs": health.beliefs.unwrap_or(0),
+        });
+
+        if let Err(e) = measure::record_measurement(
+            "capture",
+            "doctor",
+            "health-check",
+            &capture_metrics.to_string(),
+        ) {
+            eprintln!("Warning: failed to record measurement: {}", e);
+        }
 
         // Output
         if json_output {
