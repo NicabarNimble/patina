@@ -25,6 +25,35 @@ use anyhow::Result;
 /// Spec CLI subcommands (used by main.rs via clap)
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum SpecCommands {
+    /// Create a new spec draft
+    Create {
+        /// Spec type: feat, fix, refactor, explore
+        r#type: String,
+
+        /// Spec identifier (kebab-case)
+        id: String,
+
+        /// Human title (defaults to "<type>: <id>")
+        #[arg(long)]
+        title: Option<String>,
+
+        /// One-line problem statement for the blockquote
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Spec IDs this is blocked by
+        #[arg(long)]
+        blocked_by: Vec<String>,
+
+        /// Related file paths
+        #[arg(long)]
+        related: Vec<String>,
+
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Archive a completed spec (git tag + remove from tree)
     Archive {
         /// Spec ID to archive (required unless --stale)
@@ -178,6 +207,19 @@ pub enum SpecCommands {
     },
 }
 
+/// Create a new spec draft
+pub fn create(
+    spec_type: &str,
+    id: &str,
+    title: Option<&str>,
+    description: Option<&str>,
+    blocked_by: Vec<String>,
+    related: Vec<String>,
+    json: bool,
+) -> Result<()> {
+    internal::create_spec(spec_type, id, title, description, blocked_by, related, json)
+}
+
 /// Archive a completed spec: tag, remove, commit
 pub fn archive(id: &str, dry_run: bool) -> Result<()> {
     internal::archive_spec(id, dry_run)
@@ -259,6 +301,58 @@ mod tests {
     fn parse(args: &[&str]) -> Result<SpecCommands, clap::Error> {
         TestCli::try_parse_from(std::iter::once("patina-spec").chain(args.iter().copied()))
             .map(|cli| cli.command)
+    }
+
+    #[test]
+    fn create_basic() {
+        let cmd = parse(&["create", "feat", "my-feature"]).unwrap();
+        match cmd {
+            SpecCommands::Create {
+                r#type,
+                id,
+                title,
+                json,
+                ..
+            } => {
+                assert_eq!(r#type, "feat");
+                assert_eq!(id, "my-feature");
+                assert!(title.is_none());
+                assert!(!json);
+            }
+            _ => panic!("expected Create"),
+        }
+    }
+
+    #[test]
+    fn create_with_options() {
+        let cmd = parse(&[
+            "create",
+            "fix",
+            "my-bug",
+            "--title",
+            "Fix the bug",
+            "--blocked-by",
+            "other-spec",
+            "--json",
+        ])
+        .unwrap();
+        match cmd {
+            SpecCommands::Create {
+                r#type,
+                id,
+                title,
+                blocked_by,
+                json,
+                ..
+            } => {
+                assert_eq!(r#type, "fix");
+                assert_eq!(id, "my-bug");
+                assert_eq!(title.as_deref(), Some("Fix the bug"));
+                assert_eq!(blocked_by, vec!["other-spec"]);
+                assert!(json);
+            }
+            _ => panic!("expected Create"),
+        }
     }
 
     #[test]

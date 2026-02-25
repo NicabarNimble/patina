@@ -1614,6 +1614,25 @@ fn main() -> Result<()> {
             }
         },
         Some(Commands::Spec { command }) => match command {
+            commands::spec::SpecCommands::Create {
+                r#type,
+                id,
+                title,
+                description,
+                blocked_by,
+                related,
+                json,
+            } => {
+                commands::spec::create(
+                    &r#type,
+                    &id,
+                    title.as_deref(),
+                    description.as_deref(),
+                    blocked_by,
+                    related,
+                    json,
+                )?;
+            }
             commands::spec::SpecCommands::Archive { id, dry_run, stale } => {
                 if stale {
                     commands::spec::archive_stale(dry_run)?;
