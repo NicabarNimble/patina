@@ -18,6 +18,9 @@ world mother-child {
     /// Import host HTTP (domain-allowlisted)
     import patina:host/http@0.1.0;
 
+    /// Import measurement reporting
+    import patina:host/measure@0.1.0;
+
     /// Bring shared types into world scope for export signatures
     use patina:host/types@0.1.0.{child-health, toy};
 

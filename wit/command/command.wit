@@ -18,6 +18,9 @@ world command {
     /// Import capability-gated query access (scry, context, assay)
     import patina:host/query@0.1.0;
 
+    /// Import measurement reporting
+    import patina:host/measure@0.1.0;
+
     /// Initialize plugin (host calls first, before run)
     export init: func();
 
