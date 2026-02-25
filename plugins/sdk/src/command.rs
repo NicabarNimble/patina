@@ -76,6 +76,28 @@ pub mod layer {
     }
 }
 
+/// Measurement reporting — record metrics from plugin execution.
+///
+/// Requires `host_measure = true` in plugin.toml capabilities.
+/// The host validates verb, checks metrics are numeric JSON, and
+/// writes to eventlog with the plugin name as source.
+pub mod measure {
+    /// Record a measurement event.
+    ///
+    /// - `verb`: protocol verb (capture, index, search, believe, evolve)
+    /// - `tool`: tool name (e.g., "doctor")
+    /// - `mode`: sub-mode (e.g., "freshness-check")
+    /// - `metrics_json`: JSON object with numeric values (e.g., `{"score": 0.95}`)
+    pub fn record_measurement(
+        verb: &str,
+        tool: &str,
+        mode: &str,
+        metrics_json: &str,
+    ) -> Result<(), String> {
+        super::patina::host::measure::record_measurement(verb, tool, mode, metrics_json)
+    }
+}
+
 /// Capability-gated access to Patina's query engines.
 ///
 /// Requires `host_query = ["scry"]` (or "context", "assay") in plugin.toml.
