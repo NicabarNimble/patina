@@ -50,6 +50,20 @@ pub struct SpecMilestoneEntry {
     pub status: String,
 }
 
+/// Structured exit criterion — machine-readable contract for spec completion.
+///
+/// Each criterion has a stable id for programmatic reference, human text,
+/// checked state, and an optional verify command/instruction.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ExitCriterion {
+    pub id: String,
+    pub text: String,
+    #[serde(default)]
+    pub checked: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verify: Option<String>,
+}
+
 /// Complete spec frontmatter - the canonical contract for spec files
 ///
 /// All fields except `r#type` and `id` are optional to handle legacy specs.
@@ -107,6 +121,10 @@ pub struct SpecFrontmatter {
     /// External references
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub references: Vec<String>,
+
+    /// Structured exit criteria — machine-readable completion contract
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exit_criteria: Vec<ExitCriterion>,
 
     /// Version milestones
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -288,6 +306,44 @@ Body content here.
         let err = "unknown".parse::<SpecType>().unwrap_err();
         assert!(err.to_string().contains("unknown"));
         assert!(err.to_string().contains("feat"));
+    }
+
+    #[test]
+    fn test_exit_criteria_roundtrip() {
+        let content = r#"---
+type: fix
+id: test-exit
+status: active
+exit_criteria:
+  - id: rollback-db
+    text: "complete_spec_value rolls back DB status on failure"
+    checked: false
+  - id: simulated-failure
+    text: "Simulated failure leaves DB status unchanged"
+    checked: true
+    verify: "patina spec complete <id> with dirty tree; check DB"
+---
+
+# Test exit criteria
+"#;
+
+        let (frontmatter, body) = parse_spec_file(content).expect("should parse");
+        assert_eq!(frontmatter.exit_criteria.len(), 2);
+
+        let c0 = &frontmatter.exit_criteria[0];
+        assert_eq!(c0.id, "rollback-db");
+        assert!(!c0.checked);
+        assert!(c0.verify.is_none());
+
+        let c1 = &frontmatter.exit_criteria[1];
+        assert_eq!(c1.id, "simulated-failure");
+        assert!(c1.checked);
+        assert!(c1.verify.is_some());
+
+        // Round-trip: serialize then re-parse
+        let output = serialize_spec_file(&frontmatter, &body).expect("should serialize");
+        let (fm2, _) = parse_spec_file(&output).expect("should re-parse");
+        assert_eq!(fm2.exit_criteria, frontmatter.exit_criteria);
     }
 
     #[test]
