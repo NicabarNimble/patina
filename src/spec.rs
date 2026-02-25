@@ -50,6 +50,20 @@ pub struct SpecMilestoneEntry {
     pub status: String,
 }
 
+/// Structured exit criterion — machine-readable contract for spec completion.
+///
+/// Each criterion has a stable id for programmatic reference, human text,
+/// checked state, and an optional verify command/instruction.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ExitCriterion {
+    pub id: String,
+    pub text: String,
+    #[serde(default)]
+    pub checked: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verify: Option<String>,
+}
+
 /// Complete spec frontmatter - the canonical contract for spec files
 ///
 /// All fields except `r#type` and `id` are optional to handle legacy specs.
@@ -64,7 +78,7 @@ pub struct SpecFrontmatter {
     #[serde(default)]
     pub id: String,
 
-    /// Status: draft, ready, active, complete, abandoned
+    /// Status: draft, ready, active, paused, blocked, complete, abandoned
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
 
@@ -108,6 +122,13 @@ pub struct SpecFrontmatter {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub references: Vec<String>,
 
+    /// Structured exit criteria — machine-readable completion contract.
+    /// Always serialized (even when empty) so the field is visible in YAML
+    /// as a prompt to define criteria. Unlike optional metadata fields,
+    /// exit criteria are contractual and should always be explicit.
+    #[serde(default)]
+    pub exit_criteria: Vec<ExitCriterion>,
+
     /// Version milestones
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub milestones: Vec<SpecMilestoneEntry>,
@@ -115,6 +136,95 @@ pub struct SpecFrontmatter {
     /// Current milestone being worked on
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_milestone: Option<String>,
+
+    /// Why this spec was paused (required on pause)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paused_reason: Option<String>,
+
+    /// When paused (ISO 8601 date, UTC)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paused_date: Option<String>,
+
+    /// Tag ref for resume diffs
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paused_at_tag: Option<String>,
+
+    /// Why this spec was blocked
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocked_reason: Option<String>,
+
+    /// When blocked (ISO 8601 date, UTC)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocked_date: Option<String>,
+
+    /// Parent spec ID (set by split)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub split_from: Option<String>,
+}
+
+// ============================================================================
+// Spec Type Enum
+// ============================================================================
+
+/// Canonical list of valid spec types (for error messages, help text, tests).
+pub const SPEC_TYPES: &[&str] = &["feat", "fix", "refactor", "explore"];
+
+/// Typed spec type — parse from string at boundaries, match internally.
+///
+/// Follows [[boundary-string-internal-enum]]: SpecFrontmatter.r#type stays
+/// String for serde compatibility; this enum is used for validation and
+/// exhaustive matching in new code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpecType {
+    Feat,
+    Fix,
+    Refactor,
+    Explore,
+}
+
+/// Error when parsing an invalid spec type string.
+#[derive(Debug)]
+pub struct SpecTypeError {
+    pub got: String,
+}
+
+impl std::fmt::Display for SpecTypeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "invalid spec type \"{}\" (expected one of: {})",
+            self.got,
+            SPEC_TYPES.join(", ")
+        )
+    }
+}
+
+impl std::error::Error for SpecTypeError {}
+
+impl std::str::FromStr for SpecType {
+    type Err = SpecTypeError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "feat" => Ok(SpecType::Feat),
+            "fix" => Ok(SpecType::Fix),
+            "refactor" => Ok(SpecType::Refactor),
+            "explore" => Ok(SpecType::Explore),
+            _ => Err(SpecTypeError { got: s.to_string() }),
+        }
+    }
+}
+
+impl SpecType {
+    /// Canonical string form (matches YAML frontmatter values).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SpecType::Feat => "feat",
+            SpecType::Fix => "fix",
+            SpecType::Refactor => "refactor",
+            SpecType::Explore => "explore",
+        }
+    }
 }
 
 // ============================================================================
@@ -184,6 +294,59 @@ Body content here.
         let (fm2, _) = parse_spec_file(&output).expect("should re-parse");
         assert_eq!(fm2.id, frontmatter.id);
         assert_eq!(fm2.status, frontmatter.status);
+    }
+
+    #[test]
+    fn test_spec_type_roundtrip() {
+        for &name in SPEC_TYPES {
+            let t: SpecType = name.parse().expect(name);
+            assert_eq!(t.as_str(), name);
+        }
+    }
+
+    #[test]
+    fn test_spec_type_invalid() {
+        let err = "unknown".parse::<SpecType>().unwrap_err();
+        assert!(err.to_string().contains("unknown"));
+        assert!(err.to_string().contains("feat"));
+    }
+
+    #[test]
+    fn test_exit_criteria_roundtrip() {
+        let content = r#"---
+type: fix
+id: test-exit
+status: active
+exit_criteria:
+  - id: rollback-db
+    text: "complete_spec_value rolls back DB status on failure"
+    checked: false
+  - id: simulated-failure
+    text: "Simulated failure leaves DB status unchanged"
+    checked: true
+    verify: "patina spec complete <id> with dirty tree; check DB"
+---
+
+# Test exit criteria
+"#;
+
+        let (frontmatter, body) = parse_spec_file(content).expect("should parse");
+        assert_eq!(frontmatter.exit_criteria.len(), 2);
+
+        let c0 = &frontmatter.exit_criteria[0];
+        assert_eq!(c0.id, "rollback-db");
+        assert!(!c0.checked);
+        assert!(c0.verify.is_none());
+
+        let c1 = &frontmatter.exit_criteria[1];
+        assert_eq!(c1.id, "simulated-failure");
+        assert!(c1.checked);
+        assert!(c1.verify.is_some());
+
+        // Round-trip: serialize then re-parse
+        let output = serialize_spec_file(&frontmatter, &body).expect("should serialize");
+        let (fm2, _) = parse_spec_file(&output).expect("should re-parse");
+        assert_eq!(fm2.exit_criteria, frontmatter.exit_criteria);
     }
 
     #[test]

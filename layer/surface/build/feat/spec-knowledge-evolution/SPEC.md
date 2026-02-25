@@ -3,20 +3,40 @@ type: feat
 id: spec-knowledge-evolution
 status: draft
 created: 2026-02-22
-priority: critical
-scope: core-architecture
+priority: high
+scope: belief-lifecycle
+blocked_by:
+- spec-workflow-rigor
 related:
-- layer/surface/build/feat/spec-secrets-dual-storage/SPEC.md
-beliefs: []
+- src/mother/graph.rs
+- src/commands/belief/mod.rs
+- src/commands/scrape/beliefs/mod.rs
+- src/commands/scrape/beliefs/verification/mod.rs
+- src/retrieval/oracle.rs
+- src/mcp/server.rs
+beliefs:
+- mutation-completes-query
+- plugins-are-three-prong-bundles
+- specs-orthogonal-to-sessions
+- refutation-is-discovery
+- build-correct-not-temporary
+- knowledge-evolution-first-class
 sessions:
 - 20260222-054702
+- 20260223-120524
+- 20260223-132543
 ---
 
-# feat: Knowledge Evolution as First-Class System
+# feat: Belief Lifecycle — Hypothesis, Validation, Refutation
 
-> Redesign beliefs and specs with lifecycle states built-in from creation.
-> Evolution through hypothesis → validation → refutation is normal, not exceptional.
-> Prevent knowledge pollution by distinguishing theory from proven fact.
+> Beliefs need lifecycle states. Today all beliefs are treated as validated
+> truth. A hypothesis captured during a session looks identical to a principle
+> proven across 50 sessions. This spec adds lifecycle to beliefs so the
+> knowledge graph distinguishes theory from fact, preserves refutations as
+> learning, and tracks evolution chains.
+
+**Scope: beliefs only.** Spec lifecycle is owned by [[spec-workflow-rigor]].
+This spec does not modify spec statuses, spec commands, or spec schemas.
 
 ## Problem
 
@@ -25,67 +45,82 @@ sessions:
 **What happened in session 20260222-054702:**
 
 1. **Hypothesis formed**: "Keychain works over SSH with AlwaysThisDeviceOnly"
-2. **Spec created**: `spec-secrets-keychain-ssh` (marked complete)
-3. **Belief captured**: `keychain-always-this-device-only`
-4. **Never actually tested**: Assumed working based on theory
-5. **Months later**: Empirical testing proves it never worked
-6. **Pollution**: False beliefs/specs in knowledge graph, LLMs read them as truth
+2. **Belief captured**: `keychain-always-this-device-only`
+3. **Never actually tested**: Assumed working based on theory
+4. **Months later**: Empirical testing proves it never worked
+5. **Pollution**: False beliefs in knowledge graph, LLMs read them as truth
 
 **The pattern:**
 ```
 Theory → Capture as Truth → Discover Wrong → Pollution
    ↓          ↓                  ↓              ↓
-"Should    Spec marked      -25308 error   Knowledge
- work"     "complete"       in SSH          graph lies
+"Should    Belief with no   -25308 error   Knowledge
+ work"     evidence marker  in SSH          graph lies
 ```
 
 **Current problems:**
 
 1. **No distinction between hypothesis and fact**
    - All beliefs treated as validated truth
-   - Specs marked "complete" without empirical tests
    - No confidence levels, no evidence tracking
+   - `BeliefEntry` already has `evidence_count` and `evidence_verified`
+     fields (src/mother/graph.rs) but no lifecycle status
 
 2. **Refutation is exceptional (should be normal)**
    - When proven wrong, we "delete" or "archive"
    - Lose the learning: "Why it failed" disappears
    - Future LLMs retry the same failed approaches
 
-3. **Short-term fixes become permanent**
-   - "We'll add lifecycle later" → never happens
-   - Band-aids pile up instead of correct design
-   - Technical debt in knowledge layer itself
-
-4. **Evolution chains lost**
+3. **Evolution chains lost**
    - Can't see: "We thought X, tested, discovered Y"
    - No trace of reasoning journey
    - Knowledge appears to come from nowhere
 
-### Real Impact
+### What Exists Today (Infrastructure Is Partially Built)
 
-**From session 20260222-054702:**
-- 3 specs trying to "fix" keychain SSH (all impossible)
-- Multiple beliefs about keychain accessibility (all wrong)
-- Hours wasted on solutions to unsolvable problems
-- Had to build test infrastructure to empirically disprove theories
+**Already in `src/mother/graph.rs` (`BeliefEntry`):**
+- `evidence_count: i64` — how many evidence items
+- `evidence_verified: i64` — how many verified
+- `health_score: f64` — composite health metric
+- `contested_by: Option<String>` — contradicting beliefs
+- `status: String` — currently just "active"
 
-**Root cause:** No mechanism to say "This is a hypothesis, test before believing"
+**Already in `src/commands/scrape/beliefs/verification/mod.rs`:**
+- `VerificationQuery` — parse, validate, execute verification queries
+- `VerificationResult` — Pass/Contested/Error status per query
+- Structural verification already runs during scrape
 
-### The Principle
+**Already in `src/commands/belief/mod.rs`:**
+- `belief audit` — full health/use/truth metrics per belief
+- Sorting by health, staleness detection, grounding analysis
+- `--stale`, `--warnings-only`, `--sort health` filters
 
-> **"Short-term fixes lead to never fixes. We live in hack-land forever unless we build it right the first time."**
+**Already in belief YAML frontmatter:**
+- `supports: [belief-id]` / `attacks: [belief-id]` — relationship graph
+- `evidence:` section with session/commit references
+- `entrenchment: low | medium | high`
+
+**What's missing:**
+- No `hypothesis` / `validated` / `refuted` / `superseded` status values
+- No mutation commands — query side exists (audit) but mutation side
+  doesn't (hypothesis, validate, refute, supersede, history)
+  ([[mutation-completes-query]])
+- No lifecycle-aware filtering in context/scry/MCP queries
+- No evolution chain tracking (superseded_by, evolved_from)
+- No 3-prong architecture for belief commands (no MCP tools, no skill)
+
+### Root Cause
+
+> **"Short-term fixes lead to never fixes. We live in hack-land forever
+> unless we build it right the first time."**
 > — User insight, session 20260222-054702
-
-Don't bolt on lifecycle as a "short-term fix". Redesign the knowledge system correctly.
 
 ## Solution
 
-### Core Design: Knowledge Has States
-
-**Every belief and spec has a lifecycle built-in from creation.**
+### Core Design: Beliefs Have Lifecycle States
 
 ```
-Knowledge Lifecycle:
+Belief Lifecycle:
 
 hypothesis → validated → superseded
     ↓           ↓            ↓
@@ -96,11 +131,10 @@ refuted
 (Disproven - keep for learning)
 ```
 
-**Key insight:** Refutation is discovery, not failure. Failed hypotheses are valuable knowledge.
+**Key insight:** Refutation is discovery, not failure. Failed hypotheses are
+valuable knowledge ([[refutation-is-discovery]]).
 
-### Knowledge States
-
-#### Beliefs
+### Belief States
 
 | State | Meaning | Query Default | When |
 |-------|---------|---------------|------|
@@ -111,38 +145,67 @@ refuted
 
 *Available via `--include-refuted` flag to learn from failures
 
-#### Specs
+### Architecture: Three-Layer Capability
 
-| State | Meaning | When |
-|-------|---------|------|
-| `draft` | Initial idea, not ready | Brainstorming |
-| `hypothesis` | Theory to test | Before implementation |
-| `ready` | Ready to implement | After review |
-| `active` | Work in progress | Implementation started |
-| `validated` | Exit criteria passing | Tests passing, not shipped |
-| `complete` | Shipped to production | Released |
-| `refuted` | Impossible/wrong approach | Proven unworkable |
-| `superseded` | Replaced by better spec | New spec replaces this |
+Every belief operation exposed through three layers
+([[plugins-are-three-prong-bundles]]):
 
-**Critical change:** Can't transition to `validated` or `complete` without evidence.
+```
+┌─────────────────────────────────────────────┐
+│  Adapter Skill (/belief)                    │  ← WHEN to act (LLM judgment)
+│  Single skill describes full capability.    │
+│  LLM reads once, knows what's available.    │
+├─────────────────────────────────────────────┤
+│  MCP Tools (JSON-RPC typed parameters)      │  ← HOW to call (interface)
+│  Same operations as CLI, structured I/O.    │
+├─────────────────────────────────────────────┤
+│  CLI Commands (Rust, deterministic)         │  ← WHAT happens (execution)
+│  Explicit params, --json output.            │
+└─────────────────────────────────────────────┘
+```
 
-### Schema Design
+### Command Decomposition
 
-#### Belief Schema v2
+Following the same [[unix-philosophy]] pattern as spec-workflow-rigor.
+Each command does one thing.
+
+**Query commands** (read-only, already partially exist):
+
+| Command | Do X |
+|---|---|
+| `belief audit` | Show health/use/truth metrics (exists) |
+| `belief list` | Show all beliefs with filters (new) |
+| `belief show <id>` | Show single belief with evidence (new) |
+| `belief history <id>` | Show evolution chain (new) |
+
+**Mutation commands** (each does exactly one thing):
+
+| Command | Transition | Side effects |
+|---|---|---|
+| `belief hypothesis <id>` | → hypothesis | Create with required statement + theory |
+| `belief validate <id>` | hypothesis→validated | Evidence required + git commit |
+| `belief refute <id>` | hypothesis→refuted | Evidence + "what we learned" required |
+| `belief supersede <old> <new>` | any→superseded | Link to replacement + git commit |
+
+**All mutation commands support `--json`** for structured output.
+
+### Belief Schema v2
+
+Extend existing YAML frontmatter. All new fields optional with
+`skip_serializing_if` — zero breakage for existing beliefs.
 
 ```yaml
 ---
-# Required fields (enforced by tools)
 id: <belief-id>
 type: belief
-status: hypothesis | validated | refuted | superseded  # REQUIRED
-confidence: untested | low | medium | high | disproven  # REQUIRED
-created: YYYY-MM-DD  # REQUIRED
+status: hypothesis | validated | refuted | superseded  # NEW (default: validated for migration)
+confidence: untested | low | medium | high | disproven  # NEW
+created: YYYY-MM-DD
 
-# Lifecycle tracking
-validated: YYYY-MM-DD     # When proven true (if status=validated)
-refuted: YYYY-MM-DD       # When proven false (if status=refuted)
-superseded: YYYY-MM-DD    # When replaced (if status=superseded)
+# Lifecycle tracking (NEW)
+validated_date: YYYY-MM-DD     # When proven true
+refuted_date: YYYY-MM-DD       # When proven false
+superseded_date: YYYY-MM-DD    # When replaced
 
 # Evidence (what supports or refutes this)
 evidence:
@@ -152,119 +215,23 @@ evidence:
     ref: <session-id | commit-sha | test-path>
     date: YYYY-MM-DD
 
-# Evolution chains
+# Evolution chains (NEW)
 superseded_by: <belief-id>   # What replaced this
-refutes: [<belief-id>]       # What this disproves
-supports: [<belief-id>]      # What this validates
 evolved_from: [<belief-id>]  # What this evolved from
 
-# Optional metadata
+# Existing fields (unchanged)
+supports: [<belief-id>]
+attacks: [<belief-id>]
+entrenchment: low | medium | high
 tags: [<tag>]
 sessions: [<session-id>]
 ---
-
-# Belief Title
-
-## Statement
-<One-sentence claim that can be validated or refuted>
-
-## Theory (if status=hypothesis)
-<Why we think this might be true>
-
-## Evidence (if status=validated)
-<What proves this is true>
-
-## Refutation (if status=refuted)
-<What proved this wrong - critical for learning>
-
-## Superseded By (if status=superseded)
-<What better belief replaced this>
 ```
 
-#### Spec Schema v2
-
-```yaml
----
-# Required fields
-id: <spec-id>
-type: feat | fix | refactor
-status: draft | hypothesis | ready | active | validated | complete | refuted | superseded
-created: YYYY-MM-DD
-
-# Lifecycle tracking
-hypothesis_tested: YYYY-MM-DD    # When hypothesis validated
-activated: YYYY-MM-DD            # When work started
-validated: YYYY-MM-DD            # When tests passed
-completed: YYYY-MM-DD            # When shipped
-refuted: YYYY-MM-DD              # When proven impossible
-superseded: YYYY-MM-DD           # When replaced
-
-# Exit criteria (REQUIRED for validated/complete)
-exit_criteria:
-  - description: <testable criterion>
-    test: <path-to-test-script>
-    status: PENDING | PASSED | FAILED
-    last_run: YYYY-MM-DD
-
-# Evolution
-superseded_by: <spec-id>
-refutes: [<spec-id>]
-replaces: [<spec-id>]
----
-```
-
-### Tool Support
-
-#### New Commands
+### Updated Query Behavior
 
 ```bash
-# Create hypothesis (not belief yet)
-patina belief hypothesis <id> \
-  --statement "Raw SecItemCopyMatching bypasses SSH restrictions" \
-  --theory "Lower-level API might avoid wrapper restrictions" \
-  --test test-ssh-localhost.sh
-
-# Test hypothesis → auto-transition based on evidence
-patina belief test <id>
-# Runs test, records evidence, updates status:
-#   test passes → hypothesis → validated
-#   test fails → hypothesis → refuted
-
-# Manually validate with evidence
-patina belief validate <id> \
-  --evidence session-20260222-054702 \
-  --result PASSED
-
-# Manually refute with evidence
-patina belief refute <id> \
-  --evidence session-20260222-054702 \
-  --result "All approaches fail with -25308" \
-  --learned "macOS blocks SSH at session level, not API level"
-
-# Mark superseded
-patina belief supersede <old-id> <new-id>
-
-# Create spec with exit criteria
-patina spec create <id> \
-  --type feat \
-  --status hypothesis \
-  --exit-criteria exit-criteria.yaml
-
-# Validate spec (runs exit criteria tests)
-patina spec validate <id>
-# Can't mark complete without passing tests
-
-# Refute spec (impossible to implement)
-patina spec refute <id> \
-  --reason "macOS Security policy prevents this approach" \
-  --evidence session-20260222-054702 \
-  --superseded-by spec-secrets-dual-storage
-```
-
-#### Updated Query Behavior
-
-```bash
-# Default: only validated knowledge (clean graph)
+# Default: only validated + active knowledge (clean graph)
 patina context keychain
 → Hides: hypothesis, refuted, superseded
 → Shows: Only validated beliefs
@@ -278,7 +245,7 @@ patina context keychain --include-refuted
 → Shows: refuted beliefs with "why it failed"
 → Prevents re-attempting failed approaches
 
-# Full history (evolution chain)
+# Evolution chain for a belief
 patina belief history keychain-ssh
 → Timeline:
   2026-02-18: keychain-ssh-accessibility (hypothesis)
@@ -286,133 +253,87 @@ patina belief history keychain-ssh
   2026-02-22: keychain-ssh-accessibility (REFUTED - doesn't work)
   2026-02-22: keychain-ssh-raw-api (REFUTED - same error)
   2026-02-22: dual-storage-strategy (VALIDATED - works)
-
-# Show evidence chain
-patina belief show <id> --with-evidence
-→ Lists all tests, sessions, commits that support/refute
-```
-
-#### Session Integration
-
-```bash
-# During session: capture hypotheses (not beliefs yet)
-/session-note "Hypothesis: Raw API bypasses SSH restrictions"
-→ Adds to session hypotheses section (not belief yet)
-
-# Test hypotheses
-./test-ssh-localhost.sh
-→ Evidence: FAILED with -25308
-
-# Session end: review hypotheses
-/session-end
-
-# Before archiving, prompt:
-Hypotheses to resolve:
-  1. "Raw API bypasses SSH" → REFUTED (test failed)
-     Action: Create refuted belief? [y/N]
-
-  2. "Dual storage works" → VALIDATED (tests passed)
-     Action: Create validated belief? [Y/n]
-
-Specs to update:
-  - spec-keychain-macos26-regression → REFUTE (impossible)
-  - spec-secrets-dual-storage → PROMOTE to active
-
-Continue? [Y/n]
 ```
 
 ### Migration Strategy
 
-#### Existing Beliefs/Specs
-
-**Grandfather existing knowledge:**
+**Grandfather existing beliefs:**
 ```bash
-# Auto-migration on first run
-patina knowledge migrate
+patina belief migrate
 
 Migrating existing beliefs:
   • No status field → assume `validated` (trust historical work)
   • Add confidence: medium (not empirically re-tested)
   • Add created: <git log date>
 
-Migrating existing specs:
-  • complete/active/draft → keep status
-  • Add exit_criteria: [] (empty, needs filling)
-  • Add evidence: [] (empty, needs filling)
-
 Migration complete.
-Going forward: ALL new knowledge requires lifecycle fields.
-```
-
-**Enforcement:**
-```bash
-# New beliefs must have status
-patina belief create <id>
-Error: Missing required field: status
-Hint: Use `patina belief hypothesis` for untested theories
-
-# Can't mark validated without evidence
-patina belief validate <id>
-Error: No evidence recorded
-Required: Run tests or add evidence manually
+Going forward: ALL new beliefs require lifecycle fields.
 ```
 
 ## Implementation
 
-### Phase 1: Schema & Core (Week 1)
-
-**Files to create:**
-- `src/models/knowledge_lifecycle.rs` - Lifecycle state machine
-- `src/models/evidence.rs` - Evidence tracking
-- `layer/core/knowledge-evolution.md` - Core belief documenting this
+### Phase 1: Schema & Lifecycle States
 
 **Files to modify:**
-- `src/models/belief.rs` - Add lifecycle fields
-- `src/models/spec.rs` - Add lifecycle fields, exit criteria
-- `src/db/schema.sql` - Add lifecycle columns
+- `src/mother/graph.rs` — Add lifecycle fields to `BeliefEntry`
+- `src/commands/scrape/beliefs/mod.rs` — Parse new frontmatter fields during scrape
+- Belief YAML files — new optional fields (serde defaults, zero breakage)
 
-**Migration:**
-- `src/commands/knowledge/migrate.rs` - One-time migration
+**New:**
+- Lifecycle state validation in belief scraper
+- Migration command: `patina belief migrate`
 
-### Phase 2: Commands (Week 2)
+**Exit criteria:**
+- [ ] `BeliefEntry` has `status`, `confidence`, lifecycle date fields
+- [ ] Scrape parses new fields from YAML frontmatter
+- [ ] Existing beliefs parse without error (all new fields optional)
+- [ ] `belief migrate` sets status=validated, confidence=medium on legacy beliefs
+
+### Phase 2: Mutation Commands
+
+**Files to modify:**
+- `src/commands/belief/mod.rs` — Add subcommands: hypothesis, validate, refute, supersede
 
 **New commands:**
-- `patina belief hypothesis` - Create hypothesis
-- `patina belief test` - Test hypothesis with evidence
-- `patina belief validate` - Manually validate
-- `patina belief refute` - Manually refute
-- `patina belief supersede` - Mark superseded
-- `patina belief history` - Show evolution
-- `patina spec validate` - Run exit criteria tests
-- `patina spec refute` - Mark impossible
+- `patina belief hypothesis <id>` — Create hypothesis belief
+- `patina belief validate <id>` — Validate with evidence
+- `patina belief refute <id>` — Refute with evidence + learning
+- `patina belief supersede <old> <new>` — Mark superseded
+- `patina belief history <id>` — Show evolution chain
+- `patina belief list` — Show all beliefs with filters
 
-**Modified commands:**
-- `patina context` - Add filters: `--include-hypothesis`, `--include-refuted`
-- `patina scry` - Default hide refuted/hypothesis
-- `patina spec status` - Enforce evidence for validated/complete
+**Exit criteria:**
+- [ ] `belief hypothesis` creates belief with status=hypothesis
+- [ ] `belief validate` requires evidence, transitions to validated
+- [ ] `belief refute` requires evidence + "learned", transitions to refuted
+- [ ] `belief supersede` links beliefs and transitions to superseded
+- [ ] `belief history` shows evolution chain
+- [ ] All mutation commands support `--json`
+- [ ] All mutation commands git commit their changes
 
-### Phase 3: Session Integration (Week 3)
-
-**Session workflow:**
-- Capture hypotheses during session (not beliefs yet)
-- Test hypotheses → record evidence
-- Session end → review → promote or refute
+### Phase 3: Query Filters
 
 **Files to modify:**
-- `src/commands/session/update.rs` - Add hypotheses section
-- `src/commands/session/end.rs` - Hypothesis review prompt
+- `src/retrieval/oracle.rs` — Add lifecycle status filters
+- `src/mcp/server.rs` — Add filter params to context/scry tools
+- `src/commands/scrape/beliefs/mod.rs` — Lifecycle-aware materialized views
 
-### Phase 4: Query Filters (Week 4)
+**Exit criteria:**
+- [ ] `patina context` hides hypothesis/refuted/superseded by default
+- [ ] `patina scry` respects lifecycle filters
+- [ ] `--include-hypothesis` and `--include-refuted` flags work
+- [ ] MCP tools respect filters
 
-**Implement filtering:**
-- Default: hide hypothesis/refuted/superseded
-- Flags to include them
-- MCP tools respect filters
+### Phase 4: MCP Tools + `/belief` Skill
 
 **Files to modify:**
-- `src/retrieval/oracle.rs` - Add lifecycle filters
-- `src/mcp/handlers/context.rs` - Add filter params
-- `src/mcp/handlers/scry.rs` - Add filter params
+- `src/mcp/server.rs` — Register belief mutation/query tools
+- `resources/claude/belief.md` — `/belief` skill definition
+
+**Exit criteria:**
+- [ ] All belief commands available as MCP tools
+- [ ] `/belief` skill describes full capability
+- [ ] LLM can discover, select, and invoke belief tools from conversation
 
 ## Testing
 
@@ -420,164 +341,128 @@ Required: Run tests or add evidence manually
 
 **1. Hypothesis → Validated flow works**
 ```bash
-# Create hypothesis
 patina belief hypothesis test-belief \
-  --statement "ChaCha20 is faster than AES" \
-  --test bench-crypto.sh
-
-# Test it
-patina belief test test-belief
-# bench-crypto.sh runs, records evidence
-
-# Check status
+  --statement "ChaCha20 is faster than AES"
+patina belief validate test-belief \
+  --evidence session-20260222-054702 --result PASSED
 patina belief show test-belief
-# status: validated (if test passed)
-# evidence: bench-crypto.sh (PASSED, 2026-02-22)
+# status: validated, evidence: session-20260222-054702 (PASSED)
 ```
 
 **2. Hypothesis → Refuted flow works**
 ```bash
-# Create hypothesis
 patina belief hypothesis keychain-ssh \
-  --statement "Keychain works over SSH" \
-  --test test-ssh-localhost.sh
-
-# Test it
-patina belief test keychain-ssh
-# test-ssh-localhost.sh runs, fails with -25308
-
-# Check status
+  --statement "Keychain works over SSH"
+patina belief refute keychain-ssh \
+  --evidence session-20260222-054702 \
+  --learned "macOS blocks SSH at session level, not API level"
 patina belief show keychain-ssh
-# status: refuted
-# evidence: test-ssh-localhost.sh (FAILED, -25308)
+# status: refuted, evidence present, learning preserved
 ```
 
 **3. Query filters work**
 ```bash
-# Default: clean knowledge graph
 patina context keychain
-# Shows: Only validated beliefs
+# Shows: Only validated beliefs (hypothesis/refuted hidden)
 
-# Include refuted to learn from failures
 patina context keychain --include-refuted
 # Shows: validated + refuted (with failure reasons)
 ```
 
-**4. Spec validation enforced**
-```bash
-# Can't mark complete without tests
-patina spec status test-spec complete
-# Error: Exit criteria not met (0/3 passed)
-
-# Run tests first
-patina spec validate test-spec
-# Runs exit_criteria tests, updates status
-
-# Now can complete
-patina spec status test-spec complete
-# Success (all tests passed)
-```
-
-**5. Evolution chains visible**
+**4. Evolution chains visible**
 ```bash
 patina belief history keychain-ssh
-# Timeline:
-#   hypothesis: keychain-ssh-accessibility (REFUTED 2026-02-22)
-#   hypothesis: keychain-ssh-raw-api (REFUTED 2026-02-22)
-#   validated: dual-storage-strategy (CURRENT)
+# Timeline showing hypothesis → refuted chain
 ```
 
-**6. Session integration works**
+**5. Migration preserves existing knowledge**
 ```bash
-# During session
-/session-note "Hypothesis: X bypasses Y"
-
-# Session end
-/session-end
-# Prompts: Resolve hypothesis → create belief? [y/N]
-```
-
-**7. Migration preserves existing knowledge**
-```bash
-patina knowledge migrate
-
-# Existing beliefs still queryable
+patina belief migrate
 patina context keychain
 # Shows: Migrated beliefs (status=validated, confidence=medium)
-```
-
-**8. Evidence requirements enforced**
-```bash
-# New belief without evidence
-patina belief create test --status validated
-# Error: Can't mark validated without evidence
-
-# Must provide evidence
-patina belief create test \
-  --status hypothesis \
-  --evidence session-12345
-# Success
 ```
 
 ## Success Metrics
 
 **1. Knowledge pollution prevented**
-- Zero "complete" specs without passing exit criteria
 - Zero "validated" beliefs without evidence
-- All new knowledge has lifecycle tracking
+- All new beliefs have lifecycle tracking
 
 **2. Learning from failures preserved**
 - Refuted beliefs kept with "why it failed"
 - Future LLMs can query: "What approaches were tried and failed?"
-- No re-attempting proven impossible approaches
 
 **3. Clean default queries**
 - `patina context` shows only validated knowledge (no noise)
 - Hypotheses hidden unless explicitly requested
-- Refuted knowledge available but not default
 
 **4. Evolution chains visible**
 - Can trace: theory → test → discovery → refined theory
-- "We thought X, discovered Y" is documented
 - Reasoning journey preserved, not just conclusions
 
-**5. Tooling enforces discipline**
-- Can't skip lifecycle (required fields)
-- Can't claim validation without evidence
-- Can't mark specs complete without tests passing
+## Non-Goals
+
+- **No spec lifecycle changes** — spec-workflow-rigor owns spec statuses
+  (draft/ready/active/paused/blocked/complete/abandoned). `spec abandon`
+  covers what this spec originally called "spec refute". Exit criteria
+  checking for `spec complete` belongs in workflow-rigor.
+- **No session-end hypothesis prompting** — violates
+  [[specs-orthogonal-to-sessions]]. Beliefs are captured by the LLM
+  during conversation, not by session lifecycle hooks.
+- **No `patina knowledge migrate`** — migration lives under `belief`
+  namespace (`patina belief migrate`), not a new command namespace.
+- **No automatic test execution** — `belief test <id>` (originally proposed)
+  is out of scope. Validation is manual evidence recording, not automatic
+  test running. The LLM or user decides what constitutes evidence.
 
 ## Related Work
 
-**Enables:**
-- spec-secrets-dual-storage (proper lifecycle from start)
-- All future specs (built on correct foundation)
+**Builds on:**
+- [[spec-workflow-rigor]] — same command decomposition pattern, same
+  3-prong architecture, same unix-philosophy alignment
+- [[mutation-completes-query]] — belief audit (query) exists, mutation
+  commands don't. This spec completes the pair.
+- [[refutation-is-discovery]] — core principle driving this design
+- [[build-correct-not-temporary]] — don't bolt on lifecycle later
 
-**Replaces:**
-- All "short-term fix" approaches to knowledge management
-- Manual spec/belief archival (now automatic with lifecycle)
+**Distinct from:**
+- [[spec-workflow-rigor]] — that spec owns spec lifecycle
+- [[measurement-coverage]] — measurement system (observability layer)
 
-**Beliefs to capture after implementation:**
-- `knowledge-evolution-first-class`: "Knowledge has states. Evolution through refutation is normal."
-- `build-correct-not-temporary`: "Short-term fixes become permanent. Build it right the first time."
-- `evidence-driven-validation`: "Beliefs require evidence. Tests, not opinions, determine truth."
-- `refutation-is-discovery`: "Failed hypotheses are valuable. They prevent re-learning."
+## Alignment Audit (2026-02-23, session 20260223-132543)
 
-## Notes
+**Disposition: REWRITE (done)**
 
-**This is NOT a "nice to have" feature.**
+Original spec proposed lifecycle changes for both beliefs AND specs.
+Spec lifecycle is now fully owned by spec-workflow-rigor. This rewrite
+scopes the spec to belief lifecycle only.
 
-This is a **fundamental redesign of how Patina manages knowledge**. Without this:
-- Knowledge graph pollutes over time
-- LLMs read false beliefs as truth
-- Same failed approaches retried repeatedly
-- "We'll fix it later" technical debt accumulates
+**What changed from original:**
+- Removed all spec status additions (hypothesis, validated, refuted, superseded for specs)
+- Removed `spec validate`, `spec refute`, `spec create` references
+- Removed session-end hypothesis prompting (violates specs-orthogonal-to-sessions)
+- Fixed all file paths to actual code locations:
+  - `src/models/belief.rs` → `src/mother/graph.rs` (where `BeliefEntry` actually lives)
+  - `src/models/spec.rs` → removed (spec lifecycle not in scope)
+  - `src/db/schema.sql` → removed (schema is programmatic in sqlite.rs)
+  - `src/commands/session/update.rs` / `end.rs` → removed (all in internal.rs, not in scope)
+  - `src/mcp/handlers/*` → `src/mcp/server.rs` (monolithic, no handlers/ dir)
+- Removed time estimates ("Week 1", etc.)
+- Added 3-prong architecture (CLI + MCP + Skill)
+- Added blocked_by: spec-workflow-rigor
+- Downgraded priority: critical → high
+- Changed scope: core-architecture → belief-lifecycle
+- Added beliefs from session 20260223-120524 decisions
 
-**With this:**
-- Knowledge graph stays clean (validated facts only by default)
-- Learning from failures preserved (refuted beliefs kept)
-- Evolution chains visible (theory → discovery documented)
-- Discipline enforced by tools (can't skip evidence)
+## Key Files
 
-**The choice:** Live in hack-land forever, or build it right now.
-
-**Priority: CRITICAL** - Blocks clean knowledge management for all future work.
+```
+# Belief system (where code actually lives)
+src/mother/graph.rs                          — BeliefEntry struct (add lifecycle fields)
+src/commands/belief/mod.rs                   — belief commands (add mutation subcommands)
+src/commands/scrape/beliefs/mod.rs           — belief scraper (parse new frontmatter)
+src/commands/scrape/beliefs/verification/    — structural verification (already exists)
+src/retrieval/oracle.rs                      — query abstraction (add lifecycle filters)
+src/mcp/server.rs                            — MCP tools (add belief tools)
+resources/claude/belief.md                   — /belief skill definition (new)
+```

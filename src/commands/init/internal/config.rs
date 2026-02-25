@@ -56,6 +56,10 @@ pub fn create_project_config(
                 .as_ref()
                 .and_then(|c| c.project.created.clone())
                 .or_else(|| Some(chrono::Utc::now().to_rfc3339())),
+            branch: existing_config
+                .as_ref()
+                .map(|c| c.project.branch.clone())
+                .unwrap_or_else(|| "work".to_string()),
         },
         // Note: dev section is deprecated and skipped on serialization
         dev: Default::default(),

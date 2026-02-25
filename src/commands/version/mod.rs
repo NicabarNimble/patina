@@ -8,7 +8,7 @@
 //!
 //! Patina uses semver: `MAJOR.MINOR.PATCH`
 //!
-//! Version bumps are driven by spec completion (`patina spec status <id> complete`)
+//! Version bumps are driven by spec completion (`patina spec complete <id>`)
 //! via `ReleaseStrategy`. The version command provides `show` (display) and
 //! `hotfix` (emergency escape hatch).
 //!

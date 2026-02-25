@@ -1,17 +1,22 @@
 ---
 type: feat
 id: git-tag-system
-status: active
+status: draft
 created: 2026-02-15
+blocked_by:
+- spec-workflow-rigor
 sessions:
   origin: 20260215-083121
 related:
 - layer/core/patina-identity.md
+- src/commands/scrape/git/mod.rs
+- src/commands/assay/mod.rs
 beliefs:
 - beliefs-are-the-product
 - git-tags-as-knowledge-refs
 - git-is-the-knowledge-substrate
 - knowledge-diff-is-a-command-not-a-substrate
+- plugins-are-three-prong-bundles
 ---
 
 # feat: Git Tag System — Tag-Aware Database and Knowledge Diff
@@ -74,7 +79,12 @@ Classification rules (in `insert_tags()`):
 - `session-*-start` → `session-start`
 - `session-*-end` → `session-end`
 - `v[0-9]*` → `version`
-- `spec/*` → `spec`
+- `spec/*-start` → `spec-start` (workflow-rigor: spec goes active)
+- `spec/*-paused-*` → `spec-paused` (workflow-rigor: spec paused)
+- `spec/*-resumed-*` → `spec-resumed` (workflow-rigor: spec resumed)
+- `spec/*-blocked-*` → `spec-blocked` (workflow-rigor: spec blocked)
+- `spec/*-v*-complete` → `spec-split` (workflow-rigor: split completion)
+- `spec/*` (no suffix) → `spec-archive` (final archive tag)
 - `archive/*` → `archive`
 - Everything else → `other`
 
@@ -88,7 +98,8 @@ classify. `src/commands/assay/` — add tags query type.
 
 `patina diff <tag1> <tag2>` compares the knowledge state between two git refs.
 
-Implementation using `git2`:
+Implementation using git subprocess calls (note: `git2` crate is NOT in
+Cargo.toml — the codebase uses `Command::new("git")` throughout):
 
 1. **Belief diff** — compare `layer/surface/epistemic/beliefs/` at both refs.
    Parse YAML frontmatter from each. Report: added, removed, modified beliefs.
@@ -119,8 +130,9 @@ Sessions: 14 sessions between tags
 Commits: 47 commits, 12 authors
 ```
 
-**Code path:** New `src/commands/diff/mod.rs` command. Uses `git2` crate
-(already in `Cargo.toml`) for tree comparison at arbitrary refs.
+**Code path:** New `src/commands/diff/mod.rs` command. Uses git subprocess
+calls (consistent with existing codebase pattern) for tree comparison at
+arbitrary refs.
 
 ### Phase C: Tag Pairs and Ranges
 
@@ -166,5 +178,29 @@ Enable: `patina diff --session 20260215-083121` (diff a session's start to end).
 | parse_all_tags reads all tags | `src/commands/scrape/git/mod.rs:178-215` |
 | insert_tags clears and rebuilds | `src/commands/scrape/git/mod.rs:219-256` |
 | parse_session_tags links commits to sessions | `src/commands/scrape/git/mod.rs:39-125` |
-| git2 crate already in Cargo.toml | `cargo tree \| grep git2` |
+| Git operations use subprocess calls (not git2) | `src/commands/scrape/git/mod.rs` uses `Command::new("git")` |
 | No tag_type classification exists | `src/commands/scrape/git/mod.rs:359-363` |
+
+## Alignment Audit (2026-02-23, session 20260223-132543)
+
+**Disposition: ALIGN — blocked by spec-workflow-rigor**
+
+Reviewed against spec-workflow-rigor architectural decisions. This spec
+is blocked because workflow-rigor introduces new tag patterns that the
+classification rules must account for before implementation.
+
+**Changes made:**
+- Added `blocked_by: spec-workflow-rigor` — tag conventions must stabilize first
+- Updated tag classification rules for new spec transition tags:
+  `spec/<id>-start`, `spec/<id>-paused-N`, `spec/<id>-blocked-N`,
+  `spec/<id>-resumed-N`, `spec/<id>-v<N>-complete`
+- Fixed false `git2` claim — codebase uses subprocess git calls, not git2 crate
+- Added `plugins-are-three-prong-bundles` belief — `patina diff` should follow
+  3-prong architecture (CLI + MCP + skill) when implemented
+- Added actual code paths to `related:`
+
+**Code references verified:**
+- `src/commands/scrape/git/mod.rs` — all three functions confirmed
+  (parse_all_tags, insert_tags, parse_session_tags)
+- `git_tags` table schema confirmed (no tag_type column yet, as expected)
+- assay supports query_type parameter but no `tags` variant yet

@@ -5,7 +5,10 @@ Update the current Patina session with Git-aware progress tracking:
 
 2. The command will show what time period to document (e.g., "14:15 → 14:45")
 
-3. Note the Git status shown (uncommitted changes, last commit time)
+3. Note from stdout:
+   - Git status: commits, changed files, working tree status
+   - Spec files changed this session (if any)
+   - Paused spec warnings (if any)
 
 4. Read `.patina/local/active-session.md` and find the new update section
 

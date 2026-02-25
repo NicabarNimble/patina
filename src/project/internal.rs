@@ -60,10 +60,17 @@ pub struct ProjectSection {
     /// Creation timestamp (ISO 8601)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created: Option<String>,
+    /// Development branch name (default: "work")
+    #[serde(default = "default_branch")]
+    pub branch: String,
 }
 
 fn default_name() -> String {
     "unnamed".to_string()
+}
+
+fn default_branch() -> String {
+    "work".to_string()
 }
 
 impl Default for ProjectSection {
@@ -71,6 +78,7 @@ impl Default for ProjectSection {
         Self {
             name: default_name(),
             created: None,
+            branch: default_branch(),
         }
     }
 }

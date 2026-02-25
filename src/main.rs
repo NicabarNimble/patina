@@ -1614,6 +1614,25 @@ fn main() -> Result<()> {
             }
         },
         Some(Commands::Spec { command }) => match command {
+            commands::spec::SpecCommands::Create {
+                r#type,
+                id,
+                title,
+                description,
+                blocked_by,
+                related,
+                json,
+            } => {
+                commands::spec::create(
+                    &r#type,
+                    &id,
+                    title.as_deref(),
+                    description.as_deref(),
+                    blocked_by,
+                    related,
+                    json,
+                )?;
+            }
             commands::spec::SpecCommands::Archive { id, dry_run, stale } => {
                 if stale {
                     commands::spec::archive_stale(dry_run)?;
@@ -1633,20 +1652,68 @@ fn main() -> Result<()> {
             commands::spec::SpecCommands::Blocked { json } => {
                 commands::spec::blocked(json)?;
             }
-            commands::spec::SpecCommands::Status {
-                id,
-                status,
-                major,
-                no_archive,
-            } => {
-                commands::spec::status(&id, &status, major, no_archive)?;
-            }
             commands::spec::SpecCommands::List {
                 status,
                 target,
                 json,
             } => {
                 commands::spec::list(status, target, json)?;
+            }
+            commands::spec::SpecCommands::Promote { id, json } => {
+                commands::spec::promote(&id, json)?;
+            }
+            commands::spec::SpecCommands::Complete {
+                id,
+                major,
+                force,
+                json,
+            } => {
+                commands::spec::complete(&id, major, force, json)?;
+            }
+            commands::spec::SpecCommands::Abandon { id, reason, json } => {
+                commands::spec::abandon(&id, reason.as_deref(), json)?;
+            }
+            commands::spec::SpecCommands::Pause { id, reason, json } => {
+                commands::spec::pause(&id, &reason, json)?;
+            }
+            commands::spec::SpecCommands::Resume { id, force, json } => {
+                commands::spec::resume(&id, force, json)?;
+            }
+            commands::spec::SpecCommands::Block {
+                id,
+                by,
+                reason,
+                json,
+            } => {
+                commands::spec::block(&id, &by, &reason, json)?;
+            }
+            commands::spec::SpecCommands::Split {
+                id,
+                new_id,
+                description,
+                json,
+            } => {
+                commands::spec::split(&id, new_id.as_deref(), description.as_deref(), json)?;
+            }
+            commands::spec::SpecCommands::Show { id, json } => {
+                commands::spec::show(&id, json)?;
+            }
+            commands::spec::SpecCommands::Set {
+                id,
+                field,
+                value,
+                json,
+            } => {
+                commands::spec::set(&id, &field, &value, json)?;
+            }
+            commands::spec::SpecCommands::Next { json } => {
+                commands::spec::next(json)?;
+            }
+            commands::spec::SpecCommands::Check { id, json } => {
+                commands::spec::check(&id, json)?;
+            }
+            commands::spec::SpecCommands::History { id, json } => {
+                commands::spec::history(&id, json)?;
             }
         },
         Some(Commands::Schema { command }) => match command {

@@ -10,6 +10,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
+use crate::commands::spec;
 use patina::git;
 
 /// Path to active session file (transient, gitignored)
@@ -57,13 +58,29 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
     let adapter = resolve_adapter(adapter, project_root)?;
     let session_path = project_root.join(ACTIVE_SESSION_PATH);
     let last_update_path = project_root.join(LAST_UPDATE_PATH);
+    let dev_branch = dev_branch_name(project_root);
 
     // 1. Handle incomplete previous session
     if session_path.exists() {
-        println!("Found incomplete session, cleaning up...");
-        let line_count = fs::read_to_string(&session_path)
-            .map(|s| s.lines().count())
-            .unwrap_or(0);
+        // Check for stale session (>24h old)
+        let content = fs::read_to_string(&session_path).unwrap_or_default();
+        if let Some(summary) = parse_session_summary(&content) {
+            let age_hours = session_age_hours(&summary.created);
+            if age_hours >= 24 {
+                let days = age_hours / 24;
+                println!(
+                    "Warning: Previous session is {}d old — archiving stale session",
+                    days
+                );
+                println!("  {} ({})", summary.title, summary.id);
+            } else {
+                println!("Found incomplete session, cleaning up...");
+            }
+        } else {
+            println!("Found incomplete session, cleaning up...");
+        }
+
+        let line_count = content.lines().count();
         if line_count > 10 {
             // Archive non-trivial session (mark as archived in YAML)
             if let Ok(old_id) = read_session_id(&session_path) {
@@ -71,7 +88,6 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
                     .join(SESSIONS_DIR)
                     .join(format!("{}.md", old_id));
                 fs::create_dir_all(project_root.join(SESSIONS_DIR))?;
-                let content = fs::read_to_string(&session_path)?;
                 let archived = content.replacen("status: active", "status: archived", 1);
                 fs::write(&archive_path, archived)?;
                 println!("  Archived to {}/{}.md", SESSIONS_DIR, old_id);
@@ -97,28 +113,31 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
         println!();
     }
 
-    // 5. Smart branch handling
+    // 5. Smart branch handling (dev branch from config, fallback "work")
     if git::is_git_repo().unwrap_or(false) {
-        let is_work_related = branch == "work" || is_ancestor_of_head("work");
+        let is_dev_related = branch == dev_branch || is_ancestor_of_head(&dev_branch);
 
-        if !is_work_related {
+        if !is_dev_related {
             if branch == "main" || branch == "master" {
-                // Switch to work branch
-                if git::branch_exists("work").unwrap_or(false) {
-                    git::checkout("work")?;
-                    println!("Switched to work branch from {}", branch);
+                // Switch to dev branch
+                if git::branch_exists(&dev_branch).unwrap_or(false) {
+                    git::checkout(&dev_branch)?;
+                    println!("Switched to {} branch from {}", dev_branch, branch);
                 } else {
-                    git::checkout_new_branch("work", &branch)?;
-                    println!("Created and switched to work branch from {}", branch);
+                    git::checkout_new_branch(&dev_branch, &branch)?;
+                    println!(
+                        "Created and switched to {} branch from {}",
+                        dev_branch, branch
+                    );
                 }
             } else {
                 println!("On unrelated branch: {}", branch);
                 println!(
-                    "  Consider: git checkout work or git checkout -b work/{}",
-                    branch
+                    "  Consider: git checkout {} or git checkout -b {}/{}",
+                    dev_branch, dev_branch, branch
                 );
             }
-        } else if branch != "work" {
+        } else if branch != dev_branch {
             println!("Staying on work sub-branch: {}", branch);
         }
     }
@@ -209,12 +228,15 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
     println!("  Branch: {}", branch);
     println!("  Tag: {}", session_tag);
 
-    // Git coaching
+    // Git coaching (concise — skill reads stdout directly)
     if git::is_git_repo().unwrap_or(false) {
         println!();
         println!("Session Strategy:");
-        if branch == "work" {
-            println!("- You're on the 'work' branch - all sessions happen here");
+        if branch == dev_branch {
+            println!(
+                "- You're on the '{}' branch - all sessions happen here",
+                dev_branch
+            );
         } else {
             println!(
                 "- You're on '{}' (work sub-branch) - perfect for isolated experiments",
@@ -232,15 +254,25 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
     // Previous session beliefs
     show_previous_session_beliefs(project_root);
 
-    // Prompt LLM to fill in context
-    println!();
+    // Spec landscape (Phase 5: session integration)
+    show_spec_landscape();
+
+    // Previous session reference (printed so skill can use stdout directly)
     let last_session_path = project_root.join(LAST_SESSION_PATH);
     if last_session_path.exists() {
+        if let Ok(content) = fs::read_to_string(&last_session_path) {
+            println!();
+            for line in content.lines() {
+                println!("{}", line);
+            }
+        }
+        println!();
         println!(
             "Please read {} and fill in the Previous Session Context section above.",
             LAST_SESSION_PATH
         );
     } else {
+        println!();
         println!("No previous session found. Starting fresh.");
     }
     println!(
@@ -348,7 +380,39 @@ pub fn update_session(project_root: &Path) -> Result<()> {
         println!("Session Health: Good (active development)");
     }
 
-    // 6. Append update section to active session markdown
+    // 6. Get commit list and files changed for structured output
+    let session_tag = read_session_field(&session_path, "**Session Tag**: ").unwrap_or_default();
+    let changed_files = if !session_tag.is_empty() {
+        git::files_changed_since(&session_tag).unwrap_or_default()
+    } else {
+        vec![]
+    };
+    let commit_list = git::log_oneline(commits_this_session.min(20)).unwrap_or_default();
+
+    // Print structured commit/file info for skill consumption
+    if !commit_list.is_empty() {
+        println!();
+        println!("Commits this session:");
+        for line in commit_list.lines() {
+            println!("  {}", line);
+        }
+    }
+
+    if !changed_files.is_empty() {
+        println!();
+        println!("Files changed this session ({}):", changed_files.len());
+        for f in changed_files.iter().take(20) {
+            println!("  {}", f);
+        }
+        if changed_files.len() > 20 {
+            println!("  ... and {} more", changed_files.len() - 20);
+        }
+    }
+
+    // Spec status changes (Phase 5: session integration)
+    show_spec_status_in_update(&changed_files);
+
+    // 7. Append update section to active session markdown
     let now = Local::now();
     let time_str = now.format("%H:%M").to_string();
     let mut update_section = format!(
@@ -357,10 +421,41 @@ pub fn update_session(project_root: &Path) -> Result<()> {
     );
     update_section.push_str("\n**Git Activity:**\n");
     update_section.push_str(&format!(
-        "- Commits this session: {}\n",
-        commits_this_session
+        "- Commits this session: {}{}\n",
+        commits_this_session,
+        if !commit_list.is_empty() {
+            format!(
+                " ({})",
+                commit_list
+                    .lines()
+                    .map(|l| {
+                        let sha = l.split_whitespace().next().unwrap_or("");
+                        format!("[[commit-{}]]", sha)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        } else {
+            String::new()
+        }
     ));
-    update_section.push_str(&format!("- Files changed: {}\n", total_changes));
+    update_section.push_str(&format!(
+        "- Files changed: {}\n",
+        if !changed_files.is_empty() {
+            format!(
+                "{} (`{}`)",
+                changed_files.len(),
+                changed_files
+                    .iter()
+                    .take(4)
+                    .map(|f| f.rsplit('/').next().unwrap_or(f).to_string())
+                    .collect::<Vec<_>>()
+                    .join("`, `")
+            )
+        } else {
+            total_changes.to_string()
+        }
+    ));
     update_section.push_str(&format!("- Last commit: {}\n", last_commit_time));
     update_section.push('\n');
 
@@ -486,7 +581,17 @@ pub fn end_session(project_root: &Path) -> Result<()> {
     let starting_commit = read_session_field(&session_path, "**Starting Commit**: ")?;
     let adapter = read_session_field(&session_path, "**LLM**: ")?;
 
-    // 3. Create end session tag
+    // 3. Atomic status flip — mark completed FIRST, before any other mutations.
+    //    If later steps (metrics, archive) fail, the session is at least marked done.
+    {
+        let content = fs::read_to_string(&session_path)?;
+        let updated = content.replacen("status: active", "status: completed", 1);
+        if updated != content {
+            fs::write(&session_path, &updated)?;
+        }
+    }
+
+    // 4. Create end session tag
     let end_tag = format!("session-{}-{}-end", session_id, adapter);
     if git::is_git_repo().unwrap_or(false) {
         match git::create_tag(&end_tag, &format!("Session end: {}", session_title)) {
@@ -541,6 +646,9 @@ pub fn end_session(project_root: &Path) -> Result<()> {
         "Cherry-pick to main: git cherry-pick {}..{}",
         session_tag, end_tag
     );
+
+    // Spec integration (Phase 5: next suggestion + unblock detection)
+    show_spec_end_summary(&changed_files);
 
     // 8. Count beliefs captured during this session
     let (beliefs_captured, beliefs_summary) = count_beliefs_captured(project_root, &changed_files);
@@ -598,7 +706,10 @@ pub fn end_session(project_root: &Path) -> Result<()> {
     let session_content = fs::read_to_string(&session_path)?;
     let archived_content = if session_content.starts_with("---") {
         // YAML frontmatter — update status for archive
-        session_content.replacen("status: active", "status: archived", 1)
+        // Status may be "completed" (from atomic flip) or "active" (legacy path)
+        session_content
+            .replacen("status: completed", "status: archived", 1)
+            .replacen("status: active", "status: archived", 1)
     } else {
         // Legacy format — archive as-is
         session_content
@@ -869,6 +980,241 @@ fn show_previous_session_beliefs(project_root: &Path) {
     }
 }
 
+/// Show spec landscape: active, paused, blocked, drafts, and recommended next.
+///
+/// Wires into spec data functions (Phase 5 session integration).
+/// Errors are swallowed — spec landscape is informational, not blocking.
+fn show_spec_landscape() {
+    let all_specs = match spec::get_all_specs(&spec::ListFilters::default()) {
+        Ok(specs) => specs,
+        Err(_) => return, // DB not initialized or no specs — skip silently
+    };
+
+    if all_specs.is_empty() {
+        return;
+    }
+
+    let active: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("active"))
+        .collect();
+    let paused: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("paused"))
+        .collect();
+    let blocked: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("blocked"))
+        .collect();
+    let ready: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("ready"))
+        .collect();
+    let drafts: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("draft"))
+        .collect();
+
+    println!();
+    println!("Spec landscape:");
+
+    for s in &active {
+        println!("  Active:  {}", s.id);
+    }
+
+    // Blocked specs with blocker info
+    if !blocked.is_empty() {
+        let blocked_specs = spec::get_blocked_specs().unwrap_or_default();
+        for s in &blocked {
+            let blocker_info = blocked_specs
+                .iter()
+                .find(|b| b.id == s.id)
+                .map(|b| {
+                    b.blocked_by
+                        .iter()
+                        .map(|bl| format!("{} ({})", bl.id, bl.status))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .unwrap_or_default();
+            if blocker_info.is_empty() {
+                println!("  Blocked: {}", s.id);
+            } else {
+                println!("  Blocked: {} (waiting on {})", s.id, blocker_info);
+            }
+        }
+    }
+
+    for s in &paused {
+        let age = spec::spec_age_days_from_list(s);
+        let age_str = if age > 0 {
+            format!(" ({}d)", age)
+        } else {
+            String::new()
+        };
+        let warning = if age > 14 { " — overdue" } else { "" };
+        println!(
+            "  Paused:  {}{} — resolve before starting new work{}",
+            s.id, age_str, warning
+        );
+    }
+
+    if !ready.is_empty() {
+        println!("  Ready:   {} available", ready.len());
+    }
+
+    if !drafts.is_empty() {
+        println!("  Drafts:  {} available", drafts.len());
+    }
+
+    // Recommendation (lightweight version of next_spec logic)
+    if !active.is_empty() {
+        println!();
+        println!("Recommended: continue {} (active)", active[0].id);
+    } else if !paused.is_empty() {
+        let top = &paused[0];
+        let age = spec::spec_age_days_from_list(top);
+        println!();
+        println!("Recommended: resume {} (paused {}d)", top.id, age);
+    } else if !ready.is_empty() {
+        // Pick highest-impact ready spec
+        let dep_counts = spec::load_dep_counts();
+        let top = ready
+            .iter()
+            .max_by_key(|s| dep_counts.get(&s.id).copied().unwrap_or(0))
+            .unwrap();
+        println!();
+        println!("Recommended: start {} (ready)", top.id);
+    } else if !drafts.is_empty() {
+        println!();
+        println!("Recommended: promote a draft to ready");
+    }
+}
+
+/// Show spec status changes in session update.
+///
+/// Checks for SPEC.md files in changed files (indicates spec status mutations),
+/// and warns about paused specs that are aging.
+fn show_spec_status_in_update(changed_files: &[String]) {
+    // Check if any spec files were changed this session
+    let spec_changes: Vec<_> = changed_files
+        .iter()
+        .filter(|f| f.starts_with("layer/surface/build/") && f.ends_with("SPEC.md"))
+        .collect();
+
+    if !spec_changes.is_empty() {
+        println!();
+        println!("Spec files changed this session:");
+        for f in &spec_changes {
+            println!("  {}", f);
+        }
+    }
+
+    // Warn about paused specs aging
+    if let Ok(all_specs) = spec::get_all_specs(&spec::ListFilters::default()) {
+        let paused: Vec<_> = all_specs
+            .iter()
+            .filter(|s| s.status.as_deref() == Some("paused"))
+            .collect();
+        if !paused.is_empty() {
+            println!();
+            for s in &paused {
+                let age = spec::spec_age_days_from_list(s);
+                if age > 14 {
+                    println!(
+                        "Warning: {} paused for {}d — overdue for resolution",
+                        s.id, age
+                    );
+                } else if age > 0 {
+                    println!(
+                        "Paused spec: {} ({}d) — resolve before pausing another",
+                        s.id, age
+                    );
+                } else {
+                    println!("Paused spec: {} — resolve before pausing another", s.id);
+                }
+            }
+        }
+    }
+}
+
+/// Show spec summary at session end: next recommendation and unblock detection.
+///
+/// If spec files were changed, detects completed specs and shows what they unblock.
+/// Always shows the next recommended spec.
+fn show_spec_end_summary(changed_files: &[String]) {
+    let all_specs = match spec::get_all_specs(&spec::ListFilters::default()) {
+        Ok(specs) => specs,
+        Err(_) => return,
+    };
+
+    if all_specs.is_empty() {
+        return;
+    }
+
+    // Check for spec completions in changed files
+    let spec_changes: Vec<_> = changed_files
+        .iter()
+        .filter(|f| f.starts_with("layer/surface/build/") && f.ends_with("SPEC.md"))
+        .collect();
+
+    if !spec_changes.is_empty() {
+        // Check what specs got completed/paused this session
+        let blocked_specs = spec::get_blocked_specs().unwrap_or_default();
+        let unblocked: Vec<_> = blocked_specs
+            .iter()
+            .filter(|b| {
+                b.blocked_by.is_empty()
+                    || b.blocked_by
+                        .iter()
+                        .all(|bl| bl.status == "complete" || bl.status == "done")
+            })
+            .collect();
+
+        if !unblocked.is_empty() {
+            println!();
+            println!("Specs unblocked:");
+            for s in &unblocked {
+                println!("  {} — ready to resume", s.id);
+            }
+        }
+    }
+
+    // Next spec recommendation
+    let active: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("active"))
+        .collect();
+    let paused: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("paused"))
+        .collect();
+    let ready: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("ready"))
+        .collect();
+    let drafts: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("draft"))
+        .collect();
+
+    println!();
+    println!("Next session:");
+    if !active.is_empty() {
+        println!("  Continue: {} (active)", active[0].id);
+    } else if !paused.is_empty() {
+        let top = &paused[0];
+        let age = spec::spec_age_days_from_list(top);
+        println!("  Resume: {} (paused {}d)", top.id, age);
+    } else if !ready.is_empty() {
+        println!("  Start: {} (ready)", ready[0].id);
+    } else if !drafts.is_empty() {
+        println!("  Promote a draft to ready");
+    } else {
+        println!("  No specs queued — create a new spec");
+    }
+}
+
 /// Classify work type based on session metrics.
 ///
 /// Matches shell script classification logic exactly:
@@ -1014,6 +1360,201 @@ fn extract_user_prompts(project_root: &Path, session_path: &Path) -> Vec<String>
     }
 
     prompts
+}
+
+pub fn list_sessions(project_root: &Path, json_output: bool) -> Result<()> {
+    let session_path = project_root.join(ACTIVE_SESSION_PATH);
+    let sessions_dir = project_root.join(SESSIONS_DIR);
+
+    // 1. Check for active session
+    let active = if session_path.exists() {
+        let content = fs::read_to_string(&session_path)?;
+        parse_session_summary(&content)
+    } else {
+        None
+    };
+
+    // 2. Scan layer/sessions/ for archived + stale
+    let mut stale: Vec<SessionSummary> = Vec::new();
+    let mut recent: Vec<SessionSummary> = Vec::new();
+
+    if sessions_dir.is_dir() {
+        let mut entries: Vec<_> = fs::read_dir(&sessions_dir)?
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
+            .collect();
+
+        // Sort by filename descending (newest first, since filenames are timestamps)
+        entries.sort_by_key(|b| std::cmp::Reverse(b.file_name()));
+
+        for entry in &entries {
+            let content = match fs::read_to_string(entry.path()) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            let Some(summary) = parse_session_summary(&content) else {
+                continue;
+            };
+
+            if summary.status == "active" {
+                stale.push(summary);
+            } else if recent.len() < 5 {
+                recent.push(summary);
+            }
+
+            // Stop scanning after we have enough recent + checked all stale candidates
+            // (stale could be anywhere, but in practice they're rare)
+            if recent.len() >= 5 && stale.len() >= 20 {
+                break;
+            }
+        }
+    }
+
+    let now = Utc::now();
+
+    if json_output {
+        let json = json!({
+            "active": active.as_ref().map(|s| session_summary_json(s, &now)),
+            "stale": stale.iter().map(|s| session_summary_json(s, &now)).collect::<Vec<_>>(),
+            "recent": recent.iter().map(|s| session_summary_json(s, &now)).collect::<Vec<_>>(),
+        });
+        println!("{}", serde_json::to_string_pretty(&json)?);
+        return Ok(());
+    }
+
+    // Human output
+    let mut any_output = false;
+
+    if let Some(ref s) = active {
+        let age = format_session_age(&s.created, &now);
+        println!("ACTIVE  {}  {} ({})", s.id, s.title, age);
+        any_output = true;
+    }
+
+    if !stale.is_empty() {
+        if any_output {
+            println!();
+        }
+        for s in &stale {
+            let age = format_session_age(&s.created, &now);
+            println!("STALE   {}  {} ({}, never ended)", s.id, s.title, age);
+        }
+        any_output = true;
+    }
+
+    if !recent.is_empty() {
+        if any_output {
+            println!();
+        }
+        for s in &recent {
+            let age = format_session_age(&s.created, &now);
+            println!("RECENT  {}  {} ({})", s.id, s.title, age);
+        }
+        any_output = true;
+    }
+
+    if !any_output {
+        println!("No sessions found.");
+    }
+
+    Ok(())
+}
+
+/// Lightweight session summary for list display.
+struct SessionSummary {
+    id: String,
+    title: String,
+    status: String,
+    created: String,
+}
+
+/// Parse a session file into a lightweight summary.
+/// Handles both YAML frontmatter (new) and legacy `**Field**: value` format.
+fn parse_session_summary(content: &str) -> Option<SessionSummary> {
+    // Try YAML frontmatter first
+    if let Some(fm) = parse_session_frontmatter(content) {
+        return Some(SessionSummary {
+            id: fm.id,
+            title: fm.title,
+            status: fm.status,
+            created: fm.created,
+        });
+    }
+
+    // Legacy format: extract from **Field**: value lines
+    let mut id = None;
+    let mut title = None;
+    let mut created = None;
+
+    for line in content.lines() {
+        if let Some(v) = line.strip_prefix("**ID**: ") {
+            id = Some(v.trim().to_string());
+        } else if let Some(v) = line.strip_prefix("# Session: ") {
+            title = Some(v.trim().to_string());
+        } else if let Some(v) = line.strip_prefix("**Started**: ") {
+            created = Some(v.trim().to_string());
+        }
+    }
+
+    Some(SessionSummary {
+        id: id?,
+        title: title.unwrap_or_else(|| "untitled".to_string()),
+        status: "archived".to_string(), // legacy sessions are all completed
+        created: created.unwrap_or_default(),
+    })
+}
+
+/// Format a session's age from its created timestamp to now.
+fn format_session_age(created: &str, now: &chrono::DateTime<Utc>) -> String {
+    let Ok(created_dt) = chrono::DateTime::parse_from_rfc3339(created).or_else(|_| {
+        chrono::DateTime::parse_from_rfc3339(&format!("{}+00:00", created.trim_end_matches('Z')))
+    }) else {
+        // Try parsing just the date portion from the ID
+        return "unknown age".to_string();
+    };
+
+    let duration = *now - created_dt.with_timezone(&Utc);
+    let days = duration.num_days();
+    let hours = duration.num_hours();
+
+    if days > 0 {
+        format!("{}d ago", days)
+    } else if hours > 0 {
+        format!("{}h ago", hours)
+    } else {
+        "just now".to_string()
+    }
+}
+
+/// Compute a session's age in hours from its created timestamp.
+fn session_age_hours(created: &str) -> i64 {
+    let Ok(created_dt) = chrono::DateTime::parse_from_rfc3339(created).or_else(|_| {
+        chrono::DateTime::parse_from_rfc3339(&format!("{}+00:00", created.trim_end_matches('Z')))
+    }) else {
+        return 0;
+    };
+    (Utc::now() - created_dt.with_timezone(&Utc)).num_hours()
+}
+
+/// Convert a SessionSummary to JSON value.
+fn session_summary_json(s: &SessionSummary, now: &chrono::DateTime<Utc>) -> serde_json::Value {
+    json!({
+        "id": s.id,
+        "title": s.title,
+        "status": s.status,
+        "created": s.created,
+        "age": format_session_age(&s.created, now),
+    })
+}
+
+/// Get the configured development branch name.
+///
+/// Reads from .patina/config.toml [project] branch, falls back to "work".
+fn dev_branch_name(project_root: &Path) -> String {
+    patina::project::load(project_root)
+        .map(|c| c.project.branch)
+        .unwrap_or_else(|_| "work".to_string())
 }
 
 /// Resolve adapter name from explicit flag or project config.
