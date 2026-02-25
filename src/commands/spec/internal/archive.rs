@@ -291,6 +291,17 @@ pub(super) fn find_spec(id: &str) -> Result<FoundSpec> {
         }
     }
 
+    // Git tag fallback: archived specs exist only as annotated tags
+    let tag_name = format!("spec/{}", id);
+    if tag_exists(&tag_name)? {
+        let status = archived_spec_status(id).unwrap_or_else(|| "complete".to_string());
+        return Ok(FoundSpec {
+            file_path: format!("(archived: {})", tag_name),
+            status: Some(status),
+            title: None,
+        });
+    }
+
     anyhow::bail!(
         "Spec '{}' not found.\n\
          Check the id, or create it under layer/surface/build/.",
@@ -318,6 +329,25 @@ fn find_spec_file_on_disk(dir: &Path, target_id: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Determine archived spec status from the archive commit message.
+///
+/// Parses "docs: archive spec/{id} ({status})" → "complete" or "abandoned".
+/// Falls back to "complete" if no matching commit found (release path uses
+/// a different commit message format and is always a completion).
+fn archived_spec_status(id: &str) -> Option<String> {
+    let pattern = format!("docs: archive spec/{}", id);
+    let output = Command::new("git")
+        .args(["log", "--all", "--format=%s", "-1", "--grep", &pattern])
+        .output()
+        .ok()?;
+    let subject = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let paren_content = subject.rsplit('(').next()?.trim_end_matches(')');
+    match paren_content {
+        "complete" | "abandoned" => Some(paren_content.to_string()),
+        _ => None,
+    }
 }
 
 /// A fully loaded spec: metadata + parsed content. For mutation paths.
