@@ -160,11 +160,7 @@ pub(super) fn release_and_archive(
 
         // Tag HEAD~1 (parent commit still has spec file)
         println!("Creating tag: {} (on HEAD~1)", tag_name);
-        patina::git::create_tag_at(
-            &tag_name,
-            &format!("Archived spec: {}", title),
-            "HEAD~1",
-        )?;
+        patina::git::create_tag_at(&tag_name, &format!("Archived spec: {}", title), "HEAD~1")?;
     } else {
         // 4. No release (explore type) — delegate to archive_spec_inner
         archive_spec_inner(id, file_path, "complete", title, spec_dir.as_deref())?;
