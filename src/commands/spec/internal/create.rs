@@ -33,6 +33,19 @@ fn body_template(spec_type: SpecType) -> &'static str {
     }
 }
 
+/// Whether this spec type gets a DESIGN.md scaffold.
+fn needs_design_doc(spec_type: SpecType) -> bool {
+    matches!(spec_type, SpecType::Feat | SpecType::Refactor)
+}
+
+/// DESIGN.md template content.
+fn design_template(title: &str) -> String {
+    format!(
+        "# Design: {}\n\n## Approach\n\n## Commits\n1. `commit message` — what and why\n\n## Key Files\n- `path/to/file.rs` — role\n\n## Open Questions\n",
+        title
+    )
+}
+
 /// Detect active session ID from .patina/local/active-session.md frontmatter.
 fn active_session_id() -> Option<String> {
     let content = std::fs::read_to_string(".patina/local/active-session.md").ok()?;
@@ -173,9 +186,17 @@ pub fn create_spec_value(
     std::fs::write(&spec_path, &content)
         .with_context(|| format!("Failed to write {}", spec_path))?;
 
-    // 10. Git commit
+    // 9b. Write DESIGN.md for feat and refactor types
+    if needs_design_doc(spec_type) {
+        let design_path = format!("{}/DESIGN.md", directory);
+        let design_content = design_template(display_title);
+        std::fs::write(&design_path, &design_content)
+            .with_context(|| format!("Failed to write {}", design_path))?;
+    }
+
+    // 10. Git commit (stage directory to include both SPEC.md and DESIGN.md)
     let commit_msg = format!("spec: draft {}", id);
-    git_stage_and_commit(&spec_path, &commit_msg)?;
+    git_stage_and_commit(&directory, &commit_msg)?;
 
     // 11. Update database
     let db_path = Path::new(DB_PATH);
@@ -219,6 +240,24 @@ mod tests {
         assert!(!is_valid_id("-starts-with-dash"));
         assert!(!is_valid_id("has_underscore"));
         assert!(!is_valid_id("has space"));
+    }
+
+    #[test]
+    fn test_needs_design_doc() {
+        assert!(needs_design_doc(SpecType::Feat));
+        assert!(needs_design_doc(SpecType::Refactor));
+        assert!(!needs_design_doc(SpecType::Fix));
+        assert!(!needs_design_doc(SpecType::Explore));
+    }
+
+    #[test]
+    fn test_design_template_has_sections() {
+        let content = design_template("My Feature");
+        assert!(content.starts_with("# Design: My Feature"));
+        assert!(content.contains("## Approach"));
+        assert!(content.contains("## Commits"));
+        assert!(content.contains("## Key Files"));
+        assert!(content.contains("## Open Questions"));
     }
 
     #[test]
