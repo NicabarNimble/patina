@@ -1,7 +1,7 @@
 ---
 type: fix
 id: adapter-refresh-preserves-user-state
-status: ready
+status: active
 created: 2026-02-24
 sessions:
   origin: 20260224-053924
