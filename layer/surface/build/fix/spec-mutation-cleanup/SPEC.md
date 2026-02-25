@@ -1,7 +1,7 @@
 ---
 type: fix
 id: spec-mutation-cleanup
-status: ready
+status: active
 created: 2026-02-24
 sessions:
   origin: 20260224-180727
