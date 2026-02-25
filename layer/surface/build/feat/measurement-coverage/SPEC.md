@@ -38,6 +38,11 @@ exit_criteria:
 > (`patina measure`) to see it all. The bucket comes first, producers and views
 > follow.
 
+**Spec scope:** Phases 1-3 (bucket, producers, consumer views). Frontmatter
+exit criteria reflect full spec completion. Phase 4 (regression detection)
+is stretch. Per-verb enrichment is separate sub-specs. The spec may be
+completed incrementally via `spec split` if phases ship in separate releases.
+
 ## Problem
 
 Patina's five protocol verbs (**capture, index, search, believe, evolve**) have
@@ -256,15 +261,48 @@ All measurement events use `event_type = "measure.<verb>"`:
 }
 ```
 
+For plugin-sourced events, `source_id` includes the plugin name to prevent
+collisions between plugins that use the same tool/mode:
+
+```json
+{
+  "event_type": "measure.capture",
+  "source_id": "plugin:patina-doctor:doctor:health-check",
+  "data": { "source": "patina-doctor", ... }
+}
+```
+
 Fields:
 - **verb** — one of: capture, index, search, believe, evolve
 - **tool** — which tool produced this (eval, scrape, oxidize, doctor, grammar-rust)
-- **mode** — tool-specific sub-mode (nl, feedback, ablation, freshness-check)
-- **metrics** — key-value pairs, all numeric (f64 or i64)
+- **mode** — tool-specific sub-mode (nl, feedback, ablation, freshness-check).
+  Categorical metadata (model name, parser flavor, pass/fail) belongs here or
+  in a future `tags` field — NOT in metrics. Metrics are always numeric.
+- **metrics** — key-value pairs, all numeric (f64 or i64). Flat object, no nesting.
+  Categorical data goes in `mode` (if it identifies the measurement sub-type)
+  or a future `tags` map (if needed for Phase 2+). Keeping metrics strictly
+  numeric enables threshold comparison and trend detection without type checking.
 - **source** — "core" for compiled-in tools, plugin name for WASM plugins
 
 History is free — eventlog is append-only. Every tool run creates a timestamped
 snapshot. Trend detection reads the event timeline.
+
+### Scope: Project-Only
+
+Measurement events require a project root (patina.db lives at `.patina/local/data/`).
+Global or rootless contexts (`patina doctor --global`, remote analysis without
+a mounted project) are **out of scope** — measurements are silently skipped.
+This follows Patina's safety boundary: all data is project-scoped.
+
+### Pipeline Plugins
+
+Pipeline plugins (`wit/pipeline/`) do NOT import `patina:host/measure`. They
+are pure compute (parsers, chunkers, tokenizers) with `host_log` only. If
+metrics about pipeline execution are needed (timing, parse error rates), the
+**host measures externally** — the caller times the pipeline invocation and
+emits via `measure::emit()`. This avoids giving pipeline plugins side effects
+and keeps the simplest world simple. If a future grammar plugin needs to report
+coverage metrics, it should be a command or task plugin, not a pipeline plugin.
 
 ### Read Side: `patina measure`
 
@@ -286,6 +324,28 @@ snapshot. Trend detection reads the event timeline.
 This means existing tools don't need to change their event types. Scrape still
 emits `belief.surface`, sessions still emit `session.ended`. The measurement
 system adds NEW events where none exist, and READS existing events where they do.
+
+#### Verb → Event Source Mapping
+
+This table is the contract between producers and the Phase 3 consumer. It
+defines which event types satisfy each verb and which fields the consumer reads.
+
+| Verb | New `measure.*` Events | Existing Events Read | Key Metrics |
+|---|---|---|---|
+| **capture** | `measure.capture` (scrape stats, doctor) | `git.commit` (file counts) | files_parsed, functions, parse_success_rate, missing_tools |
+| **index** | `measure.index` (oxidize) | — | documents_embedded, coverage, model |
+| **search** | `measure.search` (eval, bench) | `scry.query` + feedback views | p_at_5, mrr, recall_at_k, latency_p50 |
+| **believe** | — (covered by existing events) | `belief.surface` (metrics obj) | grounding_score, evidence_count, floating_count |
+| **evolve** | — (covered by existing events) | `session.ended` (stats) | commits_made, files_changed, beliefs_captured |
+
+**believe** and **evolve** verbs need no new `measure.*` events — existing
+events already carry the data. Phase 2 may add `measure.believe` or
+`measure.evolve` events for enrichment, but the verbs are satisfied by
+existing events alone.
+
+**Phase 2 verification ("all 5 verbs have a producer")** counts both sources:
+a verb is satisfied if EITHER a `measure.<verb>` event exists OR the existing
+event types listed above have data. The verification SQL checks both.
 
 One command, two views:
 
@@ -410,6 +470,40 @@ Build the read side. One command, two views, querying eventlog.
 - [ ] `patina measure --json` outputs machine-readable JSON
 - [ ] MCP `measure` tool returns JSON health summary
 - [ ] Empty state handled gracefully (no measurements yet)
+
+**Consumer SQL sketch** (how Phase 3 reads both sources):
+
+```sql
+-- New measurement events (Phases 1-2)
+SELECT json_extract(data, '$.verb') as verb, json_extract(data, '$.tool') as tool,
+       json_extract(data, '$.metrics') as metrics, timestamp
+FROM eventlog WHERE event_type LIKE 'measure.%'
+
+UNION ALL
+
+-- Existing belief metrics (read, not duplicated)
+SELECT 'believe' as verb, 'scrape' as tool,
+       json_object('grounding_score', json_extract(data, '$.metrics.grounding.score'),
+                   'evidence_count', json_extract(data, '$.metrics.truth.evidence_count'))
+       as metrics, timestamp
+FROM eventlog WHERE event_type = 'belief.surface'
+  AND seq IN (SELECT MAX(seq) FROM eventlog WHERE event_type = 'belief.surface' GROUP BY source_id)
+
+UNION ALL
+
+-- Existing session productivity (read, not duplicated)
+SELECT 'evolve' as verb, 'session' as tool,
+       json_object('commits_made', json_extract(data, '$.commits_made'),
+                   'files_changed', json_extract(data, '$.files_changed'))
+       as metrics, timestamp
+FROM eventlog WHERE event_type = 'session.ended'
+ORDER BY timestamp DESC;
+```
+
+This is a sketch, not the final implementation. The Phase 3 DESIGN.md will
+refine this into SQL views or Rust query functions. The point: producers
+don't need to know about the consumer's aggregation — they emit their own
+event types, and the consumer maps them.
 
 ### Phase 4 — Regression Detection
 
@@ -544,3 +638,16 @@ No special storage design needed. The eventlog handles this.
   - Moved Phase 5 (per-verb enrichment) to "future sub-specs, not in scope."
   - Gap 3 reframed: not "no standard event type" but "no unified consumer."
   - Created DESIGN.md for Phase 1 implementation.
+- 2026-02-25: Review feedback (session 20260225-173127):
+  - Clarified spec scope: Phases 1-3 with Phase 4 as stretch. May split via
+    `spec split` if phases ship in separate releases.
+  - Added verb→event source mapping table: concrete contract between producers
+    and Phase 3 consumer. believe/evolve satisfied by existing events alone.
+  - Added consumer SQL sketch for Phase 3 (how to read both sources).
+  - Documented metrics constraint: metrics strictly numeric, categorical data
+    goes in `mode` or future `tags` field.
+  - Documented project-only scope: no fallback DB path, measurements silently
+    skipped outside project context. Follows safety-boundaries.
+  - Documented pipeline exclusion: host measures externally, pipeline stays pure.
+  - DESIGN.md: fixed source_id collision for plugins, added backward-compat
+    analysis, added Phase 2 connection guidance.
