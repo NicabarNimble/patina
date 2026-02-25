@@ -4,9 +4,6 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-use patina::spec::parse_spec_file;
-
-use super::archive::find_spec;
 use super::queries::{get_all_specs, get_blocked_specs, ListFilters, SpecInfo};
 use super::DB_PATH;
 
@@ -163,20 +160,13 @@ pub fn next_spec_value() -> Result<Vec<Recommendation>> {
 }
 
 /// Compute age in days for a spec from the all-specs list.
-/// Uses the spec's frontmatter paused_date/blocked_date by re-reading the file.
+/// Reads paused_date/blocked_date from SpecInfo (parsed during scan_disk_specs).
 pub fn spec_age_days_from_list(spec: &SpecInfo) -> i64 {
-    // Try to find the spec file and read paused_date or blocked_date
-    if let Ok(found) = find_spec(&spec.id) {
-        if let Ok(content) = std::fs::read_to_string(&found.file_path) {
-            if let Ok((fm, _)) = parse_spec_file(&content) {
-                let date_str = fm.paused_date.as_deref().or(fm.blocked_date.as_deref());
-                if let Some(date_str) = date_str {
-                    if let Ok(date) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
-                        let today = chrono::Utc::now().date_naive();
-                        return (today - date).num_days();
-                    }
-                }
-            }
+    let date_str = spec.paused_date.as_deref().or(spec.blocked_date.as_deref());
+    if let Some(date_str) = date_str {
+        if let Ok(date) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+            let today = chrono::Utc::now().date_naive();
+            return (today - date).num_days();
         }
     }
     0
