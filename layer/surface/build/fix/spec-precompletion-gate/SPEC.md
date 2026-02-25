@@ -1,16 +1,17 @@
 ---
 type: fix
 id: spec-precompletion-gate
-status: draft
+status: ready
 created: 2026-02-25
 blocked_by:
-  - spec-structured-exit-criteria
+- spec-structured-exit-criteria
 sessions:
   origin: 20260224-212321
 beliefs:
-  - spec-is-contract
-  - compiler-enforced-safety
-  - safeguards-from-workflow
+- spec-is-contract
+- compiler-enforced-safety
+- safeguards-from-workflow
+exit_criteria: []
 ---
 # fix: Add spec check pre-completion validation
 
