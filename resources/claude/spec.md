@@ -24,6 +24,12 @@ is unavailable or when the user requests human-readable output.
 
 **MUTATIONS (change state, confirm with user first):**
 
+- `spec.create` — Scaffold a new spec. Use when the user says "let's
+  spec this out" or when pausing current work to address a discovered
+  issue. Infer type from context (bug → fix, new capability → feat).
+  Parameters: spec_type (required), id (required), title, description,
+  blocked_by.
+
 - `spec.promote` — Advance: draft -> ready -> active. Use when a spec
   is reviewed and ready to progress. Promoting to active creates a git tag.
   Parameters: id (required).
