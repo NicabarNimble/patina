@@ -28,6 +28,9 @@ pub(crate) use mutations::{
     promote_spec_value, resume_spec_value,
 };
 
+// Create _value() function re-exported pub(crate) by parent for MCP
+pub(crate) use create::create_spec_value;
+
 // Split _value() function re-exported pub(crate) by parent for MCP
 pub(crate) use split::split_spec_value;
 

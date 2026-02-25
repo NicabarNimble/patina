@@ -16,8 +16,8 @@ pub(crate) use internal::{get_ready_specs, next_spec_value};
 
 // Mutation _value() functions re-exported for MCP (Phase 6)
 pub(crate) use internal::{
-    abandon_spec_value, block_spec_value, complete_spec_value, pause_spec_value,
-    promote_spec_value, resume_spec_value, split_spec_value,
+    abandon_spec_value, block_spec_value, complete_spec_value, create_spec_value,
+    pause_spec_value, promote_spec_value, resume_spec_value, split_spec_value,
 };
 
 use anyhow::Result;

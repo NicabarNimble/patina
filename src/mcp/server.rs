@@ -484,6 +484,37 @@ fn handle_list_tools(req: &Request) -> Response {
                     }
                 },
                 {
+                    "name": "spec.create",
+                    "description": "Create a new spec draft — scaffold directory, write frontmatter, commit.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "spec_type": {
+                                "type": "string",
+                                "description": "Spec type: feat, fix, refactor, explore"
+                            },
+                            "id": {
+                                "type": "string",
+                                "description": "Spec identifier (kebab-case)"
+                            },
+                            "title": {
+                                "type": "string",
+                                "description": "Human title"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "One-line problem statement"
+                            },
+                            "blocked_by": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Spec IDs this is blocked by"
+                            }
+                        },
+                        "required": ["spec_type", "id"]
+                    }
+                },
+                {
                     "name": "schemas.list",
                     "description": "List installed fact schemas - shows all schema packages installed in the current project with their versions, packages, and fact types. Use this to discover what fact types are available for querying.",
                     "inputSchema": {
@@ -1179,6 +1210,54 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                 );
             }
             match crate::commands::spec::split_spec_value(id, new_id, description) {
+                Ok(result) => {
+                    let text = serde_json::to_string_pretty(&result).unwrap_or_default();
+                    Response::success(
+                        req.id.clone(),
+                        serde_json::json!({
+                            "content": [{ "type": "text", "text": text }]
+                        }),
+                    )
+                }
+                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            }
+        }
+        "spec.create" => {
+            let spec_type = args.get("spec_type").and_then(|v| v.as_str()).unwrap_or("");
+            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let title = args.get("title").and_then(|v| v.as_str());
+            let description = args.get("description").and_then(|v| v.as_str());
+            let blocked_by: Vec<String> = args
+                .get("blocked_by")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            if spec_type.is_empty() {
+                return Response::error(
+                    req.id.clone(),
+                    -32602,
+                    "spec.create requires 'spec_type' parameter",
+                );
+            }
+            if id.is_empty() {
+                return Response::error(
+                    req.id.clone(),
+                    -32602,
+                    "spec.create requires 'id' parameter",
+                );
+            }
+            match crate::commands::spec::create_spec_value(
+                spec_type,
+                id,
+                title,
+                description,
+                blocked_by,
+                Vec::new(),
+            ) {
                 Ok(result) => {
                     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
                     Response::success(
