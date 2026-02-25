@@ -11,7 +11,7 @@ use patina::spec::{serialize_spec_file, SpecFrontmatter};
 use super::archive::{
     archive_spec_inner, find_spec, load_spec, release_and_archive, resolve_spec_dir, LoadedSpec,
 };
-use super::queries::{get_all_specs, ListFilters};
+use super::queries::{check_spec_value, get_all_specs, ListFilters};
 use super::queue::tag_exists;
 use super::DB_PATH;
 
@@ -353,6 +353,29 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<MutationResult> {
             s
         ),
         None => anyhow::bail!("Spec '{}' has no status", id),
+    }
+
+    // 2. Check exit criteria gate
+    let check = check_spec_value(id)?;
+    if !check.passed {
+        let unchecked_list: Vec<String> = check
+            .unchecked
+            .iter()
+            .map(|c| format!("  \u{2717} {} \u{2014} {}", c.id, c.text))
+            .collect();
+        let noun = if check.unchecked.len() == 1 {
+            "criterion"
+        } else {
+            "criteria"
+        };
+        anyhow::bail!(
+            "Cannot complete '{}' — {} unchecked exit {}:\n{}\n\n  \
+             Use --force to bypass.",
+            id,
+            check.unchecked.len(),
+            noun,
+            unchecked_list.join("\n")
+        );
     }
 
     let title_str = loaded.title.as_deref().unwrap_or(id).to_string();
