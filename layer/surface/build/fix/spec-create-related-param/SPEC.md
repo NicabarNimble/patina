@@ -1,7 +1,7 @@
 ---
 type: fix
 id: spec-create-related-param
-status: ready
+status: active
 created: 2026-02-25
 sessions:
   origin: 20260224-212321
