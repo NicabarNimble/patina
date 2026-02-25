@@ -1,12 +1,12 @@
 ---
 type: fix
 id: spec-metadata-mutations
-status: draft
+status: ready
 created: 2026-02-25
 sessions:
   origin: 20260224-212321
 beliefs:
-  - specs-drives-tooling
+- specs-drives-tooling
 ---
 # fix: Mutation commands for spec metadata fields
 
