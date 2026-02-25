@@ -401,6 +401,28 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                     }
                 },
                 {
+                    "name": "spec.set",
+                    "description": "Set a metadata field on a spec. For list fields (beliefs, related, references), prefix value with + to add or - to remove. For scalar fields (target), set directly or pass empty string to clear.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Spec ID to modify"
+                            },
+                            "field": {
+                                "type": "string",
+                                "description": "Field to set (beliefs, related, references, target)"
+                            },
+                            "value": {
+                                "type": "string",
+                                "description": "Value to set (+value to add, -value to remove for lists; value for scalars)"
+                            }
+                        },
+                        "required": ["id", "field", "value"]
+                    }
+                },
+                {
                     "name": "schemas.list",
                     "description": "List installed fact schemas - shows all schema packages installed in the current project with their versions, packages, and fact types. Use this to discover what fact types are available for querying.",
                     "inputSchema": {

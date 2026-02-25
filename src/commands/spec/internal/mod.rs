@@ -27,7 +27,7 @@ pub(crate) use queue::{load_dep_counts, next_spec_value, spec_age_days_from_list
 // Mutation _value() functions re-exported pub(crate) by parent for MCP
 pub(crate) use mutations::{
     abandon_spec_value, block_spec_value, complete_spec_value, pause_spec_value,
-    promote_spec_value, resume_spec_value,
+    promote_spec_value, resume_spec_value, set_spec_value,
 };
 
 // Create _value() function re-exported pub(crate) by parent for MCP
