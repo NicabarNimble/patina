@@ -1,24 +1,24 @@
 ---
 type: feat
 id: spec-create
-status: draft
+status: ready
 created: 2026-02-24
+blocked_by:
+- spec-module-split
 sessions:
   origin: 20260224-053924
 related:
-  - src/commands/spec/mod.rs
-  - src/commands/spec/internal/
-  - src/spec.rs
-  - src/mcp/server.rs
-  - resources/claude/spec.md
-  - src/adapters/templates.rs
+- src/commands/spec/mod.rs
+- src/commands/spec/internal/
+- src/spec.rs
+- src/mcp/server.rs
+- resources/claude/spec.md
+- src/adapters/templates.rs
 beliefs:
-  - spec-first
-  - unix-philosophy
-  - plugins-are-three-prong-bundles
-  - mutation-completes-query
-blocked_by:
-  - spec-module-split
+- spec-first
+- unix-philosophy
+- plugins-are-three-prong-bundles
+- mutation-completes-query
 ---
 
 # feat: Spec Create — Scaffold Specs from the CLI
