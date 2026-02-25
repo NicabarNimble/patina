@@ -180,13 +180,12 @@ pub fn show_ready_specs(json: bool) -> Result<()> {
     // Load impact counts (how many specs each spec blocks)
     let dep_counts = load_dep_counts();
 
-    // Get additional spec groups for the enhanced view
+    // Get all spec groups from a single scan
     let all_specs = get_all_specs(&ListFilters::default()).unwrap_or_default();
-    let draft_filters = ListFilters {
-        status: Some("draft".to_string()),
-        target: None,
-    };
-    let drafts = get_all_specs(&draft_filters).unwrap_or_default();
+    let drafts: Vec<_> = all_specs
+        .iter()
+        .filter(|s| s.status.as_deref() == Some("draft"))
+        .collect();
     let paused: Vec<_> = all_specs
         .iter()
         .filter(|s| s.status.as_deref() == Some("paused"))
