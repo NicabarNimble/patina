@@ -122,8 +122,11 @@ pub struct SpecFrontmatter {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub references: Vec<String>,
 
-    /// Structured exit criteria — machine-readable completion contract
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// Structured exit criteria — machine-readable completion contract.
+    /// Always serialized (even when empty) so the field is visible in YAML
+    /// as a prompt to define criteria. Unlike optional metadata fields,
+    /// exit criteria are contractual and should always be explicit.
+    #[serde(default)]
     pub exit_criteria: Vec<ExitCriterion>,
 
     /// Version milestones
