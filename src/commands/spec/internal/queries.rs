@@ -467,6 +467,14 @@ pub struct SpecInfo {
     pub target: Option<String>,
     pub title: String,
     pub unscraped: bool,
+    /// Parsed during scan — avoids re-reading files for age display
+    #[serde(skip)]
+    pub paused_date: Option<String>,
+    #[serde(skip)]
+    pub blocked_date: Option<String>,
+    /// File path on disk — avoids double-walk in find_spec fallback
+    #[serde(skip)]
+    pub file_path: Option<String>,
 }
 
 /// Filter options for spec list
@@ -534,12 +542,16 @@ pub(super) fn scan_disk_specs() -> Vec<SpecInfo> {
                     .find_map(|line| title_re.captures(line).map(|c| c[1].to_string()))
                     .unwrap_or_else(|| frontmatter.id.clone());
 
+                let file_path = path.to_string_lossy().to_string();
                 specs.push(SpecInfo {
                     id: frontmatter.id,
                     status: frontmatter.status,
                     target: frontmatter.target,
                     title,
                     unscraped: true, // disk-only until merged with DB
+                    paused_date: frontmatter.paused_date,
+                    blocked_date: frontmatter.blocked_date,
+                    file_path: Some(file_path),
                 });
             }
         }
