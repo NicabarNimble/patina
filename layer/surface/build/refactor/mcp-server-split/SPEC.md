@@ -1,13 +1,13 @@
 ---
 type: refactor
 id: mcp-server-split
-status: draft
+status: ready
 created: 2026-02-25
 sessions:
   origin: 20260225-082251
 beliefs:
-  - dependable-rust
-  - unix-philosophy
+- dependable-rust
+- unix-philosophy
 ---
 # refactor: Split MCP server.rs by domain responsibility
 
