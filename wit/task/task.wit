@@ -24,6 +24,9 @@ world task {
     /// Import domain-allowlisted HTTP access
     import patina:host/http@0.1.0;
 
+    /// Import measurement reporting
+    import patina:host/measure@0.1.0;
+
     /// Bring toy type into world scope for toys() export
     use patina:host/types@0.1.0.{toy};
 
