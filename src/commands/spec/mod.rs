@@ -240,7 +240,7 @@ pub enum SpecCommands {
         /// Spec ID
         id: String,
 
-        /// Field to set (beliefs, related, references, target)
+        /// Field to set (beliefs, related, references, blocked_by, target)
         field: String,
 
         /// Value (+value to add, -value to remove for lists; value for scalars)

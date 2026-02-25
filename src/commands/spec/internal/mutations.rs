@@ -259,7 +259,7 @@ pub fn set_spec(id: &str, field: &str, value: &str, json: bool) -> Result<()> {
 
 /// Set a metadata field and return structured result (for MCP).
 pub fn set_spec_value(id: &str, field: &str, value: &str) -> Result<MutationResult> {
-    const VEC_FIELDS: &[&str] = &["beliefs", "related", "references"];
+    const VEC_FIELDS: &[&str] = &["beliefs", "related", "references", "blocked_by"];
     const SCALAR_FIELDS: &[&str] = &["target"];
 
     let is_vec = VEC_FIELDS.contains(&field);
@@ -267,7 +267,7 @@ pub fn set_spec_value(id: &str, field: &str, value: &str) -> Result<MutationResu
 
     if !is_vec && !is_scalar {
         anyhow::bail!(
-            "Cannot set field '{}'. Supported fields: beliefs, related, references, target",
+            "Cannot set field '{}'. Supported fields: beliefs, related, references, blocked_by, target",
             field
         );
     }
@@ -296,6 +296,7 @@ pub fn set_spec_value(id: &str, field: &str, value: &str) -> Result<MutationResu
             "beliefs" => apply_list_mutation(&mut fm.beliefs, action, &clean_value),
             "related" => apply_list_mutation(&mut fm.related, action, &clean_value),
             "references" => apply_list_mutation(&mut fm.references, action, &clean_value),
+            "blocked_by" => apply_list_mutation(&mut fm.blocked_by, action, &clean_value),
             "target" => {
                 fm.target = if clean_value.is_empty() {
                     None
