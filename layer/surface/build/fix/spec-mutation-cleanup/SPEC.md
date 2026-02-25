@@ -1,21 +1,19 @@
 ---
 type: fix
 id: spec-mutation-cleanup
-status: draft
+status: ready
 created: 2026-02-24
 sessions:
   origin: 20260224-180727
 related:
-  - src/commands/spec/internal/mutations.rs
-  - src/commands/spec/internal/split.rs
-  - src/commands/spec/internal/archive.rs
-  - src/commands/spec/internal/queue.rs
-  - src/commands/spec/internal/queries.rs
+- src/commands/spec/internal/mutations.rs
+- src/commands/spec/internal/split.rs
+- src/commands/spec/internal/archive.rs
+- src/commands/spec/internal/queue.rs
+- src/commands/spec/internal/queries.rs
 beliefs:
-  - dependable-rust
-  - specs-ship-features-audits-ship-quality
-provenance:
-  - spec-module-split
+- dependable-rust
+- specs-ship-features-audits-ship-quality
 ---
 
 # fix: Spec Mutation Cleanup
