@@ -7,7 +7,22 @@ sessions:
   origin: 20260225-104204
 related:
 - spec-system-audit-2026-02
-exit_criteria: []
+exit_criteria:
+- id: cli-timeline
+  text: patina spec history <id> shows chronological lifecycle from tags
+  checked: true
+- id: event-details
+  text: Each event shows timestamp, state, message, and time-in-state
+  checked: true
+- id: json-output
+  text: --json output available for MCP
+  checked: true
+- id: archived-specs
+  text: Works for archived specs (tags still exist after archive)
+  checked: true
+- id: no-tags-graceful
+  text: Graceful output when spec has no tags (newly created drafts)
+  checked: true
 ---
 # feat: Add spec history command for lifecycle audit
 
@@ -54,11 +69,11 @@ src/mcp/server.rs                      — new spec.history tool handler
 
 ## Exit Criteria
 
-- [ ] `patina spec history <id>` shows chronological lifecycle from tags
-- [ ] Each event shows timestamp, state, message, and time-in-state
-- [ ] `--json` output available for MCP
-- [ ] Works for archived specs (tags still exist after archive)
-- [ ] Graceful output when spec has no tags (newly created drafts)
+- [x] `patina spec history <id>` shows chronological lifecycle from tags
+- [x] Each event shows timestamp, state, message, and time-in-state
+- [x] `--json` output available for MCP
+- [x] Works for archived specs (tags still exist after archive)
+- [x] Graceful output when spec has no tags (newly created drafts)
 
 ## Non-Goals
 
