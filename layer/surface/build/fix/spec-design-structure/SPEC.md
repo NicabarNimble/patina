@@ -1,13 +1,14 @@
 ---
 type: fix
 id: spec-design-structure
-status: draft
+status: ready
 created: 2026-02-25
 sessions:
   origin: 20260224-212321
 beliefs:
-  - spec-carries-progress
-  - design-docs-are-implementation-cache
+- spec-carries-progress
+- design-docs-are-implementation-cache
+exit_criteria: []
 ---
 # fix: Formalize DESIGN.md as spec companion
 
