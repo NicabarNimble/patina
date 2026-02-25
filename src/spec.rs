@@ -142,6 +142,71 @@ pub struct SpecFrontmatter {
 }
 
 // ============================================================================
+// Spec Type Enum
+// ============================================================================
+
+/// Canonical list of valid spec types (for error messages, help text, tests).
+pub const SPEC_TYPES: &[&str] = &["feat", "fix", "refactor", "explore"];
+
+/// Typed spec type — parse from string at boundaries, match internally.
+///
+/// Follows [[boundary-string-internal-enum]]: SpecFrontmatter.r#type stays
+/// String for serde compatibility; this enum is used for validation and
+/// exhaustive matching in new code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpecType {
+    Feat,
+    Fix,
+    Refactor,
+    Explore,
+}
+
+/// Error when parsing an invalid spec type string.
+#[derive(Debug)]
+pub struct SpecTypeError {
+    pub got: String,
+}
+
+impl std::fmt::Display for SpecTypeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "invalid spec type \"{}\" (expected one of: {})",
+            self.got,
+            SPEC_TYPES.join(", ")
+        )
+    }
+}
+
+impl std::error::Error for SpecTypeError {}
+
+impl std::str::FromStr for SpecType {
+    type Err = SpecTypeError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "feat" => Ok(SpecType::Feat),
+            "fix" => Ok(SpecType::Fix),
+            "refactor" => Ok(SpecType::Refactor),
+            "explore" => Ok(SpecType::Explore),
+            _ => Err(SpecTypeError { got: s.to_string() }),
+        }
+    }
+}
+
+impl SpecType {
+    /// Canonical string form (matches YAML frontmatter values).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SpecType::Feat => "feat",
+            SpecType::Fix => "fix",
+            SpecType::Refactor => "refactor",
+            SpecType::Explore => "explore",
+        }
+    }
+}
+
+// ============================================================================
 // Parse / Serialize
 // ============================================================================
 
@@ -208,6 +273,21 @@ Body content here.
         let (fm2, _) = parse_spec_file(&output).expect("should re-parse");
         assert_eq!(fm2.id, frontmatter.id);
         assert_eq!(fm2.status, frontmatter.status);
+    }
+
+    #[test]
+    fn test_spec_type_roundtrip() {
+        for &name in SPEC_TYPES {
+            let t: SpecType = name.parse().expect(name);
+            assert_eq!(t.as_str(), name);
+        }
+    }
+
+    #[test]
+    fn test_spec_type_invalid() {
+        let err = "unknown".parse::<SpecType>().unwrap_err();
+        assert!(err.to_string().contains("unknown"));
+        assert!(err.to_string().contains("feat"));
     }
 
     #[test]
