@@ -289,8 +289,12 @@ fn execute_cargo(
         .as_deref()
         .expect("Cargo preflight always sets old_version");
 
-    // 1. Update Cargo.toml
+    // 1. Update Cargo.toml + refresh Cargo.lock
     update_cargo_version(new_version)?;
+    Command::new("cargo")
+        .args(["update", "--workspace"])
+        .output()
+        .context("Failed to update Cargo.lock")?;
 
     // 2. Stage files
     if let Some(dir) = archive_dir {
@@ -304,7 +308,7 @@ fn execute_cargo(
             anyhow::bail!("git rm failed: {}", String::from_utf8_lossy(&output.stderr));
         }
         let output = Command::new("git")
-            .args(["add", "Cargo.toml"])
+            .args(["add", "Cargo.toml", "Cargo.lock"])
             .output()
             .context("Failed to stage Cargo.toml")?;
         if !output.status.success() {
@@ -316,7 +320,7 @@ fn execute_cargo(
     } else {
         // Normal mode: stage Cargo.toml + spec file
         let output = Command::new("git")
-            .args(["add", "Cargo.toml", spec_path])
+            .args(["add", "Cargo.toml", "Cargo.lock", spec_path])
             .output()
             .context("Failed to stage files")?;
         if !output.status.success() {
