@@ -40,7 +40,7 @@ pub(crate) use split::split_spec_value;
 pub(super) use archive::{archive_spec, archive_stale_specs};
 pub(super) use create::create_spec;
 pub(super) use mutations::{
-    abandon_spec, block_spec, complete_spec, pause_spec, promote_spec, resume_spec,
+    abandon_spec, block_spec, complete_spec, pause_spec, promote_spec, resume_spec, set_spec,
 };
 pub(super) use queries::{show_blocked_specs, show_ready_specs, show_spec, show_spec_list};
 pub(super) use queue::next_spec;

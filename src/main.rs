@@ -1693,6 +1693,14 @@ fn main() -> Result<()> {
             commands::spec::SpecCommands::Show { id, json } => {
                 commands::spec::show(&id, json)?;
             }
+            commands::spec::SpecCommands::Set {
+                id,
+                field,
+                value,
+                json,
+            } => {
+                commands::spec::set(&id, &field, &value, json)?;
+            }
             commands::spec::SpecCommands::Next { json } => {
                 commands::spec::next(json)?;
             }
