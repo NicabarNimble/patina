@@ -140,10 +140,10 @@ pub fn get_ready_specs() -> Result<Vec<ReadySpec>> {
         .filter(|s| {
             // All blockers must be complete/done (or not found on disk = archived = done)
             s.blocked_by.iter().all(|blocker_id| {
-                match status_map.get(blocker_id).map(|s| s.as_str()) {
-                    Some("complete") | Some("done") | None => true,
-                    _ => false,
-                }
+                matches!(
+                    status_map.get(blocker_id).map(|s| s.as_str()),
+                    Some("complete") | Some("done") | None
+                )
             })
         })
         .map(|s| ReadySpec {
