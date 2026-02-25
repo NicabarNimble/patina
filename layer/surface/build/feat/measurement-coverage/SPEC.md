@@ -23,12 +23,24 @@ beliefs:
 - eventlog-is-truth
 - eventlog-is-infrastructure
 exit_criteria:
-- Doctor plugin emits measurement via WIT record-measurement, events in eventlog
-- Core measure::emit() helper exists and is used by at least one compiled-in tool
-- All 5 protocol verbs have at least one measurement producer
-- patina measure displays project health from both measure.* and existing events
-- patina measure --system shows raw metrics with history
-- MCP measure tool returns JSON health summary
+- id: plugin-measurement-stored
+  text: Doctor plugin emits measurement via WIT record-measurement, events in eventlog
+  checked: false
+- id: core-emit-helper
+  text: Core measure::emit() helper exists and is used by at least one compiled-in tool
+  checked: false
+- id: all-verbs-covered
+  text: All 5 protocol verbs have at least one measurement producer
+  checked: false
+- id: user-view-renders
+  text: patina measure displays project health from both measure.* and existing events
+  checked: false
+- id: system-view-renders
+  text: patina measure --system shows raw metrics with history
+  checked: false
+- id: mcp-tool-works
+  text: MCP measure tool returns JSON health summary
+  checked: false
 ---
 
 # feat: Measurement Coverage System
