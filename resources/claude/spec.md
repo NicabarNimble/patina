@@ -41,7 +41,12 @@ is unavailable or when the user requests human-readable output.
   3. For exit criteria, write specific checkable items, not vague goals
   4. If you lack context for a section, write what you know and mark
      gaps with "TODO: clarify with user"
-  5. Commit the populated spec
+  5. If DESIGN.md exists (scaffolded for feat and refactor types),
+     fill it in with: approach, planned commits, and key files before
+     starting implementation. The design doc turns a spec from a
+     contract into an execution plan — when filled in, commits land
+     almost mechanically.
+  6. Commit the populated spec
   The spec should be useful immediately — never leave a skeleton.
 
 - `spec.promote` — Advance: draft -> ready -> active. Use when a spec
