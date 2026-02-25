@@ -93,9 +93,9 @@ pub fn create_spec_value(
     related: Vec<String>,
 ) -> Result<CreateResult> {
     // 1. Parse and validate type
-    let spec_type: SpecType = type_str.parse().map_err(|e: patina::spec::SpecTypeError| {
-        anyhow::anyhow!("{}", e)
-    })?;
+    let spec_type: SpecType = type_str
+        .parse()
+        .map_err(|e: patina::spec::SpecTypeError| anyhow::anyhow!("{}", e))?;
 
     // 2. Validate id is kebab-case
     if !is_valid_id(id) {
