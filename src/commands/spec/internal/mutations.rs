@@ -327,8 +327,8 @@ pub fn set_spec_value(id: &str, field: &str, value: &str) -> Result<MutationResu
 }
 
 /// Complete an active spec (release + archive + tag)
-pub fn complete_spec(id: &str, major: bool, json: bool) -> Result<()> {
-    let result = complete_spec_value(id, major)?;
+pub fn complete_spec(id: &str, major: bool, force: bool, json: bool) -> Result<()> {
+    let result = complete_spec_value(id, major, force)?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&result)?);
@@ -342,7 +342,7 @@ pub fn complete_spec(id: &str, major: bool, json: bool) -> Result<()> {
 }
 
 /// Complete an active spec and return structured result (for MCP).
-pub fn complete_spec_value(id: &str, major: bool) -> Result<MutationResult> {
+pub fn complete_spec_value(id: &str, major: bool, force: bool) -> Result<MutationResult> {
     // 1. Load spec and validate status
     let loaded = load_spec(id)?;
     match loaded.status.as_deref() {
@@ -355,9 +355,9 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<MutationResult> {
         None => anyhow::bail!("Spec '{}' has no status", id),
     }
 
-    // 2. Check exit criteria gate
+    // 2. Check exit criteria gate (skipped with --force)
     let check = check_spec_value(id)?;
-    if !check.passed {
+    if !check.passed && !force {
         let unchecked_list: Vec<String> = check
             .unchecked
             .iter()

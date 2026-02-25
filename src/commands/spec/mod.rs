@@ -116,6 +116,10 @@ pub enum SpecCommands {
         #[arg(long)]
         major: bool,
 
+        /// Bypass exit criteria check
+        #[arg(long)]
+        force: bool,
+
         /// Output as JSON (for agent use)
         #[arg(long)]
         json: bool,
@@ -289,8 +293,8 @@ pub fn promote(id: &str, json: bool) -> Result<()> {
 }
 
 /// Complete an active spec (release + archive)
-pub fn complete(id: &str, major: bool, json: bool) -> Result<()> {
-    internal::complete_spec(id, major, json)
+pub fn complete(id: &str, major: bool, force: bool, json: bool) -> Result<()> {
+    internal::complete_spec(id, major, force, json)
 }
 
 /// Abandon a spec (archive, no release)
