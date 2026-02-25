@@ -1704,6 +1704,9 @@ fn main() -> Result<()> {
             commands::spec::SpecCommands::Next { json } => {
                 commands::spec::next(json)?;
             }
+            commands::spec::SpecCommands::Check { id, json } => {
+                commands::spec::check(&id, json)?;
+            }
         },
         Some(Commands::Schema { command }) => match command {
             commands::schema::SchemaCommands::Install { path } => {

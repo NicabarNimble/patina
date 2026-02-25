@@ -11,6 +11,102 @@ use super::archive::load_spec;
 use super::queue::{load_dep_counts, spec_age_days_from_list};
 use super::DB_PATH;
 
+/// An unchecked exit criterion (for check results)
+#[derive(Debug, Clone, Serialize)]
+pub struct UncheckedCriterion {
+    pub id: String,
+    pub text: String,
+}
+
+/// Result of checking a spec's exit criteria
+#[derive(Debug, Clone, Serialize)]
+pub struct CheckResult {
+    pub spec_id: String,
+    pub total: usize,
+    pub checked: usize,
+    pub unchecked: Vec<UncheckedCriterion>,
+    pub passed: bool,
+}
+
+/// Check exit criteria status for a spec.
+///
+/// Returns pass/fail with details. Specs without exit criteria pass by default
+/// (backward compatible).
+pub fn check_spec_value(id: &str) -> Result<CheckResult> {
+    let loaded = load_spec(id)?;
+    let criteria = &loaded.frontmatter.exit_criteria;
+
+    if criteria.is_empty() {
+        return Ok(CheckResult {
+            spec_id: id.to_string(),
+            total: 0,
+            checked: 0,
+            unchecked: Vec::new(),
+            passed: true,
+        });
+    }
+
+    let checked_count = criteria.iter().filter(|c| c.checked).count();
+    let unchecked: Vec<UncheckedCriterion> = criteria
+        .iter()
+        .filter(|c| !c.checked)
+        .map(|c| UncheckedCriterion {
+            id: c.id.clone(),
+            text: c.text.clone(),
+        })
+        .collect();
+
+    Ok(CheckResult {
+        spec_id: id.to_string(),
+        total: criteria.len(),
+        checked: checked_count,
+        unchecked,
+        passed: checked_count == criteria.len(),
+    })
+}
+
+/// Display check results (human-readable or JSON)
+pub fn check_spec(id: &str, json: bool) -> Result<()> {
+    let result = check_spec_value(id)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        return Ok(());
+    }
+
+    if result.total == 0 {
+        println!("Exit criteria: none defined (pass by default)");
+        return Ok(());
+    }
+
+    println!("Exit criteria: {}/{} complete", result.checked, result.total);
+
+    // Reload to get full criteria list for display
+    let loaded = load_spec(id)?;
+    for c in &loaded.frontmatter.exit_criteria {
+        if c.checked {
+            println!("  \u{2713} {}", c.id);
+        } else {
+            println!("  \u{2717} {} \u{2014} {}", c.id, c.text);
+        }
+    }
+
+    if !result.passed {
+        let noun = if result.unchecked.len() == 1 {
+            "criterion"
+        } else {
+            "criteria"
+        };
+        println!(
+            "\nCannot complete: {} unchecked {}",
+            result.unchecked.len(),
+            noun
+        );
+    }
+
+    Ok(())
+}
+
 /// A spec ready to work on (status=ready/active, all blockers complete)
 #[derive(Debug, Clone, Serialize)]
 pub struct ReadySpec {

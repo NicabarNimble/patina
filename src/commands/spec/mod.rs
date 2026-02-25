@@ -12,7 +12,7 @@ pub(crate) use internal::{
 };
 
 // Query data functions re-exported for MCP (Phase 6)
-pub(crate) use internal::{get_ready_specs, next_spec_value, show_spec_value};
+pub(crate) use internal::{check_spec_value, get_ready_specs, next_spec_value, show_spec_value};
 
 // Mutation _value() functions re-exported for MCP (Phase 6)
 pub(crate) use internal::{
@@ -209,6 +209,16 @@ pub enum SpecCommands {
         json: bool,
     },
 
+    /// Check exit criteria status for a spec
+    Check {
+        /// Spec ID to check
+        id: String,
+
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Set a metadata field on a spec
     Set {
         /// Spec ID
@@ -316,6 +326,11 @@ pub fn set(id: &str, field: &str, value: &str, json: bool) -> Result<()> {
 /// Show full spec context (body, design, key files)
 pub fn show(id: &str, json: bool) -> Result<()> {
     internal::show_spec(id, json)
+}
+
+/// Check exit criteria status for a spec
+pub fn check(id: &str, json: bool) -> Result<()> {
+    internal::check_spec(id, json)
 }
 
 /// Recommend the next spec to work on
