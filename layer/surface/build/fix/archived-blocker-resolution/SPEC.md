@@ -1,7 +1,7 @@
 ---
 type: fix
 id: archived-blocker-resolution
-status: draft
+status: ready
 created: 2026-02-25
 sessions:
   origin: 20260225-093943
@@ -11,13 +11,13 @@ beliefs:
 - eventlog-is-truth
 exit_criteria:
 - id: tag-fallback
-  text: "find_spec returns status=complete for archived specs via git tag lookup"
+  text: find_spec returns status=complete for archived specs via git tag lookup
   checked: false
 - id: resume-unblocks
-  text: "resume_spec_value resolves archived blockers as complete"
+  text: resume_spec_value resolves archived blockers as complete
   checked: false
 - id: backward-compat
-  text: "Existing specs without git tags still resolve via DB and filesystem"
+  text: Existing specs without git tags still resolve via DB and filesystem
   checked: false
 ---
 # fix: Resolve blockers from archived specs via git tags
