@@ -3,10 +3,12 @@ use rusqlite::Connection;
 use std::path::Path;
 use std::process::Command;
 
-use patina::release::{BumpType, ReleaseStrategy};
+use patina::release::BumpType;
 use patina::spec::{serialize_spec_file, SpecFrontmatter};
 
-use super::archive::{archive_spec_inner, find_spec, load_spec, resolve_spec_dir, LoadedSpec};
+use super::archive::{
+    archive_spec_inner, find_spec, load_spec, release_and_archive, resolve_spec_dir, LoadedSpec,
+};
 use super::queries::{get_all_specs, ListFilters};
 use super::queue::tag_exists;
 use super::DB_PATH;
@@ -199,50 +201,13 @@ pub fn complete_spec_value(id: &str, major: bool) -> Result<serde_json::Value> {
         Ok(())
     })?;
 
-    // 3. Pre-check archive tag
-    let tag_name = format!("spec/{}", id);
-    if tag_exists(&tag_name)? {
-        anyhow::bail!(
-            "Tag '{}' already exists. Spec may have been archived previously.",
-            tag_name
-        );
-    }
-    let spec_dir = resolve_spec_dir(&out.file_path);
-
-    // 4. Delegate to release strategy
-    let strategy = ReleaseStrategy::from_project(Path::new("."));
+    // 3. Release + archive
     let bump = if major {
         Some(BumpType::Major)
     } else {
         BumpType::from_spec_type(&out.post.r#type)
     };
-
-    if let Some(bump) = bump {
-        let prepared = strategy.preflight(bump, &out.file_path)?;
-        let archive_dir = spec_dir
-            .as_ref()
-            .and_then(|d| d.to_str())
-            .or(Some(&out.file_path));
-        prepared.execute(&title_str, &out.file_path, archive_dir)?;
-
-        // Tag HEAD~1 (parent commit still has spec file)
-        let archive_tag_name = format!("spec/{}", id);
-        println!("Creating tag: {} (on HEAD~1)", archive_tag_name);
-        patina::git::create_tag_at(
-            &archive_tag_name,
-            &format!("Archived spec: {}", title_str),
-            "HEAD~1",
-        )?;
-    } else {
-        // No release (explore type) — archive as standalone commit
-        archive_spec_inner(
-            id,
-            &out.file_path,
-            "complete",
-            &title_str,
-            spec_dir.as_deref(),
-        )?;
-    }
+    release_and_archive(id, &out.file_path, &out.post, &title_str, bump)?;
 
     Ok(serde_json::json!({
         "command": "complete",

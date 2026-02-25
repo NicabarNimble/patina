@@ -1,11 +1,10 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 
-use patina::release::{BumpType, ReleaseStrategy};
+use patina::release::BumpType;
 
-use super::archive::{archive_spec_inner, load_spec, resolve_spec_dir};
+use super::archive::{load_spec, release_and_archive};
 use super::mutations::{git_stage_and_commit, mutate_spec};
-use super::queue::tag_exists;
 
 /// Split a spec: complete original with release, create new draft for remaining work.
 ///
@@ -73,44 +72,9 @@ pub fn split_spec_value(
         Ok(())
     })?;
 
-    // 4. Pre-check archive tag, then release + archive
-    let archive_tag = format!("spec/{}", id);
-    if tag_exists(&archive_tag)? {
-        anyhow::bail!(
-            "Tag '{}' already exists. Spec may have been archived previously.",
-            archive_tag
-        );
-    }
-    let spec_dir = resolve_spec_dir(&out.file_path);
-
-    let strategy = ReleaseStrategy::from_project(Path::new("."));
+    // 4. Release + archive
     let bump = BumpType::from_spec_type(&spec_type);
-
-    if let Some(bump) = bump {
-        let prepared = strategy.preflight(bump, &out.file_path)?;
-        let archive_dir = spec_dir
-            .as_ref()
-            .and_then(|d| d.to_str())
-            .or(Some(&out.file_path));
-        prepared.execute(&title_str, &out.file_path, archive_dir)?;
-
-        // Tag parent commit (still has spec file)
-        println!("Creating tag: {} (on HEAD~1)", archive_tag);
-        patina::git::create_tag_at(
-            &archive_tag,
-            &format!("Archived spec: {}", title_str),
-            "HEAD~1",
-        )?;
-    } else {
-        // No release (explore type) — archive as standalone commit
-        archive_spec_inner(
-            id,
-            &out.file_path,
-            "complete",
-            &title_str,
-            spec_dir.as_deref(),
-        )?;
-    }
+    release_and_archive(id, &out.file_path, &out.post, &title_str, bump)?;
 
     // 5. Determine new spec ID
     let derived_id = if let Some(explicit) = new_id {
