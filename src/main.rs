@@ -1712,6 +1712,9 @@ fn main() -> Result<()> {
             commands::spec::SpecCommands::Check { id, json } => {
                 commands::spec::check(&id, json)?;
             }
+            commands::spec::SpecCommands::History { id, json } => {
+                commands::spec::history(&id, json)?;
+            }
         },
         Some(Commands::Schema { command }) => match command {
             commands::schema::SchemaCommands::Install { path } => {

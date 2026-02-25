@@ -12,7 +12,9 @@ pub(crate) use internal::{
 };
 
 // Query data functions re-exported for MCP (Phase 6)
-pub(crate) use internal::{check_spec_value, get_ready_specs, next_spec_value, show_spec_value};
+pub(crate) use internal::{
+    check_spec_value, get_ready_specs, history_spec_value, next_spec_value, show_spec_value,
+};
 
 // Mutation _value() functions re-exported for MCP (Phase 6)
 pub(crate) use internal::{
@@ -223,6 +225,16 @@ pub enum SpecCommands {
         json: bool,
     },
 
+    /// Show lifecycle history from git tags
+    History {
+        /// Spec ID to show history for
+        id: String,
+
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Set a metadata field on a spec
     Set {
         /// Spec ID
@@ -335,6 +347,11 @@ pub fn show(id: &str, json: bool) -> Result<()> {
 /// Check exit criteria status for a spec
 pub fn check(id: &str, json: bool) -> Result<()> {
     internal::check_spec(id, json)
+}
+
+/// Show lifecycle history from git tags
+pub fn history(id: &str, json: bool) -> Result<()> {
+    internal::history_spec(id, json)
 }
 
 /// Recommend the next spec to work on

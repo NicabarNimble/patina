@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use regex::Regex;
 use rusqlite::Connection;
 use serde::Serialize;
@@ -765,6 +765,177 @@ fn extract_key_files(body: &str) -> Vec<String> {
     files
 }
 
+/// A lifecycle event reconstructed from git tags
+#[derive(Debug, Clone, Serialize)]
+pub struct LifecycleEvent {
+    pub date: String,
+    pub state: String,
+    pub tag: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub days_in_state: Option<u64>,
+}
+
+/// History of a spec's lifecycle from git tags
+#[derive(Debug, Clone, Serialize)]
+pub struct HistoryResult {
+    pub spec_id: String,
+    pub events: Vec<LifecycleEvent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_days: Option<u64>,
+}
+
+/// Parse a tag name suffix (after `spec/{id}`) into a state label.
+fn tag_suffix_to_state(suffix: &str) -> &'static str {
+    if suffix.is_empty() {
+        "archived"
+    } else if suffix == "-start" {
+        "active"
+    } else if suffix.starts_with("-paused-") {
+        "paused"
+    } else if suffix.starts_with("-resumed-") {
+        "active"
+    } else if suffix.starts_with("-blocked-") {
+        "blocked"
+    } else if suffix.ends_with("-complete") {
+        "split"
+    } else {
+        "unknown"
+    }
+}
+
+/// Load spec lifecycle history from git tags.
+///
+/// Queries all tags matching `spec/{id}*`, parses timestamps and event types,
+/// and calculates time-in-state between consecutive events.
+pub fn history_spec_value(id: &str) -> Result<HistoryResult> {
+    use std::process::Command;
+
+    let pattern = format!("refs/tags/spec/{}*", id);
+    let output = Command::new("git")
+        .args([
+            "for-each-ref",
+            "--sort=creatordate",
+            "--format=%(refname:short)\t%(creatordate:iso-strict)\t%(subject)",
+            &pattern,
+        ])
+        .output()
+        .context("Failed to query git tags")?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "git for-each-ref failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let prefix = format!("spec/{}", id);
+
+    let mut events: Vec<LifecycleEvent> = Vec::new();
+    let mut dates: Vec<chrono::DateTime<chrono::FixedOffset>> = Vec::new();
+
+    for line in stdout.lines() {
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.splitn(3, '\t').collect();
+        if parts.len() < 3 {
+            continue;
+        }
+
+        let tag = parts[0];
+        let date_str = parts[1];
+        let message = parts[2];
+
+        // Extract suffix — tag must match our prefix exactly
+        let suffix = if tag == prefix {
+            ""
+        } else if let Some(s) = tag.strip_prefix(&prefix) {
+            // Must start with '-' to be a lifecycle event for this spec
+            // (avoids spec/foo matching spec/foo-v2)
+            if s.starts_with('-') {
+                s
+            } else {
+                continue;
+            }
+        } else {
+            continue;
+        };
+
+        let state = tag_suffix_to_state(suffix);
+        let date = date_str.split('T').next().unwrap_or(date_str);
+        let parsed_date = chrono::DateTime::parse_from_rfc3339(date_str).ok();
+
+        events.push(LifecycleEvent {
+            date: date.to_string(),
+            state: state.to_string(),
+            tag: tag.to_string(),
+            message: message.to_string(),
+            days_in_state: None,
+        });
+        dates.push(parsed_date.unwrap_or_else(|| {
+            chrono::DateTime::parse_from_rfc3339("1970-01-01T00:00:00+00:00").unwrap()
+        }));
+    }
+
+    // Calculate time-in-state (days until next event)
+    for i in 0..events.len().saturating_sub(1) {
+        let duration = dates[i + 1].signed_duration_since(dates[i]);
+        let days = duration.num_days().unsigned_abs();
+        events[i].days_in_state = Some(days);
+    }
+
+    let total_days = if dates.len() >= 2 {
+        let duration = dates.last().unwrap().signed_duration_since(dates[0]);
+        Some(duration.num_days().unsigned_abs())
+    } else {
+        None
+    };
+
+    Ok(HistoryResult {
+        spec_id: id.to_string(),
+        events,
+        total_days,
+    })
+}
+
+/// Display spec history (human-readable or JSON)
+pub fn history_spec(id: &str, json: bool) -> Result<()> {
+    let result = history_spec_value(id)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        return Ok(());
+    }
+
+    if result.events.is_empty() {
+        println!("History: {}\n", id);
+        println!("  (no lifecycle tags found)");
+        return Ok(());
+    }
+
+    println!("History: {}\n", id);
+    for event in &result.events {
+        let days_str = match event.days_in_state {
+            Some(0) => "  [<1d]".to_string(),
+            Some(d) => format!("  [{}d]", d),
+            None => String::new(),
+        };
+        println!(
+            "  {}  {:<10} {}{}",
+            event.date, event.state, event.message, days_str
+        );
+    }
+
+    if let Some(total) = result.total_days {
+        println!("\n  Total: {}d", total);
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -804,5 +975,17 @@ src/mcp/server.rs                      — new spec.show tool handler
         let body = "## Key Files\n\nJust text, no code fence.\n\n## Exit Criteria\n";
         let files = extract_key_files(body);
         assert!(files.is_empty());
+    }
+
+    #[test]
+    fn test_tag_suffix_to_state() {
+        assert_eq!(tag_suffix_to_state(""), "archived");
+        assert_eq!(tag_suffix_to_state("-start"), "active");
+        assert_eq!(tag_suffix_to_state("-paused-1"), "paused");
+        assert_eq!(tag_suffix_to_state("-paused-3"), "paused");
+        assert_eq!(tag_suffix_to_state("-resumed-1"), "active");
+        assert_eq!(tag_suffix_to_state("-blocked-1"), "blocked");
+        assert_eq!(tag_suffix_to_state("-v1-complete"), "split");
+        assert_eq!(tag_suffix_to_state("-something-else"), "unknown");
     }
 }
