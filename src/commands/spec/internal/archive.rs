@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use std::path::Path;
 use std::process::Command;
 
-use patina::spec::parse_spec_file;
+use patina::spec::{parse_spec_file, SpecFrontmatter};
 
 use super::queries::{get_all_specs, scan_disk_specs, ListFilters};
 use super::queue::{is_tree_clean, tag_exists};
@@ -267,6 +267,46 @@ fn find_spec_file_on_disk(dir: &Path, target_id: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// A fully loaded spec: metadata + parsed content. For mutation paths.
+pub(super) struct LoadedSpec {
+    pub file_path: String,
+    pub status: Option<String>,
+    pub title: Option<String>,
+    pub content: String,
+    pub frontmatter: SpecFrontmatter,
+    pub body: String,
+}
+
+/// Load a spec fully from disk (find + read + parse). For mutations.
+///
+/// Asserts that the frontmatter ID matches the lookup key to prevent
+/// ID source-of-truth drift (see spec-mutation-cleanup § Refactor 1).
+pub(super) fn load_spec(id: &str) -> Result<LoadedSpec> {
+    let found = find_spec(id)?;
+    let content = std::fs::read_to_string(&found.file_path)
+        .with_context(|| format!("Failed to read {}", found.file_path))?;
+    let (frontmatter, body) = parse_spec_file(&content)
+        .with_context(|| format!("Failed to parse {}", found.file_path))?;
+
+    if frontmatter.id != id {
+        anyhow::bail!(
+            "Frontmatter ID '{}' doesn't match lookup key '{}' in {}",
+            frontmatter.id,
+            id,
+            found.file_path
+        );
+    }
+
+    Ok(LoadedSpec {
+        file_path: found.file_path,
+        status: found.status,
+        title: found.title,
+        content,
+        frontmatter,
+        body,
+    })
 }
 
 #[cfg(test)]
