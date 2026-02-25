@@ -17,7 +17,9 @@ pub(crate) const DB_PATH: &str = ".patina/local/data/patina.db";
 // Items only called from spec/mod.rs function bodies use pub(super).
 
 // Query types + functions re-exported pub(crate) by parent for session/MCP
-pub(crate) use queries::{get_all_specs, get_blocked_specs, get_ready_specs, show_spec_value, ListFilters};
+pub(crate) use queries::{
+    get_all_specs, get_blocked_specs, get_ready_specs, show_spec_value, ListFilters,
+};
 
 // Queue functions re-exported pub(crate) by parent for session/MCP
 pub(crate) use queue::{load_dep_counts, next_spec_value, spec_age_days_from_list};

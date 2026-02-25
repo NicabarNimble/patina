@@ -484,6 +484,20 @@ fn handle_list_tools(req: &Request) -> Response {
                     }
                 },
                 {
+                    "name": "spec.show",
+                    "description": "Show full spec context — frontmatter, body, DESIGN.md, and key files in a single call. Use this to load all spec context before working on it.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Spec ID to show"
+                            }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
                     "name": "spec.create",
                     "description": "Create a new spec draft — scaffold directory, write frontmatter, commit.",
                     "inputSchema": {
@@ -1043,6 +1057,28 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
             }
             Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
         },
+        "spec.show" => {
+            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            if id.is_empty() {
+                return Response::error(
+                    req.id.clone(),
+                    -32602,
+                    "spec.show requires 'id' parameter",
+                );
+            }
+            match crate::commands::spec::show_spec_value(id) {
+                Ok(result) => {
+                    let text = serde_json::to_string_pretty(&result).unwrap_or_default();
+                    Response::success(
+                        req.id.clone(),
+                        serde_json::json!({
+                            "content": [{ "type": "text", "text": text }]
+                        }),
+                    )
+                }
+                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            }
+        }
         // Spec mutation tools
         "spec.promote" => {
             let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");

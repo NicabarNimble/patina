@@ -633,11 +633,7 @@ pub fn show_spec(id: &str, json: bool) -> Result<()> {
     }
 
     // Human-readable output
-    let status = result
-        .frontmatter
-        .status
-        .as_deref()
-        .unwrap_or("unknown");
+    let status = result.frontmatter.status.as_deref().unwrap_or("unknown");
     println!("{} [{}]", result.id, status);
     println!();
     println!("{}", result.body.trim());
@@ -720,10 +716,7 @@ src/mcp/server.rs                      — new spec.show tool handler
         let files = extract_key_files(body);
         assert_eq!(
             files,
-            vec![
-                "src/commands/spec/internal/queries.rs",
-                "src/mcp/server.rs",
-            ]
+            vec!["src/commands/spec/internal/queries.rs", "src/mcp/server.rs",]
         );
     }
 
