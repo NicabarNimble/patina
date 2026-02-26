@@ -842,8 +842,15 @@ fn run_verb_drilldown(conn: &Connection, verb: &str, options: &MeasureOptions) -
 
     println!("\n  {} — Drill-Down\n", verb.to_uppercase());
 
+    // Show current state from source tables (not events) for dual-source verbs
+    if verb == "believe" {
+        render_believe_current_state(conn);
+    }
+
     if history.is_empty() && existing.is_empty() {
-        println!("  No measurement data for verb '{}'.\n", verb);
+        if verb != "believe" {
+            println!("  No measurement data for verb '{}'.\n", verb);
+        }
         return Ok(());
     }
 
