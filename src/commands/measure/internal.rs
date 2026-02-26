@@ -302,54 +302,69 @@ fn build_search_summary(conn: &Connection) -> Result<VerbSummary> {
     })
 }
 
-/// Build believe verb summary from belief.surface (existing events)
+/// Build believe verb summary from beliefs table + belief.surface events
 fn build_believe_summary(conn: &Connection) -> Result<VerbSummary> {
     let mut sources = Vec::new();
 
-    // Read latest belief.surface events (most recent per belief)
-    let belief_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM eventlog WHERE event_type = 'belief.surface'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
+    // Read from beliefs table (has current grounding scores, updated after oxidize)
+    // Falls back to belief.surface events if beliefs table doesn't exist
+    let has_beliefs_table = conn
+        .prepare("SELECT COUNT(*) FROM beliefs LIMIT 1")
+        .is_ok();
 
-    if belief_count > 0 {
-        // Aggregate belief metrics from latest scrape
+    if has_beliefs_table {
         let result = conn.query_row(
             r#"SELECT
                 COUNT(*) as total_beliefs,
-                COALESCE(SUM(CASE WHEN json_extract(data, '$.metrics.grounding.score') = 0 THEN 1 ELSE 0 END), 0) as floating,
-                COALESCE(AVG(json_extract(data, '$.metrics.truth.evidence_count')), 0) as avg_evidence,
-                MAX(timestamp) as latest_ts
-            FROM eventlog
-            WHERE event_type = 'belief.surface'
-              AND seq IN (SELECT MAX(seq) FROM eventlog WHERE event_type = 'belief.surface' GROUP BY source_id)"#,
+                COALESCE(SUM(CASE WHEN grounding_score = 0 THEN 1 ELSE 0 END), 0) as floating,
+                COALESCE(AVG(evidence_count), 0) as avg_evidence,
+                COALESCE(AVG(health_score), 0) as avg_health
+            FROM beliefs"#,
             [],
             |row| {
                 Ok((
                     row.get::<_, i64>(0)?,
                     row.get::<_, i64>(1)?,
                     row.get::<_, f64>(2)?,
-                    row.get::<_, String>(3)?,
+                    row.get::<_, f64>(3)?,
                 ))
             },
         );
 
-        if let Ok((total, floating, avg_evidence, latest_ts)) = result {
-            sources.push(SourceSummary {
-                source_type: "belief.surface".to_string(),
-                tool: "scrape".to_string(),
-                mode: "beliefs".to_string(),
-                latest_metrics: serde_json::json!({
-                    "total_beliefs": total,
-                    "floating_count": floating,
-                    "avg_evidence": (avg_evidence * 100.0).round() / 100.0,
-                }),
-                timestamp: latest_ts,
-                event_count: belief_count,
-            });
+        // Get latest timestamp from belief.surface events
+        let latest_ts: String = conn
+            .query_row(
+                "SELECT MAX(timestamp) FROM eventlog WHERE event_type = 'belief.surface'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or_default();
+
+        let event_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM eventlog WHERE event_type = 'belief.surface'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        if let Ok((total, floating, avg_evidence, avg_health)) = result {
+            if total > 0 {
+                sources.push(SourceSummary {
+                    source_type: "beliefs".to_string(),
+                    tool: "scrape".to_string(),
+                    mode: "beliefs".to_string(),
+                    latest_metrics: serde_json::json!({
+                        "total_beliefs": total,
+                        "floating_count": floating,
+                        "grounded_count": total - floating,
+                        "avg_evidence": (avg_evidence * 100.0).round() / 100.0,
+                        "avg_health": (avg_health * 100.0).round() / 100.0,
+                    }),
+                    timestamp: latest_ts,
+                    event_count,
+                });
+            }
         }
     }
 
@@ -362,7 +377,7 @@ fn build_believe_summary(conn: &Connection) -> Result<VerbSummary> {
         // Check floating threshold
         let floating_pct = sources
             .iter()
-            .filter(|s| s.source_type == "belief.surface")
+            .filter(|s| s.source_type == "beliefs")
             .find_map(|s| {
                 let total = s.latest_metrics.get("total_beliefs")?.as_f64()?;
                 let floating = s.latest_metrics.get("floating_count")?.as_f64()?;
@@ -680,16 +695,30 @@ fn user_friendly_metrics(verb: &str, src: &SourceSummary) -> String {
                 format!("{}: metrics recorded", src.mode)
             }
         }
-        ("believe", "belief.surface") => {
+        ("believe", "beliefs") => {
             let total = m.get("total_beliefs").and_then(|v| v.as_i64()).unwrap_or(0);
+            let grounded = m
+                .get("grounded_count")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
             let floating = m
                 .get("floating_count")
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0);
+            let avg_health = m
+                .get("avg_health")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
             if floating > 0 {
-                format!("{} beliefs, {} floating (ungrounded)", total, floating)
+                format!(
+                    "{} beliefs, {} grounded, {} floating, avg health {:.2}",
+                    total, grounded, floating, avg_health
+                )
             } else {
-                format!("{} beliefs, all grounded", total)
+                format!(
+                    "{} beliefs, all grounded, avg health {:.2}",
+                    total, avg_health
+                )
             }
         }
         ("evolve", "session.ended") => {
