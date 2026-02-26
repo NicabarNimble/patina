@@ -107,14 +107,19 @@ a grounding chain: events and code provide evidence, evidence grounds beliefs,
 beliefs inform decisions. The chain must be queryable — "why do we believe X?"
 should return concrete references, not vibes.
 
-### 7. Federation without authority
+### 7. Mother is core, projects are sovereign
 
-Mother coordinates but doesn't control. Each project is sovereign — owns its
-data, runs its own belief system, makes its own decisions. Mother provides
-discovery ("these 3 projects share this pattern"), cross-pollination ("here's
-how project X solved that"), and health aggregation ("your portfolio has 12
-contested beliefs"). No project depends on mother to function. Mother depends
-on projects to have data.
+There is no patina without mother. Mother is part of every patina installation
+— not optional infrastructure you add later. She manages federation across
+projects, the connector registry for external data sources, and reference
+repos. One project or a thousand, mother is there.
+
+But projects are sovereign. Each project owns its data, runs its own belief
+system, makes its own decisions. Mother provides discovery ("these 3 projects
+share this pattern"), cross-pollination ("here's how project X solved that"),
+and health aggregation ("your portfolio has 12 beliefs contested"). A project
+functions fully even if mother's data is stale or empty — like a computer
+with a network card works offline.
 
 ### 8. LLMs are first-class consumers
 
@@ -147,6 +152,39 @@ This isn't just a UX concern — it's an architectural constraint. As the data
 grows (thousands of events, hundreds of beliefs, dozens of specs), the tools
 that serve this data must scale their responses to the consumer's context
 budget, not to the data's volume.
+
+## Source Model
+
+A patina project has one source and zero or more enrichments.
+
+**The source is always a git repository.** The local clone is the data. Code,
+prose, knowledge files, layer/ — whatever the project contains, it lives in
+git. Even if the remote is GitHub or GitLab, patina works with the local
+clone. A project with no remote, no internet, just `git init` and some files
+— that's a complete patina project.
+
+**External data sources are accessed through connectors** — WASM plugins that
+know how to fetch from and push to external APIs. Forge (GitHub issues/PRs)
+is the first connector. Future connectors (Slack, Linear, Google Workspace,
+S3, databases) follow the same pattern: fetch → cache as events in events.db
+→ scrape into Layer 1 for querying.
+
+**Mother manages all connectors.** Connector registry, credentials, rate
+limits, shared access across projects — that's mother's job. This avoids
+redundancy: mother already manages reference repos and cross-project
+coordination, so connector management is a natural extension. A project
+doesn't install connectors — it tells mother which data sources it needs,
+and mother provides the pipe.
+
+```
+  git repo (local)           = the source (always)
+  connectors (WASM, via mother) = enrichment (optional, pluggable)
+  events.db                  = where enrichment data is cached
+```
+
+The simplest patina project is a git repo with no connectors. The richest
+is a git repo with five connectors pulling from five sources. The 4-layer
+data stack is the same in both cases.
 
 ## The Data Stack
 
@@ -471,20 +509,29 @@ understanding converge into actionable knowledge.
 └─────────────────────────────────────────────────────┘
 ```
 
-Federation is not a layer in the stack — it's a cross-cutting concern that
-primarily operates at Layer 3 (beliefs) but could evolve to sync events
-(Layer 0) and semantic features (Layer 2) across projects.
+Mother is core to patina — every installation has her. She is not a layer in
+the data stack but a cross-cutting system that primarily operates at Layer 3
+(beliefs) and could evolve to sync events (Layer 0) and semantic features
+(Layer 2) across projects.
 
-**Mother's job:**
+**Mother's three jobs:**
 
-A project asks: "Has anyone solved this problem before?"
-Mother answers: "Projects X and Y share this belief. Here's how project Z
-approached it. Three projects contest this pattern — here's the evidence."
+1. **Federation** — cross-project knowledge coordination. A project asks:
+   "Has anyone solved this problem before?" Mother answers: "Projects X and Y
+   share this belief. Here's how project Z approached it."
 
-Mother is a data mesh coordinator. She doesn't own the data — projects do.
-She indexes it, finds connections, and serves cross-project queries. If mother
-disappears, every project still works. If a project disappears, mother loses
-that project's contribution but everything else continues.
+2. **Connector management** — registry, credentials, and rate limiting for
+   WASM connector plugins that access external data sources. Forge (GitHub)
+   is connector #1. Future connectors follow the same pattern, managed in
+   one place.
+
+3. **Reference repos** — external repositories that projects learn from.
+   Mother manages the catalog so individual projects don't duplicate effort.
+
+Mother is a coordinator, not an authority. She doesn't own the data — projects
+do. She indexes it, finds connections, manages shared infrastructure, and
+serves cross-project queries. Projects function fully without mother's data.
+Mother functions without any individual project.
 
 **What lives in graph.db:**
 
@@ -586,62 +633,76 @@ Events flow in, health metrics flow out, an LLM reasons about what's working.
 ## Data Flow
 
 ```
- Everything meaningful that happens
- ┌──────────────────────────────────────────────────────────┐
- │                                                          │
- │  OPS              EPISTEMIC            LIFECYCLE         │
- │  measure.*        belief.created       spec.promoted     │
- │  scry.*           belief.contested     spec.completed    │
- │  forge.*          belief.verified      session.*         │
- │                   belief.evolved       decision.*        │
- │                   belief.retired       discovery.*       │
- │                                                          │
- └────────────────────────┬─────────────────────────────────┘
-                          │
-                          ▼
- ┌──────────────────────────────────────────────────────────┐
- │  LAYER 0: events.db (autobiography — IRREPLACEABLE)     │
- └────────────────────────┬─────────────────────────────────┘
-                          │
-         ┌────────────────┼────────────────────┐
-         │                │                    │
-         ▼                ▼                    ▼
- ┌──────────────┐ ┌──────────────┐    ┌──────────────────┐
- │ LAYER 1:     │ │ LAYER 2:     │    │ LAYER 3:         │
- │ patina.db    │ │ embeddings/  │    │ BELIEFS          │
- │ (structured) │ │ (semantic)   │    │ (proto + named)  │
- │              │ │              │    │                  │
- │ tables, FTS5 │ │ vectors,     │    │ grounds into 0-2 │
- │ code, git,   │ │ similarity,  │    │ all layers feed  │
- │ sessions     │ │ proximity    │◄──►│ UP into beliefs  │
- └──────┬───────┘ └──────┬───────┘    └────────┬─────────┘
-        │                │                     │
-        │   sources ─────┘                     │
-        │   (.git/, layer/, src/)              │
-        │                                      │
-        └──────────────┬───────────────────────┘
-                       │
-          ┌────────────┼────────────┐
-          ▼                         ▼
- ┌──────────────────┐      ┌──────────────────┐
- │   measure        │      │   mother         │
- │   reads all 4    │      │   federates      │
- │   layers         │      │   Layer 3 across │
- │   "is it         │      │   projects       │
- │    working?"     │      │   "who else      │
- └──────────────────┘      │    knows?"       │
-                           └──────────────────┘
+ ┌──────────────────────────────────────────────────────────────┐
+ │  MOTHER (always present)                                     │
+ │  ┌────────────────────────────────────────────────────────┐  │
+ │  │ federation │ connector registry │ reference repos      │  │
+ │  └────────────┼───────────────────┼───────────────────────┘  │
+ └───────────────┼───────────────────┼──────────────────────────┘
+                 │                   │
+                 │            ┌──────┴──────┐
+                 │            │ connectors  │
+                 │            │ (WASM)      │
+                 │            │ forge, ...  │
+                 │            └──────┬──────┘
+                 │                   │ fetch/cache
+                 │                   │
+ ┌───────────────┼───────────────────┼──────────────────────────┐
+ │  PROJECT      │                   │                          │
+ │               │                   │                          │
+ │  ┌────────────┴──────┐            │                          │
+ │  │ git repo          │            │                          │
+ │  │ (the one source)  │            │                          │
+ │  └─────────┬─────────┘            │                          │
+ │            │                      │                          │
+ │            │   ┌──────────────────┘                          │
+ │            │   │                                             │
+ │            ▼   ▼                                             │
+ │  ┌──────────────────────────────────────────────────────┐   │
+ │  │  LAYER 0: events.db (autobiography — IRREPLACEABLE)  │   │
+ │  │                                                      │   │
+ │  │  ops: measure.*, scry.*, forge.*                     │   │
+ │  │  epistemic: belief.created/contested/evolved/retired │   │
+ │  │  lifecycle: spec.*, session.*, decision.*, discovery.*│   │
+ │  └───────────────────────┬──────────────────────────────┘   │
+ │                          │                                   │
+ │         ┌────────────────┼────────────────────┐              │
+ │         │                │                    │              │
+ │         ▼                ▼                    ▼              │
+ │  ┌──────────────┐ ┌──────────────┐    ┌──────────────────┐  │
+ │  │ LAYER 1:     │ │ LAYER 2:     │    │ LAYER 3:         │  │
+ │  │ patina.db    │ │ embeddings/  │    │ BELIEFS          │  │
+ │  │ (structured) │ │ (semantic)   │    │ (proto + named)  │  │
+ │  │              │ │              │    │                  │  │
+ │  │ tables, FTS5 │ │ vectors,     │    │ grounds into 0-2 │  │
+ │  │ code, git,   │ │ similarity,  │    │ all layers feed  │  │
+ │  │ sessions     │ │ proximity    │◄──►│ UP into beliefs  │  │
+ │  └──────┬───────┘ └──────────────┘    └────────┬─────────┘  │
+ │         │                                      │             │
+ │         └──────────────┬───────────────────────┘             │
+ │                        │                                     │
+ │           ┌────────────┴────────────┐                        │
+ │           ▼                         ▼                        │
+ │  ┌──────────────────┐      ┌──────────────────┐             │
+ │  │   measure        │      │   → mother       │             │
+ │  │   reads all 4    │      │   (Layer 3 sync) │             │
+ │  │   layers         │      │                  │             │
+ │  │   "is it         │      │   federation,    │             │
+ │  │    working?"     │      │   discovery,     │             │
+ │  └──────────────────┘      │   cross-project  │             │
+ │                            └──────────────────┘             │
+ └──────────────────────────────────────────────────────────────┘
 
- ┌──────────────────────────────────────────────────────────┐
- │                    FEEDBACK LOOP                         │
- │                                                          │
- │  Layer 3 discovers pattern ──→ emits discovery event     │
- │  Discovery event lands in  ──→ Layer 0 (events.db)       │
- │  LLM reads events          ──→ proposes new belief       │
- │  New belief                ──→ grounds into all layers   │
- │                                                          │
- │  The stack is circular, not just bottom-up               │
- └──────────────────────────────────────────────────────────┘
+ ┌──────────────────────────────────────────────────────────────┐
+ │                    FEEDBACK LOOP                              │
+ │                                                               │
+ │  Layer 3 discovers pattern ──→ emits discovery event          │
+ │  Discovery event lands in  ──→ Layer 0 (events.db)            │
+ │  LLM reads events          ──→ proposes new belief            │
+ │  New belief                ──→ grounds into all layers        │
+ │                                                               │
+ │  The stack is circular, not just bottom-up                    │
+ └──────────────────────────────────────────────────────────────┘
 ```
 
 ## Current State vs Target
