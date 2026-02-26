@@ -148,21 +148,41 @@ grows (thousands of events, hundreds of beliefs, dozens of specs), the tools
 that serve this data must scale their responses to the consumer's context
 budget, not to the data's volume.
 
-## The Three Systems
+## The Data Stack
 
-### System 1: Events — The Immutable Record
+Four layers of understanding, one irreplaceable, three derived. Each layer
+builds on the ones below it. The belief layer at the top reaches down into
+all layers for evidence, while all layers push patterns up into beliefs.
+The stack is circular — not just bottom-up.
+
+```
+  Layer 0: Events        (what happened — autobiography)       IRREPLACEABLE
+  Layer 1: Structured    (what we parsed — tables, graphs)     REBUILDABLE
+  Layer 2: Semantic      (what things mean — vectors)          REBUILDABLE
+  Layer 3: Beliefs       (what we understand — emergent        REBUILDABLE
+                          + decided)
+                │
+                │  beliefs ground INTO layers 0-2 for evidence
+                │  layers 0-2 feed UP into beliefs
+                │  the loop IS the intelligence
+```
+
+### Layer 0: Events — The Project's Autobiography
 
 ```
 ┌─────────────────────────────────────────────────────┐
 │  events.db — .patina/local/data/events.db           │
 │                                                     │
-│  WHAT:  Append-only log of runtime facts            │
+│  WHAT:  Append-only log of everything meaningful    │
 │  ROLE:  CQRS write model / event store              │
 │  RULE:  INSERT only. No DELETE. No UPDATE. Ever.    │
-│  SCOPE: Things that happened at runtime that        │
-│         cannot be reconstructed from source files   │
+│  SCOPE: Moments in time — ops, epistemic,           │
+│         lifecycle, decisions, discoveries            │
 └─────────────────────────────────────────────────────┘
 ```
+
+events.db is the project's autobiography. Not ops telemetry — **everything
+meaningful that happens to the project**, captured as immutable facts.
 
 **What lives here:**
 
@@ -172,14 +192,26 @@ budget, not to the data's volume.
 | Search feedback | `scry.query`, `scry.use`, `scry.feedback` | User search behavior, result selection |
 | External cache | `forge.issue`, `forge.pr` | GitHub API responses (rate-limited, expensive) |
 | Session lifecycle | `session.start`, `session.end` | When work happened, what was accomplished |
+| Epistemic | `belief.created`, `belief.contested`, `belief.supported`, `belief.verified`, `belief.evolved`, `belief.retired` | Belief lifecycle — the moments decisions were made, challenged, and changed |
+| Spec lifecycle | `spec.promoted`, `spec.completed`, `spec.paused`, `spec.abandoned` | Spec state transitions — the journey from idea to shipped |
+| Decisions | `decision.made` | Choices captured with reasoning and alternatives considered |
+| Discovery | `discovery.pattern`, `discovery.cross_project` | Machine or human insight moments |
 | Future: audit trail | `audit.*` | Verification results over time |
+
+**The boundary: moments vs current state.**
+
+The event log captures *when and why*. Files and tables capture *what is now*.
+A belief markdown file is the current state — what the belief says today.
+The `belief.created` event is the moment — when it was proposed, what evidence
+triggered it, what session context surrounded it. The file is a projection
+of the belief's latest state. The events are its history.
 
 **What does NOT live here:**
 
-Source-derived facts. Anything that can be reconstructed by running a scraper
-against .git/ or layer/ files belongs in projections, not events. `code.*`,
-`git.*`, `pattern.*`, `session.*` (the scraped versions), `belief.surface` —
-all derived, all disposable.
+Source-derived parse output. Running a scraper against .git/ or layer/ files
+produces structured data (code facts, commit tables, pattern records) — that's
+Layer 1 projection work. `code.*`, `git.*`, `pattern.*` are derived,
+disposable, and belong in patina.db.
 
 **Schema:**
 
@@ -216,10 +248,14 @@ At steady state for one active project:
 - ~1000+ scry.query/year (search usage — could dominate)
 - ~500+ forge.*/year (API cache updates)
 - ~200 session.*/year (session lifecycle)
+- ~500+ belief.*/year (epistemic events — creation, verification, evolution)
+- ~200+ spec.*/year (spec lifecycle transitions)
+- ~100+ decision.*/year (captured choices)
+- ~100+ discovery.*/year (pattern recognition moments)
 
-Conservative: ~2,400 events/year per project. Over years: tens of thousands.
-Across a portfolio: multiply accordingly. SQLite handles millions of rows
-without issue. This is not a scaling concern — it's a data model concern.
+Conservative: ~3,500+ events/year per active project. Over years: tens of
+thousands. This is the project's memory — every event is a fact the system
+can reason about. SQLite handles millions of rows without issue.
 
 **Invariants:**
 
@@ -228,8 +264,9 @@ without issue. This is not a scaling concern — it's a data model concern.
 - seq is monotonic within events.db
 - Events are never modified after insertion
 - events.db can be backed up by copying one file
+- Losing events.db means losing the project's memory — not just metrics
 
-### System 2: Projections — The Queryable Cache
+### Layer 1: Structured — The Queryable Cache
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -260,12 +297,12 @@ without issue. This is not a scaling concern — it's a data model concern.
 ```
 rm patina.db
 patina scrape        # rebuilds everything from .git/ + layer/
-                     # events.db is untouched — immutable history preserved
+                     # events.db is untouched — project memory preserved
 ```
 
 This is the test. If deleting patina.db and running scrape doesn't produce a
-functionally identical database, the architecture has a bug. Projections are
-acceleration structures — they make queries fast, but they're not truth.
+functionally identical database, the architecture has a bug. Layer 1 is an
+acceleration structure — it makes queries fast, but it's not truth.
 
 **Relationship to events.db:**
 
@@ -274,19 +311,153 @@ Some queries need both. Measure asks "how has scrape performance trended?"
 These cross-system queries use SQLite ATTACH — events.db mounted read-only
 into the patina.db connection when needed.
 
-**Also derived and rebuildable:**
+### Layer 2: Semantic — What Things Mean
 
 ```
 ┌─────────────────────────────────────────────────────┐
 │  embeddings/ — .patina/local/data/embeddings/       │
 │                                                     │
-│  WHAT:  Vector indices for semantic search          │
-│  ROLE:  Acceleration for scry                       │
+│  WHAT:  Dense vector representations of entities    │
+│  ROLE:  Semantic similarity for search + grounding  │
 │  RULE:  Rebuildable via `patina oxidize`            │
+│  SCOPE: Vectors for code, commits, patterns,        │
+│         beliefs — "what is near what" in meaning    │
 └─────────────────────────────────────────────────────┘
 ```
 
-### System 3: Federation — Mother's Knowledge Network
+Layer 2 takes the structured data from Layer 1 and computes what things
+*mean* — not just what they contain. "This belief is semantically near that
+code region" is a Layer 2 insight. "These two beliefs are 0.87 similar" is
+Layer 2. It enables scry's semantic search and feeds into belief grounding.
+
+**What lives here today:**
+
+```
+embeddings/
+├── code.usearch        ← function/type embeddings
+├── commits.usearch     ← commit message embeddings
+├── patterns.usearch    ← pattern embeddings
+├── beliefs.usearch     ← belief embeddings
+└── projections/        ← dimensionality reduction matrices
+```
+
+Built by `patina oxidize` via ONNX Runtime (`ort` crate). All rebuildable —
+delete the directory and re-oxidize.
+
+**Why it's its own layer:**
+
+Dense vectors are opaque. "0.87 similar" doesn't tell you *why*. Layer 2
+provides proximity but not interpretability. That's what Layer 3 adds.
+
+**Layer 2 feeds up:** Semantic proximity is evidence for belief grounding.
+If a belief about error handling is semantically near 47 functions that do
+error handling, that's grounding signal — even if no human explicitly linked
+them.
+
+### Layer 3: Beliefs — Where Understanding Lives
+
+```
+┌─────────────────────────────────────────────────────┐
+│  The belief layer lives across multiple stores:     │
+│                                                     │
+│  layer/surface/epistemic/beliefs/*.md               │
+│    → human-readable projections (git-tracked)       │
+│  patina.db beliefs tables                           │
+│    → queryable graph (supports, attacks, grounding) │
+│  embeddings/beliefs.usearch                         │
+│    → semantic proximity for discovery               │
+│  events.db belief.*                                 │
+│    → lifecycle history (created, evolved, retired)  │
+│                                                     │
+│  RULE:  Beliefs are the integration point —         │
+│         not a single store but a cross-layer        │
+│         concern that reaches into everything        │
+└─────────────────────────────────────────────────────┘
+```
+
+The belief layer is where machine understanding meets human understanding.
+It holds two kinds of knowledge at different stages of maturity:
+
+**Named beliefs** — decisions a human or LLM has captured explicitly:
+- "We use result types for error handling" — grounded in 47 functions
+- Created with evidence, verified against code, evolved over time
+- Have support/attack relationships, health scores, grounding chains
+- Stored as markdown files (human view) + table rows (query view) + events (history)
+
+**Proto-beliefs** — patterns the system has detected but nobody has named:
+- SAE feature 47 activates on retry/fallback code across 12 modules
+- Concept cluster: these 8 beliefs share an unnamed theme
+- Anomaly: this code region has no beliefs but high churn
+- Discovered computationally, surfaced for human/LLM recognition
+
+**The maturity pipeline:**
+
+```
+  EMERGENT                                    NAMED
+  (machine-discovered)                        (human/LLM-decided)
+
+  SAE feature detected ─→ pattern surfaced ─→ "defensive-coding"
+  concept cluster found ─→ LLM names it    ─→ belief with evidence
+  anomaly flagged       ─→ human reviews   ─→ new belief or dismiss
+                                               │
+  proto-belief                                 belief
+         └──────────── SAME LAYER ────────────┘
+```
+
+A proto-belief that gets named becomes a belief. A belief that loses all its
+evidence becomes contested. A contested belief that fails verification gets
+retired. The lifecycle is continuous.
+
+**Beliefs reach DOWN into all layers for evidence:**
+
+| Layer | Evidence Type | Example |
+|-------|---------------|---------|
+| Layer 0: Events | Lifecycle history | "This belief was created in session X, contested in session Y" |
+| Layer 1: Structured | Code reach, commit refs | "47 functions implement this pattern, referenced in 12 commits" |
+| Layer 2: Semantic | Vector proximity | "Semantically near 23 code regions about error handling" |
+| Layer 3: Beliefs | Support/attack network | "Supported by 3 beliefs, attacked by 1" |
+
+The more layers provide evidence, the deeper the grounding. A belief with
+only Layer 3 evidence (supported by other beliefs) is an echo chamber. A
+belief with Layer 0 + 1 + 2 evidence is deeply anchored in the project's
+reality.
+
+**All layers push UP into beliefs:**
+
+Layer 1 discovers a code pattern → surfaces as proto-belief.
+Layer 2 finds a semantic cluster → surfaces as proto-belief.
+Layer 0 records a decision event → becomes a named belief.
+Each new computational input (SAEs, graph analysis, whatever comes next)
+becomes a new **source of proto-beliefs** feeding into the same layer.
+
+**Extensibility:**
+
+Adding new computational methods (sparse autoencoders, graph neural networks,
+anomaly detection) doesn't add new layers. It adds new inputs to Layer 3.
+The belief layer is the integration point — the place where all forms of
+understanding converge into actionable knowledge.
+
+**The belief loop:**
+
+```
+  A decision is made ─→ captured as belief + event
+       │
+       ▼
+  Evidence accumulates from Layers 0-2
+       │
+       ▼
+  Verification checks: does code still match?
+       │
+       ▼
+  Health score reflects reality
+       │
+       ▼
+  LLM notices drift ─→ evolves belief + emits event
+       │
+       └──────── back to events.db ────────┘
+```
+
+## Federation — Cross-Cutting System
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -299,6 +470,10 @@ into the patina.db connection when needed.
 │         across all registered projects              │
 └─────────────────────────────────────────────────────┘
 ```
+
+Federation is not a layer in the stack — it's a cross-cutting concern that
+primarily operates at Layer 3 (beliefs) but could evolve to sync events
+(Layer 0) and semantic features (Layer 2) across projects.
 
 **Mother's job:**
 
@@ -367,48 +542,13 @@ overruled by another project's belief evolution. Mother is a mirror, not a
 judge. The value is visibility ("you disagree and here's why"), not
 enforcement ("project A is right").
 
-## The Belief Network — Connective Tissue
+**Future: operation-level federation.**
 
-Beliefs are not configuration. They are a living epistemic system — decisions
-captured with evidence, evolving as the project's reality changes.
-
-**The grounding chain:**
-
-```
-  Events (what happened)
-    ↓
-  Evidence (code, commits, sessions that reference the belief)
-    ↓
-  Grounding Score (how deeply anchored is this belief?)
-    ↓
-  Belief (a decision with evidence weight)
-    ↓
-  Verification (does the code still match the belief?)
-    ↓
-  Health Score (is this belief alive, drifting, or dead?)
-    ↓
-  Evolution (update, contest, or retire the belief)
-```
-
-**Beliefs flow across all three systems:**
-
-1. **Events** capture the moments that beliefs are created, applied, contested,
-   or verified. These are immutable facts in events.db.
-
-2. **Projections** materialize the belief graph — supports, attacks, code reach,
-   grounding scores — for fast querying. An LLM asks "which beliefs are
-   contested?" and gets an instant answer from patina.db.
-
-3. **Federation** cross-pollinates beliefs across projects. Mother knows that
-   patina and three other projects share a belief about error handling — and
-   that one project has stronger evidence for it.
-
-**The belief loop:**
-
-A project makes a decision → captures it as a belief → evidence accumulates
-(or doesn't) → verification checks if code matches → health score reflects
-reality → LLM notices a drift → project evolves the belief. This is the
-core feedback loop of a patina-managed project.
+Today mother syncs snapshots (current belief state). With epistemic events
+in events.db, mother could evolve to sync operations — the history of how
+a belief evolved, not just its current state. This would let cross-project
+queries answer "how did project X arrive at this belief?" not just "what
+does project X believe?"
 
 ## Measure — The Health Query Surface
 
@@ -423,16 +563,15 @@ whether a project is working. Patina on patina — but also patina on any projec
 2. **Are the supporting tools working?** — Are scrapers running? Is the event
    stream flowing? Are search indices fresh? Is mother syncing?
 
-**What measure reads:**
+**What measure reads (all 4 layers):**
 
-| Source | Questions Answered |
-|--------|-------------------|
-| events.db | Tool performance trends, scrape frequency, search usage patterns |
-| patina.db beliefs | Grounding scores, verification results, health distribution |
-| patina.db sessions | Activity recency, session classification breakdown |
-| patina.db code | Module coverage, function count, code staleness |
-| patina.db git | Commit frequency, active contributors, file churn |
-| graph.db | Federation health, cross-project belief alignment, dangling edges |
+| Layer | Questions Answered |
+|-------|-------------------|
+| Layer 0: events.db | Tool performance trends, belief lifecycle patterns, decision frequency, scrape cadence |
+| Layer 1: patina.db | Code coverage, git activity, belief graph health, session patterns |
+| Layer 2: embeddings | Index freshness, coverage gaps, semantic drift detection |
+| Layer 3: beliefs | Grounding depth, proto-belief backlog, contested beliefs, verification pass rates |
+| Federation: graph.db | Cross-project alignment, dangling edges, portfolio health |
 
 **Measure as LLM API:**
 
@@ -447,36 +586,62 @@ Events flow in, health metrics flow out, an LLM reasons about what's working.
 ## Data Flow
 
 ```
- SOURCES (immutable, external)          RUNTIME (tool execution)
- ┌──────────────────────────┐           ┌──────────────────────┐
- │ .git/    — history       │           │ scrape   → measure.* │
- │ layer/   — knowledge     │           │ eval     → measure.* │
- │ GitHub   — forge         │           │ scry     → scry.*    │
- │ src/     — code          │           │ session  → session.* │
- └────────────┬─────────────┘           │ forge    → forge.*   │
-              │                         │ oxidize  → measure.* │
-              │                         │ audit    → audit.*   │
-              │                         └──────────┬───────────┘
-              │                                    │
-              ▼                                    ▼
- ┌──────────────────────┐           ┌──────────────────────────┐
- │   patina scrape      │           │      events.db           │
- │   (source → cache)   │           │   (append-only facts)    │
- └──────────┬───────────┘           └──────────┬───────────────┘
-            │                                  │
-            ▼                                  │
- ┌──────────────────────┐                      │
- │     patina.db        │◄─── ATTACH (read) ───┘
- │  (queryable cache)   │
- │  + embeddings/       │
- └──────────┬───────────┘
-            │
-            ▼
- ┌──────────────────────┐        ┌──────────────────────┐
- │     measure          │        │     mother            │
- │  (health surface)    │        │  (federation layer)   │
- │  "is it working?"    │        │  "who else knows?"    │
- └──────────────────────┘        └──────────────────────┘
+ Everything meaningful that happens
+ ┌──────────────────────────────────────────────────────────┐
+ │                                                          │
+ │  OPS              EPISTEMIC            LIFECYCLE         │
+ │  measure.*        belief.created       spec.promoted     │
+ │  scry.*           belief.contested     spec.completed    │
+ │  forge.*          belief.verified      session.*         │
+ │                   belief.evolved       decision.*        │
+ │                   belief.retired       discovery.*       │
+ │                                                          │
+ └────────────────────────┬─────────────────────────────────┘
+                          │
+                          ▼
+ ┌──────────────────────────────────────────────────────────┐
+ │  LAYER 0: events.db (autobiography — IRREPLACEABLE)     │
+ └────────────────────────┬─────────────────────────────────┘
+                          │
+         ┌────────────────┼────────────────────┐
+         │                │                    │
+         ▼                ▼                    ▼
+ ┌──────────────┐ ┌──────────────┐    ┌──────────────────┐
+ │ LAYER 1:     │ │ LAYER 2:     │    │ LAYER 3:         │
+ │ patina.db    │ │ embeddings/  │    │ BELIEFS          │
+ │ (structured) │ │ (semantic)   │    │ (proto + named)  │
+ │              │ │              │    │                  │
+ │ tables, FTS5 │ │ vectors,     │    │ grounds into 0-2 │
+ │ code, git,   │ │ similarity,  │    │ all layers feed  │
+ │ sessions     │ │ proximity    │◄──►│ UP into beliefs  │
+ └──────┬───────┘ └──────┬───────┘    └────────┬─────────┘
+        │                │                     │
+        │   sources ─────┘                     │
+        │   (.git/, layer/, src/)              │
+        │                                      │
+        └──────────────┬───────────────────────┘
+                       │
+          ┌────────────┼────────────┐
+          ▼                         ▼
+ ┌──────────────────┐      ┌──────────────────┐
+ │   measure        │      │   mother         │
+ │   reads all 4    │      │   federates      │
+ │   layers         │      │   Layer 3 across │
+ │   "is it         │      │   projects       │
+ │    working?"     │      │   "who else      │
+ └──────────────────┘      │    knows?"       │
+                           └──────────────────┘
+
+ ┌──────────────────────────────────────────────────────────┐
+ │                    FEEDBACK LOOP                         │
+ │                                                          │
+ │  Layer 3 discovers pattern ──→ emits discovery event     │
+ │  Discovery event lands in  ──→ Layer 0 (events.db)       │
+ │  LLM reads events          ──→ proposes new belief       │
+ │  New belief                ──→ grounds into all layers   │
+ │                                                          │
+ │  The stack is circular, not just bottom-up               │
+ └──────────────────────────────────────────────────────────┘
 ```
 
 ## Current State vs Target
