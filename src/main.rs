@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
@@ -394,6 +396,21 @@ enum Commands {
         /// Output as JSON instead of markdown
         #[arg(long)]
         json: bool,
+    },
+
+    /// Show project health from measurement data
+    Measure {
+        /// Show raw metrics and history (maintainer view)
+        #[arg(long)]
+        system: bool,
+
+        /// Output as machine-readable JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Drill-down into a specific verb with history
+        #[arg(long)]
+        verb: Option<String>,
     },
 
     /// Manage development sessions (start, update, note, end)
@@ -1757,6 +1774,10 @@ fn main() -> Result<()> {
         Some(Commands::Report { output, repo, json }) => {
             let options = commands::report::ReportOptions { output, repo, json };
             commands::report::execute(options)?;
+        }
+        Some(Commands::Measure { system, json, verb }) => {
+            let options = commands::measure::MeasureOptions { system, json, verb };
+            commands::measure::execute(options)?;
         }
         Some(Commands::Assay {
             command,

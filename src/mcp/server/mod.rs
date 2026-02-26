@@ -139,6 +139,21 @@ fn handle_initialize(req: &Request, engine: &QueryEngine) -> Response {
     )
 }
 
+fn handle_measure(req: &Request) -> Response {
+    match crate::commands::measure::mcp_measure() {
+        Ok(data) => Response::success(
+            req.id.clone(),
+            serde_json::json!({
+                "content": [{
+                    "type": "text",
+                    "text": serde_json::to_string_pretty(&data).unwrap_or_default()
+                }]
+            }),
+        ),
+        Err(e) => Response::error(req.id.clone(), -32603, &format!("measure failed: {}", e)),
+    }
+}
+
 fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
     let name = req
         .params
@@ -152,6 +167,7 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
         "context" => scry::handle_context(req, &args),
         "mother" => scry::handle_mother(req, &args),
         "assay" => assay::handle(req, &args),
+        "measure" => handle_measure(req),
         n if n.starts_with("spec.") || n.starts_with("schemas.") => spec::handle(req, n, &args),
         _ => Response::error(req.id.clone(), -32602, &format!("Unknown tool: {}", name)),
     }
