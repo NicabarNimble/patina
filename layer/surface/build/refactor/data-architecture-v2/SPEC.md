@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: data-architecture-v2
-status: draft
+status: ready
 created: 2026-02-26
 blocked_by:
 - data-db-split
