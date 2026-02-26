@@ -3,25 +3,39 @@ type: refactor
 id: data-architecture-v2
 status: draft
 created: 2026-02-26
+blocked_by:
+- data-db-split
 sessions:
   origin: 20260226-065302
-  audit: 20260226-094014
-  vision: 20260226-102315
 beliefs:
-  - measure-reads-tables-not-events
-  - seq-order-is-not-timestamp-order
-  - check-existing-emissions-before-adding
-  - if-its-patina-its-git
-  - events-are-autobiography-not-telemetry
-  - beliefs-are-where-machine-meets-human
+- measure-reads-tables-not-events
+- seq-order-is-not-timestamp-order
+- check-existing-emissions-before-adding
+- if-its-patina-its-git
+- events-are-autobiography-not-telemetry
+- beliefs-are-where-machine-meets-human
 exit_criteria:
-  - "events.db is append-only — no DELETE, no UPDATE, never touched by rebuild"
-  - "patina.db is fully rebuildable from git + layer/ + events.db"
-  - "every tool execution emits an event — no silent operations"
-  - "belief grounding chain is traceable: event → evidence → belief"
-  - "each implementation area has a sub-spec with concrete, testable exit criteria"
-  - "measure answers 'is this project healthy?' with data, not opinion"
-  - "sub-specs created and scoped for each implementation area"
+- id: events-db-is-append-only-no-delete-no-update-never-touched-by-rebuild
+  text: events.db is append-only — no DELETE, no UPDATE, never touched by rebuild
+  checked: false
+- id: patina-db-is-fully-rebuildable-from-git-layer-events-db
+  text: patina.db is fully rebuildable from git + layer/ + events.db
+  checked: false
+- id: every-tool-execution-emits-an-event-no-silent-operations
+  text: every tool execution emits an event — no silent operations
+  checked: false
+- id: belief-grounding-chain-is-traceable-event-evidence-belief
+  text: 'belief grounding chain is traceable: event → evidence → belief'
+  checked: false
+- id: each-implementation-area-has-a-sub-spec-with-concrete-testable-exit-criteria
+  text: each implementation area has a sub-spec with concrete, testable exit criteria
+  checked: false
+- id: measure-answers-is-this-project-healthy-with-data-not-opinion
+  text: measure answers 'is this project healthy?' with data, not opinion
+  checked: false
+- id: sub-specs-created-and-scoped-for-each-implementation-area
+  text: sub-specs created and scoped for each implementation area
+  checked: false
 ---
 
 # refactor: Data Architecture v2
