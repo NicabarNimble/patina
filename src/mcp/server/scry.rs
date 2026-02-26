@@ -351,12 +351,8 @@ pub(super) fn handle_mother(req: &Request, args: &serde_json::Value) -> Response
 // Query logging
 // ============================================================================
 
-/// Log an MCP query to the eventlog and return query_id (Phase 3)
+/// Log an MCP query to events.db and return query_id (Phase 3)
 fn log_mcp_query(query: &str, mode: &str, results: &[FusedResult]) -> Option<String> {
-    use rusqlite::Connection;
-
-    const DB_PATH: &str = ".patina/local/data/patina.db";
-
     // Get session_id from active session
     let session_id = crate::commands::scry::internal::logging::get_active_session_id()?;
 
@@ -389,12 +385,16 @@ fn log_mcp_query(query: &str, mode: &str, results: &[FusedResult]) -> Option<Str
         "results": results_json
     });
 
-    // Best-effort insert into eventlog
-    let conn = Connection::open(DB_PATH).ok()?;
+    // Best-effort insert into events.db
+    let conn = patina::eventlog::open_events_db().ok()?;
     let timestamp = now.to_rfc3339();
-    conn.execute(
-        "INSERT INTO eventlog (event_type, timestamp, source_id, data) VALUES (?, ?, ?, ?)",
-        rusqlite::params!["scry.query", timestamp, query_id, query_data.to_string()],
+    patina::eventlog::insert_event(
+        &conn,
+        "scry.query",
+        &timestamp,
+        &query_id,
+        None,
+        &query_data.to_string(),
     )
     .ok()?;
 
@@ -847,11 +847,8 @@ fn handle_why(doc_id: &str, query: &str, engine: &QueryEngine) -> Result<String>
 
 /// Handle use mode - log result usage from agent (Phase 3 feedback)
 fn handle_use(query_id: &str, rank: usize) -> Result<String> {
-    use rusqlite::Connection;
-
-    const DB_PATH: &str = ".patina/local/data/patina.db";
-
-    let conn = Connection::open(DB_PATH)?;
+    // scry.query and scry.use events live in events.db
+    let conn = patina::eventlog::open_events_db()?;
 
     // Get the query results to find the doc_id for this rank
     let data: String = conn.query_row(
@@ -890,9 +887,13 @@ fn handle_use(query_id: &str, rank: usize) -> Result<String> {
     });
 
     let timestamp = chrono::Utc::now().to_rfc3339();
-    conn.execute(
-        "INSERT INTO eventlog (event_type, timestamp, source_id, data) VALUES (?, ?, ?, ?)",
-        rusqlite::params!["scry.use", timestamp, query_id, use_data.to_string()],
+    patina::eventlog::insert_event(
+        &conn,
+        "scry.use",
+        &timestamp,
+        query_id,
+        None,
+        &use_data.to_string(),
     )?;
 
     Ok(format!(
@@ -903,16 +904,16 @@ fn handle_use(query_id: &str, rank: usize) -> Result<String> {
 
 /// D3: Fetch full content for a single result from a previous query
 ///
-/// Looks up the doc_id at the given rank from the query log, then fetches
-/// the full content from eventlog and formats it for detailed inspection.
+/// Looks up the doc_id at the given rank from the query log (events.db),
+/// then fetches the full content from patina.db eventlog.
 fn handle_detail(query_id: &str, rank: usize) -> Result<String> {
     use rusqlite::Connection;
 
-    const DB_PATH: &str = ".patina/local/data/patina.db";
-    let conn = Connection::open(DB_PATH)?;
+    // scry.query events are in events.db
+    let events_conn = patina::eventlog::open_events_db()?;
 
     // Look up query results to find doc_id at this rank
-    let data: String = conn.query_row(
+    let data: String = events_conn.query_row(
         "SELECT data FROM eventlog WHERE event_type = 'scry.query' AND source_id = ?",
         [query_id],
         |row| row.get(0),
@@ -936,14 +937,14 @@ fn handle_detail(query_id: &str, rank: usize) -> Result<String> {
     let score = result["score"].as_f64().unwrap_or(0.0);
     let event_type = result["event_type"].as_str().unwrap_or("");
 
-    // Fetch full content from eventlog by source_id
-    // doc_ids may have prefixes (e.g., "belief:foo") that don't match eventlog source_id ("foo")
+    // Fetch full content from patina.db eventlog (source-derived events)
     let lookup_id = if let Some(stripped) = doc_id.strip_prefix("belief:") {
         stripped
     } else {
         doc_id
     };
-    let full_data: Option<String> = conn
+    let patina_conn = Connection::open(patina::eventlog::PATINA_DB)?;
+    let full_data: Option<String> = patina_conn
         .query_row(
             "SELECT data FROM eventlog WHERE source_id = ? ORDER BY seq DESC LIMIT 1",
             [lookup_id],

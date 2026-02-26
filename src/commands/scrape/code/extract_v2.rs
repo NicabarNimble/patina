@@ -35,6 +35,9 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
     // Ensure forge materialized views exist for Issue/PullRequest routing
     crate::commands::scrape::forge::create_materialized_views(db.connection())?;
 
+    // Open events.db for forge event writes (runtime events go to events.db)
+    let events_conn = patina::eventlog::open_events_db()?;
+
     // Find all supported language files
     let mut all_files: Vec<(PathBuf, Language)> = Vec::new();
 
@@ -168,7 +171,7 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                             }
                         }
                         let conn = db.connection();
-                        match crate::commands::scrape::forge::insert_issues(conn, &[issue]) {
+                        match crate::commands::scrape::forge::insert_issues(conn, &events_conn, &[issue]) {
                             Ok(stats) => {
                                 forge_issues_inserted += stats.inserted;
                                 forge_skipped += stats.skipped;
@@ -197,7 +200,7 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                             }
                         }
                         let conn = db.connection();
-                        match crate::commands::scrape::forge::insert_prs(conn, &[pr]) {
+                        match crate::commands::scrape::forge::insert_prs(conn, &events_conn, &[pr]) {
                             Ok(stats) => {
                                 forge_prs_inserted += stats.inserted;
                                 forge_skipped += stats.skipped;
@@ -267,7 +270,7 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                                     }
                                 }
                                 let conn = db.connection();
-                                match crate::commands::scrape::forge::insert_issues(conn, &[issue])
+                                match crate::commands::scrape::forge::insert_issues(conn, &events_conn, &[issue])
                                 {
                                     Ok(stats) => {
                                         forge_issues_inserted += stats.inserted;
@@ -296,7 +299,7 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                                     }
                                 }
                                 let conn = db.connection();
-                                match crate::commands::scrape::forge::insert_prs(conn, &[pr]) {
+                                match crate::commands::scrape::forge::insert_prs(conn, &events_conn, &[pr]) {
                                     Ok(stats) => {
                                         forge_prs_inserted += stats.inserted;
                                         _files_processed += 1;

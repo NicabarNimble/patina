@@ -7,18 +7,16 @@
 //! Both paths produce identical event schemas in the eventlog.
 
 use anyhow::Result;
-use rusqlite::Connection;
 
 /// Valid protocol verbs for measurement events.
 pub const VALID_VERBS: &[&str] = &["capture", "index", "search", "believe", "evolve"];
 
-/// Emit a measurement event to the eventlog.
+/// Emit a measurement event to events.db.
 ///
-/// Core tools call this after computing metrics. The event lands in the
-/// eventlog with `event_type = "measure.<verb>"` and `source = "core"`.
+/// Core tools call this after computing metrics. The event lands in
+/// events.db with `event_type = "measure.<verb>"` and `source = "core"`.
 ///
 /// # Arguments
-/// - `conn` — open connection to patina.db (caller manages lifecycle)
 /// - `verb` — protocol verb: capture, index, search, believe, evolve
 /// - `tool` — tool name: eval, bench, scrape, oxidize, etc.
 /// - `mode` — tool-specific sub-mode: nl, feedback, ablation, etc.
@@ -27,7 +25,6 @@ pub const VALID_VERBS: &[&str] = &["capture", "index", "search", "believe", "evo
 /// # Errors
 /// Returns error if verb is invalid or eventlog write fails.
 pub fn emit(
-    conn: &Connection,
     verb: &str,
     tool: &str,
     mode: &str,
@@ -52,8 +49,9 @@ pub fn emit(
         "source": "core",
     });
 
+    let conn = crate::eventlog::open_events_db()?;
     crate::eventlog::insert_event(
-        conn,
+        &conn,
         &event_type,
         &timestamp,
         &source_id,

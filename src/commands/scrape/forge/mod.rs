@@ -20,11 +20,11 @@ use patina::forge::{self, ForgeKind, Issue, IssueState, PrState, PullRequest};
 use patina::paths;
 
 /// Check if we already have this issue at this updated_at timestamp.
-/// Prevents duplicate events from repeated scrapes.
+/// Dedup checks run against events.db (where forge events live).
 ///
 /// See: layer/surface/build/spec-ref-repo-storage.md (Phase 2: Dedup on insert)
-fn issue_event_exists(conn: &Connection, number: i64, updated_at: &str) -> Result<bool> {
-    let count: i64 = conn.query_row(
+fn issue_event_exists(events_conn: &Connection, number: i64, updated_at: &str) -> Result<bool> {
+    let count: i64 = events_conn.query_row(
         "SELECT COUNT(*) FROM eventlog
          WHERE event_type = 'forge.issue'
            AND json_extract(data, '$.number') = ?1
@@ -36,9 +36,9 @@ fn issue_event_exists(conn: &Connection, number: i64, updated_at: &str) -> Resul
 }
 
 /// Check if we already have this PR at this updated_at timestamp.
-/// Prevents duplicate events from repeated scrapes.
-fn pr_event_exists(conn: &Connection, number: i64, updated_at: &str) -> Result<bool> {
-    let count: i64 = conn.query_row(
+/// Dedup checks run against events.db (where forge events live).
+fn pr_event_exists(events_conn: &Connection, number: i64, updated_at: &str) -> Result<bool> {
+    let count: i64 = events_conn.query_row(
         "SELECT COUNT(*) FROM eventlog
          WHERE event_type = 'forge.pr'
            AND json_extract(data, '$.number') = ?1
@@ -126,14 +126,18 @@ pub struct InsertStats {
     pub skipped: usize,
 }
 
-/// Insert issues into eventlog and materialized views.
+/// Insert issues into events.db eventlog and patina.db materialized views.
 /// Deduplicates on (number, updated_at) to avoid duplicate events.
 /// Public for pipeline host routing (ExtractedPayload::Issue).
-pub fn insert_issues(conn: &Connection, issues: &[Issue]) -> Result<InsertStats> {
+pub fn insert_issues(
+    patina_conn: &Connection,
+    events_conn: &Connection,
+    issues: &[Issue],
+) -> Result<InsertStats> {
     let mut inserted = 0;
     let mut skipped = 0;
 
-    let mut issue_stmt = conn.prepare(
+    let mut issue_stmt = patina_conn.prepare(
         "INSERT OR REPLACE INTO forge_issues
          (number, title, body, state, labels, author, created_at, updated_at, url, event_seq)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
@@ -146,9 +150,8 @@ pub fn insert_issues(conn: &Connection, issues: &[Issue]) -> Result<InsertStats>
             IssueState::Closed => "closed",
         };
 
-        // 1. Insert into eventlog (with dedup check to avoid duplicates)
-        let seq = if issue_event_exists(conn, issue.number, &issue.updated_at)? {
-            // Already have this version - skip eventlog, still update materialized view
+        // 1. Insert into events.db eventlog (with dedup check)
+        let seq = if issue_event_exists(events_conn, issue.number, &issue.updated_at)? {
             skipped += 1;
             None
         } else {
@@ -164,7 +167,7 @@ pub fn insert_issues(conn: &Connection, issues: &[Issue]) -> Result<InsertStats>
             });
 
             let seq = database::insert_event(
-                conn,
+                events_conn,
                 "forge.issue",
                 &issue.created_at,
                 &issue.number.to_string(),
@@ -175,7 +178,7 @@ pub fn insert_issues(conn: &Connection, issues: &[Issue]) -> Result<InsertStats>
             Some(seq)
         };
 
-        // 2. Update materialized view (always - latest wins)
+        // 2. Update materialized view in patina.db (always - latest wins)
         issue_stmt.execute(rusqlite::params![
             issue.number,
             &issue.title,
@@ -193,14 +196,18 @@ pub fn insert_issues(conn: &Connection, issues: &[Issue]) -> Result<InsertStats>
     Ok(InsertStats { inserted, skipped })
 }
 
-/// Insert PRs into eventlog and materialized views.
+/// Insert PRs into events.db eventlog and patina.db materialized views.
 /// Deduplicates on (number, updated_at) to avoid duplicate events.
 /// Public for pipeline host routing (ExtractedPayload::PullRequest).
-pub fn insert_prs(conn: &Connection, prs: &[PullRequest]) -> Result<InsertStats> {
+pub fn insert_prs(
+    patina_conn: &Connection,
+    events_conn: &Connection,
+    prs: &[PullRequest],
+) -> Result<InsertStats> {
     let mut inserted = 0;
     let mut skipped = 0;
 
-    let mut pr_stmt = conn.prepare(
+    let mut pr_stmt = patina_conn.prepare(
         "INSERT OR REPLACE INTO forge_prs
          (number, title, body, state, labels, author, created_at, merged_at, url, linked_issues, approvals, event_seq)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
@@ -215,7 +222,6 @@ pub fn insert_prs(conn: &Connection, prs: &[PullRequest]) -> Result<InsertStats>
             PrState::Closed => "closed",
         };
 
-        // Combine body and comments for searchable content
         let comments_text: String = pr
             .comments
             .iter()
@@ -223,12 +229,10 @@ pub fn insert_prs(conn: &Connection, prs: &[PullRequest]) -> Result<InsertStats>
             .collect::<Vec<_>>()
             .join("\n");
 
-        // Use created_at as updated_at proxy for PRs (API doesn't always provide updated_at)
         let updated_at = &pr.created_at;
 
-        // 1. Insert into eventlog (with dedup check to avoid duplicates)
-        let seq = if pr_event_exists(conn, pr.number, updated_at)? {
-            // Already have this version - skip eventlog, still update materialized view
+        // 1. Insert into events.db eventlog (with dedup check)
+        let seq = if pr_event_exists(events_conn, pr.number, updated_at)? {
             skipped += 1;
             None
         } else {
@@ -247,7 +251,7 @@ pub fn insert_prs(conn: &Connection, prs: &[PullRequest]) -> Result<InsertStats>
             });
 
             let seq = database::insert_event(
-                conn,
+                events_conn,
                 "forge.pr",
                 &pr.created_at,
                 &pr.number.to_string(),
@@ -258,7 +262,7 @@ pub fn insert_prs(conn: &Connection, prs: &[PullRequest]) -> Result<InsertStats>
             Some(seq)
         };
 
-        // 2. Update materialized view (always - latest wins)
+        // 2. Update materialized view in patina.db (always - latest wins)
         pr_stmt.execute(rusqlite::params![
             pr.number,
             &pr.title,

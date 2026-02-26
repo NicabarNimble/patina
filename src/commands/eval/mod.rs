@@ -299,7 +299,6 @@ pub fn execute(dimension: Option<String>) -> Result<()> {
             .map(|r| r.mrr as f64)
             .unwrap_or(0.0);
         let _ = patina::measure::emit(
-            &conn,
             "search",
             "eval",
             "dimension",
@@ -1182,7 +1181,6 @@ pub fn execute_feedback() -> Result<()> {
         0.0
     };
     let _ = patina::measure::emit(
-        &conn,
         "search",
         "eval",
         "feedback",
@@ -1552,9 +1550,8 @@ pub fn execute_nl() -> Result<()> {
     println!("  MRR:         {:.3}", unified_metrics.mrr);
 
     // Emit measurement: NL eval unified metrics
-    if let Ok(conn) = Connection::open(eventlog::PATINA_DB) {
+    {
         let _ = patina::measure::emit(
-            &conn,
             "search",
             "eval",
             "nl",
