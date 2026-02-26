@@ -14,6 +14,7 @@
 use anyhow::Result;
 use rusqlite::Connection;
 use std::path::Path;
+use std::sync::OnceLock;
 
 /// Path to projection database (rebuildable from git + layer/)
 pub const PATINA_DB: &str = ".patina/local/data/patina.db";
@@ -162,13 +163,26 @@ pub fn set_last_processed(conn: &Connection, scraper: &str, value: &str) -> Resu
 // events.db — Runtime event database (irreplaceable)
 // ============================================================================
 
+/// Process-level gate: ensure_events_db() runs once per process via OnceLock.
+/// Eliminates per-call exists() syscall overhead (CLI: negligible; MCP: meaningful).
+static EVENTS_INIT: OnceLock<std::result::Result<(), String>> = OnceLock::new();
+
 /// Ensure events.db exists with correct schema. Migrates runtime events
 /// from patina.db on first run (one-time copy, idempotent).
+///
+/// Runs once per process via OnceLock. Safe under concurrent execution:
+/// schema uses CREATE TABLE IF NOT EXISTS, migration uses INSERT OR IGNORE
+/// with explicit seq to prevent duplicate events.
 pub fn ensure_events_db() -> Result<()> {
-    let events_path = Path::new(EVENTS_DB);
-    if events_path.exists() {
-        return Ok(());
+    let result = EVENTS_INIT.get_or_init(|| ensure_events_db_inner().map_err(|e| e.to_string()));
+    match result {
+        Ok(()) => Ok(()),
+        Err(e) => anyhow::bail!("events.db initialization failed: {e}"),
     }
+}
+
+fn ensure_events_db_inner() -> Result<()> {
+    let events_path = Path::new(EVENTS_DB);
 
     // Create parent directory
     if let Some(parent) = events_path.parent() {
@@ -198,11 +212,20 @@ pub fn ensure_events_db() -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_eventlog_source ON eventlog(source_id);
         CREATE INDEX IF NOT EXISTS idx_eventlog_type_time ON eventlog(event_type, timestamp);
 
+        -- Metadata for events.db (tracks export state for JSONL replica)
+        CREATE TABLE IF NOT EXISTS scrape_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        );
+
         PRAGMA user_version = 1;
         "#,
     )?;
 
-    // Migrate runtime events from patina.db if it exists
+    // Migrate runtime events from patina.db if it exists.
+    // Uses INSERT OR IGNORE with explicit seq — safe under concurrent execution
+    // (two processes racing past OnceLock in separate process spaces both insert,
+    // but the second process's duplicates are ignored by PRIMARY KEY constraint).
     let patina_path = Path::new(PATINA_DB);
     if patina_path.exists() {
         conn.execute(
