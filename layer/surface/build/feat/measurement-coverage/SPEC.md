@@ -25,22 +25,22 @@ beliefs:
 exit_criteria:
 - id: plugin-measurement-stored
   text: Doctor plugin emits measurement via WIT record-measurement, events in eventlog
-  checked: false
+  checked: true
 - id: core-emit-helper
   text: Core measure::emit() helper exists and is used by at least one compiled-in tool
-  checked: false
+  checked: true
 - id: all-verbs-covered
   text: All 5 protocol verbs have at least one measurement producer
-  checked: false
+  checked: true
 - id: user-view-renders
   text: patina measure displays project health from both measure.* and existing events
-  checked: false
+  checked: true
 - id: system-view-renders
   text: patina measure --system shows raw metrics with history
-  checked: false
+  checked: true
 - id: mcp-tool-works
   text: MCP measure tool returns JSON health summary
-  checked: false
+  checked: true
 ---
 
 # feat: Measurement Coverage System
