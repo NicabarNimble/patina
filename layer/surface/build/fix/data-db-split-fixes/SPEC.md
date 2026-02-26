@@ -19,7 +19,7 @@ exit_criteria:
   text: "`patina events import` rebuilds events.db from JSONL — count matches"
   checked: false
 - id: doctor-reports-replica-staleness
-  text: "`patina doctor` reports events.db vs JSONL replica gap count"
+  text: "`patina doctor` compares max seq in events.db vs JSONL and reports gap"
   checked: false
 - id: write-failures-are-loud
   text: "failed writes to events.db produce visible warnings via `emit_or_warn()` helper"
@@ -38,9 +38,6 @@ exit_criteria:
   checked: false
 - id: init-once-per-process
   text: "`ensure_events_db()` runs once per process via `OnceLock`, not on every call"
-  checked: false
-- id: events-db-connection-reuse
-  text: "MCP server reuses events.db connection per-process instead of open/close per-emit"
   checked: false
 beliefs:
 - if-its-patina-its-git
@@ -111,20 +108,38 @@ long-running MCP server context.
 The durability half of the Schickling pattern.
 
 **Export (`patina events export`):**
-- Read all events from events.db ordered by seq
-- Append new events (since last export) to `layer/events.jsonl`
+- Read all events from events.db where `seq > last_exported_seq`, ordered by seq
+- Append new events to `layer/events.jsonl`
 - Each line is one event: `{"seq":N,"event_type":"...","timestamp":"...","source_id":"...","source_file":"...","data":{...}}`
-- Track last exported seq in events.db (new `export_meta` table or `scrape_meta` pattern)
-- Idempotent: re-export produces same file
+- Track last exported seq via `scrape_meta` table (key: `last_exported_seq`)
+
+**Atomicity: at-least-once, JSONL-first.** The ordering matters:
+1. Begin read transaction on events.db (snapshot isolation)
+2. SELECT events where `seq > last_exported_seq` ORDER BY seq
+3. Append to JSONL file, fsync
+4. UPDATE `scrape_meta` SET value = max_seq (commit)
+
+If crash between step 3 and 4: marker wasn't updated, next export re-appends
+the same events, JSONL has duplicates, import deduplicates on seq. This is
+safe — at-least-once beats at-most-once for durability. Never update the
+marker before JSONL hits disk.
 
 **Auto-export on session end:**
 - `patina session end` calls export after archiving
+- Best-effort: if export fails, warn and continue. Session archival is the
+  critical path, export is not. Doctor catches staleness on next run.
 - New events since last export get appended and committed with the session
 
 **Import (`patina events import <path>`):**
-- Parse JSONL line by line
-- Insert into events.db (skip duplicates by timestamp + event_type + source_id)
+- Parse JSONL line by line (serde deserialization, typed structs)
+- `INSERT OR IGNORE` into events.db using seq as PRIMARY KEY — same seq
+  means same event, skip. This works because import is disaster recovery
+  on the same project (restoring events.db from its own replica), not
+  cross-machine merge.
 - Report: imported N events, skipped M duplicates
+- Import does NOT update `last_exported_seq` marker — it's a recovery
+  operation, not an export. Next export will see the restored events and
+  update the marker naturally.
 
 **Scale:** ~3,500 events/year x ~200 bytes = ~700KB/year of JSONL. Git handles
 line-oriented text well. After 10 years: ~7MB.
@@ -151,16 +166,21 @@ pub fn emit_or_warn(verb: &str, tool: &str, mode: &str, metrics: &serde_json::Va
 `measure::emit_or_warn(...)`. The `emit()` function stays as `Result<()>`
 for callers that want to propagate (forge already does).
 
-**Scry logging** — same pattern. Add `log_or_warn()` wrappers for the
-best-effort insert paths. Currently returns `Option<String>` with silent
-`None` on failure — add eprintln before returning None.
+**Scry CLI logging** — same pattern for CLI path. Add eprintln before
+returning None on failure.
+
+**Scry MCP logging** — currently uses `.ok()?` (silent). Leave as-is for
+now. The MCP server has no warning channel — `eprintln!` during MCP goes
+to process stderr which may not be visible. MCP warning infrastructure is
+a separate concern, addressed in [[spec-mcp-server-hardening]].
 
 **Forge inserts** — already propagate errors via `?`. No change needed.
 
 The principle: write failures are warnings, not panics. The tool still works.
 But the user SEES that events aren't being recorded. Silent degradation becomes
 visible degradation. The policy is in one place (`emit_or_warn`), not spread
-across 7 call sites.
+across 7 call sites. MCP-specific warning surfacing deferred to
+[[spec-mcp-server-hardening]].
 
 ### Step 3: Fix Initialization — TOCTOU + OnceLock
 
@@ -196,32 +216,7 @@ pub fn ensure_events_db() -> Result<()> {
 One `exists()` check per process lifetime instead of per call. CLI: no visible
 difference. MCP server: eliminates syscall-per-request overhead.
 
-### Step 4: Connection Reuse for MCP Server
-
-`measure::emit()` currently opens events.db, inserts, drops connection on
-every call. For CLI one-shot commands this is fine. For the MCP server path,
-add a thread-local or process-level connection option:
-
-```rust
-use std::cell::RefCell;
-
-thread_local! {
-    static EVENTS_CONN: RefCell<Option<Connection>> = RefCell::new(None);
-}
-
-/// Get or create a reusable events.db connection for the current thread.
-/// Falls back to open_events_db() if connection is stale or broken.
-pub fn thread_events_conn() -> Result<Connection> {
-    // ...
-}
-```
-
-**Scope carefully:** `emit()` keeps its current open-close behavior (simple,
-correct, no connection lifetime concerns). `thread_events_conn()` is opt-in
-for hot paths (MCP server). Don't force connection reuse on all callers —
-that changes the concurrency model. Let callers choose.
-
-### Step 5: Doctor Health Checks
+### Step 4: Doctor Health Checks
 
 Two new doctor checks:
 
@@ -234,11 +229,13 @@ Two new doctor checks:
 
 **JSONL replica staleness:**
 - `layer/events.jsonl` exists
-- Count lines in JSONL vs count rows in events.db
-- Report gap: "events.db has N events, JSONL replica has M, gap is K"
+- Compare highest seq in JSONL (last line's `seq` field) vs highest seq in
+  events.db (`SELECT MAX(seq) FROM eventlog`). Seq comparison is deterministic
+  and immune to blank lines, unlike line counting.
+- Report gap: "events.db max seq: N, JSONL max seq: M, gap: N-M events"
 - Warning if gap > 0, actionable: "run `patina events export`"
 
-### Step 6: Schema Cleanup
+### Step 5: Schema Cleanup
 
 **Remove broken FK declarations:**
 - `src/commands/scrape/forge/mod.rs` — remove `FOREIGN KEY (event_seq)
@@ -279,6 +276,12 @@ Two new doctor checks:
   on-board the new consumer simultaneously. **Interim:** a plain
   `fn attach_events(conn: &Connection)` helper extracts the ATTACH boilerplate
   without type machinery. Could land in Step 6 cleanup or wait for Area 2.
-- **Connection pooling.** Step 4 adds thread-local connection reuse for MCP
-  hot paths. Full connection pooling (r2d2, deadpool) is overengineering for
-  a local-first CLI tool with SQLite.
+- **MCP warning channel.** The MCP server has no way to surface warnings to
+  clients alongside successful responses. `eprintln!` during MCP may not be
+  visible. Addressed in [[spec-mcp-server-hardening]], not here.
+- **Connection reuse.** Connection-per-emit is fine for CLI. MCP server
+  connection reuse (thread-local, RefCell guards, lifetime management)
+  belongs in [[spec-mcp-server-hardening]] where it can be designed alongside
+  the broader MCP observability work.
+- **Connection pooling.** Full connection pooling (r2d2, deadpool) is
+  overengineering for a local-first CLI tool with SQLite.
