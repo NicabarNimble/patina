@@ -332,11 +332,72 @@ These are the files that the sub-specs will modify:
    outside a tracked session.
 
 ### Deferred to sub-specs (acknowledged risks)
-10. **Migration cutover** — The riskiest operation (splitting a live database)
-    has no executable plan yet. Dual-write strategy, backfill verification,
-    seq monotonicity during split — all belong in Area 1's sub-spec DESIGN.md.
-    Flag: this is the highest-risk implementation detail in the entire
-    architecture.
+10. ~~**Migration cutover**~~ **Risk downgraded. Sketch below.**
+
+    The migration is lower-risk than initially feared. Current state: 96
+    runtime events (154KB) vs 97,242 source-derived events (19.6MB). The
+    migration moves a tiny fraction of data.
+
+    **Runtime event types (→ events.db):**
+    - `measure.*` — tool execution metrics (3 events)
+    - `scry.*` — search queries, usage, feedback (0 events currently)
+    - `forge.*` — GitHub API cache (92 events)
+    - Future: `session.start/end`, `belief.*`, `spec.*`, `decision.*`, `discovery.*`
+
+    **Source-derived event types (→ stay in patina.db as eventlog rows):**
+    - `code.*` — tree-sitter parse output (~80K events)
+    - `git.*` — commit/tag data (~8K events)
+    - `session.*` — parsed from layer/sessions/ markdown (~5K events)
+    - `pattern.*` — parsed from layer/ patterns (~50 events)
+    - `belief.surface` — parsed from belief markdown
+
+    **Migration sequence (one-time, on first command after upgrade):**
+
+    ```
+    Step 1: Check — does events.db already exist with data?
+            YES → skip migration (idempotent)
+            NO  → proceed
+
+    Step 2: Create events.db with eventlog schema
+            Same table shape: (seq, event_type, timestamp, source_id,
+            source_file, data) with AUTOINCREMENT
+            Set PRAGMA user_version = 1
+
+    Step 3: Copy runtime events from patina.db → events.db
+            INSERT INTO events.eventlog (event_type, timestamp, ...)
+            SELECT event_type, timestamp, ...
+            FROM patina.eventlog
+            WHERE event_type LIKE 'measure.%'
+               OR event_type LIKE 'scry.%'
+               OR event_type LIKE 'forge.%'
+            ORDER BY timestamp ASC
+            -- New seq values via AUTOINCREMENT (don't preserve old seqs)
+            -- Timestamp ordering ensures chronological monotonicity
+
+    Step 4: Verify
+            - events.db row count matches expected
+            - All runtime event types present
+            - No seq gaps (AUTOINCREMENT is contiguous for fresh DBs)
+
+    Step 5: Done. Runtime events remain in patina.db until next rebuild.
+            Next `patina scrape --rebuild` deletes patina.db and recreates
+            it — runtime events are now safely in events.db.
+    ```
+
+    **Why this is safe:**
+    - The migration is a COPY, not a MOVE. patina.db retains the original
+      data until the next rebuild. If the migration is buggy, no data is lost.
+    - Idempotent: events.db existence check prevents double-migration.
+    - Self-verifiable: count checks confirm completeness.
+    - Tiny volume: 96 rows, <1 second to copy.
+
+    **The real risk is the code changes**, not the data migration:
+    - ~7 runtime event writers need to target events.db instead of patina.db
+    - ~3 readers need ATTACH (measure, eval --feedback, scry logging)
+    - `execute_rebuild()` must skip events.db (change: don't delete events.db)
+    - Forge dedup must check events.db instead of patina.db eventlog
+
+    Full implementation details belong in Area 1's sub-spec DESIGN.md.
 
 11. **Measure JSON contract** — `patina measure --full` is promised as the LLM
     surface but has no schema, versioning policy, or failure semantics. Belongs
