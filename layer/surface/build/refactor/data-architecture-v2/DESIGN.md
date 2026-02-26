@@ -224,17 +224,67 @@ These are the files that the sub-specs will modify:
 ## Open Questions
 
 ### Architectural
-1. **Feedback views** — `create_feedback_views()` joins scry.query (runtime)
-   with git.commit (source-derived). After the split, these live in different
-   databases. Cross-db views via ATTACH? Move them? Rethink them?
+1. ~~**Feedback views**~~ **Resolved.** `create_feedback_views()` is dead code
+   — defined in eventlog.rs but never called. The live implementation is
+   `execute_feedback()` in `src/commands/eval/mod.rs` which does its own temp
+   table materialization, bypassing the views entirely.
 
-2. **Event compaction** — events.db is append-only forever. At what point (if
-   ever) do we compact old events? Or is "tens of thousands of rows in SQLite"
-   genuinely fine forever? (Probably fine — but worth stating explicitly.)
+   After the split, `eval --feedback` becomes an ATTACH consumer:
+   - **scry.query events** → read from events.db (runtime, via ATTACH)
+   - **commit/file data** → read from patina.db's `commits` + `commit_files`
+     tables (structured, already there)
+   - The join correlates "what did the LLM search for?" (events.db) with
+     "what files actually changed?" (patina.db) — a natural cross-system query.
 
-3. **Backup story** — events.db is the irreplaceable file. What's the backup
-   strategy? Git-tracked? Periodic copy? Just "it's one small file, handle it
-   yourself"?
+   This is a **simplification**: the current code parses git.commit JSON blobs
+   from the eventlog; after the split it reads from structured tables.
+   `create_feedback_views()` should be deleted during Area 1 cleanup.
+   `execute_feedback()` gets rewritten as part of Area 4 (measure surface).
+
+2. ~~**Event compaction**~~ **Resolved: no compaction, ever.**
+
+   The numbers don't justify it. Current runtime events (the ones moving to
+   events.db): ~96 rows. Projected growth: ~3,500/year. After 10 years:
+   ~35K events at ~200 bytes each = ~7MB. SQLite handles millions of rows.
+
+   Compaction would add complexity (which events to keep? rollup semantics?
+   archive format?) to solve a problem that won't exist. The autobiography
+   framing makes this clear: you don't summarize your journal entries to
+   save paper. Every event is a fact the system can reason about.
+
+   If a project ever reaches scale where events.db size matters (millions
+   of events, unlikely for a local dev tool), the right answer is time-based
+   partitioning (events-2026.db, events-2027.db), not compaction. But this
+   is a decade-away concern not worth designing for now.
+
+3. ~~**Backup story**~~ **Resolved: git-tracked JSONL + doctor-audited freshness.**
+
+   events.db is the hot store (fast INSERT/query, WAL mode, `.patina/local/`).
+   Git is the cold store (durable, versioned, survives machine loss).
+
+   **Mechanism:** `layer/events.jsonl` — one git-tracked append-only JSONL file.
+   Each line is one event (event_type, timestamp, source_id, data JSON). On
+   `patina session end` and `patina scrape`, new events since last export are
+   appended and committed with the session/scrape changes.
+
+   **Scale:** ~3,500 events/year × ~200 bytes = ~700KB/year of JSONL. After
+   10 years: ~7MB. Git handles line-oriented text well — diffs show exactly
+   which events were added, compression is excellent.
+
+   **Recovery:** `patina events import layer/events.jsonl` rebuilds events.db
+   from the git-tracked record. Loss window: events since last session end
+   (typically hours). Full disaster recovery: clone the repo, import events,
+   scrape — project is fully restored.
+
+   **Doctor audit:** "events.db has N events, last JSONL export has M events,
+   gap is K" — makes staleness visible and actionable.
+
+   **Why this works:**
+   - Respects [[if-its-patina-its-git]] — the durable record is in git
+   - events.db stays in `.patina/local/` for performance (not git-tracked)
+   - JSONL is the git-friendly serialization of SQLite rows
+   - The pattern mirrors CQRS: SQLite for speed, git for permanence
+   - No new infrastructure — just a text file and an export command
 
 ### Schema
 4. ~~**Event versioning**~~ **Resolved.** Forward-compatible JSON. New fields
