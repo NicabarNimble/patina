@@ -412,15 +412,19 @@ These are the files that the sub-specs will modify:
 
     Full implementation details belong in Area 1's sub-spec DESIGN.md.
 
-11. **Measure JSON contract** — `patina measure --full` is promised as the LLM
-    surface but has no schema, versioning policy, or failure semantics. Belongs
-    in Area 4's sub-spec. Flag: downstream consumers (LLMs, scripts) can't
-    implement against a contract that doesn't exist yet.
+11. **Measure JSON contract** — **Confirmed deferred to Area 4.** The contract
+    depends on what data is available (Areas 1-2 must ship first) and what
+    questions matter (see resolved #8 above for the initial catalog). The
+    question catalog gives Area 4 a concrete target list. Specifying the
+    JSON schema before the data exists would be premature — the contract
+    should be derived from implementation, not guessed from vision.
 
 ### Federation
-6. **Mother scale testing** — We say "1000s of projects." Has anyone tested
-   graph.db with 200K beliefs? The design says SQLite handles it — should we
-   validate with a synthetic load test?
+6. ~~**Mother scale testing**~~ **Resolved: defer.** 200K rows is well within
+   SQLite's proven range (designed for billions of rows). No synthetic load
+   test needed at this stage. If scale issues emerge during data-mother-schema
+   implementation, profile and address then. The risk is low — the bottleneck
+   will be sync network I/O, not SQLite query performance.
 
 7. ~~**Sync conflict resolution**~~ **Resolved.** Projects are sovereign —
    conflicting belief evolutions coexist in mother. Mother reports divergence
@@ -429,10 +433,41 @@ These are the files that the sub-specs will modify:
    similarity, not ID matching. See SPEC § Federation identity model.
 
 ### Measure
-8. **What questions should measure answer?** — The spec says "is this project
-   healthy?" but the specific questions matter. What's the full list of
-   questions an LLM should be able to ask?
+8. ~~**What questions should measure answer?**~~ **Resolved: initial catalog.**
 
-9. **Temporal queries** — Measure currently shows point-in-time health. With
-   events.db, we can show trends ("belief health over last 30 days"). How
-   important is this for v2 vs a future enhancement?
+   The measure question catalog — what an LLM should be able to answer after
+   Area 4. Each question maps to the verb/layer that provides the answer:
+
+   | # | Question | Primary Source | Verb |
+   |---|----------|---------------|------|
+   | 1 | "Is this project healthy?" | Aggregate across all verbs | all |
+   | 2 | "Are beliefs grounded in code?" | beliefs table (grounding_score, evidence_count) | believe |
+   | 3 | "Are tools running and capturing data?" | events.db (measure.capture events) | capture |
+   | 4 | "What's drifting — beliefs, coverage, freshness?" | beliefs table + scrape_meta + embeddings age | believe + capture |
+   | 5 | "What changed since last session?" | session.ended events, git commits | evolve |
+   | 6 | "Which beliefs are contested?" | belief_attacks table, health_score | believe |
+   | 7 | "Is the event stream flowing?" | events.db event counts by recency | capture (meta) |
+   | 8 | "How has scrape performance trended?" | events.db measure.capture over time | capture (temporal) |
+   | 9 | "What knowledge is stale?" | beliefs.last_activity, embeddings age, scrape_meta | believe + index |
+
+   This is the initial catalog. Area 4's sub-spec refines it into a JSON
+   contract. Questions 1-7 are point-in-time (v2 minimum). Questions 8-9
+   require temporal queries (v2 stretch, see #9 below).
+
+9. ~~**Temporal queries**~~ **Resolved: point-in-time is v2, trends are
+   stretch.**
+
+   The architecture supports temporal queries — events.db has the history.
+   But building the trend analysis surface is Area 4 scope, not vision scope.
+
+   - **Minimum (v2):** Point-in-time health. "Are beliefs grounded right now?"
+     "Did the last scrape succeed?" Current snapshot, no time series.
+   - **Stretch (v2):** 30-day trends for key metrics. "How has scrape duration
+     changed?" "Are beliefs gaining or losing grounding?" Requires simple
+     window queries over events.db — the data exists, it's a surface question.
+   - **Future:** Anomaly detection, drift alerts, automated health regression.
+     Not v2 scope.
+
+   Area 4's sub-spec decides what ships. The vision spec's job is to ensure
+   the data architecture makes temporal queries *possible* — and it does,
+   because events.db is append-only with timestamps.
