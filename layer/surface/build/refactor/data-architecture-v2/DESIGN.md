@@ -216,6 +216,96 @@ Patina evolves fast — new commands appear, old ones change shape. Doctor
 audits are flexible (pattern-match on code structure) and produce actionable
 warnings rather than build failures.
 
+### Cross-database access patterns
+
+Three patterns emerged from the data-db-split implementation. Each fits a
+different use case. Use the right one — don't standardize on one pattern
+for all cases.
+
+**1. ATTACH (for JOIN queries across databases)**
+
+```rust
+conn.execute("ATTACH DATABASE ?1 AS events", [events_path])?;
+// Query with table prefix: SELECT ... FROM events.eventlog JOIN beliefs ...
+```
+
+Use when: a single query needs data from both databases (measure reads
+measure.* events from events.db joined with beliefs/scrape_meta from
+patina.db). Connection-scoped — ATTACH at operation start, close when done.
+
+Current consumer: `src/commands/measure/internal.rs`.
+
+**2. Dual connections (for dual-write to different databases)**
+
+```rust
+fn insert_issues(patina_conn: &Connection, events_conn: &Connection, issues: &[Issue])
+```
+
+Use when: one operation writes to both databases in a single pass. Forge
+writes eventlog events to events.db and materialized views to patina.db.
+Clearer ownership than ATTACH because each connection's purpose is explicit
+in the parameter name.
+
+Current consumer: `src/commands/scrape/forge/mod.rs`.
+
+**3. Sequential open (for independent reads from each database)**
+
+```rust
+let events_conn = open_events_db()?;
+let data = events_conn.query_row("SELECT ... FROM eventlog ...", ...)?;
+let patina_conn = Connection::open(PATINA_DB)?;
+let full_data = patina_conn.query_row("SELECT ... FROM eventlog ...", ...)?;
+```
+
+Use when: you need data from both databases but the queries are independent
+(no JOIN). Simpler than ATTACH — no table prefixing, no connection-scoped
+state.
+
+Current consumer: `src/mcp/server/scry.rs` (handle_detail).
+
+**Future: `fn attach_events(conn: &Connection)` helper.** When a second
+ATTACH consumer appears, extract the ATTACH boilerplate into a helper. If
+a third appears, consider a `CrossDbConnection` newtype that guarantees
+ATTACH in its constructor. Don't build the type system machinery until
+reuse justifies it. See [[correctness-by-construction-not-convention]].
+
+### Deferred type-safety improvements
+
+Two type-safety improvements identified during postmortem (session
+20260226-152857, Gjengset analysis). Both are correct in principle but
+premature today. Documented here with triggers for when to act.
+
+**Event type enum**
+
+Current: event types are `&str` validated at runtime against `VALID_VERBS`.
+Better: a Rust enum with exhaustive matching — compiler catches missing
+handlers.
+
+*Why not now:* Area 2 (emission completeness) is actively adding event
+types. The registry isn't stable. Touching the enum on every addition is
+busywork that delivers no safety benefit over the existing runtime guard.
+
+*Trigger:* Convert when the registry cadence slows and every verb ships
+with a known owner and test plan. That's when exhaustive matching gives
+lasting leverage — it forces you to handle every new verb everywhere it
+matters.
+
+**ATTACH newtype wrapper**
+
+Current: measure opens a plain `Connection` and calls ATTACH inline.
+Nothing in the type system distinguishes an attached connection from a
+plain one.
+Better: a `MeasureConnection` type where ATTACH happens in the constructor
+— impossible to query cross-db without it.
+
+*Why not now:* Only one consumer (measure). A newtype for one caller is
+overhead with zero reuse.
+
+*Trigger:* When a second cross-db ATTACH consumer appears. At that point,
+introduce the wrapper, migrate measure onto it, and on-board the new
+consumer simultaneously. Until then, a plain `fn attach_events(conn)`
+helper is sufficient.
+
 ## Sub-Spec Readiness Assessment
 
 | Area | Ready? | Rationale |
