@@ -52,9 +52,21 @@ impl PluginWorld {
     /// Capabilities this world is allowed to declare.
     pub fn allowed_capabilities(&self) -> &[&str] {
         match self {
-            Self::MotherChild => &["host_log", "host_layer", "host_query", "host_http", "host_measure"],
+            Self::MotherChild => &[
+                "host_log",
+                "host_layer",
+                "host_query",
+                "host_http",
+                "host_measure",
+            ],
             Self::Command => &["host_log", "host_layer", "host_query", "host_measure"],
-            Self::Task => &["host_log", "host_layer", "host_query", "host_http", "host_measure"],
+            Self::Task => &[
+                "host_log",
+                "host_layer",
+                "host_query",
+                "host_http",
+                "host_measure",
+            ],
             Self::Pipeline => &["host_log"],
         }
     }
