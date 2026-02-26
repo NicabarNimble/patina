@@ -334,14 +334,24 @@ fn build_believe_summary(conn: &Connection) -> Result<VerbSummary> {
             },
         );
 
-        // Get latest timestamp from belief.surface events
+        // Get latest timestamp from belief.surface events, falling back to beliefs table
         let latest_ts: String = conn
             .query_row(
                 "SELECT MAX(timestamp) FROM eventlog WHERE event_type = 'belief.surface'",
                 [],
-                |row| row.get(0),
+                |row| row.get::<_, Option<String>>(0),
             )
-            .unwrap_or_default();
+            .unwrap_or(None)
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| {
+                // Fallback: use beliefs table's last_activity or revised date
+                conn.query_row(
+                    "SELECT COALESCE(MAX(last_activity), MAX(revised), '') FROM beliefs",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap_or_default()
+            });
 
         let event_count: i64 = conn
             .query_row(
