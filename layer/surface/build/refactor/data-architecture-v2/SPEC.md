@@ -158,11 +158,37 @@ budget, not to the data's volume.
 
 ## Source Model
 
-A patina project is a git repository. Connectors provide enrichment.
+A patina project has two sources of truth with different lifecycles.
 
-**The source is always a local git clone.** Code, prose, knowledge files,
-layer/ — whatever the project contains, it lives in git. Patina is
-git-centric. If it's patina, it's git.
+**Git is the source of record for what a project declares.** Code, prose,
+knowledge files, beliefs, specs, sessions — whatever the project contains
+or decides, it lives in git. Git is the declaration layer.
+
+**events.db is the source of record for what a project experiences.** Search
+behavior, belief lifecycle moments, tool execution, decisions, API cache —
+whatever happens when patina runs, it lives in events.db. This is runtime
+knowledge that git cannot capture: an agent searching "error handling" 200
+times, a belief surviving 3 contestations, scrape performance degrading over
+a month. events.db is the experience layer.
+
+**Together they are the complete truth. Everything else is derived.**
+
+```
+  SOURCES OF TRUTH (irreplaceable):
+  git repo (local)           = what the project declares
+  events.db                  = what the project experiences
+
+  DERIVED (rebuildable from the above):
+  patina.db                  = structured projections for fast queries
+  embeddings/                = semantic proximity for search + grounding
+  graph.db                   = cross-project knowledge index
+```
+
+The earlier framing ("if it's patina, it's git") was an oversimplification.
+Patina is git + a runtime knowledge layer. The SQLite layer isn't a cache
+of git — it produces new knowledge that doesn't exist anywhere else. A
+belief's grounding score, an agent's search patterns, the trend of scrape
+performance — these emerge from runtime observation, not from parsing files.
 
 **External data sources are accessed through connectors** — WASM plugins that
 know how to fetch from and push to external APIs. Forge (GitHub) is the first
@@ -170,20 +196,10 @@ connector. All connectors follow the same pattern: fetch → cache as events
 in events.db → scrape into Layer 1 for querying.
 
 **Mother manages all connectors.** Connector registry, credentials, rate
-limits, shared access across projects — that's mother's job. This avoids
-redundancy: mother already manages reference repos and cross-project
-coordination, so connector management is a natural extension. A project
+limits, shared access across projects — that's mother's job. A project
 doesn't install connectors — it tells mother which data sources it needs,
-and mother provides the pipe.
-
-```
-  git repo (local)           = the source (always)
-  connectors (WASM, via mother) = enrichment (optional, pluggable)
-  events.db                  = where enrichment data is cached
-```
-
-Connectors add material. The 4-layer data stack doesn't change regardless
-of how many connectors a project uses.
+and mother provides the pipe. Connectors add material. The data stack
+doesn't change regardless of how many connectors a project uses.
 
 ## The Data Stack
 
@@ -296,14 +312,21 @@ can reason about. SQLite handles millions of rows without issue.
 
 **Durability:**
 
-events.db is the hot store — fast INSERT, WAL mode, lives in `.patina/local/`.
-Git is the cold store — `layer/events.jsonl` is a git-tracked append-only
-JSONL file where each line is one event. On session end and scrape, new events
-are appended and committed. Recovery: `patina events import layer/events.jsonl`
-rebuilds events.db. Loss window: events since last session end (hours, not days).
+events.db is the source of truth for runtime knowledge. It is not a cache,
+not a materialization of something in git — it IS the thing. WAL mode,
+`synchronous=FULL`, crash-safe by default.
 
-This is CQRS applied to durability: SQLite for speed, git for permanence.
-The autobiography lives in git alongside the rest of the project's knowledge.
+`layer/events.jsonl` is a **replica** for disaster recovery — a git-tracked
+append-only JSONL file where each line is one event. On session end and
+scrape, new events since last export are appended and committed. If events.db
+is lost (machine failure, accidental deletion), the replica enables recovery:
+`patina events import layer/events.jsonl`. Loss window: events since last
+export (typically hours).
+
+The JSONL is a backup, not the source. events.db feeds the JSONL, not the
+other way around. This follows Schickling's model: SQLite is the runtime
+source of truth, the export is a replica for durability across machine
+boundaries.
 
 **Invariants:**
 
@@ -312,8 +335,8 @@ The autobiography lives in git alongside the rest of the project's knowledge.
 - seq is monotonic within events.db
 - Events are never modified after insertion
 - events.db can be backed up by copying one file
-- `layer/events.jsonl` is the git-tracked durable record
-- Doctor audits freshness: gap between events.db and JSONL export
+- `layer/events.jsonl` is a git-tracked replica for disaster recovery
+- Doctor audits replica freshness: gap between events.db and JSONL export
 
 ### Layer 1: Structured — The Queryable Cache
 
