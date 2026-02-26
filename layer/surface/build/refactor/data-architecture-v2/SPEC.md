@@ -294,6 +294,17 @@ Conservative: ~3,500+ events/year per active project. Over years: tens of
 thousands. This is the project's memory — every event is a fact the system
 can reason about. SQLite handles millions of rows without issue.
 
+**Durability:**
+
+events.db is the hot store — fast INSERT, WAL mode, lives in `.patina/local/`.
+Git is the cold store — `layer/events.jsonl` is a git-tracked append-only
+JSONL file where each line is one event. On session end and scrape, new events
+are appended and committed. Recovery: `patina events import layer/events.jsonl`
+rebuilds events.db. Loss window: events since last session end (hours, not days).
+
+This is CQRS applied to durability: SQLite for speed, git for permanence.
+The autobiography lives in git alongside the rest of the project's knowledge.
+
 **Invariants:**
 
 - `scrape --rebuild` never opens events.db
@@ -301,7 +312,8 @@ can reason about. SQLite handles millions of rows without issue.
 - seq is monotonic within events.db
 - Events are never modified after insertion
 - events.db can be backed up by copying one file
-- Losing events.db means losing the project's memory — not just metrics
+- `layer/events.jsonl` is the git-tracked durable record
+- Doctor audits freshness: gap between events.db and JSONL export
 
 ### Layer 1: Structured — The Queryable Cache
 
