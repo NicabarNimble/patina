@@ -149,22 +149,44 @@ ATTACH DATABASE 'events.db' AS events READONLY;
 cross-db access must ATTACH at the start of its operation. This is fine for
 CLI commands but needs thought for long-running MCP server connections.
 
-**Decision needed:** Does the MCP server hold a persistent connection with
-ATTACH, or ATTACH per-request?
+**Decision: per-request ATTACH.** The MCP server already opens a new SQLite
+connection for every request (scry, assay, mother — all per-request). No
+persistent database connections exist. Adding ATTACH follows the same model:
+
+```
+open patina.db → ATTACH events.db READONLY → query → close both
+```
+
+Overhead: ~200μs per ATTACH (connection open + ATTACH statement) vs
+10-100ms for the actual query. Negligible. Per-request ATTACH also avoids
+WAL contention — events.db stays available for concurrent writers without
+long-lived reader connections blocking checkpoints.
+
+No persistent connection infrastructure needed. No connection pooling,
+health monitoring, or reconnect logic. The current per-request model
+scales unchanged.
 
 ### Migration strategy
 
 Area 1 needs a one-time migration (copy runtime events from patina.db to
 events.db). Conventions for future migrations:
 
-- **Schema version tracking:** Where? In the DB itself (pragma user_version)?
-  In a metadata table? In a file?
+- **Schema version tracking:** `PRAGMA user_version` in each database.
+  Currently 0 in patina.db (never set). Each database tracks its own version
+  independently — events.db starts at version 1 when created.
 - **Forward-only:** Migrations go forward. No rollback. If something breaks,
-  rebuild from sources + events.
+  rebuild patina.db from sources + events. events.db is append-only so
+  schema changes are additive (new columns, new indices — never column
+  removal).
 - **Automatic:** Migrations run on first command invocation after upgrade.
-  No manual step.
+  No manual step. The initialization code checks `PRAGMA user_version` and
+  applies pending migrations before proceeding.
 
-**Decision needed:** How do we track schema versions across two databases?
+**Decision: `PRAGMA user_version` per database, independent versioning.**
+patina.db and events.db evolve at different rates. patina.db schema changes
+with every scraper update; events.db schema is nearly frozen (the eventlog
+table shape rarely changes — evolution happens in the JSON data blobs).
+Two independent version counters, each checked on database open.
 
 ### Telemetry enforcement
 
@@ -291,9 +313,23 @@ These are the files that the sub-specs will modify:
    additive, existing fields never removed/renamed. Readers ignore unknown
    fields, default missing fields. See cross-cutting decisions above.
 
-5. **Session ID for events** — scry.query currently requires session_id.
-   Area 2 removes this requirement. Should other events also drop the
-   session_id requirement? Or is session_id valuable as optional context?
+5. ~~**Session ID for events**~~ **Resolved: always optional context, never a gate.**
+
+   Currently `log_scry_query()` uses `get_active_session_id()?` — the early
+   return `?` means queries outside sessions are silently dropped. This violates
+   "capture everything." The fix (Area 2): session_id is an optional JSON field,
+   included when available, absent when not. Events fire regardless of session
+   state.
+
+   This applies to ALL event types:
+   - **session.start/end:** session_id IS the event — always present by definition
+   - **scry.query, measure.capture, etc.:** session_id as optional context
+   - **belief.created, spec.promoted, etc.:** session_id as optional context
+     (which session triggered it? useful but not required)
+
+   Consistent with forward-compatible JSON conventions: readers default missing
+   fields. If session_id is null, the event still happened — it just happened
+   outside a tracked session.
 
 ### Deferred to sub-specs (acknowledged risks)
 10. **Migration cutover** — The riskiest operation (splitting a live database)
