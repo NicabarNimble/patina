@@ -743,6 +743,23 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool, stale: bo
         run_grounding_report(&conn, &rows)?;
     }
 
+    // Emit measurement: belief audit metrics
+    let _ = patina::measure::emit(
+        &conn,
+        "believe",
+        "belief",
+        "audit",
+        &serde_json::json!({
+            "total_beliefs": rows.len(),
+            "warnings": warning_count,
+            "grounded": grounded,
+            "floating": floating,
+            "total_citations": total_use,
+            "total_evidence": total_evidence,
+            "stale": stale_count,
+        }),
+    );
+
     Ok(())
 }
 
