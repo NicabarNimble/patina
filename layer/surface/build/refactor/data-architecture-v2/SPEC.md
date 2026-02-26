@@ -124,6 +124,30 @@ LLM should be able to sit down with a project and ask structured questions:
 infrastructure healthy?" "What knowledge is drifting?" Measure is this query
 surface — the LLM's API into project health.
 
+### 9. Token-aware data serving
+
+Every byte served to an LLM costs tokens. A 10k-token dump where a 200-token
+summary would suffice is not LLM-friendly — it's the equivalent of `SELECT *`
+when the caller needed a row count. Every MCP tool and query surface must
+practice progressive disclosure: summary first, detail on request.
+
+This means:
+- **Orient before dump.** Return structure, counts, and pointers by default.
+  Let the LLM decide what to drill into. Scry already does this (`find` →
+  `detail` modes). Every tool should.
+- **Budget-aware responses.** Tools should know roughly how much context they're
+  returning and offer truncation or summarization when the payload is large.
+  A spec with 500 lines of body shouldn't arrive as 500 lines — it should
+  arrive as frontmatter + section headings + "read section X for detail."
+- **Pointers over payloads.** Return file paths, line ranges, and section
+  references instead of inlining content. The LLM has a Read tool — let it
+  use it when it needs depth.
+
+This isn't just a UX concern — it's an architectural constraint. As the data
+grows (thousands of events, hundreds of beliefs, dozens of specs), the tools
+that serve this data must scale their responses to the consumer's context
+budget, not to the data's volume.
+
 ## The Three Systems
 
 ### System 1: Events — The Immutable Record
