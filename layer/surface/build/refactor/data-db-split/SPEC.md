@@ -1,25 +1,41 @@
 ---
 type: refactor
 id: data-db-split
-status: draft
+status: ready
 created: 2026-02-26
 sessions:
   origin: 20260226-124149
 related:
 - data-architecture-v2
 beliefs:
-  - if-its-patina-its-git
-  - events-are-autobiography-not-telemetry
-  - measure-reads-tables-not-events
+- if-its-patina-its-git
+- events-are-autobiography-not-telemetry
+- measure-reads-tables-not-events
 exit_criteria:
-  - "events.db exists at .patina/local/data/events.db"
-  - "runtime events (measure.*, scry.*, forge.*) write to events.db"
-  - "source-derived events (code.*, git.*, session.*, pattern.*, belief.surface) write to patina.db"
-  - "`scrape --rebuild` deletes patina.db but leaves events.db untouched"
-  - "runtime events survive a rebuild: count before == count after"
-  - "measure reads both databases via ATTACH for cross-system queries"
-  - "one-time migration copies existing runtime events from patina.db to events.db"
-  - "PRAGMA user_version set to 1 in events.db"
+- id: events-db-exists-at-patina-local-data-events-db
+  text: events.db exists at .patina/local/data/events.db
+  checked: false
+- id: runtime-events-measure-scry-forge-write-to-events-db
+  text: runtime events (measure.*, scry.*, forge.*) write to events.db
+  checked: false
+- id: source-derived-events-code-git-session-pattern-belief-surface-write-to-patina-db
+  text: source-derived events (code.*, git.*, session.*, pattern.*, belief.surface) write to patina.db
+  checked: false
+- id: scrape-rebuild-deletes-patina-db-but-leaves-events-db-untouched
+  text: '`scrape --rebuild` deletes patina.db but leaves events.db untouched'
+  checked: false
+- id: runtime-events-survive-a-rebuild-count-before-count-after
+  text: 'runtime events survive a rebuild: count before == count after'
+  checked: false
+- id: measure-reads-both-databases-via-attach-for-cross-system-queries
+  text: measure reads both databases via ATTACH for cross-system queries
+  checked: false
+- id: one-time-migration-copies-existing-runtime-events-from-patina-db-to-events-db
+  text: one-time migration copies existing runtime events from patina.db to events.db
+  checked: false
+- id: pragma-user-version-set-to-1-in-events-db
+  text: PRAGMA user_version set to 1 in events.db
+  checked: false
 ---
 # refactor: Database Split — events.db + patina.db Separation
 
