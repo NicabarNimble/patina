@@ -103,7 +103,7 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
     let types_found: i64 = conn
         .query_row("SELECT COUNT(*) FROM type_vocabulary", [], |row| row.get(0))
         .unwrap_or(0);
-    let _ = patina::measure::emit(
+    patina::measure::emit_or_warn(
         "capture",
         "scrape",
         "code",

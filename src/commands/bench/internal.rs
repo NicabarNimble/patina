@@ -500,7 +500,7 @@ pub fn run_benchmark(
     }
 
     // Emit measurement: bench results to events.db
-    let _ = patina::measure::emit(
+    patina::measure::emit_or_warn(
         "search",
         "bench",
         &query_set.name,
