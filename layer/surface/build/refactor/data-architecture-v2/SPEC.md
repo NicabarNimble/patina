@@ -155,19 +155,16 @@ budget, not to the data's volume.
 
 ## Source Model
 
-A patina project has one source and zero or more enrichments.
+A patina project is a git repository. Connectors provide enrichment.
 
-**The source is always a git repository.** The local clone is the data. Code,
-prose, knowledge files, layer/ — whatever the project contains, it lives in
-git. Even if the remote is GitHub or GitLab, patina works with the local
-clone. A project with no remote, no internet, just `git init` and some files
-— that's a complete patina project.
+**The source is always a local git clone.** Code, prose, knowledge files,
+layer/ — whatever the project contains, it lives in git. Patina is
+git-centric. If it's patina, it's git.
 
 **External data sources are accessed through connectors** — WASM plugins that
-know how to fetch from and push to external APIs. Forge (GitHub issues/PRs)
-is the first connector. Future connectors (Slack, Linear, Google Workspace,
-S3, databases) follow the same pattern: fetch → cache as events in events.db
-→ scrape into Layer 1 for querying.
+know how to fetch from and push to external APIs. Forge (GitHub) is the first
+connector. All connectors follow the same pattern: fetch → cache as events
+in events.db → scrape into Layer 1 for querying.
 
 **Mother manages all connectors.** Connector registry, credentials, rate
 limits, shared access across projects — that's mother's job. This avoids
@@ -182,9 +179,8 @@ and mother provides the pipe.
   events.db                  = where enrichment data is cached
 ```
 
-The simplest patina project is a git repo with no connectors. The richest
-is a git repo with five connectors pulling from five sources. The 4-layer
-data stack is the same in both cases.
+Connectors add material. The 4-layer data stack doesn't change regardless
+of how many connectors a project uses.
 
 ## The Data Stack
 
