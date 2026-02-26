@@ -13,7 +13,9 @@ pub use patina::eventlog::get_last_processed;
 pub use patina::eventlog::initialize;
 pub use patina::eventlog::insert_event;
 pub use patina::eventlog::is_ref_repo;
+pub use patina::eventlog::open_events_db;
 pub use patina::eventlog::set_last_processed;
+pub use patina::eventlog::EVENTS_DB;
 pub use patina::eventlog::PATINA_DB;
 
 // ============================================================================

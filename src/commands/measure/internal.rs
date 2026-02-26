@@ -84,6 +84,18 @@ pub fn run(options: MeasureOptions) -> Result<()> {
 
     let conn = Connection::open(db_path).context("Failed to open patina.db")?;
 
+    // Ensure events.db exists (migrates runtime events on first run)
+    eventlog::ensure_events_db()?;
+
+    // ATTACH events.db for cross-system queries (measure.* events live there)
+    let events_path = Path::new(eventlog::EVENTS_DB);
+    if events_path.exists() {
+        conn.execute(
+            "ATTACH DATABASE ?1 AS events",
+            [events_path.to_str().unwrap_or(eventlog::EVENTS_DB)],
+        )?;
+    }
+
     // Check if ANY measurement data exists
     let total_events = count_measurement_events(&conn)?;
     let has_existing = has_existing_measurement_events(&conn)?;
@@ -115,11 +127,14 @@ pub fn run(options: MeasureOptions) -> Result<()> {
 // ============================================================================
 
 fn count_measurement_events(conn: &Connection) -> Result<i64> {
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM eventlog WHERE event_type LIKE 'measure.%'",
-        [],
-        |row| row.get(0),
-    )?;
+    // measure.* events are in events.db (attached as 'events')
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM events.eventlog WHERE event_type LIKE 'measure.%'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
     Ok(count)
 }
 
@@ -504,27 +519,33 @@ fn collect_measure_sources(
 ) -> Result<()> {
     let event_type = format!("measure.{}", verb);
 
-    // Get distinct tool:mode combinations with latest metrics
-    let mut stmt = conn.prepare(
+    // Get distinct tool:mode combinations with latest metrics (from events.db)
+    let stmt_result = conn.prepare(
         r#"SELECT
             json_extract(data, '$.tool') as tool,
             json_extract(data, '$.mode') as mode,
             json_extract(data, '$.metrics') as metrics,
             timestamp,
-            (SELECT COUNT(*) FROM eventlog e2
+            (SELECT COUNT(*) FROM events.eventlog e2
              WHERE e2.event_type = ?1
-               AND json_extract(e2.data, '$.tool') = json_extract(eventlog.data, '$.tool')
-               AND json_extract(e2.data, '$.mode') = json_extract(eventlog.data, '$.mode')
+               AND json_extract(e2.data, '$.tool') = json_extract(events.eventlog.data, '$.tool')
+               AND json_extract(e2.data, '$.mode') = json_extract(events.eventlog.data, '$.mode')
             ) as event_count
-        FROM eventlog
+        FROM events.eventlog
         WHERE event_type = ?1
           AND seq IN (
-            SELECT MAX(seq) FROM eventlog
+            SELECT MAX(seq) FROM events.eventlog
             WHERE event_type = ?1
             GROUP BY json_extract(data, '$.tool'), json_extract(data, '$.mode')
           )
         ORDER BY timestamp DESC"#,
-    )?;
+    );
+
+    // If events.db isn't attached or has no data, return empty
+    let mut stmt = match stmt_result {
+        Ok(s) => s,
+        Err(_) => return Ok(()),
+    };
 
     let rows = stmt.query_map([&event_type], |row| {
         Ok((
@@ -925,17 +946,23 @@ fn get_recent_history(
     event_type: &str,
     limit: usize,
 ) -> Result<Vec<HistoryEntry>> {
-    let mut stmt = conn.prepare(
+    // measure.* events are in events.db
+    let stmt_result = conn.prepare(
         r#"SELECT
             timestamp,
             json_extract(data, '$.tool') as tool,
             json_extract(data, '$.mode') as mode,
             json_extract(data, '$.metrics') as metrics
-        FROM eventlog
+        FROM events.eventlog
         WHERE event_type = ?1
         ORDER BY seq DESC
         LIMIT ?2"#,
-    )?;
+    );
+
+    let mut stmt = match stmt_result {
+        Ok(s) => s,
+        Err(_) => return Ok(Vec::new()),
+    };
 
     let entries: Vec<HistoryEntry> = stmt
         .query_map(rusqlite::params![event_type, limit as i64], |row| {
@@ -1130,6 +1157,15 @@ pub fn mcp_measure() -> Result<serde_json::Value> {
     }
 
     let conn = Connection::open(db_path).context("Failed to open patina.db")?;
+
+    // ATTACH events.db for cross-system queries
+    let events_path = Path::new(eventlog::EVENTS_DB);
+    if events_path.exists() {
+        let _ = conn.execute(
+            "ATTACH DATABASE ?1 AS events",
+            [events_path.to_str().unwrap_or(eventlog::EVENTS_DB)],
+        );
+    }
 
     let total_events = count_measurement_events(&conn)?;
     let has_existing = has_existing_measurement_events(&conn)?;

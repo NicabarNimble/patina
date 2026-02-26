@@ -85,6 +85,9 @@ pub fn execute_all() -> Result<()> {
 
 /// Rebuild database from scratch.
 ///
+/// Deletes patina.db (rebuildable projections) and recreates from source.
+/// events.db is NEVER touched — it contains irreplaceable runtime events.
+///
 /// For ref repos: removes old eventlog bloat (git/code events) and rebuilds
 /// with lean storage pattern. Includes forge data re-fetch.
 ///
@@ -108,11 +111,14 @@ pub fn execute_rebuild() -> Result<()> {
         println!("🔧 Rebuilding project database...");
     }
 
-    // Delete existing database
+    // Delete patina.db only — events.db is irreplaceable and never touched by rebuild
     if db_path.exists() {
         std::fs::remove_file(&db_path)?;
-        println!("   Deleted old database");
+        println!("   Deleted patina.db (rebuildable projections)");
     }
+
+    // Ensure events.db exists (migration if needed, no-op if already present)
+    patina::eventlog::ensure_events_db()?;
 
     // Run all scrapers fresh (they will use lean storage for ref repos)
     println!("\n🔄 Running all scrapers...\n");

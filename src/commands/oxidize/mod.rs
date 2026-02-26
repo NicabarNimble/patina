@@ -117,18 +117,15 @@ pub fn oxidize() -> Result<()> {
     println!("   Output: {}", output_dir);
 
     // Emit measurement: index build metrics
-    if let Ok(conn) = rusqlite::Connection::open(db_path) {
-        let _ = patina::measure::emit(
-            &conn,
-            "index",
-            "oxidize",
-            "build",
-            &serde_json::json!({
-                "documents_embedded": total_documents_embedded,
-                "projections_built": recipe.projections.len(),
-            }),
-        );
-    }
+    let _ = patina::measure::emit(
+        "index",
+        "oxidize",
+        "build",
+        &serde_json::json!({
+            "documents_embedded": total_documents_embedded,
+            "projections_built": recipe.projections.len(),
+        }),
+    );
 
     Ok(())
 }

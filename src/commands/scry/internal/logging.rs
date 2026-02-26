@@ -6,7 +6,6 @@
 use std::sync::Mutex;
 
 use anyhow::Result;
-use rusqlite::Connection;
 
 use patina::eventlog;
 
@@ -114,7 +113,7 @@ pub fn log_scry_query(query: &str, mode: &str, results: &[ScryResult]) -> Option
 
     // Best-effort insert into eventlog
     let insert_result = (|| -> Result<()> {
-        let conn = Connection::open(eventlog::PATINA_DB)?;
+        let conn = eventlog::open_events_db()?;
         let timestamp = chrono::Utc::now().to_rfc3339();
         eventlog::insert_event(
             &conn,
@@ -208,7 +207,7 @@ pub fn log_scry_query_with_routing(
 
     // Best-effort insert into eventlog
     let insert_result = (|| -> Result<()> {
-        let conn = Connection::open(eventlog::PATINA_DB)?;
+        let conn = eventlog::open_events_db()?;
         let timestamp = chrono::Utc::now().to_rfc3339();
         eventlog::insert_event(
             &conn,
@@ -248,7 +247,7 @@ pub fn log_scry_use(query_id: &str, doc_id: &str, rank: usize) {
 
     // Best-effort insert
     let _ = (|| -> Result<()> {
-        let conn = Connection::open(eventlog::PATINA_DB)?;
+        let conn = eventlog::open_events_db()?;
         let timestamp = chrono::Utc::now().to_rfc3339();
         eventlog::insert_event(
             &conn,
@@ -274,7 +273,7 @@ fn mark_edge_usage_from_query(query_id: &str, rank: usize) -> Result<()> {
     use patina::mother::Graph;
 
     // Look up the query from eventlog
-    let conn = Connection::open(eventlog::PATINA_DB)?;
+    let conn = eventlog::open_events_db()?;
     let data: String = conn.query_row(
         "SELECT data FROM eventlog WHERE event_type = 'scry.query' AND source_id = ?",
         [query_id],
@@ -322,7 +321,7 @@ pub fn log_scry_feedback(query_id: &str, signal: &str, comment: Option<&str>) {
 
     // Best-effort insert
     let _ = (|| -> Result<()> {
-        let conn = Connection::open(eventlog::PATINA_DB)?;
+        let conn = eventlog::open_events_db()?;
         let timestamp = chrono::Utc::now().to_rfc3339();
         eventlog::insert_event(
             &conn,
@@ -338,7 +337,7 @@ pub fn log_scry_feedback(query_id: &str, signal: &str, comment: Option<&str>) {
 
 /// Get results from a previous query by query_id
 pub fn get_query_results(query_id: &str) -> Result<Vec<(String, f32)>> {
-    let conn = Connection::open(eventlog::PATINA_DB)?;
+    let conn = eventlog::open_events_db()?;
 
     let data: String = conn.query_row(
         "SELECT data FROM eventlog WHERE event_type = 'scry.query' AND source_id = ?",
