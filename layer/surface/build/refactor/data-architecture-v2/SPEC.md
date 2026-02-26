@@ -5,280 +5,298 @@ status: draft
 created: 2026-02-26
 sessions:
   origin: 20260226-065302
+  audit: 20260226-094014
 beliefs:
   - measure-reads-tables-not-events
   - seq-order-is-not-timestamp-order
   - check-existing-emissions-before-adding
 exit_criteria:
-  - "events.db is append-only — no DELETE, no DROP, no rebuild touches it"
-  - "project.db is fully rebuildable from git + events.db in under 60s"
-  - "git post-commit hook triggers incremental code+git scrape automatically"
-  - "measure.* events survive scrape --rebuild unchanged"
-  - "LLM can query project state via MCP without knowing the DB split"
+  - "measure.* and forge.* events survive scrape --rebuild unchanged"
+  - "scrape --rebuild restores runtime events after database recreation"
+  - "patina scrape git --fast completes in <2s (no co-change rebuild)"
+  - "git post-commit hook triggers fast incremental git scrape"
+  - "hooks are opt-in (patina hooks install) and removable (patina hooks remove)"
   - "patina measure --full returns comprehensive JSON snapshot for LLM consumption"
 ---
 # refactor: Event-Sourced Data Architecture
 
-> Split patina.db into sacred events.db (append-only history) and rebuildable project.db (derived cache), eliminate manual scrape friction with git hooks and SQLite triggers
+> Protect runtime events from rebuild destruction, eliminate manual scrape friction
+> with git hooks, and expose rich LLM query surface — via three independent phases
+> that can ship separately.
 
 ## Problem
 
 patina.db conflates two fundamentally different kinds of data:
 
-1. **Irreplaceable history** — measure.* events, live session.ended, forge API cache.
-   These cannot be regenerated from git. `scrape --rebuild` destroys them.
+1. **Runtime-only events** (96 events, 0.1%) — measure.*, forge.* API cache.
+   These cannot be regenerated from source. `scrape --rebuild` destroys them.
 
-2. **Rebuildable cache** — code structure, git commits, patterns, sessions, beliefs.
-   These are derived from git and can be regenerated anytime.
+2. **Source-derived cache** (95,571 events, 99.9%) — code.*, git.*, pattern.*,
+   session.*, belief.surface. All derived from git repo + layer files on disk.
+   Can be regenerated anytime by re-running scrapers.
 
-Mixing them in one database means:
-- `--rebuild` is destructive (loses measure history, forge cache)
-- No automatic updates (everything is manual `patina scrape`)
-- The eventlog claims to be append-only but isn't (scrapers DELETE before INSERT)
-- An LLM querying the system sees a single opaque blob instead of clean layers
+Today's `execute_rebuild()` does `std::fs::remove_file(patina.db)` — this
+destroys both categories indiscriminately.
 
-Additionally, all data flow is batch-manual. Users must run `patina scrape` after
-every change. Real systems use event-driven updates — a commit triggers indexing,
-not a human remembering to run a command.
+Additionally, all data flow is batch-manual: users must run `patina scrape`
+after every commit. Incremental git scrape takes 15.7s due to co-change
+rebuild (O(n²) on 20K+ commit_files), making git hooks impractical.
 
-## Current State
+## Audit Findings (session 20260226-094014)
 
-### One database: `.patina/local/data/patina.db`
+### Event Classification Reality
 
-Contains everything:
-- eventlog table (~95K events, 26 event types)
-- 14+ materialized view tables (commits, beliefs, patterns, sessions, etc.)
-- 5 FTS5 indices
-- scrape_meta tracking table
+Audited all 26 event types against source code:
 
-### Manual batch pipeline
+| Classification | Event Types | Count |
+|---|---|---:|
+| **Source-derived** | code.*, git.*, pattern.*, session.*, belief.surface | 95,571 |
+| **Runtime-only** | measure.*, forge.* | 96 |
+
+Key corrections from original draft:
+- **session.ended** — classified as runtime in original spec, but is actually
+  **source-derived**. After Phase 2 hardening (commit cb1f9ffd), all 661
+  session.ended events are reconstructed from archived session files during
+  layer scrape using DELETE+INSERT idempotent pattern.
+- **belief.surface** — also source-derived. Emitted by belief scraper from
+  markdown files on disk, not from runtime activity.
+
+### The Eventlog Is Not Broken
+
+The original spec said "DELETE+INSERT violates append-only." This is correct
+as a description but wrong as a diagnosis. The eventlog serves two roles:
+
+1. **Staging area** for source-derived cache — DELETE+INSERT is correct here
+   (it's cache invalidation, not data loss).
+2. **Permanent store** for runtime events — these should never be deleted.
+
+The problem isn't "append-only is violated" — it's that both roles share one
+table, and `--rebuild` deletes the file containing both.
+
+### ATTACH Complexity Underestimated
+
+Original spec claimed "no code changes needed for queries that span both" DBs.
+Audit found ~15 query callsites in measure/internal.rs alone that reference
+the eventlog table. SQLite ATTACH requires prefixing: `events.eventlog` vs
+`project.beliefs`. A full DB split would touch ~20 source files.
+
+### Incremental Git Scrape Is Too Slow
+
+Timed `patina scrape git` (incremental, 5 new commits): **15.7 seconds**.
+Bottleneck: co-change rebuild processes all 20,771 commit_files rows every
+time (O(n²)). Post-commit hooks need <2s.
+
+## Revised Architecture: Three Independent Specs
+
+The original spec tried to solve 3 problems at once. These should be
+independent specs that can ship separately:
+
+### Spec A: Protected Rebuild (this spec)
+
+**Solve:** measure.* and forge.* events lost on rebuild.
+**Approach:** Export/restore runtime events around rebuild, not a full DB split.
+**Size:** 1-2 sessions. ~3 files changed.
+
+### Spec B: Fast Incremental Scrape + Git Hooks
+
+**Solve:** Manual scrape friction, slow incremental updates.
+**Approach:** New `--fast` mode that skips co-change/FTS rebuild. Git hooks.
+**Blocked by:** Nothing (independent).
+**Size:** 2-3 sessions. ~5 files changed.
+
+### Spec C: Rich LLM Query Surface
+
+**Solve:** LLM needs comprehensive project snapshot.
+**Approach:** `patina measure --full` with domain-organized JSON.
+**Blocked by:** Nothing (independent).
+**Size:** 1-2 sessions. ~2 files changed.
+
+## Phase 1: Protected Rebuild (this spec's scope)
+
+### Design
+
+Instead of splitting into two databases (20+ files changed), protect runtime
+events during rebuild:
 
 ```
-git (source) → manual `patina scrape` → patina.db → manual `patina oxidize` → embeddings
+execute_rebuild() now does:
+1. Export runtime events to temp table or file
+   SELECT * FROM eventlog WHERE event_type LIKE 'measure.%'
+      OR event_type LIKE 'forge.%'
+2. Delete patina.db
+3. Run all scrapers (recreates DB)
+4. Restore runtime events from backup
+   INSERT INTO eventlog (...) VALUES (...)
 ```
 
-Every step requires human invocation. No hooks, no watchers, no triggers.
+This is ~30 lines of code in `src/commands/scrape/mod.rs`.
 
-### Data that does NOT survive rebuild
+### Why Not a Full DB Split?
 
-| Data | In git? | Lost on rebuild? |
-|------|---------|-----------------|
-| measure.* events | No | Yes (except session.ended, fixed in this session) |
-| Forge API cache | No | Re-fetched (slow, rate-limited) |
-| Embeddings | No | Must re-run oxidize |
-| scrape_meta state | No | Reset |
+A full split (events.db + project.db) was the original proposal. Audit found:
+- **20+ files** need modification (every command opens patina.db)
+- Every eventlog query needs ATTACH table prefix rewriting
+- The "sacred" events.db would contain only 96 events (0.1% of data)
+- The complexity cost far exceeds the protection benefit
 
-### Scrapers use DELETE+INSERT, not append
+Protected rebuild achieves the same safety guarantee with 100x less code change.
 
-The layer scraper does:
-```sql
-DELETE FROM eventlog WHERE source_id = ?1 AND event_type LIKE 'pattern.%'
--- then re-inserts
-```
-This violates append-only semantics. The eventlog is really a mutable cache.
+If the project grows to have thousands of runtime events, the split can be
+revisited. For now, 96 events fit in a temp file trivially.
 
-## Target State
+### Steps
 
-### Three-layer data architecture
+1. In `execute_rebuild()`, before `remove_file(db_path)`:
+   - Query `SELECT * FROM eventlog WHERE event_type LIKE 'measure.%' OR event_type LIKE 'forge.%'`
+   - Store results in memory (Vec of tuples) or temp JSON file
+2. After all scrapers complete:
+   - Re-insert preserved events with original timestamps and seq values
+3. Add test: rebuild with measure events → verify they survive
 
-```
-┌─────────────────────────────────────────────────┐
-│  Layer 1: SOURCES (immutable, external)         │
-│                                                 │
-│  Git repo (.git/)     — commits, code, history  │
-│  Layer files (layer/) — patterns, sessions,     │
-│                         beliefs (on disk)        │
-│  GitHub API           — issues, PRs             │
-└─────────────────────────────────────────────────┘
-                    ↓ (event-driven)
-┌─────────────────────────────────────────────────┐
-│  Layer 2: EVENTS.DB (append-only, sacred)       │
-│                                                 │
-│  measure.* events     — tool metrics over time  │
-│  session.ended        — live session outcomes   │
-│  belief.surface       — belief state snapshots  │
-│  forge.*              — cached API responses    │
-│  audit.*              — future audit trail      │
-│                                                 │
-│  RULES:                                         │
-│  - Never DELETE rows                            │
-│  - Never DROP tables                            │
-│  - scrape --rebuild does NOT touch this         │
-│  - Only grows, never shrinks                    │
-│  - seq is monotonic, timestamp is wallclock     │
-└─────────────────────────────────────────────────┘
-                    ↓ (derived, rebuildable)
-┌─────────────────────────────────────────────────┐
-│  Layer 3: PROJECT.DB (cache, disposable)        │
-│                                                 │
-│  Materialized views:                            │
-│    commits, commit_files, co_changes            │
-│    patterns, sessions, observations, goals      │
-│    beliefs (with computed metrics)              │
-│    function_facts, type_vocabulary, call_graph  │
-│    forge_issues, forge_prs                      │
-│  FTS5 indices:                                  │
-│    code_fts, commits_fts, pattern_fts,          │
-│    belief_fts, eventlog_fts                     │
-│  scrape_meta tracking                           │
-│                                                 │
-│  RULES:                                         │
-│  - Fully rebuildable from git + events.db       │
-│  - --rebuild only touches this                  │
-│  - DELETE+INSERT is fine (it's a cache)         │
-│  - ATTACHes events.db read-only for queries     │
-└─────────────────────────────────────────────────┘
-                    ↓ (derived)
-┌─────────────────────────────────────────────────┐
-│  Layer 4: EMBEDDINGS (derived, rebuildable)     │
-│                                                 │
-│  .patina/local/data/embeddings/                 │
-│  usearch indices, projection matrices           │
-│  Rebuilt by `patina oxidize`                    │
-│                                                 │
-└─────────────────────────────────────────────────┘
-                    ↓ (federated)
-┌─────────────────────────────────────────────────┐
-│  Layer 5: MOTHER.DB (cross-project, separate)   │
-│                                                 │
-│  ~/.patina/mother/graph.db                      │
-│  Belief federation, project registry            │
-│  Synced by `patina mother graph sync`           │
-│                                                 │
-└─────────────────────────────────────────────────┘
+### Files Changed
+
+- `src/commands/scrape/mod.rs` — export/restore logic in execute_rebuild()
+- `src/eventlog.rs` — optional: add `export_runtime_events()` / `restore_runtime_events()` helpers
+
+### Exit Criteria (Phase 1)
+
+- [ ] measure.* and forge.* events survive scrape --rebuild unchanged
+- [ ] scrape --rebuild restores runtime events after database recreation
+- [ ] Event count and content identical before and after rebuild
+
+## Phase 2: Fast Incremental Scrape + Git Hooks (separate spec)
+
+### Problem
+
+`patina scrape git` takes 15.7s even for 5 new commits because:
+- Co-change rebuild: DELETE all 25K rows, recompute O(n²) — **~12s**
+- Git tags: DELETE+rebuild 1,682 tags — **~1s**
+- FTS rebuild: DELETE+rebuild 2,787 entries — **~1s**
+- Actual commit insertion: 5 commits — **<0.1s**
+
+### Design
+
+New `patina scrape git --fast` mode:
+- Insert new commits only (no co-change rebuild)
+- Skip tag rebuild (tags don't change on commit)
+- Skip FTS rebuild (defer to next full scrape)
+- Target: <2s total
+
+Git hooks:
+```bash
+# .git/hooks/post-commit (fire-and-forget, non-blocking)
+#!/bin/sh
+patina scrape git --fast 2>/dev/null &
 ```
 
-### Automatic data flow (eliminate scrape friction)
+Hook lifecycle:
+- `patina hooks install` — creates hooks (asks for confirmation)
+- `patina hooks remove` — removes hooks
+- `patina hooks status` — shows what's installed
+- Hooks check `command -v patina` before running
+- Hooks run in background (`&`) — never block git operations
+- Stderr goes to `/dev/null` — silent failures
 
-**Phase A: Git hooks (immediate wins)**
-```
-.git/hooks/post-commit  → patina scrape git --incremental (fast, ~1s)
-.git/hooks/post-merge   → patina scrape layer --incremental
-.git/hooks/post-checkout → patina scrape code --incremental (if branch changed)
-```
+### Open Questions
 
-**Phase B: SQLite triggers (eliminate materialized view lag)**
-```sql
--- Example: when git.commit event is inserted into eventlog,
--- auto-update the commits materialized view
-CREATE TRIGGER IF NOT EXISTS trg_git_commit
-AFTER INSERT ON eventlog WHEN NEW.event_type = 'git.commit'
-BEGIN
-  INSERT OR REPLACE INTO commits (...)
-  VALUES (NEW.source_id, json_extract(NEW.data, '$.message'), ...);
-END;
-```
+- Should post-merge trigger layer scrape? (layer files change on merge)
+- Should post-checkout trigger code scrape? (code changes on branch switch)
+- How to handle DB lock contention (hook + manual scrape simultaneously)?
 
-**Phase C: File watching (future, optional)**
-- Watch layer/surface/epistemic/beliefs/*.md → auto-scrape beliefs
-- Watch src/**/*.rs → auto-scrape code
-- Only if Phase A/B don't cover enough
+## Phase 3: Rich LLM Query Surface (separate spec)
 
-### LLM query surface
+### Design
 
-**`patina measure --full`** returns comprehensive JSON snapshot:
+`patina measure --full` returns domain-organized JSON:
+
 ```json
 {
+  "generated": "2026-02-26T14:40:00Z",
   "beliefs": {
-    "total": 163, "grounded": 43, "floating": 120,
-    "recently_active": [...],
-    "weakest": [...], "strongest": [...],
+    "total": 163,
+    "grounded": 43,
+    "floating": 120,
+    "recently_active": ["belief-id-1", "belief-id-2"],
+    "weakest": [{"id": "...", "health": 0.2}],
+    "strongest": [{"id": "...", "health": 1.0}],
     "stale": 0
   },
   "sessions": {
-    "total": 660, "recent_7d": 12,
-    "commits_7d": 45, "beliefs_captured_7d": 5
-  },
-  "search_quality": {
-    "latest_p5": 0.6, "history": [...]
-  },
-  "mother": {
-    "connected_projects": 3, "shared_beliefs": 12
+    "total": 661,
+    "recent_7d": 12,
+    "commits_7d": 45,
+    "beliefs_captured_7d": 5
   },
   "code": {
-    "files": 247, "functions": 2412
-  }
+    "files": 247,
+    "functions": 2412,
+    "types": 977
+  },
+  "search_quality": {
+    "latest_p5": 0.6,
+    "latest_mrr": 0.45
+  },
+  "actions": ["Run oxidize to update embeddings", ...]
 }
+
 ```
 
-MCP tool returns this — any LLM with tool calling can query it.
-The model doesn't need to know about the DB split.
+### Query Mapping
 
-## Steps
+| Field | Source | Exists? |
+|---|---|---|
+| beliefs.total | `SELECT COUNT(*) FROM beliefs` | Yes |
+| beliefs.grounded | `WHERE grounding_score > 0` | Yes |
+| beliefs.recently_active | `ORDER BY last_activity DESC LIMIT 5` | New query |
+| beliefs.weakest | `ORDER BY health_score ASC LIMIT 5` | New query |
+| beliefs.stale | From audit stale_days logic | Yes (in audit) |
+| sessions.total | `COUNT(*) FROM eventlog WHERE event_type = 'session.ended'` | Yes |
+| sessions.recent_7d | `WHERE timestamp > date('-7d')` | New query |
+| code.files | `COUNT(*) FROM index_state` | Yes |
+| code.functions | `COUNT(*) FROM function_facts` | Yes |
+| search_quality | From measure.search events | Yes |
 
-### Phase 1: Database Split (events.db + project.db)
+~60% reuses existing queries. ~40% needs new queries (all straightforward).
 
-1. Create `events.db` schema — append-only eventlog with strict constraints
-2. Migrate existing measure.*, session.ended, belief.surface, forge.* events
-   from patina.db → events.db
-3. Modify `scrape --rebuild` to only drop/recreate project.db, leaving
-   events.db untouched
-4. Modify project.db queries to ATTACH events.db read-only where needed
-5. Update all scrapers: source-derived data → project.db,
-   runtime metrics → events.db
-
-### Phase 2: Git Hooks (eliminate scrape friction)
-
-6. Create post-commit hook: incremental git + code scrape
-7. Create post-merge hook: incremental layer scrape
-8. Make hooks opt-in via `patina init` (respects user consent per
-   safety-boundaries)
-9. Hooks must be fast (<3s) — only incremental updates
-
-### Phase 3: Rich Query Surface (LLM interface)
-
-10. Implement `patina measure --full` with comprehensive JSON snapshot
-11. Add verb drill-down to MCP measure tool (--verb parameter)
-12. Add history/trend queries (--history N, --since Nd)
-13. Wire as MCP tool — any model can query
-
-### Phase 4: Future (not in this spec)
-
-- SQLite triggers for auto-materialized views
-- File watching for layer/ changes
-- Cross-project measure federation via mother
-- btop-style TUI dashboard (ratatui)
-
-## Exit Criteria
-
-- [ ] events.db is append-only — no DELETE, no DROP, no rebuild touches it
-- [ ] project.db is fully rebuildable from git + events.db in under 60s
-- [ ] git post-commit hook triggers incremental code+git scrape automatically
-- [ ] measure.* events survive scrape --rebuild unchanged
-- [ ] LLM can query project state via MCP without knowing the DB split
-- [ ] patina measure --full returns comprehensive JSON snapshot for LLM consumption
+MCP integration: `mcp_measure()` already exists — add `mcp_measure_full()`
+that calls a new `build_full_snapshot()` function.
 
 ## Design Decisions
 
-### Why SQLite ATTACH, not a single DB?
+### Why protected rebuild, not DB split?
 
-SQLite supports `ATTACH DATABASE 'events.db' AS events` — project.db can
-query events.db tables as `events.eventlog`. This means:
-- events.db can be backed up independently
-- project.db can be deleted without risk
-- No code changes needed for queries that span both
-- Read-only ATTACH prevents accidental writes to events.db
+- **96 runtime events** vs 95K source-derived. The "sacred" data fits in memory.
+- DB split touches 20+ files. Protected rebuild touches 2.
+- ATTACH requires rewriting every eventlog query with table prefixes.
+- If runtime events grow significantly (>10K), revisit the split decision.
+
+### Why separate specs, not one monolith?
+
+Each phase delivers independent value:
+- Phase 1 alone prevents data loss (the critical problem)
+- Phase 2 alone reduces friction (the usability problem)
+- Phase 3 alone improves LLM ergonomics (the interface problem)
+
+Shipping them separately means faster feedback and smaller blast radius.
 
 ### Why git hooks, not file watching?
 
 - Git hooks are built into git — no new dependencies
-- They fire at exactly the right moment (after a commit, not on every save)
+- They fire at exactly the right moment (after commit, not on every save)
 - They're opt-in and user-visible (in .git/hooks/)
 - File watching requires a daemon process — heavier, more failure modes
-
-### Why not rebuild events from git?
-
-Some events can't be reconstructed:
-- measure.* timestamps are the moment the tool ran, not derivable from git
-- Forge API data requires re-fetching (rate-limited, slow)
-- Live session.ended data has runtime metrics not in the archived file
-
-The session.ended reconstruction from this session (Task 1) is a partial
-fix — it recovers what's in archived files but loses live-only data.
 
 ### Model-swap requirement
 
 The LLM query interface is MCP tool calling — model-agnostic by design.
-Any model that supports tool calling (Claude, GPT, Llama, Mistral) can
-call `patina measure --full` and reason over the JSON. No model-specific
-code in the data layer.
+Any model that supports tool calling can call `patina measure --full` and
+reason over the JSON. No model-specific code in the data layer.
+
+## References
+
+- Session 20260225-221415 — Measure edge-finding, 4 bugs fixed
+- Session 20260226-065302 — Rebuild resilience, 3 fixes, spec drafted
+- Session 20260226-094014 — Deep audit, spec revised
+- Belief: [[measure-reads-tables-not-events]]
+- Belief: [[seq-order-is-not-timestamp-order]]
+- Belief: [[check-existing-emissions-before-adding]]
