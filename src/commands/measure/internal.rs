@@ -878,11 +878,11 @@ fn run_verb_drilldown(conn: &Connection, verb: &str, options: &MeasureOptions) -
 
     if !existing.is_empty() {
         let source_name = match verb {
-            "believe" => "belief.surface",
+            "believe" => "belief creation by date",
             "evolve" => "session.ended",
             _ => "existing",
         };
-        println!("  {} events ({} shown):\n", source_name, existing.len());
+        println!("  {} ({} shown):\n", source_name, existing.len());
         println!(
             "    {:<22} {:<12} {:<12} METRICS",
             "TIMESTAMP", "TOOL", "MODE"
@@ -1016,6 +1016,36 @@ fn get_evolve_history(conn: &Connection, limit: usize) -> Result<Vec<HistoryEntr
 // ============================================================================
 // Rendering Helpers
 // ============================================================================
+
+fn render_believe_current_state(conn: &Connection) {
+    let result = conn.query_row(
+        r#"SELECT
+            COUNT(*) as total,
+            COALESCE(SUM(CASE WHEN grounding_score = 0 THEN 1 ELSE 0 END), 0) as floating,
+            COALESCE(SUM(CASE WHEN grounding_score > 0 THEN 1 ELSE 0 END), 0) as grounded,
+            COALESCE(AVG(health_score), 0) as avg_health
+        FROM beliefs"#,
+        [],
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, f64>(3)?,
+            ))
+        },
+    );
+
+    if let Ok((total, floating, grounded, avg_health)) = result {
+        if total > 0 {
+            println!("  Current state (beliefs table):");
+            println!(
+                "    {} beliefs, {} grounded, {} floating, avg health {:.2}\n",
+                total, grounded, floating, avg_health
+            );
+        }
+    }
+}
 
 fn print_empty_state() {
     println!("\n  No measurements recorded yet.\n");
