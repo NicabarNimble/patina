@@ -1,6 +1,6 @@
 //! MCP tool schema definitions
 //!
-//! All 20 tool schemas live here. handle_list_tools() returns them
+//! All 21 tool schemas live here. handle_list_tools() returns them
 //! as the tools/list response.
 
 use super::super::protocol::{Request, Response};
@@ -453,6 +453,14 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                             }
                         },
                         "required": ["id", "field", "value"]
+                    }
+                },
+                {
+                    "name": "measure",
+                    "description": "Show project health from measurement data — returns JSON summary of all 5 protocol verbs (capture, index, search, believe, evolve) with status, metrics, and action items. Use this to check project health before making recommendations.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
                     }
                 },
                 {
