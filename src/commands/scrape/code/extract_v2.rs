@@ -171,7 +171,11 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                             }
                         }
                         let conn = db.connection();
-                        match crate::commands::scrape::forge::insert_issues(conn, &events_conn, &[issue]) {
+                        match crate::commands::scrape::forge::insert_issues(
+                            conn,
+                            &events_conn,
+                            &[issue],
+                        ) {
                             Ok(stats) => {
                                 forge_issues_inserted += stats.inserted;
                                 forge_skipped += stats.skipped;
@@ -200,7 +204,8 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                             }
                         }
                         let conn = db.connection();
-                        match crate::commands::scrape::forge::insert_prs(conn, &events_conn, &[pr]) {
+                        match crate::commands::scrape::forge::insert_prs(conn, &events_conn, &[pr])
+                        {
                             Ok(stats) => {
                                 forge_prs_inserted += stats.inserted;
                                 forge_skipped += stats.skipped;
@@ -270,8 +275,11 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                                     }
                                 }
                                 let conn = db.connection();
-                                match crate::commands::scrape::forge::insert_issues(conn, &events_conn, &[issue])
-                                {
+                                match crate::commands::scrape::forge::insert_issues(
+                                    conn,
+                                    &events_conn,
+                                    &[issue],
+                                ) {
                                     Ok(stats) => {
                                         forge_issues_inserted += stats.inserted;
                                         _files_processed += 1;
@@ -299,7 +307,11 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                                     }
                                 }
                                 let conn = db.connection();
-                                match crate::commands::scrape::forge::insert_prs(conn, &events_conn, &[pr]) {
+                                match crate::commands::scrape::forge::insert_prs(
+                                    conn,
+                                    &events_conn,
+                                    &[pr],
+                                ) {
                                     Ok(stats) => {
                                         forge_prs_inserted += stats.inserted;
                                         _files_processed += 1;
