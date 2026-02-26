@@ -16,6 +16,7 @@ beliefs:
 - if-its-patina-its-git
 - events-are-autobiography-not-telemetry
 - beliefs-are-where-machine-meets-human
+- correctness-by-construction-not-convention
 exit_criteria:
 - id: events-db-is-append-only-no-delete-no-update-never-touched-by-rebuild
   text: events.db is append-only — no DELETE, no UPDATE, never touched by rebuild
