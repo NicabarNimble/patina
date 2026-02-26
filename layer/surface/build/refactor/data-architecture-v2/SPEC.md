@@ -11,6 +11,9 @@ beliefs:
   - measure-reads-tables-not-events
   - seq-order-is-not-timestamp-order
   - check-existing-emissions-before-adding
+  - if-its-patina-its-git
+  - events-are-autobiography-not-telemetry
+  - beliefs-are-where-machine-meets-human
 exit_criteria:
   - "events.db is append-only — no DELETE, no UPDATE, never touched by rebuild"
   - "patina.db is fully rebuildable from git + layer/ + events.db"
