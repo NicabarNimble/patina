@@ -24,12 +24,7 @@ pub const VALID_VERBS: &[&str] = &["capture", "index", "search", "believe", "evo
 ///
 /// # Errors
 /// Returns error if verb is invalid or eventlog write fails.
-pub fn emit(
-    verb: &str,
-    tool: &str,
-    mode: &str,
-    metrics: &serde_json::Value,
-) -> Result<()> {
+pub fn emit(verb: &str, tool: &str, mode: &str, metrics: &serde_json::Value) -> Result<()> {
     anyhow::ensure!(
         VALID_VERBS.contains(&verb),
         "invalid verb '{}': must be one of {:?}",
