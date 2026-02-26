@@ -61,6 +61,7 @@ pub fn oxidize() -> Result<()> {
     // Build each domain (sorted for deterministic order)
     let mut sorted_projections: Vec<_> = recipe.projections.iter().collect();
     sorted_projections.sort_by(|a, b| a.0.cmp(b.0));
+    let mut total_documents_embedded: usize = 0;
     for (name, config) in sorted_projections {
         println!("\n{}", "=".repeat(60));
 
@@ -82,7 +83,8 @@ pub fn oxidize() -> Result<()> {
             // Build USearch index with raw embeddings (768-dim)
             let input_dim = config.input_dim(&recipe)?;
             println!("\n🔍 Building USearch index ({}d raw E5)...", input_dim);
-            build_projection_index(name, db_path, &mut embedder, None, input_dim, &output_dir)?;
+            total_documents_embedded +=
+                build_projection_index(name, db_path, &mut embedder, None, input_dim, &output_dir)?;
         } else {
             println!("📊 Training {} projection...", name);
             println!("{}", "=".repeat(60));
@@ -97,7 +99,7 @@ pub fn oxidize() -> Result<()> {
 
             // Build USearch index with projected embeddings
             println!("\n🔍 Building USearch index...");
-            build_projection_index(
+            total_documents_embedded += build_projection_index(
                 name,
                 db_path,
                 &mut embedder,
@@ -113,6 +115,20 @@ pub fn oxidize() -> Result<()> {
     println!("\n{}", "=".repeat(60));
     println!("✅ All domains built!");
     println!("   Output: {}", output_dir);
+
+    // Emit measurement: index build metrics
+    if let Ok(conn) = rusqlite::Connection::open(db_path) {
+        let _ = patina::measure::emit(
+            &conn,
+            "index",
+            "oxidize",
+            "build",
+            &serde_json::json!({
+                "documents_embedded": total_documents_embedded,
+                "projections_built": recipe.projections.len(),
+            }),
+        );
+    }
 
     Ok(())
 }
@@ -301,7 +317,7 @@ fn build_projection_index(
     projection: Option<&Projection>,
     index_dim: usize,
     output_dir: &str,
-) -> Result<()> {
+) -> Result<usize> {
     use rusqlite::Connection;
     use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
 
@@ -317,7 +333,7 @@ fn build_projection_index(
         "dependency" => dependency::query_function_events(&conn)?,
         _ => {
             println!("   ⚠️  No index builder for {} - skipping", projection_name);
-            return Ok(());
+            return Ok(0);
         }
     };
 
@@ -325,7 +341,7 @@ fn build_projection_index(
 
     if events.is_empty() {
         println!("   ⚠️  No items found - skipping index build");
-        return Ok(());
+        return Ok(0);
     }
 
     // Create USearch index
@@ -367,10 +383,11 @@ fn build_projection_index(
         .save(&index_path)
         .context("Failed to save USearch index")?;
 
-    println!("   ✅ Index built: {} vectors", events.len());
+    let count = events.len();
+    println!("   ✅ Index built: {} vectors", count);
     println!("   Saved to: {}", index_path);
 
-    Ok(())
+    Ok(count)
 }
 
 /// Query knowledge corpus for semantic index — beliefs + patterns + commits only
