@@ -66,8 +66,7 @@ pub fn create_materialized_views(conn: &Connection) -> Result<()> {
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             url TEXT NOT NULL,
-            event_seq INTEGER,     -- Link back to eventlog
-            FOREIGN KEY (event_seq) REFERENCES eventlog(seq)
+            event_seq INTEGER      -- Cross-db ref to events.db eventlog seq
         );
 
         -- Forge PRs view (materialized from forge.pr events)
@@ -83,8 +82,7 @@ pub fn create_materialized_views(conn: &Connection) -> Result<()> {
             url TEXT NOT NULL,
             linked_issues TEXT,    -- JSON array of issue numbers
             approvals INTEGER DEFAULT 0,
-            event_seq INTEGER,     -- Link back to eventlog
-            FOREIGN KEY (event_seq) REFERENCES eventlog(seq)
+            event_seq INTEGER      -- Cross-db ref to events.db eventlog seq
         );
 
         -- Indexes for common queries
