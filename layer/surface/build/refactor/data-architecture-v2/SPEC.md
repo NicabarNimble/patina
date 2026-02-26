@@ -766,18 +766,20 @@ Events flow in, health metrics flow out, an LLM reasons about what's working.
 - `execute_rebuild()` destroys runtime history along with cache
 - No structural guarantee against accidental event deletion
 
-**Event capture (8 gaps):**
+**Event capture (7 gaps):**
 
 | Missing Emission | Impact |
 |-----------------|--------|
-| scrape git | No record of git scrape runs — can't trend performance |
-| scrape layer | No record of layer scrape runs |
-| scrape beliefs | No record of belief scrape runs |
-| scrape forge | No record of forge scrape runs |
-| session start/end | No lifecycle events — can't measure session patterns |
-| context command | No record of context queries |
-| assay command | No record of structural queries |
-| scry without session | scry.query requires session_id — drops events outside sessions |
+| scrape git | No `measure.capture` — can't trend scrape performance |
+| scrape layer | No `measure.capture` — layer scrape runs untracked |
+| scrape beliefs | No `measure.capture` — belief scrape runs untracked |
+| scrape forge | No `measure.capture` — forge scrape runs untracked |
+| context command | No event at all — context queries leave no trace |
+| assay command | No event at all — structural queries leave no trace |
+| scry without session | `scry.query` requires session_id — drops events outside sessions |
+
+Note: session lifecycle events (session.started, session.ended) already exist
+in `src/commands/session/internal.rs`. Original gap list overcounted.
 
 **Mother schema drift:**
 
