@@ -14,28 +14,28 @@ beliefs:
 exit_criteria:
 - id: events-db-exists-at-patina-local-data-events-db
   text: events.db exists at .patina/local/data/events.db
-  checked: false
+  checked: true
 - id: runtime-events-measure-scry-forge-write-to-events-db
   text: runtime events (measure.*, scry.*, forge.*) write to events.db
-  checked: false
+  checked: true
 - id: source-derived-events-code-git-session-pattern-belief-surface-write-to-patina-db
   text: source-derived events (code.*, git.*, session.*, pattern.*, belief.surface) write to patina.db
-  checked: false
+  checked: true
 - id: scrape-rebuild-deletes-patina-db-but-leaves-events-db-untouched
   text: '`scrape --rebuild` deletes patina.db but leaves events.db untouched'
-  checked: false
+  checked: true
 - id: runtime-events-survive-a-rebuild-count-before-count-after
   text: 'runtime events survive a rebuild: count before == count after'
-  checked: false
+  checked: true
 - id: measure-reads-both-databases-via-attach-for-cross-system-queries
   text: measure reads both databases via ATTACH for cross-system queries
-  checked: false
+  checked: true
 - id: one-time-migration-copies-existing-runtime-events-from-patina-db-to-events-db
   text: one-time migration copies existing runtime events from patina.db to events.db
-  checked: false
+  checked: true
 - id: pragma-user-version-set-to-1-in-events-db
   text: PRAGMA user_version set to 1 in events.db
-  checked: false
+  checked: true
 ---
 # refactor: Database Split — events.db + patina.db Separation
 
