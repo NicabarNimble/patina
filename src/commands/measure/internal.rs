@@ -201,19 +201,24 @@ fn build_capture_summary(conn: &Connection) -> Result<VerbSummary> {
     if git_count > 0 {
         let latest_ts: String = conn
             .query_row(
-                "SELECT timestamp FROM eventlog WHERE event_type = 'git.commit' ORDER BY seq DESC LIMIT 1",
+                "SELECT MAX(timestamp) FROM eventlog WHERE event_type = 'git.commit'",
                 [],
                 |row| row.get(0),
             )
             .unwrap_or_default();
 
-        // Count distinct files touched in recent commits
+        // Count distinct files touched in recent commits (by timestamp, not insertion order)
         let file_count: i64 = conn
             .query_row(
                 r#"SELECT COUNT(DISTINCT json_each.value)
                    FROM eventlog, json_each(json_extract(data, '$.files'))
                    WHERE event_type = 'git.commit'
-                     AND seq > (SELECT MAX(seq) - 100 FROM eventlog WHERE event_type = 'git.commit')"#,
+                     AND timestamp >= (
+                       SELECT timestamp FROM eventlog
+                       WHERE event_type = 'git.commit'
+                       ORDER BY timestamp DESC
+                       LIMIT 1 OFFSET 99
+                     )"#,
                 [],
                 |row| row.get(0),
             )
