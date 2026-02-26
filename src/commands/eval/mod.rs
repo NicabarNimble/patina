@@ -298,7 +298,7 @@ pub fn execute(dimension: Option<String>) -> Result<()> {
             .find(|r| r.engine == "unified")
             .map(|r| r.mrr as f64)
             .unwrap_or(0.0);
-        let _ = patina::measure::emit(
+        patina::measure::emit_or_warn(
             "search",
             "eval",
             "dimension",
@@ -1180,7 +1180,7 @@ pub fn execute_feedback() -> Result<()> {
     } else {
         0.0
     };
-    let _ = patina::measure::emit(
+    patina::measure::emit_or_warn(
         "search",
         "eval",
         "feedback",
@@ -1550,19 +1550,17 @@ pub fn execute_nl() -> Result<()> {
     println!("  MRR:         {:.3}", unified_metrics.mrr);
 
     // Emit measurement: NL eval unified metrics
-    {
-        let _ = patina::measure::emit(
-            "search",
-            "eval",
-            "nl",
-            &serde_json::json!({
-                "p_at_5": unified_metrics.p5 as f64,
-                "p_at_10": unified_metrics.p10 as f64,
-                "mrr": unified_metrics.mrr as f64,
-                "query_count": cases.len(),
-            }),
-        );
-    }
+    patina::measure::emit_or_warn(
+        "search",
+        "eval",
+        "nl",
+        &serde_json::json!({
+            "p_at_5": unified_metrics.p5 as f64,
+            "p_at_10": unified_metrics.p10 as f64,
+            "mrr": unified_metrics.mrr as f64,
+            "query_count": cases.len(),
+        }),
+    );
 
     Ok(())
 }

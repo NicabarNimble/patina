@@ -117,7 +117,7 @@ pub fn oxidize() -> Result<()> {
     println!("   Output: {}", output_dir);
 
     // Emit measurement: index build metrics
-    let _ = patina::measure::emit(
+    patina::measure::emit_or_warn(
         "index",
         "oxidize",
         "build",

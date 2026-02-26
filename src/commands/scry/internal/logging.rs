@@ -126,14 +126,18 @@ pub fn log_scry_query(query: &str, mode: &str, results: &[ScryResult]) -> Option
         Ok(())
     })();
 
-    if insert_result.is_ok() {
-        // Store as last query for open/copy/feedback without explicit query_id
-        if let Ok(mut last) = LAST_QUERY_ID.lock() {
-            *last = Some(query_id.clone());
+    match insert_result {
+        Ok(()) => {
+            // Store as last query for open/copy/feedback without explicit query_id
+            if let Ok(mut last) = LAST_QUERY_ID.lock() {
+                *last = Some(query_id.clone());
+            }
+            Some(query_id)
         }
-        Some(query_id)
-    } else {
-        None
+        Err(e) => {
+            eprintln!("patina: warning: failed to record scry.query event: {e}");
+            None
+        }
     }
 }
 
@@ -220,14 +224,18 @@ pub fn log_scry_query_with_routing(
         Ok(())
     })();
 
-    if insert_result.is_ok() {
-        // Store as last query for open/copy/feedback without explicit query_id
-        if let Ok(mut last) = LAST_QUERY_ID.lock() {
-            *last = Some(query_id.clone());
+    match insert_result {
+        Ok(()) => {
+            // Store as last query for open/copy/feedback without explicit query_id
+            if let Ok(mut last) = LAST_QUERY_ID.lock() {
+                *last = Some(query_id.clone());
+            }
+            Some(query_id)
         }
-        Some(query_id)
-    } else {
-        None
+        Err(e) => {
+            eprintln!("patina: warning: failed to record scry.query event: {e}");
+            None
+        }
     }
 }
 
@@ -245,8 +253,8 @@ pub fn log_scry_use(query_id: &str, doc_id: &str, rank: usize) {
         "session_id": session_id
     });
 
-    // Best-effort insert
-    let _ = (|| -> Result<()> {
+    // Best-effort insert — warn on failure so degradation is visible
+    if let Err(e) = (|| -> Result<()> {
         let conn = eventlog::open_events_db()?;
         let timestamp = chrono::Utc::now().to_rfc3339();
         eventlog::insert_event(
@@ -258,7 +266,9 @@ pub fn log_scry_use(query_id: &str, doc_id: &str, rank: usize) {
             &use_data.to_string(),
         )?;
         Ok(())
-    })();
+    })() {
+        eprintln!("patina: warning: failed to record scry.use event: {e}");
+    }
 
     // Mark edge_usage as useful for feedback loop (G2.5)
     // Best-effort - don't fail if this doesn't work
@@ -319,8 +329,8 @@ pub fn log_scry_feedback(query_id: &str, signal: &str, comment: Option<&str>) {
         "session_id": session_id
     });
 
-    // Best-effort insert
-    let _ = (|| -> Result<()> {
+    // Best-effort insert — warn on failure so degradation is visible
+    if let Err(e) = (|| -> Result<()> {
         let conn = eventlog::open_events_db()?;
         let timestamp = chrono::Utc::now().to_rfc3339();
         eventlog::insert_event(
@@ -332,7 +342,9 @@ pub fn log_scry_feedback(query_id: &str, signal: &str, comment: Option<&str>) {
             &feedback_data.to_string(),
         )?;
         Ok(())
-    })();
+    })() {
+        eprintln!("patina: warning: failed to record scry.feedback event: {e}");
+    }
 }
 
 /// Get results from a previous query by query_id

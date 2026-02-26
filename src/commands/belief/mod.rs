@@ -744,7 +744,7 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool, stale: bo
     }
 
     // Emit measurement: belief audit metrics
-    let _ = patina::measure::emit(
+    patina::measure::emit_or_warn(
         "believe",
         "belief",
         "audit",

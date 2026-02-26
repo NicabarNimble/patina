@@ -56,3 +56,13 @@ pub fn emit(verb: &str, tool: &str, mode: &str, metrics: &serde_json::Value) -> 
 
     Ok(())
 }
+
+/// Emit a measurement event, warning on failure instead of silently dropping.
+///
+/// Use this at call sites where the operation should succeed but isn't worth
+/// crashing for. The warning makes degradation visible.
+pub fn emit_or_warn(verb: &str, tool: &str, mode: &str, metrics: &serde_json::Value) {
+    if let Err(e) = emit(verb, tool, mode, metrics) {
+        eprintln!("patina: warning: failed to record event: {e}");
+    }
+}
