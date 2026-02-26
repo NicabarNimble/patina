@@ -94,6 +94,9 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
     let database_size_kb = metadata.len() / 1024;
 
     // Emit measurement: code scrape capture metrics
+    let files_parsed: i64 = conn
+        .query_row("SELECT COUNT(*) FROM index_state", [], |row| row.get(0))
+        .unwrap_or(0);
     let functions_found: i64 = conn
         .query_row("SELECT COUNT(*) FROM function_facts", [], |row| row.get(0))
         .unwrap_or(0);
@@ -106,7 +109,7 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
         "scrape",
         "code",
         &serde_json::json!({
-            "files_parsed": items_processed,
+            "files_parsed": files_parsed,
             "functions_found": functions_found,
             "types_found": types_found,
             "fts_symbols": fts_count,
