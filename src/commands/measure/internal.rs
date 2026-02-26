@@ -737,8 +737,13 @@ fn user_friendly_metrics(verb: &str, src: &SourceSummary) -> String {
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0);
             format!(
-                "{} sessions, {} commits, {} beliefs captured",
-                sessions, commits, beliefs
+                "{} {}, {} {}, {} {} captured",
+                sessions,
+                if sessions == 1 { "session" } else { "sessions" },
+                commits,
+                if commits == 1 { "commit" } else { "commits" },
+                beliefs,
+                if beliefs == 1 { "belief" } else { "beliefs" },
             )
         }
         _ => String::new(),
