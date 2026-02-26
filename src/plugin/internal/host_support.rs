@@ -409,10 +409,7 @@ pub(super) fn record_measurement(
 
     for (key, value) in obj {
         if !value.is_number() {
-            return Err(format!(
-                "metric '{}' must be numeric, got {}",
-                key, value
-            ));
+            return Err(format!("metric '{}' must be numeric, got {}", key, value));
         }
     }
 

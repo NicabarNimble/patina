@@ -115,8 +115,7 @@ impl<'de> serde::Deserialize<'de> for ExitCriterion {
                     #[serde(default)]
                     verify: Option<String>,
                 }
-                let inner =
-                    Inner::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                let inner = Inner::deserialize(de::value::MapAccessDeserializer::new(map))?;
                 Ok(ExitCriterion {
                     id: inner.id,
                     text: inner.text,
@@ -136,7 +135,13 @@ impl<'de> serde::Deserialize<'de> for ExitCriterion {
 /// "DB rolls back on failure" → "db-rolls-back-on-failure"
 fn slugify(text: &str) -> String {
     text.chars()
-        .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .split('-')
         .filter(|s| !s.is_empty())
