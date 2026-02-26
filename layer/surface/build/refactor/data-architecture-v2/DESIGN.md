@@ -216,6 +216,19 @@ Patina evolves fast — new commands appear, old ones change shape. Doctor
 audits are flexible (pattern-match on code structure) and produce actionable
 warnings rather than build failures.
 
+## Sub-Spec Readiness Assessment
+
+| Area | Ready? | Rationale |
+|------|--------|-----------|
+| **1: DB Split** | **YES** | All cross-cutting decisions resolved (ATTACH, schema versioning, migration sketch). ~7 writer files, ~3 reader files identified. Gate is concrete. Create as draft spec now. |
+| **2: Emission Completeness** | **YES (blocked)** | 8 emission gaps documented. session_id resolved. Event registry locked. Blocked on Area 1 — can draft now with `blocked_by: [data-db-split]`. |
+| **3: Mother Schema** | **YES** | Schema drift documented (4 missing column groups, 71 dangling edges). Independent of Areas 1-2. Create as draft spec now. |
+| **4: Measure Surface** | **Not yet** | Open questions #8 (what questions?), #9 (temporal?), #11 (JSON contract) unresolved. Needs more design work. Defer until Areas 1-2 are in progress. |
+| **5: Fast Incremental** | **Not yet** | Scope is clear but no profiling data. Last in sequence. Defer until architecture is correct (post-Phase C). |
+
+**Action:** Create Area 1, Area 2, and Area 3 as draft sub-specs now. Areas 4-5 get
+created when their predecessors are near completion and their design questions are resolved.
+
 ## Key Files (Current Architecture)
 
 These are the files that the sub-specs will modify:
