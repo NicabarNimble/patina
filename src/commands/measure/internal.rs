@@ -313,9 +313,7 @@ fn build_believe_summary(conn: &Connection) -> Result<VerbSummary> {
 
     // Read from beliefs table (has current grounding scores, updated after oxidize)
     // Falls back to belief.surface events if beliefs table doesn't exist
-    let has_beliefs_table = conn
-        .prepare("SELECT COUNT(*) FROM beliefs LIMIT 1")
-        .is_ok();
+    let has_beliefs_table = conn.prepare("SELECT COUNT(*) FROM beliefs LIMIT 1").is_ok();
 
     if has_beliefs_table {
         let result = conn.query_row(
@@ -710,10 +708,7 @@ fn user_friendly_metrics(verb: &str, src: &SourceSummary) -> String {
                 .get("floating_count")
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0);
-            let avg_health = m
-                .get("avg_health")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0);
+            let avg_health = m.get("avg_health").and_then(|v| v.as_f64()).unwrap_or(0.0);
             if floating > 0 {
                 format!(
                     "{} beliefs, {} grounded, {} floating, avg health {:.2}",
