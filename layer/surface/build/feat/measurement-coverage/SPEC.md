@@ -1,7 +1,7 @@
 ---
 type: feat
 id: measurement-coverage
-status: ready
+status: active
 created: 2026-02-16
 sessions:
   origin: 20260216-091624
