@@ -292,33 +292,33 @@ These are the files that the sub-specs will modify:
    partitioning (events-2026.db, events-2027.db), not compaction. But this
    is a decade-away concern not worth designing for now.
 
-3. ~~**Backup story**~~ **Resolved: git-tracked JSONL + doctor-audited freshness.**
+3. ~~**Backup story**~~ **Resolved: events.db is source, JSONL is replica.**
 
-   events.db is the hot store (fast INSERT/query, WAL mode, `.patina/local/`).
-   Git is the cold store (durable, versioned, survives machine loss).
+   events.db is the source of truth for runtime knowledge — not a cache,
+   not a materialization of git. It IS the thing. The durability question
+   is: how do you survive machine loss?
 
-   **Mechanism:** `layer/events.jsonl` — one git-tracked append-only JSONL file.
-   Each line is one event (event_type, timestamp, source_id, data JSON). On
-   `patina session end` and `patina scrape`, new events since last export are
-   appended and committed with the session/scrape changes.
-
-   **Scale:** ~3,500 events/year × ~200 bytes = ~700KB/year of JSONL. After
-   10 years: ~7MB. Git handles line-oriented text well — diffs show exactly
-   which events were added, compression is excellent.
+   **Mechanism:** `layer/events.jsonl` — a git-tracked append-only JSONL
+   **replica**. Each line is one event. On session end and scrape, new events
+   since last export are appended and committed. events.db feeds the JSONL,
+   not the other way around.
 
    **Recovery:** `patina events import layer/events.jsonl` rebuilds events.db
-   from the git-tracked record. Loss window: events since last session end
-   (typically hours). Full disaster recovery: clone the repo, import events,
-   scrape — project is fully restored.
+   from the replica. Loss window: events since last export (typically hours).
+   Full disaster recovery: clone the repo, import events, scrape — project
+   is fully restored.
 
-   **Doctor audit:** "events.db has N events, last JSONL export has M events,
-   gap is K" — makes staleness visible and actionable.
+   **Scale:** ~3,500 events/year × ~200 bytes = ~700KB/year of JSONL. After
+   10 years: ~7MB. Git handles line-oriented text well.
+
+   **Doctor audit:** "events.db has N events, JSONL replica has M events,
+   gap is K" — makes replica staleness visible and actionable.
 
    **Why this works:**
-   - Respects [[if-its-patina-its-git]] — the durable record is in git
-   - events.db stays in `.patina/local/` for performance (not git-tracked)
-   - JSONL is the git-friendly serialization of SQLite rows
-   - The pattern mirrors CQRS: SQLite for speed, git for permanence
+   - events.db is the source of truth (Schickling-aligned)
+   - JSONL is a replica that travels with git for machine-loss durability
+   - Respects [[if-its-patina-its-git]] as revised: git + events.db are the
+     two sources of truth, JSONL replicates one into the other for safety
    - No new infrastructure — just a text file and an export command
 
 ### Schema
