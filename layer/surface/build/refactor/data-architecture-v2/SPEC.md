@@ -19,7 +19,7 @@ exit_criteria:
   - "patina.db is fully rebuildable from git + layer/ + events.db"
   - "every tool execution emits an event — no silent operations"
   - "belief grounding chain is traceable: event → evidence → belief"
-  - "mother federates 1000s of projects with clean, aligned schemas"
+  - "each implementation area has a sub-spec with concrete, testable exit criteria"
   - "measure answers 'is this project healthy?' with data, not opinion"
   - "sub-specs created and scoped for each implementation area"
 ---
@@ -151,6 +151,11 @@ This means:
   references instead of inlining content. The LLM has a Read tool — let it
   use it when it needs depth.
 
+Scry demonstrates this today: `find` mode returns summaries and pointers,
+`detail` mode returns full content for a single result. This is the reference
+implementation — other tools adopt progressive disclosure as they're built
+or revised.
+
 This isn't just a UX concern — it's an architectural constraint. As the data
 grows (thousands of events, hundreds of beliefs, dozens of specs), the tools
 that serve this data must scale their responses to the consumer's context
@@ -183,12 +188,6 @@ a month. events.db is the experience layer.
   embeddings/                = semantic proximity for search + grounding
   graph.db                   = cross-project knowledge index
 ```
-
-The earlier framing ("if it's patina, it's git") was an oversimplification.
-Patina is git + a runtime knowledge layer. The SQLite layer isn't a cache
-of git — it produces new knowledge that doesn't exist anywhere else. A
-belief's grounding score, an agent's search patterns, the trend of scrape
-performance — these emerge from runtime observation, not from parsing files.
 
 **External data sources are accessed through connectors** — WASM plugins that
 know how to fetch from and push to external APIs. Forge (GitHub) is the first
@@ -239,17 +238,21 @@ meaningful that happens to the project**, captured as immutable facts.
 
 **What lives here:**
 
-| Domain | Event Types | Source |
-|--------|-------------|--------|
-| Tool metrics | `measure.capture`, `measure.search`, `measure.index`, `measure.believe`, `measure.evolve` | Tool execution timing, counts, outcomes |
-| Search feedback | `scry.query`, `scry.use`, `scry.feedback` | User search behavior, result selection |
-| External cache | `forge.issue`, `forge.pr` | GitHub API responses (rate-limited, expensive) |
-| Session lifecycle | `session.start`, `session.end` | When work happened, what was accomplished |
-| Epistemic | `belief.created`, `belief.contested`, `belief.supported`, `belief.verified`, `belief.evolved`, `belief.retired` | Belief lifecycle — the moments decisions were made, challenged, and changed |
-| Spec lifecycle | `spec.promoted`, `spec.completed`, `spec.paused`, `spec.abandoned` | Spec state transitions — the journey from idea to shipped |
-| Decisions | `decision.made` | Choices captured with reasoning and alternatives considered |
-| Discovery | `discovery.pattern`, `discovery.cross_project` | Machine or human insight moments |
-| Future: audit trail | `audit.*` | Verification results over time |
+| Domain | Event Types | Status | Source |
+|--------|-------------|--------|--------|
+| Tool metrics | `measure.capture`, `measure.search`, `measure.index`, `measure.believe`, `measure.evolve` | Active | Tool execution timing, counts, outcomes |
+| Search feedback | `scry.query`, `scry.use`, `scry.feedback` | Active | User search behavior, result selection |
+| External cache | `forge.issue`, `forge.pr` | Active | GitHub API responses (rate-limited, expensive) |
+| Session lifecycle | `session.start`, `session.end` | Planned | When work happened, what was accomplished |
+| Epistemic | `belief.created`, `belief.contested`, `belief.supported`, `belief.verified`, `belief.evolved`, `belief.retired` | Planned | Belief lifecycle — the moments decisions were made, challenged, and changed |
+| Spec lifecycle | `spec.promoted`, `spec.completed`, `spec.paused`, `spec.abandoned` | Planned | Spec state transitions — the journey from idea to shipped |
+| Decisions | `decision.made` | Planned | Choices captured with reasoning and alternatives considered |
+| Discovery | `discovery.pattern`, `discovery.cross_project` | Planned | Machine or human insight moments |
+| Future: audit trail | `audit.*` | Future | Verification results over time |
+
+**Status key:** Active = emitter exists in code today. Planned = defined and
+scoped, emitter to be wired in Area 2 (data-emission-completeness). Future =
+conceptual, no sub-spec yet.
 
 **The boundary: moments vs current state.**
 
@@ -479,6 +482,11 @@ It holds two kinds of knowledge at different stages of maturity:
 A proto-belief that gets named becomes a belief. A belief that loses all its
 evidence becomes contested. A contested belief that fails verification gets
 retired. The lifecycle is continuous.
+
+Proto-belief detection is a future capability — no sub-spec exists for this
+work. The architecture accommodates it: new computational inputs (SAEs, graph
+analysis, anomaly detection) feed into Layer 3 without adding layers or
+changing the belief lifecycle.
 
 **Beliefs reach DOWN into all layers for evidence:**
 
