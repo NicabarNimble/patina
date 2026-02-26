@@ -5,19 +5,30 @@ status: draft
 created: 2026-02-26
 blocked_by:
 - data-db-split
+- data-db-split-fixes
 sessions:
   origin: 20260226-124149
 related:
 - data-architecture-v2
 beliefs:
-  - events-are-autobiography-not-telemetry
-  - check-existing-emissions-before-adding
+- events-are-autobiography-not-telemetry
+- check-existing-emissions-before-adding
 exit_criteria:
-  - "measure.capture event emitted for every scraper: git, layer, beliefs, forge"
-  - "scry.query events fire regardless of session state — no early return on missing session_id"
-  - "context and assay commands emit usage events to events.db"
-  - "`patina doctor` reports emission coverage — which commands emit, which don't"
-  - "session lifecycle events target events.db (not patina.db) after db-split"
+- id: measure-capture-event-emitted-for-every-scraper-git-layer-beliefs-forge
+  text: 'measure.capture event emitted for every scraper: git, layer, beliefs, forge'
+  checked: false
+- id: scry-query-events-fire-regardless-of-session-state-no-early-return-on-missing-session-id
+  text: scry.query events fire regardless of session state — no early return on missing session_id
+  checked: false
+- id: context-and-assay-commands-emit-usage-events-to-events-db
+  text: context and assay commands emit usage events to events.db
+  checked: false
+- id: patina-doctor-reports-emission-coverage-which-commands-emit-which-don-t
+  text: '`patina doctor` reports emission coverage — which commands emit, which don''t'
+  checked: false
+- id: session-lifecycle-events-target-events-db-not-patina-db-after-db-split
+  text: session lifecycle events target events.db (not patina.db) after db-split
+  checked: false
 ---
 # feat: Emission Completeness — No Silent Operations
 
