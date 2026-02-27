@@ -259,7 +259,7 @@ fn detect_project_domains(project_root: &Path) -> Vec<String> {
 
 /// Collect beliefs from a project's patina.db
 ///
-/// Opens the project's patina.db and reads the beliefs table (12 columns).
+/// Opens the project's patina.db and reads the beliefs table (23 columns).
 /// Returns empty vec with warning on missing db or missing table.
 fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<BeliefEntry>> {
     use rusqlite::Connection;
