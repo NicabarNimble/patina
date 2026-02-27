@@ -13,19 +13,19 @@ beliefs:
 exit_criteria:
 - id: measure-capture-event-emitted-for-every-scraper-git-layer-beliefs-forge
   text: 'measure.capture event emitted for every scraper: git, layer, beliefs, forge'
-  checked: false
+  checked: true
 - id: scry-query-events-fire-regardless-of-session-state-no-early-return-on-missing-session-id
   text: scry.query events fire regardless of session state — no early return on missing session_id
-  checked: false
+  checked: true
 - id: context-and-assay-commands-emit-usage-events-to-events-db
   text: context and assay commands emit usage events to events.db
-  checked: false
+  checked: true
 - id: patina-doctor-reports-emission-coverage-which-commands-emit-which-don-t
   text: '`patina doctor` reports emission coverage — which commands emit, which don''t'
-  checked: false
+  checked: true
 - id: session-lifecycle-events-target-events-db-not-patina-db-after-db-split
   text: session lifecycle events target events.db (not patina.db) after db-split
-  checked: false
+  checked: true
 ---
 # feat: Emission Completeness — No Silent Operations
 
