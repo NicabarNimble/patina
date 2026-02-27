@@ -11,34 +11,34 @@ related:
 exit_criteria:
 - id: jsonl-replica-exists
   text: "`layer/events.jsonl` is produced by export and contains all events from events.db"
-  checked: false
+  checked: true
 - id: export-runs-on-session-end
   text: "new events are appended to `layer/events.jsonl` on session end"
-  checked: false
+  checked: true
 - id: import-rebuilds-events-db
   text: "`patina events import` rebuilds events.db from JSONL — count matches"
-  checked: false
+  checked: true
 - id: doctor-reports-replica-staleness
   text: "`patina doctor` compares max seq in events.db vs JSONL and reports gap"
-  checked: false
+  checked: true
 - id: write-failures-are-loud
   text: "failed writes to events.db produce visible warnings via `emit_or_warn()` helper"
-  checked: false
+  checked: true
 - id: doctor-checks-events-db-integrity
   text: "`patina doctor` checks events.db existence and basic integrity (`PRAGMA quick_check`)"
-  checked: false
+  checked: true
 - id: broken-fk-removed
   text: "forge materialized view FK declarations removed or annotated"
-  checked: false
+  checked: true
 - id: dead-syntax-cleaned
   text: "bare block in eval.rs removed"
-  checked: false
+  checked: true
 - id: migration-is-idempotent
   text: "`ensure_events_db()` migration uses INSERT OR IGNORE — safe under concurrent execution"
-  checked: false
+  checked: true
 - id: init-once-per-process
   text: "`ensure_events_db()` runs once per process via `OnceLock`, not on every call"
-  checked: false
+  checked: true
 beliefs:
 - if-its-patina-its-git
 - events-are-autobiography-not-telemetry
