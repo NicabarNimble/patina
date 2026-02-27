@@ -744,10 +744,12 @@ pub fn show_spec_value(id: &str, full: bool) -> Result<ShowResult> {
     })
 }
 
-/// Display full spec context (human-readable or JSON)
+/// Display spec context — outline mode (same as MCP)
+///
+/// Shows frontmatter, heading outlines, key files, and file paths.
+/// Use `cat` or a Read tool on the printed path for full content.
 pub fn show_spec(id: &str, json: bool) -> Result<()> {
-    // CLI always gets full content
-    let result = show_spec_value(id, true)?;
+    let result = show_spec_value(id, false)?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&result)?);
@@ -758,13 +760,29 @@ pub fn show_spec(id: &str, json: bool) -> Result<()> {
     let status = result.frontmatter.status.as_deref().unwrap_or("unknown");
     println!("{} [{}]", result.id, status);
     println!();
-    if let Some(body) = &result.body {
-        println!("{}", body.trim());
+
+    // Exit criteria
+    let criteria = &result.frontmatter.exit_criteria;
+    if !criteria.is_empty() {
+        let checked = criteria.iter().filter(|c| c.checked).count();
+        println!("Exit criteria: {}/{}", checked, criteria.len());
+        for c in criteria {
+            let mark = if c.checked { "x" } else { " " };
+            println!("  [{}] {}", mark, c.text);
+        }
+        println!();
     }
 
-    if let Some(design) = &result.design {
-        println!("\n--- DESIGN.md ---\n");
-        println!("{}", design.trim());
+    // Outline
+    for heading in &result.outline {
+        println!("{}", heading);
+    }
+
+    if let Some(design_outline) = &result.design_outline {
+        println!();
+        for heading in design_outline {
+            println!("{}", heading);
+        }
     }
 
     if !result.files.is_empty() {
@@ -772,6 +790,11 @@ pub fn show_spec(id: &str, json: bool) -> Result<()> {
         for f in &result.files {
             println!("  {}", f);
         }
+    }
+
+    println!("\nSpec: {}", result.path);
+    if let Some(dp) = &result.design_path {
+        println!("Design: {}", dp);
     }
 
     Ok(())
