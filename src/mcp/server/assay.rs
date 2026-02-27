@@ -96,12 +96,16 @@ pub(super) fn handle(req: &Request, args: &serde_json::Value) -> Response {
     let result = execute_assay(&options);
 
     // Emit usage event (best-effort)
-    super::scry::emit_usage_event("assay.query", query_type_str, &serde_json::json!({
-        "query_type": query_type_str,
-        "pattern": &options.pattern,
-        "duration_ms": start.elapsed().as_millis() as u64,
-        "source": "mcp",
-    }));
+    super::scry::emit_usage_event(
+        "assay.query",
+        query_type_str,
+        &serde_json::json!({
+            "query_type": query_type_str,
+            "pattern": &options.pattern,
+            "duration_ms": start.elapsed().as_millis() as u64,
+            "source": "mcp",
+        }),
+    );
 
     match result {
         Ok(text) => Response::success(
