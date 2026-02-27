@@ -1,7 +1,7 @@
 ---
 type: feat
 id: data-emission-completeness
-status: ready
+status: active
 created: 2026-02-26
 sessions:
   origin: 20260226-124149
