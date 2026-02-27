@@ -13,6 +13,13 @@ mod scry;
 mod spec;
 mod tools;
 
+// JSON-RPC error codes — differentiated for actionable client guidance
+#[allow(dead_code)]
+const ERR_INVALID_PARAMS: i32 = -32602; // malformed request (already used inline)
+const ERR_INTERNAL: i32 = -32603; // bugs, unexpected failures
+const ERR_MISSING_INDEX: i32 = -32001; // "run `patina scrape` first"
+const ERR_DATABASE: i32 = -32002; // connection, query, schema mismatch
+
 /// Check project secrets compliance before starting MCP server.
 ///
 /// For v2 (age-encrypted vaults), validates:
@@ -164,7 +171,7 @@ fn handle_measure(req: &Request) -> Response {
                 }]
             }),
         ),
-        Err(e) => Response::error(req.id.clone(), -32603, &format!("measure failed: {}", e)),
+        Err(e) => Response::error(req.id.clone(), ERR_INTERNAL, &format!("measure failed: {}", e)),
     }
 }
 

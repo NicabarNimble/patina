@@ -152,7 +152,7 @@ pub(super) fn handle(req: &Request, args: &serde_json::Value, conn: &rusqlite::C
                 "content": [{ "type": "text", "text": text }]
             }),
         ),
-        Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+        Err(e) => Response::error(req.id.clone(), super::ERR_DATABASE, &e.to_string()),
     }
 }
 

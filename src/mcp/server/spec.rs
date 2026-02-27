@@ -25,7 +25,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                         }),
                     )
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
             }
         }
         "spec.ready" => match crate::commands::spec::get_ready_specs() {
@@ -38,7 +38,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                     }),
                 )
             }
-            Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
         },
         "spec.blocked" => match crate::commands::spec::get_blocked_specs() {
             Ok(specs) => {
@@ -50,7 +50,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                     }),
                 )
             }
-            Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
         },
         "spec.next" => match crate::commands::spec::next_spec_value() {
             Ok(result) => {
@@ -62,7 +62,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                     }),
                 )
             }
-            Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
         },
         "spec.show" => {
             let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
@@ -83,7 +83,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                         }),
                     )
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
             }
         }
         "spec.check" => {
@@ -105,7 +105,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                         }),
                     )
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
             }
         }
         // Spec mutation tools
