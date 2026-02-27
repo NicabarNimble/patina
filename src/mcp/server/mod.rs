@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use std::io::{BufRead, BufReader, Write};
+use tracing::{info, warn};
 
 use super::protocol::{Request, Response};
 use crate::retrieval::QueryEngine;
@@ -61,6 +62,17 @@ fn check_secrets_gate() -> Result<()> {
 
 /// Run MCP server over stdio
 pub fn run_mcp_server() -> Result<()> {
+    // Initialize structured logging to file (before anything else)
+    let log_dir = ".patina/local/logs";
+    std::fs::create_dir_all(log_dir)?;
+    let log_path = format!("{}/mcp-server.log", log_dir);
+    let log_file = std::fs::File::create(&log_path)?;
+    tracing_subscriber::fmt()
+        .json()
+        .with_writer(log_file)
+        .with_target(false)
+        .init();
+
     // Gate: validate secrets before starting
     check_secrets_gate()?;
 
@@ -71,7 +83,7 @@ pub fn run_mcp_server() -> Result<()> {
     // Initialize query engine
     let engine = QueryEngine::new();
 
-    eprintln!("patina: MCP server ready");
+    info!(log = %log_path, "MCP server ready");
 
     for line in reader.lines() {
         let line = line?;
