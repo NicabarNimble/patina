@@ -283,8 +283,11 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
         anyhow::bail!("no beliefs table — run `patina scrape --rebuild`");
     }
 
-    // Query all 23 columns. Handle missing columns gracefully for older project DBs
+    // Query all columns. Handle missing columns gracefully for older project DBs
     // by checking which columns exist before building the SELECT.
+    let has_kind = conn
+        .prepare("SELECT kind FROM beliefs LIMIT 0")
+        .is_ok();
     let has_grounding = conn
         .prepare("SELECT grounding_score FROM beliefs LIMIT 0")
         .is_ok();
@@ -295,6 +298,7 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
         .prepare("SELECT last_activity FROM beliefs LIMIT 0")
         .is_ok();
 
+    let kind_col = if has_kind { ", kind" } else { ", 'belief'" };
     let grounding_cols = if has_grounding {
         ", grounding_score, grounding_code_count, grounding_commit_count, grounding_session_count, grounding_forge_count"
     } else {
@@ -315,9 +319,9 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
         "SELECT id, statement, entrenchment, status, facets,
                 cited_by_beliefs, cited_by_sessions, applied_in,
                 evidence_count, evidence_verified, health_score, contested_by, imported
-                {}{}{}
+                {}{}{}{}
          FROM beliefs WHERE status != 'archived'",
-        grounding_cols, verification_cols, last_activity_col
+        kind_col, grounding_cols, verification_cols, last_activity_col
     );
 
     let mut stmt = conn.prepare(&sql)?;
@@ -327,7 +331,7 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
             Ok(BeliefEntry {
                 id: row.get(0)?,
                 source: project_name.to_string(),
-                kind: "belief".to_string(),
+                kind: row.get::<_, Option<String>>(13)?.unwrap_or_else(|| "belief".to_string()),
                 statement: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
                 entrenchment: row
                     .get::<_, Option<String>>(2)?
@@ -346,16 +350,16 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
                 health_score: row.get::<_, Option<f64>>(10)?.unwrap_or(0.0),
                 contested_by: row.get::<_, Option<String>>(11)?.unwrap_or_default(),
                 imported: row.get::<_, Option<i32>>(12)?.unwrap_or(0) != 0,
-                grounding_score: row.get::<_, Option<f64>>(13)?.unwrap_or(0.0),
-                grounding_code_count: row.get::<_, Option<i32>>(14)?.unwrap_or(0),
-                grounding_commit_count: row.get::<_, Option<i32>>(15)?.unwrap_or(0),
-                grounding_session_count: row.get::<_, Option<i32>>(16)?.unwrap_or(0),
-                grounding_forge_count: row.get::<_, Option<i32>>(17)?.unwrap_or(0),
-                verification_total: row.get::<_, Option<i32>>(18)?.unwrap_or(0),
-                verification_passed: row.get::<_, Option<i32>>(19)?.unwrap_or(0),
-                verification_failed: row.get::<_, Option<i32>>(20)?.unwrap_or(0),
-                verification_errored: row.get::<_, Option<i32>>(21)?.unwrap_or(0),
-                last_activity: row.get::<_, Option<String>>(22)?,
+                grounding_score: row.get::<_, Option<f64>>(14)?.unwrap_or(0.0),
+                grounding_code_count: row.get::<_, Option<i32>>(15)?.unwrap_or(0),
+                grounding_commit_count: row.get::<_, Option<i32>>(16)?.unwrap_or(0),
+                grounding_session_count: row.get::<_, Option<i32>>(17)?.unwrap_or(0),
+                grounding_forge_count: row.get::<_, Option<i32>>(18)?.unwrap_or(0),
+                verification_total: row.get::<_, Option<i32>>(19)?.unwrap_or(0),
+                verification_passed: row.get::<_, Option<i32>>(20)?.unwrap_or(0),
+                verification_failed: row.get::<_, Option<i32>>(21)?.unwrap_or(0),
+                verification_errored: row.get::<_, Option<i32>>(22)?.unwrap_or(0),
+                last_activity: row.get::<_, Option<String>>(23)?,
             })
         })?
         .filter_map(|r| r.ok())
