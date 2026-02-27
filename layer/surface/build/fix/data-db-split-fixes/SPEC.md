@@ -1,7 +1,7 @@
 ---
 type: fix
 id: data-db-split-fixes
-status: ready
+status: active
 created: 2026-02-26
 sessions:
   origin: 20260226-152857
