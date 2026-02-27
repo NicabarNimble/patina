@@ -21,6 +21,14 @@ struct HealthCheck {
 struct DataIntegrity {
     events_db: EventsDbStatus,
     jsonl_replica: JsonlReplicaStatus,
+    emission_coverage: EmissionCoverage,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct EmissionCoverage {
+    types_checked: usize,
+    types_with_data: usize,
+    types_empty: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -299,6 +307,11 @@ fn check_data_integrity(recommendations: &mut Vec<String>) -> DataIntegrity {
         }
     }
 
+    // --- Emission coverage checks ---
+    if integrity.events_db.exists && integrity.events_db.integrity_ok {
+        integrity.emission_coverage = check_emission_coverage(recommendations);
+    }
+
     // --- JSONL replica checks ---
     let jsonl_path = Path::new("layer/events.jsonl");
     integrity.jsonl_replica.exists = jsonl_path.exists();
@@ -331,6 +344,63 @@ fn check_data_integrity(recommendations: &mut Vec<String>) -> DataIntegrity {
     }
 
     integrity
+}
+
+/// Active event types from the Layer 0 registry (data-architecture-v2 SPEC).
+///
+/// These are the event types that should have emitters wired in code.
+/// Checked at runtime — not static analysis.
+const ACTIVE_EVENT_TYPES: &[&str] = &[
+    "measure.capture",
+    "measure.search",
+    "measure.index",
+    "measure.believe",
+    "measure.evolve",
+    "scry.query",
+    "scry.use",
+    "scry.feedback",
+    "forge.issue",
+    "forge.pr",
+    "context.query",
+    "assay.query",
+];
+
+/// Check emission coverage: which registered event types have data in events.db.
+fn check_emission_coverage(recommendations: &mut Vec<String>) -> EmissionCoverage {
+    let mut coverage = EmissionCoverage {
+        types_checked: ACTIVE_EVENT_TYPES.len(),
+        ..Default::default()
+    };
+
+    let conn = match Connection::open(eventlog::EVENTS_DB) {
+        Ok(c) => c,
+        Err(_) => return coverage,
+    };
+
+    for &event_type in ACTIVE_EVENT_TYPES {
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM eventlog WHERE event_type = ?1",
+                [event_type],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        if count > 0 {
+            coverage.types_with_data += 1;
+        } else {
+            coverage.types_empty.push(event_type.to_string());
+        }
+    }
+
+    if !coverage.types_empty.is_empty() {
+        recommendations.push(format!(
+            "No events for: {}. Run the corresponding commands to populate.",
+            coverage.types_empty.join(", ")
+        ));
+    }
+
+    coverage
 }
 
 /// Read the max seq from a JSONL file by scanning the last non-empty line.
@@ -441,6 +511,25 @@ fn display_health_check(
             "  ✓ events.db: {} events, max seq {}, integrity ok",
             db.event_count, db.max_seq
         );
+    }
+
+    let ec = &health.data_integrity.emission_coverage;
+    if ec.types_checked > 0 {
+        let pct = ec.types_with_data * 100 / ec.types_checked;
+        if ec.types_empty.is_empty() {
+            println!(
+                "  ✓ Emission coverage: {}/{} types ({}%)",
+                ec.types_with_data, ec.types_checked, pct
+            );
+        } else {
+            println!(
+                "  ⚠ Emission coverage: {}/{} types ({}%) — missing: {}",
+                ec.types_with_data,
+                ec.types_checked,
+                pct,
+                ec.types_empty.join(", ")
+            );
+        }
     }
 
     let jsonl = &health.data_integrity.jsonl_replica;
