@@ -39,7 +39,7 @@ pub(super) fn handle_scry(
                         "content": [{ "type": "text", "text": text }]
                     }),
                 ),
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_DATABASE, &e.to_string()),
             }
         }
         "recent" => {
@@ -53,7 +53,7 @@ pub(super) fn handle_scry(
                         "content": [{ "type": "text", "text": text }]
                     }),
                 ),
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_DATABASE, &e.to_string()),
             }
         }
         "why" => {
@@ -75,7 +75,7 @@ pub(super) fn handle_scry(
                         "content": [{ "type": "text", "text": text }]
                     }),
                 ),
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_MISSING_INDEX, &e.to_string()),
             }
         }
         "belief" => {
@@ -125,7 +125,7 @@ pub(super) fn handle_scry(
                         }),
                     )
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_MISSING_INDEX, &e.to_string()),
             }
         }
         "use" => {
@@ -148,7 +148,7 @@ pub(super) fn handle_scry(
                         "content": [{ "type": "text", "text": text }]
                     }),
                 ),
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_DATABASE, &e.to_string()),
             }
         }
         "detail" => {
@@ -171,7 +171,7 @@ pub(super) fn handle_scry(
                         "content": [{ "type": "text", "text": text }]
                     }),
                 ),
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_DATABASE, &e.to_string()),
             }
         }
         "full" => {
@@ -222,7 +222,7 @@ pub(super) fn handle_scry(
                         }),
                     )
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_MISSING_INDEX, &e.to_string()),
             }
         }
         _ => {
@@ -277,7 +277,7 @@ pub(super) fn handle_scry(
                         }),
                     )
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_MISSING_INDEX, &e.to_string()),
             }
         }
     }
@@ -306,7 +306,7 @@ pub(super) fn handle_context(req: &Request, args: &serde_json::Value) -> Respons
                 "content": [{ "type": "text", "text": text }]
             }),
         ),
-        Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+        Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
     }
 }
 
@@ -336,7 +336,7 @@ pub(super) fn handle_mother(req: &Request, args: &serde_json::Value) -> Response
                         "content": [{ "type": "text", "text": text }]
                     }),
                 ),
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_DATABASE, &e.to_string()),
             }
         }
         "supports" | "attacks" | "projects" => {
@@ -355,7 +355,7 @@ pub(super) fn handle_mother(req: &Request, args: &serde_json::Value) -> Response
                         "content": [{ "type": "text", "text": text }]
                     }),
                 ),
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_DATABASE, &e.to_string()),
             }
         }
         _ => Response::error(req.id.clone(), -32602, &format!("unknown mode '{}'", mode)),
