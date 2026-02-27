@@ -73,8 +73,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                     "spec.show requires 'id' parameter",
                 );
             }
-            // Always outline mode — LLMs use Read tool on the returned path for depth
-            match crate::commands::spec::show_spec_value(id, false) {
+            match crate::commands::spec::show_spec_value(id) {
                 Ok(result) => {
                     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
                     Response::success(

@@ -662,24 +662,18 @@ pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// Spec context — outline mode (default for MCP) or full mode (CLI)
+/// Spec context — heading outlines + file paths for targeted reading
 #[derive(Debug, Clone, Serialize)]
 pub struct ShowResult {
     pub id: String,
     pub frontmatter: SpecFrontmatter,
-    /// Heading outline of SPEC.md (always present)
+    /// Heading outline of SPEC.md
     pub outline: Vec<String>,
     /// Heading outline of DESIGN.md (if it exists)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub design_outline: Option<Vec<String>>,
-    /// Full SPEC.md body (only in full mode)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub body: Option<String>,
-    /// Full DESIGN.md content (only in full mode)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub design: Option<String>,
     pub files: Vec<String>,
-    /// File path to SPEC.md — use with Read tool for specific sections
+    /// File path to SPEC.md — use Read tool for specific sections
     pub path: String,
     /// File path to DESIGN.md (if it exists)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -710,7 +704,7 @@ fn extract_outline(text: &str) -> Vec<String> {
 ///
 /// Default mode returns outlines only — compact for MCP (~500 tokens vs 17k).
 /// Full mode includes complete body and design text (for CLI display).
-pub fn show_spec_value(id: &str, full: bool) -> Result<ShowResult> {
+pub fn show_spec_value(id: &str) -> Result<ShowResult> {
     let loaded = load_spec(id)?;
     let spec_path = loaded.file_path.clone();
 
@@ -724,11 +718,8 @@ pub fn show_spec_value(id: &str, full: bool) -> Result<ShowResult> {
         .as_ref()
         .and_then(|p| std::fs::read_to_string(p).ok());
 
-    // Always extract outlines
     let outline = extract_outline(&loaded.body);
     let design_outline = design_text.as_ref().map(|d| extract_outline(d));
-
-    // Extract key files from ## Key Files section (always from full body)
     let files = extract_key_files(&loaded.body);
 
     Ok(ShowResult {
@@ -736,8 +727,6 @@ pub fn show_spec_value(id: &str, full: bool) -> Result<ShowResult> {
         frontmatter: loaded.frontmatter,
         outline,
         design_outline,
-        body: if full { Some(loaded.body) } else { None },
-        design: if full { design_text } else { None },
         files,
         path: spec_path,
         design_path: design_path.map(|p| p.to_string_lossy().to_string()),
@@ -749,7 +738,7 @@ pub fn show_spec_value(id: &str, full: bool) -> Result<ShowResult> {
 /// Shows frontmatter, heading outlines, key files, and file paths.
 /// Use `cat` or a Read tool on the printed path for full content.
 pub fn show_spec(id: &str, json: bool) -> Result<()> {
-    let result = show_spec_value(id, false)?;
+    let result = show_spec_value(id)?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&result)?);
