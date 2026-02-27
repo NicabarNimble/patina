@@ -14,7 +14,7 @@ exit_criteria:
   - "graph sync reads and syncs all new columns from project patina.db"
   - "dangling edges auto-cleaned during sync (not just warned)"
   - "belief_applied_in queryable via `patina mother` search results"
-  - "FTS5 search results rank by health_score (well-grounded beliefs surface first)"
+  - "FTS5 search results include health_score in output (consumer decides ranking; no blending formula — ship the data, defer the tuning per Andrew Ng principle: measure before optimize)"
 ---
 # refactor: Mother Schema Alignment — Grounding + Verification in graph.db
 
@@ -110,9 +110,13 @@ last_activity TEXT
    returns results, include the project list from `belief_applied_in` in each
    result. "This belief exists in projects: patina, dojo, myapp."
 
-7. **FTS5 health-boosted ranking** — Modify the FTS5 search query to ORDER BY
-   a composite of relevance score and health_score. Well-grounded beliefs
-   should rank higher than floating ones for the same text match.
+7. **FTS5 health_score in output** — Include `health_score` as a returned
+   field in FTS5 search results. Do NOT blend health into the ranking formula.
+   The consumer (LLM or human) sees both text relevance and health and decides
+   how to weight them. Rationale: hand-tuning ranking coefficients without an
+   evaluation dataset is wasted effort. Ship the data. When `scry.use` logs
+   show ranking is producing bad results because health is ignored, *then*
+   introduce blending with real data to evaluate against.
 
 ## Non-Goals
 
