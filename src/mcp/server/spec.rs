@@ -66,7 +66,6 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
         },
         "spec.show" => {
             let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let full = args.get("full").and_then(|v| v.as_bool()).unwrap_or(false);
             if id.is_empty() {
                 return Response::error(
                     req.id.clone(),
@@ -74,7 +73,8 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                     "spec.show requires 'id' parameter",
                 );
             }
-            match crate::commands::spec::show_spec_value(id, full) {
+            // Always outline mode — LLMs use Read tool on the returned path for depth
+            match crate::commands::spec::show_spec_value(id, false) {
                 Ok(result) => {
                     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
                     Response::success(
