@@ -478,9 +478,11 @@ fn parse_value_file(path: &Path) -> Result<ParsedBelief> {
 
     let statement = extract_statement(&content, &id);
 
-    let mut metrics = BeliefMetrics::default();
-    metrics.endorsed = true;
-    metrics.last_file_touch = last_file_touch;
+    let metrics = BeliefMetrics {
+        endorsed: true,
+        last_file_touch,
+        ..Default::default()
+    };
 
     Ok(ParsedBelief {
         id,
@@ -1588,7 +1590,9 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     if values_count > 0 {
         println!(
             "  Processed {} beliefs + {} values ({} skipped)",
-            processed_count - values_count, values_count, skipped
+            processed_count - values_count,
+            values_count,
+            skipped
         );
     } else {
         println!(

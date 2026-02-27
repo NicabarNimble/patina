@@ -285,9 +285,7 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
 
     // Query all columns. Handle missing columns gracefully for older project DBs
     // by checking which columns exist before building the SELECT.
-    let has_kind = conn
-        .prepare("SELECT kind FROM beliefs LIMIT 0")
-        .is_ok();
+    let has_kind = conn.prepare("SELECT kind FROM beliefs LIMIT 0").is_ok();
     let has_grounding = conn
         .prepare("SELECT grounding_score FROM beliefs LIMIT 0")
         .is_ok();
@@ -331,7 +329,9 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
             Ok(BeliefEntry {
                 id: row.get(0)?,
                 source: project_name.to_string(),
-                kind: row.get::<_, Option<String>>(13)?.unwrap_or_else(|| "belief".to_string()),
+                kind: row
+                    .get::<_, Option<String>>(13)?
+                    .unwrap_or_else(|| "belief".to_string()),
                 statement: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
                 entrenchment: row
                     .get::<_, Option<String>>(2)?
