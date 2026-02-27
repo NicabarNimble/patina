@@ -357,13 +357,17 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                 },
                 {
                     "name": "spec.show",
-                    "description": "Show full spec context — frontmatter, body, DESIGN.md, and key files in a single call. Use this to load all spec context before working on it.",
+                    "description": "Show spec context — frontmatter, body, DESIGN.md, and key files in a single call. Use this to load all spec context before working on it.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "id": {
                                 "type": "string",
                                 "description": "Spec ID to show"
+                            },
+                            "full": {
+                                "type": "boolean",
+                                "description": "Return full body and DESIGN.md text (default: false — returns heading outlines + file paths for targeted reading)"
                             }
                         },
                         "required": ["id"]
