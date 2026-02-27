@@ -14,19 +14,19 @@ beliefs:
 exit_criteria:
 - id: eprintln-replaced-with-structured-logging
   text: all eprintln! calls in src/mcp/server/ replaced with tracing macros (info!/warn!/error!); stderr clean during normal operation
-  checked: false
+  checked: true
 - id: ok-swallowing-eliminated
   text: all .ok() calls in src/mcp/server/ that discard actionable errors replaced with explicit error handling or tracing::warn!
-  checked: false
+  checked: true
 - id: connection-reuse-for-patina-db
   text: patina.db opened once per server lifetime and passed through dispatch — no per-request Connection::open for the hot path
-  checked: false
+  checked: true
 - id: error-codes-differentiated
   text: JSON-RPC errors use -32602 for param validation, -32603 for server errors, -32001 for missing index — not -32603 for everything
-  checked: false
+  checked: true
 - id: server-runs-clean-under-mcp-inspector
   text: patina mcp produces no stderr noise when exercised through initialize, tools/list, scry, assay, context, spec.list, and measure tool calls
-  checked: false
+  checked: true
 ---
 # refactor: MCP Server Hardening — Logging, Warnings, Connection Reuse
 
