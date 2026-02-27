@@ -85,7 +85,7 @@ pub fn get_active_session_id() -> Option<String> {
 /// Best-effort logging - failures are silently ignored to not disrupt scry.
 /// Returns the query_id for reference by open/copy/feedback commands.
 pub fn log_scry_query(query: &str, mode: &str, results: &[ScryResult]) -> Option<String> {
-    let session_id = get_active_session_id()?;
+    let session_id = get_active_session_id();
 
     let query_id = generate_query_id();
 
@@ -158,7 +158,7 @@ pub fn log_scry_query_with_routing(
     results: &[RoutedResult],
     routing: &RoutingContext,
 ) -> Option<String> {
-    let session_id = get_active_session_id()?;
+    let session_id = get_active_session_id();
 
     let query_id = generate_query_id();
 
