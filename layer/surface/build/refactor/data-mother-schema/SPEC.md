@@ -1,20 +1,30 @@
 ---
 type: refactor
 id: data-mother-schema
-status: draft
+status: ready
 created: 2026-02-26
 sessions:
   origin: 20260226-124149
 related:
 - data-architecture-v2
 beliefs:
-  - if-its-patina-its-git
+- if-its-patina-its-git
 exit_criteria:
-  - "graph.db beliefs table includes grounding_score, grounding_*_count, verification_*, last_activity columns"
-  - "graph sync reads and syncs all new columns from project patina.db"
-  - "dangling edges auto-cleaned during sync (not just warned)"
-  - "belief_applied_in queryable via `patina mother` search results"
-  - "FTS5 search results include health_score in output (consumer decides ranking; no blending formula — ship the data, defer the tuning per Andrew Ng principle: measure before optimize)"
+- id: graph-db-beliefs-table-includes-grounding-score-grounding-count-verification-last-activity-columns
+  text: graph.db beliefs table includes grounding_score, grounding_*_count, verification_*, last_activity columns
+  checked: false
+- id: graph-sync-reads-and-syncs-all-new-columns-from-project-patina-db
+  text: graph sync reads and syncs all new columns from project patina.db
+  checked: false
+- id: dangling-edges-auto-cleaned-during-sync-not-just-warned
+  text: dangling edges auto-cleaned during sync (not just warned)
+  checked: false
+- id: belief-applied-in-queryable-via-patina-mother-search-results
+  text: belief_applied_in queryable via `patina mother` search results
+  checked: false
+- id: fts5-search-results-include-health-score-in-output-consumer-decides-ranking-no-blending-formula-ship-the-data-defer-the-tuning-per-andrew-ng-principle-measure-before-optimize
+  text: 'FTS5 search results include health_score in output (consumer decides ranking; no blending formula — ship the data, defer the tuning per Andrew Ng principle: measure before optimize)'
+  checked: false
 ---
 # refactor: Mother Schema Alignment — Grounding + Verification in graph.db
 
