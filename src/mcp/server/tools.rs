@@ -357,7 +357,7 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                 },
                 {
                     "name": "spec.show",
-                    "description": "Show spec context — frontmatter, body, DESIGN.md, and key files in a single call. Use this to load all spec context before working on it.",
+                    "description": "Show spec context — frontmatter, body, DESIGN.md, and key files in a single call. Use this to load all spec context before working on it. Default returns heading outlines + file paths (token-efficient). Use the Read tool on the returned path to read specific sections. Only use full=true for small specs — vision specs can be 15k+ tokens.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
