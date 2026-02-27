@@ -400,7 +400,9 @@ fn log_mcp_query(query: &str, mode: &str, results: &[FusedResult]) -> Option<Str
     });
 
     // Best-effort insert into events.db
-    let conn = patina::eventlog::open_events_db().ok()?;
+    let conn = patina::eventlog::open_events_db()
+        .map_err(|e| tracing::warn!(error = %e, "failed to open events DB for query logging"))
+        .ok()?;
     let timestamp = now.to_rfc3339();
     patina::eventlog::insert_event(
         &conn,
@@ -410,6 +412,7 @@ fn log_mcp_query(query: &str, mode: &str, results: &[FusedResult]) -> Option<Str
         None,
         &query_data.to_string(),
     )
+    .map_err(|e| tracing::warn!(error = %e, "failed to log scry query event"))
     .ok()?;
 
     Some(query_id)
@@ -645,6 +648,7 @@ fn handle_orient(dir_path: &str, limit: usize) -> Result<String> {
 
     let pattern = format!("{}%", normalized_path);
     let mut stmt = conn.prepare(sql)?;
+    let mut row_failures = 0usize;
     let results: Vec<(String, f64, i64, String, bool, bool, i64)> = stmt
         .query_map(rusqlite::params![pattern, limit as i64], |row| {
             Ok((
@@ -657,7 +661,14 @@ fn handle_orient(dir_path: &str, limit: usize) -> Result<String> {
                 row.get::<_, i64>(6)?,
             ))
         })?
-        .filter_map(|r| r.ok())
+        .filter_map(|r| match r {
+            Ok(v) => Some(v),
+            Err(e) => {
+                tracing::warn!(error = %e, "orient row deserialization failed");
+                row_failures += 1;
+                None
+            }
+        })
         .collect();
 
     if results.is_empty() {
@@ -694,6 +705,13 @@ fn handle_orient(dir_path: &str, limit: usize) -> Result<String> {
             activity,
             commits,
             flags_str
+        ));
+    }
+
+    if row_failures > 0 {
+        output.push_str(&format!(
+            "_Warning: {} rows failed deserialization_\n",
+            row_failures
         ));
     }
 
