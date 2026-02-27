@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: mcp-server-hardening
-status: draft
+status: ready
 created: 2026-02-26
 sessions:
   origin: 20260226-152857
@@ -25,7 +25,7 @@ exit_criteria:
   text: JSON-RPC errors use -32602 for param validation, -32603 for server errors, -32001 for missing index — not -32603 for everything
   checked: false
 - id: server-runs-clean-under-mcp-inspector
-  text: "patina mcp" produces no stderr noise when exercised through initialize, tools/list, scry, assay, context, spec.list, and measure tool calls
+  text: patina mcp produces no stderr noise when exercised through initialize, tools/list, scry, assay, context, spec.list, and measure tool calls
   checked: false
 ---
 # refactor: MCP Server Hardening — Logging, Warnings, Connection Reuse
