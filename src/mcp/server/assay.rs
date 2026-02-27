@@ -43,7 +43,11 @@ fn serialize_result(value: serde_json::Value, failures: usize) -> Result<String>
     }
 }
 
-pub(super) fn handle(req: &Request, args: &serde_json::Value, conn: &rusqlite::Connection) -> Response {
+pub(super) fn handle(
+    req: &Request,
+    args: &serde_json::Value,
+    conn: &rusqlite::Connection,
+) -> Response {
     let query_type_str = args
         .get("query_type")
         .and_then(|v| v.as_str())
@@ -314,10 +318,9 @@ fn execute_assay(options: &AssayOptions, shared_conn: &rusqlite::Connection) -> 
             };
 
             let mut stmt = conn.prepare(sql)?;
-            let (functions, failures): (Vec<serde_json::Value>, usize) = if options.pattern.is_some()
-            {
-                collect_rows(
-                    stmt.query_map([&params[0], &params[1], &params[2]], |row| {
+            let (functions, failures): (Vec<serde_json::Value>, usize) =
+                if options.pattern.is_some() {
+                    collect_rows(stmt.query_map([&params[0], &params[1], &params[2]], |row| {
                         Ok(serde_json::json!({
                             "name": row.get::<_, String>(0)?,
                             "file": row.get::<_, String>(1)?,
@@ -326,11 +329,9 @@ fn execute_assay(options: &AssayOptions, shared_conn: &rusqlite::Connection) -> 
                             "parameters": row.get::<_, Option<String>>(4)?.unwrap_or_default(),
                             "return_type": row.get::<_, Option<String>>(5)?
                         }))
-                    })?,
-                )
-            } else {
-                collect_rows(
-                    stmt.query_map([&params[0]], |row| {
+                    })?)
+                } else {
+                    collect_rows(stmt.query_map([&params[0]], |row| {
                         Ok(serde_json::json!({
                             "name": row.get::<_, String>(0)?,
                             "file": row.get::<_, String>(1)?,
@@ -339,9 +340,8 @@ fn execute_assay(options: &AssayOptions, shared_conn: &rusqlite::Connection) -> 
                             "parameters": row.get::<_, Option<String>>(4)?.unwrap_or_default(),
                             "return_type": row.get::<_, Option<String>>(5)?
                         }))
-                    })?,
-                )
-            };
+                    })?)
+                };
 
             serialize_result(serde_json::json!(functions), failures)
         }
@@ -533,18 +533,16 @@ fn execute_assay_all_repos(options: &AssayOptions) -> Result<String> {
         match Connection::open(DB_PATH) {
             Ok(conn) => {
                 if let Ok(mut stmt) = conn.prepare(sql) {
-                    if let Ok(rows) =
-                        stmt.query_map([pattern, &limit.to_string()], |row| {
-                            Ok(serde_json::json!({
-                                "repo": "(current)",
-                                "path": row.get::<_, String>(0)?,
-                                "lines": row.get::<_, i64>(1)?,
-                                "bytes": row.get::<_, i64>(2)?,
-                                "functions": row.get::<_, i64>(3)?,
-                                "imports": row.get::<_, i64>(4)?
-                            }))
-                        })
-                    {
+                    if let Ok(rows) = stmt.query_map([pattern, &limit.to_string()], |row| {
+                        Ok(serde_json::json!({
+                            "repo": "(current)",
+                            "path": row.get::<_, String>(0)?,
+                            "lines": row.get::<_, i64>(1)?,
+                            "bytes": row.get::<_, i64>(2)?,
+                            "functions": row.get::<_, i64>(3)?,
+                            "imports": row.get::<_, i64>(4)?
+                        }))
+                    }) {
                         let (modules, failures) = collect_rows(rows);
                         total_failures += failures;
                         all_modules.extend(modules);
@@ -564,18 +562,16 @@ fn execute_assay_all_repos(options: &AssayOptions) -> Result<String> {
             Ok(conn) => {
                 if let Ok(mut stmt) = conn.prepare(sql) {
                     let repo_name = repo.name.clone();
-                    if let Ok(rows) =
-                        stmt.query_map([pattern, &limit.to_string()], |row| {
-                            Ok(serde_json::json!({
-                                "repo": repo_name.clone(),
-                                "path": row.get::<_, String>(0)?,
-                                "lines": row.get::<_, i64>(1)?,
-                                "bytes": row.get::<_, i64>(2)?,
-                                "functions": row.get::<_, i64>(3)?,
-                                "imports": row.get::<_, i64>(4)?
-                            }))
-                        })
-                    {
+                    if let Ok(rows) = stmt.query_map([pattern, &limit.to_string()], |row| {
+                        Ok(serde_json::json!({
+                            "repo": repo_name.clone(),
+                            "path": row.get::<_, String>(0)?,
+                            "lines": row.get::<_, i64>(1)?,
+                            "bytes": row.get::<_, i64>(2)?,
+                            "functions": row.get::<_, i64>(3)?,
+                            "imports": row.get::<_, i64>(4)?
+                        }))
+                    }) {
                         let (modules, failures) = collect_rows(rows);
                         total_failures += failures;
                         all_modules.extend(modules);
