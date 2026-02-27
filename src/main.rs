@@ -443,6 +443,12 @@ enum Commands {
         command: commands::schema::SchemaCommands,
     },
 
+    /// Manage event store (export/import JSONL replica)
+    Events {
+        #[command(subcommand)]
+        command: EventsCommands,
+    },
+
     /// Query codebase structure (modules, imports, call graph)
     Assay {
         #[command(subcommand)]
@@ -466,6 +472,18 @@ enum Commands {
         /// Query all registered repos (current project + reference repos)
         #[arg(long)]
         all_repos: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum EventsCommands {
+    /// Export new events to layer/events.jsonl (incremental, at-least-once)
+    Export,
+
+    /// Import events from JSONL file (disaster recovery)
+    Import {
+        /// Path to JSONL file to import
+        path: String,
     },
 }
 
@@ -1779,6 +1797,14 @@ fn main() -> Result<()> {
             let options = commands::measure::MeasureOptions { system, json, verb };
             commands::measure::execute(options)?;
         }
+        Some(Commands::Events { command }) => match command {
+            EventsCommands::Export => {
+                commands::events::export()?;
+            }
+            EventsCommands::Import { path } => {
+                commands::events::import(&path)?;
+            }
+        },
         Some(Commands::Assay {
             command,
             pattern,

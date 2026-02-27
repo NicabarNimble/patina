@@ -758,6 +758,9 @@ pub fn end_session(project_root: &Path) -> Result<()> {
         &data.to_string(),
     )?;
 
+    // 15b. Export new events to JSONL replica (best-effort, don't block archival)
+    crate::commands::events::export_best_effort();
+
     // 16. Clean up active session file and .last-update
     fs::remove_file(&session_path)?;
     if last_update_path.exists() {
