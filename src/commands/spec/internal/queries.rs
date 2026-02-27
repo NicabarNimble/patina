@@ -805,8 +805,9 @@ fn extract_key_files(body: &str) -> Vec<String> {
         }
         if in_key_files && in_fence {
             let trimmed = line.trim();
-            if !trimmed.is_empty() {
+            if !trimmed.is_empty() && !trimmed.starts_with('#') {
                 // Take first token (file path), skip trailing comments
+                // Lines starting with # are comments inside the code fence
                 if let Some(path) = trimmed.split_whitespace().next() {
                     files.push(path.to_string());
                 }
