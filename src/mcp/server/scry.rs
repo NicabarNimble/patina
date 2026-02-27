@@ -1107,10 +1107,7 @@ pub(super) fn emit_usage_event(event_type: &str, source_id: &str, data: &serde_j
         )?;
         Ok(())
     })() {
-        eprintln!(
-            "patina: warning: failed to record {} event: {e}",
-            event_type
-        );
+        tracing::warn!(event_type, error = %e, "failed to record usage event");
     }
 }
 
