@@ -34,27 +34,24 @@ fn check_secrets_gate() -> Result<()> {
         return Ok(());
     }
 
-    eprintln!("Checking secrets...");
+    info!("checking secrets gate");
 
     // Check identity
     if status.identity_source.is_none() {
-        eprintln!("  ✗ No identity configured");
+        warn!("no identity configured for secrets");
         anyhow::bail!(
             "\n❌ Cannot start MCP server.\n   Run: patina secrets add <name> to create vault and identity"
         );
     }
-    eprintln!("  ✓ Identity via {}", status.identity_source.unwrap());
+    info!(source = %status.identity_source.as_ref().unwrap(), "identity available");
 
     if has_global {
-        eprintln!(
-            "  ✓ Global vault ({} recipients)",
-            status.global.recipient_count
-        );
+        info!(recipients = status.global.recipient_count, "global vault");
     }
 
     if has_project {
         let project = status.project.unwrap();
-        eprintln!("  ✓ Project vault ({} recipients)", project.recipient_count);
+        info!(recipients = project.recipient_count, "project vault");
     }
 
     Ok(())
