@@ -24,8 +24,8 @@ exit_criteria:
 - id: values-flow-through-full-system
   text: values appear in patina.db, sync to graph.db, visible in mother search — dangling edges from data-mother-schema W2 resolved
   checked: false
-- id: llm-can-create-values-from-format-template
-  text: LLM can create new values by following the format template (manual creation path works)
+- id: llm-can-create-values-from-spec-template
+  text: LLM produces a valid value file from the Value Format Template section of this spec — file passes scrape, appears in patina.db, and the new value ID is recorded in DESIGN.md
   checked: false
 ---
 # feat: Core Values as First-Class Beliefs
@@ -38,9 +38,14 @@ exit_criteria:
 ## Current State
 
 Core layer documents (`layer/core/*.md`) are referenced in belief `supports:`
-fields but don't exist in the belief system. 14 belief IDs reference core
-docs that aren't in patina.db, creating 124 dangling edges in graph.db
-every sync cycle.
+fields but don't exist in the belief system. 5 core doc IDs are referenced
+across 39 beliefs (55 wiki-link references in source markdown). At sync time,
+`graph.db` materializes these as edge rows in both `belief_supports` and
+`belief_attacks` tables — `delete_dangling_edges()` cleans 124 rows per sync
+because edges dangle on either end (`from_belief` or `to_belief` not in
+beliefs table). The most-referenced: `dependable-rust` (21 refs),
+`spec-driven-design` (15), `unix-philosophy` (12), `patina-identity` (6),
+`adapter-pattern` (1).
 
 **The size problem:** Current core docs range from 848 bytes to 11KB. They're
 rich reference documents with tutorials, examples, cross-language bridges,
@@ -103,7 +108,9 @@ distilled_from: <source-doc-path>
 ```
 
 **Format rules:**
-- Target: under 800 bytes. Hard limit: 1KB.
+- Target: under 800 bytes. Hard limit: 1KB. Scrape emits
+  `"warning: value '<id>' exceeds 1KB (<size> bytes)"` to stdout during
+  `patina scrape` (advisory, not blocking — values are hand-curated).
 - `type: value` distinguishes from `type: belief`
 - `entrenchment: very-high` — values are foundational, not speculative
 - `distilled_from:` links back to the rich reference doc
@@ -111,15 +118,24 @@ distilled_from: <source-doc-path>
 - No tutorials, examples, code blocks, cross-language bridges
 - The rich source doc remains in `layer/core/` for humans who want depth
 
+**ID rule:** Value IDs **must match** the existing belief `supports:`
+targets. Beliefs reference `[[dependable-rust]]` → the value file must
+use `id: dependable-rust`. This is what eliminates the dangling edges.
+For multi-value docs (e.g., `patina-identity.md` → 2-3 values), one
+value takes the doc-level ID (`patina-identity`) and additional values
+get new IDs. No existing `supports:` references need editing — the
+doc-level ID is always preserved as a value.
+
 ## Steps
 
-1. **Define value format** — Finalize the template above. Document in
-   `layer/core/values/README.md` so LLMs can follow it.
+1. **Define value format** — Finalize the Value Format Template above.
+   This spec is the authoritative reference for the format.
 
 2. **Review existing core docs** — Audit each core doc to determine:
    - Is it a value? (principle → distill)
    - Is it multiple values? (split → distill each)
    - Is it reference-only? (skip — e.g., `build.md` is the roadmap)
+   - Record doc → value ID mappings in DESIGN.md as each is processed
 
    Current inventory (8 candidates, excluding `build.md`):
    | Doc | Size | Likely values |
@@ -153,7 +169,8 @@ distilled_from: <source-doc-path>
    - Values appear in `patina.db` (query beliefs WHERE kind = 'value')
    - Values flow to `graph.db` via mother sync
    - `patina mother search` returns values
-   - Edges from beliefs to values no longer dangle
+   - `patina mother graph sync` output shows 0 dangling edges cleaned
+     (was 124). Record the sync output in DESIGN.md as evidence.
    - `patina mother search "dependable-rust"` returns the value
 
 ## Non-Goals
