@@ -259,6 +259,7 @@ meaningful that happens to the project**, captured as immutable facts.
 | Tool metrics | `measure.capture`, `measure.search`, `measure.index`, `measure.believe`, `measure.evolve` | Active | Tool execution timing, counts, outcomes |
 | Search feedback | `scry.query`, `scry.use`, `scry.feedback` | Active | User search behavior, result selection |
 | External cache | `forge.issue`, `forge.pr` | Active | GitHub API responses (rate-limited, expensive) |
+| Usage tracking | `context.query`, `assay.query` | Active | Command invocation timing and parameters |
 | Session lifecycle | `session.start`, `session.end` | Planned | When work happened, what was accomplished |
 | Epistemic | `belief.created`, `belief.contested`, `belief.supported`, `belief.verified`, `belief.evolved`, `belief.retired` | Planned | Belief lifecycle — the moments decisions were made, challenged, and changed |
 | Spec lifecycle | `spec.promoted`, `spec.completed`, `spec.paused`, `spec.abandoned` | Planned | Spec state transitions — the journey from idea to shipped |
