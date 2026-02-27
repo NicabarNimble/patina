@@ -243,13 +243,13 @@ fn ensure_events_db_inner() -> Result<()> {
 
         if has_eventlog {
             let copied = conn.execute(
-                r#"INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data)
-                   SELECT event_type, timestamp, source_id, source_file, data
+                r#"INSERT OR IGNORE INTO eventlog (seq, event_type, timestamp, source_id, source_file, data)
+                   SELECT seq, event_type, timestamp, source_id, source_file, data
                    FROM patina.eventlog
                    WHERE event_type LIKE 'measure.%'
                       OR event_type LIKE 'scry.%'
                       OR event_type LIKE 'forge.%'
-                   ORDER BY timestamp ASC"#,
+                   ORDER BY seq ASC"#,
                 [],
             )?;
 
