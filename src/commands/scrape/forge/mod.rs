@@ -583,6 +583,19 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
         .map(|m| m.len() / 1024)
         .unwrap_or(0);
 
+    // Emit measurement: forge scrape capture metrics
+    patina::measure::emit_or_warn(
+        "capture",
+        "scrape",
+        "forge",
+        &serde_json::json!({
+            "issues_fetched": issue_count,
+            "prs_fetched": pr_count,
+            "refs_resolved": sync_stats.resolved,
+            "duration_ms": elapsed.as_millis() as u64,
+        }),
+    );
+
     Ok(ScrapeStats {
         items_processed: issue_count + pr_count + sync_stats.resolved,
         time_elapsed: elapsed,
