@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: data-mother-schema
-status: ready
+status: active
 created: 2026-02-26
 sessions:
   origin: 20260226-124149
