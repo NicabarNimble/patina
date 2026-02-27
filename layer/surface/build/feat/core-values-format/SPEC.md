@@ -14,19 +14,19 @@ beliefs:
 exit_criteria:
 - id: value-format-template-defined-and-documented
   text: value format template defined with frontmatter schema and body structure (target <1KB per value)
-  checked: false
+  checked: true
 - id: existing-core-docs-reviewed-and-distilled
   text: existing core docs reviewed — each produces one or more tight value files in layer/core/values/
-  checked: false
+  checked: true
 - id: scrape-pipeline-picks-up-values-deterministically
   text: scrape pipeline picks up layer/core/values/*.md as beliefs with kind "value" and entrenchment "very-high"
-  checked: false
+  checked: true
 - id: values-flow-through-full-system
   text: values appear in patina.db, sync to graph.db, visible in mother search — dangling edges from data-mother-schema W2 resolved
-  checked: false
+  checked: true
 - id: llm-can-create-values-from-spec-template
   text: LLM produces a valid value file from the Value Format Template section of this spec — file passes scrape, appears in patina.db, and the new value ID is recorded in DESIGN.md
-  checked: false
+  checked: true
 ---
 # feat: Core Values as First-Class Beliefs
 
