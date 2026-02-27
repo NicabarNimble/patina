@@ -288,11 +288,15 @@ pub(super) fn handle_context(req: &Request, args: &serde_json::Value) -> Respons
     let result = get_project_context(topic);
 
     // Emit usage event (best-effort)
-    emit_usage_event("context.query", topic.unwrap_or("(none)"), &serde_json::json!({
-        "topic": topic,
-        "duration_ms": start.elapsed().as_millis() as u64,
-        "source": "mcp",
-    }));
+    emit_usage_event(
+        "context.query",
+        topic.unwrap_or("(none)"),
+        &serde_json::json!({
+            "topic": topic,
+            "duration_ms": start.elapsed().as_millis() as u64,
+            "source": "mcp",
+        }),
+    );
 
     match result {
         Ok(text) => Response::success(
@@ -1091,7 +1095,10 @@ pub(super) fn emit_usage_event(event_type: &str, source_id: &str, data: &serde_j
         )?;
         Ok(())
     })() {
-        eprintln!("patina: warning: failed to record {} event: {e}", event_type);
+        eprintln!(
+            "patina: warning: failed to record {} event: {e}",
+            event_type
+        );
     }
 }
 
