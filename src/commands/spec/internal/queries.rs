@@ -662,42 +662,92 @@ pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// Full spec context for a single spec
+/// Spec context — outline mode (default for MCP) or full mode (CLI)
 #[derive(Debug, Clone, Serialize)]
 pub struct ShowResult {
     pub id: String,
     pub frontmatter: SpecFrontmatter,
-    pub body: String,
+    /// Heading outline of SPEC.md (always present)
+    pub outline: Vec<String>,
+    /// Heading outline of DESIGN.md (if it exists)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub design_outline: Option<Vec<String>>,
+    /// Full SPEC.md body (only in full mode)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
+    /// Full DESIGN.md content (only in full mode)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub design: Option<String>,
     pub files: Vec<String>,
+    /// File path to SPEC.md — use with Read tool for specific sections
+    pub path: String,
+    /// File path to DESIGN.md (if it exists)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub design_path: Option<String>,
 }
 
-/// Load full spec context: frontmatter + body + DESIGN.md + key files
-pub fn show_spec_value(id: &str) -> Result<ShowResult> {
+/// Extract markdown headings (lines starting with #) from text.
+/// Skips headings inside fenced code blocks (``` or ~~~).
+fn extract_outline(text: &str) -> Vec<String> {
+    let mut in_fence = false;
+    let mut headings = Vec::new();
+
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if !in_fence && trimmed.starts_with('#') && trimmed.contains(' ') {
+            headings.push(line.to_string());
+        }
+    }
+
+    headings
+}
+
+/// Load spec context: frontmatter + heading outlines + key files.
+///
+/// Default mode returns outlines only — compact for MCP (~500 tokens vs 17k).
+/// Full mode includes complete body and design text (for CLI display).
+pub fn show_spec_value(id: &str, full: bool) -> Result<ShowResult> {
     let loaded = load_spec(id)?;
+    let spec_path = loaded.file_path.clone();
 
     // Check for DESIGN.md in the same directory as SPEC.md
-    let design = Path::new(&loaded.file_path)
+    let design_path = Path::new(&loaded.file_path)
         .parent()
         .map(|dir| dir.join("DESIGN.md"))
-        .filter(|p| p.exists())
+        .filter(|p| p.exists());
+
+    let design_text = design_path
+        .as_ref()
         .and_then(|p| std::fs::read_to_string(p).ok());
 
-    // Extract key files from ## Key Files section
+    // Always extract outlines
+    let outline = extract_outline(&loaded.body);
+    let design_outline = design_text.as_ref().map(|d| extract_outline(d));
+
+    // Extract key files from ## Key Files section (always from full body)
     let files = extract_key_files(&loaded.body);
 
     Ok(ShowResult {
         id: loaded.frontmatter.id.clone(),
         frontmatter: loaded.frontmatter,
-        body: loaded.body,
-        design,
+        outline,
+        design_outline,
+        body: if full { Some(loaded.body) } else { None },
+        design: if full { design_text } else { None },
         files,
+        path: spec_path,
+        design_path: design_path.map(|p| p.to_string_lossy().to_string()),
     })
 }
 
 /// Display full spec context (human-readable or JSON)
 pub fn show_spec(id: &str, json: bool) -> Result<()> {
-    let result = show_spec_value(id)?;
+    // CLI always gets full content
+    let result = show_spec_value(id, true)?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&result)?);
@@ -708,7 +758,9 @@ pub fn show_spec(id: &str, json: bool) -> Result<()> {
     let status = result.frontmatter.status.as_deref().unwrap_or("unknown");
     println!("{} [{}]", result.id, status);
     println!();
-    println!("{}", result.body.trim());
+    if let Some(body) = &result.body {
+        println!("{}", body.trim());
+    }
 
     if let Some(design) = &result.design {
         println!("\n--- DESIGN.md ---\n");
