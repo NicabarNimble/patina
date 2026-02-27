@@ -5,6 +5,44 @@ use anyhow::Result;
 use super::super::protocol::{Request, Response};
 use crate::commands::assay::{AssayOptions, QueryType};
 
+/// Collect rows from a query, logging deserialization failures.
+/// Returns (successful_rows, failure_count).
+fn collect_rows<T>(rows: impl Iterator<Item = rusqlite::Result<T>>) -> (Vec<T>, usize) {
+    let mut ok = Vec::new();
+    let mut failures = 0usize;
+    for r in rows {
+        match r {
+            Ok(v) => ok.push(v),
+            Err(e) => {
+                tracing::warn!(error = %e, "row deserialization failed");
+                failures += 1;
+            }
+        }
+    }
+    (ok, failures)
+}
+
+/// Serialize JSON result, injecting `_warnings` if any rows failed.
+/// For objects, adds the field directly. For arrays, wraps in `{items, _warnings}`.
+fn serialize_result(value: serde_json::Value, failures: usize) -> Result<String> {
+    if failures == 0 {
+        return Ok(serde_json::to_string_pretty(&value)?);
+    }
+    let warnings = serde_json::json!([format!("{} rows failed deserialization", failures)]);
+    match value {
+        serde_json::Value::Object(mut map) => {
+            map.insert("_warnings".to_string(), warnings);
+            Ok(serde_json::to_string_pretty(&serde_json::Value::Object(
+                map,
+            ))?)
+        }
+        other => {
+            let wrapped = serde_json::json!({"items": other, "_warnings": warnings});
+            Ok(serde_json::to_string_pretty(&wrapped)?)
+        }
+    }
+}
+
 pub(super) fn handle(req: &Request, args: &serde_json::Value) -> Response {
     let query_type_str = args
         .get("query_type")
@@ -160,8 +198,8 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
             "#;
 
             let mut stmt = conn.prepare(sql)?;
-            let modules: Vec<serde_json::Value> = stmt
-                .query_map([pattern, &limit.to_string()], |row| {
+            let (modules, failures): (Vec<serde_json::Value>, usize) =
+                collect_rows(stmt.query_map([pattern, &limit.to_string()], |row| {
                     Ok(serde_json::json!({
                         "path": row.get::<_, String>(0)?,
                         "lines": row.get::<_, i64>(1)?,
@@ -169,9 +207,7 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
                         "functions": row.get::<_, i64>(3)?,
                         "imports": row.get::<_, i64>(4)?
                     }))
-                })?
-                .filter_map(|r| r.ok())
-                .collect();
+                })?);
 
             let total_lines: i64 = modules.iter().filter_map(|m| m["lines"].as_i64()).sum();
             let total_functions: i64 = modules.iter().filter_map(|m| m["functions"].as_i64()).sum();
@@ -184,7 +220,7 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
                     "total_functions": total_functions
                 }
             });
-            Ok(serde_json::to_string_pretty(&result)?)
+            serialize_result(result, failures)
         }
         QueryType::Imports => {
             let pattern = options.pattern.as_ref().unwrap();
@@ -203,17 +239,16 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
             "#;
 
             let mut stmt = conn.prepare(sql)?;
-            let imports: Vec<serde_json::Value> = stmt
-                .query_map([format!("%{}%", pattern), limit.to_string()], |row| {
+            let (imports, failures): (Vec<serde_json::Value>, usize) = collect_rows(
+                stmt.query_map([format!("%{}%", pattern), limit.to_string()], |row| {
                     Ok(serde_json::json!({
                         "path": row.get::<_, String>(0)?,
                         "kind": row.get::<_, String>(1)?
                     }))
-                })?
-                .filter_map(|r| r.ok())
-                .collect();
+                })?,
+            );
 
-            Ok(serde_json::to_string_pretty(&imports)?)
+            serialize_result(serde_json::json!(imports), failures)
         }
         QueryType::Importers => {
             let pattern = options.pattern.as_ref().unwrap();
@@ -232,17 +267,16 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
             "#;
 
             let mut stmt = conn.prepare(sql)?;
-            let importers: Vec<serde_json::Value> = stmt
-                .query_map([format!("%{}%", pattern), limit.to_string()], |row| {
+            let (importers, failures): (Vec<serde_json::Value>, usize) = collect_rows(
+                stmt.query_map([format!("%{}%", pattern), limit.to_string()], |row| {
                     Ok(serde_json::json!({
                         "file": row.get::<_, String>(0)?,
                         "names": row.get::<_, Option<String>>(1)?.unwrap_or_default()
                     }))
-                })?
-                .filter_map(|r| r.ok())
-                .collect();
+                })?,
+            );
 
-            Ok(serde_json::to_string_pretty(&importers)?)
+            serialize_result(serde_json::json!(importers), failures)
         }
         QueryType::Functions => {
             let limit = if options.limit > 0 {
@@ -279,35 +313,36 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
             };
 
             let mut stmt = conn.prepare(sql)?;
-            let functions: Vec<serde_json::Value> = if options.pattern.is_some() {
-                stmt.query_map([&params[0], &params[1], &params[2]], |row| {
-                    Ok(serde_json::json!({
-                        "name": row.get::<_, String>(0)?,
-                        "file": row.get::<_, String>(1)?,
-                        "is_public": row.get::<_, bool>(2)?,
-                        "is_async": row.get::<_, bool>(3)?,
-                        "parameters": row.get::<_, Option<String>>(4)?.unwrap_or_default(),
-                        "return_type": row.get::<_, Option<String>>(5)?
-                    }))
-                })?
-                .filter_map(|r| r.ok())
-                .collect()
+            let (functions, failures): (Vec<serde_json::Value>, usize) = if options.pattern.is_some()
+            {
+                collect_rows(
+                    stmt.query_map([&params[0], &params[1], &params[2]], |row| {
+                        Ok(serde_json::json!({
+                            "name": row.get::<_, String>(0)?,
+                            "file": row.get::<_, String>(1)?,
+                            "is_public": row.get::<_, bool>(2)?,
+                            "is_async": row.get::<_, bool>(3)?,
+                            "parameters": row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                            "return_type": row.get::<_, Option<String>>(5)?
+                        }))
+                    })?,
+                )
             } else {
-                stmt.query_map([&params[0]], |row| {
-                    Ok(serde_json::json!({
-                        "name": row.get::<_, String>(0)?,
-                        "file": row.get::<_, String>(1)?,
-                        "is_public": row.get::<_, bool>(2)?,
-                        "is_async": row.get::<_, bool>(3)?,
-                        "parameters": row.get::<_, Option<String>>(4)?.unwrap_or_default(),
-                        "return_type": row.get::<_, Option<String>>(5)?
-                    }))
-                })?
-                .filter_map(|r| r.ok())
-                .collect()
+                collect_rows(
+                    stmt.query_map([&params[0]], |row| {
+                        Ok(serde_json::json!({
+                            "name": row.get::<_, String>(0)?,
+                            "file": row.get::<_, String>(1)?,
+                            "is_public": row.get::<_, bool>(2)?,
+                            "is_async": row.get::<_, bool>(3)?,
+                            "parameters": row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                            "return_type": row.get::<_, Option<String>>(5)?
+                        }))
+                    })?,
+                )
             };
 
-            Ok(serde_json::to_string_pretty(&functions)?)
+            serialize_result(serde_json::json!(functions), failures)
         }
         QueryType::Callers => {
             let pattern = options.pattern.as_ref().unwrap();
@@ -326,19 +361,18 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
             "#;
 
             let mut stmt = conn.prepare(sql)?;
-            let callers: Vec<serde_json::Value> = stmt
-                .query_map([format!("%{}%", pattern), limit.to_string()], |row| {
+            let (callers, failures): (Vec<serde_json::Value>, usize) = collect_rows(
+                stmt.query_map([format!("%{}%", pattern), limit.to_string()], |row| {
                     Ok(serde_json::json!({
                         "caller": row.get::<_, String>(0)?,
                         "callee": row.get::<_, String>(1)?,
                         "file": row.get::<_, String>(2)?,
                         "call_type": row.get::<_, String>(3)?
                     }))
-                })?
-                .filter_map(|r| r.ok())
-                .collect();
+                })?,
+            );
 
-            Ok(serde_json::to_string_pretty(&callers)?)
+            serialize_result(serde_json::json!(callers), failures)
         }
         QueryType::Callees => {
             let pattern = options.pattern.as_ref().unwrap();
@@ -357,19 +391,18 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
             "#;
 
             let mut stmt = conn.prepare(sql)?;
-            let callees: Vec<serde_json::Value> = stmt
-                .query_map([format!("%{}%", pattern), limit.to_string()], |row| {
+            let (callees, failures): (Vec<serde_json::Value>, usize) = collect_rows(
+                stmt.query_map([format!("%{}%", pattern), limit.to_string()], |row| {
                     Ok(serde_json::json!({
                         "caller": row.get::<_, String>(0)?,
                         "callee": row.get::<_, String>(1)?,
                         "file": row.get::<_, String>(2)?,
                         "call_type": row.get::<_, String>(3)?
                     }))
-                })?
-                .filter_map(|r| r.ok())
-                .collect();
+                })?,
+            );
 
-            Ok(serde_json::to_string_pretty(&callees)?)
+            serialize_result(serde_json::json!(callees), failures)
         }
         QueryType::Derive => {
             // Derive signals and return them
@@ -399,8 +432,8 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
             "#;
 
             let mut stmt = conn.prepare(sql)?;
-            let signals: Vec<serde_json::Value> = stmt
-                .query_map([], |row| {
+            let (signals, failures): (Vec<serde_json::Value>, usize) =
+                collect_rows(stmt.query_map([], |row| {
                     Ok(serde_json::json!({
                         "path": row.get::<_, String>(0)?,
                         "is_used": row.get::<_, i32>(1)? != 0,
@@ -410,9 +443,7 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
                         "centrality_score": row.get::<_, f64>(5)?,
                         "computed_at": row.get::<_, Option<String>>(6)?
                     }))
-                })?
-                .filter_map(|r| r.ok())
-                .collect();
+                })?);
 
             let result = serde_json::json!({
                 "signals": signals,
@@ -421,7 +452,7 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
                     "used_modules": signals.iter().filter(|s| s["is_used"].as_bool().unwrap_or(false)).count()
                 }
             });
-            Ok(serde_json::to_string_pretty(&result)?)
+            serialize_result(result, failures)
         }
         QueryType::DeriveMoments => {
             // DeriveMoments not yet supported in MCP - use CLI instead
@@ -490,26 +521,33 @@ fn execute_assay_all_repos(options: &AssayOptions) -> Result<String> {
     "#;
 
     let mut all_modules: Vec<serde_json::Value> = Vec::new();
+    let mut total_failures = 0usize;
 
     // Query current project if it has a database
     if current_has_db {
-        if let Ok(conn) = Connection::open(DB_PATH) {
-            if let Ok(mut stmt) = conn.prepare(sql) {
-                let modules: Vec<serde_json::Value> = stmt
-                    .query_map([pattern, &limit.to_string()], |row| {
-                        Ok(serde_json::json!({
-                            "repo": "(current)",
-                            "path": row.get::<_, String>(0)?,
-                            "lines": row.get::<_, i64>(1)?,
-                            "bytes": row.get::<_, i64>(2)?,
-                            "functions": row.get::<_, i64>(3)?,
-                            "imports": row.get::<_, i64>(4)?
-                        }))
-                    })
-                    .ok()
-                    .map(|iter| iter.filter_map(|r| r.ok()).collect())
-                    .unwrap_or_default();
-                all_modules.extend(modules);
+        match Connection::open(DB_PATH) {
+            Ok(conn) => {
+                if let Ok(mut stmt) = conn.prepare(sql) {
+                    if let Ok(rows) =
+                        stmt.query_map([pattern, &limit.to_string()], |row| {
+                            Ok(serde_json::json!({
+                                "repo": "(current)",
+                                "path": row.get::<_, String>(0)?,
+                                "lines": row.get::<_, i64>(1)?,
+                                "bytes": row.get::<_, i64>(2)?,
+                                "functions": row.get::<_, i64>(3)?,
+                                "imports": row.get::<_, i64>(4)?
+                            }))
+                        })
+                    {
+                        let (modules, failures) = collect_rows(rows);
+                        total_failures += failures;
+                        all_modules.extend(modules);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(db = DB_PATH, error = %e, "failed to open current project DB");
             }
         }
     }
@@ -517,24 +555,30 @@ fn execute_assay_all_repos(options: &AssayOptions) -> Result<String> {
     // Query each registered repo
     for repo in &repos {
         let db_path = Path::new(&repo.path).join(".patina/local/data/patina.db");
-        if let Ok(conn) = Connection::open(&db_path) {
-            if let Ok(mut stmt) = conn.prepare(sql) {
-                let repo_name = repo.name.clone();
-                let modules: Vec<serde_json::Value> = stmt
-                    .query_map([pattern, &limit.to_string()], |row| {
-                        Ok(serde_json::json!({
-                            "repo": repo_name.clone(),
-                            "path": row.get::<_, String>(0)?,
-                            "lines": row.get::<_, i64>(1)?,
-                            "bytes": row.get::<_, i64>(2)?,
-                            "functions": row.get::<_, i64>(3)?,
-                            "imports": row.get::<_, i64>(4)?
-                        }))
-                    })
-                    .ok()
-                    .map(|iter| iter.filter_map(|r| r.ok()).collect())
-                    .unwrap_or_default();
-                all_modules.extend(modules);
+        match Connection::open(&db_path) {
+            Ok(conn) => {
+                if let Ok(mut stmt) = conn.prepare(sql) {
+                    let repo_name = repo.name.clone();
+                    if let Ok(rows) =
+                        stmt.query_map([pattern, &limit.to_string()], |row| {
+                            Ok(serde_json::json!({
+                                "repo": repo_name.clone(),
+                                "path": row.get::<_, String>(0)?,
+                                "lines": row.get::<_, i64>(1)?,
+                                "bytes": row.get::<_, i64>(2)?,
+                                "functions": row.get::<_, i64>(3)?,
+                                "imports": row.get::<_, i64>(4)?
+                            }))
+                        })
+                    {
+                        let (modules, failures) = collect_rows(rows);
+                        total_failures += failures;
+                        all_modules.extend(modules);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(db = %db_path.display(), repo = %repo.name, error = %e, "failed to open repo DB");
             }
         }
     }
@@ -555,5 +599,5 @@ fn execute_assay_all_repos(options: &AssayOptions) -> Result<String> {
         }
     });
 
-    Ok(serde_json::to_string_pretty(&result)?)
+    serialize_result(result, total_failures)
 }
