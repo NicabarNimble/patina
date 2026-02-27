@@ -1550,6 +1550,21 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
         .map(|m| m.len() / 1024)
         .unwrap_or(0);
 
+    // Emit measurement: beliefs scrape capture metrics
+    patina::measure::emit_or_warn(
+        "capture",
+        "scrape",
+        "beliefs",
+        &serde_json::json!({
+            "beliefs_processed": processed_count,
+            "beliefs_skipped": skipped,
+            "beliefs_verified": verified_count,
+            "supports_edges": supports_written,
+            "attacks_edges": attacks_written,
+            "duration_ms": elapsed.as_millis() as u64,
+        }),
+    );
+
     Ok(ScrapeStats {
         items_processed: processed_count,
         time_elapsed: elapsed,

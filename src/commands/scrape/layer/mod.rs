@@ -511,6 +511,18 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
         .map(|m| m.len() / 1024)
         .unwrap_or(0);
 
+    // Emit measurement: layer scrape capture metrics
+    patina::measure::emit_or_warn(
+        "capture",
+        "scrape",
+        "layer",
+        &serde_json::json!({
+            "patterns_processed": pattern_count,
+            "sessions_processed": session_count,
+            "duration_ms": elapsed.as_millis() as u64,
+        }),
+    );
+
     Ok(ScrapeStats {
         items_processed: total,
         time_elapsed: elapsed,
