@@ -28,7 +28,7 @@ exit_criteria:
   checked: true
 - id: belief-grounding-chain-is-traceable-event-evidence-belief
   text: 'belief grounding chain is traceable: event → evidence → belief'
-  checked: false
+  checked: true
 - id: each-implementation-area-has-a-sub-spec-with-concrete-testable-exit-criteria
   text: each implementation area has a sub-spec with concrete, testable exit criteria
   checked: true

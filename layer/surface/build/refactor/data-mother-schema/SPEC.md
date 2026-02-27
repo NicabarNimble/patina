@@ -12,19 +12,19 @@ beliefs:
 exit_criteria:
 - id: graph-db-beliefs-table-includes-grounding-score-grounding-count-verification-last-activity-columns
   text: graph.db beliefs table includes grounding_score, grounding_*_count, verification_*, last_activity columns
-  checked: false
+  checked: true
 - id: graph-sync-reads-and-syncs-all-new-columns-from-project-patina-db
   text: graph sync reads and syncs all new columns from project patina.db
-  checked: false
+  checked: true
 - id: dangling-edges-auto-cleaned-during-sync-not-just-warned
   text: dangling edges auto-cleaned during sync (not just warned)
-  checked: false
+  checked: true
 - id: belief-applied-in-queryable-via-patina-mother-search-results
   text: belief_applied_in queryable via `patina mother` search results
-  checked: false
+  checked: true
 - id: fts5-search-results-include-health-score-in-output-consumer-decides-ranking-no-blending-formula-ship-the-data-defer-the-tuning-per-andrew-ng-principle-measure-before-optimize
   text: 'FTS5 search results include health_score in output (consumer decides ranking; no blending formula — ship the data, defer the tuning per Andrew Ng principle: measure before optimize)'
-  checked: false
+  checked: true
 ---
 # refactor: Mother Schema Alignment — Grounding + Verification in graph.db
 
