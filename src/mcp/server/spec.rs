@@ -128,7 +128,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                         }),
                     )
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
             }
         }
         "spec.complete" => {
@@ -152,7 +152,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                         }),
                     )
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
             }
         }
         "spec.abandon" => {
@@ -175,7 +175,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                         }),
                     )
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
             }
         }
         "spec.pause" => {
@@ -205,7 +205,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                         }),
                     )
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
             }
         }
         "spec.resume" => {
@@ -228,7 +228,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                         }),
                     )
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
             }
         }
         "spec.block" => {
@@ -266,7 +266,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                         }),
                     )
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
             }
         }
         "spec.split" => {
@@ -290,7 +290,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                         }),
                     )
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
             }
         }
         "spec.set" => {
@@ -324,7 +324,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                         }),
                     )
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
             }
         }
         "spec.create" => {
@@ -381,7 +381,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                         }),
                     )
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
             }
         }
         "spec.history" => {
@@ -403,7 +403,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                         }),
                     )
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
             }
         }
         // Schema introspection tools
@@ -417,7 +417,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                     }),
                 )
             }
-            Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
         },
         "schemas.show" => {
             let schema_name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
@@ -438,7 +438,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                         }),
                     )
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
             }
         }
         _ => Response::error(req.id.clone(), -32602, &format!("Unknown tool: {}", name)),
