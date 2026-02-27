@@ -4,8 +4,8 @@ id: data-architecture-v2
 status: ready
 created: 2026-02-26
 blocked_by:
-- data-emission-completeness
-- data-mother-schema  # topical coupling — not a structural dependency, but ensures federation work ships while data architecture context is fresh
+- data-emission-completeness  # COMPLETE (v0.33.0)
+- data-mother-schema  # COMPLETE (v0.34.0)
 sessions:
   origin: 20260226-065302
 beliefs:
@@ -260,16 +260,16 @@ meaningful that happens to the project**, captured as immutable facts.
 | Search feedback | `scry.query`, `scry.use`, `scry.feedback` | Active | User search behavior, result selection |
 | External cache | `forge.issue`, `forge.pr` | Active | GitHub API responses (rate-limited, expensive) |
 | Usage tracking | `context.query`, `assay.query` | Active | Command invocation timing and parameters |
-| Session lifecycle | `session.start`, `session.end` | Planned | When work happened, what was accomplished |
+| Session lifecycle | `session.start`, `session.end` | Active | When work happened, what was accomplished |
 | Epistemic | `belief.created`, `belief.contested`, `belief.supported`, `belief.verified`, `belief.evolved`, `belief.retired` | Planned | Belief lifecycle — the moments decisions were made, challenged, and changed |
 | Spec lifecycle | `spec.promoted`, `spec.completed`, `spec.paused`, `spec.abandoned` | Planned | Spec state transitions — the journey from idea to shipped |
 | Decisions | `decision.made` | Planned | Choices captured with reasoning and alternatives considered |
 | Discovery | `discovery.pattern`, `discovery.cross_project` | Planned | Machine or human insight moments |
 | Future: audit trail | `audit.*` | Future | Verification results over time |
 
-**Status key:** Active = emitter exists in code today. Planned = defined and
-scoped, emitter to be wired in Area 2 (data-emission-completeness). Future =
-conceptual, no sub-spec yet.
+**Status key:** Active = emitter exists in code today (Areas 1-2 shipped all
+tool/search/session emissions). Planned = defined but emitter not yet wired.
+Future = conceptual, no sub-spec yet.
 
 **The boundary: moments vs current state.**
 
@@ -768,105 +768,91 @@ Events flow in, health metrics flow out, an LLM reasons about what's working.
 
 ### What exists and works
 
-- **eventlog table** in patina.db — holds both runtime and source-derived events
-- **60+ tables** of projections — code, git, layer, sessions, beliefs, forge
+- **events.db** — separate append-only event store (Area 1: [[data-db-split]])
+- **60+ tables** of projections in patina.db — code, git, layer, sessions, beliefs, forge
 - **5 FTS5 indices** — code, commits, patterns, beliefs, eventlog
+- **Full emission coverage** — all scrapers, context, assay, scry emit events (Area 2: [[data-emission-completeness]])
 - **measure command** — reads from tables, computes health across 5 protocol verbs
-- **mother graph sync** — federates beliefs across projects
-- **Scrape pipeline** — source-derived projections rebuild correctly
-- **Belief system** — 164 beliefs with supports/attacks/grounding/verification
+- **mother graph sync** — federates beliefs with grounding, verification, and temporal data (Area 3: [[data-mother-schema]])
+- **Scrape pipeline** — source-derived projections rebuild correctly, events.db untouched
+- **Belief system** — 170 beliefs with supports/attacks/grounding/verification
+- **Dangling edge cleanup** — auto-cleaned during sync (124 from orphaned core doc references, tracked in [[core-values-format]])
 
-### What's broken or missing
+### What's shipped (Areas 1-3)
 
-**Architecture:**
-- events.db doesn't exist — immutable and derived data share one file
-- `execute_rebuild()` destroys runtime history along with cache
-- No structural guarantee against accidental event deletion
+**Area 1: Database Split** — [[data-db-split]] COMPLETE
+- events.db exists as separate append-only store
+- `execute_rebuild()` only touches patina.db — events.db is untouched
+- Structural guarantee: rebuild cannot touch event history
 
-**Event capture (7 gaps):**
+**Area 2: Emission Completeness** — [[data-emission-completeness]] COMPLETE (v0.33.0)
+- All 7 emission gaps closed: scrape git/layer/beliefs/forge, context, assay, scry-without-session
+- Every tool execution emits an event — no silent operations
 
-| Missing Emission | Impact |
-|-----------------|--------|
-| scrape git | No `measure.capture` — can't trend scrape performance |
-| scrape layer | No `measure.capture` — layer scrape runs untracked |
-| scrape beliefs | No `measure.capture` — belief scrape runs untracked |
-| scrape forge | No `measure.capture` — forge scrape runs untracked |
-| context command | No event at all — context queries leave no trace |
-| assay command | No event at all — structural queries leave no trace |
-| scry without session | `scry.query` requires session_id — drops events outside sessions |
+**Area 3: Mother Schema Alignment** — [[data-mother-schema]] COMPLETE (v0.34.0)
+- 10 columns added to graph.db (grounding, verification, temporal)
+- Dangling edges auto-cleaned during sync
+- belief_applied_in surfaced in CLI and MCP search results
+- health_score in output (consumer decides ranking — no blending)
 
-Note: session lifecycle events (session.started, session.ended) already exist
-in `src/commands/session/internal.rs`. Original gap list overcounted.
+### What remains (Areas 4-5)
 
-**Mother schema drift:**
-
-| Column | patina.db | graph.db | Gap |
-|--------|-----------|----------|-----|
-| grounding_score | Yes | No | Cannot rank by evidence quality |
-| grounding_*_count | Yes | No | Cannot show evidence breakdown |
-| verification_* | Yes | No | Cannot show verification health |
-| last_activity | Yes | No | Cannot detect stale beliefs |
-
-Plus: 71 dangling edges (warning-only, not cleaned), belief_applied_in
-populated but never queried, FTS5 doesn't rank by health.
-
-**Measure query surface:**
+**Measure query surface** (Area 4: [[data-measure-surface]], draft):
 - No `--full` JSON output for LLM consumption
-- measure reads from patina.db tables, not from events.db (because events.db
-  doesn't exist yet)
+- measure reads from patina.db tables — could also read from events.db for
+  tool trends now that events.db exists
 - Some health computations use table state, which conflates "what we know now"
   with "what happened over time"
+
+**Fast incremental + hooks** (Area 5: [[data-fast-incremental]], draft):
+- Incremental scrape not yet optimized (especially co-change O(n²) for git)
+- No git hook integration for automatic scrape on commit
 
 ## Implementation Areas (Sub-Specs)
 
 This vision spec establishes the framing. Implementation details go into
 focused sub-specs, each independently shippable:
 
-### Area 1: Database Split
+### Area 1: Database Split — SHIPPED ([[data-db-split]])
 
 **Scope:** Create events.db, separate runtime event writers from source-derived
 scrapers, implement ATTACH for cross-system queries, migrate existing runtime
 events, update rebuild to leave events.db untouched.
 
-**Why first:** Everything else depends on the fundamental data separation
-being in place. You can't fix emission gaps into a database that gets deleted
-on rebuild.
+**Result:** events.db is the append-only event store. Rebuild only touches
+patina.db. Structural data integrity by construction.
 
-**Estimated touch:** ~7 files (runtime event writers + measure reader)
-
-### Area 2: Emission Completeness
+### Area 2: Emission Completeness — SHIPPED ([[data-emission-completeness]], v0.33.0)
 
 **Scope:** Wire measure.capture into all scrapers (git, layer, beliefs, forge).
-Add session lifecycle emissions. Fix scry to log without session_id. Add
-context and assay emissions.
+Fix scry to log without session_id. Add context and assay emissions.
 
-**Why second:** Once events.db exists, we need to fill it. Every silent
-operation is lost project memory.
+**Result:** All 7 emission gaps closed. Every tool execution emits an event.
+Found and fixed silent `?` swallowing on `Option` in MCP scry events
+(belief: [[question-mark-on-option-is-silent-swallower]]).
 
-**Estimated touch:** ~8 files (scrapers + session + scry + context + assay)
-
-### Area 3: Mother Schema Alignment
+### Area 3: Mother Schema Alignment — SHIPPED ([[data-mother-schema]], v0.34.0)
 
 **Scope:** Add grounding and verification columns to graph.db beliefs table.
 Sync these during graph sync. Clean dangling edges automatically. Wire
-belief_applied_in into search results. FTS5 ranking by health.
+belief_applied_in into search results. health_score in output.
 
-**Why parallel-safe:** Mother schema work is independent of the events.db
-split. Can proceed in parallel with Areas 1-2.
+**Result:** 10 columns added to graph.db with backwards-compatible migration.
+Dangling edges auto-cleaned (124 per sync from orphaned core doc references —
+root cause tracked in [[core-values-format]]). health_score and projects
+visible in CLI and MCP output. Consumer decides ranking — no blending formula.
 
-**Estimated touch:** ~3 files (mother/graph.rs + sync pipeline)
-
-### Area 4: Measure as LLM Query Surface
+### Area 4: Measure as LLM Query Surface — DRAFT ([[data-measure-surface]])
 
 **Scope:** `patina measure --full` returns domain-organized JSON. Measure reads
 from events.db (tool trends) + patina.db (belief health, code coverage,
 session activity). Designed for LLM consumption — structured, comprehensive,
 machine-parseable.
 
-**Why after split:** measure needs to ATTACH events.db. The query surface
-design depends on knowing what data is available in each system.
+**Dependency:** Now unblocked — events.db exists (Area 1), emission coverage
+is complete (Area 2), mother schema is aligned (Area 3).
 
-### Area 5: Fast Incremental + Hooks
+### Area 5: Fast Incremental + Hooks — DRAFT ([[data-fast-incremental]])
 
 **Scope:** Optimize incremental scrape (especially co-change O(n²) for git).
 Git hook integration for automatic scrape on commit. Target: <2s for
@@ -944,13 +930,17 @@ VIEWS (6):      feedback_session_queries, feedback_commit_files,
                 feedback_query_analysis
 ```
 
-### mother/graph.db (10 tables, 463KB)
+### mother/graph.db (8 tables)
 
 ```
 GRAPH:          nodes, edges, edge_usage
-BELIEFS:        beliefs, belief_supports, belief_attacks,
+BELIEFS:        beliefs (23 data columns + last_indexed),
+                belief_supports, belief_attacks,
                 belief_applied_in, belief_search (FTS5)
 ```
+
+Beliefs table now syncs grounding (5 cols), verification (4 cols), and
+temporal (1 col) data from project patina.dbs — aligned as of v0.34.0.
 
 ## References
 
@@ -958,6 +948,10 @@ BELIEFS:        beliefs, belief_supports, belief_attacks,
 - Session 20260226-065302 — Rebuild resilience, 3 fixes, spec drafted
 - Session 20260226-094014 — Deep audit, spec revised with corrected framing
 - Session 20260226-102315 — Architectural vision rewrite
+- Session 20260227-091509 — Area 2 (data-emission-completeness) audit + completion
+- Session 20260227-102343 — Area 3 (data-mother-schema) implementation
+- Session 20260227-105623 — Area 3 audit, core-values-format spec drafted
 - Belief: [[measure-reads-tables-not-events]]
 - Belief: [[seq-order-is-not-timestamp-order]]
 - Belief: [[check-existing-emissions-before-adding]]
+- Belief: [[question-mark-on-option-is-silent-swallower]]
