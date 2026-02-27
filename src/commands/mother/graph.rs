@@ -78,11 +78,20 @@ pub fn sync_from_registry() -> Result<()> {
         let db_path = project_root.join(".patina/local/data/patina.db");
         match collect_project_beliefs(project_name, &db_path) {
             Ok(entries) => {
-                let count = entries.len();
-                beliefs_synced += count;
+                let b = entries.iter().filter(|e| e.kind != "value").count();
+                let v = entries.iter().filter(|e| e.kind == "value").count();
+                beliefs_synced += b;
+                values_synced += v;
                 synced_sources.push(project_name.to_string());
-                if count > 0 {
-                    println!("  + {} beliefs from {} (current)", count, project_name);
+                if b + v > 0 {
+                    if v > 0 {
+                        println!(
+                            "  + {} beliefs + {} values from {} (current)",
+                            b, v, project_name
+                        );
+                    } else {
+                        println!("  + {} beliefs from {} (current)", b, project_name);
+                    }
                 }
                 knowledge.extend(entries);
             }
@@ -106,11 +115,17 @@ pub fn sync_from_registry() -> Result<()> {
         let db_path = registry_path.join(".patina/local/data/patina.db");
         match collect_project_beliefs(name, &db_path) {
             Ok(entries) => {
-                let count = entries.len();
-                beliefs_synced += count;
+                let b = entries.iter().filter(|e| e.kind != "value").count();
+                let v = entries.iter().filter(|e| e.kind == "value").count();
+                beliefs_synced += b;
+                values_synced += v;
                 synced_sources.push(name.clone());
-                if count > 0 {
-                    println!("  + {} beliefs from {}", count, name);
+                if b + v > 0 {
+                    if v > 0 {
+                        println!("  + {} beliefs + {} values from {}", b, v, name);
+                    } else {
+                        println!("  + {} beliefs from {}", b, name);
+                    }
                 }
                 knowledge.extend(entries);
             }
@@ -125,10 +140,11 @@ pub fn sync_from_registry() -> Result<()> {
     // Read persona values from ~/.patina/layer/surface/beliefs/
     match collect_persona_values() {
         Ok(entries) => {
-            values_synced = entries.len();
+            let persona_count = entries.len();
+            values_synced += persona_count;
             synced_sources.push("persona".to_string());
-            if values_synced > 0 {
-                println!("  + {} values from persona", values_synced);
+            if persona_count > 0 {
+                println!("  + {} values from persona", persona_count);
             }
             knowledge.extend(entries);
         }
