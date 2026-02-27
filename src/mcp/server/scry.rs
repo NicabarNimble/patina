@@ -1056,6 +1056,7 @@ fn handle_mother_search(query: &str, limit: usize) -> Result<String> {
     let json_results: Vec<serde_json::Value> = results
         .iter()
         .map(|entry| {
+            let projects = graph.query_belief_applied_in(&entry.id).unwrap_or_default();
             serde_json::json!({
                 "id": entry.id,
                 "source": entry.source,
@@ -1070,7 +1071,18 @@ fn handle_mother_search(query: &str, limit: usize) -> Result<String> {
                 "evidence_count": entry.evidence_count,
                 "evidence_verified": entry.evidence_verified,
                 "health_score": entry.health_score,
-                "contested_by": entry.contested_by
+                "contested_by": entry.contested_by,
+                "grounding_score": entry.grounding_score,
+                "grounding_code_count": entry.grounding_code_count,
+                "grounding_commit_count": entry.grounding_commit_count,
+                "grounding_session_count": entry.grounding_session_count,
+                "grounding_forge_count": entry.grounding_forge_count,
+                "verification_total": entry.verification_total,
+                "verification_passed": entry.verification_passed,
+                "verification_failed": entry.verification_failed,
+                "verification_errored": entry.verification_errored,
+                "last_activity": entry.last_activity,
+                "projects": projects
             })
         })
         .collect();
