@@ -204,8 +204,8 @@ pub fn sync_from_registry() -> Result<()> {
     // Sync edges into graph.db
     graph.sync_belief_edges(&supports_edges, &attacks_edges, &edge_synced_sources)?;
 
-    // Dangling edge detection: warn about edges referencing non-existent beliefs
-    detect_dangling_edges(&graph)?;
+    // Auto-clean dangling edges: delete edges referencing non-existent beliefs
+    clean_dangling_edges(&graph)?;
 
     println!();
     println!(
@@ -283,12 +283,44 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
         anyhow::bail!("no beliefs table — run `patina scrape --rebuild`");
     }
 
-    let mut stmt = conn.prepare(
+    // Query all 23 columns. Handle missing columns gracefully for older project DBs
+    // by checking which columns exist before building the SELECT.
+    let has_grounding = conn
+        .prepare("SELECT grounding_score FROM beliefs LIMIT 0")
+        .is_ok();
+    let has_verification = conn
+        .prepare("SELECT verification_total FROM beliefs LIMIT 0")
+        .is_ok();
+    let has_last_activity = conn
+        .prepare("SELECT last_activity FROM beliefs LIMIT 0")
+        .is_ok();
+
+    let grounding_cols = if has_grounding {
+        ", grounding_score, grounding_code_count, grounding_commit_count, grounding_session_count, grounding_forge_count"
+    } else {
+        ", 0.0, 0, 0, 0, 0"
+    };
+    let verification_cols = if has_verification {
+        ", verification_total, verification_passed, verification_failed, verification_errored"
+    } else {
+        ", 0, 0, 0, 0"
+    };
+    let last_activity_col = if has_last_activity {
+        ", last_activity"
+    } else {
+        ", NULL"
+    };
+
+    let sql = format!(
         "SELECT id, statement, entrenchment, status, facets,
                 cited_by_beliefs, cited_by_sessions, applied_in,
                 evidence_count, evidence_verified, health_score, contested_by, imported
+                {}{}{}
          FROM beliefs WHERE status != 'archived'",
-    )?;
+        grounding_cols, verification_cols, last_activity_col
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
 
     let entries: Vec<BeliefEntry> = stmt
         .query_map([], |row| {
@@ -314,6 +346,16 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
                 health_score: row.get::<_, Option<f64>>(10)?.unwrap_or(0.0),
                 contested_by: row.get::<_, Option<String>>(11)?.unwrap_or_default(),
                 imported: row.get::<_, Option<i32>>(12)?.unwrap_or(0) != 0,
+                grounding_score: row.get::<_, Option<f64>>(13)?.unwrap_or(0.0),
+                grounding_code_count: row.get::<_, Option<i32>>(14)?.unwrap_or(0),
+                grounding_commit_count: row.get::<_, Option<i32>>(15)?.unwrap_or(0),
+                grounding_session_count: row.get::<_, Option<i32>>(16)?.unwrap_or(0),
+                grounding_forge_count: row.get::<_, Option<i32>>(17)?.unwrap_or(0),
+                verification_total: row.get::<_, Option<i32>>(18)?.unwrap_or(0),
+                verification_passed: row.get::<_, Option<i32>>(19)?.unwrap_or(0),
+                verification_failed: row.get::<_, Option<i32>>(20)?.unwrap_or(0),
+                verification_errored: row.get::<_, Option<i32>>(21)?.unwrap_or(0),
+                last_activity: row.get::<_, Option<String>>(22)?,
             })
         })?
         .filter_map(|r| r.ok())
@@ -395,19 +437,17 @@ fn collect_belief_edges(
     Ok((supports, attacks))
 }
 
-/// Detect dangling edges: edges referencing belief IDs not in the beliefs table.
-/// Logs warnings to stderr, does NOT auto-delete.
-fn detect_dangling_edges(graph: &Graph) -> Result<()> {
-    let dangling = graph.find_dangling_edges()?;
+/// Clean dangling edges: edges referencing belief IDs not in the beliefs table.
+/// Deletes them and logs the count.
+fn clean_dangling_edges(graph: &Graph) -> Result<()> {
+    let deleted = graph.delete_dangling_edges()?;
 
-    if !dangling.is_empty() {
-        eprintln!(
-            "  ⚠ {} dangling edges (referencing unknown beliefs):",
-            dangling.len()
+    if deleted > 0 {
+        println!(
+            "  🧹 Cleaned {} dangling edge{}",
+            deleted,
+            if deleted == 1 { "" } else { "s" }
         );
-        for (edge_type, from, to, source) in &dangling {
-            eprintln!("    {} {} → {} (from {})", edge_type, from, to, source);
-        }
     }
 
     Ok(())
@@ -512,6 +552,16 @@ fn parse_persona_value(path: &Path) -> Result<BeliefEntry> {
         health_score: 0.0,
         contested_by: String::new(),
         imported: false,
+        grounding_score: 0.0,
+        grounding_code_count: 0,
+        grounding_commit_count: 0,
+        grounding_session_count: 0,
+        grounding_forge_count: 0,
+        verification_total: 0,
+        verification_passed: 0,
+        verification_failed: 0,
+        verification_errored: 0,
+        last_activity: None,
     })
 }
 
@@ -776,7 +826,7 @@ pub fn search_beliefs_cli(query: &str, limit: usize) -> Result<()> {
 
     println!();
     for entry in &results {
-        // Line 1: [source] id kind entrenchment
+        // Line 1: [source] id kind entrenchment health=X.XX
         let source_display = if entry.source == "persona" {
             "[persona]".to_string()
         } else {
@@ -784,11 +834,12 @@ pub fn search_beliefs_cli(query: &str, limit: usize) -> Result<()> {
         };
 
         println!(
-            "{:<20} {:<30} {:<8} {}",
+            "{:<20} {:<30} {:<8} {} health={:.2}",
             source_display,
             truncate(&entry.id, 30),
             entry.kind,
-            entry.entrenchment
+            entry.entrenchment,
+            entry.health_score
         );
 
         // Line 2: statement (truncated to 200 chars)
@@ -798,6 +849,13 @@ pub fn search_beliefs_cli(query: &str, limit: usize) -> Result<()> {
             entry.statement.clone()
         };
         println!("{:20} \"{}\"", "", stmt_display);
+
+        // Line 3: applied_in projects (if any)
+        let projects = graph.query_belief_applied_in(&entry.id).unwrap_or_default();
+        if !projects.is_empty() {
+            println!("{:20} projects: {}", "", projects.join(", "));
+        }
+
         println!();
     }
 
