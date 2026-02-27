@@ -283,8 +283,18 @@ pub(super) fn handle_scry(
 }
 
 pub(super) fn handle_context(req: &Request, args: &serde_json::Value) -> Response {
+    let start = std::time::Instant::now();
     let topic = args.get("topic").and_then(|v| v.as_str());
-    match get_project_context(topic) {
+    let result = get_project_context(topic);
+
+    // Emit usage event (best-effort)
+    emit_usage_event("context.query", topic.unwrap_or("(none)"), &serde_json::json!({
+        "topic": topic,
+        "duration_ms": start.elapsed().as_millis() as u64,
+        "source": "mcp",
+    }));
+
+    match result {
         Ok(text) => Response::success(
             req.id.clone(),
             serde_json::json!({
@@ -1062,6 +1072,27 @@ fn handle_mother_search(query: &str, limit: usize) -> Result<String> {
         .collect();
 
     Ok(serde_json::to_string_pretty(&json_results)?)
+}
+
+/// Emit a usage event to events.db (best-effort, warns on failure).
+///
+/// Shared helper for MCP handlers that need to record context.query or assay.query events.
+pub(super) fn emit_usage_event(event_type: &str, source_id: &str, data: &serde_json::Value) {
+    if let Err(e) = (|| -> Result<()> {
+        let conn = patina::eventlog::open_events_db()?;
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        patina::eventlog::insert_event(
+            &conn,
+            event_type,
+            &timestamp,
+            source_id,
+            None,
+            &data.to_string(),
+        )?;
+        Ok(())
+    })() {
+        eprintln!("patina: warning: failed to record {} event: {e}", event_type);
+    }
 }
 
 /// Format full detail content based on event type

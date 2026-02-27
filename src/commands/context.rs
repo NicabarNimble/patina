@@ -423,7 +423,31 @@ pub fn extract_summary(content: &str) -> String {
 
 /// Execute CLI context command
 pub fn execute(topic: Option<&str>) -> Result<()> {
+    let start = std::time::Instant::now();
     let output = get_project_context(topic)?;
     println!("{}", output);
+
+    // Emit usage event to events.db (best-effort)
+    let duration_ms = start.elapsed().as_millis() as u64;
+    if let Err(e) = (|| -> Result<()> {
+        let conn = patina::eventlog::open_events_db()?;
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        patina::eventlog::insert_event(
+            &conn,
+            "context.query",
+            &timestamp,
+            topic.unwrap_or("(none)"),
+            None,
+            &serde_json::json!({
+                "topic": topic,
+                "duration_ms": duration_ms,
+            })
+            .to_string(),
+        )?;
+        Ok(())
+    })() {
+        eprintln!("patina: warning: failed to record context.query event: {e}");
+    }
+
     Ok(())
 }
