@@ -77,7 +77,10 @@ pub fn export() -> Result<()> {
     drop(stmt);
 
     if rows.is_empty() {
-        println!("  No new events to export (last exported seq: {})", last_seq);
+        println!(
+            "  No new events to export (last exported seq: {})",
+            last_seq
+        );
         return Ok(());
     }
 
@@ -112,7 +115,10 @@ pub fn export() -> Result<()> {
 
     println!(
         "  Exported {} events to {} (seq {}..{})",
-        count, JSONL_PATH, last_seq + 1, max_seq
+        count,
+        JSONL_PATH,
+        last_seq + 1,
+        max_seq
     );
 
     Ok(())
@@ -133,8 +139,7 @@ pub fn import(path: &str) -> Result<()> {
     eventlog::ensure_events_db()?;
     let conn = eventlog::open_events_db()?;
 
-    let file = File::open(import_path)
-        .with_context(|| format!("failed to open {path}"))?;
+    let file = File::open(import_path).with_context(|| format!("failed to open {path}"))?;
     let reader = BufReader::new(file);
 
     let mut imported = 0i64;
@@ -193,7 +198,10 @@ pub fn import(path: &str) -> Result<()> {
 
     tx.commit()?;
 
-    println!("  Imported {} events, skipped {} duplicates", imported, skipped);
+    println!(
+        "  Imported {} events, skipped {} duplicates",
+        imported, skipped
+    );
     if errors > 0 {
         println!("  {} lines had errors", errors);
     }

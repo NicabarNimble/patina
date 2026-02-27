@@ -113,12 +113,15 @@ pub fn execute(json_output: bool) -> Result<i32> {
     };
 
     // Check data integrity (events.db + JSONL replica)
-    health_check.data_integrity =
-        check_data_integrity(&mut health_check.recommendations);
+    health_check.data_integrity = check_data_integrity(&mut health_check.recommendations);
 
     // Escalate status if data integrity has warnings
     let has_data_warnings = !health_check.data_integrity.events_db.warnings.is_empty()
-        || !health_check.data_integrity.jsonl_replica.warnings.is_empty();
+        || !health_check
+            .data_integrity
+            .jsonl_replica
+            .warnings
+            .is_empty();
     if has_data_warnings && health_check.status == "healthy" {
         health_check.status = "warning".to_string();
     }
@@ -251,8 +254,7 @@ fn check_data_integrity(recommendations: &mut Vec<String>) -> DataIntegrity {
             .events_db
             .warnings
             .push("events.db not found".to_string());
-        recommendations
-            .push("Run any command to initialize events.db".to_string());
+        recommendations.push("Run any command to initialize events.db".to_string());
     } else {
         // PRAGMA quick_check (fast, sufficient for routine checks)
         match Connection::open(events_path) {
@@ -306,8 +308,7 @@ fn check_data_integrity(recommendations: &mut Vec<String>) -> DataIntegrity {
             .jsonl_replica
             .warnings
             .push("layer/events.jsonl not found — no durability replica".to_string());
-        recommendations
-            .push("Run `patina events export` to create JSONL replica".to_string());
+        recommendations.push("Run `patina events export` to create JSONL replica".to_string());
     } else {
         // Read last line to get max seq
         integrity.jsonl_replica.max_seq = read_jsonl_max_seq(jsonl_path);
