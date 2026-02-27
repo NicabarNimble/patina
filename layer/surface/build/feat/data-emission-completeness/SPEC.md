@@ -1,11 +1,8 @@
 ---
 type: feat
 id: data-emission-completeness
-status: draft
+status: ready
 created: 2026-02-26
-blocked_by:
-- data-db-split
-- data-db-split-fixes
 sessions:
   origin: 20260226-124149
 related:
@@ -100,6 +97,14 @@ the event still fires — consistent with forward-compatible JSON conventions.
 
 Affects both `log_scry_query()` and `log_scry_query_with_routing()`.
 
+**Semantic note:** `session_id: null` means "this event happened outside a
+tracked session." It is NOT an error — it's the expected state for ad-hoc CLI
+usage, MCP queries from an IDE, or any patina command run without `patina
+session start`. Downstream consumers must treat `session_id` as optional.
+Grouping by session should use `WHERE session_id IS NOT NULL`. Ungrouped
+queries include all events regardless. This aligns with forward-compatible
+JSON conventions: readers default missing fields.
+
 ### 3. Add context and assay usage events (gaps 5-6)
 
 Emit a lightweight usage event when context or assay is invoked:
@@ -114,11 +119,14 @@ data-architecture-v2 SPEC.md before implementation.
 
 ### 4. Doctor emission coverage audit
 
-Add an emission coverage check to `patina doctor`:
-- For every command with side effects, verify a corresponding emit exists
-- Report: which commands emit, which don't, which event types have zero
-  events in events.db
+Add a runtime emission coverage check to `patina doctor`:
+- For each event type in the SPEC registry with status "Active", check
+  `COUNT(*) FROM events.eventlog WHERE event_type = '<type>'`
+- Report: which registered types have events in events.db, which have zero
 - Surfaces as a doctor warning, not a build failure
+- v1 is runtime-only (check events.db coverage). No static code-path
+  analysis — that's fragile and over-engineered for a dev tool. This check
+  becomes one data source that measure reads in Area 4.
 
 ## Non-Goals
 
