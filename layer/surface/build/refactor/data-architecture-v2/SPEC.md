@@ -25,7 +25,7 @@ exit_criteria:
   checked: true
 - id: every-tool-execution-emits-an-event-no-silent-operations
   text: every tool execution emits an event — no silent operations
-  checked: false
+  checked: true
 - id: belief-grounding-chain-is-traceable-event-evidence-belief
   text: 'belief grounding chain is traceable: event → evidence → belief'
   checked: false
