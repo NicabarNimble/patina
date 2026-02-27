@@ -368,7 +368,7 @@ pub(super) fn handle_mother(req: &Request, args: &serde_json::Value) -> Response
 /// Log an MCP query to events.db and return query_id (Phase 3)
 fn log_mcp_query(query: &str, mode: &str, results: &[FusedResult]) -> Option<String> {
     // Get session_id from active session
-    let session_id = crate::commands::scry::internal::logging::get_active_session_id()?;
+    let session_id = crate::commands::scry::internal::logging::get_active_session_id();
 
     // Generate query_id
     let now = chrono::Utc::now();
