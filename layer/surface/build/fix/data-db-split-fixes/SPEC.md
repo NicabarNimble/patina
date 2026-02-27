@@ -1,47 +1,47 @@
 ---
 type: fix
 id: data-db-split-fixes
-status: draft
+status: ready
 created: 2026-02-26
 sessions:
   origin: 20260226-152857
 related:
 - data-db-split
 - data-architecture-v2
-exit_criteria:
-- id: jsonl-replica-exists
-  text: "`layer/events.jsonl` is produced by export and contains all events from events.db"
-  checked: true
-- id: export-runs-on-session-end
-  text: "new events are appended to `layer/events.jsonl` on session end"
-  checked: true
-- id: import-rebuilds-events-db
-  text: "`patina events import` rebuilds events.db from JSONL — count matches"
-  checked: true
-- id: doctor-reports-replica-staleness
-  text: "`patina doctor` compares max seq in events.db vs JSONL and reports gap"
-  checked: true
-- id: write-failures-are-loud
-  text: "failed writes to events.db produce visible warnings via `emit_or_warn()` helper"
-  checked: true
-- id: doctor-checks-events-db-integrity
-  text: "`patina doctor` checks events.db existence and basic integrity (`PRAGMA quick_check`)"
-  checked: true
-- id: broken-fk-removed
-  text: "forge materialized view FK declarations removed or annotated"
-  checked: true
-- id: dead-syntax-cleaned
-  text: "bare block in eval.rs removed"
-  checked: true
-- id: migration-is-idempotent
-  text: "`ensure_events_db()` migration uses INSERT OR IGNORE — safe under concurrent execution"
-  checked: true
-- id: init-once-per-process
-  text: "`ensure_events_db()` runs once per process via `OnceLock`, not on every call"
-  checked: true
 beliefs:
 - if-its-patina-its-git
 - events-are-autobiography-not-telemetry
+exit_criteria:
+- id: jsonl-replica-exists
+  text: '`layer/events.jsonl` is produced by export and contains all events from events.db'
+  checked: true
+- id: export-runs-on-session-end
+  text: new events are appended to `layer/events.jsonl` on session end
+  checked: true
+- id: import-rebuilds-events-db
+  text: '`patina events import` rebuilds events.db from JSONL — count matches'
+  checked: true
+- id: doctor-reports-replica-staleness
+  text: '`patina doctor` compares max seq in events.db vs JSONL and reports gap'
+  checked: true
+- id: write-failures-are-loud
+  text: failed writes to events.db produce visible warnings via `emit_or_warn()` helper
+  checked: true
+- id: doctor-checks-events-db-integrity
+  text: '`patina doctor` checks events.db existence and basic integrity (`PRAGMA quick_check`)'
+  checked: true
+- id: broken-fk-removed
+  text: forge materialized view FK declarations removed or annotated
+  checked: true
+- id: dead-syntax-cleaned
+  text: bare block in eval.rs removed
+  checked: true
+- id: migration-is-idempotent
+  text: '`ensure_events_db()` migration uses INSERT OR IGNORE — safe under concurrent execution'
+  checked: true
+- id: init-once-per-process
+  text: '`ensure_events_db()` runs once per process via `OnceLock`, not on every call'
+  checked: true
 ---
 # fix: Data DB Split Fixes — Durability, Safety, and Cleanup
 
