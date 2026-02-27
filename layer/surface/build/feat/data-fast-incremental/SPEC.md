@@ -59,10 +59,13 @@ The specific bottlenecks:
    file matching the grammar set and re-parses it with tree-sitter. No
    mtime or content-hash check to skip files that haven't changed.
 
-3. **No git hooks.** There is no post-commit hook to trigger incremental
-   scrape automatically. The developer must remember to run `patina scrape`
-   after committing. This means the knowledge base drifts until the next
-   manual scrape or session start.
+3. **No git hooks — the belief system drifts between sessions.** There is no
+   post-commit hook to trigger incremental scrape automatically. The developer
+   must remember to run `patina scrape` after committing. This means the
+   knowledge base drifts until the next manual scrape or session start.
+   Patina is a belief system that lives on top of git — hooks aren't
+   performance polish, they're how the system stays alive. Without hooks,
+   beliefs grounded in code become stale the moment a commit lands.
 
 4. **No timing data.** `ScrapeStats` captures `time_elapsed` but only
    prints it to stdout — never persisted. There's no baseline to measure
@@ -131,9 +134,13 @@ Compare file mtime against `scrape_meta` last_processed_code timestamp.
 Skip files older than the last scrape. Less reliable than git (mtime can
 be reset by builds, editors) but works without git.
 
-Strategy A is preferred because it's exact and already available (git
-scraper runs before code scraper in `execute_all()`). The code scraper
-can read the git diff output instead of walking the full file tree.
+Strategy A is preferred because it's exact and already available via git.
+
+**Execution order prerequisite:** Today `execute_all()` runs code BEFORE git.
+This must be swapped: git first, then code. The git scraper produces the diff
+of changed files; the code scraper consumes it to skip unchanged files. Add a
+comment in `execute_all()` documenting this ordering dependency so future
+refactors don't break the assumption.
 
 ### 3. Post-commit hook
 
@@ -201,3 +208,34 @@ proper event emission when Area 2 ships.
   shows they're bottlenecks.
 - **Hook for non-git VCS.** Patina is git-first ([[if-its-patina-its-git]]).
   Hooks for other VCS are out of scope.
+
+## Alignment Notes (session 20260227-075037)
+
+**Hooks are system integrity, not just performance.** Patina is a belief
+system that lives on top of git. Hooks are how the system stays current
+between sessions — without them, every belief grounded in code becomes
+potentially stale the moment a commit lands. This framing upgrades hooks
+from Phase D polish to a core system concern. The exit criteria already
+cover hook existence and install mechanism; this note captures the *why*.
+
+**Future direction:** Pre-commit hooks for belief verification (does this
+commit contradict active beliefs?) are a natural extension. Not v2 scope,
+but the hook infrastructure built here should accommodate it. Link to
+[[if-its-patina-its-git]] and watch for contradictions — this is a future
+target, not a past grounding.
+
+**Benchmark definition:** The 2s gate is measured against patina's own
+repository (~8K commits, ~200 patterns, ~168 beliefs). Benchmark invocation:
+```bash
+echo "// touch" >> src/lib.rs
+git add src/lib.rs && git commit -m "benchmark touch"
+time patina scrape
+```
+Baseline profile (exit criterion 6) captures per-scraper timings before
+optimization. That becomes the comparison point. Hardware specs documented
+alongside baseline.
+
+**Execution order dependency:** git scraper must run before code scraper
+in `execute_all()` so git diff data is available for file-skip. This is
+a hard ordering constraint that must be enforced with a code comment and
+potentially an assertion.

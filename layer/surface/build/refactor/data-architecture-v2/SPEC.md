@@ -4,9 +4,8 @@ id: data-architecture-v2
 status: ready
 created: 2026-02-26
 blocked_by:
-- data-db-split
 - data-emission-completeness
-- data-mother-schema
+- data-mother-schema  # topical coupling — not a structural dependency, but ensures federation work ships while data architecture context is fresh
 sessions:
   origin: 20260226-065302
 beliefs:
@@ -20,10 +19,10 @@ beliefs:
 exit_criteria:
 - id: events-db-is-append-only-no-delete-no-update-never-touched-by-rebuild
   text: events.db is append-only — no DELETE, no UPDATE, never touched by rebuild
-  checked: false
+  checked: true
 - id: patina-db-is-fully-rebuildable-from-git-layer-events-db
   text: patina.db is fully rebuildable from git + layer/ + events.db
-  checked: false
+  checked: true
 - id: every-tool-execution-emits-an-event-no-silent-operations
   text: every tool execution emits an event — no silent operations
   checked: false
@@ -32,13 +31,13 @@ exit_criteria:
   checked: false
 - id: each-implementation-area-has-a-sub-spec-with-concrete-testable-exit-criteria
   text: each implementation area has a sub-spec with concrete, testable exit criteria
-  checked: false
+  checked: true
 - id: measure-answers-is-this-project-healthy-with-data-not-opinion
   text: measure answers 'is this project healthy?' with data, not opinion
   checked: false
 - id: sub-specs-created-and-scoped-for-each-implementation-area
   text: sub-specs created and scoped for each implementation area
-  checked: false
+  checked: true
 ---
 
 # refactor: Data Architecture v2

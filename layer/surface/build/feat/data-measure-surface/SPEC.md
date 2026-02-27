@@ -222,6 +222,45 @@ user view (no `--full`). Two report types:
 - `MeasureReport` — compact, for terminal display
 - `FullMeasureReport` — comprehensive, for LLMs
 
+## Pre-Implementation Review Concerns
+
+These items were flagged during the data-architecture-v2 alignment review
+(session 20260227-075037) and must be resolved before implementation begins:
+
+1. **Pin VerbStatus enum.** Add `degraded` as a 4th status (currently: Good,
+   NeedsAttention, NoData). Define derivation: degraded = multiple verbs
+   failing or critical system down. needs_attention = one verb has issues.
+
+2. **Define required vs optional fields.** The JSON example is illustrative,
+   not normative. Write a field table with types and nullability in DESIGN.md
+   before coding. Required per-verb: `status`, `latest_timestamp` (nullable),
+   `age_hours` (nullable), `freshness` (nullable), `sources` (array, may be
+   empty), `diagnostics` (array, may be empty).
+
+3. **Clarify `execute_feedback()` ownership.** The rewrite lives in
+   `src/commands/eval/mod.rs` (eval owns the computation). Measure reads the
+   result (the precision metric) via the `search` verb's health status. The
+   interface is a value, not a shared connection. Keep eval and measure as
+   separate concerns with a data contract between them.
+
+4. **ATTACH helper pattern.** Per Gjengset principle: if a function requires
+   ATTACH, make it explicit at the call site. Extract `fn attach_events(conn)`
+   helper. When a second consumer appears, promote to newtype wrapper. Don't
+   build type machinery until reuse justifies it.
+
+5. **`health.status` derivation rule.** Worst-verb-wins: if any verb is
+   `degraded` → health is `degraded`. If any is `needs_attention` → health
+   is `needs_attention`. All `good` → `good`. All `no_data` → `no_data`.
+
+6. **Point-in-time vs temporal scope.** Questions 1-7 are v1 (point-in-time).
+   Questions 8-9 (temporal trends) are stretch. Don't block v1 on temporal.
+
+7. **MCP/CLI unification means shared function.** One Rust function
+   `build_full_report(conn) -> Result<FullMeasureReport>`. Both CLI `--full
+   --json` and `mcp_measure()` call it and serialize. Same binary, same
+   library function, different serialization contexts. No env var or auth
+   differences — patina is local.
+
 ## Non-Goals
 
 - **Custom thresholds.** Freshness windows are hardcoded constants. Measure
