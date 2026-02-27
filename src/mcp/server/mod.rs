@@ -1,6 +1,7 @@
 //! MCP server - stdio transport
 
 use anyhow::Result;
+use rusqlite::Connection;
 use std::io::{BufRead, BufReader, Write};
 use tracing::{info, warn};
 
@@ -80,7 +81,11 @@ pub fn run_mcp_server() -> Result<()> {
     // Initialize query engine
     let engine = QueryEngine::new();
 
-    info!(log = %log_path, "MCP server ready");
+    // Open patina.db once for the server lifetime (single-threaded, &Connection is safe)
+    let db_path = ".patina/local/data/patina.db";
+    std::fs::create_dir_all(".patina/local/data").ok();
+    let patina_conn = Connection::open(db_path)?;
+    info!(db = db_path, log = %log_path, "MCP server ready");
 
     for line in reader.lines() {
         let line = line?;
@@ -113,7 +118,7 @@ pub fn run_mcp_server() -> Result<()> {
             continue;
         }
 
-        let response = dispatch(&request, &engine);
+        let response = dispatch(&request, &engine, &patina_conn);
         writeln!(stdout, "{}", serde_json::to_string(&response)?)?;
         stdout.flush()?;
     }
@@ -121,12 +126,12 @@ pub fn run_mcp_server() -> Result<()> {
     Ok(())
 }
 
-fn dispatch(req: &Request, engine: &QueryEngine) -> Response {
+fn dispatch(req: &Request, engine: &QueryEngine, conn: &Connection) -> Response {
     match req.method.as_str() {
         "initialize" => handle_initialize(req, engine),
         "initialized" => Response::success(req.id.clone(), serde_json::json!({})),
         "tools/list" => tools::handle_list_tools(req),
-        "tools/call" => handle_tool_call(req, engine),
+        "tools/call" => handle_tool_call(req, engine, conn),
         _ => Response::error(req.id.clone(), -32601, "Method not found"),
     }
 }
@@ -163,7 +168,7 @@ fn handle_measure(req: &Request) -> Response {
     }
 }
 
-fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
+fn handle_tool_call(req: &Request, engine: &QueryEngine, conn: &Connection) -> Response {
     let name = req
         .params
         .get("name")
@@ -172,10 +177,10 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
     let args = req.params.get("arguments").cloned().unwrap_or_default();
 
     match name {
-        "scry" => scry::handle_scry(req, &args, engine),
+        "scry" => scry::handle_scry(req, &args, engine, conn),
         "context" => scry::handle_context(req, &args),
         "mother" => scry::handle_mother(req, &args),
-        "assay" => assay::handle(req, &args),
+        "assay" => assay::handle(req, &args, conn),
         "measure" => handle_measure(req),
         n if n.starts_with("spec.") || n.starts_with("schemas.") => spec::handle(req, n, &args),
         _ => Response::error(req.id.clone(), -32602, &format!("Unknown tool: {}", name)),
