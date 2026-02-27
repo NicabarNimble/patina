@@ -15,6 +15,7 @@ pub(super) fn handle_scry(
     req: &Request,
     args: &serde_json::Value,
     engine: &QueryEngine,
+    conn: &rusqlite::Connection,
 ) -> Response {
     let mode = args.get("mode").and_then(|v| v.as_str()).unwrap_or("find");
     let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
@@ -31,7 +32,7 @@ pub(super) fn handle_scry(
                 );
             }
 
-            match handle_orient(path, limit) {
+            match handle_orient(conn, path, limit) {
                 Ok(text) => Response::success(
                     req.id.clone(),
                     serde_json::json!({
@@ -45,7 +46,7 @@ pub(super) fn handle_scry(
             let query = args.get("query").and_then(|v| v.as_str());
             let days = args.get("days").and_then(|v| v.as_u64()).unwrap_or(7) as u32;
 
-            match handle_recent(query, days, limit) {
+            match handle_recent(conn, query, days, limit) {
                 Ok(text) => Response::success(
                     req.id.clone(),
                     serde_json::json!({
@@ -585,14 +586,7 @@ fn format_results_full(results: &[FusedResult]) -> String {
 // ============================================================================
 
 /// Handle orient mode - rank files in a directory by structural importance
-fn handle_orient(dir_path: &str, limit: usize) -> Result<String> {
-    use anyhow::Context;
-    use rusqlite::Connection;
-
-    let db_path = ".patina/local/data/patina.db";
-    let conn = Connection::open(db_path)
-        .with_context(|| "Failed to open database. Run 'patina scrape' first.")?;
-
+fn handle_orient(conn: &rusqlite::Connection, dir_path: &str, limit: usize) -> Result<String> {
     // Check if module_signals table exists
     let table_exists: bool = conn
         .query_row(
@@ -719,14 +713,12 @@ fn handle_orient(dir_path: &str, limit: usize) -> Result<String> {
 }
 
 /// Handle recent mode - show recently changed files
-fn handle_recent(query: Option<&str>, days: u32, limit: usize) -> Result<String> {
-    use anyhow::Context;
-    use rusqlite::Connection;
-
-    let db_path = ".patina/local/data/patina.db";
-    let conn = Connection::open(db_path)
-        .with_context(|| "Failed to open database. Run 'patina scrape' first.")?;
-
+fn handle_recent(
+    conn: &rusqlite::Connection,
+    query: Option<&str>,
+    days: u32,
+    limit: usize,
+) -> Result<String> {
     let cutoff = chrono::Utc::now() - chrono::Duration::days(days as i64);
     let cutoff_str = cutoff.format("%Y-%m-%d").to_string();
 
@@ -747,6 +739,7 @@ fn handle_recent(query: Option<&str>, days: u32, limit: usize) -> Result<String>
     };
 
     let mut stmt = conn.prepare(sql)?;
+    let mut row_failures = 0usize;
     let results: Vec<(String, String, String, String)> = if let Some(q) = query {
         let pattern = format!("%{}%", q);
         stmt.query_map(
@@ -760,7 +753,14 @@ fn handle_recent(query: Option<&str>, days: u32, limit: usize) -> Result<String>
                 ))
             },
         )?
-        .filter_map(|r| r.ok())
+        .filter_map(|r| match r {
+            Ok(v) => Some(v),
+            Err(e) => {
+                tracing::warn!(error = %e, "recent row deserialization failed");
+                row_failures += 1;
+                None
+            }
+        })
         .collect()
     } else {
         stmt.query_map(rusqlite::params![cutoff_str, limit as i64 * 3], |row| {
@@ -771,7 +771,14 @@ fn handle_recent(query: Option<&str>, days: u32, limit: usize) -> Result<String>
                 row.get::<_, String>(3)?,
             ))
         })?
-        .filter_map(|r| r.ok())
+        .filter_map(|r| match r {
+            Ok(v) => Some(v),
+            Err(e) => {
+                tracing::warn!(error = %e, "recent row deserialization failed");
+                row_failures += 1;
+                None
+            }
+        })
         .collect()
     };
 
@@ -809,6 +816,13 @@ fn handle_recent(query: Option<&str>, days: u32, limit: usize) -> Result<String>
             } else {
                 short_msg
             }
+        ));
+    }
+
+    if row_failures > 0 {
+        output.push_str(&format!(
+            "_Warning: {} rows failed deserialization_\n",
+            row_failures
         ));
     }
 
@@ -976,13 +990,18 @@ fn handle_detail(query_id: &str, rank: usize) -> Result<String> {
         doc_id
     };
     let patina_conn = Connection::open(patina::eventlog::PATINA_DB)?;
-    let full_data: Option<String> = patina_conn
-        .query_row(
-            "SELECT data FROM eventlog WHERE source_id = ? ORDER BY seq DESC LIMIT 1",
-            [lookup_id],
-            |row| row.get(0),
-        )
-        .ok();
+    let full_data: Option<String> = match patina_conn.query_row(
+        "SELECT data FROM eventlog WHERE source_id = ? ORDER BY seq DESC LIMIT 1",
+        [lookup_id],
+        |row| row.get(0),
+    ) {
+        Ok(v) => Some(v),
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(e) => {
+            tracing::warn!(doc_id, error = %e, "failed to fetch detail content");
+            None
+        }
+    };
 
     let mut output = format!(
         "Detail: {} (rank #{}, score: {:.3}, type: {})\n\n",

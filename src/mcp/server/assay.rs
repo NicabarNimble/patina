@@ -43,7 +43,7 @@ fn serialize_result(value: serde_json::Value, failures: usize) -> Result<String>
     }
 }
 
-pub(super) fn handle(req: &Request, args: &serde_json::Value) -> Response {
+pub(super) fn handle(req: &Request, args: &serde_json::Value, conn: &rusqlite::Connection) -> Response {
     let query_type_str = args
         .get("query_type")
         .and_then(|v| v.as_str())
@@ -131,7 +131,7 @@ pub(super) fn handle(req: &Request, args: &serde_json::Value) -> Response {
     };
 
     let start = std::time::Instant::now();
-    let result = execute_assay(&options);
+    let result = execute_assay(&options, conn);
 
     // Emit usage event (best-effort)
     super::scry::emit_usage_event(
@@ -157,23 +157,24 @@ pub(super) fn handle(req: &Request, args: &serde_json::Value) -> Response {
 }
 
 /// Execute assay query and return JSON result
-fn execute_assay(options: &AssayOptions) -> Result<String> {
+fn execute_assay(options: &AssayOptions, shared_conn: &rusqlite::Connection) -> Result<String> {
     use rusqlite::Connection;
-
-    const DB_PATH: &str = ".patina/local/data/patina.db";
 
     // Handle all_repos mode
     if options.all_repos {
         return execute_assay_all_repos(options);
     }
 
-    // Resolve database path: specific repo or current directory
-    let db_path = match &options.repo {
-        Some(name) => crate::commands::repo::get_db_path(name)?,
-        None => DB_PATH.to_string(),
+    // Use shared connection for default DB, open per-call for specific repos
+    let specific_conn;
+    let conn = match &options.repo {
+        Some(name) => {
+            let db_path = crate::commands::repo::get_db_path(name)?;
+            specific_conn = Connection::open(&db_path)?;
+            &specific_conn
+        }
+        None => shared_conn,
     };
-
-    let conn = Connection::open(&db_path)?;
 
     match options.query_type {
         QueryType::Inventory => {
@@ -469,10 +470,14 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
             crate::commands::assay::internal::search::assay_search_json(query, &search_opts)
         }
         QueryType::Cochange { ref file } => {
+            let cochange_db = match &options.repo {
+                Some(name) => crate::commands::repo::get_db_path(name)?,
+                None => ".patina/local/data/patina.db".to_string(),
+            };
             crate::commands::assay::internal::temporal::execute_cochange_json(
                 file,
                 options.limit,
-                &db_path,
+                &cochange_db,
             )
         }
         QueryType::Belief { ref id } => {
