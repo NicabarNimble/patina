@@ -201,9 +201,8 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
     // 8. Write .last-update marker
     fs::write(&last_update_path, &time_str)?;
 
-    // 9. Write session.started event to eventlog
-    let db_path = project_root.join(patina::eventlog::PATINA_DB);
-    let conn = patina::eventlog::initialize(&db_path)?;
+    // 9. Write session.started event to events.db (runtime events)
+    let conn = patina::eventlog::open_events_db()?;
     let timestamp = now.to_rfc3339();
     let data = json!({
         "session_id": session_id,
@@ -465,9 +464,8 @@ pub fn update_session(project_root: &Path) -> Result<()> {
     // 7. Update last update timestamp
     fs::write(&last_update_path, &time_str)?;
 
-    // 8. Write session.update event to eventlog
-    let db_path = project_root.join(patina::eventlog::PATINA_DB);
-    let conn = patina::eventlog::initialize(&db_path)?;
+    // 8. Write session.update event to events.db (runtime events)
+    let conn = patina::eventlog::open_events_db()?;
     let timestamp = now.to_rfc3339();
     let data = json!({
         "session_id": session_id,
@@ -732,10 +730,9 @@ pub fn end_session(project_root: &Path) -> Result<()> {
     );
     fs::write(&last_session_path, &last_session_content)?;
 
-    // 15. Write session.ended event to eventlog
+    // 15. Write session.ended event to events.db (runtime events)
     let now = Local::now();
-    let db_path = project_root.join(patina::eventlog::PATINA_DB);
-    let conn = patina::eventlog::initialize(&db_path)?;
+    let conn = patina::eventlog::open_events_db()?;
     let timestamp = now.to_rfc3339();
     let data = json!({
         "session_id": session_id,
