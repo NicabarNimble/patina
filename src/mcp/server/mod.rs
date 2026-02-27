@@ -171,7 +171,11 @@ fn handle_measure(req: &Request) -> Response {
                 }]
             }),
         ),
-        Err(e) => Response::error(req.id.clone(), ERR_INTERNAL, &format!("measure failed: {}", e)),
+        Err(e) => Response::error(
+            req.id.clone(),
+            ERR_INTERNAL,
+            &format!("measure failed: {}", e),
+        ),
     }
 }
 
