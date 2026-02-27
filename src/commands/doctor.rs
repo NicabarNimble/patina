@@ -1,16 +1,43 @@
 use anyhow::{Context, Result};
 use patina::environment::Environment;
+use patina::eventlog;
 use patina::project;
 use patina::session::SessionManager;
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::Path;
 
 #[derive(Serialize, Deserialize)]
 struct HealthCheck {
     status: String, // "healthy", "warning", "critical"
     environment_changes: EnvironmentChanges,
     project_config: ProjectStatus,
+    data_integrity: DataIntegrity,
     recommendations: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct DataIntegrity {
+    events_db: EventsDbStatus,
+    jsonl_replica: JsonlReplicaStatus,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct EventsDbStatus {
+    exists: bool,
+    integrity_ok: bool,
+    event_count: i64,
+    max_seq: i64,
+    warnings: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct JsonlReplicaStatus {
+    exists: bool,
+    max_seq: i64,
+    gap: i64,
+    warnings: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -84,6 +111,22 @@ pub fn execute(json_output: bool) -> Result<i32> {
         layer_patterns: pattern_count,
         sessions: session_count,
     };
+
+    // Check data integrity (events.db + JSONL replica)
+    health_check.data_integrity =
+        check_data_integrity(&mut health_check.recommendations);
+
+    // Escalate status if data integrity has warnings
+    let has_data_warnings = !health_check.data_integrity.events_db.warnings.is_empty()
+        || !health_check.data_integrity.jsonl_replica.warnings.is_empty();
+    if has_data_warnings && health_check.status == "healthy" {
+        health_check.status = "warning".to_string();
+    }
+    if !health_check.data_integrity.events_db.integrity_ok
+        && health_check.data_integrity.events_db.exists
+    {
+        health_check.status = "critical".to_string();
+    }
 
     // Display results
     if json_output {
@@ -175,6 +218,7 @@ fn analyze_environment(current: &Environment, stored_tools: &[String]) -> Result
             layer_patterns: 0,
             sessions: 0,
         },
+        data_integrity: DataIntegrity::default(),
         recommendations,
     })
 }
@@ -192,6 +236,123 @@ fn get_install_command(tool: &str) -> &'static str {
         "git" => "brew install git (macOS) or apt install git (Linux)",
         _ => "Check your package manager",
     }
+}
+
+/// Check events.db integrity and JSONL replica staleness.
+fn check_data_integrity(recommendations: &mut Vec<String>) -> DataIntegrity {
+    let mut integrity = DataIntegrity::default();
+
+    // --- events.db checks ---
+    let events_path = Path::new(eventlog::EVENTS_DB);
+    integrity.events_db.exists = events_path.exists();
+
+    if !integrity.events_db.exists {
+        integrity
+            .events_db
+            .warnings
+            .push("events.db not found".to_string());
+        recommendations
+            .push("Run any command to initialize events.db".to_string());
+    } else {
+        // PRAGMA quick_check (fast, sufficient for routine checks)
+        match Connection::open(events_path) {
+            Ok(conn) => {
+                let quick_check: String = conn
+                    .query_row("PRAGMA quick_check", [], |row| row.get(0))
+                    .unwrap_or_else(|_| "error".to_string());
+                integrity.events_db.integrity_ok = quick_check == "ok";
+                if !integrity.events_db.integrity_ok {
+                    integrity
+                        .events_db
+                        .warnings
+                        .push(format!("PRAGMA quick_check: {}", quick_check));
+                    recommendations.push(
+                        "events.db may be corrupt. Import from JSONL: `patina events import layer/events.jsonl`".to_string(),
+                    );
+                }
+
+                // Row count + max seq
+                integrity.events_db.event_count = conn
+                    .query_row("SELECT COUNT(*) FROM eventlog", [], |row| row.get(0))
+                    .unwrap_or(0);
+                integrity.events_db.max_seq = conn
+                    .query_row("SELECT COALESCE(MAX(seq), 0) FROM eventlog", [], |row| {
+                        row.get(0)
+                    })
+                    .unwrap_or(0);
+
+                if integrity.events_db.event_count == 0 {
+                    integrity
+                        .events_db
+                        .warnings
+                        .push("events.db is empty (0 events)".to_string());
+                }
+            }
+            Err(e) => {
+                integrity
+                    .events_db
+                    .warnings
+                    .push(format!("failed to open events.db: {e}"));
+            }
+        }
+    }
+
+    // --- JSONL replica checks ---
+    let jsonl_path = Path::new("layer/events.jsonl");
+    integrity.jsonl_replica.exists = jsonl_path.exists();
+
+    if !integrity.jsonl_replica.exists {
+        integrity
+            .jsonl_replica
+            .warnings
+            .push("layer/events.jsonl not found — no durability replica".to_string());
+        recommendations
+            .push("Run `patina events export` to create JSONL replica".to_string());
+    } else {
+        // Read last line to get max seq
+        integrity.jsonl_replica.max_seq = read_jsonl_max_seq(jsonl_path);
+
+        // Compare with events.db max seq
+        if integrity.events_db.exists && integrity.events_db.max_seq > 0 {
+            integrity.jsonl_replica.gap =
+                integrity.events_db.max_seq - integrity.jsonl_replica.max_seq;
+            if integrity.jsonl_replica.gap > 0 {
+                integrity.jsonl_replica.warnings.push(format!(
+                    "JSONL is {} events behind (db max seq: {}, JSONL max seq: {})",
+                    integrity.jsonl_replica.gap,
+                    integrity.events_db.max_seq,
+                    integrity.jsonl_replica.max_seq
+                ));
+                recommendations
+                    .push("Run `patina events export` to sync JSONL replica".to_string());
+            }
+        }
+    }
+
+    integrity
+}
+
+/// Read the max seq from a JSONL file by scanning the last non-empty line.
+fn read_jsonl_max_seq(path: &Path) -> i64 {
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return 0,
+    };
+
+    // Find last non-empty line
+    for line in content.lines().rev() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        // Parse seq from JSON line
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
+            if let Some(seq) = value.get("seq").and_then(|v| v.as_i64()) {
+                return seq;
+            }
+        }
+    }
+    0
 }
 
 fn count_patterns(layer_path: &std::path::Path) -> usize {
@@ -266,6 +427,32 @@ fn display_health_check(
         health.project_config.layer_patterns
     );
     println!("  ✓ Sessions: {} recorded", health.project_config.sessions);
+
+    // Data integrity section
+    println!("\nData Integrity:");
+    let db = &health.data_integrity.events_db;
+    if !db.exists {
+        println!("  ⚠ events.db: not found");
+    } else if !db.integrity_ok {
+        println!("  ⚠ events.db: INTEGRITY CHECK FAILED");
+    } else {
+        println!(
+            "  ✓ events.db: {} events, max seq {}, integrity ok",
+            db.event_count, db.max_seq
+        );
+    }
+
+    let jsonl = &health.data_integrity.jsonl_replica;
+    if !jsonl.exists {
+        println!("  ⚠ JSONL replica: not found");
+    } else if jsonl.gap > 0 {
+        println!(
+            "  ⚠ JSONL replica: {} events behind (max seq {})",
+            jsonl.gap, jsonl.max_seq
+        );
+    } else {
+        println!("  ✓ JSONL replica: up to date (max seq {})", jsonl.max_seq);
+    }
 
     if !health.recommendations.is_empty() {
         println!("\nRecommendations:");
