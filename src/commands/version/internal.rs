@@ -271,7 +271,7 @@ mod tests {
         let yaml = r#"---
 type: feat
 id: v1-release
-status: in_progress
+status: active
 created: 2026-01-27
 updated: 2026-01-29
 sessions:
@@ -283,7 +283,7 @@ related:
 milestones:
   - version: "0.9.1"
     name: Version & spec system alignment
-    status: in_progress
+    status: active
   - version: "0.9.2"
     name: Epistemic E4
     status: pending
@@ -301,7 +301,7 @@ Body content here.
         assert_eq!(frontmatter.r#type, "feat");
         assert_eq!(frontmatter.milestones.len(), 2);
         assert_eq!(frontmatter.milestones[0].version, "0.9.1");
-        assert_eq!(frontmatter.milestones[0].status, "in_progress");
+        assert_eq!(frontmatter.milestones[0].status, "active");
         assert_eq!(frontmatter.current_milestone, Some("0.9.1".to_string()));
         assert!(body.contains("# feat: v1.0 Release"));
 
@@ -318,7 +318,7 @@ Body content here.
         let yaml = r#"---
 type: refactor
 id: test-spec
-status: in_progress
+status: active
 sessions: [20260108-200725, 20260109-063849]
 ---
 
@@ -340,7 +340,7 @@ sessions: [20260108-200725, 20260109-063849]
         let yaml = r#"---
 type: feat
 id: test-spec
-status: in_progress
+status: active
 sessions:
   origin: 20260127-085434
   work: [20260129-074742]

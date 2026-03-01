@@ -6,7 +6,7 @@ use std::process::Command;
 use serde::Serialize;
 
 use patina::release::BumpType;
-use patina::spec::{serialize_spec_file, SpecFrontmatter};
+use patina::spec::{serialize_spec_file, SpecFrontmatter, SpecStatus};
 
 use super::archive::{
     archive_spec_inner, find_spec, load_spec, release_and_archive, resolve_spec_dir, LoadedSpec,
@@ -92,11 +92,11 @@ where
     // Update DB status if DB exists
     let db_path = Path::new(DB_PATH);
     if db_path.exists() {
-        if let Some(ref status) = post.status {
+        if let Some(status) = post.status {
             let conn = Connection::open(db_path).context("Failed to open database")?;
             conn.execute(
                 "UPDATE patterns SET status = ?1 WHERE id = ?2",
-                rusqlite::params![status, pre.id],
+                rusqlite::params![status.as_str(), pre.id],
             )?;
         }
     }
@@ -179,13 +179,13 @@ pub fn promote_spec(id: &str, json: bool) -> Result<()> {
 
 /// Promote a spec and return structured result (for MCP).
 pub fn promote_spec_value(id: &str) -> Result<MutationResult> {
-    let out = load_and_mutate(id, |fm| match fm.status.as_deref() {
-        Some("draft") => {
-            fm.status = Some("ready".to_string());
+    let out = load_and_mutate(id, |fm| match fm.status {
+        Some(SpecStatus::Draft) => {
+            fm.status = Some(SpecStatus::Ready);
             Ok(())
         }
-        Some("ready") => {
-            fm.status = Some("active".to_string());
+        Some(SpecStatus::Ready) => {
+            fm.status = Some(SpecStatus::Active);
             Ok(())
         }
         Some(s) => anyhow::bail!(
@@ -196,7 +196,7 @@ pub fn promote_spec_value(id: &str) -> Result<MutationResult> {
         None => anyhow::bail!("Spec '{}' has no status", id),
     })?;
 
-    let new_status = out.post.status.as_deref().unwrap_or("unknown");
+    let new_status = out.post.status.map(|s| s.as_str()).unwrap_or("unknown");
 
     // If promoted to active, create start tag
     if new_status == "active" {
@@ -309,7 +309,7 @@ pub fn set_spec_value(id: &str, field: &str, value: &str) -> Result<MutationResu
         Ok(())
     })?;
 
-    let new_status = out.post.status.as_deref().unwrap_or("unknown").to_string();
+    let new_status = out.post.status.map(|s| s.to_string()).unwrap_or_else(|| "unknown".to_string());
 
     let commit_msg = format!("spec: set {} on {}", field, id);
     git_stage_and_commit(&out.file_path, &commit_msg)?;
@@ -394,7 +394,7 @@ pub fn complete_spec_value(id: &str, major: bool, force: bool) -> Result<Mutatio
     // 2. Mutate + release + archive — with rollback on failure
     let result = with_content_rollback(&file_path, &backup, || {
         let out = mutate_spec(loaded, |fm| {
-            fm.status = Some("complete".to_string());
+            fm.status = Some(SpecStatus::Complete);
             Ok(())
         })?;
 
@@ -406,7 +406,7 @@ pub fn complete_spec_value(id: &str, major: bool, force: bool) -> Result<Mutatio
         Ok(()) => Ok(MutationResult {
             command: "complete",
             spec_id: id.to_string(),
-            new_status: "complete".to_string(),
+            new_status: SpecStatus::Complete.to_string(),
             detail: MutationDetail::Complete {
                 file: file_path,
                 tag: format!("spec/{}", id),
@@ -467,7 +467,7 @@ pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<MutationResu
     // 2. Mutate + archive — with rollback on failure
     let result = with_content_rollback(&file_path, &backup, || {
         let out = mutate_spec(loaded, |fm| {
-            fm.status = Some("abandoned".to_string());
+            fm.status = Some(SpecStatus::Abandoned);
             Ok(())
         })?;
 
@@ -502,7 +502,7 @@ pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<MutationResu
         Ok(()) => Ok(MutationResult {
             command: "abandon",
             spec_id: id.to_string(),
-            new_status: "abandoned".to_string(),
+            new_status: SpecStatus::Abandoned.to_string(),
             detail: MutationDetail::Abandon {
                 file: file_path,
                 tag: format!("spec/{}", id),
@@ -601,7 +601,7 @@ pub fn pause_spec_value(id: &str, reason: &str) -> Result<MutationResult> {
 
     with_content_rollback(&file_path_for_rollback, &backup, || {
         let out = mutate_spec(loaded, |fm| {
-            fm.status = Some("paused".to_string());
+            fm.status = Some(SpecStatus::Paused);
             fm.paused_reason = Some(reason.to_string());
             fm.paused_date = Some(today.clone());
             fm.paused_at_tag = Some(tag_name.clone());
@@ -619,7 +619,7 @@ pub fn pause_spec_value(id: &str, reason: &str) -> Result<MutationResult> {
     Ok(MutationResult {
         command: "pause",
         spec_id: id.to_string(),
-        new_status: "paused".to_string(),
+        new_status: SpecStatus::Paused.to_string(),
         detail: MutationDetail::Pause {
             tag: tag_name,
             reason: reason.to_string(),
@@ -742,7 +742,7 @@ pub fn resume_spec_value(id: &str, force: bool) -> Result<MutationResult> {
     let tag_name = format!("spec/{}-resumed-{}", id, tag_n);
 
     let out = mutate_spec(loaded, |fm| {
-        fm.status = Some("active".to_string());
+        fm.status = Some(SpecStatus::Active);
         fm.paused_reason = None;
         fm.paused_date = None;
         fm.paused_at_tag = None;
@@ -774,7 +774,7 @@ pub fn resume_spec_value(id: &str, force: bool) -> Result<MutationResult> {
     Ok(MutationResult {
         command: "resume",
         spec_id: id.to_string(),
-        new_status: "active".to_string(),
+        new_status: SpecStatus::Active.to_string(),
         detail: MutationDetail::Resume {
             tag: tag_name,
             previous_status: status_str,
@@ -831,7 +831,7 @@ pub fn block_spec_value(id: &str, blocker: &str, reason: &str) -> Result<Mutatio
 
     with_content_rollback(&file_path_for_rollback, &backup, || {
         let out = mutate_spec(loaded, |fm| {
-            fm.status = Some("blocked".to_string());
+            fm.status = Some(SpecStatus::Blocked);
             // Append blocker to blocked_by list (D3: don't overwrite)
             if !fm.blocked_by.contains(&blocker.to_string()) {
                 fm.blocked_by.push(blocker.to_string());
@@ -866,7 +866,7 @@ pub fn block_spec_value(id: &str, blocker: &str, reason: &str) -> Result<Mutatio
     Ok(MutationResult {
         command: "block",
         spec_id: id.to_string(),
-        new_status: "blocked".to_string(),
+        new_status: SpecStatus::Blocked.to_string(),
         detail: MutationDetail::Block {
             tag: tag_name,
             blocker: blocker.to_string(),
