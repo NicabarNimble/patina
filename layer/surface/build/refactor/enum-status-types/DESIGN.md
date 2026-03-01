@@ -28,10 +28,14 @@ Same file, same module. No new files needed.
 
 ### ADR-2: The "done" legacy alias
 
-**Context:** 5+ comparison sites check `== "complete" || == "done"`. The "done"
-value may exist in old spec files or in the spec_deps table.
+**Context:** 6 comparison sites check `== "complete" || == "done"` (see SPEC.md
+for the full list). The "done" value might exist in the spec_deps DB table from
+historical data.
 
-**Detection:** `rg '"done"' layer/surface/` to check for on-disk usage.
+**Grounding:** `rg '"done"' layer/surface/` and `rg 'status: done' layer/`
+both return zero matches. No spec files on disk carry `status: done`. The alias
+is **defensive only** — it protects against DB or tag data that may contain
+"done" but requires no data migration.
 
 **Decision:** Add `#[serde(alias = "done")]` to the `Complete` variant:
 
@@ -79,11 +83,38 @@ re-export. But start simple.
 
 ### ADR-4: Database TEXT columns
 
-**Context:** BeliefEntry.status is stored as TEXT in SQLite (`mother/graph.rs`).
-Changing the Rust type doesn't change the column type — SQLite is dynamically
-typed. Serde handles the conversion.
+**Context:** Both spec and belief statuses are stored as TEXT in SQLite.
+`FoundSpec.status` and `LoadedSpec.status` (archive.rs) read from the
+patterns table. `BeliefEntry.status` reads from mother/graph.rs.
 
-**Decision:** At the database boundary, read as String then match to enum:
+**Decision:** Parse at the DB boundary — `FoundSpec.status` and
+`LoadedSpec.status` become `Option<SpecStatus>`. The conversion happens
+in `find_spec()` and `load_spec()` via `FromStr`:
+
+```rust
+impl std::str::FromStr for SpecStatus {
+    type Err = SpecStatusError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "draft" => Ok(Self::Draft),
+            "ready" => Ok(Self::Ready),
+            "active" => Ok(Self::Active),
+            "paused" => Ok(Self::Paused),
+            "blocked" => Ok(Self::Blocked),
+            "complete" | "done" => Ok(Self::Complete),
+            "abandoned" => Ok(Self::Abandoned),
+            _ => Err(SpecStatusError { got: s.to_string() }),
+        }
+    }
+}
+```
+
+Unknown values surface a **clear error** rather than silently defaulting.
+This is the [[parse-at-boundary-type-the-interior]] belief: the DB row is
+the boundary, the interior flows typed data only.
+
+For `BeliefStatus`, use the same pattern but with a safe default since
+belief data is less critical to control flow:
 
 ```rust
 impl BeliefStatus {
@@ -99,7 +130,8 @@ impl BeliefStatus {
 }
 ```
 
-No new dependencies needed. Keep `.get::<_, String>()` at the DB boundary.
+No new dependencies needed. Keep `.get::<_, String>()` at the DB boundary,
+then immediately parse.
 
 ### ADR-5: Option<SpecStatus> vs SpecStatus
 
@@ -111,6 +143,35 @@ a status field (though all should).
 Default to `SpecStatus::Draft` when None at the call site (matches current
 behavior where missing status implies draft). Don't change the optionality
 semantics — that's a separate concern.
+
+### ADR-6: Query/display structs use SpecStatus
+
+**Context:** `SpecInfo.status`, `ReadySpec.status`, `Blocker.status`, and
+`BlockedSpec.status` are `pub` structs serialized to JSON for MCP. They
+could stay `String` (minimal blast radius) or become `SpecStatus`.
+
+**Decision:** Use `SpecStatus` in all query/display structs. Serde's
+`rename_all = "snake_case"` serializes identically to the current string
+values, so JSON output is backward-compatible. Benefits:
+- Eliminates mixed string/enum types in the codebase
+- Helpers like `is_terminal()` work on query results without conversion
+- Compiler enforces exhaustive matching in display logic
+
+Exception: `MutationResult.new_status` and `MutationDetail::Resume.previous_status`
+stay `String` — they are output-only display fields that mirror the enum
+via `.as_str().to_string()`. Converting them adds no safety value.
+
+### ADR-7: ListFilters.status parses at CLI/MCP boundary
+
+**Context:** `ListFilters.status: Option<String>` accepts user input from
+CLI args and MCP tool parameters. Currently passed through as a raw string
+for comparison.
+
+**Decision:** Change to `Option<SpecStatus>`. Parse user input at the
+CLI/MCP boundary using `FromStr`. Unknown status values return a validation
+error (e.g., "invalid spec status 'actve'") rather than silently producing
+an empty result set. This catches typos at the input boundary rather than
+deep in the filter logic.
 
 ## Lessons from First Attempt (session 20260301-165723)
 
@@ -146,9 +207,14 @@ Key findings from the partial implementation:
 
 ## Commits
 
-1. `spec: define SpecStatus enum with serde rename and "done" alias` (zero-risk: no field change)
-2. `spec: migrate SpecFrontmatter.status and all consumers to SpecStatus`
-3. `spec: update FoundSpec/LoadedSpec DB boundary to parse SpecStatus`
+Phase 1 — three commits, smallest-to-largest blast radius:
+
+1. `spec: define SpecStatus enum with serde rename, "done" alias, and FromStr` (zero-risk: no field change)
+2. `spec: migrate SpecFrontmatter.status + mutations + DB boundary to SpecStatus` (write path: mutations.rs, archive.rs, split.rs)
+3. `spec: migrate query structs, ListFilters, and blocker checks to SpecStatus` (read path: queries.rs, queue.rs, session/internal.rs, MCP filter)
+
+Phase 2–3:
+
 4. `beliefs: define BeliefStatus enum, migrate ParsedBelief and BeliefEntry`
 5. `doctor: define HealthStatus enum, migrate HealthCheck`
 6. `assay: define ActivityLevel enum, migrate ModuleSignal`

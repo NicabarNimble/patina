@@ -22,7 +22,10 @@ exit_criteria:
   text: ModuleSignal.activity_level is ActivityLevel enum with 4 variants
   checked: false
 - id: zero-status-string-comparisons
-  text: rg '== "draft"|== "ready"|== "active"|== "paused"|== "blocked"|== "complete"|== "abandoned"|== "defeated"|== "scoped"|== "archived"|== "healthy"|== "warning"|== "critical"|== "dormant"' src/ returns zero (excluding serde rename attrs and test data)
+  text: "Zero status string comparisons in control-flow code: blockers, queue logic, resume gating, session shutdown, state transitions. Output-only display fields (MutationResult.new_status, MutationDetail::Resume.previous_status) excluded — they mirror the enum for display only."
+  checked: false
+- id: list-filters-parse-enum
+  text: "ListFilters.status parses user input into SpecStatus before evaluation. Unknown status values return a validation error, not a silent empty result."
   checked: false
 - id: serde-roundtrip
   text: YAML frontmatter (spec, belief) serializes/deserializes correctly with enum types — existing files parse without error
@@ -91,32 +94,56 @@ pub enum SpecStatus {
 ```
 
 Legacy "done" alias: handled via `impl SpecStatus { fn is_terminal(&self) }` —
-the 5+ sites checking `== "complete" || == "done"` become `status.is_terminal()`.
+the 6 sites checking `== "complete" || == "done"` become `status.is_terminal()`.
+No spec files on disk currently carry `status: done`; the `#[serde(alias = "done")]`
+on `Complete` is defensive only and requires no data migration.
+
+Known "done" comparison sites (6 total):
+1. `queries.rs:145` — `get_ready_specs()` blocker resolution
+2. `queries.rs:195` — `show_ready_specs()` unblocked display filter
+3. `queries.rs:348` — `get_blocked_specs()` blocker resolution
+4. `mutations.rs:720` — `resume_spec_value()` blocker check
+5. `queue.rs:101` — `recommend_next()` blocker check
+6. `session/internal.rs:1170` — session-end unblocked display
 
 ## Steps
 
 ### Phase 1: SpecStatus (highest value, most comparison sites)
 
-1. Define `SpecStatus` enum in `src/spec.rs` with serde rename
-2. Change `SpecFrontmatter.status` from `Option<String>` to `Option<SpecStatus>`
-3. Add `impl SpecStatus` with `is_terminal()` (replaces complete/done checks),
-   `is_active()`, `as_str()` for display
+Three commits, smallest-to-largest blast radius:
+
+**Commit 1 — Define enum (zero-risk, no field change):**
+1. Define `SpecStatus` enum in `src/spec.rs` with serde rename + `#[serde(alias = "done")]`
+2. Add `impl SpecStatus` with `is_terminal()`, `as_str()`, `FromStr`
+
+**Commit 2 — Write path (field change + mutations + DB boundary):**
+3. Change `SpecFrontmatter.status` from `Option<String>` to `Option<SpecStatus>`
 4. Update `mutations.rs` — all 7 state transitions become enum variants
-5. Update `queries.rs` — all 16+ comparisons become match/equality checks
-6. Update `queue.rs`, `archive.rs`, `split.rs`, `create.rs`
-7. Update `session/internal.rs:1170` (blocker check)
-8. Update MCP `SpecArgs.status` filter to use enum
+5. Update `archive.rs` — `FoundSpec.status` and `LoadedSpec.status` become
+   `Option<SpecStatus>`, parsed at DB boundary via `FromStr` (ADR-4)
+6. Update `split.rs` — status checks use enum
+
+**Commit 3 — Read/display path (query structs + filters):**
+7. Update `queries.rs` — `SpecInfo.status`, `ReadySpec.status`, `Blocker.status`,
+   `BlockedSpec.status` become `SpecStatus` (serde snake_case output unchanged)
+8. Update `queue.rs`, `session/internal.rs:1170` (blocker checks)
+9. Update `ListFilters.status` to `Option<SpecStatus>` — parse user input at CLI/MCP
+   boundary, return validation error for unknown statuses
+10. Update MCP `SpecArgs.status` filter to use enum
+
+Output-only fields stay `String`: `MutationResult.new_status`,
+`MutationDetail::Resume.previous_status` — they mirror the enum for display only.
 
 ### Phase 2: BeliefStatus
 
-9. Define `BeliefStatus` enum in a shared location (used by scrape + mother)
-10. Update `ParsedBelief.status` and `BeliefEntry.status`
-11. Update mother/graph.rs database storage (TEXT column, serde round-trip)
+11. Define `BeliefStatus` enum in a shared location (used by scrape + mother)
+12. Update `ParsedBelief.status` and `BeliefEntry.status`
+13. Update mother/graph.rs database storage (TEXT column, serde round-trip)
 
 ### Phase 3: HealthStatus + ActivityLevel (small, mechanical)
 
-12. Define `HealthStatus` enum in `doctor.rs`, update 3-4 comparison sites
-13. Define `ActivityLevel` enum in `derive.rs`, update 1 comparison site
+14. Define `HealthStatus` enum in `doctor.rs`, update 3-4 comparison sites
+15. Define `ActivityLevel` enum in `derive.rs`, update 1 comparison site
 
 ## Risks
 
@@ -124,10 +151,9 @@ the 5+ sites checking `== "complete" || == "done"` become `status.is_terminal()`
    plain strings. `#[serde(rename_all = "snake_case")]` handles this — serde
    deserializes "active" → `SpecStatus::Active`. Test with existing spec files.
 
-2. **"done" legacy alias.** 5+ sites check `== "done"` alongside `== "complete"`.
-   If any spec files on disk have `status: done`, serde will reject them.
-   Scan `layer/surface/` for actual usage before deciding: custom deserializer
-   vs data migration.
+2. **"done" legacy alias.** 6 sites check `== "done"` alongside `== "complete"`.
+   Grounded: zero spec files on disk carry `status: done` (verified via grep).
+   `#[serde(alias = "done")]` on Complete is defensive for DB/tag data only.
 
 3. **Database storage for beliefs.** BeliefEntry.status is stored as TEXT in
    SQLite. Enum serde round-trips cleanly (`"active"` → `BeliefStatus::Active`),
@@ -139,15 +165,20 @@ the 5+ sites checking `== "complete" || == "done"` become `status.is_terminal()`
   session archival does string replacement in YAML text. Separate concern.
 - Converting `entrenchment: String` (low/medium/high/very-high) — related but
   separate; scope creep.
+- Converting `SpecMilestoneEntry.status: String` — milestone statuses are a
+  different domain concept (version progress, not lifecycle state) and live in
+  the same file. Explicitly out of scope to avoid confusion.
 - Adding state machine validation (e.g., preventing draft→complete skip) —
   that's a follow-up spec, not this one.
 
 ## Exit Criteria
 
-- [x] SpecFrontmatter.status is SpecStatus enum with 7 variants
+- [ ] SpecFrontmatter.status is SpecStatus enum with 7 variants
 - [ ] ParsedBelief.status and BeliefEntry.status are BeliefStatus enum
 - [ ] HealthCheck.status is HealthStatus enum with 3 variants
 - [ ] ModuleSignal.activity_level is ActivityLevel enum with 4 variants
-- [ ] Zero status string comparisons in src/ (excluding serde attrs and tests)
+- [ ] Zero status string comparisons in control-flow code (6 "done" sites, ~46 total).
+      Output-only display fields (MutationResult.new_status, etc.) excluded.
+- [ ] ListFilters.status parses into SpecStatus; unknown values return validation error
 - [ ] YAML frontmatter round-trips correctly with enum types
 - [ ] All tests pass, pre-push checks pass
