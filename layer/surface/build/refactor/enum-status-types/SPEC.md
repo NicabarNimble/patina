@@ -11,7 +11,7 @@ beliefs:
 exit_criteria:
 - id: spec-status-enum
   text: SpecFrontmatter.status is SpecStatus enum with 7 variants — all string comparisons replaced with match arms
-  checked: false
+  checked: true
 - id: belief-status-enum
   text: ParsedBelief.status and BeliefEntry.status are BeliefStatus enum with 4 variants
   checked: false
@@ -26,13 +26,13 @@ exit_criteria:
   checked: false
 - id: list-filters-parse-enum
   text: "ListFilters.status parses user input into SpecStatus before evaluation. Unknown status values return a validation error, not a silent empty result."
-  checked: false
+  checked: true
 - id: serde-roundtrip
   text: YAML frontmatter (spec, belief) serializes/deserializes correctly with enum types — existing files parse without error
-  checked: false
+  checked: true
 - id: existing-tests-pass
   text: cargo test --workspace passes, pre-push checks pass
-  checked: false
+  checked: true
 ---
 # refactor: Replace status: String with typed enums
 
