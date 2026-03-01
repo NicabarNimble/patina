@@ -89,6 +89,57 @@ pub fn collect_inventory_json(
     Ok(results)
 }
 
+/// Query inventory across all registered repos and return JSON string
+pub fn inventory_all_repos_json(options: &super::super::AssayOptions) -> Result<String> {
+    use std::path::Path;
+
+    const DB_PATH: &str = ".patina/local/data/patina.db";
+
+    let repos = crate::commands::repo::list()?;
+    let current_has_db = Path::new(DB_PATH).exists();
+
+    if !matches!(options.query_type, super::super::QueryType::Inventory) {
+        anyhow::bail!("all_repos mode currently only supports 'inventory' query type");
+    }
+
+    let mut all_results: Vec<serde_json::Value> = Vec::new();
+
+    if current_has_db {
+        if let Ok(conn) = Connection::open(DB_PATH) {
+            if let Ok(results) = collect_inventory_json(&conn, options, Some("(current)")) {
+                all_results.extend(results);
+            }
+        }
+    }
+
+    for repo in &repos {
+        let db_path = Path::new(&repo.path).join(DB_PATH);
+        if let Ok(conn) = Connection::open(&db_path) {
+            if let Ok(results) = collect_inventory_json(&conn, options, Some(&repo.name)) {
+                all_results.extend(results);
+            }
+        }
+    }
+
+    let total_lines: i64 = all_results.iter().filter_map(|m| m["lines"].as_i64()).sum();
+    let total_functions: i64 = all_results
+        .iter()
+        .filter_map(|m| m["functions"].as_i64())
+        .sum();
+
+    let result = serde_json::json!({
+        "modules": all_results,
+        "summary": {
+            "total_files": all_results.len(),
+            "total_lines": total_lines,
+            "total_functions": total_functions,
+            "repos_queried": repos.len() + if current_has_db { 1 } else { 0 }
+        }
+    });
+
+    Ok(serde_json::to_string_pretty(&result)?)
+}
+
 /// Query module inventory and return JSON string
 pub fn inventory_json(conn: &Connection, pattern: &str, limit: usize) -> Result<String> {
     let result = inventory_result(conn, pattern, limit)?;
