@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: mcp-thin-handlers
-status: ready
+status: active
 created: 2026-03-01
 sessions:
   origin: 20260301-100052
