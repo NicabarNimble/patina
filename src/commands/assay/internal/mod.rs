@@ -13,9 +13,13 @@ pub(crate) mod temporal;
 pub(crate) mod util;
 
 pub(super) use derive::{execute_derive, execute_derive_moments};
+pub(crate) use derive::derive_signals_json;
 pub(super) use functions::{execute_callees, execute_callers, execute_functions};
+pub(crate) use functions::{callers_json, callees_json, functions_json};
 pub(super) use imports::{execute_importers, execute_imports};
+pub(crate) use imports::{importers_json, imports_json};
 pub(super) use inventory::{collect_inventory_json, execute_inventory};
+pub(crate) use inventory::inventory_json;
 pub(super) use search::execute_search;
 pub(super) use util::truncate;
 pub(crate) use util::{collect_rows, serialize_result};

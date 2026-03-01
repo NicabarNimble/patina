@@ -89,20 +89,14 @@ pub fn collect_inventory_json(
     Ok(results)
 }
 
-/// Query module inventory with stats
-pub fn execute_inventory(
-    conn: &Connection,
-    options: &AssayOptions,
-    _repo_name: Option<&str>,
-) -> Result<()> {
-    let pattern = options.pattern.as_deref().unwrap_or("%");
-    let limit = if options.limit > 0 {
-        options.limit
-    } else {
-        1000
-    };
+/// Query module inventory and return JSON string
+pub fn inventory_json(conn: &Connection, pattern: &str, limit: usize) -> Result<String> {
+    let result = inventory_result(conn, pattern, limit)?;
+    Ok(serde_json::to_string_pretty(&result)?)
+}
 
-    // Query modules with aggregated stats
+/// Query module inventory and return typed result
+pub fn inventory_result(conn: &Connection, pattern: &str, limit: usize) -> Result<InventoryResult> {
     let sql = r#"
         SELECT
             i.path,
@@ -130,19 +124,34 @@ pub fn execute_inventory(
         .filter_map(|r| r.ok())
         .collect();
 
-    // Calculate summary
     let total_files = modules.len();
     let total_lines: i64 = modules.iter().map(|m| m.lines).sum();
     let total_functions: i64 = modules.iter().map(|m| m.functions).sum();
 
-    let result = InventoryResult {
+    Ok(InventoryResult {
         modules,
         summary: InventorySummary {
             total_files,
             total_lines,
             total_functions,
         },
+    })
+}
+
+/// Query module inventory with stats
+pub fn execute_inventory(
+    conn: &Connection,
+    options: &AssayOptions,
+    _repo_name: Option<&str>,
+) -> Result<()> {
+    let pattern = options.pattern.as_deref().unwrap_or("%");
+    let limit = if options.limit > 0 {
+        options.limit
+    } else {
+        1000
     };
+
+    let result = inventory_result(conn, pattern, limit)?;
 
     if options.json {
         println!("{}", serde_json::to_string_pretty(&result)?);

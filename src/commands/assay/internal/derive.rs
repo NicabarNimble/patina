@@ -8,6 +8,7 @@ use serde::Serialize;
 
 use super::super::AssayOptions;
 use super::truncate;
+use super::util::{collect_rows, serialize_result};
 
 /// Module signal data
 #[derive(Debug, Serialize)]
@@ -90,6 +91,56 @@ fn is_test_file(path: &str) -> bool {
 /// Compute directory depth from path (count of / separators)
 fn compute_directory_depth(path: &str) -> i64 {
     path.trim_start_matches("./").matches('/').count() as i64
+}
+
+/// Query existing derived signals and return JSON string (for MCP — reads, not computes)
+pub fn derive_signals_json(conn: &Connection) -> Result<String> {
+    // Ensure table exists
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS module_signals (
+            path TEXT PRIMARY KEY,
+            is_used INTEGER,
+            importer_count INTEGER,
+            activity_level TEXT,
+            last_commit_days INTEGER,
+            top_contributors TEXT,
+            centrality_score REAL,
+            staleness_flags TEXT,
+            computed_at TEXT
+        )",
+        [],
+    )?;
+
+    let sql = r#"
+        SELECT path, is_used, importer_count, activity_level,
+               last_commit_days, centrality_score, computed_at
+        FROM module_signals
+        ORDER BY importer_count DESC
+        LIMIT 100
+    "#;
+
+    let mut stmt = conn.prepare(sql)?;
+    let (signals, failures): (Vec<serde_json::Value>, usize) =
+        collect_rows(stmt.query_map([], |row| {
+            Ok(serde_json::json!({
+                "path": row.get::<_, String>(0)?,
+                "is_used": row.get::<_, i32>(1)? != 0,
+                "importer_count": row.get::<_, i64>(2)?,
+                "activity_level": row.get::<_, String>(3)?,
+                "last_commit_days": row.get::<_, Option<i64>>(4)?,
+                "centrality_score": row.get::<_, f64>(5)?,
+                "computed_at": row.get::<_, Option<String>>(6)?
+            }))
+        })?);
+
+    let result = serde_json::json!({
+        "signals": signals,
+        "summary": {
+            "total_modules": signals.len(),
+            "used_modules": signals.iter().filter(|s| s["is_used"].as_bool().unwrap_or(false)).count()
+        }
+    });
+    serialize_result(result, failures)
 }
 
 /// Compute structural signals for all modules
