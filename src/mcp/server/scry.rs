@@ -1,7 +1,8 @@
 //! Retrieval MCP handlers — scry, context, mother
 //!
-//! Also contains formatting helpers, orient/recent/why/use/detail mode handlers,
-//! and query logging — all retrieval-domain code.
+//! Thin delegation to CLI internals for data operations (orient, recent, why,
+//! detail, use). MCP-specific formatting (format_results, annotate_impact)
+//! stays here — it's consumer-specific presentation, not business logic.
 
 use anyhow::Result;
 use serde::Deserialize;
@@ -116,7 +117,7 @@ pub(super) fn handle_scry(
                 );
             }
 
-            match handle_why(doc_id, query, engine) {
+            match crate::commands::scry::internal::why_json(engine, doc_id, query) {
                 Ok(text) => Response::success(
                     req.id.clone(),
                     serde_json::json!({
@@ -391,60 +392,25 @@ pub(super) fn handle_mother(req: &Request, args: MotherArgs) -> Response {
 }
 
 // ============================================================================
-// Query logging
+// Query logging — delegates to unified log_scry_query via FusedResult→ScryResult conversion
 // ============================================================================
 
-/// Log an MCP query to events.db and return query_id (Phase 3)
+/// Convert FusedResult to ScryResult for unified logging (DESIGN.md option b)
+fn fused_to_scry(r: &FusedResult) -> ScryResult {
+    ScryResult {
+        id: 0,
+        content: r.content.clone(),
+        score: r.fused_score,
+        event_type: r.metadata.event_type.clone().unwrap_or_default(),
+        source_id: r.doc_id.clone(),
+        timestamp: r.metadata.timestamp.clone().unwrap_or_default(),
+    }
+}
+
+/// Log an MCP query via unified log_scry_query (Phase 3)
 fn log_mcp_query(query: &str, mode: &str, results: &[FusedResult]) -> Option<String> {
-    // Get session_id from active session
-    let session_id = crate::commands::scry::internal::logging::get_active_session_id();
-
-    // Generate query_id
-    let now = chrono::Utc::now();
-    let random_suffix: String = (0..3)
-        .map(|_| (b'a' + fastrand::u8(0..26)) as char)
-        .collect();
-    let query_id = format!("q_{}_{}", now.format("%Y%m%d_%H%M%S"), random_suffix);
-
-    // Build results array for logging
-    let results_json: Vec<serde_json::Value> = results
-        .iter()
-        .enumerate()
-        .map(|(i, r)| {
-            serde_json::json!({
-                "doc_id": r.doc_id,
-                "score": r.fused_score,
-                "rank": i + 1,
-                "event_type": r.metadata.event_type
-            })
-        })
-        .collect();
-
-    let query_data = serde_json::json!({
-        "query": query,
-        "query_id": query_id,
-        "mode": mode,
-        "session_id": session_id,
-        "results": results_json
-    });
-
-    // Best-effort insert into events.db
-    let conn = patina::eventlog::open_events_db()
-        .map_err(|e| tracing::warn!(error = %e, "failed to open events DB for query logging"))
-        .ok()?;
-    let timestamp = now.to_rfc3339();
-    patina::eventlog::insert_event(
-        &conn,
-        "scry.query",
-        &timestamp,
-        &query_id,
-        None,
-        &query_data.to_string(),
-    )
-    .map_err(|e| tracing::warn!(error = %e, "failed to log scry query event"))
-    .ok()?;
-
-    Some(query_id)
+    let scry_results: Vec<ScryResult> = results.iter().map(fused_to_scry).collect();
+    crate::commands::scry::internal::logging::log_scry_query(query, mode, &scry_results)
 }
 
 // ============================================================================
@@ -477,21 +443,7 @@ fn format_results_full_with_query_id(results: &[FusedResult], query_id: Option<&
 /// Converts FusedResults to ScryResults, computes belief impact, and appends
 /// a belief impact section to the output.
 fn annotate_impact(results: &[FusedResult], mut text: String) -> String {
-    // Convert FusedResults to ScryResults for find_belief_impact
-    let scry_results: Vec<ScryResult> = results
-        .iter()
-        .map(|r| {
-            let event_type = r.metadata.event_type.clone().unwrap_or_default();
-            ScryResult {
-                id: 0, // MCP results don't carry usearch keys; resolved via source_id
-                content: r.content.clone(),
-                score: r.fused_score,
-                event_type,
-                source_id: r.doc_id.clone(),
-                timestamp: r.metadata.timestamp.clone().unwrap_or_default(),
-            }
-        })
-        .collect();
+    let scry_results: Vec<ScryResult> = results.iter().map(fused_to_scry).collect();
 
     if let Ok(impact_map) = find_belief_impact(&scry_results) {
         if !impact_map.is_empty() {
@@ -607,72 +559,6 @@ fn format_results_full(results: &[FusedResult]) -> String {
         output.push_str("\n\n");
     }
     output
-}
-
-// ============================================================================
-// Mode-specific handlers
-// ============================================================================
-
-/// Handle why mode - explain a specific result
-fn handle_why(doc_id: &str, query: &str, engine: &QueryEngine) -> Result<String> {
-    let options = QueryOptions::default();
-    let results = engine.query_with_options(query, 50, &options)?;
-
-    let matching = results
-        .iter()
-        .find(|r| r.doc_id == doc_id || r.doc_id.ends_with(doc_id) || doc_id.ends_with(&r.doc_id));
-
-    match matching {
-        Some(result) => {
-            let rank = results
-                .iter()
-                .position(|r| r.doc_id == result.doc_id)
-                .unwrap_or(0)
-                + 1;
-
-            let mut output = format!(
-                "# Why: {}\n\nQuery: \"{}\"\nRank: #{}\nFused Score: {:.4}\n\n## Oracle Contributions\n\n",
-                result.doc_id, query, rank, result.fused_score
-            );
-
-            for (oracle_name, contrib) in &result.contributions {
-                let score_display = match contrib.score_type {
-                    "co_change_count" => format!("{} co-changes", contrib.raw_score as i32),
-                    "bm25" => format!("{:.2} BM25", contrib.raw_score),
-                    "cosine" => format!("{:.3} cosine", contrib.raw_score),
-                    _ => format!("{:.3} {}", contrib.raw_score, contrib.score_type),
-                };
-
-                output.push_str(&format!(
-                    "- **{}**: rank #{} ({})\n",
-                    oracle_name, contrib.rank, score_display
-                ));
-            }
-
-            let ann = &result.annotations;
-            if ann.importer_count.is_some() || ann.activity_level.is_some() {
-                output.push_str("\n## Structural Signals\n\n");
-                if let Some(count) = ann.importer_count {
-                    output.push_str(&format!("- Importers: {}\n", count));
-                }
-                if let Some(ref level) = ann.activity_level {
-                    output.push_str(&format!("- Activity: {}\n", level));
-                }
-            }
-
-            Ok(output)
-        }
-        None => {
-            let mut output = format!(
-                "'{}' not found in top 50 results for query \"{}\".\n\nTop 5 results:\n",
-                doc_id, query
-            );
-            for (i, r) in results.iter().take(5).enumerate() {
-                output.push_str(&format!("{}. {}\n", i + 1, r.doc_id));
-            }
-            Ok(output)
-        }
-    }
 }
 
 /// Handle mother query — supports/attacks/projects modes
