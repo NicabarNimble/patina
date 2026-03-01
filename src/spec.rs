@@ -248,6 +248,106 @@ pub struct SpecFrontmatter {
 }
 
 // ============================================================================
+// Spec Status Enum
+// ============================================================================
+
+/// Canonical list of valid spec statuses (for error messages, help text, tests).
+pub const SPEC_STATUSES: &[&str] = &[
+    "draft",
+    "ready",
+    "active",
+    "paused",
+    "blocked",
+    "complete",
+    "abandoned",
+];
+
+/// Typed spec status — the spec lifecycle state machine.
+///
+/// Replaces `status: String` with compiler-enforced exhaustive matching.
+/// Follows [[enum-not-string-for-finite-states]]: 7 variants, no stringly-typed
+/// comparisons in control flow.
+///
+/// `#[serde(alias = "done")]` on Complete is defensive — no spec files on disk
+/// carry `status: done`, but historical DB/tag data might. See ADR-2 in DESIGN.md.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SpecStatus {
+    Draft,
+    Ready,
+    Active,
+    Paused,
+    Blocked,
+    #[serde(alias = "done")]
+    Complete,
+    Abandoned,
+}
+
+/// Error when parsing an invalid spec status string.
+#[derive(Debug)]
+pub struct SpecStatusError {
+    pub got: String,
+}
+
+impl std::fmt::Display for SpecStatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "invalid spec status \"{}\" (expected one of: {})",
+            self.got,
+            SPEC_STATUSES.join(", ")
+        )
+    }
+}
+
+impl std::error::Error for SpecStatusError {}
+
+impl std::str::FromStr for SpecStatus {
+    type Err = SpecStatusError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "draft" => Ok(SpecStatus::Draft),
+            "ready" => Ok(SpecStatus::Ready),
+            "active" => Ok(SpecStatus::Active),
+            "paused" => Ok(SpecStatus::Paused),
+            "blocked" => Ok(SpecStatus::Blocked),
+            "complete" | "done" => Ok(SpecStatus::Complete),
+            "abandoned" => Ok(SpecStatus::Abandoned),
+            _ => Err(SpecStatusError { got: s.to_string() }),
+        }
+    }
+}
+
+impl std::fmt::Display for SpecStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl SpecStatus {
+    /// Canonical string form (matches YAML frontmatter values).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SpecStatus::Draft => "draft",
+            SpecStatus::Ready => "ready",
+            SpecStatus::Active => "active",
+            SpecStatus::Paused => "paused",
+            SpecStatus::Blocked => "blocked",
+            SpecStatus::Complete => "complete",
+            SpecStatus::Abandoned => "abandoned",
+        }
+    }
+
+    /// Whether this status represents a terminal state (complete or abandoned).
+    ///
+    /// Replaces the `== "complete" || == "done"` pattern across 6 call sites.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::Complete | Self::Abandoned)
+    }
+}
+
+// ============================================================================
 // Spec Type Enum
 // ============================================================================
 
@@ -487,5 +587,54 @@ id: minimal
         assert_eq!(frontmatter.id, "minimal");
         assert_eq!(frontmatter.status, None);
         assert!(frontmatter.blocked_by.is_empty());
+    }
+
+    #[test]
+    fn test_spec_status_roundtrip() {
+        for &name in SPEC_STATUSES {
+            let s: SpecStatus = name.parse().expect(name);
+            assert_eq!(s.as_str(), name);
+            assert_eq!(s.to_string(), name);
+        }
+    }
+
+    #[test]
+    fn test_spec_status_done_alias() {
+        let s: SpecStatus = "done".parse().expect("done should parse");
+        assert_eq!(s, SpecStatus::Complete);
+        assert_eq!(s.as_str(), "complete");
+    }
+
+    #[test]
+    fn test_spec_status_invalid() {
+        let err = "actve".parse::<SpecStatus>().unwrap_err();
+        assert!(err.to_string().contains("actve"));
+        assert!(err.to_string().contains("draft"));
+    }
+
+    #[test]
+    fn test_spec_status_is_terminal() {
+        assert!(SpecStatus::Complete.is_terminal());
+        assert!(SpecStatus::Abandoned.is_terminal());
+        assert!(!SpecStatus::Draft.is_terminal());
+        assert!(!SpecStatus::Active.is_terminal());
+        assert!(!SpecStatus::Paused.is_terminal());
+    }
+
+    #[test]
+    fn test_spec_status_serde_roundtrip() {
+        // Serialize to YAML and back
+        let status = SpecStatus::Active;
+        let yaml = serde_yaml::to_string(&status).expect("serialize");
+        assert_eq!(yaml.trim(), "active");
+        let back: SpecStatus = serde_yaml::from_str(&yaml).expect("deserialize");
+        assert_eq!(back, status);
+    }
+
+    #[test]
+    fn test_spec_status_serde_done_alias() {
+        // "done" in YAML should deserialize to Complete
+        let back: SpecStatus = serde_yaml::from_str("done").expect("deserialize done");
+        assert_eq!(back, SpecStatus::Complete);
     }
 }
