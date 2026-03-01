@@ -7,6 +7,8 @@ sessions:
   origin: 20260301-165723
 related:
 - enum-status-types
+beliefs:
+- parse-at-boundary-type-the-interior
 exit_criteria: []
 ---
 # refactor: Type the measure domain model
