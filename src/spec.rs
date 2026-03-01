@@ -270,7 +270,7 @@ pub const SPEC_STATUSES: &[&str] = &[
 ///
 /// `#[serde(alias = "done")]` on Complete is defensive — no spec files on disk
 /// carry `status: done`, but historical DB/tag data might. See ADR-2 in DESIGN.md.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SpecStatus {
     Draft,

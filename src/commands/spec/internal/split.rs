@@ -59,8 +59,8 @@ pub fn split_spec_value(
 ) -> Result<SplitResult> {
     // 1. Load spec and validate status (active or paused)
     let loaded = load_spec(id)?;
-    match loaded.status.as_deref() {
-        Some("active") | Some("paused") => {}
+    match loaded.status {
+        Some(SpecStatus::Active) | Some(SpecStatus::Paused) => {}
         Some(s) => anyhow::bail!(
             "Cannot split '{}' — status is '{}', expected 'active' or 'paused'",
             id,

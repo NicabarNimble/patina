@@ -204,7 +204,7 @@ pub fn create_spec_value(
         let conn = Connection::open(db_path).context("Failed to open database")?;
         conn.execute(
             "INSERT OR REPLACE INTO patterns (id, title, layer, status, file_path) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![id, display_title, "surface", "draft", spec_path],
+            rusqlite::params![id, display_title, "surface", SpecStatus::Draft.as_str(), spec_path],
         )?;
     }
 

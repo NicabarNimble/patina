@@ -4,6 +4,8 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
 
+use patina::spec::SpecStatus;
+
 use super::queries::{get_all_specs, get_blocked_specs, ListFilters, SpecInfo};
 use super::DB_PATH;
 
@@ -77,11 +79,14 @@ pub fn next_spec_value() -> Result<Vec<Recommendation>> {
     let mut recommendations: Vec<Recommendation> = Vec::new();
 
     for spec in &all_specs {
-        let status = spec.status.as_deref().unwrap_or("unknown");
+        let status = match spec.status {
+            Some(s) => s,
+            None => continue,
+        };
         let impact = dep_counts.get(&spec.id).copied().unwrap_or(0);
 
         match status {
-            "active" => {
+            SpecStatus::Active => {
                 recommendations.push(Recommendation {
                     id: spec.id.clone(),
                     status: status.to_string(),
@@ -90,15 +95,13 @@ pub fn next_spec_value() -> Result<Vec<Recommendation>> {
                     impact,
                 });
             }
-            "blocked" => {
+            SpecStatus::Blocked => {
                 // Check if blockers are now complete
                 let spec_blocked = blocked_specs.iter().find(|b| b.id == spec.id);
                 let all_blockers_done = spec_blocked
                     .map(|b| {
                         b.blocked_by.is_empty()
-                            || b.blocked_by
-                                .iter()
-                                .all(|bl| bl.status == "complete" || bl.status == "done")
+                            || b.blocked_by.iter().all(|bl| bl.status.is_terminal())
                     })
                     .unwrap_or(false);
 
@@ -112,7 +115,7 @@ pub fn next_spec_value() -> Result<Vec<Recommendation>> {
                     });
                 }
             }
-            "paused" => {
+            SpecStatus::Paused => {
                 let age = spec_age_days_from_list(spec);
                 let reason = if age > 14 {
                     format!("Paused {} days — overdue for attention", age)
@@ -127,7 +130,7 @@ pub fn next_spec_value() -> Result<Vec<Recommendation>> {
                     impact,
                 });
             }
-            "ready" => {
+            SpecStatus::Ready => {
                 recommendations.push(Recommendation {
                     id: spec.id.clone(),
                     status: status.to_string(),
@@ -140,7 +143,7 @@ pub fn next_spec_value() -> Result<Vec<Recommendation>> {
                     impact,
                 });
             }
-            "draft" => {
+            SpecStatus::Draft => {
                 recommendations.push(Recommendation {
                     id: spec.id.clone(),
                     status: status.to_string(),

@@ -59,8 +59,22 @@ pub(super) fn handle(req: &Request, name: &str, args: SpecArgs) -> Response {
     match name {
         // Spec query tools
         "spec.list" => {
+            // Parse status at MCP boundary — unknown values return validation error
+            let parsed_status = match args.status.as_deref() {
+                Some(s) => match s.parse::<patina::spec::SpecStatus>() {
+                    Ok(st) => Some(st),
+                    Err(e) => {
+                        return Response::error(
+                            req.id.clone(),
+                            super::ERR_INVALID_PARAMS,
+                            &e.to_string(),
+                        );
+                    }
+                },
+                None => None,
+            };
             let filters = crate::commands::spec::ListFilters {
-                status: args.status,
+                status: parsed_status,
                 target: args.target,
             };
             match crate::commands::spec::get_all_specs(&filters) {
