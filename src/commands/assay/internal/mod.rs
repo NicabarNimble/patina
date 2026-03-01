@@ -19,7 +19,6 @@ pub(crate) use functions::{callers_json, callees_json, functions_json};
 pub(super) use imports::{execute_importers, execute_imports};
 pub(crate) use imports::{importers_json, imports_json};
 pub(super) use inventory::{collect_inventory_json, execute_inventory};
-pub(crate) use inventory::inventory_json;
+pub(crate) use inventory::{inventory_all_repos_json, inventory_json};
 pub(super) use search::execute_search;
 pub(super) use util::truncate;
-pub(crate) use util::{collect_rows, serialize_result};
