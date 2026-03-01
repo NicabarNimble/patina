@@ -14,19 +14,19 @@ beliefs:
 exit_criteria:
 - id: zero-get-chains-in-mcp-handlers
   text: zero .get("key").and_then().as_*() chains in src/mcp/server/ — all parameter access via typed struct fields
-  checked: false
+  checked: true
 - id: invalid-params-fail-closed
   text: missing or wrong-type required parameters return JSON-RPC -32602 (Invalid Params) with field name — not silent empty-string fallback
-  checked: false
+  checked: true
 - id: handler-signatures-typed
   text: every handler function accepts a typed args struct, not &serde_json::Value
-  checked: false
+  checked: true
 - id: serde-deserialize-at-boundary
   text: serde_json::from_value() called once in dispatch, before handler — handlers never touch serde_json::Value
-  checked: false
+  checked: true
 - id: existing-tests-pass
   text: all 251+ tests pass, MCP inspector exercised for scry/assay/context/spec/measure
-  checked: false
+  checked: true
 ---
 # refactor: MCP Typed Handlers — Eliminate Value Soup at Protocol Boundary
 
@@ -186,8 +186,8 @@ fn dispatch(method: &str, req: &Request, conn: &Connection) -> Response {
 
 ## Exit Criteria
 
-- [ ] Zero `.get("key").and_then().as_*()` chains in `src/mcp/server/`
-- [ ] Missing/wrong-type required params return `-32602` with field name
-- [ ] Every handler function accepts a typed args struct, not `&serde_json::Value`
-- [ ] `serde_json::from_value()` called once in dispatch, before handler
-- [ ] All 251+ tests pass, MCP inspector exercised
+- [x] Zero `.get("key").and_then().as_*()` chains in `src/mcp/server/`
+- [x] Missing/wrong-type required params return `-32602` with field name
+- [x] Every handler function accepts a typed args struct, not `&serde_json::Value`
+- [x] `serde_json::from_value()` called once in dispatch, before handler
+- [x] All 251+ tests pass, MCP inspector exercised
