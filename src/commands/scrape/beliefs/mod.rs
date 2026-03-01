@@ -8,6 +8,7 @@
 mod verification;
 
 use anyhow::Result;
+use patina::mother::BeliefStatus;
 use regex::Regex;
 use rusqlite::Connection;
 use serde_json::json;
@@ -30,7 +31,7 @@ struct ParsedBelief {
     facets: Vec<String>,  // Domain tags
     confidence: f64,      // 0.0-1.0 (legacy, will be removed)
     entrenchment: String, // low/medium/high/very-high
-    status: String,       // active/scoped/defeated/archived
+    status: BeliefStatus,  // active/scoped/defeated/archived
     extracted: Option<String>,
     revised: Option<String>,
     content: String, // Full markdown for embedding
@@ -245,7 +246,7 @@ fn parse_belief_file(path: &Path) -> Result<ParsedBelief> {
     let mut facets = Vec::new();
     let mut confidence = 0.5;
     let mut entrenchment = "medium".to_string();
-    let mut status = "active".to_string();
+    let mut status = BeliefStatus::Active;
     let mut extracted = None;
     let mut revised = None;
 
@@ -313,7 +314,7 @@ fn parse_belief_file(path: &Path) -> Result<ParsedBelief> {
                 .ok()
                 .and_then(|re| re.captures(frontmatter))
             {
-                status = cap[1].trim().to_string();
+                status = BeliefStatus::from_str_or_default(cap[1].trim());
             }
 
             // Extract extracted date
@@ -422,7 +423,7 @@ fn parse_value_file(path: &Path) -> Result<ParsedBelief> {
         .unwrap_or("unknown")
         .to_string();
     let mut facets = Vec::new();
-    let mut status = "active".to_string();
+    let mut status = BeliefStatus::Active;
 
     // Parse YAML frontmatter
     if let Some(after_start) = content.strip_prefix("---") {
@@ -467,7 +468,7 @@ fn parse_value_file(path: &Path) -> Result<ParsedBelief> {
                 .ok()
                 .and_then(|re| re.captures(frontmatter))
             {
-                status = cap[1].trim().to_string();
+                status = BeliefStatus::from_str_or_default(cap[1].trim());
             }
         } else {
             anyhow::bail!("unclosed frontmatter");
@@ -816,9 +817,9 @@ fn cross_reference_beliefs(beliefs: &mut [ParsedBelief], project_root: &Path) {
     }
 
     // Build status map for contest detection (Phase C)
-    let status_map: std::collections::HashMap<String, String> = beliefs
+    let status_map: std::collections::HashMap<String, BeliefStatus> = beliefs
         .iter()
-        .map(|b| (b.id.clone(), b.status.clone()))
+        .map(|b| (b.id.clone(), b.status))
         .collect();
 
     // Build bidirectional contest map (Phase C)
@@ -830,7 +831,7 @@ fn cross_reference_beliefs(beliefs: &mut [ParsedBelief], project_root: &Path) {
     for belief in beliefs.iter() {
         // From ## Attacks: belief attacks these targets
         for target_id in &belief.metrics.attacks_ids {
-            if status_map.get(target_id).map(|s| s.as_str()) == Some("active") {
+            if status_map.get(target_id) == Some(&BeliefStatus::Active) {
                 contest_map
                     .entry(target_id.clone())
                     .or_default()
@@ -839,7 +840,7 @@ fn cross_reference_beliefs(beliefs: &mut [ParsedBelief], project_root: &Path) {
         }
         // From ## Attacked-By: belief is attacked by these
         for attacker_id in &belief.metrics.attacked_by_ids {
-            if status_map.get(attacker_id).map(|s| s.as_str()) == Some("active") {
+            if status_map.get(attacker_id) == Some(&BeliefStatus::Active) {
                 contest_map
                     .entry(belief.id.clone())
                     .or_default()
@@ -1201,7 +1202,7 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
         "facets": &belief.facets,
         "confidence": belief.confidence,
         "entrenchment": &belief.entrenchment,
-        "status": &belief.status,
+        "status": belief.status.as_str(),
         "content": &belief.content,
         "metrics": {
             "use": {
@@ -1257,7 +1258,7 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
             &facets_str,
             belief.confidence,
             &belief.entrenchment,
-            &belief.status,
+            belief.status.as_str(),
             &belief.extracted,
             &belief.revised,
             &belief.file_path,
@@ -1790,7 +1791,7 @@ Prefer synchronous code.
         assert_eq!(belief.facets, vec!["rust", "architecture"]);
         assert!((belief.confidence - 0.88).abs() < 0.01);
         assert_eq!(belief.entrenchment, "high");
-        assert_eq!(belief.status, "active");
+        assert_eq!(belief.status, BeliefStatus::Active);
         assert_eq!(belief.statement, "Prefer synchronous code.");
     }
 

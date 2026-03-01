@@ -5,7 +5,7 @@
 use anyhow::{bail, Result};
 use std::path::Path;
 
-use patina::mother::{BeliefEntry, EdgeType, Graph, NodeType, MIN_SAMPLES};
+use patina::mother::{BeliefEntry, BeliefStatus, EdgeType, Graph, NodeType, MIN_SAMPLES};
 use patina::paths;
 
 use crate::commands::repo::internal::Registry;
@@ -352,9 +352,10 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
                 entrenchment: row
                     .get::<_, Option<String>>(2)?
                     .unwrap_or_else(|| "medium".to_string()),
-                status: row
-                    .get::<_, Option<String>>(3)?
-                    .unwrap_or_else(|| "active".to_string()),
+                status: BeliefStatus::from_str_or_default(
+                    &row.get::<_, Option<String>>(3)?
+                        .unwrap_or_else(|| "active".to_string()),
+                ),
                 facets: row
                     .get::<_, Option<String>>(4)?
                     .unwrap_or_else(|| "[]".to_string()),
@@ -545,7 +546,7 @@ fn parse_persona_value(path: &Path) -> Result<BeliefEntry> {
         .as_str()
         .unwrap_or("medium")
         .to_string();
-    let status = yaml["status"].as_str().unwrap_or("active").to_string();
+    let status = BeliefStatus::from_str_or_default(yaml["status"].as_str().unwrap_or("active"));
     let facets = if let Some(seq) = yaml["facets"].as_sequence() {
         let tags: Vec<String> = seq
             .iter()
