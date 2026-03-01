@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use rusqlite::Connection;
+use serde::Deserialize;
 use std::io::{BufRead, BufReader, Write};
 use tracing::{info, warn};
 
@@ -14,11 +15,18 @@ mod spec;
 mod tools;
 
 // JSON-RPC error codes — differentiated for actionable client guidance
-#[allow(dead_code)]
-const ERR_INVALID_PARAMS: i32 = -32602; // malformed request (already used inline)
+const ERR_INVALID_PARAMS: i32 = -32602; // malformed request
 const ERR_INTERNAL: i32 = -32603; // bugs, unexpected failures
 const ERR_MISSING_INDEX: i32 = -32001; // "run `patina scrape` first"
 const ERR_DATABASE: i32 = -32002; // connection, query, schema mismatch
+
+/// Typed tool call parameters — deserialized once at the protocol boundary.
+#[derive(Deserialize)]
+struct ToolCallParams {
+    name: String,
+    #[serde(default)]
+    arguments: serde_json::Value,
+}
 
 /// Check project secrets compliance before starting MCP server.
 ///
@@ -180,20 +188,91 @@ fn handle_measure(req: &Request) -> Response {
 }
 
 fn handle_tool_call(req: &Request, engine: &QueryEngine, conn: &Connection) -> Response {
-    let name = req
-        .params
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let args = req.params.get("arguments").cloned().unwrap_or_default();
+    let params: ToolCallParams = match serde_json::from_value(req.params.clone()) {
+        Ok(p) => p,
+        Err(e) => {
+            return Response::error(
+                req.id.clone(),
+                ERR_INVALID_PARAMS,
+                &format!("Invalid tool call params: {}", e),
+            )
+        }
+    };
 
-    match name {
-        "scry" => scry::handle_scry(req, &args, engine, conn),
-        "context" => scry::handle_context(req, &args),
-        "mother" => scry::handle_mother(req, &args),
-        "assay" => assay::handle(req, &args, conn),
+    let ToolCallParams { name, arguments } = params;
+
+    match name.as_str() {
+        "scry" => {
+            let args: scry::ScryArgs = match serde_json::from_value(arguments) {
+                Ok(a) => a,
+                Err(e) => {
+                    return Response::error(
+                        req.id.clone(),
+                        ERR_INVALID_PARAMS,
+                        &format!("Invalid scry params: {}", e),
+                    )
+                }
+            };
+            scry::handle_scry(req, args, engine, conn)
+        }
+        "context" => {
+            let args: scry::ContextArgs = match serde_json::from_value(arguments) {
+                Ok(a) => a,
+                Err(e) => {
+                    return Response::error(
+                        req.id.clone(),
+                        ERR_INVALID_PARAMS,
+                        &format!("Invalid context params: {}", e),
+                    )
+                }
+            };
+            scry::handle_context(req, args)
+        }
+        "mother" => {
+            let args: scry::MotherArgs = match serde_json::from_value(arguments) {
+                Ok(a) => a,
+                Err(e) => {
+                    return Response::error(
+                        req.id.clone(),
+                        ERR_INVALID_PARAMS,
+                        &format!("Invalid mother params: {}", e),
+                    )
+                }
+            };
+            scry::handle_mother(req, args)
+        }
+        "assay" => {
+            let args: assay::AssayArgs = match serde_json::from_value(arguments) {
+                Ok(a) => a,
+                Err(e) => {
+                    return Response::error(
+                        req.id.clone(),
+                        ERR_INVALID_PARAMS,
+                        &format!("Invalid assay params: {}", e),
+                    )
+                }
+            };
+            assay::handle(req, args, conn)
+        }
         "measure" => handle_measure(req),
-        n if n.starts_with("spec.") || n.starts_with("schemas.") => spec::handle(req, n, &args),
-        _ => Response::error(req.id.clone(), -32602, &format!("Unknown tool: {}", name)),
+        n if n.starts_with("spec.") || n.starts_with("schemas.") => {
+            let tool_name = name.clone();
+            let args: spec::SpecArgs = match serde_json::from_value(arguments) {
+                Ok(a) => a,
+                Err(e) => {
+                    return Response::error(
+                        req.id.clone(),
+                        ERR_INVALID_PARAMS,
+                        &format!("Invalid {} params: {}", tool_name, e),
+                    )
+                }
+            };
+            spec::handle(req, n, args)
+        }
+        _ => Response::error(
+            req.id.clone(),
+            ERR_INVALID_PARAMS,
+            &format!("Unknown tool: {}", name),
+        ),
     }
 }

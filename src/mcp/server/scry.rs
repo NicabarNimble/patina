@@ -4,6 +4,7 @@
 //! and query logging — all retrieval-domain code.
 
 use anyhow::Result;
+use serde::Deserialize;
 
 use super::super::protocol::{Request, Response};
 use crate::commands::context::get_project_context;
@@ -11,23 +12,70 @@ use crate::commands::scry::internal::enrichment::find_belief_impact;
 use crate::commands::scry::ScryResult;
 use crate::retrieval::{snippet, FusedResult, QueryEngine, QueryOptions};
 
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Deserialize)]
+pub(super) struct ScryArgs {
+    pub query: Option<String>,
+    pub mode: Option<String>,
+    pub query_id: Option<String>,
+    pub rank: Option<usize>,
+    pub path: Option<String>,
+    pub days: Option<u32>,
+    pub doc_id: Option<String>,
+    pub limit: Option<usize>,
+    pub repo: Option<String>,
+    #[serde(default)]
+    pub all_repos: bool,
+    /// In MCP schema but not yet wired to scry handler (ScryOptions has it)
+    #[serde(default, rename = "include_issues")]
+    pub _include_issues: bool,
+    #[serde(default)]
+    pub expanded_terms: Vec<String>,
+    pub belief: Option<String>,
+    pub content_type: Option<String>,
+    #[serde(default = "default_true")]
+    pub impact: bool,
+}
+
+#[derive(Deserialize)]
+pub(super) struct ContextArgs {
+    pub topic: Option<String>,
+    /// In MCP schema but get_project_context doesn't take repo yet
+    #[serde(rename = "repo")]
+    pub _repo: Option<String>,
+    /// In MCP schema but get_project_context doesn't take all_repos yet
+    #[serde(default, rename = "all_repos")]
+    pub _all_repos: bool,
+}
+
+#[derive(Deserialize)]
+pub(super) struct MotherArgs {
+    pub query: Option<String>,
+    pub limit: Option<usize>,
+    pub mode: Option<String>,
+    pub belief_id: Option<String>,
+}
+
 pub(super) fn handle_scry(
     req: &Request,
-    args: &serde_json::Value,
+    args: ScryArgs,
     engine: &QueryEngine,
     conn: &rusqlite::Connection,
 ) -> Response {
-    let mode = args.get("mode").and_then(|v| v.as_str()).unwrap_or("find");
-    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
+    let mode = args.mode.as_deref().unwrap_or("find");
+    let limit = args.limit.unwrap_or(10);
 
     // Handle modes
     match mode {
         "orient" => {
-            let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            let path = args.path.as_deref().unwrap_or("");
             if path.is_empty() {
                 return Response::error(
                     req.id.clone(),
-                    -32602,
+                    super::ERR_INVALID_PARAMS,
                     "orient mode requires 'path' parameter",
                 );
             }
@@ -43,8 +91,8 @@ pub(super) fn handle_scry(
             }
         }
         "recent" => {
-            let query = args.get("query").and_then(|v| v.as_str());
-            let days = args.get("days").and_then(|v| v.as_u64()).unwrap_or(7) as u32;
+            let query = args.query.as_deref();
+            let days = args.days.unwrap_or(7);
 
             match handle_recent(conn, query, days, limit) {
                 Ok(text) => Response::success(
@@ -57,13 +105,13 @@ pub(super) fn handle_scry(
             }
         }
         "why" => {
-            let doc_id = args.get("doc_id").and_then(|v| v.as_str()).unwrap_or("");
-            let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+            let doc_id = args.doc_id.as_deref().unwrap_or("");
+            let query = args.query.as_deref().unwrap_or("");
 
             if doc_id.is_empty() || query.is_empty() {
                 return Response::error(
                     req.id.clone(),
-                    -32602,
+                    super::ERR_INVALID_PARAMS,
                     "why mode requires 'doc_id' and 'query' parameters",
                 );
             }
@@ -80,16 +128,12 @@ pub(super) fn handle_scry(
         }
         "belief" => {
             // E4.6a: Belief grounding — find nearest code/commits/sessions
-            let belief_id = args.get("belief").and_then(|v| v.as_str()).unwrap_or("");
-            let content_type = args
-                .get("content_type")
-                .and_then(|v| v.as_str())
-                .map(String::from);
+            let belief_id = args.belief.as_deref().unwrap_or("");
 
             if belief_id.is_empty() {
                 return Response::error(
                     req.id.clone(),
-                    -32602,
+                    super::ERR_INVALID_PARAMS,
                     "belief mode requires 'belief' parameter",
                 );
             }
@@ -97,7 +141,7 @@ pub(super) fn handle_scry(
             let options = crate::commands::scry::ScryOptions {
                 limit,
                 belief: Some(belief_id.to_string()),
-                content_type,
+                content_type: args.content_type,
                 ..Default::default()
             };
 
@@ -130,13 +174,13 @@ pub(super) fn handle_scry(
         }
         "use" => {
             // Phase 3: Log result usage from agent
-            let query_id = args.get("query_id").and_then(|v| v.as_str()).unwrap_or("");
-            let rank = args.get("rank").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            let query_id = args.query_id.as_deref().unwrap_or("");
+            let rank = args.rank.unwrap_or(0);
 
             if query_id.is_empty() || rank == 0 {
                 return Response::error(
                     req.id.clone(),
-                    -32602,
+                    super::ERR_INVALID_PARAMS,
                     "use mode requires 'query_id' and 'rank' parameters",
                 );
             }
@@ -153,13 +197,13 @@ pub(super) fn handle_scry(
         }
         "detail" => {
             // D3: Fetch full content for a single result from a previous query
-            let query_id = args.get("query_id").and_then(|v| v.as_str()).unwrap_or("");
-            let rank = args.get("rank").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            let query_id = args.query_id.as_deref().unwrap_or("");
+            let rank = args.rank.unwrap_or(0);
 
             if query_id.is_empty() || rank == 0 {
                 return Response::error(
                     req.id.clone(),
-                    -32602,
+                    super::ERR_INVALID_PARAMS,
                     "detail mode requires 'query_id' and 'rank' (1-indexed) parameters",
                 );
             }
@@ -176,24 +220,13 @@ pub(super) fn handle_scry(
         }
         "full" => {
             // D3: Escape hatch — full content for all results (deprecated)
-            let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-            let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
-            let all_repos = args
-                .get("all_repos")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let impact = args.get("impact").and_then(|v| v.as_bool()).unwrap_or(true);
-
-            let expanded_terms: Vec<&str> = args
-                .get("expanded_terms")
-                .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
-                .unwrap_or_default();
+            let query = args.query.as_deref().unwrap_or("");
+            let expanded_terms: Vec<&str> = args.expanded_terms.iter().map(|s| s.as_str()).collect();
 
             if query.is_empty() {
                 return Response::error(
                     req.id.clone(),
-                    -32602,
+                    super::ERR_INVALID_PARAMS,
                     "full mode requires 'query' parameter",
                 );
             }
@@ -204,14 +237,17 @@ pub(super) fn handle_scry(
                 format!("{} {}", query, expanded_terms.join(" "))
             };
 
-            let options = QueryOptions { repo, all_repos };
+            let options = QueryOptions {
+                repo: args.repo,
+                all_repos: args.all_repos,
+            };
 
             match engine.query_with_options(&full_query, limit, &options) {
                 Ok(results) => {
                     let query_id = log_mcp_query(query, "full", &results);
                     let mut text = format_results_full_with_query_id(&results, query_id.as_deref());
 
-                    if impact {
+                    if args.impact {
                         text = annotate_impact(&results, text);
                     }
 
@@ -227,25 +263,13 @@ pub(super) fn handle_scry(
         }
         _ => {
             // Default find mode
-            let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-            let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
-            let all_repos = args
-                .get("all_repos")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let impact = args.get("impact").and_then(|v| v.as_bool()).unwrap_or(true);
-
-            // Extract expanded_terms for vocabulary gap bridging
-            let expanded_terms: Vec<&str> = args
-                .get("expanded_terms")
-                .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
-                .unwrap_or_default();
+            let query = args.query.as_deref().unwrap_or("");
+            let expanded_terms: Vec<&str> = args.expanded_terms.iter().map(|s| s.as_str()).collect();
 
             if query.is_empty() {
                 return Response::error(
                     req.id.clone(),
-                    -32602,
+                    super::ERR_INVALID_PARAMS,
                     "find mode requires 'query' parameter",
                 );
             }
@@ -257,7 +281,10 @@ pub(super) fn handle_scry(
                 format!("{} {}", query, expanded_terms.join(" "))
             };
 
-            let options = QueryOptions { repo, all_repos };
+            let options = QueryOptions {
+                repo: args.repo,
+                all_repos: args.all_repos,
+            };
 
             match engine.query_with_options(&full_query, limit, &options) {
                 Ok(results) => {
@@ -266,7 +293,7 @@ pub(super) fn handle_scry(
                     let mut text = format_results_with_query_id(&results, query_id.as_deref());
 
                     // E4.6a: Compute belief impact for code results
-                    if impact {
+                    if args.impact {
                         text = annotate_impact(&results, text);
                     }
 
@@ -283,9 +310,9 @@ pub(super) fn handle_scry(
     }
 }
 
-pub(super) fn handle_context(req: &Request, args: &serde_json::Value) -> Response {
+pub(super) fn handle_context(req: &Request, args: ContextArgs) -> Response {
     let start = std::time::Instant::now();
-    let topic = args.get("topic").and_then(|v| v.as_str());
+    let topic = args.topic.as_deref();
     let result = get_project_context(topic);
 
     // Emit usage event (best-effort)
@@ -310,21 +337,18 @@ pub(super) fn handle_context(req: &Request, args: &serde_json::Value) -> Respons
     }
 }
 
-pub(super) fn handle_mother(req: &Request, args: &serde_json::Value) -> Response {
-    let mode = args
-        .get("mode")
-        .and_then(|v| v.as_str())
-        .unwrap_or("search");
-    let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
-    let belief_id = args.get("belief_id").and_then(|v| v.as_str()).unwrap_or("");
+pub(super) fn handle_mother(req: &Request, args: MotherArgs) -> Response {
+    let mode = args.mode.as_deref().unwrap_or("search");
+    let query = args.query.as_deref().unwrap_or("");
+    let limit = args.limit.unwrap_or(10);
+    let belief_id = args.belief_id.as_deref().unwrap_or("");
 
     match mode {
         "search" => {
             if query.is_empty() {
                 return Response::error(
                     req.id.clone(),
-                    -32602,
+                    super::ERR_INVALID_PARAMS,
                     "mother tool requires 'query' parameter",
                 );
             }
@@ -343,7 +367,7 @@ pub(super) fn handle_mother(req: &Request, args: &serde_json::Value) -> Response
             if belief_id.is_empty() {
                 return Response::error(
                     req.id.clone(),
-                    -32602,
+                    super::ERR_INVALID_PARAMS,
                     &format!("mode '{}' requires 'belief_id' parameter", mode),
                 );
             }
@@ -358,7 +382,11 @@ pub(super) fn handle_mother(req: &Request, args: &serde_json::Value) -> Response
                 Err(e) => Response::error(req.id.clone(), super::ERR_DATABASE, &e.to_string()),
             }
         }
-        _ => Response::error(req.id.clone(), -32602, &format!("unknown mode '{}'", mode)),
+        _ => Response::error(
+            req.id.clone(),
+            super::ERR_INVALID_PARAMS,
+            &format!("unknown mode '{}'", mode),
+        ),
     }
 }
 

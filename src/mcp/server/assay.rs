@@ -1,9 +1,21 @@
 //! Assay (structural query) MCP handlers
 
 use anyhow::Result;
+use serde::Deserialize;
 
 use super::super::protocol::{Request, Response};
 use crate::commands::assay::{AssayOptions, QueryType};
+
+#[derive(Deserialize)]
+pub(super) struct AssayArgs {
+    pub query_type: Option<String>,
+    pub query: Option<String>,
+    pub pattern: Option<String>,
+    pub limit: Option<usize>,
+    pub repo: Option<String>,
+    #[serde(default)]
+    pub all_repos: bool,
+}
 
 /// Collect rows from a query, logging deserialization failures.
 /// Returns (successful_rows, failure_count).
@@ -45,25 +57,16 @@ fn serialize_result(value: serde_json::Value, failures: usize) -> Result<String>
 
 pub(super) fn handle(
     req: &Request,
-    args: &serde_json::Value,
+    args: AssayArgs,
     conn: &rusqlite::Connection,
 ) -> Response {
-    let query_type_str = args
-        .get("query_type")
-        .and_then(|v| v.as_str())
-        .unwrap_or("inventory");
-    let pattern = args
-        .get("pattern")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
-    let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
-    let all_repos = args
-        .get("all_repos")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let query_type_str = args.query_type.as_deref().unwrap_or("inventory");
+    let pattern = args.pattern;
+    let limit = args.limit.unwrap_or(50);
+    let repo = args.repo;
+    let all_repos = args.all_repos;
 
-    let query = args.get("query").and_then(|v| v.as_str()).map(String::from);
+    let query = args.query;
 
     let query_type = match query_type_str {
         "imports" => QueryType::Imports,
@@ -77,7 +80,7 @@ pub(super) fn handle(
             if q.is_empty() {
                 return Response::error(
                     req.id.clone(),
-                    -32602,
+                    super::ERR_INVALID_PARAMS,
                     "search query_type requires 'query' or 'pattern' parameter",
                 );
             }
@@ -88,7 +91,7 @@ pub(super) fn handle(
             if file.is_empty() {
                 return Response::error(
                     req.id.clone(),
-                    -32602,
+                    super::ERR_INVALID_PARAMS,
                     "cochange query_type requires 'pattern' parameter (file path)",
                 );
             }
@@ -99,7 +102,7 @@ pub(super) fn handle(
             if id.is_empty() {
                 return Response::error(
                     req.id.clone(),
-                    -32602,
+                    super::ERR_INVALID_PARAMS,
                     "belief query_type requires 'pattern' parameter (belief ID)",
                 );
             }
@@ -116,7 +119,7 @@ pub(super) fn handle(
     {
         return Response::error(
             req.id.clone(),
-            -32602,
+            super::ERR_INVALID_PARAMS,
             &format!(
                 "The '{}' query type requires a 'pattern' parameter",
                 query_type_str
