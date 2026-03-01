@@ -5,12 +5,40 @@ use patina::project;
 use patina::session::SessionManager;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+
+/// Typed health status — the doctor check outcome.
+///
+/// Follows [[enum-not-string-for-finite-states]]: 3 variants for project health.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HealthStatus {
+    Healthy,
+    Warning,
+    Critical,
+}
+
+impl HealthStatus {
+    /// Canonical string form.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Healthy => "healthy",
+            Self::Warning => "warning",
+            Self::Critical => "critical",
+        }
+    }
+}
+
+impl std::fmt::Display for HealthStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
 use std::fs;
 use std::path::Path;
 
 #[derive(Serialize, Deserialize)]
 struct HealthCheck {
-    status: String, // "healthy", "warning", "critical"
+    status: HealthStatus,
     environment_changes: EnvironmentChanges,
     project_config: ProjectStatus,
     data_integrity: DataIntegrity,
@@ -130,13 +158,13 @@ pub fn execute(json_output: bool) -> Result<i32> {
             .jsonl_replica
             .warnings
             .is_empty();
-    if has_data_warnings && health_check.status == "healthy" {
-        health_check.status = "warning".to_string();
+    if has_data_warnings && health_check.status == HealthStatus::Healthy {
+        health_check.status = HealthStatus::Warning;
     }
     if !health_check.data_integrity.events_db.integrity_ok
         && health_check.data_integrity.events_db.exists
     {
-        health_check.status = "critical".to_string();
+        health_check.status = HealthStatus::Critical;
     }
 
     // Display results
@@ -155,11 +183,10 @@ pub fn execute(json_output: bool) -> Result<i32> {
     }
 
     // Determine exit code
-    let exit_code = match health_check.status.as_str() {
-        "healthy" => 0,
-        "warning" => 2,
-        "critical" => 3,
-        _ => 1,
+    let exit_code = match health_check.status {
+        HealthStatus::Healthy => 0,
+        HealthStatus::Warning => 2,
+        HealthStatus::Critical => 3,
     };
 
     Ok(exit_code)
@@ -209,11 +236,11 @@ fn analyze_environment(current: &Environment, stored_tools: &[String]) -> Result
 
     // Determine overall status
     let status = if missing_tools.iter().any(|t| t.required) {
-        "critical".to_string()
+        HealthStatus::Critical
     } else if !missing_tools.is_empty() {
-        "warning".to_string()
+        HealthStatus::Warning
     } else {
-        "healthy".to_string()
+        HealthStatus::Healthy
     };
 
     Ok(HealthCheck {
