@@ -220,8 +220,6 @@ pub(super) fn handle_scry(
         "full" => {
             // D3: Escape hatch — full content for all results (deprecated)
             let query = args.query.as_deref().unwrap_or("");
-            let expanded_terms: Vec<&str> =
-                args.expanded_terms.iter().map(|s| s.as_str()).collect();
 
             if query.is_empty() {
                 return Response::error(
@@ -231,18 +229,13 @@ pub(super) fn handle_scry(
                 );
             }
 
-            let full_query = if expanded_terms.is_empty() {
-                query.to_string()
-            } else {
-                format!("{} {}", query, expanded_terms.join(" "))
-            };
-
             let options = QueryOptions {
                 repo: args.repo,
                 all_repos: args.all_repos,
+                expanded_terms: args.expanded_terms,
             };
 
-            match engine.query_with_options(&full_query, limit, &options) {
+            match engine.query_with_options(query, limit, &options) {
                 Ok(results) => {
                     let query_id = log_mcp_query(query, "full", &results);
                     let mut text = format_results_full_with_query_id(&results, query_id.as_deref());
@@ -264,8 +257,6 @@ pub(super) fn handle_scry(
         _ => {
             // Default find mode
             let query = args.query.as_deref().unwrap_or("");
-            let expanded_terms: Vec<&str> =
-                args.expanded_terms.iter().map(|s| s.as_str()).collect();
 
             if query.is_empty() {
                 return Response::error(
@@ -275,19 +266,13 @@ pub(super) fn handle_scry(
                 );
             }
 
-            // Combine query with expanded terms for better FTS5 matching
-            let full_query = if expanded_terms.is_empty() {
-                query.to_string()
-            } else {
-                format!("{} {}", query, expanded_terms.join(" "))
-            };
-
             let options = QueryOptions {
                 repo: args.repo,
                 all_repos: args.all_repos,
+                expanded_terms: args.expanded_terms,
             };
 
-            match engine.query_with_options(&full_query, limit, &options) {
+            match engine.query_with_options(query, limit, &options) {
                 Ok(results) => {
                     // Log query and get query_id for feedback loop (Phase 3)
                     let query_id = log_mcp_query(query, "find", &results);

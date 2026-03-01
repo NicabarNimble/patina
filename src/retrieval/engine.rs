@@ -41,6 +41,9 @@ pub struct QueryOptions {
     pub repo: Option<String>,
     /// Query all registered repos (current project + reference repos)
     pub all_repos: bool,
+    /// Additional search terms to include (LLM-provided synonyms or code-specific
+    /// terms). When non-empty, concatenated with the query text before search.
+    pub expanded_terms: Vec<String>,
 }
 
 /// Query engine — semantic vector search with multi-repo federation
@@ -88,22 +91,30 @@ impl QueryEngine {
         self.query_local(query, limit)
     }
 
-    /// Query with federation options (repo, all_repos)
+    /// Query with federation options (repo, all_repos, expanded_terms)
     pub fn query_with_options(
         &self,
         query: &str,
         limit: usize,
         options: &QueryOptions,
     ) -> Result<Vec<FusedResult>> {
+        // Combine query with expanded terms if provided
+        let full_query = if options.expanded_terms.is_empty() {
+            query.to_string()
+        } else {
+            format!("{} {}", query, options.expanded_terms.join(" "))
+        };
+        let q = &full_query;
+
         if options.all_repos {
-            return self.query_all_repos(query, limit);
+            return self.query_all_repos(q, limit);
         }
 
         if let Some(ref repo_name) = options.repo {
-            return self.query_repo(query, limit, repo_name);
+            return self.query_repo(q, limit, repo_name);
         }
 
-        self.query_local(query, limit)
+        self.query_local(q, limit)
     }
 
     /// Query local project's semantic index across all available domains

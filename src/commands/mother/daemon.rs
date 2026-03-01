@@ -346,6 +346,7 @@ fn handle_scry(request: &HttpRequest, state: &ServerState, require_auth: bool) -
     let query_opts = QueryOptions {
         repo: body.repo,
         all_repos: body.all_repos,
+        ..Default::default()
     };
 
     match engine.query_with_options(&body.query, body.limit, &query_opts) {
