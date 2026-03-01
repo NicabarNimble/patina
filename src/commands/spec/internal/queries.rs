@@ -5,7 +5,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-use patina::spec::{parse_spec_file, SpecFrontmatter};
+use patina::spec::{parse_spec_file, SpecFrontmatter, SpecStatus};
 
 use super::archive::load_spec;
 use super::queue::{load_dep_counts, spec_age_days_from_list};
@@ -114,7 +114,7 @@ pub fn check_spec(id: &str, json: bool) -> Result<()> {
 #[derive(Debug, Clone, Serialize)]
 pub struct ReadySpec {
     pub id: String,
-    pub status: String,
+    pub status: SpecStatus,
     pub target: Option<String>,
     pub title: String,
 }
@@ -129,26 +129,23 @@ pub fn get_ready_specs() -> Result<Vec<ReadySpec>> {
     let all_specs = get_all_specs(&ListFilters::default())?;
 
     // Build status lookup for blocker resolution
-    let status_map: HashMap<String, String> = all_specs
+    let status_map: HashMap<String, SpecStatus> = all_specs
         .iter()
-        .filter_map(|s| s.status.as_ref().map(|st| (s.id.clone(), st.clone())))
+        .filter_map(|s| s.status.map(|st| (s.id.clone(), st)))
         .collect();
 
     let mut specs: Vec<ReadySpec> = all_specs
         .iter()
-        .filter(|s| matches!(s.status.as_deref(), Some("ready") | Some("active")))
+        .filter(|s| matches!(s.status, Some(SpecStatus::Ready) | Some(SpecStatus::Active)))
         .filter(|s| {
-            // All blockers must be complete/done (or not found on disk = archived = done)
-            s.blocked_by.iter().all(|blocker_id| {
-                matches!(
-                    status_map.get(blocker_id).map(|s| s.as_str()),
-                    Some("complete") | Some("done") | None
-                )
-            })
+            // All blockers must be terminal (or not found on disk = archived = done)
+            s.blocked_by
+                .iter()
+                .all(|blocker_id| status_map.get(blocker_id).is_none_or(|st| st.is_terminal()))
         })
         .map(|s| ReadySpec {
             id: s.id.clone(),
-            status: s.status.clone().unwrap_or_default(),
+            status: s.status.unwrap_or(SpecStatus::Draft),
             target: s.target.clone(),
             title: s.title.clone(),
         })
@@ -179,20 +176,17 @@ pub fn show_ready_specs(json: bool) -> Result<()> {
     let all_specs = get_all_specs(&ListFilters::default()).unwrap_or_default();
     let drafts: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("draft"))
+        .filter(|s| s.status == Some(SpecStatus::Draft))
         .collect();
     let paused: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("paused"))
+        .filter(|s| s.status == Some(SpecStatus::Paused))
         .collect();
     let blocked_specs = get_blocked_specs().unwrap_or_default();
     let unblocked: Vec<_> = blocked_specs
         .iter()
         .filter(|b| {
-            b.blocked_by.is_empty()
-                || b.blocked_by
-                    .iter()
-                    .all(|bl| bl.status == "complete" || bl.status == "done")
+            b.blocked_by.is_empty() || b.blocked_by.iter().all(|bl| bl.status.is_terminal())
         })
         .collect();
 
@@ -200,8 +194,14 @@ pub fn show_ready_specs(json: bool) -> Result<()> {
 
     if !specs.is_empty() {
         // Group by status for display
-        let ready: Vec<_> = specs.iter().filter(|s| s.status == "ready").collect();
-        let active: Vec<_> = specs.iter().filter(|s| s.status == "active").collect();
+        let ready: Vec<_> = specs
+            .iter()
+            .filter(|s| s.status == SpecStatus::Ready)
+            .collect();
+        let active: Vec<_> = specs
+            .iter()
+            .filter(|s| s.status == SpecStatus::Active)
+            .collect();
 
         if !ready.is_empty() {
             println!("READY (can start now):");
@@ -301,14 +301,14 @@ pub fn show_ready_specs(json: bool) -> Result<()> {
 #[derive(Debug, Clone, Serialize)]
 pub struct Blocker {
     pub id: String,
-    pub status: String,
+    pub status: SpecStatus,
 }
 
 /// A spec that is blocked by incomplete dependencies
 #[derive(Debug, Clone, Serialize)]
 pub struct BlockedSpec {
     pub id: String,
-    pub status: String,
+    pub status: SpecStatus,
     pub target: Option<String>,
     pub title: String,
     pub blocked_by: Vec<Blocker>,
@@ -325,15 +325,15 @@ pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
     let all_specs = get_all_specs(&ListFilters::default())?;
 
     // Build status lookup for blocker resolution
-    let status_map: HashMap<String, String> = all_specs
+    let status_map: HashMap<String, SpecStatus> = all_specs
         .iter()
-        .filter_map(|s| s.status.as_ref().map(|st| (s.id.clone(), st.clone())))
+        .filter_map(|s| s.status.map(|st| (s.id.clone(), st)))
         .collect();
 
     let mut specs: Vec<BlockedSpec> = Vec::new();
 
     for spec in &all_specs {
-        let status = spec.status.as_deref().unwrap_or("");
+        let status: Option<SpecStatus> = spec.status;
 
         // Resolve blockers from frontmatter blocked_by
         let incomplete_blockers: Vec<Blocker> = spec
@@ -342,10 +342,10 @@ pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
             .filter_map(|blocker_id| {
                 let blocker_status = status_map
                     .get(blocker_id)
-                    .cloned()
+                    .copied()
                     // Not on disk = archived = treat as done
-                    .unwrap_or_else(|| "complete".to_string());
-                if blocker_status != "complete" && blocker_status != "done" {
+                    .unwrap_or(SpecStatus::Complete);
+                if !blocker_status.is_terminal() {
                     Some(Blocker {
                         id: blocker_id.clone(),
                         status: blocker_status,
@@ -359,16 +359,16 @@ pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
         if !incomplete_blockers.is_empty() {
             specs.push(BlockedSpec {
                 id: spec.id.clone(),
-                status: status.to_string(),
+                status: status.unwrap_or(SpecStatus::Blocked),
                 target: spec.target.clone(),
                 title: spec.title.clone(),
                 blocked_by: incomplete_blockers,
             });
-        } else if status == "blocked" {
+        } else if status == Some(SpecStatus::Blocked) {
             // status='blocked' but no incomplete blockers in frontmatter
             specs.push(BlockedSpec {
                 id: spec.id.clone(),
-                status: status.to_string(),
+                status: SpecStatus::Blocked,
                 target: spec.target.clone(),
                 title: spec.title.clone(),
                 blocked_by: vec![],
@@ -420,7 +420,7 @@ pub fn show_blocked_specs(json: bool) -> Result<()> {
 #[derive(Debug, Clone, Serialize)]
 pub struct SpecInfo {
     pub id: String,
-    pub status: Option<String>,
+    pub status: Option<SpecStatus>,
     pub target: Option<String>,
     pub title: String,
     pub unscraped: bool,
@@ -440,7 +440,7 @@ pub struct SpecInfo {
 /// Filter options for spec list
 #[derive(Debug, Clone, Default)]
 pub struct ListFilters {
-    pub status: Option<String>,
+    pub status: Option<SpecStatus>,
     pub target: Option<String>,
 }
 
@@ -505,7 +505,7 @@ pub(super) fn scan_disk_specs() -> Vec<SpecInfo> {
                 let file_path = path.to_string_lossy().to_string();
                 specs.push(SpecInfo {
                     id: frontmatter.id,
-                    status: frontmatter.status.map(|s| s.to_string()),
+                    status: frontmatter.status,
                     target: frontmatter.target,
                     title,
                     unscraped: true, // disk-only until merged with DB
@@ -568,8 +568,8 @@ pub fn get_all_specs(filters: &ListFilters) -> Result<Vec<SpecInfo>> {
     let mut specs: Vec<SpecInfo> = spec_map.into_values().collect();
 
     // Apply filters
-    if let Some(status_filter) = &filters.status {
-        specs.retain(|s| s.status.as_deref() == Some(status_filter.as_str()));
+    if let Some(status_filter) = filters.status {
+        specs.retain(|s| s.status == Some(status_filter));
     }
     if let Some(target_filter) = &filters.target {
         specs.retain(|s| s.target.as_deref() == Some(target_filter.as_str()));
@@ -608,9 +608,14 @@ pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
     println!("{:-<80}", "");
 
     for spec in &specs {
-        let status_raw = spec.status.as_deref().unwrap_or("-");
+        let status_raw = spec
+            .status
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "-".to_string());
         // Add age suffix for paused/blocked specs
-        let age_suffix = if status_raw == "paused" || status_raw == "blocked" {
+        let age_suffix = if spec.status == Some(SpecStatus::Paused)
+            || spec.status == Some(SpecStatus::Blocked)
+        {
             let age = spec_age_days_from_list(spec);
             if age > 0 {
                 format!(" ({}d)", age)
@@ -637,7 +642,7 @@ pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
     // Warn about completed/abandoned specs still in tree
     let stale_count = specs
         .iter()
-        .filter(|s| matches!(s.status.as_deref(), Some("complete") | Some("abandoned")))
+        .filter(|s| s.status.is_some_and(|st| st.is_terminal()))
         .count();
     if stale_count > 0 {
         let noun = if stale_count == 1 { "spec" } else { "specs" };
@@ -650,10 +655,10 @@ pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
     // One-paused-spec constraint status
     let paused_count = specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("paused"))
+        .filter(|s| s.status == Some(SpecStatus::Paused))
         .count();
     if paused_count > 0 {
-        let paused_spec = specs.iter().find(|s| s.status.as_deref() == Some("paused"));
+        let paused_spec = specs.iter().find(|s| s.status == Some(SpecStatus::Paused));
         if let Some(spec) = paused_spec {
             eprintln!("\nPaused: {} — resolve before pausing another", spec.id);
         }
@@ -746,7 +751,7 @@ pub fn show_spec(id: &str, json: bool) -> Result<()> {
     }
 
     // Human-readable output
-    let status = result.frontmatter.status.map(|s| s.to_string()).unwrap_or_else(|| "unknown".to_string());
+    let status = result.frontmatter.status.map_or("unknown", |s| s.as_str());
     println!("{} [{}]", result.id, status);
     println!();
 

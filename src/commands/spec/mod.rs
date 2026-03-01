@@ -23,6 +23,7 @@ pub(crate) use internal::{
 };
 
 use anyhow::Result;
+use patina::spec::SpecStatus;
 
 /// Spec CLI subcommands (used by main.rs via clap)
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -295,7 +296,15 @@ pub fn blocked(json: bool) -> Result<()> {
 
 /// List all specs with optional filters
 pub fn list(status: Option<String>, target: Option<String>, json: bool) -> Result<()> {
-    let filters = internal::ListFilters { status, target };
+    // Parse status at CLI boundary — unknown values return validation error
+    let parsed_status = status
+        .as_deref()
+        .map(|s| s.parse::<SpecStatus>())
+        .transpose()?;
+    let filters = internal::ListFilters {
+        status: parsed_status,
+        target,
+    };
     internal::show_spec_list(&filters, json)
 }
 

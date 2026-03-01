@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 
 use crate::commands::spec;
 use patina::git;
+use patina::spec::SpecStatus;
 
 /// Path to active session file (transient, gitignored)
 const ACTIVE_SESSION_PATH: &str = ".patina/local/active-session.md";
@@ -996,23 +997,23 @@ fn show_spec_landscape() {
 
     let active: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("active"))
+        .filter(|s| s.status == Some(SpecStatus::Active))
         .collect();
     let paused: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("paused"))
+        .filter(|s| s.status == Some(SpecStatus::Paused))
         .collect();
     let blocked: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("blocked"))
+        .filter(|s| s.status == Some(SpecStatus::Blocked))
         .collect();
     let ready: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("ready"))
+        .filter(|s| s.status == Some(SpecStatus::Ready))
         .collect();
     let drafts: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("draft"))
+        .filter(|s| s.status == Some(SpecStatus::Draft))
         .collect();
 
     println!();
@@ -1114,7 +1115,7 @@ fn show_spec_status_in_update(changed_files: &[String]) {
     if let Ok(all_specs) = spec::get_all_specs(&spec::ListFilters::default()) {
         let paused: Vec<_> = all_specs
             .iter()
-            .filter(|s| s.status.as_deref() == Some("paused"))
+            .filter(|s| s.status == Some(SpecStatus::Paused))
             .collect();
         if !paused.is_empty() {
             println!();
@@ -1164,10 +1165,7 @@ fn show_spec_end_summary(changed_files: &[String]) {
         let unblocked: Vec<_> = blocked_specs
             .iter()
             .filter(|b| {
-                b.blocked_by.is_empty()
-                    || b.blocked_by
-                        .iter()
-                        .all(|bl| bl.status == "complete" || bl.status == "done")
+                b.blocked_by.is_empty() || b.blocked_by.iter().all(|bl| bl.status.is_terminal())
             })
             .collect();
 
@@ -1183,19 +1181,19 @@ fn show_spec_end_summary(changed_files: &[String]) {
     // Next spec recommendation
     let active: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("active"))
+        .filter(|s| s.status == Some(SpecStatus::Active))
         .collect();
     let paused: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("paused"))
+        .filter(|s| s.status == Some(SpecStatus::Paused))
         .collect();
     let ready: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("ready"))
+        .filter(|s| s.status == Some(SpecStatus::Ready))
         .collect();
     let drafts: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("draft"))
+        .filter(|s| s.status == Some(SpecStatus::Draft))
         .collect();
 
     println!();
