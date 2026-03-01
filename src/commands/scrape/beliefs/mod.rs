@@ -31,7 +31,7 @@ struct ParsedBelief {
     facets: Vec<String>,  // Domain tags
     confidence: f64,      // 0.0-1.0 (legacy, will be removed)
     entrenchment: String, // low/medium/high/very-high
-    status: BeliefStatus,  // active/scoped/defeated/archived
+    status: BeliefStatus, // active/scoped/defeated/archived
     extracted: Option<String>,
     revised: Option<String>,
     content: String, // Full markdown for embedding
@@ -817,10 +817,8 @@ fn cross_reference_beliefs(beliefs: &mut [ParsedBelief], project_root: &Path) {
     }
 
     // Build status map for contest detection (Phase C)
-    let status_map: std::collections::HashMap<String, BeliefStatus> = beliefs
-        .iter()
-        .map(|b| (b.id.clone(), b.status))
-        .collect();
+    let status_map: std::collections::HashMap<String, BeliefStatus> =
+        beliefs.iter().map(|b| (b.id.clone(), b.status)).collect();
 
     // Build bidirectional contest map (Phase C)
     // A contests B if: A's ## Attacks lists B (non-defeated) AND B is active
