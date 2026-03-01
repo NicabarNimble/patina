@@ -173,7 +173,6 @@ pub(super) fn handle_scry(
             }
         }
         "use" => {
-            // Phase 3: Log result usage from agent
             let query_id = args.query_id.as_deref().unwrap_or("");
             let rank = args.rank.unwrap_or(0);
 
@@ -185,7 +184,7 @@ pub(super) fn handle_scry(
                 );
             }
 
-            match handle_use(query_id, rank) {
+            match crate::commands::scry::internal::use_json(query_id, rank) {
                 Ok(text) => Response::success(
                     req.id.clone(),
                     serde_json::json!({
@@ -196,7 +195,6 @@ pub(super) fn handle_scry(
             }
         }
         "detail" => {
-            // D3: Fetch full content for a single result from a previous query
             let query_id = args.query_id.as_deref().unwrap_or("");
             let rank = args.rank.unwrap_or(0);
 
@@ -208,7 +206,7 @@ pub(super) fn handle_scry(
                 );
             }
 
-            match handle_detail(query_id, rank) {
+            match crate::commands::scry::detail_json(query_id, rank) {
                 Ok(text) => Response::success(
                     req.id.clone(),
                     serde_json::json!({
@@ -675,137 +673,6 @@ fn handle_why(doc_id: &str, query: &str, engine: &QueryEngine) -> Result<String>
             Ok(output)
         }
     }
-}
-
-/// Handle use mode - log result usage from agent (Phase 3 feedback)
-fn handle_use(query_id: &str, rank: usize) -> Result<String> {
-    // scry.query and scry.use events live in events.db
-    let conn = patina::eventlog::open_events_db()?;
-
-    // Get the query results to find the doc_id for this rank
-    let data: String = conn.query_row(
-        "SELECT data FROM eventlog WHERE event_type = 'scry.query' AND source_id = ?",
-        [query_id],
-        |row| row.get(0),
-    )?;
-
-    let parsed: serde_json::Value = serde_json::from_str(&data)?;
-    let results = parsed["results"]
-        .as_array()
-        .ok_or_else(|| anyhow::anyhow!("No results in query"))?;
-
-    if rank == 0 || rank > results.len() {
-        anyhow::bail!(
-            "Invalid rank {}. Query had {} results.",
-            rank,
-            results.len()
-        );
-    }
-
-    let doc_id = results[rank - 1]["doc_id"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
-
-    // Get session_id from active session
-    let session_id = crate::commands::scry::internal::logging::get_active_session_id();
-
-    // Log the usage event
-    let use_data = serde_json::json!({
-        "query_id": query_id,
-        "result_used": doc_id,
-        "rank": rank,
-        "session_id": session_id
-    });
-
-    let timestamp = chrono::Utc::now().to_rfc3339();
-    patina::eventlog::insert_event(
-        &conn,
-        "scry.use",
-        &timestamp,
-        query_id,
-        None,
-        &use_data.to_string(),
-    )?;
-
-    Ok(format!(
-        "Usage logged: {} rank #{} ({})",
-        query_id, rank, doc_id
-    ))
-}
-
-/// D3: Fetch full content for a single result from a previous query
-///
-/// Looks up the doc_id at the given rank from the query log (events.db),
-/// then fetches the full content from patina.db eventlog.
-fn handle_detail(query_id: &str, rank: usize) -> Result<String> {
-    use rusqlite::Connection;
-
-    // scry.query events are in events.db
-    let events_conn = patina::eventlog::open_events_db()?;
-
-    // Look up query results to find doc_id at this rank
-    let data: String = events_conn.query_row(
-        "SELECT data FROM eventlog WHERE event_type = 'scry.query' AND source_id = ?",
-        [query_id],
-        |row| row.get(0),
-    )?;
-
-    let parsed: serde_json::Value = serde_json::from_str(&data)?;
-    let results = parsed["results"]
-        .as_array()
-        .ok_or_else(|| anyhow::anyhow!("No results in query"))?;
-
-    if rank == 0 || rank > results.len() {
-        anyhow::bail!(
-            "Invalid rank {}. Query had {} results.",
-            rank,
-            results.len()
-        );
-    }
-
-    let result = &results[rank - 1];
-    let doc_id = result["doc_id"].as_str().unwrap_or("");
-    let score = result["score"].as_f64().unwrap_or(0.0);
-    let event_type = result["event_type"].as_str().unwrap_or("");
-
-    // Fetch full content from patina.db eventlog (source-derived events)
-    let lookup_id = if let Some(stripped) = doc_id.strip_prefix("belief:") {
-        stripped
-    } else {
-        doc_id
-    };
-    let patina_conn = Connection::open(patina::eventlog::PATINA_DB)?;
-    let full_data: Option<String> = match patina_conn.query_row(
-        "SELECT data FROM eventlog WHERE source_id = ? ORDER BY seq DESC LIMIT 1",
-        [lookup_id],
-        |row| row.get(0),
-    ) {
-        Ok(v) => Some(v),
-        Err(rusqlite::Error::QueryReturnedNoRows) => None,
-        Err(e) => {
-            tracing::warn!(doc_id, error = %e, "failed to fetch detail content");
-            None
-        }
-    };
-
-    let mut output = format!(
-        "Detail: {} (rank #{}, score: {:.3}, type: {})\n\n",
-        doc_id, rank, score, event_type
-    );
-
-    match full_data {
-        Some(raw_json) => {
-            let content = format_detail_content(event_type, &raw_json);
-            output.push_str(&content);
-        }
-        None => {
-            output.push_str("(No content found in eventlog for this doc_id)");
-        }
-    }
-
-    output.push_str(&format!("\n\n---\nQuery ID: {}\n", query_id));
-    Ok(output)
 }
 
 /// Handle mother query — supports/attacks/projects modes
