@@ -14,16 +14,16 @@ exit_criteria:
   checked: true
 - id: belief-status-enum
   text: ParsedBelief.status and BeliefEntry.status are BeliefStatus enum with 4 variants
-  checked: false
+  checked: true
 - id: health-status-enum
   text: HealthCheck.status is HealthStatus enum with 3 variants
-  checked: false
+  checked: true
 - id: activity-level-enum
   text: ModuleSignal.activity_level is ActivityLevel enum with 4 variants
-  checked: false
+  checked: true
 - id: zero-status-string-comparisons
   text: "Zero status string comparisons in control-flow code: blockers, queue logic, resume gating, session shutdown, state transitions. Output-only display fields (MutationResult.new_status, MutationDetail::Resume.previous_status) excluded — they mirror the enum for display only."
-  checked: false
+  checked: true
 - id: list-filters-parse-enum
   text: "ListFilters.status parses user input into SpecStatus before evaluation. Unknown status values return a validation error, not a silent empty result."
   checked: true
