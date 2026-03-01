@@ -8,6 +8,8 @@ sessions:
 related:
 - mcp-typed-handlers
 - mcp-server-hardening
+beliefs:
+- mcp-is-discovery-cli-is-execution
 exit_criteria: []
 ---
 # refactor: Collapse MCP handlers to thin CLI wrappers
