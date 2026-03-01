@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
 use std::path::PathBuf;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::paths;
 
@@ -143,6 +143,51 @@ pub struct EdgeUsageStats {
     pub current_weight: f32,
 }
 
+/// Typed belief status — the belief lifecycle state machine.
+///
+/// Follows [[enum-not-string-for-finite-states]]: 4 variants, no stringly-typed
+/// comparisons in control flow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BeliefStatus {
+    Active,
+    Scoped,
+    Defeated,
+    Archived,
+}
+
+impl BeliefStatus {
+    /// Parse from string with safe default to Active for unknown values.
+    ///
+    /// Belief data is less critical to control flow than spec status,
+    /// so unknown values default rather than error (ADR-4 in DESIGN.md).
+    pub fn from_str_or_default(s: &str) -> Self {
+        match s {
+            "active" => Self::Active,
+            "scoped" => Self::Scoped,
+            "defeated" => Self::Defeated,
+            "archived" => Self::Archived,
+            _ => Self::Active,
+        }
+    }
+
+    /// Canonical string form.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Scoped => "scoped",
+            Self::Defeated => "defeated",
+            Self::Archived => "archived",
+        }
+    }
+}
+
+impl std::fmt::Display for BeliefStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// A belief entry for cross-project search (beliefs + persona values)
 #[derive(Debug, Clone, Serialize)]
 pub struct BeliefEntry {
@@ -151,7 +196,7 @@ pub struct BeliefEntry {
     pub kind: String,
     pub statement: String,
     pub entrenchment: String,
-    pub status: String,
+    pub status: BeliefStatus,
     pub facets: String,
     // Metrics (synced from patina.db)
     pub cited_by_beliefs: i32,
@@ -901,7 +946,7 @@ impl Graph {
                     entry.kind,
                     entry.statement,
                     entry.entrenchment,
-                    entry.status,
+                    entry.status.as_str(),
                     entry.facets,
                     entry.cited_by_beliefs,
                     entry.cited_by_sessions,
@@ -1059,7 +1104,7 @@ impl Graph {
                     kind: row.get(2)?,
                     statement: row.get(3)?,
                     entrenchment: row.get(4)?,
-                    status: row.get(5)?,
+                    status: BeliefStatus::from_str_or_default(&row.get::<_, String>(5)?),
                     facets: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
                     cited_by_beliefs: row.get(7)?,
                     cited_by_sessions: row.get(8)?,
@@ -1226,7 +1271,7 @@ impl Graph {
                     kind: row.get(2)?,
                     statement: row.get(3)?,
                     entrenchment: row.get(4)?,
-                    status: row.get(5)?,
+                    status: BeliefStatus::from_str_or_default(&row.get::<_, String>(5)?),
                     facets: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
                     cited_by_beliefs: row.get(7)?,
                     cited_by_sessions: row.get(8)?,
@@ -1669,7 +1714,7 @@ mod tests {
             kind: kind.to_string(),
             statement: statement.to_string(),
             entrenchment: entrenchment.to_string(),
-            status: status.to_string(),
+            status: BeliefStatus::from_str_or_default(status),
             facets: facets.to_string(),
             cited_by_beliefs: 0,
             cited_by_sessions: 0,
