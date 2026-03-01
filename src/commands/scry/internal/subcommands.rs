@@ -276,7 +276,12 @@ fn recent_entries(
 }
 
 /// Query recent changes and return JSON string — called by MCP handler
-pub fn recent_json(conn: &Connection, query: Option<&str>, days: u32, limit: usize) -> Result<String> {
+pub fn recent_json(
+    conn: &Connection,
+    query: Option<&str>,
+    days: u32,
+    limit: usize,
+) -> Result<String> {
     let entries = recent_entries(conn, query, days, limit)?;
     let result = RecentOutput {
         query: query.map(|s| s.to_string()),
@@ -306,10 +311,7 @@ pub fn execute_recent(query: Option<&str>, days: u32, limit: usize) -> Result<()
     }
 
     println!("Mode: Temporal (last {} days)\n", days);
-    println!(
-        "Found {} files with recent changes:\n",
-        entries.len()
-    );
+    println!("Found {} files with recent changes:\n", entries.len());
     println!("{}", "─".repeat(70));
 
     for (i, entry) in entries.iter().enumerate() {
@@ -391,15 +393,15 @@ pub fn why_json(engine: &QueryEngine, doc_id: &str, query: &str) -> Result<Strin
                 .collect();
 
             let ann = &result.annotations;
-            let structural_signals =
-                if ann.importer_count.is_some() || ann.activity_level.is_some() {
-                    Some(WhySignals {
-                        importer_count: ann.importer_count,
-                        activity_level: ann.activity_level.clone(),
-                    })
-                } else {
-                    None
-                };
+            let structural_signals = if ann.importer_count.is_some() || ann.activity_level.is_some()
+            {
+                Some(WhySignals {
+                    importer_count: ann.importer_count,
+                    activity_level: ann.activity_level.clone(),
+                })
+            } else {
+                None
+            };
 
             WhyOutput {
                 doc_id: result.doc_id.clone(),

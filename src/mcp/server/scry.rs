@@ -671,4 +671,3 @@ pub(super) fn emit_usage_event(event_type: &str, source_id: &str, data: &serde_j
         tracing::warn!(event_type, error = %e, "failed to record usage event");
     }
 }
-

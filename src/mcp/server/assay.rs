@@ -142,12 +142,20 @@ fn execute_assay(options: &AssayOptions, shared_conn: &rusqlite::Connection) -> 
         None => shared_conn,
     };
 
-    let limit = if options.limit > 0 { options.limit } else { 100 };
+    let limit = if options.limit > 0 {
+        options.limit
+    } else {
+        100
+    };
 
     match options.query_type {
         QueryType::Inventory => {
             let pattern = options.pattern.as_deref().unwrap_or("%");
-            let inv_limit = if options.limit > 0 { options.limit } else { 1000 };
+            let inv_limit = if options.limit > 0 {
+                options.limit
+            } else {
+                1000
+            };
             internal::inventory_json(conn, pattern, inv_limit)
         }
         QueryType::Imports => {
@@ -158,9 +166,7 @@ fn execute_assay(options: &AssayOptions, shared_conn: &rusqlite::Connection) -> 
             let pattern = options.pattern.as_ref().unwrap();
             internal::importers_json(conn, pattern, limit)
         }
-        QueryType::Functions => {
-            internal::functions_json(conn, options.pattern.as_deref(), limit)
-        }
+        QueryType::Functions => internal::functions_json(conn, options.pattern.as_deref(), limit),
         QueryType::Callers => {
             let pattern = options.pattern.as_ref().unwrap();
             internal::callers_json(conn, pattern, limit)
@@ -169,14 +175,10 @@ fn execute_assay(options: &AssayOptions, shared_conn: &rusqlite::Connection) -> 
             let pattern = options.pattern.as_ref().unwrap();
             internal::callees_json(conn, pattern, limit)
         }
-        QueryType::Derive => {
-            internal::derive_signals_json(conn)
-        }
-        QueryType::DeriveMoments => {
-            Ok(serde_json::to_string_pretty(&serde_json::json!({
-                "error": "derive-moments not yet supported in MCP, use 'patina assay derive-moments' CLI"
-            }))?)
-        }
+        QueryType::Derive => internal::derive_signals_json(conn),
+        QueryType::DeriveMoments => Ok(serde_json::to_string_pretty(&serde_json::json!({
+            "error": "derive-moments not yet supported in MCP, use 'patina assay derive-moments' CLI"
+        }))?),
         QueryType::Search { ref query } => {
             let search_opts = internal::search::SearchOptions {
                 limit: options.limit,
