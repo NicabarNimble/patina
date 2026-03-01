@@ -11,4 +11,5 @@ pub mod semantic;
 pub mod subcommands;
 
 // Re-export _json() functions for MCP handler delegation
+pub use logging::use_json;
 pub use subcommands::{orient_json, recent_json};

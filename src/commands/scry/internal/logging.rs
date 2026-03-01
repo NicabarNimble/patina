@@ -239,6 +239,46 @@ pub fn log_scry_query_with_routing(
     }
 }
 
+/// Log usage and return JSON confirmation — called by MCP handler
+///
+/// Validates rank against query results, logs usage event via log_scry_use()
+/// which includes mark_edge_usage_from_query() — fixing the MCP gap where
+/// edge marking was previously missing.
+pub fn use_json(query_id: &str, rank: usize) -> Result<String> {
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    struct UseOutput {
+        query_id: String,
+        rank: usize,
+        doc_id: String,
+        status: String,
+    }
+
+    let results = get_query_results(query_id)?;
+    if rank == 0 || rank > results.len() {
+        anyhow::bail!(
+            "Invalid rank {}. Query had {} results.",
+            rank,
+            results.len()
+        );
+    }
+
+    let (doc_id, _score) = &results[rank - 1];
+
+    // log_scry_use includes mark_edge_usage_from_query — fixes MCP gap
+    log_scry_use(query_id, doc_id, rank);
+
+    let output = UseOutput {
+        query_id: query_id.to_string(),
+        rank,
+        doc_id: doc_id.clone(),
+        status: "usage_logged".to_string(),
+    };
+
+    Ok(serde_json::to_string_pretty(&output)?)
+}
+
 /// Log usage of a scry result (scry.use event)
 ///
 /// Called by scry open, scry copy, and MCP callback.
