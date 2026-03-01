@@ -505,7 +505,7 @@ pub(super) fn scan_disk_specs() -> Vec<SpecInfo> {
                 let file_path = path.to_string_lossy().to_string();
                 specs.push(SpecInfo {
                     id: frontmatter.id,
-                    status: frontmatter.status,
+                    status: frontmatter.status.map(|s| s.to_string()),
                     target: frontmatter.target,
                     title,
                     unscraped: true, // disk-only until merged with DB
@@ -746,7 +746,7 @@ pub fn show_spec(id: &str, json: bool) -> Result<()> {
     }
 
     // Human-readable output
-    let status = result.frontmatter.status.as_deref().unwrap_or("unknown");
+    let status = result.frontmatter.status.map(|s| s.to_string()).unwrap_or_else(|| "unknown".to_string());
     println!("{} [{}]", result.id, status);
     println!();
 

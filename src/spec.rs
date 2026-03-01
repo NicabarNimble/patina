@@ -165,7 +165,7 @@ pub struct SpecFrontmatter {
 
     /// Status: draft, ready, active, paused, blocked, complete, abandoned
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<String>,
+    pub status: Option<SpecStatus>,
 
     /// Creation date (YYYY-MM-DD)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -470,7 +470,7 @@ Body content here.
 
         let (frontmatter, body) = parse_spec_file(content).expect("should parse");
         assert_eq!(frontmatter.id, "test-spec");
-        assert_eq!(frontmatter.status, Some("ready".to_string()));
+        assert_eq!(frontmatter.status, Some(SpecStatus::Ready));
         assert_eq!(frontmatter.target, Some("v0.12.0".to_string()));
         assert_eq!(frontmatter.blocked_by, vec!["other-spec"]);
         assert!(body.contains("# Test Spec"));

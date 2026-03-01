@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::path::Path;
 
 use patina::release::BumpType;
+use patina::spec::SpecStatus;
 
 use super::archive::{load_spec, release_and_archive};
 use super::mutations::{git_stage_and_commit, mutate_spec};
@@ -84,7 +85,7 @@ pub fn split_spec_value(
     // 3. Complete original spec via mutate_spec (replaces manual read-parse-mutate-write-DB)
     let original_file = loaded.file_path.clone();
     let out = mutate_spec(loaded, |fm| {
-        fm.status = Some("complete".to_string());
+        fm.status = Some(SpecStatus::Complete);
         Ok(())
     })?;
 
