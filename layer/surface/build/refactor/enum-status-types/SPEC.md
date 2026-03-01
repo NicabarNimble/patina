@@ -7,6 +7,7 @@ sessions:
   origin: 20260301-165723
 beliefs:
 - enum-not-string-for-finite-states
+- parse-at-boundary-type-the-interior
 exit_criteria: []
 ---
 # refactor: Replace status: String with typed enums
