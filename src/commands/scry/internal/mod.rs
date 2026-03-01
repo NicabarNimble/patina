@@ -9,3 +9,6 @@ pub mod routing;
 pub mod search;
 pub mod semantic;
 pub mod subcommands;
+
+// Re-export _json() functions for MCP handler delegation
+pub use subcommands::{orient_json, recent_json};
