@@ -112,11 +112,43 @@ Default to `SpecStatus::Draft` when None at the call site (matches current
 behavior where missing status implies draft). Don't change the optionality
 semantics — that's a separate concern.
 
+## Lessons from First Attempt (session 20260301-165723)
+
+Attempted Phase 1 mid-session with shrinking context window. Reverted.
+Key findings from the partial implementation:
+
+1. **Cascading type change is wider than expected.** Changing
+   `SpecFrontmatter.status` from `Option<String>` to `Option<SpecStatus>`
+   triggers 15 compiler errors across 5 files. The cascade:
+   - `SpecFrontmatter.status` (spec.rs) → used by `SpecInfo.status` (queries.rs)
+   - `LoadedSpec.status` and `FoundSpec.status` (archive.rs) are convenience
+     copies from DB reads — they stay `Option<String>` since they come from
+     SQLite TEXT columns
+   - `status_map: HashMap<String, String>` in queries.rs needs to either
+     stay String (DB-sourced) or convert at boundary
+   - `MutationResult.new_status: String` is a display field — stays String
+
+2. **The DB boundary is the tricky part.** `FoundSpec` reads status from
+   SQLite as String. Converting to SpecStatus at the DB read boundary
+   (ADR-4) is the right approach but adds a `from_str` conversion to
+   `find_spec()` and `load_spec()`. This is the "parse at boundary"
+   belief in action.
+
+3. **Commit strategy should be: define enum first, migrate later.**
+   Don't change the field type and fix all consumers in one commit.
+   Instead: commit 1 defines SpecStatus (no field change), commit 2
+   changes the field and fixes all consumers together. This way commit 1
+   is zero-risk.
+
+4. **This refactor touches the spec system itself** — the machinery that
+   manages all other specs. Needs full context window and test coverage
+   before pushing. Don't attempt in tail-end of a session.
+
 ## Commits
 
-1. `spec: define SpecStatus enum with serde rename and "done" alias`
-2. `spec: migrate SpecFrontmatter.status to SpecStatus enum`
-3. `spec: replace all string comparisons with enum matching`
+1. `spec: define SpecStatus enum with serde rename and "done" alias` (zero-risk: no field change)
+2. `spec: migrate SpecFrontmatter.status and all consumers to SpecStatus`
+3. `spec: update FoundSpec/LoadedSpec DB boundary to parse SpecStatus`
 4. `beliefs: define BeliefStatus enum, migrate ParsedBelief and BeliefEntry`
 5. `doctor: define HealthStatus enum, migrate HealthCheck`
 6. `assay: define ActivityLevel enum, migrate ModuleSignal`
