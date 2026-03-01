@@ -12,10 +12,10 @@ pub(crate) mod search;
 pub(crate) mod temporal;
 pub(crate) mod util;
 
-pub(super) use derive::{execute_derive, execute_derive_moments};
 pub(crate) use derive::derive_signals_json;
+pub(super) use derive::{execute_derive, execute_derive_moments};
+pub(crate) use functions::{callees_json, callers_json, functions_json};
 pub(super) use functions::{execute_callees, execute_callers, execute_functions};
-pub(crate) use functions::{callers_json, callees_json, functions_json};
 pub(super) use imports::{execute_importers, execute_imports};
 pub(crate) use imports::{importers_json, imports_json};
 pub(super) use inventory::{collect_inventory_json, execute_inventory};
