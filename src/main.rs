@@ -1019,7 +1019,7 @@ fn make_query_dispatch(
                 let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
 
                 let engine = query_engine.get_or_insert_with(retrieval::QueryEngine::new);
-                let options = retrieval::QueryOptions { repo, all_repos };
+                let options = retrieval::QueryOptions { repo, all_repos, ..Default::default() };
                 let results = engine
                     .query_with_options(query_str, limit, &options)
                     .map_err(|e| format!("scry: {}", e))?;
