@@ -1,20 +1,68 @@
 //! Spec lifecycle + schema introspection MCP handlers
 
+use serde::Deserialize;
+
 use super::super::protocol::{Request, Response};
 
-pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Response {
+/// Flat args struct covering all spec.* and schemas.* tools.
+/// Each subcommand uses a subset of fields; required fields are validated at runtime.
+#[derive(Deserialize)]
+pub(super) struct SpecArgs {
+    // Common
+    pub id: Option<String>,
+    // spec.list
+    pub status: Option<String>,
+    pub target: Option<String>,
+    // spec.complete / spec.resume
+    #[serde(default)]
+    pub major: bool,
+    #[serde(default)]
+    pub force: bool,
+    // spec.pause / spec.block / spec.abandon
+    pub reason: Option<String>,
+    // spec.block
+    pub by: Option<String>,
+    // spec.split
+    pub new_id: Option<String>,
+    pub description: Option<String>,
+    // spec.set
+    pub field: Option<String>,
+    pub value: Option<String>,
+    // spec.create
+    pub spec_type: Option<String>,
+    pub title: Option<String>,
+    #[serde(default)]
+    pub blocked_by: Vec<String>,
+    #[serde(default)]
+    pub related: Vec<String>,
+    // schemas.show
+    pub name: Option<String>,
+}
+
+/// Require a string field, returning -32602 if missing or empty.
+macro_rules! require {
+    ($req:expr, $field:expr, $tool:expr, $name:expr) => {
+        match $field.as_deref() {
+            Some(v) if !v.is_empty() => v,
+            _ => {
+                return Response::error(
+                    $req.id.clone(),
+                    super::ERR_INVALID_PARAMS,
+                    &format!("{} requires '{}' parameter", $tool, $name),
+                );
+            }
+        }
+    };
+}
+
+pub(super) fn handle(req: &Request, name: &str, args: SpecArgs) -> Response {
     match name {
         // Spec query tools
         "spec.list" => {
-            let status = args
-                .get("status")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            let target = args
-                .get("target")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            let filters = crate::commands::spec::ListFilters { status, target };
+            let filters = crate::commands::spec::ListFilters {
+                status: args.status,
+                target: args.target,
+            };
             match crate::commands::spec::get_all_specs(&filters) {
                 Ok(specs) => {
                     let text = serde_json::to_string_pretty(&specs).unwrap_or_default();
@@ -65,14 +113,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
             Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
         },
         "spec.show" => {
-            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            if id.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.show requires 'id' parameter",
-                );
-            }
+            let id = require!(req, args.id, "spec.show", "id");
             match crate::commands::spec::show_spec_value(id) {
                 Ok(result) => {
                     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
@@ -87,14 +128,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
             }
         }
         "spec.check" => {
-            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            if id.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.check requires 'id' parameter",
-                );
-            }
+            let id = require!(req, args.id, "spec.check", "id");
             match crate::commands::spec::check_spec_value(id) {
                 Ok(result) => {
                     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
@@ -110,14 +144,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
         }
         // Spec mutation tools
         "spec.promote" => {
-            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            if id.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.promote requires 'id' parameter",
-                );
-            }
+            let id = require!(req, args.id, "spec.promote", "id");
             match crate::commands::spec::promote_spec_value(id) {
                 Ok(result) => {
                     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
@@ -132,17 +159,8 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
             }
         }
         "spec.complete" => {
-            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let major = args.get("major").and_then(|v| v.as_bool()).unwrap_or(false);
-            let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
-            if id.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.complete requires 'id' parameter",
-                );
-            }
-            match crate::commands::spec::complete_spec_value(id, major, force) {
+            let id = require!(req, args.id, "spec.complete", "id");
+            match crate::commands::spec::complete_spec_value(id, args.major, args.force) {
                 Ok(result) => {
                     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
                     Response::success(
@@ -156,16 +174,8 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
             }
         }
         "spec.abandon" => {
-            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let reason = args.get("reason").and_then(|v| v.as_str());
-            if id.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.abandon requires 'id' parameter",
-                );
-            }
-            match crate::commands::spec::abandon_spec_value(id, reason) {
+            let id = require!(req, args.id, "spec.abandon", "id");
+            match crate::commands::spec::abandon_spec_value(id, args.reason.as_deref()) {
                 Ok(result) => {
                     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
                     Response::success(
@@ -179,22 +189,8 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
             }
         }
         "spec.pause" => {
-            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let reason = args.get("reason").and_then(|v| v.as_str()).unwrap_or("");
-            if id.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.pause requires 'id' parameter",
-                );
-            }
-            if reason.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.pause requires 'reason' parameter",
-                );
-            }
+            let id = require!(req, args.id, "spec.pause", "id");
+            let reason = require!(req, args.reason, "spec.pause", "reason");
             match crate::commands::spec::pause_spec_value(id, reason) {
                 Ok(result) => {
                     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
@@ -209,16 +205,8 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
             }
         }
         "spec.resume" => {
-            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
-            if id.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.resume requires 'id' parameter",
-                );
-            }
-            match crate::commands::spec::resume_spec_value(id, force) {
+            let id = require!(req, args.id, "spec.resume", "id");
+            match crate::commands::spec::resume_spec_value(id, args.force) {
                 Ok(result) => {
                     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
                     Response::success(
@@ -232,30 +220,9 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
             }
         }
         "spec.block" => {
-            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let by = args.get("by").and_then(|v| v.as_str()).unwrap_or("");
-            let reason = args.get("reason").and_then(|v| v.as_str()).unwrap_or("");
-            if id.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.block requires 'id' parameter",
-                );
-            }
-            if by.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.block requires 'by' parameter",
-                );
-            }
-            if reason.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.block requires 'reason' parameter",
-                );
-            }
+            let id = require!(req, args.id, "spec.block", "id");
+            let by = require!(req, args.by, "spec.block", "by");
+            let reason = require!(req, args.reason, "spec.block", "reason");
             match crate::commands::spec::block_spec_value(id, by, reason) {
                 Ok(result) => {
                     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
@@ -270,17 +237,12 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
             }
         }
         "spec.split" => {
-            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let new_id = args.get("new_id").and_then(|v| v.as_str());
-            let description = args.get("description").and_then(|v| v.as_str());
-            if id.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.split requires 'id' parameter",
-                );
-            }
-            match crate::commands::spec::split_spec_value(id, new_id, description) {
+            let id = require!(req, args.id, "spec.split", "id");
+            match crate::commands::spec::split_spec_value(
+                id,
+                args.new_id.as_deref(),
+                args.description.as_deref(),
+            ) {
                 Ok(result) => {
                     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
                     Response::success(
@@ -294,26 +256,9 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
             }
         }
         "spec.set" => {
-            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let field = args.get("field").and_then(|v| v.as_str()).unwrap_or("");
-            let value = args.get("value").and_then(|v| v.as_str()).unwrap_or("");
-            if id.is_empty() {
-                return Response::error(req.id.clone(), -32602, "spec.set requires 'id' parameter");
-            }
-            if field.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.set requires 'field' parameter",
-                );
-            }
-            if value.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.set requires 'value' parameter",
-                );
-            }
+            let id = require!(req, args.id, "spec.set", "id");
+            let field = require!(req, args.field, "spec.set", "field");
+            let value = require!(req, args.value, "spec.set", "value");
             match crate::commands::spec::set_spec_value(id, field, value) {
                 Ok(result) => {
                     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
@@ -328,49 +273,15 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
             }
         }
         "spec.create" => {
-            let spec_type = args.get("spec_type").and_then(|v| v.as_str()).unwrap_or("");
-            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let title = args.get("title").and_then(|v| v.as_str());
-            let description = args.get("description").and_then(|v| v.as_str());
-            let blocked_by: Vec<String> = args
-                .get("blocked_by")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default();
-            let related: Vec<String> = args
-                .get("related")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default();
-            if spec_type.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.create requires 'spec_type' parameter",
-                );
-            }
-            if id.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.create requires 'id' parameter",
-                );
-            }
+            let spec_type = require!(req, args.spec_type, "spec.create", "spec_type");
+            let id = require!(req, args.id, "spec.create", "id");
             match crate::commands::spec::create_spec_value(
                 spec_type,
                 id,
-                title,
-                description,
-                blocked_by,
-                related,
+                args.title.as_deref(),
+                args.description.as_deref(),
+                args.blocked_by,
+                args.related,
             ) {
                 Ok(result) => {
                     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
@@ -385,14 +296,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
             }
         }
         "spec.history" => {
-            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            if id.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "spec.history requires 'id' parameter",
-                );
-            }
+            let id = require!(req, args.id, "spec.history", "id");
             match crate::commands::spec::history_spec_value(id) {
                 Ok(result) => {
                     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
@@ -420,14 +324,7 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
             Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
         },
         "schemas.show" => {
-            let schema_name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            if schema_name.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "schemas.show requires 'name' parameter",
-                );
-            }
+            let schema_name = require!(req, args.name, "schemas.show", "name");
             match crate::commands::schema::show_value(schema_name) {
                 Ok(schema) => {
                     let text = serde_json::to_string_pretty(&schema).unwrap_or_default();
@@ -441,6 +338,10 @@ pub(super) fn handle(req: &Request, name: &str, args: &serde_json::Value) -> Res
                 Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
             }
         }
-        _ => Response::error(req.id.clone(), -32602, &format!("Unknown tool: {}", name)),
+        _ => Response::error(
+            req.id.clone(),
+            super::ERR_INVALID_PARAMS,
+            &format!("Unknown tool: {}", name),
+        ),
     }
 }
