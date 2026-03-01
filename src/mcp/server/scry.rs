@@ -221,7 +221,8 @@ pub(super) fn handle_scry(
         "full" => {
             // D3: Escape hatch — full content for all results (deprecated)
             let query = args.query.as_deref().unwrap_or("");
-            let expanded_terms: Vec<&str> = args.expanded_terms.iter().map(|s| s.as_str()).collect();
+            let expanded_terms: Vec<&str> =
+                args.expanded_terms.iter().map(|s| s.as_str()).collect();
 
             if query.is_empty() {
                 return Response::error(
@@ -264,7 +265,8 @@ pub(super) fn handle_scry(
         _ => {
             // Default find mode
             let query = args.query.as_deref().unwrap_or("");
-            let expanded_terms: Vec<&str> = args.expanded_terms.iter().map(|s| s.as_str()).collect();
+            let expanded_terms: Vec<&str> =
+                args.expanded_terms.iter().map(|s| s.as_str()).collect();
 
             if query.is_empty() {
                 return Response::error(

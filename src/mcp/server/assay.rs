@@ -55,11 +55,7 @@ fn serialize_result(value: serde_json::Value, failures: usize) -> Result<String>
     }
 }
 
-pub(super) fn handle(
-    req: &Request,
-    args: AssayArgs,
-    conn: &rusqlite::Connection,
-) -> Response {
+pub(super) fn handle(req: &Request, args: AssayArgs, conn: &rusqlite::Connection) -> Response {
     let query_type_str = args.query_type.as_deref().unwrap_or("inventory");
     let pattern = args.pattern;
     let limit = args.limit.unwrap_or(50);
