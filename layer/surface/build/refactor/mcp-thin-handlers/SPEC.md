@@ -11,6 +11,7 @@ related:
 beliefs:
 - mcp-is-discovery-cli-is-execution
 - mcp-is-shim-cli-is-product
+- bridges-become-permanent
 exit_criteria: []
 ---
 # refactor: Collapse MCP handlers to thin CLI wrappers
