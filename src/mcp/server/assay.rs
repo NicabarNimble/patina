@@ -4,6 +4,7 @@ use anyhow::Result;
 use serde::Deserialize;
 
 use super::super::protocol::{Request, Response};
+use crate::commands::assay::internal::{collect_rows, serialize_result};
 use crate::commands::assay::{AssayOptions, QueryType};
 
 #[derive(Deserialize)]
