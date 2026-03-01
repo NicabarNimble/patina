@@ -10,6 +10,7 @@ related:
 - mcp-server-hardening
 beliefs:
 - mcp-is-discovery-cli-is-execution
+- mcp-is-shim-cli-is-product
 exit_criteria: []
 ---
 # refactor: Collapse MCP handlers to thin CLI wrappers
