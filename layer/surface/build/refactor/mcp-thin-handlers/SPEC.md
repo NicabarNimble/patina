@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: mcp-thin-handlers
-status: draft
+status: ready
 created: 2026-03-01
 sessions:
   origin: 20260301-100052
@@ -21,7 +21,7 @@ exit_criteria:
   text: assay handle() dispatches each query type to a _json() function in src/commands/assay/ — no inline SQL in src/mcp/server/assay.rs
   checked: false
 - id: zero-duplicate-sql
-  text: "zero SQL statements duplicated between src/mcp/server/ and src/commands/ — verified: `rg 'SELECT|FROM|WHERE|ORDER BY' src/mcp/server/{scry,assay}.rs` returns zero"
+  text: 'zero SQL statements duplicated between src/mcp/server/ and src/commands/ — verified: `rg ''SELECT|FROM|WHERE|ORDER BY'' src/mcp/server/{scry,assay}.rs` returns zero'
   checked: false
 - id: zero-duplicate-functions
   text: format_detail_content/format_detail collapsed to one; log_mcp_query/log_scry_query unified — no parallel implementations of the same logic
@@ -30,7 +30,7 @@ exit_criteria:
   text: query_id feedback loop (scry.query → scry.detail → scry.use) works through all 3 operations; scry.use includes mark_edge_usage_from_query for graph routing feedback
   checked: false
 - id: mcp-server-loc-under-700
-  text: "src/mcp/server/{scry,assay}.rs combined LOC under 700 (currently 1,858) — verified: `wc -l src/mcp/server/{scry,assay}.rs`"
+  text: 'src/mcp/server/{scry,assay}.rs combined LOC under 700 (currently 1,858) — verified: `wc -l src/mcp/server/{scry,assay}.rs`'
   checked: false
 - id: existing-tests-pass
   text: all tests pass, MCP inspector exercised for all tools
