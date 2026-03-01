@@ -30,6 +30,237 @@ QueryType::Inventory => {
 }
 ```
 
+### ADR-1: Helper signatures — `&Connection` not `&QueryEngine`
+
+**Context:** MCP server holds a long-lived `&QueryEngine` (constructed
+at startup, owns semantic oracles). CLI subcommands open fresh
+`Connection::open(eventlog::PATINA_DB)` per call (subcommands.rs:39,
+171). Both need to call the new `_json()` functions.
+
+**Decision:** All `_json()` helpers for SQL-based queries (orient,
+recent, assay 7 types) take `&rusqlite::Connection`. This matches the
+existing pattern — every assay `execute_*` function already takes
+`&Connection` (inventory.rs:37, functions.rs:33, imports.rs:20,
+derive.rs:96). MCP already has a shared `conn` passed through from
+`mod.rs` dispatch. CLI opens its own before calling.
+
+For QueryEngine-based functions (why, find, full), the shared
+functions take `&QueryEngine` directly. MCP passes its existing
+reference. CLI constructs `QueryEngine::new()` — same as
+`execute_why()` does today (subcommands.rs:293).
+
+```rust
+// SQL-based: takes &Connection (assay, orient, recent, detail, use)
+pub fn orient_json(conn: &Connection, path: &str, limit: usize) -> Result<String>
+pub fn recent_json(conn: &Connection, query: Option<&str>, days: u32, limit: usize) -> Result<String>
+pub fn inventory_json(conn: &Connection, pattern: &str, limit: usize) -> Result<String>
+pub fn detail_json(query_id: &str, rank: usize) -> Result<String>  // opens own events.db + patina.db
+
+// QueryEngine-based: takes &QueryEngine (why)
+pub fn why_json(engine: &QueryEngine, doc_id: &str, query: &str) -> Result<String>
+```
+
+**No wrapper struct.** A `QueryContext { conn, engine }` would couple
+every helper to both systems. SQL helpers don't need QueryEngine.
+QueryEngine helpers don't need a raw Connection. Keep them separate.
+
+### ADR-2: Verification enforcement
+
+**Context:** Exit criteria include `rg 'SELECT|FROM|WHERE|ORDER BY'
+src/mcp/server/{scry,assay}.rs` returns zero and `wc -l` under 700.
+Pre-push checks (`resources/git/pre-push-checks.sh`) run fmt, clippy,
+and tests — but no structural invariant checks.
+
+**Decision:** Add a step 6/6 to `pre-push-checks.sh`:
+
+```bash
+# Step 6: MCP thin handler invariants (post mcp-thin-handlers spec)
+echo "📦 [6/6] Checking MCP handler invariants..."
+SQL_IN_MCP=$(rg -c 'SELECT|FROM .* WHERE|ORDER BY' src/mcp/server/scry.rs src/mcp/server/assay.rs 2>/dev/null | awk -F: '{sum+=$2} END {print sum+0}')
+if [ "$SQL_IN_MCP" -gt 0 ]; then
+    echo "   ERROR: $SQL_IN_MCP SQL statements found in MCP handlers"
+    echo "   MCP handlers should delegate to src/commands/ _json() functions"
+    exit 1
+fi
+MCP_LOC=$(wc -l < <(cat src/mcp/server/scry.rs src/mcp/server/assay.rs))
+if [ "$MCP_LOC" -gt 700 ]; then
+    echo "   ERROR: MCP scry+assay = $MCP_LOC lines (target: <700)"
+    exit 1
+fi
+echo "   ✓ MCP handlers are thin ($MCP_LOC LOC, 0 SQL)"
+```
+
+This runs on every push, not just during spec execution. No manual
+spot checks. No separate test file. Same enforcement path as fmt and
+clippy. The check is added in the final commit of Phase 3.
+
+The feedback loop test (scry.query → detail → use) is verified via
+MCP inspector during implementation (manual, per exit criterion
+`existing-tests-pass`). If fragile, add a `#[test]` in
+`src/mcp/server/` that exercises the chain against a temp events.db —
+but only if manual verification proves insufficient.
+
+### ADR-3: collect_rows / serialize_result — move first
+
+**Context:** Phase 1 `_json()` functions need `collect_rows()` and
+`serialize_result()` for row failure tracking and `_warnings`
+injection. These currently live in `src/mcp/server/assay.rs:22-56`.
+DESIGN.md flagged this as open question #1.
+
+**Decision: Move first, in step 1.** Before writing any `_json()`
+function, move both helpers to `src/commands/assay/internal/util.rs`
+(already exists — holds the `truncate()` helper). Re-export via
+`internal/mod.rs`. MCP assay.rs imports from the new location.
+
+Commit sequence becomes:
+1. Move `collect_rows`/`serialize_result` to `assay/internal/util.rs`
+2. Create `_json()` functions (they import from `util`)
+3. Collapse MCP handler to call `_json()` functions
+
+This avoids duplication-then-cleanup and ensures `_json()` functions
+compile against the real helpers from commit 1.
+
+### ADR-4: QueryOptions.expanded_terms rollout
+
+**Context:** `expanded_terms` is currently MCP-only. Used in two match
+arms of `handle_scry()`: find (scry.rs:268-283) and full
+(scry.rs:224-238). Both do `format!("{} {}", query, terms.join(" "))`.
+No CLI consumers, no plugins, no tests reference it.
+
+**Decision:** Add `expanded_terms: Vec<String>` to
+`src/retrieval/engine.rs:QueryOptions` with `#[serde(default)]`.
+
+```rust
+pub struct QueryOptions {
+    pub repo: Option<String>,
+    pub all_repos: bool,
+    pub expanded_terms: Vec<String>,  // NEW — default empty
+}
+```
+
+**Migration:**
+- `QueryOptions::default()` already exists implicitly (2 fields).
+  Adding a `Vec` with `Default` keeps all existing call sites
+  compiling unchanged — `QueryOptions { repo: None, all_repos: false }`
+  gains `expanded_terms: vec![]` via `..Default::default()` or
+  explicit empty. Verify: `rg 'QueryOptions {' src/` to find all
+  construction sites and add `..Default::default()` where missing.
+- `engine.query_with_options()` changes: if `expanded_terms` is
+  non-empty, concatenate before passing to oracles. Single change
+  point — the concatenation logic moves from MCP (2 call sites) to
+  engine (1 call site).
+- **No CLI flag yet.** CLI has no `--expanded-terms` flag. The field
+  exists for MCP and future use. CLI call sites pass empty vec via
+  default. No CLI behavior changes.
+- **Tests:** Existing retrieval tests pass because default is empty
+  vec (no behavior change). Add one test in `engine.rs` verifying
+  that non-empty expanded_terms are concatenated into the query text.
+  No search relevance regression testing needed — the concatenation
+  logic is identical to what MCP does today, just relocated.
+
+### ADR-5: Shared formatting boundaries — JSON schemas
+
+**Context:** orient/recent `_json()` functions return structured data.
+Both MCP and CLI format independently. Without a defined schema, the
+two sides will drift.
+
+**Decision:** Each `_json()` function returns a typed Rust struct with
+`#[derive(Serialize)]`, not raw `serde_json::Value`. The struct IS the
+contract. Both consumers call `serde_json::to_string_pretty()` or
+access fields directly.
+
+**Orient schema** (extends existing `OrientResult` in subcommands.rs:20-28):
+
+```rust
+#[derive(Debug, Serialize)]
+pub struct OrientEntry {
+    pub path: String,
+    pub composite_score: f64,
+    pub importer_count: i64,
+    pub activity_level: String,
+    pub is_entry_point: bool,
+    pub is_test_file: bool,
+    pub commit_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct OrientResult {
+    pub directory: String,
+    pub entries: Vec<OrientEntry>,
+}
+```
+
+CLI formats `OrientResult` as ASCII table (existing style). MCP
+formats it as markdown (existing style). Both consume the same struct.
+If a field is added, both consumers see it at compile time.
+
+**Recent schema:**
+
+```rust
+#[derive(Debug, Serialize)]
+pub struct RecentEntry {
+    pub path: String,
+    pub date: String,          // YYYY-MM-DD (extracted from timestamp)
+    pub author: String,
+    pub message_preview: String, // first 50 chars
+}
+
+#[derive(Debug, Serialize)]
+pub struct RecentResult {
+    pub query: Option<String>,
+    pub days: u32,
+    pub entries: Vec<RecentEntry>,
+}
+```
+
+**Assay schemas** already exist as typed structs — `ModuleStats`,
+`InventoryResult`, `InventorySummary` in inventory.rs:14-33. The 6
+remaining query types follow the same pattern: define a result struct
+with `#[derive(Serialize)]`, return it from the `_json()` function.
+
+**Rule:** No `_json()` function returns `serde_json::Value` directly.
+All return `Result<String>` after serializing a typed struct. The
+struct definition is the schema. Drift requires changing the struct,
+which breaks compilation for any consumer that accesses a missing field.
+
+### ADR-6: Edge logging — testing the feedback loop
+
+**Context:** The scry.query → scry.detail → scry.use chain shares
+events.db. After collapse, both MCP and CLI route through unified
+functions. The spec requires verifying this chain works. The chain also
+includes `mark_edge_usage_from_query()` for graph routing feedback.
+
+**Decision: Integration test in `src/commands/scry/internal/logging.rs`.**
+
+```rust
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn feedback_loop_query_detail_use() {
+        // 1. Create temp events.db
+        // 2. Call unified log_scry_query() → returns query_id
+        // 3. Call get_query_results(query_id) → verify results stored
+        // 4. Call log_scry_use(query_id, doc_id, rank) → verify event written
+        // 5. Verify events.db contains scry.query and scry.use events
+        //    with correct query_id linkage
+    }
+}
+```
+
+This test covers the data chain. It does NOT test
+`mark_edge_usage_from_query()` (requires a Graph instance with mother
+DB) — that remains a manual MCP inspector verification. If it proves
+fragile, add a second test that mocks Graph.
+
+The test runs in `cargo test --workspace` and `pre-push-checks.sh`
+step 5. No new CI configuration needed. No separate test binary.
+
+MCP inspector exercise (exit criterion `existing-tests-pass`) is
+manual during implementation: call scry find → note query_id → call
+scry detail with query_id+rank → call scry use with query_id+rank →
+verify response. Document the inspector sequence in the commit message
+for reproducibility.
+
 ### What stays in MCP vs what moves to CLI
 
 **Moves to CLI internals (business logic):**
@@ -120,16 +351,18 @@ FusedResult→ScryResult conversion is 14 lines and already proven.
 
 ## Commits
 
-Plan (will be refined during implementation):
+Revised per ADR-3 (move helpers first) and ADR-4 (expanded_terms):
 
-1. `assay: extract _json() functions for 7 structural query types` — Phase 1 steps 1-2
-2. `assay: unify all_repos between MCP and CLI` — Phase 1 step 3
-3. `scry: extract orient_json() and recent_json()` — Phase 2 step 4
-4. `scry: unify detail/use with edge-marking fix` — Phase 2 step 5
-5. `scry: collapse format_detail_content/format_detail` — Phase 2 step 6
-6. `scry: extract why_json(), unify query logging` — Phase 2 steps 7-8
-7. `scry: move expanded_terms to QueryOptions` — Phase 2 step 9
-8. `cleanup: move collect_rows/serialize_result to shared module` — Phase 3
+1. `assay: move collect_rows/serialize_result to internal/util.rs` — ADR-3
+2. `assay: extract _json() functions for 7 structural query types` — Phase 1 steps 1-2
+3. `assay: unify all_repos between MCP and CLI` — Phase 1 step 3
+4. `scry: extract orient_json() and recent_json()` — Phase 2 step 4
+5. `scry: unify detail/use with edge-marking fix` — Phase 2 step 5
+6. `scry: collapse format_detail_content/format_detail` — Phase 2 step 6
+7. `scry: extract why_json(), unify query logging` — Phase 2 steps 7-8
+8. `retrieval: add expanded_terms to QueryOptions` — Phase 2 step 9, ADR-4
+9. `ci: add MCP thin handler invariant checks to pre-push` — ADR-2
+10. `test: add feedback loop integration test` — ADR-6
 
 ## Key Files
 
@@ -154,21 +387,21 @@ Plan (will be refined during implementation):
 - `src/retrieval/` — QueryEngine, FusedResult, snippet() — already shared
 - `src/commands/scry/internal/enrichment.rs` — find_belief_impact() — already shared
 
-## Open Questions
+## Resolved Questions
 
-1. **Should `collect_rows()` / `serialize_result()` move in Phase 1 or Phase 3?**
-   Phase 1 `_json()` functions need these helpers. Moving them first
-   (Phase 1 step 1) is more natural than the spec's Phase 3 placement.
-   Likely resolve: move in Phase 1, adjust step ordering.
+1. **collect_rows / serialize_result move order.**
+   **Resolved: move first (ADR-3).** Commit 1 moves both to
+   `assay/internal/util.rs` before any `_json()` functions are written.
+   MCP assay.rs imports from new location. No temporary duplication.
 
 2. **Where does `format_detail` live after collapse?**
-   Currently in `src/commands/scry/mod.rs` (as `format_detail`) and
-   `src/mcp/server/scry.rs` (as `format_detail_content`). Options:
-   keep in `scry/mod.rs` (MCP imports it), or move to
-   `scry/internal/` (both import via re-export). Preference: keep in
-   `scry/mod.rs` since `execute_detail()` is also there.
+   **Resolved: keep in `scry/mod.rs`.** Delete `format_detail_content`
+   from MCP scry.rs. Make `format_detail` in `scry/mod.rs` `pub(crate)`
+   so MCP can import it. `execute_detail()` is already in the same file.
+   One function, one location.
 
 3. **Should `emit_usage_event()` move to a shared location?**
-   Currently in MCP scry.rs, called by both scry and assay MCP handlers.
-   If assay collapses fully, the MCP handler may still want usage events.
-   Likely stays in `src/mcp/server/` as a module-level helper.
+   **Resolved: stays in `src/mcp/server/`.** It's called by MCP
+   handlers (scry context, assay) for MCP-specific usage tracking. CLI
+   has its own eventlog paths. Moving it gains nothing — it's already
+   `pub(super)` scoped to the MCP server module.
