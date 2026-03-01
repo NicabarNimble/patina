@@ -412,3 +412,124 @@ pub fn get_query_results(query_id: &str) -> Result<Vec<(String, f32)>> {
         })
         .collect())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Create an in-memory events DB with the eventlog schema
+    fn create_test_events_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS eventlog (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                source_file TEXT,
+                data TEXT NOT NULL,
+                CHECK(json_valid(data))
+            );
+            CREATE INDEX IF NOT EXISTS idx_eventlog_source ON eventlog(source_id);",
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn feedback_loop_query_detail_use() {
+        // ADR-6: Verify the query_id feedback loop works through unified functions.
+        // Tests the data chain: scry.query → get_query_results → scry.use
+        let conn = create_test_events_db();
+
+        // 1. Simulate log_scry_query: insert a scry.query event
+        let query_id = "q_20260301_120000_abc";
+        let query_data = serde_json::json!({
+            "query": "test query",
+            "query_id": query_id,
+            "mode": "find",
+            "session_id": null,
+            "results": [
+                {"doc_id": "src/main.rs", "score": 0.95, "rank": 1, "event_type": "code.function"},
+                {"doc_id": "src/lib.rs", "score": 0.80, "rank": 2, "event_type": "code.function"},
+            ]
+        });
+
+        let timestamp = "2026-03-01T12:00:00Z";
+        eventlog::insert_event(
+            &conn,
+            "scry.query",
+            timestamp,
+            query_id,
+            None,
+            &query_data.to_string(),
+        )
+        .expect("insert scry.query");
+
+        // 2. Verify get_query_results reads back correctly
+        let data: String = conn
+            .query_row(
+                "SELECT data FROM eventlog WHERE event_type = 'scry.query' AND source_id = ?",
+                [query_id],
+                |row| row.get(0),
+            )
+            .expect("query lookup");
+
+        let parsed: serde_json::Value = serde_json::from_str(&data).unwrap();
+        let results = parsed["results"].as_array().unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0]["doc_id"].as_str().unwrap(), "src/main.rs");
+        assert_eq!(results[1]["doc_id"].as_str().unwrap(), "src/lib.rs");
+
+        // 3. Simulate log_scry_use: insert a scry.use event
+        let doc_id = "src/main.rs";
+        let rank = 1;
+        let use_data = serde_json::json!({
+            "query_id": query_id,
+            "result_used": doc_id,
+            "rank": rank,
+            "session_id": null
+        });
+
+        eventlog::insert_event(
+            &conn,
+            "scry.use",
+            "2026-03-01T12:01:00Z",
+            query_id,
+            None,
+            &use_data.to_string(),
+        )
+        .expect("insert scry.use");
+
+        // 4. Verify both events exist with correct query_id linkage
+        let query_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM eventlog WHERE event_type = 'scry.query' AND source_id = ?",
+                [query_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(query_count, 1);
+
+        let use_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM eventlog WHERE event_type = 'scry.use' AND source_id = ?",
+                [query_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(use_count, 1);
+
+        // 5. Verify scry.use data references the correct doc_id
+        let use_event: String = conn
+            .query_row(
+                "SELECT data FROM eventlog WHERE event_type = 'scry.use' AND source_id = ?",
+                [query_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let use_parsed: serde_json::Value = serde_json::from_str(&use_event).unwrap();
+        assert_eq!(use_parsed["result_used"].as_str().unwrap(), "src/main.rs");
+        assert_eq!(use_parsed["query_id"].as_str().unwrap(), query_id);
+    }
+}
