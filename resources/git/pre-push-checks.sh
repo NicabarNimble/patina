@@ -11,7 +11,7 @@ echo ""
 
 # Step 1: WIT consistency — guest crate wit/ must match canonical wit/
 # Two groups: mother-child crates need full wit/ tree, command crates need wit/command/
-echo "📦 [1/5] Checking WIT consistency..."
+echo "📦 [1/6] Checking WIT consistency..."
 wit_ok=true
 # Mother-child guest crates: full wit/ tree (mother-child + command + deps)
 for crate_dir in plugins/models plugins/repos; do
@@ -51,7 +51,7 @@ echo ""
 # deps/patina-host/host.wit must point back to the canonical file.
 # Stale copies cause silent build failures when new imports are added.
 # Pure shell — no python3 (per [[patina-identity]]: Rust-first, no Python).
-echo "📦 [2/5] Checking WIT host.wit symlinks..."
+echo "📦 [2/6] Checking WIT host.wit symlinks..."
 CANONICAL="wit/deps/patina-host/host.wit"
 wit_link_ok=true
 
@@ -128,7 +128,7 @@ echo "   ✓ All host.wit symlinks resolve to canonical"
 echo ""
 
 # Step 3: Check formatting (CI uses --check, not --fix)
-echo "📦 [3/5] Checking Rust formatting..."
+echo "📦 [3/6] Checking Rust formatting..."
 if ! cargo fmt --all -- --check; then
     echo ""
     echo "❌ Formatting check failed!"
@@ -139,7 +139,7 @@ echo "   ✓ Formatting OK"
 echo ""
 
 # Step 4: Clippy with -D warnings (same as CI)
-echo "📦 [4/5] Running clippy (warnings = errors)..."
+echo "📦 [4/6] Running clippy (warnings = errors)..."
 if ! cargo clippy --workspace -- -D warnings; then
     echo ""
     echo "❌ Clippy failed! Fix warnings above."
@@ -149,13 +149,29 @@ echo "   ✓ Clippy OK"
 echo ""
 
 # Step 5: Run tests
-echo "📦 [5/5] Running tests..."
+echo "📦 [5/6] Running tests..."
 if ! cargo test --workspace; then
     echo ""
     echo "❌ Tests failed!"
     exit 1
 fi
 echo "   ✓ Tests OK"
+echo ""
+
+# Step 6: MCP thin handler invariants (post mcp-thin-handlers spec)
+echo "📦 [6/6] Checking MCP handler invariants..."
+SQL_IN_MCP=$(rg -c 'SELECT|FROM .* WHERE|ORDER BY' src/mcp/server/scry.rs src/mcp/server/assay.rs 2>/dev/null | awk -F: '{sum+=$2} END {print sum+0}')
+if [ "$SQL_IN_MCP" -gt 0 ]; then
+    echo "   ERROR: $SQL_IN_MCP SQL statements found in MCP handlers"
+    echo "   MCP handlers should delegate to src/commands/ _json() functions"
+    exit 1
+fi
+MCP_LOC=$(cat src/mcp/server/scry.rs src/mcp/server/assay.rs | wc -l | tr -d ' ')
+if [ "$MCP_LOC" -gt 700 ]; then
+    echo "   WARNING: MCP scry+assay = $MCP_LOC lines (target: <700)"
+    echo "   Note: includes context/mother handlers (~150 LOC) that are not duplication targets"
+fi
+echo "   ✓ MCP handlers are thin ($MCP_LOC LOC, $SQL_IN_MCP SQL)"
 echo ""
 
 echo "✅ All checks passed! Ready to push."
