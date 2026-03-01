@@ -9,6 +9,7 @@ related:
 - enum-status-types
 beliefs:
 - parse-at-boundary-type-the-interior
+- silent-default-hides-missing-data
 exit_criteria: []
 ---
 # refactor: Type the measure domain model
