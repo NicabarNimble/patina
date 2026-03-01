@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: enum-status-types
-status: draft
+status: ready
 created: 2026-03-01
 sessions:
   origin: 20260301-165723
@@ -10,25 +10,25 @@ beliefs:
 - parse-at-boundary-type-the-interior
 exit_criteria:
 - id: spec-status-enum
-  text: 'SpecFrontmatter.status is SpecStatus enum with 7 variants — all string comparisons replaced with match arms'
+  text: SpecFrontmatter.status is SpecStatus enum with 7 variants — all string comparisons replaced with match arms
   checked: false
 - id: belief-status-enum
-  text: 'ParsedBelief.status and BeliefEntry.status are BeliefStatus enum with 4 variants'
+  text: ParsedBelief.status and BeliefEntry.status are BeliefStatus enum with 4 variants
   checked: false
 - id: health-status-enum
-  text: 'HealthCheck.status is HealthStatus enum with 3 variants'
+  text: HealthCheck.status is HealthStatus enum with 3 variants
   checked: false
 - id: activity-level-enum
-  text: 'ModuleSignal.activity_level is ActivityLevel enum with 4 variants'
+  text: ModuleSignal.activity_level is ActivityLevel enum with 4 variants
   checked: false
 - id: zero-status-string-comparisons
-  text: 'rg ''== "draft"|== "ready"|== "active"|== "paused"|== "blocked"|== "complete"|== "abandoned"|== "defeated"|== "scoped"|== "archived"|== "healthy"|== "warning"|== "critical"|== "dormant"'' src/ returns zero (excluding serde rename attrs and test data)'
+  text: rg '== "draft"|== "ready"|== "active"|== "paused"|== "blocked"|== "complete"|== "abandoned"|== "defeated"|== "scoped"|== "archived"|== "healthy"|== "warning"|== "critical"|== "dormant"' src/ returns zero (excluding serde rename attrs and test data)
   checked: false
 - id: serde-roundtrip
-  text: 'YAML frontmatter (spec, belief) serializes/deserializes correctly with enum types — existing files parse without error'
+  text: YAML frontmatter (spec, belief) serializes/deserializes correctly with enum types — existing files parse without error
   checked: false
 - id: existing-tests-pass
-  text: 'cargo test --workspace passes, pre-push checks pass'
+  text: cargo test --workspace passes, pre-push checks pass
   checked: false
 ---
 # refactor: Replace status: String with typed enums
