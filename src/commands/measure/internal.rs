@@ -6,7 +6,8 @@
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use super::MeasureOptions;
@@ -69,6 +70,119 @@ struct HistoryEntry {
     tool: String,
     mode: String,
     metrics: serde_json::Value,
+}
+
+// ============================================================================
+// Typed Metric Variants
+// ============================================================================
+
+/// Typed metrics for each verb — replaces serde_json::Value as domain state.
+///
+/// Serializes flat (untagged) so JSON output shape is preserved.
+/// Does NOT derive Deserialize — use `from_db()` for manual dispatch (ADR-1).
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum VerbMetrics {
+    CaptureCode(CaptureCodeMetrics),
+    CaptureGit(CaptureGitMetrics),
+    CaptureGeneric(CaptureGenericMetrics),
+    Index(IndexMetrics),
+    Search(SearchMetrics),
+    Believe(BelieveMetrics),
+    Evolve(EvolveMetrics),
+    /// Fallback for unrecognized metric shapes — preserves data, logs warning.
+    Raw(serde_json::Value),
+}
+
+impl VerbMetrics {
+    /// Parse metrics JSON at the DB boundary, dispatching to the correct typed
+    /// struct based on verb and mode context from the same DB row (ADR-1).
+    pub fn from_db(verb: &str, mode: &str, json_str: &str) -> Self {
+        let result = match (verb, mode) {
+            ("capture", "code") => serde_json::from_str::<CaptureCodeMetrics>(json_str)
+                .map(VerbMetrics::CaptureCode),
+            ("capture", _) => serde_json::from_str::<CaptureGenericMetrics>(json_str)
+                .map(VerbMetrics::CaptureGeneric),
+            ("index", _) => {
+                serde_json::from_str::<IndexMetrics>(json_str).map(VerbMetrics::Index)
+            }
+            ("search", _) => {
+                serde_json::from_str::<SearchMetrics>(json_str).map(VerbMetrics::Search)
+            }
+            ("believe", _) => {
+                serde_json::from_str::<BelieveMetrics>(json_str).map(VerbMetrics::Believe)
+            }
+            ("evolve", _) => {
+                serde_json::from_str::<EvolveMetrics>(json_str).map(VerbMetrics::Evolve)
+            }
+            _ => {
+                tracing::warn!(verb, mode, "Unknown verb — falling back to raw metrics");
+                let value =
+                    serde_json::from_str(json_str).unwrap_or(serde_json::Value::Null);
+                return VerbMetrics::Raw(value);
+            }
+        };
+
+        result.unwrap_or_else(|e| {
+            tracing::warn!(verb, mode, error = %e, "Falling back to raw metrics");
+            let value =
+                serde_json::from_str(json_str).unwrap_or(serde_json::Value::Null);
+            VerbMetrics::Raw(value)
+        })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CaptureCodeMetrics {
+    pub files_parsed: i64,
+    pub functions_found: i64,
+    pub types_found: i64,
+    pub fts_symbols: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CaptureGitMetrics {
+    pub files_tracked: i64,
+    pub total_commits: i64,
+}
+
+/// Generic capture metrics for modes with varying field shapes (beliefs, layer,
+/// git, health-check). Uses flatten to preserve all fields round-trip.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CaptureGenericMetrics {
+    #[serde(flatten)]
+    pub fields: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IndexMetrics {
+    pub documents_embedded: i64,
+}
+
+/// Search quality metrics. Option<f64> per ADR-2: missing != zero.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SearchMetrics {
+    pub p_at_5: Option<f64>,
+    pub mrr: Option<f64>,
+    pub recall_at_5: Option<f64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BelieveMetrics {
+    pub total_beliefs: i64,
+    pub floating_count: i64,
+    pub grounded_count: i64,
+    pub avg_evidence: f64,
+    pub avg_health: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EvolveMetrics {
+    pub total_sessions: i64,
+    pub total_commits: i64,
+    pub total_files_changed: i64,
+    pub total_beliefs_captured: i64,
+    pub total_patterns_modified: i64,
 }
 
 // ============================================================================
@@ -1179,4 +1293,133 @@ pub fn mcp_measure() -> Result<serde_json::Value> {
 
     let report = build_report(&conn)?;
     Ok(serde_json::to_value(&report)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_db_unknown_payload_returns_raw() {
+        let unknown = r#"{"unknown_key": 42, "another": "value"}"#;
+
+        // Verbs with required struct fields fall to Raw when payload doesn't match
+        for (verb, mode) in &[
+            ("capture", "code"),   // CaptureCodeMetrics has required i64 fields
+            ("index", "default"),  // IndexMetrics has required documents_embedded
+            ("believe", "audit"),  // BelieveMetrics has required i64/f64 fields
+            ("evolve", "lifecycle"), // EvolveMetrics has required i64 fields
+        ] {
+            let result = VerbMetrics::from_db(verb, mode, unknown);
+            assert!(
+                matches!(result, VerbMetrics::Raw(_)),
+                "Expected Raw for {}:{}, got {:?}",
+                verb,
+                mode,
+                result
+            );
+        }
+
+        // CaptureGenericMetrics accepts any JSON via flatten BTreeMap
+        let result = VerbMetrics::from_db("capture", "beliefs", unknown);
+        assert!(matches!(result, VerbMetrics::CaptureGeneric(_)));
+
+        // SearchMetrics accepts unknown JSON (all fields are Option, unknowns ignored)
+        let result = VerbMetrics::from_db("search", "eval", unknown);
+        assert!(matches!(result, VerbMetrics::Search(_)));
+
+        // Unknown verb falls to Raw
+        let result = VerbMetrics::from_db("unknown", "mode", unknown);
+        assert!(matches!(result, VerbMetrics::Raw(_)));
+    }
+
+    #[test]
+    fn from_db_raw_fallback_serializes_without_panic() {
+        let unknown = r#"{"unexpected_field": 99}"#;
+        // Use a verb with required fields to trigger Raw fallback
+        let raw = VerbMetrics::from_db("index", "default", unknown);
+        assert!(matches!(raw, VerbMetrics::Raw(_)));
+
+        // Serialization must not panic and preserves all fields
+        let json = serde_json::to_string(&raw).expect("Raw should serialize");
+        assert!(json.contains("unexpected_field"));
+        assert!(json.contains("99"));
+    }
+
+    #[test]
+    fn from_db_valid_capture_code() {
+        let json = r#"{"files_parsed": 248, "functions_found": 2427, "types_found": 989, "fts_symbols": 6164}"#;
+        let result = VerbMetrics::from_db("capture", "code", json);
+        assert!(matches!(result, VerbMetrics::CaptureCode(_)));
+
+        if let VerbMetrics::CaptureCode(m) = result {
+            assert_eq!(m.files_parsed, 248);
+            assert_eq!(m.functions_found, 2427);
+        }
+    }
+
+    #[test]
+    fn from_db_valid_believe() {
+        let json = r#"{"total_beliefs": 178, "floating_count": 135, "grounded_count": 43, "avg_evidence": 1.72, "avg_health": 0.88}"#;
+        let result = VerbMetrics::from_db("believe", "beliefs", json);
+        assert!(matches!(result, VerbMetrics::Believe(_)));
+    }
+
+    #[test]
+    fn from_db_valid_evolve() {
+        let json = r#"{"total_sessions": 675, "total_commits": 2543, "total_files_changed": 50221, "total_beliefs_captured": 247, "total_patterns_modified": 4222}"#;
+        let result = VerbMetrics::from_db("evolve", "lifecycle", json);
+        assert!(matches!(result, VerbMetrics::Evolve(_)));
+    }
+
+    #[test]
+    fn from_db_capture_generic_preserves_all_fields() {
+        let json = r#"{"beliefs_processed": 178, "attacks_edges": 82, "duration_ms": 1092}"#;
+        let result = VerbMetrics::from_db("capture", "beliefs", json);
+        assert!(matches!(result, VerbMetrics::CaptureGeneric(_)));
+
+        // Round-trip: serialization preserves all fields
+        let serialized = serde_json::to_value(&result).unwrap();
+        assert_eq!(serialized["beliefs_processed"], 178);
+        assert_eq!(serialized["attacks_edges"], 82);
+    }
+
+    #[test]
+    fn from_db_search_option_fields() {
+        // All fields present
+        let json = r#"{"p_at_5": 0.8, "mrr": 0.75, "recall_at_5": 0.9}"#;
+        let result = VerbMetrics::from_db("search", "eval", json);
+        if let VerbMetrics::Search(m) = result {
+            assert_eq!(m.p_at_5, Some(0.8));
+            assert_eq!(m.mrr, Some(0.75));
+            assert_eq!(m.recall_at_5, Some(0.9));
+        } else {
+            panic!("Expected Search variant");
+        }
+
+        // Missing fields → None (not 0.0)
+        let json = r#"{"p_at_5": 0.6}"#;
+        let result = VerbMetrics::from_db("search", "eval", json);
+        if let VerbMetrics::Search(m) = result {
+            assert_eq!(m.p_at_5, Some(0.6));
+            assert_eq!(m.mrr, None);
+            assert_eq!(m.recall_at_5, None);
+        } else {
+            panic!("Expected Search variant");
+        }
+    }
+
+    #[test]
+    fn verb_metrics_untagged_serialization() {
+        // Typed variant serializes flat (no wrapper)
+        let m = VerbMetrics::CaptureGit(CaptureGitMetrics {
+            files_tracked: 200,
+            total_commits: 2892,
+        });
+        let json = serde_json::to_value(&m).unwrap();
+        assert_eq!(json["files_tracked"], 200);
+        assert_eq!(json["total_commits"], 2892);
+        // No "CaptureGit" wrapper key
+        assert!(json.get("CaptureGit").is_none());
+    }
 }
