@@ -106,26 +106,20 @@ impl VerbMetrics {
             ("capture", "code") => {
                 serde_json::from_str::<CaptureCodeMetrics>(json_str).map(VerbMetrics::CaptureCode)
             }
-            ("capture", "beliefs") => {
-                serde_json::from_str::<CaptureBeliefsMetrics>(json_str)
-                    .map(VerbMetrics::CaptureBeliefs)
-            }
+            ("capture", "beliefs") => serde_json::from_str::<CaptureBeliefsMetrics>(json_str)
+                .map(VerbMetrics::CaptureBeliefs),
             ("capture", "layer") => {
-                serde_json::from_str::<CaptureLayerMetrics>(json_str)
-                    .map(VerbMetrics::CaptureLayer)
+                serde_json::from_str::<CaptureLayerMetrics>(json_str).map(VerbMetrics::CaptureLayer)
             }
-            ("capture", "git") => {
-                serde_json::from_str::<CaptureGitScrapeMetrics>(json_str)
-                    .map(VerbMetrics::CaptureGitScrape)
-            }
+            ("capture", "git") => serde_json::from_str::<CaptureGitScrapeMetrics>(json_str)
+                .map(VerbMetrics::CaptureGitScrape),
             ("capture", "health-check") => {
                 serde_json::from_str::<CaptureHealthCheckMetrics>(json_str)
                     .map(VerbMetrics::CaptureHealthCheck)
             }
             ("capture", _) => {
                 tracing::warn!(mode, "Unknown capture mode — falling back to raw metrics");
-                let value =
-                    serde_json::from_str(json_str).unwrap_or(serde_json::Value::Null);
+                let value = serde_json::from_str(json_str).unwrap_or(serde_json::Value::Null);
                 return VerbMetrics::Raw(value);
             }
             ("index", _) => serde_json::from_str::<IndexMetrics>(json_str).map(VerbMetrics::Index),
@@ -176,8 +170,14 @@ impl VerbMetrics {
                 ("duration_ms".into(), format!("{}ms", m.duration_ms)),
             ],
             VerbMetrics::CaptureLayer(m) => vec![
-                ("patterns_processed".into(), m.patterns_processed.to_string()),
-                ("sessions_processed".into(), m.sessions_processed.to_string()),
+                (
+                    "patterns_processed".into(),
+                    m.patterns_processed.to_string(),
+                ),
+                (
+                    "sessions_processed".into(),
+                    m.sessions_processed.to_string(),
+                ),
                 ("duration_ms".into(), format!("{}ms", m.duration_ms)),
             ],
             VerbMetrics::CaptureGitScrape(m) => vec![
@@ -194,9 +194,10 @@ impl VerbMetrics {
                 ("missing_tools".into(), m.missing_tools.to_string()),
                 ("new_tools".into(), m.new_tools.to_string()),
             ],
-            VerbMetrics::Index(m) => vec![
-                ("documents_embedded".into(), m.documents_embedded.to_string()),
-            ],
+            VerbMetrics::Index(m) => vec![(
+                "documents_embedded".into(),
+                m.documents_embedded.to_string(),
+            )],
             VerbMetrics::Search(m) => {
                 let mut pairs = Vec::new();
                 if let Some(p5) = m.p_at_5 {
@@ -220,9 +221,18 @@ impl VerbMetrics {
             VerbMetrics::Evolve(m) => vec![
                 ("total_sessions".into(), m.total_sessions.to_string()),
                 ("total_commits".into(), m.total_commits.to_string()),
-                ("total_files_changed".into(), m.total_files_changed.to_string()),
-                ("total_beliefs_captured".into(), m.total_beliefs_captured.to_string()),
-                ("total_patterns_modified".into(), m.total_patterns_modified.to_string()),
+                (
+                    "total_files_changed".into(),
+                    m.total_files_changed.to_string(),
+                ),
+                (
+                    "total_beliefs_captured".into(),
+                    m.total_beliefs_captured.to_string(),
+                ),
+                (
+                    "total_patterns_modified".into(),
+                    m.total_patterns_modified.to_string(),
+                ),
             ],
             VerbMetrics::BelieveHistory(m) => vec![
                 ("beliefs".into(), m.beliefs.to_string()),
@@ -1243,9 +1253,7 @@ fn get_recent_history(
     };
 
     // Extract verb from event_type (e.g., "measure.capture" → "capture")
-    let verb = event_type
-        .strip_prefix("measure.")
-        .unwrap_or(event_type);
+    let verb = event_type.strip_prefix("measure.").unwrap_or(event_type);
 
     let entries: Vec<HistoryEntry> = stmt
         .query_map(rusqlite::params![event_type, limit as i64], |row| {
