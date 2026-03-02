@@ -16,6 +16,7 @@ beliefs:
 - plugin-is-agent-plus-skill
 - plugins-are-three-prong-bundles
 - world-boundary-is-type-safety
+- parser-agnostic-interfaces
 exit_criteria:
 - id: doctor-emits-before-display
   text: doctor emits `measure.capture` event before any terminal output — emit is the primary action, display is secondary
