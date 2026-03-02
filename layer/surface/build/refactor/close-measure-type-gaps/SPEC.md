@@ -14,42 +14,42 @@ beliefs:
 exit_criteria:
 - id: capture-modes-typed
   text: 4 new capture structs replace CaptureGenericMetrics — no BTreeMap<String, Value> in VerbMetrics
-  checked: false
+  checked: true
   verify: grep 'BTreeMap' src/commands/measure/internal.rs | grep -v test
 - id: no-serialize-back-to-value
   text: render_system_view uses VerbMetrics::format_kv() instead of serde_json::to_value round-trip
-  checked: false
+  checked: true
   verify: grep -n 'serde_json::to_value.*latest_metrics' src/commands/measure/internal.rs
 - id: verb-param-removed
   text: user_friendly_metrics takes only &SourceSummary, no unused _verb parameter
-  checked: false
+  checked: true
   verify: grep '_verb' src/commands/measure/internal.rs
 - id: history-entry-typed
   text: HistoryEntry.metrics is VerbMetrics, parsed via from_db() at DB boundary
-  checked: false
+  checked: true
   verify: grep 'metrics.*serde_json::Value' src/commands/measure/internal.rs
 - id: history-json-construction-gone
   text: get_believe_history and get_evolve_history construct typed structs, not json!({})
-  checked: false
+  checked: true
   verify: grep 'serde_json::json!' src/commands/measure/internal.rs
 - id: format-metrics-inline-typed
   text: format_metrics_inline operates on VerbMetrics (not Value), or is replaced by VerbMetrics::format_kv()
-  checked: false
+  checked: true
 - id: drilldown-json-preserved
   text: patina measure --verb believe/evolve --json drill-down output preserves history field names
-  checked: false
+  checked: true
   verify: diff drill-down baseline against current output with sorted keys
 - id: json-shape-preserved
   text: patina measure --json output identical to v0.35.5 baseline (key names and values)
-  checked: false
+  checked: true
   verify: diff baseline against current output with sorted keys
 - id: live-capture-modes-exercised
   text: patina measure --json exercises all typed capture modes (no Raw fallback in normal operation)
-  checked: false
+  checked: true
   verify: patina measure --json | python3 -c "import sys,json; d=json.load(sys.stdin); [print(s['mode']) for v in d['verbs'] if v['verb']=='capture' for s in v['sources']]"
 - id: existing-tests-pass
   text: cargo test passes, pre-push checks pass
-  checked: false
+  checked: true
   verify: ./resources/git/pre-push-checks.sh
 ---
 # refactor: Close the typed escape hatches in measure domain
