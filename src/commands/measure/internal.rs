@@ -7,7 +7,6 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::path::Path;
 
 use super::MeasureOptions;
@@ -85,7 +84,10 @@ struct HistoryEntry {
 pub enum VerbMetrics {
     CaptureCode(CaptureCodeMetrics),
     CaptureGit(CaptureGitMetrics),
-    CaptureGeneric(CaptureGenericMetrics),
+    CaptureBeliefs(CaptureBeliefsMetrics),
+    CaptureLayer(CaptureLayerMetrics),
+    CaptureGitScrape(CaptureGitScrapeMetrics),
+    CaptureHealthCheck(CaptureHealthCheckMetrics),
     Index(IndexMetrics),
     Search(SearchMetrics),
     Believe(BelieveMetrics),
@@ -102,8 +104,28 @@ impl VerbMetrics {
             ("capture", "code") => {
                 serde_json::from_str::<CaptureCodeMetrics>(json_str).map(VerbMetrics::CaptureCode)
             }
-            ("capture", _) => serde_json::from_str::<CaptureGenericMetrics>(json_str)
-                .map(VerbMetrics::CaptureGeneric),
+            ("capture", "beliefs") => {
+                serde_json::from_str::<CaptureBeliefsMetrics>(json_str)
+                    .map(VerbMetrics::CaptureBeliefs)
+            }
+            ("capture", "layer") => {
+                serde_json::from_str::<CaptureLayerMetrics>(json_str)
+                    .map(VerbMetrics::CaptureLayer)
+            }
+            ("capture", "git") => {
+                serde_json::from_str::<CaptureGitScrapeMetrics>(json_str)
+                    .map(VerbMetrics::CaptureGitScrape)
+            }
+            ("capture", "health-check") => {
+                serde_json::from_str::<CaptureHealthCheckMetrics>(json_str)
+                    .map(VerbMetrics::CaptureHealthCheck)
+            }
+            ("capture", _) => {
+                tracing::warn!(mode, "Unknown capture mode — falling back to raw metrics");
+                let value =
+                    serde_json::from_str(json_str).unwrap_or(serde_json::Value::Null);
+                return VerbMetrics::Raw(value);
+            }
             ("index", _) => serde_json::from_str::<IndexMetrics>(json_str).map(VerbMetrics::Index),
             ("search", _) => {
                 serde_json::from_str::<SearchMetrics>(json_str).map(VerbMetrics::Search)
@@ -143,12 +165,40 @@ pub struct CaptureGitMetrics {
     pub total_commits: i64,
 }
 
-/// Generic capture metrics for modes with varying field shapes (beliefs, layer,
-/// git, health-check). Uses flatten to preserve all fields round-trip.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct CaptureGenericMetrics {
-    #[serde(flatten)]
-    pub fields: BTreeMap<String, serde_json::Value>,
+pub struct CaptureBeliefsMetrics {
+    pub beliefs_processed: i64,
+    pub beliefs_verified: i64,
+    pub beliefs_skipped: i64,
+    pub supports_edges: i64,
+    pub attacks_edges: i64,
+    pub values_processed: i64,
+    pub duration_ms: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CaptureLayerMetrics {
+    pub patterns_processed: i64,
+    pub sessions_processed: i64,
+    pub duration_ms: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CaptureGitScrapeMetrics {
+    pub commits_processed: i64,
+    pub tracked_files: i64,
+    pub tags_indexed: i64,
+    pub co_change_pairs: i64,
+    pub duration_ms: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CaptureHealthCheckMetrics {
+    pub beliefs: i64,
+    pub sessions: i64,
+    pub layer_patterns: i64,
+    pub missing_tools: i64,
+    pub new_tools: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -770,7 +820,7 @@ fn render_user_view(report: &MeasureReport) {
 
         // Show key metrics in user-friendly language
         for src in &verb_summary.sources {
-            let summary = user_friendly_metrics(&verb_summary.verb, src);
+            let summary = user_friendly_metrics(src);
             if !summary.is_empty() {
                 println!("        {}", summary);
             }
@@ -788,7 +838,7 @@ fn render_user_view(report: &MeasureReport) {
     println!();
 }
 
-fn user_friendly_metrics(_verb: &str, src: &SourceSummary) -> String {
+fn user_friendly_metrics(src: &SourceSummary) -> String {
     match &src.latest_metrics {
         VerbMetrics::CaptureCode(m) => {
             format!(
@@ -799,18 +849,29 @@ fn user_friendly_metrics(_verb: &str, src: &SourceSummary) -> String {
         VerbMetrics::CaptureGit(m) => {
             format!("{} files tracked in git", m.files_tracked)
         }
-        VerbMetrics::CaptureGeneric(m) => {
-            let parts: Vec<String> = m
-                .fields
-                .iter()
-                .filter(|(_, v)| v.as_i64().map(|n| n > 0).unwrap_or(false))
-                .map(|(k, v)| format!("{} {}", v, k))
-                .collect();
-            if parts.is_empty() {
-                format!("{}: checked", src.mode)
-            } else {
-                format!("{}: {}", src.mode, parts.join(", "))
-            }
+        VerbMetrics::CaptureBeliefs(m) => {
+            format!(
+                "{}: {} beliefs processed, {} verified, {}ms",
+                src.mode, m.beliefs_processed, m.beliefs_verified, m.duration_ms
+            )
+        }
+        VerbMetrics::CaptureLayer(m) => {
+            format!(
+                "{}: {} patterns, {} sessions, {}ms",
+                src.mode, m.patterns_processed, m.sessions_processed, m.duration_ms
+            )
+        }
+        VerbMetrics::CaptureGitScrape(m) => {
+            format!(
+                "{}: {} commits, {} files, {}ms",
+                src.mode, m.commits_processed, m.tracked_files, m.duration_ms
+            )
+        }
+        VerbMetrics::CaptureHealthCheck(m) => {
+            format!(
+                "{}: {} beliefs, {} sessions, {} patterns",
+                src.mode, m.beliefs, m.sessions, m.layer_patterns
+            )
         }
         VerbMetrics::Index(m) => {
             format!("{} documents embedded", m.documents_embedded)
@@ -1299,9 +1360,26 @@ mod tests {
             );
         }
 
-        // CaptureGenericMetrics accepts any JSON via flatten BTreeMap
-        let result = VerbMetrics::from_db("capture", "beliefs", unknown);
-        assert!(matches!(result, VerbMetrics::CaptureGeneric(_)));
+        // Typed capture modes with unknown payload also fall to Raw
+        for (verb, mode) in &[
+            ("capture", "beliefs"),
+            ("capture", "layer"),
+            ("capture", "git"),
+            ("capture", "health-check"),
+        ] {
+            let result = VerbMetrics::from_db(verb, mode, unknown);
+            assert!(
+                matches!(result, VerbMetrics::Raw(_)),
+                "Expected Raw for {}:{}, got {:?}",
+                verb,
+                mode,
+                result
+            );
+        }
+
+        // Unknown capture mode falls to Raw
+        let result = VerbMetrics::from_db("capture", "unknown-mode", unknown);
+        assert!(matches!(result, VerbMetrics::Raw(_)));
 
         // SearchMetrics accepts unknown JSON (all fields are Option, unknowns ignored)
         let result = VerbMetrics::from_db("search", "eval", unknown);
@@ -1352,15 +1430,37 @@ mod tests {
     }
 
     #[test]
-    fn from_db_capture_generic_preserves_all_fields() {
-        let json = r#"{"beliefs_processed": 178, "attacks_edges": 82, "duration_ms": 1092}"#;
+    fn from_db_capture_beliefs_typed() {
+        let json = r#"{"beliefs_processed": 178, "beliefs_verified": 43, "beliefs_skipped": 0, "supports_edges": 96, "attacks_edges": 82, "values_processed": 10, "duration_ms": 1092}"#;
         let result = VerbMetrics::from_db("capture", "beliefs", json);
-        assert!(matches!(result, VerbMetrics::CaptureGeneric(_)));
+        assert!(matches!(result, VerbMetrics::CaptureBeliefs(_)));
 
-        // Round-trip: serialization preserves all fields
-        let serialized = serde_json::to_value(&result).unwrap();
-        assert_eq!(serialized["beliefs_processed"], 178);
-        assert_eq!(serialized["attacks_edges"], 82);
+        if let VerbMetrics::CaptureBeliefs(m) = result {
+            assert_eq!(m.beliefs_processed, 178);
+            assert_eq!(m.attacks_edges, 82);
+            assert_eq!(m.duration_ms, 1092);
+        }
+    }
+
+    #[test]
+    fn from_db_capture_layer_typed() {
+        let json = r#"{"patterns_processed": 12, "sessions_processed": 5, "duration_ms": 250}"#;
+        let result = VerbMetrics::from_db("capture", "layer", json);
+        assert!(matches!(result, VerbMetrics::CaptureLayer(_)));
+    }
+
+    #[test]
+    fn from_db_capture_git_scrape_typed() {
+        let json = r#"{"commits_processed": 100, "tracked_files": 248, "tags_indexed": 50, "co_change_pairs": 1200, "duration_ms": 3000}"#;
+        let result = VerbMetrics::from_db("capture", "git", json);
+        assert!(matches!(result, VerbMetrics::CaptureGitScrape(_)));
+    }
+
+    #[test]
+    fn from_db_capture_health_check_typed() {
+        let json = r#"{"beliefs": 178, "sessions": 42, "layer_patterns": 12, "missing_tools": 0, "new_tools": 1}"#;
+        let result = VerbMetrics::from_db("capture", "health-check", json);
+        assert!(matches!(result, VerbMetrics::CaptureHealthCheck(_)));
     }
 
     #[test]
