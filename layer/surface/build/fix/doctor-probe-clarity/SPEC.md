@@ -14,6 +14,7 @@ beliefs:
 - parse-at-boundary-type-the-interior
 - correctness-by-construction-not-convention
 - plugin-is-agent-plus-skill
+- plugins-are-three-prong-bundles
 exit_criteria:
 - id: doctor-emits-before-display
   text: doctor emits `measure.capture` event before any terminal output — emit is the primary action, display is secondary
