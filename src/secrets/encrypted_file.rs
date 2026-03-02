@@ -414,6 +414,7 @@ fn write_atomic(path: &PathBuf, data: &[u8]) -> Result<()> {
 ///
 /// Phase 1: Conservative - default to true (remote/encrypted file)
 /// Returns false (use Keychain) only when we have POSITIVE console signals
+#[cfg(target_os = "macos")]
 fn is_remote_session() -> bool {
     // Known remote indicators (if ANY present → definitely remote)
     if std::env::var("SSH_CONNECTION").is_ok()
