@@ -215,6 +215,9 @@ mod platform {
 ///
 /// - macOS: Uses Keychain with Touch ID protection
 /// - Linux/Windows: Returns error with guidance to use PATINA_IDENTITY env var
+///
+/// Only called from `#[cfg(target_os = "macos")]` blocks in storage.rs.
+#[cfg(target_os = "macos")]
 pub fn store_identity(identity: &str) -> Result<()> {
     platform::store_identity(identity)
 }
@@ -223,6 +226,9 @@ pub fn store_identity(identity: &str) -> Result<()> {
 ///
 /// - macOS: Retrieves from Keychain (may trigger Touch ID)
 /// - Linux/Windows: Returns error with guidance to use PATINA_IDENTITY env var
+///
+/// Only called from `#[cfg(target_os = "macos")]` blocks in storage.rs/identity.rs.
+#[cfg(target_os = "macos")]
 pub fn get_identity() -> Result<String> {
     platform::get_identity()
 }
@@ -239,6 +245,9 @@ pub fn delete_identity() -> Result<()> {
 ///
 /// - macOS: Checks Keychain
 /// - Linux/Windows: Always returns false (use PATINA_IDENTITY env var)
+///
+/// Only called from `#[cfg(target_os = "macos")]` blocks in storage.rs/identity.rs.
+#[cfg(target_os = "macos")]
 pub fn has_identity() -> bool {
     platform::has_identity()
 }
@@ -259,10 +268,10 @@ mod tests {
     #[cfg(not(target_os = "macos"))]
     fn test_non_macos_stubs_return_errors() {
         // On non-macOS, keychain operations should fail gracefully
-        assert!(store_identity("test").is_err());
-        assert!(get_identity().is_err());
-        assert!(delete_identity().is_err());
-        assert!(!has_identity());
+        assert!(platform::store_identity("test").is_err());
+        assert!(platform::get_identity().is_err());
+        assert!(platform::delete_identity().is_err());
+        assert!(!platform::has_identity());
     }
 
     // Note: macOS keychain tests interact with actual Keychain

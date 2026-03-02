@@ -4,7 +4,9 @@
 //! 1. PATINA_IDENTITY env var (for CI/headless)
 //! 2. Storage orchestrator (encrypted file → Keychain with auto-migration)
 
-use crate::secrets::{encrypted_file, keychain, recipients, storage};
+#[cfg(target_os = "macos")]
+use crate::secrets::keychain;
+use crate::secrets::{encrypted_file, recipients, storage};
 use age::secrecy::ExposeSecret;
 use age::x25519;
 use anyhow::{bail, Context, Result};
