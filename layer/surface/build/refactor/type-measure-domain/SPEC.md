@@ -14,40 +14,40 @@ beliefs:
 exit_criteria:
 - id: verb-metrics-enum
   text: VerbMetrics enum defined with 7 variants + Raw fallback
-  checked: false
+  checked: true
   verify: grep -c 'VerbMetrics' src/commands/measure/internal.rs
 - id: zero-value-domain-fields
   text: No serde_json::Value fields in SourceSummary (latest_metrics is VerbMetrics)
-  checked: false
+  checked: true
   verify: grep 'serde_json::Value' src/commands/measure/internal.rs | grep -v 'Raw\|HistoryEntry\|from_db\|format_metrics'
 - id: zero-get-as-chains
   text: No .get().as_*().unwrap_or() chains on metrics in renderers or status decisions
-  checked: false
+  checked: true
   verify: grep -n '\.get(.*\.as_i64\|\.get(.*\.as_f64' src/commands/measure/internal.rs
 - id: parse-at-boundary
   text: collect_measure_sources parses into typed VerbMetrics at DB boundary via from_db()
-  checked: false
+  checked: true
 - id: option-not-default
   text: SearchMetrics uses Option<f64> for p_at_5/mrr/recall_at_5; renderers show "n/a" for None
-  checked: false
+  checked: true
 - id: raw-fallback-logged
   text: VerbMetrics::Raw fallback emits tracing::warn! so new metric shapes are discoverable
-  checked: false
+  checked: true
 - id: raw-fallback-graceful
   text: Synthetic unknown payload triggers Raw fallback with warn! and renders without panic
-  checked: false
+  checked: true
   verify: Unit test passes a JSON blob with unrecognized keys to from_db() for each verb, asserts Raw variant returned and rendering produces valid output
 - id: mcp-payload-diff
   text: MCP payload before/after migration has identical field names and structure (no key renames or field drops)
-  checked: false
+  checked: true
   verify: Diff patina measure --json output before and after migration — capture baseline before Phase 2
 - id: json-shape-preserved
   text: MCP output (mcp_measure) and --json output preserve flat JSON shape via serde(untagged)
-  checked: false
+  checked: true
   verify: cargo build --release && cargo install --path . && patina measure --json | python3 -c "import sys,json; d=json.load(sys.stdin); [print(v['verb'], list(s['latest_metrics'].keys())) for v in d['verbs'] for s in v['sources']]"
 - id: existing-tests-pass
   text: cargo test passes, pre-push checks pass
-  checked: false
+  checked: true
   verify: ./resources/git/pre-push-checks.sh
 ---
 # refactor: Type the measure domain model

@@ -99,13 +99,12 @@ impl VerbMetrics {
     /// struct based on verb and mode context from the same DB row (ADR-1).
     pub fn from_db(verb: &str, mode: &str, json_str: &str) -> Self {
         let result = match (verb, mode) {
-            ("capture", "code") => serde_json::from_str::<CaptureCodeMetrics>(json_str)
-                .map(VerbMetrics::CaptureCode),
+            ("capture", "code") => {
+                serde_json::from_str::<CaptureCodeMetrics>(json_str).map(VerbMetrics::CaptureCode)
+            }
             ("capture", _) => serde_json::from_str::<CaptureGenericMetrics>(json_str)
                 .map(VerbMetrics::CaptureGeneric),
-            ("index", _) => {
-                serde_json::from_str::<IndexMetrics>(json_str).map(VerbMetrics::Index)
-            }
+            ("index", _) => serde_json::from_str::<IndexMetrics>(json_str).map(VerbMetrics::Index),
             ("search", _) => {
                 serde_json::from_str::<SearchMetrics>(json_str).map(VerbMetrics::Search)
             }
@@ -117,16 +116,14 @@ impl VerbMetrics {
             }
             _ => {
                 tracing::warn!(verb, mode, "Unknown verb — falling back to raw metrics");
-                let value =
-                    serde_json::from_str(json_str).unwrap_or(serde_json::Value::Null);
+                let value = serde_json::from_str(json_str).unwrap_or(serde_json::Value::Null);
                 return VerbMetrics::Raw(value);
             }
         };
 
         result.unwrap_or_else(|e| {
             tracing::warn!(verb, mode, error = %e, "Falling back to raw metrics");
-            let value =
-                serde_json::from_str(json_str).unwrap_or(serde_json::Value::Null);
+            let value = serde_json::from_str(json_str).unwrap_or(serde_json::Value::Null);
             VerbMetrics::Raw(value)
         })
     }
@@ -818,20 +815,18 @@ fn user_friendly_metrics(_verb: &str, src: &SourceSummary) -> String {
         VerbMetrics::Index(m) => {
             format!("{} documents embedded", m.documents_embedded)
         }
-        VerbMetrics::Search(m) => {
-            match (m.p_at_5, m.mrr, m.recall_at_5) {
-                (Some(p5), Some(mrr_val), _) => {
-                    format!("{}: P@5={:.0}%, MRR={:.2}", src.mode, p5 * 100.0, mrr_val)
-                }
-                (Some(p5), None, _) => {
-                    format!("{}: P@5={:.0}%", src.mode, p5 * 100.0)
-                }
-                (None, _, Some(recall)) => {
-                    format!("{}: Recall@5={:.0}%", src.mode, recall * 100.0)
-                }
-                _ => format!("{}: n/a", src.mode),
+        VerbMetrics::Search(m) => match (m.p_at_5, m.mrr, m.recall_at_5) {
+            (Some(p5), Some(mrr_val), _) => {
+                format!("{}: P@5={:.0}%, MRR={:.2}", src.mode, p5 * 100.0, mrr_val)
             }
-        }
+            (Some(p5), None, _) => {
+                format!("{}: P@5={:.0}%", src.mode, p5 * 100.0)
+            }
+            (None, _, Some(recall)) => {
+                format!("{}: Recall@5={:.0}%", src.mode, recall * 100.0)
+            }
+            _ => format!("{}: n/a", src.mode),
+        },
         VerbMetrics::Believe(m) => {
             if m.floating_count > 0 {
                 format!(
@@ -849,11 +844,23 @@ fn user_friendly_metrics(_verb: &str, src: &SourceSummary) -> String {
             format!(
                 "{} {}, {} {}, {} {} captured",
                 m.total_sessions,
-                if m.total_sessions == 1 { "session" } else { "sessions" },
+                if m.total_sessions == 1 {
+                    "session"
+                } else {
+                    "sessions"
+                },
                 m.total_commits,
-                if m.total_commits == 1 { "commit" } else { "commits" },
+                if m.total_commits == 1 {
+                    "commit"
+                } else {
+                    "commits"
+                },
                 m.total_beliefs_captured,
-                if m.total_beliefs_captured == 1 { "belief" } else { "beliefs" },
+                if m.total_beliefs_captured == 1 {
+                    "belief"
+                } else {
+                    "beliefs"
+                },
             )
         }
         VerbMetrics::Raw(_) => String::new(),
@@ -1277,9 +1284,9 @@ mod tests {
 
         // Verbs with required struct fields fall to Raw when payload doesn't match
         for (verb, mode) in &[
-            ("capture", "code"),   // CaptureCodeMetrics has required i64 fields
-            ("index", "default"),  // IndexMetrics has required documents_embedded
-            ("believe", "audit"),  // BelieveMetrics has required i64/f64 fields
+            ("capture", "code"),     // CaptureCodeMetrics has required i64 fields
+            ("index", "default"),    // IndexMetrics has required documents_embedded
+            ("believe", "audit"),    // BelieveMetrics has required i64/f64 fields
             ("evolve", "lifecycle"), // EvolveMetrics has required i64 fields
         ] {
             let result = VerbMetrics::from_db(verb, mode, unknown);
