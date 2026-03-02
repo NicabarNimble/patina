@@ -165,12 +165,9 @@ pub fn get_identity_source() -> Option<IdentitySource> {
         return Some(IdentitySource::EncryptedFile);
     }
 
-    // Check Keychain (legacy)
-    #[cfg(target_os = "macos")]
-    {
-        if keychain::has_identity() {
-            return Some(IdentitySource::Keychain);
-        }
+    // Check Keychain (legacy — stubs return false on non-macOS)
+    if keychain::has_identity() {
+        return Some(IdentitySource::Keychain);
     }
 
     None
