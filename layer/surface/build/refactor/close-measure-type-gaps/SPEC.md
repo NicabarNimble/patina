@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: close-measure-type-gaps
-status: ready
+status: active
 created: 2026-03-02
 sessions:
   origin: 20260301-194301
