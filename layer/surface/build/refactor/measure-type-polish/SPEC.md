@@ -15,28 +15,28 @@ beliefs:
 exit_criteria:
 - id: source-summary-strings-typed
   text: SourceSummary.source_type, tool, mode replaced with enums — no bare String for finite-valued fields in SourceSummary or HistoryEntry
-  checked: false
+  checked: true
 - id: history-mode-no-clone
   text: HistoryEntry construction avoids redundant mode clone
-  checked: false
+  checked: true
 - id: format-kv-unit-suffix-clean
   text: format_kv returns raw integers for all fields; format_kv_display adds unit suffixes. render_system_view calls display, format_metrics_inline calls raw.
-  checked: false
+  checked: true
   verify: patina measure --system 2>&1 | grep 'duration_ms'
 - id: from-db-history-documented
   text: from_db() doc comment explains history variants are direct-construction only; regression test asserts history verb+mode pairs do not reach from_db in normal operation
-  checked: false
+  checked: true
 - id: json-shape-preserved
   text: patina measure --json output identical to pre-change baseline (captured to /tmp/measure-baseline-polish.json before Phase 1)
-  checked: false
+  checked: true
   verify: diff <(python3 -c "import json,sys; json.dump(json.load(open('/tmp/measure-baseline-polish.json')),sys.stdout,sort_keys=True,indent=2)") <(patina measure --json | python3 -c "import json,sys; json.dump(json.load(sys.stdin),sys.stdout,sort_keys=True,indent=2)")
 - id: drilldown-json-preserved
   text: patina measure --verb believe/evolve --json output identical to pre-change baselines
-  checked: false
+  checked: true
   verify: diff <(python3 -c "import json,sys; json.dump(json.load(open('/tmp/drilldown-believe-baseline-polish.json')),sys.stdout,sort_keys=True,indent=2)") <(patina measure --verb believe --json | python3 -c "import json,sys; json.dump(json.load(sys.stdin),sys.stdout,sort_keys=True,indent=2)")
 - id: existing-tests-pass
   text: cargo test passes, pre-push checks pass
-  checked: false
+  checked: true
   verify: ./resources/git/pre-push-checks.sh
 ---
 # refactor: Polish remaining measure type gaps
