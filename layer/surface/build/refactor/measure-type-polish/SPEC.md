@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: measure-type-polish
-status: draft
+status: ready
 created: 2026-03-02
 sessions:
   origin: 20260301-202410
