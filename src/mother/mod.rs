@@ -36,7 +36,7 @@ pub use child::{ChildHealth, ChildRequest, ChildResponse, MotherChild, MotherHos
 
 // Graph exports
 pub use graph::{
-    BeliefEntry, Edge, EdgeType, EdgeUsageStats, Graph, Node, NodeType, WeightChange,
+    BeliefEntry, BeliefStatus, Edge, EdgeType, EdgeUsageStats, Graph, Node, NodeType, WeightChange,
     WeightLearningReport, DEFAULT_ALPHA, MIN_SAMPLES, WEIGHT_MAX, WEIGHT_MIN,
 };
 

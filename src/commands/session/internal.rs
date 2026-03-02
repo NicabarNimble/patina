@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 
 use crate::commands::spec;
 use patina::git;
+use patina::spec::SpecStatus;
 
 /// Path to active session file (transient, gitignored)
 const ACTIVE_SESSION_PATH: &str = ".patina/local/active-session.md";
@@ -201,9 +202,8 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
     // 8. Write .last-update marker
     fs::write(&last_update_path, &time_str)?;
 
-    // 9. Write session.started event to eventlog
-    let db_path = project_root.join(patina::eventlog::PATINA_DB);
-    let conn = patina::eventlog::initialize(&db_path)?;
+    // 9. Write session.started event to events.db (runtime events)
+    let conn = patina::eventlog::open_events_db()?;
     let timestamp = now.to_rfc3339();
     let data = json!({
         "session_id": session_id,
@@ -465,9 +465,8 @@ pub fn update_session(project_root: &Path) -> Result<()> {
     // 7. Update last update timestamp
     fs::write(&last_update_path, &time_str)?;
 
-    // 8. Write session.update event to eventlog
-    let db_path = project_root.join(patina::eventlog::PATINA_DB);
-    let conn = patina::eventlog::initialize(&db_path)?;
+    // 8. Write session.update event to events.db (runtime events)
+    let conn = patina::eventlog::open_events_db()?;
     let timestamp = now.to_rfc3339();
     let data = json!({
         "session_id": session_id,
@@ -732,10 +731,9 @@ pub fn end_session(project_root: &Path) -> Result<()> {
     );
     fs::write(&last_session_path, &last_session_content)?;
 
-    // 15. Write session.ended event to eventlog
+    // 15. Write session.ended event to events.db (runtime events)
     let now = Local::now();
-    let db_path = project_root.join(patina::eventlog::PATINA_DB);
-    let conn = patina::eventlog::initialize(&db_path)?;
+    let conn = patina::eventlog::open_events_db()?;
     let timestamp = now.to_rfc3339();
     let data = json!({
         "session_id": session_id,
@@ -757,6 +755,9 @@ pub fn end_session(project_root: &Path) -> Result<()> {
         Some(&format!("{}/{}.md", SESSIONS_DIR, session_id)),
         &data.to_string(),
     )?;
+
+    // 15b. Export new events to JSONL replica (best-effort, don't block archival)
+    crate::commands::events::export_best_effort();
 
     // 16. Clean up active session file and .last-update
     fs::remove_file(&session_path)?;
@@ -996,23 +997,23 @@ fn show_spec_landscape() {
 
     let active: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("active"))
+        .filter(|s| s.status == Some(SpecStatus::Active))
         .collect();
     let paused: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("paused"))
+        .filter(|s| s.status == Some(SpecStatus::Paused))
         .collect();
     let blocked: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("blocked"))
+        .filter(|s| s.status == Some(SpecStatus::Blocked))
         .collect();
     let ready: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("ready"))
+        .filter(|s| s.status == Some(SpecStatus::Ready))
         .collect();
     let drafts: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("draft"))
+        .filter(|s| s.status == Some(SpecStatus::Draft))
         .collect();
 
     println!();
@@ -1114,7 +1115,7 @@ fn show_spec_status_in_update(changed_files: &[String]) {
     if let Ok(all_specs) = spec::get_all_specs(&spec::ListFilters::default()) {
         let paused: Vec<_> = all_specs
             .iter()
-            .filter(|s| s.status.as_deref() == Some("paused"))
+            .filter(|s| s.status == Some(SpecStatus::Paused))
             .collect();
         if !paused.is_empty() {
             println!();
@@ -1164,10 +1165,7 @@ fn show_spec_end_summary(changed_files: &[String]) {
         let unblocked: Vec<_> = blocked_specs
             .iter()
             .filter(|b| {
-                b.blocked_by.is_empty()
-                    || b.blocked_by
-                        .iter()
-                        .all(|bl| bl.status == "complete" || bl.status == "done")
+                b.blocked_by.is_empty() || b.blocked_by.iter().all(|bl| bl.status.is_terminal())
             })
             .collect();
 
@@ -1183,19 +1181,19 @@ fn show_spec_end_summary(changed_files: &[String]) {
     // Next spec recommendation
     let active: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("active"))
+        .filter(|s| s.status == Some(SpecStatus::Active))
         .collect();
     let paused: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("paused"))
+        .filter(|s| s.status == Some(SpecStatus::Paused))
         .collect();
     let ready: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("ready"))
+        .filter(|s| s.status == Some(SpecStatus::Ready))
         .collect();
     let drafts: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("draft"))
+        .filter(|s| s.status == Some(SpecStatus::Draft))
         .collect();
 
     println!();

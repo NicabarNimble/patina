@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use serde::Serialize;
 use std::path::Path;
 
-use patina::spec::{serialize_spec_file, Sessions, SpecFrontmatter, SpecType};
+use patina::spec::{serialize_spec_file, Sessions, SpecFrontmatter, SpecStatus, SpecType};
 
 use super::mutations::git_stage_and_commit;
 use super::queue::tag_exists;
@@ -162,7 +162,7 @@ pub fn create_spec_value(
     let frontmatter = SpecFrontmatter {
         r#type: type_str.to_string(),
         id: id.to_string(),
-        status: Some("draft".to_string()),
+        status: Some(SpecStatus::Draft),
         created: Some(today),
         sessions,
         blocked_by,
@@ -204,7 +204,7 @@ pub fn create_spec_value(
         let conn = Connection::open(db_path).context("Failed to open database")?;
         conn.execute(
             "INSERT OR REPLACE INTO patterns (id, title, layer, status, file_path) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![id, display_title, "surface", "draft", spec_path],
+            rusqlite::params![id, display_title, "surface", SpecStatus::Draft.as_str(), spec_path],
         )?;
     }
 

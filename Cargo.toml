@@ -5,7 +5,7 @@ resolver = "2"
 
 [package]
 name = "patina-ai"
-version = "0.32.0"
+version = "0.35.7"
 edition = "2021"
 license = "MIT"
 description = "Context orchestration for AI development - captures and evolves patterns over time"
@@ -79,6 +79,10 @@ ignore = "0.4"
 # Tree-sitter - AST parsing for Rust fallback processor
 tree-sitter = "0.24"
 tree-sitter-rust = "0.24"
+
+# Structured logging (MCP server — file-based JSON)
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json"] }
 
 # Embeddings and vector search
 ort = { version = "=2.0.0-rc.10", features = ["download-binaries"] }  # ONNX Runtime - pinned, rc.11 breaks API

@@ -20,6 +20,7 @@ use crate::commands::scrape::database;
 struct SessionYaml {
     title: Option<String>,
     created: Option<String>,
+    status: Option<String>,
     git: Option<SessionGitYaml>,
 }
 
@@ -36,9 +37,12 @@ struct ParsedSession {
     started_at: Option<String>,
     ended_at: Option<String>,
     branch: Option<String>,
+    status: Option<String>,
     classification: Option<String>,
     files_changed: i32,
     commits_made: i32,
+    patterns_modified: i32,
+    beliefs_captured: i32,
     goals: Vec<Goal>,
     observations: Vec<Observation>,
 }
@@ -127,11 +131,12 @@ fn parse_session_file(path: &Path) -> Result<ParsedSession> {
         .to_string();
 
     // Extract header metadata — try YAML frontmatter first, fall back to regex
-    let (title, started_at, branch) = if let Some(fm) = parse_yaml_frontmatter(&content) {
+    let (title, started_at, branch, status) = if let Some(fm) = parse_yaml_frontmatter(&content) {
         (
             fm.title.unwrap_or_else(|| id.clone()),
             fm.created,
             fm.git.and_then(|g| g.branch),
+            fm.status,
         )
     } else {
         // Legacy markdown header format
@@ -144,12 +149,14 @@ fn parse_session_file(path: &Path) -> Result<ParsedSession> {
             title,
             extract_field(&content, "Started"),
             extract_field(&content, "Git Branch"),
+            None, // legacy sessions have no YAML status
         )
     };
 
     // Classification, stats, goals, observations come from markdown body (both formats)
     let classification = extract_classification(&content);
-    let (files_changed, commits_made) = extract_stats(&content);
+    let (files_changed, commits_made, patterns_modified, beliefs_captured) =
+        extract_stats(&content);
     let goals = extract_goals(&content);
     let observations = extract_observations(&content);
 
@@ -159,9 +166,12 @@ fn parse_session_file(path: &Path) -> Result<ParsedSession> {
         started_at,
         ended_at: None,
         branch,
+        status,
         classification,
         files_changed,
         commits_made,
+        patterns_modified,
+        beliefs_captured,
         goals,
         observations,
     })
@@ -180,10 +190,12 @@ fn extract_classification(content: &str) -> Option<String> {
     re.captures(content).map(|c| c[1].to_string())
 }
 
-/// Extract files changed and commits from stats
-fn extract_stats(content: &str) -> (i32, i32) {
+/// Extract stats from Session Classification section
+fn extract_stats(content: &str) -> (i32, i32, i32, i32) {
     let files_re = Regex::new(r"Files Changed:\s*(\d+)").ok();
     let commits_re = Regex::new(r"Commits:\s*(\d+)").ok();
+    let patterns_re = Regex::new(r"Patterns Modified:\s*(\d+)").ok();
+    let beliefs_re = Regex::new(r"Beliefs Captured:\s*(\d+)").ok();
 
     let files = files_re
         .and_then(|re| re.captures(content))
@@ -195,7 +207,17 @@ fn extract_stats(content: &str) -> (i32, i32) {
         .and_then(|c| c[1].parse().ok())
         .unwrap_or(0);
 
-    (files, commits)
+    let patterns = patterns_re
+        .and_then(|re| re.captures(content))
+        .and_then(|c| c[1].parse().ok())
+        .unwrap_or(0);
+
+    let beliefs = beliefs_re
+        .and_then(|re| re.captures(content))
+        .and_then(|c| c[1].parse().ok())
+        .unwrap_or(0);
+
+    (files, commits, patterns, beliefs)
 }
 
 /// Extract goals from ## Goals section
@@ -397,7 +419,41 @@ fn insert_session(conn: &Connection, session: &ParsedSession, file_path: &str) -
         ])?;
     }
 
-    // 4. Insert observation events and materialized views
+    // 4. Emit session.ended event for archived sessions with classification data
+    // This makes the evolve verb rebuild-safe: session.ended events survive scrape --rebuild
+    let is_archived = match &session.status {
+        Some(s) => s == "archived",
+        None => session.classification.is_some(), // legacy sessions in layer/sessions/ are archived
+    };
+
+    if is_archived && session.classification.is_some() {
+        // Delete any existing session.ended for this session (idempotent re-scrape)
+        conn.execute(
+            "DELETE FROM eventlog WHERE source_id = ?1 AND event_type = 'session.ended'",
+            [&session.id],
+        )?;
+
+        let ended_data = json!({
+            "session_id": &session.id,
+            "title": &session.title,
+            "classification": &session.classification,
+            "files_changed": session.files_changed,
+            "commits_made": session.commits_made,
+            "patterns_modified": session.patterns_modified,
+            "beliefs_captured": session.beliefs_captured,
+        });
+
+        database::insert_event(
+            conn,
+            "session.ended",
+            timestamp,
+            &session.id,
+            Some(file_path),
+            &ended_data.to_string(),
+        )?;
+    }
+
+    // 6. Insert observation events and materialized views
     let mut obs_stmt = conn.prepare(
         "INSERT INTO observations (session_id, content, observation_type, timestamp) VALUES (?1, ?2, ?3, ?4)",
     )?;
@@ -545,6 +601,7 @@ git:
 "#;
         let fm = parse_yaml_frontmatter(content).expect("should parse YAML frontmatter");
         assert_eq!(fm.title, Some("Complete v0.9.2".to_string()));
+        assert_eq!(fm.status, Some("active".to_string()));
         assert_eq!(fm.created, Some("2026-01-30T23:32:21Z".to_string()));
         let git = fm.git.expect("should have git section");
         assert_eq!(git.branch, Some("patina".to_string()));
@@ -580,6 +637,8 @@ git:
 - Work Type: feature
 - Files Changed: 5
 - Commits: 3
+- Patterns Modified: 2
+- Beliefs Captured: 1
 "#;
         let temp_dir = tempfile::tempdir().unwrap();
         let file_path = temp_dir.path().join("20260130-183221.md");
@@ -588,11 +647,14 @@ git:
         let session = parse_session_file(&file_path).unwrap();
         assert_eq!(session.id, "20260130-183221");
         assert_eq!(session.title, "Complete v0.9.2");
+        assert_eq!(session.status, Some("archived".to_string()));
         assert_eq!(session.started_at, Some("2026-01-30T23:32:21Z".to_string()));
         assert_eq!(session.branch, Some("patina".to_string()));
         assert_eq!(session.classification, Some("feature".to_string()));
         assert_eq!(session.files_changed, 5);
         assert_eq!(session.commits_made, 3);
+        assert_eq!(session.patterns_modified, 2);
+        assert_eq!(session.beliefs_captured, 1);
         assert_eq!(session.goals.len(), 2);
         assert!(!session.goals[0].completed);
         assert!(session.goals[1].completed);
@@ -615,6 +677,8 @@ git:
 - Work Type: pattern-work
 - Files Changed: 8
 - Commits: 4
+- Patterns Modified: 3
+- Beliefs Captured: 0
 "#;
         let temp_dir = tempfile::tempdir().unwrap();
         let file_path = temp_dir.path().join("20251121-113107.md");
@@ -623,10 +687,13 @@ git:
         let session = parse_session_file(&file_path).unwrap();
         assert_eq!(session.id, "20251121-113107");
         assert_eq!(session.title, "Legacy Session Title");
+        assert_eq!(session.status, None); // legacy sessions have no YAML status
         assert_eq!(session.started_at, Some("2025-11-21T16:31:07Z".to_string()));
         assert_eq!(session.branch, Some("work".to_string()));
         assert_eq!(session.classification, Some("pattern-work".to_string()));
         assert_eq!(session.files_changed, 8);
         assert_eq!(session.commits_made, 4);
+        assert_eq!(session.patterns_modified, 3);
+        assert_eq!(session.beliefs_captured, 0);
     }
 }

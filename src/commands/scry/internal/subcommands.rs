@@ -4,6 +4,7 @@
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
+use serde::Serialize;
 
 use crate::retrieval::{QueryEngine, QueryOptions};
 use patina::eventlog;
@@ -16,10 +17,10 @@ use super::logging::{get_query_results, log_scry_feedback, log_scry_use};
 // ============================================================================
 
 /// Result from orient query
-#[derive(Debug)]
-pub struct OrientResult {
+#[derive(Debug, Serialize)]
+pub struct OrientEntry {
     pub path: String,
-    pub score: f64,
+    pub composite_score: f64,
     pub importer_count: i64,
     pub activity_level: String,
     pub is_entry_point: bool,
@@ -27,18 +28,15 @@ pub struct OrientResult {
     pub commit_count: i64,
 }
 
-/// Execute orient subcommand - rank files by structural importance
-///
-/// From spec-observable-scry.md:
-/// - File-level outputs only (by design)
-/// - Ranked by structural composite score
-/// - Answers "what matters here?" not "where is X?"
-pub fn execute_orient(dir_path: &str, limit: usize) -> Result<()> {
-    println!("🔮 Scry Orient - What's important in {}\n", dir_path);
+/// Full orient result with directory context
+#[derive(Debug, Serialize)]
+pub struct OrientOutput {
+    pub directory: String,
+    pub entries: Vec<OrientEntry>,
+}
 
-    let conn = Connection::open(eventlog::PATINA_DB)
-        .with_context(|| "Failed to open database. Run 'patina scrape' first.")?;
-
+/// Query orient entries from database — shared between CLI and MCP
+fn orient_entries(conn: &Connection, dir_path: &str, limit: usize) -> Result<Vec<OrientEntry>> {
     // Check if module_signals table exists
     let table_exists: bool = conn
         .query_row(
@@ -60,13 +58,6 @@ pub fn execute_orient(dir_path: &str, limit: usize) -> Result<()> {
         format!("./{}", normalized_path)
     };
 
-    // Query files in directory, compute composite score, rank
-    // Composite score formula:
-    // - is_entry_point: +20 (entry points are critical for orientation)
-    // - importer_count: +2 per importer (up to 20)
-    // - activity_level: high=10, medium=5, low=2, dormant=0
-    // - commit_count: tiered (1-5: +2, 6-20: +5, 21-50: +8, 51+: +10)
-    // - is_test_file: -5 (deprioritize tests for orientation)
     let sql = "
         SELECT
             path,
@@ -87,11 +78,11 @@ pub fn execute_orient(dir_path: &str, limit: usize) -> Result<()> {
             END -
             COALESCE(is_test_file, 0) * 5
             AS composite_score,
-            COALESCE(importer_count, 0) as importer_count,
-            COALESCE(activity_level, 'unknown') as activity_level,
-            COALESCE(is_entry_point, 0) as is_entry_point,
-            COALESCE(is_test_file, 0) as is_test_file,
-            COALESCE(commit_count, 0) as commit_count
+            COALESCE(importer_count, 0),
+            COALESCE(activity_level, 'unknown'),
+            COALESCE(is_entry_point, 0),
+            COALESCE(is_test_file, 0),
+            COALESCE(commit_count, 0)
         FROM module_signals
         WHERE path LIKE ?
         ORDER BY composite_score DESC
@@ -100,11 +91,11 @@ pub fn execute_orient(dir_path: &str, limit: usize) -> Result<()> {
 
     let pattern = format!("{}%", normalized_path);
     let mut stmt = conn.prepare(sql)?;
-    let results: Vec<OrientResult> = stmt
+    let results: Vec<OrientEntry> = stmt
         .query_map(rusqlite::params![pattern, limit as i64], |row| {
-            Ok(OrientResult {
+            Ok(OrientEntry {
                 path: row.get(0)?,
-                score: row.get(1)?,
+                composite_score: row.get(1)?,
                 importer_count: row.get(2)?,
                 activity_level: row.get(3)?,
                 is_entry_point: row.get::<_, i64>(4)? != 0,
@@ -114,6 +105,28 @@ pub fn execute_orient(dir_path: &str, limit: usize) -> Result<()> {
         })?
         .filter_map(|r| r.ok())
         .collect();
+
+    Ok(results)
+}
+
+/// Query orient and return JSON string — called by MCP handler
+pub fn orient_json(conn: &Connection, dir_path: &str, limit: usize) -> Result<String> {
+    let entries = orient_entries(conn, dir_path, limit)?;
+    let result = OrientOutput {
+        directory: dir_path.to_string(),
+        entries,
+    };
+    Ok(serde_json::to_string_pretty(&result)?)
+}
+
+/// Execute orient subcommand - rank files by structural importance
+pub fn execute_orient(dir_path: &str, limit: usize) -> Result<()> {
+    println!("🔮 Scry Orient - What's important in {}\n", dir_path);
+
+    let conn = Connection::open(eventlog::PATINA_DB)
+        .with_context(|| "Failed to open database. Run 'patina scrape' first.")?;
+
+    let results = orient_entries(&conn, dir_path, limit)?;
 
     if results.is_empty() {
         println!("No files found in '{}' with structural signals.", dir_path);
@@ -139,7 +152,12 @@ pub fn execute_orient(dir_path: &str, limit: usize) -> Result<()> {
             format!(" [{}]", flags.join(", "))
         };
 
-        println!("\n[{}] {} (score: {:.0})", i + 1, result.path, result.score);
+        println!(
+            "\n[{}] {} (score: {:.0})",
+            i + 1,
+            result.path,
+            result.composite_score
+        );
         println!(
             "    {} importers | {} activity | {} commits{}",
             result.importer_count, result.activity_level, result.commit_count, flags_str
@@ -155,59 +173,51 @@ pub fn execute_orient(dir_path: &str, limit: usize) -> Result<()> {
 // Scry Recent - Temporal-first ranking
 // ============================================================================
 
-/// Execute recent subcommand - show recently changed files
-///
-/// From spec-observable-scry.md:
-/// - Temporal-first reranking
-/// - "What changed related to X?"
-pub fn execute_recent(query: Option<&str>, days: u32, limit: usize) -> Result<()> {
-    println!(
-        "🔮 Scry Recent - What changed{}\n",
-        query
-            .map(|q| format!(" related to '{}'", q))
-            .unwrap_or_default()
-    );
+/// Recent change entry
+#[derive(Debug, Serialize)]
+pub struct RecentEntry {
+    pub path: String,
+    pub date: String,
+    pub author: String,
+    pub message_preview: String,
+}
 
-    let conn = Connection::open(eventlog::PATINA_DB)
-        .with_context(|| "Failed to open database. Run 'patina scrape' first.")?;
+/// Full recent result with query context
+#[derive(Debug, Serialize)]
+pub struct RecentOutput {
+    pub query: Option<String>,
+    pub days: u32,
+    pub entries: Vec<RecentEntry>,
+}
 
-    // Calculate cutoff date
+/// Query recent entries from database — shared between CLI and MCP
+fn recent_entries(
+    conn: &Connection,
+    query: Option<&str>,
+    days: u32,
+    limit: usize,
+) -> Result<Vec<RecentEntry>> {
     let cutoff = chrono::Utc::now() - chrono::Duration::days(days as i64);
     let cutoff_str = cutoff.format("%Y-%m-%d").to_string();
 
-    // Query recent commits with file changes
     let sql = if query.is_some() {
-        // Filter by query pattern in file path
-        "SELECT
-            cf.file_path,
-            c.timestamp,
-            c.message,
-            c.author_name,
-            COUNT(*) OVER (PARTITION BY cf.file_path) as change_count
-        FROM commits c
-        JOIN commit_files cf ON c.sha = cf.sha
-        WHERE c.timestamp >= ?
-          AND cf.file_path LIKE ?
-        ORDER BY c.timestamp DESC
-        LIMIT ?"
+        "SELECT cf.file_path, c.timestamp, c.message, c.author_name
+         FROM commits c
+         JOIN commit_files cf ON c.sha = cf.sha
+         WHERE c.timestamp >= ? AND cf.file_path LIKE ?
+         ORDER BY c.timestamp DESC
+         LIMIT ?"
     } else {
-        // All recent changes
-        "SELECT
-            cf.file_path,
-            c.timestamp,
-            c.message,
-            c.author_name,
-            COUNT(*) OVER (PARTITION BY cf.file_path) as change_count
-        FROM commits c
-        JOIN commit_files cf ON c.sha = cf.sha
-        WHERE c.timestamp >= ?
-        ORDER BY c.timestamp DESC
-        LIMIT ?"
+        "SELECT cf.file_path, c.timestamp, c.message, c.author_name
+         FROM commits c
+         JOIN commit_files cf ON c.sha = cf.sha
+         WHERE c.timestamp >= ?
+         ORDER BY c.timestamp DESC
+         LIMIT ?"
     };
 
     let mut stmt = conn.prepare(sql)?;
-
-    let results: Vec<(String, String, String, String, i64)> = if let Some(q) = query {
+    let results: Vec<(String, String, String, String)> = if let Some(q) = query {
         let pattern = format!("%{}%", q);
         stmt.query_map(
             rusqlite::params![cutoff_str, pattern, limit as i64 * 3],
@@ -217,7 +227,6 @@ pub fn execute_recent(query: Option<&str>, days: u32, limit: usize) -> Result<()
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
-                    row.get::<_, i64>(4)?,
                 ))
             },
         )?
@@ -230,46 +239,84 @@ pub fn execute_recent(query: Option<&str>, days: u32, limit: usize) -> Result<()
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, String>(3)?,
-                row.get::<_, i64>(4)?,
             ))
         })?
         .filter_map(|r| r.ok())
         .collect()
     };
 
-    if results.is_empty() {
+    // Deduplicate by file path, keeping most recent
+    let mut seen = std::collections::HashSet::new();
+    let entries: Vec<RecentEntry> = results
+        .into_iter()
+        .filter(|(path, _, _, _)| seen.insert(path.clone()))
+        .take(limit)
+        .map(|(path, timestamp, message, author)| {
+            let date = timestamp
+                .split('T')
+                .next()
+                .unwrap_or(&timestamp)
+                .to_string();
+            let short_msg: String = message.chars().take(50).collect();
+            let message_preview = if message.len() > 50 {
+                format!("{}...", short_msg)
+            } else {
+                short_msg
+            };
+            RecentEntry {
+                path,
+                date,
+                author,
+                message_preview,
+            }
+        })
+        .collect();
+
+    Ok(entries)
+}
+
+/// Query recent changes and return JSON string — called by MCP handler
+pub fn recent_json(
+    conn: &Connection,
+    query: Option<&str>,
+    days: u32,
+    limit: usize,
+) -> Result<String> {
+    let entries = recent_entries(conn, query, days, limit)?;
+    let result = RecentOutput {
+        query: query.map(|s| s.to_string()),
+        days,
+        entries,
+    };
+    Ok(serde_json::to_string_pretty(&result)?)
+}
+
+/// Execute recent subcommand - show recently changed files
+pub fn execute_recent(query: Option<&str>, days: u32, limit: usize) -> Result<()> {
+    println!(
+        "🔮 Scry Recent - What changed{}\n",
+        query
+            .map(|q| format!(" related to '{}'", q))
+            .unwrap_or_default()
+    );
+
+    let conn = Connection::open(eventlog::PATINA_DB)
+        .with_context(|| "Failed to open database. Run 'patina scrape' first.")?;
+
+    let entries = recent_entries(&conn, query, days, limit)?;
+
+    if entries.is_empty() {
         println!("No changes found in the last {} days.", days);
         return Ok(());
     }
 
-    // Deduplicate by file path, keeping most recent
-    let mut seen = std::collections::HashSet::new();
-    let unique_results: Vec<_> = results
-        .into_iter()
-        .filter(|(path, _, _, _, _)| seen.insert(path.clone()))
-        .take(limit)
-        .collect();
-
     println!("Mode: Temporal (last {} days)\n", days);
-    println!(
-        "Found {} files with recent changes:\n",
-        unique_results.len()
-    );
+    println!("Found {} files with recent changes:\n", entries.len());
     println!("{}", "─".repeat(70));
 
-    for (i, (path, timestamp, message, author, _change_count)) in unique_results.iter().enumerate()
-    {
-        // Parse and format timestamp
-        let date = timestamp.split('T').next().unwrap_or(timestamp);
-        let short_msg: String = message.chars().take(50).collect();
-        let short_msg = if message.len() > 50 {
-            format!("{}...", short_msg)
-        } else {
-            short_msg
-        };
-
-        println!("\n[{}] {} ({})", i + 1, path, date);
-        println!("    {} - {}", author, short_msg);
+    for (i, entry) in entries.iter().enumerate() {
+        println!("\n[{}] {} ({})", i + 1, entry.path, entry.date);
+        println!("    {} - {}", entry.author, entry.message_preview);
     }
 
     println!("\n{}", "─".repeat(70));
@@ -281,11 +328,111 @@ pub fn execute_recent(query: Option<&str>, days: u32, limit: usize) -> Result<()
 // Scry Why - Explain single result
 // ============================================================================
 
+/// Why contribution entry
+#[derive(Debug, Serialize)]
+pub struct WhyContribution {
+    pub oracle: String,
+    pub rank: usize,
+    pub raw_score: f64,
+    pub score_type: String,
+}
+
+/// Why structural signals
+#[derive(Debug, Serialize)]
+pub struct WhySignals {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub importer_count: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub activity_level: Option<String>,
+}
+
+/// Why output
+#[derive(Debug, Serialize)]
+pub struct WhyOutput {
+    pub doc_id: String,
+    pub query: String,
+    pub found: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rank: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fused_score: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contributions: Option<Vec<WhyContribution>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub structural_signals: Option<WhySignals>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_results: Option<Vec<String>>,
+}
+
+/// Query why and return JSON string — called by MCP handler
+pub fn why_json(engine: &QueryEngine, doc_id: &str, query: &str) -> Result<String> {
+    let options = QueryOptions::default();
+    let results = engine.query_with_options(query, 50, &options)?;
+
+    let matching = results
+        .iter()
+        .find(|r| r.doc_id == doc_id || r.doc_id.ends_with(doc_id) || doc_id.ends_with(&r.doc_id));
+
+    let output = match matching {
+        Some(result) => {
+            let rank = results
+                .iter()
+                .position(|r| r.doc_id == result.doc_id)
+                .unwrap_or(0)
+                + 1;
+
+            let contributions: Vec<WhyContribution> = result
+                .contributions
+                .iter()
+                .map(|(oracle_name, contrib)| WhyContribution {
+                    oracle: oracle_name.to_string(),
+                    rank: contrib.rank,
+                    raw_score: contrib.raw_score as f64,
+                    score_type: contrib.score_type.to_string(),
+                })
+                .collect();
+
+            let ann = &result.annotations;
+            let structural_signals = if ann.importer_count.is_some() || ann.activity_level.is_some()
+            {
+                Some(WhySignals {
+                    importer_count: ann.importer_count,
+                    activity_level: ann.activity_level.clone(),
+                })
+            } else {
+                None
+            };
+
+            WhyOutput {
+                doc_id: result.doc_id.clone(),
+                query: query.to_string(),
+                found: true,
+                rank: Some(rank),
+                fused_score: Some(result.fused_score as f64),
+                contributions: Some(contributions),
+                structural_signals,
+                top_results: None,
+            }
+        }
+        None => {
+            let top: Vec<String> = results.iter().take(5).map(|r| r.doc_id.clone()).collect();
+            WhyOutput {
+                doc_id: doc_id.to_string(),
+                query: query.to_string(),
+                found: false,
+                rank: None,
+                fused_score: None,
+                contributions: None,
+                structural_signals: None,
+                top_results: Some(top),
+            }
+        }
+    };
+
+    Ok(serde_json::to_string_pretty(&output)?)
+}
+
 /// Execute why subcommand - explain why a result was returned
-///
-/// From spec-observable-scry.md:
-/// - Explain single result provenance
-/// - Shows all oracle contributions for a specific doc
 pub fn execute_why(doc_id: &str, query: &str) -> Result<()> {
     println!("🔮 Scry Why - Explaining '{}'\n", doc_id);
     println!("Query: \"{}\"\n", query);

@@ -14,9 +14,13 @@
 use anyhow::Result;
 use rusqlite::Connection;
 use std::path::Path;
+use std::sync::OnceLock;
 
-/// Path to unified database
+/// Path to projection database (rebuildable from git + layer/)
 pub const PATINA_DB: &str = ".patina/local/data/patina.db";
+
+/// Path to events database (runtime events — irreplaceable)
+pub const EVENTS_DB: &str = ".patina/local/data/events.db";
 
 /// Check if a path is within a ref repo (external reference repository).
 ///
@@ -156,149 +160,117 @@ pub fn set_last_processed(conn: &Connection, scraper: &str, value: &str) -> Resu
 }
 
 // ============================================================================
-// Feedback Loop Views (Phase 3)
+// events.db — Runtime event database (irreplaceable)
 // ============================================================================
 
-/// Create SQL views for feedback loop analysis
+/// Process-level gate: ensure_events_db() runs once per process via OnceLock.
+/// Eliminates per-call exists() syscall overhead (CLI: negligible; MCP: meaningful).
+static EVENTS_INIT: OnceLock<std::result::Result<(), String>> = OnceLock::new();
+
+/// Ensure events.db exists with correct schema. Migrates runtime events
+/// from patina.db on first run (one-time copy, idempotent).
 ///
-/// These views correlate scry queries with subsequent commits to measure
-/// retrieval precision in real-world usage.
-pub fn create_feedback_views(conn: &Connection) -> Result<()> {
+/// Runs once per process via OnceLock. Safe under concurrent execution:
+/// schema uses CREATE TABLE IF NOT EXISTS, migration uses INSERT OR IGNORE
+/// with explicit seq to prevent duplicate events.
+pub fn ensure_events_db() -> Result<()> {
+    let result = EVENTS_INIT.get_or_init(|| ensure_events_db_inner().map_err(|e| e.to_string()));
+    match result {
+        Ok(()) => Ok(()),
+        Err(e) => anyhow::bail!("events.db initialization failed: {e}"),
+    }
+}
+
+fn ensure_events_db_inner() -> Result<()> {
+    let events_path = Path::new(EVENTS_DB);
+
+    // Create parent directory
+    if let Some(parent) = events_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let conn = Connection::open(events_path)?;
+
+    // Safety-critical: WAL mode + synchronous FULL for irreplaceable data
     conn.execute_batch(
         r#"
-        -- View: Queries made during each session
-        CREATE VIEW IF NOT EXISTS feedback_session_queries AS
-        SELECT
-            json_extract(data, '$.session_id') as session_id,
-            json_extract(data, '$.query_id') as query_id,
-            json_extract(data, '$.query') as query,
-            json_extract(data, '$.mode') as mode,
-            json_extract(data, '$.results') as results,
-            timestamp
-        FROM eventlog
-        WHERE event_type = 'scry.query'
-          AND json_extract(data, '$.session_id') IS NOT NULL;
+        PRAGMA journal_mode = WAL;
+        PRAGMA synchronous = FULL;
 
-        -- View: Files committed during each session (from latest scrape only)
-        -- Uses window function to deduplicate by (sha, file_path) keeping latest scrape
-        CREATE VIEW IF NOT EXISTS feedback_commit_files AS
-        SELECT
-            session_id,
-            sha,
-            file_path,
-            change_type,
-            timestamp
-        FROM (
-            SELECT
-                json_extract(data, '$.session_id') as session_id,
-                json_extract(data, '$.sha') as sha,
-                json_extract(f.value, '$.path') as file_path,
-                json_extract(f.value, '$.change_type') as change_type,
-                timestamp,
-                ROW_NUMBER() OVER (
-                    PARTITION BY json_extract(data, '$.sha'), json_extract(f.value, '$.path')
-                    ORDER BY seq DESC
-                ) as rn
-            FROM eventlog, json_each(json_extract(data, '$.files')) as f
-            WHERE event_type = 'git.commit'
-              AND json_extract(data, '$.session_id') IS NOT NULL
-        )
-        WHERE rn = 1;
+        CREATE TABLE IF NOT EXISTS eventlog (
+            seq INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            source_file TEXT,
+            data TEXT NOT NULL,
+            CHECK(json_valid(data))
+        );
 
-        -- View: Query results matched to committed files
-        -- A "hit" is when a retrieved doc_id matches a file that was committed.
-        -- doc_id may contain '::' suffixes (e.g. "src/main.rs::fn:main" from
-        -- SemanticOracle) — strip those before matching. Also strip leading "./".
-        CREATE VIEW IF NOT EXISTS feedback_query_hits AS
-        SELECT
-            q.session_id,
-            q.query,
-            q.mode,
-            q.timestamp as query_time,
-            json_extract(r.value, '$.doc_id') as retrieved_doc_id,
-            json_extract(r.value, '$.rank') as rank,
-            json_extract(r.value, '$.score') as score,
-            CASE
-                WHEN EXISTS (
-                    SELECT 1 FROM feedback_commit_files cf
-                    WHERE cf.session_id = q.session_id
-                      AND (
-                        -- Normalize: strip '::...' suffix and './' prefix from doc_id,
-                        -- then check if the file path matches
-                        cf.file_path = REPLACE(
-                            CASE
-                                WHEN INSTR(json_extract(r.value, '$.doc_id'), '::') > 0
-                                THEN SUBSTR(json_extract(r.value, '$.doc_id'), 1,
-                                     INSTR(json_extract(r.value, '$.doc_id'), '::') - 1)
-                                ELSE json_extract(r.value, '$.doc_id')
-                            END,
-                            './', '')
-                        OR cf.file_path LIKE '%/' || REPLACE(
-                            CASE
-                                WHEN INSTR(json_extract(r.value, '$.doc_id'), '::') > 0
-                                THEN SUBSTR(json_extract(r.value, '$.doc_id'), 1,
-                                     INSTR(json_extract(r.value, '$.doc_id'), '::') - 1)
-                                ELSE json_extract(r.value, '$.doc_id')
-                            END,
-                            './', '')
-                      )
-                ) THEN 1
-                ELSE 0
-            END as is_hit
-        FROM feedback_session_queries q,
-             json_each(q.results) as r;
+        CREATE INDEX IF NOT EXISTS idx_eventlog_type ON eventlog(event_type);
+        CREATE INDEX IF NOT EXISTS idx_eventlog_timestamp ON eventlog(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_eventlog_source ON eventlog(source_id);
+        CREATE INDEX IF NOT EXISTS idx_eventlog_type_time ON eventlog(event_type, timestamp);
 
-        -- View: scry.use events (Phase 3) - explicit result usage from agents
-        CREATE VIEW IF NOT EXISTS feedback_usage AS
-        SELECT
-            json_extract(data, '$.query_id') as query_id,
-            json_extract(data, '$.result_used') as doc_id,
-            json_extract(data, '$.rank') as rank,
-            json_extract(data, '$.session_id') as session_id,
-            timestamp
-        FROM eventlog
-        WHERE event_type = 'scry.use';
+        -- Metadata for events.db (tracks export state for JSONL replica)
+        CREATE TABLE IF NOT EXISTS scrape_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        );
 
-        -- View: scry.feedback events (Phase 3) - explicit good/bad ratings
-        CREATE VIEW IF NOT EXISTS feedback_ratings AS
-        SELECT
-            json_extract(data, '$.query_id') as query_id,
-            json_extract(data, '$.signal') as signal,
-            json_extract(data, '$.comment') as comment,
-            json_extract(data, '$.session_id') as session_id,
-            timestamp
-        FROM eventlog
-        WHERE event_type = 'scry.feedback';
-
-        -- View: Combined query analysis with usage and feedback
-        CREATE VIEW IF NOT EXISTS feedback_query_analysis AS
-        SELECT
-            q.session_id,
-            json_extract(q.data, '$.query_id') as query_id,
-            json_extract(q.data, '$.query') as query,
-            json_extract(q.data, '$.mode') as mode,
-            q.timestamp as query_time,
-            (SELECT COUNT(*) FROM eventlog u
-             WHERE u.event_type = 'scry.use'
-               AND json_extract(u.data, '$.query_id') = json_extract(q.data, '$.query_id')
-            ) as use_count,
-            (SELECT json_group_array(json_extract(u.data, '$.rank'))
-             FROM eventlog u
-             WHERE u.event_type = 'scry.use'
-               AND json_extract(u.data, '$.query_id') = json_extract(q.data, '$.query_id')
-            ) as used_ranks,
-            (SELECT json_extract(f.data, '$.signal')
-             FROM eventlog f
-             WHERE f.event_type = 'scry.feedback'
-               AND json_extract(f.data, '$.query_id') = json_extract(q.data, '$.query_id')
-             LIMIT 1
-            ) as feedback_signal
-        FROM eventlog q
-        WHERE q.event_type = 'scry.query';
+        PRAGMA user_version = 1;
         "#,
     )?;
 
+    // Migrate runtime events from patina.db if it exists.
+    // Uses INSERT OR IGNORE with explicit seq — safe under concurrent execution
+    // (two processes racing past OnceLock in separate process spaces both insert,
+    // but the second process's duplicates are ignored by PRIMARY KEY constraint).
+    let patina_path = Path::new(PATINA_DB);
+    if patina_path.exists() {
+        conn.execute(
+            "ATTACH DATABASE ?1 AS patina",
+            [patina_path.to_str().unwrap_or(PATINA_DB)],
+        )?;
+
+        let has_eventlog: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM patina.sqlite_master WHERE type='table' AND name='eventlog'",
+                [],
+                |row| Ok(row.get::<_, i64>(0)? > 0),
+            )
+            .unwrap_or(false);
+
+        if has_eventlog {
+            let copied = conn.execute(
+                r#"INSERT OR IGNORE INTO eventlog (seq, event_type, timestamp, source_id, source_file, data)
+                   SELECT seq, event_type, timestamp, source_id, source_file, data
+                   FROM patina.eventlog
+                   WHERE event_type LIKE 'measure.%'
+                      OR event_type LIKE 'scry.%'
+                      OR event_type LIKE 'forge.%'
+                   ORDER BY seq ASC"#,
+                [],
+            )?;
+
+            if copied > 0 {
+                eprintln!("  Migrated {} runtime events to events.db", copied);
+            }
+        }
+
+        conn.execute("DETACH DATABASE patina", [])?;
+    }
+
     Ok(())
+}
+
+/// Open events.db with safety PRAGMAs. Creates and migrates if needed.
+pub fn open_events_db() -> Result<Connection> {
+    ensure_events_db()?;
+    let conn = Connection::open(EVENTS_DB)?;
+    // synchronous = FULL is per-connection, must be set each time
+    conn.execute_batch("PRAGMA synchronous = FULL;")?;
+    Ok(conn)
 }
 
 #[cfg(test)]

@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
@@ -396,6 +398,21 @@ enum Commands {
         json: bool,
     },
 
+    /// Show project health from measurement data
+    Measure {
+        /// Show raw metrics and history (maintainer view)
+        #[arg(long)]
+        system: bool,
+
+        /// Output as machine-readable JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Drill-down into a specific verb with history
+        #[arg(long)]
+        verb: Option<String>,
+    },
+
     /// Manage development sessions (start, update, note, end)
     Session {
         #[command(subcommand)]
@@ -426,6 +443,12 @@ enum Commands {
         command: commands::schema::SchemaCommands,
     },
 
+    /// Manage event store (export/import JSONL replica)
+    Events {
+        #[command(subcommand)]
+        command: EventsCommands,
+    },
+
     /// Query codebase structure (modules, imports, call graph)
     Assay {
         #[command(subcommand)]
@@ -449,6 +472,18 @@ enum Commands {
         /// Query all registered repos (current project + reference repos)
         #[arg(long)]
         all_repos: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum EventsCommands {
+    /// Export new events to layer/events.jsonl (incremental, at-least-once)
+    Export,
+
+    /// Import events from JSONL file (disaster recovery)
+    Import {
+        /// Path to JSONL file to import
+        path: String,
     },
 }
 
@@ -984,7 +1019,11 @@ fn make_query_dispatch(
                 let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
 
                 let engine = query_engine.get_or_insert_with(retrieval::QueryEngine::new);
-                let options = retrieval::QueryOptions { repo, all_repos };
+                let options = retrieval::QueryOptions {
+                    repo,
+                    all_repos,
+                    ..Default::default()
+                };
                 let results = engine
                     .query_with_options(query_str, limit, &options)
                     .map_err(|e| format!("scry: {}", e))?;
@@ -1758,6 +1797,18 @@ fn main() -> Result<()> {
             let options = commands::report::ReportOptions { output, repo, json };
             commands::report::execute(options)?;
         }
+        Some(Commands::Measure { system, json, verb }) => {
+            let options = commands::measure::MeasureOptions { system, json, verb };
+            commands::measure::execute(options)?;
+        }
+        Some(Commands::Events { command }) => match command {
+            EventsCommands::Export => {
+                commands::events::export()?;
+            }
+            EventsCommands::Import { path } => {
+                commands::events::import(&path)?;
+            }
+        },
         Some(Commands::Assay {
             command,
             pattern,

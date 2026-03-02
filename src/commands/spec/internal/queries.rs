@@ -5,7 +5,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-use patina::spec::{parse_spec_file, SpecFrontmatter};
+use patina::spec::{parse_spec_file, SpecFrontmatter, SpecStatus};
 
 use super::archive::load_spec;
 use super::queue::{load_dep_counts, spec_age_days_from_list};
@@ -114,7 +114,7 @@ pub fn check_spec(id: &str, json: bool) -> Result<()> {
 #[derive(Debug, Clone, Serialize)]
 pub struct ReadySpec {
     pub id: String,
-    pub status: String,
+    pub status: SpecStatus,
     pub target: Option<String>,
     pub title: String,
 }
@@ -129,26 +129,23 @@ pub fn get_ready_specs() -> Result<Vec<ReadySpec>> {
     let all_specs = get_all_specs(&ListFilters::default())?;
 
     // Build status lookup for blocker resolution
-    let status_map: HashMap<String, String> = all_specs
+    let status_map: HashMap<String, SpecStatus> = all_specs
         .iter()
-        .filter_map(|s| s.status.as_ref().map(|st| (s.id.clone(), st.clone())))
+        .filter_map(|s| s.status.map(|st| (s.id.clone(), st)))
         .collect();
 
     let mut specs: Vec<ReadySpec> = all_specs
         .iter()
-        .filter(|s| matches!(s.status.as_deref(), Some("ready") | Some("active")))
+        .filter(|s| matches!(s.status, Some(SpecStatus::Ready) | Some(SpecStatus::Active)))
         .filter(|s| {
-            // All blockers must be complete/done (or not found on disk = archived = done)
-            s.blocked_by.iter().all(|blocker_id| {
-                matches!(
-                    status_map.get(blocker_id).map(|s| s.as_str()),
-                    Some("complete") | Some("done") | None
-                )
-            })
+            // All blockers must be terminal (or not found on disk = archived = done)
+            s.blocked_by
+                .iter()
+                .all(|blocker_id| status_map.get(blocker_id).is_none_or(|st| st.is_terminal()))
         })
         .map(|s| ReadySpec {
             id: s.id.clone(),
-            status: s.status.clone().unwrap_or_default(),
+            status: s.status.unwrap_or(SpecStatus::Draft),
             target: s.target.clone(),
             title: s.title.clone(),
         })
@@ -179,20 +176,17 @@ pub fn show_ready_specs(json: bool) -> Result<()> {
     let all_specs = get_all_specs(&ListFilters::default()).unwrap_or_default();
     let drafts: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("draft"))
+        .filter(|s| s.status == Some(SpecStatus::Draft))
         .collect();
     let paused: Vec<_> = all_specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("paused"))
+        .filter(|s| s.status == Some(SpecStatus::Paused))
         .collect();
     let blocked_specs = get_blocked_specs().unwrap_or_default();
     let unblocked: Vec<_> = blocked_specs
         .iter()
         .filter(|b| {
-            b.blocked_by.is_empty()
-                || b.blocked_by
-                    .iter()
-                    .all(|bl| bl.status == "complete" || bl.status == "done")
+            b.blocked_by.is_empty() || b.blocked_by.iter().all(|bl| bl.status.is_terminal())
         })
         .collect();
 
@@ -200,8 +194,14 @@ pub fn show_ready_specs(json: bool) -> Result<()> {
 
     if !specs.is_empty() {
         // Group by status for display
-        let ready: Vec<_> = specs.iter().filter(|s| s.status == "ready").collect();
-        let active: Vec<_> = specs.iter().filter(|s| s.status == "active").collect();
+        let ready: Vec<_> = specs
+            .iter()
+            .filter(|s| s.status == SpecStatus::Ready)
+            .collect();
+        let active: Vec<_> = specs
+            .iter()
+            .filter(|s| s.status == SpecStatus::Active)
+            .collect();
 
         if !ready.is_empty() {
             println!("READY (can start now):");
@@ -301,14 +301,14 @@ pub fn show_ready_specs(json: bool) -> Result<()> {
 #[derive(Debug, Clone, Serialize)]
 pub struct Blocker {
     pub id: String,
-    pub status: String,
+    pub status: SpecStatus,
 }
 
 /// A spec that is blocked by incomplete dependencies
 #[derive(Debug, Clone, Serialize)]
 pub struct BlockedSpec {
     pub id: String,
-    pub status: String,
+    pub status: SpecStatus,
     pub target: Option<String>,
     pub title: String,
     pub blocked_by: Vec<Blocker>,
@@ -325,15 +325,15 @@ pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
     let all_specs = get_all_specs(&ListFilters::default())?;
 
     // Build status lookup for blocker resolution
-    let status_map: HashMap<String, String> = all_specs
+    let status_map: HashMap<String, SpecStatus> = all_specs
         .iter()
-        .filter_map(|s| s.status.as_ref().map(|st| (s.id.clone(), st.clone())))
+        .filter_map(|s| s.status.map(|st| (s.id.clone(), st)))
         .collect();
 
     let mut specs: Vec<BlockedSpec> = Vec::new();
 
     for spec in &all_specs {
-        let status = spec.status.as_deref().unwrap_or("");
+        let status: Option<SpecStatus> = spec.status;
 
         // Resolve blockers from frontmatter blocked_by
         let incomplete_blockers: Vec<Blocker> = spec
@@ -342,10 +342,10 @@ pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
             .filter_map(|blocker_id| {
                 let blocker_status = status_map
                     .get(blocker_id)
-                    .cloned()
+                    .copied()
                     // Not on disk = archived = treat as done
-                    .unwrap_or_else(|| "complete".to_string());
-                if blocker_status != "complete" && blocker_status != "done" {
+                    .unwrap_or(SpecStatus::Complete);
+                if !blocker_status.is_terminal() {
                     Some(Blocker {
                         id: blocker_id.clone(),
                         status: blocker_status,
@@ -359,16 +359,16 @@ pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
         if !incomplete_blockers.is_empty() {
             specs.push(BlockedSpec {
                 id: spec.id.clone(),
-                status: status.to_string(),
+                status: status.unwrap_or(SpecStatus::Blocked),
                 target: spec.target.clone(),
                 title: spec.title.clone(),
                 blocked_by: incomplete_blockers,
             });
-        } else if status == "blocked" {
+        } else if status == Some(SpecStatus::Blocked) {
             // status='blocked' but no incomplete blockers in frontmatter
             specs.push(BlockedSpec {
                 id: spec.id.clone(),
-                status: status.to_string(),
+                status: SpecStatus::Blocked,
                 target: spec.target.clone(),
                 title: spec.title.clone(),
                 blocked_by: vec![],
@@ -420,7 +420,7 @@ pub fn show_blocked_specs(json: bool) -> Result<()> {
 #[derive(Debug, Clone, Serialize)]
 pub struct SpecInfo {
     pub id: String,
-    pub status: Option<String>,
+    pub status: Option<SpecStatus>,
     pub target: Option<String>,
     pub title: String,
     pub unscraped: bool,
@@ -440,7 +440,7 @@ pub struct SpecInfo {
 /// Filter options for spec list
 #[derive(Debug, Clone, Default)]
 pub struct ListFilters {
-    pub status: Option<String>,
+    pub status: Option<SpecStatus>,
     pub target: Option<String>,
 }
 
@@ -568,8 +568,8 @@ pub fn get_all_specs(filters: &ListFilters) -> Result<Vec<SpecInfo>> {
     let mut specs: Vec<SpecInfo> = spec_map.into_values().collect();
 
     // Apply filters
-    if let Some(status_filter) = &filters.status {
-        specs.retain(|s| s.status.as_deref() == Some(status_filter.as_str()));
+    if let Some(status_filter) = filters.status {
+        specs.retain(|s| s.status == Some(status_filter));
     }
     if let Some(target_filter) = &filters.target {
         specs.retain(|s| s.target.as_deref() == Some(target_filter.as_str()));
@@ -608,9 +608,14 @@ pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
     println!("{:-<80}", "");
 
     for spec in &specs {
-        let status_raw = spec.status.as_deref().unwrap_or("-");
+        let status_raw = spec
+            .status
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "-".to_string());
         // Add age suffix for paused/blocked specs
-        let age_suffix = if status_raw == "paused" || status_raw == "blocked" {
+        let age_suffix = if spec.status == Some(SpecStatus::Paused)
+            || spec.status == Some(SpecStatus::Blocked)
+        {
             let age = spec_age_days_from_list(spec);
             if age > 0 {
                 format!(" ({}d)", age)
@@ -637,7 +642,7 @@ pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
     // Warn about completed/abandoned specs still in tree
     let stale_count = specs
         .iter()
-        .filter(|s| matches!(s.status.as_deref(), Some("complete") | Some("abandoned")))
+        .filter(|s| s.status.is_some_and(|st| st.is_terminal()))
         .count();
     if stale_count > 0 {
         let noun = if stale_count == 1 { "spec" } else { "specs" };
@@ -650,10 +655,10 @@ pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
     // One-paused-spec constraint status
     let paused_count = specs
         .iter()
-        .filter(|s| s.status.as_deref() == Some("paused"))
+        .filter(|s| s.status == Some(SpecStatus::Paused))
         .count();
     if paused_count > 0 {
-        let paused_spec = specs.iter().find(|s| s.status.as_deref() == Some("paused"));
+        let paused_spec = specs.iter().find(|s| s.status == Some(SpecStatus::Paused));
         if let Some(spec) = paused_spec {
             eprintln!("\nPaused: {} — resolve before pausing another", spec.id);
         }
@@ -662,40 +667,81 @@ pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// Full spec context for a single spec
+/// Spec context — heading outlines + file paths for targeted reading
 #[derive(Debug, Clone, Serialize)]
 pub struct ShowResult {
     pub id: String,
     pub frontmatter: SpecFrontmatter,
-    pub body: String,
-    pub design: Option<String>,
+    /// Heading outline of SPEC.md
+    pub outline: Vec<String>,
+    /// Heading outline of DESIGN.md (if it exists)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub design_outline: Option<Vec<String>>,
     pub files: Vec<String>,
+    /// File path to SPEC.md — use Read tool for specific sections
+    pub path: String,
+    /// File path to DESIGN.md (if it exists)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub design_path: Option<String>,
 }
 
-/// Load full spec context: frontmatter + body + DESIGN.md + key files
+/// Extract markdown headings (lines starting with #) from text.
+/// Skips headings inside fenced code blocks (``` or ~~~).
+fn extract_outline(text: &str) -> Vec<String> {
+    let mut in_fence = false;
+    let mut headings = Vec::new();
+
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if !in_fence && trimmed.starts_with('#') && trimmed.contains(' ') {
+            headings.push(line.to_string());
+        }
+    }
+
+    headings
+}
+
+/// Load spec context: frontmatter + heading outlines + key files.
+///
+/// Default mode returns outlines only — compact for MCP (~500 tokens vs 17k).
+/// Full mode includes complete body and design text (for CLI display).
 pub fn show_spec_value(id: &str) -> Result<ShowResult> {
     let loaded = load_spec(id)?;
+    let spec_path = loaded.file_path.clone();
 
     // Check for DESIGN.md in the same directory as SPEC.md
-    let design = Path::new(&loaded.file_path)
+    let design_path = Path::new(&loaded.file_path)
         .parent()
         .map(|dir| dir.join("DESIGN.md"))
-        .filter(|p| p.exists())
+        .filter(|p| p.exists());
+
+    let design_text = design_path
+        .as_ref()
         .and_then(|p| std::fs::read_to_string(p).ok());
 
-    // Extract key files from ## Key Files section
+    let outline = extract_outline(&loaded.body);
+    let design_outline = design_text.as_ref().map(|d| extract_outline(d));
     let files = extract_key_files(&loaded.body);
 
     Ok(ShowResult {
         id: loaded.frontmatter.id.clone(),
         frontmatter: loaded.frontmatter,
-        body: loaded.body,
-        design,
+        outline,
+        design_outline,
         files,
+        path: spec_path,
+        design_path: design_path.map(|p| p.to_string_lossy().to_string()),
     })
 }
 
-/// Display full spec context (human-readable or JSON)
+/// Display spec context — outline mode (same as MCP)
+///
+/// Shows frontmatter, heading outlines, key files, and file paths.
+/// Use `cat` or a Read tool on the printed path for full content.
 pub fn show_spec(id: &str, json: bool) -> Result<()> {
     let result = show_spec_value(id)?;
 
@@ -705,14 +751,32 @@ pub fn show_spec(id: &str, json: bool) -> Result<()> {
     }
 
     // Human-readable output
-    let status = result.frontmatter.status.as_deref().unwrap_or("unknown");
+    let status = result.frontmatter.status.map_or("unknown", |s| s.as_str());
     println!("{} [{}]", result.id, status);
     println!();
-    println!("{}", result.body.trim());
 
-    if let Some(design) = &result.design {
-        println!("\n--- DESIGN.md ---\n");
-        println!("{}", design.trim());
+    // Exit criteria
+    let criteria = &result.frontmatter.exit_criteria;
+    if !criteria.is_empty() {
+        let checked = criteria.iter().filter(|c| c.checked).count();
+        println!("Exit criteria: {}/{}", checked, criteria.len());
+        for c in criteria {
+            let mark = if c.checked { "x" } else { " " };
+            println!("  [{}] {}", mark, c.text);
+        }
+        println!();
+    }
+
+    // Outline
+    for heading in &result.outline {
+        println!("{}", heading);
+    }
+
+    if let Some(design_outline) = &result.design_outline {
+        println!();
+        for heading in design_outline {
+            println!("{}", heading);
+        }
     }
 
     if !result.files.is_empty() {
@@ -720,6 +784,11 @@ pub fn show_spec(id: &str, json: bool) -> Result<()> {
         for f in &result.files {
             println!("  {}", f);
         }
+    }
+
+    println!("\nSpec: {}", result.path);
+    if let Some(dp) = &result.design_path {
+        println!("Design: {}", dp);
     }
 
     Ok(())
@@ -753,8 +822,9 @@ fn extract_key_files(body: &str) -> Vec<String> {
         }
         if in_key_files && in_fence {
             let trimmed = line.trim();
-            if !trimmed.is_empty() {
+            if !trimmed.is_empty() && !trimmed.starts_with('#') {
                 // Take first token (file path), skip trailing comments
+                // Lines starting with # are comments inside the code fence
                 if let Some(path) = trimmed.split_whitespace().next() {
                     files.push(path.to_string());
                 }

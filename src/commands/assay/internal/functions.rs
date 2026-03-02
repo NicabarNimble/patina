@@ -29,6 +29,119 @@ pub struct CallInfo {
     pub call_type: String,
 }
 
+/// Query functions and return JSON string
+pub fn functions_json(conn: &Connection, pattern: Option<&str>, limit: usize) -> Result<String> {
+    let (sql, params): (&str, Vec<String>) = if let Some(pattern) = pattern {
+        (
+            r#"
+            SELECT name, file, is_public, is_async, parameters, return_type
+            FROM function_facts
+            WHERE name LIKE ? OR file LIKE ?
+            ORDER BY file, name
+            LIMIT ?
+            "#,
+            vec![
+                format!("%{}%", pattern),
+                format!("%{}%", pattern),
+                limit.to_string(),
+            ],
+        )
+    } else {
+        (
+            r#"
+            SELECT name, file, is_public, is_async, parameters, return_type
+            FROM function_facts
+            ORDER BY file, name
+            LIMIT ?
+            "#,
+            vec![limit.to_string()],
+        )
+    };
+
+    let mut stmt = conn.prepare(sql)?;
+    let functions: Vec<FunctionInfo> = if pattern.is_some() {
+        stmt.query_map([&params[0], &params[1], &params[2]], |row| {
+            Ok(FunctionInfo {
+                name: row.get(0)?,
+                file: row.get(1)?,
+                is_public: row.get(2)?,
+                is_async: row.get(3)?,
+                parameters: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                return_type: row.get(5)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect()
+    } else {
+        stmt.query_map([&params[0]], |row| {
+            Ok(FunctionInfo {
+                name: row.get(0)?,
+                file: row.get(1)?,
+                is_public: row.get(2)?,
+                is_async: row.get(3)?,
+                parameters: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                return_type: row.get(5)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect()
+    };
+
+    Ok(serde_json::to_string_pretty(&functions)?)
+}
+
+/// Query callers and return JSON string
+pub fn callers_json(conn: &Connection, pattern: &str, limit: usize) -> Result<String> {
+    let sql = r#"
+        SELECT caller, callee, file, call_type
+        FROM call_graph
+        WHERE callee LIKE ?
+        ORDER BY file, caller
+        LIMIT ?
+    "#;
+
+    let mut stmt = conn.prepare(sql)?;
+    let callers: Vec<CallInfo> = stmt
+        .query_map([format!("%{}%", pattern), limit.to_string()], |row| {
+            Ok(CallInfo {
+                caller: row.get(0)?,
+                callee: row.get(1)?,
+                file: row.get(2)?,
+                call_type: row.get(3)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(serde_json::to_string_pretty(&callers)?)
+}
+
+/// Query callees and return JSON string
+pub fn callees_json(conn: &Connection, pattern: &str, limit: usize) -> Result<String> {
+    let sql = r#"
+        SELECT caller, callee, file, call_type
+        FROM call_graph
+        WHERE caller LIKE ?
+        ORDER BY file, callee
+        LIMIT ?
+    "#;
+
+    let mut stmt = conn.prepare(sql)?;
+    let callees: Vec<CallInfo> = stmt
+        .query_map([format!("%{}%", pattern), limit.to_string()], |row| {
+            Ok(CallInfo {
+                caller: row.get(0)?,
+                callee: row.get(1)?,
+                file: row.get(2)?,
+                call_type: row.get(3)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(serde_json::to_string_pretty(&callees)?)
+}
+
 /// Query functions
 pub fn execute_functions(conn: &Connection, options: &AssayOptions) -> Result<()> {
     let limit = if options.limit > 0 {

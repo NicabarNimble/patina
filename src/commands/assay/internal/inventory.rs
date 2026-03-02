@@ -89,20 +89,65 @@ pub fn collect_inventory_json(
     Ok(results)
 }
 
-/// Query module inventory with stats
-pub fn execute_inventory(
-    conn: &Connection,
-    options: &AssayOptions,
-    _repo_name: Option<&str>,
-) -> Result<()> {
-    let pattern = options.pattern.as_deref().unwrap_or("%");
-    let limit = if options.limit > 0 {
-        options.limit
-    } else {
-        1000
-    };
+/// Query inventory across all registered repos and return JSON string
+pub fn inventory_all_repos_json(options: &super::super::AssayOptions) -> Result<String> {
+    use std::path::Path;
 
-    // Query modules with aggregated stats
+    const DB_PATH: &str = ".patina/local/data/patina.db";
+
+    let repos = crate::commands::repo::list()?;
+    let current_has_db = Path::new(DB_PATH).exists();
+
+    if !matches!(options.query_type, super::super::QueryType::Inventory) {
+        anyhow::bail!("all_repos mode currently only supports 'inventory' query type");
+    }
+
+    let mut all_results: Vec<serde_json::Value> = Vec::new();
+
+    if current_has_db {
+        if let Ok(conn) = Connection::open(DB_PATH) {
+            if let Ok(results) = collect_inventory_json(&conn, options, Some("(current)")) {
+                all_results.extend(results);
+            }
+        }
+    }
+
+    for repo in &repos {
+        let db_path = Path::new(&repo.path).join(DB_PATH);
+        if let Ok(conn) = Connection::open(&db_path) {
+            if let Ok(results) = collect_inventory_json(&conn, options, Some(&repo.name)) {
+                all_results.extend(results);
+            }
+        }
+    }
+
+    let total_lines: i64 = all_results.iter().filter_map(|m| m["lines"].as_i64()).sum();
+    let total_functions: i64 = all_results
+        .iter()
+        .filter_map(|m| m["functions"].as_i64())
+        .sum();
+
+    let result = serde_json::json!({
+        "modules": all_results,
+        "summary": {
+            "total_files": all_results.len(),
+            "total_lines": total_lines,
+            "total_functions": total_functions,
+            "repos_queried": repos.len() + if current_has_db { 1 } else { 0 }
+        }
+    });
+
+    Ok(serde_json::to_string_pretty(&result)?)
+}
+
+/// Query module inventory and return JSON string
+pub fn inventory_json(conn: &Connection, pattern: &str, limit: usize) -> Result<String> {
+    let result = inventory_result(conn, pattern, limit)?;
+    Ok(serde_json::to_string_pretty(&result)?)
+}
+
+/// Query module inventory and return typed result
+pub fn inventory_result(conn: &Connection, pattern: &str, limit: usize) -> Result<InventoryResult> {
     let sql = r#"
         SELECT
             i.path,
@@ -130,19 +175,34 @@ pub fn execute_inventory(
         .filter_map(|r| r.ok())
         .collect();
 
-    // Calculate summary
     let total_files = modules.len();
     let total_lines: i64 = modules.iter().map(|m| m.lines).sum();
     let total_functions: i64 = modules.iter().map(|m| m.functions).sum();
 
-    let result = InventoryResult {
+    Ok(InventoryResult {
         modules,
         summary: InventorySummary {
             total_files,
             total_lines,
             total_functions,
         },
+    })
+}
+
+/// Query module inventory with stats
+pub fn execute_inventory(
+    conn: &Connection,
+    options: &AssayOptions,
+    _repo_name: Option<&str>,
+) -> Result<()> {
+    let pattern = options.pattern.as_deref().unwrap_or("%");
+    let limit = if options.limit > 0 {
+        options.limit
+    } else {
+        1000
     };
+
+    let result = inventory_result(conn, pattern, limit)?;
 
     if options.json {
         println!("{}", serde_json::to_string_pretty(&result)?);

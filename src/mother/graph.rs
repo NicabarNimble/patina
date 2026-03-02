@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
 use std::path::PathBuf;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::paths;
 
@@ -143,6 +143,51 @@ pub struct EdgeUsageStats {
     pub current_weight: f32,
 }
 
+/// Typed belief status — the belief lifecycle state machine.
+///
+/// Follows [[enum-not-string-for-finite-states]]: 4 variants, no stringly-typed
+/// comparisons in control flow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BeliefStatus {
+    Active,
+    Scoped,
+    Defeated,
+    Archived,
+}
+
+impl BeliefStatus {
+    /// Parse from string with safe default to Active for unknown values.
+    ///
+    /// Belief data is less critical to control flow than spec status,
+    /// so unknown values default rather than error (ADR-4 in DESIGN.md).
+    pub fn from_str_or_default(s: &str) -> Self {
+        match s {
+            "active" => Self::Active,
+            "scoped" => Self::Scoped,
+            "defeated" => Self::Defeated,
+            "archived" => Self::Archived,
+            _ => Self::Active,
+        }
+    }
+
+    /// Canonical string form.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Scoped => "scoped",
+            Self::Defeated => "defeated",
+            Self::Archived => "archived",
+        }
+    }
+}
+
+impl std::fmt::Display for BeliefStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// A belief entry for cross-project search (beliefs + persona values)
 #[derive(Debug, Clone, Serialize)]
 pub struct BeliefEntry {
@@ -151,7 +196,7 @@ pub struct BeliefEntry {
     pub kind: String,
     pub statement: String,
     pub entrenchment: String,
-    pub status: String,
+    pub status: BeliefStatus,
     pub facets: String,
     // Metrics (synced from patina.db)
     pub cited_by_beliefs: i32,
@@ -162,6 +207,19 @@ pub struct BeliefEntry {
     pub health_score: f64,
     pub contested_by: String,
     pub imported: bool,
+    // E4.6a Grounding (Area 3: data-mother-schema)
+    pub grounding_score: f64,
+    pub grounding_code_count: i32,
+    pub grounding_commit_count: i32,
+    pub grounding_session_count: i32,
+    pub grounding_forge_count: i32,
+    // Verification (Area 3: data-mother-schema)
+    pub verification_total: i32,
+    pub verification_passed: i32,
+    pub verification_failed: i32,
+    pub verification_errored: i32,
+    // Temporal (Area 3: data-mother-schema)
+    pub last_activity: Option<String>,
 }
 
 // =========================================================================
@@ -297,6 +355,19 @@ impl Graph {
                 health_score REAL DEFAULT 0.0,
                 contested_by TEXT DEFAULT '',
                 imported INTEGER DEFAULT 0,
+                -- E4.6a Grounding (Area 3: data-mother-schema)
+                grounding_score REAL DEFAULT 0.0,
+                grounding_code_count INTEGER DEFAULT 0,
+                grounding_commit_count INTEGER DEFAULT 0,
+                grounding_session_count INTEGER DEFAULT 0,
+                grounding_forge_count INTEGER DEFAULT 0,
+                -- Verification (Area 3: data-mother-schema)
+                verification_total INTEGER DEFAULT 0,
+                verification_passed INTEGER DEFAULT 0,
+                verification_failed INTEGER DEFAULT 0,
+                verification_errored INTEGER DEFAULT 0,
+                -- Temporal (Area 3: data-mother-schema)
+                last_activity TEXT,
                 last_indexed TEXT NOT NULL,
                 PRIMARY KEY (id, source)
             );
@@ -334,6 +405,26 @@ impl Graph {
             );
             "#,
         )?;
+
+        // Migration: add Area 3 columns to existing graph.db beliefs tables
+        let columns_to_add = [
+            ("grounding_score", "REAL DEFAULT 0.0"),
+            ("grounding_code_count", "INTEGER DEFAULT 0"),
+            ("grounding_commit_count", "INTEGER DEFAULT 0"),
+            ("grounding_session_count", "INTEGER DEFAULT 0"),
+            ("grounding_forge_count", "INTEGER DEFAULT 0"),
+            ("verification_total", "INTEGER DEFAULT 0"),
+            ("verification_passed", "INTEGER DEFAULT 0"),
+            ("verification_failed", "INTEGER DEFAULT 0"),
+            ("verification_errored", "INTEGER DEFAULT 0"),
+            ("last_activity", "TEXT"),
+        ];
+
+        for (col_name, col_type) in &columns_to_add {
+            let sql = format!("ALTER TABLE beliefs ADD COLUMN {} {}", col_name, col_type);
+            // Ignore error if column already exists
+            let _ = self.conn.execute(&sql, []);
+        }
 
         Ok(())
     }
@@ -840,8 +931,14 @@ impl Graph {
                 r#"
                 INSERT INTO beliefs (id, source, kind, statement, entrenchment, status, facets,
                     cited_by_beliefs, cited_by_sessions, applied_in,
-                    evidence_count, evidence_verified, health_score, contested_by, imported, last_indexed)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+                    evidence_count, evidence_verified, health_score, contested_by, imported,
+                    grounding_score, grounding_code_count, grounding_commit_count,
+                    grounding_session_count, grounding_forge_count,
+                    verification_total, verification_passed, verification_failed,
+                    verification_errored, last_activity,
+                    last_indexed)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
+                        ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)
                 "#,
                 params![
                     entry.id,
@@ -849,7 +946,7 @@ impl Graph {
                     entry.kind,
                     entry.statement,
                     entry.entrenchment,
-                    entry.status,
+                    entry.status.as_str(),
                     entry.facets,
                     entry.cited_by_beliefs,
                     entry.cited_by_sessions,
@@ -859,6 +956,16 @@ impl Graph {
                     entry.health_score,
                     entry.contested_by,
                     entry.imported as i32,
+                    entry.grounding_score,
+                    entry.grounding_code_count,
+                    entry.grounding_commit_count,
+                    entry.grounding_session_count,
+                    entry.grounding_forge_count,
+                    entry.verification_total,
+                    entry.verification_passed,
+                    entry.verification_failed,
+                    entry.verification_errored,
+                    entry.last_activity,
                     now
                 ],
             ) {
@@ -975,7 +1082,12 @@ impl Graph {
             SELECT b.id, b.source, b.kind, b.statement, b.entrenchment, b.status, b.facets,
                    b.cited_by_beliefs, b.cited_by_sessions, b.applied_in,
                    b.evidence_count, b.evidence_verified, b.health_score, b.contested_by,
-                   b.imported
+                   b.imported,
+                   b.grounding_score, b.grounding_code_count, b.grounding_commit_count,
+                   b.grounding_session_count, b.grounding_forge_count,
+                   b.verification_total, b.verification_passed, b.verification_failed,
+                   b.verification_errored,
+                   b.last_activity
             FROM belief_search bs
             JOIN beliefs b ON bs.id = b.id AND bs.source = b.source
             WHERE belief_search MATCH ?1
@@ -992,7 +1104,7 @@ impl Graph {
                     kind: row.get(2)?,
                     statement: row.get(3)?,
                     entrenchment: row.get(4)?,
-                    status: row.get(5)?,
+                    status: BeliefStatus::from_str_or_default(&row.get::<_, String>(5)?),
                     facets: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
                     cited_by_beliefs: row.get(7)?,
                     cited_by_sessions: row.get(8)?,
@@ -1002,6 +1114,16 @@ impl Graph {
                     health_score: row.get(12)?,
                     contested_by: row.get::<_, Option<String>>(13)?.unwrap_or_default(),
                     imported: row.get::<_, i32>(14).unwrap_or(0) != 0,
+                    grounding_score: row.get::<_, Option<f64>>(15)?.unwrap_or(0.0),
+                    grounding_code_count: row.get::<_, Option<i32>>(16)?.unwrap_or(0),
+                    grounding_commit_count: row.get::<_, Option<i32>>(17)?.unwrap_or(0),
+                    grounding_session_count: row.get::<_, Option<i32>>(18)?.unwrap_or(0),
+                    grounding_forge_count: row.get::<_, Option<i32>>(19)?.unwrap_or(0),
+                    verification_total: row.get::<_, Option<i32>>(20)?.unwrap_or(0),
+                    verification_passed: row.get::<_, Option<i32>>(21)?.unwrap_or(0),
+                    verification_failed: row.get::<_, Option<i32>>(22)?.unwrap_or(0),
+                    verification_errored: row.get::<_, Option<i32>>(23)?.unwrap_or(0),
+                    last_activity: row.get::<_, Option<String>>(24)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -1038,6 +1160,31 @@ impl Graph {
             .collect();
 
         Ok(dangling)
+    }
+
+    /// Delete dangling edges: edges referencing belief IDs not in the beliefs table
+    ///
+    /// Returns the number of edges deleted.
+    pub fn delete_dangling_edges(&self) -> Result<usize> {
+        let deleted_supports = self.conn.execute(
+            r#"
+            DELETE FROM belief_supports
+            WHERE from_belief NOT IN (SELECT id FROM beliefs)
+               OR to_belief NOT IN (SELECT id FROM beliefs)
+            "#,
+            [],
+        )?;
+
+        let deleted_attacks = self.conn.execute(
+            r#"
+            DELETE FROM belief_attacks
+            WHERE from_belief NOT IN (SELECT id FROM beliefs)
+               OR to_belief NOT IN (SELECT id FROM beliefs)
+            "#,
+            [],
+        )?;
+
+        Ok(deleted_supports + deleted_attacks)
     }
 
     /// Query beliefs that support a given belief (across all projects)
@@ -1107,7 +1254,12 @@ impl Graph {
             SELECT b.id, b.source, b.kind, b.statement, b.entrenchment, b.status, b.facets,
                    b.cited_by_beliefs, b.cited_by_sessions, b.applied_in,
                    b.evidence_count, b.evidence_verified, b.health_score, b.contested_by,
-                   b.imported
+                   b.imported,
+                   b.grounding_score, b.grounding_code_count, b.grounding_commit_count,
+                   b.grounding_session_count, b.grounding_forge_count,
+                   b.verification_total, b.verification_passed, b.verification_failed,
+                   b.verification_errored,
+                   b.last_activity
             FROM beliefs b
             WHERE b.id = ?1 AND b.source = ?2
             "#,
@@ -1119,7 +1271,7 @@ impl Graph {
                     kind: row.get(2)?,
                     statement: row.get(3)?,
                     entrenchment: row.get(4)?,
-                    status: row.get(5)?,
+                    status: BeliefStatus::from_str_or_default(&row.get::<_, String>(5)?),
                     facets: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
                     cited_by_beliefs: row.get(7)?,
                     cited_by_sessions: row.get(8)?,
@@ -1129,6 +1281,16 @@ impl Graph {
                     health_score: row.get(12)?,
                     contested_by: row.get::<_, Option<String>>(13)?.unwrap_or_default(),
                     imported: row.get::<_, i32>(14).unwrap_or(0) != 0,
+                    grounding_score: row.get::<_, Option<f64>>(15)?.unwrap_or(0.0),
+                    grounding_code_count: row.get::<_, Option<i32>>(16)?.unwrap_or(0),
+                    grounding_commit_count: row.get::<_, Option<i32>>(17)?.unwrap_or(0),
+                    grounding_session_count: row.get::<_, Option<i32>>(18)?.unwrap_or(0),
+                    grounding_forge_count: row.get::<_, Option<i32>>(19)?.unwrap_or(0),
+                    verification_total: row.get::<_, Option<i32>>(20)?.unwrap_or(0),
+                    verification_passed: row.get::<_, Option<i32>>(21)?.unwrap_or(0),
+                    verification_failed: row.get::<_, Option<i32>>(22)?.unwrap_or(0),
+                    verification_errored: row.get::<_, Option<i32>>(23)?.unwrap_or(0),
+                    last_activity: row.get::<_, Option<String>>(24)?,
                 })
             },
         );
@@ -1146,6 +1308,22 @@ impl Graph {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e.into()),
         }
+    }
+
+    /// Query which projects a belief appears in (from belief_applied_in table)
+    ///
+    /// Returns project names for the given belief ID.
+    pub fn query_belief_applied_in(&self, belief_id: &str) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT project FROM belief_applied_in WHERE belief_id = ?1 ORDER BY project",
+        )?;
+
+        let projects = stmt
+            .query_map(params![belief_id], |row| row.get::<_, String>(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(projects)
     }
 
     /// Sync belief_applied_in table (Phase E provenance)
@@ -1536,7 +1714,7 @@ mod tests {
             kind: kind.to_string(),
             statement: statement.to_string(),
             entrenchment: entrenchment.to_string(),
-            status: status.to_string(),
+            status: BeliefStatus::from_str_or_default(status),
             facets: facets.to_string(),
             cited_by_beliefs: 0,
             cited_by_sessions: 0,
@@ -1546,6 +1724,16 @@ mod tests {
             health_score: 0.0,
             contested_by: String::new(),
             imported: false,
+            grounding_score: 0.0,
+            grounding_code_count: 0,
+            grounding_commit_count: 0,
+            grounding_session_count: 0,
+            grounding_forge_count: 0,
+            verification_total: 0,
+            verification_passed: 0,
+            verification_failed: 0,
+            verification_errored: 0,
+            last_activity: None,
         }
     }
 

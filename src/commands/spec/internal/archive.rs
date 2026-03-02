@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::Command;
 
 use patina::release::{BumpType, ReleaseStrategy};
-use patina::spec::{parse_spec_file, SpecFrontmatter};
+use patina::spec::{parse_spec_file, SpecFrontmatter, SpecStatus};
 
 use super::queries::{get_all_specs, scan_disk_specs, ListFilters};
 use super::queue::{is_tree_clean, tag_exists};
@@ -16,10 +16,10 @@ use super::queue::{is_tree_clean, tag_exists};
 pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
     // 1. Find spec in patterns table by id
     let found = find_spec(id)?;
-    let status_str = found.status.as_deref().unwrap_or("");
 
     // 2. Validate status allows archiving
-    if status_str != "complete" && status_str != "abandoned" {
+    if !found.status.is_some_and(|s| s.is_terminal()) {
+        let status_str = found.status.map_or("none", |s| s.as_str());
         anyhow::bail!(
             "Spec '{}' has status '{}', expected 'complete' or 'abandoned'\n\
              Only completed or abandoned specs can be archived.",
@@ -27,6 +27,7 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
             status_str
         );
     }
+    let status_str = found.status.map_or("complete", |s| s.as_str());
 
     let tag_name = format!("spec/{}", id);
 
@@ -185,7 +186,7 @@ pub fn archive_stale_specs(dry_run: bool) -> Result<()> {
     let all_specs = get_all_specs(&ListFilters::default())?;
     let stale: Vec<_> = all_specs
         .into_iter()
-        .filter(|s| matches!(s.status.as_deref(), Some("complete") | Some("abandoned")))
+        .filter(|s| s.status.is_some_and(|st| st.is_terminal()))
         .collect();
 
     if stale.is_empty() {
@@ -213,7 +214,7 @@ pub fn archive_stale_specs(dry_run: bool) -> Result<()> {
             }
         };
 
-        let status = spec.status.as_deref().unwrap_or("complete");
+        let status = spec.status.map_or("complete", |s| s.as_str());
         let spec_dir = resolve_spec_dir(&found.file_path);
 
         if dry_run {
@@ -240,7 +241,7 @@ pub fn archive_stale_specs(dry_run: bool) -> Result<()> {
 /// Result of finding a spec by id.
 pub(super) struct FoundSpec {
     pub file_path: String,
-    pub status: Option<String>,
+    pub status: Option<SpecStatus>,
     pub title: Option<String>,
 }
 
@@ -257,9 +258,11 @@ pub(super) fn find_spec(id: &str) -> Result<FoundSpec> {
                 "SELECT file_path, status, title FROM patterns WHERE id = ?1",
                 rusqlite::params![id],
                 |row| {
+                    let status_str: Option<String> = row.get(1)?;
+                    let status = status_str.and_then(|s| s.parse::<SpecStatus>().ok());
                     Ok(FoundSpec {
                         file_path: row.get::<_, String>(0)?,
-                        status: row.get::<_, Option<String>>(1)?,
+                        status,
                         title: row.get::<_, Option<String>>(2)?,
                     })
                 },
@@ -292,7 +295,7 @@ pub(super) fn find_spec(id: &str) -> Result<FoundSpec> {
     // Git tag fallback: archived specs exist only as annotated tags
     let tag_name = format!("spec/{}", id);
     if tag_exists(&tag_name)? {
-        let status = archived_spec_status(id).unwrap_or_else(|| "complete".to_string());
+        let status = archived_spec_status(id).unwrap_or(SpecStatus::Complete);
         return Ok(FoundSpec {
             file_path: format!("(archived: {})", tag_name),
             status: Some(status),
@@ -312,7 +315,7 @@ pub(super) fn find_spec(id: &str) -> Result<FoundSpec> {
 /// Parses "docs: archive spec/{id} ({status})" → "complete" or "abandoned".
 /// Falls back to "complete" if no matching commit found (release path uses
 /// a different commit message format and is always a completion).
-fn archived_spec_status(id: &str) -> Option<String> {
+fn archived_spec_status(id: &str) -> Option<SpecStatus> {
     let pattern = format!("docs: archive spec/{}", id);
     let output = Command::new("git")
         .args(["log", "--all", "--format=%s", "-1", "--grep", &pattern])
@@ -320,16 +323,13 @@ fn archived_spec_status(id: &str) -> Option<String> {
         .ok()?;
     let subject = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let paren_content = subject.rsplit('(').next()?.trim_end_matches(')');
-    match paren_content {
-        "complete" | "abandoned" => Some(paren_content.to_string()),
-        _ => None,
-    }
+    paren_content.parse().ok()
 }
 
 /// A fully loaded spec: metadata + parsed content. For mutation paths.
 pub(super) struct LoadedSpec {
     pub file_path: String,
-    pub status: Option<String>,
+    pub status: Option<SpecStatus>,
     pub title: Option<String>,
     pub content: String,
     pub frontmatter: SpecFrontmatter,

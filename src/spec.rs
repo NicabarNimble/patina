@@ -54,7 +54,20 @@ pub struct SpecMilestoneEntry {
 ///
 /// Each criterion has a stable id for programmatic reference, human text,
 /// checked state, and an optional verify command/instruction.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+///
+/// Accepts both string shorthand and full struct form in YAML:
+///
+/// ```yaml
+/// exit_criteria:
+/// - All tests pass                              # string shorthand
+/// - id: rollback-db                             # full struct
+///   text: DB rolls back on failure
+///   checked: false
+/// ```
+///
+/// String shorthand auto-generates id by slugifying the text.
+/// Follows the same pattern as `Sessions` (untagged enum for flexible input).
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct ExitCriterion {
     pub id: String,
     pub text: String,
@@ -62,6 +75,78 @@ pub struct ExitCriterion {
     pub checked: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verify: Option<String>,
+}
+
+impl<'de> serde::Deserialize<'de> for ExitCriterion {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de;
+
+        struct ExitCriterionVisitor;
+
+        impl<'de> de::Visitor<'de> for ExitCriterionVisitor {
+            type Value = ExitCriterion;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a string or an ExitCriterion object")
+            }
+
+            fn visit_str<E: de::Error>(self, text: &str) -> std::result::Result<Self::Value, E> {
+                Ok(ExitCriterion {
+                    id: slugify(text),
+                    text: text.to_string(),
+                    checked: false,
+                    verify: None,
+                })
+            }
+
+            fn visit_map<M: de::MapAccess<'de>>(
+                self,
+                map: M,
+            ) -> std::result::Result<Self::Value, M::Error> {
+                #[derive(Deserialize)]
+                struct Inner {
+                    id: String,
+                    text: String,
+                    #[serde(default)]
+                    checked: bool,
+                    #[serde(default)]
+                    verify: Option<String>,
+                }
+                let inner = Inner::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                Ok(ExitCriterion {
+                    id: inner.id,
+                    text: inner.text,
+                    checked: inner.checked,
+                    verify: inner.verify,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(ExitCriterionVisitor)
+    }
+}
+
+/// Slugify text into a kebab-case id.
+///
+/// "All tests pass" → "all-tests-pass"
+/// "DB rolls back on failure" → "db-rolls-back-on-failure"
+fn slugify(text: &str) -> String {
+    text.chars()
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 /// Complete spec frontmatter - the canonical contract for spec files
@@ -80,7 +165,7 @@ pub struct SpecFrontmatter {
 
     /// Status: draft, ready, active, paused, blocked, complete, abandoned
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<String>,
+    pub status: Option<SpecStatus>,
 
     /// Creation date (YYYY-MM-DD)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -160,6 +245,106 @@ pub struct SpecFrontmatter {
     /// Parent spec ID (set by split)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub split_from: Option<String>,
+}
+
+// ============================================================================
+// Spec Status Enum
+// ============================================================================
+
+/// Canonical list of valid spec statuses (for error messages, help text, tests).
+pub const SPEC_STATUSES: &[&str] = &[
+    "draft",
+    "ready",
+    "active",
+    "paused",
+    "blocked",
+    "complete",
+    "abandoned",
+];
+
+/// Typed spec status — the spec lifecycle state machine.
+///
+/// Replaces `status: String` with compiler-enforced exhaustive matching.
+/// Follows [[enum-not-string-for-finite-states]]: 7 variants, no stringly-typed
+/// comparisons in control flow.
+///
+/// `#[serde(alias = "done")]` on Complete is defensive — no spec files on disk
+/// carry `status: done`, but historical DB/tag data might. See ADR-2 in DESIGN.md.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SpecStatus {
+    Draft,
+    Ready,
+    Active,
+    Paused,
+    Blocked,
+    #[serde(alias = "done")]
+    Complete,
+    Abandoned,
+}
+
+/// Error when parsing an invalid spec status string.
+#[derive(Debug)]
+pub struct SpecStatusError {
+    pub got: String,
+}
+
+impl std::fmt::Display for SpecStatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "invalid spec status \"{}\" (expected one of: {})",
+            self.got,
+            SPEC_STATUSES.join(", ")
+        )
+    }
+}
+
+impl std::error::Error for SpecStatusError {}
+
+impl std::str::FromStr for SpecStatus {
+    type Err = SpecStatusError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "draft" => Ok(SpecStatus::Draft),
+            "ready" => Ok(SpecStatus::Ready),
+            "active" => Ok(SpecStatus::Active),
+            "paused" => Ok(SpecStatus::Paused),
+            "blocked" => Ok(SpecStatus::Blocked),
+            "complete" | "done" => Ok(SpecStatus::Complete),
+            "abandoned" => Ok(SpecStatus::Abandoned),
+            _ => Err(SpecStatusError { got: s.to_string() }),
+        }
+    }
+}
+
+impl std::fmt::Display for SpecStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl SpecStatus {
+    /// Canonical string form (matches YAML frontmatter values).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SpecStatus::Draft => "draft",
+            SpecStatus::Ready => "ready",
+            SpecStatus::Active => "active",
+            SpecStatus::Paused => "paused",
+            SpecStatus::Blocked => "blocked",
+            SpecStatus::Complete => "complete",
+            SpecStatus::Abandoned => "abandoned",
+        }
+    }
+
+    /// Whether this status represents a terminal state (complete or abandoned).
+    ///
+    /// Replaces the `== "complete" || == "done"` pattern across 6 call sites.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::Complete | Self::Abandoned)
+    }
 }
 
 // ============================================================================
@@ -285,7 +470,7 @@ Body content here.
 
         let (frontmatter, body) = parse_spec_file(content).expect("should parse");
         assert_eq!(frontmatter.id, "test-spec");
-        assert_eq!(frontmatter.status, Some("ready".to_string()));
+        assert_eq!(frontmatter.status, Some(SpecStatus::Ready));
         assert_eq!(frontmatter.target, Some("v0.12.0".to_string()));
         assert_eq!(frontmatter.blocked_by, vec!["other-spec"]);
         assert!(body.contains("# Test Spec"));
@@ -350,6 +535,45 @@ exit_criteria:
     }
 
     #[test]
+    fn test_exit_criteria_string_shorthand() {
+        let content = r#"---
+type: fix
+id: test-shorthand
+status: draft
+exit_criteria:
+  - All tests pass
+  - .git directory under 400 MB after cleanup
+  - id: explicit-id
+    text: "Explicit struct form works too"
+    checked: true
+---
+
+# Test string shorthand
+"#;
+
+        let (frontmatter, _) = parse_spec_file(content).expect("should parse mixed formats");
+        assert_eq!(frontmatter.exit_criteria.len(), 3);
+
+        // String shorthand: auto-generated id, unchecked
+        let c0 = &frontmatter.exit_criteria[0];
+        assert_eq!(c0.id, "all-tests-pass");
+        assert_eq!(c0.text, "All tests pass");
+        assert!(!c0.checked);
+        assert!(c0.verify.is_none());
+
+        // String with special chars: slugified
+        let c1 = &frontmatter.exit_criteria[1];
+        assert_eq!(c1.id, "git-directory-under-400-mb-after-cleanup");
+        assert_eq!(c1.text, ".git directory under 400 MB after cleanup");
+        assert!(!c1.checked);
+
+        // Full struct form still works
+        let c2 = &frontmatter.exit_criteria[2];
+        assert_eq!(c2.id, "explicit-id");
+        assert!(c2.checked);
+    }
+
+    #[test]
     fn test_optional_fields() {
         let content = r#"---
 type: explore
@@ -363,5 +587,54 @@ id: minimal
         assert_eq!(frontmatter.id, "minimal");
         assert_eq!(frontmatter.status, None);
         assert!(frontmatter.blocked_by.is_empty());
+    }
+
+    #[test]
+    fn test_spec_status_roundtrip() {
+        for &name in SPEC_STATUSES {
+            let s: SpecStatus = name.parse().expect(name);
+            assert_eq!(s.as_str(), name);
+            assert_eq!(s.to_string(), name);
+        }
+    }
+
+    #[test]
+    fn test_spec_status_done_alias() {
+        let s: SpecStatus = "done".parse().expect("done should parse");
+        assert_eq!(s, SpecStatus::Complete);
+        assert_eq!(s.as_str(), "complete");
+    }
+
+    #[test]
+    fn test_spec_status_invalid() {
+        let err = "actve".parse::<SpecStatus>().unwrap_err();
+        assert!(err.to_string().contains("actve"));
+        assert!(err.to_string().contains("draft"));
+    }
+
+    #[test]
+    fn test_spec_status_is_terminal() {
+        assert!(SpecStatus::Complete.is_terminal());
+        assert!(SpecStatus::Abandoned.is_terminal());
+        assert!(!SpecStatus::Draft.is_terminal());
+        assert!(!SpecStatus::Active.is_terminal());
+        assert!(!SpecStatus::Paused.is_terminal());
+    }
+
+    #[test]
+    fn test_spec_status_serde_roundtrip() {
+        // Serialize to YAML and back
+        let status = SpecStatus::Active;
+        let yaml = serde_yaml::to_string(&status).expect("serialize");
+        assert_eq!(yaml.trim(), "active");
+        let back: SpecStatus = serde_yaml::from_str(&yaml).expect("deserialize");
+        assert_eq!(back, status);
+    }
+
+    #[test]
+    fn test_spec_status_serde_done_alias() {
+        // "done" in YAML should deserialize to Complete
+        let back: SpecStatus = serde_yaml::from_str("done").expect("deserialize done");
+        assert_eq!(back, SpecStatus::Complete);
     }
 }

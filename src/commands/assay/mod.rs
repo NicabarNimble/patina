@@ -65,6 +65,50 @@ pub struct AssayOptions {
 
 /// Execute assay command
 pub fn execute(options: AssayOptions) -> Result<()> {
+    let start = std::time::Instant::now();
+    let result = execute_inner(&options);
+
+    // Emit usage event to events.db (best-effort)
+    let duration_ms = start.elapsed().as_millis() as u64;
+    let query_type_str = match &options.query_type {
+        QueryType::Inventory => "inventory",
+        QueryType::Imports => "imports",
+        QueryType::Importers => "importers",
+        QueryType::Functions => "functions",
+        QueryType::Callers => "callers",
+        QueryType::Callees => "callees",
+        QueryType::Derive => "derive",
+        QueryType::DeriveMoments => "derive_moments",
+        QueryType::Search { .. } => "search",
+        QueryType::Cochange { .. } => "cochange",
+        QueryType::Belief { .. } => "belief",
+    };
+    if let Err(e) = (|| -> Result<()> {
+        let conn = patina::eventlog::open_events_db()?;
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        patina::eventlog::insert_event(
+            &conn,
+            "assay.query",
+            &timestamp,
+            query_type_str,
+            None,
+            &serde_json::json!({
+                "query_type": query_type_str,
+                "pattern": &options.pattern,
+                "duration_ms": duration_ms,
+            })
+            .to_string(),
+        )?;
+        Ok(())
+    })() {
+        eprintln!("patina: warning: failed to record assay.query event: {e}");
+    }
+
+    result
+}
+
+/// Inner execute function for assay command
+fn execute_inner(options: &AssayOptions) -> Result<()> {
     // Handle search separately (doesn't need structural DB connection)
     if let QueryType::Search { ref query } = options.query_type {
         let search_opts = SearchOptions {
@@ -101,7 +145,7 @@ pub fn execute(options: AssayOptions) -> Result<()> {
 
     // Handle all_repos mode: iterate over all registered repos
     if options.all_repos {
-        return execute_all_repos(&options);
+        return execute_all_repos(options);
     }
 
     // Resolve database path: specific repo or current directory
@@ -119,14 +163,14 @@ pub fn execute(options: AssayOptions) -> Result<()> {
     }
 
     match options.query_type {
-        QueryType::Inventory => execute_inventory(&conn, &options, None),
-        QueryType::Imports => execute_imports(&conn, &options),
-        QueryType::Importers => execute_importers(&conn, &options),
-        QueryType::Functions => execute_functions(&conn, &options),
-        QueryType::Callers => execute_callers(&conn, &options),
-        QueryType::Callees => execute_callees(&conn, &options),
-        QueryType::Derive => execute_derive(&conn, &options),
-        QueryType::DeriveMoments => execute_derive_moments(&conn, &options),
+        QueryType::Inventory => execute_inventory(&conn, options, None),
+        QueryType::Imports => execute_imports(&conn, options),
+        QueryType::Importers => execute_importers(&conn, options),
+        QueryType::Functions => execute_functions(&conn, options),
+        QueryType::Callers => execute_callers(&conn, options),
+        QueryType::Callees => execute_callees(&conn, options),
+        QueryType::Derive => execute_derive(&conn, options),
+        QueryType::DeriveMoments => execute_derive_moments(&conn, options),
         QueryType::Search { .. } | QueryType::Cochange { .. } | QueryType::Belief { .. } => {
             unreachable!("handled above")
         }

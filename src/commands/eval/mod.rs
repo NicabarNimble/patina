@@ -291,6 +291,26 @@ pub fn execute(dimension: Option<String>) -> Result<()> {
         }
     );
 
+    // Emit measurement: unified engine results for the dimension eval
+    if let Some(unified_r) = all_results.iter().find(|r| r.engine == "unified") {
+        let unified_mrr = self_results
+            .iter()
+            .find(|r| r.engine == "unified")
+            .map(|r| r.mrr as f64)
+            .unwrap_or(0.0);
+        patina::measure::emit_or_warn(
+            "search",
+            "eval",
+            "dimension",
+            &serde_json::json!({
+                "p_at_5": unified_r.precision_at_5 as f64,
+                "p_at_10": unified_r.precision_at_10 as f64,
+                "mrr": unified_mrr,
+                "query_count": unified_r.num_queries,
+            }),
+        );
+    }
+
     Ok(())
 }
 
@@ -1154,6 +1174,24 @@ pub fn execute_feedback() -> Result<()> {
 
     println!("\n{}", "─".repeat(60));
 
+    // Emit measurement: feedback loop precision
+    let precision = if total_retrievals > 0 {
+        total_hits as f64 / total_retrievals as f64
+    } else {
+        0.0
+    };
+    patina::measure::emit_or_warn(
+        "search",
+        "eval",
+        "feedback",
+        &serde_json::json!({
+            "precision": precision,
+            "query_count": total_queries,
+            "total_retrievals": total_retrievals,
+            "total_hits": total_hits,
+        }),
+    );
+
     Ok(())
 }
 
@@ -1510,6 +1548,19 @@ pub fn execute_nl() -> Result<()> {
     println!("  Mean P@5:    {:.1}%", unified_metrics.p5 * 100.0);
     println!("  Mean P@10:   {:.1}%", unified_metrics.p10 * 100.0);
     println!("  MRR:         {:.3}", unified_metrics.mrr);
+
+    // Emit measurement: NL eval unified metrics
+    patina::measure::emit_or_warn(
+        "search",
+        "eval",
+        "nl",
+        &serde_json::json!({
+            "p_at_5": unified_metrics.p5 as f64,
+            "p_at_10": unified_metrics.p10 as f64,
+            "mrr": unified_metrics.mrr as f64,
+            "query_count": cases.len(),
+        }),
+    );
 
     Ok(())
 }

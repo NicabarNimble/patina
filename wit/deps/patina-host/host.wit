@@ -132,3 +132,23 @@ interface schema {
     /// Returns JSON object mapping field names to WIT type strings.
     get-field-types: func(schema-name: string, fact-name: string) -> result<string, string>;
 }
+
+/// Measurement reporting for plugins.
+///
+/// Plugins call record-measurement to report metrics to the host.
+/// The host writes measurement events to the eventlog with the
+/// plugin's name as source (host overrides — plugins can't
+/// impersonate core tools).
+///
+/// verb: one of the 5 protocol verbs (capture, index, search, believe, evolve)
+/// tool: which tool produced this (doctor, grammar-rust, etc.)
+/// mode: tool-specific sub-mode (freshness-check, parse-coverage, etc.)
+/// metrics-json: JSON object with numeric values only
+interface measure {
+    record-measurement: func(
+        verb: string,
+        tool: string,
+        mode: string,
+        metrics-json: string,
+    ) -> result<_, string>;
+}

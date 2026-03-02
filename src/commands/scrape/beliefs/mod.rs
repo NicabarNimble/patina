@@ -8,6 +8,7 @@
 mod verification;
 
 use anyhow::Result;
+use patina::mother::BeliefStatus;
 use regex::Regex;
 use rusqlite::Connection;
 use serde_json::json;
@@ -18,17 +19,19 @@ use super::database;
 use super::ScrapeStats;
 
 const BELIEFS_DIR: &str = "layer/surface/epistemic/beliefs";
+const VALUES_DIR: &str = "layer/core/values";
 
 /// Parsed belief from markdown file
 #[derive(Debug)]
 struct ParsedBelief {
     id: String,
+    kind: String,         // "belief" or "value"
     statement: String,    // One-sentence statement after # heading
     persona: String,      // architect, etc.
     facets: Vec<String>,  // Domain tags
     confidence: f64,      // 0.0-1.0 (legacy, will be removed)
     entrenchment: String, // low/medium/high/very-high
-    status: String,       // active/scoped/defeated/archived
+    status: BeliefStatus, // active/scoped/defeated/archived
     extracted: Option<String>,
     revised: Option<String>,
     content: String, // Full markdown for embedding
@@ -95,6 +98,7 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
         -- Beliefs view (materialized from belief.* events)
         CREATE TABLE IF NOT EXISTS beliefs (
             id TEXT PRIMARY KEY,
+            kind TEXT DEFAULT 'belief',
             statement TEXT,
             persona TEXT,
             facets TEXT,
@@ -176,6 +180,7 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
 
     // Migrate existing table: add E4 metric columns if they don't exist yet
     let columns_to_add = [
+        ("kind", "TEXT DEFAULT 'belief'"),
         ("cited_by_beliefs", "INTEGER DEFAULT 0"),
         ("cited_by_sessions", "INTEGER DEFAULT 0"),
         ("applied_in", "INTEGER DEFAULT 0"),
@@ -241,7 +246,7 @@ fn parse_belief_file(path: &Path) -> Result<ParsedBelief> {
     let mut facets = Vec::new();
     let mut confidence = 0.5;
     let mut entrenchment = "medium".to_string();
-    let mut status = "active".to_string();
+    let mut status = BeliefStatus::Active;
     let mut extracted = None;
     let mut revised = None;
 
@@ -309,7 +314,7 @@ fn parse_belief_file(path: &Path) -> Result<ParsedBelief> {
                 .ok()
                 .and_then(|re| re.captures(frontmatter))
             {
-                status = cap[1].trim().to_string();
+                status = BeliefStatus::from_str_or_default(cap[1].trim());
             }
 
             // Extract extracted date
@@ -366,6 +371,7 @@ fn parse_belief_file(path: &Path) -> Result<ParsedBelief> {
 
     Ok(ParsedBelief {
         id,
+        kind: "belief".to_string(),
         statement,
         persona,
         facets,
@@ -380,6 +386,122 @@ fn parse_belief_file(path: &Path) -> Result<ParsedBelief> {
         verification_queries,
         verification: verification::VerificationAggregates::default(),
         imported,
+    })
+}
+
+/// Parse a value file from layer/core/values/.
+/// Values are simpler than beliefs: type: value, fixed entrenchment, no verification.
+fn parse_value_file(path: &Path) -> Result<ParsedBelief> {
+    let content = std::fs::read_to_string(path)?;
+    let file_path = path.to_string_lossy().to_string();
+    let file_size = content.len();
+
+    // Warn if value exceeds 1KB (advisory, not blocking)
+    if file_size > 1024 {
+        let id_hint = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+        println!(
+            "  warning: value '{}' exceeds 1KB ({} bytes)",
+            id_hint, file_size
+        );
+    }
+
+    let last_file_touch = std::fs::metadata(path)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .map(|t| {
+            let dt: chrono::DateTime<chrono::Utc> = t.into();
+            dt.format("%Y-%m-%d").to_string()
+        });
+
+    // Defaults
+    let mut id = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let mut facets = Vec::new();
+    let mut status = BeliefStatus::Active;
+
+    // Parse YAML frontmatter
+    if let Some(after_start) = content.strip_prefix("---") {
+        if let Some(end) = after_start.find("---") {
+            let frontmatter = &after_start[..end];
+
+            // Verify type: value
+            let is_value = regex::RegexBuilder::new(r"^type:\s*value\s*$")
+                .multi_line(true)
+                .build()
+                .ok()
+                .map(|re| re.is_match(frontmatter))
+                .unwrap_or(false);
+
+            if !is_value {
+                anyhow::bail!("not a value file (missing type: value)");
+            }
+
+            if let Some(cap) = regex::RegexBuilder::new(r"^id:\s*(.+)$")
+                .multi_line(true)
+                .build()
+                .ok()
+                .and_then(|re| re.captures(frontmatter))
+            {
+                id = cap[1].trim().to_string();
+            }
+
+            if let Some(cap) = Regex::new(r"facets:\s*\[([^\]]+)\]")
+                .ok()
+                .and_then(|re| re.captures(frontmatter))
+            {
+                facets = cap[1]
+                    .split(',')
+                    .map(|s| s.trim().trim_matches(|c| c == '"' || c == '\'').to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+            }
+
+            if let Some(cap) = regex::RegexBuilder::new(r"^status:\s*(.+)$")
+                .multi_line(true)
+                .build()
+                .ok()
+                .and_then(|re| re.captures(frontmatter))
+            {
+                status = BeliefStatus::from_str_or_default(cap[1].trim());
+            }
+        } else {
+            anyhow::bail!("unclosed frontmatter");
+        }
+    } else {
+        anyhow::bail!("no frontmatter");
+    }
+
+    let statement = extract_statement(&content, &id);
+
+    let metrics = BeliefMetrics {
+        endorsed: true,
+        last_file_touch,
+        ..Default::default()
+    };
+
+    Ok(ParsedBelief {
+        id,
+        kind: "value".to_string(),
+        statement,
+        persona: "core".to_string(),
+        facets,
+        confidence: 1.0,
+        entrenchment: "very-high".to_string(),
+        status,
+        extracted: None,
+        revised: None,
+        content,
+        file_path,
+        metrics,
+        verification_queries: Vec::new(),
+        verification: verification::VerificationAggregates::default(),
+        imported: false,
     })
 }
 
@@ -695,10 +817,8 @@ fn cross_reference_beliefs(beliefs: &mut [ParsedBelief], project_root: &Path) {
     }
 
     // Build status map for contest detection (Phase C)
-    let status_map: std::collections::HashMap<String, String> = beliefs
-        .iter()
-        .map(|b| (b.id.clone(), b.status.clone()))
-        .collect();
+    let status_map: std::collections::HashMap<String, BeliefStatus> =
+        beliefs.iter().map(|b| (b.id.clone(), b.status)).collect();
 
     // Build bidirectional contest map (Phase C)
     // A contests B if: A's ## Attacks lists B (non-defeated) AND B is active
@@ -709,7 +829,7 @@ fn cross_reference_beliefs(beliefs: &mut [ParsedBelief], project_root: &Path) {
     for belief in beliefs.iter() {
         // From ## Attacks: belief attacks these targets
         for target_id in &belief.metrics.attacks_ids {
-            if status_map.get(target_id).map(|s| s.as_str()) == Some("active") {
+            if status_map.get(target_id) == Some(&BeliefStatus::Active) {
                 contest_map
                     .entry(target_id.clone())
                     .or_default()
@@ -718,7 +838,7 @@ fn cross_reference_beliefs(beliefs: &mut [ParsedBelief], project_root: &Path) {
         }
         // From ## Attacked-By: belief is attacked by these
         for attacker_id in &belief.metrics.attacked_by_ids {
-            if status_map.get(attacker_id).map(|s| s.as_str()) == Some("active") {
+            if status_map.get(attacker_id) == Some(&BeliefStatus::Active) {
                 contest_map
                     .entry(belief.id.clone())
                     .or_default()
@@ -1080,7 +1200,7 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
         "facets": &belief.facets,
         "confidence": belief.confidence,
         "entrenchment": &belief.entrenchment,
-        "status": &belief.status,
+        "status": belief.status.as_str(),
         "content": &belief.content,
         "metrics": {
             "use": {
@@ -1120,22 +1240,23 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
     let contested_by_str = belief.metrics.contested_by.join(",");
 
     conn.execute(
-        "INSERT INTO beliefs (id, statement, persona, facets, confidence, entrenchment, status, extracted, revised, file_path,
+        "INSERT INTO beliefs (id, kind, statement, persona, facets, confidence, entrenchment, status, extracted, revised, file_path,
          cited_by_beliefs, cited_by_sessions, applied_in, evidence_count, evidence_verified, defeated_attacks, external_sources, endorsed,
          verification_total, verification_passed, verification_failed, verification_errored,
          grounding_score, grounding_code_count, grounding_commit_count, grounding_session_count, grounding_forge_count,
          last_file_touch, last_frontmatter_revision, last_session_citation, last_verification_run, last_activity,
          health_score, contested_by, imported)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27,
-                 ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28,
+                 ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36)",
         rusqlite::params![
             &belief.id,
+            &belief.kind,
             &belief.statement,
             &belief.persona,
             &facets_str,
             belief.confidence,
             &belief.entrenchment,
-            &belief.status,
+            belief.status.as_str(),
             &belief.extracted,
             &belief.revised,
             &belief.file_path,
@@ -1307,6 +1428,40 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
         }
     }
 
+    // Phase 1b: Parse value files from layer/core/values/
+    // Values are axioms — they skip verification and cross-referencing.
+    let values_path = Path::new(VALUES_DIR);
+    let mut values_count = 0;
+    if values_path.exists() {
+        let mut value_files = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(values_path) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if path.extension().map(|ext| ext == "md").unwrap_or(false) {
+                    value_files.push(path);
+                }
+            }
+        }
+        value_files.sort();
+
+        for path in &value_files {
+            match parse_value_file(path) {
+                Ok(value) => {
+                    current_file_ids.insert(value.id.clone());
+                    values_count += 1;
+                    all_beliefs.push(value);
+                }
+                Err(e) => {
+                    eprintln!("  Warning: failed to parse value {}: {}", path.display(), e);
+                }
+            }
+        }
+
+        if values_count > 0 {
+            println!("  Parsed {} values from {}", values_count, VALUES_DIR);
+        }
+    }
+
     // Phase 2: Cross-reference beliefs against each other and sessions
     // This must happen after all beliefs are parsed
     let project_root = Path::new(".");
@@ -1431,10 +1586,19 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     // Clean up _prev table
     let _ = conn.execute_batch("DROP TABLE IF EXISTS belief_verifications_prev;");
 
-    println!(
-        "  Processed {} beliefs ({} skipped)",
-        processed_count, skipped
-    );
+    if values_count > 0 {
+        println!(
+            "  Processed {} beliefs + {} values ({} skipped)",
+            processed_count - values_count,
+            values_count,
+            skipped
+        );
+    } else {
+        println!(
+            "  Processed {} beliefs ({} skipped)",
+            processed_count, skipped
+        );
+    }
 
     // Phase 3.5: Compute semantic grounding (E4.6a step 5)
     // Must run AFTER insert so beliefs have rowids in the DB.
@@ -1550,6 +1714,22 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
         .map(|m| m.len() / 1024)
         .unwrap_or(0);
 
+    // Emit measurement: beliefs scrape capture metrics
+    patina::measure::emit_or_warn(
+        "capture",
+        "scrape",
+        "beliefs",
+        &serde_json::json!({
+            "beliefs_processed": processed_count,
+            "values_processed": values_count,
+            "beliefs_skipped": skipped,
+            "beliefs_verified": verified_count,
+            "supports_edges": supports_written,
+            "attacks_edges": attacks_written,
+            "duration_ms": elapsed.as_millis() as u64,
+        }),
+    );
+
     Ok(ScrapeStats {
         items_processed: processed_count,
         time_elapsed: elapsed,
@@ -1609,7 +1789,7 @@ Prefer synchronous code.
         assert_eq!(belief.facets, vec!["rust", "architecture"]);
         assert!((belief.confidence - 0.88).abs() < 0.01);
         assert_eq!(belief.entrenchment, "high");
-        assert_eq!(belief.status, "active");
+        assert_eq!(belief.status, BeliefStatus::Active);
         assert_eq!(belief.statement, "Prefer synchronous code.");
     }
 

@@ -6,8 +6,10 @@ pub mod context;
 #[cfg(feature = "bundled-doctor")]
 pub mod doctor;
 pub mod eval;
+pub mod events;
 pub mod init;
 pub mod launch;
+pub mod measure;
 pub mod model;
 pub mod mother;
 pub mod oxidize;

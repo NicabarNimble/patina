@@ -93,6 +93,28 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
     let metadata = std::fs::metadata(&config.db_path)?;
     let database_size_kb = metadata.len() / 1024;
 
+    // Emit measurement: code scrape capture metrics
+    let files_parsed: i64 = conn
+        .query_row("SELECT COUNT(*) FROM index_state", [], |row| row.get(0))
+        .unwrap_or(0);
+    let functions_found: i64 = conn
+        .query_row("SELECT COUNT(*) FROM function_facts", [], |row| row.get(0))
+        .unwrap_or(0);
+    let types_found: i64 = conn
+        .query_row("SELECT COUNT(*) FROM type_vocabulary", [], |row| row.get(0))
+        .unwrap_or(0);
+    patina::measure::emit_or_warn(
+        "capture",
+        "scrape",
+        "code",
+        &serde_json::json!({
+            "files_parsed": files_parsed,
+            "functions_found": functions_found,
+            "types_found": types_found,
+            "fts_symbols": fts_count,
+        }),
+    );
+
     Ok(super::ScrapeStats {
         items_processed,
         time_elapsed: start.elapsed(),

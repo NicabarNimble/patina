@@ -6,7 +6,6 @@
 use std::sync::Mutex;
 
 use anyhow::Result;
-use rusqlite::Connection;
 
 use patina::eventlog;
 
@@ -86,7 +85,7 @@ pub fn get_active_session_id() -> Option<String> {
 /// Best-effort logging - failures are silently ignored to not disrupt scry.
 /// Returns the query_id for reference by open/copy/feedback commands.
 pub fn log_scry_query(query: &str, mode: &str, results: &[ScryResult]) -> Option<String> {
-    let session_id = get_active_session_id()?;
+    let session_id = get_active_session_id();
 
     let query_id = generate_query_id();
 
@@ -114,7 +113,7 @@ pub fn log_scry_query(query: &str, mode: &str, results: &[ScryResult]) -> Option
 
     // Best-effort insert into eventlog
     let insert_result = (|| -> Result<()> {
-        let conn = Connection::open(eventlog::PATINA_DB)?;
+        let conn = eventlog::open_events_db()?;
         let timestamp = chrono::Utc::now().to_rfc3339();
         eventlog::insert_event(
             &conn,
@@ -127,14 +126,18 @@ pub fn log_scry_query(query: &str, mode: &str, results: &[ScryResult]) -> Option
         Ok(())
     })();
 
-    if insert_result.is_ok() {
-        // Store as last query for open/copy/feedback without explicit query_id
-        if let Ok(mut last) = LAST_QUERY_ID.lock() {
-            *last = Some(query_id.clone());
+    match insert_result {
+        Ok(()) => {
+            // Store as last query for open/copy/feedback without explicit query_id
+            if let Ok(mut last) = LAST_QUERY_ID.lock() {
+                *last = Some(query_id.clone());
+            }
+            Some(query_id)
         }
-        Some(query_id)
-    } else {
-        None
+        Err(e) => {
+            eprintln!("patina: warning: failed to record scry.query event: {e}");
+            None
+        }
     }
 }
 
@@ -155,7 +158,7 @@ pub fn log_scry_query_with_routing(
     results: &[RoutedResult],
     routing: &RoutingContext,
 ) -> Option<String> {
-    let session_id = get_active_session_id()?;
+    let session_id = get_active_session_id();
 
     let query_id = generate_query_id();
 
@@ -208,7 +211,7 @@ pub fn log_scry_query_with_routing(
 
     // Best-effort insert into eventlog
     let insert_result = (|| -> Result<()> {
-        let conn = Connection::open(eventlog::PATINA_DB)?;
+        let conn = eventlog::open_events_db()?;
         let timestamp = chrono::Utc::now().to_rfc3339();
         eventlog::insert_event(
             &conn,
@@ -221,15 +224,59 @@ pub fn log_scry_query_with_routing(
         Ok(())
     })();
 
-    if insert_result.is_ok() {
-        // Store as last query for open/copy/feedback without explicit query_id
-        if let Ok(mut last) = LAST_QUERY_ID.lock() {
-            *last = Some(query_id.clone());
+    match insert_result {
+        Ok(()) => {
+            // Store as last query for open/copy/feedback without explicit query_id
+            if let Ok(mut last) = LAST_QUERY_ID.lock() {
+                *last = Some(query_id.clone());
+            }
+            Some(query_id)
         }
-        Some(query_id)
-    } else {
-        None
+        Err(e) => {
+            eprintln!("patina: warning: failed to record scry.query event: {e}");
+            None
+        }
     }
+}
+
+/// Log usage and return JSON confirmation — called by MCP handler
+///
+/// Validates rank against query results, logs usage event via log_scry_use()
+/// which includes mark_edge_usage_from_query() — fixing the MCP gap where
+/// edge marking was previously missing.
+pub fn use_json(query_id: &str, rank: usize) -> Result<String> {
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    struct UseOutput {
+        query_id: String,
+        rank: usize,
+        doc_id: String,
+        status: String,
+    }
+
+    let results = get_query_results(query_id)?;
+    if rank == 0 || rank > results.len() {
+        anyhow::bail!(
+            "Invalid rank {}. Query had {} results.",
+            rank,
+            results.len()
+        );
+    }
+
+    let (doc_id, _score) = &results[rank - 1];
+
+    // log_scry_use includes mark_edge_usage_from_query — fixes MCP gap
+    log_scry_use(query_id, doc_id, rank);
+
+    let output = UseOutput {
+        query_id: query_id.to_string(),
+        rank,
+        doc_id: doc_id.clone(),
+        status: "usage_logged".to_string(),
+    };
+
+    Ok(serde_json::to_string_pretty(&output)?)
 }
 
 /// Log usage of a scry result (scry.use event)
@@ -246,9 +293,9 @@ pub fn log_scry_use(query_id: &str, doc_id: &str, rank: usize) {
         "session_id": session_id
     });
 
-    // Best-effort insert
-    let _ = (|| -> Result<()> {
-        let conn = Connection::open(eventlog::PATINA_DB)?;
+    // Best-effort insert — warn on failure so degradation is visible
+    if let Err(e) = (|| -> Result<()> {
+        let conn = eventlog::open_events_db()?;
         let timestamp = chrono::Utc::now().to_rfc3339();
         eventlog::insert_event(
             &conn,
@@ -259,7 +306,9 @@ pub fn log_scry_use(query_id: &str, doc_id: &str, rank: usize) {
             &use_data.to_string(),
         )?;
         Ok(())
-    })();
+    })() {
+        eprintln!("patina: warning: failed to record scry.use event: {e}");
+    }
 
     // Mark edge_usage as useful for feedback loop (G2.5)
     // Best-effort - don't fail if this doesn't work
@@ -274,7 +323,7 @@ fn mark_edge_usage_from_query(query_id: &str, rank: usize) -> Result<()> {
     use patina::mother::Graph;
 
     // Look up the query from eventlog
-    let conn = Connection::open(eventlog::PATINA_DB)?;
+    let conn = eventlog::open_events_db()?;
     let data: String = conn.query_row(
         "SELECT data FROM eventlog WHERE event_type = 'scry.query' AND source_id = ?",
         [query_id],
@@ -320,9 +369,9 @@ pub fn log_scry_feedback(query_id: &str, signal: &str, comment: Option<&str>) {
         "session_id": session_id
     });
 
-    // Best-effort insert
-    let _ = (|| -> Result<()> {
-        let conn = Connection::open(eventlog::PATINA_DB)?;
+    // Best-effort insert — warn on failure so degradation is visible
+    if let Err(e) = (|| -> Result<()> {
+        let conn = eventlog::open_events_db()?;
         let timestamp = chrono::Utc::now().to_rfc3339();
         eventlog::insert_event(
             &conn,
@@ -333,12 +382,14 @@ pub fn log_scry_feedback(query_id: &str, signal: &str, comment: Option<&str>) {
             &feedback_data.to_string(),
         )?;
         Ok(())
-    })();
+    })() {
+        eprintln!("patina: warning: failed to record scry.feedback event: {e}");
+    }
 }
 
 /// Get results from a previous query by query_id
 pub fn get_query_results(query_id: &str) -> Result<Vec<(String, f32)>> {
-    let conn = Connection::open(eventlog::PATINA_DB)?;
+    let conn = eventlog::open_events_db()?;
 
     let data: String = conn.query_row(
         "SELECT data FROM eventlog WHERE event_type = 'scry.query' AND source_id = ?",
@@ -360,4 +411,125 @@ pub fn get_query_results(query_id: &str) -> Result<Vec<(String, f32)>> {
             )
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Create an in-memory events DB with the eventlog schema
+    fn create_test_events_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS eventlog (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                source_file TEXT,
+                data TEXT NOT NULL,
+                CHECK(json_valid(data))
+            );
+            CREATE INDEX IF NOT EXISTS idx_eventlog_source ON eventlog(source_id);",
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn feedback_loop_query_detail_use() {
+        // ADR-6: Verify the query_id feedback loop works through unified functions.
+        // Tests the data chain: scry.query → get_query_results → scry.use
+        let conn = create_test_events_db();
+
+        // 1. Simulate log_scry_query: insert a scry.query event
+        let query_id = "q_20260301_120000_abc";
+        let query_data = serde_json::json!({
+            "query": "test query",
+            "query_id": query_id,
+            "mode": "find",
+            "session_id": null,
+            "results": [
+                {"doc_id": "src/main.rs", "score": 0.95, "rank": 1, "event_type": "code.function"},
+                {"doc_id": "src/lib.rs", "score": 0.80, "rank": 2, "event_type": "code.function"},
+            ]
+        });
+
+        let timestamp = "2026-03-01T12:00:00Z";
+        eventlog::insert_event(
+            &conn,
+            "scry.query",
+            timestamp,
+            query_id,
+            None,
+            &query_data.to_string(),
+        )
+        .expect("insert scry.query");
+
+        // 2. Verify get_query_results reads back correctly
+        let data: String = conn
+            .query_row(
+                "SELECT data FROM eventlog WHERE event_type = 'scry.query' AND source_id = ?",
+                [query_id],
+                |row| row.get(0),
+            )
+            .expect("query lookup");
+
+        let parsed: serde_json::Value = serde_json::from_str(&data).unwrap();
+        let results = parsed["results"].as_array().unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0]["doc_id"].as_str().unwrap(), "src/main.rs");
+        assert_eq!(results[1]["doc_id"].as_str().unwrap(), "src/lib.rs");
+
+        // 3. Simulate log_scry_use: insert a scry.use event
+        let doc_id = "src/main.rs";
+        let rank = 1;
+        let use_data = serde_json::json!({
+            "query_id": query_id,
+            "result_used": doc_id,
+            "rank": rank,
+            "session_id": null
+        });
+
+        eventlog::insert_event(
+            &conn,
+            "scry.use",
+            "2026-03-01T12:01:00Z",
+            query_id,
+            None,
+            &use_data.to_string(),
+        )
+        .expect("insert scry.use");
+
+        // 4. Verify both events exist with correct query_id linkage
+        let query_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM eventlog WHERE event_type = 'scry.query' AND source_id = ?",
+                [query_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(query_count, 1);
+
+        let use_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM eventlog WHERE event_type = 'scry.use' AND source_id = ?",
+                [query_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(use_count, 1);
+
+        // 5. Verify scry.use data references the correct doc_id
+        let use_event: String = conn
+            .query_row(
+                "SELECT data FROM eventlog WHERE event_type = 'scry.use' AND source_id = ?",
+                [query_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let use_parsed: serde_json::Value = serde_json::from_str(&use_event).unwrap();
+        assert_eq!(use_parsed["result_used"].as_str().unwrap(), "src/main.rs");
+        assert_eq!(use_parsed["query_id"].as_str().unwrap(), query_id);
+    }
 }

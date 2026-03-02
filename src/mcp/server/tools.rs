@@ -1,6 +1,6 @@
 //! MCP tool schema definitions
 //!
-//! All 20 tool schemas live here. handle_list_tools() returns them
+//! All 21 tool schemas live here. handle_list_tools() returns them
 //! as the tools/list response.
 
 use super::super::protocol::{Request, Response};
@@ -357,7 +357,7 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                 },
                 {
                     "name": "spec.show",
-                    "description": "Show full spec context — frontmatter, body, DESIGN.md, and key files in a single call. Use this to load all spec context before working on it.",
+                    "description": "Show spec context — frontmatter, body, DESIGN.md, and key files in a single call. Returns heading outlines + file paths for targeted reading. Use the Read tool on the returned path to read specific sections.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -435,7 +435,7 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                 },
                 {
                     "name": "spec.set",
-                    "description": "Set a metadata field on a spec. For list fields (beliefs, related, references), prefix value with + to add or - to remove. For scalar fields (target), set directly or pass empty string to clear.",
+                    "description": "Set a metadata field on a spec. For list fields (beliefs, related, references, blocked_by), prefix value with + to add or - to remove. For scalar fields (target), set directly or pass empty string to clear.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -445,7 +445,7 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                             },
                             "field": {
                                 "type": "string",
-                                "description": "Field to set (beliefs, related, references, target)"
+                                "description": "Field to set (beliefs, related, references, blocked_by, target)"
                             },
                             "value": {
                                 "type": "string",
@@ -453,6 +453,14 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                             }
                         },
                         "required": ["id", "field", "value"]
+                    }
+                },
+                {
+                    "name": "measure",
+                    "description": "Show project health from measurement data — returns JSON summary of all 5 protocol verbs (capture, index, search, believe, evolve) with status, metrics, and action items. Use this to check project health before making recommendations.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
                     }
                 },
                 {

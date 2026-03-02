@@ -854,10 +854,12 @@ fn generate_migrations(root: &Path, filter: Option<&str>) -> Result<()> {
                 }
             }
 
-            // Add event_seq foreign key
+            // Add event_seq cross-db reference (no FK — events.db is a separate database)
             writeln!(sql, ",")?;
-            writeln!(sql, "    event_seq INTEGER,     -- Link back to eventlog")?;
-            writeln!(sql, "    FOREIGN KEY (event_seq) REFERENCES eventlog(seq)")?;
+            writeln!(
+                sql,
+                "    event_seq INTEGER      -- Cross-db ref to events.db eventlog seq"
+            )?;
             writeln!(sql, ");")?;
             writeln!(sql)?;
         }

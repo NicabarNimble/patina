@@ -16,6 +16,61 @@ pub struct ImportInfo {
     pub kind: String,
 }
 
+/// Importer info (what files import a given module)
+#[derive(Debug, Serialize)]
+pub struct ImporterInfo {
+    pub file: String,
+    pub names: String,
+}
+
+/// Query imports and return JSON string
+pub fn imports_json(conn: &Connection, pattern: &str, limit: usize) -> Result<String> {
+    let sql = r#"
+        SELECT import_path, import_kind
+        FROM import_facts
+        WHERE file LIKE ?
+        ORDER BY import_path
+        LIMIT ?
+    "#;
+
+    let mut stmt = conn.prepare(sql)?;
+    let imports: Vec<ImportInfo> = stmt
+        .query_map([format!("%{}%", pattern), limit.to_string()], |row| {
+            Ok(ImportInfo {
+                path: row.get(0)?,
+                kind: row.get(1)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(serde_json::to_string_pretty(&imports)?)
+}
+
+/// Query importers and return JSON string
+pub fn importers_json(conn: &Connection, pattern: &str, limit: usize) -> Result<String> {
+    let sql = r#"
+        SELECT file, imported_names
+        FROM import_facts
+        WHERE import_path LIKE ?
+        ORDER BY file
+        LIMIT ?
+    "#;
+
+    let mut stmt = conn.prepare(sql)?;
+    let importers: Vec<ImporterInfo> = stmt
+        .query_map([format!("%{}%", pattern), limit.to_string()], |row| {
+            Ok(ImporterInfo {
+                file: row.get(0)?,
+                names: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(serde_json::to_string_pretty(&importers)?)
+}
+
 /// Query what a module imports
 pub fn execute_imports(conn: &Connection, options: &AssayOptions) -> Result<()> {
     let pattern = options

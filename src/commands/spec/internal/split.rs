@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::path::Path;
 
 use patina::release::BumpType;
+use patina::spec::SpecStatus;
 
 use super::archive::{load_spec, release_and_archive};
 use super::mutations::{git_stage_and_commit, mutate_spec};
@@ -58,8 +59,8 @@ pub fn split_spec_value(
 ) -> Result<SplitResult> {
     // 1. Load spec and validate status (active or paused)
     let loaded = load_spec(id)?;
-    match loaded.status.as_deref() {
-        Some("active") | Some("paused") => {}
+    match loaded.status {
+        Some(SpecStatus::Active) | Some(SpecStatus::Paused) => {}
         Some(s) => anyhow::bail!(
             "Cannot split '{}' — status is '{}', expected 'active' or 'paused'",
             id,
@@ -84,7 +85,7 @@ pub fn split_spec_value(
     // 3. Complete original spec via mutate_spec (replaces manual read-parse-mutate-write-DB)
     let original_file = loaded.file_path.clone();
     let out = mutate_spec(loaded, |fm| {
-        fm.status = Some("complete".to_string());
+        fm.status = Some(SpecStatus::Complete);
         Ok(())
     })?;
 

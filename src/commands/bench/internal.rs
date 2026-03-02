@@ -499,6 +499,21 @@ pub fn run_benchmark(
         println!("   Quality: {}", quality);
     }
 
+    // Emit measurement: bench results to events.db
+    patina::measure::emit_or_warn(
+        "search",
+        "bench",
+        &query_set.name,
+        &serde_json::json!({
+            "mrr": mrr,
+            "recall_at_5": recall_5,
+            "recall_at_10": recall_10,
+            "latency_p50_ms": latency_p50.as_secs_f64() * 1000.0,
+            "latency_p95_ms": latency_p95.as_secs_f64() * 1000.0,
+            "query_count": num_queries,
+        }),
+    );
+
     Ok(())
 }
 

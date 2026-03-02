@@ -824,6 +824,20 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
         .map(|m| m.len() / 1024)
         .unwrap_or(0);
 
+    // Emit measurement: git scrape capture metrics
+    patina::measure::emit_or_warn(
+        "capture",
+        "scrape",
+        "git",
+        &serde_json::json!({
+            "commits_processed": commit_count,
+            "tags_indexed": tag_count,
+            "tracked_files": tracked_count,
+            "co_change_pairs": co_change_count,
+            "duration_ms": elapsed.as_millis() as u64,
+        }),
+    );
+
     Ok(ScrapeStats {
         items_processed: commit_count,
         time_elapsed: elapsed,

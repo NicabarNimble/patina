@@ -371,6 +371,82 @@ pub(super) fn leak_check(body: &str, secret_name: &str, secret_value: &str) -> S
     }
 }
 
+// =========================================================================
+// Measure host support
+// =========================================================================
+
+/// Valid protocol verbs for measurement events.
+const VALID_VERBS: &[&str] = &["capture", "index", "search", "believe", "evolve"];
+
+/// Record a measurement event from a plugin.
+///
+/// Validates verb, checks metrics are numeric JSON, writes to eventlog
+/// with source overridden to the plugin name (security: plugins can't
+/// impersonate core).
+pub(super) fn record_measurement(
+    project_root: &Option<PathBuf>,
+    plugin_name: &str,
+    verb: &str,
+    tool: &str,
+    mode: &str,
+    metrics_json: &str,
+) -> Result<(), String> {
+    // Validate verb
+    if !VALID_VERBS.contains(&verb) {
+        return Err(format!(
+            "invalid verb '{}': must be one of {:?}",
+            verb, VALID_VERBS
+        ));
+    }
+
+    // Validate metrics_json is a JSON object with numeric values
+    let metrics: serde_json::Value =
+        serde_json::from_str(metrics_json).map_err(|e| format!("invalid metrics JSON: {}", e))?;
+
+    let obj = metrics
+        .as_object()
+        .ok_or_else(|| "metrics must be a JSON object".to_string())?;
+
+    for (key, value) in obj {
+        if !value.is_number() {
+            return Err(format!("metric '{}' must be numeric, got {}", key, value));
+        }
+    }
+
+    // Open patina.db
+    let root = project_root
+        .as_ref()
+        .ok_or_else(|| "no project root".to_string())?;
+    let db_path = root.join(crate::eventlog::PATINA_DB);
+    let conn =
+        crate::eventlog::initialize(&db_path).map_err(|e| format!("open patina.db: {}", e))?;
+
+    // Build event data — source is always the plugin name
+    let event_data = serde_json::json!({
+        "verb": verb,
+        "tool": tool,
+        "mode": mode,
+        "metrics": metrics,
+        "source": plugin_name,
+    });
+
+    let event_type = format!("measure.{}", verb);
+    let source_id = format!("plugin:{}:{}:{}", plugin_name, tool, mode);
+    let timestamp = chrono::Utc::now().to_rfc3339();
+
+    crate::eventlog::insert_event(
+        &conn,
+        &event_type,
+        &timestamp,
+        &source_id,
+        None,
+        &event_data.to_string(),
+    )
+    .map_err(|e| format!("insert measurement event: {}", e))?;
+
+    Ok(())
+}
+
 /// Domain-allowlisted HTTP POST.
 ///
 /// Defense in depth: domains are validated at load time (check_capabilities)

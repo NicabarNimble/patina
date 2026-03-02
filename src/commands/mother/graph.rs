@@ -5,7 +5,7 @@
 use anyhow::{bail, Result};
 use std::path::Path;
 
-use patina::mother::{BeliefEntry, EdgeType, Graph, NodeType, MIN_SAMPLES};
+use patina::mother::{BeliefEntry, BeliefStatus, EdgeType, Graph, NodeType, MIN_SAMPLES};
 use patina::paths;
 
 use crate::commands::repo::internal::Registry;
@@ -78,11 +78,20 @@ pub fn sync_from_registry() -> Result<()> {
         let db_path = project_root.join(".patina/local/data/patina.db");
         match collect_project_beliefs(project_name, &db_path) {
             Ok(entries) => {
-                let count = entries.len();
-                beliefs_synced += count;
+                let b = entries.iter().filter(|e| e.kind != "value").count();
+                let v = entries.iter().filter(|e| e.kind == "value").count();
+                beliefs_synced += b;
+                values_synced += v;
                 synced_sources.push(project_name.to_string());
-                if count > 0 {
-                    println!("  + {} beliefs from {} (current)", count, project_name);
+                if b + v > 0 {
+                    if v > 0 {
+                        println!(
+                            "  + {} beliefs + {} values from {} (current)",
+                            b, v, project_name
+                        );
+                    } else {
+                        println!("  + {} beliefs from {} (current)", b, project_name);
+                    }
                 }
                 knowledge.extend(entries);
             }
@@ -106,11 +115,17 @@ pub fn sync_from_registry() -> Result<()> {
         let db_path = registry_path.join(".patina/local/data/patina.db");
         match collect_project_beliefs(name, &db_path) {
             Ok(entries) => {
-                let count = entries.len();
-                beliefs_synced += count;
+                let b = entries.iter().filter(|e| e.kind != "value").count();
+                let v = entries.iter().filter(|e| e.kind == "value").count();
+                beliefs_synced += b;
+                values_synced += v;
                 synced_sources.push(name.clone());
-                if count > 0 {
-                    println!("  + {} beliefs from {}", count, name);
+                if b + v > 0 {
+                    if v > 0 {
+                        println!("  + {} beliefs + {} values from {}", b, v, name);
+                    } else {
+                        println!("  + {} beliefs from {}", b, name);
+                    }
                 }
                 knowledge.extend(entries);
             }
@@ -125,10 +140,11 @@ pub fn sync_from_registry() -> Result<()> {
     // Read persona values from ~/.patina/layer/surface/beliefs/
     match collect_persona_values() {
         Ok(entries) => {
-            values_synced = entries.len();
+            let persona_count = entries.len();
+            values_synced += persona_count;
             synced_sources.push("persona".to_string());
-            if values_synced > 0 {
-                println!("  + {} values from persona", values_synced);
+            if persona_count > 0 {
+                println!("  + {} values from persona", persona_count);
             }
             knowledge.extend(entries);
         }
@@ -204,8 +220,8 @@ pub fn sync_from_registry() -> Result<()> {
     // Sync edges into graph.db
     graph.sync_belief_edges(&supports_edges, &attacks_edges, &edge_synced_sources)?;
 
-    // Dangling edge detection: warn about edges referencing non-existent beliefs
-    detect_dangling_edges(&graph)?;
+    // Auto-clean dangling edges: delete edges referencing non-existent beliefs
+    clean_dangling_edges(&graph)?;
 
     println!();
     println!(
@@ -259,7 +275,7 @@ fn detect_project_domains(project_root: &Path) -> Vec<String> {
 
 /// Collect beliefs from a project's patina.db
 ///
-/// Opens the project's patina.db and reads the beliefs table (12 columns).
+/// Opens the project's patina.db and reads the beliefs table (23 columns).
 /// Returns empty vec with warning on missing db or missing table.
 fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<BeliefEntry>> {
     use rusqlite::Connection;
@@ -283,26 +299,63 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
         anyhow::bail!("no beliefs table — run `patina scrape --rebuild`");
     }
 
-    let mut stmt = conn.prepare(
+    // Query all columns. Handle missing columns gracefully for older project DBs
+    // by checking which columns exist before building the SELECT.
+    let has_kind = conn.prepare("SELECT kind FROM beliefs LIMIT 0").is_ok();
+    let has_grounding = conn
+        .prepare("SELECT grounding_score FROM beliefs LIMIT 0")
+        .is_ok();
+    let has_verification = conn
+        .prepare("SELECT verification_total FROM beliefs LIMIT 0")
+        .is_ok();
+    let has_last_activity = conn
+        .prepare("SELECT last_activity FROM beliefs LIMIT 0")
+        .is_ok();
+
+    let kind_col = if has_kind { ", kind" } else { ", 'belief'" };
+    let grounding_cols = if has_grounding {
+        ", grounding_score, grounding_code_count, grounding_commit_count, grounding_session_count, grounding_forge_count"
+    } else {
+        ", 0.0, 0, 0, 0, 0"
+    };
+    let verification_cols = if has_verification {
+        ", verification_total, verification_passed, verification_failed, verification_errored"
+    } else {
+        ", 0, 0, 0, 0"
+    };
+    let last_activity_col = if has_last_activity {
+        ", last_activity"
+    } else {
+        ", NULL"
+    };
+
+    let sql = format!(
         "SELECT id, statement, entrenchment, status, facets,
                 cited_by_beliefs, cited_by_sessions, applied_in,
                 evidence_count, evidence_verified, health_score, contested_by, imported
+                {}{}{}{}
          FROM beliefs WHERE status != 'archived'",
-    )?;
+        kind_col, grounding_cols, verification_cols, last_activity_col
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
 
     let entries: Vec<BeliefEntry> = stmt
         .query_map([], |row| {
             Ok(BeliefEntry {
                 id: row.get(0)?,
                 source: project_name.to_string(),
-                kind: "belief".to_string(),
+                kind: row
+                    .get::<_, Option<String>>(13)?
+                    .unwrap_or_else(|| "belief".to_string()),
                 statement: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
                 entrenchment: row
                     .get::<_, Option<String>>(2)?
                     .unwrap_or_else(|| "medium".to_string()),
-                status: row
-                    .get::<_, Option<String>>(3)?
-                    .unwrap_or_else(|| "active".to_string()),
+                status: BeliefStatus::from_str_or_default(
+                    &row.get::<_, Option<String>>(3)?
+                        .unwrap_or_else(|| "active".to_string()),
+                ),
                 facets: row
                     .get::<_, Option<String>>(4)?
                     .unwrap_or_else(|| "[]".to_string()),
@@ -314,6 +367,16 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
                 health_score: row.get::<_, Option<f64>>(10)?.unwrap_or(0.0),
                 contested_by: row.get::<_, Option<String>>(11)?.unwrap_or_default(),
                 imported: row.get::<_, Option<i32>>(12)?.unwrap_or(0) != 0,
+                grounding_score: row.get::<_, Option<f64>>(14)?.unwrap_or(0.0),
+                grounding_code_count: row.get::<_, Option<i32>>(15)?.unwrap_or(0),
+                grounding_commit_count: row.get::<_, Option<i32>>(16)?.unwrap_or(0),
+                grounding_session_count: row.get::<_, Option<i32>>(17)?.unwrap_or(0),
+                grounding_forge_count: row.get::<_, Option<i32>>(18)?.unwrap_or(0),
+                verification_total: row.get::<_, Option<i32>>(19)?.unwrap_or(0),
+                verification_passed: row.get::<_, Option<i32>>(20)?.unwrap_or(0),
+                verification_failed: row.get::<_, Option<i32>>(21)?.unwrap_or(0),
+                verification_errored: row.get::<_, Option<i32>>(22)?.unwrap_or(0),
+                last_activity: row.get::<_, Option<String>>(23)?,
             })
         })?
         .filter_map(|r| r.ok())
@@ -395,19 +458,17 @@ fn collect_belief_edges(
     Ok((supports, attacks))
 }
 
-/// Detect dangling edges: edges referencing belief IDs not in the beliefs table.
-/// Logs warnings to stderr, does NOT auto-delete.
-fn detect_dangling_edges(graph: &Graph) -> Result<()> {
-    let dangling = graph.find_dangling_edges()?;
+/// Clean dangling edges: edges referencing belief IDs not in the beliefs table.
+/// Deletes them and logs the count.
+fn clean_dangling_edges(graph: &Graph) -> Result<()> {
+    let deleted = graph.delete_dangling_edges()?;
 
-    if !dangling.is_empty() {
-        eprintln!(
-            "  ⚠ {} dangling edges (referencing unknown beliefs):",
-            dangling.len()
+    if deleted > 0 {
+        println!(
+            "  🧹 Cleaned {} dangling edge{}",
+            deleted,
+            if deleted == 1 { "" } else { "s" }
         );
-        for (edge_type, from, to, source) in &dangling {
-            eprintln!("    {} {} → {} (from {})", edge_type, from, to, source);
-        }
     }
 
     Ok(())
@@ -485,7 +546,7 @@ fn parse_persona_value(path: &Path) -> Result<BeliefEntry> {
         .as_str()
         .unwrap_or("medium")
         .to_string();
-    let status = yaml["status"].as_str().unwrap_or("active").to_string();
+    let status = BeliefStatus::from_str_or_default(yaml["status"].as_str().unwrap_or("active"));
     let facets = if let Some(seq) = yaml["facets"].as_sequence() {
         let tags: Vec<String> = seq
             .iter()
@@ -512,6 +573,16 @@ fn parse_persona_value(path: &Path) -> Result<BeliefEntry> {
         health_score: 0.0,
         contested_by: String::new(),
         imported: false,
+        grounding_score: 0.0,
+        grounding_code_count: 0,
+        grounding_commit_count: 0,
+        grounding_session_count: 0,
+        grounding_forge_count: 0,
+        verification_total: 0,
+        verification_passed: 0,
+        verification_failed: 0,
+        verification_errored: 0,
+        last_activity: None,
     })
 }
 
@@ -776,7 +847,7 @@ pub fn search_beliefs_cli(query: &str, limit: usize) -> Result<()> {
 
     println!();
     for entry in &results {
-        // Line 1: [source] id kind entrenchment
+        // Line 1: [source] id kind entrenchment health=X.XX
         let source_display = if entry.source == "persona" {
             "[persona]".to_string()
         } else {
@@ -784,11 +855,12 @@ pub fn search_beliefs_cli(query: &str, limit: usize) -> Result<()> {
         };
 
         println!(
-            "{:<20} {:<30} {:<8} {}",
+            "{:<20} {:<30} {:<8} {} health={:.2}",
             source_display,
             truncate(&entry.id, 30),
             entry.kind,
-            entry.entrenchment
+            entry.entrenchment,
+            entry.health_score
         );
 
         // Line 2: statement (truncated to 200 chars)
@@ -798,6 +870,13 @@ pub fn search_beliefs_cli(query: &str, limit: usize) -> Result<()> {
             entry.statement.clone()
         };
         println!("{:20} \"{}\"", "", stmt_display);
+
+        // Line 3: applied_in projects (if any)
+        let projects = graph.query_belief_applied_in(&entry.id).unwrap_or_default();
+        if !projects.is_empty() {
+            println!("{:20} projects: {}", "", projects.join(", "));
+        }
+
         println!();
     }
 
