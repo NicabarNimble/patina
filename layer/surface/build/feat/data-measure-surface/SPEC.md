@@ -12,6 +12,7 @@ beliefs:
 - events-are-autobiography-not-telemetry
 - parse-at-boundary-type-the-interior
 - correctness-by-construction-not-convention
+- eventlog-is-infrastructure
 exit_criteria:
 - id: measure-full-json-returns-structured-health-across-all-5-verbs
   text: '`patina measure --full --json` returns structured health JSON covering all 5 verbs with status, metrics, and diagnostics'
@@ -38,16 +39,16 @@ exit_criteria:
   text: each verb has a `diagnostics` array listing specific problems (not generic suggestions)
   checked: false
 - id: no-serde-json-value-in-new-code
-  text: "zero `serde_json::Value` in new FullMeasureReport types — all fields are typed Rust structs/enums. Raw fallback only in existing VerbMetrics::Raw path."
+  text: zero `serde_json::Value` in new FullMeasureReport types — all fields are typed Rust structs/enums. Raw fallback only in existing VerbMetrics::Raw path.
   checked: false
 - id: no-get-chains-in-new-code
-  text: "zero `.get().and_then().unwrap_or()` chains in new measure code — DB rows parse into typed structs at the query boundary via `from_db()` or `#[derive(Deserialize)]`"
+  text: zero `.get().and_then().unwrap_or()` chains in new measure code — DB rows parse into typed structs at the query boundary via `from_db()` or `#[derive(Deserialize)]`
   checked: false
 - id: diagnostics-derived-from-typed-structs
-  text: "diagnostic strings are computed from typed metric structs (e.g., `BelieveMetrics.floating_count`), never from raw JSON or ad-hoc DB queries"
+  text: diagnostic strings are computed from typed metric structs (e.g., `BelieveMetrics.floating_count`), never from raw JSON or ad-hoc DB queries
   checked: false
 - id: health-summary-derived-from-typed-report
-  text: "`health.summary` is generated from `FullMeasureReport` typed fields, not hand-assembled from separate queries"
+  text: '`health.summary` is generated from `FullMeasureReport` typed fields, not hand-assembled from separate queries'
   checked: false
 ---
 # feat: Measure as LLM Query Surface — Structured Health for AI Consumers
