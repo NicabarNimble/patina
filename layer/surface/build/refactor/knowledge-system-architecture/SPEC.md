@@ -192,7 +192,21 @@ Mother's ref repo registry generalizes into a data lake registry:
 - Spec → plugin (complex extraction, involves CLI surface)
 - Sessions → plugin (simpler, fewer dependencies)
 - Code grammars dispatch cleanup (partially done via pipeline plugins)
-- [[spec-plugin-extraction]] covers spec extraction in detail
+
+**Spec extraction coupling** (absorbed from [[spec-plugin-extraction]]):
+The spec system touches filesystem (YAML frontmatter in `layer/surface/build/`),
+database (`patterns` table, `spec_deps`), git (tags, staging, commits, archive),
+release (version bumps), and MCP (13 tool handlers). It does NOT currently use
+the eventlog — that gap must be filled before extraction. Key host boundary
+decision: host-provided eventlog (plugin calls `emit-event()`, host writes to
+shared eventlog) over plugin-scoped logs. Plugin speaks stable interface, host
+owns storage. Host must also provide: filesystem read/write, git operations,
+eventlog emit/query, and MCP tool registration (plugins declare tools, host
+collects for `tools/list`).
+
+**Spec audit gate** — a feature of the spec plugin (mandatory review before
+completion), not a standalone spec. Depends on better measure data to audit
+against. Tracked as a future feature of the extracted spec plugin.
 
 ### Phase 3: Mother and Personas
 **Goal:** Persona federation is operational.
