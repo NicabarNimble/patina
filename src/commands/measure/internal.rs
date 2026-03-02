@@ -68,7 +68,7 @@ struct HistoryEntry {
     timestamp: String,
     tool: String,
     mode: String,
-    metrics: serde_json::Value,
+    metrics: VerbMetrics,
 }
 
 // ============================================================================
@@ -92,6 +92,8 @@ pub enum VerbMetrics {
     Search(SearchMetrics),
     Believe(BelieveMetrics),
     Evolve(EvolveMetrics),
+    BelieveHistory(BelieveHistoryMetrics),
+    EvolveHistory(EvolveHistoryMetrics),
     /// Fallback for unrecognized metric shapes — preserves data, logs warning.
     Raw(serde_json::Value),
 }
@@ -222,6 +224,17 @@ impl VerbMetrics {
                 ("total_beliefs_captured".into(), m.total_beliefs_captured.to_string()),
                 ("total_patterns_modified".into(), m.total_patterns_modified.to_string()),
             ],
+            VerbMetrics::BelieveHistory(m) => vec![
+                ("beliefs".into(), m.beliefs.to_string()),
+                ("floating".into(), m.floating.to_string()),
+                ("avg_evidence".into(), format!("{:.2}", m.avg_evidence)),
+            ],
+            VerbMetrics::EvolveHistory(m) => vec![
+                ("commits".into(), m.commits.to_string()),
+                ("files".into(), m.files.to_string()),
+                ("beliefs".into(), m.beliefs.to_string()),
+                ("patterns".into(), m.patterns.to_string()),
+            ],
             VerbMetrics::Raw(v) => {
                 if let Some(obj) = v.as_object() {
                     obj.iter()
@@ -325,6 +338,25 @@ pub struct EvolveMetrics {
     pub total_files_changed: i64,
     pub total_beliefs_captured: i64,
     pub total_patterns_modified: i64,
+}
+
+/// History-only metrics for believe drill-down. Field names are disjoint
+/// from BelieveMetrics (beliefs vs total_beliefs) for unambiguous untagged serde.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BelieveHistoryMetrics {
+    pub beliefs: i64,
+    pub floating: i64,
+    pub avg_evidence: f64,
+}
+
+/// History-only metrics for evolve drill-down. Field names are disjoint
+/// from EvolveMetrics (commits vs total_commits) for unambiguous untagged serde.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EvolveHistoryMetrics {
+    pub commits: i64,
+    pub files: i64,
+    pub beliefs: i64,
+    pub patterns: i64,
 }
 
 // ============================================================================
@@ -1019,6 +1051,7 @@ fn user_friendly_metrics(src: &SourceSummary) -> String {
                 },
             )
         }
+        VerbMetrics::BelieveHistory(_) | VerbMetrics::EvolveHistory(_) => String::new(),
         VerbMetrics::Raw(_) => String::new(),
     }
 }
@@ -1209,16 +1242,20 @@ fn get_recent_history(
         Err(_) => return Ok(Vec::new()),
     };
 
+    // Extract verb from event_type (e.g., "measure.capture" → "capture")
+    let verb = event_type
+        .strip_prefix("measure.")
+        .unwrap_or(event_type);
+
     let entries: Vec<HistoryEntry> = stmt
         .query_map(rusqlite::params![event_type, limit as i64], |row| {
+            let mode: String = row.get(2)?;
             let metrics_str: String = row.get(3)?;
-            let metrics: serde_json::Value =
-                serde_json::from_str(&metrics_str).unwrap_or(serde_json::Value::Null);
             Ok(HistoryEntry {
                 timestamp: row.get(0)?,
                 tool: row.get(1)?,
-                mode: row.get(2)?,
-                metrics,
+                mode: mode.clone(),
+                metrics: VerbMetrics::from_db(verb, &mode, &metrics_str),
             })
         })?
         .filter_map(|r| r.ok())
@@ -1248,10 +1285,10 @@ fn get_believe_history(conn: &Connection, limit: usize) -> Result<Vec<HistoryEnt
                 timestamp: row.get(0)?,
                 tool: "scrape".to_string(),
                 mode: "beliefs".to_string(),
-                metrics: serde_json::json!({
-                    "beliefs": row.get::<_, i64>(1)?,
-                    "floating": row.get::<_, i64>(2)?,
-                    "avg_evidence": (row.get::<_, f64>(3)? * 100.0).round() / 100.0,
+                metrics: VerbMetrics::BelieveHistory(BelieveHistoryMetrics {
+                    beliefs: row.get(1)?,
+                    floating: row.get(2)?,
+                    avg_evidence: (row.get::<_, f64>(3)? * 100.0).round() / 100.0,
                 }),
             })
         })?
@@ -1281,11 +1318,11 @@ fn get_evolve_history(conn: &Connection, limit: usize) -> Result<Vec<HistoryEntr
                 timestamp: row.get(0)?,
                 tool: "session".to_string(),
                 mode: "lifecycle".to_string(),
-                metrics: serde_json::json!({
-                    "commits": row.get::<_, i64>(1)?,
-                    "files": row.get::<_, i64>(2)?,
-                    "beliefs": row.get::<_, i64>(3)?,
-                    "patterns": row.get::<_, i64>(4)?,
+                metrics: VerbMetrics::EvolveHistory(EvolveHistoryMetrics {
+                    commits: row.get(1)?,
+                    files: row.get(2)?,
+                    beliefs: row.get(3)?,
+                    patterns: row.get(4)?,
                 }),
             })
         })?
@@ -1366,23 +1403,11 @@ fn format_age(timestamp: &str) -> String {
     "unknown".to_string()
 }
 
-fn format_metrics_inline(metrics: &serde_json::Value) -> String {
-    let Some(obj) = metrics.as_object() else {
-        return metrics.to_string();
-    };
-
-    obj.iter()
-        .map(|(k, v)| {
-            if let Some(f) = v.as_f64() {
-                if f == f.floor() && f.abs() < 1_000_000.0 {
-                    format!("{}={}", k, f as i64)
-                } else {
-                    format!("{}={:.3}", k, f)
-                }
-            } else {
-                format!("{}={}", k, v)
-            }
-        })
+fn format_metrics_inline(metrics: &VerbMetrics) -> String {
+    metrics
+        .format_kv()
+        .iter()
+        .map(|(k, v)| format!("{}={}", k, v))
         .collect::<Vec<_>>()
         .join(" ")
 }
