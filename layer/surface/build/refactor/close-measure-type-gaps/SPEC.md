@@ -35,10 +35,18 @@ exit_criteria:
 - id: format-metrics-inline-typed
   text: format_metrics_inline operates on VerbMetrics (not Value), or is replaced by VerbMetrics::format_kv()
   checked: false
+- id: drilldown-json-preserved
+  text: patina measure --verb believe/evolve --json drill-down output preserves history field names
+  checked: false
+  verify: diff drill-down baseline against current output with sorted keys
 - id: json-shape-preserved
   text: patina measure --json output identical to v0.35.5 baseline (key names and values)
   checked: false
   verify: diff baseline against current output with sorted keys
+- id: live-capture-modes-exercised
+  text: patina measure --json exercises all typed capture modes (no Raw fallback in normal operation)
+  checked: false
+  verify: patina measure --json | python3 -c "import sys,json; d=json.load(sys.stdin); [print(s['mode']) for v in d['verbs'] if v['verb']=='capture' for s in v['sources']]"
 - id: existing-tests-pass
   text: cargo test passes, pre-push checks pass
   checked: false
@@ -115,35 +123,47 @@ call site.
 - Add 4 new VerbMetrics variants: `CaptureBeliefs`, `CaptureLayer`, `CaptureGitScrape`,
   `CaptureHealthCheck`
 - Remove `CaptureGenericMetrics` struct and `CaptureGeneric` variant
+- Remove `BTreeMap` import if no longer used
 - Update `from_db()` dispatch: explicit arms for `("capture", "beliefs")`,
   `("capture", "layer")`, `("capture", "git")`, `("capture", "health-check")`;
-  unknown capture modes fall to `Raw`
+  unknown capture modes fall to `Raw`. Note: `CaptureGitMetrics` (for `git.commit`
+  direct construction) is never routed through `from_db()` — the `("capture", "git")`
+  arm routes to `CaptureGitScrapeMetrics` for `measure.capture` events only
 - Update `user_friendly_metrics`: replace `CaptureGeneric` arm with 4 typed arms using
-  direct field access; remove `_verb` parameter from signature and call site
+  direct field access; remove `_verb` parameter from signature and call site (line 773
+  in `render_user_view`)
+- Update unit tests: replace `CaptureGeneric` assertions with new variant names; add
+  test that each known capture mode deserializes to its typed variant (not Raw)
 - Compile, test, verify JSON shape
 
 ### Phase 2: Add format_kv() + fix render paths (1 commit)
 
 - Add `VerbMetrics::format_kv(&self) -> Vec<(String, String)>` method that matches on
-  variants and returns key-value pairs for display
+  variants and returns key-value pairs for display. Standardize units in formatted
+  values: `ms` suffix for durations, `%` for rates, integer formatting for counts
 - Update `render_system_view`: replace `serde_json::to_value` round-trip with
   `format_kv()` iteration
 - Update `format_metrics_inline` to accept `VerbMetrics` instead of `&serde_json::Value`
-  (or replace with `format_kv()`)
+  (or replace with `format_kv()` + join)
 - Compile, test
 
 ### Phase 3: Type HistoryEntry.metrics (1 commit)
 
+- Capture drill-down baselines before changes:
+  `patina measure --verb believe --json > /tmp/drilldown-believe-baseline.json`
+  `patina measure --verb evolve --json > /tmp/drilldown-evolve-baseline.json`
 - Change `HistoryEntry.metrics` from `serde_json::Value` to `VerbMetrics`
+- Define `BelieveHistoryMetrics { beliefs, floating, avg_evidence }` and
+  `EvolveHistoryMetrics { commits, files, beliefs, patterns }` as new VerbMetrics
+  variants (Option A from ADR-3 — history shapes are genuinely different)
 - Update `get_recent_history`: use `VerbMetrics::from_db()` at DB boundary
-- Update `get_believe_history`: construct `VerbMetrics::Believe(BelieveMetrics { ... })`
-  — note: history shape differs from summary (fewer fields), so define
-  `BelieveHistoryMetrics` or use `Raw` for the reduced shape
-- Update `get_evolve_history`: construct `VerbMetrics::Evolve(EvolveMetrics { ... })`
-  — same concern: history has `commits/files/beliefs/patterns` not the full
-  `total_*` field names. Define `EvolveHistoryMetrics` or rename fields to match
-- Update `format_metrics_inline` call sites to pass `&VerbMetrics`
-- Compile, test, verify drill-down JSON shape
+- Update `get_believe_history`: construct `VerbMetrics::BelieveHistory(...)` directly
+- Update `get_evolve_history`: construct `VerbMetrics::EvolveHistory(...)` directly
+- Update `format_metrics_inline` call sites to pass `&VerbMetrics` (or use format_kv())
+- Verify: history-only variants use `#[serde(untagged)]` serialization correctly —
+  no field overlap with summary variants (different field names guarantees this)
+- Diff drill-down JSON against baselines to prove MCP drill-down shape preserved
+- Compile, test
 
 ### Phase 4: Verify + clean up (1 commit)
 
@@ -156,14 +176,8 @@ call site.
 
 ## Open Questions
 
-1. **History metrics shape divergence.** `get_believe_history` constructs
-   `{ beliefs, floating, avg_evidence }` which has different field names than
-   `BelieveMetrics { total_beliefs, floating_count, ... }`. Options:
-   a. Define separate `BelieveHistoryMetrics` / `EvolveHistoryMetrics` structs
-      (adds 2 variants to the enum)
-   b. Normalize history field names to match summary (breaking change in drill-down JSON)
-   c. Use `Raw` for history entries (defers the problem again)
-   Decision: resolve during Phase 3 design review.
+1. ~~**History metrics shape divergence.**~~ Resolved: Option A — separate
+   `BelieveHistoryMetrics` / `EvolveHistoryMetrics` structs. See ADR-3 in DESIGN.md.
 
 2. **SourceSummary string fields.** `source_type`, `tool`, `mode` are finite-valued
    strings that are partially redundant with the VerbMetrics variant. Typing these

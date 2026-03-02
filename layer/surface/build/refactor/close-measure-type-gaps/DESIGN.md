@@ -65,6 +65,14 @@ pub struct CaptureHealthCheckMetrics {
 **Naming:** `CaptureGitScrapeMetrics` (not `CaptureGitMetrics`) because `CaptureGitMetrics`
 already exists for the `git.commit` construction path in `build_capture_summary`.
 
+**Mode routing safety:** `CaptureGitMetrics` is only used for direct construction in
+`build_capture_summary` (the `git.commit` event source) — it never enters `from_db()`.
+The `("capture", "git")` arm in `from_db()` routes exclusively to `CaptureGitScrapeMetrics`
+for `measure.capture` events. These two paths cannot cross-wire because `git.commit` sources
+are built inline with known field values, while `measure.capture` events flow through
+`collect_measure_sources` → `from_db()`. A unit test should exercise both paths to make
+this invariant explicit.
+
 ### ADR-2: format_kv() method over serialize-back-to-Value
 
 **Decision:** Add `VerbMetrics::format_kv(&self) -> Vec<(String, String)>` that matches on
@@ -77,26 +85,36 @@ The method gives renderers access to field names and formatted values without lo
 information. For Raw fallback, format_kv() serializes the inner Value (acceptable since
 Raw data is genuinely untyped).
 
+**Unit standardization:** `format_kv()` should apply consistent formatting to values:
+durations get `ms` suffix, rates get `%`, counts are plain integers. This keeps system
+view and history output visually consistent now that both flow through the same helper.
+
 **Alternative considered:** `impl Display for VerbMetrics`. Rejected because the system view
 needs key-value pairs for columnar display, not a single formatted string.
 
-### ADR-3: History entry typing strategy
+### ADR-3: History entry typing — separate structs (Option A)
 
-**Decision:** To be resolved in Phase 3. Two viable approaches:
-
-**Option A — Separate history structs:**
-Add `BelieveHistoryMetrics { beliefs, floating, avg_evidence }` and
+**Decision:** Add `BelieveHistoryMetrics { beliefs, floating, avg_evidence }` and
 `EvolveHistoryMetrics { commits, files, beliefs, patterns }` as new VerbMetrics variants.
-Pro: preserves current JSON field names in drill-down output. Con: adds 2 more variants.
 
-**Option B — Normalize to match summary structs:**
-Change `get_believe_history` to use `BelieveMetrics` field names (total_beliefs instead
-of beliefs, floating_count instead of floating). Pro: reuses existing structs, no new
-variants. Con: changes drill-down JSON output (breaking for MCP consumers).
+**Rationale:** History shapes are genuinely different from summary shapes — fewer fields,
+different names (`beliefs` vs `total_beliefs`, `floating` vs `floating_count`). Reusing
+the summary structs would require either renaming fields (breaking drill-down JSON for
+MCP consumers) or making all fields Optional (losing the "this shape is complete" signal).
+Separate small structs are semantically honest.
 
-**Recommendation:** Option A — history shapes are genuinely different from summaries (fewer
-fields, different names), so separate structs are semantically honest. The variant count
-increase is acceptable given they're each small (3-4 fields).
+**Confirmed baseline shapes (from live data):**
+- believe drill-down: `{ beliefs: i64, floating: i64, avg_evidence: f64 }`
+- evolve drill-down: `{ commits: i64, files: i64, beliefs: i64, patterns: i64 }`
+
+**Serde note:** History-only variants participate in `#[serde(untagged)]` serialization
+on VerbMetrics. Since field names are disjoint from summary variants (`beliefs` vs
+`total_beliefs`, `commits` vs `total_commits`), there is no serialization overlap.
+Deserialization remains manual via `from_db()`, so no ambiguity. The history structs
+derive both `Serialize` and `Deserialize` like all other metric structs.
+
+**Alternative rejected:** Option B (normalize field names) — would break `patina measure
+--verb believe --json` output consumed by MCP clients.
 
 ### ADR-4: SourceSummary string fields — deferred
 
