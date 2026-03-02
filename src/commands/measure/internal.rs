@@ -13,6 +13,171 @@ use super::MeasureOptions;
 use patina::eventlog;
 
 // ============================================================================
+// Domain Enums — construction-only, no Deserialize
+// ============================================================================
+
+/// Event source type — finite set of event_type strings from DB.
+/// Explicit per-variant `serde(rename)` because values contain dots.
+#[derive(Debug, Clone, Serialize)]
+pub enum SourceType {
+    #[serde(rename = "measure.capture")]
+    MeasureCapture,
+    #[serde(rename = "measure.index")]
+    MeasureIndex,
+    #[serde(rename = "measure.search")]
+    MeasureSearch,
+    #[serde(rename = "measure.believe")]
+    MeasureBelieve,
+    #[serde(rename = "measure.evolve")]
+    MeasureEvolve,
+    #[serde(rename = "git.commit")]
+    GitCommit,
+    #[serde(rename = "beliefs")]
+    Beliefs,
+    #[serde(rename = "session.ended")]
+    SessionEnded,
+}
+
+impl SourceType {
+    fn from_verb(verb: &str) -> Option<Self> {
+        match verb {
+            "capture" => Some(SourceType::MeasureCapture),
+            "index" => Some(SourceType::MeasureIndex),
+            "search" => Some(SourceType::MeasureSearch),
+            "believe" => Some(SourceType::MeasureBelieve),
+            "evolve" => Some(SourceType::MeasureEvolve),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for SourceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SourceType::MeasureCapture => write!(f, "measure.capture"),
+            SourceType::MeasureIndex => write!(f, "measure.index"),
+            SourceType::MeasureSearch => write!(f, "measure.search"),
+            SourceType::MeasureBelieve => write!(f, "measure.believe"),
+            SourceType::MeasureEvolve => write!(f, "measure.evolve"),
+            SourceType::GitCommit => write!(f, "git.commit"),
+            SourceType::Beliefs => write!(f, "beliefs"),
+            SourceType::SessionEnded => write!(f, "session.ended"),
+        }
+    }
+}
+
+/// Tool name — finite set of tool identifiers.
+#[derive(Debug, Clone, Serialize)]
+pub enum ToolName {
+    #[serde(rename = "scrape")]
+    Scrape,
+    #[serde(rename = "session")]
+    Session,
+    #[serde(rename = "eval")]
+    Eval,
+    #[serde(rename = "oxidize")]
+    Oxidize,
+    #[serde(rename = "doctor")]
+    Doctor,
+    #[serde(rename = "belief")]
+    Belief,
+}
+
+impl ToolName {
+    fn from_db_str(s: &str) -> Option<Self> {
+        match s {
+            "scrape" => Some(ToolName::Scrape),
+            "session" => Some(ToolName::Session),
+            "eval" => Some(ToolName::Eval),
+            "oxidize" => Some(ToolName::Oxidize),
+            "doctor" => Some(ToolName::Doctor),
+            "belief" => Some(ToolName::Belief),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for ToolName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ToolName::Scrape => write!(f, "scrape"),
+            ToolName::Session => write!(f, "session"),
+            ToolName::Eval => write!(f, "eval"),
+            ToolName::Oxidize => write!(f, "oxidize"),
+            ToolName::Doctor => write!(f, "doctor"),
+            ToolName::Belief => write!(f, "belief"),
+        }
+    }
+}
+
+/// Single flat mode enum (Option C). VerbMetrics variant already enforces
+/// verb-mode coherence — this enum prevents typos and enables exhaustive matching.
+/// Doc comments note verb affinity per variant.
+#[derive(Debug, Clone, Serialize)]
+pub enum Mode {
+    /// Capture mode: code parsing
+    #[serde(rename = "code")]
+    Code,
+    /// Capture/believe mode: belief processing
+    #[serde(rename = "beliefs")]
+    Beliefs,
+    /// Capture mode: layer/pattern processing
+    #[serde(rename = "layer")]
+    Layer,
+    /// Capture mode: git scrape
+    #[serde(rename = "git")]
+    Git,
+    /// Capture mode: health check
+    #[serde(rename = "health-check")]
+    HealthCheck,
+    /// Search mode: eval quality
+    #[serde(rename = "eval")]
+    Eval,
+    /// Search mode: audit
+    #[serde(rename = "audit")]
+    Audit,
+    /// Evolve mode: session lifecycle
+    #[serde(rename = "lifecycle")]
+    Lifecycle,
+    /// Generic fallback mode
+    #[serde(rename = "default")]
+    Default,
+}
+
+impl Mode {
+    fn from_db_str(s: &str) -> Option<Self> {
+        match s {
+            "code" => Some(Mode::Code),
+            "beliefs" => Some(Mode::Beliefs),
+            "layer" => Some(Mode::Layer),
+            "git" => Some(Mode::Git),
+            "health-check" => Some(Mode::HealthCheck),
+            "eval" => Some(Mode::Eval),
+            "audit" => Some(Mode::Audit),
+            "lifecycle" => Some(Mode::Lifecycle),
+            "default" => Some(Mode::Default),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for Mode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Mode::Code => write!(f, "code"),
+            Mode::Beliefs => write!(f, "beliefs"),
+            Mode::Layer => write!(f, "layer"),
+            Mode::Git => write!(f, "git"),
+            Mode::HealthCheck => write!(f, "health-check"),
+            Mode::Eval => write!(f, "eval"),
+            Mode::Audit => write!(f, "audit"),
+            Mode::Lifecycle => write!(f, "lifecycle"),
+            Mode::Default => write!(f, "default"),
+        }
+    }
+}
+
+// ============================================================================
 // Data Structures
 // ============================================================================
 
@@ -45,9 +210,9 @@ impl std::fmt::Display for VerbStatus {
 /// Metrics from a single source (tool+mode or existing event type)
 #[derive(Debug, Serialize)]
 pub struct SourceSummary {
-    pub source_type: String, // "measure.*" or "belief.surface" etc.
-    pub tool: String,
-    pub mode: String,
+    pub source_type: SourceType,
+    pub tool: ToolName,
+    pub mode: Mode,
     pub latest_metrics: VerbMetrics,
     pub timestamp: String,
     pub event_count: i64,
@@ -66,8 +231,8 @@ pub struct MeasureReport {
 #[derive(Debug, Serialize)]
 struct HistoryEntry {
     timestamp: String,
-    tool: String,
-    mode: String,
+    tool: ToolName,
+    mode: Mode,
     metrics: VerbMetrics,
 }
 
@@ -538,9 +703,9 @@ fn build_capture_summary(conn: &Connection) -> Result<VerbSummary> {
             .unwrap_or(0);
 
         sources.push(SourceSummary {
-            source_type: "git.commit".to_string(),
-            tool: "scrape".to_string(),
-            mode: "git".to_string(),
+            source_type: SourceType::GitCommit,
+            tool: ToolName::Scrape,
+            mode: Mode::Git,
             latest_metrics: VerbMetrics::CaptureGit(CaptureGitMetrics {
                 files_tracked: file_count,
                 total_commits: git_count,
@@ -679,9 +844,9 @@ fn build_believe_summary(conn: &Connection) -> Result<VerbSummary> {
         if let Ok((total, floating, avg_evidence, avg_health)) = result {
             if total > 0 {
                 sources.push(SourceSummary {
-                    source_type: "beliefs".to_string(),
-                    tool: "scrape".to_string(),
-                    mode: "beliefs".to_string(),
+                    source_type: SourceType::Beliefs,
+                    tool: ToolName::Scrape,
+                    mode: Mode::Beliefs,
                     latest_metrics: VerbMetrics::Believe(BelieveMetrics {
                         total_beliefs: total,
                         floating_count: floating,
@@ -778,9 +943,9 @@ fn build_evolve_summary(conn: &Connection) -> Result<VerbSummary> {
 
         if let Ok((sessions, commits, files, beliefs, patterns, latest_ts)) = result {
             sources.push(SourceSummary {
-                source_type: "session.ended".to_string(),
-                tool: "session".to_string(),
-                mode: "lifecycle".to_string(),
+                source_type: SourceType::SessionEnded,
+                tool: ToolName::Session,
+                mode: Mode::Lifecycle,
                 latest_metrics: VerbMetrics::Evolve(EvolveMetrics {
                     total_sessions: sessions,
                     total_commits: commits,
@@ -858,12 +1023,33 @@ fn collect_measure_sources(
         ))
     })?;
 
+    let source_type = match SourceType::from_verb(verb) {
+        Some(st) => st,
+        None => return Ok(()),
+    };
+
     for row in rows {
-        let (tool, mode, metrics_str, timestamp, count) = row?;
-        let metrics = VerbMetrics::from_db(verb, &mode, &metrics_str);
+        let (tool_str, mode_str, metrics_str, timestamp, count) = row?;
+
+        let tool = match ToolName::from_db_str(&tool_str) {
+            Some(t) => t,
+            None => {
+                tracing::warn!(tool = tool_str, "Unknown tool — skipping source");
+                continue;
+            }
+        };
+        let mode = match Mode::from_db_str(&mode_str) {
+            Some(m) => m,
+            None => {
+                tracing::warn!(mode = mode_str, "Unknown mode — skipping source");
+                continue;
+            }
+        };
+
+        let metrics = VerbMetrics::from_db(verb, &mode_str, &metrics_str);
 
         sources.push(SourceSummary {
-            source_type: event_type.clone(),
+            source_type: source_type.clone(),
             tool,
             mode,
             latest_metrics: metrics,
@@ -1257,13 +1443,17 @@ fn get_recent_history(
 
     let entries: Vec<HistoryEntry> = stmt
         .query_map(rusqlite::params![event_type, limit as i64], |row| {
-            let mode: String = row.get(2)?;
+            let tool_str: String = row.get(1)?;
+            let mode_str: String = row.get(2)?;
             let metrics_str: String = row.get(3)?;
+            let metrics = VerbMetrics::from_db(verb, &mode_str, &metrics_str);
+            let tool = ToolName::from_db_str(&tool_str).unwrap_or(ToolName::Scrape);
+            let mode = Mode::from_db_str(&mode_str).unwrap_or(Mode::Default);
             Ok(HistoryEntry {
                 timestamp: row.get(0)?,
-                tool: row.get(1)?,
-                mode: mode.clone(),
-                metrics: VerbMetrics::from_db(verb, &mode, &metrics_str),
+                tool,
+                mode,
+                metrics,
             })
         })?
         .filter_map(|r| r.ok())
@@ -1291,8 +1481,8 @@ fn get_believe_history(conn: &Connection, limit: usize) -> Result<Vec<HistoryEnt
         .query_map([limit as i64], |row| {
             Ok(HistoryEntry {
                 timestamp: row.get(0)?,
-                tool: "scrape".to_string(),
-                mode: "beliefs".to_string(),
+                tool: ToolName::Scrape,
+                mode: Mode::Beliefs,
                 metrics: VerbMetrics::BelieveHistory(BelieveHistoryMetrics {
                     beliefs: row.get(1)?,
                     floating: row.get(2)?,
@@ -1324,8 +1514,8 @@ fn get_evolve_history(conn: &Connection, limit: usize) -> Result<Vec<HistoryEntr
         .query_map([limit as i64], |row| {
             Ok(HistoryEntry {
                 timestamp: row.get(0)?,
-                tool: "session".to_string(),
-                mode: "lifecycle".to_string(),
+                tool: ToolName::Session,
+                mode: Mode::Lifecycle,
                 metrics: VerbMetrics::EvolveHistory(EvolveHistoryMetrics {
                     commits: row.get(1)?,
                     files: row.get(2)?,
