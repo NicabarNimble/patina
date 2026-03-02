@@ -3,6 +3,8 @@ type: refactor
 id: knowledge-system-architecture
 status: draft
 created: 2026-03-02
+blocked_by:
+- data-architecture-v2
 sessions:
   origin: 20260302-072907
 related:
@@ -18,40 +20,40 @@ beliefs:
 - beliefs-are-the-product
 exit_criteria:
 - id: scrape-is-plugin-dispatched
-  text: "`patina scrape` dispatches to plugins by source kind — code, forge, and at least one new source use the same dispatch interface"
+  text: '`patina scrape` dispatches to plugins by source kind — code, forge, and at least one new source use the same dispatch interface'
   checked: false
 - id: schemas-live-with-plugins
-  text: "fact schemas (WIT-defined types, table definitions) ship with the plugin, not in Patina core"
+  text: fact schemas (WIT-defined types, table definitions) ship with the plugin, not in Patina core
   checked: false
 - id: plugins-can-emit-facts
-  text: "SDK exposes fact emission — plugins can write staging files or emit events through the host boundary"
+  text: SDK exposes fact emission — plugins can write staging files or emit events through the host boundary
   checked: false
 - id: forge-extracted-to-plugin
-  text: "forge connector (GitHub) runs as a plugin, not built into `src/forge/`"
+  text: forge connector (GitHub) runs as a plugin, not built into `src/forge/`
   checked: false
 - id: spec-extracted-to-plugin
-  text: "spec subsystem runs as a plugin, not built into `src/spec/`"
+  text: spec subsystem runs as a plugin, not built into `src/spec/`
   checked: false
 - id: sessions-extracted-to-plugin
-  text: "session subsystem runs as a plugin, not built into `src/session/`"
+  text: session subsystem runs as a plugin, not built into `src/session/`
   checked: false
 - id: persona-uid-in-mother
-  text: "Mother manages a persona registry with UIDs — `patina init` can select or create a persona"
+  text: Mother manages a persona registry with UIDs — `patina init` can select or create a persona
   checked: false
 - id: persona-owns-beliefs
-  text: "beliefs carry persona provenance — the `persona` field maps to a Mother-registered UID, not a hardcoded string"
+  text: beliefs carry persona provenance — the `persona` field maps to a Mother-registered UID, not a hardcoded string
   checked: false
 - id: persona-linking
-  text: "personas can be linked through Mother with directional, scoped knowledge streams"
+  text: personas can be linked through Mother with directional, scoped knowledge streams
   checked: false
 - id: public-private-personas
-  text: "personas have visibility levels — private (invitation only), public (discoverable), shared (org-scoped)"
+  text: personas have visibility levels — private (invitation only), public (discoverable), shared (org-scoped)
   checked: false
 - id: lake-registry-in-mother
-  text: "Mother manages a data lake registry — name, kind, location, credentials — extending the existing ref repo pattern"
+  text: Mother manages a data lake registry — name, kind, location, credentials — extending the existing ref repo pattern
   checked: false
 - id: core-is-domain-agnostic
-  text: "Patina core has no domain-specific code — no Rust syntax knowledge, no GitHub API knowledge, no email parsing. All domain logic lives in plugins."
+  text: Patina core has no domain-specific code — no Rust syntax knowledge, no GitHub API knowledge, no email parsing. All domain logic lives in plugins.
   checked: false
 ---
 # refactor: Patina as Domain-Agnostic Knowledge System with Persona Federation
