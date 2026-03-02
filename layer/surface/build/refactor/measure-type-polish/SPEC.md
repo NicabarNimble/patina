@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: measure-type-polish
-status: ready
+status: active
 created: 2026-03-02
 sessions:
   origin: 20260301-202410
