@@ -11,9 +11,7 @@
 //! Phase 1: Conservative - always use encrypted file (skip Keychain optimization)
 //! Phase 2: Smart detection - use Keychain on confirmed local console
 
-use crate::secrets::encrypted_file;
-#[cfg(target_os = "macos")]
-use crate::secrets::keychain;
+use crate::secrets::{encrypted_file, keychain};
 use anyhow::{bail, Result};
 
 /// Debug logging for storage module
