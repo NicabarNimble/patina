@@ -49,7 +49,7 @@ pub struct SourceSummary {
     pub source_type: String, // "measure.*" or "belief.surface" etc.
     pub tool: String,
     pub mode: String,
-    pub latest_metrics: serde_json::Value,
+    pub latest_metrics: VerbMetrics,
     pub timestamp: String,
     pub event_count: i64,
 }
@@ -357,7 +357,10 @@ fn build_capture_summary(conn: &Connection) -> Result<VerbSummary> {
             source_type: "git.commit".to_string(),
             tool: "scrape".to_string(),
             mode: "git".to_string(),
-            latest_metrics: serde_json::json!({ "files_tracked": file_count, "total_commits": git_count }),
+            latest_metrics: VerbMetrics::CaptureGit(CaptureGitMetrics {
+                files_tracked: file_count,
+                total_commits: git_count,
+            }),
             timestamp: latest_ts,
             event_count: git_count,
         });
@@ -406,15 +409,14 @@ fn build_search_summary(conn: &Connection) -> Result<VerbSummary> {
     let status = if sources.is_empty() {
         VerbStatus::NoData
     } else {
-        // Check P@5 threshold if available
-        let mut has_low_precision = false;
-        for src in &sources {
-            if let Some(p5) = src.latest_metrics.get("p_at_5").and_then(|v| v.as_f64()) {
-                if p5 < 0.4 {
-                    has_low_precision = true;
-                }
+        // Check P@5 threshold if available (Option: None means not measured)
+        let has_low_precision = sources.iter().any(|src| {
+            if let VerbMetrics::Search(m) = &src.latest_metrics {
+                matches!(m.p_at_5, Some(p5) if p5 < 0.4)
+            } else {
+                false
             }
-        }
+        });
         if has_low_precision {
             VerbStatus::NeedsAttention
         } else {
@@ -496,12 +498,12 @@ fn build_believe_summary(conn: &Connection) -> Result<VerbSummary> {
                     source_type: "beliefs".to_string(),
                     tool: "scrape".to_string(),
                     mode: "beliefs".to_string(),
-                    latest_metrics: serde_json::json!({
-                        "total_beliefs": total,
-                        "floating_count": floating,
-                        "grounded_count": total - floating,
-                        "avg_evidence": (avg_evidence * 100.0).round() / 100.0,
-                        "avg_health": (avg_health * 100.0).round() / 100.0,
+                    latest_metrics: VerbMetrics::Believe(BelieveMetrics {
+                        total_beliefs: total,
+                        floating_count: floating,
+                        grounded_count: total - floating,
+                        avg_evidence: (avg_evidence * 100.0).round() / 100.0,
+                        avg_health: (avg_health * 100.0).round() / 100.0,
                     }),
                     timestamp: latest_ts,
                     event_count,
@@ -519,12 +521,13 @@ fn build_believe_summary(conn: &Connection) -> Result<VerbSummary> {
         // Check floating threshold
         let floating_pct = sources
             .iter()
-            .filter(|s| s.source_type == "beliefs")
             .find_map(|s| {
-                let total = s.latest_metrics.get("total_beliefs")?.as_f64()?;
-                let floating = s.latest_metrics.get("floating_count")?.as_f64()?;
-                if total > 0.0 {
-                    Some(floating / total)
+                if let VerbMetrics::Believe(m) = &s.latest_metrics {
+                    if m.total_beliefs > 0 {
+                        Some(m.floating_count as f64 / m.total_beliefs as f64)
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -594,12 +597,12 @@ fn build_evolve_summary(conn: &Connection) -> Result<VerbSummary> {
                 source_type: "session.ended".to_string(),
                 tool: "session".to_string(),
                 mode: "lifecycle".to_string(),
-                latest_metrics: serde_json::json!({
-                    "total_sessions": sessions,
-                    "total_commits": commits,
-                    "total_files_changed": files,
-                    "total_beliefs_captured": beliefs,
-                    "total_patterns_modified": patterns,
+                latest_metrics: VerbMetrics::Evolve(EvolveMetrics {
+                    total_sessions: sessions,
+                    total_commits: commits,
+                    total_files_changed: files,
+                    total_beliefs_captured: beliefs,
+                    total_patterns_modified: patterns,
                 }),
                 timestamp: latest_ts,
                 event_count: session_count,
@@ -673,8 +676,7 @@ fn collect_measure_sources(
 
     for row in rows {
         let (tool, mode, metrics_str, timestamp, count) = row?;
-        let metrics: serde_json::Value =
-            serde_json::from_str(&metrics_str).unwrap_or(serde_json::Value::Null);
+        let metrics = VerbMetrics::from_db(verb, &mode, &metrics_str);
 
         sources.push(SourceSummary {
             source_type: event_type.clone(),
@@ -789,104 +791,72 @@ fn render_user_view(report: &MeasureReport) {
     println!();
 }
 
-fn user_friendly_metrics(verb: &str, src: &SourceSummary) -> String {
-    let m = &src.latest_metrics;
-    match (verb, src.source_type.as_str()) {
-        ("capture", "measure.capture") if src.mode == "code" => {
-            let files = m.get("files_parsed").and_then(|v| v.as_i64()).unwrap_or(0);
-            let funcs = m
-                .get("functions_found")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
-            format!("{}: {} files, {} functions parsed", src.mode, files, funcs)
+fn user_friendly_metrics(_verb: &str, src: &SourceSummary) -> String {
+    match &src.latest_metrics {
+        VerbMetrics::CaptureCode(m) => {
+            format!(
+                "{}: {} files, {} functions parsed",
+                src.mode, m.files_parsed, m.functions_found
+            )
         }
-        ("capture", "measure.capture") => {
-            // Doctor or other capture sources — show tool:mode and key metrics
+        VerbMetrics::CaptureGit(m) => {
+            format!("{} files tracked in git", m.files_tracked)
+        }
+        VerbMetrics::CaptureGeneric(m) => {
             let parts: Vec<String> = m
-                .as_object()
-                .map(|obj| {
-                    obj.iter()
-                        .filter(|(_, v)| v.as_i64().map(|n| n > 0).unwrap_or(false))
-                        .map(|(k, v)| format!("{} {}", v, k))
-                        .collect()
-                })
-                .unwrap_or_default();
+                .fields
+                .iter()
+                .filter(|(_, v)| v.as_i64().map(|n| n > 0).unwrap_or(false))
+                .map(|(k, v)| format!("{} {}", v, k))
+                .collect();
             if parts.is_empty() {
                 format!("{}: checked", src.mode)
             } else {
                 format!("{}: {}", src.mode, parts.join(", "))
             }
         }
-        ("capture", "git.commit") => {
-            let files = m.get("files_tracked").and_then(|v| v.as_i64()).unwrap_or(0);
-            format!("{} files tracked in git", files)
+        VerbMetrics::Index(m) => {
+            format!("{} documents embedded", m.documents_embedded)
         }
-        ("index", "measure.index") => {
-            let docs = m
-                .get("documents_embedded")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
-            format!("{} documents embedded", docs)
-        }
-        ("search", "measure.search") => {
-            if let Some(p5) = m.get("p_at_5").and_then(|v| v.as_f64()) {
-                let mrr = m.get("mrr").and_then(|v| v.as_f64());
-                match mrr {
-                    Some(mrr_val) => {
-                        format!("{}: P@5={:.0}%, MRR={:.2}", src.mode, p5 * 100.0, mrr_val)
-                    }
-                    None => format!("{}: P@5={:.0}%", src.mode, p5 * 100.0),
+        VerbMetrics::Search(m) => {
+            match (m.p_at_5, m.mrr, m.recall_at_5) {
+                (Some(p5), Some(mrr_val), _) => {
+                    format!("{}: P@5={:.0}%, MRR={:.2}", src.mode, p5 * 100.0, mrr_val)
                 }
-            } else if let Some(recall) = m.get("recall_at_5").and_then(|v| v.as_f64()) {
-                format!("{}: Recall@5={:.0}%", src.mode, recall * 100.0)
-            } else {
-                format!("{}: metrics recorded", src.mode)
+                (Some(p5), None, _) => {
+                    format!("{}: P@5={:.0}%", src.mode, p5 * 100.0)
+                }
+                (None, _, Some(recall)) => {
+                    format!("{}: Recall@5={:.0}%", src.mode, recall * 100.0)
+                }
+                _ => format!("{}: n/a", src.mode),
             }
         }
-        ("believe", "beliefs") => {
-            let total = m.get("total_beliefs").and_then(|v| v.as_i64()).unwrap_or(0);
-            let grounded = m
-                .get("grounded_count")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
-            let floating = m
-                .get("floating_count")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
-            let avg_health = m.get("avg_health").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            if floating > 0 {
+        VerbMetrics::Believe(m) => {
+            if m.floating_count > 0 {
                 format!(
                     "{} beliefs, {} grounded, {} floating, avg health {:.2}",
-                    total, grounded, floating, avg_health
+                    m.total_beliefs, m.grounded_count, m.floating_count, m.avg_health
                 )
             } else {
                 format!(
                     "{} beliefs, all grounded, avg health {:.2}",
-                    total, avg_health
+                    m.total_beliefs, m.avg_health
                 )
             }
         }
-        ("evolve", "session.ended") => {
-            let sessions = m
-                .get("total_sessions")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
-            let commits = m.get("total_commits").and_then(|v| v.as_i64()).unwrap_or(0);
-            let beliefs = m
-                .get("total_beliefs_captured")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
+        VerbMetrics::Evolve(m) => {
             format!(
                 "{} {}, {} {}, {} {} captured",
-                sessions,
-                if sessions == 1 { "session" } else { "sessions" },
-                commits,
-                if commits == 1 { "commit" } else { "commits" },
-                beliefs,
-                if beliefs == 1 { "belief" } else { "beliefs" },
+                m.total_sessions,
+                if m.total_sessions == 1 { "session" } else { "sessions" },
+                m.total_commits,
+                if m.total_commits == 1 { "commit" } else { "commits" },
+                m.total_beliefs_captured,
+                if m.total_beliefs_captured == 1 { "belief" } else { "beliefs" },
             )
         }
-        _ => String::new(),
+        VerbMetrics::Raw(_) => String::new(),
     }
 }
 
@@ -922,9 +892,11 @@ fn render_system_view(conn: &Connection, report: &MeasureReport) -> Result<()> {
             println!("    Latest: {}", src.timestamp);
 
             // Print all metrics
-            if let Some(obj) = src.latest_metrics.as_object() {
-                for (key, val) in obj {
-                    println!("      {}: {}", key, val);
+            if let Ok(val) = serde_json::to_value(&src.latest_metrics) {
+                if let Some(obj) = val.as_object() {
+                    for (key, v) in obj {
+                        println!("      {}: {}", key, v);
+                    }
                 }
             }
             println!();
