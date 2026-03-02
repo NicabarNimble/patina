@@ -149,6 +149,101 @@ impl VerbMetrics {
             VerbMetrics::Raw(value)
         })
     }
+
+    /// Return key-value pairs for generic display. Units standardized:
+    /// `ms` suffix for durations, `%` for rates, plain integers for counts.
+    pub fn format_kv(&self) -> Vec<(String, String)> {
+        match self {
+            VerbMetrics::CaptureCode(m) => vec![
+                ("files_parsed".into(), m.files_parsed.to_string()),
+                ("functions_found".into(), m.functions_found.to_string()),
+                ("types_found".into(), m.types_found.to_string()),
+                ("fts_symbols".into(), m.fts_symbols.to_string()),
+            ],
+            VerbMetrics::CaptureGit(m) => vec![
+                ("files_tracked".into(), m.files_tracked.to_string()),
+                ("total_commits".into(), m.total_commits.to_string()),
+            ],
+            VerbMetrics::CaptureBeliefs(m) => vec![
+                ("beliefs_processed".into(), m.beliefs_processed.to_string()),
+                ("beliefs_verified".into(), m.beliefs_verified.to_string()),
+                ("beliefs_skipped".into(), m.beliefs_skipped.to_string()),
+                ("supports_edges".into(), m.supports_edges.to_string()),
+                ("attacks_edges".into(), m.attacks_edges.to_string()),
+                ("values_processed".into(), m.values_processed.to_string()),
+                ("duration_ms".into(), format!("{}ms", m.duration_ms)),
+            ],
+            VerbMetrics::CaptureLayer(m) => vec![
+                ("patterns_processed".into(), m.patterns_processed.to_string()),
+                ("sessions_processed".into(), m.sessions_processed.to_string()),
+                ("duration_ms".into(), format!("{}ms", m.duration_ms)),
+            ],
+            VerbMetrics::CaptureGitScrape(m) => vec![
+                ("commits_processed".into(), m.commits_processed.to_string()),
+                ("tracked_files".into(), m.tracked_files.to_string()),
+                ("tags_indexed".into(), m.tags_indexed.to_string()),
+                ("co_change_pairs".into(), m.co_change_pairs.to_string()),
+                ("duration_ms".into(), format!("{}ms", m.duration_ms)),
+            ],
+            VerbMetrics::CaptureHealthCheck(m) => vec![
+                ("beliefs".into(), m.beliefs.to_string()),
+                ("sessions".into(), m.sessions.to_string()),
+                ("layer_patterns".into(), m.layer_patterns.to_string()),
+                ("missing_tools".into(), m.missing_tools.to_string()),
+                ("new_tools".into(), m.new_tools.to_string()),
+            ],
+            VerbMetrics::Index(m) => vec![
+                ("documents_embedded".into(), m.documents_embedded.to_string()),
+            ],
+            VerbMetrics::Search(m) => {
+                let mut pairs = Vec::new();
+                if let Some(p5) = m.p_at_5 {
+                    pairs.push(("p_at_5".into(), format!("{:.1}%", p5 * 100.0)));
+                }
+                if let Some(mrr) = m.mrr {
+                    pairs.push(("mrr".into(), format!("{:.3}", mrr)));
+                }
+                if let Some(r5) = m.recall_at_5 {
+                    pairs.push(("recall_at_5".into(), format!("{:.1}%", r5 * 100.0)));
+                }
+                pairs
+            }
+            VerbMetrics::Believe(m) => vec![
+                ("total_beliefs".into(), m.total_beliefs.to_string()),
+                ("floating_count".into(), m.floating_count.to_string()),
+                ("grounded_count".into(), m.grounded_count.to_string()),
+                ("avg_evidence".into(), format!("{:.2}", m.avg_evidence)),
+                ("avg_health".into(), format!("{:.2}", m.avg_health)),
+            ],
+            VerbMetrics::Evolve(m) => vec![
+                ("total_sessions".into(), m.total_sessions.to_string()),
+                ("total_commits".into(), m.total_commits.to_string()),
+                ("total_files_changed".into(), m.total_files_changed.to_string()),
+                ("total_beliefs_captured".into(), m.total_beliefs_captured.to_string()),
+                ("total_patterns_modified".into(), m.total_patterns_modified.to_string()),
+            ],
+            VerbMetrics::Raw(v) => {
+                if let Some(obj) = v.as_object() {
+                    obj.iter()
+                        .map(|(k, v)| {
+                            let formatted = if let Some(f) = v.as_f64() {
+                                if f == f.floor() && f.abs() < 1_000_000.0 {
+                                    (f as i64).to_string()
+                                } else {
+                                    format!("{:.3}", f)
+                                }
+                            } else {
+                                v.to_string()
+                            };
+                            (k.clone(), formatted)
+                        })
+                        .collect()
+                } else {
+                    vec![("value".into(), v.to_string())]
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -959,13 +1054,9 @@ fn render_system_view(conn: &Connection, report: &MeasureReport) -> Result<()> {
             );
             println!("    Latest: {}", src.timestamp);
 
-            // Print all metrics
-            if let Ok(val) = serde_json::to_value(&src.latest_metrics) {
-                if let Some(obj) = val.as_object() {
-                    for (key, v) in obj {
-                        println!("      {}: {}", key, v);
-                    }
-                }
+            // Print all metrics via typed format_kv
+            for (key, val) in src.latest_metrics.format_kv() {
+                println!("      {}: {}", key, val);
             }
             println!();
         }
