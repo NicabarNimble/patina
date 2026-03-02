@@ -14,6 +14,7 @@ beliefs:
 - correctness-by-construction-not-convention
 - eventlog-is-infrastructure
 - eventlog-is-truth
+- measure-the-measurement
 exit_criteria:
 - id: measure-full-json-returns-structured-health-across-all-5-verbs
   text: '`patina measure --full --json` returns structured health JSON covering all 5 verbs with status, metrics, and diagnostics'
