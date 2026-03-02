@@ -28,48 +28,38 @@ fn debug_log(msg: &str) {
 ///
 /// This ensures SSH works immediately after setup (no migration needed).
 pub fn store_identity(identity: &str) -> Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        debug_log("store: dual-write (Keychain + encrypted file)");
+    debug_log("store: dual-write (Keychain + encrypted file)");
 
-        // macOS: ALWAYS write both Keychain and encrypted file
-        // This ensures automatic migration and SSH fallback
-        let keychain_result = keychain::store_identity(identity);
-        let file_result = encrypted_file::store_identity(identity);
+    // Write both Keychain and encrypted file.
+    // macOS: both may succeed. Non-macOS: keychain stub returns Err, file works.
+    let keychain_result = keychain::store_identity(identity);
+    let file_result = encrypted_file::store_identity(identity);
 
-        // Both succeed: best case
-        // One succeeds: acceptable (other is fallback)
-        // Both fail: error
-        match (keychain_result, file_result) {
-            (Ok(()), Ok(())) => {
-                debug_log("store: both succeeded");
-                Ok(())
-            }
-            (Ok(()), Err(e)) => {
-                debug_log(&format!("store: Keychain OK, file failed: {}", e));
-                Ok(()) // Keychain works, acceptable
-            }
-            (Err(_), Ok(())) => {
-                debug_log("store: file OK, Keychain failed (acceptable)");
-                Ok(()) // Encrypted file works, acceptable
-            }
-            (Err(e1), Err(e2)) => {
-                bail!(
-                    "Failed to store identity in both storages.\n\
-                     Keychain error: {}\n\
-                     Encrypted file error: {}",
-                    e1,
-                    e2
-                )
-            }
+    // Both succeed: best case
+    // One succeeds: acceptable (other is fallback)
+    // Both fail: error
+    match (keychain_result, file_result) {
+        (Ok(()), Ok(())) => {
+            debug_log("store: both succeeded");
+            Ok(())
         }
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        debug_log("store: encrypted file only (non-macOS)");
-        // Linux: Only encrypted file available
-        encrypted_file::store_identity(identity)
+        (Ok(()), Err(e)) => {
+            debug_log(&format!("store: Keychain OK, file failed: {}", e));
+            Ok(()) // Keychain works, acceptable
+        }
+        (Err(_), Ok(())) => {
+            debug_log("store: file OK, Keychain failed (acceptable)");
+            Ok(()) // Encrypted file works, acceptable
+        }
+        (Err(e1), Err(e2)) => {
+            bail!(
+                "Failed to store identity in both storages.\n\
+                 Keychain error: {}\n\
+                 Encrypted file error: {}",
+                e1,
+                e2
+            )
+        }
     }
 }
 
@@ -89,34 +79,28 @@ pub fn get_identity() -> Result<String> {
     }
 
     // 2. Fall back to Keychain (legacy, pre-dual-storage users)
-    #[cfg(target_os = "macos")]
-    {
-        // Phase 1: is_remote_session() returns true everywhere (conservative)
-        // So this branch COULD use Keychain if we wanted, but we skip it for safety
-        // Phase 2: Will add positive console detection here
+    // Non-macOS: has_identity() stub returns false, so this is skipped.
+    if keychain::has_identity() {
+        debug_log("get: source=keychain (legacy, auto-migrating)");
+        let identity = keychain::get_identity()?;
 
-        if keychain::has_identity() {
-            debug_log("get: source=keychain (legacy, auto-migrating)");
-            let identity = keychain::get_identity()?;
+        // Auto-migrate: Create encrypted file for future use
+        // This is "Safety Net 2" from spec - eager on-demand migration
+        debug_log(
+            r#"event="secrets.migrate" source="keychain" dest="encrypted_file" reason="auto_migration""#,
+        );
 
-            // Auto-migrate: Create encrypted file for future use
-            // This is "Safety Net 2" from spec - eager on-demand migration
-            debug_log(
-                r#"event="secrets.migrate" source="keychain" dest="encrypted_file" reason="auto_migration""#,
-            );
-
-            if let Err(e) = encrypted_file::store_identity(&identity) {
-                // Log failure but continue (Keychain still works)
-                debug_log(&format!(
-                    r#"event="secrets.migrate" result="failed" error="{}""#,
-                    e
-                ));
-            } else {
-                debug_log(r#"event="secrets.migrate" result="ok""#);
-            }
-
-            return Ok(identity);
+        if let Err(e) = encrypted_file::store_identity(&identity) {
+            // Log failure but continue (Keychain still works)
+            debug_log(&format!(
+                r#"event="secrets.migrate" result="failed" error="{}""#,
+                e
+            ));
+        } else {
+            debug_log(r#"event="secrets.migrate" result="ok""#);
         }
+
+        return Ok(identity);
     }
 
     // No identity found anywhere
@@ -141,15 +125,8 @@ pub fn has_identity() -> bool {
     }
 
     // Check Keychain (legacy, pre-dual-storage)
-    #[cfg(target_os = "macos")]
-    {
-        keychain::has_identity()
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        false
-    }
+    // Non-macOS: stub returns false
+    keychain::has_identity()
 }
 
 /// Check if we're in a remote session (SSH, CI, Codespaces).
