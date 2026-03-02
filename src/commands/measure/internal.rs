@@ -265,7 +265,13 @@ pub enum VerbMetrics {
 
 impl VerbMetrics {
     /// Parse metrics JSON at the DB boundary, dispatching to the correct typed
-    /// struct based on verb and mode context from the same DB row (ADR-1).
+    /// struct based on verb and mode context from the same DB row.
+    ///
+    /// History-only variants (BelieveHistory, EvolveHistory) are constructed
+    /// directly in get_believe_history/get_evolve_history — they originate from
+    /// belief.surface/session.ended events, not measure.* events. The dispatch
+    /// paths are disjoint: from_db("believe", "beliefs", ...) → Believe (summary),
+    /// while get_believe_history constructs BelieveHistory directly from SQL columns.
     pub fn from_db(verb: &str, mode: &str, json_str: &str) -> Self {
         let result = match (verb, mode) {
             ("capture", "code") => {
@@ -311,8 +317,8 @@ impl VerbMetrics {
         })
     }
 
-    /// Return key-value pairs for generic display. Units standardized:
-    /// `ms` suffix for durations, `%` for rates, plain integers for counts.
+    /// Raw key-value pairs — values are plain numbers, no unit suffixes.
+    /// Used by format_metrics_inline for compact history table output.
     pub fn format_kv(&self) -> Vec<(String, String)> {
         match self {
             VerbMetrics::CaptureCode(m) => vec![
@@ -332,7 +338,7 @@ impl VerbMetrics {
                 ("supports_edges".into(), m.supports_edges.to_string()),
                 ("attacks_edges".into(), m.attacks_edges.to_string()),
                 ("values_processed".into(), m.values_processed.to_string()),
-                ("duration_ms".into(), format!("{}ms", m.duration_ms)),
+                ("duration_ms".into(), m.duration_ms.to_string()),
             ],
             VerbMetrics::CaptureLayer(m) => vec![
                 (
@@ -343,14 +349,14 @@ impl VerbMetrics {
                     "sessions_processed".into(),
                     m.sessions_processed.to_string(),
                 ),
-                ("duration_ms".into(), format!("{}ms", m.duration_ms)),
+                ("duration_ms".into(), m.duration_ms.to_string()),
             ],
             VerbMetrics::CaptureGitScrape(m) => vec![
                 ("commits_processed".into(), m.commits_processed.to_string()),
                 ("tracked_files".into(), m.tracked_files.to_string()),
                 ("tags_indexed".into(), m.tags_indexed.to_string()),
                 ("co_change_pairs".into(), m.co_change_pairs.to_string()),
-                ("duration_ms".into(), format!("{}ms", m.duration_ms)),
+                ("duration_ms".into(), m.duration_ms.to_string()),
             ],
             VerbMetrics::CaptureHealthCheck(m) => vec![
                 ("beliefs".into(), m.beliefs.to_string()),
@@ -366,13 +372,13 @@ impl VerbMetrics {
             VerbMetrics::Search(m) => {
                 let mut pairs = Vec::new();
                 if let Some(p5) = m.p_at_5 {
-                    pairs.push(("p_at_5".into(), format!("{:.1}%", p5 * 100.0)));
+                    pairs.push(("p_at_5".into(), format!("{:.1}", p5 * 100.0)));
                 }
                 if let Some(mrr) = m.mrr {
                     pairs.push(("mrr".into(), format!("{:.3}", mrr)));
                 }
                 if let Some(r5) = m.recall_at_5 {
-                    pairs.push(("recall_at_5".into(), format!("{:.1}%", r5 * 100.0)));
+                    pairs.push(("recall_at_5".into(), format!("{:.1}", r5 * 100.0)));
                 }
                 pairs
             }
@@ -431,6 +437,24 @@ impl VerbMetrics {
                 }
             }
         }
+    }
+
+    /// Human-readable key-value pairs with unit suffixes (ms, %).
+    /// Used by render_system_view for the current-state metric display.
+    pub fn format_kv_display(&self) -> Vec<(String, String)> {
+        self.format_kv()
+            .into_iter()
+            .map(|(k, v)| {
+                let display_v = if k.ends_with("_ms") {
+                    format!("{}ms", v)
+                } else if k == "p_at_5" || k == "recall_at_5" {
+                    format!("{}%", v)
+                } else {
+                    v
+                };
+                (k, display_v)
+            })
+            .collect()
     }
 }
 
@@ -1283,8 +1307,8 @@ fn render_system_view(conn: &Connection, report: &MeasureReport) -> Result<()> {
             );
             println!("    Latest: {}", src.timestamp);
 
-            // Print all metrics via typed format_kv
-            for (key, val) in src.latest_metrics.format_kv() {
+            // Print all metrics with human-readable units
+            for (key, val) in src.latest_metrics.format_kv_display() {
                 println!("      {}: {}", key, val);
             }
             println!();
@@ -1814,5 +1838,14 @@ mod tests {
         assert_eq!(json["total_commits"], 2892);
         // No "CaptureGit" wrapper key
         assert!(json.get("CaptureGit").is_none());
+    }
+
+    #[test]
+    fn from_db_believe_returns_summary_not_history() {
+        // Proves dispatch paths are disjoint: from_db returns Believe (summary),
+        // not BelieveHistory (which is direct-construction only).
+        let json = r#"{"total_beliefs": 178, "floating_count": 5, "grounded_count": 173, "avg_evidence": 1.72, "avg_health": 0.88}"#;
+        let result = VerbMetrics::from_db("believe", "beliefs", json);
+        assert!(matches!(result, VerbMetrics::Believe(_)));
     }
 }
