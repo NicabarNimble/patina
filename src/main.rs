@@ -411,6 +411,10 @@ enum Commands {
         /// Drill-down into a specific verb with history
         #[arg(long)]
         verb: Option<String>,
+
+        /// Show full health report with freshness, diagnostics, and health summary
+        #[arg(long)]
+        full: bool,
     },
 
     /// Manage development sessions (start, update, note, end)
@@ -1797,8 +1801,18 @@ fn main() -> Result<()> {
             let options = commands::report::ReportOptions { output, repo, json };
             commands::report::execute(options)?;
         }
-        Some(Commands::Measure { system, json, verb }) => {
-            let options = commands::measure::MeasureOptions { system, json, verb };
+        Some(Commands::Measure {
+            system,
+            json,
+            verb,
+            full,
+        }) => {
+            let options = commands::measure::MeasureOptions {
+                system,
+                json,
+                verb,
+                full,
+            };
             commands::measure::execute(options)?;
         }
         Some(Commands::Events { command }) => match command {

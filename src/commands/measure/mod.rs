@@ -21,6 +21,8 @@ pub struct MeasureOptions {
     pub json: bool,
     /// Drill-down into a specific verb with history
     pub verb: Option<String>,
+    /// Show full health report with freshness, diagnostics, and health summary
+    pub full: bool,
 }
 
 /// Execute the measure command

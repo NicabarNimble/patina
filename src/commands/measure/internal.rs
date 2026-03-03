@@ -195,6 +195,7 @@ pub struct VerbSummary {
 /// `derive(Ord)` uses declaration order, so variants are arranged from
 /// least severe (NoData) to most severe (Degraded). `max()` returns the worst.
 #[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum VerbStatus {
     NoData,
@@ -708,10 +709,7 @@ impl BelieveMetrics {
         if self.avg_health < 0.5 && self.total_beliefs > 0 {
             diags.push(Diagnostic {
                 severity: Severity::Warning,
-                message: format!(
-                    "average belief health is low ({:.2})",
-                    self.avg_health
-                ),
+                message: format!("average belief health is low ({:.2})", self.avg_health),
             });
         }
         diags
@@ -744,10 +742,7 @@ impl CaptureHealthCheckMetrics {
         if self.missing_tools > 0 {
             diags.push(Diagnostic {
                 severity: Severity::Warning,
-                message: format!(
-                    "{} expected tools are missing",
-                    self.missing_tools
-                ),
+                message: format!("{} expected tools are missing", self.missing_tools),
             });
         }
         diags
@@ -773,17 +768,11 @@ fn freshness_diagnostic(verb: &str, freshness: Freshness, age_hours: f64) -> Opt
     match freshness {
         Freshness::Aging => Some(Diagnostic {
             severity: Severity::Warning,
-            message: format!(
-                "{} verb data is aging ({:.0}h old)",
-                verb, age_hours
-            ),
+            message: format!("{} verb data is aging ({:.0}h old)", verb, age_hours),
         }),
         Freshness::Stale => Some(Diagnostic {
             severity: Severity::Error,
-            message: format!(
-                "{} verb data is stale ({:.0}h old)",
-                verb, age_hours
-            ),
+            message: format!("{} verb data is stale ({:.0}h old)", verb, age_hours),
         }),
         Freshness::Fresh => None,
     }
@@ -940,9 +929,7 @@ pub fn build_full_report(conn: &Connection) -> Result<FullMeasureReport> {
 /// Count events by type from events.db for the EventCounts field.
 fn build_event_counts(conn: &Connection) -> Result<EventCounts> {
     let total: i64 = conn
-        .query_row("SELECT COUNT(*) FROM events.eventlog", [], |row| {
-            row.get(0)
-        })
+        .query_row("SELECT COUNT(*) FROM events.eventlog", [], |row| row.get(0))
         .unwrap_or(0);
 
     let mut by_type = std::collections::BTreeMap::new();
@@ -955,10 +942,8 @@ fn build_event_counts(conn: &Connection) -> Result<EventCounts> {
         let rows = stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
         })?;
-        for row in rows {
-            if let Ok((event_type, count)) = row {
-                by_type.insert(event_type, count);
-            }
+        for (event_type, count) in rows.flatten() {
+            by_type.insert(event_type, count);
         }
     }
 
@@ -995,6 +980,16 @@ pub fn run(options: MeasureOptions) -> Result<()> {
 
     if let Some(ref verb) = options.verb {
         return run_verb_drilldown(&conn, verb, &options);
+    }
+
+    if options.full {
+        let full_report = build_full_report(&conn)?;
+        if options.json {
+            println!("{}", serde_json::to_string_pretty(&full_report)?);
+        } else {
+            render_full_user_view(&full_report);
+        }
+        return Ok(());
     }
 
     let report = build_report(&conn)?;
@@ -1497,6 +1492,86 @@ fn determine_status(sources: &[SourceSummary]) -> VerbStatus {
 // ============================================================================
 // User View (default)
 // ============================================================================
+
+fn render_full_user_view(report: &FullMeasureReport) {
+    println!("\n  Project Health — Full Report\n");
+
+    // Health summary
+    let health_icon = match report.health.status {
+        VerbStatus::Good => "+",
+        VerbStatus::NeedsAttention => "!",
+        VerbStatus::Degraded => "X",
+        VerbStatus::NoData => "-",
+    };
+    println!("  [{}] {}", health_icon, report.health.summary);
+    println!();
+
+    // Per-verb details
+    for (verb_name, verb) in &report.verbs {
+        let icon = match verb.status {
+            VerbStatus::Good => "+",
+            VerbStatus::NeedsAttention => "!",
+            VerbStatus::Degraded => "X",
+            VerbStatus::NoData => "-",
+        };
+
+        let age = verb
+            .latest_timestamp
+            .as_deref()
+            .map(format_age)
+            .unwrap_or_else(|| "never".to_string());
+
+        let freshness_label = verb
+            .freshness
+            .map(|f| format!(" [{}]", f))
+            .unwrap_or_default();
+
+        println!(
+            "  [{}] {:<10} {:<18} {}{}",
+            icon,
+            verb_name,
+            verb.status,
+            if verb.status != VerbStatus::NoData {
+                format!("({})", age)
+            } else {
+                String::new()
+            },
+            freshness_label
+        );
+
+        // Show key metrics per source (same as user view)
+        for src in &verb.sources {
+            let summary = user_friendly_metrics(src);
+            if !summary.is_empty() {
+                println!("        {}", summary);
+            }
+        }
+
+        // Show diagnostics (capped at 3 per verb)
+        let max_diags = 3;
+        for diag in verb.diagnostics.iter().take(max_diags) {
+            let icon = match diag.severity {
+                Severity::Warning => "\u{26a0}", // ⚠
+                Severity::Error => "\u{2716}",   // ✖
+            };
+            println!("        {} {}", icon, diag.message);
+        }
+        if verb.diagnostics.len() > max_diags {
+            println!(
+                "        ... {} more diagnostics (see --json)",
+                verb.diagnostics.len() - max_diags
+            );
+        }
+    }
+
+    // Event counts
+    println!(
+        "\n  Events: {} total runtime events",
+        report.event_counts.total_runtime_events
+    );
+
+    println!();
+}
 
 fn render_user_view(report: &MeasureReport) {
     println!("\n  Project Health\n");
@@ -2280,7 +2355,9 @@ mod tests {
         };
         let diags = m.diagnostics();
         assert_eq!(diags.len(), 1);
-        assert!(diags[0].message.contains("135 beliefs have no code grounding"));
+        assert!(diags[0]
+            .message
+            .contains("135 beliefs have no code grounding"));
         assert!(diags[0].message.contains("76% floating"));
         assert!(matches!(diags[0].severity, Severity::Warning));
     }
@@ -2374,25 +2451,31 @@ mod tests {
     #[test]
     fn health_summary_worst_verb_wins() {
         let mut verbs = std::collections::BTreeMap::new();
-        verbs.insert("capture".to_string(), FullVerbSummary {
-            status: VerbStatus::Good,
-            latest_timestamp: None,
-            age_hours: None,
-            freshness: None,
-            sources: vec![],
-            diagnostics: vec![],
-        });
-        verbs.insert("believe".to_string(), FullVerbSummary {
-            status: VerbStatus::NeedsAttention,
-            latest_timestamp: None,
-            age_hours: None,
-            freshness: None,
-            sources: vec![],
-            diagnostics: vec![Diagnostic {
-                severity: Severity::Warning,
-                message: "135 beliefs floating".to_string(),
-            }],
-        });
+        verbs.insert(
+            "capture".to_string(),
+            FullVerbSummary {
+                status: VerbStatus::Good,
+                latest_timestamp: None,
+                age_hours: None,
+                freshness: None,
+                sources: vec![],
+                diagnostics: vec![],
+            },
+        );
+        verbs.insert(
+            "believe".to_string(),
+            FullVerbSummary {
+                status: VerbStatus::NeedsAttention,
+                latest_timestamp: None,
+                age_hours: None,
+                freshness: None,
+                sources: vec![],
+                diagnostics: vec![Diagnostic {
+                    severity: Severity::Warning,
+                    message: "135 beliefs floating".to_string(),
+                }],
+            },
+        );
 
         let report = FullMeasureReport {
             health: HealthSummary {
@@ -2416,14 +2499,17 @@ mod tests {
     #[test]
     fn health_summary_all_good() {
         let mut verbs = std::collections::BTreeMap::new();
-        verbs.insert("capture".to_string(), FullVerbSummary {
-            status: VerbStatus::Good,
-            latest_timestamp: None,
-            age_hours: None,
-            freshness: None,
-            sources: vec![],
-            diagnostics: vec![],
-        });
+        verbs.insert(
+            "capture".to_string(),
+            FullVerbSummary {
+                status: VerbStatus::Good,
+                latest_timestamp: None,
+                age_hours: None,
+                freshness: None,
+                sources: vec![],
+                diagnostics: vec![],
+            },
+        );
 
         let report = FullMeasureReport {
             health: HealthSummary {
