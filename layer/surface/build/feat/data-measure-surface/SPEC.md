@@ -1,7 +1,7 @@
 ---
 type: feat
 id: data-measure-surface
-status: ready
+status: active
 created: 2026-02-27
 sessions:
   origin: 20260227-062333
