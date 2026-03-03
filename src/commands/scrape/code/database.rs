@@ -538,6 +538,61 @@ impl Database {
         Ok(edges.len())
     }
 
+    /// Get stored index state for a file (mtime, size).
+    ///
+    /// Returns None if the file has never been indexed — absence is not an error,
+    /// it means the file is new. Used by the mtime skip optimization to avoid
+    /// re-parsing unchanged files.
+    pub fn get_index_state(&self, path: &str) -> Result<Option<(i64, i64)>> {
+        let result: std::result::Result<(i64, i64), _> = self.db.connection().query_row(
+            "SELECT mtime, size FROM index_state WHERE path = ?1",
+            params![path],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        );
+
+        match result {
+            Ok(pair) => Ok(Some(pair)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Delete index state and all downstream facts for stale paths.
+    ///
+    /// Adopts the layer scraper pruning pattern: after processing, delete DB entries
+    /// for paths that no longer exist on disk. This keeps the mtime gate clean —
+    /// deleted files don't leave stale rows.
+    pub fn prune_stale_paths(
+        &self,
+        walked_paths: &std::collections::HashSet<String>,
+    ) -> Result<usize> {
+        let conn = self.db.connection();
+
+        // Get all paths from index_state
+        let mut stmt = conn.prepare("SELECT path FROM index_state")?;
+        let db_paths: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let mut pruned = 0;
+        for db_path in &db_paths {
+            if !walked_paths.contains(db_path) {
+                conn.execute("DELETE FROM index_state WHERE path = ?1", [db_path])?;
+                conn.execute("DELETE FROM code_search WHERE path = ?1", [db_path])?;
+                conn.execute("DELETE FROM function_facts WHERE file = ?1", [db_path])?;
+                conn.execute("DELETE FROM type_vocabulary WHERE file = ?1", [db_path])?;
+                conn.execute("DELETE FROM import_facts WHERE file = ?1", [db_path])?;
+                conn.execute("DELETE FROM call_graph WHERE file = ?1", [db_path])?;
+                conn.execute("DELETE FROM constant_facts WHERE file = ?1", [db_path])?;
+                conn.execute("DELETE FROM member_facts WHERE file = ?1", [db_path])?;
+                pruned += 1;
+            }
+        }
+
+        Ok(pruned)
+    }
+
     /// Update index state for a file
     pub fn update_index_state(
         &self,

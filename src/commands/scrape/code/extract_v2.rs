@@ -9,7 +9,7 @@
 //! - Type-preserving data structures
 //! - Batch operations for performance
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -25,7 +25,7 @@ use patina::paths;
 use patina::plugin::{PipelineEngine, PluginManifest};
 
 /// Process all source files and extract metadata using safe database operations
-pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) -> Result<usize> {
+pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, force: bool) -> Result<usize> {
     println!("🧠 Extracting code metadata with embedded SQLite...");
 
     // Open database connection
@@ -105,9 +105,11 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
 
     let mut files_with_errors = 0;
     let mut _files_processed = 0;
+    let mut files_skipped_mtime = 0;
     let mut forge_issues_inserted = 0;
     let mut forge_prs_inserted = 0;
     let mut forge_skipped = 0;
+    let mut walked_paths: HashSet<String> = HashSet::new();
 
     // Process each file and collect data
     for (file_path, language) in all_files {
@@ -117,15 +119,8 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
             file_path.to_string_lossy().to_string()
         };
 
-        // Read file content
-        let content = match std::fs::read(&file_path) {
-            Ok(content) => content,
-            Err(e) => {
-                eprintln!("  ⚠️  Failed to read {}: {}", relative_path, e);
-                files_with_errors += 1;
-                continue;
-            }
-        };
+        // Track all walked paths for stale entry pruning
+        walked_paths.insert(relative_path.clone());
 
         // Get file metadata for index state
         let mtime = std::fs::metadata(&file_path)
@@ -134,6 +129,29 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
+
+        // Check if file changed since last scrape (mtime skip optimization)
+        if !force {
+            if let Some((stored_mtime, stored_size)) = db.get_index_state(&relative_path)? {
+                let file_size = std::fs::metadata(&file_path)
+                    .map(|m| m.len() as i64)
+                    .unwrap_or(-1);
+                if mtime == stored_mtime && file_size == stored_size {
+                    files_skipped_mtime += 1;
+                    continue;
+                }
+            }
+        }
+
+        // Read file content (only after mtime check — avoid I/O for unchanged files)
+        let content = match std::fs::read(&file_path) {
+            Ok(content) => content,
+            Err(e) => {
+                eprintln!("  ⚠️  Failed to read {}: {}", relative_path, e);
+                files_with_errors += 1;
+                continue;
+            }
+        };
 
         let size = content.len() as i64;
         let line_count = content.iter().filter(|&&b| b == b'\n').count() as i64;
@@ -360,6 +378,16 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                 }
             }
         }
+    }
+
+    if files_skipped_mtime > 0 {
+        println!("  Skipped {} unchanged files (mtime)", files_skipped_mtime);
+    }
+
+    // Prune stale index_state rows for deleted/renamed files
+    let pruned = db.prune_stale_paths(&walked_paths)?;
+    if pruned > 0 {
+        println!("  Pruned {} stale entries", pruned);
     }
 
     // Bulk insert all collected data
