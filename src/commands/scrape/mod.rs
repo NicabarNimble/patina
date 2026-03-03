@@ -10,6 +10,7 @@ pub mod layer;
 pub mod sessions;
 
 use anyhow::{bail, Result};
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use patina::paths;
@@ -18,6 +19,10 @@ use patina::paths;
 pub struct ScrapeConfig {
     pub db_path: String,
     pub force: bool,
+    /// Optional extension filter for lazy plugin loading.
+    /// When Some, only load pipeline plugins claiming these extensions.
+    /// When None, load all plugins (default for individual scraper commands).
+    pub extension_filter: Option<HashSet<String>>,
 }
 
 impl ScrapeConfig {
@@ -25,6 +30,20 @@ impl ScrapeConfig {
         Self {
             db_path: database::PATINA_DB.to_string(),
             force,
+            extension_filter: None,
+        }
+    }
+
+    /// Create config with extension filter for delta-driven lazy loading.
+    pub fn with_extensions(force: bool, extensions: HashSet<String>) -> Self {
+        Self {
+            db_path: database::PATINA_DB.to_string(),
+            force,
+            extension_filter: if extensions.is_empty() {
+                None
+            } else {
+                Some(extensions)
+            },
         }
     }
 }
@@ -90,8 +109,9 @@ pub fn execute_all() -> Result<()> {
     }
 
     if !scrape_delta.changed_code_files().is_empty() {
-        println!("\n📊 Scraping code ({} changed files)...", scrape_delta.changed_code_files().len());
-        execute_code(false, false)?;
+        let extensions = scrape_delta.changed_extensions();
+        println!("\n📊 Scraping code ({} changed files, extensions: {:?})...", scrape_delta.changed_code_files().len(), extensions);
+        execute_code_with_filter(false, false, Some(extensions))?;
     } else {
         println!("\n📊 Scraping code... skipped (no changed code files)");
     }
@@ -207,7 +227,23 @@ pub fn execute_rebuild() -> Result<()> {
 ///
 /// For external repos, use `patina repo update <name>` instead.
 pub fn execute_code(init: bool, force: bool) -> Result<()> {
-    let config = ScrapeConfig::new(force);
+    execute_code_with_filter(init, force, None)
+}
+
+/// Execute code scraper with optional extension filter for lazy plugin loading.
+///
+/// When `extensions` is Some, only pipeline plugins claiming those extensions
+/// are loaded. This avoids compiling WASM for plugins that have no work.
+fn execute_code_with_filter(
+    init: bool,
+    force: bool,
+    extensions: Option<HashSet<String>>,
+) -> Result<()> {
+    let config = ScrapeConfig {
+        db_path: database::PATINA_DB.to_string(),
+        force,
+        extension_filter: extensions,
+    };
 
     if init {
         code::initialize(&config)?;

@@ -22,10 +22,19 @@ use super::languages::Language;
 use super::types::FilePath;
 
 use patina::paths;
-use patina::plugin::{PipelineEngine, PluginManifest};
+use patina::plugin::{PipelineEngine, PluginManifest, PluginWorld};
 
-/// Process all source files and extract metadata using safe database operations
-pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, force: bool) -> Result<usize> {
+/// Process all source files and extract metadata using safe database operations.
+///
+/// When `extension_filter` is Some, only pipeline plugins claiming those extensions
+/// are compiled (lazy loading). This avoids ~2s of Cranelift JIT when only one
+/// language is affected. See [[scrape-diff-driven]] EC4.
+pub fn extract_code_metadata_v2(
+    db_path: &str,
+    work_dir: &Path,
+    force: bool,
+    extension_filter: Option<&HashSet<String>>,
+) -> Result<usize> {
     println!("🧠 Extracting code metadata with embedded SQLite...");
 
     // Open database connection
@@ -60,7 +69,8 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, force: bool) -> 
     println!("  Found {} source files", all_files.len());
 
     // Discover pipeline plugins from ~/.patina/pipeline/
-    let pipeline_plugins = discover_pipeline_plugins();
+    // When extension_filter is set, only load plugins for affected extensions (lazy loading)
+    let pipeline_plugins = discover_pipeline_plugins(extension_filter);
 
     // Scan staging tree for forge data (.forge-issue, .forge-pr files)
     // These are written by `patina scrape forge` and processed by grammar-forge plugin
@@ -439,15 +449,26 @@ struct LoadedPipelinePlugin {
 
 /// Discover pipeline plugins from ~/.patina/pipeline/.
 /// Returns a map of file extension → loaded plugin.
-fn discover_pipeline_plugins() -> HashMap<String, LoadedPipelinePlugin> {
-    let pipeline_dir = dirs::home_dir()
-        .map(|h| h.join(".patina").join("pipeline"))
-        .unwrap_or_default();
+///
+/// When `extension_filter` is Some, only plugins claiming those extensions are
+/// compiled. Manifests are always read (cheap TOML parse), but WASM compilation
+/// (~120ms per plugin) is skipped for unclaimed extensions. This is the lazy
+/// loading optimization from [[scrape-diff-driven]] EC4.
+fn discover_pipeline_plugins(
+    extension_filter: Option<&HashSet<String>>,
+) -> HashMap<String, LoadedPipelinePlugin> {
+    let pipeline_dir = paths::plugin::pipeline_dir();
 
     if !pipeline_dir.is_dir() {
         return HashMap::new();
     }
 
+    if extension_filter.is_some() {
+        // Lazy path: read manifests first, only compile matching plugins
+        return discover_pipeline_plugins_lazy(&pipeline_dir, extension_filter.unwrap());
+    }
+
+    // Full path: load all plugins (default for direct `patina scrape code`)
     let engine = match PipelineEngine::new() {
         Ok(e) => e,
         Err(e) => {
@@ -484,6 +505,133 @@ fn discover_pipeline_plugins() -> HashMap<String, LoadedPipelinePlugin> {
             },
         );
     }
+    result
+}
+
+/// Lazy plugin discovery: read manifests first, only compile WASM for plugins
+/// whose claimed languages intersect with the extension filter.
+///
+/// Manifest parsing is ~1ms each (TOML). WASM compilation is ~120ms each
+/// (Cranelift JIT). With 17 plugins and 1 affected extension, this saves
+/// ~16 * 120ms = ~1.9s.
+fn discover_pipeline_plugins_lazy(
+    pipeline_dir: &std::path::Path,
+    extensions: &HashSet<String>,
+) -> HashMap<String, LoadedPipelinePlugin> {
+    let mut result = HashMap::new();
+
+    let entries = match std::fs::read_dir(pipeline_dir) {
+        Ok(e) => e,
+        Err(_) => return result,
+    };
+
+    let mut manifests_read = 0;
+    let mut plugins_compiled = 0;
+    let mut plugins_skipped = 0;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        let manifest_path = path.join("plugin.toml");
+        let wasm_path = path.join("plugin.wasm");
+
+        if !manifest_path.exists() || !wasm_path.exists() {
+            continue;
+        }
+
+        // Read manifest (cheap — TOML parse only)
+        let manifest = match PluginManifest::from_path(&manifest_path) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!(
+                    "[pipeline] failed to load manifest {}: {}",
+                    manifest_path.display(),
+                    e
+                );
+                continue;
+            }
+        };
+        manifests_read += 1;
+
+        // Skip non-pipeline plugins
+        if manifest.world != PluginWorld::Pipeline {
+            continue;
+        }
+
+        // Check if this plugin claims any of the affected extensions
+        let claimed: Vec<&String> = manifest
+            .provides
+            .languages
+            .iter()
+            .filter(|lang| extensions.contains(lang.as_str()))
+            .collect();
+
+        if claimed.is_empty() {
+            plugins_skipped += 1;
+            continue;
+        }
+
+        // This plugin has work — compile WASM
+        let wasm_bytes = match std::fs::read(&wasm_path) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("[pipeline] failed to read {}: {}", wasm_path.display(), e);
+                continue;
+            }
+        };
+
+        let engine = match PipelineEngine::new() {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!("[pipeline] failed to create engine: {}", e);
+                continue;
+            }
+        };
+
+        let component = match engine.load_component(&wasm_bytes) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!(
+                    "[pipeline] failed to compile {}: {}",
+                    wasm_path.display(),
+                    e
+                );
+                continue;
+            }
+        };
+
+        plugins_compiled += 1;
+
+        // Map each claimed (and filtered) language to this plugin
+        for lang in &manifest.provides.languages {
+            if extensions.contains(lang.as_str()) {
+                eprintln!("[pipeline] {} claims language '{}' (lazy-loaded)", manifest.name, lang);
+                let engine = match PipelineEngine::new() {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
+                result.insert(
+                    lang.clone(),
+                    LoadedPipelinePlugin {
+                        engine,
+                        component: component.clone(),
+                        manifest: manifest.clone(),
+                    },
+                );
+            }
+        }
+    }
+
+    if manifests_read > 0 {
+        println!(
+            "  Pipeline plugins: {} manifests read, {} compiled, {} skipped (lazy)",
+            manifests_read, plugins_compiled, plugins_skipped
+        );
+    }
+
     result
 }
 

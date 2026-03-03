@@ -48,9 +48,7 @@ pub fn run(options: GrammarBenchOptions) -> Result<()> {
     let total_bytes: usize = file_contents.iter().map(|(_, c)| c.len()).sum();
 
     // === Discover plugin ===
-    let pipeline_dir = dirs::home_dir()
-        .map(|h| h.join(".patina").join("pipeline"))
-        .context("Cannot determine home directory")?;
+    let pipeline_dir = patina::paths::plugin::pipeline_dir();
 
     let discovery_start = Instant::now();
     let engine = PipelineEngine::new().context("Failed to create PipelineEngine")?;

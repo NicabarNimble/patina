@@ -188,7 +188,7 @@ pub struct PluginProvides {
 
 impl PluginManifest {
     /// Parse a plugin manifest from a TOML file.
-    pub(super) fn from_path(path: &Path) -> Result<Self> {
+    pub fn from_path(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let table: toml::Table = content.parse()?;
 

@@ -73,8 +73,12 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
     }
 
     // Always use the new embedded SQLite implementation
-    let items_processed =
-        extract_v2::extract_code_metadata_v2(&config.db_path, &work_dir, config.force)?;
+    let items_processed = extract_v2::extract_code_metadata_v2(
+        &config.db_path,
+        &work_dir,
+        config.force,
+        config.extension_filter.as_ref(),
+    )?;
 
     // Populate FTS5 index for lexical search
     println!("📝 Building FTS5 lexical index...");
