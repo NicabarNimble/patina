@@ -778,41 +778,49 @@ fn freshness_diagnostic(verb: &str, freshness: Freshness, age_hours: f64) -> Opt
     }
 }
 
-impl FullVerbSummary {
-    /// Determine verb status factoring in freshness.
-    /// Degraded = existing status is NeedsAttention AND freshness is Stale.
-    fn effective_status(base_status: VerbStatus, freshness: Option<Freshness>) -> VerbStatus {
-        match (base_status, freshness) {
-            (VerbStatus::NeedsAttention, Some(Freshness::Stale)) => VerbStatus::Degraded,
-            (status, _) => status,
-        }
+/// Determine verb status factoring in freshness.
+/// Degraded = existing status is NeedsAttention AND freshness is Stale.
+fn effective_status(base_status: VerbStatus, freshness: Option<Freshness>) -> VerbStatus {
+    match (base_status, freshness) {
+        (VerbStatus::NeedsAttention, Some(Freshness::Stale)) => VerbStatus::Degraded,
+        (status, _) => status,
     }
 }
 
 impl FullMeasureReport {
-    /// Derive the health summary from typed fields.
+    /// Construct a complete report — health derived from verbs, no placeholder state.
+    pub fn new(
+        verbs: std::collections::BTreeMap<String, FullVerbSummary>,
+        event_counts: EventCounts,
+    ) -> Self {
+        let health = Self::derive_health(&verbs);
+        Self {
+            health,
+            verbs,
+            event_counts,
+        }
+    }
+
+    /// Derive health summary from verb map. Private — called by `new()`.
     ///
     /// Worst-verb-wins: Degraded > NeedsAttention > Good > NoData.
     /// The ordering on VerbStatus drives `max()`.
-    pub fn derive_health_summary(&self) -> HealthSummary {
-        let worst_status = self
-            .verbs
+    fn derive_health(verbs: &std::collections::BTreeMap<String, FullVerbSummary>) -> HealthSummary {
+        let worst_status = verbs
             .values()
             .map(|v| v.status)
             .max()
             .unwrap_or(VerbStatus::NoData);
 
-        let healthy_count = self
-            .verbs
+        let healthy_count = verbs
             .values()
             .filter(|v| v.status == VerbStatus::Good)
             .count();
 
-        let total = self.verbs.len();
+        let total = verbs.len();
 
         // Find the worst verb for the summary sentence
-        let worst_reason = self
-            .verbs
+        let worst_reason = verbs
             .iter()
             .filter(|(_, v)| v.status == worst_status && worst_status != VerbStatus::Good)
             .map(|(name, v)| {
@@ -892,7 +900,7 @@ pub fn build_full_report(conn: &Connection) -> Result<FullMeasureReport> {
             }
         }
 
-        let status = FullVerbSummary::effective_status(verb_summary.status, freshness);
+        let status = effective_status(verb_summary.status, freshness);
 
         verbs.insert(
             verb_name,
@@ -910,20 +918,7 @@ pub fn build_full_report(conn: &Connection) -> Result<FullMeasureReport> {
     // Event counts from events.db
     let event_counts = build_event_counts(conn)?;
 
-    let mut report = FullMeasureReport {
-        health: HealthSummary {
-            status: VerbStatus::NoData,
-            summary: String::new(),
-            assessed_at: String::new(),
-        },
-        verbs,
-        event_counts,
-    };
-
-    // Derive health from the typed report itself
-    report.health = report.derive_health_summary();
-
-    Ok(report)
+    Ok(FullMeasureReport::new(verbs, event_counts))
 }
 
 /// Count events by type from events.db for the EventCounts field.
@@ -2115,14 +2110,20 @@ fn format_metrics_inline(metrics: &VerbMetrics) -> String {
 // MCP Support
 // ============================================================================
 
-/// Generate JSON health summary for MCP tool
-pub fn mcp_measure() -> Result<serde_json::Value> {
+/// Generate typed health report for MCP tool.
+///
+/// Returns the same `FullMeasureReport` as `--full --json`.
+/// MCP and CLI share one code path — no shape divergence.
+pub fn mcp_measure() -> Result<FullMeasureReport> {
     let db_path = Path::new(eventlog::PATINA_DB);
     if !db_path.exists() {
-        return Ok(serde_json::json!({
-            "status": "no_data",
-            "message": "No measurements recorded yet. Run patina scrape, oxidize, and eval first."
-        }));
+        return Ok(FullMeasureReport::new(
+            std::collections::BTreeMap::new(),
+            EventCounts {
+                total_runtime_events: 0,
+                by_type: std::collections::BTreeMap::new(),
+            },
+        ));
     }
 
     let conn = Connection::open(db_path).context("Failed to open patina.db")?;
@@ -2132,14 +2133,16 @@ pub fn mcp_measure() -> Result<serde_json::Value> {
     let has_existing = has_existing_measurement_events(&conn)?;
 
     if total_events == 0 && !has_existing {
-        return Ok(serde_json::json!({
-            "status": "no_data",
-            "message": "No measurements recorded yet. Run patina scrape, oxidize, and eval first."
-        }));
+        return Ok(FullMeasureReport::new(
+            std::collections::BTreeMap::new(),
+            EventCounts {
+                total_runtime_events: 0,
+                by_type: std::collections::BTreeMap::new(),
+            },
+        ));
     }
 
-    let report = build_report(&conn)?;
-    Ok(serde_json::to_value(&report)?)
+    build_full_report(&conn)
 }
 
 #[cfg(test)]
@@ -2427,7 +2430,7 @@ mod tests {
     #[test]
     fn effective_status_degraded_when_stale_and_needs_attention() {
         assert_eq!(
-            FullVerbSummary::effective_status(VerbStatus::NeedsAttention, Some(Freshness::Stale)),
+            effective_status(VerbStatus::NeedsAttention, Some(Freshness::Stale)),
             VerbStatus::Degraded
         );
     }
@@ -2435,7 +2438,7 @@ mod tests {
     #[test]
     fn effective_status_preserves_good() {
         assert_eq!(
-            FullVerbSummary::effective_status(VerbStatus::Good, Some(Freshness::Stale)),
+            effective_status(VerbStatus::Good, Some(Freshness::Stale)),
             VerbStatus::Good
         );
     }
@@ -2443,7 +2446,7 @@ mod tests {
     #[test]
     fn effective_status_preserves_needs_attention_when_fresh() {
         assert_eq!(
-            FullVerbSummary::effective_status(VerbStatus::NeedsAttention, Some(Freshness::Fresh)),
+            effective_status(VerbStatus::NeedsAttention, Some(Freshness::Fresh)),
             VerbStatus::NeedsAttention
         );
     }
@@ -2477,23 +2480,17 @@ mod tests {
             },
         );
 
-        let report = FullMeasureReport {
-            health: HealthSummary {
-                status: VerbStatus::NoData,
-                summary: String::new(),
-                assessed_at: String::new(),
-            },
+        let report = FullMeasureReport::new(
             verbs,
-            event_counts: EventCounts {
+            EventCounts {
                 total_runtime_events: 0,
                 by_type: std::collections::BTreeMap::new(),
             },
-        };
+        );
 
-        let health = report.derive_health_summary();
-        assert_eq!(health.status, VerbStatus::NeedsAttention);
-        assert!(health.summary.contains("1/2 verbs healthy"));
-        assert!(health.summary.contains("believe"));
+        assert_eq!(report.health.status, VerbStatus::NeedsAttention);
+        assert!(report.health.summary.contains("1/2 verbs healthy"));
+        assert!(report.health.summary.contains("believe"));
     }
 
     #[test]
@@ -2511,22 +2508,16 @@ mod tests {
             },
         );
 
-        let report = FullMeasureReport {
-            health: HealthSummary {
-                status: VerbStatus::NoData,
-                summary: String::new(),
-                assessed_at: String::new(),
-            },
+        let report = FullMeasureReport::new(
             verbs,
-            event_counts: EventCounts {
+            EventCounts {
                 total_runtime_events: 0,
                 by_type: std::collections::BTreeMap::new(),
             },
-        };
+        );
 
-        let health = report.derive_health_summary();
-        assert_eq!(health.status, VerbStatus::Good);
-        assert!(health.summary.contains("1/1 verbs healthy"));
+        assert_eq!(report.health.status, VerbStatus::Good);
+        assert!(report.health.summary.contains("1/1 verbs healthy"));
     }
 
     #[test]
