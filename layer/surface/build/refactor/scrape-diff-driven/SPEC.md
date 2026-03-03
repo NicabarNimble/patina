@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: scrape-diff-driven
-status: draft
+status: ready
 created: 2026-03-03
 sessions:
   origin: 20260303-090741
@@ -16,22 +16,22 @@ exit_criteria:
   text: '`patina scrape` with no new commits and no changed files completes in < 500ms'
   checked: false
 - id: scrape-single-commit-under-2s
-  text: 'incremental scrape after a single commit completes in < 2s (the EC1 data-fast-incremental deferred)'
+  text: incremental scrape after a single commit completes in < 2s (the EC1 data-fast-incremental deferred)
   checked: false
 - id: diff-drives-dispatch
-  text: 'scrape computes the delta (changed files) once, dispatches only to extractors that handle those file types'
+  text: scrape computes the delta (changed files) once, dispatches only to extractors that handle those file types
   checked: false
 - id: plugins-loaded-lazily
-  text: 'WASM grammar plugins are only loaded when the diff contains files of their claimed language — 0 changed .rs files means grammar-rust is not loaded'
+  text: WASM grammar plugins are only loaded when the diff contains files of their claimed language — 0 changed .rs files means grammar-rust is not loaded
   checked: false
 - id: aot-module-cache
-  text: 'WASM modules are serialized to .cwasm after first compile; subsequent loads use deserialize_file (mmap, no Cranelift)'
+  text: WASM modules are serialized to .cwasm after first compile; subsequent loads use deserialize_file (mmap, no Cranelift)
   checked: false
 - id: fts5-incremental
-  text: 'code_search FTS5 index updates only rows for changed files — no DELETE + full rebuild when < 100% of files changed'
+  text: code_search FTS5 index updates only rows for changed files — no DELETE + full rebuild when < 100% of files changed
   checked: false
 - id: mother-scrape-dispatch
-  text: 'hook can optionally send diff event to Mother over UDS; Mother dispatches to warm plugins — cold start is zero'
+  text: hook can optionally send diff event to Mother over UDS; Mother dispatches to warm plugins — cold start is zero
   checked: false
 ---
 # refactor: Diff-Driven Scrape Core with AOT Plugin Cache
