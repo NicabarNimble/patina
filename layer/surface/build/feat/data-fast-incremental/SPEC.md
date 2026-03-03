@@ -67,9 +67,10 @@ The specific bottlenecks:
    performance polish, they're how the system stays alive. Without hooks,
    beliefs grounded in code become stale the moment a commit lands.
 
-4. **No timing data.** `ScrapeStats` captures `time_elapsed` but only
-   prints it to stdout — never persisted. There's no baseline to measure
-   improvements against or detect regressions.
+4. **No baseline documented.** Area 2 (v0.33) wired `measure.capture` events
+   with `duration_ms` for all scrapers, so timing data now persists in events.db.
+   But no baseline profile has been captured and documented for regression
+   comparison.
 
 ## Solution
 
@@ -82,9 +83,9 @@ patina scrape          # full incremental — time each scraper
 patina scrape --full   # forced full — time each scraper
 ```
 
-Record per-scraper wall-clock time in `measure.capture` events (Area 2
-wires this). If Area 2 isn't complete yet, capture manually and document
-in this spec's DESIGN.md. The point: no optimization without measurement.
+Per-scraper wall-clock time already flows to `measure.capture` events
+(Area 2, v0.33). Capture the baseline numbers in this spec's DESIGN.md
+before any optimization. The point: no optimization without measurement.
 
 ### 1. Incremental co-change computation
 
@@ -122,75 +123,100 @@ Requirements:
 
 Before parsing a file, check if it's changed since last scrape:
 
-**Strategy A — git status (preferred):**
-```
-git diff --name-only <last_code_sha>..HEAD
-```
-Only parse files in the diff set. This piggybacks on git's efficient
-tree comparison. Files not in the diff are guaranteed unchanged.
+**Strategy: mtime + size check via existing `index_state` table.**
 
-**Strategy B — mtime check (fallback):**
-Compare file mtime against `scrape_meta` last_processed_code timestamp.
-Skip files older than the last scrape. Less reliable than git (mtime can
-be reset by builds, editors) but works without git.
+The code scraper already writes `(path, mtime, size)` to `index_state` on
+every run (`extract_v2.rs:142`, `code/database.rs:230`). The table is
+write-only today — add the read. Before parsing, check if mtime and size
+match the stored values; if so, skip the file.
 
-Strategy A is preferred because it's exact and already available via git.
+This follows the established incremental pattern: layer scraper checks
+`SELECT id FROM patterns`, beliefs scraper checks `SELECT id FROM beliefs`,
+code scraper checks `SELECT mtime, size FROM index_state WHERE path = ?`.
 
-**Execution order prerequisite:** Today `execute_all()` runs code BEFORE git.
-This must be swapped: git first, then code. The git scraper produces the diff
-of changed files; the code scraper consumes it to skip unchanged files. Add a
-comment in `execute_all()` documenting this ordering dependency so future
-refactors don't break the assumption.
+**Why mtime over git diff?** Git diff (Strategy A in the original draft)
+would require the git scraper to run before the code scraper, creating an
+execution ordering dependency enforced only by a code comment. Per
+[[correctness-by-construction-not-convention]]: conventions aren't boundaries.
+Per [[unix-philosophy]]: each scraper is its own tool — the code scraper
+should not depend on git scraper output. The mtime approach is self-contained,
+uses existing infrastructure, and avoids new coupling.
+
+`--force` bypasses the check (existing `ScrapeConfig.force` flag).
 
 ### 3. Post-commit hook
 
-Create `resources/git/post-commit.sh`:
+**Architecture: shell shim + Rust implementation.** The git hook is a 2-line
+shell script that calls `patina hook post-commit`. All logic — logging,
+background execution, event emission — lives in testable Rust inside the
+binary. Per [[dependable-rust]]: the shell script is the thin shim, the
+Rust module is the black box. The shell script can't grow because there's
+nothing left in it to grow.
 
+Shell shim (`resources/git/post-commit.sh`):
 ```bash
 #!/bin/sh
-# Trigger incremental scrape after commit
-# Runs in background — git commit returns immediately
-patina scrape --incremental &
+# Install: ln -sf ../../resources/git/post-commit.sh .git/hooks/post-commit
+command -v patina >/dev/null 2>&1 || exit 0
+patina hook post-commit
 ```
 
-**Design constraints (from safety-boundaries):**
-- Hook runs scrape in background (`&`) so `git commit` returns instantly.
+`patina hook post-commit` (Rust):
+- Forks scrape to background (daemonize or spawn+detach)
+- Logs to `.patina/local/hook.log` (patina's data dir, not `.git/`)
+- Emits `hook.post-commit` event to events.db (timestamp, exit status)
+- `command -v` guard remains in shell: if `patina` isn't on PATH, the
+  shim exits cleanly. Git commit is never blocked by a missing tool.
+
+**Design constraints (from [[safety-boundaries]]):**
+- Hook runs scrape in background so `git commit` returns instantly.
   The developer never waits for patina.
 - Hook is a shell script in `resources/git/`, not auto-installed. The user
   copies or symlinks it deliberately. No silent filesystem writes.
-- Hook must handle the case where `patina` is not on PATH (fail silently,
-  don't break git).
+- No concurrent-scrape lock needed: add `PRAGMA busy_timeout = 5000` to
+  `patina.db` so a second overlapping scrape waits rather than failing
+  with SQLITE_BUSY. Data is idempotent (INSERT OR REPLACE, upsert), so
+  two scrapes producing the same result is harmless.
 - Add a `post-merge` hook with the same pattern — `git pull` + `git merge`
   should also trigger incremental scrape.
 
+### 3a. Scrape regression diagnostic
+
+Add a `diagnostics()` method to `CaptureGitScrapeMetrics` (and the other
+capture metrics with `duration_ms`): when `duration_ms > 5000`, emit a
+warning diagnostic. This flows through the existing
+`collect_source_diagnostics()` → `FullVerbSummary.diagnostics` →
+`patina measure` + ambient health in `patina context`.
+
+This is the regression gate: if a future change makes scrape slow again,
+`patina measure` shows a warning, the LLM sees it in ambient health, and
+the developer sees it in `patina measure --full`. No new infrastructure —
+just a `diagnostics()` impl on structs that already have `duration_ms`.
+
 ### 4. Hook install mechanism
 
-Two options (pick during implementation):
+**Documented manual step** (Option B). The user symlinks deliberately:
 
-**Option A — `patina init` integration:**
-`patina init` already sets up `.patina/`. Add a step: "Install git hooks?
-[y/N]". If yes, symlink `resources/git/post-commit.sh` → `.git/hooks/post-commit`.
-
-**Option B — documented manual step:**
-Document in README/CLAUDE.md:
 ```bash
 ln -sf ../../resources/git/post-commit.sh .git/hooks/post-commit
 ln -sf ../../resources/git/post-merge.sh .git/hooks/post-merge
 ```
 
-Option A is friendlier. Option B is simpler and respects user consent more
-explicitly. Both satisfy the exit criterion.
+Per [[safety-boundaries]]: "User consent — Ask before major operations."
+A symlink the user types is explicit consent. `patina init` already has
+enough responsibilities (adapter setup, tmux, force/local modes) — adding
+hook logic would violate [[unix-philosophy]]: "No feature creep — new
+functionality = new commands, not new flags."
+
+Install instructions live in `resources/git/README.md`. For projects
+without `resources/git/`, the user creates a 3-line script directly.
 
 ### 5. Persist scrape timings
 
-Each scraper already computes `ScrapeStats.time_elapsed`. After Area 2
-wires `measure.capture` events for all scrapers, the timing data flows
-automatically into events.db. No additional work needed here — Area 2
-handles the emission, this spec consumes it for regression detection.
-
-If Area 2 isn't complete when this work begins, add a temporary
-`scrape_meta` key: `last_scrape_duration_ms_<scraper>`. Replace with
-proper event emission when Area 2 ships.
+**Already complete.** Area 2 shipped in v0.33 (spec [[data-emission-completeness]]).
+All 5 scrapers emit `measure::emit_or_warn("capture", "scrape", "<name>", ...)`
+with `duration_ms` to events.db. No additional work needed — this spec
+consumes the timing data for regression detection and baseline documentation.
 
 ## Non-Goals
 
@@ -235,7 +261,9 @@ Baseline profile (exit criterion 6) captures per-scraper timings before
 optimization. That becomes the comparison point. Hardware specs documented
 alongside baseline.
 
-**Execution order dependency:** git scraper must run before code scraper
-in `execute_all()` so git diff data is available for file-skip. This is
-a hard ordering constraint that must be enforced with a code comment and
-potentially an assertion.
+**Execution order dependency (resolved):** The original draft proposed
+git-diff-first, requiring git scraper before code scraper. Audit session
+20260303-070328 rejected this: per [[correctness-by-construction-not-convention]],
+a comment-enforced ordering is a convention, not a boundary. The mtime
+approach via existing `index_state` is self-contained — no ordering
+dependency. `execute_all()` order is unchanged.
