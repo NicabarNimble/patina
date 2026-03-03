@@ -2416,7 +2416,9 @@ mod tests {
         };
         let diags = m.diagnostics();
         assert_eq!(diags.len(), 2);
-        assert!(diags[0].message.contains("20 beliefs have no code grounding"));
+        assert!(diags[0]
+            .message
+            .contains("20 beliefs have no code grounding"));
         assert!(diags[1]
             .message
             .contains("3 beliefs have active attacks without resolution"));
