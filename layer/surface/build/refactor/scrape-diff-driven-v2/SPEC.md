@@ -3,6 +3,9 @@ type: refactor
 id: scrape-diff-driven-v2
 status: draft
 created: 2026-03-03
+blocked_by:
+- knowledge-system-architecture
+exit_criteria: []
 split_from: scrape-diff-driven
 ---
 
