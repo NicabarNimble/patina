@@ -241,6 +241,33 @@ Two structural issues fixed in a cleanup commit after commits 1–4:
 - `FullMeasureReport::new(verbs, event_counts)` constructor replaces two-phase
   construction. `derive_health()` is private — no invalid intermediate state.
 
+## Session 2 Implementation Notes
+
+### contested_count added to BelieveMetrics
+
+`contested_count` field added with `#[serde(default)]` for backward compatibility
+with existing `measure.believe` events that lack the field. Queried from
+`beliefs.contested_by` pre-materialized column (not raw `belief_attacks` table
+query). Diagnostic: "N beliefs have active attacks without resolution". Live
+data: 16 contested beliefs out of 178 total.
+
+### execute_feedback() ATTACH rewrite
+
+Direction reversed from measure: eval opens `events.db` as primary (via
+`eventlog::open_events_db()`), ATTACHes `patina.db`. scry.query events come
+from `events.eventlog`, git.commit→sha mapping from `patina.eventlog`, file
+paths from structured `patina.commit_files` table (no JSON file array parsing).
+The old code read scry.query from `patina.db` eventlog — returned 0 results
+after db-split since scry.query events migrated to events.db.
+
+### Snapshot test deferred
+
+The DESIGN.md Session 1 notes flagged a missing snapshot test for JSON shape
+enforcement. This remains a gap — no snapshot test was added in this session.
+The shape is pinned by `#[derive(Serialize)]` with `rename_all` on all types,
+but a snapshot test would make the contract enforceable in CI. Candidate for
+a follow-up or the next spec that touches measure.
+
 ## Open Questions
 
 1. ~~**Contested count source**~~ — Resolved. `belief_attacks` exists in `patina.db`
