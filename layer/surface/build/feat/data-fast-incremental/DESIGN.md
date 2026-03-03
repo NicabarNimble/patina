@@ -13,6 +13,32 @@ patina scrape (incremental, 3 new commits): 16.1s wall (5.1s user, 7.6s system)
 Bottleneck: git scraper's `rebuild_co_changes()` does DELETE + full rebuild every run.
 Second: code scraper re-parses all 248 files despite `index_state` table existing.
 
+## Post-optimization (measured 2026-03-03, same repo after commits 1–5)
+
+```
+patina scrape (incremental, 0 new commits): 6.37s wall (3.87s user, 1.82s system)
+  code scraper:  ~3.17s — 0 files parsed (250 skipped via mtime), BUT:
+                          WASM plugin loading ~2s (17 grammars),
+                          FTS5 full rebuild ~1s (6606 symbols)
+  git scraper:   ~1.5s  — 0 new commits, tags+tracked files reindexed, 0 co-change pairs
+  layer scraper: <0.1s  — 0 items (55 skipped)
+  belief scraper: ~1.5s — 0 new beliefs, BUT grounding recomputed for 189 beliefs
+
+patina scrape (incremental, 1 new commit): 6.47s wall (3.81s user, 1.62s system)
+  Same profile + 1 file reparsed, 21 co-change pairs upserted
+```
+
+Improvement: **16.1s → 6.4s** (60% reduction). Bottlenecks eliminated:
+co-change rebuild (10s → 0), code re-parse (4.5s → ~0).
+
+**EC1 (<2s) not met.** Remaining ~6s is fixed overhead outside this spec's scope:
+- WASM plugin loading: ~2s (17 grammar plugins instantiated even when 0 files need parsing)
+- FTS5 full rebuilds: ~1s (code_search + commits_fts5, DELETE + re-insert every run)
+- Belief grounding: ~1.5s (recomputes all 189 beliefs every run, no skip logic)
+- Git tags + tracked files: ~1s (full rebuild every run, ~1800 tags + ~1555 files)
+
+These are follow-up optimization targets, each requiring its own design work.
+
 ## Resolved Decisions
 
 ### D1: Code file-skip uses mtime via existing `index_state` (not git diff)
