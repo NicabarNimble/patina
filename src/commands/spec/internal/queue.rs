@@ -16,6 +16,9 @@ pub(crate) struct Recommendation {
     pub reason: String,
     pub priority: u32,
     pub impact: usize,
+    /// Queue position from `target` field. None = unqueued, sorts last.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queue_position: Option<u32>,
 }
 
 /// Recommend the next spec to work on based on priority ranking.
@@ -47,14 +50,18 @@ pub fn next_spec(json: bool) -> Result<()> {
     if recommendations.len() > 1 {
         println!("\nOther specs:");
         for rec in &recommendations[1..] {
+            let queue_str = rec
+                .queue_position
+                .map(|p| format!("[#{}] ", p))
+                .unwrap_or_default();
             let impact_str = if rec.impact > 0 {
                 format!(" (blocks {})", rec.impact)
             } else {
                 String::new()
             };
             println!(
-                "  {:<28} {:<10} {}{}",
-                rec.id, rec.status, rec.reason, impact_str
+                "  {}{:<28} {:<10} {}{}",
+                queue_str, rec.id, rec.status, rec.reason, impact_str
             );
         }
     }
@@ -84,6 +91,7 @@ pub fn next_spec_value() -> Result<Vec<Recommendation>> {
             None => continue,
         };
         let impact = dep_counts.get(&spec.id).copied().unwrap_or(0);
+        let queue_position = parse_queue_position(spec.target.as_deref());
 
         match status {
             SpecStatus::Active => {
@@ -93,6 +101,7 @@ pub fn next_spec_value() -> Result<Vec<Recommendation>> {
                     reason: "Currently active — continue working".to_string(),
                     priority: 1,
                     impact,
+                    queue_position,
                 });
             }
             SpecStatus::Blocked => {
@@ -112,6 +121,7 @@ pub fn next_spec_value() -> Result<Vec<Recommendation>> {
                         reason: "Blockers complete — ready to resume".to_string(),
                         priority: 2,
                         impact,
+                        queue_position,
                     });
                 }
             }
@@ -128,38 +138,71 @@ pub fn next_spec_value() -> Result<Vec<Recommendation>> {
                     reason,
                     priority: if age > 14 { 3 } else { 4 },
                     impact,
+                    queue_position,
                 });
             }
             SpecStatus::Ready => {
+                let reason = match queue_position {
+                    Some(pos) => format!("Queue position #{}", pos),
+                    None => {
+                        if impact > 0 {
+                            format!("Ready — blocks {} other spec(s)", impact)
+                        } else {
+                            "Ready to start".to_string()
+                        }
+                    }
+                };
                 recommendations.push(Recommendation {
                     id: spec.id.clone(),
                     status: status.to_string(),
-                    reason: if impact > 0 {
-                        format!("Ready to start — blocks {} other spec(s)", impact)
-                    } else {
-                        "Ready to start".to_string()
-                    },
+                    reason,
                     priority: 5,
                     impact,
+                    queue_position,
                 });
             }
             SpecStatus::Draft => {
+                let reason = match queue_position {
+                    Some(pos) => format!("Queue position #{} — needs audit", pos),
+                    None => "Draft — unqueued".to_string(),
+                };
                 recommendations.push(Recommendation {
                     id: spec.id.clone(),
                     status: status.to_string(),
-                    reason: "Draft — promote to ready when prepared".to_string(),
+                    reason,
                     priority: 6,
                     impact,
+                    queue_position,
                 });
             }
             _ => {}
         }
     }
 
-    // Sort by priority (ascending), then by impact (descending)
-    recommendations.sort_by(|a, b| a.priority.cmp(&b.priority).then(b.impact.cmp(&a.impact)));
+    // Sort: status tier (priority), then queue position (queued before unqueued,
+    // lower position first), then impact as final tiebreaker.
+    recommendations.sort_by(|a, b| {
+        a.priority
+            .cmp(&b.priority)
+            .then_with(|| match (a.queue_position, b.queue_position) {
+                (Some(pa), Some(pb)) => pa.cmp(&pb),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            })
+            .then_with(|| b.impact.cmp(&a.impact))
+    });
 
     Ok(recommendations)
+}
+
+/// Parse `target` field as a queue position number.
+///
+/// Accepts bare integers ("1", "2") or any string — non-numeric targets
+/// are ignored (returns None). This lets `target` serve as queue position
+/// without breaking if someone sets a non-numeric value.
+fn parse_queue_position(target: Option<&str>) -> Option<u32> {
+    target.and_then(|t| t.trim().parse::<u32>().ok())
 }
 
 /// Compute age in days for a spec from the all-specs list.
