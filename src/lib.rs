@@ -25,4 +25,3 @@ pub mod workspace;
 pub use environment::Environment;
 pub use layer::Layer;
 pub use session::SessionManager;
-// benchmark touch
