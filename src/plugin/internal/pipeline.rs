@@ -8,7 +8,7 @@ use std::path::Path;
 
 use anyhow::Result;
 use wasmtime::component::{Component, Linker};
-use wasmtime::Store;
+use wasmtime::{Engine, Store};
 
 use super::{wasm_engine, PluginManifest};
 
@@ -73,9 +73,83 @@ impl PipelineEngine {
         Ok(Self { linker })
     }
 
-    /// Load a WASM component from bytes.
+    /// Load a WASM component from bytes (no caching).
     pub fn load_component(&self, wasm: &[u8]) -> Result<Component> {
         Component::new(wasm_engine(), wasm)
+    }
+
+    /// Load a WASM component with AOT cache.
+    ///
+    /// If a `.cwasm` file exists alongside the `.wasm` and is newer, loads the
+    /// pre-compiled native code via mmap (sub-millisecond). Otherwise compiles
+    /// from WASM source (~120ms) and writes the `.cwasm` cache for next time.
+    ///
+    /// Cache invalidation: the `.cwasm` file includes a wasmtime version marker.
+    /// If the marker doesn't match the current engine, the cache is rebuilt.
+    ///
+    /// See [[scrape-diff-driven]] EC5: aot-module-cache.
+    pub fn load_component_cached(&self, wasm_path: &Path) -> Result<Component> {
+        let cwasm_path = wasm_path.with_extension("cwasm");
+        let engine = wasm_engine();
+
+        // Check if cached AOT artifact exists and is fresh
+        if cwasm_path.exists() {
+            let wasm_mtime = std::fs::metadata(wasm_path)
+                .and_then(|m| m.modified())
+                .ok();
+            let cwasm_mtime = std::fs::metadata(&cwasm_path)
+                .and_then(|m| m.modified())
+                .ok();
+
+            if let (Some(wasm_t), Some(cwasm_t)) = (wasm_mtime, cwasm_mtime) {
+                if cwasm_t > wasm_t {
+                    // SAFETY: The .cwasm file was produced by this same wasmtime
+                    // engine version (checked via Engine::detect_precompiled_file).
+                    // We control the file contents — it was written by a previous
+                    // invocation of this function. The wasmtime engine configuration
+                    // (wasm_component_model=true, sync mode) is identical because
+                    // it comes from the same OnceLock singleton.
+                    if Engine::detect_precompiled_file(&cwasm_path)?.is_some() {
+                        match unsafe { Component::deserialize_file(engine, &cwasm_path) } {
+                            Ok(component) => return Ok(component),
+                            Err(e) => {
+                                // Cache corrupted — fall through to recompile
+                                eprintln!(
+                                    "[pipeline] AOT cache invalid for {}: {} — recompiling",
+                                    cwasm_path.display(),
+                                    e
+                                );
+                            }
+                        }
+                    } else {
+                        // Engine version mismatch — delete stale cache
+                        let _ = std::fs::remove_file(&cwasm_path);
+                    }
+                }
+            }
+        }
+
+        // Cold path: compile from WASM source
+        let wasm_bytes = std::fs::read(wasm_path)?;
+        let component = Component::new(engine, &wasm_bytes)?;
+
+        // Write AOT cache for next load
+        match component.serialize() {
+            Ok(bytes) => {
+                if let Err(e) = std::fs::write(&cwasm_path, &bytes) {
+                    eprintln!(
+                        "[pipeline] failed to write AOT cache {}: {}",
+                        cwasm_path.display(),
+                        e
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("[pipeline] failed to serialize component: {}", e);
+            }
+        }
+
+        Ok(component)
     }
 
     /// Invoke a pipeline plugin with a request envelope.
@@ -173,19 +247,11 @@ impl PipelineEngine {
                 continue;
             }
 
-            let wasm_bytes = match std::fs::read(&wasm_path) {
-                Ok(b) => b,
-                Err(e) => {
-                    eprintln!("[pipeline] failed to read {}: {}", wasm_path.display(), e);
-                    continue;
-                }
-            };
-
-            let component = match self.load_component(&wasm_bytes) {
+            let component = match self.load_component_cached(&wasm_path) {
                 Ok(c) => c,
                 Err(e) => {
                     eprintln!(
-                        "[pipeline] failed to compile {}: {}",
+                        "[pipeline] failed to load {}: {}",
                         wasm_path.display(),
                         e
                     );

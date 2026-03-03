@@ -574,15 +574,7 @@ fn discover_pipeline_plugins_lazy(
             continue;
         }
 
-        // This plugin has work — compile WASM
-        let wasm_bytes = match std::fs::read(&wasm_path) {
-            Ok(b) => b,
-            Err(e) => {
-                eprintln!("[pipeline] failed to read {}: {}", wasm_path.display(), e);
-                continue;
-            }
-        };
-
+        // This plugin has work — load WASM (with AOT cache)
         let engine = match PipelineEngine::new() {
             Ok(e) => e,
             Err(e) => {
@@ -591,11 +583,11 @@ fn discover_pipeline_plugins_lazy(
             }
         };
 
-        let component = match engine.load_component(&wasm_bytes) {
+        let component = match engine.load_component_cached(&wasm_path) {
             Ok(c) => c,
             Err(e) => {
                 eprintln!(
-                    "[pipeline] failed to compile {}: {}",
+                    "[pipeline] failed to load {}: {}",
                     wasm_path.display(),
                     e
                 );
