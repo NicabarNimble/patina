@@ -5,6 +5,8 @@ status: draft
 created: 2026-03-03
 blocked_by:
 - knowledge-system-architecture
+related:
+- scrape-diff-driven
 exit_criteria: []
 split_from: scrape-diff-driven
 ---
