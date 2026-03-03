@@ -58,7 +58,7 @@ All 7 from session [[20260227-075037]]:
 | Field | Type | Nullable | Notes |
 |-------|------|----------|-------|
 | status | VerbStatus | no | worst-verb-wins |
-| summary | String | no | one-sentence, LLM-quotable |
+| summary | String | no | derived from typed report; one sentence, includes verb count and worst-verb reason |
 | assessed_at | String | no | RFC3339 |
 
 **`FullVerbSummary`**:
@@ -69,7 +69,7 @@ All 7 from session [[20260227-075037]]:
 | latest_timestamp | Option\<String\> | yes | None when no data |
 | age_hours | Option\<f64\> | yes | None when no timestamp |
 | freshness | Option\<Freshness\> | yes | None when no timestamp |
-| sources | Vec\<SourceSummary\> | no | may be empty |
+| sources | Vec\<SourceSummary\> | no | may be empty; consumers iterate entries — verb name is the map key, not a field |
 | diagnostics | Vec\<Diagnostic\> | no | may be empty |
 
 **`Diagnostic`**:
@@ -84,13 +84,14 @@ All 7 from session [[20260227-075037]]:
 | Field | Type | Nullable | Notes |
 |-------|------|----------|-------|
 | total_runtime_events | i64 | no | events.db total |
-| by_type | BTreeMap\<String, i64\> | no | event_type → count |
+| by_type | BTreeMap\<String, i64\> | no | keys follow `{domain}.{action}` convention; consumers must handle unknown keys gracefully |
 
-**New enums:**
+**New enums** (all `#[non_exhaustive]` — downstream match arms must include `_`,
+so adding variants later isn't a breaking change):
 
 - `Freshness` — `Fresh`, `Aging`, `Stale` (serialized lowercase)
 - `Severity` — `Warning`, `Error` (serialized lowercase)
-- `VerbStatus::Degraded` — added to existing enum
+- `VerbStatus::Degraded` — added to existing enum (add `#[non_exhaustive]` to `VerbStatus`)
 
 ### Freshness Thresholds (Constants)
 
@@ -133,9 +134,9 @@ at the query boundary. The P@5 metric feeds into search verb health via a
 ## Commits
 
 1. `feat(measure): define FullMeasureReport type hierarchy` — VerbStatus::Degraded,
-   Freshness/Severity enums, Diagnostic, FullVerbSummary, HealthSummary,
-   FullMeasureReport, EventCounts structs. Freshness threshold constants.
-   All `#[derive(Serialize)]`, zero `serde_json::Value`.
+   Freshness/Severity enums (all `#[non_exhaustive]`), Diagnostic, FullVerbSummary,
+   HealthSummary, FullMeasureReport, EventCounts structs. Freshness threshold
+   constants. All `#[derive(Serialize)]`, zero `serde_json::Value`.
 
 2. `feat(measure): implement freshness, diagnostics, and health derivation` —
    `compute_age_hours()` from timestamps, `Freshness::for_verb()` with per-verb
@@ -143,38 +144,55 @@ at the query boundary. The P@5 metric feeds into search verb health via a
    variants (computed from typed fields), `health_summary()` on FullMeasureReport
    (worst-verb-wins). Tests for each derivation.
 
-3. `feat(measure): wire build_full_report and --full CLI flag` — Add `full: bool`
-   to MeasureOptions, `build_full_report(conn) -> Result<FullMeasureReport>` that
-   reuses existing verb builders then wraps with freshness/diagnostics/health.
-   Extract `attach_events()` helper. CLI: `--full --json` serializes FullMeasureReport,
-   `--full` without `--json` renders enriched terminal view.
+3. `feat(measure): implement build_full_report` — `build_full_report(conn) ->
+   Result<FullMeasureReport>` reuses existing verb builders then wraps with
+   freshness/diagnostics/health. Extract `attach_events()` helper. Pure library
+   code, no CLI changes — testable in isolation.
 
-4. `feat(measure): unify MCP and CLI measure paths` — Change `mcp_measure()` to
+4. `feat(measure): add --full CLI flag and terminal rendering` — Add `full: bool`
+   to MeasureOptions. CLI routing: `--full --json` serializes FullMeasureReport,
+   `--full` renders enriched terminal view with freshness labels and diagnostics
+   (capped at 3 per verb, overflow points to `--json`). UX-only commit — builder
+   logic is already in place from commit 3.
+
+5. `feat(measure): unify MCP and CLI measure paths` — Change `mcp_measure()` to
    call `build_full_report()` and return typed `FullMeasureReport` serialized.
    Delete `serde_json::Value` return type and `json!({})` fallback paths.
    MCP and CLI `--full --json` produce identical output.
 
-5. `feat(measure): add believe grounding breakdown` — Add `contested_count` to
+6. `feat(measure): add believe grounding breakdown` — Add `contested_count` to
    BelieveMetrics, query `belief_attacks` table for beliefs with unresolved attacks.
    Add diagnostic: "N beliefs have active attacks without resolution".
 
-6. `feat(eval): rewrite execute_feedback with ATTACH cross-db query` — Open
-   events.db, ATTACH patina.db. Join scry.query events with git.commit data via
-   typed `FeedbackRow` struct at query boundary. Eval emits `measure.search`
+7. `feat(eval): rewrite execute_feedback with ATTACH cross-db query` — Open
+   events.db, ATTACH patina.db (opposite direction from measure — inline the
+   ATTACH call, no shared helper). Join scry.query events with git.commit data
+   via typed `FeedbackRow` struct at query boundary. Eval emits `measure.search`
    event with P@5 result (eval is the tool, measure is the reader). Remove JSON
-   blob parsing from old path.
+   blob parsing from old path. Structurally independent of commits 1–6 — the P@5
+   event flows through existing `collect_measure_sources()`.
 
-7. `feat(measure): verify catalog questions and check exit criteria` — Run
-   `--full --json`, confirm all 9 catalog questions answerable from output. Check
-   all 12 exit criteria in SPEC.md. Update DESIGN.md with final state.
+8. `feat(measure): verify catalog questions and check exit criteria` — Concrete
+   verification:
+   ```
+   cargo test -p patina --lib measure::
+   cargo build --release && cargo install --path .
+   patina measure --full --json | jq .health.status
+   patina measure --full --json | jq '.verbs | keys'
+   patina measure --full --json | jq '.verbs.believe.diagnostics'
+   patina measure --full
+   patina eval --feedback
+   ```
+   Confirm all 9 catalog questions answerable from `--full` output. Check all 12
+   exit criteria in SPEC.md. Update DESIGN.md with final state.
 
 ## Key Files
 
-- `src/commands/measure/internal.rs` — all new types, `build_full_report()`, freshness, diagnostics
-- `src/commands/measure/mod.rs` — `MeasureOptions` (add `full: bool`), `execute()` routing
-- `src/mcp/server/mod.rs` — `handle_measure()` calls `build_full_report()` (commit 4)
-- `src/commands/eval/mod.rs` — `execute_feedback()` ATTACH rewrite (commit 6)
-- `src/eventlog.rs` — `attach_events()` helper if promoted to shared (commit 3)
+- `src/commands/measure/internal.rs` — all new types, `build_full_report()`, freshness, diagnostics (commits 1–3)
+- `src/commands/measure/mod.rs` — `MeasureOptions` (add `full: bool`), `execute()` routing (commit 4)
+- `src/mcp/server/mod.rs` — `handle_measure()` calls `build_full_report()` (commit 5)
+- `src/commands/eval/mod.rs` — `execute_feedback()` ATTACH rewrite, inline (commit 7)
+- `src/eventlog.rs` — `attach_events()` helper for measure's direction only (commit 3)
 
 ## Open Questions
 
@@ -183,10 +201,17 @@ at the query boundary. The P@5 metric feeds into search verb health via a
    `SELECT COUNT(DISTINCT to_belief) FROM belief_attacks WHERE defeated = 0`.
    `beliefs.contested_by` column also available as a pre-materialized field.
 
-2. **--full terminal view**: Spec focuses on JSON contract. The `--full` without
-   `--json` terminal rendering is unspecified. Proposal: reuse `render_user_view()`
-   structure but add freshness indicators and inline diagnostics. Keep it minimal —
-   the LLM path (`--json`) is the primary consumer.
+2. ~~**--full terminal view**~~ — Resolved. Enriched existing `render_user_view()`
+   with freshness labels and inline diagnostics. Diagnostics capped at 3 per verb
+   in terminal; overflow shows "N more — see --json". Example:
+   ```
+   [!] believe    needs attention (4d ago) [aging]
+         178 beliefs, 43 grounded, 135 floating, avg health 0.88
+         ⚠ 135 beliefs have no code grounding (76% floating)
+         ⚠ 3 beliefs have active attacks without resolution
+         ... 2 more diagnostics (see --json)
+   ```
+   The `--json` path is the primary LLM consumer; terminal view is human convenience.
 
 ## Measurement Protocol — How Probes Talk to the Dashboard
 
@@ -229,9 +254,24 @@ For **known probes**, measure has typed metric structs (`CaptureHealthCheckMetri
 `CaptureCodeMetrics`, `BelieveMetrics`, etc.) dispatched via `VerbMetrics::from_db()`.
 These enable rich diagnostics — "23 beliefs floating (14%)" computed from typed fields.
 
-For **unknown probes**, `from_db()` falls back to `VerbMetrics::Raw(serde_json::Value)`.
-The probe still appears in the dashboard with flat key-value rendering via `format_kv()`.
-It works, it's visible, but it can't generate diagnostics.
+For **unknown probes**, two boundaries apply:
+
+1. **ToolName/Mode boundary** — `ToolName::from_db_str()` and `Mode::from_db_str()`
+   return `None` for unrecognized values. The caller logs `tracing::warn!` and
+   **skips** the source. This is deliberate for v1: the tool/mode set is closed
+   and compiled-in. An unknown tool appearing in the DB is a signal worth surfacing
+   (the warning), not silently absorbing.
+
+2. **VerbMetrics boundary** — For known tools with unexpected metric shapes,
+   `VerbMetrics::from_db()` falls back to `VerbMetrics::Raw(serde_json::Value)`.
+   The probe appears in the dashboard with flat key-value rendering via
+   `format_kv()`. It works, it's visible, but can't generate diagnostics.
+
+**When plugins need open tool/mode sets:** refactor `ToolName` and `Mode` to
+newtype wrappers (`struct ToolName(String)`) with associated constants for known
+values. That's a clean migration — the enums become newtypes, match arms become
+method calls. Don't half-open the enum with `Unknown(String)` variants; either
+the set is closed (enum) or open (newtype). Decide when there's a real consumer.
 
 ### Graduation path (future)
 
@@ -272,6 +312,19 @@ More probes emitting = richer dashboard, without measure changing. Freshness
 thresholds (this spec) will surface "doctor hasn't run in 72h" automatically.
 
 See: `plugins/doctor/src/lib.rs` (WASM command plugin, first extracted command).
+
+### Spec dependency with [[doctor-probe-clarity]]
+
+One-way, not blocking. Doctor already emits `measure.capture` events with mode
+`health-check` (visible in current `patina measure` output). So `--full` will
+include doctor findings under the `capture` verb regardless of whether
+[[doctor-probe-clarity]] is complete. Doctor events appear as one source under
+`capture` alongside scrape:beliefs, scrape:layer, etc. — no mixing with other
+verb diagnostics.
+
+[[doctor-probe-clarity]] exit criterion #5 ("measure --full shows doctor
+findings") depends on this spec being done first. Not the reverse. If the doctor
+spec slips, `--full` ships fully — doctor's existing events flow through.
 
 ## Data Layout Reference
 
