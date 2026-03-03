@@ -63,6 +63,8 @@ mod tests {
 /// Delta-driven dispatch: computes what changed since last scrape, then
 /// only invokes scrapers with work to do. See [[scrape-diff-driven]].
 pub fn execute_all() -> Result<()> {
+    let total_start = std::time::Instant::now();
+
     // Ensure UID exists (migration for projects without one)
     patina::project::create_uid_if_missing(&std::env::current_dir()?)?;
 
@@ -70,24 +72,47 @@ pub fn execute_all() -> Result<()> {
     let scrape_delta = delta::compute_delta()?;
     scrape_delta.log_summary();
 
-    println!("\n🔄 Running all scrapers...\n");
+    // Empty delta = nothing changed = skip everything (EC1: < 500ms)
+    if scrape_delta.is_empty() {
+        println!("\n✅ Nothing changed — scrape skipped ({:.0?})", total_start.elapsed());
+        return Ok(());
+    }
 
-    println!("📊 [1/4] Scraping code...");
-    execute_code(false, false)?;
+    println!("\n🔄 Running scrapers (delta-driven)...\n");
 
-    println!("\n📊 [2/4] Scraping git...");
-    let git_stats = git::run(false)?;
-    println!("  • {} commits", git_stats.items_processed);
+    // Route by source kind — only invoke scrapers with work
+    if !scrape_delta.new_commits.is_empty() {
+        println!("📊 Scraping git ({} new commits)...", scrape_delta.new_commits.len());
+        let git_stats = git::run(false)?;
+        println!("  • {} commits", git_stats.items_processed);
+    } else {
+        println!("📊 Scraping git... skipped (no new commits)");
+    }
 
-    println!("\n📜 [3/4] Scraping layer (patterns + sessions)...");
-    let layer_stats = layer::run(false)?;
-    println!("  • {} items", layer_stats.items_processed);
+    if !scrape_delta.changed_code_files().is_empty() {
+        println!("\n📊 Scraping code ({} changed files)...", scrape_delta.changed_code_files().len());
+        execute_code(false, false)?;
+    } else {
+        println!("\n📊 Scraping code... skipped (no changed code files)");
+    }
 
-    println!("\n🧠 [4/4] Scraping beliefs...");
-    let belief_stats = beliefs::run(false)?;
-    println!("  • {} beliefs", belief_stats.items_processed);
+    if scrape_delta.layer_changed {
+        println!("\n📜 Scraping layer (patterns + sessions)...");
+        let layer_stats = layer::run(false)?;
+        println!("  • {} items", layer_stats.items_processed);
+    } else {
+        println!("\n📜 Scraping layer... skipped (no layer changes)");
+    }
 
-    println!("\n✅ All scrapers complete!");
+    if scrape_delta.beliefs_affected {
+        println!("\n🧠 Scraping beliefs...");
+        let belief_stats = beliefs::run(false)?;
+        println!("  • {} beliefs", belief_stats.items_processed);
+    } else {
+        println!("\n🧠 Scraping beliefs... skipped (no affected beliefs)");
+    }
+
+    println!("\n✅ All scrapers complete! ({:.1?})", total_start.elapsed());
     Ok(())
 }
 
