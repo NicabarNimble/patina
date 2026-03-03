@@ -2618,4 +2618,150 @@ mod tests {
         ];
         assert_eq!(statuses.into_iter().max(), Some(VerbStatus::NeedsAttention));
     }
+
+    /// JSON shape contract test for FullMeasureReport.
+    ///
+    /// Pins the serialized structure that LLMs and MCP consumers depend on.
+    /// If this test breaks, the JSON contract changed — verify intentionally.
+    #[test]
+    fn full_measure_report_json_shape() {
+        let mut verbs = std::collections::BTreeMap::new();
+        verbs.insert(
+            "believe".to_string(),
+            FullVerbSummary {
+                status: VerbStatus::NeedsAttention,
+                latest_timestamp: Some("2026-02-27T09:00:00Z".to_string()),
+                age_hours: Some(2.0),
+                freshness: Some(Freshness::Fresh),
+                sources: vec![SourceSummary {
+                    source_type: SourceType::Beliefs,
+                    tool: ToolName::Scrape,
+                    mode: Mode::Beliefs,
+                    latest_metrics: VerbMetrics::Believe(BelieveMetrics {
+                        total_beliefs: 178,
+                        floating_count: 135,
+                        grounded_count: 43,
+                        contested_count: 16,
+                        avg_evidence: 1.72,
+                        avg_health: 0.88,
+                    }),
+                    timestamp: "2026-02-27T09:00:00Z".to_string(),
+                    event_count: 178,
+                }],
+                diagnostics: vec![Diagnostic {
+                    severity: Severity::Warning,
+                    message: "135 beliefs have no code grounding (76% floating)".to_string(),
+                }],
+            },
+        );
+        verbs.insert(
+            "capture".to_string(),
+            FullVerbSummary {
+                status: VerbStatus::Good,
+                latest_timestamp: Some("2026-02-27T10:45:00Z".to_string()),
+                age_hours: Some(0.25),
+                freshness: Some(Freshness::Fresh),
+                sources: vec![],
+                diagnostics: vec![],
+            },
+        );
+
+        let mut by_type = std::collections::BTreeMap::new();
+        by_type.insert("measure.capture".to_string(), 12);
+        by_type.insert("scry.query".to_string(), 45);
+
+        let report = FullMeasureReport::new(
+            verbs,
+            EventCounts {
+                total_runtime_events: 142,
+                by_type,
+            },
+        );
+
+        let json = serde_json::to_value(&report).unwrap();
+
+        // Top-level structure
+        assert!(json.get("health").is_some(), "missing top-level 'health'");
+        assert!(json.get("verbs").is_some(), "missing top-level 'verbs'");
+        assert!(
+            json.get("event_counts").is_some(),
+            "missing top-level 'event_counts'"
+        );
+
+        // Health shape
+        let health = &json["health"];
+        assert_eq!(health["status"], "needs_attention");
+        assert!(health["summary"]
+            .as_str()
+            .unwrap()
+            .contains("1/2 verbs healthy"));
+        assert!(health["assessed_at"].as_str().is_some());
+
+        // Verb keys are alphabetically ordered (BTreeMap)
+        let verb_keys: Vec<&str> = json["verbs"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(|k| k.as_str())
+            .collect();
+        assert_eq!(verb_keys, vec!["believe", "capture"]);
+
+        // Verb shape — believe
+        let believe = &json["verbs"]["believe"];
+        assert_eq!(believe["status"], "needs_attention");
+        assert_eq!(believe["latest_timestamp"], "2026-02-27T09:00:00Z");
+        assert_eq!(believe["age_hours"], 2.0);
+        assert_eq!(believe["freshness"], "fresh");
+        assert!(believe["sources"].as_array().is_some());
+        assert!(believe["diagnostics"].as_array().is_some());
+
+        // Source shape
+        let src = &believe["sources"][0];
+        assert_eq!(src["source_type"], "beliefs");
+        assert_eq!(src["tool"], "scrape");
+        assert_eq!(src["mode"], "beliefs");
+        assert_eq!(src["event_count"], 178);
+        let metrics = &src["latest_metrics"];
+        assert_eq!(metrics["total_beliefs"], 178);
+        assert_eq!(metrics["floating_count"], 135);
+        assert_eq!(metrics["grounded_count"], 43);
+        assert_eq!(metrics["contested_count"], 16);
+
+        // Diagnostic shape
+        let diag = &believe["diagnostics"][0];
+        assert_eq!(diag["severity"], "warning");
+        assert!(diag["message"].as_str().unwrap().contains("floating"));
+
+        // Verb shape — capture (no data verb with Good)
+        let capture = &json["verbs"]["capture"];
+        assert_eq!(capture["status"], "good");
+        assert_eq!(capture["freshness"], "fresh");
+
+        // Event counts shape
+        let ec = &json["event_counts"];
+        assert_eq!(ec["total_runtime_events"], 142);
+        assert_eq!(ec["by_type"]["measure.capture"], 12);
+        assert_eq!(ec["by_type"]["scry.query"], 45);
+
+        // VerbStatus serializes as snake_case
+        assert_eq!(
+            serde_json::to_value(VerbStatus::NeedsAttention).unwrap(),
+            "needs_attention"
+        );
+        assert_eq!(serde_json::to_value(VerbStatus::NoData).unwrap(), "no_data");
+        assert_eq!(
+            serde_json::to_value(VerbStatus::Degraded).unwrap(),
+            "degraded"
+        );
+        assert_eq!(serde_json::to_value(VerbStatus::Good).unwrap(), "good");
+
+        // Freshness serializes as lowercase
+        assert_eq!(serde_json::to_value(Freshness::Fresh).unwrap(), "fresh");
+        assert_eq!(serde_json::to_value(Freshness::Aging).unwrap(), "aging");
+        assert_eq!(serde_json::to_value(Freshness::Stale).unwrap(), "stale");
+
+        // Severity serializes as lowercase
+        assert_eq!(serde_json::to_value(Severity::Warning).unwrap(), "warning");
+        assert_eq!(serde_json::to_value(Severity::Error).unwrap(), "error");
+    }
 }
