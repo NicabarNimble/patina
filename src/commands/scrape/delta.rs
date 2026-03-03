@@ -60,9 +60,7 @@ impl ScrapeDelta {
     pub fn changed_code_files(&self) -> Vec<&ChangedFile> {
         self.changed_files
             .iter()
-            .filter(|f| {
-                !f.path.starts_with("layer/") && !f.path.starts_with("./layer/")
-            })
+            .filter(|f| !f.path.starts_with("layer/") && !f.path.starts_with("./layer/"))
             .collect()
     }
 
@@ -88,7 +86,8 @@ impl ScrapeDelta {
             );
         }
         if self.layer_changed {
-            let layer_count = self.changed_files
+            let layer_count = self
+                .changed_files
                 .iter()
                 .filter(|f| f.path.starts_with("layer/") || f.path.starts_with("./layer/"))
                 .count();
@@ -138,7 +137,10 @@ pub fn compute_delta() -> Result<ScrapeDelta> {
     let mut all_paths: HashSet<String> = HashSet::new();
     let mut changed_files: Vec<ChangedFile> = Vec::new();
 
-    for path in committed_files.into_iter().chain(working_tree_files.into_iter()) {
+    for path in committed_files
+        .into_iter()
+        .chain(working_tree_files.into_iter())
+    {
         if all_paths.insert(path.clone()) {
             let extension = Path::new(&path)
                 .extension()
@@ -149,21 +151,20 @@ pub fn compute_delta() -> Result<ScrapeDelta> {
     }
 
     // 4. Classify into source kinds
-    let layer_changed = changed_files.iter().any(|f| {
-        f.path.starts_with("layer/") || f.path.starts_with("./layer/")
-    });
+    let layer_changed = changed_files
+        .iter()
+        .any(|f| f.path.starts_with("layer/") || f.path.starts_with("./layer/"));
 
     let beliefs_dir = "layer/surface/epistemic/beliefs/";
     let beliefs_changed = changed_files.iter().any(|f| {
-        f.path.starts_with(beliefs_dir)
-            || f.path.starts_with(&format!("./{}", beliefs_dir))
+        f.path.starts_with(beliefs_dir) || f.path.starts_with(&format!("./{}", beliefs_dir))
     });
 
     // Beliefs are affected if belief files changed OR code files changed
     // (code changes may invalidate belief grounding)
-    let code_changed = changed_files.iter().any(|f| {
-        !f.path.starts_with("layer/") && !f.path.starts_with("./layer/")
-    });
+    let code_changed = changed_files
+        .iter()
+        .any(|f| !f.path.starts_with("layer/") && !f.path.starts_with("./layer/"));
     let beliefs_affected = beliefs_changed || code_changed;
 
     Ok(ScrapeDelta {
@@ -179,15 +180,15 @@ pub fn compute_delta() -> Result<ScrapeDelta> {
 /// Returns (commit_shas, changed_file_paths).
 fn get_new_commits(last_sha: Option<&str>) -> Result<(Vec<String>, Vec<String>)> {
     // Get current HEAD
-    let head_output = Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .output()?;
+    let head_output = Command::new("git").args(["rev-parse", "HEAD"]).output()?;
 
     if !head_output.status.success() {
         return Ok((Vec::new(), Vec::new()));
     }
 
-    let head = String::from_utf8_lossy(&head_output.stdout).trim().to_string();
+    let head = String::from_utf8_lossy(&head_output.stdout)
+        .trim()
+        .to_string();
 
     // If last_sha matches HEAD, no new commits
     if let Some(last) = last_sha {
@@ -369,9 +370,9 @@ mod tests {
             extension: Some("rs".to_string()),
         }];
 
-        let code_changed = files.iter().any(|f| {
-            !f.path.starts_with("layer/") && !f.path.starts_with("./layer/")
-        });
+        let code_changed = files
+            .iter()
+            .any(|f| !f.path.starts_with("layer/") && !f.path.starts_with("./layer/"));
 
         assert!(code_changed);
     }

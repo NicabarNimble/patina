@@ -85,7 +85,10 @@ pub fn execute_all() -> Result<()> {
 
     // Empty delta = nothing changed = skip everything (EC1: < 500ms)
     if scrape_delta.is_empty() {
-        println!("\n✅ Nothing changed — scrape skipped ({:.0?})", total_start.elapsed());
+        println!(
+            "\n✅ Nothing changed — scrape skipped ({:.0?})",
+            total_start.elapsed()
+        );
         return Ok(());
     }
 
@@ -93,7 +96,10 @@ pub fn execute_all() -> Result<()> {
 
     // Route by source kind — only invoke scrapers with work
     if !scrape_delta.new_commits.is_empty() {
-        println!("📊 Scraping git ({} new commits)...", scrape_delta.new_commits.len());
+        println!(
+            "📊 Scraping git ({} new commits)...",
+            scrape_delta.new_commits.len()
+        );
         let git_stats = git::run(false)?;
         println!("  • {} commits", git_stats.items_processed);
     } else {
@@ -102,7 +108,8 @@ pub fn execute_all() -> Result<()> {
 
     if !scrape_delta.changed_code_files().is_empty() {
         let extensions = scrape_delta.changed_extensions();
-        let changed_paths: Vec<String> = scrape_delta.changed_code_files()
+        let changed_paths: Vec<String> = scrape_delta
+            .changed_code_files()
             .iter()
             .map(|f| {
                 // Normalize to ./ prefix to match eventlog source_id format
@@ -113,7 +120,11 @@ pub fn execute_all() -> Result<()> {
                 }
             })
             .collect();
-        println!("\n📊 Scraping code ({} changed files, extensions: {:?})...", changed_paths.len(), extensions);
+        println!(
+            "\n📊 Scraping code ({} changed files, extensions: {:?})...",
+            changed_paths.len(),
+            extensions
+        );
         execute_code_incremental(false, Some(extensions), changed_paths)?;
     } else {
         println!("\n📊 Scraping code... skipped (no changed code files)");
@@ -135,7 +146,10 @@ pub fn execute_all() -> Result<()> {
         println!("\n🧠 Scraping beliefs... skipped (no affected beliefs)");
     }
 
-    println!("\n✅ All scrapers complete! ({:.1?})", total_start.elapsed());
+    println!(
+        "\n✅ All scrapers complete! ({:.1?})",
+        total_start.elapsed()
+    );
     Ok(())
 }
 

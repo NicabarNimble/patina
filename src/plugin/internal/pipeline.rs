@@ -94,9 +94,7 @@ impl PipelineEngine {
 
         // Check if cached AOT artifact exists and is fresh
         if cwasm_path.exists() {
-            let wasm_mtime = std::fs::metadata(wasm_path)
-                .and_then(|m| m.modified())
-                .ok();
+            let wasm_mtime = std::fs::metadata(wasm_path).and_then(|m| m.modified()).ok();
             let cwasm_mtime = std::fs::metadata(&cwasm_path)
                 .and_then(|m| m.modified())
                 .ok();
@@ -250,11 +248,7 @@ impl PipelineEngine {
             let component = match self.load_component_cached(&wasm_path) {
                 Ok(c) => c,
                 Err(e) => {
-                    eprintln!(
-                        "[pipeline] failed to load {}: {}",
-                        wasm_path.display(),
-                        e
-                    );
+                    eprintln!("[pipeline] failed to load {}: {}", wasm_path.display(), e);
                     continue;
                 }
             };

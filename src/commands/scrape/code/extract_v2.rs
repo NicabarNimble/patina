@@ -586,11 +586,7 @@ fn discover_pipeline_plugins_lazy(
         let component = match engine.load_component_cached(&wasm_path) {
             Ok(c) => c,
             Err(e) => {
-                eprintln!(
-                    "[pipeline] failed to load {}: {}",
-                    wasm_path.display(),
-                    e
-                );
+                eprintln!("[pipeline] failed to load {}: {}", wasm_path.display(), e);
                 continue;
             }
         };
@@ -600,7 +596,10 @@ fn discover_pipeline_plugins_lazy(
         // Map each claimed (and filtered) language to this plugin
         for lang in &manifest.provides.languages {
             if extensions.contains(lang.as_str()) {
-                eprintln!("[pipeline] {} claims language '{}' (lazy-loaded)", manifest.name, lang);
+                eprintln!(
+                    "[pipeline] {} claims language '{}' (lazy-loaded)",
+                    manifest.name, lang
+                );
                 let engine = match PipelineEngine::new() {
                     Ok(e) => e,
                     Err(_) => continue,
