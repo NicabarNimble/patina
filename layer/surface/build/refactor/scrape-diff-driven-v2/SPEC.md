@@ -7,6 +7,8 @@ blocked_by:
 - knowledge-system-architecture
 related:
 - scrape-diff-driven
+beliefs:
+- grounding-follows-index-rebuilds
 exit_criteria: []
 split_from: scrape-diff-driven
 ---
