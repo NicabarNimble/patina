@@ -81,9 +81,15 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
     )?;
 
     // Populate FTS5 index for lexical search
-    println!("📝 Building FTS5 lexical index...");
     let conn = rusqlite::Connection::open(&config.db_path)?;
-    let fts_count = super::database::populate_fts5(&conn)?;
+    let changed_refs = config.changed_code_files.as_deref();
+    let fts_count = if changed_refs.is_some() {
+        println!("📝 Updating FTS5 index (incremental)...");
+        super::database::populate_fts5(&conn, changed_refs)?
+    } else {
+        println!("📝 Building FTS5 lexical index...");
+        super::database::populate_fts5(&conn, None)?
+    };
     println!("   Indexed {} symbols", fts_count);
 
     // Populate forge FTS5 from eventlog (idempotent — runs after code FTS5)

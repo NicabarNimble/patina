@@ -874,9 +874,9 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
         database::set_last_processed(&conn, "co_changes", &latest.sha)?;
     }
 
-    // Populate commits FTS5 index for narrative search
-    let fts_count = database::populate_commits_fts5(&conn)?;
-    println!("  Indexed {} commit messages for search", fts_count);
+    // Populate commits FTS5 index for narrative search (incremental — append new only)
+    let fts_count = database::populate_commits_fts5(&conn, full)?;
+    println!("  Indexed {} commit messages for search{}", fts_count, if full { "" } else { " (incremental)" });
 
     let elapsed = start.elapsed();
     let db_size = std::fs::metadata(db_path)

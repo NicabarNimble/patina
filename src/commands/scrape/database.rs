@@ -20,8 +20,12 @@ pub use patina::eventlog::PATINA_DB;
 // Scrape-specific FTS population (not shared infrastructure)
 // ============================================================================
 
-/// Populate FTS5 index from eventlog code events
-pub fn populate_fts5(conn: &Connection) -> Result<usize> {
+/// Populate FTS5 index from eventlog code events.
+///
+/// When `changed_files` is Some, only rebuilds FTS5 rows for those file paths
+/// (incremental update). When None, does a full rebuild of all code.* entries.
+/// See [[scrape-diff-driven]] EC6.
+pub fn populate_fts5(conn: &Connection, changed_files: Option<&[String]>) -> Result<usize> {
     // Create FTS5 table if it doesn't exist (migration for existing databases)
     conn.execute(
         "CREATE VIRTUAL TABLE IF NOT EXISTS code_fts USING fts5(
@@ -34,36 +38,73 @@ pub fn populate_fts5(conn: &Connection) -> Result<usize> {
         [],
     )?;
 
-    // Clear existing code FTS5 data (preserve forge.issue / forge.pr entries)
-    conn.execute("DELETE FROM code_fts WHERE event_type LIKE 'code.%'", [])?;
+    match changed_files {
+        Some(files) if !files.is_empty() => {
+            // Incremental: delete + re-insert only for changed files.
+            // source_id in eventlog is "path::symbol", so match with prefix.
+            let mut total = 0;
+            for file in files {
+                let prefix = format!("{}%", file);
 
-    // Populate from code events in eventlog
-    // Note: Exclude 'code.symbol' to avoid duplication - functions/types already
-    // have richer fact types (code.function, code.struct, etc.) that are indexed.
-    // GROUP BY dedupes across multiple scrape runs (eventlog is append-only).
-    // See: spec-fts-deduplication.md for full context on this fix.
-    let count = conn.execute(
-        r#"
-        INSERT INTO code_fts (symbol_name, file_path, content, event_type)
-        SELECT
-            json_extract(data, '$.name') as symbol_name,
-            source_id as file_path,
-            COALESCE(json_extract(data, '$.content'), json_extract(data, '$.signature'), '') as content,
-            event_type
-        FROM eventlog
-        WHERE event_type LIKE 'code.%'
-          AND event_type != 'code.symbol'
-          AND json_extract(data, '$.name') IS NOT NULL
-        GROUP BY source_id, event_type
-        "#,
-        [],
-    )?;
+                // Delete existing FTS entries for this file
+                conn.execute(
+                    "DELETE FROM code_fts WHERE file_path LIKE ?1 AND event_type LIKE 'code.%'",
+                    [&prefix],
+                )?;
 
-    Ok(count)
+                // Re-insert from eventlog for this file only
+                let count = conn.execute(
+                    r#"
+                    INSERT INTO code_fts (symbol_name, file_path, content, event_type)
+                    SELECT
+                        json_extract(data, '$.name') as symbol_name,
+                        source_id as file_path,
+                        COALESCE(json_extract(data, '$.content'), json_extract(data, '$.signature'), '') as content,
+                        event_type
+                    FROM eventlog
+                    WHERE event_type LIKE 'code.%'
+                      AND event_type != 'code.symbol'
+                      AND json_extract(data, '$.name') IS NOT NULL
+                      AND source_id LIKE ?1
+                    GROUP BY source_id, event_type
+                    "#,
+                    [&prefix],
+                )?;
+                total += count;
+            }
+            Ok(total)
+        }
+        _ => {
+            // Full rebuild (force, rebuild, or standalone scrape code)
+            conn.execute("DELETE FROM code_fts WHERE event_type LIKE 'code.%'", [])?;
+
+            let count = conn.execute(
+                r#"
+                INSERT INTO code_fts (symbol_name, file_path, content, event_type)
+                SELECT
+                    json_extract(data, '$.name') as symbol_name,
+                    source_id as file_path,
+                    COALESCE(json_extract(data, '$.content'), json_extract(data, '$.signature'), '') as content,
+                    event_type
+                FROM eventlog
+                WHERE event_type LIKE 'code.%'
+                  AND event_type != 'code.symbol'
+                  AND json_extract(data, '$.name') IS NOT NULL
+                GROUP BY source_id, event_type
+                "#,
+                [],
+            )?;
+            Ok(count)
+        }
+    }
 }
 
-/// Populate FTS5 index for commit messages (git narrative search)
-pub fn populate_commits_fts5(conn: &Connection) -> Result<usize> {
+/// Populate FTS5 index for commit messages (git narrative search).
+///
+/// When `full` is false (default), only inserts commits not already in the FTS5
+/// index. Commits are immutable so incremental = append-only. When `full` is true,
+/// does DELETE + full rebuild. See [[scrape-diff-driven]] EC6.
+pub fn populate_commits_fts5(conn: &Connection, full: bool) -> Result<usize> {
     // Create FTS5 table if it doesn't exist (migration for existing databases)
     conn.execute(
         "CREATE VIRTUAL TABLE IF NOT EXISTS commits_fts USING fts5(
@@ -75,21 +116,35 @@ pub fn populate_commits_fts5(conn: &Connection) -> Result<usize> {
         [],
     )?;
 
-    // Clear existing FTS5 data
-    conn.execute("DELETE FROM commits_fts", [])?;
+    if full {
+        // Full rebuild
+        conn.execute("DELETE FROM commits_fts", [])?;
 
-    // Populate from commits table (materialized view)
-    let count = conn.execute(
-        r#"
-        INSERT INTO commits_fts (sha, message, author_name)
-        SELECT sha, message, author_name
-        FROM commits
-        WHERE message IS NOT NULL
-        "#,
-        [],
-    )?;
-
-    Ok(count)
+        let count = conn.execute(
+            r#"
+            INSERT INTO commits_fts (sha, message, author_name)
+            SELECT sha, message, author_name
+            FROM commits
+            WHERE message IS NOT NULL
+            "#,
+            [],
+        )?;
+        Ok(count)
+    } else {
+        // Incremental: only insert commits not yet in FTS5 index
+        let count = conn.execute(
+            r#"
+            INSERT INTO commits_fts (sha, message, author_name)
+            SELECT c.sha, c.message, c.author_name
+            FROM commits c
+            LEFT JOIN commits_fts f ON c.sha = f.sha
+            WHERE c.message IS NOT NULL
+              AND f.sha IS NULL
+            "#,
+            [],
+        )?;
+        Ok(count)
+    }
 }
 
 /// Populate FTS5 index for session events (keyword search over decisions, patterns, work, context)

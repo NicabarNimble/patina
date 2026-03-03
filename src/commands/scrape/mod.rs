@@ -23,6 +23,10 @@ pub struct ScrapeConfig {
     /// When Some, only load pipeline plugins claiming these extensions.
     /// When None, load all plugins (default for individual scraper commands).
     pub extension_filter: Option<HashSet<String>>,
+    /// Changed code file paths from delta (for incremental FTS5 updates).
+    /// When Some, only rebuild FTS5 rows for these files.
+    /// When None, do full FTS5 rebuild. See [[scrape-diff-driven]] EC6.
+    pub changed_code_files: Option<Vec<String>>,
 }
 
 impl ScrapeConfig {
@@ -31,19 +35,7 @@ impl ScrapeConfig {
             db_path: database::PATINA_DB.to_string(),
             force,
             extension_filter: None,
-        }
-    }
-
-    /// Create config with extension filter for delta-driven lazy loading.
-    pub fn with_extensions(force: bool, extensions: HashSet<String>) -> Self {
-        Self {
-            db_path: database::PATINA_DB.to_string(),
-            force,
-            extension_filter: if extensions.is_empty() {
-                None
-            } else {
-                Some(extensions)
-            },
+            changed_code_files: None,
         }
     }
 }
@@ -110,8 +102,19 @@ pub fn execute_all() -> Result<()> {
 
     if !scrape_delta.changed_code_files().is_empty() {
         let extensions = scrape_delta.changed_extensions();
-        println!("\n📊 Scraping code ({} changed files, extensions: {:?})...", scrape_delta.changed_code_files().len(), extensions);
-        execute_code_with_filter(false, false, Some(extensions))?;
+        let changed_paths: Vec<String> = scrape_delta.changed_code_files()
+            .iter()
+            .map(|f| {
+                // Normalize to ./ prefix to match eventlog source_id format
+                if f.path.starts_with("./") {
+                    f.path.clone()
+                } else {
+                    format!("./{}", f.path)
+                }
+            })
+            .collect();
+        println!("\n📊 Scraping code ({} changed files, extensions: {:?})...", changed_paths.len(), extensions);
+        execute_code_incremental(false, Some(extensions), changed_paths)?;
     } else {
         println!("\n📊 Scraping code... skipped (no changed code files)");
     }
@@ -243,6 +246,7 @@ fn execute_code_with_filter(
         db_path: database::PATINA_DB.to_string(),
         force,
         extension_filter: extensions,
+        changed_code_files: None,
     };
 
     if init {
@@ -255,6 +259,32 @@ fn execute_code_with_filter(
         println!("  • Time elapsed: {:?}", stats.time_elapsed);
         println!("  • Database size: {} KB", stats.database_size_kb);
     }
+
+    Ok(())
+}
+
+/// Execute code scraper with delta-driven incremental FTS5 updates.
+///
+/// Combines extension filter (for lazy plugin loading) with changed file paths
+/// (for incremental FTS5 rebuild). Used by `execute_all()` delta-driven dispatch.
+fn execute_code_incremental(
+    force: bool,
+    extensions: Option<HashSet<String>>,
+    changed_files: Vec<String>,
+) -> Result<()> {
+    let config = ScrapeConfig {
+        db_path: database::PATINA_DB.to_string(),
+        force,
+        extension_filter: extensions,
+        changed_code_files: Some(changed_files),
+    };
+
+    let stats = code::run(config)?;
+
+    println!("\n📊 Code Extraction Summary:");
+    println!("  • Items processed: {}", stats.items_processed);
+    println!("  • Time elapsed: {:?}", stats.time_elapsed);
+    println!("  • Database size: {} KB", stats.database_size_kb);
 
     Ok(())
 }
