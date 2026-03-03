@@ -903,6 +903,53 @@ fn extract_belief_keywords(belief_id: &str) -> Vec<String> {
 }
 
 /// Classify a file path as source code (vs docs, configs, layer files)
+/// Check if the usearch index has been rebuilt since the last grounding computation.
+///
+/// Compares the usearch index file mtime with a stored watermark. If the index
+/// is newer, grounding needs to be recomputed for all beliefs.
+fn grounding_index_changed(conn: &Connection) -> bool {
+    let model = crate::commands::scry::internal::search::get_embedding_model();
+    let index_path = format!(
+        ".patina/local/data/embeddings/{}/projections/semantic.usearch",
+        model
+    );
+
+    let current_mtime = match std::fs::metadata(&index_path).and_then(|m| m.modified()) {
+        Ok(t) => t
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            .to_string(),
+        Err(_) => return false, // No index = no grounding possible
+    };
+
+    // Compare with stored watermark
+    match database::get_last_processed(conn, "grounding_index_mtime") {
+        Ok(Some(stored)) => stored != current_mtime,
+        _ => true, // No watermark = first grounding or migration
+    }
+}
+
+/// Store the current usearch index mtime as a grounding watermark.
+fn update_grounding_watermark(conn: &Connection) {
+    let model = crate::commands::scry::internal::search::get_embedding_model();
+    let index_path = format!(
+        ".patina/local/data/embeddings/{}/projections/semantic.usearch",
+        model
+    );
+
+    let mtime = match std::fs::metadata(&index_path).and_then(|m| m.modified()) {
+        Ok(t) => t
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            .to_string(),
+        Err(_) => return,
+    };
+
+    let _ = database::set_last_processed(conn, "grounding_index_mtime", &mtime);
+}
+
 fn is_source_code(path: &str) -> bool {
     const SOURCE_EXTENSIONS: &[&str] = &[
         ".rs", ".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".c", ".cpp", ".h", ".java", ".rb",
@@ -1605,8 +1652,21 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     // Uses usearch index from a previous `patina oxidize` run.
     // After rebuild, rowids change and won't match the index → grounding = 0
     // (expected; next oxidize+scrape cycle will fix this).
-    if let Err(e) = compute_belief_grounding(&conn) {
-        eprintln!("  Warning: grounding computation failed: {}", e);
+    //
+    // Incremental optimization ([[scrape-diff-driven]] Phase 4):
+    // Grounding only changes when (a) new beliefs are added, or (b) the usearch
+    // index is rebuilt by oxidize. Code changes alone don't affect grounding.
+    // Skip grounding when neither condition is true.
+    let new_beliefs_added = processed_count > 0;
+    let grounding_needed = full || new_beliefs_added || grounding_index_changed(&conn);
+    if grounding_needed {
+        if let Err(e) = compute_belief_grounding(&conn) {
+            eprintln!("  Warning: grounding computation failed: {}", e);
+        }
+        // Update the grounding watermark to the current usearch index mtime
+        update_grounding_watermark(&conn);
+    } else {
+        println!("  Grounding: skipped (no new beliefs, index unchanged)");
     }
 
     // Phase 4: Write belief relationship edges (belief-graph Phase B)
