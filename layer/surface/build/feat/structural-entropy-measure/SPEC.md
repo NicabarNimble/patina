@@ -16,16 +16,16 @@ beliefs:
 exit_criteria:
 - id: structural-metrics
   text: '`patina measure` reports structural metrics: module count (directories under src/), public interface count (pub fn/struct/enum/trait from scraper data), and dependency count (from Cargo.toml)'
-  checked: false
+  checked: true
 - id: coupling-metric
   text: '`patina measure` reports cross-module coupling as fan-out per module (how many other modules each module imports from) using existing import_facts data, showing average and max'
-  checked: false
+  checked: true
 - id: entropy-delta-diagnostic
   text: '`patina measure` warns when structural metrics increase beyond hardcoded thresholds between scrapes (delta from last measure.capture.structure event)'
-  checked: false
+  checked: true
 - id: entropy-in-context
   text: '`patina context` includes current structural entropy summary so LLMs see codebase shape before making changes'
-  checked: false
+  checked: true
 ---
 # feat: Structural Entropy Tracking in Measure System
 
