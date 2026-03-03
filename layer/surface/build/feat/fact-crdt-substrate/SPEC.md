@@ -3,16 +3,18 @@ type: feat
 id: fact-crdt-substrate
 status: draft
 created: 2026-02-17
+target: '7'
 sessions:
   origin: 20260217-115200
 related:
-  - src/eventlog.rs
-  - src/commands/scrape/forge/mod.rs
+- src/eventlog.rs
+- src/commands/scrape/forge/mod.rs
 beliefs:
-  - beliefs-are-the-product
-  - work-triages-specs
-  - git-is-the-knowledge-substrate
-  - mother-is-the-daemon
+- beliefs-are-the-product
+- work-triages-specs
+- git-is-the-knowledge-substrate
+- mother-is-the-daemon
+exit_criteria: []
 ---
 
 # feat: Fact CRDT Substrate — Local-First Facts that Sync via Mother
