@@ -4,6 +4,8 @@ id: drift-detection
 status: draft
 created: 2026-03-03
 target: '5'
+blocked_by:
+- structural-entropy-measure
 sessions:
   origin: 20260303-101839
 related:
