@@ -11,22 +11,22 @@ beliefs:
 exit_criteria:
 - id: git-directory-under-200-mb-after-cleanup
   text: .git directory under 200 MB after cleanup
-  checked: false
+  checked: true
 - id: all-existing-tags-preserved-and-functional
   text: All 1,825 tags preserved and functional (1,796 annotated + 29 lightweight)
-  checked: false
+  checked: true
 - id: patina-spec-history-works-for-all-archived-specs
   text: patina spec history works for all archived specs
-  checked: false
+  checked: true
 - id: no-source-code-layer-files-or-config-lost
   text: No source code, layer files, or config lost
-  checked: false
+  checked: true
 - id: cargo-build-release-succeeds
   text: cargo build --release succeeds after rewrite
-  checked: false
+  checked: true
 - id: cargo-test-passes
   text: cargo test passes after rewrite
-  checked: false
+  checked: true
 ---
 # fix: Strip historical binary blobs from git history
 
