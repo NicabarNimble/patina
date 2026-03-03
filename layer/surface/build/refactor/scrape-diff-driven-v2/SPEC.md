@@ -3,7 +3,7 @@ type: refactor
 id: scrape-diff-driven-v2
 status: draft
 created: 2026-03-03
-target: '2'
+target: '3'
 blocked_by:
 - knowledge-system-architecture
 related:
