@@ -139,6 +139,9 @@ pub enum Mode {
     /// Evolve mode: session lifecycle
     #[serde(rename = "lifecycle")]
     Lifecycle,
+    /// Capture mode: structural entropy metrics
+    #[serde(rename = "structure")]
+    Structure,
     /// Generic fallback mode
     #[serde(rename = "default")]
     Default,
@@ -155,6 +158,7 @@ impl Mode {
             "eval" => Some(Mode::Eval),
             "audit" => Some(Mode::Audit),
             "lifecycle" => Some(Mode::Lifecycle),
+            "structure" => Some(Mode::Structure),
             "default" => Some(Mode::Default),
             _ => None,
         }
@@ -172,6 +176,7 @@ impl std::fmt::Display for Mode {
             Mode::Eval => write!(f, "eval"),
             Mode::Audit => write!(f, "audit"),
             Mode::Lifecycle => write!(f, "lifecycle"),
+            Mode::Structure => write!(f, "structure"),
             Mode::Default => write!(f, "default"),
         }
     }
@@ -261,6 +266,7 @@ pub enum VerbMetrics {
     CaptureLayer(CaptureLayerMetrics),
     CaptureGitScrape(CaptureGitScrapeMetrics),
     CaptureHealthCheck(CaptureHealthCheckMetrics),
+    CaptureStructure(CaptureStructureMetrics),
     Index(IndexMetrics),
     Search(SearchMetrics),
     Believe(BelieveMetrics),
@@ -295,6 +301,10 @@ impl VerbMetrics {
             ("capture", "health-check") => {
                 serde_json::from_str::<CaptureHealthCheckMetrics>(json_str)
                     .map(VerbMetrics::CaptureHealthCheck)
+            }
+            ("capture", "structure") => {
+                serde_json::from_str::<CaptureStructureMetrics>(json_str)
+                    .map(VerbMetrics::CaptureStructure)
             }
             ("capture", _) => {
                 tracing::warn!(mode, "Unknown capture mode — falling back to raw metrics");
@@ -372,6 +382,16 @@ impl VerbMetrics {
                 ("layer_patterns".into(), m.layer_patterns.to_string()),
                 ("missing_tools".into(), m.missing_tools.to_string()),
                 ("new_tools".into(), m.new_tools.to_string()),
+            ],
+            VerbMetrics::CaptureStructure(m) => vec![
+                ("module_count".into(), m.module_count.to_string()),
+                (
+                    "pub_interface_count".into(),
+                    m.pub_interface_count.to_string(),
+                ),
+                ("dependency_count".into(), m.dependency_count.to_string()),
+                ("coupling_avg".into(), format!("{:.1}", m.coupling_avg)),
+                ("coupling_max".into(), m.coupling_max.to_string()),
             ],
             VerbMetrics::Index(m) => vec![(
                 "documents_embedded".into(),
@@ -515,6 +535,15 @@ pub struct CaptureHealthCheckMetrics {
     pub layer_patterns: i64,
     pub missing_tools: i64,
     pub new_tools: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CaptureStructureMetrics {
+    pub module_count: i64,
+    pub pub_interface_count: i64,
+    pub dependency_count: i64,
+    pub coupling_avg: f64,
+    pub coupling_max: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -798,6 +827,74 @@ impl CaptureBeliefsMetrics {
     }
 }
 
+impl CaptureStructureMetrics {
+    /// Diagnostics: compare current vs previous structural metrics.
+    ///
+    /// The `previous` parameter comes from the second-most-recent
+    /// measure.capture.structure event. Delta thresholds are hardcoded.
+    pub fn diagnostics_with_delta(&self, previous: Option<&CaptureStructureMetrics>) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        let prev = match previous {
+            Some(p) => p,
+            None => return diags,
+        };
+
+        // Module count: warn if +2
+        let module_delta = self.module_count - prev.module_count;
+        if module_delta > 2 {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "module count increased by {} ({}→{}), threshold +2",
+                    module_delta, prev.module_count, self.module_count
+                ),
+            });
+        }
+
+        // Pub interfaces: warn if +10%
+        if prev.pub_interface_count > 0 {
+            let pct = (self.pub_interface_count - prev.pub_interface_count) as f64
+                / prev.pub_interface_count as f64
+                * 100.0;
+            if pct > 10.0 {
+                diags.push(Diagnostic {
+                    severity: Severity::Warning,
+                    message: format!(
+                        "pub interfaces increased by {:.0}% ({}→{}), threshold +10%",
+                        pct, prev.pub_interface_count, self.pub_interface_count
+                    ),
+                });
+            }
+        }
+
+        // Dependency count: warn if +1
+        let dep_delta = self.dependency_count - prev.dependency_count;
+        if dep_delta > 1 {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "dependency count increased by {} ({}→{}), threshold +1",
+                    dep_delta, prev.dependency_count, self.dependency_count
+                ),
+            });
+        }
+
+        // Max fan-out: warn if +2
+        let fanout_delta = self.coupling_max - prev.coupling_max;
+        if fanout_delta > 2 {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "max fan-out increased by {} ({}→{}), threshold +2",
+                    fanout_delta, prev.coupling_max, self.coupling_max
+                ),
+            });
+        }
+
+        diags
+    }
+}
+
 impl CaptureLayerMetrics {
     /// Diagnostics: warn when layer scrape exceeds duration threshold.
     pub fn diagnostics(&self) -> Vec<Diagnostic> {
@@ -826,10 +923,46 @@ fn collect_source_diagnostics(sources: &[SourceSummary]) -> Vec<Diagnostic> {
             VerbMetrics::CaptureGitScrape(m) => diags.extend(m.diagnostics()),
             VerbMetrics::CaptureBeliefs(m) => diags.extend(m.diagnostics()),
             VerbMetrics::CaptureLayer(m) => diags.extend(m.diagnostics()),
+            // CaptureStructure diagnostics need delta (previous event) — handled in build_full_report
             _ => {}
         }
     }
     diags
+}
+
+/// Collect structure delta diagnostics by comparing current vs previous events.
+fn collect_structure_delta_diagnostics(
+    conn: &Connection,
+    sources: &[SourceSummary],
+) -> Vec<Diagnostic> {
+    // Find the current structure metrics from sources
+    let current = sources.iter().find_map(|s| {
+        if let VerbMetrics::CaptureStructure(m) = &s.latest_metrics {
+            Some(m)
+        } else {
+            None
+        }
+    });
+
+    let current = match current {
+        Some(c) => c,
+        None => return Vec::new(),
+    };
+
+    // Fetch the previous (second-most-recent) structure event from events.db
+    let previous = (|| -> Option<CaptureStructureMetrics> {
+        let mut stmt = conn.prepare(
+            r#"SELECT json_extract(data, '$.metrics') FROM events.eventlog
+               WHERE event_type = 'measure.capture'
+                 AND json_extract(data, '$.mode') = 'structure'
+               ORDER BY seq DESC LIMIT 1 OFFSET 1"#
+        ).ok()?;
+
+        let json_str: String = stmt.query_row([], |row| row.get(0)).ok()?;
+        serde_json::from_str(&json_str).ok()
+    })();
+
+    current.diagnostics_with_delta(previous.as_ref())
 }
 
 /// Derive a freshness diagnostic if the verb is aging or stale.
@@ -982,6 +1115,12 @@ pub fn build_full_report(conn: &Connection) -> Result<FullMeasureReport> {
                 diagnostics,
             },
         );
+    }
+
+    // Structure delta diagnostics — need previous event from events.db
+    if let Some(capture_verb) = verbs.get_mut("capture") {
+        let structure_diags = collect_structure_delta_diagnostics(conn, &capture_verb.sources);
+        capture_verb.diagnostics.extend(structure_diags);
     }
 
     // Event counts from events.db
@@ -1762,6 +1901,12 @@ fn user_friendly_metrics(src: &SourceSummary) -> String {
             format!(
                 "{}: {} beliefs, {} sessions, {} patterns",
                 src.mode, m.beliefs, m.sessions, m.layer_patterns
+            )
+        }
+        VerbMetrics::CaptureStructure(m) => {
+            format!(
+                "{}: {} modules, {} pub interfaces, {} deps, avg fan-out {:.1}",
+                src.mode, m.module_count, m.pub_interface_count, m.dependency_count, m.coupling_avg
             )
         }
         VerbMetrics::Index(m) => {
