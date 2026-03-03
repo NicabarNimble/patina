@@ -3,7 +3,7 @@ type: feat
 id: drift-detection
 status: draft
 created: 2026-03-03
-target: '4'
+target: '5'
 sessions:
   origin: 20260303-101839
 related:
