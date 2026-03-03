@@ -1907,13 +1907,19 @@ Prefer synchronous code.
 
     #[test]
     fn test_health_score_computation() {
+        // Use a relative "recent" date so this test doesn't rot over time
+        let recent = chrono::Utc::now()
+            .date_naive()
+            .format("%Y-%m-%d")
+            .to_string();
+
         // Zero-evidence: max possible score is 0.6 (use + freshness, no truth)
         let mut m = BeliefMetrics::default();
         m.cited_by_beliefs = 3;
         m.cited_by_sessions = 3; // use_score = min(1.0, 6/3) = 1.0
         m.evidence_count = 0;
         m.evidence_verified = 0;
-        m.last_activity = Some("2026-02-16".to_string()); // fresh
+        m.last_activity = Some(recent.clone()); // fresh
         let score = compute_health_score(&m, 90);
         assert!(
             score <= 0.61,
@@ -1928,7 +1934,7 @@ Prefer synchronous code.
         m2.cited_by_sessions = 3;
         m2.evidence_count = 3;
         m2.evidence_verified = 3;
-        m2.last_activity = Some("2026-02-16".to_string());
+        m2.last_activity = Some(recent);
         let score2 = compute_health_score(&m2, 90);
         assert!(
             score2 > 0.95,
