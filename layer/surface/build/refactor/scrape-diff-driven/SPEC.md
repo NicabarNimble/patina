@@ -14,22 +14,22 @@ beliefs:
 exit_criteria:
 - id: scrape-zero-work-is-noop
   text: '`patina scrape` with no new commits and no changed files completes in < 500ms'
-  checked: false
+  checked: true
 - id: scrape-single-commit-under-2s
   text: incremental scrape after a single commit completes in < 2s (the EC1 data-fast-incremental deferred)
-  checked: false
+  checked: true
 - id: diff-drives-dispatch
   text: scrape computes the delta (changed files) once, dispatches only to extractors that handle those file types
-  checked: false
+  checked: true
 - id: plugins-loaded-lazily
   text: WASM grammar plugins are only loaded when the diff contains files of their claimed language — 0 changed .rs files means grammar-rust is not loaded
-  checked: false
+  checked: true
 - id: aot-module-cache
   text: WASM modules are serialized to .cwasm after first compile; subsequent loads use deserialize_file (mmap, no Cranelift)
-  checked: false
+  checked: true
 - id: fts5-incremental
   text: code_search FTS5 index updates only rows for changed files — no DELETE + full rebuild when < 100% of files changed
-  checked: false
+  checked: true
 - id: mother-scrape-dispatch
   text: hook can optionally send diff event to Mother over UDS; Mother dispatches to warm plugins — cold start is zero
   checked: false
