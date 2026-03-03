@@ -1,7 +1,7 @@
 ---
 type: feat
 id: structural-entropy-measure
-status: draft
+status: ready
 created: 2026-03-03
 target: '4'
 sessions:
@@ -14,20 +14,14 @@ beliefs:
 - gjengset-lens-type-integrity
 - steenberg-lens-immutable-core
 exit_criteria:
-- id: module-count-metric
-  text: '`patina measure` reports module count (directories under src/) as a structural metric'
-  checked: false
-- id: public-interface-metric
-  text: '`patina measure` reports public interface count (pub fn/struct/enum/trait across modules) as a structural metric'
-  checked: false
-- id: dependency-count-metric
-  text: '`patina measure` reports dependency count from Cargo.toml as a structural metric'
+- id: structural-metrics
+  text: '`patina measure` reports structural metrics: module count (directories under src/), public interface count (pub fn/struct/enum/trait from scraper data), and dependency count (from Cargo.toml)'
   checked: false
 - id: coupling-metric
-  text: '`patina measure` reports cross-module import density as a coupling metric'
+  text: '`patina measure` reports cross-module coupling as fan-out per module (how many other modules each module imports from) using existing import_facts data, showing average and max'
   checked: false
 - id: entropy-delta-diagnostic
-  text: '`patina measure` warns when structural metrics increase beyond a configurable threshold between scrapes'
+  text: '`patina measure` warns when structural metrics increase beyond hardcoded thresholds between scrapes (delta from last measure.capture.structure event)'
   checked: false
 - id: entropy-in-context
   text: '`patina context` includes current structural entropy summary so LLMs see codebase shape before making changes'
@@ -66,11 +60,10 @@ data:
 
 | Metric | Source | What it measures |
 |--------|--------|-----------------|
-| Module count | `src/` directory walk | System decomposition breadth |
-| Public interface count | `function_facts` WHERE visibility = 'pub' | API surface area |
-| Dependency count | Cargo.toml parse | External coupling |
-| Import density | `import_facts` cross-module | Internal coupling |
-| Abstraction depth | Max directory nesting under `src/` | Layering depth |
+| Module count | `src/` directory walk at scrape time | System decomposition breadth |
+| Public interface count | scraper AST data (pub fn/struct/enum/trait) | API surface area |
+| Dependency count | Cargo.toml parse at scrape time | External coupling |
+| Cross-module fan-out | `import_facts` cross-module aggregation | Internal coupling |
 
 These feed into diagnostics: "public_interface_count increased by 12
 since last scrape" triggers investigation, same pattern as scrape duration
