@@ -23,19 +23,19 @@ beliefs:
 exit_criteria:
 - id: doctor-emits-before-display
   text: doctor emits `measure.capture` event before any results are printed — emit is the primary action, display is secondary (progress indicator OK)
-  checked: false
+  checked: true
 - id: zero-serde-json-value-in-health-check-struct
   text: '`HealthCheck` and `ToolChange` structs use no `serde_json::Value` fields — all typed'
-  checked: false
+  checked: true
 - id: zero-get-chains-in-doctor-plugin
   text: zero `.get().and_then().unwrap_or()` chains in `plugins/doctor/src/lib.rs` — environment JSON parsed into typed struct at boundary
-  checked: false
+  checked: true
 - id: doctor-terminal-output-labels-itself-as-probe
   text: terminal output clearly frames results as "check complete, emitted to event stream" not as the canonical health view
-  checked: false
+  checked: true
 - id: measure-full-shows-doctor-findings
   text: '`patina measure --full` displays doctor findings (from last `measure.capture` health-check event) — measure is the dashboard, not doctor'
-  checked: false
+  checked: true
 ---
 # fix: Doctor as Probe — Clarify Emit-First Role and Clean Type Soup
 
