@@ -267,22 +267,26 @@ interface — just with pre-loaded components.
 
 ### Phase 4: Incremental belief grounding
 
-Only reground beliefs whose grounding evidence touches changed paths.
+Skip grounding entirely when the vector index hasn't changed.
 
 Today: all beliefs are re-grounded every run (~1.5s for 189 beliefs).
-After: query grounding paths for each belief, intersect with
-`delta.changed_files`, reground only the intersection.
+After: track the usearch index mtime as a watermark. Skip grounding
+when: (a) no new beliefs were added AND (b) the usearch index hasn't
+been rebuilt since the last grounding computation.
 
-```sql
--- Find beliefs with grounding that references changed files
-SELECT DISTINCT b.id
-FROM beliefs b
-JOIN belief_grounding g ON b.id = g.belief_id
-WHERE g.path IN (?, ?, ...)  -- changed file paths from delta
-```
+The key insight: grounding depends on the *vector index*, not on
+individual *code files*. Code changes only affect grounding after
+`patina oxidize` rebuilds the usearch index. Checking the index mtime
+is O(1) vs the original SQL path intersection proposal which was O(beliefs).
+
+Implementation:
+- `grounding_index_changed()` compares usearch index mtime with stored
+  watermark (`grounding_index_mtime` in `scrape_meta`)
+- `update_grounding_watermark()` stores the current mtime after grounding
+- Grounding runs when: `full || new_beliefs_added || grounding_index_changed`
 
 This is an optimization that doesn't affect the dispatch interface.
-It uses the same delta that Phase 1 computes.
+It does NOT use the Phase 1 delta — it uses the oxidize index mtime.
 
 ---
 
@@ -333,17 +337,66 @@ Phase 4 (incremental beliefs):
    or a dedicated `scrape_state` table in `patina.db`. Measure event is
    simpler and already exists.
 
+   **Resolved (Session 1):** Uses `get_last_processed/set_last_processed`
+   with key `"git"` in the `scrape_meta` table. Simpler option, as planned.
+
 2. **Mother pipeline hosting:** Mother currently only hosts mother-child
    world plugins. Hosting pipeline plugins requires a new dispatch path in
    `daemon.rs`. Should this be a new child type or a parallel plugin
    registry? Deferred to Phase 3 design.
+
+   **Still open.** Phase 3 deferred — blocked on KSA Phase 1. Carried
+   forward to [[scrape-diff-driven-v2]].
 
 3. **Belief grounding paths:** The current grounding system stores paths
    in belief markdown (Applied-In section), not in a queryable DB column.
    Phase 4 may need a `belief_paths` index table. Deferred to Phase 4
    design.
 
+   **Resolved differently (Session 2):** Grounding depends on the usearch
+   vector index, not on individual code file paths. Code changes alone
+   don't affect grounding — only an `oxidize` run that rebuilds the
+   usearch index changes grounding results. Implementation uses an mtime
+   watermark on the usearch index file (`grounding_index_mtime` in
+   `scrape_meta`) instead of SQL path intersection. Simpler, same
+   performance benefit (~1.5s saved per incremental scrape).
+   See: [[grounding-follows-index-rebuilds]] belief.
+
 4. **FTS5 incremental for commits:** `commits_fts5` is rebuilt from the
    `commits` table. Incremental requires tracking which commits are already
    in the FTS5 index. The `co_changes` upsert from data-fast-incremental
    provides a pattern (INSERT ON CONFLICT).
+
+   **Resolved (Session 2):** Uses `LEFT JOIN commits_fts f ON c.sha = f.sha
+   WHERE f.sha IS NULL` to identify commits not yet in the FTS5 index.
+   Commits are append-only and SHAs are unique, so this is correct and
+   efficient. LEFT JOIN chosen over NOT IN subquery for better FTS5 virtual
+   table performance.
+
+## Implementation Notes (Post-Session Audit)
+
+**ScrapeDelta struct drift:** DESIGN.md specified `changed_files: Vec<(PathBuf,
+Option<String>)>`. Implementation uses a dedicated `ChangedFile` struct with
+named fields (`path: String, extension: Option<String>`) instead of a tuple.
+This is a net-positive deviation — named fields are clearer than positional
+access. Also added `compute_time: Duration` for instrumentation.
+
+**Phase 4 architectural departure:** The DESIGN.md Phase 4 section proposed
+filtering beliefs by changed file paths (`WHERE g.path IN (...)`). The actual
+insight during implementation was that grounding depends on the *vector index*,
+not on *code files*. Grounding only changes when: (a) new beliefs are added, or
+(b) oxidize rebuilds the usearch index. A watermark approach (comparing usearch
+index mtime) replaced the SQL path intersection. See Q3 resolution above.
+
+**FTS5 incremental coupling:** The `code_fts` incremental path uses
+`file_path LIKE './path.rs%'` prefix matching because eventlog `source_id` is
+`./path.rs::symbol_name`. This creates implicit coupling to the source_id
+format. A guard-rail test (`test_source_id_format_matches_fts5_assumption`)
+memorializes this constraint. Changing the source_id format requires updating
+the FTS5 incremental path. See: [[incremental-maintenance-requires-stable-ids]]
+belief.
+
+**Rename gap:** File renames produce the *new* path in the delta but not the
+*old* path. Old file's FTS5 entries persist until the next full rebuild. Low
+severity (stale search results, not incorrect behavior). Tracked for follow-up
+in [[scrape-diff-driven-v2]].
