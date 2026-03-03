@@ -13,6 +13,7 @@ related:
 - fact-crdt-substrate
 - data-measure-surface
 - data-fast-incremental
+- scrape-diff-driven
 beliefs:
 - patina-is-domain-agnostic-knowledge-system
 - persona-is-a-patina-instance
