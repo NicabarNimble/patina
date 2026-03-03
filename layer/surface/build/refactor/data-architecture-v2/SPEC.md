@@ -34,10 +34,13 @@ exit_criteria:
   checked: true
 - id: measure-answers-is-this-project-healthy-with-data-not-opinion
   text: measure answers 'is this project healthy?' with data, not opinion
-  checked: false
+  checked: true
 - id: sub-specs-created-and-scoped-for-each-implementation-area
   text: sub-specs created and scoped for each implementation area
   checked: true
+- id: fast-incremental-sub-spec-scoped-with-exit-criteria
+  text: 'Area 5 (fast incremental + hooks) has a sub-spec with concrete exit criteria ([[data-fast-incremental]])'
+  checked: false
 ---
 
 # refactor: Data Architecture v2
@@ -842,15 +845,18 @@ Dangling edges auto-cleaned (124 per sync from orphaned core doc references —
 root cause tracked in [[core-values-format]]). health_score and projects
 visible in CLI and MCP output. Consumer decides ranking — no blending formula.
 
-### Area 4: Measure as LLM Query Surface — DRAFT ([[data-measure-surface]])
+### Area 4: Measure as LLM Query Surface — COMPLETE ([[data-measure-surface]], v0.36.0)
 
 **Scope:** `patina measure --full` returns domain-organized JSON. Measure reads
 from events.db (tool trends) + patina.db (belief health, code coverage,
 session activity). Designed for LLM consumption — structured, comprehensive,
 machine-parseable.
 
-**Dependency:** Now unblocked — events.db exists (Area 1), emission coverage
-is complete (Area 2), mother schema is aligned (Area 3).
+**Result:** Typed `FullMeasureReport` with health summary, per-verb freshness/
+diagnostics, event counts. 12 exit criteria met. MCP and CLI share one code path.
+`contested_count` in BelieveMetrics. `eval --feedback` rewritten with ATTACH
+cross-db query. JSON shape contract test. Ambient health wired into `context`
+MCP tool. Delivered across sessions [[20260302-203307]] and [[20260303-054447]].
 
 ### Area 5: Fast Incremental + Hooks — DRAFT ([[data-fast-incremental]])
 
