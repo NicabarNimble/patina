@@ -10,7 +10,7 @@ mod internal;
 
 use anyhow::Result;
 
-pub use internal::mcp_measure;
+pub use internal::{mcp_measure, VerbMetrics};
 
 /// Options for the measure command
 #[derive(Debug, Clone, Default)]

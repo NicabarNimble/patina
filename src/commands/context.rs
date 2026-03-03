@@ -31,9 +31,26 @@ pub fn get_project_context(topic: Option<&str>) -> Result<String> {
     // Ambient health — one line so every LLM interaction carries project health
     if let Ok(report) = crate::commands::measure::mcp_measure() {
         output.push_str(&format!(
-            "# Project Health\n\n{} — {}\n\n",
+            "# Project Health\n\n{} — {}\n",
             report.health.status, report.health.summary
         ));
+
+        // Structure summary — codebase shape from latest scrape
+        if let Some(capture) = report.verbs.get("capture") {
+            for src in &capture.sources {
+                if let crate::commands::measure::VerbMetrics::CaptureStructure(m) =
+                    &src.latest_metrics
+                {
+                    output.push_str(&format!(
+                        "Structure: {} modules, {} pub interfaces, {} deps, avg fan-out {:.1}\n",
+                        m.module_count, m.pub_interface_count, m.dependency_count, m.coupling_avg
+                    ));
+                    break;
+                }
+            }
+        }
+
+        output.push('\n');
     }
 
     // Read core patterns (eternal principles)
