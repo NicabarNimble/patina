@@ -1,7 +1,7 @@
 ---
 type: feat
 id: data-fast-incremental
-status: draft
+status: ready
 created: 2026-02-27
 sessions:
   origin: 20260227-062333
@@ -12,19 +12,19 @@ beliefs:
 - correctness-by-construction-not-convention
 exit_criteria:
 - id: incremental-scrape-after-single-commit-under-2s
-  text: 'incremental scrape after a single commit completes in < 2s (measured, not estimated)'
+  text: incremental scrape after a single commit completes in < 2s (measured, not estimated)
   checked: false
 - id: co-change-update-is-incremental-not-full-rebuild
   text: co-change computation updates only pairs affected by new commits — no DELETE + rebuild
   checked: false
 - id: post-commit-hook-exists-and-triggers-incremental-scrape
-  text: 'post-commit hook in `resources/git/` triggers `patina scrape` incrementally'
+  text: post-commit hook in `resources/git/` triggers `patina scrape` incrementally
   checked: false
 - id: hook-install-mechanism-exists
   text: '`patina init` or documented manual step installs hooks — no silent filesystem writes'
   checked: false
 - id: hook-completes-under-2s-with-no-visible-delay-to-developer
-  text: 'hook runs in background or completes fast enough (< 2s) that `git commit` feels instant'
+  text: hook runs in background or completes fast enough (< 2s) that `git commit` feels instant
   checked: false
 - id: baseline-profile-captured-before-any-optimization
   text: baseline scrape timings (per-scraper, per-phase) captured and documented before changes
