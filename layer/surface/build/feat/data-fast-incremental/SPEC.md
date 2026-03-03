@@ -16,22 +16,22 @@ exit_criteria:
   checked: false
 - id: co-change-update-is-incremental-not-full-rebuild
   text: co-change computation updates only pairs affected by new commits — no DELETE + rebuild
-  checked: false
+  checked: true
 - id: post-commit-hook-exists-and-triggers-incremental-scrape
   text: post-commit hook in `resources/git/` triggers `patina scrape` incrementally
-  checked: false
+  checked: true
 - id: hook-install-mechanism-exists
   text: '`patina init` or documented manual step installs hooks — no silent filesystem writes'
-  checked: false
+  checked: true
 - id: hook-completes-under-2s-with-no-visible-delay-to-developer
   text: hook runs in background or completes fast enough (< 2s) that `git commit` feels instant
-  checked: false
+  checked: true
 - id: baseline-profile-captured-before-any-optimization
   text: baseline scrape timings (per-scraper, per-phase) captured and documented before changes
-  checked: false
+  checked: true
 - id: code-scraper-skips-unchanged-files
   text: code scraper skips files unchanged since last scrape (mtime or git status check)
-  checked: false
+  checked: true
 ---
 # feat: Fast Incremental Scrape + Git Hooks
 
