@@ -3,6 +3,7 @@ type: feat
 id: cli-skills-over-mcp
 status: draft
 created: 2026-03-03
+target: '2'
 sessions:
   origin: 20260303-135648
 related:
