@@ -463,9 +463,9 @@ fn discover_pipeline_plugins(
         return HashMap::new();
     }
 
-    if extension_filter.is_some() {
+    if let Some(extensions) = extension_filter {
         // Lazy path: read manifests first, only compile matching plugins
-        return discover_pipeline_plugins_lazy(&pipeline_dir, extension_filter.unwrap());
+        return discover_pipeline_plugins_lazy(&pipeline_dir, extensions);
     }
 
     // Full path: load all plugins (default for direct `patina scrape code`)
