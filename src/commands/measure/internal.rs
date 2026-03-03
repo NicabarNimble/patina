@@ -854,6 +854,121 @@ impl FullMeasureReport {
 }
 
 // ============================================================================
+// Full Report Builder
+// ============================================================================
+
+/// ATTACH events.db to an open patina.db connection.
+///
+/// Measure direction: patina.db is primary, events.db is attached.
+/// Callers query `events.eventlog` for measure.* events.
+fn attach_events(conn: &Connection) -> Result<()> {
+    eventlog::ensure_events_db()?;
+    let events_path = Path::new(eventlog::EVENTS_DB);
+    if events_path.exists() {
+        conn.execute(
+            "ATTACH DATABASE ?1 AS events",
+            [events_path.to_str().unwrap_or(eventlog::EVENTS_DB)],
+        )?;
+    }
+    Ok(())
+}
+
+/// Build the full measure report — typed health layer over existing infrastructure.
+///
+/// Reuses `build_*_summary()` verb builders, then wraps each with freshness,
+/// diagnostics, and effective status. Pure library code — no CLI or output.
+pub fn build_full_report(conn: &Connection) -> Result<FullMeasureReport> {
+    let existing_report = build_report(conn)?;
+
+    let mut verbs = std::collections::BTreeMap::new();
+
+    for verb_summary in existing_report.verbs {
+        let verb_name = verb_summary.verb.clone();
+
+        // Compute age and freshness from latest timestamp
+        let age_hours = verb_summary
+            .latest_timestamp
+            .as_deref()
+            .and_then(compute_age_hours);
+
+        let freshness = age_hours.map(|h| Freshness::for_verb(&verb_name, h));
+
+        // Collect diagnostics from typed metric sources
+        let mut diagnostics = collect_source_diagnostics(&verb_summary.sources);
+
+        // Add freshness diagnostic if aging or stale
+        if let (Some(f), Some(h)) = (freshness, age_hours) {
+            if let Some(d) = freshness_diagnostic(&verb_name, f, h) {
+                diagnostics.push(d);
+            }
+        }
+
+        let status = FullVerbSummary::effective_status(verb_summary.status, freshness);
+
+        verbs.insert(
+            verb_name,
+            FullVerbSummary {
+                status,
+                latest_timestamp: verb_summary.latest_timestamp,
+                age_hours,
+                freshness,
+                sources: verb_summary.sources,
+                diagnostics,
+            },
+        );
+    }
+
+    // Event counts from events.db
+    let event_counts = build_event_counts(conn)?;
+
+    let mut report = FullMeasureReport {
+        health: HealthSummary {
+            status: VerbStatus::NoData,
+            summary: String::new(),
+            assessed_at: String::new(),
+        },
+        verbs,
+        event_counts,
+    };
+
+    // Derive health from the typed report itself
+    report.health = report.derive_health_summary();
+
+    Ok(report)
+}
+
+/// Count events by type from events.db for the EventCounts field.
+fn build_event_counts(conn: &Connection) -> Result<EventCounts> {
+    let total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM events.eventlog", [], |row| {
+            row.get(0)
+        })
+        .unwrap_or(0);
+
+    let mut by_type = std::collections::BTreeMap::new();
+
+    let stmt_result = conn.prepare(
+        "SELECT event_type, COUNT(*) FROM events.eventlog GROUP BY event_type ORDER BY event_type",
+    );
+
+    if let Ok(mut stmt) = stmt_result {
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        for row in rows {
+            if let Ok((event_type, count)) = row {
+                by_type.insert(event_type, count);
+            }
+        }
+    }
+
+    Ok(EventCounts {
+        total_runtime_events: total,
+        by_type,
+    })
+}
+
+// ============================================================================
 // Main Entry Point
 // ============================================================================
 
@@ -866,17 +981,8 @@ pub fn run(options: MeasureOptions) -> Result<()> {
 
     let conn = Connection::open(db_path).context("Failed to open patina.db")?;
 
-    // Ensure events.db exists (migrates runtime events on first run)
-    eventlog::ensure_events_db()?;
-
     // ATTACH events.db for cross-system queries (measure.* events live there)
-    let events_path = Path::new(eventlog::EVENTS_DB);
-    if events_path.exists() {
-        conn.execute(
-            "ATTACH DATABASE ?1 AS events",
-            [events_path.to_str().unwrap_or(eventlog::EVENTS_DB)],
-        )?;
-    }
+    attach_events(&conn)?;
 
     // Check if ANY measurement data exists
     let total_events = count_measurement_events(&conn)?;
@@ -1945,15 +2051,7 @@ pub fn mcp_measure() -> Result<serde_json::Value> {
     }
 
     let conn = Connection::open(db_path).context("Failed to open patina.db")?;
-
-    // ATTACH events.db for cross-system queries
-    let events_path = Path::new(eventlog::EVENTS_DB);
-    if events_path.exists() {
-        let _ = conn.execute(
-            "ATTACH DATABASE ?1 AS events",
-            [events_path.to_str().unwrap_or(eventlog::EVENTS_DB)],
-        );
-    }
+    let _ = attach_events(&conn);
 
     let total_events = count_measurement_events(&conn)?;
     let has_existing = has_existing_measurement_events(&conn)?;
