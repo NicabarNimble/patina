@@ -384,7 +384,7 @@ const VALID_VERBS: &[&str] = &["capture", "index", "search", "believe", "evolve"
 /// with source overridden to the plugin name (security: plugins can't
 /// impersonate core).
 pub(super) fn record_measurement(
-    project_root: &Option<PathBuf>,
+    _project_root: &Option<PathBuf>,
     plugin_name: &str,
     verb: &str,
     tool: &str,
@@ -413,13 +413,9 @@ pub(super) fn record_measurement(
         }
     }
 
-    // Open patina.db
-    let root = project_root
-        .as_ref()
-        .ok_or_else(|| "no project root".to_string())?;
-    let db_path = root.join(crate::eventlog::PATINA_DB);
-    let conn =
-        crate::eventlog::initialize(&db_path).map_err(|e| format!("open patina.db: {}", e))?;
+    // Open events.db — measure.* events live in events.db, not patina.db.
+    // Core tools use eventlog::open_events_db(); plugins must use the same path.
+    let conn = crate::eventlog::open_events_db().map_err(|e| format!("open events.db: {}", e))?;
 
     // Build event data — source is always the plugin name
     let event_data = serde_json::json!({
