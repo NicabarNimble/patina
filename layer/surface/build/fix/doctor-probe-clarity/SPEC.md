@@ -1,7 +1,7 @@
 ---
 type: fix
 id: doctor-probe-clarity
-status: ready
+status: active
 created: 2026-03-02
 sessions:
   origin: 20260302-144326
