@@ -137,9 +137,13 @@ whose grounding evidence touches changed files.
 - **[[data-fast-incremental]]**: Delivered the incremental algorithms
   (co-change upsert, mtime skip, hooks). This spec addresses the
   remaining fixed overhead that those optimizations exposed.
-- **[[knowledge-system-architecture]]**: Wants `scrape-is-plugin-dispatched`.
-  Phase 1 of this spec delivers that — scrape dispatches to plugins by
-  file type based on the diff. KSA Phase 2 (core extraction) builds on it.
+- **[[knowledge-system-architecture]]**: KSA EC1 (`scrape-is-plugin-dispatched`)
+  requires the dispatch interface built here. Phase 1 of this spec builds
+  delta-driven dispatch at two levels: source-kind routing (which scraper to
+  invoke) and file-type routing (which grammar plugin to load). KSA Phase 1
+  generalizes source-kind routing to support plugin-registered source kinds.
+  Note: Phase 3 (Mother warm-host) requires KSA to expand Mother's plugin
+  hosting beyond mother-child world — this is a mutual dependency.
 - **[[data-architecture-v2]]**: Parent architecture. This spec is Phase D
   continuation — performance that was outside data-fast-incremental's scope.
 
