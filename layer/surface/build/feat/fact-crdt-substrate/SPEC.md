@@ -3,7 +3,7 @@ type: feat
 id: fact-crdt-substrate
 status: draft
 created: 2026-02-17
-target: '7'
+target: '8'
 sessions:
   origin: 20260217-115200
 related:
