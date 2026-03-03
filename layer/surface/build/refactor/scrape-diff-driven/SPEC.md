@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: scrape-diff-driven
-status: ready
+status: active
 created: 2026-03-03
 sessions:
   origin: 20260303-090741
