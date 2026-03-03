@@ -3,6 +3,7 @@ type: refactor
 id: knowledge-system-architecture
 status: draft
 created: 2026-03-02
+target: '5'
 blocked_by:
 - data-architecture-v2
 sessions:
