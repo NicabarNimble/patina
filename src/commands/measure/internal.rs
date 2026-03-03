@@ -190,10 +190,12 @@ pub struct VerbSummary {
     pub sources: Vec<SourceSummary>,
 }
 
-#[derive(Debug, Serialize, Clone, Copy, PartialEq)]
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum VerbStatus {
     Good,
     NeedsAttention,
+    Degraded,
     NoData,
 }
 
@@ -202,6 +204,7 @@ impl std::fmt::Display for VerbStatus {
         match self {
             VerbStatus::Good => write!(f, "good"),
             VerbStatus::NeedsAttention => write!(f, "needs attention"),
+            VerbStatus::Degraded => write!(f, "degraded"),
             VerbStatus::NoData => write!(f, "no data"),
         }
     }
@@ -556,6 +559,114 @@ pub struct EvolveHistoryMetrics {
     pub files: i64,
     pub beliefs: i64,
     pub patterns: i64,
+}
+
+// ============================================================================
+// Full Report Types — typed health layer on existing infrastructure
+// ============================================================================
+
+/// Overall project health report — the `--full` JSON contract.
+///
+/// LLM query surface: every field is typed, no serde_json::Value.
+/// Verbs are keyed by name (BTreeMap) for stable JSON paths.
+#[derive(Debug, Serialize)]
+pub struct FullMeasureReport {
+    pub health: HealthSummary,
+    pub verbs: std::collections::BTreeMap<String, FullVerbSummary>,
+    pub event_counts: EventCounts,
+}
+
+/// Aggregate health across all verbs.
+#[derive(Debug, Serialize)]
+pub struct HealthSummary {
+    pub status: VerbStatus,
+    pub summary: String,
+    pub assessed_at: String,
+}
+
+/// Extended verb summary with freshness and diagnostics.
+#[derive(Debug, Serialize)]
+pub struct FullVerbSummary {
+    pub status: VerbStatus,
+    pub latest_timestamp: Option<String>,
+    pub age_hours: Option<f64>,
+    pub freshness: Option<Freshness>,
+    pub sources: Vec<SourceSummary>,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+/// An actionable diagnostic derived from typed metrics.
+#[derive(Debug, Serialize)]
+pub struct Diagnostic {
+    pub severity: Severity,
+    pub message: String,
+}
+
+/// Event count breakdown.
+#[derive(Debug, Serialize)]
+pub struct EventCounts {
+    pub total_runtime_events: i64,
+    pub by_type: std::collections::BTreeMap<String, i64>,
+}
+
+/// Data freshness — domain-aware interpretation of age.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum Freshness {
+    Fresh,
+    Aging,
+    Stale,
+}
+
+impl std::fmt::Display for Freshness {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Freshness::Fresh => write!(f, "fresh"),
+            Freshness::Aging => write!(f, "aging"),
+            Freshness::Stale => write!(f, "stale"),
+        }
+    }
+}
+
+/// Diagnostic severity level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum Severity {
+    Warning,
+    Error,
+}
+
+/// Freshness thresholds per verb (hours).
+///
+/// Hardcoded — measure is opinionated about what "healthy" means.
+/// `(fresh_ceiling, aging_ceiling)` — above aging_ceiling is stale.
+const FRESHNESS_THRESHOLDS: &[(&str, f64, f64)] = &[
+    ("capture", 24.0, 72.0),   // Active project scrapes daily
+    ("index", 48.0, 168.0),    // 48h fresh, 7d aging ceiling
+    ("search", 168.0, 720.0),  // 7d fresh, 30d aging ceiling
+    ("believe", 168.0, 720.0), // 7d fresh, 30d aging ceiling
+    ("evolve", 168.0, 720.0),  // 7d fresh, 30d aging ceiling
+];
+
+impl Freshness {
+    /// Compute freshness for a verb given its age in hours.
+    pub fn for_verb(verb: &str, age_hours: f64) -> Self {
+        let (fresh_ceil, aging_ceil) = FRESHNESS_THRESHOLDS
+            .iter()
+            .find(|(v, _, _)| *v == verb)
+            .map(|(_, f, a)| (*f, *a))
+            .unwrap_or((168.0, 720.0)); // default to believe/evolve thresholds
+
+        if age_hours < fresh_ceil {
+            Freshness::Fresh
+        } else if age_hours < aging_ceil {
+            Freshness::Aging
+        } else {
+            Freshness::Stale
+        }
+    }
 }
 
 // ============================================================================
@@ -1144,6 +1255,7 @@ fn render_user_view(report: &MeasureReport) {
         let icon = match verb_summary.status {
             VerbStatus::Good => "+",
             VerbStatus::NeedsAttention => "!",
+            VerbStatus::Degraded => "X",
             VerbStatus::NoData => "-",
         };
 
