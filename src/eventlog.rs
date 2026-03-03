@@ -56,6 +56,11 @@ pub fn initialize(db_path: &Path) -> Result<Connection> {
 
     let conn = Connection::open(db_path)?;
 
+    // Allow concurrent access from overlapping scrapes (e.g., rapid post-commit hooks).
+    // patina.db does NOT use WAL (rebuildable projections, not safety-critical data).
+    // busy_timeout lets a second writer wait instead of failing with SQLITE_BUSY.
+    conn.execute_batch("PRAGMA busy_timeout = 5000;")?;
+
     // Create eventlog table (LiveStore pattern - immutable source of truth)
     conn.execute_batch(
         r#"

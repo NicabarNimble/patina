@@ -604,6 +604,57 @@ fn insert_commits(conn: &Connection, commits: &[GitCommit], skip_eventlog: bool)
 /// Commits with more files are skipped (likely bulk operations, not meaningful co-changes)
 const MAX_FILES_PER_COMMIT: usize = 50;
 
+/// Incrementally update co-change relationships from new commits only.
+///
+/// Uses upsert (INSERT ... ON CONFLICT DO UPDATE) to add co-change pairs
+/// from the new commits without touching existing data. This avoids the
+/// O(C*F²) full rebuild that dominates scrape time.
+fn update_co_changes(conn: &Connection, commits: &[GitCommit]) -> Result<usize> {
+    let tx = conn.unchecked_transaction()?;
+    let mut upsert_stmt = tx.prepare(
+        "INSERT INTO co_changes (file_a, file_b, count) VALUES (?1, ?2, 1)
+         ON CONFLICT(file_a, file_b) DO UPDATE SET count = count + 1",
+    )?;
+
+    let mut pairs_updated = 0;
+    let mut skipped_commits = 0;
+
+    for commit in commits {
+        if commit.files.len() <= 1 {
+            continue;
+        }
+
+        if commit.files.len() > MAX_FILES_PER_COMMIT {
+            skipped_commits += 1;
+            continue;
+        }
+
+        for i in 0..commit.files.len() {
+            for j in (i + 1)..commit.files.len() {
+                let (a, b) = if commit.files[i].path < commit.files[j].path {
+                    (&commit.files[i].path, &commit.files[j].path)
+                } else {
+                    (&commit.files[j].path, &commit.files[i].path)
+                };
+                upsert_stmt.execute(rusqlite::params![a, b])?;
+                pairs_updated += 1;
+            }
+        }
+    }
+
+    drop(upsert_stmt);
+    tx.commit()?;
+
+    if skipped_commits > 0 {
+        println!(
+            "  Skipped {} commits with >{} files",
+            skipped_commits, MAX_FILES_PER_COMMIT
+        );
+    }
+
+    Ok(pairs_updated)
+}
+
 /// Rebuild co-change relationships from commit_files
 fn rebuild_co_changes(conn: &Connection) -> Result<usize> {
     // Clear existing co-changes
@@ -806,14 +857,22 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
         );
     }
 
-    // Update last SHA
+    // Co-change computation: incremental upsert for new commits, full rebuild for --full
+    let co_change_count = if full {
+        let count = rebuild_co_changes(&conn)?;
+        println!("  Rebuilt {} co-change relationships (full)", count);
+        count
+    } else {
+        let count = update_co_changes(&conn, &commits)?;
+        println!("  Updated {} co-change pairs (incremental)", count);
+        count
+    };
+
+    // Update watermarks together — if either fails, next run reprocesses
     if let Some(latest) = commits.first() {
         update_last_sha(&conn, &latest.sha)?;
+        database::set_last_processed(&conn, "co_changes", &latest.sha)?;
     }
-
-    // Rebuild co-changes
-    let co_change_count = rebuild_co_changes(&conn)?;
-    println!("  Built {} co-change relationships", co_change_count);
 
     // Populate commits FTS5 index for narrative search
     let fts_count = database::populate_commits_fts5(&conn)?;
