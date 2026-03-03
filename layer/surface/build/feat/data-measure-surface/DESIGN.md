@@ -194,6 +194,53 @@ at the query boundary. The P@5 metric feeds into search verb health via a
 - `src/commands/eval/mod.rs` — `execute_feedback()` ATTACH rewrite, inline (commit 7)
 - `src/eventlog.rs` — `attach_events()` helper for measure's direction only (commit 3)
 
+## Session 1 Implementation Notes
+
+### VerbStatus serialization changed retroactively
+
+Adding `#[serde(rename_all = "snake_case")]` to `VerbStatus` changed the existing
+`patina measure --json` output (without `--full`): `"Good"` became `"good"`,
+`"NeedsAttention"` became `"needs_attention"`. This is correct per SPEC convention
+but was a silent contract change to the existing path.
+
+**What makes it correct:** The `FullMeasureReport` struct *is* the contract — its
+shape is pinned by `#[derive(Serialize)]` with `rename_all`. The old `MeasureReport`
+now conforms to the same convention. What's missing: a snapshot test asserting the
+JSON shape, so the contract is enforceable, not accidental. Add in commit 8
+verification.
+
+### Exit criterion #9 boundary: `Raw` is reachable but not owned
+
+Exit criterion #9 says "zero `serde_json::Value` in new FullMeasureReport types."
+This is satisfied — `FullMeasureReport`, `HealthSummary`, `FullVerbSummary`,
+`Diagnostic`, `EventCounts` contain no `Value`. However, `FullVerbSummary.sources`
+is `Vec<SourceSummary>`, and `SourceSummary.latest_metrics` is `VerbMetrics`, and
+`VerbMetrics::Raw` holds a `Value`. The `Value` is *reachable* from the full report
+JSON three levels deep through an existing type, but not *owned* by any new type.
+
+**What makes it correct:** `Raw` becomes unreachable. The known probe set is fully
+typed today — `Raw` only fires for corrupt or future data. The graduation path
+(DESIGN.md "Schema-declared" option) eliminates `Raw` entirely: probes declare
+their metrics shape via the fact schema system, measure reads the schema at runtime.
+Until then, `Raw` is a safety net that preserves data visibility for unknown shapes.
+Exit criterion #9 covers the new type definitions, not transitive reachability
+through existing types.
+
+### MCP unification pulled forward
+
+Commit 5 (MCP/CLI unification) was completed in Session 1 alongside commits 1–4.
+`mcp_measure()` now returns `FullMeasureReport` (typed) instead of
+`serde_json::Value`. The `handle_measure()` MCP handler didn't need changes —
+`serde_json::to_string_pretty` accepts any `Serialize`.
+
+### Gjengset cleanup applied
+
+Two structural issues fixed in a cleanup commit after commits 1–4:
+- `effective_status()` moved from static method on `FullVerbSummary` to free
+  function (doesn't use `&self`, shouldn't pretend to be a method)
+- `FullMeasureReport::new(verbs, event_counts)` constructor replaces two-phase
+  construction. `derive_health()` is private — no invalid intermediate state.
+
 ## Open Questions
 
 1. ~~**Contested count source**~~ — Resolved. `belief_attacks` exists in `patina.db`
