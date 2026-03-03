@@ -302,10 +302,8 @@ impl VerbMetrics {
                 serde_json::from_str::<CaptureHealthCheckMetrics>(json_str)
                     .map(VerbMetrics::CaptureHealthCheck)
             }
-            ("capture", "structure") => {
-                serde_json::from_str::<CaptureStructureMetrics>(json_str)
-                    .map(VerbMetrics::CaptureStructure)
-            }
+            ("capture", "structure") => serde_json::from_str::<CaptureStructureMetrics>(json_str)
+                .map(VerbMetrics::CaptureStructure),
             ("capture", _) => {
                 tracing::warn!(mode, "Unknown capture mode — falling back to raw metrics");
                 let value = serde_json::from_str(json_str).unwrap_or(serde_json::Value::Null);
@@ -832,7 +830,10 @@ impl CaptureStructureMetrics {
     ///
     /// The `previous` parameter comes from the second-most-recent
     /// measure.capture.structure event. Delta thresholds are hardcoded.
-    pub fn diagnostics_with_delta(&self, previous: Option<&CaptureStructureMetrics>) -> Vec<Diagnostic> {
+    pub fn diagnostics_with_delta(
+        &self,
+        previous: Option<&CaptureStructureMetrics>,
+    ) -> Vec<Diagnostic> {
         let mut diags = Vec::new();
         let prev = match previous {
             Some(p) => p,
@@ -951,12 +952,14 @@ fn collect_structure_delta_diagnostics(
 
     // Fetch the previous (second-most-recent) structure event from events.db
     let previous = (|| -> Option<CaptureStructureMetrics> {
-        let mut stmt = conn.prepare(
-            r#"SELECT json_extract(data, '$.metrics') FROM events.eventlog
+        let mut stmt = conn
+            .prepare(
+                r#"SELECT json_extract(data, '$.metrics') FROM events.eventlog
                WHERE event_type = 'measure.capture'
                  AND json_extract(data, '$.mode') = 'structure'
-               ORDER BY seq DESC LIMIT 1 OFFSET 1"#
-        ).ok()?;
+               ORDER BY seq DESC LIMIT 1 OFFSET 1"#,
+            )
+            .ok()?;
 
         let json_str: String = stmt.query_row([], |row| row.get(0)).ok()?;
         serde_json::from_str(&json_str).ok()
