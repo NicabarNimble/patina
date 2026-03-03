@@ -3,15 +3,24 @@ type: fix
 id: git-history-cleanup
 status: draft
 created: 2026-02-25
+target: '1'
 sessions:
   origin: 20260225-143514
 beliefs:
 - git-is-the-knowledge-substrate
 exit_criteria:
-- .git directory under 400 MB after cleanup
-- All existing tags preserved and functional
-- patina spec history works for all archived specs
-- No source code, layer files, or config lost
+- id: git-directory-under-400-mb-after-cleanup
+  text: .git directory under 400 MB after cleanup
+  checked: false
+- id: all-existing-tags-preserved-and-functional
+  text: All existing tags preserved and functional
+  checked: false
+- id: patina-spec-history-works-for-all-archived-specs
+  text: patina spec history works for all archived specs
+  checked: false
+- id: no-source-code-layer-files-or-config-lost
+  text: No source code, layer files, or config lost
+  checked: false
 ---
 # fix: Strip historical binary blobs from git history
 
