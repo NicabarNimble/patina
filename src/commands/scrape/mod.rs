@@ -3,6 +3,7 @@
 pub mod beliefs;
 pub mod code;
 pub mod database;
+pub mod delta;
 pub mod forge;
 pub mod git;
 pub mod layer;
@@ -58,11 +59,18 @@ mod tests {
 ///
 /// This is the default when running `patina scrape` with no subcommand.
 /// Layer scraper handles both patterns and sessions (unified in v0.12.0).
+///
+/// Delta-driven dispatch: computes what changed since last scrape, then
+/// only invokes scrapers with work to do. See [[scrape-diff-driven]].
 pub fn execute_all() -> Result<()> {
     // Ensure UID exists (migration for projects without one)
     patina::project::create_uid_if_missing(&std::env::current_dir()?)?;
 
-    println!("🔄 Running all scrapers...\n");
+    // Compute delta: what changed since last scrape?
+    let scrape_delta = delta::compute_delta()?;
+    scrape_delta.log_summary();
+
+    println!("\n🔄 Running all scrapers...\n");
 
     println!("📊 [1/4] Scraping code...");
     execute_code(false, false)?;
