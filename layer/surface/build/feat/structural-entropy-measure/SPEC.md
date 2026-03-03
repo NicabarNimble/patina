@@ -1,7 +1,7 @@
 ---
 type: feat
 id: structural-entropy-measure
-status: ready
+status: active
 created: 2026-03-03
 target: '4'
 sessions:
