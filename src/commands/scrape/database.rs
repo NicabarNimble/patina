@@ -232,14 +232,30 @@ mod tests {
         )?;
 
         // Should match 2 entries (main::main and main::helper), not 3
-        assert_eq!(count, 2, "LIKE prefix should only match entries for ./src/main.rs, not ./src/lib.rs");
+        assert_eq!(
+            count, 2,
+            "LIKE prefix should only match entries for ./src/main.rs, not ./src/lib.rs"
+        );
 
         // Verify the separator is :: (double colon)
         for sid in &source_ids {
-            assert!(sid.contains("::"), "source_id must use :: separator: {}", sid);
+            assert!(
+                sid.contains("::"),
+                "source_id must use :: separator: {}",
+                sid
+            );
             let parts: Vec<&str> = sid.splitn(2, "::").collect();
-            assert_eq!(parts.len(), 2, "source_id must have exactly one :: separator: {}", sid);
-            assert!(parts[0].starts_with("./"), "source_id path must start with ./: {}", sid);
+            assert_eq!(
+                parts.len(),
+                2,
+                "source_id must have exactly one :: separator: {}",
+                sid
+            );
+            assert!(
+                parts[0].starts_with("./"),
+                "source_id path must start with ./: {}",
+                sid
+            );
         }
 
         Ok(())

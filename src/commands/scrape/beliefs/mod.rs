@@ -929,7 +929,7 @@ fn grounding_index_changed(conn: &Connection) -> Option<String> {
     // Compare with stored watermark
     match database::get_last_processed(conn, "grounding_index_mtime") {
         Ok(Some(stored)) if stored == current_mtime => None, // Unchanged
-        _ => Some(current_mtime), // Changed or first grounding
+        _ => Some(current_mtime),                            // Changed or first grounding
     }
 }
 
