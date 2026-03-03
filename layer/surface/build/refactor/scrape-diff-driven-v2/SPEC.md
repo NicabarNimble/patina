@@ -9,6 +9,7 @@ related:
 - scrape-diff-driven
 beliefs:
 - grounding-follows-index-rebuilds
+- incremental-maintenance-requires-stable-ids
 exit_criteria: []
 split_from: scrape-diff-driven
 ---
