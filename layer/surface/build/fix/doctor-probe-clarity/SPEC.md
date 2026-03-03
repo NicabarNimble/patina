@@ -19,9 +19,10 @@ beliefs:
 - parser-agnostic-interfaces
 - eventlog-is-infrastructure
 - structure-over-content-for-llm-tools
+- probe-emits-dashboard-displays
 exit_criteria:
 - id: doctor-emits-before-display
-  text: doctor emits `measure.capture` event before any terminal output — emit is the primary action, display is secondary
+  text: doctor emits `measure.capture` event before any results are printed — emit is the primary action, display is secondary (progress indicator OK)
   checked: false
 - id: zero-serde-json-value-in-health-check-struct
   text: '`HealthCheck` and `ToolChange` structs use no `serde_json::Value` fields — all typed'
@@ -120,6 +121,24 @@ Replace `HealthCheck::to_json()` (which builds `serde_json::json!({})` by hand)
 with `#[derive(Serialize)]` on the struct. Direct serialization, no manual
 JSON construction.
 
+## Implementation Notes
+
+**JSON shape preservation.** `HealthCheck::to_json()` produces a nested JSON layout
+with `environment_changes` and `project_config` groups. Replacing `to_json()` with
+`#[derive(Serialize)]` must reproduce this nested shape — use wrapper structs (e.g.,
+`EnvironmentChanges`, `ProjectConfig`) so `--json` output stays backwards-compatible.
+The `measure::record_measurement()` emit path builds its own flat JSON independently
+(`capture_metrics`), so `CaptureHealthCheckMetrics` parsing is unaffected.
+
+**EC1 — progress indicator OK.** "Before any results are printed" permits a progress
+banner (e.g., "Checking project health...") before emit. The prohibition is on
+printing health results, not UI chrome. The banner fires before computation begins
+and leaks no findings.
+
+**Config boundary.** `config.pointer("/adapters/default")` is a single clean JSON
+path, not type soup. No EC needed — the real soup is the 5 get-chains in
+`analyze_environment()` parsing the environment JSON.
+
 ## Non-Goals
 
 - **Continuous mode / watch / tick lifecycle.** Future feat spec — depends on
@@ -129,7 +148,7 @@ JSON construction.
 
 ## Exit Criteria
 
-1. Doctor emits `measure.capture` event before any terminal output
+1. Doctor emits `measure.capture` event before any results are printed (progress indicator OK)
 2. Zero `serde_json::Value` in `HealthCheck` and `ToolChange` structs
 3. Zero `.get().and_then().unwrap_or()` chains in doctor plugin
 4. Terminal output frames results as probe output with pointer to `patina measure --full`
