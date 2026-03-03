@@ -394,6 +394,7 @@ impl VerbMetrics {
                 ("total_beliefs".into(), m.total_beliefs.to_string()),
                 ("floating_count".into(), m.floating_count.to_string()),
                 ("grounded_count".into(), m.grounded_count.to_string()),
+                ("contested_count".into(), m.contested_count.to_string()),
                 ("avg_evidence".into(), format!("{:.2}", m.avg_evidence)),
                 ("avg_health".into(), format!("{:.2}", m.avg_health)),
             ],
@@ -534,6 +535,8 @@ pub struct BelieveMetrics {
     pub total_beliefs: i64,
     pub floating_count: i64,
     pub grounded_count: i64,
+    #[serde(default)]
+    pub contested_count: i64,
     pub avg_evidence: f64,
     pub avg_health: f64,
 }
@@ -703,6 +706,15 @@ impl BelieveMetrics {
                 message: format!(
                     "{} beliefs have no code grounding ({:.0}% floating)",
                     self.floating_count, pct
+                ),
+            });
+        }
+        if self.contested_count > 0 {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "{} beliefs have active attacks without resolution",
+                    self.contested_count
                 ),
             });
         }
@@ -1215,6 +1227,7 @@ fn build_believe_summary(conn: &Connection) -> Result<VerbSummary> {
             r#"SELECT
                 COUNT(*) as total_beliefs,
                 COALESCE(SUM(CASE WHEN grounding_score = 0 THEN 1 ELSE 0 END), 0) as floating,
+                COALESCE(SUM(CASE WHEN contested_by > 0 THEN 1 ELSE 0 END), 0) as contested,
                 COALESCE(AVG(evidence_count), 0) as avg_evidence,
                 COALESCE(AVG(health_score), 0) as avg_health
             FROM beliefs"#,
@@ -1223,8 +1236,9 @@ fn build_believe_summary(conn: &Connection) -> Result<VerbSummary> {
                 Ok((
                     row.get::<_, i64>(0)?,
                     row.get::<_, i64>(1)?,
-                    row.get::<_, f64>(2)?,
+                    row.get::<_, i64>(2)?,
                     row.get::<_, f64>(3)?,
+                    row.get::<_, f64>(4)?,
                 ))
             },
         );
@@ -1256,7 +1270,7 @@ fn build_believe_summary(conn: &Connection) -> Result<VerbSummary> {
             )
             .unwrap_or(0);
 
-        if let Ok((total, floating, avg_evidence, avg_health)) = result {
+        if let Ok((total, floating, contested, avg_evidence, avg_health)) = result {
             if total > 0 {
                 sources.push(SourceSummary {
                     source_type: SourceType::Beliefs,
@@ -1266,6 +1280,7 @@ fn build_believe_summary(conn: &Connection) -> Result<VerbSummary> {
                         total_beliefs: total,
                         floating_count: floating,
                         grounded_count: total - floating,
+                        contested_count: contested,
                         avg_evidence: (avg_evidence * 100.0).round() / 100.0,
                         avg_health: (avg_health * 100.0).round() / 100.0,
                     }),
@@ -1708,15 +1723,20 @@ fn user_friendly_metrics(src: &SourceSummary) -> String {
             _ => format!("{}: n/a", src.mode),
         },
         VerbMetrics::Believe(m) => {
+            let contested = if m.contested_count > 0 {
+                format!(", {} contested", m.contested_count)
+            } else {
+                String::new()
+            };
             if m.floating_count > 0 {
                 format!(
-                    "{} beliefs, {} grounded, {} floating, avg health {:.2}",
-                    m.total_beliefs, m.grounded_count, m.floating_count, m.avg_health
+                    "{} beliefs, {} grounded, {} floating{}, avg health {:.2}",
+                    m.total_beliefs, m.grounded_count, m.floating_count, contested, m.avg_health
                 )
             } else {
                 format!(
-                    "{} beliefs, all grounded, avg health {:.2}",
-                    m.total_beliefs, m.avg_health
+                    "{} beliefs, all grounded{}, avg health {:.2}",
+                    m.total_beliefs, contested, m.avg_health
                 )
             }
         }
@@ -2353,6 +2373,7 @@ mod tests {
             total_beliefs: 178,
             floating_count: 135,
             grounded_count: 43,
+            contested_count: 0,
             avg_evidence: 1.72,
             avg_health: 0.88,
         };
@@ -2366,11 +2387,48 @@ mod tests {
     }
 
     #[test]
+    fn believe_diagnostics_contested() {
+        let m = BelieveMetrics {
+            total_beliefs: 178,
+            floating_count: 0,
+            grounded_count: 178,
+            contested_count: 5,
+            avg_evidence: 2.0,
+            avg_health: 0.9,
+        };
+        let diags = m.diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0]
+            .message
+            .contains("5 beliefs have active attacks without resolution"));
+        assert!(matches!(diags[0].severity, Severity::Warning));
+    }
+
+    #[test]
+    fn believe_diagnostics_floating_and_contested() {
+        let m = BelieveMetrics {
+            total_beliefs: 100,
+            floating_count: 20,
+            grounded_count: 80,
+            contested_count: 3,
+            avg_evidence: 2.0,
+            avg_health: 0.85,
+        };
+        let diags = m.diagnostics();
+        assert_eq!(diags.len(), 2);
+        assert!(diags[0].message.contains("20 beliefs have no code grounding"));
+        assert!(diags[1]
+            .message
+            .contains("3 beliefs have active attacks without resolution"));
+    }
+
+    #[test]
     fn believe_diagnostics_all_grounded() {
         let m = BelieveMetrics {
             total_beliefs: 50,
             floating_count: 0,
             grounded_count: 50,
+            contested_count: 0,
             avg_evidence: 3.0,
             avg_health: 0.95,
         };
@@ -2383,6 +2441,7 @@ mod tests {
             total_beliefs: 10,
             floating_count: 0,
             grounded_count: 10,
+            contested_count: 0,
             avg_evidence: 1.0,
             avg_health: 0.3,
         };
