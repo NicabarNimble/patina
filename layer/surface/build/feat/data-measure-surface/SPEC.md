@@ -21,40 +21,40 @@ beliefs:
 exit_criteria:
 - id: measure-full-json-returns-structured-health-across-all-5-verbs
   text: '`patina measure --full --json` returns structured health JSON covering all 5 verbs with status, metrics, and diagnostics'
-  checked: false
+  checked: true
 - id: each-catalog-question-answerable-from-measure-full-output
   text: each of the 9 catalog questions (DESIGN.md OQ#8) is answerable from `--full` output alone
-  checked: false
+  checked: true
 - id: health-field-present-with-overall-project-health-summary
   text: top-level `health` field present with overall project health summary (status + one-sentence reason)
-  checked: false
+  checked: true
 - id: mcp-measure-returns-full-json-for-llm-consumption
   text: '`mcp_measure()` returns the same `--full` JSON — MCP and CLI share one code path'
-  checked: false
+  checked: true
 - id: temporal-fields-present-for-point-in-time-verbs
   text: each verb section includes `latest_timestamp`, `age_hours`, and freshness status
-  checked: false
+  checked: true
 - id: belief-grounding-chain-visible-in-believe-verb
   text: believe verb exposes grounding breakdown — grounded count, floating count, contested count, avg evidence
-  checked: false
+  checked: true
 - id: execute-feedback-rewritten-to-read-from-events-db-via-attach
   text: '`eval --feedback` rewritten to query events.db (scry.query) via ATTACH joined with patina.db (commits)'
-  checked: false
+  checked: true
 - id: diagnostics-field-lists-actionable-problems
   text: each verb has a `diagnostics` array listing specific problems (not generic suggestions)
-  checked: false
+  checked: true
 - id: no-serde-json-value-in-new-code
   text: zero `serde_json::Value` in new FullMeasureReport types — all fields are typed Rust structs/enums. Raw fallback only in existing VerbMetrics::Raw path.
-  checked: false
+  checked: true
 - id: no-get-chains-in-new-code
   text: zero `.get().and_then().unwrap_or()` chains in new measure code — DB rows parse into typed structs at the query boundary via `from_db()` or `#[derive(Deserialize)]`
-  checked: false
+  checked: true
 - id: diagnostics-derived-from-typed-structs
   text: diagnostic strings are computed from typed metric structs (e.g., `BelieveMetrics.floating_count`), never from raw JSON or ad-hoc DB queries
-  checked: false
+  checked: true
 - id: health-summary-derived-from-typed-report
   text: '`health.summary` is generated from `FullMeasureReport` typed fields, not hand-assembled from separate queries'
-  checked: false
+  checked: true
 ---
 # feat: Measure as LLM Query Surface — Structured Health for AI Consumers
 
