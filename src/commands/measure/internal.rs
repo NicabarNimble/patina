@@ -190,13 +190,17 @@ pub struct VerbSummary {
     pub sources: Vec<SourceSummary>,
 }
 
+/// Verb health status — ordered by severity for worst-verb-wins.
+///
+/// `derive(Ord)` uses declaration order, so variants are arranged from
+/// least severe (NoData) to most severe (Degraded). `max()` returns the worst.
 #[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[non_exhaustive]
 pub enum VerbStatus {
+    NoData,
     Good,
     NeedsAttention,
     Degraded,
-    NoData,
 }
 
 impl std::fmt::Display for VerbStatus {
@@ -665,6 +669,186 @@ impl Freshness {
             Freshness::Aging
         } else {
             Freshness::Stale
+        }
+    }
+}
+
+// ============================================================================
+// Derivation — freshness, diagnostics, health
+// ============================================================================
+
+/// Compute age in hours from an RFC3339 or YYYY-MM-DD timestamp.
+fn compute_age_hours(timestamp: &str) -> Option<f64> {
+    if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(timestamp) {
+        let duration = chrono::Utc::now().signed_duration_since(ts);
+        return Some(duration.num_seconds() as f64 / 3600.0);
+    }
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(timestamp, "%Y-%m-%d") {
+        let today = chrono::Utc::now().date_naive();
+        let days = (today - date).num_days();
+        return Some(days as f64 * 24.0);
+    }
+    None
+}
+
+impl BelieveMetrics {
+    /// Diagnostics computed from typed fields.
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        if self.floating_count > 0 && self.total_beliefs > 0 {
+            let pct = (self.floating_count as f64 / self.total_beliefs as f64) * 100.0;
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "{} beliefs have no code grounding ({:.0}% floating)",
+                    self.floating_count, pct
+                ),
+            });
+        }
+        if self.avg_health < 0.5 && self.total_beliefs > 0 {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "average belief health is low ({:.2})",
+                    self.avg_health
+                ),
+            });
+        }
+        diags
+    }
+}
+
+impl SearchMetrics {
+    /// Diagnostics computed from typed fields.
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        if let Some(p5) = self.p_at_5 {
+            if p5 < 0.4 {
+                diags.push(Diagnostic {
+                    severity: Severity::Warning,
+                    message: format!(
+                        "search precision is low (P@5={:.0}%, threshold 40%)",
+                        p5 * 100.0
+                    ),
+                });
+            }
+        }
+        diags
+    }
+}
+
+impl CaptureHealthCheckMetrics {
+    /// Diagnostics computed from typed fields.
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        if self.missing_tools > 0 {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "{} expected tools are missing",
+                    self.missing_tools
+                ),
+            });
+        }
+        diags
+    }
+}
+
+/// Collect diagnostics from a verb's sources.
+fn collect_source_diagnostics(sources: &[SourceSummary]) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    for src in sources {
+        match &src.latest_metrics {
+            VerbMetrics::Believe(m) => diags.extend(m.diagnostics()),
+            VerbMetrics::Search(m) => diags.extend(m.diagnostics()),
+            VerbMetrics::CaptureHealthCheck(m) => diags.extend(m.diagnostics()),
+            _ => {}
+        }
+    }
+    diags
+}
+
+/// Derive a freshness diagnostic if the verb is aging or stale.
+fn freshness_diagnostic(verb: &str, freshness: Freshness, age_hours: f64) -> Option<Diagnostic> {
+    match freshness {
+        Freshness::Aging => Some(Diagnostic {
+            severity: Severity::Warning,
+            message: format!(
+                "{} verb data is aging ({:.0}h old)",
+                verb, age_hours
+            ),
+        }),
+        Freshness::Stale => Some(Diagnostic {
+            severity: Severity::Error,
+            message: format!(
+                "{} verb data is stale ({:.0}h old)",
+                verb, age_hours
+            ),
+        }),
+        Freshness::Fresh => None,
+    }
+}
+
+impl FullVerbSummary {
+    /// Determine verb status factoring in freshness.
+    /// Degraded = existing status is NeedsAttention AND freshness is Stale.
+    fn effective_status(base_status: VerbStatus, freshness: Option<Freshness>) -> VerbStatus {
+        match (base_status, freshness) {
+            (VerbStatus::NeedsAttention, Some(Freshness::Stale)) => VerbStatus::Degraded,
+            (status, _) => status,
+        }
+    }
+}
+
+impl FullMeasureReport {
+    /// Derive the health summary from typed fields.
+    ///
+    /// Worst-verb-wins: Degraded > NeedsAttention > Good > NoData.
+    /// The ordering on VerbStatus drives `max()`.
+    pub fn derive_health_summary(&self) -> HealthSummary {
+        let worst_status = self
+            .verbs
+            .values()
+            .map(|v| v.status)
+            .max()
+            .unwrap_or(VerbStatus::NoData);
+
+        let healthy_count = self
+            .verbs
+            .values()
+            .filter(|v| v.status == VerbStatus::Good)
+            .count();
+
+        let total = self.verbs.len();
+
+        // Find the worst verb for the summary sentence
+        let worst_reason = self
+            .verbs
+            .iter()
+            .filter(|(_, v)| v.status == worst_status && worst_status != VerbStatus::Good)
+            .map(|(name, v)| {
+                if let Some(diag) = v.diagnostics.first() {
+                    format!("{}: {}", name, diag.message)
+                } else {
+                    format!("{}: {}", name, v.status)
+                }
+            })
+            .next()
+            .unwrap_or_default();
+
+        let summary = if worst_status == VerbStatus::Good || worst_status == VerbStatus::NoData {
+            format!("{}/{} verbs healthy.", healthy_count, total)
+        } else {
+            format!(
+                "{}/{} verbs healthy. {}",
+                healthy_count, total, worst_reason
+            )
+        };
+
+        HealthSummary {
+            status: worst_status,
+            summary,
+            assessed_at: chrono::Utc::now().to_rfc3339(),
         }
     }
 }
@@ -1959,5 +2143,243 @@ mod tests {
         let json = r#"{"total_beliefs": 178, "floating_count": 5, "grounded_count": 173, "avg_evidence": 1.72, "avg_health": 0.88}"#;
         let result = VerbMetrics::from_db("believe", "beliefs", json);
         assert!(matches!(result, VerbMetrics::Believe(_)));
+    }
+
+    // ================================================================
+    // Full report derivation tests
+    // ================================================================
+
+    #[test]
+    fn freshness_capture_thresholds() {
+        assert_eq!(Freshness::for_verb("capture", 12.0), Freshness::Fresh);
+        assert_eq!(Freshness::for_verb("capture", 48.0), Freshness::Aging);
+        assert_eq!(Freshness::for_verb("capture", 100.0), Freshness::Stale);
+    }
+
+    #[test]
+    fn freshness_believe_thresholds() {
+        assert_eq!(Freshness::for_verb("believe", 24.0), Freshness::Fresh);
+        assert_eq!(Freshness::for_verb("believe", 200.0), Freshness::Aging);
+        assert_eq!(Freshness::for_verb("believe", 800.0), Freshness::Stale);
+    }
+
+    #[test]
+    fn freshness_unknown_verb_uses_default() {
+        // Unknown verb gets believe/evolve thresholds (168h/720h)
+        assert_eq!(Freshness::for_verb("unknown", 100.0), Freshness::Fresh);
+        assert_eq!(Freshness::for_verb("unknown", 500.0), Freshness::Aging);
+        assert_eq!(Freshness::for_verb("unknown", 800.0), Freshness::Stale);
+    }
+
+    #[test]
+    fn believe_diagnostics_floating() {
+        let m = BelieveMetrics {
+            total_beliefs: 178,
+            floating_count: 135,
+            grounded_count: 43,
+            avg_evidence: 1.72,
+            avg_health: 0.88,
+        };
+        let diags = m.diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("135 beliefs have no code grounding"));
+        assert!(diags[0].message.contains("76% floating"));
+        assert!(matches!(diags[0].severity, Severity::Warning));
+    }
+
+    #[test]
+    fn believe_diagnostics_all_grounded() {
+        let m = BelieveMetrics {
+            total_beliefs: 50,
+            floating_count: 0,
+            grounded_count: 50,
+            avg_evidence: 3.0,
+            avg_health: 0.95,
+        };
+        assert!(m.diagnostics().is_empty());
+    }
+
+    #[test]
+    fn believe_diagnostics_low_health() {
+        let m = BelieveMetrics {
+            total_beliefs: 10,
+            floating_count: 0,
+            grounded_count: 10,
+            avg_evidence: 1.0,
+            avg_health: 0.3,
+        };
+        let diags = m.diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("average belief health is low"));
+    }
+
+    #[test]
+    fn search_diagnostics_low_precision() {
+        let m = SearchMetrics {
+            p_at_5: Some(0.2),
+            mrr: Some(0.3),
+            recall_at_5: None,
+        };
+        let diags = m.diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("P@5=20%"));
+    }
+
+    #[test]
+    fn search_diagnostics_good_precision() {
+        let m = SearchMetrics {
+            p_at_5: Some(0.8),
+            mrr: Some(0.75),
+            recall_at_5: None,
+        };
+        assert!(m.diagnostics().is_empty());
+    }
+
+    #[test]
+    fn health_check_diagnostics_missing_tools() {
+        let m = CaptureHealthCheckMetrics {
+            beliefs: 178,
+            sessions: 42,
+            layer_patterns: 12,
+            missing_tools: 2,
+            new_tools: 0,
+        };
+        let diags = m.diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("2 expected tools are missing"));
+    }
+
+    #[test]
+    fn effective_status_degraded_when_stale_and_needs_attention() {
+        assert_eq!(
+            FullVerbSummary::effective_status(VerbStatus::NeedsAttention, Some(Freshness::Stale)),
+            VerbStatus::Degraded
+        );
+    }
+
+    #[test]
+    fn effective_status_preserves_good() {
+        assert_eq!(
+            FullVerbSummary::effective_status(VerbStatus::Good, Some(Freshness::Stale)),
+            VerbStatus::Good
+        );
+    }
+
+    #[test]
+    fn effective_status_preserves_needs_attention_when_fresh() {
+        assert_eq!(
+            FullVerbSummary::effective_status(VerbStatus::NeedsAttention, Some(Freshness::Fresh)),
+            VerbStatus::NeedsAttention
+        );
+    }
+
+    #[test]
+    fn health_summary_worst_verb_wins() {
+        let mut verbs = std::collections::BTreeMap::new();
+        verbs.insert("capture".to_string(), FullVerbSummary {
+            status: VerbStatus::Good,
+            latest_timestamp: None,
+            age_hours: None,
+            freshness: None,
+            sources: vec![],
+            diagnostics: vec![],
+        });
+        verbs.insert("believe".to_string(), FullVerbSummary {
+            status: VerbStatus::NeedsAttention,
+            latest_timestamp: None,
+            age_hours: None,
+            freshness: None,
+            sources: vec![],
+            diagnostics: vec![Diagnostic {
+                severity: Severity::Warning,
+                message: "135 beliefs floating".to_string(),
+            }],
+        });
+
+        let report = FullMeasureReport {
+            health: HealthSummary {
+                status: VerbStatus::NoData,
+                summary: String::new(),
+                assessed_at: String::new(),
+            },
+            verbs,
+            event_counts: EventCounts {
+                total_runtime_events: 0,
+                by_type: std::collections::BTreeMap::new(),
+            },
+        };
+
+        let health = report.derive_health_summary();
+        assert_eq!(health.status, VerbStatus::NeedsAttention);
+        assert!(health.summary.contains("1/2 verbs healthy"));
+        assert!(health.summary.contains("believe"));
+    }
+
+    #[test]
+    fn health_summary_all_good() {
+        let mut verbs = std::collections::BTreeMap::new();
+        verbs.insert("capture".to_string(), FullVerbSummary {
+            status: VerbStatus::Good,
+            latest_timestamp: None,
+            age_hours: None,
+            freshness: None,
+            sources: vec![],
+            diagnostics: vec![],
+        });
+
+        let report = FullMeasureReport {
+            health: HealthSummary {
+                status: VerbStatus::NoData,
+                summary: String::new(),
+                assessed_at: String::new(),
+            },
+            verbs,
+            event_counts: EventCounts {
+                total_runtime_events: 0,
+                by_type: std::collections::BTreeMap::new(),
+            },
+        };
+
+        let health = report.derive_health_summary();
+        assert_eq!(health.status, VerbStatus::Good);
+        assert!(health.summary.contains("1/1 verbs healthy"));
+    }
+
+    #[test]
+    fn compute_age_hours_rfc3339() {
+        // 1 hour ago
+        let ts = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+        let age = compute_age_hours(&ts).unwrap();
+        assert!(age >= 0.9 && age <= 1.1, "Expected ~1.0h, got {}", age);
+    }
+
+    #[test]
+    fn compute_age_hours_date_only() {
+        let yesterday = (chrono::Utc::now().date_naive() - chrono::Duration::days(1))
+            .format("%Y-%m-%d")
+            .to_string();
+        let age = compute_age_hours(&yesterday).unwrap();
+        assert!(age >= 23.0 && age <= 25.0, "Expected ~24h, got {}", age);
+    }
+
+    #[test]
+    fn compute_age_hours_invalid() {
+        assert!(compute_age_hours("not-a-date").is_none());
+    }
+
+    #[test]
+    fn verb_status_ordering() {
+        // Worst-verb-wins: Degraded > NeedsAttention > Good > NoData
+        assert!(VerbStatus::Degraded > VerbStatus::NeedsAttention);
+        assert!(VerbStatus::NeedsAttention > VerbStatus::Good);
+        assert!(VerbStatus::Good > VerbStatus::NoData);
+
+        // max() returns worst status
+        let statuses = vec![
+            VerbStatus::Good,
+            VerbStatus::NoData,
+            VerbStatus::NeedsAttention,
+        ];
+        assert_eq!(statuses.into_iter().max(), Some(VerbStatus::NeedsAttention));
     }
 }
