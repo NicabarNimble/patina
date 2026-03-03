@@ -3,6 +3,7 @@ type: feat
 id: drift-detection
 status: draft
 created: 2026-03-03
+target: '4'
 sessions:
   origin: 20260303-101839
 related:
@@ -22,7 +23,7 @@ exit_criteria:
   text: '`patina measure` tracks public interface count per module and warns when it grows beyond a threshold'
   checked: false
 - id: dependency-diff-check
-  text: 'pre-push checks warn when new dependencies are added to Cargo.toml without a recorded justification in the commit message or spec'
+  text: pre-push checks warn when new dependencies are added to Cargo.toml without a recorded justification in the commit message or spec
   checked: false
 - id: re-anchor-diagnostic
   text: '`patina context` includes active spec invariants and allowed change surface in its response, enabling LLM re-anchoring before coding'
