@@ -1,11 +1,11 @@
 ---
 type: refactor
 id: data-architecture-v2
-status: ready
+status: active
 created: 2026-02-26
 blocked_by:
-- data-emission-completeness  # COMPLETE (v0.33.0)
-- data-mother-schema  # COMPLETE (v0.34.0)
+- data-emission-completeness
+- data-mother-schema
 sessions:
   origin: 20260226-065302
 beliefs:
@@ -39,7 +39,7 @@ exit_criteria:
   text: sub-specs created and scoped for each implementation area
   checked: true
 - id: fast-incremental-sub-spec-scoped-with-exit-criteria
-  text: 'Area 5 (fast incremental + hooks) has a sub-spec with concrete exit criteria ([[data-fast-incremental]])'
+  text: Area 5 (fast incremental + hooks) has a sub-spec with concrete exit criteria ([[data-fast-incremental]])
   checked: true
 ---
 
