@@ -28,6 +28,14 @@ pub fn get_project_context(topic: Option<&str>) -> Result<String> {
         );
     }
 
+    // Ambient health — one line so every LLM interaction carries project health
+    if let Ok(report) = crate::commands::measure::mcp_measure() {
+        output.push_str(&format!(
+            "# Project Health\n\n{} — {}\n\n",
+            report.health.status, report.health.summary
+        ));
+    }
+
     // Read core patterns (eternal principles)
     let core_path = layer_path.join("core");
     let core_patterns = read_patterns(&core_path, topic)?;
