@@ -1,7 +1,7 @@
 ---
 type: fix
 id: git-history-cleanup
-status: ready
+status: active
 created: 2026-02-25
 target: '1'
 sessions:
