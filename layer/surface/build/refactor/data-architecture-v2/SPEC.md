@@ -40,7 +40,7 @@ exit_criteria:
   checked: true
 - id: fast-incremental-sub-spec-scoped-with-exit-criteria
   text: 'Area 5 (fast incremental + hooks) has a sub-spec with concrete exit criteria ([[data-fast-incremental]])'
-  checked: false
+  checked: true
 ---
 
 # refactor: Data Architecture v2
