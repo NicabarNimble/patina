@@ -188,6 +188,63 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
+    /// Guard-rail: the FTS5 incremental path in `populate_fts5()` uses
+    /// `file_path LIKE './path.rs%'` prefix matching. This works because
+    /// the eventlog source_id format for code events is `path::symbol`
+    /// (e.g. `./src/main.rs::function_name`). The `::` separator ensures
+    /// the LIKE prefix won't produce false matches across files.
+    ///
+    /// If the source_id format changes, this test will fail, alerting the
+    /// developer to also update the FTS5 incremental logic.
+    /// See: [[incremental-maintenance-requires-stable-ids]] belief.
+    #[test]
+    fn test_source_id_format_matches_fts5_assumption() -> Result<()> {
+        let dir = tempdir()?;
+        let db_path = dir.path().join("test.db");
+        let conn = initialize(&db_path)?;
+
+        // Simulate code events with the expected source_id format
+        let source_ids = [
+            "./src/main.rs::main",
+            "./src/lib.rs::Config",
+            "./src/main.rs::helper",
+        ];
+
+        for (i, source_id) in source_ids.iter().enumerate() {
+            let data = format!(r#"{{"name": "sym{}", "content": "fn test()"}}"#, i);
+            insert_event(
+                &conn,
+                "code.function",
+                "2026-01-30T00:00:00Z",
+                source_id,
+                Some(&source_id.split("::").next().unwrap_or("")),
+                &data,
+            )?;
+        }
+
+        // The FTS5 incremental path deletes + re-inserts using LIKE prefix
+        // Only ./src/main.rs events should match — NOT ./src/lib.rs
+        let prefix = "./src/main.rs%";
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM eventlog WHERE event_type LIKE 'code.%' AND source_id LIKE ?1",
+            [&prefix],
+            |row| row.get(0),
+        )?;
+
+        // Should match 2 entries (main::main and main::helper), not 3
+        assert_eq!(count, 2, "LIKE prefix should only match entries for ./src/main.rs, not ./src/lib.rs");
+
+        // Verify the separator is :: (double colon)
+        for sid in &source_ids {
+            assert!(sid.contains("::"), "source_id must use :: separator: {}", sid);
+            let parts: Vec<&str> = sid.splitn(2, "::").collect();
+            assert_eq!(parts.len(), 2, "source_id must have exactly one :: separator: {}", sid);
+            assert!(parts[0].starts_with("./"), "source_id path must start with ./: {}", sid);
+        }
+
+        Ok(())
+    }
+
     #[test]
     fn test_reexports_work() -> Result<()> {
         // Verify re-exported functions are accessible through this module

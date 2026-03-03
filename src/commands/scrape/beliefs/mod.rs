@@ -902,12 +902,15 @@ fn extract_belief_keywords(belief_id: &str) -> Vec<String> {
         .collect()
 }
 
-/// Classify a file path as source code (vs docs, configs, layer files)
 /// Check if the usearch index has been rebuilt since the last grounding computation.
 ///
 /// Compares the usearch index file mtime with a stored watermark. If the index
 /// is newer, grounding needs to be recomputed for all beliefs.
-fn grounding_index_changed(conn: &Connection) -> bool {
+///
+/// Returns Some(current_mtime) if grounding is needed (index changed or no watermark),
+/// None if the index hasn't changed. The caller passes the mtime to
+/// `update_grounding_watermark()` to avoid a TOCTOU race between read and write.
+fn grounding_index_changed(conn: &Connection) -> Option<String> {
     let model = crate::commands::scry::internal::search::get_embedding_model();
     let index_path = format!(
         ".patina/local/data/embeddings/{}/projections/semantic.usearch",
@@ -920,34 +923,22 @@ fn grounding_index_changed(conn: &Connection) -> bool {
             .unwrap_or_default()
             .as_secs()
             .to_string(),
-        Err(_) => return false, // No index = no grounding possible
+        Err(_) => return None, // No index = no grounding possible
     };
 
     // Compare with stored watermark
     match database::get_last_processed(conn, "grounding_index_mtime") {
-        Ok(Some(stored)) => stored != current_mtime,
-        _ => true, // No watermark = first grounding or migration
+        Ok(Some(stored)) if stored == current_mtime => None, // Unchanged
+        _ => Some(current_mtime), // Changed or first grounding
     }
 }
 
-/// Store the current usearch index mtime as a grounding watermark.
-fn update_grounding_watermark(conn: &Connection) {
-    let model = crate::commands::scry::internal::search::get_embedding_model();
-    let index_path = format!(
-        ".patina/local/data/embeddings/{}/projections/semantic.usearch",
-        model
-    );
-
-    let mtime = match std::fs::metadata(&index_path).and_then(|m| m.modified()) {
-        Ok(t) => t
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs()
-            .to_string(),
-        Err(_) => return,
-    };
-
-    let _ = database::set_last_processed(conn, "grounding_index_mtime", &mtime);
+/// Store the usearch index mtime as a grounding watermark.
+///
+/// Accepts the mtime string from `grounding_index_changed()` to avoid reading
+/// the filesystem again (eliminates TOCTOU race if oxidize runs concurrently).
+fn update_grounding_watermark(conn: &Connection, mtime: &str) {
+    let _ = database::set_last_processed(conn, "grounding_index_mtime", mtime);
 }
 
 fn is_source_code(path: &str) -> bool {
@@ -1457,8 +1448,8 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     }
     belief_files.sort();
 
-    let mut processed_count = 0;
-    let mut skipped = 0;
+    let mut processed_count: usize = 0;
+    let mut skipped: usize = 0;
     let mut current_file_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     // Phase 1: Parse all belief files (need all of them for cross-referencing)
@@ -1636,7 +1627,7 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     if values_count > 0 {
         println!(
             "  Processed {} beliefs + {} values ({} skipped)",
-            processed_count - values_count,
+            processed_count.saturating_sub(values_count),
             values_count,
             skipped
         );
@@ -1658,13 +1649,17 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     // index is rebuilt by oxidize. Code changes alone don't affect grounding.
     // Skip grounding when neither condition is true.
     let new_beliefs_added = processed_count > 0;
-    let grounding_needed = full || new_beliefs_added || grounding_index_changed(&conn);
+    let index_mtime = grounding_index_changed(&conn);
+    let grounding_needed = full || new_beliefs_added || index_mtime.is_some();
     if grounding_needed {
         if let Err(e) = compute_belief_grounding(&conn) {
             eprintln!("  Warning: grounding computation failed: {}", e);
         }
-        // Update the grounding watermark to the current usearch index mtime
-        update_grounding_watermark(&conn);
+        // Update the grounding watermark using the mtime we already read
+        // (read-once eliminates TOCTOU race if oxidize runs concurrently)
+        if let Some(mtime) = &index_mtime {
+            update_grounding_watermark(&conn, mtime);
+        }
     } else {
         println!("  Grounding: skipped (no new beliefs, index unchanged)");
     }
