@@ -761,6 +761,60 @@ impl CaptureHealthCheckMetrics {
     }
 }
 
+/// Scrape duration threshold (ms) — warn when any scraper exceeds this.
+const SCRAPE_DURATION_WARNING_MS: i64 = 5000;
+
+impl CaptureGitScrapeMetrics {
+    /// Diagnostics: warn when git scrape exceeds duration threshold.
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        if self.duration_ms > SCRAPE_DURATION_WARNING_MS {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "git scrape took {}ms (threshold: {}ms)",
+                    self.duration_ms, SCRAPE_DURATION_WARNING_MS
+                ),
+            });
+        }
+        diags
+    }
+}
+
+impl CaptureBeliefsMetrics {
+    /// Diagnostics: warn when beliefs scrape exceeds duration threshold.
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        if self.duration_ms > SCRAPE_DURATION_WARNING_MS {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "beliefs scrape took {}ms (threshold: {}ms)",
+                    self.duration_ms, SCRAPE_DURATION_WARNING_MS
+                ),
+            });
+        }
+        diags
+    }
+}
+
+impl CaptureLayerMetrics {
+    /// Diagnostics: warn when layer scrape exceeds duration threshold.
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        if self.duration_ms > SCRAPE_DURATION_WARNING_MS {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "layer scrape took {}ms (threshold: {}ms)",
+                    self.duration_ms, SCRAPE_DURATION_WARNING_MS
+                ),
+            });
+        }
+        diags
+    }
+}
+
 /// Collect diagnostics from a verb's sources.
 fn collect_source_diagnostics(sources: &[SourceSummary]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -769,6 +823,9 @@ fn collect_source_diagnostics(sources: &[SourceSummary]) -> Vec<Diagnostic> {
             VerbMetrics::Believe(m) => diags.extend(m.diagnostics()),
             VerbMetrics::Search(m) => diags.extend(m.diagnostics()),
             VerbMetrics::CaptureHealthCheck(m) => diags.extend(m.diagnostics()),
+            VerbMetrics::CaptureGitScrape(m) => diags.extend(m.diagnostics()),
+            VerbMetrics::CaptureBeliefs(m) => diags.extend(m.diagnostics()),
+            VerbMetrics::CaptureLayer(m) => diags.extend(m.diagnostics()),
             _ => {}
         }
     }
@@ -2763,5 +2820,58 @@ mod tests {
         // Severity serializes as lowercase
         assert_eq!(serde_json::to_value(Severity::Warning).unwrap(), "warning");
         assert_eq!(serde_json::to_value(Severity::Error).unwrap(), "error");
+    }
+
+    #[test]
+    fn git_scrape_diagnostics_slow() {
+        let m = CaptureGitScrapeMetrics {
+            commits_processed: 10,
+            tracked_files: 248,
+            tags_indexed: 50,
+            co_change_pairs: 1200,
+            duration_ms: 6000,
+        };
+        let diags = m.diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("git scrape took 6000ms"));
+        assert!(matches!(diags[0].severity, Severity::Warning));
+    }
+
+    #[test]
+    fn git_scrape_diagnostics_fast() {
+        let m = CaptureGitScrapeMetrics {
+            commits_processed: 10,
+            tracked_files: 248,
+            tags_indexed: 50,
+            co_change_pairs: 1200,
+            duration_ms: 2000,
+        };
+        assert!(m.diagnostics().is_empty());
+    }
+
+    #[test]
+    fn layer_scrape_diagnostics_slow() {
+        let m = CaptureLayerMetrics {
+            patterns_processed: 12,
+            sessions_processed: 5,
+            duration_ms: 7000,
+        };
+        let diags = m.diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("layer scrape took 7000ms"));
+    }
+
+    #[test]
+    fn beliefs_scrape_diagnostics_fast() {
+        let m = CaptureBeliefsMetrics {
+            beliefs_processed: 178,
+            beliefs_verified: 43,
+            beliefs_skipped: 0,
+            supports_edges: 96,
+            attacks_edges: 82,
+            values_processed: 10,
+            duration_ms: 1000,
+        };
+        assert!(m.diagnostics().is_empty());
     }
 }
