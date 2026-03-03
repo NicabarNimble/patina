@@ -8,16 +8,85 @@ sessions:
 related:
 - drift-detection
 - scrape-diff-driven
-exit_criteria: []
+beliefs:
+- measure-is-ambient-health-for-llm-context
+- gjengset-lens-type-integrity
+- steenberg-lens-immutable-core
+exit_criteria:
+- id: module-count-metric
+  text: '`patina measure` reports module count (directories under src/) as a structural metric'
+  checked: false
+- id: public-interface-metric
+  text: '`patina measure` reports public interface count (pub fn/struct/enum/trait across modules) as a structural metric'
+  checked: false
+- id: dependency-count-metric
+  text: '`patina measure` reports dependency count from Cargo.toml as a structural metric'
+  checked: false
+- id: coupling-metric
+  text: '`patina measure` reports cross-module import density as a coupling metric'
+  checked: false
+- id: entropy-delta-diagnostic
+  text: '`patina measure` warns when structural metrics increase beyond a configurable threshold between scrapes'
+  checked: false
+- id: entropy-in-context
+  text: '`patina context` includes current structural entropy summary so LLMs see codebase shape before making changes'
+  checked: false
 ---
 # feat: Structural Entropy Tracking in Measure System
 
-> Extend patina measure to track structural metrics — public interface count, module count, dependency count, abstraction depth, cross-module coupling — so entropy changes are measurable diagnostics, not manual tables
+> Extend `patina measure` to track structural metrics — module count,
+> public interface count, dependency count, cross-module coupling — so
+> that "entropy increased" is a measurable diagnostic, not a manual table
+> filled in by the agent.
 
 ## Problem
 
+Today `patina measure` tracks 5 protocol verbs (capture, index, search,
+believe, evolve) with operational metrics: scrape duration, embedding
+freshness, search quality, belief count, spec velocity. These measure
+whether Patina is *working*. They don't measure whether the *codebase*
+is healthy.
+
+The compression-first workflow needs structural metrics to answer:
+- Did this change increase or decrease entropy?
+- Are public interfaces growing beyond intent?
+- Is cross-module coupling increasing?
+- Are new dependencies justified?
+
+Without measurement, entropy claims are subjective. Per
+[[measure-is-ambient-health-for-llm-context]]: if it's not measured,
+it's not managed.
+
 ## Solution
+
+Add a `structure` verb to the measure system (or extend the `capture`
+verb) that computes structural metrics from the code scraper's existing
+data:
+
+| Metric | Source | What it measures |
+|--------|--------|-----------------|
+| Module count | `src/` directory walk | System decomposition breadth |
+| Public interface count | `function_facts` WHERE visibility = 'pub' | API surface area |
+| Dependency count | Cargo.toml parse | External coupling |
+| Import density | `import_facts` cross-module | Internal coupling |
+| Abstraction depth | Max directory nesting under `src/` | Layering depth |
+
+These feed into diagnostics: "public_interface_count increased by 12
+since last scrape" triggers investigation, same pattern as scrape duration
+regression diagnostic from [[data-fast-incremental]].
+
+The metrics flow into `patina context` so LLMs see codebase shape
+alongside beliefs and patterns.
 
 ## Exit Criteria
 
+See frontmatter.
+
 ## Non-Goals
+
+- **Code quality scoring.** No subjective "code quality" number. Only
+  objective structural counts that trend over time.
+- **Blocking builds.** Metrics are diagnostics (warnings), not gates.
+  [[drift-detection]] adds the enforcement layer.
+- **Language-specific analysis.** Metrics use existing scraper output
+  (function_facts, import_facts), not new parsing.
