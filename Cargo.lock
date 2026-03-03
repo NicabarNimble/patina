@@ -2534,6 +2534,7 @@ name = "patina-doctor"
 version = "0.1.0"
 dependencies = [
  "patina-sdk",
+ "serde",
  "serde_json",
 ]
 
