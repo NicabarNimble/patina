@@ -423,6 +423,12 @@ enum Commands {
         command: commands::session::SessionCommands,
     },
 
+    /// Git hook handlers (post-commit, post-merge)
+    Hook {
+        #[command(subcommand)]
+        command: commands::hook::HookCommands,
+    },
+
     /// Audit epistemic beliefs — show use/truth metrics
     Belief {
         #[command(subcommand)]
@@ -1646,6 +1652,9 @@ fn main() -> Result<()> {
         }
         Some(Commands::Session { command }) => {
             commands::session::execute(command)?;
+        }
+        Some(Commands::Hook { command }) => {
+            commands::hook::execute(command)?;
         }
         Some(Commands::Belief { command }) => {
             commands::belief::execute(command)?;
