@@ -7,6 +7,8 @@ blocked_by:
 - plugin-infrastructure
 sessions:
   origin: 20260304-120702
+beliefs:
+- reads-via-host-writes-via-intents
 exit_criteria: []
 ---
 # feat: Host Emit WIT Interface — Plugins Can Write Facts
