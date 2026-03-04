@@ -8,6 +8,8 @@ blocked_by:
 - forge-plugin-extraction
 sessions:
   origin: 20260304-120702
+beliefs:
+- scrape-is-local-capture
 exit_criteria: []
 ---
 # refactor: Scrape Simplification — Local Capture Only
