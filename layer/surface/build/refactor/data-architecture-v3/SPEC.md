@@ -3,6 +3,8 @@ type: refactor
 id: data-architecture-v3
 status: draft
 created: 2026-03-04
+blocked_by:
+- mother-maturation
 sessions:
   origin: 20260304-120702
 related:
