@@ -8,12 +8,12 @@ blocked_by:
 sessions:
   origin: 20260303-184231
 related:
-- knowledge-system-architecture
 - forge-plugin-extraction
 - persona-federation
 beliefs:
 - patina-is-domain-agnostic-knowledge-system
-- fix-architecture-not-documentation
+- code-is-not-core
+- wit-is-contract-wasm-is-one-runtime
 exit_criteria:
 - id: spec-extracted-to-plugin
   text: spec subsystem runs as a plugin — lifecycle, git tags, MCP tools all routed through plugin interface
@@ -27,40 +27,100 @@ exit_criteria:
 ---
 # refactor: Extract spec and session subsystems to WASM plugins
 
-> Extract spec and session subsystems to plugins using the pattern
-> proven by forge-plugin-extraction. Result: Patina core has no
-> domain-specific code.
+> Extract spec and session subsystems to plugins. Result: Patina core
+> has no domain-specific code. This is the hardest extraction and
+> depends on patterns proven by forge extraction.
+
+## Context
+
+**Architecture context:**
+- [[session-20260303-190855]] — abandoned knowledge-system-architecture
+  had spec/session extraction as ECs 5 and 6 of a 12-EC mega-spec.
+  Now broken out as a focused spec with proper prerequisites.
+- [[code-is-not-core]] — core should have no domain code
+- [[patina-is-domain-agnostic-knowledge-system]] — a Patina project
+  that tracks legal documents doesn't need spec or session subsystems
+  designed for software development
+- [[wit-is-contract-wasm-is-one-runtime]] — subsystems communicate
+  through WIT contracts, but may need new host capabilities
 
 ## Current State
 
-- `src/spec/` — spec lifecycle management baked into core
-- `src/session/` — session tracking baked into core
-- Both touch filesystem, git, eventlog, and MCP surface
-- Spec is the most complex subsystem (13 MCP tool handlers, git tags,
-  release versioning, YAML frontmatter)
+**`src/spec/`** — most complex subsystem:
+- 13 MCP tool handlers (spec_list, spec_show, spec_create, spec_promote,
+  spec_complete, spec_pause, spec_resume, spec_block, spec_split,
+  spec_set, spec_check, spec_history, spec_next, etc.)
+- Git operations: tags, staging, commits, archive
+- Release versioning (semver bump on completion)
+- YAML frontmatter parsing in `layer/surface/build/`
+- Database: `patterns` table, `spec_deps` table
+- Dependencies: filesystem, git CLI, rusqlite, YAML parser
+
+**`src/session/`** — simpler but still touches many surfaces:
+- Session start/end/update/note lifecycle
+- Git branch handling and tagging
+- Active session file management (`.patina/local/active-session.md`)
+- Session archiving to `layer/sessions/`
+- Event emission (session.start, session.end)
 
 ## Target State
 
-- Spec and session run as plugins using host_emit, host filesystem,
-  and host git interfaces proven by forge extraction
+- Spec and session run as plugins (role=subsystem, world=mother-child)
 - Core provides: event sourcing, beliefs, search, embeddings, plugin
-  dispatch, Mother. Nothing else.
-- Any new domain (email, calendar, notes) is purely additive — install
-  a plugin, no core changes
+  dispatch, Mother. Nothing domain-specific.
+- Any new subsystem (e.g., project management, CRM contacts) is purely
+  additive — install a plugin, no core changes.
 
 ## Steps
 
-1. Extract sessions first (simpler, fewer dependencies)
-2. Extract spec last (most complex — needs host git ops, MCP tool registration)
-3. Verify core has no domain imports remaining
+1. **Prerequisite:** [[scrape-simplification]] complete, host_emit
+   proven, plugin roles established
+2. Audit spec subsystem's host capability needs (filesystem, git, MCP)
+3. Design new WIT host interfaces needed (host_filesystem, host_git,
+   host_mcp_register)
+4. Extract session subsystem first (simpler, fewer dependencies)
+5. Extract spec subsystem (complex — 13 MCP tools, git tags, releases)
+6. Verify core has no domain imports remaining
 
-## Exit Criteria
+## Exploration Needed (SIGNIFICANT)
 
-See frontmatter.
+This spec has the most open questions in the entire roadmap.
+
+- **New host capabilities.** Spec needs filesystem write, git tag/commit,
+  and MCP tool registration. None of these exist in the current WIT
+  host. Designing these interfaces is a major effort. Each one needs
+  its own security model (filesystem scoped to project, git operations
+  audited, MCP registration validated).
+
+- **MCP tool registration from plugins.** Currently MCP tools are
+  hardcoded in the binary. If spec becomes a plugin, its 13 MCP tools
+  need dynamic registration. This is a fundamental change to how Patina
+  exposes tools to LLMs. **This may be the hardest single problem in
+  the entire roadmap.**
+
+- **Is spec really domain-specific?** Spec-driven-design is a core
+  value ([[spec-driven-design]]). If specs are core to how Patina
+  operates, is extracting them to a plugin the right move? Or should
+  spec stay in core because it's part of the protocol (specs are how
+  the "evolve" verb manifests)? **Strong tension with
+  [[patina-is-domain-agnostic-knowledge-system]].** A law firm doesn't
+  need specs. But specs might be to Patina what branches are to git —
+  not domain-specific, but a core workflow concept.
+
+- **Session similarly.** Sessions track work. Is that domain-specific
+  or protocol? A chat agent on Cloudflare has "conversations" not
+  "sessions." A manufacturing QA system has "inspections" not "sessions."
+  The concept might be protocol (track units of work) but the
+  implementation is development-specific.
+
+- **Split this spec?** Given the exploration needed, this might need
+  to be split into: (a) design host capabilities, (b) extract sessions,
+  (c) extract spec. Three specs instead of one.
 
 ## Non-Goals
 
-- **New host WIT interfaces beyond what forge established.** If spec
-  extraction needs new host capabilities (git ops, MCP registration),
-  those are part of this spec's scope, but minimize them.
 - **Persona system.** That's [[persona-federation]].
+- **Redesigning spec or session functionality.** Extract as-is first.
+  Improve later.
+- **Making spec/session work on Cloudflare.** Local-first extraction.
+  Edge deployment is future.

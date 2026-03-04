@@ -9,16 +9,123 @@ sessions:
   origin: 20260304-120702
 beliefs:
 - wit-is-contract-wasm-is-one-runtime
-exit_criteria: []
+- patina-is-knowledge-protocol
+- code-is-not-core
+exit_criteria:
+- id: role-field-in-manifest
+  text: plugin.toml has a `role` field — one of connector, grammar, extension, app, subsystem
+  checked: false
+- id: role-validated-at-load
+  text: host validates role against world — connectors must be mother-child, grammars must be pipeline, etc.
+  checked: false
+- id: role-queryable
+  text: '`patina plugin list` shows role for each installed plugin'
+  checked: false
 ---
 # refactor: Plugin Roles — Connector, Grammar, Extension, App Metadata
 
-> Formalize plugin roles in manifests. WIT defines the contract, the role declares the purpose. Connectors, grammars, extensions, apps.
+> Formalize plugin roles in manifests. WIT defines the capability
+> contract. The role declares the purpose. Connectors, grammars,
+> extensions, apps — same WASM, different intent.
+
+## Problem
+
+The plugin system has 4 worlds (mother-child, command, task, pipeline)
+that define **capability boundaries**. But there's no vocabulary for what
+plugins **do**. A mother-child plugin could be a connector (fetches
+external data), a scheduler (manages sync lifecycle), or a future
+subsystem (spec management). The host has no way to know.
+
+This matters for:
+- Dispatch: "run all connectors" vs "run all grammars" requires role
+- Discovery: "what connectors does this project have?" requires role
+- Documentation: users need to understand what a plugin does, not just
+  what world it runs in
+
+**Code references:**
+- `src/plugin/internal/mod.rs` lines 123-200 — `PluginManifest` struct
+  and `PluginProvides` fields. Currently has `child`, `commands`,
+  `pipeline_ops`, `languages` — but no `role` field.
+- `src/plugin/internal/mod.rs` lines 200-340 — capability gating by
+  world. Role would add a second validation axis.
+
+**Architecture context:**
+- [[session-20260303-190855]] — identified 5 plugin roles: connector,
+  grammar, normalizer, extension, subsystem
+- [[session-20260304-120702]] — refined to: connector, grammar,
+  extension, app. Normalizer merged into connector (a normalizer IS a
+  connector from lake to project). Subsystem renamed to app (they're
+  full action layers).
 
 ## Current State
 
+Plugin manifests declare:
+- `world` — capability boundary (mother-child, command, task, pipeline)
+- `capabilities` — what host functions it needs (http, query, log, etc.)
+- `provides` — what it offers (child name, commands, languages, etc.)
+
+Missing: **role** — what the plugin's purpose is.
+
 ## Target State
+
+Manifests include a `role` field:
+
+```toml
+[plugin]
+name = "forge-connector"
+version = "0.1.0"
+world = "mother-child"
+role = "connector"        # NEW
+```
+
+| Role | Purpose | Typical World | Examples |
+|------|---------|---------------|----------|
+| `connector` | Fetch from external source, emit facts | mother-child | forge, email, salesforce |
+| `grammar` | Parse local files into structured facts | pipeline | rust, python, markdown, pdf |
+| `extension` | Add commands, analysis, monitoring | command or task | doctor, models, report |
+| `app` | Full action layer, may run standalone | mother-child or task | chat-agent, crm, game-ai |
+| `subsystem` | Manage domain lifecycle (future) | mother-child | spec-manager, session-manager |
+
+Role-world validation:
+- `connector` → must be `mother-child` (needs http, credentials, emit)
+- `grammar` → must be `pipeline` (pure compute, no side effects)
+- `extension` → `command` or `task` (CLI surface)
+- `app` → `mother-child` or `task` (needs full capabilities)
+- `subsystem` → `mother-child` (needs host filesystem, git — FUTURE)
 
 ## Steps
 
-## Exit Criteria
+1. Add `role` field to `PluginManifest` in `src/plugin/internal/mod.rs`
+2. Add role-world validation in `check_capabilities()`
+3. Update `patina plugin list` to show role column
+4. Update existing plugins (grammar-rust, grammar-forge, models, doctor)
+   to declare their role
+5. Update SDK documentation with role descriptions
+
+## Exploration Needed
+
+- **Role-based dispatch.** Once roles exist, should `patina scrape` be
+  able to "run all connectors" automatically? Or does the user explicitly
+  choose which connectors to run? This relates to [[scrape-simplification]]
+  and [[continuous-operation]]. **Not needed for this spec** but influences
+  future design.
+
+- **App role scope.** An "app" role plugin could be a Cloudflare Worker
+  that's not even a WASM plugin loaded by wasmtime. It might communicate
+  with Patina via HTTP/WebSocket through Mother. Is "app" a plugin role
+  or something outside the plugin system? See [[local-first-edge-deployable]].
+  **Decision: for now, app is a plugin role. Edge apps are a future concern.**
+
+- **Subsystem feasibility.** Spec and session subsystems need host
+  capabilities that don't exist: filesystem write, git operations, MCP
+  tool registration. This role is marked FUTURE. See
+  [[core-plugin-extraction]] for the full challenge.
+
+## Non-Goals
+
+- **Building new plugins.** This spec adds role metadata. Actual
+  connectors/grammars are separate specs.
+- **Role-based auto-dispatch.** This spec adds the metadata. Dispatch
+  logic is [[scrape-simplification]] and [[continuous-operation]].
+- **New host capabilities for subsystems.** Future work in
+  [[core-plugin-extraction]].
