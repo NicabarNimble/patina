@@ -6,6 +6,7 @@ created: 2026-03-04
 blocked_by:
 - plugin-infrastructure
 - host-emit-wit
+- plugin-roles
 sessions:
   origin: 20260303-184231
 related:
