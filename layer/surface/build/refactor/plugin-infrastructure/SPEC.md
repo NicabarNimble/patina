@@ -7,6 +7,7 @@ sessions:
   origin: 20260304-120702
 beliefs:
 - wit-is-contract-wasm-is-one-runtime
+- patina-is-knowledge-protocol
 exit_criteria: []
 ---
 # refactor: Plugin Infrastructure — Host Emit, Roles, and SDK
