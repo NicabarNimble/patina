@@ -7,6 +7,8 @@ blocked_by:
 - plugin-infrastructure
 sessions:
   origin: 20260304-120702
+beliefs:
+- wit-is-contract-wasm-is-one-runtime
 exit_criteria: []
 ---
 # refactor: Plugin Roles — Connector, Grammar, Extension, App Metadata
