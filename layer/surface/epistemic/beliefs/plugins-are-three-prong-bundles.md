@@ -4,7 +4,7 @@ id: plugins-are-three-prong-bundles
 persona: architect
 facets: [architecture, plugins, wasm, mcp, adapters]
 entrenchment: medium
-status: active
+status: defeated
 endorsed: true
 extracted: 2026-02-23
 revised: 2026-02-23
@@ -35,6 +35,13 @@ A plugin is not just code — it is a CLI + MCP + Skill bundle that brings a com
 ## Attacked-By
 
 - WASM sandbox limitations — plugins can't call git/filesystem directly, must go through host functions. Host function surface must be rich enough for complex plugins like spec.
+- [[wit-is-contract-wasm-is-one-runtime]] — The WIT-contract-with-roles model has 4 plugin types (connector, grammar, extension, app). Grammars are pure compute (no CLI/MCP/skill). Connectors are I/O (no skill). Apps are their own deployments. Most plugins never interact with an LLM.
+- [[mcp-is-shim-cli-is-product]] — MCP is Patina infrastructure that wraps CLI, not something plugin authors bundle. The "MCP prong" is not a plugin concern.
+
+## Defeated
+
+- **Date**: 2026-03-04
+- **Reason**: Assumed all plugins are LLM-facing bundles that need CLI + MCP + Skill delivery. The domain-agnostic plugin architecture (wit-is-contract-wasm-is-one-runtime) has roles where most plugins (grammars, connectors, apps) never interact with an LLM. MCP is infrastructure, not a plugin shape. The CLI/MCP/Skill delivery surface is Patina's concern, not the plugin's.
 
 ## Applied-In
 
@@ -45,3 +52,4 @@ A plugin is not just code — it is a CLI + MCP + Skill bundle that brings a com
 ## Revision Log
 
 - 2026-02-23: Created — metrics computed by `patina scrape`
+- 2026-03-04: Defeated — most plugin roles are not LLM-facing. MCP/Skill delivery is infrastructure, not plugin shape.
