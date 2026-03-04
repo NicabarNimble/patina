@@ -7,6 +7,8 @@ blocked_by:
 - plugin-infrastructure
 sessions:
   origin: 20260304-120702
+beliefs:
+- mother-is-connection-and-continuity
 exit_criteria: []
 ---
 # refactor: Mother Maturation — Federation, Lakes, and Continuity
