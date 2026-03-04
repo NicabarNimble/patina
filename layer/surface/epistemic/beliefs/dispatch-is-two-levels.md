@@ -4,7 +4,7 @@ id: dispatch-is-two-levels
 persona: architect
 facets: [architecture, plugin-system, scrape]
 entrenchment: medium
-status: active
+status: defeated
 endorsed: true
 extracted: 2026-03-03
 revised: 2026-03-03
@@ -33,7 +33,13 @@ Scrape dispatch operates at two complementary levels — source-kind routing (wh
 
 ## Attacked-By
 
-<!-- Add beliefs that challenge this -->
+- [[scrape-is-local-capture]] — Scrape is local git capture only. External data (forge) comes through connectors, not scrape dispatch. Eliminates source-kind routing as an architectural concept.
+- [[code-is-not-core]] — Code analysis is a plugin capability, not protocol core. File-type dispatch within code scraping is a plugin concern, not an architectural level.
+
+## Defeated
+
+- **Date**: 2026-03-04
+- **Reason**: This belief described the current implementation accurately but was elevated to architectural principle prematurely. The domain-agnostic pivot (scrape-is-local-capture, code-is-not-core) eliminates the need for source-kind dispatch — scrape becomes single-purpose local capture. File-type dispatch remains valid but lives inside grammar plugins, not as an architectural layer.
 
 ## Applied-In
 
@@ -45,3 +51,4 @@ Scrape dispatch operates at two complementary levels — source-kind routing (wh
 ## Revision Log
 
 - 2026-03-03: Created — metrics computed by `patina scrape`
+- 2026-03-04: Defeated — superseded by scrape-is-local-capture and code-is-not-core during belief audit
