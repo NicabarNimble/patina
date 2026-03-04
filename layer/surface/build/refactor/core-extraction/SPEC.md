@@ -9,6 +9,7 @@ sessions:
   origin: 20260304-120702
 beliefs:
 - code-is-not-core
+- scrape-is-local-capture
 exit_criteria: []
 ---
 # refactor: Core Extraction — Shrink Patina to Protocol + Stores
