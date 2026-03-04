@@ -9,6 +9,7 @@ sessions:
   origin: 20260304-120702
 beliefs:
 - mother-is-connection-and-continuity
+- patina-is-beliefs-plus-action
 exit_criteria: []
 ---
 # refactor: Mother Maturation — Federation, Lakes, and Continuity
