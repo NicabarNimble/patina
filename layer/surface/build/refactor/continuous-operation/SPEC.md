@@ -8,6 +8,8 @@ blocked_by:
 - data-architecture-v3
 sessions:
   origin: 20260304-120702
+beliefs:
+- mother-is-connection-and-continuity
 exit_criteria: []
 ---
 # refactor: Continuous Operation — Mother Daemon and Streaming
