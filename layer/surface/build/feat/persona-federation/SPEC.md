@@ -108,14 +108,18 @@ operational beliefs, but not the reverse unless explicitly configured.
 
 ## Steps
 
-1. Add `persona_registry` table to `mother.db`
-2. Add `persona_links` table to `mother.db`
-3. Modify `patina init` to select/create persona
-4. Add `persona_uid` to project config (links project to persona)
-5. Update belief creation to use persona UID from project config
-6. Implement belief stream routing in Mother (push/pull per link config)
-7. Add `patina persona list/create/link` commands
-8. Add visibility filtering to `patina mother` search
+1. Remove pre-pivot `patina persona` command (`src/commands/persona/`),
+   its path helpers (`src/paths.rs` persona module), and
+   `~/.patina/personas/default/` directory structure — this is legacy
+   code from before the architectural pivot, not the foundation
+2. Add `persona_registry` table to `mother.db`
+3. Add `persona_links` table to `mother.db`
+4. Modify `patina init` to select/create persona
+5. Add `persona_uid` to project config (links project to persona)
+6. Update belief creation to use persona UID from project config
+7. Implement belief stream routing in Mother (push/pull per link config)
+8. Add `patina persona list/create/link` commands (new, Mother-level)
+9. Add visibility filtering to `patina mother` search
 
 ## Exploration Needed
 

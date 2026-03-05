@@ -22,50 +22,18 @@ shared state).
 
 ## What Exists Today
 
-The persona system is NOT greenfield. There are two distinct persona
-codepaths already built — one for belief frontmatter and one for
-cross-project knowledge capture.
+Persona-federation is greenfield at the Mother level. There is no
+identity infrastructure today. What exists are the pieces it builds on:
 
-### Persona as Belief Label
+### The Dead String on Beliefs
 
 Every belief file carries `persona: architect` in its frontmatter.
 All 191+ beliefs use this value. It's never varied. The SPEC.md
 calls it "a dead string field" — accurate. There's no registry behind
 it, no UID, no validation. It's a label with no identity.
 
-In graph.db, the `beliefs` table has `source TEXT NOT NULL` which
-tracks which project/persona contributed a belief, and the
-`belief_applied_in` table tracks which projects a belief appears in.
-But `source` is a project path slug, not a persona identifier.
-
-### Persona Knowledge System (`src/commands/persona/mod.rs`, 565 LOC)
-
-A working event-sourced knowledge capture system at
-`~/.patina/personas/default/`:
-
-| Component | Location | What it does |
-|-----------|----------|-------------|
-| Events (source) | `~/.patina/personas/default/events/*.jsonl` | Daily JSONL event files — `PersonaEvent` with `id`, `content`, `domains`, `supersedes` |
-| Cache (derived) | `~/.patina/cache/personas/default/persona.db` | SQLite `knowledge` table — materialized from events |
-| Embeddings | `~/.patina/cache/personas/default/persona.usearch` | 768-dim E5-base-v2 vectors via `usearch` |
-| Paths | `src/paths.rs:79-91` | Hardcoded to `personas/default/` — both events and cache |
-
-The system has 5 entry points:
-- `note(content, domains)` — capture knowledge event to JSONL
-- `materialize()` — rebuild SQLite + usearch index from events
-- `query(text, limit, min_score)` — semantic search via embeddings
-- `list(limit, domains)` — list recent entries
-- `status()` — check oracle availability
-
-**Key observations:**
-- Hardcoded `"default"` persona in `src/paths.rs:84,89`
-- Event-sourced architecture (JSONL → materialize → SQLite + vectors)
-  parallels the project-level pattern (git → scrape → patina.db)
-- Already uses `uuid::Uuid` for event IDs (`evt_{uuid}`)
-- Already supports `domains` for facet-like filtering
-- Already supports `supersedes` for knowledge evolution
-- NO connection to Mother — entirely standalone
-- NO connection to beliefs — separate knowledge system
+This string field is the ONE piece that gets a new life — it becomes
+a UID linking to Mother's persona registry.
 
 ### Mother's Current Registries
 
@@ -74,11 +42,34 @@ Mother manages registries in two places:
 - `~/.patina/graph.db` — federated belief search (`beliefs`,
   `belief_supports`, `belief_attacks`, `belief_applied_in` tables)
 
-Neither has a persona concept. The `beliefs.source` field in graph.db
-is the closest thing — it identifies which project contributed a belief,
-but not which persona.
+In graph.db, the `beliefs` table has `source TEXT NOT NULL` which
+tracks which project contributed a belief, and the `belief_applied_in`
+table tracks which projects a belief appears in. But `source` is a
+project path slug, not a persona identifier.
+
+**This is the starting point** — Mother's registry infrastructure
+needs a new dimension: identity.
 
 ## What Changes
+
+### Step Zero — Remove the Pre-Pivot Persona Code
+
+Before building the new identity infrastructure, remove the legacy
+`patina persona` command. It was a user-facing knowledge oracle built
+before the architectural pivot — a different concept that shares the
+name. Leaving it in creates confusion for future sessions about what
+"persona" means in this codebase.
+
+**Remove:**
+- `src/commands/persona/mod.rs` (565 LOC) — note, materialize, query
+- `src/paths.rs` persona module (hardcoded `personas/default/` paths)
+- `~/.patina/personas/default/` directory structure
+- CLI registration for `patina persona note/query/materialize/status/list`
+
+This is a clean cut. The legacy command has no dependents — it's
+standalone, not connected to Mother or the belief system. Removing
+it first means the word "persona" in the codebase only ever means
+the new Mother-level identity concept.
 
 ### The Registry — Mother Learns About Personas
 
@@ -99,24 +90,6 @@ This is metadata, not storage. Mother knows who personas ARE —
 names, UIDs, visibility. She doesn't store their beliefs or knowledge.
 Same principle as the project registry: Mother knows where projects
 are, she doesn't hold their code.
-
-### The Path — From Hardcoded Default to UID-Based
-
-The `src/paths.rs` persona module currently hardcodes `"default"`:
-```rust
-pub fn events_dir() -> PathBuf {
-    patina_home().join("personas/default/events")
-}
-```
-
-This becomes parameterized by persona UID:
-```
-~/.patina/personas/{uid}/events/
-~/.patina/cache/personas/{uid}/
-```
-
-`patina init` selects or creates a persona, writing the UID to
-project config. Every project is linked to exactly one persona.
 
 ### The Provenance — Beliefs Know Their Origin
 
@@ -149,30 +122,7 @@ delivery. This spec builds the routing table.
 
 ## Design Decisions
 
-### 1. Persona Knowledge System — Merge or Parallel?
-
-Two persona-related systems would coexist:
-- **Belief layer** (git-backed, project-scoped) — the "product"
-- **Persona knowledge** (JSONL events, cross-project) — the "oracle"
-
-**Option A: Keep parallel.** Persona knowledge is cross-project
-user preferences ("I prefer Result<T,E> over panics"). Beliefs are
-project-scoped truths ("this codebase uses error-chain"). Different
-concerns, different lifecycles.
-
-**Option B: Merge.** Persona knowledge events become beliefs in a
-persona-scoped belief layer. "I prefer Result<T,E>" is a belief
-held by the "architect" persona, not a separate knowledge system.
-
-**Lean toward B, eventually.** [[beliefs-are-the-product]] says
-"everything else exists to support the capture, evolution, and
-delivery of beliefs." Persona knowledge IS belief — it's just stored
-differently right now. But the merge is a FUTURE step. This spec
-adds the registry and linking. The knowledge system migration is a
-separate concern — and the event-sourced architecture means no data
-is lost.
-
-### 2. Migration Path for Existing Beliefs
+### 1. Migration Path for Existing Beliefs
 
 191+ beliefs with `persona: architect`. All in one project.
 
@@ -188,7 +138,7 @@ frontmatter. Add the persona UID during a scrape cycle. The migration
 is: register "architect" persona in Mother → write UID to project
 config → scrape updates belief files.
 
-### 3. Where persona_registry Lives
+### 2. Where persona_registry Lives
 
 **Option A: In graph.db** — extend existing Mother database.
 **Option B: In registry.yaml** — alongside project/repo registries.
@@ -199,7 +149,7 @@ Persona registry is metadata FOR beliefs. It belongs with the beliefs
 it describes. registry.yaml is YAML (projects, repos); persona
 registry is relational (UIDs, links, queries). SQL is the right tool.
 
-### 4. Persona ↔ Project Relationship
+### 3. Persona ↔ Project Relationship
 
 A persona can own multiple projects. A project belongs to exactly
 one persona. This is 1:N, not N:M.
@@ -214,11 +164,7 @@ The project config (`.patina/config.toml` or equivalent) gains a
 
 ## Key Files
 
-**Persona system (current implementation):**
-- `src/commands/persona/mod.rs` (565 LOC) — note, materialize, query, list, status
-- `src/paths.rs:79-91` — hardcoded `personas/default/` paths
-
-**Mother registries (where persona_registry goes):**
+**Mother registries (where persona_registry goes — the core work):**
 - `src/mother/graph.rs` (1,927 LOC) — graph.db schema, sync, queries
 - `~/.patina/registry.yaml` — project/repo registry (YAML, stays separate)
 - `~/.patina/graph.db` — federated belief search (SQL, gains persona tables)
@@ -269,12 +215,3 @@ The project config (`.patina/config.toml` or equivalent) gains a
    **Lean toward: search respects links. You can only see beliefs from
    personas you're linked to, filtered by the link's scope.**
 
-5. **Persona knowledge events → belief provenance.** When persona
-   knowledge events (JSONL) eventually merge with the belief system,
-   the event provenance becomes belief provenance. The current
-   `PersonaEvent.source` field is just `"direct"`. It needs richer
-   provenance — which project was the user working in? What triggered
-   the capture? This parallels [[spec-data-architecture-v3]]'s event
-   provenance design. **Lean toward: align persona event provenance
-   with the v3 provenance model (local/external/derived) before
-   merging.**
