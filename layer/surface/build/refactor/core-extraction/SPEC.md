@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: core-extraction
-status: draft
+status: ready
 created: 2026-03-04
 blocked_by:
 - plugin-infrastructure
