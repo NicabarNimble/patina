@@ -1607,11 +1607,50 @@ fn main() -> Result<()> {
                             std::process::exit(exit_code);
                         }
                     }
+                    patina::plugin::PluginWorld::MotherChild => {
+                        // mother-child: args = [action, payload_json]
+                        let action = args.first().map(|s| s.as_str()).unwrap_or("health");
+                        let payload_str = args.get(1).map(|s| s.as_str()).unwrap_or("{}");
+
+                        let engine = patina::plugin::PluginEngine::new()?;
+                        let component = engine.load_component(&wasm_bytes)?;
+                        let query_fn = make_query_dispatch(&manifest);
+                        let mut child = engine.instantiate_child(&component, &manifest, query_fn)?;
+
+                        // on_load — initialize the plugin
+                        use patina::mother::MotherHost;
+                        struct CliHost;
+                        impl MotherHost for CliHost {
+                            fn log(&self, child: &str, message: &str) {
+                                eprintln!("[{}] {}", child, message);
+                            }
+                        }
+                        child.on_load(&CliHost)?;
+
+                        if action == "health" {
+                            let health = child.health();
+                            println!("{:?}", health);
+                        } else {
+                            let request = patina::mother::ChildRequest {
+                                action: action.to_string(),
+                                payload: serde_json::from_str(payload_str)
+                                    .unwrap_or(serde_json::Value::String(payload_str.to_string())),
+                            };
+                            match child.handle(&request) {
+                                Ok(response) => {
+                                    println!("{}", serde_json::to_string_pretty(&response.payload)?);
+                                }
+                                Err(e) => {
+                                    eprintln!("error: {}", e);
+                                    std::process::exit(1);
+                                }
+                            }
+                        }
+                    }
                     other => {
                         anyhow::bail!(
-                            "plugin '{}' has world '{}' — only 'task' and 'command' are supported by `plugin run`",
+                            "plugin '{}' has world '{}' — only 'task', 'command', and 'mother-child' are supported by `plugin run`",
                             name, other
-
                         );
                     }
                 }
