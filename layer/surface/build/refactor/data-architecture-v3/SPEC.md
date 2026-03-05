@@ -87,7 +87,7 @@ The split matters because:
 
 ### Provenance on Events (not partition)
 
-Every event carries a `provenance` field in its data payload:
+Every event carries a `provenance` column on the eventlog table:
 
 | Provenance | Meaning | Examples |
 |------------|---------|----------|
@@ -146,8 +146,8 @@ is built here but the full pipeline is future work.
 
 ## Exploration Needed
 
-- **Modified data blocks.** The 4-layer flow includes "Modified Data
-  Blocks" (shaped/filtered data between lakes and projects). What are
+- **Data Blocks.** The 4-layer flow includes Data Blocks
+  (shaped/filtered data between lakes and projects). What are
   these exactly? Structured tables? Semantic embeddings? SQL views?
   This concept needs more design. Could be its own spec. See
   [[session-20260304-120702]] discussion.
