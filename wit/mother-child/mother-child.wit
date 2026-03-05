@@ -21,6 +21,9 @@ world mother-child {
     /// Import measurement reporting
     import patina:host/measure@0.1.0;
 
+    /// Import fact emission for connector data ingestion
+    import patina:host/emit@0.1.0;
+
     /// Bring shared types into world scope for export signatures
     use patina:host/types@0.1.0.{child-health, toy};
 
