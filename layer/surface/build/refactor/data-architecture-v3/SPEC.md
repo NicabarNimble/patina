@@ -144,29 +144,37 @@ is built here but the full pipeline is future work.
 5. Update `patina assay` to include lake catalog queries
 6. Update `patina doctor` to audit provenance coverage
 
-## Exploration Needed
+## Design Decisions (resolved in DESIGN.md)
+
+- **Provenance: SQL column (Option A), retroactive migration.** Additive
+  schema change: `ALTER TABLE eventlog ADD COLUMN provenance TEXT DEFAULT
+  'local'`. Existing events default to `local`. Forge events migrated
+  retroactively: `UPDATE eventlog SET provenance = 'external' WHERE
+  event_type LIKE 'forge.%'`. No re-fetching, no corruption risk.
+  Clean, indexable, rebuild-safe.
+
+- **Lake registry in graph.db.** Extend the existing Mother database
+  rather than adding a new file. Mother already has one database for
+  federation metadata. `lake_registry` table tracks WHERE data lives
+  (metadata), not the data itself. Same principle as ref repos — Mother
+  knows the path, she doesn't store the code.
+
+- **Content-addressed references: not yet.** Seq-based provenance now.
+  Content hashing is a future spec per [[content-addressed-references]].
+  Don't conflate provenance tracking with cryptographic verification.
+
+## Exploration Needed (genuinely open)
 
 - **Data Blocks.** The 4-layer flow includes Data Blocks
   (shaped/filtered data between lakes and projects). What are
   these exactly? Structured tables? Semantic embeddings? SQL views?
   This concept needs more design. Could be its own spec. See
-  [[session-20260304-120702]] discussion.
+  [[session-20260304-120702]] discussion and [[spec-mother-maturation]]
+  DESIGN.md, "Data Blocks: Exploration Territory."
 
-- **Lake storage format.** Lakes could be local directories, S3 buckets,
-  databases, or API caches. Mother tracks them but doesn't dictate
-  format. Should there be a standard lake interface? Or is each
-  connector responsible for its own storage?
-
-- **Provenance on existing events.** ~3,500+ events already in
-  events.db without provenance. Migration: add provenance column with
-  DEFAULT 'local', update forge events to 'external' retroactively?
-  Or only apply to new events?
-
-- **Content-addressed event references.** Currently events are
-  referenced by seq number. For ZK/federation, content hashes may be
-  needed. Should provenance implementation include hash computation?
-  **Lean toward: not yet. Add seq-based provenance now. Content
-  addressing is a future spec per [[content-addressed-references]].**
+- **Lake storage format.** Mother tracks lake metadata but doesn't
+  dictate storage format. Each connector is responsible for its own
+  storage transport. Mother is the registry, not the warehouse.
 
 ## Non-Goals
 

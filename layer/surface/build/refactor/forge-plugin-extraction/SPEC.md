@@ -109,28 +109,41 @@ GitHub API → src/forge/ → scrape/forge/ → events.db + patina.db
 9. Update `patina scrape` to NOT call forge (it's a connector now)
 10. Integration test: plugin emits forge facts, verify projection tables
 
-## Exploration Needed
+## Design Decisions (resolved in DESIGN.md)
 
-- **Background sync.** Current forge sync uses `libc::fork()` for
-  background operation. As a plugin, does Mother's daemon handle this?
-  Or does the plugin manage its own background process? Mother daemon
-  with `tick()` is the natural fit — tick discovers refs, handle resolves
-  them, Mother calls tick on a schedule.
+- **Background sync: Mother daemon.** The plugin doesn't manage its
+  own background process. Mother's daemon IS the background process —
+  it calls `tick()` on schedule, the plugin discovers pending refs and
+  syncs them. Replaces the `libc::fork()` pattern entirely.
 
-- **Rate limiting.** Current: 750ms between requests (hardcoded).
-  As a plugin, who manages rate limiting? Plugin-internal? Host-provided
-  rate limit capability? Plugin-internal is simpler and matches current
-  behavior.
+- **Rate limiting: plugin-internal.** The plugin sleeps 750ms between
+  API calls within a single `handle()` invocation. Mother doesn't need
+  to know about GitHub's rate limits. Keep fixed delay initially,
+  optimize with `X-RateLimit-Remaining` headers later.
 
-- **ForgeWriter (fork, create-repo).** These are write operations to
-  GitHub, not data ingestion. Should they stay in core? Move to the
-  plugin? Become a separate extension? **Lean toward: plugin handles
-  reads AND writes to its source.**
+- **ForgeWriter: moves to plugin.** The forge plugin handles reads AND
+  writes to its source. Uses the same `host/http` + credentials. But
+  ForgeWriter is NOT an exit criterion — data ingestion is the priority.
 
-- **Staging pipeline.** Current forge writes `.forge-issue`/`.forge-pr`
-  staging files that grammar-forge processes. With host_emit, staging
-  files are unnecessary — plugin emits directly to eventlog. grammar-forge
-  plugin may become unnecessary too.
+- **Staging files: eliminated.** With `host_emit`, the plugin emits
+  facts directly to the eventlog. No `.forge-issue`/`.forge-pr` staging
+  files, no grammar-forge pipeline plugin needed. Direct path:
+  `GitHub API → host/http → plugin parses → host/emit → events.db`.
+
+## Open Questions
+
+- **Pagination without `gh`.** Plugin must follow GitHub's `Link`
+  headers instead of relying on `gh --limit`. Standard pattern but more
+  code. Not a design risk — implementation detail.
+
+- **Schema installation mechanism.** When plugin ships its schema, does
+  `patina plugin install` copy schema to `.patina/schemas/`? Or does
+  the host resolve schemas from plugin directories? Needs design in
+  [[spec-host-emit-wit]] validation requirements.
+
+- **Projection table ownership.** Who creates `forge_issues`/`forge_prs`
+  after extraction? Lean toward: schema.toml declares projections,
+  scrape materializes them generically (extensible to any schema).
 
 ## Non-Goals
 

@@ -97,41 +97,60 @@ MOTHER DAEMON (always running)
 6. Add health/status endpoint (local socket or HTTP for edge apps)
 7. Replace forge `libc::fork()` background sync with daemon-managed sync
 
-## Exploration Needed (SIGNIFICANT)
+## Design Decisions (resolved in DESIGN.md)
 
-- **Daemon architecture.** launchd on macOS, systemd on Linux. Or a
-  cross-platform approach (Rust background process with PID file)?
-  The forge sync already does PID-based background management. Could
-  Mother daemon generalize that pattern. **Needs investigation of
-  each platform's daemon story.**
+- **Stay threaded, no async.** The daemon is explicitly blocking/threaded
+  today — conscious choice, not accident. Add a scheduler thread with
+  a priority queue of (next_tick, child) pairs. Thread pool for
+  connector execution. Migrate to hybrid (tokio for scheduler only) if
+  concurrency demands exceed ~10 connectors. Don't rewrite the HTTP
+  server — it works.
 
-- **Edge app protocol.** How do edge apps (Cloudflare Workers) talk
-  to local Mother? Options: WebSocket tunnel, HTTP API with ngrok/
-  cloudflared, push to R2/D1 that edge reads. Each has different
-  latency and complexity. **This is the edge interface design — major
-  exploration needed. Could be its own spec.**
+- **Explicit start, then launchd/systemd.** `patina mother start` /
+  `patina mother stop` first. Then `patina mother install` writes a
+  launchd plist (macOS) or systemd user unit (Linux) from templates in
+  `resources/`. The daemon binary is the same either way. PID file
+  infrastructure already exists.
 
-- **Belief stream semantics.** What triggers a stream delivery? File
-  change in git (fs watcher on `layer/surface/epistemic/`)? Event
-  in events.db (belief.created, belief.evolved)? Git commit hook?
-  **Needs design. fs watcher is simplest but may miss git operations.**
+- **Belief stream trigger: event-driven.** Watch for `belief.created` /
+  `belief.evolved` events in events.db. Mother filters to belief-related
+  event types, triggers stream delivery. This is the cleanest approach —
+  the eventlog already records belief lifecycle. Polling is the fallback
+  if event watching proves too complex initially.
 
-- **Resource management.** Mother daemon running continuously means
-  CPU/memory budget. Connector plugins loaded into memory. How many
-  can run simultaneously? Should idle connectors be unloaded?
-  **Lean toward: load on schedule, unload after sync. Keep memory
-  footprint minimal.**
+- **Forge migration: daemon-first, fork-fallback.** If Mother daemon
+  is running, delegate to it. If not, fall back to `libc::fork()`
+  pattern. Check via PID file or socket probe. Remove fork in a future
+  version once daemon usage is established.
 
-- **Offline resilience.** What happens when Mother daemon is down?
-  Projects must still function (sovereignty principle). Connector
-  data is stale but available. Belief streams queue and deliver on
-  restart. **Design the degraded-operation story.**
+- **Resource management: keep loaded, unload as escape valve.** For
+  3-5 connectors, keep them in memory. The `on_load()`/`on_unload()`
+  lifecycle already supports demand loading if needed at scale.
 
-- **Streaming data patterns.** User has crypto/streaming background
-  and is interested in real-time data flows. Mother's continuous
-  operation could use event streaming patterns (pub/sub, reactive
-  streams) rather than polling. **Explore: is Tokio + channels the
-  right internal architecture? Or simpler timer-based polling?**
+- **Offline: catch up naturally.** Connectors fetch since last_sync
+  (gap fills automatically). Belief streams detect gaps via sequence
+  numbers. Don't build a durable queue until there's evidence it's
+  needed.
+
+- **Belief stream delivery: emit event to project eventlog.** Receiving
+  a belief from another persona IS an event — provenance=external,
+  source=originating persona. Aligns with [[spec-data-architecture-v3]]
+  provenance model.
+
+- **Edge protocol: defer to own spec.** Continuous-operation builds the
+  daemon. Edge connectivity (cloudflared tunnel, push-to-R2, webhooks)
+  is a separate concern with enough design surface for its own spec.
+
+## Open Questions
+
+- **Scheduler architecture detail.** Priority queue with thread pool
+  is the direction. Specific question: does one slow connector block
+  the next tick? **Lean toward: no. Pool threads execute concurrently.
+  Scheduler picks what's ready, pool runs it.**
+
+- **Daemon upgrade path.** When user installs a new Patina version,
+  running daemon is old binary. **Lean toward: manual
+  `patina mother restart`.** Simple and predictable.
 
 ## Non-Goals
 

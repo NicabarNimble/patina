@@ -98,19 +98,21 @@ Role-world validation:
    to declare their role
 5. Update SDK documentation with role descriptions
 
-## Exploration Needed
+## Design Decisions (resolved in [[spec-plugin-infrastructure]] DESIGN.md)
 
-- **Role-based dispatch.** Once roles exist, should `patina scrape` be
-  able to "run all connectors" automatically? Or does the user explicitly
-  choose which connectors to run? This relates to [[scrape-simplification]]
-  and [[continuous-operation]]. **Not needed for this spec** but influences
-  future design.
+- **Role-based dispatch is consumer-defined.** This spec adds the
+  vocabulary (connector, grammar, extension, app). How roles are
+  consumed is defined by the consumers: [[spec-scrape-simplification]]
+  dispatches grammar-role plugins for code indexing,
+  [[spec-continuous-operation]] schedules connector-role plugins via
+  Mother's daemon. Role metadata enables dispatch; this spec doesn't
+  prescribe dispatch strategy.
 
-- **App role scope.** An "app" role plugin could be a Cloudflare Worker
-  that's not even a WASM plugin loaded by wasmtime. It might communicate
-  with Patina via HTTP/WebSocket through Mother. Is "app" a plugin role
-  or something outside the plugin system? See [[local-first-edge-deployable]].
-  **Decision: for now, app is a plugin role. Edge apps are a future concern.**
+- **App is a plugin role.** Edge apps (Cloudflare Workers) that
+  communicate via HTTP/WebSocket are a future concern per
+  [[local-first-edge-deployable]]. For now, app is a local plugin role
+  in the mother-child or task world. The role is "what you're for," not
+  "where you run."
 
 ## Non-Goals
 

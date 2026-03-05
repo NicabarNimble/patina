@@ -93,25 +93,25 @@ architecturally they're separate operations.
    connector-role plugins and runs them
 6. Optional: add `patina scrape --all` convenience flag
 
-## Exploration Needed
+## Design Decisions (resolved in DESIGN.md)
 
-- **Is layer/ parsing protocol or domain?** Parsing `layer/sessions/*.md`
-  and `layer/surface/epistemic/beliefs/*.md` feels protocol-adjacent —
-  it reads the declaration store. But it assumes markdown format and
-  YAML frontmatter. Should this be a grammar plugin too? **Lean toward:
-  layer/ parsing is protocol. It reads Patina's own format, not a
-  domain-specific format.**
+- **Layer/ parsing is protocol.** layer/ is Patina's own format —
+  every project has it. Parsing markdown with YAML frontmatter is
+  reading the declaration store, like git parsing `.git/`. Not a
+  domain-specific format; not a grammar plugin.
 
-- **Code grammar dispatch.** Pipeline grammar plugins already handle
-  code parsing. Should they continue to be dispatched by scrape? Or
-  should grammar-role plugins be explicitly invoked? **Lean toward:
-  scrape dispatches grammar plugins for local files. Grammars are
-  local-file parsers, not external connectors. They belong in scrape.**
+- **Grammar dispatch stays in scrape.** Grammar plugins parse local
+  files during the index phase of scrape. They're local-only work
+  (read file, parse AST, emit facts). [[scrape-is-local-capture]]
+  distinguishes local capture (scrape) from external capture
+  (connectors). Grammars are local. They stay.
 
-- **Delta system for connectors.** Scrape has a sophisticated delta
-  system (only re-parse changed files). Connectors need their own
-  freshness tracking (last sync timestamp, incremental fetch). This
-  is connector-internal, not scrape's concern.
+- **Connector freshness is connector-internal.** Scrape's delta
+  system tracks git commits and file timestamps — local state.
+  Connectors track API-level freshness: last sync timestamps,
+  pagination cursors, incremental fetch markers. Different mechanisms,
+  different owners. Mother's lake registry provides metadata
+  freshness at the Mother level.
 
 ## Non-Goals
 

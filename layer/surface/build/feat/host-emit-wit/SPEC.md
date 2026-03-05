@@ -90,25 +90,28 @@ do NOT get emit — they remain read-only/pure-compute.
 6. Add integration test: mother-child plugin emits a fact, verify it
    appears in events.db with correct provenance
 
-## Exploration Needed
+## Design Decisions (resolved in [[spec-plugin-infrastructure]] DESIGN.md)
 
-- **Intent pattern vs direct call?** [[reads-via-host-writes-via-intents]]
-  says writes should be intents. But emit is append-only (no destructive
-  side effects). Direct host call may be simpler and safe. The intent
-  pattern makes more sense for git operations (commit, tag) where the
-  host needs to audit and may reject. Emit is more like logging — always
-  allowed if the schema matches. **Decision needed before build.**
+- **Direct host import, not intent pattern.** Resolved via Helland
+  analysis: facts are independently valid (partial writes aren't
+  corruption), the host validates and writes (trust boundary preserved),
+  and the plugin gets confirmation (sequence number on success). The
+  intent pattern (toys) is for operations with dangerous side effects.
+  Appending to an immutable log is safe. Direct call also supports
+  streaming connectors that can't accumulate facts until execution ends.
+  See [[spec-plugin-infrastructure]] DESIGN.md, "host_emit — The Missing
+  Write Path."
 
-- **Schema validation depth.** Full WIT record type validation at the
-  host boundary? Or just valid JSON + correct event_type? Full validation
-  is safer but requires the host to parse WIT at runtime. JSON validation
-  is simpler but trusts the plugin more. Could start with JSON and add
-  WIT validation later.
+- **Schema validation: manifest baseline, deepen later.** Validate that
+  the schema exists, the plugin declares it in its manifest, and the
+  fact-type exists in the schema. Full field-level type checking against
+  schema.toml definitions is future depth. Start with structural
+  validation (schema + fact-type + valid JSON).
 
-- **Batch emit.** If a connector fetches 500 issues, does it call
-  emit-fact 500 times? Or should there be `emit-batch(facts: list<...>)`?
-  Single emit is simpler. Batch is more efficient. Could start with
-  single and add batch if performance demands.
+- **Single emit, no batch.** `emit-fact()` called per event. Each fact
+  stands alone (Helland: independently valid). Batch adds complexity
+  without safety benefit — append-only writes don't need atomicity.
+  Add `emit-batch()` later if performance demands.
 
 ## Non-Goals
 

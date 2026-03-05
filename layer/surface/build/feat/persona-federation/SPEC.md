@@ -121,32 +121,48 @@ operational beliefs, but not the reverse unless explicitly configured.
 8. Add `patina persona list/create/link` commands (new, Mother-level)
 9. Add visibility filtering to `patina mother` search
 
-## Exploration Needed
+## Design Decisions (resolved in DESIGN.md)
 
-- **Migration path for existing beliefs.** 191+ beliefs with
-  `persona: architect`. Create a default persona UID and migrate?
-  Or leave existing beliefs as-is and only apply to new ones?
+- **Migration: create default persona, retroactive UID.** Register
+  "architect" persona in Mother → write UID to project config → scrape
+  updates belief files. One-time migration is cleaner than permanent
+  dual-resolution. `patina scrape` already reads and rewrites belief
+  frontmatter — add UID during a scrape cycle.
 
-- **Lake registry relationship.** [[data-architecture-v3]] adds lake
-  registry to Mother. Should lake access be persona-scoped? (Persona A
-  can access lake X but not lake Y.) **Lean toward: yes, lakes are
-  accessed through personas. A persona's project config declares which
-  lakes it consumes.**
+- **Persona registry in graph.db.** Same reasoning as lake registry —
+  extend existing Mother database. graph.db already holds federated
+  belief data; persona registry is metadata FOR beliefs. SQL is the
+  right tool (UIDs, links, queries), not YAML.
 
-- **Edge app personas.** A Cloudflare chat agent is a persona. It
-  generates events that flow back to local Patina. How does it
-  authenticate with Mother? API key? JWT? This is the edge interface
-  design — not specced yet. See [[local-first-edge-deployable]].
+- **1:N persona→project.** A persona owns multiple projects. A project
+  belongs to exactly one persona. If two personas both need the same
+  data, they federate through Mother — they don't share a project
+  directory. Project config gains a `persona_uid` field.
 
-- **E2EE on belief streams.** Belief streams between personas could
-  be encrypted end-to-end (Signal protocol). Mother routes but can't
-  read. User's blockchain/crypto background makes this a priority
-  direction. See [[content-addressed-references]]. **Not in scope
-  for this spec but the linking architecture should not preclude it.**
+- **Persona discovery: local-only first.** Same machine, same Mother
+  instance. Network-wide discovery is a fundamentally different
+  mechanism — defer until there's a real use case.
 
-- **Persona as org unit.** "Shared" visibility implies org-scoped
-  personas. What is an "org" in Mother? A group of linked personas?
-  A separate registry? **Needs design.**
+- **Org is deferred.** A label on persona_links, not a first-class
+  entity. Build linking first, add org semantics when a real use case
+  emerges.
+
+## Exploration Needed (genuinely open)
+
+- **Lake access control.** Should lake access be persona-scoped? Lean
+  toward yes — a persona's project config declares which lakes it
+  consumes. But lakes don't exist yet ([[spec-data-architecture-v3]]
+  builds them). Design this when both specs are in flight.
+
+- **Edge app authentication.** How does a Cloudflare Worker persona
+  authenticate with Mother? Deferred to edge-interface design per
+  [[local-first-edge-deployable]]. The UID is opaque — it doesn't
+  encode location. Remote personas are just personas Mother knows about
+  but can't directly reach without a transport layer.
+
+- **E2EE on belief streams.** Not in scope but the linking architecture
+  must not preclude it. Mother routes payloads she can't read.
+  [[content-addressed-references]] keeps the path open.
 
 ## Non-Goals
 

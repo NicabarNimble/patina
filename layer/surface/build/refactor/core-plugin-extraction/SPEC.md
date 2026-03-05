@@ -84,34 +84,48 @@ it. At that point sessions and adapters become extension plugins.
 4. Extract spec subsystem (complex — 16 MCP tools, git tags, releases)
 5. Verify core has no domain imports remaining
 
-## Exploration Needed (SIGNIFICANT)
+## Design Decisions (resolved in DESIGN.md)
 
-This spec has the most open questions in the entire roadmap.
+- **Three new WIT interfaces needed.** DESIGN.md identifies the exact
+  capability gaps and provides WIT definitions:
+  - `host/fs-write` — scoped to project directory ([[safety-boundaries]])
+  - `host/git` — create-tag, add, commit, rm (host runs git, plugin
+    never touches `.git/`)
+  - `host/mcp-register` — dynamic tool registration from plugins
 
-- **New host capabilities.** Spec needs filesystem write, git tag/commit,
-  and MCP tool registration. None of these exist in the current WIT
-  host. Designing these interfaces is a major effort. Each one needs
-  its own security model (filesystem scoped to project, git operations
-  audited, MCP registration validated).
+- **MCP dynamic registration is the biggest shift.** Changes the MCP
+  server from a static dispatcher to a plugin-routed system. DESIGN.md
+  proposes two approaches: runtime registration via WIT interface, or
+  manifest-declared tools that the host registers on startup. Manifest
+  approach is simpler and doesn't need a WIT interface.
 
-- **MCP tool registration from plugins.** Currently MCP tools are
-  hardcoded in the binary. If spec becomes a plugin, its 16 MCP tools
-  need dynamic registration. This is a fundamental change to how Patina
-  exposes tools to LLMs. **This may be the hardest single problem in
-  the entire roadmap.**
+- **Spec is domain-specific, extraction is correct.** The extraction
+  doesn't need to resolve whether specs are "core workflow" or "domain
+  tooling." Extract the command system. Leave spec file parsing in the
+  layer scraper (reading the declaration store is protocol). A project
+  without the spec plugin can still have spec files in
+  `layer/surface/build/` — they just can't be managed with lifecycle
+  commands. Like a git repo without a GUI client.
 
-- **Is spec really domain-specific?** Spec-driven-design is a core
-  value ([[spec-driven-design]]). If specs are core to how Patina
-  operates, is extracting them to a plugin the right move? Or should
-  spec stay in core because it's part of the protocol (specs are how
-  the "evolve" verb manifests)? **Strong tension with
-  [[patina-is-domain-agnostic-knowledge-system]].** A law firm doesn't
-  need specs. But specs might be to Patina what branches are to git —
-  not domain-specific, but a core workflow concept.
+- **Split into two phases.** Phase A: design host capabilities
+  (host/fs-write, host/git, host/mcp-register). Phase B: extract spec
+  subsystem. These may be sequential specs rather than one spec with
+  phases.
 
-- **Split this spec?** Given the exploration needed, this might need
-  to be split into: (a) design host capabilities, (b) extract spec.
-  Two specs instead of one.
+## Open Questions
+
+- **Phase A scope.** Should host/fs-write, host/git, host/mcp-register
+  be designed as a single infrastructure spec (like
+  [[spec-plugin-infrastructure]]) or individually? They're all needed
+  for spec extraction but each has independent value for other future
+  plugins. **Lean toward: single spec, since all three gate the same
+  extraction.**
+
+- **Spec type ownership.** `SpecFrontmatter` types are used by both
+  the spec commands AND the layer scraper. If spec commands move to a
+  plugin, do types stay in core (for the scraper) with the plugin
+  importing them? Or does the plugin own types and the scraper gets a
+  simplified parser?
 
 ## Non-Goals
 
