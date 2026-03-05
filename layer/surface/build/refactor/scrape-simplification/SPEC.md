@@ -4,7 +4,6 @@ id: scrape-simplification
 status: draft
 created: 2026-03-04
 blocked_by:
-- core-extraction
 - forge-plugin-extraction
 sessions:
   origin: 20260304-120702
@@ -42,21 +41,24 @@ exit_criteria:
 
 ## Current State
 
-`src/commands/scrape/mod.rs` `execute_all()` dispatches to:
+`src/commands/scrape/mod.rs` `execute_all()` (lines 76-154) dispatches to:
 1. `git::run()` — git commit history (LOCAL) ✓
 2. `execute_code_incremental()` — code parsing via grammar plugins (LOCAL) ✓
 3. `layer::run()` — layer/ markdown parsing (LOCAL) ✓
 4. `beliefs::run()` — belief regrounding (LOCAL) ✓
-5. **`forge::run()`** — GitHub API calls (EXTERNAL) ✗ doesn't belong
 
-The delta system (`delta.rs`) computes `ScrapeDelta` including a
-`forge` source-kind for staged forge files. This forge path needs
-removal after forge extraction.
+Note: `forge::run()` is NOT part of execute_all(). It's a separate
+subcommand handler (`patina scrape forge`, mod.rs:397). The delta
+system (`delta.rs`) has no forge source-kind either. Forge is already
+architecturally separate from the main scrape pipeline — the work here
+is removing the subcommand and the `src/commands/scrape/forge/` module
+(604 LOC) after [[forge-plugin-extraction]] moves it to a connector.
 
 **Code references:**
-- `src/commands/scrape/mod.rs` lines 97-147 — dispatch routes
-- `src/commands/scrape/delta.rs` — ScrapeDelta classification
-- `src/commands/scrape/forge/mod.rs` — forge dispatcher (604 LOC)
+- `src/commands/scrape/mod.rs` lines 76-154 — execute_all() dispatch
+- `src/commands/scrape/mod.rs` line 397 — forge subcommand handler
+- `src/commands/scrape/delta.rs` — ScrapeDelta classification (no forge)
+- `src/commands/scrape/forge/mod.rs` — forge subcommand (604 LOC, to be removed)
 - `src/commands/scrape/code/extract_v2.rs` — pipeline plugin dispatch
 
 ## Target State
@@ -84,9 +86,9 @@ architecturally they're separate operations.
 
 1. **Prerequisite:** [[forge-plugin-extraction]] complete (forge code
    moved to plugin, `src/forge/` deleted)
-2. Remove forge dispatch path from `src/commands/scrape/mod.rs`
-3. Remove forge source-kind from `delta.rs` ScrapeDelta
-4. Remove `src/commands/scrape/forge/` directory
+2. Remove forge subcommand handler from `src/commands/scrape/mod.rs`
+3. Remove `src/commands/scrape/forge/` directory
+4. Remove `pub mod forge` declaration from scrape mod.rs
 5. Add `patina connector sync` command that discovers installed
    connector-role plugins and runs them
 6. Optional: add `patina scrape --all` convenience flag
