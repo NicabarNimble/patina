@@ -4,13 +4,14 @@ id: continuous-operation
 status: draft
 created: 2026-03-04
 blocked_by:
-- mother-maturation
 - data-architecture-v3
+- persona-federation
 sessions:
   origin: 20260304-120702
 beliefs:
 - mother-is-connection-and-continuity
 - local-first-edge-deployable
+- patina-is-beliefs-plus-action
 exit_criteria:
 - id: mother-daemon-runs-continuously
   text: Mother daemon starts on login (or explicit start), runs in background, survives terminal close
