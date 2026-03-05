@@ -2192,3 +2192,376 @@ fn http_get_with_mapping_but_no_grant_sends_no_auth() {
         Err(_) => {} // network error is acceptable in test environments
     }
 }
+
+// =====================================================================
+// host_emit — validate_emit + build_emit_event_data tests
+// =====================================================================
+
+fn setup_schema_dir(dir: &std::path::Path) {
+    let schema_dir = dir.join(".patina/schemas/forge");
+    std::fs::create_dir_all(&schema_dir).unwrap();
+    std::fs::write(
+        schema_dir.join("schema.toml"),
+        r#"[schema]
+name = "forge"
+version = "1.0.0"
+package = "patina:schema/forge@1.0.0"
+
+[[facts]]
+name = "issue"
+event_type = "forge.issue"
+record = "issue"
+
+[[facts]]
+name = "pull-request"
+event_type = "forge.pr"
+record = "pull-request"
+"#,
+    )
+    .unwrap();
+}
+
+fn test_schemas() -> std::collections::HashMap<String, String> {
+    let mut m = std::collections::HashMap::new();
+    m.insert(
+        "forge".to_string(),
+        "patina:schema/forge@1.0.0".to_string(),
+    );
+    m
+}
+
+#[test]
+fn emit_validate_schema_not_in_manifest() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_schema_dir(dir.path());
+    let schemas = std::collections::HashMap::new(); // empty — no schemas declared
+
+    let result = host_support::validate_emit(
+        &Some(dir.path().to_path_buf()),
+        "test-plugin",
+        &schemas,
+        "forge",
+        "issue",
+        r#"{"title":"test"}"#,
+    );
+    assert!(result.is_err());
+    assert!(
+        result.unwrap_err().contains("not declared in plugin"),
+        "should reject undeclared schema"
+    );
+}
+
+#[test]
+fn emit_validate_schema_not_installed() {
+    let dir = tempfile::tempdir().unwrap();
+    // No schema dir created — schema not installed
+    let schemas = test_schemas();
+
+    let result = host_support::validate_emit(
+        &Some(dir.path().to_path_buf()),
+        "test-plugin",
+        &schemas,
+        "forge",
+        "issue",
+        r#"{"title":"test"}"#,
+    );
+    assert!(result.is_err());
+    assert!(
+        result.unwrap_err().contains("not installed"),
+        "should reject missing schema"
+    );
+}
+
+#[test]
+fn emit_validate_fact_type_not_found() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_schema_dir(dir.path());
+    let schemas = test_schemas();
+
+    let result = host_support::validate_emit(
+        &Some(dir.path().to_path_buf()),
+        "test-plugin",
+        &schemas,
+        "forge",
+        "nonexistent-fact",
+        r#"{"title":"test"}"#,
+    );
+    assert!(result.is_err());
+    assert!(
+        result.unwrap_err().contains("not found in schema"),
+        "should reject unknown fact-type"
+    );
+}
+
+#[test]
+fn emit_validate_invalid_json() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_schema_dir(dir.path());
+    let schemas = test_schemas();
+
+    let result = host_support::validate_emit(
+        &Some(dir.path().to_path_buf()),
+        "test-plugin",
+        &schemas,
+        "forge",
+        "issue",
+        "{not valid json",
+    );
+    assert!(result.is_err());
+    assert!(
+        result.unwrap_err().contains("invalid JSON"),
+        "should reject invalid JSON"
+    );
+}
+
+#[test]
+fn emit_validate_no_project_root() {
+    let schemas = test_schemas();
+
+    let result = host_support::validate_emit(
+        &None,
+        "test-plugin",
+        &schemas,
+        "forge",
+        "issue",
+        r#"{"title":"test"}"#,
+    );
+    assert!(result.is_err());
+    assert!(
+        result.unwrap_err().contains("no project root"),
+        "should reject without project root"
+    );
+}
+
+#[test]
+fn emit_validate_success_returns_event_type() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_schema_dir(dir.path());
+    let schemas = test_schemas();
+
+    let result = host_support::validate_emit(
+        &Some(dir.path().to_path_buf()),
+        "test-plugin",
+        &schemas,
+        "forge",
+        "issue",
+        r#"{"title":"test issue","number":42}"#,
+    );
+    assert_eq!(result.unwrap(), "forge.issue");
+}
+
+#[test]
+fn emit_validate_pull_request_fact_type() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_schema_dir(dir.path());
+    let schemas = test_schemas();
+
+    let result = host_support::validate_emit(
+        &Some(dir.path().to_path_buf()),
+        "test-plugin",
+        &schemas,
+        "forge",
+        "pull-request",
+        r#"{"title":"test PR"}"#,
+    );
+    assert_eq!(result.unwrap(), "forge.pr");
+}
+
+#[test]
+fn emit_build_event_data_has_provenance() {
+    let data = host_support::build_emit_event_data(
+        "github-connector",
+        "forge",
+        "issue",
+        r#"{"title":"test","number":1}"#,
+    );
+
+    assert_eq!(data["_provenance"], "external");
+    assert_eq!(data["_schema"], "forge");
+    assert_eq!(data["_plugin"], "github-connector");
+    assert_eq!(data["_fact_type"], "issue");
+    assert_eq!(data["payload"]["title"], "test");
+    assert_eq!(data["payload"]["number"], 1);
+}
+
+#[test]
+fn emit_capability_gating_host_emit_in_manifest() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "forge-connector"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+host_emit = true
+
+[provides]
+child = "forge"
+
+[schemas.forge]
+package = "patina:schema/forge@1.0.0"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert!(m.capabilities.contains(&"host_emit".to_string()));
+    assert!(m.schemas.contains_key("forge"));
+
+    let grants = m.granted_capabilities();
+    assert!(grants.host_emit);
+    assert!(grants.schemas.contains_key("forge"));
+}
+
+#[test]
+fn emit_capability_gating_not_granted_without_declaration() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "simple-plugin"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+
+[provides]
+child = "simple"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    let grants = m.granted_capabilities();
+    assert!(!grants.host_emit);
+    assert!(grants.schemas.is_empty());
+}
+
+#[test]
+fn emit_host_emit_denied_for_pipeline() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "bad-pipeline"
+world = "pipeline"
+
+[capabilities]
+host_log = true
+host_emit = true
+
+[schemas.forge]
+package = "patina:schema/forge@1.0.0"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    let result = PluginEngine::check_capabilities(&m);
+    assert!(result.is_err(), "pipeline should not allow host_emit");
+    assert!(
+        result.unwrap_err().to_string().contains("not allowed"),
+        "should mention world capability denial"
+    );
+}
+
+#[test]
+fn emit_host_emit_denied_for_command() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "bad-command"
+world = "command"
+
+[capabilities]
+host_log = true
+host_emit = true
+
+[provides]
+commands = ["test"]
+
+[schemas.forge]
+package = "patina:schema/forge@1.0.0"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    let result = PluginEngine::check_capabilities(&m);
+    assert!(result.is_err(), "command should not allow host_emit");
+}
+
+#[test]
+fn emit_host_emit_requires_schemas() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "no-schema-connector"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+host_emit = true
+
+[provides]
+child = "forge"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    let result = PluginEngine::check_capabilities(&m);
+    assert!(
+        result.is_err(),
+        "host_emit without schemas should be rejected"
+    );
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("no [schemas.*] entries"),
+        "should mention missing schemas"
+    );
+}
+
+#[test]
+fn emit_host_emit_allowed_for_mother_child() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "forge-connector"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+host_emit = true
+
+[provides]
+child = "forge"
+
+[schemas.forge]
+package = "patina:schema/forge@1.0.0"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    let result = PluginEngine::check_capabilities(&m);
+    assert!(
+        result.is_ok(),
+        "mother-child with host_emit + schemas should be allowed: {:?}",
+        result.unwrap_err()
+    );
+}
+
+#[test]
+fn emit_host_emit_allowed_for_task() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "fetch-task"
+world = "task"
+
+[capabilities]
+host_log = true
+host_emit = true
+
+[schemas.forge]
+package = "patina:schema/forge@1.0.0"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    let result = PluginEngine::check_capabilities(&m);
+    assert!(
+        result.is_ok(),
+        "task with host_emit + schemas should be allowed: {:?}",
+        result.unwrap_err()
+    );
+}
