@@ -262,8 +262,17 @@ impl PluginEngine {
             );
         }
 
-        // Boolean capabilities that are always granted (no config needed)
-        let auto_granted = ["host_log", "host_layer", "host_measure", "host_emit"];
+        // Capabilities granted when declared in plugin.toml.
+        // host_http and host_query have additional validation (domain allowlist,
+        // query kind check) that runs below and at call time via GrantedCapabilities.
+        let auto_granted = [
+            "host_log",
+            "host_layer",
+            "host_measure",
+            "host_emit",
+            "host_http",
+            "host_query",
+        ];
 
         let denied: Vec<&str> = manifest
             .capabilities
