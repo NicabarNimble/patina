@@ -2223,10 +2223,7 @@ record = "pull-request"
 
 fn test_schemas() -> std::collections::HashMap<String, String> {
     let mut m = std::collections::HashMap::new();
-    m.insert(
-        "forge".to_string(),
-        "patina:schema/forge@1.0.0".to_string(),
-    );
+    m.insert("forge".to_string(), "patina:schema/forge@1.0.0".to_string());
     m
 }
 

@@ -474,7 +474,10 @@ pub(super) fn validate_emit(
     let root = project_root
         .as_ref()
         .ok_or_else(|| "no project root".to_string())?;
-    let schema_path = root.join(".patina/schemas").join(schema).join("schema.toml");
+    let schema_path = root
+        .join(".patina/schemas")
+        .join(schema)
+        .join("schema.toml");
     if !schema_path.exists() {
         return Err(format!(
             "schema '{}' not installed at {}",
@@ -506,12 +509,7 @@ pub(super) fn validate_emit(
                 None
             }
         })
-        .ok_or_else(|| {
-            format!(
-                "fact-type '{}' not found in schema '{}'",
-                fact_type, schema
-            )
-        })?;
+        .ok_or_else(|| format!("fact-type '{}' not found in schema '{}'", fact_type, schema))?;
 
     // 4. Validate data is valid JSON
     let _: serde_json::Value =
