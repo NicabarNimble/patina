@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: forge-plugin-extraction
-status: draft
+status: ready
 created: 2026-03-04
 blocked_by:
 - host-emit-wit
