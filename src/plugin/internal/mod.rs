@@ -58,6 +58,7 @@ impl PluginWorld {
                 "host_query",
                 "host_http",
                 "host_measure",
+                "host_emit",
             ],
             Self::Command => &["host_log", "host_layer", "host_query", "host_measure"],
             Self::Task => &[
@@ -66,6 +67,7 @@ impl PluginWorld {
                 "host_query",
                 "host_http",
                 "host_measure",
+                "host_emit",
             ],
             Self::Pipeline => &["host_log"],
         }
@@ -173,6 +175,11 @@ pub struct GrantedCapabilities {
     /// Credential mappings: domain → secret name + injection location.
     /// Empty means no credential injection.
     pub credential_mappings: std::collections::HashMap<String, CredentialMapping>,
+    /// Whether plugin can emit facts to eventlog.
+    pub host_emit: bool,
+    /// Schema packages declared by this plugin (name → package string).
+    /// Used for call-time validation in emit_fact.
+    pub schemas: std::collections::HashMap<String, String>,
 }
 
 /// What the plugin provides to the system.
@@ -400,11 +407,16 @@ impl PluginManifest {
         // For now, default to CurrentProject — AllRepos requires explicit opt-in.
         let query_scope = QueryScope::CurrentProject;
 
+        let host_emit = self.capabilities.contains(&"host_emit".to_string());
+        let schemas = self.schemas.clone();
+
         GrantedCapabilities {
             query_kinds,
             query_scope,
             http_domains,
             credential_mappings,
+            host_emit,
+            schemas,
         }
     }
 }

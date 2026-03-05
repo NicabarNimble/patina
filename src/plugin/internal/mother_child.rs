@@ -146,6 +146,31 @@ mod bindings {
         }
     }
 
+    // patina:host/emit — delegates to host_support
+    impl patina::host::emit::Host for HostState {
+        fn emit_fact(
+            &mut self,
+            schema: String,
+            fact_type: String,
+            data: String,
+        ) -> Result<u64, String> {
+            if !self.grants.host_emit {
+                return Err(format!(
+                    "host_emit not granted for plugin '{}'",
+                    self.plugin_name
+                ));
+            }
+            super::super::host_support::emit_fact(
+                &self.project_root,
+                &self.plugin_name,
+                &self.grants.schemas,
+                &schema,
+                &fact_type,
+                &data,
+            )
+        }
+    }
+
     // patina:host/measure — delegates to host_support
     impl patina::host::measure::Host for HostState {
         fn record_measurement(
@@ -239,7 +264,7 @@ impl PluginEngine {
         }
 
         // Boolean capabilities that are always granted (no config needed)
-        let auto_granted = ["host_log", "host_layer", "host_measure"];
+        let auto_granted = ["host_log", "host_layer", "host_measure", "host_emit"];
 
         let denied: Vec<&str> = manifest
             .capabilities
@@ -295,6 +320,14 @@ impl PluginEngine {
                     domain
                 );
             }
+        }
+
+        // Load-time validation: host_emit requires at least one schema
+        if manifest.capabilities.contains(&"host_emit".to_string()) && manifest.schemas.is_empty() {
+            anyhow::bail!(
+                "plugin '{}' declares host_emit but has no [schemas.*] entries",
+                manifest.name
+            );
         }
 
         // Load-time validation: host_secrets domains must be in host_http
