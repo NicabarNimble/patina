@@ -33,8 +33,9 @@ Patina instances.
   Patina instances. It is so important for patina to connect."
 - [[session-20260304-120702]] — established Mother as "connection +
   continuity", scoped to registries and routing, not business logic.
-  Designed 4-layer data flow: Sources → Lakes → Modified Data Blocks →
-  Projects. Mother manages lakes and routes belief streams.
+  Designed data flow: Sources → Data Lakes (raw) → Data Blocks
+  (structured, shape TBD) → Projects. Mother manages lakes and
+  routes belief streams.
 - [[mother-is-connection-and-continuity]] — Mother federates instances,
   manages shared resources, runs continuously
 - [[patina-is-beliefs-plus-action]] — Mother enables the "evolve" verb
@@ -65,9 +66,11 @@ Patina instances.
 
 ## Exploration Needed
 
-- **Modified data blocks** — what are they exactly? Structured tables?
-  Semantic embeddings? Filtered views? This concept emerged in session
-  20260304-120702 but needs more design work. Could be its own spec.
+- **Data blocks** — lakes are raw, blocks are structured in some way.
+  What structuring options exist? Structured tables, semantic embeddings,
+  filtered views, or something more versatile? The shape should be very
+  open. This concept emerged in [[session-20260304-120702]] but needs
+  more design work. Could be its own spec.
 - **Edge interface** — how do Patina apps on Cloudflare/Vercel connect
   back to local Mother? WebSocket? HTTP polling? Push via R2? Not specced
   yet, future work after continuous-operation.
