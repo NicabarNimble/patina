@@ -2507,9 +2507,18 @@ package = "patina:schema/forge@1.0.0"
 
 #[test]
 fn role_from_str_all_variants() {
-    assert_eq!("connector".parse::<PluginRole>().unwrap(), PluginRole::Connector);
-    assert_eq!("grammar".parse::<PluginRole>().unwrap(), PluginRole::Grammar);
-    assert_eq!("extension".parse::<PluginRole>().unwrap(), PluginRole::Extension);
+    assert_eq!(
+        "connector".parse::<PluginRole>().unwrap(),
+        PluginRole::Connector
+    );
+    assert_eq!(
+        "grammar".parse::<PluginRole>().unwrap(),
+        PluginRole::Grammar
+    );
+    assert_eq!(
+        "extension".parse::<PluginRole>().unwrap(),
+        PluginRole::Extension
+    );
     assert_eq!("app".parse::<PluginRole>().unwrap(), PluginRole::App);
 }
 
@@ -2529,10 +2538,18 @@ fn role_display() {
 
 #[test]
 fn role_expected_worlds() {
-    assert!(PluginRole::Connector.expected_worlds().contains(&PluginWorld::MotherChild));
-    assert!(PluginRole::Grammar.expected_worlds().contains(&PluginWorld::Pipeline));
-    assert!(PluginRole::Extension.expected_worlds().contains(&PluginWorld::Command));
-    assert!(PluginRole::App.expected_worlds().contains(&PluginWorld::MotherChild));
+    assert!(PluginRole::Connector
+        .expected_worlds()
+        .contains(&PluginWorld::MotherChild));
+    assert!(PluginRole::Grammar
+        .expected_worlds()
+        .contains(&PluginWorld::Pipeline));
+    assert!(PluginRole::Extension
+        .expected_worlds()
+        .contains(&PluginWorld::Command));
+    assert!(PluginRole::App
+        .expected_worlds()
+        .contains(&PluginWorld::MotherChild));
 }
 
 // =====================================================================
@@ -2596,9 +2613,10 @@ child = "bad"
     );
     let result = PluginManifest::from_path(f.path());
     assert!(result.is_err());
-    assert!(
-        result.unwrap_err().to_string().contains("unknown plugin role"),
-    );
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("unknown plugin role"),);
 }
 
 // =====================================================================
