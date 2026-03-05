@@ -2539,6 +2539,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "patina-plugin-forge"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "patina-plugin-models"
 version = "0.1.0"
 dependencies = [

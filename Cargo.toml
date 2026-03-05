@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "plugins/sdk", "plugins/models", "plugins/repos", "plugins/doctor"]
+members = [".", "plugins/sdk", "plugins/models", "plugins/repos", "plugins/doctor", "plugins/forge"]
 exclude = ["layer/dust"]
 resolver = "2"
 

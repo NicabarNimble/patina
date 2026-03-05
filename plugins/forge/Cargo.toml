@@ -1,0 +1,13 @@
+[package]
+name = "patina-plugin-forge"
+version = "0.1.0"
+edition = "2021"
+description = "GitHub connector plugin — issues and PRs via REST API"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+patina-sdk = { path = "../sdk", features = ["mother-child"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
