@@ -201,6 +201,7 @@ pub(super) fn query(
 /// (prevents allowlist bypass via open redirectors).
 pub(super) fn build_http_client() -> anyhow::Result<reqwest::blocking::Client> {
     reqwest::blocking::Client::builder()
+        .user_agent(format!("patina/{}", env!("CARGO_PKG_VERSION")))
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
             if attempt.url().host_str() != attempt.previous().last().and_then(|u| u.host_str()) {
                 attempt.stop()
