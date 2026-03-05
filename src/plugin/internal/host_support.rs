@@ -507,17 +507,18 @@ pub(super) fn emit_fact(
     let source_id = format!("plugin:{}", plugin_name);
 
     // Write plugin data directly — no wrapper envelope.
-    // Provenance: source_id = "plugin:<name>"
+    // Provenance: 'external' — plugin-emitted facts are external evidence.
     // Schema: event_type = "<schema>.<fact>" (e.g., "forge.issue")
     conn.execute(
-        "INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
+        "INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data, provenance)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         rusqlite::params![
             &event_type,
             &timestamp,
             &source_id,
             Option::<&str>::None,
-            data
+            data,
+            "external"
         ],
     )
     .map_err(|e| format!("insert event: {}", e))?;

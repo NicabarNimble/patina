@@ -72,6 +72,7 @@ pub fn initialize(db_path: &Path) -> Result<Connection> {
             source_id TEXT NOT NULL,                 -- sha, session_id, function_name, etc
             source_file TEXT,                        -- Original file path
             data TEXT NOT NULL,                      -- Event-specific JSON payload
+            provenance TEXT NOT NULL DEFAULT 'local', -- local | external | derived
             CHECK(json_valid(data))
         );
 
@@ -209,6 +210,7 @@ fn ensure_events_db_inner() -> Result<()> {
             source_id TEXT NOT NULL,
             source_file TEXT,
             data TEXT NOT NULL,
+            provenance TEXT NOT NULL DEFAULT 'local',
             CHECK(json_valid(data))
         );
 
@@ -223,9 +225,27 @@ fn ensure_events_db_inner() -> Result<()> {
             value TEXT
         );
 
-        PRAGMA user_version = 1;
+        PRAGMA user_version = 2;
         "#,
     )?;
+
+    // Schema migration: add provenance column to existing events.db (v1 → v2).
+    // ALTER TABLE ADD COLUMN is a no-op if column already exists (catches
+    // "duplicate column name" error). Existing events default to 'local'.
+    let has_provenance: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('eventlog') WHERE name = 'provenance'",
+            [],
+            |row| Ok(row.get::<_, i64>(0)? > 0),
+        )
+        .unwrap_or(false);
+
+    if !has_provenance {
+        conn.execute_batch(
+            "ALTER TABLE eventlog ADD COLUMN provenance TEXT NOT NULL DEFAULT 'local';",
+        )?;
+        eprintln!("  Migrated events.db: added provenance column");
+    }
 
     // Migrate runtime events from patina.db if it exists.
     // Uses INSERT OR IGNORE with explicit seq — safe under concurrent execution
