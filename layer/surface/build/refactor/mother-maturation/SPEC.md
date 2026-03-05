@@ -13,7 +13,7 @@ beliefs:
 - local-first-edge-deployable
 exit_criteria:
 - id: children-complete
-  text: All child specs (data-architecture-v3, persona-federation, continuous-operation) are complete
+  text: All child specs (data-architecture-v3, lake-registry, persona-federation, continuous-operation) are complete
   checked: false
 ---
 # refactor: Mother Maturation — Federation, Lakes, and Continuity
@@ -60,9 +60,10 @@ Patina instances.
 
 | Spec | What it delivers | Build order |
 |------|-----------------|-------------|
-| [[data-architecture-v3]] | Provenance on events, lake registry in Mother | First |
+| [[data-architecture-v3]] | Provenance on events (local/external/derived) | **Complete** (v0.39.3) |
+| [[lake-registry]] | Lake registry in Mother (split from data-architecture-v3) | After connectors exist |
 | [[persona-federation]] | Persona registry, belief provenance, linking | Second (or parallel) |
-| [[continuous-operation]] | Mother daemon, streaming, always-on | Third (depends on v3 + personas) |
+| [[continuous-operation]] | Mother daemon, streaming, always-on | Third (depends on lakes + personas) |
 
 ## Implementation Prerequisites
 
