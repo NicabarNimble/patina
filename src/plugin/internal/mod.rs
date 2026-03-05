@@ -177,9 +177,10 @@ pub struct GrantedCapabilities {
     pub credential_mappings: std::collections::HashMap<String, CredentialMapping>,
     /// Whether plugin can emit facts to eventlog.
     pub host_emit: bool,
-    /// Schema packages declared by this plugin (name → package string).
-    /// Used for call-time validation in emit_fact.
-    pub schemas: std::collections::HashMap<String, String>,
+    /// Parsed schema facts cached at load time. Outer key = schema name,
+    /// inner key = fact-type name, value = event_type string.
+    /// Zero disk reads at emit time — all validation from this cache.
+    pub schema_facts: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
 }
 
 /// What the plugin provides to the system.
@@ -398,6 +399,8 @@ impl PluginManifest {
     ///
     /// Called once at load time. The resulting GrantedCapabilities is
     /// stored on CommandHostState for O(1) call-time checks.
+    ///
+    /// Schema facts are parsed from disk here — zero disk reads at emit time.
     pub fn granted_capabilities(&self) -> GrantedCapabilities {
         let query_kinds = self.host_query_kinds.iter().cloned().collect();
         let http_domains = self.host_http_domains.iter().cloned().collect();
@@ -408,7 +411,9 @@ impl PluginManifest {
         let query_scope = QueryScope::CurrentProject;
 
         let host_emit = self.capabilities.contains(&"host_emit".to_string());
-        let schemas = self.schemas.clone();
+
+        // Parse schemas at load time: schema name → { fact-type → event_type }
+        let schema_facts = Self::parse_schema_facts(&self.schemas);
 
         GrantedCapabilities {
             query_kinds,
@@ -416,7 +421,47 @@ impl PluginManifest {
             http_domains,
             credential_mappings,
             host_emit,
-            schemas,
+            schema_facts,
         }
+    }
+
+    /// Parse schema.toml files from disk and cache fact→event_type mappings.
+    ///
+    /// Called once at load time. Returns empty map for schemas that can't
+    /// be found or parsed (load-time validation in check_capabilities
+    /// will warn separately).
+    fn parse_schema_facts(
+        schemas: &std::collections::HashMap<String, String>,
+    ) -> std::collections::HashMap<String, std::collections::HashMap<String, String>> {
+        let project_root = crate::session::SessionManager::find_project_root().ok();
+        let root = match project_root {
+            Some(ref r) => r,
+            None => return std::collections::HashMap::new(),
+        };
+
+        schemas
+            .keys()
+            .filter_map(|schema_name| {
+                let schema_path = root
+                    .join(".patina/schemas")
+                    .join(schema_name)
+                    .join("schema.toml");
+                let content = std::fs::read_to_string(&schema_path).ok()?;
+                let table: toml::Table = content.parse().ok()?;
+                let facts = table.get("facts")?.as_array()?;
+
+                let fact_map: std::collections::HashMap<String, String> = facts
+                    .iter()
+                    .filter_map(|f| {
+                        let t = f.as_table()?;
+                        let name = t.get("name")?.as_str()?.to_string();
+                        let event_type = t.get("event_type")?.as_str()?.to_string();
+                        Some((name, event_type))
+                    })
+                    .collect();
+
+                Some((schema_name.clone(), fact_map))
+            })
+            .collect()
     }
 }

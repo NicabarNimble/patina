@@ -447,115 +447,68 @@ pub(super) fn record_measurement(
 // Emit host support
 // =========================================================================
 
-/// Validate emit parameters and resolve the event_type from schema.
+/// Validate emit parameters and resolve the event_type from cached schema.
 ///
-/// Pure validation — no I/O to events.db. Checks:
-/// 1. Plugin declares the schema in its manifest
-/// 2. Schema is installed on disk
-/// 3. Fact-type exists in schema (returns its event_type)
-/// 4. Data is valid JSON
+/// Pure validation — no disk I/O. Schemas are parsed once at plugin load
+/// time and cached on GrantedCapabilities.schema_facts.
+///
+/// Checks:
+/// 1. Schema exists in cached facts (was declared in manifest + installed)
+/// 2. Fact-type exists in schema (returns its event_type)
+/// 3. Data is valid JSON
 pub(super) fn validate_emit(
-    project_root: &Option<PathBuf>,
+    schema_facts: &std::collections::HashMap<String, std::collections::HashMap<String, String>>,
     plugin_name: &str,
-    schemas: &std::collections::HashMap<String, String>,
     schema: &str,
     fact_type: &str,
     data: &str,
 ) -> Result<String, String> {
-    // 1. Plugin must declare this schema in its manifest
-    if !schemas.contains_key(schema) {
-        return Err(format!(
-            "schema '{}' not declared in plugin '{}' manifest",
+    // 1. Schema must exist in cache (parsed at load time from manifest + disk)
+    let facts = schema_facts.get(schema).ok_or_else(|| {
+        format!(
+            "schema '{}' not available for plugin '{}' (not declared or not installed)",
             schema, plugin_name
-        ));
-    }
+        )
+    })?;
 
-    // 2. Schema must be installed on disk
-    let root = project_root
-        .as_ref()
-        .ok_or_else(|| "no project root".to_string())?;
-    let schema_path = root
-        .join(".patina/schemas")
-        .join(schema)
-        .join("schema.toml");
-    if !schema_path.exists() {
-        return Err(format!(
-            "schema '{}' not installed at {}",
-            schema,
-            schema_path.display()
-        ));
-    }
-
-    // 3. Parse schema and validate fact-type exists
-    let schema_content = std::fs::read_to_string(&schema_path)
-        .map_err(|e| format!("read schema '{}': {}", schema, e))?;
-    let schema_table: toml::Table = schema_content
-        .parse()
-        .map_err(|e| format!("parse schema '{}': {}", schema, e))?;
-
-    let facts = schema_table
-        .get("facts")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| format!("schema '{}' has no [[facts]] section", schema))?;
-
-    // Find the fact definition and extract event_type
+    // 2. Fact-type must exist in schema — resolve to event_type
     let event_type = facts
-        .iter()
-        .find_map(|f| {
-            let t = f.as_table()?;
-            if t.get("name")?.as_str()? == fact_type {
-                t.get("event_type")?.as_str().map(|s| s.to_string())
-            } else {
-                None
-            }
-        })
+        .get(fact_type)
         .ok_or_else(|| format!("fact-type '{}' not found in schema '{}'", fact_type, schema))?;
 
-    // 4. Validate data is valid JSON
+    // 3. Validate data is valid JSON
     let _: serde_json::Value =
         serde_json::from_str(data).map_err(|e| format!("invalid JSON data: {}", e))?;
 
-    Ok(event_type)
-}
-
-/// Build the event data JSON with provenance metadata.
-pub(super) fn build_emit_event_data(
-    plugin_name: &str,
-    schema: &str,
-    fact_type: &str,
-    data: &str,
-) -> serde_json::Value {
-    let data_value: serde_json::Value = serde_json::from_str(data).unwrap_or_default();
-    serde_json::json!({
-        "_provenance": "external",
-        "_schema": schema,
-        "_plugin": plugin_name,
-        "_fact_type": fact_type,
-        "payload": data_value,
-    })
+    Ok(event_type.clone())
 }
 
 /// Emit a structured fact to the project eventlog.
 ///
-/// Validates schema exists, plugin declares it, fact-type exists in schema.
-/// Writes to events.db with provenance metadata. Returns seq number.
+/// Validates via cached schema facts (zero disk I/O), writes plugin data
+/// directly to events.db. Provenance is carried by source_id ("plugin:<name>"),
+/// schema by event_type (e.g., "forge.issue"). No wrapper — data shape matches
+/// what downstream consumers expect.
+///
+/// data-architecture-v3 will add explicit provenance/schema columns; until then
+/// source_id and event_type carry the signal.
 pub(super) fn emit_fact(
-    project_root: &Option<PathBuf>,
+    schema_facts: &std::collections::HashMap<String, std::collections::HashMap<String, String>>,
     plugin_name: &str,
-    schemas: &std::collections::HashMap<String, String>,
     schema: &str,
     fact_type: &str,
     data: &str,
 ) -> Result<u64, String> {
-    let event_type = validate_emit(project_root, plugin_name, schemas, schema, fact_type, data)?;
-
-    let event_data = build_emit_event_data(plugin_name, schema, fact_type, data);
+    let event_type = validate_emit(schema_facts, plugin_name, schema, fact_type, data)?;
 
     let conn = crate::eventlog::open_events_db().map_err(|e| format!("open events.db: {}", e))?;
 
     let timestamp = chrono::Utc::now().to_rfc3339();
     let source_id = format!("plugin:{}", plugin_name);
 
+    // Write plugin data directly — no wrapper envelope.
+    // Provenance: source_id = "plugin:<name>"
+    // Schema: event_type = "<schema>.<fact>" (e.g., "forge.issue")
     conn.execute(
         "INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data)
          VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -564,7 +517,7 @@ pub(super) fn emit_fact(
             &timestamp,
             &source_id,
             Option::<&str>::None,
-            &event_data.to_string()
+            data
         ],
     )
     .map_err(|e| format!("insert event: {}", e))?;

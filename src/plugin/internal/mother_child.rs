@@ -161,9 +161,8 @@ mod bindings {
                 ));
             }
             super::super::host_support::emit_fact(
-                &self.project_root,
+                &self.grants.schema_facts,
                 &self.plugin_name,
-                &self.grants.schemas,
                 &schema,
                 &fact_type,
                 &data,
