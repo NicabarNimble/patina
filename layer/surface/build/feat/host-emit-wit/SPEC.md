@@ -12,16 +12,16 @@ beliefs:
 exit_criteria:
 - id: emit-interface-in-wit
   text: WIT `emit` interface exists in `patina:host/emit` with `emit-fact(event-type, schema, data) -> result<u64, string>`
-  checked: false
+  checked: true
 - id: emit-wired-to-mother-child
   text: mother-child world imports `patina:host/emit` — plugins in this world can emit facts
-  checked: false
+  checked: true
 - id: emit-writes-to-eventlog
   text: emitted facts appear in events.db eventlog with correct event_type, schema reference, and provenance=external
-  checked: false
+  checked: true
 - id: emit-validates-schema
   text: host validates event-type matches a declared schema in the plugin manifest before writing to eventlog
-  checked: false
+  checked: true
 ---
 # feat: Host Emit WIT Interface — Plugins Can Write Facts
 
