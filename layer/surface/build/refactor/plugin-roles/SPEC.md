@@ -12,13 +12,13 @@ beliefs:
 exit_criteria:
 - id: role-field-in-manifest
   text: plugin.toml has a `role` field — one of connector, grammar, extension, app
-  checked: false
+  checked: true
 - id: role-validated-at-load
   text: host validates role against world — connectors must be mother-child, grammars must be pipeline, etc.
-  checked: false
+  checked: true
 - id: role-queryable
   text: '`patina plugin list` shows role for each installed plugin'
-  checked: false
+  checked: true
 ---
 # refactor: Plugin Roles — Connector, Grammar, Extension, App Metadata
 
