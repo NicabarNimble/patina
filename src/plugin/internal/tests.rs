@@ -2698,3 +2698,156 @@ fn role_none_skips_validation() {
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
 }
+
+// =====================================================================
+// WASM integration — forge connector plugin
+// =====================================================================
+
+/// Helper: load forge.wasm fixture and instantiate child.
+fn load_forge_child() -> Option<Box<dyn crate::mother::MotherChild>> {
+    let wasm_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/patina_plugin_forge.wasm");
+    if !wasm_path.exists() {
+        return None;
+    }
+
+    let engine = PluginEngine::new().unwrap();
+    let wasm_bytes = std::fs::read(&wasm_path).unwrap();
+    let component = engine.load_component(&wasm_bytes).unwrap();
+    let manifest = PluginManifest {
+        name: "patina-forge".into(),
+        version: "0.1.0".into(),
+        description: "test".into(),
+        world: PluginWorld::MotherChild,
+        role: Some(PluginRole::Connector),
+        patina_min: "0.39.0".into(),
+        capabilities: vec!["host_log".into(), "host_emit".into(), "host_http".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec!["api.github.com".into()],
+        host_secrets: std::collections::HashMap::new(),
+        provides: PluginProvides {
+            child: Some("forge".into()),
+            ..Default::default()
+        },
+        schemas: {
+            let mut s = std::collections::HashMap::new();
+            s.insert("forge".into(), "patina:schema/forge@1.0.0".into());
+            s
+        },
+    };
+
+    Some(
+        engine
+            .instantiate_child(&component, &manifest, None)
+            .unwrap(),
+    )
+}
+
+/// Forge child: instantiation and name check.
+#[test]
+fn wasm_forge_child_name() {
+    let child = match load_forge_child() {
+        Some(c) => c,
+        None => {
+            eprintln!("skipping: forge.wasm fixture not found");
+            return;
+        }
+    };
+    assert_eq!(child.name(), "forge");
+}
+
+/// Forge child: health check returns healthy on fresh start.
+#[test]
+fn wasm_forge_child_health() {
+    let child = match load_forge_child() {
+        Some(c) => c,
+        None => return,
+    };
+    match child.health() {
+        crate::mother::ChildHealth::Healthy => {}
+        other => panic!("expected Healthy, got: {:?}", other),
+    }
+}
+
+/// Forge child: unknown action returns error.
+#[test]
+fn wasm_forge_child_unknown_action() {
+    let child = match load_forge_child() {
+        Some(c) => c,
+        None => return,
+    };
+    let request = crate::mother::ChildRequest {
+        action: "unknown_action".into(),
+        payload: serde_json::json!({}),
+    };
+    let result = child.handle(&request);
+    assert!(result.is_err(), "unknown action should return Err");
+}
+
+/// Forge child: sync with invalid JSON returns error.
+#[test]
+fn wasm_forge_child_sync_bad_payload() {
+    let child = match load_forge_child() {
+        Some(c) => c,
+        None => return,
+    };
+    let request = crate::mother::ChildRequest {
+        action: "sync".into(),
+        payload: serde_json::json!("not an object"),
+    };
+    let result = child.handle(&request);
+    assert!(result.is_err(), "sync with non-object payload should fail");
+}
+
+/// Forge child: sync with missing owner field returns error.
+#[test]
+fn wasm_forge_child_sync_missing_owner() {
+    let child = match load_forge_child() {
+        Some(c) => c,
+        None => return,
+    };
+    let request = crate::mother::ChildRequest {
+        action: "sync".into(),
+        payload: serde_json::json!({"repo": "test"}),
+    };
+    let result = child.handle(&request);
+    assert!(result.is_err(), "sync without owner should fail");
+}
+
+/// Forge child: tick returns empty vec (no toys yet).
+#[test]
+fn wasm_forge_child_tick_empty() {
+    let mut child = match load_forge_child() {
+        Some(c) => c,
+        None => return,
+    };
+    let toys = child.tick();
+    assert!(toys.is_empty(), "tick() should return empty for now");
+}
+
+/// Forge plugin.toml manifest parses correctly.
+#[test]
+fn forge_manifest_parses() {
+    let manifest_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/forge/plugin.toml");
+    let m = PluginManifest::from_path(&manifest_path).unwrap();
+    assert_eq!(m.name, "patina-forge");
+    assert_eq!(m.world, PluginWorld::MotherChild);
+    assert_eq!(m.role, Some(PluginRole::Connector));
+    assert!(m.capabilities.contains(&"host_emit".to_string()));
+    // host_http is an array (domain list), not a boolean — it's in host_http_domains
+    assert_eq!(m.host_http_domains, vec!["api.github.com"]);
+    assert!(m.host_secrets.contains_key("api.github.com"));
+    assert_eq!(m.provides.child.as_deref(), Some("forge"));
+    assert!(m.schemas.contains_key("forge"));
+}
+
+/// Forge plugin passes capability checks.
+#[test]
+fn forge_manifest_capabilities_valid() {
+    let manifest_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/forge/plugin.toml");
+    let m = PluginManifest::from_path(&manifest_path).unwrap();
+    PluginEngine::check_capabilities(&m).expect("forge capabilities should be valid");
+}
