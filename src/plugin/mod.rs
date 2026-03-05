@@ -14,6 +14,6 @@ mod internal;
 pub mod scaffold;
 pub use internal::{
     CommandEngine, CredentialMapping, GrantedCapabilities, InjectionLocation, PipelineEngine,
-    PluginEngine, PluginManifest, PluginProvides, PluginWorld, QueryDispatchFn, QueryScope,
-    TaskEngine,
+    PluginEngine, PluginManifest, PluginProvides, PluginRole, PluginWorld, QueryDispatchFn,
+    QueryScope, TaskEngine,
 };

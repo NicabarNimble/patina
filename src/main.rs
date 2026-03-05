@@ -1414,6 +1414,7 @@ fn main() -> Result<()> {
                         version: "0.0.0".into(),
                         description: String::new(),
                         world: patina::plugin::PluginWorld::Command,
+                        role: None,
                         patina_min: "0.0.0".into(),
                         capabilities: vec!["host_log".into(), "host_layer".into()],
                         allowed_toy_commands: vec![],

@@ -86,6 +86,44 @@ impl std::fmt::Display for PluginWorld {
 }
 
 // =========================================================================
+// Plugin role enum — parsed from manifest, describes purpose (F4)
+// =========================================================================
+
+/// Known plugin roles — what the plugin is FOR (orthogonal to world).
+#[derive(Debug, Clone, PartialEq)]
+pub enum PluginRole {
+    Connector,
+    Grammar,
+    Extension,
+    App,
+}
+
+impl std::str::FromStr for PluginRole {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "connector" => Ok(Self::Connector),
+            "grammar" => Ok(Self::Grammar),
+            "extension" => Ok(Self::Extension),
+            "app" => Ok(Self::App),
+            other => anyhow::bail!("unknown plugin role: '{}'", other),
+        }
+    }
+}
+
+impl std::fmt::Display for PluginRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Connector => write!(f, "connector"),
+            Self::Grammar => write!(f, "grammar"),
+            Self::Extension => write!(f, "extension"),
+            Self::App => write!(f, "app"),
+        }
+    }
+}
+
+// =========================================================================
 // Engine singleton (OnceLock pattern from Zed)
 // =========================================================================
 
@@ -129,6 +167,9 @@ pub struct PluginManifest {
     pub version: String,
     pub description: String,
     pub world: PluginWorld,
+    /// Plugin role — what the plugin is FOR (connector, grammar, extension, app).
+    /// None for legacy plugins that haven't declared a role yet.
+    pub role: Option<PluginRole>,
     pub patina_min: String,
     pub capabilities: Vec<String>,
     /// Toy commands this plugin is allowed to request (from [capabilities.toys].commands).
@@ -228,6 +269,12 @@ impl PluginManifest {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("missing plugin.world"))?;
         let world = world_str.parse::<PluginWorld>()?;
+
+        let role = plugin
+            .get("role")
+            .and_then(|v| v.as_str())
+            .map(|s| s.parse::<PluginRole>())
+            .transpose()?;
 
         let patina_min = plugin
             .get("patina_min")
@@ -374,6 +421,7 @@ impl PluginManifest {
             version,
             description,
             world,
+            role,
             patina_min,
             capabilities,
             allowed_toy_commands,
