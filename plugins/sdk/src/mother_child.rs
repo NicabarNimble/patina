@@ -83,6 +83,24 @@ pub mod host_http {
     }
 }
 
+/// Host emit — publish facts to the eventlog via schema-validated emission.
+///
+/// Requires `host_emit = true` and a `[schemas.<name>]` entry in plugin.toml.
+/// The host validates the schema and fact type at load time (zero disk I/O
+/// at emit time). Facts are written with provenance="external".
+pub mod host_emit {
+    /// Emit a fact to the eventlog.
+    ///
+    /// - `schema`: schema name (e.g., "forge") — must match a `[schemas.<name>]` entry
+    /// - `fact_type`: fact name within the schema (e.g., "issue")
+    /// - `data`: JSON payload matching the schema's WIT record type
+    ///
+    /// Returns the event sequence number on success.
+    pub fn emit_fact(schema: &str, fact_type: &str, data: &str) -> Result<u64, String> {
+        super::patina::host::emit::emit_fact(schema, fact_type, data)
+    }
+}
+
 // =========================================================================
 // Plugin trait
 // =========================================================================
