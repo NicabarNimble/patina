@@ -4,7 +4,6 @@ id: forge-plugin-extraction
 status: draft
 created: 2026-03-04
 blocked_by:
-- plugin-infrastructure
 - host-emit-wit
 - plugin-roles
 sessions:
@@ -24,7 +23,7 @@ exit_criteria:
   text: forge plugin uses host_emit to write forge.issue and forge.pr events to eventlog with provenance=external
   checked: false
 - id: schema-ships-with-plugin
-  text: forge plugin ships its own schema (WIT types + table defs + embedding config) — host auto-installs on plugin load
+  text: forge plugin declares its schema (WIT types + table defs + embedding config) — schema available when plugin runs
   checked: false
 - id: forge-removed-from-core
   text: '`src/forge/` deleted. No GitHub API knowledge in Patina core.'
@@ -55,7 +54,7 @@ dispatch to external plugins. See [[scrape-is-local-capture]].
 
 ## Current State
 
-**`src/forge/` (2,216 LOC):**
+**`src/forge/` (1,683 LOC):**
 - `mod.rs` — platform detection, `ForgeReader` trait, URL parsing
 - `types.rs` — Issue, PullRequest, Comment domain types
 - `github/mod.rs` + `github/internal.rs` — GitHub API via `gh` CLI
