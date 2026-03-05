@@ -4,7 +4,7 @@ id: persona-federation
 status: draft
 created: 2026-03-04
 blocked_by:
-- mother-maturation
+- plugin-infrastructure
 sessions:
   origin: 20260303-184231
 related:
@@ -25,7 +25,7 @@ exit_criteria:
   text: beliefs carry persona provenance — the `persona` field maps to a Mother-registered UID, not a hardcoded string
   checked: false
 - id: persona-linking
-  text: personas can be linked through Mother with directional, scoped knowledge streams
+  text: personas can be linked through Mother with directional, scoped configuration (push/pull/bidirectional, facet filtering)
   checked: false
 - id: persona-visibility
   text: 'personas have visibility levels: private (invitation only), public (discoverable), shared (org-scoped)'
