@@ -2500,3 +2500,183 @@ package = "patina:schema/forge@1.0.0"
         result.unwrap_err()
     );
 }
+
+// =====================================================================
+// PluginRole — parsing, display, expected_worlds
+// =====================================================================
+
+#[test]
+fn role_from_str_all_variants() {
+    assert_eq!("connector".parse::<PluginRole>().unwrap(), PluginRole::Connector);
+    assert_eq!("grammar".parse::<PluginRole>().unwrap(), PluginRole::Grammar);
+    assert_eq!("extension".parse::<PluginRole>().unwrap(), PluginRole::Extension);
+    assert_eq!("app".parse::<PluginRole>().unwrap(), PluginRole::App);
+}
+
+#[test]
+fn role_from_str_unknown_errors() {
+    assert!("widget".parse::<PluginRole>().is_err());
+    assert!("CONNECTOR".parse::<PluginRole>().is_err()); // case sensitive
+}
+
+#[test]
+fn role_display() {
+    assert_eq!(PluginRole::Connector.to_string(), "connector");
+    assert_eq!(PluginRole::Grammar.to_string(), "grammar");
+    assert_eq!(PluginRole::Extension.to_string(), "extension");
+    assert_eq!(PluginRole::App.to_string(), "app");
+}
+
+#[test]
+fn role_expected_worlds() {
+    assert!(PluginRole::Connector.expected_worlds().contains(&PluginWorld::MotherChild));
+    assert!(PluginRole::Grammar.expected_worlds().contains(&PluginWorld::Pipeline));
+    assert!(PluginRole::Extension.expected_worlds().contains(&PluginWorld::Command));
+    assert!(PluginRole::App.expected_worlds().contains(&PluginWorld::MotherChild));
+}
+
+// =====================================================================
+// PluginManifest — role field parsing
+// =====================================================================
+
+#[test]
+fn manifest_with_role_parses() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "test-connector"
+world = "mother-child"
+role = "connector"
+
+[capabilities]
+host_log = true
+
+[provides]
+child = "test"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert_eq!(m.role, Some(PluginRole::Connector));
+}
+
+#[test]
+fn manifest_without_role_is_none() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "legacy-plugin"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+
+[provides]
+child = "legacy"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert_eq!(m.role, None);
+}
+
+#[test]
+fn manifest_unknown_role_errors() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "bad-role"
+world = "mother-child"
+role = "widget"
+
+[capabilities]
+host_log = true
+
+[provides]
+child = "bad"
+"#,
+    );
+    let result = PluginManifest::from_path(f.path());
+    assert!(result.is_err());
+    assert!(
+        result.unwrap_err().to_string().contains("unknown plugin role"),
+    );
+}
+
+// =====================================================================
+// Role-world validation (warns, does not block)
+// =====================================================================
+
+#[test]
+fn role_world_valid_combo_passes() {
+    let m = PluginManifest {
+        name: "conn".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::MotherChild,
+        role: Some(PluginRole::Connector),
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
+        provides: PluginProvides {
+            child: Some("conn".into()),
+            commands: vec![],
+            ..Default::default()
+        },
+        schemas: std::collections::HashMap::new(),
+    };
+    // connector + mother-child is valid — check_capabilities should pass
+    assert!(PluginEngine::check_capabilities(&m).is_ok());
+}
+
+#[test]
+fn role_world_unusual_combo_still_passes() {
+    // grammar + mother-child is unusual but should NOT block
+    let m = PluginManifest {
+        name: "weird-grammar".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::MotherChild,
+        role: Some(PluginRole::Grammar),
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
+        provides: PluginProvides {
+            child: Some("weird".into()),
+            commands: vec![],
+            ..Default::default()
+        },
+        schemas: std::collections::HashMap::new(),
+    };
+    // Unusual combo warns but does NOT bail
+    assert!(PluginEngine::check_capabilities(&m).is_ok());
+}
+
+#[test]
+fn role_none_skips_validation() {
+    // Legacy plugin with no role — should pass without warnings
+    let m = PluginManifest {
+        name: "legacy".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::MotherChild,
+        role: None,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
+        provides: PluginProvides {
+            child: Some("legacy".into()),
+            commands: vec![],
+            ..Default::default()
+        },
+        schemas: std::collections::HashMap::new(),
+    };
+    assert!(PluginEngine::check_capabilities(&m).is_ok());
+}
