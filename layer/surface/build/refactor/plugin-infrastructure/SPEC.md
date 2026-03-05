@@ -14,7 +14,7 @@ exit_criteria:
   text: All child specs (host-emit-wit, plugin-roles) are complete
   checked: false
 ---
-# refactor: Plugin Infrastructure — Host Emit, Roles, and SDK
+# refactor: Plugin Infrastructure — Host Emit and Roles
 
 > Foundation spec. Plugins can emit facts, declare roles, and use an
 > updated SDK. Everything else depends on this.
