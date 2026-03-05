@@ -361,6 +361,26 @@ impl PluginEngine {
             }
         }
 
+        // Role-world validation: warn on unusual combinations, don't block.
+        // Roles describe purpose; worlds enforce capabilities. Invalid combos
+        // aren't broken — just unusual. DESIGN.md: "doctor can warn."
+        if let Some(ref role) = manifest.role {
+            let expected_worlds = role.expected_worlds();
+            if !expected_worlds.contains(&manifest.world) {
+                eprintln!(
+                    "[plugin:{}] warning: role '{}' is unusual for world '{}' (expected: {})",
+                    manifest.name,
+                    role,
+                    manifest.world,
+                    expected_worlds
+                        .iter()
+                        .map(|w| w.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
+        }
+
         Ok(())
     }
 

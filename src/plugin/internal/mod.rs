@@ -112,6 +112,19 @@ impl std::str::FromStr for PluginRole {
     }
 }
 
+impl PluginRole {
+    /// Worlds where this role is typically used.
+    /// Used for validation warnings — not enforcement.
+    pub fn expected_worlds(&self) -> &[PluginWorld] {
+        match self {
+            Self::Connector => &[PluginWorld::MotherChild, PluginWorld::Task],
+            Self::Grammar => &[PluginWorld::Pipeline],
+            Self::Extension => &[PluginWorld::Command, PluginWorld::Task],
+            Self::App => &[PluginWorld::MotherChild, PluginWorld::Task],
+        }
+    }
+}
+
 impl std::fmt::Display for PluginRole {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
