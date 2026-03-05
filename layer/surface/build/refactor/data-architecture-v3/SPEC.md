@@ -19,10 +19,10 @@ beliefs:
 exit_criteria:
 - id: events-classified-by-provenance
   text: events.db events carry a `provenance` field distinguishing local observations (scrape, session, measure) from external evidence (forge, connectors)
-  checked: false
+  checked: true
 - id: external-evidence-survives-rebuild
   text: '`patina scrape --rebuild` preserves all external evidence in events.db — only patina.db projections are rebuilt'
-  checked: false
+  checked: true
 - id: lake-registry-in-mother
   text: Mother manages a data lake registry (name, kind, location, credentials) extending the existing ref repo pattern
   checked: false
