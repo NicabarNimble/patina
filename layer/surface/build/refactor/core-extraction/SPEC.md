@@ -38,13 +38,17 @@ shrink Patina core to protocol + stores.
   no domain code in core
 
 **What's currently in core that shouldn't be:**
-- `src/forge/` (2,216 LOC) — GitHub API via `gh` CLI, sync engine,
-  rate limiting, staging pipeline
-- `src/commands/scrape/forge/` — hardcoded forge dispatch in scrape
+- Forge (2,345 LOC total) — GitHub API via `gh` CLI, sync engine,
+  rate limiting, staging pipeline:
+  - `src/forge/` (533 LOC: mod.rs, none.rs, types.rs, writer.rs)
+  - `src/forge/github/` (442 LOC: mod.rs, internal.rs)
+  - `src/forge/sync/` (708 LOC: mod.rs, internal.rs)
+  - `src/commands/scrape/forge/` (604 LOC: forge subcommand handler)
+  - `src/generated/schemas/forge.rs` (58 LOC)
 - `src/commands/scrape/code/` — tree-sitter code parsing (should be
   grammar plugins only, partially done)
-- `src/spec/` — spec lifecycle management
-- `src/session/` — session tracking
+- Spec subsystem: `src/spec.rs` + `src/commands/spec/` + `src/mcp/server/spec.rs`
+- Session subsystem: `src/session.rs` + `src/commands/session/`
 
 **What IS core (the protocol + stores):**
 - Event sourcing (eventlog, events.db)
