@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: data-architecture-v3
-status: ready
+status: active
 created: 2026-03-04
 blocked_by:
 - plugin-infrastructure
