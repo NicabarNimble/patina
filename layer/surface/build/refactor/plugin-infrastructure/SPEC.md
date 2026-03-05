@@ -12,7 +12,7 @@ beliefs:
 exit_criteria:
 - id: children-complete
   text: All child specs (host-emit-wit, plugin-roles) are complete
-  checked: false
+  checked: true
 ---
 # refactor: Plugin Infrastructure — Host Emit and Roles
 
