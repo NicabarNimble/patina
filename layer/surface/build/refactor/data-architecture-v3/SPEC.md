@@ -4,7 +4,7 @@ id: data-architecture-v3
 status: draft
 created: 2026-03-04
 blocked_by:
-- mother-maturation
+- plugin-infrastructure
 sessions:
   origin: 20260304-120702
 related:
@@ -45,12 +45,14 @@ exit_criteria:
   about the outside world. The gap grows when Patina becomes
   domain-agnostic.
 - [[session-20260304-120702]] — designed the 4-store conceptual model
-  and 4-layer data flow (Sources → Lakes → Modified Data Blocks →
+  and 4-layer data flow (Sources → Lakes → Data Blocks →
   Projects). Decided: provenance metadata, not physical partition.
 - [[events-are-autobiography-not-telemetry]] — events.db is the
-  project's autobiography. But external evidence (forge issues, email
-  data) isn't autobiography — it's observed evidence. Provenance
-  distinguishes them.
+  project's autobiography. External evidence (forge issues, email
+  data) is ALSO autobiography — the project's record of what it
+  observed from the outside world. Provenance distinguishes HOW
+  facts entered (local observation, external fetch, derived computation),
+  not whether they're autobiography.
 - [[content-addressed-references]] — references should be content-
   addressed for portability and future ZK verification.
 
