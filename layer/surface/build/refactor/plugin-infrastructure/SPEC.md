@@ -57,6 +57,24 @@ maturation.
 | [[host-emit-wit]] | Plugins can write facts to eventlog | First |
 | [[plugin-roles]] | Role metadata in manifests, role-based dispatch | Second (or parallel) |
 
+## Implementation Prerequisites
+
+Resolve before or during implementation of child specs:
+
+- **Schema-install mechanism.** When a connector plugin ships a schema,
+  how does it get installed? Does `patina plugin install` copy to
+  `.patina/schemas/`? Or does the host resolve schemas from plugin
+  directories? Blocks [[spec-forge-plugin-extraction]] EC3
+  (schema-ships-with-plugin). See forge-plugin-extraction SPEC.md
+  Open Questions.
+
+- **Projection table ownership.** After extraction, who creates
+  materialized views (e.g., `forge_issues`, `forge_prs`) from emitted
+  events? Options: (a) scrape creates them when it sees matching events,
+  (b) schema.toml declares projections and scrape materializes them
+  generically. Option (b) is more extensible. See forge-plugin-extraction
+  SPEC.md Open Questions.
+
 ## Exit Criteria
 
 This spec is complete when both children are complete.

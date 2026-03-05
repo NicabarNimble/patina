@@ -64,22 +64,28 @@ Patina instances.
 | [[persona-federation]] | Persona registry, belief provenance, linking | Second (or parallel) |
 | [[continuous-operation]] | Mother daemon, streaming, always-on | Third (depends on v3 + personas) |
 
-## Exploration Needed
+## Implementation Prerequisites
 
-- **Data blocks** — lakes are raw, blocks are structured in some way.
-  What structuring options exist? Structured tables, semantic embeddings,
-  filtered views, or something more versatile? The shape should be very
-  open. This concept emerged in [[session-20260304-120702]] but needs
-  more design work. Could be its own spec.
-- **Edge interface** — how do Patina apps on Cloudflare/Vercel connect
-  back to local Mother? WebSocket? HTTP polling? Push via R2? Not specced
-  yet, future work after continuous-operation.
-- **E2EE on belief streams** — user has blockchain/Signal background
-  (Giza, Starknet STWO). Belief streams could be E2EE. Not specced yet
-  but [[content-addressed-references]] keeps the path open.
-- **Multi-user** — projects as islands with federation through Mother,
-  not shared git. Needs more design but the Mother-child model points
-  the right direction.
+Resolve before or during implementation of child specs:
+
+- **Data Blocks concept.** Lakes are raw, blocks are shaped — but what
+  ARE blocks? Structured tables, semantic embeddings, filtered views, or
+  something more versatile? This concept needs its own design and may
+  become its own spec. Does NOT block [[spec-data-architecture-v3]]
+  (provenance + lake registry proceed without it), but blocks the full
+  4-layer data flow. See [[session-20260304-120702]] and
+  [[spec-mother-maturation]] DESIGN.md, "Data Blocks: Exploration
+  Territory."
+
+## Future Work (not blocking children)
+
+- **Edge interface** — how Patina apps on Cloudflare/Vercel connect
+  back to local Mother. Deferred to a dedicated edge-interface spec
+  after [[spec-continuous-operation]]. See continuous-operation DESIGN.md.
+- **E2EE on belief streams** — [[content-addressed-references]] keeps
+  the path open. Persona linking architecture does not preclude it.
+- **Multi-user** — projects as islands with federation through Mother.
+  The Mother-child model points the direction. Post-continuous-operation.
 
 ## Exit Criteria
 

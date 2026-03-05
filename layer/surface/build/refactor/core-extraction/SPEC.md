@@ -66,14 +66,34 @@ shrink Patina core to protocol + stores.
 | [[scrape-simplification]] | Scrape = local git capture only, external via connectors | Second |
 | [[core-plugin-extraction]] | Spec + session subsystems as plugins, core is domain-agnostic | Third (hardest) |
 
-## Exploration Needed
+## Design Decisions (resolved in child DESIGN.md files)
 
-- **How much of scrape is protocol vs domain?** Git commit parsing and
-  layer/ markdown parsing feel like protocol (they read the declaration
-  store). Code parsing is clearly domain. Where's the line?
-- **Can core-plugin-extraction work with current WIT?** Spec and session
-  subsystems need filesystem, git, and MCP tool registration. Those host
-  capabilities don't exist yet. This may need new WIT interfaces.
+- **Protocol vs domain line.** layer/ parsing and git commit parsing are
+  protocol (reading the declaration store). Code parsing is domain
+  (grammar plugins). Forge is domain (connector plugin). Resolved in
+  [[spec-scrape-simplification]] DESIGN.md.
+- **Core-plugin-extraction needs new WIT.** Three interfaces needed:
+  host/fs-write, host/git, host/mcp-register. DESIGN.md proposes a
+  Phase A (design interfaces) / Phase B (extract) split. Resolved in
+  [[spec-core-plugin-extraction]] DESIGN.md.
+
+## Implementation Prerequisites
+
+Resolve before or during implementation of child specs:
+
+- **`patina connector` CLI scope.** Is `patina connector sync` a
+  first-class top-level command, or a wrapper around `patina plugin run`?
+  How does `--all` scope — all installed connectors or only those
+  configured for this project? Lean toward: first-class command,
+  project-scoped. Blocks [[spec-scrape-simplification]] EC3
+  (connectors-run-independently). See scrape-simplification DESIGN.md
+  Open Questions.
+
+- **Phase A host-capability spec.** host/fs-write, host/git,
+  host/mcp-register need design before [[spec-core-plugin-extraction]]
+  can begin. Should be drafted as a single infrastructure spec (like
+  [[spec-plugin-infrastructure]]) once forge extraction proves the
+  pattern. See core-plugin-extraction SPEC.md Open Questions.
 
 ## Exit Criteria
 
