@@ -118,6 +118,93 @@ pub fn create_materialized_views(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Project forge events from events.db into patina.db materialized views.
+///
+/// Reads all forge.issue and forge.pr events from events.db and upserts
+/// into forge_issues/forge_prs tables in patina.db. This is the CQRS
+/// projection: events.db is the write model, patina.db tables are the
+/// read model. Idempotent — safe to run multiple times.
+///
+/// This handles events from ANY source (scrape, plugin, or future connectors)
+/// as long as they follow the forge event JSON schema.
+pub fn project_from_events(patina_conn: &Connection) -> Result<ProjectionStats> {
+    create_materialized_views(patina_conn)?;
+
+    // Attach events.db to the patina.db connection for cross-db queries
+    patina::eventlog::ensure_events_db()?;
+    let events_path = patina::eventlog::EVENTS_DB;
+    patina_conn.execute("ATTACH DATABASE ?1 AS events_db", [events_path])?;
+
+    // Project issues: latest event per number wins (by seq)
+    let issue_count = patina_conn.execute(
+        r#"INSERT OR REPLACE INTO forge_issues
+           (number, title, body, state, labels, author, created_at, updated_at, url, event_seq)
+           SELECT
+               json_extract(e.data, '$.number'),
+               json_extract(e.data, '$.title'),
+               json_extract(e.data, '$.body'),
+               json_extract(e.data, '$.state'),
+               json_extract(e.data, '$.labels'),
+               json_extract(e.data, '$.author'),
+               e.timestamp,
+               COALESCE(json_extract(e.data, '$.updated_at'), e.timestamp),
+               json_extract(e.data, '$.url'),
+               e.seq
+           FROM events_db.eventlog e
+           WHERE e.event_type = 'forge.issue'
+             AND e.seq = (
+               SELECT MAX(e2.seq) FROM events_db.eventlog e2
+               WHERE e2.event_type = 'forge.issue'
+                 AND json_extract(e2.data, '$.number') = json_extract(e.data, '$.number')
+             )"#,
+        [],
+    )?;
+
+    // Project PRs: latest event per number wins (by seq)
+    let pr_count = patina_conn.execute(
+        r#"INSERT OR REPLACE INTO forge_prs
+           (number, title, body, state, labels, author, created_at, merged_at, url,
+            linked_issues, approvals, event_seq)
+           SELECT
+               json_extract(e.data, '$.number'),
+               json_extract(e.data, '$.title'),
+               json_extract(e.data, '$.body'),
+               json_extract(e.data, '$.state'),
+               json_extract(e.data, '$.labels'),
+               json_extract(e.data, '$.author'),
+               e.timestamp,
+               CASE json_extract(e.data, '$.state')
+                   WHEN 'merged' THEN e.timestamp
+                   ELSE NULL
+               END,
+               json_extract(e.data, '$.url'),
+               COALESCE(json_extract(e.data, '$.linked_issues'), '[]'),
+               COALESCE(json_extract(e.data, '$.approvals'), 0),
+               e.seq
+           FROM events_db.eventlog e
+           WHERE e.event_type = 'forge.pr'
+             AND e.seq = (
+               SELECT MAX(e2.seq) FROM events_db.eventlog e2
+               WHERE e2.event_type = 'forge.pr'
+                 AND json_extract(e2.data, '$.number') = json_extract(e.data, '$.number')
+             )"#,
+        [],
+    )?;
+
+    patina_conn.execute("DETACH DATABASE events_db", [])?;
+
+    Ok(ProjectionStats {
+        issues_projected: issue_count,
+        prs_projected: pr_count,
+    })
+}
+
+/// Stats from projection operation.
+pub struct ProjectionStats {
+    pub issues_projected: usize,
+    pub prs_projected: usize,
+}
+
 /// Stats returned from insert operations
 pub struct InsertStats {
     pub inserted: usize,
@@ -281,6 +368,9 @@ pub fn insert_prs(
 }
 
 /// Populate FTS5 index with forge issues.
+///
+/// Reads from forge_issues projection table (populated by project_from_events).
+/// Works with events from any source (scrape, plugin, or future connectors).
 pub fn populate_fts5_issues(conn: &Connection) -> Result<usize> {
     // Clear existing forge.issue entries to avoid duplicates on re-run
     conn.execute("DELETE FROM code_fts WHERE event_type = 'forge.issue'", [])?;
@@ -289,12 +379,11 @@ pub fn populate_fts5_issues(conn: &Connection) -> Result<usize> {
         r#"
         INSERT INTO code_fts (symbol_name, file_path, content, event_type)
         SELECT
-            json_extract(data, '$.title') as symbol_name,
-            json_extract(data, '$.url') as file_path,
-            COALESCE(json_extract(data, '$.body'), '') as content,
+            title as symbol_name,
+            url as file_path,
+            COALESCE(body, '') as content,
             'forge.issue' as event_type
-        FROM eventlog
-        WHERE event_type = 'forge.issue'
+        FROM forge_issues
         "#,
         [],
     )?;

@@ -41,8 +41,23 @@ pub fn extract_code_metadata_v2(
     let mut db = Database::open(db_path)?;
     db.init_schema()?;
 
-    // Ensure forge materialized views exist for Issue/PullRequest routing
-    crate::commands::scrape::forge::create_materialized_views(db.connection())?;
+    // Project forge events from events.db into patina.db materialized views.
+    // This picks up events from both scrape and plugin sources.
+    match crate::commands::scrape::forge::project_from_events(db.connection()) {
+        Ok(stats) => {
+            if stats.issues_projected > 0 || stats.prs_projected > 0 {
+                println!(
+                    "  Projected {} issues, {} PRs from events.db",
+                    stats.issues_projected, stats.prs_projected
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!("  Warning: forge projection failed: {}", e);
+            // Fall back to just creating tables
+            crate::commands::scrape::forge::create_materialized_views(db.connection())?;
+        }
+    }
 
     // Open events.db for forge event writes (runtime events go to events.db)
     let events_conn = patina::eventlog::open_events_db()?;

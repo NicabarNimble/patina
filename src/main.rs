@@ -1615,7 +1615,8 @@ fn main() -> Result<()> {
                         let engine = patina::plugin::PluginEngine::new()?;
                         let component = engine.load_component(&wasm_bytes)?;
                         let query_fn = make_query_dispatch(&manifest);
-                        let mut child = engine.instantiate_child(&component, &manifest, query_fn)?;
+                        let mut child =
+                            engine.instantiate_child(&component, &manifest, query_fn)?;
 
                         // on_load — initialize the plugin
                         use patina::mother::MotherHost;
@@ -1638,7 +1639,10 @@ fn main() -> Result<()> {
                             };
                             match child.handle(&request) {
                                 Ok(response) => {
-                                    println!("{}", serde_json::to_string_pretty(&response.payload)?);
+                                    println!(
+                                        "{}",
+                                        serde_json::to_string_pretty(&response.payload)?
+                                    );
                                 }
                                 Err(e) => {
                                     eprintln!("error: {}", e);
