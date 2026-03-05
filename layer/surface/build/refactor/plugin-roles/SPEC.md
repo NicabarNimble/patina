@@ -3,8 +3,6 @@ type: refactor
 id: plugin-roles
 status: draft
 created: 2026-03-04
-blocked_by:
-- plugin-infrastructure
 sessions:
   origin: 20260304-120702
 beliefs:
@@ -13,7 +11,7 @@ beliefs:
 - code-is-not-core
 exit_criteria:
 - id: role-field-in-manifest
-  text: plugin.toml has a `role` field — one of connector, grammar, extension, app, subsystem
+  text: plugin.toml has a `role` field — one of connector, grammar, extension, app
   checked: false
 - id: role-validated-at-load
   text: host validates role against world — connectors must be mother-child, grammars must be pipeline, etc.
@@ -33,8 +31,8 @@ exit_criteria:
 The plugin system has 4 worlds (mother-child, command, task, pipeline)
 that define **capability boundaries**. But there's no vocabulary for what
 plugins **do**. A mother-child plugin could be a connector (fetches
-external data), a scheduler (manages sync lifecycle), or a future
-subsystem (spec management). The host has no way to know.
+external data), a model resolver, or a scheduler. The host has no way
+to know.
 
 This matters for:
 - Dispatch: "run all connectors" vs "run all grammars" requires role
@@ -46,8 +44,8 @@ This matters for:
 - `src/plugin/internal/mod.rs` lines 123-200 — `PluginManifest` struct
   and `PluginProvides` fields. Currently has `child`, `commands`,
   `pipeline_ops`, `languages` — but no `role` field.
-- `src/plugin/internal/mod.rs` lines 200-340 — capability gating by
-  world. Role would add a second validation axis.
+- `src/plugin/internal/mod.rs` lines 53-73 — `PluginWorld::allowed_capabilities()`
+  capability gating by world. Role would add a second validation axis.
 
 **Architecture context:**
 - [[session-20260303-190855]] — identified 5 plugin roles: connector,
@@ -84,14 +82,12 @@ role = "connector"        # NEW
 | `grammar` | Parse local files into structured facts | pipeline | rust, python, markdown, pdf |
 | `extension` | Add commands, analysis, monitoring | command or task | doctor, models, report |
 | `app` | Full action layer, may run standalone | mother-child or task | chat-agent, crm, game-ai |
-| `subsystem` | Manage domain lifecycle (future) | mother-child | spec-manager, session-manager |
 
 Role-world validation:
 - `connector` → must be `mother-child` (needs http, credentials, emit)
 - `grammar` → must be `pipeline` (pure compute, no side effects)
 - `extension` → `command` or `task` (CLI surface)
 - `app` → `mother-child` or `task` (needs full capabilities)
-- `subsystem` → `mother-child` (needs host filesystem, git — FUTURE)
 
 ## Steps
 
@@ -116,16 +112,12 @@ Role-world validation:
   or something outside the plugin system? See [[local-first-edge-deployable]].
   **Decision: for now, app is a plugin role. Edge apps are a future concern.**
 
-- **Subsystem feasibility.** Spec and session subsystems need host
-  capabilities that don't exist: filesystem write, git operations, MCP
-  tool registration. This role is marked FUTURE. See
-  [[core-plugin-extraction]] for the full challenge.
-
 ## Non-Goals
 
 - **Building new plugins.** This spec adds role metadata. Actual
   connectors/grammars are separate specs.
 - **Role-based auto-dispatch.** This spec adds the metadata. Dispatch
   logic is [[scrape-simplification]] and [[continuous-operation]].
-- **New host capabilities for subsystems.** Future work in
-  [[core-plugin-extraction]].
+- **Subsystem extraction roles.** Spec and session subsystem extraction
+  is [[core-plugin-extraction]]'s concern. Roles for those emerge when
+  the WIT interfaces exist.
