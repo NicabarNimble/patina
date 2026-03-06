@@ -173,30 +173,33 @@ feed the belief loop alongside external facts.
 
 ### Separation of Concerns
 
+Four actors. Mother has a dual role — she both manages children AND
+routes facts. Pipe protocol and connections are properties of
+interactions between actors, not actors themselves.
+
 ```
-          the           links pipe    does one      the           knows
-          language      to auth       job           node          purpose
-            |             |             |             |             |
-        Pipe        Connection      Child        Mother       Consumer
-       protocol                   (managed)     (broker)    (project/app)
-            |             |             |             |             |
-  does:    define types   bind cred     transform    route        project
-           sign/hash      one cmd UX   hold conn    schedule     index
-           streaming      link to       manage svc   validate     believe
-                |          child          |             |             |
-  doesn't: run           know data    route        transform    fetch
-           store         know dest    schedule     hold conn    know source
-           decide        know format  know routing know format  know transport
+  Connector Child        Mother (manage)      Mother (route)       Consumer
+  bridge to external     spawn, monitor       match source→dest    subscribe
+  hold connection        resolve auth         fan-out by decl      project/index
+  transform to facts     validate manifest    schema validate      act on beliefs
+       |                      |                    |                    |
+  doesn't:               doesn't:             doesn't:             doesn't:
+  route                  transform            hold connections     know source
+  know destinations      know data format     know data format     know transport
+  schedule               hold connections     transform            fetch
 ```
+
+**Pipe protocol** (the language) and **connections** (pipe + auth)
+cut across all actors — they're how actors interact, not what they do.
 
 **The independence test:** can you replace any piece without touching
 the others?
 - Swap GitHub API v3 → v4? Change connector child only.
 - Swap WebSocket → SSE? Change transport child only.
 - Swap S3 → R2? Change lakehouse child only.
-- Add new destination? Change Mother config only.
+- Add new destination? Change Mother routing config only.
 - Change what you do with data? Change consumer only.
-- Swap OAuth → API key? Change connection only.
+- Swap OAuth → API key? Change connection config only.
 - Swap JSON-RPC → MessagePack-RPC? Change pipe protocol only.
 
 ### Pipe Protocol
@@ -367,7 +370,7 @@ identity in all of them.
   (hourly, daily, on-scrape). Ephemeral.
 - **Stream**: spawn → stay alive → emit facts continuously. Mother
   monitors health, restarts on crash. Long-lived.
-- **Manual**: one-shot on user command (`patina pipe run github`).
+- **Manual**: one-shot on user command (`patina mother run github`).
   For testing, backfill, debugging.
 
 For real-time sources with complex connections (WebSockets, webhooks):
@@ -423,8 +426,9 @@ calls (WASM) or direct `reqwest` calls (native).
   Pipe architecture formalizes the protocol that host_emit already
   implements. Forge connector is the first child to gain pipe
   protocol awareness.
-- **[[spec-core-extraction]]** (active) — pipes are NOT core. They're
-  user-level services managed by Mother. Core is protocol + stores.
+- **[[spec-core-extraction]]** (active) — children are NOT core.
+  They're user-level services managed by Mother. Core is protocol +
+  stores.
   `role=connector` in a plugin manifest = this plugin IS a Mother
   child.
 - **[[spec-continuous-operation]]** (draft) — Mother daemon manages

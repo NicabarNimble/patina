@@ -497,7 +497,7 @@ Mother integrates with [[spec-continuous-operation]] for scheduling:
 | `hourly` | Clock (cron-like) | Mother daemon schedules |
 | `daily` | Clock (cron-like) | Mother daemon schedules |
 | `stream` | Always-on | Mother keeps child running |
-| `manual` | `patina pipe run` | One-shot, user-triggered |
+| `manual` | `patina mother run <name>` | One-shot, user-triggered |
 
 Schedule is per-destination, not per-child. The same github-connector
 can be `on-scrape` for project A and `hourly` for the org lake.
@@ -910,4 +910,4 @@ so the protocol design doesn't preclude them:
 - `src/broker/` — Mother routing engine
 - `src/connect/` — connection management (`patina connect`)
 - `src/commands/connect.rs` — CLI commands
-- `src/commands/pipe.rs` — `patina pipe run/health/list`
+- `src/commands/mother.rs` — `patina mother run/status/health/logs`
