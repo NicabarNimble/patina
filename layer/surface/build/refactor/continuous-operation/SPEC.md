@@ -40,6 +40,14 @@ exit_criteria:
 - [[local-first-edge-deployable]] — edge apps need a continuously
   available Mother to sync beliefs and events back.
 
+**Pipe architecture alignment ([[spec-pipe-architecture]]):**
+The "belief stream router" in this spec IS the broker pattern from
+pipe-architecture. Mother as broker routes facts from children to
+destinations based on pub/sub declarations. Connector scheduling,
+child lifecycle management, and fact routing described here should
+adopt pipe protocol vocabulary and the child taxonomy (connector,
+transport, lakehouse, transform).
+
 **What exists today:**
 - Mother daemon (`patina mother daemon`) can run mother-child plugins
 - `tick()` and `health()` host calls provide heartbeat pattern

@@ -42,6 +42,15 @@ Patina instances.
   across projects via federation
 - [[local-first-edge-deployable]] — Mother coordinates local and edge nodes
 
+**Pipe architecture alignment ([[spec-pipe-architecture]]):**
+Pipe architecture provides the unifying model for Mother's
+responsibilities: Mother as broker (Netflix/Kafka pattern) with dual
+role — manages children (spawn, monitor, lifecycle) AND routes facts
+(source→destination based on pub/sub declarations). The child taxonomy
+(connector, transport, lakehouse, transform), pipe protocol, and
+connection model give Mother a coherent vocabulary for all the pieces
+this container spec coordinates.
+
 **What Mother does today:**
 - Project registry (`mother.db → project_registry`)
 - Ref repo registry (cross-project git references)
