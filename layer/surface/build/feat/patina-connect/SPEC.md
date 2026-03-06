@@ -7,6 +7,8 @@ blocked_by:
 - pipe-protocol-types
 sessions:
   origin: 20260306-171859
+related:
+- pipe-architecture
 exit_criteria: []
 ---
 # feat: Connection Model — patina connect with OAuth Device Flow
