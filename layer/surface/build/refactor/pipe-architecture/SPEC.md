@@ -62,10 +62,33 @@ The distinction matters because:
 - Is installed per-project as a WASM child plugin
 - Has no concept of shared pipes or destination filtering
 
-**Secrets** are fragmented:
-- `patina secrets add --global` for vault storage
-- `~/.patina/plugin-config/secret-grants.toml` for per-plugin grants
-- No OAuth flow, no credential refresh, no `patina auth`
+**Secrets infrastructure** (mature, but missing auth UX):
+- Age-encrypted vault (`~/.patina/vault.age`) with macOS Keychain +
+  Touch ID integration
+- Global + project-scoped secrets with dual-storage strategy
+- Session caching via Mother child (10min TTL, avoids Touch ID spam)
+- Secret scanning (pre-commit check for leaked secrets)
+- Claude OAuth precedent: `patina secrets setup-claude` stores token
+  and injects on adapter launch — this is the pattern to generalize
+- CLI: `patina secrets add/remove/run/check/audit`
+- Missing: OAuth device flow, `patina auth` command, credential
+  metadata (scopes, expiry, provider type)
+
+**Plugin credential model** (works but friction):
+- `CredentialMapping` struct: maps domain → secret name + injection
+  location (currently Bearer only)
+- `check_secret_grant()`: reads `~/.patina/plugin-config/secret-grants.toml`,
+  deny-by-default
+- `resolve_credential()`: grants check → vault decrypt → inject header
+- `leak_check()`: scans response for leaked credential values
+- No `patina plugin grant` CLI command — user hand-edits TOML file
+
+**Host infrastructure** (solid, reusable by pipes):
+- `host_emit` → schema-validated event emission to events.db
+- `host_http` → domain-allowlisted HTTP with credential injection
+- CQRS projection → events.db → patina.db materialized views
+- FTS5 indexing from projection tables
+- WASM isolation via wasmtime with empty WASI context
 
 ## Target State
 
