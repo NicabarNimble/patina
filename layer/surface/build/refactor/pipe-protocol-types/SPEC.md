@@ -7,6 +7,8 @@ sessions:
   origin: 20260306-171859
 related:
 - pipe-architecture
+beliefs:
+- wit-defines-pipe-contract-not-runtime
 exit_criteria: []
 ---
 # refactor: Pipe Protocol Types — Shared Crate + Manifest Format
