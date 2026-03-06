@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: forge-plugin-extraction
-status: active
+status: paused
 created: 2026-03-04
 blocked_by:
 - host-emit-wit
@@ -28,6 +28,9 @@ exit_criteria:
 - id: forge-removed-from-core
   text: '`src/forge/` deleted. No GitHub API knowledge in Patina core.'
   checked: false
+paused_reason: Plugin built (EC1/EC2 done). Remaining work (schema management, src/forge/ deletion) is pipe-architecture scope. Pausing until pipe architecture establishes child framework, then github-connector replaces this spec.
+paused_date: 2026-03-06
+paused_at_tag: spec/forge-plugin-extraction-paused-1
 ---
 # refactor: Extract forge connector to WASM plugin
 
