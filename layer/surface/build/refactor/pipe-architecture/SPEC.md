@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: pipe-architecture
-status: ready
+status: active
 created: 2026-03-06
 sessions:
   origin: 20260305-170212
