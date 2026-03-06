@@ -24,8 +24,8 @@ exit_criteria:
 - id: pipe-sdk-exists
   text: "`patina-pipe` SDK crate with Pipe trait, run() orchestrator, Fact/PipeConfig types, and `patina pipe new` scaffold command"
   checked: false
-- id: pipe-protocol-mcp
-  text: "Pipe protocol is MCP (JSON-RPC 2.0) — not MCP-like, the actual protocol. WIT contracts define fact types. SDK handles transport (stdio/HTTP+SSE/Streamable HTTP)"
+- id: pipe-protocol-jsonrpc
+  text: "Pipe protocol is JSON-RPC 2.0 with WIT contracts — self-owned pipe/* methods, MCP-compatible but MCP-independent. SDK handles transport (stdio/HTTP+SSE/Streamable HTTP)"
   checked: false
 - id: secrets-are-user-level
   text: Single secrets system manages all credentials — `patina auth` with OAuth device flow, not per-pipe manual setup
@@ -142,26 +142,56 @@ differ.
 └─────────────────────────────────────────────┘
 ```
 
-### Pipe protocol (MCP)
+### Pipe protocol (JSON-RPC 2.0 + WIT)
 
-Pipes speak MCP — JSON-RPC 2.0, not a custom variant. The pipe is
-an MCP server, Mother is an MCP client.
+Pipes speak a WIT-native JSON-RPC 2.0 protocol — self-owned, not
+dependent on MCP. MCP-compatible (JSON-RPC is JSON-RPC) but
+MCP-independent (we control our methods, our types, our evolution).
 
-- **Protocol**: JSON-RPC 2.0 (initialize, tools/call, notifications)
+- **Foundation**: JSON-RPC 2.0 (stable RFC, universal, won't change)
+- **Methods**: `pipe/initialize`, `pipe/fetch`, `pipe/health`,
+  `pipe/capabilities`, `pipe/notify` — our own, we own the spec
 - **Contract**: WIT type definitions (fact shapes, capabilities, config)
 - **Transport**: stdio (local), HTTP+SSE (remote), Streamable HTTP (shared)
 
-WIT adds compile-time type safety on top of MCP's JSON Schema.
-Same pipe binary runs as a native process locally or as WASM on
-Cloudflare Workers — WIT compiles to both. The pipe author writes
-`fetch()` once, the SDK handles protocol and transport.
+WIT adds compile-time type safety — generates Rust structs, TypeScript
+types, Python dataclasses from the same contract. Same pipe binary runs
+as a native process locally or as WASM on Cloudflare Workers — WIT
+compiles to both. The pipe author writes `fetch()` once.
+
+### Multiplexing model
+
+Pipes don't multiplex. Each pipe handles one data type on one stream.
+Multiplexing happens at the architecture level:
+
+- **Children** demux complex connections (one WebSocket → many pipes)
+- **Mother** muxes at process level (many pipes → many destinations)
+- **Network** muxes at transport level (QUIC/HTTP/2 for multi-stream)
+
+```
+Source (one connection, many data types)
+  │
+Child (demux by type)
+  ├── pipe-A (one type, one stream)
+  ├── pipe-B (one type, one stream)
+  └── pipe-C (one type, one stream)
+```
+
+Pipes stay simple. Multiplexing is someone else's job.
+
+### Backpressure
+
+- **stdio** (local): OS pipe buffer (~64KB). When Mother stops reading,
+  buffer fills, pipe's write() blocks. Free, built into the OS.
+- **HTTP transports** (remote): pull-based — Mother controls `limit`
+  per fetch call. Pipe sends only what's asked for.
 
 ### Pipe SDK (`patina-pipe` crate)
 
 The SDK is a blocker for building any pipe. It provides:
 
 - `Pipe` trait: `capabilities()`, `fetch()`, `health()`
-- `serve()` orchestrator: MCP server, handles protocol + transport
+- `serve()` orchestrator: JSON-RPC 2.0 server, handles protocol + transport
 - Types: `Fact`, `PipeConfig`, `Capabilities`, `Status`
 - WIT-generated type definitions for fact shapes
 - **Persona-scoped config**: pipe receives persona context, can't
@@ -314,9 +344,9 @@ WASM build step, no cross-compilation.
 ## Steps
 
 1. **Build `patina-pipe` SDK crate** (blocker for all pipes):
-   - `Pipe` trait, `serve()` orchestrator (MCP server)
+   - `Pipe` trait, `serve()` orchestrator (JSON-RPC 2.0 server)
    - Types: `Fact`, `PipeConfig`, `Capabilities`, `Status`
-   - MCP JSON-RPC 2.0 protocol handling
+   - JSON-RPC 2.0 protocol with pipe/* methods
    - Transport abstraction (stdio initially, HTTP+SSE later)
    - Fact signing (persona keypair) and content addressing (blake3)
    - Persona-scoped config handling

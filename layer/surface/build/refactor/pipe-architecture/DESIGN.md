@@ -93,21 +93,22 @@ A pipe does NOT know:
 - How to schedule itself
 - Anything about other pipes or the broader data flow
 
-**Execution model (MCP server):**
+**Execution model (JSON-RPC 2.0 server):**
 
-Pipes are MCP servers. Mother is an MCP client. The protocol is
-JSON-RPC 2.0 — not MCP-like, the actual protocol. This gives us
+Pipes are JSON-RPC 2.0 servers with pipe/* methods. Mother is a
+JSON-RPC 2.0 client. MCP-compatible (same underlying protocol) but
+MCP-independent (our own methods, our own evolution). This gives us
 bidirectional communication, multiple calls per session, progress
 notifications, and the full transport stack (stdio, HTTP+SSE,
-Streamable HTTP) without inventing anything.
+Streamable HTTP) built on a stable RFC.
 
 ```
-Mother (MCP client)              github-pipe (MCP server)
+Mother (JSON-RPC client)         github-pipe (JSON-RPC server)
   │                                 │
-  │──── initialize ────────────────▶│
+  │──── pipe/initialize ───────────▶│
   │◀─── capabilities ──────────────│
   │                                 │
-  │──── tools/call: fetch ─────────▶│
+  │──── pipe/fetch ────────────────▶│
   │     {                           │
   │       "persona": "dev-nick",    │
   │       "auth": { "token": "..." },
@@ -116,16 +117,16 @@ Mother (MCP client)              github-pipe (MCP server)
   │       "since": "2026-03-01T00:00:00Z"
   │     }                           │
   │                                 │── reqwest GET /repos/.../issues
-  │◀─── notification: progress ────│   (50 issues fetched)
+  │◀─── pipe/notify: progress ──────│   (50 issues fetched)
   │                                 │── reqwest GET /repos/.../pulls
-  │◀─── notification: fact ────────│   {"schema":"forge","type":"issue",...}
-  │◀─── notification: fact ────────│   {"schema":"forge","type":"pr",...}
+  │◀─── pipe/notify: fact ─────────│   {"schema":"forge","type":"issue",...}
+  │◀─── pipe/notify: fact ─────────│   {"schema":"forge","type":"pr",...}
   │◀─── result: { fetched: 73 } ───│
   │                                 │
-  │──── tools/call: health ────────▶│  (Mother can call again without respawn)
+  │──── pipe/health ───────────────▶│  (Mother can call again without respawn)
   │◀─── result: { ok: true } ──────│
   │                                 │
-  │──── shutdown ──────────────────▶│
+  │──── pipe/shutdown ─────────────▶│
   │◀─── exit(0) ───────────────────│
   │                                 │
   │── write facts to events.db      │
@@ -174,7 +175,7 @@ impl Pipe for GitHubPipe {
 }
 
 fn main() -> Result<()> {
-    serve(GitHubPipe)  // MCP server — handles everything
+    serve(GitHubPipe)  // JSON-RPC 2.0 server — handles everything
 }
 ```
 
@@ -231,6 +232,54 @@ Mother
         → security-block events.db
 ```
 
+**Multiplexing architecture:**
+
+Pipes don't multiplex internally. Each pipe handles one data type on
+one stream. This is deliberate — unix philosophy, one tool one job.
+Multiplexing happens at the architecture level, not the protocol level.
+
+```
+Game server (one WebSocket, all data types)
+       │
+   ws-child (holds connection, demux by message type)
+       │
+  ┌────┼────────┬──────────┬──────────┐
+  ▼    ▼        ▼          ▼          ▼
+combat movement chat    auction    mail
+ pipe   pipe    pipe     pipe      pipe
+  │      │       │         │         │
+  ▼      ▼       ▼         ▼         ▼
+combat  world   chat    auction    mail
+ lake   lake    lake     lake      lake
+```
+
+Three levels of multiplexing, none in the pipe:
+
+| Level | Who | How |
+|---|---|---|
+| Source connection | Child | Demux one connection → many pipes |
+| Process management | Mother | Many pipes → many destinations |
+| Network transport | Transport layer | QUIC/HTTP/2 multi-stream between nodes |
+
+For moderate scale (personal, team): process-level multiplexing —
+each pipe is its own process with its own stdio. Pipes are cheap.
+
+For high scale (MMO, real-time network): transport-level multiplexing —
+HTTP/2 or QUIC carries multiple pipe streams over one connection.
+SDK handles this. Pipe code unchanged.
+
+**Backpressure:**
+
+- **stdio** (local): OS pipe buffer (~64KB on Linux, ~16KB on macOS).
+  When Mother stops reading, buffer fills, pipe's `write()` blocks.
+  Free, built into the OS kernel. No protocol changes needed.
+- **HTTP transports** (remote): pull-based. Mother controls `limit`
+  per `pipe/fetch` call. Pipe sends only what's asked for. Mother
+  decides when to request more.
+- **Future escape hatch**: if JSON text overhead ever matters,
+  MessagePack-RPC is a binary drop-in for JSON-RPC. Same methods,
+  same semantics, binary encoding. SDK flag, pipe author doesn't know.
+
 **All pipes are OS-sandboxed:**
 
 Every pipe runs in an OS sandbox — no trusted/untrusted tiers.
@@ -285,9 +334,9 @@ at user level (`~/.patina/pipes/`) not project level.
 ### Pipe SDK (`patina-pipe` crate)
 
 The SDK is the foundation — every pipe depends on it. No pipe is built
-without the SDK. The pipe is an MCP server. The SDK handles MCP protocol,
-transport, signing, hashing, persona isolation. The pipe author implements
-`fetch()` and nothing else.
+without the SDK. The pipe is a JSON-RPC 2.0 server with pipe/* methods.
+The SDK handles protocol, transport, signing, hashing, persona isolation.
+The pipe author implements `fetch()` and nothing else.
 
 **Core trait:**
 
@@ -300,23 +349,23 @@ pub trait Pipe {
     fn capabilities(&self) -> Capabilities;
 
     /// Fetch data matching the config. Called by serve() on each
-    /// MCP tools/call request. May be called multiple times per session.
+    /// pipe/fetch request. May be called multiple times per session.
     fn fetch(&self, config: &PipeConfig) -> Result<Vec<Fact>>;
 
     /// Test connectivity with current credentials.
     fn health(&self, config: &PipeConfig) -> Result<Status>;
 }
 
-/// MCP server entry point. Pipe authors call this from main().
+/// JSON-RPC 2.0 server entry point. Pipe authors call this from main().
 /// Handles everything: protocol, transport, signing, persona.
 pub fn serve<P: Pipe>(pipe: P) -> Result<()> {
     // 1. Negotiate transport (stdio, HTTP+SSE, Streamable HTTP)
-    // 2. MCP initialize handshake
-    // 3. Listen for JSON-RPC requests
+    // 2. pipe/initialize handshake (capability exchange)
+    // 3. Listen for JSON-RPC requests (pipe/fetch, pipe/health, etc.)
     // 4. Dispatch to pipe.fetch() / pipe.health() / pipe.capabilities()
     // 5. Sign each fact with persona keypair (automatic)
     // 6. Hash each fact with blake3 (content addressing)
-    // 7. Send facts as MCP notifications
+    // 7. Send facts as pipe/notify notifications
     // 8. Handle SIGTERM gracefully (stream mode)
 }
 ```
@@ -368,7 +417,7 @@ pub struct Capabilities {
 
 **What the SDK handles (pipe authors don't touch):**
 
-- MCP JSON-RPC 2.0 protocol (initialize, tools/call, notifications)
+- JSON-RPC 2.0 protocol with pipe/* methods (self-owned, MCP-compatible)
 - Transport negotiation (stdio / HTTP+SSE / Streamable HTTP)
 - Fact signing (persona keypair — automatic provenance)
 - Content addressing (blake3 hash — automatic dedup)
@@ -708,18 +757,40 @@ care if the pipe talked to GitHub or read from a local SQLite file.
 
 ## Transport Model
 
-The pipe protocol (config in, facts out) is transport-agnostic. Build
-stdio first, design for future transports:
+The pipe protocol (JSON-RPC 2.0 with pipe/* methods) is transport-
+agnostic. Build stdio first, design for future transports:
 
 | Transport | Topology | Use Case |
 |---|---|---|
 | stdio | local, same machine | Default. Mother spawns pipe process |
 | HTTP+SSE | remote, pipe on VPS | Pipe runs on server, Mother connects |
 | Streamable HTTP | shared, multi-Mother | Community pipe serving multiple users |
+| QUIC | p2p, multi-stream | Node-to-node, multiplexed, no head-of-line blocking |
 
-Same message format across all transports. Same fact schema. Different
-wire. Following the MCP pattern where deployment topology doesn't
-dictate protocol design.
+Same JSON-RPC methods across all transports. Same fact schema. Different
+wire. Deployment topology doesn't dictate protocol design.
+
+**Protocol independence:**
+
+We build on JSON-RPC 2.0 (stable RFC), not on MCP (evolving product
+spec). Our pipe/* methods are MCP-compatible (an MCP client can talk
+to a pipe — JSON-RPC is JSON-RPC) but MCP-independent (Anthropic
+changes MCP, we don't care). WIT defines our types natively, not
+bolted on top of JSON Schema.
+
+```
+JSON-RPC 2.0  ← stable RFC, we build here
+     │
+     ├── MCP protocol     (Anthropic's methods, their evolution)
+     │
+     └── Pipe protocol    (our methods, our evolution)
+           ├── pipe/initialize
+           ├── pipe/fetch
+           ├── pipe/health
+           ├── pipe/capabilities
+           ├── pipe/notify
+           └── pipe/shutdown
+```
 
 **Current scope**: stdio only. Don't hardcode stdio assumptions in the
 protocol layer (message format), but don't build HTTP transport until
