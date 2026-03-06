@@ -23,23 +23,8 @@ beliefs:
 - persona-keypair-is-node-identity
 - wit-defines-pipe-contract-not-runtime
 exit_criteria:
-- id: pipe-protocol-defined
-  text: 'Pipe protocol specification: JSON-RPC 2.0 with pipe/* methods, WIT type contracts, canonical serialization for content addressing, streaming fact delivery, typed errors'
-  checked: false
-- id: child-framework-exists
-  text: 'Child framework with lifecycle management: connector, transport, lakehouse, and transform child types, all speaking pipe protocol, managed by Mother'
-  checked: false
-- id: connection-model-works
-  text: '`patina connect <provider>` links pipe protocol to auth — OAuth device flow, credential stored in vault, connector child configured in one command'
-  checked: false
-- id: broker-routes-facts
-  text: Mother routes facts from children to destinations based on pub/sub declarations in sources.toml — fan-out is config, not child logic
-  checked: false
-- id: github-connector-works
-  text: GitHub connector child replaces forge WASM plugin — same data (forge.issue, forge.pr), better auth UX, speaks pipe protocol over stdio
-  checked: false
-- id: crate-structure-ships
-  text: '`patina-pipe-types` (shared types), `patina-sdk` (WASM children), `patina-pipe` (native children) — one protocol, two transport bindings'
+- id: children-complete
+  text: All child specs (pipe-protocol-types, pipe-native-transport, github-connector, patina-connect, mother-broker) are complete
   checked: false
 ---
 # refactor: Pipe Architecture — Protocol + Broker Model
@@ -499,39 +484,34 @@ calls (WASM) or direct `reqwest` calls (native).
    it convert to native? Lean: stay WASM, gain protocol awareness
    via patina-sdk updates.
 
-## Steps
+## Children
 
-1. **Define pipe protocol specification** — JSON-RPC 2.0 methods,
-   WIT type contracts, canonical serialization, streaming delivery,
-   typed errors. This is the foundation everything else builds on.
+This is a **container spec** — the architecture reference that child
+specs point to for design decisions. Implementation happens in the
+child specs below, not here.
 
-2. **Build `patina-pipe-types` crate** — shared types (Fact, Error,
-   Capabilities, Config) used by both WASM and native transports.
+| Spec | What it delivers | Build order |
+|------|-----------------|-------------|
+| [[pipe-protocol-types]] | `patina-pipe-types` crate (Fact, PipeError, Capabilities, canonical_json), child.toml manifest format, patina-sdk rename (host_* → semantic names) | First (foundation, no blockers) |
+| [[pipe-native-transport]] | `patina-pipe` crate (Child trait, run(), FactEmitter, stdio JSON-RPC), OS sandbox profile | Second (blocked by protocol-types) |
+| [[github-connector]] | GitHub connector as native child, replaces src/forge/ and plugins/forge/, emits forge.issue/forge.pr facts | Third (blocked by native-transport) |
+| [[patina-connect]] | `patina connect` CLI with OAuth device flow, connection config, credential delivery via pipe/initialize | Parallel with transport (blocked by protocol-types) |
+| [[mother-broker]] | Mother routing engine (sources.toml, fan-out), child lifecycle (WASM + native), schema validation, scheduling | Last (blocked by protocol-types + github-connector) |
 
-3. **Update `patina-sdk` with pipe protocol awareness** — rename
-   host_emit → emit, add protocol types, make existing WASM
-   children speak pipe protocol without code changes.
+### Build Order (dependency graph)
 
-4. **Build `patina-pipe` native transport crate** — stdio JSON-RPC
-   server, fact signing, content addressing, persona scoping.
+```
+pipe-protocol-types (foundation)
+  ├── pipe-native-transport
+  │     └── github-connector
+  │           └── mother-broker
+  └── patina-connect
+```
 
-5. **Build child framework in Mother** — lifecycle management for
-   both WASM and native children. Spawn, health, restart, shutdown.
+pipe-native-transport and patina-connect can build in parallel.
+mother-broker comes last — it needs something to route (github-connector)
+and the type foundation (pipe-protocol-types).
 
-6. **Build `patina connect` command** — OAuth device flow, credential
-   store, connector child configuration. One command replaces four
-   manual steps.
+## Exit Criteria
 
-7. **Build github connector child** — first child on the new
-   framework. Migrate from forge plugin code. Prove the model.
-
-8. **Build Mother broker** — routing engine. Read destination
-   declarations (sources.toml), route facts from children to
-   destinations, fan-out, schema validation.
-
-9. **Build scheduling** — poll (cron intervals), stream (always-on
-   with health), manual (one-shot). Wire into Mother daemon from
-   [[spec-continuous-operation]].
-
-10. **Define child.toml manifest format** — provider, data-types,
-    domains, schema package, lifecycle mode, auth requirements.
+This spec is complete when all five children are complete.
