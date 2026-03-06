@@ -61,6 +61,13 @@ Build `github-connector` as a native Rust binary that:
 - Emits forge.issue and forge.pr facts (same schema, same projections)
 - Receives credentials via pipe/initialize (not env, not files)
 
+**Credential source is independent of this spec.** Mother reads
+credentials from vault and passes them via pipe/initialize (part of
+pipe-native-transport). Credentials can be stored via manual
+`patina secrets add github-token` (existing workflow) or via
+`patina connect github` OAuth flow ([[spec-patina-connect]]). This
+spec does not depend on patina-connect — manual PAT is sufficient.
+
 The code migrates from `plugins/forge/src/github.rs` — the GitHub
 REST API client (pagination, issue/PR fetching, JSON conversion) is
 proven and tested. `host_http::get` becomes `reqwest::get`.
@@ -87,10 +94,14 @@ children/github-connector/
 5. Verify fact output matches existing forge schema (same JSON shape)
 6. Wire Mother-side: `patina mother run github` spawns connector,
    sends pipe/initialize with credentials, dispatches pipe/fetch
-7. Delete `src/forge/` from core (2,287 LOC)
-8. Delete `src/commands/scrape/forge/` subcommand handler (604 LOC)
-9. Archive `plugins/forge/` (keep in git history, remove from build)
-10. Verify: `patina mother run github` produces same events.db data
+7. **Parity verification before deletion:** run both old
+   (`patina scrape forge`) and new (`patina mother run github`)
+   against same repo, diff events.db output. Document any expected
+   differences. Only proceed to deletion after parity confirmed.
+8. Delete `src/forge/` from core (2,287 LOC)
+9. Delete `src/commands/scrape/forge/` subcommand handler (604 LOC)
+10. Archive `plugins/forge/` (keep in git history, remove from build)
+11. Verify: `patina mother run github` produces same events.db data
     as old `patina scrape forge`
 
 ## Key Files

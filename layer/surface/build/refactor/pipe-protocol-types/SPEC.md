@@ -84,11 +84,27 @@ patina-sdk updated:
 - `host_query` → `query` (query::query)
 - Re-exports patina-pipe-types for shared type access
 
-child.toml manifest format extending current plugin.toml:
-- Adds `type`, `runtime`, `lifecycle` fields
+child.toml manifest format for native children:
+- Uses `[child]` section (not `[plugin]`) with `type`, `runtime`,
+  `lifecycle` fields
 - Adds `[domains]` section (from current capabilities.host_http)
 - Adds `[auth]` section (from current capabilities.host_secrets)
-- Backwards-compatible with existing plugin.toml
+- WASM children keep plugin.toml (existing loader unchanged). Native
+  children use child.toml. Mother's manifest loader reads either
+  format — `[plugin]` → WASM path, `[child]` → native path.
+
+**Canonical serialization scope:** canonical_json() handles objects
+(sorted keys), arrays (preserve order), strings, numbers, booleans,
+null. Floats serialize without trailing zeros. Nested objects are
+recursively sorted. Binary/blob data is not supported — facts contain
+JSON-serializable data only. The implementation session DESIGN.md
+will include a test fixture set for cross-runtime verification.
+
+**Design reference:** All type definitions (Fact struct fields,
+PipeError variants with JSON-RPC codes, Capabilities fields,
+FetchParams) are specified in [[spec-pipe-architecture]] DESIGN.md
+§1.3-1.5, §9.1. The implementation session writes the DESIGN.md for
+this spec with concrete Rust types derived from those sections.
 
 ## Steps
 

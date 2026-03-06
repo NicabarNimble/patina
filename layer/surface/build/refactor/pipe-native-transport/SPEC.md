@@ -20,7 +20,7 @@ exit_criteria:
   text: A test child binary can be spawned, initialized (pipe/initialize handshake), and respond to pipe/fetch with streaming pipe/fact notifications
   checked: false
 - id: sandbox-profile-exists
-  text: OS sandbox profile exists for native children — macOS sandbox-exec profile restricting filesystem, network to declared domains only
+  text: OS sandbox profiles exist for native children — macOS sandbox-exec profile restricting filesystem/network to declared domains, Linux Landlock stub (compiles, logs warning if unsupported kernel)
   checked: false
 ---
 # refactor: Pipe Native Transport — Child Trait + stdio JSON-RPC
@@ -70,6 +70,7 @@ crates/patina-pipe/
 
 resources/sandbox/
     macos-child.sb  # macOS sandbox-exec profile
+    linux-child.rs  # Linux Landlock stub (compiles, warns if unsupported)
 ```
 
 A native child looks like:
@@ -103,12 +104,17 @@ stdin/stdout. stderr is for child logging (not protocol).
    stdout as JSON-RPC notifications (streaming, no accumulation)
 4. Implement pipe/initialize handshake (config delivery, capability
    exchange)
-5. Create macOS sandbox-exec profile (`resources/sandbox/macos-child.sb`)
-   restricting to stdin/stdout/stderr + declared network domains
+5. Create OS sandbox profiles: macOS sandbox-exec
+   (`resources/sandbox/macos-child.sb`) restricting to
+   stdin/stdout/stderr + declared network domains; Linux Landlock
+   stub that compiles and logs warning on unsupported kernels
 6. Build a test child binary (`examples/test-child/`) that implements
    Child trait and responds to pipe/fetch
-7. Add Mother-side spawn logic: fork+exec child binary with sandbox,
-   connect stdio, send pipe/initialize, dispatch pipe/fetch
+7. Add minimal Mother-side spawn logic: fork+exec child binary with
+   sandbox, connect stdio, send pipe/initialize, dispatch pipe/fetch.
+   Scope: enough to test the test-child end-to-end. Production
+   lifecycle management (routing, fan-out, scheduling) is
+   [[spec-mother-broker]] scope.
 8. Verify: test child can be spawned, initialized, and stream facts
    back to Mother
 

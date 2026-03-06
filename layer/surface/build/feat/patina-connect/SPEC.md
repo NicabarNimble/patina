@@ -88,7 +88,10 @@ configuration.
 
 ## Steps
 
-1. Register Patina as a GitHub OAuth App (device flow enabled)
+1. Register Patina as a GitHub OAuth App (device flow enabled).
+   **External dependency:** requires GitHub account with org access.
+   Must be done before OAuth implementation can be tested. Can
+   register early and iterate on the code side independently.
 2. Create `src/connect/` module — connection management logic
 3. Implement OAuth device flow (RFC 8628): device authorization
    request, user code display, polling for token
@@ -116,6 +119,13 @@ configuration.
 
 - Supporting providers beyond GitHub initially (Slack, etc. come later
   using the same connection infrastructure)
+- Multiple accounts per provider (e.g., personal + org GitHub). The
+  connection model supports it structurally (named connections) but
+  multi-account UX is deferred.
+- Per-project connection overrides. Connections are user-level
+  (`~/.patina/connections/`). sources.toml references connections by
+  name — different projects can use different connections, but the
+  connections themselves are global.
 - Building the routing engine (that's [[spec-mother-broker]])
 - Token refresh automation (manual `patina connect refresh` first,
   Mother-automated refresh is future work)
