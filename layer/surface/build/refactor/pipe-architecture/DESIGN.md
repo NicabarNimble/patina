@@ -1,4 +1,4 @@
-# Design: Pipe Architecture — Data Drivers, Not Plugins
+# Design: Pipe Architecture — Data Flow Primitive
 
 ## The Core Insight
 
@@ -6,9 +6,15 @@ Session 3 audit of forge-plugin-extraction revealed a category error.
 We built a GitHub data driver and packaged it as a WASM plugin. But
 plugins are for *opinions and behavior* — the spec lifecycle, grammars,
 CLI extensions. Data drivers are *infrastructure* — they move data
-from external sources into Patina's event system. Same relationship
-as git (infrastructure, always present) vs the spec system (domain
-logic, optionally installed).
+between sources and destinations. Same relationship as git
+(infrastructure, always present) vs the spec system (domain logic,
+optionally installed).
+
+A pipe connects a source to a destination, secured by a secret,
+described by a WIT contract. The source can be external (GitHub API)
+or internal (a Patina lake). The destination can be a lake, a block,
+an app, or a project. Same protocol everywhere — MCP-like design
+with WIT contracts.
 
 The forge WASM plugin proved the plumbing works:
 - host_emit → events.db with provenance and schema validation
@@ -72,18 +78,20 @@ patina auth login slack
 ### Layer 2: Pipes (Mother-managed native processes)
 
 **What a pipe is:**
-A pipe is a native binary that drives one external source. It knows:
-- How to authenticate (OAuth, API key, none for RSS)
-- How to paginate (per_page+page, cursor, Link headers)
-- How to rate limit (fixed delay, adaptive from headers)
-- What data types it can provide (issues, PRs, channels, messages)
+A pipe is a native binary that connects a source to a destination.
+Sources can be external (GitHub API, Slack, RSS) or internal (a Patina
+lake, a data block). A pipe knows:
+- How to authenticate with its source (OAuth, API key, internal token)
+- How to paginate/stream from the source
+- How to rate limit
+- What data types it can provide (issues, PRs, embeddings, curated sets)
 - How to filter and fetch on demand
 
 A pipe does NOT know:
-- Which project wants what data
+- Which destination wants what data
 - Where to store the data
 - How to schedule itself
-- Anything about Patina's internal data model
+- Anything about other pipes or the broader data flow
 
 **Execution model (process-based):**
 
@@ -244,6 +252,212 @@ at user level (`~/.patina/pipes/`) not project level.
 ├── pipe.toml        # manifest: provider, domains, schemas, lifecycle
 └── github-pipe      # native binary (or symlink to cargo build)
 ```
+
+### Pipe SDK (`patina-pipe` crate)
+
+The SDK is the foundation — every pipe depends on it. No pipe is built
+without the SDK. This is the same pattern as MCP SDKs: you don't
+hand-parse JSON-RPC, you implement a handler. You don't hand-parse
+stdin, you implement the `Pipe` trait.
+
+**Core trait:**
+
+```rust
+// patina-pipe/src/lib.rs
+
+/// The contract every pipe implements.
+pub trait Pipe {
+    /// What this pipe can provide.
+    fn capabilities(&self) -> Capabilities;
+
+    /// Fetch data matching the config. Called by run().
+    fn fetch(&self, config: &PipeConfig) -> Result<Vec<Fact>>;
+
+    /// Test connectivity with current credentials.
+    fn health(&self, config: &PipeConfig) -> Result<Status>;
+}
+
+/// Entry point. Handles stdin/stdout/stderr protocol.
+/// Pipe authors call this from main().
+pub fn run<P: Pipe>(pipe: P) -> Result<()> {
+    let config: PipeConfig = serde_json::from_reader(io::stdin())?;
+
+    match config.command {
+        Command::Fetch => {
+            for fact in pipe.fetch(&config)? {
+                // NDJSON: one fact per line on stdout
+                println!("{}", serde_json::to_string(&fact)?);
+            }
+        }
+        Command::Health => {
+            let status = pipe.health(&config)?;
+            println!("{}", serde_json::to_string(&status)?);
+        }
+        Command::Capabilities => {
+            let caps = pipe.capabilities();
+            println!("{}", serde_json::to_string(&caps)?);
+        }
+    }
+    Ok(())
+}
+```
+
+**SDK-provided types:**
+
+```rust
+/// What Mother sends on stdin.
+pub struct PipeConfig {
+    pub command: Command,           // fetch | health | capabilities
+    pub auth: Option<AuthConfig>,   // credentials from vault
+    pub params: serde_json::Value,  // pipe-specific params
+    pub types: Vec<String>,         // which data types to fetch
+    pub since: Option<DateTime>,    // incremental: only after this
+    pub limit: Option<u32>,         // max items
+}
+
+pub enum Command { Fetch, Health, Capabilities }
+
+pub struct AuthConfig {
+    pub token: String,              // resolved from vault
+    pub provider: String,           // "github", "slack", etc.
+}
+
+/// What the pipe writes to stdout (one per line).
+pub struct Fact {
+    pub schema: String,             // "forge", "slack", etc.
+    pub fact_type: String,          // "issue", "pr", "message"
+    pub data: serde_json::Value,    // the payload
+}
+
+/// Health check result.
+pub struct Status {
+    pub ok: bool,
+    pub message: String,
+    pub latency_ms: Option<u64>,
+}
+
+/// What this pipe can do.
+pub struct Capabilities {
+    pub provider: String,
+    pub data_types: Vec<String>,
+    pub supports_incremental: bool,
+    pub supports_streaming: bool,
+}
+```
+
+**What the SDK handles (pipe authors don't touch):**
+
+- stdin deserialization (JSON → PipeConfig)
+- stdout serialization (Fact → NDJSON, one per line)
+- stderr logging (structured, timestamped, not parsed by Mother)
+- Signal handling (SIGTERM → graceful shutdown for stream mode)
+- Error formatting (pipe errors → stderr + non-zero exit code)
+- Command dispatch (fetch vs health vs capabilities)
+
+**What pipe authors implement:**
+
+- `fetch()` — the actual data fetching logic (reqwest calls, pagination,
+  rate limiting, data mapping to Fact structs)
+- `health()` — test connectivity (e.g., GET /rate_limit for GitHub)
+- `capabilities()` — declare what the pipe can do (static)
+
+**Building a pipe with the SDK:**
+
+```rust
+// pipes/github-pipe/src/main.rs
+use patina_pipe::{Pipe, run, Fact, PipeConfig, Capabilities, Status};
+
+struct GitHubPipe;
+
+impl Pipe for GitHubPipe {
+    fn capabilities(&self) -> Capabilities {
+        Capabilities {
+            provider: "github".into(),
+            data_types: vec!["issues".into(), "prs".into(),
+                            "comments".into(), "reviews".into()],
+            supports_incremental: true,
+            supports_streaming: false,
+        }
+    }
+
+    fn fetch(&self, config: &PipeConfig) -> Result<Vec<Fact>> {
+        let client = GitHubClient::new(config)?;
+        let mut facts = Vec::new();
+
+        if config.types.contains(&"issues".into()) {
+            for issue in client.fetch_issues()? {
+                facts.push(Fact {
+                    schema: "forge".into(),
+                    fact_type: "issue".into(),
+                    data: serde_json::to_value(&issue)?,
+                });
+            }
+        }
+        // ... similar for prs, comments, reviews
+        Ok(facts)
+    }
+
+    fn health(&self, config: &PipeConfig) -> Result<Status> {
+        let client = GitHubClient::new(config)?;
+        client.check_rate_limit()
+    }
+}
+
+fn main() -> Result<()> {
+    run(GitHubPipe)
+}
+```
+
+**pipe.toml manifest:**
+
+```toml
+[pipe]
+name = "github-pipe"
+version = "0.1.0"
+provider = "github"
+lifecycle = "poll"           # poll | stream | manual
+
+[capabilities]
+data_types = ["issues", "prs", "comments", "reviews"]
+supports_incremental = true
+
+[domains]
+allowed = ["api.github.com"]
+
+[auth]
+required = true
+provider = "github"
+
+[schemas.forge]
+package = "patina:schema/forge@1.0.0"
+```
+
+**`patina pipe new <name>` scaffold:**
+
+```
+$ patina pipe new github
+
+Created pipes/github-pipe/
+├── Cargo.toml         # patina-pipe dependency, binary target
+├── src/
+│   └── main.rs        # Pipe trait stub, run() call
+└── pipe.toml          # manifest template (fill in provider, domains)
+
+Next: edit src/main.rs, implement fetch(), then:
+  cargo run < test-config.json
+  patina pipe run github
+```
+
+**MCP parallel:**
+
+| | MCP SDK | Pipe SDK |
+|---|---|---|
+| Trait/interface | Tool handler | `Pipe` trait |
+| Entry point | `mcp.run()` | `patina_pipe::run()` |
+| Protocol | JSON-RPC over stdio | JSON config → NDJSON facts |
+| Contract | JSON Schema | WIT type definitions |
+| Scaffold | `mcp init` | `patina pipe new` |
+| Transport | stdio / HTTP+SSE | stdio / HTTP+SSE (future) |
 
 ### Layer 3: Destinations (project, lake, block configuration)
 
@@ -412,14 +626,43 @@ the plugin model is UX: one command vs four steps.
   config in + NDJSON out).
 
 **New code needed:**
-- `pipes/github-pipe/` — standalone Rust binary (own Cargo.toml)
+- `crates/patina-pipe/` — SDK crate (`Pipe` trait, `run()`, types)
+- `pipes/github-pipe/` — first pipe binary, depends on patina-pipe SDK
 - `src/pipe/` — Mother pipe manager (spawn, sandbox, read stdout, emit)
 - `src/auth/` — OAuth device flow, provider registry, `patina auth` CLI
 - WIT: `wit/pipe/pipe.wit` — type definitions for fact shapes, config
+- `src/commands/pipe.rs` — `patina pipe new/run/health/list` commands
 
-## Lake-as-Source Pattern
+## Data Flow Architecture
 
-The default data flow is pipe → lake → project projection:
+Pipes are the connective tissue across the entire data architecture.
+Every arrow is a pipe — same SDK, same protocol, same WIT contract.
+
+### Full data flow
+
+```
+External Sources (GitHub, Slack, RSS, APIs...)
+  │ ingest pipes (github-pipe, slack-pipe, rss-pipe)
+  ▼
+Data Lakes (Parquet, lakehouse-managed, raw/complete)
+  │ transform pipes (filter-pipe, enrich-pipe)
+  ▼
+App Layer (transforms, enrichment, embeddings)
+  │ structure pipes (embed-pipe, curate-pipe)
+  ▼
+Data Blocks (embeddings, curated datasets from lakes/sources)
+  │ serve pipes (query-pipe, export-pipe)
+  ▼
+Apps / Projects (action, workflows, UI)
+```
+
+Each layer is both a source and a destination depending on direction.
+A lake is a destination for github-pipe and a source for filter-pipe.
+A block is a destination for embed-pipe and a source for a project.
+
+### Lake-as-source pattern
+
+The default external data flow is pipe → lake → project projection:
 
 ```
 github-pipe (fetch everything from org)
@@ -439,6 +682,29 @@ Benefits:
 Mother decides parallelism strategy — whether to spawn one pipe and
 fan-out the output, or spawn N pipes with different configs. The pipe
 binary is the same either way.
+
+### Internal pipes
+
+Internal pipes (lake → block, block → app) use the same SDK and
+protocol as external pipes. The difference is the source:
+
+- External pipe: source is an HTTP API, auth is OAuth token
+- Internal pipe: source is an events.db/Parquet file, auth may be
+  a local secret or none (same machine)
+
+```rust
+// pipes/lake-reader-pipe/src/main.rs — reads from a lake
+impl Pipe for LakeReaderPipe {
+    fn fetch(&self, config: &PipeConfig) -> Result<Vec<Fact>> {
+        let db = Connection::open(&config.params["lake_path"])?;
+        let facts = query_events(&db, &config.types, &config.since)?;
+        Ok(facts)
+    }
+}
+```
+
+Same `Pipe` trait, same `run()`, same NDJSON on stdout. Mother doesn't
+care if the pipe talked to GitHub or read from a local SQLite file.
 
 ## Transport Model
 

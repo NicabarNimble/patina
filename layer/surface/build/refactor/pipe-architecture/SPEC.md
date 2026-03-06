@@ -21,6 +21,9 @@ beliefs:
 - persona-keypair-is-node-identity
 - wit-defines-pipe-contract-not-runtime
 exit_criteria:
+- id: pipe-sdk-exists
+  text: "`patina-pipe` SDK crate with Pipe trait, run() orchestrator, Fact/PipeConfig types, and `patina pipe new` scaffold command"
+  checked: false
 - id: pipe-interface-defined
   text: Pipe protocol defined — stdin config, stdout newline-delimited JSON facts, stderr logs — with WIT type definitions for fact shapes
   checked: false
@@ -31,14 +34,15 @@ exit_criteria:
   text: Projects, lakes, and blocks configure what data to pull from a pipe — the pipe doesn't decide
   checked: false
 - id: github-pipe-works
-  text: GitHub pipe replaces current forge WASM plugin, same data, better auth UX
+  text: GitHub pipe replaces current forge WASM plugin, same data, better auth UX — built on patina-pipe SDK
   checked: false
 ---
-# refactor: Pipe Architecture — Data Drivers, Not Plugins
+# refactor: Pipe Architecture — Data Flow Primitive
 
-> Connectors are reusable data drivers (pipes), not plugins. Pipes know
-> how to talk to a source. Destinations (project, lake, block) configure
-> what data flows through. Secrets are user-level infrastructure.
+> A pipe connects a source to a destination, secured by a secret,
+> described by a WIT contract. Same protocol whether the source is
+> GitHub's API or a Patina lake. Pipes are the universal data flow
+> primitive — the connective tissue across the entire data architecture.
 
 ## Context
 
@@ -50,15 +54,17 @@ system designed for domain logic.
 **Plugins are for opinions** — the spec lifecycle system, grammars that
 parse files, CLI extensions, apps with workflow. They add behavior.
 
-**Pipes are for plumbing** — GitHub, Slack, RSS, Google Workspace. They
-move data from external sources into Patina's event system. They don't
-have opinions. They don't add commands. They're drivers.
+**Pipes are for plumbing** — connecting any source to any destination.
+External sources (GitHub, Slack, RSS), internal sources (lakes, blocks),
+transforms (app layer enrichment). They don't have opinions. They don't
+add commands. They move and transform data.
 
 The distinction matters because:
 - A pipe should work across projects without per-project installation
 - A pipe's credentials are user-level, not project-level
-- A pipe's capabilities are fixed by the source API, not by user choice
-- Multiple destinations (project, lake, block) share the same pipe
+- A pipe's capabilities are fixed by the source, not by user choice
+- Multiple destinations share the same pipe
+- The same protocol works for external ingestion and internal routing
 
 ## Current State
 
@@ -100,7 +106,32 @@ The distinction matters because:
 
 ## Target State
 
-### Three layers
+### Data architecture
+
+Pipes connect every layer. Secrets secure every connection.
+
+```
+External Sources (GitHub, Slack, RSS, APIs...)
+  │ pipes (ingest)
+  ▼
+Data Lakes (Parquet, lakehouse-managed, raw/complete)
+  │ pipes (transform/filter)
+  ▼
+App Layer (transforms, enrichment, embeddings)
+  │ pipes (structure/reduce)
+  ▼
+Data Blocks (embeddings, curated datasets)
+  │ pipes (serve/query)
+  ▼
+Apps / Projects (action, workflows, UI)
+```
+
+Every arrow is a pipe. Every connection has a secret. Every contract
+is WIT-defined. The pipe protocol doesn't change — config in, facts
+out — only the source type, destination type, and transform logic
+differ.
+
+### Secrets layer
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -108,24 +139,7 @@ The distinction matters because:
 │  patina auth login github → OAuth device flow│
 │  patina auth login slack  → OAuth device flow│
 │  One credential store, all pipes share it    │
-└──────────┬──────────────────────────────────┘
-           │ credentials by source name
-┌──────────▼──────────────────────────────────┐
-│  Pipes (Mother-managed native processes)     │
-│  github-pipe: GitHub REST/GraphQL            │
-│  slack-pipe: Slack API                       │
-│  rss-pipe: RSS/Atom feeds                    │
-│  Installed once, OS-sandboxed, all projects  │
-└──────────┬──────────────────────────────────┘
-           │ data (filtered by destination config)
-     ┌─────┼─────────┐
-     ▼     ▼         ▼
-  Project  Data Lake  Data Block
-  config   config     config
-  says     says       says
-  what     what       what
-  it       it         it
-  wants    wants      wants
+└─────────────────────────────────────────────┘
 ```
 
 ### Pipe interface (stdio protocol)
@@ -140,6 +154,21 @@ WIT defines the type contract — fact shapes, capability declarations,
 config schema — but pipes are NOT WASM components. They're regular
 processes spawned by Mother. Any language that reads stdin and writes
 stdout can be a pipe.
+
+### Pipe SDK (`patina-pipe` crate)
+
+The SDK is a blocker for building any pipe. It provides:
+
+- `Pipe` trait: `capabilities()`, `fetch()`, `health()`
+- `run()` orchestrator: handles stdin/stdout/stderr protocol
+- Types: `Fact`, `PipeConfig`, `Capabilities`, `Status`
+- WIT-generated type definitions for fact shapes
+- Signal handling for stream mode (graceful shutdown)
+- `patina pipe new <name>` scaffold command
+
+Pipe authors implement the trait. The SDK handles everything else.
+Same pattern as MCP SDKs — you don't hand-parse JSON-RPC, you
+implement a handler.
 
 ### Pipe lifecycle modes
 
@@ -185,7 +214,7 @@ pipes are trusted infrastructure, not untrusted third-party code.
 
 | | Pipes | Plugins |
 |---|---|---|
-| Purpose | Move data in | Add behavior |
+| Purpose | Connect source → destination (data flow) | Add behavior (domain logic) |
 | Runtime | Native process over stdio | WASM component in wasmtime |
 | Trust | Infrastructure (like git) | Third-party (like Obsidian plugins) |
 | Sandbox | OS sandbox (sandbox-exec/Landlock) — all pipes, ~0ns runtime cost | WASM sandboxed |
@@ -263,19 +292,24 @@ WASM build step, no cross-compilation.
 
 ## Steps
 
-1. Define pipe protocol (stdin JSON config, stdout newline-delimited
-   JSON facts, stderr logs) — message format specification
-2. Define pipe.toml manifest format (provider, data-types, domains,
+1. **Build `patina-pipe` SDK crate** (blocker for all pipes):
+   - `Pipe` trait, `run()` orchestrator, types (`Fact`, `PipeConfig`,
+     `Capabilities`, `Status`)
+   - stdin/stdout/stderr protocol handling, NDJSON serialization
+   - Signal handling, logging, health check protocol
+   - WIT type definitions for fact shapes
+2. Build `patina pipe new <name>` scaffold command — generates
+   Cargo.toml, main.rs, pipe.toml from template
+3. Define pipe.toml manifest format (provider, data-types, domains,
    schema package, lifecycle mode)
-3. Define sources.toml destination config format (pipe, auth, params,
+4. Define sources.toml destination config format (pipe, auth, params,
    types, schedule)
-4. Build Mother pipe manager — spawn process, read stdout, write to
+5. Build Mother pipe manager — spawn process, read stdout, write to
    events.db, track sync state, handle lifecycle modes
-5. Build github-pipe binary — migrate from forge plugin code, direct
-   reqwest HTTP instead of host_http, reads stdin config, writes facts
-   to stdout
-6. Build `patina pipe run/health/list` CLI commands
-7. Build `patina auth login` — OAuth device flow, credential store,
+6. Build github-pipe binary — first pipe, built on SDK. Migrate from
+   forge plugin code, direct reqwest, reads stdin, writes facts to stdout
+7. Build `patina pipe run/health/list` CLI commands
+8. Build `patina auth login` — OAuth device flow, credential store,
    `patina auth status/refresh/revoke`
-8. Wire scheduling — poll mode (cron-like intervals), stream mode
+9. Wire scheduling — poll mode (cron-like intervals), stream mode
    (always-on with health monitoring), manual mode (one-shot)
