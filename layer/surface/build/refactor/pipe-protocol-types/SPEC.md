@@ -5,6 +5,8 @@ status: draft
 created: 2026-03-06
 sessions:
   origin: 20260306-171859
+related:
+- pipe-architecture
 exit_criteria: []
 ---
 # refactor: Pipe Protocol Types — Shared Crate + Manifest Format
