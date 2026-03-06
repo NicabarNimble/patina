@@ -9,6 +9,8 @@ sessions:
   origin: 20260306-171859
 related:
 - pipe-architecture
+beliefs:
+- safety-boundaries
 exit_criteria: []
 ---
 # feat: Connection Model — patina connect with OAuth Device Flow
