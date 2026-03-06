@@ -11,6 +11,8 @@ sessions:
 related:
 - pipe-architecture
 - continuous-operation
+beliefs:
+- mother-holds-connections-pipes-transform
 exit_criteria: []
 ---
 # refactor: Mother Broker — Routing Engine + Child Lifecycle
