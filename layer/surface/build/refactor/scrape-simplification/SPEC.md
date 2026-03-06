@@ -18,7 +18,7 @@ exit_criteria:
   text: scrape implements capture + index protocol verbs for local sources (git history, layer/, code via grammar plugins)
   checked: false
 - id: connectors-run-independently
-  text: external data ingestion runs via `patina connector sync` or Mother continuous operation, not via scrape
+  text: external data ingestion runs via `patina mother run <name>` or Mother continuous operation, not via scrape
   checked: false
 ---
 # refactor: Scrape Simplification — Local Capture Only
@@ -74,8 +74,7 @@ is removing the subcommand and the `src/commands/scrape/forge/` module
 6. ~~any external API call~~ — connectors handle this
 
 External data ingestion:
-- `patina connector sync [name]` — run a specific connector
-- `patina connector sync --all` — run all project connectors
+- `patina mother run <name>` — run a specific connector child
 - Mother continuous operation — connectors run on schedule via daemon
 
 **Convenience:** `patina scrape --all` could be sugar for
@@ -89,9 +88,10 @@ architecturally they're separate operations.
 2. Remove forge subcommand handler from `src/commands/scrape/mod.rs`
 3. Remove `src/commands/scrape/forge/` directory
 4. Remove `pub mod forge` declaration from scrape mod.rs
-5. Add `patina connector sync` command that discovers installed
-   connector-role plugins and runs them
-6. Optional: add `patina scrape --all` convenience flag
+5. Verify `patina mother run <name>` works for project connectors
+   (implemented in [[spec-mother-broker]])
+6. Optional: add `patina scrape --all` convenience flag that triggers
+   `patina mother run` for project sources after local scrape
 
 ## Design Decisions (resolved in DESIGN.md)
 
@@ -116,8 +116,8 @@ architecturally they're separate operations.
 ## Non-Goals
 
 - **Building the connector command infrastructure.** This spec removes
-  forge from scrape. The `patina connector` command may need its own
-  spec if it's complex.
+  forge from scrape. Mother broker handles connector execution
+  ([[spec-mother-broker]]).
 - **Changing how grammar plugins work.** Pipeline grammar dispatch
   via scrape is fine. Only external connectors move out.
 - **Mother continuous operation.** That's [[continuous-operation]].

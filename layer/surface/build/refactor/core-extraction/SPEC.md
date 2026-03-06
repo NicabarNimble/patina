@@ -3,8 +3,7 @@ type: refactor
 id: core-extraction
 status: active
 created: 2026-03-04
-blocked_by:
-- plugin-infrastructure
+blocked_by: []
 sessions:
   origin: 20260304-120702
 beliefs:
@@ -81,13 +80,10 @@ shrink Patina core to protocol + stores.
 
 Resolve before or during implementation of child specs:
 
-- **`patina connector` CLI scope.** Is `patina connector sync` a
-  first-class top-level command, or a wrapper around `patina plugin run`?
-  How does `--all` scope — all installed connectors or only those
-  configured for this project? Lean toward: first-class command,
-  project-scoped. Blocks [[spec-scrape-simplification]] EC3
-  (connectors-run-independently). See scrape-simplification DESIGN.md
-  Open Questions.
+- **Connector execution via Mother.** Resolved: `patina mother run <name>`
+  triggers connector children. No `patina connector` command — Mother
+  is the broker (see [[spec-pipe-architecture]]). Project-scoped via
+  sources.toml declarations. See [[spec-mother-broker]].
 
 - **Phase A host-capability spec.** host/fs-write, host/git,
   host/mcp-register need design before [[spec-core-plugin-extraction]]

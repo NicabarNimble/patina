@@ -3,8 +3,7 @@ type: feat
 id: persona-federation
 status: draft
 created: 2026-03-04
-blocked_by:
-- plugin-infrastructure
+blocked_by: []
 sessions:
   origin: 20260303-184231
 related:

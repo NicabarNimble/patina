@@ -4,7 +4,6 @@ id: continuous-operation
 status: draft
 created: 2026-03-04
 blocked_by:
-- data-architecture-v3
 - persona-federation
 sessions:
   origin: 20260304-120702
@@ -95,8 +94,8 @@ MOTHER DAEMON (always running)
 
 ## Steps
 
-1. **Prerequisite:** [[data-architecture-v3]] (lake registry),
-   [[persona-federation]] (belief streams need persona linking)
+1. **Prerequisite:** [[persona-federation]] (belief streams need
+   persona linking). ([[data-architecture-v3]] is complete.)
 2. Implement Mother daemon auto-start (launchd plist / systemd unit)
 3. Add connector schedule config to Mother (per-connector intervals)
 4. Implement scheduled tick() dispatch to connector plugins

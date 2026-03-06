@@ -76,22 +76,21 @@ This is the critical question: what replaces `patina scrape forge`?
 
 **After extraction, three paths exist:**
 
-**Path 1: `patina connector sync [name]` (explicit)**
+**Path 1: `patina mother run <name>` (explicit)**
 
-A new CLI command that discovers installed connector-role plugins and
-runs them. This is the direct replacement for `patina scrape forge`:
+Mother runs connector children via pipe protocol. This is the direct
+replacement for `patina scrape forge`:
 
 ```
-patina connector sync forge        # run forge connector
-patina connector sync --all        # run all project connectors
-patina connector list              # show installed connectors
-patina connector status [name]     # show sync state
+patina mother run github           # run github connector child
+patina mother status               # show running children and health
 ```
 
-Implementation: `patina connector sync forge` calls `patina plugin run
-forge-connector` with a "sync" action. The plugin uses `host/http` for
-API calls and `host/emit` for fact emission. Status and progress come
-from events.db queries (count forge.* events, check last_sync).
+Implementation: `patina mother run github` spawns the github-connector
+child (native binary speaking pipe protocol over stdio), sends
+pipe/initialize with credentials, dispatches pipe/fetch. Facts stream
+back as pipe/fact notifications and are routed to project events.db.
+See [[spec-mother-broker]].
 
 **Path 2: Mother daemon (continuous)**
 
@@ -119,14 +118,14 @@ Scrape remains local-only; the flag triggers a separate operation.
 Between forge extraction and continuous operation, there's a gap where
 the daemon isn't running yet. During this period:
 
-- `patina connector sync forge` is the primary path
+- `patina mother run github` is the primary path
 - `patina scrape` continues to work for all local sources
 - The `--sync` convenience flag bridges the UX gap
 - `patina scrape forge` shows a deprecation message pointing to
-  `patina connector sync`
+  `patina mother run`
 
 This transition is bounded — it ends when continuous-operation lands
-and Mother ticks connectors automatically.
+and Mother runs connectors automatically.
 
 ## Design Decisions
 
@@ -210,27 +209,21 @@ NEW data from GitHub — not when you're rebuilding projections.
 - `src/commands/scrape/mod.rs` lines 354-601 — forge functions
 - `pub mod forge` declaration in mod.rs
 
-**New (connector command):**
-- `src/commands/connector.rs` (new) — `patina connector sync/list/status`
-- Discovery: scan installed plugins with `role = "connector"`
+**New (Mother broker):**
+- `src/broker/mod.rs` — Mother routing engine ([[spec-mother-broker]])
+- `patina mother run/status` — connector execution via Mother
 
 **Plugin infrastructure (already exists):**
 - `src/commands/plugin.rs` — `patina plugin list`, `patina plugin run`
 - `src/plugin/internal/mod.rs` — PluginManifest, PluginEngine
 
-## Open Questions
+## Resolved Questions
 
-1. **`patina connector` as a separate command vs `patina plugin run`.**
-   `patina connector sync forge` is more ergonomic than
-   `patina plugin run forge-connector --action sync`. But it adds a new
-   top-level command. **Lean toward: `patina connector` command.** It's
-   the user-facing verb for external data. `plugin run` is the low-level
-   escape hatch. Role-based commands (connector, grammar) are the
-   porcelain.
+1. **Connector CLI naming.** Resolved in [[spec-pipe-architecture]]
+   sessions 9-10: `patina mother run <name>` (not `patina connector`).
+   Mother is the broker — she manages and runs children. No separate
+   connector command. Users talk to Mother or set up connections.
 
-2. **Scope of `patina connector sync --all`.** Does "all" mean all
-   installed connectors, or all connectors configured for this project?
-   A user might have forge, email, and salesforce connectors installed
-   but only forge configured for this project. **Lean toward:
-   project-scoped.** The project config declares which connectors it
-   uses. `--all` syncs those, not every installed plugin.
+2. **Scope of connector runs.** Resolved: project-scoped via
+   sources.toml declarations. Mother reads sources.toml from registered
+   projects, runs only configured connectors. See [[spec-mother-broker]].
