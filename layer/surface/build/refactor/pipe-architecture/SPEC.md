@@ -1,11 +1,10 @@
 ---
 type: refactor
 id: pipe-architecture
-status: draft
+status: ready
 created: 2026-03-06
 sessions:
   origin: 20260305-170212
-  rewrite: 20260306-150846
 related:
 - forge-plugin-extraction
 - lake-registry
@@ -25,22 +24,22 @@ beliefs:
 - wit-defines-pipe-contract-not-runtime
 exit_criteria:
 - id: pipe-protocol-defined
-  text: "Pipe protocol specification: JSON-RPC 2.0 with pipe/* methods, WIT type contracts, canonical serialization for content addressing, streaming fact delivery, typed errors"
+  text: 'Pipe protocol specification: JSON-RPC 2.0 with pipe/* methods, WIT type contracts, canonical serialization for content addressing, streaming fact delivery, typed errors'
   checked: false
 - id: child-framework-exists
-  text: "Child framework with lifecycle management: connector, transport, lakehouse, and transform child types, all speaking pipe protocol, managed by Mother"
+  text: 'Child framework with lifecycle management: connector, transport, lakehouse, and transform child types, all speaking pipe protocol, managed by Mother'
   checked: false
 - id: connection-model-works
-  text: "`patina connect <provider>` links pipe protocol to auth — OAuth device flow, credential stored in vault, connector child configured in one command"
+  text: '`patina connect <provider>` links pipe protocol to auth — OAuth device flow, credential stored in vault, connector child configured in one command'
   checked: false
 - id: broker-routes-facts
-  text: "Mother routes facts from children to destinations based on pub/sub declarations in sources.toml — fan-out is config, not child logic"
+  text: Mother routes facts from children to destinations based on pub/sub declarations in sources.toml — fan-out is config, not child logic
   checked: false
 - id: github-connector-works
-  text: "GitHub connector child replaces forge WASM plugin — same data (forge.issue, forge.pr), better auth UX, speaks pipe protocol over stdio"
+  text: GitHub connector child replaces forge WASM plugin — same data (forge.issue, forge.pr), better auth UX, speaks pipe protocol over stdio
   checked: false
 - id: crate-structure-ships
-  text: "`patina-pipe-types` (shared types), `patina-sdk` (WASM children), `patina-pipe` (native children) — one protocol, two transport bindings"
+  text: '`patina-pipe-types` (shared types), `patina-sdk` (WASM children), `patina-pipe` (native children) — one protocol, two transport bindings'
   checked: false
 ---
 # refactor: Pipe Architecture — Protocol + Broker Model
