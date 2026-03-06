@@ -69,10 +69,10 @@ patina auth login slack
 `<provider>:<identity>` — e.g., `github:user`, `slack:workspace`,
 `google:account@email.com`. Pipes reference these by name.
 
-### Layer 2: Pipes (Mother-managed drivers)
+### Layer 2: Pipes (Mother-managed native processes)
 
 **What a pipe is:**
-A pipe is a data driver for one external source. It knows:
+A pipe is a native binary that drives one external source. It knows:
 - How to authenticate (OAuth, API key, none for RSS)
 - How to paginate (per_page+page, cursor, Link headers)
 - How to rate limit (fixed delay, adaptive from headers)
@@ -85,66 +85,165 @@ A pipe does NOT know:
 - How to schedule itself
 - Anything about Patina's internal data model
 
-**Pipe interface (WIT-defined):**
+**Execution model (process-based):**
 
-```wit
-interface pipe {
-    /// What this pipe can provide.
-    record capabilities {
-        provider: string,           // "github", "slack", "rss"
-        data-types: list<string>,   // ["issues", "prs", "comments"]
-        supports-incremental: bool, // can fetch "since" timestamp?
-        supports-streaming: bool,   // WebSocket/SSE available?
+Pipes are native processes communicating over stdio. Mother spawns the
+pipe binary, writes config to its stdin, reads newline-delimited JSON
+facts from its stdout, and captures logs from stderr. This is the same
+pattern as MCP servers — spawn a process, speak JSON over stdio.
+
+```
+Mother                          github-pipe
+  │                                 │
+  │──── stdin: JSON config ────────▶│
+  │     {                           │
+  │       "auth": { "token": "..." },
+  │       "params": { "owner": "NicabarNimble", "repo": "patina" },
+  │       "types": ["issues", "prs"],
+  │       "since": "2026-03-01T00:00:00Z"
+  │     }                           │
+  │                                 │
+  │                                 │── reqwest GET /repos/.../issues
+  │                                 │── reqwest GET /repos/.../pulls
+  │                                 │
+  │◀── stdout: NDJSON facts ────────│
+  │  {"schema":"forge","type":"issue","data":{...}}
+  │  {"schema":"forge","type":"pr","data":{...}}
+  │  {"schema":"forge","type":"issue","data":{...}}
+  │                                 │
+  │◀── exit(0) ─────────────────────│
+  │                                 │
+  │── write facts to events.db      │
+```
+
+**github-pipe code sketch:**
+
+```rust
+// pipes/github-pipe/src/main.rs
+fn main() -> Result<()> {
+    let config: PipeConfig = serde_json::from_reader(io::stdin())?;
+    let client = GitHubClient::new(&config);
+
+    for issue in client.fetch_issues()? {
+        let fact = Fact {
+            schema: "forge",
+            fact_type: "issue",
+            data: serde_json::to_value(&issue)?,
+        };
+        println!("{}", serde_json::to_string(&fact)?);
     }
 
-    /// What a destination is asking for.
-    record fetch-request {
-        data-types: list<string>,   // which types to fetch
-        filter: option<string>,     // provider-specific filter (JSON)
-        since: option<string>,      // incremental: only after this timestamp
-        limit: option<u32>,         // max items
+    for pr in client.fetch_pull_requests()? {
+        let fact = Fact {
+            schema: "forge",
+            fact_type: "pr",
+            data: serde_json::to_value(&pr)?,
+        };
+        println!("{}", serde_json::to_string(&fact)?);
     }
 
-    /// A single fact emitted by the pipe.
-    record fact {
-        schema: string,             // "forge", "slack", etc.
-        fact-type: string,          // "issue", "message", etc.
-        data: string,               // JSON payload
-    }
-
-    /// Report what this pipe can do.
-    get-capabilities: func() -> capabilities;
-
-    /// Test connectivity with current credentials.
-    check-health: func() -> result<string, string>;
-
-    /// Fetch data matching the request. Returns facts to emit.
-    fetch: func(request: fetch-request) -> result<list<fact>, string>;
+    Ok(())
 }
 ```
 
-The pipe returns facts. The host emits them (host_emit equivalent).
-The pipe never touches events.db directly.
+Normal Rust development: `cargo run`, `cargo test`, `dbg!()`. No WASM
+build step, no cross-compilation, no host function stubs for testing.
+The `GitHubClient` code migrates from `plugins/forge/src/github.rs`
+with `host_http` calls replaced by direct `reqwest` calls.
 
-**WASM vs native:**
-Pipes run in WASM for the same reason community plugins do — sandbox.
-A community-published Slack pipe shouldn't be able to exfiltrate your
-GitHub credentials. The WASM boundary ensures the pipe can only reach
-its declared domains with its declared credentials.
+**WIT as type contract (not calling convention):**
 
-The I/O overhead concern from the audit is real but minor:
-- API latency: 100-500ms per call
-- WASM boundary crossing: <1ms per call
-- The boundary cost is noise compared to network latency
+WIT defines the types — fact shapes, capability declarations, config
+schema — but pipes are NOT WASM components. WIT serves the same role
+as protobuf or JSON Schema: a language-agnostic type definition that
+generates Rust structs, TypeScript types, or Python dataclasses. The
+pipe.wit file defines what a valid fact looks like. The pipe binary
+serializes facts as JSON matching those types. Mother validates facts
+against the WIT-derived schema before writing to events.db.
 
-Core/first-party pipes (GitHub, built by Patina) could theoretically
-run native for slightly less overhead, but the uniformity of "all
-pipes are WASM" is worth more than the marginal performance gain.
+**Pipe lifecycle modes:**
+
+- **Poll**: spawn → fetch → emit facts → exit. Schedule-driven
+  (cron-like: hourly, daily, on-scrape). Ephemeral process. GitHub
+  issues, RSS feeds, periodic API scrapes.
+- **Stream**: spawn → stay alive → emit facts continuously. Mother
+  monitors health, restarts on crash. Long-lived process. For sources
+  with native streaming APIs (SSE, long-poll). Pipe manages its own
+  connection.
+- **Manual**: one-shot on user command (`patina pipe run github`).
+  For testing, backfill, debugging. Same binary, same protocol.
+
+For real-time sources where the external connection is complex
+(WebSockets, webhooks), Mother holds the connection and feeds data
+to the pipe. Slack example: Mother holds the Slack WebSocket, buffers
+messages, spawns slack-pipe with the batch on stdin. The pipe doesn't
+know about WebSocket — it transforms JSON in, facts out.
+
+**Fan-out:**
+
+Mother spawns N instances of the same pipe binary with different
+configs. One github-pipe binary serves multiple destinations:
+
+```
+Mother
+  ├── github-pipe (config: NicabarNimble/patina, types: [issues, prs])
+  │     → project events.db
+  ├── github-pipe (config: NicabarNimble/*, types: [issues, prs, releases])
+  │     → org-lake events.db
+  └── github-pipe (config: NicabarNimble/patina, types: [security-advisories])
+        → security-block events.db
+```
+
+**All pipes are OS-sandboxed:**
+
+Every pipe runs in an OS sandbox — no trusted/untrusted tiers.
+
+- **macOS**: `sandbox-exec` with a profile that denies filesystem
+  access and process spawning. Network allowed for declared domains
+  (from pipe.toml manifest). ~2ms startup overhead, ~0ns runtime.
+- **Linux**: Landlock LSM restricts filesystem access and process
+  creation. Same model, same overhead.
+
+This is the Chrome renderer process pattern: the sandbox doesn't
+provide the security (the protocol does), it prevents bypass. A
+compromised pipe binary can't read arbitrary files, access secrets
+on disk, or spawn subprocesses. It makes HTTP calls to its declared
+domains and communicates with Mother over inherited stdio.
+
+Performance comparison:
+- OS sandbox startup: ~2ms (one-time per process)
+- OS sandbox runtime: ~0ns (kernel-enforced, no per-call overhead)
+- WASM boundary crossing: ~1ms per host function call
+- For a GitHub sync with 50 API calls: 0ms (OS) vs 50ms (WASM)
+
+**Three-layer security model:**
+
+1. **Protocol enforcement** (always): Mother validates that facts
+   match declared schemas. Pipe can only emit what its manifest allows.
+   Credentials are passed via stdin config, not environment or files.
+
+2. **Capability manifest** (always): pipe.toml declares what domains
+   the pipe needs, what schemas it emits, what auth it requires. Mother
+   refuses to run a pipe that requests undeclared resources.
+
+3. **OS sandbox** (all pipes): kernel-enforced process isolation.
+   Pipe can't make network calls, read filesystem, or spawn processes.
+   All I/O goes through inherited stdio file descriptors.
+
+Future: UCAN capability tokens for scoped credential delegation —
+persona keypair signs a token granting specific API scopes to a
+specific pipe for a specific duration.
 
 **Pipe packaging:**
-Same as today's plugins — a directory with `plugin.toml` (or
-`pipe.toml`) and a `.wasm` binary. But installed at user level
-(`~/.patina/pipes/`) not project level.
+
+A directory with `pipe.toml` manifest and a native binary. Installed
+at user level (`~/.patina/pipes/`) not project level.
+
+```
+~/.patina/pipes/github-pipe/
+├── pipe.toml        # manifest: provider, domains, schemas, lifecycle
+└── github-pipe      # native binary (or symlink to cargo build)
+```
 
 ### Layer 3: Destinations (project, lake, block configuration)
 
@@ -184,13 +283,17 @@ schedule = "hourly"
 ```
 
 **Mother's role:**
-Mother manages pipe scheduling. For each destination:
-1. Read source configuration
-2. Resolve credential from `patina auth`
-3. Load pipe (WASM)
-4. Call `fetch(request)` with destination's filter
-5. Emit returned facts to destination's events.db
-6. Track last-sync timestamp for incremental
+Mother manages pipe lifecycle. For each destination:
+1. Read source configuration (sources.toml)
+2. Resolve credential from `patina auth` (vault decrypt, session cache)
+3. Build stdin config JSON (credential + params + fetch request)
+4. Spawn pipe binary in OS sandbox
+5. Write config to pipe's stdin, close stdin
+6. Read newline-delimited JSON facts from pipe's stdout
+7. Validate facts against declared schema
+8. Write valid facts to destination's events.db
+9. Track last-sync timestamp for incremental fetches
+10. Handle lifecycle: exit code for poll, health monitoring for stream
 
 This replaces the current `patina plugin run patina-forge -- sync`
 manual invocation.
@@ -202,17 +305,22 @@ What changes:
 
 | Aspect | Current (WASM plugin) | Target (pipe) |
 |---|---|---|
-| Interface | `handle("sync", payload)` | `fetch(request)` |
+| Runtime | WASM in wasmtime | Native binary over stdio |
+| Interface | `handle("sync", payload)` via host calls | stdin JSON config → stdout NDJSON facts |
+| HTTP | `host_http` (crosses WASM boundary) | Direct `reqwest` (pipe owns HTTP) |
 | Auth | Manual PAT + vault + grants TOML | `patina auth login github` |
 | Scope | Per-project installation | User-level, shared |
 | Config | JSON payload at runtime | TOML in destination config |
 | Scheduling | Manual `plugin run` | Mother-managed per destination |
-| Facts | Plugin calls host_emit directly | Pipe returns facts, host emits |
-| Schema | Declared in plugin manifest | Ships with pipe, same mechanism |
+| Facts | Plugin calls host_emit directly | Pipe writes to stdout, Mother emits |
+| Sandbox | WASM sandbox (wasmtime) | OS sandbox (sandbox-exec/Landlock) |
+| Development | Cross-compile to WASM, stub host funcs | `cargo run`, `cargo test`, `dbg!()` |
+| Schema | Declared in plugin manifest | Ships with pipe, WIT type defs |
 
 The internal code (GitHub REST client, JSON parsing, rate limiting)
-migrates almost unchanged. The wrapper changes from MotherChildPlugin
-to a Pipe interface.
+migrates almost unchanged. `host_http` calls become direct `reqwest`
+calls. The wrapper changes from MotherChildPlugin to a `main()` that
+reads stdin and writes stdout.
 
 ## Secrets Architecture Detail
 
@@ -237,13 +345,14 @@ patina auth login github
 Mother loads source config → auth = "github:user"
   → Resolve: patina secrets get --global github:user
   → Decrypt via Keychain/Touch ID (or session cache)
-  → Inject into pipe's WASM host state (same as today's host_http)
-  → Pipe calls fetch → host makes HTTP with Bearer token
+  → Include token in stdin config JSON: { "auth": { "token": "..." } }
+  → Pipe reads config, uses token directly via reqwest
+  → OS sandbox prevents pipe from leaking token (no network, no files)
 ```
 
 No secret-grants.toml. No manual PAT. The trust model shifts from
 "user grants plugin access to a secret" to "user authenticates with
-a provider, Mother injects credentials into configured pipes."
+a provider, Mother injects credentials into pipe config via stdin."
 
 **Security model comparison:**
 
@@ -252,11 +361,14 @@ a provider, Mother injects credentials into configured pipes."
 | Who creates credential | User (manual PAT) | `patina auth` (OAuth) |
 | Who stores it | User (vault add) | `patina auth` (vault add) |
 | Who grants access | User (secret-grants.toml) | Source config (auth = "github:user") |
-| Enforcement | host_http call-time check | Same — pipe runs in WASM, host injects |
+| Enforcement | host_http call-time check | OS sandbox (no network except stdout) |
 | Revocation | Delete from vault | `patina auth revoke github` |
 
-The WASM sandbox still prevents pipes from accessing credentials they
-weren't configured with. The difference is UX: one command vs four steps.
+The OS sandbox prevents credential exfiltration via filesystem or
+subprocess — the pipe can't write the token to disk, send it to a
+different process, or access other secrets. The credential arrives via
+stdin, gets used for declared-domain HTTP only. The difference from
+the plugin model is UX: one command vs four steps.
 
 ## Relationship to Other Specs
 
@@ -272,35 +384,110 @@ weren't configured with. The difference is UX: one command vs four steps.
 - **scrape-simplification** — scrape stays local (git). Pipe data
   arrives via Mother, not via scrape dispatch. `patina scrape` triggers
   projection of pipe-emitted events, not pipe execution.
+- **persona-federation** — dependency. Persona keypair serves as pipe
+  signing key (fact provenance), node identity (Iroh peer discovery),
+  and UCAN issuer (capability delegation). The identity primitive from
+  persona-federation is what makes pipes work in a multi-node network.
 
 ## Key Files (current, to be refactored)
 
 **Pipe code (from forge plugin):**
-- `plugins/forge/src/lib.rs` — ForgeChild, becomes pipe interface impl
 - `plugins/forge/src/github.rs` — GitHubClient, migrates to github-pipe
-- `plugins/forge/plugin.toml` — becomes pipe.toml
+  binary. `host_http` calls become direct `reqwest` calls.
+- `plugins/forge/plugin.toml` — becomes pipe.toml manifest format
 
-**Host infrastructure (stays, shared by pipes and plugins):**
-- `src/plugin/internal/host_support.rs` — emit_fact, http_get, leak_check
-- `src/plugin/internal/mother_child.rs` — WASM runtime, may need pipe world
-- `src/secrets/mod.rs` — vault, identity, session caching
+**Host infrastructure (security patterns reusable):**
+- `src/plugin/internal/host_support.rs` — domain allowlist, credential
+  injection, leak check — all host-side security logic. Patterns reusable
+  for pipe manager validation (not the code directly, but the approach).
+- `src/secrets/mod.rs` — vault, identity, session caching. Pipes use
+  the same vault; Mother resolves credentials before passing to pipe.
 
 **Projection (stays, source-agnostic):**
 - `src/commands/scrape/forge/mod.rs` — project_from_events, FTS5 population
 
+**MCP server (pattern to follow for pipe protocol):**
+- `src/mcp/server/mod.rs` — stdio JSON-RPC server. Same spawn-and-stdio
+  pattern that pipes will use, but pipes are simpler (no JSON-RPC, just
+  config in + NDJSON out).
+
 **New code needed:**
+- `pipes/github-pipe/` — standalone Rust binary (own Cargo.toml)
+- `src/pipe/` — Mother pipe manager (spawn, sandbox, read stdout, emit)
 - `src/auth/` — OAuth device flow, provider registry, `patina auth` CLI
-- `src/pipe/` — pipe interface, pipe loading, fetch→emit bridge
-- WIT: `wit/pipe/pipe.wit` — pipe interface definition
+- WIT: `wit/pipe/pipe.wit` — type definitions for fact shapes, config
+
+## Lake-as-Source Pattern
+
+The default data flow is pipe → lake → project projection:
+
+```
+github-pipe (fetch everything from org)
+  └─▶ org-lake/events.db (all issues, PRs, releases)
+        ├─▶ project-A/.patina/ (project issues + PRs only)
+        ├─▶ project-B/.patina/ (project issues + PRs only)
+        └─▶ security-block/ (security advisories only)
+```
+
+Benefits:
+- **No re-fetching**: pipe fetches once, projections are local queries
+- **Fan-out is config**: destinations select what they want from the lake
+- **Backfill is free**: lake has all history, new projects can project
+  retroactively
+- **Rate limit friendly**: one API call set, many consumers
+
+Mother decides parallelism strategy — whether to spawn one pipe and
+fan-out the output, or spawn N pipes with different configs. The pipe
+binary is the same either way.
+
+## Transport Model
+
+The pipe protocol (config in, facts out) is transport-agnostic. Build
+stdio first, design for future transports:
+
+| Transport | Topology | Use Case |
+|---|---|---|
+| stdio | local, same machine | Default. Mother spawns pipe process |
+| HTTP+SSE | remote, pipe on VPS | Pipe runs on server, Mother connects |
+| Streamable HTTP | shared, multi-Mother | Community pipe serving multiple users |
+
+Same message format across all transports. Same fact schema. Different
+wire. Following the MCP pattern where deployment topology doesn't
+dictate protocol design.
+
+**Current scope**: stdio only. Don't hardcode stdio assumptions in the
+protocol layer (message format), but don't build HTTP transport until
+there's a concrete remote pipe use case.
+
+## Network / P2P Future
+
+Brief notes on where this architecture goes at network scale — these
+are future scope, not current implementation targets:
+
+- **Content-addressed facts**: each fact gets a blake3 hash. Dedup
+  across pipes and nodes is automatic. Same fact from two sources
+  resolves to one entry.
+- **Iroh document sync**: facts sync between nodes as Iroh documents.
+  Each node runs its own pipes, facts converge via gossip.
+- **Persona = node identity**: the persona keypair from persona-
+  federation serves as Iroh node identity and UCAN issuer. Facts
+  carry provenance signatures.
+- **Node specialization**: pipe nodes (fetch), compute nodes
+  (embeddings), belief nodes (inference), leaf nodes (read-only).
+  The pipe binary doesn't change at any scale.
+
+The key architectural point: designing pipes as processes over stdio
+with transport-agnostic protocol means the same pipe binary works on
+a developer laptop, a VPS, a Docker container, or a p2p node. No
+redesign needed as deployment topology evolves.
 
 ## Open Questions
 
 1. **Pipe discovery.** How do users find and install community pipes?
    Registry like crates.io? GitHub releases? Manual download?
 
-2. **Schema ownership.** Today the forge schema ships with the plugin.
-   With pipes, does the schema ship with the pipe or is it installed
-   independently? Lean toward: ships with the pipe (same as today).
+2. **Schema ownership.** Does the schema ship with the pipe or is it
+   installed independently? Lean toward: ships with the pipe.
 
 3. **Pipe versioning.** When a pipe's output format changes, how do
    projection tables migrate? Schema version in event metadata?
@@ -309,10 +496,8 @@ weren't configured with. The difference is UX: one command vs four steps.
    instances, or is "github-enterprise" a separate pipe? Lean toward:
    one pipe, configured with base_url per destination.
 
-5. **Pipe testing.** `patina pipe test github` — run a health check
-   and small fetch to verify the pipe works with current credentials.
-
-6. **The streaming question.** Poll-based pipes (GitHub, RSS) work today.
-   Push-based pipes (Slack real-time, WebSocket feeds) need Mother to hold
-   connections and buffer events. Design needed but not a blocker for
-   initial pipe architecture.
+5. **Community pipe security model.** First-party pipes make direct
+   HTTP (trusted code + OS sandbox). Community pipes may need host-
+   proxied I/O where Mother makes HTTP calls on the pipe's behalf —
+   same pattern as current host_http. Design the two-tier model when
+   community pipes become relevant.

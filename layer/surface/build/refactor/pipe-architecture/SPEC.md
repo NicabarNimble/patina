@@ -10,12 +10,19 @@ related:
 - lake-registry
 - core-extraction
 - continuous-operation
+- persona-federation
 beliefs:
 - wit-is-contract-wasm-is-one-runtime
 - patina-is-domain-agnostic-knowledge-system
+- pipes-are-processes-not-wasm
+- host-proxied-io-is-the-security-model
+- mother-holds-connections-pipes-transform
+- pipe-protocol-is-transport-agnostic
+- persona-keypair-is-node-identity
+- wit-defines-pipe-contract-not-runtime
 exit_criteria:
 - id: pipe-interface-defined
-  text: WIT-defined pipe interface (connect, fetch, health) independent of WASM/native runtime
+  text: Pipe protocol defined — stdin config, stdout newline-delimited JSON facts, stderr logs — with WIT type definitions for fact shapes
   checked: false
 - id: secrets-are-user-level
   text: Single secrets system manages all credentials — `patina auth` with OAuth device flow, not per-pipe manual setup
@@ -83,12 +90,13 @@ The distinction matters because:
 - `leak_check()`: scans response for leaked credential values
 - No `patina plugin grant` CLI command — user hand-edits TOML file
 
-**Host infrastructure** (solid, reusable by pipes):
+**Host infrastructure** (solid, patterns reusable by pipes):
 - `host_emit` → schema-validated event emission to events.db
 - `host_http` → domain-allowlisted HTTP with credential injection
 - CQRS projection → events.db → patina.db materialized views
 - FTS5 indexing from projection tables
-- WASM isolation via wasmtime with empty WASI context
+- Security logic in `host_support.rs` — domain allowlist, credential
+  injection, leak check — all host-side, reusable for process-based pipes
 
 ## Target State
 
@@ -103,11 +111,11 @@ The distinction matters because:
 └──────────┬──────────────────────────────────┘
            │ credentials by source name
 ┌──────────▼──────────────────────────────────┐
-│  Pipes (Mother-level, one per source)        │
+│  Pipes (Mother-managed native processes)     │
 │  github-pipe: GitHub REST/GraphQL            │
 │  slack-pipe: Slack API                       │
 │  rss-pipe: RSS/Atom feeds                    │
-│  Installed once, available to all projects   │
+│  Installed once, OS-sandboxed, all projects  │
 └──────────┬──────────────────────────────────┘
            │ data (filtered by destination config)
      ┌─────┼─────────┐
@@ -120,14 +128,27 @@ The distinction matters because:
   wants    wants      wants
 ```
 
-### Pipe interface (WIT-defined)
+### Pipe interface (stdio protocol)
 
-A pipe implements a WIT interface regardless of runtime:
+A pipe is a native binary that communicates over stdio:
 
-- `connect(config) → result` — validate config, test connectivity
-- `fetch(filter) → stream<fact>` — pull data matching filter
-- `health() → status` — is the source reachable?
-- `capabilities() → list<fact-type>` — what data types can this pipe provide?
+- **stdin**: JSON config object (credentials, params, fetch request)
+- **stdout**: newline-delimited JSON facts (one fact per line)
+- **stderr**: structured logs (human-readable, not parsed by Mother)
+
+WIT defines the type contract — fact shapes, capability declarations,
+config schema — but pipes are NOT WASM components. They're regular
+processes spawned by Mother. Any language that reads stdin and writes
+stdout can be a pipe.
+
+### Pipe lifecycle modes
+
+- **Poll**: spawn → fetch → emit facts → exit. Schedule-driven
+  (cron-like: hourly, daily, on-scrape). Ephemeral process.
+- **Stream**: spawn → stay alive → emit facts continuously. Mother
+  monitors health, restarts on crash. Long-lived process.
+- **Manual**: one-shot on user command (`patina pipe run github`).
+  For testing, backfill, debugging. Same binary, same protocol.
 
 ### Destination configuration
 
@@ -165,8 +186,9 @@ pipes are trusted infrastructure, not untrusted third-party code.
 | | Pipes | Plugins |
 |---|---|---|
 | Purpose | Move data in | Add behavior |
+| Runtime | Native process over stdio | WASM component in wasmtime |
 | Trust | Infrastructure (like git) | Third-party (like Obsidian plugins) |
-| Sandbox | Credential-scoped, not process-sandboxed | WASM sandboxed |
+| Sandbox | OS sandbox (sandbox-exec/Landlock) — all pipes, ~0ns runtime cost | WASM sandboxed |
 | Install scope | User-level (Mother) | Project-level |
 | Auth | `patina auth` (OAuth, shared) | `secret-grants.toml` (manual, per-plugin) |
 | Examples | GitHub, Slack, RSS, Google | Spec system, grammars, doctor, apps |
@@ -182,29 +204,78 @@ The forge WASM plugin proved:
 These infrastructure pieces survive. The pipe architecture reframes
 *how* the connector is packaged and configured, not what it does
 internally. The GitHub pipe will still emit forge.issue and forge.pr
-events. It just won't be a WASM plugin — it'll be a pipe with better
-auth and shared across destinations.
+events. It becomes a native Rust binary that reads config from stdin,
+calls the GitHub API directly via reqwest, and writes newline-delimited
+JSON facts to stdout. Mother reads stdout and writes to events.db.
+Normal Rust development: `cargo run`, `cargo test`, `dbg!()` — no
+WASM build step, no cross-compilation.
+
+## Resolved Questions (from session 20260305-224446)
+
+1. **WASM for community pipes?** → No. All pipes are OS-sandboxed native
+   processes. macOS sandbox-exec and Linux Landlock provide kernel-enforced
+   isolation at ~2ms startup, ~0ns runtime — same pattern as Chrome
+   renderer processes. No trusted/untrusted tiers. One model for all pipes.
+   [[pipes-are-processes-not-wasm]], [[host-proxied-io-is-the-security-model]]
+
+2. **Streaming sources?** → Mother holds external connections (WebSockets,
+   webhooks, polling). Pipes are stateless transforms — data in via stdin,
+   facts out via stdout. For Slack real-time: Mother holds the WebSocket,
+   buffers messages, feeds batches to slack-pipe over stdin. Pipe doesn't
+   know about WebSocket. Same interface for all source transports.
+   [[mother-holds-connections-pipes-transform]]
+
+3. **Filter language?** → Pipe config params handle source-side filtering
+   (which repos, which channels). Destination-side filtering is projection
+   — views over the lake's events.db. No custom filter language needed.
+
+4. **Pipe vs lake-registry overlap?** → Lake is a destination type. A pipe
+   feeds data into a lake's events.db. Lake-registry manages lake metadata
+   (what sources, what schemas, sync state). They're complementary layers,
+   not competing specs.
+
+5. **Transport?** → stdio for local pipes (default). HTTP+SSE for remote
+   pipes on a VPS. Streamable HTTP for shared pipes serving multiple
+   Mother instances. Same message format across all transports — protocol
+   is transport-agnostic. Build stdio now, don't hardcode assumptions.
+   [[pipe-protocol-is-transport-agnostic]]
+
+6. **Fan-out?** → Mother spawns N instances of the same pipe binary with
+   different configs. One github-pipe binary serves multiple destinations
+   (project, lake, block). Lake-as-source pattern: fetch everything once
+   into lake, project many views — no re-fetching.
 
 ## Open Questions
 
-- **WASM for community pipes?** If someone publishes a pipe for an
-  obscure API, should it run in WASM for safety? Maybe pipes have two
-  tiers: core/trusted (native) and community (WASM sandboxed).
-- **Streaming sources.** WebSockets, SSE, real-time feeds. Pipes need
-  to handle both poll (GitHub) and push (Slack real-time) models. Mother
-  manages the connection lifecycle.
-- **Filter language.** How expressive does destination filtering need to
-  be? Simple field matching? JSONPath? SQL-like predicates?
-- **Pipe vs lake-registry overlap.** The lake-registry spec was about
-  lake metadata in graph.db. This spec is about the pipe layer underneath.
-  They may merge or one may subsume the other.
+1. **Pipe discovery.** How do users find and install community pipes?
+   Registry like crates.io? GitHub releases? Manual download?
+
+2. **Schema ownership.** Today the forge schema ships with the plugin.
+   With pipes, does the schema ship with the pipe or is it installed
+   independently? Lean toward: ships with the pipe (same as today).
+
+3. **Pipe versioning.** When a pipe's output format changes, how do
+   projection tables migrate? Schema version in event metadata?
+
+4. **Multi-provider pipes.** Is "github-pipe" one pipe for all GitHub
+   instances, or is "github-enterprise" a separate pipe? Lean toward:
+   one pipe, configured with base_url per destination.
 
 ## Steps
 
-1. Design WIT pipe interface (connect, fetch, health, capabilities)
-2. Design `patina auth` — OAuth device flow, credential store, refresh
-3. Implement GitHub pipe using existing forge code as starting point
-4. Design destination configuration format
-5. Wire Mother to manage pipe scheduling per destination
-6. Migrate forge-plugin-extraction to pipe architecture
-7. Delete old WASM forge plugin (or keep as community example)
+1. Define pipe protocol (stdin JSON config, stdout newline-delimited
+   JSON facts, stderr logs) — message format specification
+2. Define pipe.toml manifest format (provider, data-types, domains,
+   schema package, lifecycle mode)
+3. Define sources.toml destination config format (pipe, auth, params,
+   types, schedule)
+4. Build Mother pipe manager — spawn process, read stdout, write to
+   events.db, track sync state, handle lifecycle modes
+5. Build github-pipe binary — migrate from forge plugin code, direct
+   reqwest HTTP instead of host_http, reads stdin config, writes facts
+   to stdout
+6. Build `patina pipe run/health/list` CLI commands
+7. Build `patina auth login` — OAuth device flow, credential store,
+   `patina auth status/refresh/revoke`
+8. Wire scheduling — poll mode (cron-like intervals), stream mode
+   (always-on with health monitoring), manual mode (one-shot)
