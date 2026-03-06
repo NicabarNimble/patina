@@ -1,447 +1,305 @@
-# Design: Pipe Architecture — Data Flow Primitive
+# Design: Pipe Architecture — Protocol + Broker Model
 
-## The Core Insight
+## Design Principles
 
-Session 3 audit of forge-plugin-extraction revealed a category error.
-We built a GitHub data driver and packaged it as a WASM plugin. But
-plugins are for *opinions and behavior* — the spec lifecycle, grammars,
-CLI extensions. Data drivers are *infrastructure* — they move data
-between sources and destinations. Same relationship as git
-(infrastructure, always present) vs the spec system (domain logic,
-optionally installed).
+This design follows the reframing from sessions 7-8:
 
-A pipe connects a source to a destination, secured by a secret,
-described by a WIT contract. The source can be external (GitHub API)
-or internal (a Patina lake). The destination can be a lake, a block,
-an app, or a project. Same protocol everywhere — MCP-like design
-with WIT contracts.
+- **Pipe = protocol**, not a process type. JSON-RPC 2.0 + WIT types.
+- **Children = managed services** that speak pipe protocol. WASM or
+  native. Mother manages lifecycle.
+- **Mother = broker**. Routes facts from sources to destinations
+  based on pub/sub declarations. Never transforms data.
+- **Connection = pipe protocol + auth**. One command links them.
+- **Beliefs are the exit layer**. Everything below is plumbing.
 
-The forge WASM plugin proved the plumbing works:
-- host_emit → events.db with provenance and schema validation
-- host_http → domain-allowlisted, credential-injected HTTP
-- CQRS projection → events.db → patina.db materialized views
-- FTS5 indexing from projection tables
+This document addresses all 10 issues from the five-lens audit
+(sessions 7-8): streaming delivery, canonical serialization, typed
+errors, delivery guarantees, persona enforcement, failure modes,
+encryption gap, async position, child framework, and future scope.
 
-What it got wrong:
-- Packaged as per-project WASM plugin (should be user-level driver)
-- Manual PAT creation (should be OAuth device flow)
-- Per-plugin secret grants (should be shared credential store)
-- No concept of multiple destinations sharing one pipe
-- Plugin sandbox overhead on pure I/O (every HTTP call crosses boundary)
+## 1. Pipe Protocol Specification
 
-## Three Layers
+### 1.1 Foundation
 
-### Layer 1: Secrets (`patina auth`)
+JSON-RPC 2.0 (RFC 7049). Self-owned `pipe/*` method namespace.
+MCP-compatible (JSON-RPC is JSON-RPC) but MCP-independent (we own
+our methods, types, and evolution).
 
-**What exists today:**
-- Age-encrypted vault (`~/.patina/vault.age`) with Keychain + Touch ID
-- Global + project-scoped secrets
-- Session caching via Mother child (10min TTL, avoids Touch ID spam)
-- Secret scanning (pre-commit check for leaked secrets)
-- CLI: `patina secrets add`, `remove`, `run`, `check`, `audit`
-- Claude OAuth precedent: `patina secrets setup-claude` stores OAuth
-  token, injects as env var on adapter launch
-
-**What's missing:**
-- `patina auth login <provider>` — OAuth device flow per source
-- `patina auth status` — show all credentials, expiry, which pipes use them
-- `patina auth refresh <provider>` — re-auth on expiry
-- Credential metadata: scopes, created_at, expires_at, last_used_at
-- Provider-specific OAuth registration (GitHub app, Slack app, etc.)
-
-**Design approach:**
-Build on existing secrets infrastructure. `patina auth` is a UX layer
-on top of `patina secrets`. The vault stays the same. The addition is:
-an OAuth device flow that acquires the token automatically (browser
-popup, user approves, token stored) instead of manual PAT creation.
-
-The `setup-claude` pattern is the precedent — it already stores an
-OAuth token in the global vault and injects it on launch. Generalize
-this to multiple providers:
+### 1.2 Methods
 
 ```
-patina auth login github
-→ Opens browser to GitHub device authorization
-→ User approves
-→ Token stored: patina secrets add --global github:user
-→ Metadata stored: scopes, expiry, provider type
+pipe/initialize     →  Capability exchange. Mother sends config,
+                       child responds with capabilities.
 
-patina auth login slack
-→ Opens browser to Slack OAuth
-→ Same flow, different provider
+pipe/fetch          →  Request data. Mother sends params (types,
+                       since, limit). Child streams facts back as
+                       notifications, then sends result summary.
+
+pipe/emit           →  Push a fact. Child → Mother. Used in stream
+                       mode for continuous emission.
+
+pipe/health         →  Connectivity check. Returns ok/degraded/down
+                       with latency and message.
+
+pipe/capabilities   →  Re-query capabilities (for long-lived children).
+
+pipe/shutdown       →  Graceful shutdown request. Child flushes
+                       pending work, then exits.
 ```
 
-**Credential naming convention:**
-`<provider>:<identity>` — e.g., `github:user`, `slack:workspace`,
-`google:account@email.com`. Pipes reference these by name.
+### 1.3 Streaming Fact Delivery
 
-### Layer 2: Pipes (Mother-managed native processes)
+**Audit fix: Vec<Fact> OOM risk.**
 
-**What a pipe is:**
-A pipe is a native binary that connects a source to a destination.
-Sources can be external (GitHub API, Slack, RSS) or internal (a Patina
-lake, a data block). A pipe knows:
-- How to authenticate with its source (OAuth, API key, internal token)
-- How to paginate/stream from the source
-- How to rate limit
-- What data types it can provide (issues, PRs, embeddings, curated sets)
-- How to filter and fetch on demand
-
-A pipe does NOT know:
-- Which destination wants what data
-- Where to store the data
-- How to schedule itself
-- Anything about other pipes or the broader data flow
-
-**Execution model (JSON-RPC 2.0 server):**
-
-Pipes are JSON-RPC 2.0 servers with pipe/* methods. Mother is a
-JSON-RPC 2.0 client. MCP-compatible (same underlying protocol) but
-MCP-independent (our own methods, our own evolution). This gives us
-bidirectional communication, multiple calls per session, progress
-notifications, and the full transport stack (stdio, HTTP+SSE,
-Streamable HTTP) built on a stable RFC.
+Facts are delivered as individual JSON-RPC notifications, never
+collected into a Vec. A `pipe/fetch` call returns a summary; the
+actual facts arrive as `pipe/fact` notifications during execution.
 
 ```
-Mother (JSON-RPC client)         github-pipe (JSON-RPC server)
-  │                                 │
-  │──── pipe/initialize ───────────▶│
-  │◀─── capabilities ──────────────│
-  │                                 │
-  │──── pipe/fetch ────────────────▶│
-  │     {                           │
-  │       "persona": "dev-nick",    │
-  │       "auth": { "token": "..." },
-  │       "params": { "owner": "NicabarNimble", "repo": "patina" },
-  │       "types": ["issues", "prs"],
-  │       "since": "2026-03-01T00:00:00Z"
-  │     }                           │
-  │                                 │── reqwest GET /repos/.../issues
-  │◀─── pipe/notify: progress ──────│   (50 issues fetched)
-  │                                 │── reqwest GET /repos/.../pulls
-  │◀─── pipe/notify: fact ─────────│   {"schema":"forge","type":"issue",...}
-  │◀─── pipe/notify: fact ─────────│   {"schema":"forge","type":"pr",...}
-  │◀─── result: { fetched: 73 } ───│
-  │                                 │
-  │──── pipe/health ───────────────▶│  (Mother can call again without respawn)
-  │◀─── result: { ok: true } ──────│
-  │                                 │
-  │──── pipe/shutdown ─────────────▶│
-  │◀─── exit(0) ───────────────────│
-  │                                 │
-  │── write facts to events.db      │
+Mother                              Child
+  |                                   |
+  |---- pipe/fetch {since, types} -->|
+  |                                   |-- fetch page 1
+  |<--- pipe/fact {fact_1} ----------|
+  |<--- pipe/fact {fact_2} ----------|
+  |<--- pipe/progress {50 fetched} --|
+  |                                   |-- fetch page 2
+  |<--- pipe/fact {fact_3} ----------|
+  |<--- pipe/fact {fact_4} ----------|
+  |<--- result {fetched: 4} ---------|
+  |                                   |
 ```
 
-Key difference from previous design: Mother can call `fetch()` multiple
-times on the same running pipe. No respawn per fetch. Connection pooling,
-rate limit state, and cached auth persist across calls.
+Mother processes each fact as it arrives — validate schema, compute
+hash, write to events.db. No accumulation. A child emitting 100K
+facts uses O(1) memory on both sides.
 
-**github-pipe code sketch:**
+The `pipe/fact` notification:
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "pipe/fact",
+  "params": {
+    "schema": "forge",
+    "fact_type": "issue",
+    "data": { "number": 42, "title": "...", ... },
+    "content_hash": "blake3:abc123...",
+    "signature": "ed25519:xyz789..."
+  }
+}
+```
+
+### 1.4 Canonical Serialization
+
+**Audit fix: broken content addressing.**
+
+blake3 hashing requires deterministic serialization. `serde_json`
+does NOT guarantee key ordering — the same data can produce different
+hashes on different runs.
+
+Solution: canonical JSON serialization for content addressing.
+
+Rules:
+1. Object keys sorted lexicographically (Unicode code point order)
+2. No whitespace between tokens
+3. Numbers: no leading zeros, no trailing zeros after decimal
+4. Strings: minimal escaping (only required characters)
+5. No duplicate keys (last wins if encountered)
+
+Implementation: `patina-pipe-types` provides `canonical_json(value)`
+that serializes a `serde_json::Value` with sorted keys. Used by the
+SDK before blake3 hashing. The hash is computed over canonical JSON
+bytes, not over the wire representation.
 
 ```rust
-// pipes/github-pipe/src/main.rs
-use patina_pipe::{Pipe, serve, Fact, PipeConfig, Capabilities, Status};
-
-struct GitHubPipe;
-
-impl Pipe for GitHubPipe {
-    fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            provider: "github",
-            data_types: vec!["issues", "prs", "comments", "reviews"],
-            supports_incremental: true,
-            supports_streaming: false,
-        }
-    }
-
-    fn fetch(&self, config: &PipeConfig) -> Result<Vec<Fact>> {
-        let client = GitHubClient::new(&config.auth, &config.params)?;
-        let mut facts = Vec::new();
-
-        for issue in client.fetch_issues(config.since)? {
-            facts.push(Fact::new("forge", "issue", &issue)?);
-        }
-        for pr in client.fetch_pull_requests(config.since)? {
-            facts.push(Fact::new("forge", "pr", &pr)?);
-        }
-
-        Ok(facts)
-    }
-
-    fn health(&self, config: &PipeConfig) -> Result<Status> {
-        let client = GitHubClient::new(&config.auth, &config.params)?;
-        client.check_rate_limit()
-    }
+// patina-pipe-types/src/canonical.rs
+pub fn canonical_json(value: &serde_json::Value) -> Vec<u8> {
+    let mut buf = Vec::new();
+    write_canonical(&mut buf, value);
+    buf
 }
 
-fn main() -> Result<()> {
-    serve(GitHubPipe)  // JSON-RPC 2.0 server — handles everything
+pub fn content_hash(value: &serde_json::Value) -> String {
+    let canonical = canonical_json(value);
+    let hash = blake3::hash(&canonical);
+    format!("blake3:{}", hash.to_hex())
 }
 ```
 
-Normal Rust development: `cargo run`, `cargo test`, `dbg!()`. No WASM
-build step, no cross-compilation, no host function stubs for testing.
-The `GitHubClient` code migrates from `plugins/forge/src/github.rs`
-with `host_http` calls replaced by direct `reqwest` calls.
+### 1.5 Typed Errors
 
-`serve()` handles: MCP protocol, JSON-RPC dispatch, transport
-negotiation, fact signing (persona keypair), content addressing
-(blake3 hash), persona scoping, progress notifications, graceful
-shutdown. The pipe author never touches any of this.
+**Audit fix: undefined error types.**
 
-**WIT as type contract (not calling convention):**
+Pipe protocol errors use JSON-RPC error codes with structured data:
 
-WIT defines the types — fact shapes, capability declarations, config
-schema — but pipes are NOT WASM components. WIT serves the same role
-as protobuf or JSON Schema: a language-agnostic type definition that
-generates Rust structs, TypeScript types, or Python dataclasses. The
-pipe.wit file defines what a valid fact looks like. The pipe binary
-serializes facts as JSON matching those types. Mother validates facts
-against the WIT-derived schema before writing to events.db.
+```rust
+// patina-pipe-types/src/error.rs
 
-**Pipe lifecycle modes:**
+/// Error categories for pipe protocol.
+pub enum PipeError {
+    /// Retryable — transient failure, try again later.
+    /// Mother should backoff and retry.
+    Transient {
+        code: i32,          // -32001
+        message: String,
+        retry_after_ms: Option<u64>,
+    },
 
-- **Poll**: spawn → fetch → emit facts → exit. Schedule-driven
-  (cron-like: hourly, daily, on-scrape). Ephemeral process. GitHub
-  issues, RSS feeds, periodic API scrapes.
-- **Stream**: spawn → stay alive → emit facts continuously. Mother
-  monitors health, restarts on crash. Long-lived process. For sources
-  with native streaming APIs (SSE, long-poll). Pipe manages its own
-  connection.
-- **Manual**: one-shot on user command (`patina pipe run github`).
-  For testing, backfill, debugging. Same binary, same protocol.
+    /// Fatal — permanent failure, don't retry.
+    /// Bad credentials, schema mismatch, invalid config.
+    Fatal {
+        code: i32,          // -32002
+        message: String,
+    },
 
-For real-time sources where the external connection is complex
-(WebSockets, webhooks), Mother holds the connection and feeds data
-to the pipe. Slack example: Mother holds the Slack WebSocket, buffers
-messages, spawns slack-pipe with the batch on stdin. The pipe doesn't
-know about WebSocket — it transforms JSON in, facts out.
+    /// Rate limited — source API throttling.
+    /// Mother should wait and retry.
+    RateLimited {
+        code: i32,          // -32003
+        message: String,
+        retry_after_ms: u64,
+    },
 
-**Fan-out:**
-
-Mother spawns N instances of the same pipe binary with different
-configs. One github-pipe binary serves multiple destinations:
-
-```
-Mother
-  ├── github-pipe (config: NicabarNimble/patina, types: [issues, prs])
-  │     → project events.db
-  ├── github-pipe (config: NicabarNimble/*, types: [issues, prs, releases])
-  │     → org-lake events.db
-  └── github-pipe (config: NicabarNimble/patina, types: [security-advisories])
-        → security-block events.db
+    /// Partial — some facts emitted, then failure.
+    /// Mother keeps what it got, retries the rest.
+    Partial {
+        code: i32,          // -32004
+        message: String,
+        emitted: u64,       // facts successfully sent before failure
+    },
+}
 ```
 
-**Multiplexing architecture:**
+JSON-RPC error code ranges:
+- `-32001`: Transient (network timeout, service unavailable)
+- `-32002`: Fatal (bad auth, schema not found, invalid config)
+- `-32003`: Rate limited (429 from source API)
+- `-32004`: Partial success (some facts emitted before failure)
+- `-32600` to `-32700`: Standard JSON-RPC errors (parse, method, etc.)
 
-Pipes don't multiplex internally. Each pipe handles one data type on
-one stream. This is deliberate — unix philosophy, one tool one job.
-Multiplexing happens at the architecture level, not the protocol level.
+### 1.6 Fact Signing and Content Addressing
+
+Every fact emitted through pipe protocol is:
+
+1. **Canonicalized**: `data` field serialized via canonical JSON
+2. **Hashed**: blake3 over canonical bytes → `content_hash`
+3. **Signed**: ed25519 signature over `content_hash` using persona
+   keypair → `signature`
+
+The SDK handles all three automatically. Child authors never touch
+crypto. Mother validates signature and checks content_hash for dedup
+before writing to events.db.
 
 ```
-Game server (one WebSocket, all data types)
-       │
-   ws-child (holds connection, demux by message type)
-       │
-  ┌────┼────────┬──────────┬──────────┐
-  ▼    ▼        ▼          ▼          ▼
-combat movement chat    auction    mail
- pipe   pipe    pipe     pipe      pipe
-  │      │       │         │         │
-  ▼      ▼       ▼         ▼         ▼
-combat  world   chat    auction    mail
- lake   lake    lake     lake      lake
+Child calls emit("forge", "issue", data)
+  → SDK: canonical_json(data) → bytes
+  → SDK: blake3(bytes) → content_hash
+  → SDK: ed25519_sign(content_hash, persona_key) → signature
+  → SDK: send pipe/fact notification with all fields
+  → Mother: verify signature, check content_hash for dedup
+  → Mother: write to events.db (or skip if duplicate)
 ```
 
-Three levels of multiplexing, none in the pipe:
+Note: persona keypair infrastructure depends on
+[[spec-persona-federation]]. Until that ships, signing is stubbed
+(content_hash still works for dedup, signature field is empty).
 
-| Level | Who | How |
+### 1.7 Delivery Guarantees
+
+**Audit fix: no delivery guarantees stated.**
+
+**At-least-once with content-addressed dedup.**
+
+- Children may emit the same fact multiple times (crash, retry,
+  overlapping fetches). Mother deduplicates via `content_hash`.
+- Mother acknowledges receipt implicitly (the JSON-RPC result to
+  pipe/fetch). If the child crashes before receiving the result,
+  it re-emits on restart — Mother deduplicates.
+- Ordering: facts arrive in the order the child emits them. Mother
+  writes in arrival order. No global ordering across children.
+- Completeness: not guaranteed. A child may fail mid-fetch. The
+  `since` cursor and Partial error enable resumption.
+
+This is the right model for Patina: facts are evidence feeding a
+belief loop. Duplicate evidence is harmless (dedup). Missing evidence
+is detectable (incremental cursor shows gap). Ordering within a
+source is preserved; cross-source ordering is meaningless (beliefs
+don't depend on insertion order).
+
+## 2. Child Framework
+
+### 2.1 Child Types
+
+All children are managed services of Mother. All speak pipe protocol.
+The type determines what the child does, not how it communicates.
+
+| Type | Does | Examples |
 |---|---|---|
-| Source connection | Child | Demux one connection → many pipes |
-| Process management | Mother | Many pipes → many destinations |
-| Network transport | Transport layer | QUIC/HTTP/2 multi-stream between nodes |
+| Connector | Bridges external sources to Patina | github, slack, rss |
+| Transport | Holds complex external connections | websocket, webhook |
+| Lakehouse | Manages data storage layer | parquet, s3, sqlite |
+| Transform | Curates/enriches data between layers | filter, embed, aggregate |
 
-For moderate scale (personal, team): process-level multiplexing —
-each pipe is its own process with its own stdio. Pipes are cheap.
+### 2.2 Child Runtimes
 
-For high scale (MMO, real-time network): transport-level multiplexing —
-HTTP/2 or QUIC carries multiple pipe streams over one connection.
-SDK handles this. Pipe code unchanged.
+Children can run as WASM components or native processes. The pipe
+protocol is the same for both — Mother doesn't care.
 
-**Backpressure:**
+**WASM children** (current model):
+- Run in wasmtime via mother-child world
+- Communicate via host function calls (host_emit → emit, etc.)
+- Sandboxed by WASM — all I/O proxied through host
+- Installed per-project in `.patina/plugins/`
+- Proven by forge connector
 
-- **stdio** (local): OS pipe buffer (~64KB on Linux, ~16KB on macOS).
-  When Mother stops reading, buffer fills, pipe's `write()` blocks.
-  Free, built into the OS kernel. No protocol changes needed.
-- **HTTP transports** (remote): pull-based. Mother controls `limit`
-  per `pipe/fetch` call. Pipe sends only what's asked for. Mother
-  decides when to request more.
-- **Future escape hatch**: if JSON text overhead ever matters,
-  MessagePack-RPC is a binary drop-in for JSON-RPC. Same methods,
-  same semantics, binary encoding. SDK flag, pipe author doesn't know.
+**Native children** (new model):
+- Run as OS processes communicating over stdio
+- JSON-RPC 2.0 over stdin/stdout
+- Sandboxed by OS (macOS sandbox-exec, Linux Landlock)
+- Installed user-level in `~/.patina/children/`
+- Normal Rust development: `cargo run`, `cargo test`, `dbg!()`
 
-**All pipes are OS-sandboxed:**
+The patina-sdk crate serves WASM children. The patina-pipe crate
+serves native children. Both implement the same pipe protocol.
 
-Every pipe runs in an OS sandbox — no trusted/untrusted tiers.
+### 2.3 Child Lifecycle
 
-- **macOS**: `sandbox-exec` with a profile that denies filesystem
-  access and process spawning. Network allowed for declared domains
-  (from pipe.toml manifest). ~2ms startup overhead, ~0ns runtime.
-- **Linux**: Landlock LSM restricts filesystem access and process
-  creation. Same model, same overhead.
-
-This is the Chrome renderer process pattern: the sandbox doesn't
-provide the security (the protocol does), it prevents bypass. A
-compromised pipe binary can't read arbitrary files, access secrets
-on disk, or spawn subprocesses. It makes HTTP calls to its declared
-domains and communicates with Mother over inherited stdio.
-
-Performance comparison:
-- OS sandbox startup: ~2ms (one-time per process)
-- OS sandbox runtime: ~0ns (kernel-enforced, no per-call overhead)
-- WASM boundary crossing: ~1ms per host function call
-- For a GitHub sync with 50 API calls: 0ms (OS) vs 50ms (WASM)
-
-**Three-layer security model:**
-
-1. **Protocol enforcement** (always): Mother validates that facts
-   match declared schemas. Pipe can only emit what its manifest allows.
-   Credentials are passed via stdin config, not environment or files.
-
-2. **Capability manifest** (always): pipe.toml declares what domains
-   the pipe needs, what schemas it emits, what auth it requires. Mother
-   refuses to run a pipe that requests undeclared resources.
-
-3. **OS sandbox** (all pipes): kernel-enforced process isolation.
-   Pipe can't make network calls, read filesystem, or spawn processes.
-   All I/O goes through inherited stdio file descriptors.
-
-Future: UCAN capability tokens for scoped credential delegation —
-persona keypair signs a token granting specific API scopes to a
-specific pipe for a specific duration.
-
-**Pipe packaging:**
-
-A directory with `pipe.toml` manifest and a native binary. Installed
-at user level (`~/.patina/pipes/`) not project level.
+Mother manages all children through a uniform lifecycle:
 
 ```
-~/.patina/pipes/github-pipe/
-├── pipe.toml        # manifest: provider, domains, schemas, lifecycle
-└── github-pipe      # native binary (or symlink to cargo build)
+[Configured]  →  Mother reads sources.toml
+     |
+[Spawning]    →  Mother spawns child (WASM: instantiate,
+     |            native: fork+exec in sandbox)
+     |
+[Initializing] → pipe/initialize handshake
+     |            (capability exchange, config delivery)
+     |
+[Running]     →  Child processes pipe/fetch or pipe/emit calls
+     |            Mother monitors via pipe/health
+     |
+[Draining]    →  pipe/shutdown sent, child flushes work
+     |
+[Stopped]     →  Child exited. Mother records exit status.
+     |            Poll: done. Stream: restart after backoff.
 ```
 
-### Pipe SDK (`patina-pipe` crate)
+Health monitoring (stream mode):
+- Mother calls `pipe/health` every N seconds (configurable)
+- Three states: `ok`, `degraded`, `down`
+- `degraded` → log warning, continue
+- `down` → restart with exponential backoff (1s, 2s, 4s, max 5min)
+- 3 consecutive `down` → stop, alert user
 
-The SDK is the foundation — every pipe depends on it. No pipe is built
-without the SDK. The pipe is a JSON-RPC 2.0 server with pipe/* methods.
-The SDK handles protocol, transport, signing, hashing, persona isolation.
-The pipe author implements `fetch()` and nothing else.
-
-**Core trait:**
-
-```rust
-// patina-pipe/src/lib.rs
-
-/// The contract every pipe implements. This never changes.
-pub trait Pipe {
-    /// What this pipe can provide.
-    fn capabilities(&self) -> Capabilities;
-
-    /// Fetch data matching the config. Called by serve() on each
-    /// pipe/fetch request. May be called multiple times per session.
-    fn fetch(&self, config: &PipeConfig) -> Result<Vec<Fact>>;
-
-    /// Test connectivity with current credentials.
-    fn health(&self, config: &PipeConfig) -> Result<Status>;
-}
-
-/// JSON-RPC 2.0 server entry point. Pipe authors call this from main().
-/// Handles everything: protocol, transport, signing, persona.
-pub fn serve<P: Pipe>(pipe: P) -> Result<()> {
-    // 1. Negotiate transport (stdio, HTTP+SSE, Streamable HTTP)
-    // 2. pipe/initialize handshake (capability exchange)
-    // 3. Listen for JSON-RPC requests (pipe/fetch, pipe/health, etc.)
-    // 4. Dispatch to pipe.fetch() / pipe.health() / pipe.capabilities()
-    // 5. Sign each fact with persona keypair (automatic)
-    // 6. Hash each fact with blake3 (content addressing)
-    // 7. Send facts as pipe/notify notifications
-    // 8. Handle SIGTERM gracefully (stream mode)
-}
-```
-
-**SDK-provided types:**
-
-```rust
-/// What Mother sends in each MCP tools/call request.
-pub struct PipeConfig {
-    pub persona: String,            // "dev-nick" — scoped, can't cross
-    pub auth: Option<AuthConfig>,   // credentials from vault
-    pub params: serde_json::Value,  // pipe-specific params
-    pub types: Vec<String>,         // which data types to fetch
-    pub since: Option<DateTime>,    // incremental: only after this
-    pub limit: Option<u32>,         // max items
-}
-
-pub struct AuthConfig {
-    pub token: String,              // resolved from vault
-    pub provider: String,           // "github", "slack", etc.
-}
-
-/// What the pipe returns. SDK signs and hashes before sending.
-pub struct Fact {
-    pub schema: String,             // "forge", "slack", etc.
-    pub fact_type: String,          // "issue", "pr", "message"
-    pub data: serde_json::Value,    // the payload
-    // SDK adds before sending to Mother:
-    //   content_hash: blake3 of data (dedup across pipes/nodes)
-    //   signature: persona keypair signs fact (provenance)
-    //   persona: which persona produced this fact
-}
-
-/// Health check result.
-pub struct Status {
-    pub ok: bool,
-    pub message: String,
-    pub latency_ms: Option<u64>,
-}
-
-/// What this pipe can do.
-pub struct Capabilities {
-    pub provider: String,
-    pub data_types: Vec<String>,
-    pub supports_incremental: bool,
-    pub supports_streaming: bool,
-}
-```
-
-**What the SDK handles (pipe authors don't touch):**
-
-- JSON-RPC 2.0 protocol with pipe/* methods (self-owned, MCP-compatible)
-- Transport negotiation (stdio / HTTP+SSE / Streamable HTTP)
-- Fact signing (persona keypair — automatic provenance)
-- Content addressing (blake3 hash — automatic dedup)
-- Persona scoping (pipe receives persona context, can't cross)
-- Progress notifications (SDK sends progress to Mother)
-- stderr logging (structured, timestamped)
-- Signal handling (SIGTERM → graceful shutdown for stream mode)
-- Error formatting (pipe errors → MCP error response)
-
-**What pipe authors implement:**
-
-- `fetch()` — the actual data fetching logic (reqwest calls, pagination,
-  rate limiting, data mapping to Fact structs)
-- `health()` — test connectivity (e.g., GET /rate_limit for GitHub)
-- `capabilities()` — declare what the pipe can do (static)
-
-**pipe.toml manifest:**
+### 2.4 Child Manifest (child.toml)
 
 ```toml
-[pipe]
-name = "github-pipe"
+[child]
+name = "github-connector"
 version = "0.1.0"
-provider = "github"
-lifecycle = "poll"           # poll | stream | manual
+type = "connector"          # connector | transport | lakehouse | transform
+runtime = "native"          # native | wasm
+lifecycle = "poll"          # poll | stream | manual
 
 [capabilities]
 data_types = ["issues", "prs", "comments", "reviews"]
@@ -458,383 +316,598 @@ provider = "github"
 package = "patina:schema/forge@1.0.0"
 ```
 
-**`patina pipe new <name>` scaffold:**
+For WASM children, this extends the current plugin.toml format.
+For native children, this is the equivalent manifest.
 
-```
-$ patina pipe new github
+### 2.5 Connector Child Example (GitHub)
 
-Created pipes/github-pipe/
-├── Cargo.toml         # patina-pipe dependency, binary target
-├── src/
-│   └── main.rs        # Pipe trait stub, serve() call
-└── pipe.toml          # manifest template (fill in provider, domains)
+The GitHub connector replaces the current forge WASM plugin. It
+speaks pipe protocol over either WASM (patina-sdk) or native
+(patina-pipe) transport.
 
-Next: edit src/main.rs, implement fetch(), then:
-  cargo run              # test locally (stdio transport)
-  patina pipe run github # run via Mother
-```
-
-**Deployment contexts:**
-
-The same `impl Pipe` runs everywhere. The SDK adapts runtime and
-transport. The pipe author writes `fetch()` once.
-
-| Context | Runtime | Transport | Identity |
-|---|---|---|---|
-| Local (your machine) | Native process | stdio | Persona keypair |
-| Remote (VPS) | Native process | HTTP+SSE | Same keypair |
-| Edge (Cloudflare) | WASM Worker | Streamable HTTP | Same keypair |
-| P2P (other nodes) | Native process | Iroh/HTTP | Node keypair |
-| Shared (community) | Native or WASM | Streamable HTTP | Their persona |
-
-WIT compiles to native (local) AND WASM (edge). Same contract, same
-types, different binary target. `cargo build` for local, `cargo build
---target wasm32-wasi` for edge. Pipe code unchanged.
-
-**Separation of concerns:**
-
-```
-            knows          knows           knows           knows
-            source data    transport       routing         purpose
-               │              │               │               │
-             Pipe           Child           Mother         Consumer
-               │              │               │               │
-does:       transform      hold conn      orchestrate     project+act
-            (fetch)        (WebSocket)    (spawn,route)   (query,index)
-               │              │               │               │
-doesn't:    store          parse data     transform       fetch
-            connect        route          hold conns      know source
-            sign facts     know schema    know format     know transport
-            know persona   know persona   OWNS persona    scoped by persona
-```
-
-### Layer 3: Destinations (project, lake, block configuration)
-
-**What a destination is:**
-A destination is a consumer of pipe data. It specifies:
-- Which pipe(s) to use
-- Which credential to authenticate with
-- What data to fetch (types, filters, repos/channels/feeds)
-- When to fetch (schedule or trigger)
-
-**Destination types:**
-
-| Type | Scope | Example |
-|---|---|---|
-| Project | `.patina/` in a git repo | "issues + PRs from this repo" |
-| Data lake | `~/.patina/lakes/<name>/` | "all repos from org X + org Y" |
-| Data block | `~/.patina/blocks/<name>/` | "security-labeled PRs from repo Z" |
-
-**Configuration format (project-level example):**
-
-```toml
-# .patina/sources.toml (or in patina.toml)
-
-[sources.github]
-pipe = "github"
-auth = "github:user"
-params = { owner = "NicabarNimble", repo = "patina" }
-types = ["issues", "prs"]
-schedule = "on-scrape"
-
-[sources.slack]
-pipe = "slack"
-auth = "slack:myworkspace"
-params = { channels = ["#dev", "#incidents"] }
-types = ["messages"]
-schedule = "hourly"
-```
-
-**Mother's role:**
-Mother manages pipe lifecycle. For each destination:
-1. Read source configuration (sources.toml)
-2. Resolve credential from `patina auth` (vault decrypt, session cache)
-3. Build stdin config JSON (credential + params + fetch request)
-4. Spawn pipe binary in OS sandbox
-5. Write config to pipe's stdin, close stdin
-6. Read newline-delimited JSON facts from pipe's stdout
-7. Validate facts against declared schema
-8. Write valid facts to destination's events.db
-9. Track last-sync timestamp for incremental fetches
-10. Handle lifecycle: exit code for poll, health monitoring for stream
-
-This replaces the current `patina plugin run patina-forge -- sync`
-manual invocation.
-
-## Migration Path from forge-plugin-extraction
-
-The forge WASM plugin code is the starting point for the GitHub pipe.
-What changes:
-
-| Aspect | Current (WASM plugin) | Target (pipe) |
-|---|---|---|
-| Runtime | WASM in wasmtime | Native binary over stdio |
-| Interface | `handle("sync", payload)` via host calls | stdin JSON config → stdout NDJSON facts |
-| HTTP | `host_http` (crosses WASM boundary) | Direct `reqwest` (pipe owns HTTP) |
-| Auth | Manual PAT + vault + grants TOML | `patina auth login github` |
-| Scope | Per-project installation | User-level, shared |
-| Config | JSON payload at runtime | TOML in destination config |
-| Scheduling | Manual `plugin run` | Mother-managed per destination |
-| Facts | Plugin calls host_emit directly | Pipe writes to stdout, Mother emits |
-| Sandbox | WASM sandbox (wasmtime) | OS sandbox (sandbox-exec/Landlock) |
-| Development | Cross-compile to WASM, stub host funcs | `cargo run`, `cargo test`, `dbg!()` |
-| Schema | Declared in plugin manifest | Ships with pipe, WIT type defs |
-
-The internal code (GitHub REST client, JSON parsing, rate limiting)
-migrates almost unchanged. `host_http` calls become direct `reqwest`
-calls. The wrapper changes from MotherChildPlugin to a `main()` that
-reads stdin and writes stdout.
-
-## Secrets Architecture Detail
-
-**Credential lifecycle:**
-
-```
-patina auth login github
-  → Register GitHub OAuth App (one-time, or use Patina's app ID)
-  → Device authorization flow:
-    1. POST https://github.com/login/device/code
-    2. Display: "Go to github.com/login/device, enter code: XXXX-YYYY"
-    3. Poll: POST https://github.com/login/oauth/access_token
-    4. Receive token
-  → Store: patina secrets add --global github:user <token>
-  → Store metadata: provider=github, scopes=[repo], expires=never,
-    created=2026-03-06, last_used=null
-```
-
-**Credential resolution for pipes:**
-
-```
-Mother loads source config → auth = "github:user"
-  → Resolve: patina secrets get --global github:user
-  → Decrypt via Keychain/Touch ID (or session cache)
-  → Include token in stdin config JSON: { "auth": { "token": "..." } }
-  → Pipe reads config, uses token directly via reqwest
-  → OS sandbox prevents pipe from leaking token (no network, no files)
-```
-
-No secret-grants.toml. No manual PAT. The trust model shifts from
-"user grants plugin access to a secret" to "user authenticates with
-a provider, Mother injects credentials into pipe config via stdin."
-
-**Security model comparison:**
-
-| | Current (plugin grants) | Target (pipe auth) |
-|---|---|---|
-| Who creates credential | User (manual PAT) | `patina auth` (OAuth) |
-| Who stores it | User (vault add) | `patina auth` (vault add) |
-| Who grants access | User (secret-grants.toml) | Source config (auth = "github:user") |
-| Enforcement | host_http call-time check | OS sandbox (no network except stdout) |
-| Revocation | Delete from vault | `patina auth revoke github` |
-
-The OS sandbox prevents credential exfiltration via filesystem or
-subprocess — the pipe can't write the token to disk, send it to a
-different process, or access other secrets. The credential arrives via
-stdin, gets used for declared-domain HTTP only. The difference from
-the plugin model is UX: one command vs four steps.
-
-## Relationship to Other Specs
-
-- **forge-plugin-extraction** — proved the pattern. Pipe architecture
-  supersedes the "plugin" framing but keeps the infrastructure (host_emit,
-  projection, schema validation).
-- **lake-registry** — becomes the "data lake destination" type. Lake
-  metadata in graph.db, lake sources configured as pipe destinations.
-- **core-extraction** — pipes are NOT core. They're user-level drivers
-  managed by Mother. Core is protocol + stores.
-- **continuous-operation** — Mother daemon manages pipe scheduling.
-  Pipe health checks feed into Mother's health monitoring.
-- **scrape-simplification** — scrape stays local (git). Pipe data
-  arrives via Mother, not via scrape dispatch. `patina scrape` triggers
-  projection of pipe-emitted events, not pipe execution.
-- **persona-federation** — dependency. Persona keypair serves as pipe
-  signing key (fact provenance), node identity (Iroh peer discovery),
-  and UCAN issuer (capability delegation). The identity primitive from
-  persona-federation is what makes pipes work in a multi-node network.
-
-## Key Files (current, to be refactored)
-
-**Pipe code (from forge plugin):**
-- `plugins/forge/src/github.rs` — GitHubClient, migrates to github-pipe
-  binary. `host_http` calls become direct `reqwest` calls.
-- `plugins/forge/plugin.toml` — becomes pipe.toml manifest format
-
-**Host infrastructure (security patterns reusable):**
-- `src/plugin/internal/host_support.rs` — domain allowlist, credential
-  injection, leak check — all host-side security logic. Patterns reusable
-  for pipe manager validation (not the code directly, but the approach).
-- `src/secrets/mod.rs` — vault, identity, session caching. Pipes use
-  the same vault; Mother resolves credentials before passing to pipe.
-
-**Projection (stays, source-agnostic):**
-- `src/commands/scrape/forge/mod.rs` — project_from_events, FTS5 population
-
-**MCP server (pattern to follow for pipe protocol):**
-- `src/mcp/server/mod.rs` — stdio JSON-RPC server. Same spawn-and-stdio
-  pattern that pipes will use, but pipes are simpler (no JSON-RPC, just
-  config in + NDJSON out).
-
-**New code needed:**
-- `crates/patina-pipe/` — SDK crate (`Pipe` trait, `run()`, types)
-- `pipes/github-pipe/` — first pipe binary, depends on patina-pipe SDK
-- `src/pipe/` — Mother pipe manager (spawn, sandbox, read stdout, emit)
-- `src/auth/` — OAuth device flow, provider registry, `patina auth` CLI
-- WIT: `wit/pipe/pipe.wit` — type definitions for fact shapes, config
-- `src/commands/pipe.rs` — `patina pipe new/run/health/list` commands
-
-## Data Flow Architecture
-
-Pipes are the connective tissue across the entire data architecture.
-Every arrow is a pipe — same SDK, same protocol, same WIT contract.
-
-### Full data flow
-
-```
-External Sources (GitHub, Slack, RSS, APIs...)
-  │ ingest pipes (github-pipe, slack-pipe, rss-pipe)
-  ▼
-Data Lakes (Parquet, lakehouse-managed, raw/complete)
-  │ transform pipes (filter-pipe, enrich-pipe)
-  ▼
-App Layer (transforms, enrichment, embeddings)
-  │ structure pipes (embed-pipe, curate-pipe)
-  ▼
-Data Blocks (embeddings, curated datasets from lakes/sources)
-  │ serve pipes (query-pipe, export-pipe)
-  ▼
-Apps / Projects (action, workflows, UI)
-```
-
-Each layer is both a source and a destination depending on direction.
-A lake is a destination for github-pipe and a source for filter-pipe.
-A block is a destination for embed-pipe and a source for a project.
-
-### Lake-as-source pattern
-
-The default external data flow is pipe → lake → project projection:
-
-```
-github-pipe (fetch everything from org)
-  └─▶ org-lake/events.db (all issues, PRs, releases)
-        ├─▶ project-A/.patina/ (project issues + PRs only)
-        ├─▶ project-B/.patina/ (project issues + PRs only)
-        └─▶ security-block/ (security advisories only)
-```
-
-Benefits:
-- **No re-fetching**: pipe fetches once, projections are local queries
-- **Fan-out is config**: destinations select what they want from the lake
-- **Backfill is free**: lake has all history, new projects can project
-  retroactively
-- **Rate limit friendly**: one API call set, many consumers
-
-Mother decides parallelism strategy — whether to spawn one pipe and
-fan-out the output, or spawn N pipes with different configs. The pipe
-binary is the same either way.
-
-### Internal pipes
-
-Internal pipes (lake → block, block → app) use the same SDK and
-protocol as external pipes. The difference is the source:
-
-- External pipe: source is an HTTP API, auth is OAuth token
-- Internal pipe: source is an events.db/Parquet file, auth may be
-  a local secret or none (same machine)
+**Native version (patina-pipe):**
 
 ```rust
-// pipes/lake-reader-pipe/src/main.rs — reads from a lake
-impl Pipe for LakeReaderPipe {
-    fn fetch(&self, config: &PipeConfig) -> Result<Vec<Fact>> {
-        let db = Connection::open(&config.params["lake_path"])?;
-        let facts = query_events(&db, &config.types, &config.since)?;
-        Ok(facts)
+// children/github-connector/src/main.rs
+use patina_pipe::{Child, run, FactEmitter, FetchParams, PipeError};
+
+struct GitHubConnector;
+
+impl Child for GitHubConnector {
+    fn capabilities(&self) -> Capabilities {
+        Capabilities {
+            provider: "github",
+            data_types: vec!["issues", "prs"],
+            supports_incremental: true,
+        }
     }
+
+    fn fetch(
+        &mut self,
+        params: &FetchParams,
+        emitter: &mut FactEmitter,
+    ) -> Result<FetchResult, PipeError> {
+        let client = GitHubClient::new(&params.auth)?;
+
+        for issue in client.fetch_issues(params.since)? {
+            emitter.emit("forge", "issue", &issue)?;
+        }
+        for pr in client.fetch_prs(params.since)? {
+            emitter.emit("forge", "pull-request", &pr)?;
+        }
+
+        Ok(FetchResult { emitted: emitter.count() })
+    }
+
+    fn health(&self, params: &FetchParams) -> Result<Status, PipeError> {
+        let client = GitHubClient::new(&params.auth)?;
+        client.check_rate_limit()
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    run(GitHubConnector)
 }
 ```
 
-Same `Pipe` trait, same `run()`, same NDJSON on stdout. Mother doesn't
-care if the pipe talked to GitHub or read from a local SQLite file.
+Key differences from old design:
+- `&mut self` instead of `&self` — allows mutable state (connection
+  pools, rate limit tracking) across calls. (Audit fix: `&self`
+  prevents mutable state)
+- `FactEmitter` instead of `Vec<Fact>` return — streaming delivery,
+  each fact sent immediately via pipe/fact notification. (Audit fix:
+  Vec<Fact> OOM)
+- `PipeError` instead of generic `Result` — typed, retryable vs
+  fatal. (Audit fix: undefined error types)
+- Trait named `Child` not `Pipe` — pipe is the protocol, child is
+  the implementation.
 
-## Transport Model
+**WASM version (patina-sdk, existing pattern updated):**
 
-The pipe protocol (JSON-RPC 2.0 with pipe/* methods) is transport-
-agnostic. Build stdio first, design for future transports:
+```rust
+// plugins/forge/src/lib.rs (updated to pipe protocol)
+use patina_sdk::mother_child::{emit, fetch, log};
 
-| Transport | Topology | Use Case |
+// Same emit() call, renamed from host_emit.
+// SDK handles pipe protocol over WASM host calls.
+emit::emit_fact("forge", "issue", &event_data)?;
+```
+
+The WASM version continues to work. The rename (`host_emit` → `emit`)
+is the only visible change. Under the hood, patina-sdk gains pipe
+protocol awareness — the host function IS the transport binding.
+
+## 3. Connection Model
+
+### 3.1 Connection = Pipe Protocol + Auth
+
+A connection is a named pair: credential + connector child config.
+Created by one command, referenced by name in destination config.
+
+```
+patina connect github
+  1. OAuth device flow → acquire token
+  2. Store token in vault as "github:user"
+  3. Register connector child config
+  4. Done. Ready to use in sources.toml.
+```
+
+### 3.2 Connection Lifecycle
+
+```
+patina connect github
+  → Prompt: "GitHub account to connect?"
+  → Device authorization: browser popup + user approval
+  → Token stored: vault.age (github:user)
+  → Metadata stored: scopes, expiry, provider, created_at
+  → Connector child registered: ~/.patina/connections/github.toml
+
+patina connect status
+  → github: connected (token valid, expires: never)
+  → slack: connected (token valid, expires: 2026-04-06)
+
+patina connect refresh github
+  → Re-authorize if expired
+
+patina connect remove github
+  → Remove token from vault
+  → Remove connector config
+```
+
+### 3.3 Connection Config
+
+```toml
+# ~/.patina/connections/github.toml
+[connection]
+name = "github"
+provider = "github"
+credential = "github:user"     # references vault secret
+child = "github-connector"     # which child binary to use
+created = "2026-03-06T00:00:00Z"
+```
+
+This is the evolution of `patina secrets` for external sources.
+The vault stays the same. The addition is: one command creates
+both the credential AND the connector configuration.
+
+## 4. Mother as Broker
+
+### 4.1 Routing Engine
+
+Mother reads destination declarations from sources.toml files across
+all registered projects, lakes, and blocks. For each source entry:
+
+1. Find the connection (connection name → connection config)
+2. Resolve credential (vault decrypt with session caching)
+3. Determine child to spawn (connection config → child binary)
+4. Build fetch params (merge destination params + auth + cursor)
+5. Spawn child (or reuse running instance for stream mode)
+6. Route emitted facts to destination's events.db
+7. Update incremental cursor (last-sync timestamp)
+
+### 4.2 Fan-Out
+
+Multiple destinations can reference the same connection. Mother
+optimizes:
+
+**Separate spawns** (default, simple):
+```
+sources.toml (project A): connection = "github", types = ["issues"]
+sources.toml (project B): connection = "github", types = ["prs"]
+→ Mother spawns github-connector twice with different params
+```
+
+**Shared spawn** (optimization, when params overlap):
+```
+sources.toml (project A): connection = "github", types = ["issues", "prs"]
+sources.toml (lake):      connection = "github", types = ["issues", "prs"]
+→ Mother spawns once, routes facts to both destinations
+→ Content-hash dedup handles any overlap
+```
+
+Mother decides strategy. Children don't know about fan-out.
+
+### 4.3 Scheduling
+
+Mother integrates with [[spec-continuous-operation]] for scheduling:
+
+| Mode | Trigger | Behavior |
 |---|---|---|
-| stdio | local, same machine | Default. Mother spawns pipe process |
-| HTTP+SSE | remote, pipe on VPS | Pipe runs on server, Mother connects |
-| Streamable HTTP | shared, multi-Mother | Community pipe serving multiple users |
-| QUIC | p2p, multi-stream | Node-to-node, multiplexed, no head-of-line blocking |
+| `on-scrape` | `patina scrape` command | Fetch before local scrape |
+| `hourly` | Clock (cron-like) | Mother daemon schedules |
+| `daily` | Clock (cron-like) | Mother daemon schedules |
+| `stream` | Always-on | Mother keeps child running |
+| `manual` | `patina pipe run` | One-shot, user-triggered |
 
-Same JSON-RPC methods across all transports. Same fact schema. Different
-wire. Deployment topology doesn't dictate protocol design.
+Schedule is per-destination, not per-child. The same github-connector
+can be `on-scrape` for project A and `hourly` for the org lake.
 
-**Protocol independence:**
+### 4.4 Schema Validation
 
-We build on JSON-RPC 2.0 (stable RFC), not on MCP (evolving product
-spec). Our pipe/* methods are MCP-compatible (an MCP client can talk
-to a pipe — JSON-RPC is JSON-RPC) but MCP-independent (Anthropic
-changes MCP, we don't care). WIT defines our types natively, not
-bolted on top of JSON Schema.
+Mother validates every fact before writing to events.db:
+
+1. Check `schema` + `fact_type` against child manifest's declared
+   schemas
+2. Verify `content_hash` matches canonical JSON of `data`
+3. Verify `signature` against persona keypair (when available)
+4. Check for duplicate `content_hash` in events.db (dedup)
+5. Write valid fact with provenance: `source_id = "child:<name>"`
+
+Invalid facts are logged and dropped. Mother never writes unvalidated
+data.
+
+## 5. Persona Enforcement
+
+**Audit fix: hand-waved persona enforcement.**
+
+### 5.1 Persona Scoping
+
+Every pipe protocol interaction is scoped to a persona:
+
+- `pipe/initialize` includes `persona` field
+- All emitted facts carry `persona` in the notification
+- Mother routes facts only to destinations owned by the same persona
+- Cross-persona routing is denied at the broker level
+
+### 5.2 Enforcement Points
+
+| Point | What | How |
+|---|---|---|
+| Config delivery | Child receives persona ID | pipe/initialize params |
+| Fact validation | Fact's persona matches session | Mother checks on receipt |
+| Storage routing | Facts go to persona's namespace | Mother routes by persona |
+| Cross-persona | Denied | Mother refuses to route |
+| Multi-persona | Isolated namespaces | Mother runs separate sessions |
+
+### 5.3 Multi-Persona on One Node
+
+Mother supports multiple personas on the same machine (e.g., work
+persona and personal persona). Each persona:
+
+- Has its own connections, destinations, credentials
+- Has its own events.db namespace
+- Has its own belief set
+- Cannot see facts from other personas
+
+The persona is set at the destination level in sources.toml:
+```toml
+[sources.github]
+persona = "work"         # optional, defaults to active persona
+connection = "github"
+...
+```
+
+## 6. Failure Mode Catalog
+
+**Audit fix: no failure modes specified.**
+
+### 6.1 Child Failures
+
+| Failure | Detection | Recovery |
+|---|---|---|
+| Child won't start | Spawn fails | Log error, alert user, skip schedule |
+| Child crashes mid-fetch | Process exit, broken pipe | PipeError::Partial, retry with cursor |
+| Child hangs | Health check timeout | Kill process, restart with backoff |
+| Bad credentials | PipeError::Fatal(auth) | Alert user: `patina connect refresh` |
+| Rate limited | PipeError::RateLimited | Backoff per retry_after_ms |
+| Schema mismatch | Fact validation fails | Drop fact, log warning, continue |
+| Content hash mismatch | Hash verification fails | Drop fact, log error (corruption) |
+
+### 6.2 Mother Failures
+
+| Failure | Detection | Recovery |
+|---|---|---|
+| events.db locked | SQLite error | Retry with backoff (up to 30s) |
+| Vault locked | Keychain timeout | Session cache miss → prompt user |
+| Disk full | Write error | Stop all children, alert user |
+| Mother crash | Process exit | systemd/launchd restarts Mother |
+| Config parse error | TOML error on startup | Log specific error, skip bad entry |
+
+### 6.3 Network Failures
+
+| Failure | Detection | Recovery |
+|---|---|---|
+| Source API down | Child returns Transient error | Retry with backoff |
+| DNS failure | Child returns Transient error | Retry with backoff |
+| TLS failure | Child returns Fatal error | Alert user (cert issue) |
+| Partial response | Child returns Partial error | Keep emitted facts, retry remainder |
+
+## 7. Transport Bindings
+
+### 7.1 WASM Transport (patina-sdk)
+
+The existing host function interface IS the WASM transport binding
+for pipe protocol. Current names map to protocol methods:
+
+| Current (host_*) | Renamed | Protocol Method |
+|---|---|---|
+| `host_emit::emit_fact` | `emit::emit_fact` | `pipe/fact` notification |
+| `host_http::get/post` | `fetch::get/post` | Child-internal (not protocol) |
+| `host_log::log` | `log::log` | Child-internal (not protocol) |
+
+The renaming is cosmetic — the protocol binding already exists.
+patina-sdk gains pipe protocol types (PipeError, Capabilities, etc.)
+that are shared with patina-pipe via patina-pipe-types.
+
+### 7.2 Native Transport (patina-pipe)
+
+New. JSON-RPC 2.0 over stdio (stdin/stdout):
+
+- stdin: Mother → child (requests)
+- stdout: child → Mother (responses + notifications)
+- stderr: child logging (structured, not protocol)
+
+One JSON-RPC message per line (newline-delimited). This is the same
+transport as the MCP stdio server (`src/mcp/server/mod.rs`).
+
+The `run()` function in patina-pipe:
+
+```rust
+pub fn run<C: Child>(child: C) -> Result<()> {
+    let stdin = io::stdin();
+    let mut stdout = io::stdout();
+    let reader = BufReader::new(stdin.lock());
+
+    for line in reader.lines() {
+        let request: Request = serde_json::from_str(&line?)?;
+        match request.method.as_str() {
+            "pipe/initialize" => {
+                let config = parse_init_params(&request)?;
+                let caps = child.capabilities();
+                send_response(&mut stdout, &request, &caps)?;
+            }
+            "pipe/fetch" => {
+                let params = parse_fetch_params(&request)?;
+                let mut emitter = FactEmitter::new(&mut stdout);
+                match child.fetch(&params, &mut emitter) {
+                    Ok(result) => send_response(&mut stdout, &request, &result)?,
+                    Err(e) => send_error(&mut stdout, &request, &e)?,
+                }
+            }
+            "pipe/health" => {
+                let params = parse_health_params(&request)?;
+                match child.health(&params) {
+                    Ok(status) => send_response(&mut stdout, &request, &status)?,
+                    Err(e) => send_error(&mut stdout, &request, &e)?,
+                }
+            }
+            "pipe/shutdown" => {
+                send_response(&mut stdout, &request, &json!({}))?;
+                break;
+            }
+            _ => send_error(&mut stdout, &request,
+                &PipeError::Fatal { code: -32601, message: "Method not found".into() })?,
+        }
+    }
+    Ok(())
+}
+```
+
+### 7.3 Future Transports
+
+HTTP+SSE and Streamable HTTP follow the same pattern as MCP
+transports — same JSON-RPC messages, different wire. Not implemented
+until there's a concrete use case (remote child on VPS, shared child
+serving multiple Mothers).
+
+## 8. Security Model
+
+### 8.1 Three Layers (All Children)
+
+1. **Protocol enforcement**: Mother validates facts against declared
+   schemas. Child can only emit what its manifest allows. Undeclared
+   schemas → fact dropped.
+
+2. **Capability manifest**: child.toml declares domains, schemas,
+   auth requirements. Mother refuses to spawn a child requesting
+   undeclared resources. Validated at load time AND call time.
+
+3. **Runtime sandbox**:
+   - WASM: wasmtime sandbox. All I/O proxied through host functions.
+   - Native: OS sandbox (macOS sandbox-exec, Linux Landlock).
+     No filesystem access, no process spawning, no arbitrary network.
+     Only inherited stdio + declared domains.
+
+### 8.2 Credential Security
+
+- Credentials stored in age-encrypted vault (Keychain + Touch ID)
+- Mother resolves credentials and passes via pipe/initialize (stdin)
+- Credentials never in environment variables or files for children
+- OS sandbox prevents native children from accessing vault directly
+- WASM sandbox prevents WASM children from accessing filesystem
+- Credential leak detection: Mother scans emitted fact data for
+  credential values (pattern from host_support.rs:leak_check)
+
+### 8.3 Native Child Sandbox Detail
 
 ```
-JSON-RPC 2.0  ← stable RFC, we build here
-     │
-     ├── MCP protocol     (Anthropic's methods, their evolution)
-     │
-     └── Pipe protocol    (our methods, our evolution)
-           ├── pipe/initialize
-           ├── pipe/fetch
-           ├── pipe/health
-           ├── pipe/capabilities
-           ├── pipe/notify
-           └── pipe/shutdown
+macOS sandbox-exec profile:
+  (deny default)
+  (allow network-outbound
+    (remote tcp (require-all
+      (regex #"^api\.github\.com$")  ; from child.toml domains
+      (port 443))))
+  (allow file-read-data (subpath "/dev/stdin"))
+  (allow file-write-data (subpath "/dev/stdout"))
+  (allow file-write-data (subpath "/dev/stderr"))
 ```
 
-**Current scope**: stdio only. Don't hardcode stdio assumptions in the
-protocol layer (message format), but don't build HTTP transport until
-there's a concrete remote pipe use case.
+Linux Landlock equivalent restricts the same surfaces.
 
-## Network / P2P Future
+Cost: ~2ms startup, ~0ns runtime (kernel-enforced, no per-call
+overhead). Chrome renderer process pattern.
 
-Brief notes on where this architecture goes at network scale — these
-are future scope, not current implementation targets:
+### 8.4 Future: UCAN Capability Tokens
 
-- **Content-addressed facts**: each fact gets a blake3 hash. Dedup
-  across pipes and nodes is automatic. Same fact from two sources
-  resolves to one entry.
-- **Iroh document sync**: facts sync between nodes as Iroh documents.
-  Each node runs its own pipes, facts converge via gossip.
-- **Persona = node identity**: the persona keypair from persona-
-  federation serves as Iroh node identity and UCAN issuer. Facts
-  carry provenance signatures.
-- **Node specialization**: pipe nodes (fetch), compute nodes
-  (embeddings), belief nodes (inference), leaf nodes (read-only).
-  The pipe binary doesn't change at any scale.
+When persona-federation ships keypair infrastructure, credentials
+can be delegated as UCAN tokens:
 
-The key architectural point: designing pipes as processes over stdio
-with transport-agnostic protocol means the same pipe binary works on
-a developer laptop, a VPS, a Docker container, or a p2p node. No
-redesign needed as deployment topology evolves.
+```
+persona keypair → sign UCAN token
+  → scope: api.github.com, read:issues, read:prs
+  → audience: github-connector child
+  → duration: 1 hour
+  → child presents token to source API
+```
 
-## Open Questions
+This replaces raw credential passing with cryptographically scoped
+delegation. The child proves it has permission without holding the
+raw secret. Future scope — not in initial implementation.
 
-1. **Pipe discovery.** How do users find and install community pipes?
-   Registry like crates.io? GitHub releases? Manual download?
+## 9. Crate Structure
 
-2. **Schema ownership.** Does the schema ship with the pipe or is it
-   installed independently? Lean toward: ships with the pipe.
+### 9.1 patina-pipe-types
 
-3. **Pipe versioning.** When a pipe's output format changes, how do
-   projection tables migrate? Schema version in event metadata?
+Shared types used by both WASM and native children:
 
-4. **Multi-provider pipes.** Is "github-pipe" one pipe for all GitHub
-   instances, or is "github-enterprise" a separate pipe? Lean toward:
-   one pipe, configured with base_url per destination.
+```
+patina-pipe-types/
+  src/
+    lib.rs          # re-exports
+    fact.rs         # Fact, FetchResult, content_hash, signature
+    error.rs        # PipeError (Transient, Fatal, RateLimited, Partial)
+    capabilities.rs # Capabilities, Status
+    config.rs       # FetchParams, AuthConfig
+    canonical.rs    # canonical_json(), content_hash()
+```
 
-5. **Community pipe security model.** First-party pipes make direct
-   HTTP (trusted code + OS sandbox). Community pipes may need host-
-   proxied I/O where Mother makes HTTP calls on the pipe's behalf —
-   same pattern as current host_http. Design the two-tier model when
-   community pipes become relevant.
+Zero dependencies beyond serde, serde_json, blake3. This crate is
+the protocol definition in code.
+
+### 9.2 patina-sdk (updated)
+
+Existing WASM SDK gains pipe protocol awareness:
+
+```
+patina-sdk/
+  src/
+    mother_child/
+      emit.rs       # emit::emit_fact (renamed from host_emit)
+      fetch.rs      # fetch::get/post (renamed from host_http)
+      log.rs        # log::log (renamed from host_log)
+      query.rs      # query::query (renamed from host_query)
+    pipe_types.rs   # re-export patina-pipe-types
+```
+
+Breaking rename: `host_emit` → `emit`, `host_http` → `fetch`,
+`host_log` → `log`. Existing plugins update their imports. The
+functionality is identical — names change for clarity.
+
+### 9.3 patina-pipe (new)
+
+Native transport binding for native children:
+
+```
+patina-pipe/
+  src/
+    lib.rs          # Child trait, run() entry point
+    transport.rs    # stdio JSON-RPC (future: HTTP+SSE)
+    emitter.rs      # FactEmitter (streaming fact delivery)
+    signing.rs      # persona keypair signing (stub until federation)
+```
+
+Depends on patina-pipe-types. Provides the `Child` trait and `run()`
+orchestrator that native children call from `main()`.
+
+## 10. Async Position
+
+**Audit fix: async story absent.**
+
+**Sync-first, async-optional.**
+
+- `run()` / `serve()` are sync (blocking I/O on stdio). This matches
+  the current codebase (no tokio, no async runtime).
+- `Child::fetch()` is sync. Children that need async internally
+  (e.g., concurrent API pagination) can use a local runtime
+  (`tokio::runtime::Runtime::new()`) inside their implementation.
+- Mother spawns children as processes — process-level parallelism,
+  not async parallelism. Multiple children run concurrently via OS
+  process scheduling.
+- Future: if HTTP transport is added, the transport layer may need
+  async. This is isolated to the transport binding, not the Child
+  trait.
+
+This is deliberate: sync interfaces are simpler to implement, test,
+and debug. Process-level parallelism (Mother spawns N children) gives
+concurrency without async complexity.
+
+## 11. Deployment Contexts
+
+| Context | Child Runtime | Transport | Sandbox | Identity |
+|---|---|---|---|---|
+| Local | Native process | stdio | OS sandbox | Persona keypair |
+| Local (WASM) | wasmtime | host calls | WASM sandbox | Persona keypair |
+| Remote (VPS) | Native process | HTTP+SSE | OS sandbox | Same keypair |
+| Edge (CF Workers) | WASM | Streamable HTTP | WASM sandbox | Same keypair |
+| P2P (other nodes) | Native process | Iroh/HTTP | OS sandbox | Node keypair |
+
+Child code doesn't change. Transport binding and sandbox adapt.
+Persona keypair provides identity everywhere.
+
+## 12. Encryption (Acknowledged Gap)
+
+**Audit fix: encryption entirely absent.**
+
+Signing (persona keypair) proves WHO produced a fact.
+Hashing (blake3) proves INTEGRITY of a fact.
+Neither prevents READING — events.db stores plaintext JSON.
+
+Mother is the correct encryption point — she writes to events.db,
+she owns the persona keypair, she controls access.
+
+Encryption model (future, when persona-federation ships):
+1. Child emits plaintext fact (child doesn't know about encryption)
+2. Mother validates, hashes, signs (over plaintext, for dedup)
+3. Mother encrypts `data` field with persona key before storage
+4. Storage contains: `content_hash` (cleartext for dedup),
+   `signature` (cleartext for verification), `data` (encrypted)
+5. Consumers decrypt with persona key on read
+
+This ensures: dedup works across nodes (content_hash is cleartext),
+verification works without decryption (signature over hash), but
+data at rest is encrypted. Not in scope for initial pipe protocol.
+
+## 13. Migration Path
+
+### 13.1 Phase 1: Types (no runtime changes)
+
+Ship `patina-pipe-types` with Fact, PipeError, Capabilities,
+canonical_json, content_hash. Both patina-sdk and patina-pipe
+depend on it. No runtime changes.
+
+### 13.2 Phase 2: SDK Rename
+
+Rename host_* to semantic names in patina-sdk. Update forge plugin
+imports. Functionally identical — pipe protocol awareness is naming.
+
+### 13.3 Phase 3: Native Transport
+
+Ship `patina-pipe` with Child trait, `run()`, FactEmitter. Build
+github-connector as native child. Prove native transport works.
+
+### 13.4 Phase 4: Broker
+
+Build Mother's routing engine. Read sources.toml, spawn children
+(WASM or native), route facts to destinations. Wire into
+continuous-operation scheduling.
+
+### 13.5 Phase 5: Connections
+
+Build `patina connect` command. OAuth device flow, vault storage,
+connection config. Replace manual PAT + secret-grants workflow.
+
+## 14. Future Scope (Explicitly Marked)
+
+These are NOT in the initial implementation. They are noted here
+so the protocol design doesn't preclude them:
+
+- **UCAN capability tokens**: scoped credential delegation
+- **MessagePack-RPC**: binary drop-in for JSON-RPC (performance)
+- **QUIC transport**: multi-stream, p2p, no head-of-line blocking
+- **Encryption at rest**: Mother-side, persona-key encrypted storage
+- **Cross-node routing**: Mother-to-Mother fact sync via Iroh
+- **Community child registry**: discovery and installation
+- **WIT code generation**: generate Rust/TS/Python types from .wit
+
+## Key Files (Implementation Reference)
+
+**Existing code that embodies pipe protocol today:**
+- `src/plugin/internal/host_support.rs` — emit_fact IS pipe/fact
+  over WASM transport. Security patterns (validate, hash, check)
+  apply to all transports.
+- `src/mcp/server/mod.rs` — stdio JSON-RPC 2.0 server. The native
+  transport binding follows this exact pattern.
+- `src/secrets/mod.rs` — vault, identity, session caching. Reused
+  by connection model.
+- `plugins/forge/src/github.rs` — first child implementation.
+  Migrates to native with `host_http` → `reqwest`.
+- `plugins/forge/plugin.toml` — child manifest prototype.
+
+**New code to build:**
+- `crates/patina-pipe-types/` — shared types (Fact, Error, etc.)
+- `crates/patina-pipe/` — native transport (Child trait, run())
+- `children/github-connector/` — first native child
+- `src/broker/` — Mother routing engine
+- `src/connect/` — connection management (`patina connect`)
+- `src/commands/connect.rs` — CLI commands
+- `src/commands/pipe.rs` — `patina pipe run/health/list`
