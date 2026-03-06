@@ -7,6 +7,8 @@ blocked_by:
 - pipe-native-transport
 sessions:
   origin: 20260306-171859
+related:
+- pipe-architecture
 exit_criteria: []
 ---
 # feat: GitHub Connector — First Native Child on Pipe Architecture
