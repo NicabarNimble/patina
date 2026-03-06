@@ -9,6 +9,8 @@ sessions:
   origin: 20260306-171859
 related:
 - pipe-architecture
+beliefs:
+- pipes-are-processes-not-wasm
 exit_criteria: []
 ---
 # refactor: Pipe Native Transport — Child Trait + stdio JSON-RPC
