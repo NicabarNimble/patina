@@ -93,64 +93,88 @@ A pipe does NOT know:
 - How to schedule itself
 - Anything about other pipes or the broader data flow
 
-**Execution model (process-based):**
+**Execution model (MCP server):**
 
-Pipes are native processes communicating over stdio. Mother spawns the
-pipe binary, writes config to its stdin, reads newline-delimited JSON
-facts from its stdout, and captures logs from stderr. This is the same
-pattern as MCP servers — spawn a process, speak JSON over stdio.
+Pipes are MCP servers. Mother is an MCP client. The protocol is
+JSON-RPC 2.0 — not MCP-like, the actual protocol. This gives us
+bidirectional communication, multiple calls per session, progress
+notifications, and the full transport stack (stdio, HTTP+SSE,
+Streamable HTTP) without inventing anything.
 
 ```
-Mother                          github-pipe
+Mother (MCP client)              github-pipe (MCP server)
   │                                 │
-  │──── stdin: JSON config ────────▶│
+  │──── initialize ────────────────▶│
+  │◀─── capabilities ──────────────│
+  │                                 │
+  │──── tools/call: fetch ─────────▶│
   │     {                           │
+  │       "persona": "dev-nick",    │
   │       "auth": { "token": "..." },
   │       "params": { "owner": "NicabarNimble", "repo": "patina" },
   │       "types": ["issues", "prs"],
   │       "since": "2026-03-01T00:00:00Z"
   │     }                           │
-  │                                 │
   │                                 │── reqwest GET /repos/.../issues
+  │◀─── notification: progress ────│   (50 issues fetched)
   │                                 │── reqwest GET /repos/.../pulls
+  │◀─── notification: fact ────────│   {"schema":"forge","type":"issue",...}
+  │◀─── notification: fact ────────│   {"schema":"forge","type":"pr",...}
+  │◀─── result: { fetched: 73 } ───│
   │                                 │
-  │◀── stdout: NDJSON facts ────────│
-  │  {"schema":"forge","type":"issue","data":{...}}
-  │  {"schema":"forge","type":"pr","data":{...}}
-  │  {"schema":"forge","type":"issue","data":{...}}
+  │──── tools/call: health ────────▶│  (Mother can call again without respawn)
+  │◀─── result: { ok: true } ──────│
   │                                 │
-  │◀── exit(0) ─────────────────────│
+  │──── shutdown ──────────────────▶│
+  │◀─── exit(0) ───────────────────│
   │                                 │
   │── write facts to events.db      │
 ```
+
+Key difference from previous design: Mother can call `fetch()` multiple
+times on the same running pipe. No respawn per fetch. Connection pooling,
+rate limit state, and cached auth persist across calls.
 
 **github-pipe code sketch:**
 
 ```rust
 // pipes/github-pipe/src/main.rs
+use patina_pipe::{Pipe, serve, Fact, PipeConfig, Capabilities, Status};
+
+struct GitHubPipe;
+
+impl Pipe for GitHubPipe {
+    fn capabilities(&self) -> Capabilities {
+        Capabilities {
+            provider: "github",
+            data_types: vec!["issues", "prs", "comments", "reviews"],
+            supports_incremental: true,
+            supports_streaming: false,
+        }
+    }
+
+    fn fetch(&self, config: &PipeConfig) -> Result<Vec<Fact>> {
+        let client = GitHubClient::new(&config.auth, &config.params)?;
+        let mut facts = Vec::new();
+
+        for issue in client.fetch_issues(config.since)? {
+            facts.push(Fact::new("forge", "issue", &issue)?);
+        }
+        for pr in client.fetch_pull_requests(config.since)? {
+            facts.push(Fact::new("forge", "pr", &pr)?);
+        }
+
+        Ok(facts)
+    }
+
+    fn health(&self, config: &PipeConfig) -> Result<Status> {
+        let client = GitHubClient::new(&config.auth, &config.params)?;
+        client.check_rate_limit()
+    }
+}
+
 fn main() -> Result<()> {
-    let config: PipeConfig = serde_json::from_reader(io::stdin())?;
-    let client = GitHubClient::new(&config);
-
-    for issue in client.fetch_issues()? {
-        let fact = Fact {
-            schema: "forge",
-            fact_type: "issue",
-            data: serde_json::to_value(&issue)?,
-        };
-        println!("{}", serde_json::to_string(&fact)?);
-    }
-
-    for pr in client.fetch_pull_requests()? {
-        let fact = Fact {
-            schema: "forge",
-            fact_type: "pr",
-            data: serde_json::to_value(&pr)?,
-        };
-        println!("{}", serde_json::to_string(&fact)?);
-    }
-
-    Ok(())
+    serve(GitHubPipe)  // MCP server — handles everything
 }
 ```
 
@@ -158,6 +182,11 @@ Normal Rust development: `cargo run`, `cargo test`, `dbg!()`. No WASM
 build step, no cross-compilation, no host function stubs for testing.
 The `GitHubClient` code migrates from `plugins/forge/src/github.rs`
 with `host_http` calls replaced by direct `reqwest` calls.
+
+`serve()` handles: MCP protocol, JSON-RPC dispatch, transport
+negotiation, fact signing (persona keypair), content addressing
+(blake3 hash), persona scoping, progress notifications, graceful
+shutdown. The pipe author never touches any of this.
 
 **WIT as type contract (not calling convention):**
 
@@ -256,58 +285,48 @@ at user level (`~/.patina/pipes/`) not project level.
 ### Pipe SDK (`patina-pipe` crate)
 
 The SDK is the foundation — every pipe depends on it. No pipe is built
-without the SDK. This is the same pattern as MCP SDKs: you don't
-hand-parse JSON-RPC, you implement a handler. You don't hand-parse
-stdin, you implement the `Pipe` trait.
+without the SDK. The pipe is an MCP server. The SDK handles MCP protocol,
+transport, signing, hashing, persona isolation. The pipe author implements
+`fetch()` and nothing else.
 
 **Core trait:**
 
 ```rust
 // patina-pipe/src/lib.rs
 
-/// The contract every pipe implements.
+/// The contract every pipe implements. This never changes.
 pub trait Pipe {
     /// What this pipe can provide.
     fn capabilities(&self) -> Capabilities;
 
-    /// Fetch data matching the config. Called by run().
+    /// Fetch data matching the config. Called by serve() on each
+    /// MCP tools/call request. May be called multiple times per session.
     fn fetch(&self, config: &PipeConfig) -> Result<Vec<Fact>>;
 
     /// Test connectivity with current credentials.
     fn health(&self, config: &PipeConfig) -> Result<Status>;
 }
 
-/// Entry point. Handles stdin/stdout/stderr protocol.
-/// Pipe authors call this from main().
-pub fn run<P: Pipe>(pipe: P) -> Result<()> {
-    let config: PipeConfig = serde_json::from_reader(io::stdin())?;
-
-    match config.command {
-        Command::Fetch => {
-            for fact in pipe.fetch(&config)? {
-                // NDJSON: one fact per line on stdout
-                println!("{}", serde_json::to_string(&fact)?);
-            }
-        }
-        Command::Health => {
-            let status = pipe.health(&config)?;
-            println!("{}", serde_json::to_string(&status)?);
-        }
-        Command::Capabilities => {
-            let caps = pipe.capabilities();
-            println!("{}", serde_json::to_string(&caps)?);
-        }
-    }
-    Ok(())
+/// MCP server entry point. Pipe authors call this from main().
+/// Handles everything: protocol, transport, signing, persona.
+pub fn serve<P: Pipe>(pipe: P) -> Result<()> {
+    // 1. Negotiate transport (stdio, HTTP+SSE, Streamable HTTP)
+    // 2. MCP initialize handshake
+    // 3. Listen for JSON-RPC requests
+    // 4. Dispatch to pipe.fetch() / pipe.health() / pipe.capabilities()
+    // 5. Sign each fact with persona keypair (automatic)
+    // 6. Hash each fact with blake3 (content addressing)
+    // 7. Send facts as MCP notifications
+    // 8. Handle SIGTERM gracefully (stream mode)
 }
 ```
 
 **SDK-provided types:**
 
 ```rust
-/// What Mother sends on stdin.
+/// What Mother sends in each MCP tools/call request.
 pub struct PipeConfig {
-    pub command: Command,           // fetch | health | capabilities
+    pub persona: String,            // "dev-nick" — scoped, can't cross
     pub auth: Option<AuthConfig>,   // credentials from vault
     pub params: serde_json::Value,  // pipe-specific params
     pub types: Vec<String>,         // which data types to fetch
@@ -315,18 +334,20 @@ pub struct PipeConfig {
     pub limit: Option<u32>,         // max items
 }
 
-pub enum Command { Fetch, Health, Capabilities }
-
 pub struct AuthConfig {
     pub token: String,              // resolved from vault
     pub provider: String,           // "github", "slack", etc.
 }
 
-/// What the pipe writes to stdout (one per line).
+/// What the pipe returns. SDK signs and hashes before sending.
 pub struct Fact {
     pub schema: String,             // "forge", "slack", etc.
     pub fact_type: String,          // "issue", "pr", "message"
     pub data: serde_json::Value,    // the payload
+    // SDK adds before sending to Mother:
+    //   content_hash: blake3 of data (dedup across pipes/nodes)
+    //   signature: persona keypair signs fact (provenance)
+    //   persona: which persona produced this fact
 }
 
 /// Health check result.
@@ -347,12 +368,15 @@ pub struct Capabilities {
 
 **What the SDK handles (pipe authors don't touch):**
 
-- stdin deserialization (JSON → PipeConfig)
-- stdout serialization (Fact → NDJSON, one per line)
-- stderr logging (structured, timestamped, not parsed by Mother)
+- MCP JSON-RPC 2.0 protocol (initialize, tools/call, notifications)
+- Transport negotiation (stdio / HTTP+SSE / Streamable HTTP)
+- Fact signing (persona keypair — automatic provenance)
+- Content addressing (blake3 hash — automatic dedup)
+- Persona scoping (pipe receives persona context, can't cross)
+- Progress notifications (SDK sends progress to Mother)
+- stderr logging (structured, timestamped)
 - Signal handling (SIGTERM → graceful shutdown for stream mode)
-- Error formatting (pipe errors → stderr + non-zero exit code)
-- Command dispatch (fetch vs health vs capabilities)
+- Error formatting (pipe errors → MCP error response)
 
 **What pipe authors implement:**
 
@@ -360,53 +384,6 @@ pub struct Capabilities {
   rate limiting, data mapping to Fact structs)
 - `health()` — test connectivity (e.g., GET /rate_limit for GitHub)
 - `capabilities()` — declare what the pipe can do (static)
-
-**Building a pipe with the SDK:**
-
-```rust
-// pipes/github-pipe/src/main.rs
-use patina_pipe::{Pipe, run, Fact, PipeConfig, Capabilities, Status};
-
-struct GitHubPipe;
-
-impl Pipe for GitHubPipe {
-    fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            provider: "github".into(),
-            data_types: vec!["issues".into(), "prs".into(),
-                            "comments".into(), "reviews".into()],
-            supports_incremental: true,
-            supports_streaming: false,
-        }
-    }
-
-    fn fetch(&self, config: &PipeConfig) -> Result<Vec<Fact>> {
-        let client = GitHubClient::new(config)?;
-        let mut facts = Vec::new();
-
-        if config.types.contains(&"issues".into()) {
-            for issue in client.fetch_issues()? {
-                facts.push(Fact {
-                    schema: "forge".into(),
-                    fact_type: "issue".into(),
-                    data: serde_json::to_value(&issue)?,
-                });
-            }
-        }
-        // ... similar for prs, comments, reviews
-        Ok(facts)
-    }
-
-    fn health(&self, config: &PipeConfig) -> Result<Status> {
-        let client = GitHubClient::new(config)?;
-        client.check_rate_limit()
-    }
-}
-
-fn main() -> Result<()> {
-    run(GitHubPipe)
-}
-```
 
 **pipe.toml manifest:**
 
@@ -440,24 +417,47 @@ $ patina pipe new github
 Created pipes/github-pipe/
 ├── Cargo.toml         # patina-pipe dependency, binary target
 ├── src/
-│   └── main.rs        # Pipe trait stub, run() call
+│   └── main.rs        # Pipe trait stub, serve() call
 └── pipe.toml          # manifest template (fill in provider, domains)
 
 Next: edit src/main.rs, implement fetch(), then:
-  cargo run < test-config.json
-  patina pipe run github
+  cargo run              # test locally (stdio transport)
+  patina pipe run github # run via Mother
 ```
 
-**MCP parallel:**
+**Deployment contexts:**
 
-| | MCP SDK | Pipe SDK |
-|---|---|---|
-| Trait/interface | Tool handler | `Pipe` trait |
-| Entry point | `mcp.run()` | `patina_pipe::run()` |
-| Protocol | JSON-RPC over stdio | JSON config → NDJSON facts |
-| Contract | JSON Schema | WIT type definitions |
-| Scaffold | `mcp init` | `patina pipe new` |
-| Transport | stdio / HTTP+SSE | stdio / HTTP+SSE (future) |
+The same `impl Pipe` runs everywhere. The SDK adapts runtime and
+transport. The pipe author writes `fetch()` once.
+
+| Context | Runtime | Transport | Identity |
+|---|---|---|---|
+| Local (your machine) | Native process | stdio | Persona keypair |
+| Remote (VPS) | Native process | HTTP+SSE | Same keypair |
+| Edge (Cloudflare) | WASM Worker | Streamable HTTP | Same keypair |
+| P2P (other nodes) | Native process | Iroh/HTTP | Node keypair |
+| Shared (community) | Native or WASM | Streamable HTTP | Their persona |
+
+WIT compiles to native (local) AND WASM (edge). Same contract, same
+types, different binary target. `cargo build` for local, `cargo build
+--target wasm32-wasi` for edge. Pipe code unchanged.
+
+**Separation of concerns:**
+
+```
+            knows          knows           knows           knows
+            source data    transport       routing         purpose
+               │              │               │               │
+             Pipe           Child           Mother         Consumer
+               │              │               │               │
+does:       transform      hold conn      orchestrate     project+act
+            (fetch)        (WebSocket)    (spawn,route)   (query,index)
+               │              │               │               │
+doesn't:    store          parse data     transform       fetch
+            connect        route          hold conns      know source
+            sign facts     know schema    know format     know transport
+            know persona   know persona   OWNS persona    scoped by persona
+```
 
 ### Layer 3: Destinations (project, lake, block configuration)
 

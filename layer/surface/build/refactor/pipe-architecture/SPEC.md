@@ -24,8 +24,8 @@ exit_criteria:
 - id: pipe-sdk-exists
   text: "`patina-pipe` SDK crate with Pipe trait, run() orchestrator, Fact/PipeConfig types, and `patina pipe new` scaffold command"
   checked: false
-- id: pipe-interface-defined
-  text: Pipe protocol defined — stdin config, stdout newline-delimited JSON facts, stderr logs — with WIT type definitions for fact shapes
+- id: pipe-protocol-mcp
+  text: "Pipe protocol is MCP (JSON-RPC 2.0) — not MCP-like, the actual protocol. WIT contracts define fact types. SDK handles transport (stdio/HTTP+SSE/Streamable HTTP)"
   checked: false
 - id: secrets-are-user-level
   text: Single secrets system manages all credentials — `patina auth` with OAuth device flow, not per-pipe manual setup
@@ -142,33 +142,54 @@ differ.
 └─────────────────────────────────────────────┘
 ```
 
-### Pipe interface (stdio protocol)
+### Pipe protocol (MCP)
 
-A pipe is a native binary that communicates over stdio:
+Pipes speak MCP — JSON-RPC 2.0, not a custom variant. The pipe is
+an MCP server, Mother is an MCP client.
 
-- **stdin**: JSON config object (credentials, params, fetch request)
-- **stdout**: newline-delimited JSON facts (one fact per line)
-- **stderr**: structured logs (human-readable, not parsed by Mother)
+- **Protocol**: JSON-RPC 2.0 (initialize, tools/call, notifications)
+- **Contract**: WIT type definitions (fact shapes, capabilities, config)
+- **Transport**: stdio (local), HTTP+SSE (remote), Streamable HTTP (shared)
 
-WIT defines the type contract — fact shapes, capability declarations,
-config schema — but pipes are NOT WASM components. They're regular
-processes spawned by Mother. Any language that reads stdin and writes
-stdout can be a pipe.
+WIT adds compile-time type safety on top of MCP's JSON Schema.
+Same pipe binary runs as a native process locally or as WASM on
+Cloudflare Workers — WIT compiles to both. The pipe author writes
+`fetch()` once, the SDK handles protocol and transport.
 
 ### Pipe SDK (`patina-pipe` crate)
 
 The SDK is a blocker for building any pipe. It provides:
 
 - `Pipe` trait: `capabilities()`, `fetch()`, `health()`
-- `run()` orchestrator: handles stdin/stdout/stderr protocol
+- `serve()` orchestrator: MCP server, handles protocol + transport
 - Types: `Fact`, `PipeConfig`, `Capabilities`, `Status`
 - WIT-generated type definitions for fact shapes
+- **Persona-scoped config**: pipe receives persona context, can't
+  cross persona boundaries
+- **Fact signing**: SDK signs every fact with persona keypair
+  (automatic, pipe author doesn't touch crypto)
+- **Content addressing**: SDK hashes every fact (blake3) for dedup
+  across pipes and nodes
 - Signal handling for stream mode (graceful shutdown)
 - `patina pipe new <name>` scaffold command
 
-Pipe authors implement the trait. The SDK handles everything else.
-Same pattern as MCP SDKs — you don't hand-parse JSON-RPC, you
-implement a handler.
+Pipe authors implement the trait. The SDK handles protocol, transport,
+signing, hashing, persona isolation — everything. Build once, done.
+
+### Deployment contexts
+
+The same pipe binary works everywhere. The SDK adapts:
+
+| Context | Runtime | Transport |
+|---|---|---|
+| Local (your machine) | Native process | stdio |
+| Remote (VPS) | Native process | HTTP+SSE |
+| Edge (Cloudflare) | WASM Worker | Streamable HTTP |
+| P2P (other nodes) | Native process | Iroh/HTTP |
+| Shared (community) | Native or WASM | Streamable HTTP |
+
+Pipe code doesn't change across contexts. Persona keypair provides
+identity in all of them.
 
 ### Pipe lifecycle modes
 
@@ -293,11 +314,14 @@ WASM build step, no cross-compilation.
 ## Steps
 
 1. **Build `patina-pipe` SDK crate** (blocker for all pipes):
-   - `Pipe` trait, `run()` orchestrator, types (`Fact`, `PipeConfig`,
-     `Capabilities`, `Status`)
-   - stdin/stdout/stderr protocol handling, NDJSON serialization
-   - Signal handling, logging, health check protocol
+   - `Pipe` trait, `serve()` orchestrator (MCP server)
+   - Types: `Fact`, `PipeConfig`, `Capabilities`, `Status`
+   - MCP JSON-RPC 2.0 protocol handling
+   - Transport abstraction (stdio initially, HTTP+SSE later)
+   - Fact signing (persona keypair) and content addressing (blake3)
+   - Persona-scoped config handling
    - WIT type definitions for fact shapes
+   - Signal handling, logging, health check protocol
 2. Build `patina pipe new <name>` scaffold command — generates
    Cargo.toml, main.rs, pipe.toml from template
 3. Define pipe.toml manifest format (provider, data-types, domains,
