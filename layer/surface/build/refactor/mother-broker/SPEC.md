@@ -8,6 +8,8 @@ blocked_by:
 - github-connector
 sessions:
   origin: 20260306-171859
+related:
+- pipe-architecture
 exit_criteria: []
 ---
 # refactor: Mother Broker — Routing Engine + Child Lifecycle
