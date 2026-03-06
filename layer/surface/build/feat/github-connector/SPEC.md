@@ -10,6 +10,8 @@ sessions:
 related:
 - pipe-architecture
 - forge-plugin-extraction
+beliefs:
+- patina-is-domain-agnostic-knowledge-system
 exit_criteria: []
 ---
 # feat: GitHub Connector — First Native Child on Pipe Architecture
