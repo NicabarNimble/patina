@@ -11,6 +11,7 @@ related:
 - pipe-architecture
 beliefs:
 - pipes-are-processes-not-wasm
+- host-proxied-io-is-the-security-model
 exit_criteria: []
 ---
 # refactor: Pipe Native Transport — Child Trait + stdio JSON-RPC
