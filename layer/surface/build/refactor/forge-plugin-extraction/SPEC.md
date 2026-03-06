@@ -52,13 +52,6 @@ dispatch to external plugins. See [[scrape-is-local-capture]].
 - [[code-is-not-core]] — forge is domain-specific (GitHub). Must be a
   plugin.
 
-**Pipe architecture alignment ([[spec-pipe-architecture]]):**
-`host_emit` is the WASM transport binding for pipe protocol — the forge
-connector already speaks pipe protocol, it just doesn't know it yet.
-Forge is the first child to gain pipe protocol awareness: `host_emit` →
-`emit`, `host_http` → `fetch`. The extraction work here produces the
-first child on the pipe architecture framework.
-
 ## Current State
 
 **`src/forge/` (1,683 LOC):**
