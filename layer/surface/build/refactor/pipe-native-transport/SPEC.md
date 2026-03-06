@@ -7,6 +7,8 @@ blocked_by:
 - pipe-protocol-types
 sessions:
   origin: 20260306-171859
+related:
+- pipe-architecture
 exit_criteria: []
 ---
 # refactor: Pipe Native Transport — Child Trait + stdio JSON-RPC
