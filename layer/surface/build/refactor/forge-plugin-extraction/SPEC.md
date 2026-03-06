@@ -154,3 +154,55 @@ GitHub API → src/forge/ → scrape/forge/ → events.db + patina.db
   in [[data-architecture-v3]].
 - **Scrape dispatch changes.** That's [[scrape-simplification]]. This
   spec extracts forge. Scrape changes are separate.
+
+## Post-Audit Findings (Session 3: 20260305-170212)
+
+Deep audit of plugin code, host infrastructure, projection pipeline,
+and old-vs-new comparison. Fixes applied in-session.
+
+### Bugs Fixed
+
+1. **PR `updated_at` used `created_at`** — `GhApiPullRequest` was missing
+   `updated_at` field. Deserialized it and emitted correctly.
+2. **Issue `created_at` not emitted** — added to `issue_to_event_json()`.
+3. **PR `merged_at` not emitted** — added to `pr_to_event_json()`.
+4. **Comments emitted as flat text, WIT declares `list<comment>`** — now
+   emits structured `comments` array matching WIT + `comments_text` for
+   FTS convenience.
+5. **Projection used ingestion time as domain time** — `project_from_events()`
+   now uses `COALESCE(json_extract(data, '$.created_at'), e.timestamp)` for
+   domain timestamps. Added `ingested_at` column for ingest metadata.
+6. **`truncate()` could panic on multi-byte UTF-8** — fixed with
+   `s.get(..max).unwrap_or(s)`.
+
+### Accepted Limitations (REST API)
+
+- **`linked_issues` always empty.** GitHub's `closingIssuesReferences` is
+  GraphQL-only. REST API doesn't provide PR→issue closure graph. Accept
+  until explicit GraphQL capability added.
+- **`tick()` is a stub.** Incremental discovery from commit `#N` refs not
+  yet ported to plugin. Forge runs via explicit `handle("sync")`. Implement
+  when Mother daemon scheduling is ready.
+- **Count/max functions not ported.** Used for progress display only.
+
+### Future Work (not extraction blockers)
+
+- **Auth UX: `patina auth login github`** — OAuth device flow to replace
+  manual PAT creation + vault + grants TOML ceremony.
+- **`patina plugin doctor forge`** — preflight check for missing credentials,
+  grants, and schema.
+- **Emit-time dedup** — prevent eventlog bloat from duplicate syncs.
+  Host-side, so all plugins benefit.
+- **Poisoned mutex → fail-closed** — mark child unhealthy on WASM panic,
+  require reload instead of recovering with potentially corrupt state.
+- **`sync_run_id`** — host-generated UUID per `handle()` call for
+  operational tracing.
+
+### Security Model (confirmed sound)
+
+- Three-layer defense: manifest declaration → load-time validation →
+  call-time enforcement.
+- HTTP: HTTPS-only, no IPs, no localhost, redirect rejection, domain
+  allowlist, leak detection.
+- Secrets: deny-by-default, user-controlled `secret-grants.toml`,
+  call-time `check_secret_grant()`.

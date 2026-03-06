@@ -41,6 +41,7 @@ struct GhApiPullRequest {
     user: GhApiUser,
     labels: Vec<GhApiLabel>,
     created_at: String,
+    updated_at: String,
     merged_at: Option<String>,
     html_url: String,
 }
@@ -355,6 +356,7 @@ fn issue_to_event_json(item: &GhApiIssue) -> String {
         "labels": labels,
         "author": item.user.login,
         "url": item.html_url,
+        "created_at": item.created_at,
         "updated_at": item.updated_at,
     })
     .to_string()
@@ -378,19 +380,37 @@ fn pr_to_event_json(
 
     let labels: Vec<&str> = item.labels.iter().map(|l| l.name.as_str()).collect();
 
-    // Combine comments and reviews into text (matches existing format)
-    let mut comment_parts: Vec<String> = Vec::new();
+    // Structured comments matching WIT schema: list<comment>
+    let mut structured_comments: Vec<serde_json::Value> = Vec::new();
     for c in comments {
-        comment_parts.push(format!("{}: {}", c.user.login, c.body));
+        structured_comments.push(serde_json::json!({
+            "author": c.user.login,
+            "body": c.body,
+            "created_at": c.created_at,
+        }));
     }
     for r in reviews {
         if let Some(body) = &r.body {
             if !body.is_empty() {
-                comment_parts.push(format!("{}: {}", r.user.login, body));
+                structured_comments.push(serde_json::json!({
+                    "author": r.user.login,
+                    "body": body,
+                    "created_at": r.submitted_at,
+                }));
             }
         }
     }
-    let comments_text = comment_parts.join("\n");
+
+    // Flat text for FTS/search convenience
+    let comments_text: String = structured_comments
+        .iter()
+        .filter_map(|c| {
+            let author = c["author"].as_str()?;
+            let body = c["body"].as_str()?;
+            Some(format!("{}: {}", author, body))
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
     // Count approvals
     let approvals = reviews.iter().filter(|r| r.state == "APPROVED").count() as i32;
@@ -408,19 +428,22 @@ fn pr_to_event_json(
         "labels": labels,
         "author": item.user.login,
         "url": item.html_url,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+        "merged_at": item.merged_at,
         "linked_issues": linked_issues,
-        "comments": comments_text,
+        "comments": structured_comments,
+        "comments_text": comments_text,
         "approvals": approvals,
-        "updated_at": item.created_at,
     })
     .to_string()
 }
 
-/// Truncate a string for error messages.
+/// Truncate a string for error messages (UTF-8 safe).
 fn truncate(s: &str, max: usize) -> &str {
     if s.len() <= max {
         s
     } else {
-        &s[..max]
+        s.get(..max).unwrap_or(s)
     }
 }
