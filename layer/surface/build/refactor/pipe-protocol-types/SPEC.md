@@ -9,6 +9,7 @@ related:
 - pipe-architecture
 beliefs:
 - wit-defines-pipe-contract-not-runtime
+- pipe-protocol-is-transport-agnostic
 exit_criteria: []
 ---
 # refactor: Pipe Protocol Types — Shared Crate + Manifest Format
