@@ -3,6 +3,9 @@ type: refactor
 id: mother-broker-github
 status: draft
 created: 2026-03-07
+blocked_by:
+- github-connector
+exit_criteria: []
 split_from: mother-broker
 ---
 
