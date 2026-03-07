@@ -199,7 +199,7 @@ pub(super) fn query(
 /// Shared by mother-child (instantiate_child) and task (run_task) engines.
 /// If a response redirects to a different host, the request is stopped
 /// (prevents allowlist bypass via open redirectors).
-pub(super) fn build_http_client() -> anyhow::Result<reqwest::blocking::Client> {
+pub(crate) fn build_http_client() -> anyhow::Result<reqwest::blocking::Client> {
     reqwest::blocking::Client::builder()
         .user_agent(format!("patina/{}", env!("CARGO_PKG_VERSION")))
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
@@ -221,7 +221,7 @@ pub(super) fn build_http_client() -> anyhow::Result<reqwest::blocking::Client> {
 /// - No localhost
 ///
 /// Pure function — testable independently of wasmtime.
-pub(super) fn validate_http_url(url: &str) -> Result<String, String> {
+pub(crate) fn validate_http_url(url: &str) -> Result<String, String> {
     let parsed = reqwest::Url::parse(url).map_err(|e| format!("invalid URL: {}", e))?;
 
     // HTTPS only
@@ -349,7 +349,7 @@ fn resolve_credential(
 }
 
 /// Inject credential into a request builder based on the mapping's location.
-pub(super) fn inject_credential(
+pub(crate) fn inject_credential(
     builder: reqwest::blocking::RequestBuilder,
     mapping: &CredentialMapping,
     value: &str,
@@ -360,7 +360,7 @@ pub(super) fn inject_credential(
 }
 
 /// Scan response body for leaked credential values, replacing with [REDACTED].
-pub(super) fn leak_check(body: &str, secret_name: &str, secret_value: &str) -> String {
+pub(crate) fn leak_check(body: &str, secret_name: &str, secret_value: &str) -> String {
     if body.contains(secret_value) {
         eprintln!(
             "[host] credential leak detected in response: secret '{}' found in body, redacting",

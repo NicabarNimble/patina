@@ -8,7 +8,7 @@ use wasmtime::component::Component;
 use wasmtime::{Config, Engine};
 
 mod command;
-mod host_support;
+pub(crate) mod host_support;
 mod mother_child;
 mod pipeline;
 mod task;

@@ -10,7 +10,7 @@
 //!
 //! See: layer/surface/build/feat/plugin-system/SPEC.md
 
-mod internal;
+pub(crate) mod internal;
 pub mod scaffold;
 pub use internal::{
     CommandEngine, CredentialMapping, GrantedCapabilities, InjectionLocation, PipelineEngine,
