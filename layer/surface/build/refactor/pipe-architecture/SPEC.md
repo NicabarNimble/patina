@@ -496,11 +496,11 @@ child specs below, not here.
 
 | Spec | What it delivers | Build order |
 |------|-----------------|-------------|
-| [[pipe-protocol-types]] | `patina-pipe-types` crate (Fact, PipeError, Capabilities, canonical_json), child.toml manifest format, patina-sdk rename (host_* → semantic names) | First (foundation, no blockers) |
-| [[pipe-native-transport]] | `patina-pipe` crate (Child trait, run(), FactEmitter, stdio JSON-RPC), OS sandbox profile | Second (blocked by protocol-types) |
-| [[github-connector]] | GitHub connector as native child, replaces src/forge/, emits github.issue/github.pr facts (own schema, not forge). WASM forge plugin coexists. | Third (blocked by native-transport) |
-| [[patina-connect]] | `patina connect` CLI with OAuth device flow, connection config, credential delivery via pipe/initialize | Parallel (no blockers — uses existing vault, independent of pipe types) |
-| [[mother-broker]] | Mother routing engine (sources.toml, fan-out), child lifecycle (WASM + native), schema validation, scheduling | Last (blocked by protocol-types + native-transport) |
+| [[spec-pipe-protocol-types]] | `patina-pipe-types` crate (Fact, PipeError, Capabilities, canonical_json), child.toml manifest format, patina-sdk rename (host_* → semantic names) | First (foundation, no blockers) |
+| [[spec-pipe-native-transport]] | `patina-pipe` crate (Child trait, run(), FactEmitter, stdio JSON-RPC), OS sandbox profile | Second (blocked by protocol-types) |
+| [[spec-github-connector]] | GitHub connector as native child, replaces src/forge/, emits github.issue/github.pr facts (own schema, not forge). WASM forge plugin coexists. | Third (blocked by native-transport) |
+| [[spec-patina-connect]] | `patina connect` CLI with OAuth device flow, connection config, credential delivery via pipe/initialize | Parallel (no blockers — uses existing vault, independent of pipe types) |
+| [[spec-mother-broker]] | Mother routing engine (sources.toml, fan-out), child lifecycle (WASM + native), schema validation, scheduling | Last (blocked by protocol-types + native-transport) |
 
 ### Build Order (dependency graph)
 
