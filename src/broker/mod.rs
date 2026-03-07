@@ -7,5 +7,6 @@
 pub mod connection;
 pub mod http;
 pub mod lifecycle;
+pub mod routing;
 pub mod sources;
 pub mod spawn;
