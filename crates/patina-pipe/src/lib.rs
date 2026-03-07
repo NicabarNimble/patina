@@ -4,6 +4,7 @@
 //! normal Rust binaries that speak JSON-RPC 2.0 over stdio.
 
 pub mod emitter;
+pub mod harness;
 pub mod protocol;
 pub mod sandbox;
 
