@@ -63,10 +63,7 @@ pub fn load_manifest(binary_path: &Path) -> Result<ChildManifest> {
 }
 
 /// Build pipe/initialize params with optional credential delivery (§9).
-pub fn build_init_params(
-    manifest: &ChildManifest,
-    credential: Option<&str>,
-) -> serde_json::Value {
+pub fn build_init_params(manifest: &ChildManifest, credential: Option<&str>) -> serde_json::Value {
     let mut params = serde_json::json!({
         "protocol_version": "1.0"
     });
@@ -117,7 +114,10 @@ pub fn spawn_native(
 
     // Build production HTTP handler
     let http_handler: Option<HttpHandler> = if !allowed_domains.is_empty() || credential.is_some() {
-        Some(build_production_handler(&allowed_domains, credential.clone())?)
+        Some(build_production_handler(
+            &allowed_domains,
+            credential.clone(),
+        )?)
     } else {
         None
     };
@@ -146,11 +146,7 @@ pub fn spawn_native(
         .map_err(|e| anyhow::anyhow!("pipe/initialize failed for {}: {}", child_name, e))?;
 
     if let Some(error) = response.get("error") {
-        bail!(
-            "child '{}' rejected initialization: {}",
-            child_name,
-            error
-        );
+        bail!("child '{}' rejected initialization: {}", child_name, error);
     }
 
     Ok((NativeChild::new(child_name.to_string(), conn), manifest))
@@ -168,9 +164,12 @@ fn check_sandbox_available() -> Result<()> {
     {
         patina_pipe::sandbox::check_landlock_support()
             .map(|_| ())
-            .map_err(|e| anyhow::anyhow!(
-                "{}\n  Use --no-sandbox to bypass (not recommended for production)", e
-            ))
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "{}\n  Use --no-sandbox to bypass (not recommended for production)",
+                    e
+                )
+            })
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -221,7 +220,10 @@ required = true
 
         // Token provided but requires_in_process_token is false (default)
         let params = build_init_params(&manifest, Some("secret123"));
-        assert!(params.get("auth").is_none(), "should not include token when not opted in");
+        assert!(
+            params.get("auth").is_none(),
+            "should not include token when not opted in"
+        );
     }
 
     #[test]

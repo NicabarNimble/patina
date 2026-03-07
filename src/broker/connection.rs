@@ -57,8 +57,8 @@ fn load_connection_from(path: &Path, name: &str) -> Result<ConnectionConfig> {
 
 /// Parse connection config TOML with schema_version validation.
 fn parse_connection(content: &str, name: &str) -> Result<ConnectionConfig> {
-    let raw: RawConnectionFile = toml::from_str(content)
-        .with_context(|| format!("parsing connection config '{}'", name))?;
+    let raw: RawConnectionFile =
+        toml::from_str(content).with_context(|| format!("parsing connection config '{}'", name))?;
 
     // Validate schema_version (DESIGN.md §8)
     match raw.schema_version {
@@ -138,7 +138,10 @@ child = "github-connector"
 "#;
         let result = parse_connection(toml, "test");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("missing schema_version"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("missing schema_version"));
     }
 
     #[test]
@@ -166,7 +169,10 @@ client_id = "test"
 "#;
         let result = parse_connection(toml, "test");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("[connection] section"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("[connection] section"));
     }
 
     #[test]

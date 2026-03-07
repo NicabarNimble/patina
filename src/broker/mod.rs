@@ -174,7 +174,11 @@ pub fn status(project_root: &Path) -> Result<Vec<SourceStatus>> {
             name: source.name.clone(),
             last_run,
             fact_count,
-            status: if cursor.is_some() { "ok".to_string() } else { "never run".to_string() },
+            status: if cursor.is_some() {
+                "ok".to_string()
+            } else {
+                "never run".to_string()
+            },
         });
     }
 

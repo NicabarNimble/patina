@@ -71,8 +71,7 @@ pub fn load_project_sources(project_root: &Path) -> Result<Option<ProjectSources
 /// Find a specific source by name across a project's sources.toml.
 pub fn find_source(project_root: &Path, source_name: &str) -> Result<Option<SourceEntry>> {
     let project_sources = load_project_sources(project_root)?;
-    Ok(project_sources
-        .and_then(|ps| ps.sources.into_iter().find(|s| s.name == source_name)))
+    Ok(project_sources.and_then(|ps| ps.sources.into_iter().find(|s| s.name == source_name)))
 }
 
 /// Scan all registered projects for sources.toml entries.
@@ -83,12 +82,12 @@ pub fn scan_all_sources() -> Result<Vec<ProjectSources>> {
         return Ok(vec![]);
     }
 
-    let content = std::fs::read_to_string(&registry_path)
-        .with_context(|| "reading registry.yaml")?;
+    let content =
+        std::fs::read_to_string(&registry_path).with_context(|| "reading registry.yaml")?;
 
     // Parse registry to get project paths
-    let registry: serde_yaml::Value = serde_yaml::from_str(&content)
-        .with_context(|| "parsing registry.yaml")?;
+    let registry: serde_yaml::Value =
+        serde_yaml::from_str(&content).with_context(|| "parsing registry.yaml")?;
 
     let mut all_sources = Vec::new();
 
@@ -118,8 +117,7 @@ pub fn scan_all_sources() -> Result<Vec<ProjectSources>> {
 
 /// Parse sources.toml content into SourceEntry list.
 fn parse_sources(content: &str) -> Result<Vec<SourceEntry>> {
-    let raw: RawSourcesFile =
-        toml::from_str(content).with_context(|| "parsing sources.toml")?;
+    let raw: RawSourcesFile = toml::from_str(content).with_context(|| "parsing sources.toml")?;
 
     let mut entries: Vec<SourceEntry> = raw
         .sources

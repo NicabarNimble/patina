@@ -83,10 +83,7 @@ pub fn validate_fact(
 ///
 /// Uses INSERT OR IGNORE — SQLite's partial unique index on content_hash
 /// handles dedup at B-tree insert time (no separate SELECT).
-pub fn write_facts(
-    conn: &Connection,
-    facts: &[ValidatedFact],
-) -> Result<WriteResult> {
+pub fn write_facts(conn: &Connection, facts: &[ValidatedFact]) -> Result<WriteResult> {
     let timestamp = chrono::Utc::now().to_rfc3339();
     let mut inserted: u64 = 0;
     let mut dedup_skipped: u64 = 0;
@@ -189,7 +186,10 @@ package = "patina:schema/github@1.0.0"
         let mut warned = HashSet::new();
         let result = validate_fact(&fact, &manifest, "test-child", &mut warned);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("missing content_hash"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("missing content_hash"));
     }
 
     #[test]

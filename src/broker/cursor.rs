@@ -108,13 +108,8 @@ mod tests {
             },
         ];
 
-        let result = write_facts_with_cursor(
-            &conn,
-            "github",
-            &facts,
-            Some("2026-03-07T00:00:00Z"),
-        )
-        .unwrap();
+        let result =
+            write_facts_with_cursor(&conn, "github", &facts, Some("2026-03-07T00:00:00Z")).unwrap();
 
         assert_eq!(result.inserted, 2);
         assert_eq!(result.dedup_skipped, 0);
@@ -150,8 +145,7 @@ mod tests {
         write_facts_with_cursor(&conn, "github", &facts, Some("cursor-1")).unwrap();
 
         // Write empty facts with new cursor — cursor should still update
-        let result =
-            write_facts_with_cursor(&conn, "github", &[], Some("cursor-2")).unwrap();
+        let result = write_facts_with_cursor(&conn, "github", &[], Some("cursor-2")).unwrap();
         assert_eq!(result.inserted, 0);
 
         let cursor = get_cursor(&conn, "github").unwrap();
@@ -173,8 +167,7 @@ mod tests {
         write_facts_with_cursor(&conn, "github", &facts, Some("cursor-1")).unwrap();
 
         // Second write with same content_hash — should dedup
-        let result =
-            write_facts_with_cursor(&conn, "github", &facts, Some("cursor-2")).unwrap();
+        let result = write_facts_with_cursor(&conn, "github", &facts, Some("cursor-2")).unwrap();
         assert_eq!(result.inserted, 0);
         assert_eq!(result.dedup_skipped, 1);
 

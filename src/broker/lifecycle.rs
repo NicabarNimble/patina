@@ -44,9 +44,7 @@ impl FetchParams {
             let params_obj: serde_json::Map<String, serde_json::Value> = self
                 .params
                 .iter()
-                .filter_map(|(k, v)| {
-                    serde_json::to_value(v).ok().map(|jv| (k.clone(), jv))
-                })
+                .filter_map(|(k, v)| serde_json::to_value(v).ok().map(|jv| (k.clone(), jv)))
                 .collect();
             obj.insert("params".to_string(), serde_json::Value::Object(params_obj));
         }
@@ -203,10 +201,7 @@ impl BrokerChild for NativeChild {
             .get("result")
             .with_context(|| "pipe/fetch response missing result")?;
 
-        let emitted = result
-            .get("emitted")
-            .and_then(|e| e.as_u64())
-            .unwrap_or(0);
+        let emitted = result.get("emitted").and_then(|e| e.as_u64()).unwrap_or(0);
 
         let cursor = result
             .get("cursor")
@@ -252,8 +247,14 @@ mod tests {
             types: vec!["issues".to_string(), "prs".to_string()],
             since: Some("2026-03-07T00:00:00Z".to_string()),
             params: HashMap::from([
-                ("owner".to_string(), toml::Value::String("NicabarNimble".to_string())),
-                ("repo".to_string(), toml::Value::String("patina".to_string())),
+                (
+                    "owner".to_string(),
+                    toml::Value::String("NicabarNimble".to_string()),
+                ),
+                (
+                    "repo".to_string(),
+                    toml::Value::String("patina".to_string()),
+                ),
             ]),
             limit: Some(100),
         };

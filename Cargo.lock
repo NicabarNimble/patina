@@ -2562,6 +2562,8 @@ dependencies = [
  "notify",
  "ort",
  "parking_lot",
+ "patina-pipe",
+ "patina-pipe-types",
  "rand 0.8.5",
  "rayon",
  "regex",

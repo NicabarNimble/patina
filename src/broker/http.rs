@@ -42,9 +42,15 @@ pub fn build_production_handler(
         // Build the request
         let mut builder = match req.method.to_uppercase().as_str() {
             "GET" => client.get(&req.url),
-            "POST" => client.post(&req.url).body(req.body.clone().unwrap_or_default()),
-            "PUT" => client.put(&req.url).body(req.body.clone().unwrap_or_default()),
-            "PATCH" => client.patch(&req.url).body(req.body.clone().unwrap_or_default()),
+            "POST" => client
+                .post(&req.url)
+                .body(req.body.clone().unwrap_or_default()),
+            "PUT" => client
+                .put(&req.url)
+                .body(req.body.clone().unwrap_or_default()),
+            "PATCH" => client
+                .patch(&req.url)
+                .body(req.body.clone().unwrap_or_default()),
             "DELETE" => client.delete(&req.url),
             other => return Err(format!("unsupported HTTP method: {}", other)),
         };
@@ -63,7 +69,9 @@ pub fn build_production_handler(
             builder = host_support::inject_credential(builder, &mapping, secret_value);
         }
 
-        let response = builder.send().map_err(|e| format!("HTTP {} failed: {}", req.method, e))?;
+        let response = builder
+            .send()
+            .map_err(|e| format!("HTTP {} failed: {}", req.method, e))?;
         let status = response.status().as_u16();
         let resp_headers: HashMap<String, String> = response
             .headers()
@@ -92,10 +100,7 @@ pub fn build_production_handler(
 fn normalize_domain(domain: &str) -> String {
     let lower = domain.to_lowercase();
     // Strip :443 (implicit for HTTPS)
-    lower
-        .strip_suffix(":443")
-        .unwrap_or(&lower)
-        .to_string()
+    lower.strip_suffix(":443").unwrap_or(&lower).to_string()
 }
 
 #[cfg(test)]
@@ -114,7 +119,10 @@ mod tests {
 
     #[test]
     fn normalize_keep_non_default_port() {
-        assert_eq!(normalize_domain("api.github.com:8443"), "api.github.com:8443");
+        assert_eq!(
+            normalize_domain("api.github.com:8443"),
+            "api.github.com:8443"
+        );
     }
 
     #[test]
@@ -124,10 +132,7 @@ mod tests {
 
     #[test]
     fn handler_rejects_unlisted_domain() {
-        let handler_result = build_production_handler(
-            &["api.github.com".to_string()],
-            None,
-        );
+        let handler_result = build_production_handler(&["api.github.com".to_string()], None);
         assert!(handler_result.is_ok());
         let mut handler = handler_result.unwrap();
 
