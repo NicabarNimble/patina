@@ -33,7 +33,7 @@ wit_bindgen::generate!({
 pub use patina::host::types::HealthStatus;
 
 /// Host logging — call from plugin code to log through the host.
-pub mod host_log {
+pub mod log {
     pub use super::patina::host::log::LogLevel;
 
     /// Log a message to the host's structured logging.
@@ -69,7 +69,7 @@ pub mod measure {
 /// The host controls domain enforcement, TLS, and credential injection.
 /// Plugin code calls these functions; the host validates URLs against
 /// the domain allowlist from `[capabilities].host_http` in plugin.toml.
-pub mod host_http {
+pub mod fetch {
     pub use super::patina::host::http::HttpResponse;
 
     /// HTTP GET from an allowed domain.
@@ -88,7 +88,7 @@ pub mod host_http {
 /// Requires `host_emit = true` and a `[schemas.<name>]` entry in plugin.toml.
 /// The host validates the schema and fact type at load time (zero disk I/O
 /// at emit time). Facts are written with provenance="external".
-pub mod host_emit {
+pub mod emit {
     /// Emit a fact to the eventlog.
     ///
     /// - `schema`: schema name (e.g., "forge") — must match a `[schemas.<name>]` entry
