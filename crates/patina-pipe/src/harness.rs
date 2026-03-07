@@ -6,21 +6,38 @@
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
 
+use patina_pipe_types::{PipeHttpRequest, PipeHttpResponse};
+
+/// Handler for pipe/http requests from native children.
+///
+/// Mother provides this when spawning a child. The handler receives the
+/// child's HTTP request, validates the domain against the manifest
+/// allowlist, executes the HTTP call, and returns the response.
+///
+/// If no handler is provided, pipe/http requests are rejected with an error.
+pub type HttpHandler = Box<dyn FnMut(&PipeHttpRequest) -> Result<PipeHttpResponse, String>>;
+
 /// Connection to a spawned native child process.
 ///
 /// Owns the child process and provides request/response communication
 /// over stdio. Reads both responses (with `id`) and notifications
-/// (pipe/fact, no `id`).
+/// (pipe/fact, no `id`). Handles pipe/http requests from the child
+/// by delegating to the provided HttpHandler.
 pub struct ChildConnection {
     process: Child,
     stdin: ChildStdin,
     reader: BufReader<std::process::ChildStdout>,
     next_id: u64,
+    http_handler: Option<HttpHandler>,
 }
 
 impl ChildConnection {
     /// Send a JSON-RPC request and read all output lines until the response
     /// (line with matching `id`) arrives. Returns (notifications, response).
+    ///
+    /// During reading, pipe/http requests from the child are handled
+    /// transparently — the handler executes the HTTP call and writes
+    /// the response back to the child's stdin.
     pub fn request(
         &mut self,
         method: &str,
@@ -55,14 +72,107 @@ impl ChildConnection {
 
             let parsed: serde_json::Value = serde_json::from_str(line)?;
 
-            // Check if this is the response (has our id)
+            // Distinguish requests/notifications (have "method") from responses
+            if let Some(method_name) = parsed.get("method").and_then(|m| m.as_str()) {
+                match method_name {
+                    "pipe/fact" => {
+                        notifications.push(parsed);
+                    }
+                    "pipe/http" => {
+                        self.handle_pipe_http(&parsed)?;
+                    }
+                    _ => {
+                        // Unknown notification from child — ignore
+                        eprintln!(
+                            "[harness] unknown child notification: {}",
+                            method_name
+                        );
+                    }
+                }
+                continue;
+            }
+
+            // Check if this is the response (has our id, no method field)
             if parsed.get("id") == Some(&serde_json::json!(id)) {
                 return Ok((notifications, parsed));
             }
 
-            // Otherwise it's a notification (pipe/fact)
-            notifications.push(parsed);
+            // Unexpected message — log and continue
+            eprintln!("[harness] unexpected message from child: {}", parsed);
         }
+    }
+
+    /// Handle a pipe/http request from the child.
+    ///
+    /// Delegates to the http_handler, writes the response (or error)
+    /// back to the child's stdin as a JSON-RPC response.
+    fn handle_pipe_http(
+        &mut self,
+        parsed: &serde_json::Value,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let request_id = parsed.get("id").cloned();
+
+        let http_request: PipeHttpRequest = match parsed
+            .get("params")
+            .map(|p| serde_json::from_value::<PipeHttpRequest>(p.clone()))
+        {
+            Some(Ok(req)) => req,
+            Some(Err(e)) => {
+                let resp = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {
+                        "code": -32602,
+                        "message": format!("invalid pipe/http params: {}", e)
+                    }
+                });
+                writeln!(self.stdin, "{}", serde_json::to_string(&resp)?)?;
+                self.stdin.flush()?;
+                return Ok(());
+            }
+            None => {
+                let resp = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {
+                        "code": -32602,
+                        "message": "missing params in pipe/http request"
+                    }
+                });
+                writeln!(self.stdin, "{}", serde_json::to_string(&resp)?)?;
+                self.stdin.flush()?;
+                return Ok(());
+            }
+        };
+
+        let result = match &mut self.http_handler {
+            Some(handler) => handler(&http_request),
+            None => Err("pipe/http not available: no handler configured".to_string()),
+        };
+
+        let resp = match result {
+            Ok(http_response) => {
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": serde_json::to_value(&http_response).unwrap_or_default()
+                })
+            }
+            Err(err_msg) => {
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {
+                        "code": -32003,
+                        "message": err_msg
+                    }
+                })
+            }
+        };
+
+        writeln!(self.stdin, "{}", serde_json::to_string(&resp)?)?;
+        self.stdin.flush()?;
+        Ok(())
     }
 
     /// Wait for the child process to exit and return its exit status.
@@ -83,10 +193,22 @@ impl ChildConnection {
 /// for child logging.
 ///
 /// Note: This harness does NOT apply OS sandbox (sandbox_init/Landlock).
-/// The spawn→sandbox→exec path is [[spec-mother-broker]] scope — Mother
+/// The spawn->sandbox->exec path is [[spec-mother-broker]] scope — Mother
 /// applies the sandbox after fork, before exec. The sandbox primitives
 /// are tested independently via fork-based tests in sandbox.rs.
 pub fn spawn_child(binary_path: &str) -> Result<ChildConnection, Box<dyn std::error::Error>> {
+    spawn_child_with_handler(binary_path, None)
+}
+
+/// Spawn a native child with an HTTP handler for pipe/http requests.
+///
+/// The handler receives pipe/http requests from the child, validates
+/// domains, executes HTTP calls, and returns responses. Without a handler,
+/// pipe/http requests are rejected with an error.
+pub fn spawn_child_with_handler(
+    binary_path: &str,
+    http_handler: Option<HttpHandler>,
+) -> Result<ChildConnection, Box<dyn std::error::Error>> {
     let mut process = Command::new(binary_path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -102,6 +224,7 @@ pub fn spawn_child(binary_path: &str) -> Result<ChildConnection, Box<dyn std::er
         stdin,
         reader,
         next_id: 1,
+        http_handler,
     })
 }
 

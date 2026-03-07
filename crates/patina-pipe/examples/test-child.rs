@@ -1,16 +1,16 @@
 //! Minimal test child for pipe protocol integration testing.
 //!
 //! Implements Child trait with fake GitHub-like data. Used to verify
-//! the end-to-end protocol: pipe/initialize → pipe/fetch (with streaming
-//! pipe/fact notifications) → pipe/shutdown.
+//! the end-to-end protocol: pipe/initialize -> pipe/fetch (with streaming
+//! pipe/fact notifications) -> pipe/shutdown.
 //!
 //! Usage: cargo run -p patina-pipe --example test-child
 
-use std::io::Write;
+use std::io::{BufRead, Write};
 
 use patina_pipe::{
-    run, Capabilities, Child, FactEmitter, FetchParams, FetchResult, HealthStatus,
-    InitializeParams, PipeError, Status,
+    run, Capabilities, Child, FetchParams, FetchResult, HealthStatus, InitializeParams, PipeError,
+    PipeIo, Status,
 };
 
 struct TestChild {
@@ -34,10 +34,10 @@ impl Child for TestChild {
     fn fetch(
         &mut self,
         _params: &FetchParams,
-        emitter: &mut FactEmitter<impl Write>,
+        io: &mut PipeIo<impl Write, impl BufRead>,
     ) -> Result<FetchResult, PipeError> {
         // Emit some fake issues
-        emitter.emit(
+        io.emit(
             "github",
             "issue",
             &serde_json::json!({
@@ -48,7 +48,7 @@ impl Child for TestChild {
             }),
         )?;
 
-        emitter.emit(
+        io.emit(
             "github",
             "issue",
             &serde_json::json!({
@@ -60,7 +60,7 @@ impl Child for TestChild {
         )?;
 
         // Emit a fake PR
-        emitter.emit(
+        io.emit(
             "github",
             "pr",
             &serde_json::json!({
@@ -72,7 +72,7 @@ impl Child for TestChild {
         )?;
 
         Ok(FetchResult {
-            emitted: emitter.count(),
+            emitted: io.count(),
             cursor: Some("2026-03-07T00:00:00Z".to_string()),
         })
     }

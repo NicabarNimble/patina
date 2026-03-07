@@ -5,17 +5,19 @@
 
 pub mod emitter;
 pub mod harness;
+pub mod pipe_io;
 pub mod protocol;
 pub mod sandbox;
 
 pub use emitter::FactEmitter;
 pub use patina_pipe_types::*;
+pub use pipe_io::PipeIo;
 
 use std::io::{BufRead, BufReader, Write};
 
 use protocol::{Request, Response};
 
-// Pipe protocol error codes — PipeError variant → JSON-RPC code mapping.
+// Pipe protocol error codes — PipeError variant -> JSON-RPC code mapping.
 // These live in the transport layer, not in pipe-types.
 const ERR_TRANSIENT: i32 = -32001;
 const ERR_FATAL: i32 = -32002;
@@ -37,14 +39,15 @@ pub trait Child {
         Ok(())
     }
 
-    /// Fetch data from the external source and emit facts via the emitter.
+    /// Fetch data from the external source and emit facts via the pipe I/O.
     ///
-    /// Each `emitter.emit()` call sends a pipe/fact notification immediately.
-    /// Return `FetchResult` with the emitted count and optional cursor.
+    /// Use `io.emit()` to stream facts and `io.get(url).send()` for HTTP
+    /// calls proxied through Mother. Return `FetchResult` with the emitted
+    /// count and optional cursor.
     fn fetch(
         &mut self,
         params: &FetchParams,
-        emitter: &mut FactEmitter<impl Write>,
+        io: &mut PipeIo<impl Write, impl BufRead>,
     ) -> Result<FetchResult, PipeError>;
 
     /// Health check. Called by Mother to monitor child status.
@@ -93,28 +96,34 @@ fn pipe_error_to_response(id: Option<serde_json::Value>, err: &PipeError) -> Res
 /// implementation, writes responses to stdout. Follows the same pattern
 /// as `src/mcp/server/mod.rs`.
 ///
+/// During pipe/fetch, the child has access to both stdout (for emitting
+/// facts and pipe/http requests) and stdin (for reading pipe/http
+/// responses from Mother) via PipeIo.
+///
 /// Every error path is handled explicitly — no panics on protocol messages.
 pub fn run<C: Child>(mut child: C) -> Result<(), Box<dyn std::error::Error>> {
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
-    let reader = BufReader::new(stdin.lock());
+    let mut reader = BufReader::new(stdin.lock());
 
     let mut initialized = false;
+    let mut line = String::new();
 
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(e) => {
-                // stdin read error — broken pipe or encoding issue
-                return Err(format!("stdin read error: {}", e).into());
-            }
-        };
+    loop {
+        line.clear();
+        let bytes_read = reader.read_line(&mut line).map_err(|e| {
+            format!("stdin read error: {}", e)
+        })?;
+        if bytes_read == 0 {
+            break;
+        }
 
-        if line.is_empty() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
             continue;
         }
 
-        let request: Request = match serde_json::from_str(&line) {
+        let request: Request = match serde_json::from_str(trimmed) {
             Ok(r) => r,
             Err(e) => {
                 let resp = Response::error(None, -32700, &format!("Parse error: {}", e));
@@ -199,10 +208,11 @@ pub fn run<C: Child>(mut child: C) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
 
-                // Scope emitter so &mut stdout borrow ends before writing response
+                // PipeIo provides both fact emission and pipe/http to the child.
+                // stdout borrow released after fetch returns.
                 let fetch_result = {
-                    let mut emitter = FactEmitter::new(&mut stdout);
-                    child.fetch(&params, &mut emitter)
+                    let mut io = PipeIo::new(&mut stdout, &mut reader);
+                    child.fetch(&params, &mut io)
                 };
 
                 match fetch_result {
@@ -285,12 +295,12 @@ mod tests {
         fn fetch(
             &mut self,
             _params: &FetchParams,
-            emitter: &mut FactEmitter<impl Write>,
+            io: &mut PipeIo<impl Write, impl BufRead>,
         ) -> Result<FetchResult, PipeError> {
-            emitter.emit("test", "item", &serde_json::json!({"id": 1}))?;
-            emitter.emit("test", "item", &serde_json::json!({"id": 2}))?;
+            io.emit("test", "item", &serde_json::json!({"id": 1}))?;
+            io.emit("test", "item", &serde_json::json!({"id": 2}))?;
             Ok(FetchResult {
-                emitted: emitter.count(),
+                emitted: io.count(),
                 cursor: None,
             })
         }
@@ -299,19 +309,25 @@ mod tests {
     /// Helper: run a child with given input lines and return all output lines.
     fn run_with_input(input: &str) -> Vec<String> {
         let stdin_data = input.as_bytes();
-        let reader = BufReader::new(stdin_data);
+        let mut reader = BufReader::new(stdin_data);
         let mut output = Vec::new();
 
         let mut child = TestChild::new();
         let mut initialized = false;
+        let mut line = String::new();
 
-        for line in reader.lines() {
-            let line = line.unwrap();
-            if line.is_empty() {
+        loop {
+            line.clear();
+            let bytes_read = reader.read_line(&mut line).unwrap();
+            if bytes_read == 0 {
+                break;
+            }
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
                 continue;
             }
 
-            let request: Request = match serde_json::from_str(&line) {
+            let request: Request = match serde_json::from_str(trimmed) {
                 Ok(r) => r,
                 Err(e) => {
                     let resp = Response::error(None, -32700, &format!("Parse error: {}", e));
@@ -356,9 +372,13 @@ mod tests {
                     }
                     let params: FetchParams =
                         serde_json::from_value(request.params.clone()).unwrap();
+
+                    // Use a Cursor for the writer and an empty Cursor for the reader
+                    // (test child doesn't use pipe/http)
                     let mut cursor = Cursor::new(Vec::new());
-                    let mut emitter = FactEmitter::new(&mut cursor);
-                    let result = child.fetch(&params, &mut emitter).unwrap();
+                    let mut empty_reader = Cursor::new(Vec::<u8>::new());
+                    let mut io = PipeIo::new(&mut cursor, &mut empty_reader);
+                    let result = child.fetch(&params, &mut io).unwrap();
 
                     // Collect emitted notifications
                     let emitted_bytes = cursor.into_inner();
