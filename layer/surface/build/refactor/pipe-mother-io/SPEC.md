@@ -23,7 +23,7 @@ exit_criteria:
   checked: false
 - id: patina-pipe-helper
   text: '`patina-pipe` exposes `MotherHttpClient` (builder pattern) so child code replaces `reqwest::Client` with helper. Helper speaks pipe/http under the hood, returns familiar response structs.'
-  verify: '`cargo test -p patina-pipe mother_http::*` passes. Example child (examples/github-) compiles using helper with zero direct reqwest references.'
+  verify: '`cargo test -p patina-pipe mother_http::*` passes. Example child (examples/test-child) compiles using helper with zero direct reqwest references.'
   checked: false
 - id: measure-instrumentation
   text: 'Every pipe/http call emits Measure events (duration, bytes, policy decision, manifest id) and integrates with PATINA_SANDBOX_DEBUG logging for auditability.'
@@ -41,10 +41,15 @@ exit_criteria:
 
 Native children currently expect to call `reqwest` directly. The OS
 sandbox can only filter by port/IP, so the manifest `domains` field
-is unenforced: declaring `["api.github.com"]` does nothing once DNS
-resolved. The specs even claim “future DNS enforcement,” which is
-wrong — the real solution is host-proxied I/O. Until this exists the
-security story is dishonest.
+is unenforced: declaring `[“api.github.com”]` or
+`[“www.googleapis.com”]` does nothing once DNS resolves. The real
+solution is host-proxied I/O. Until this exists the security story
+is dishonest.
+
+pipe/http is the universal HTTP proxy for ALL native children —
+GitHub, Google Workspace, Slack, any REST API. Each connector's
+manifest declares its allowed domains; Mother enforces them
+identically regardless of provider.
 
 ## Solution
 
