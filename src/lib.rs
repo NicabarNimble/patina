@@ -1,4 +1,5 @@
 pub mod adapters;
+pub mod broker;
 pub mod db;
 pub mod embeddings;
 pub mod environment;
