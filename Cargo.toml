@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/patina-pipe-types", "plugins/sdk", "plugins/models", "plugins/repos", "plugins/doctor", "plugins/forge"]
+members = [".", "crates/patina-pipe-types", "crates/patina-pipe", "plugins/sdk", "plugins/models", "plugins/repos", "plugins/doctor", "plugins/forge"]
 exclude = ["layer/dust"]
 resolver = "2"
 
