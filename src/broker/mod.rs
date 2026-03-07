@@ -55,9 +55,13 @@ pub fn run_source(
     };
 
     // 3. Spawn child with sandbox and credential delivery
-    let (mut child, manifest) =
-        spawn_native(&conn_config.child, credential, no_sandbox, &conn_config.provider)
-            .with_context(|| format!("spawning child for source '{}'", source.name))?;
+    let (mut child, manifest) = spawn_native(
+        &conn_config.child,
+        credential,
+        no_sandbox,
+        &conn_config.provider,
+    )
+    .with_context(|| format!("spawning child for source '{}'", source.name))?;
 
     // 4. Open destination events.db
     let events_conn = crate::eventlog::open_events_db_at(project_root)

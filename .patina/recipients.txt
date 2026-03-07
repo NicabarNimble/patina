@@ -1,0 +1,4 @@
+# Patina Secrets Recipients
+# One age public key per line. Comments allowed.
+
+age1p6hj4nfzyuqaxw0nfuslugj0sez83kaj576xt09jskt3zvgv7urslml3z7
