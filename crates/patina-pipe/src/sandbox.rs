@@ -12,17 +12,6 @@
 /// Allows: stdio, DNS, HTTPS to declared domains. Denies everything else.
 #[cfg(target_os = "macos")]
 pub fn generate_macos_profile(allowed_domains: &[String]) -> String {
-    let domain_regex = if allowed_domains.is_empty() {
-        // No domains allowed — deny all network
-        String::new()
-    } else {
-        let patterns: Vec<String> = allowed_domains
-            .iter()
-            .map(|d| regex_escape_domain(d))
-            .collect();
-        patterns.join("|")
-    };
-
     let mut profile = String::from(
         r#"(version 1)
 (deny default)
@@ -34,19 +23,14 @@ pub fn generate_macos_profile(allowed_domains: &[String]) -> String {
 (allow sysctl-read)
 (allow mach-lookup)
 (allow system-socket)
-(allow network-outbound (remote udp (remote port 53)))
+(allow network-outbound (remote ip "*:53"))
 "#,
     );
 
-    if !domain_regex.is_empty() {
-        profile.push_str(&format!(
-            r#"(allow network-outbound
-  (remote tcp (require-all
-    (regex #"({})")
-    (remote port 443))))
-"#,
-            domain_regex
-        ));
+    if !allowed_domains.is_empty() {
+        // Port-level restriction to 443 — domain filtering requires
+        // DNS-level enforcement (future work, per DESIGN.md).
+        profile.push_str("(allow network-outbound (remote ip \"*:443\"))\n");
     }
 
     // Allow reading system libraries and TLS certificates
@@ -64,13 +48,6 @@ pub fn generate_macos_profile(allowed_domains: &[String]) -> String {
     profile
 }
 
-/// Escape a domain name for use in SBPL regex.
-/// Dots become literal `\\.`, rest is literal.
-#[cfg(target_os = "macos")]
-fn regex_escape_domain(domain: &str) -> String {
-    domain.replace('.', "\\\\.")
-}
-
 /// Apply sandbox profile in the current process via sandbox_init() C API.
 ///
 /// Call after fork, before exec. Returns Ok(()) on success, Err with
@@ -86,15 +63,16 @@ pub fn apply_sandbox(profile: &str) -> Result<(), String> {
         fn sandbox_free_error(errorbuf: *mut c_char);
     }
 
-    // SANDBOX_NAMED_EXTERNAL = 0x0003: interpret profile as inline SBPL string
-    const SANDBOX_NAMED_EXTERNAL: u64 = 0x0003;
+    // Flags = 0: interpret profile as inline SBPL string.
+    // SANDBOX_NAMED (0x0001) = named profile, SANDBOX_NAMED_EXTERNAL (0x0003) = file path.
+    const SANDBOX_INLINE: u64 = 0x0000;
 
     let c_profile = CString::new(profile).map_err(|e| format!("invalid profile string: {}", e))?;
     let mut errorbuf: *mut c_char = ptr::null_mut();
 
     // Safety: FFI call to system sandbox_init(). errorbuf is allocated by the
     // system and must be freed with sandbox_free_error() on failure.
-    let ret = unsafe { sandbox_init(c_profile.as_ptr(), SANDBOX_NAMED_EXTERNAL, &mut errorbuf) };
+    let ret = unsafe { sandbox_init(c_profile.as_ptr(), SANDBOX_INLINE, &mut errorbuf) };
 
     if ret != 0 {
         let err_msg = if !errorbuf.is_null() {
@@ -208,27 +186,109 @@ mod macos_tests {
         let profile = generate_macos_profile(&domains);
         assert!(profile.contains("(version 1)"));
         assert!(profile.contains("(deny default)"));
-        assert!(profile.contains("api\\\\.github\\\\.com"));
-        assert!(profile.contains("hooks\\\\.slack\\\\.com"));
-        assert!(profile.contains("(remote port 443)"));
-        assert!(profile.contains("(remote port 53)"));
+        assert!(profile.contains(r#"(remote ip "*:443")"#));
+        assert!(profile.contains(r#"(remote ip "*:53")"#));
     }
 
     #[test]
     fn profile_no_domains() {
         let profile = generate_macos_profile(&[]);
         assert!(profile.contains("(deny default)"));
-        assert!(!profile.contains("(remote port 443)"));
-        assert!(profile.contains("(remote port 53)"));
+        assert!(!profile.contains("*:443"));
+        assert!(profile.contains(r#"(remote ip "*:53")"#));
     }
 
     #[test]
-    fn regex_escape() {
-        assert_eq!(
-            regex_escape_domain("api.github.com"),
-            "api\\\\.github\\\\.com"
+    fn apply_sandbox_enforcement_via_fork() {
+        // sandbox_init() is irrevocable — test in a forked child process.
+        // After fork, child applies sandbox, tries to read a blocked path,
+        // and reports results via a pipe.
+        use std::io::Read;
+        use std::os::fd::FromRawFd;
+
+        // Create a pipe for child → parent communication
+        let (read_fd, write_fd) = {
+            let mut fds = [0i32; 2];
+            assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+            (fds[0], fds[1])
+        };
+
+        let pid = unsafe { libc::fork() };
+        assert!(pid >= 0, "fork failed");
+
+        if pid == 0 {
+            // Child process: apply sandbox, test enforcement, write results
+            unsafe { libc::close(read_fd) };
+
+            // Use a restrictive profile — deny all filesystem except stdio
+            let profile = generate_macos_profile(&[]);
+            let sandbox_result = apply_sandbox(&profile);
+
+            let mut results = String::new();
+
+            match sandbox_result {
+                Ok(()) => results.push_str("SANDBOX_OK\n"),
+                Err(e) => {
+                    results.push_str(&format!("SANDBOX_FAIL:{}\n", e));
+                    unsafe {
+                        libc::write(
+                            write_fd,
+                            results.as_ptr() as *const libc::c_void,
+                            results.len(),
+                        );
+                        libc::close(write_fd);
+                        libc::_exit(1);
+                    }
+                }
+            }
+
+            // Try to read /etc/passwd — should be BLOCKED by sandbox
+            match std::fs::read_to_string("/etc/passwd") {
+                Ok(_) => results.push_str("READ_PASSWD:ALLOWED\n"),
+                Err(_) => results.push_str("READ_PASSWD:BLOCKED\n"),
+            }
+
+            // Try to read /dev/null — should be ALLOWED (in profile)
+            match std::fs::File::open("/dev/null") {
+                Ok(_) => results.push_str("READ_DEVNULL:ALLOWED\n"),
+                Err(_) => results.push_str("READ_DEVNULL:BLOCKED\n"),
+            }
+
+            unsafe {
+                libc::write(
+                    write_fd,
+                    results.as_ptr() as *const libc::c_void,
+                    results.len(),
+                );
+                libc::close(write_fd);
+                libc::_exit(0);
+            }
+        }
+
+        // Parent: read results from child
+        unsafe { libc::close(write_fd) };
+        let mut read_file = unsafe { std::fs::File::from_raw_fd(read_fd) };
+        let mut results = String::new();
+        read_file.read_to_string(&mut results).unwrap();
+
+        // Wait for child
+        let mut status = 0i32;
+        unsafe { libc::waitpid(pid, &mut status, 0) };
+
+        eprintln!("[test] sandbox fork results:\n{}", results);
+
+        assert!(
+            results.contains("SANDBOX_OK"),
+            "sandbox_init() should apply successfully"
         );
-        assert_eq!(regex_escape_domain("example"), "example");
+        assert!(
+            results.contains("READ_PASSWD:BLOCKED"),
+            "/etc/passwd should be blocked by sandbox"
+        );
+        assert!(
+            results.contains("READ_DEVNULL:ALLOWED"),
+            "/dev/null should be allowed by sandbox profile"
+        );
     }
 }
 

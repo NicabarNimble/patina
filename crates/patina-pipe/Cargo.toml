@@ -11,7 +11,10 @@ patina-pipe-types = { path = "../patina-pipe-types" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
+# Unix: libc for fork-based sandbox tests + Linux runtime
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # Linux-only: Landlock ABI v4+ for native child sandboxing
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.4"
-libc = "0.2"
