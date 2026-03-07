@@ -247,6 +247,40 @@ fn ensure_events_db_inner() -> Result<()> {
         eprintln!("  Migrated events.db: added provenance column");
     }
 
+    // Schema migration: add content_hash column (v2 → v3).
+    // Broker-routed facts carry a blake3 content hash for dedup.
+    // Existing events get NULL (unaffected by partial unique index).
+    let has_content_hash: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('eventlog') WHERE name = 'content_hash'",
+            [],
+            |row| Ok(row.get::<_, i64>(0)? > 0),
+        )
+        .unwrap_or(false);
+
+    if !has_content_hash {
+        conn.execute_batch(
+            r#"
+            ALTER TABLE eventlog ADD COLUMN content_hash TEXT;
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_eventlog_content_hash
+                ON eventlog(content_hash) WHERE content_hash IS NOT NULL;
+            "#,
+        )?;
+        eprintln!("  Migrated events.db: added content_hash column with dedup index");
+    }
+
+    // Broker cursor table: tracks last-fetched position per source.
+    // Dedicated table (not scrape_meta) to avoid namespace coupling.
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS broker_cursors (
+            source_name TEXT PRIMARY KEY,
+            cursor_value TEXT NOT NULL CHECK(length(cursor_value) <= 4096),
+            updated_at TEXT NOT NULL
+        );
+        "#,
+    )?;
+
     // Migrate runtime events from patina.db if it exists.
     // Uses INSERT OR IGNORE with explicit seq — safe under concurrent execution
     // (two processes racing past OnceLock in separate process spaces both insert,
@@ -295,6 +329,62 @@ pub fn open_events_db() -> Result<Connection> {
     let conn = Connection::open(EVENTS_DB)?;
     // synchronous = FULL is per-connection, must be set each time
     conn.execute_batch("PRAGMA synchronous = FULL;")?;
+    Ok(conn)
+}
+
+/// Open events.db at a specific project root path.
+///
+/// Used by the broker to write to a destination project's events.db.
+/// Same PRAGMAs and schema as open_events_db(), just parameterized path.
+pub fn open_events_db_at(project_root: &Path) -> Result<Connection> {
+    let events_path = project_root.join(EVENTS_DB);
+
+    // Ensure parent directory exists
+    if let Some(parent) = events_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let conn = Connection::open(&events_path)?;
+
+    // Same safety PRAGMAs as ensure_events_db_inner
+    conn.execute_batch(
+        r#"
+        PRAGMA journal_mode = WAL;
+        PRAGMA synchronous = FULL;
+        PRAGMA busy_timeout = 5000;
+
+        CREATE TABLE IF NOT EXISTS eventlog (
+            seq INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            source_file TEXT,
+            data TEXT NOT NULL,
+            provenance TEXT NOT NULL DEFAULT 'local',
+            content_hash TEXT,
+            CHECK(json_valid(data))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_eventlog_type ON eventlog(event_type);
+        CREATE INDEX IF NOT EXISTS idx_eventlog_timestamp ON eventlog(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_eventlog_source ON eventlog(source_id);
+        CREATE INDEX IF NOT EXISTS idx_eventlog_type_time ON eventlog(event_type, timestamp);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_eventlog_content_hash
+            ON eventlog(content_hash) WHERE content_hash IS NOT NULL;
+
+        CREATE TABLE IF NOT EXISTS scrape_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS broker_cursors (
+            source_name TEXT PRIMARY KEY,
+            cursor_value TEXT NOT NULL CHECK(length(cursor_value) <= 4096),
+            updated_at TEXT NOT NULL
+        );
+        "#,
+    )?;
+
     Ok(conn)
 }
 
@@ -384,6 +474,110 @@ mod tests {
             get_last_processed(&conn, "git")?,
             Some("def456".to_string())
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_content_hash_dedup() -> Result<()> {
+        let dir = tempdir()?;
+        let conn = open_events_db_at(dir.path())?;
+
+        // Insert event with content_hash
+        conn.execute(
+            "INSERT INTO eventlog (event_type, timestamp, source_id, data, content_hash)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                "test.event",
+                "2026-03-07T00:00:00Z",
+                "child:test",
+                r#"{"key":"val"}"#,
+                "blake3:abc123"
+            ],
+        )?;
+
+        // Duplicate content_hash should be rejected (INSERT OR IGNORE)
+        let inserted = conn.execute(
+            "INSERT OR IGNORE INTO eventlog (event_type, timestamp, source_id, data, content_hash)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                "test.event",
+                "2026-03-07T00:01:00Z",
+                "child:test",
+                r#"{"key":"val2"}"#,
+                "blake3:abc123"
+            ],
+        )?;
+        assert_eq!(inserted, 0, "duplicate content_hash should be ignored");
+
+        // NULL content_hash should always succeed (partial index)
+        conn.execute(
+            "INSERT INTO eventlog (event_type, timestamp, source_id, data)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![
+                "test.event",
+                "2026-03-07T00:02:00Z",
+                "local",
+                r#"{"key":"val3"}"#,
+            ],
+        )?;
+        conn.execute(
+            "INSERT INTO eventlog (event_type, timestamp, source_id, data)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![
+                "test.event",
+                "2026-03-07T00:03:00Z",
+                "local",
+                r#"{"key":"val4"}"#,
+            ],
+        )?;
+
+        assert_eq!(count_total_events(&conn)?, 3);
+        Ok(())
+    }
+
+    #[test]
+    fn test_broker_cursors() -> Result<()> {
+        let dir = tempdir()?;
+        let conn = open_events_db_at(dir.path())?;
+
+        // Insert cursor
+        conn.execute(
+            "INSERT INTO broker_cursors (source_name, cursor_value, updated_at)
+             VALUES (?1, ?2, ?3)",
+            rusqlite::params!["github", "2026-03-07T00:00:00Z", "2026-03-07T12:00:00Z"],
+        )?;
+
+        // Read cursor
+        let cursor: String = conn.query_row(
+            "SELECT cursor_value FROM broker_cursors WHERE source_name = ?1",
+            ["github"],
+            |row| row.get(0),
+        )?;
+        assert_eq!(cursor, "2026-03-07T00:00:00Z");
+
+        // Update cursor (REPLACE)
+        conn.execute(
+            "INSERT OR REPLACE INTO broker_cursors (source_name, cursor_value, updated_at)
+             VALUES (?1, ?2, ?3)",
+            rusqlite::params!["github", "2026-03-07T01:00:00Z", "2026-03-07T13:00:00Z"],
+        )?;
+
+        let cursor: String = conn.query_row(
+            "SELECT cursor_value FROM broker_cursors WHERE source_name = ?1",
+            ["github"],
+            |row| row.get(0),
+        )?;
+        assert_eq!(cursor, "2026-03-07T01:00:00Z");
+
+        // Cursor value length constraint (4096 max)
+        let long_cursor = "x".repeat(4097);
+        let result = conn.execute(
+            "INSERT INTO broker_cursors (source_name, cursor_value, updated_at)
+             VALUES (?1, ?2, ?3)",
+            rusqlite::params!["too-long", long_cursor, "2026-03-07T12:00:00Z"],
+        );
+        assert!(result.is_err(), "cursor > 4096 bytes should be rejected");
 
         Ok(())
     }
