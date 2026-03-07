@@ -23,9 +23,9 @@ exit_criteria:
   checked: false
   verify: 'After `patina mother run github`: `SELECT count(*) FROM eventlog WHERE source_id = ''child:github-connector''` returns > 0 in project events.db specified by sources.toml.'
 - id: mother-validates-schemas
-  text: Mother validates emitted facts against declared schemas in child manifest — undeclared schemas are dropped with a warning
+  text: 'Mother validates emitted facts against declared schemas in child manifest — undeclared schemas are dropped with a warning (see DESIGN.md §6 decision table: undeclared = drop, uninstalled = warn + pass-through)'
   checked: false
-  verify: 'Modify test-child to emit a fact with schema "bogus". Confirm: fact logged as dropped (warning in Mother output), not in events.db. Valid facts from same run ARE present.'
+  verify: 'Modify test-child to emit a fact with schema "bogus" (not in manifest). Confirm: fact logged as dropped (warning in Mother output), not in events.db. Valid facts from same run ARE present. Separately: remove installed schema file — facts pass through with warning, not dropped.'
 - id: mother-run-test-child
   text: '`patina mother run test` spawns test-child (from pipe-native-transport examples/), routes facts to events.db — proves broker works before production connector'
   checked: false
@@ -35,9 +35,9 @@ exit_criteria:
   checked: false
   verify: Run `patina mother run github`. Output shows fact count, dedup count, cursor value. `SELECT event_type, count(*) FROM eventlog WHERE event_type LIKE 'github.%' GROUP BY event_type` returns rows. Run again immediately — dedup count should equal fact count (all duplicates).
 - id: credentials-via-pipe
-  text: Children receive credentials via pipe/initialize config delivery (Mother reads connection config, decrypts from vault, passes via stdin) — not via environment variables or files
+  text: Children receive credentials via Mother-proxied delivery (Tier 1 — transparent header injection for pipe/http; Tier 2 — raw token in pipe/initialize for children with auth.requires_in_process_token) — not via environment variables or files
   checked: false
-  verify: '`PATINA_SANDBOX_DEBUG=1 patina mother run github` — inspect logged pipe/initialize params showing auth.token present. Confirm: no GITHUB_TOKEN env var set, no temp credential files created.'
+  verify: 'Tier 1: `patina mother run github` — pipe/http audit log shows Bearer header injected for api.github.com. Confirm no GITHUB_TOKEN env var, no temp credential files. Tier 2: test-child with auth.requires_in_process_token=true — inspect pipe/initialize params showing auth.token present.'
 - id: sandbox-enforcement
   text: Mother refuses to spawn a native child when the OS cannot enforce sandboxing (Landlock v4 unavailable on Linux, sandbox_init() failure on macOS) unless --no-sandbox is explicitly passed. Sandbox enforcement is a broker responsibility — children do not self-sandbox.
   checked: false

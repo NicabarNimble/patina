@@ -166,13 +166,30 @@ The validation logic in `host_support::validate_emit()` (schema check,
 fact_type check) is reused by the broker's routing engine. The broker
 adds content-hash verification on top:
 
-1. `fact.schema` exists in the child's declared schemas
-2. `fact.fact_type` exists in that schema
-3. `fact.content_hash` matches recomputed hash of `fact.data`
-4. Dedup check (data string comparison for now, content_hash index later)
+1. `fact.schema` declared in child manifest's `[schemas]` section
+2. `fact.fact_type` exists in that schema's fact list
+3. `fact.content_hash` present and matches recomputed hash of `fact.data`
+4. Dedup check via content_hash unique index (§11)
 
-Invalid facts are logged and dropped. Mother never writes unvalidated
-data.
+**Schema validation decision table:**
+
+| Condition | Behavior | Rationale |
+|-----------|----------|-----------|
+| Schema NOT declared in child manifest (child emits schema "bogus" but manifest has no `[schemas.bogus]`) | **Drop fact + log warning.** Fact not written to events.db. | Undeclared schemas are a child bug — the manifest is the contract. EC `mother-validates-schemas` requires this. |
+| Schema declared in manifest but NOT installed on disk (`.patina/schemas/{name}/schema.toml` missing) | **Warn + pass-through.** Fact written without fact_type validation. One warning per missing schema per run. | Missing local schema is a deployment gap, not a child bug. Blocking data over a missing file is disproportionate. See §14. |
+| Schema declared AND installed, but fact_type not in schema | **Drop fact + log warning.** | Unknown fact_type within a known schema = child bug or schema version mismatch. |
+| All checks pass | **Write fact.** | Normal path. |
+
+Invalid facts (rows 1, 3) are logged and dropped. Mother never writes
+facts that fail manifest-level validation.
+
+**source_id format:** Broker-written facts use
+`source_id = 'child:{child_name}'` where `child_name` comes from
+the child manifest's `child.name` field (e.g., `child:github-connector`,
+`child:test-child`). This parallels the WASM convention
+`source_id = 'plugin:{name}'` from `host_support::emit_fact`. The
+prefix distinguishes broker-routed facts from CLI-generated events
+(`source_id` = git SHA, session ID, etc.) in eventlog queries.
 
 ### 7. Child Binary Resolution
 
@@ -302,6 +319,16 @@ Mother returns a structured JSON-RPC error:
 ```
 
 This surfaces immediately to the integrator — no silent failures.
+
+**EC `credentials-via-pipe` coverage:** The EC verifies Tier 1
+(transparent injection). The verify step should confirm that
+credentials reach the API via Mother's pipe/http header injection —
+NOT by inspecting pipe/initialize params (which won't contain a
+token under Tier 1). Verify by tracing the `[pipe/http]` audit log
+showing `Authorization: Bearer` injection for an authed domain, plus
+confirming no `GITHUB_TOKEN` env var or temp credential files exist.
+A separate test with `auth.requires_in_process_token = true` verifies
+the Tier 2 path (token visible in pipe/initialize params).
 
 ### 10. Cursor Storage Schema (Gap 14)
 
@@ -589,7 +616,7 @@ patina mother run github
   |
   +-- Build production pipe/http handler (§12: cached client + domain allowlist)
   |
-  +-- Get stored cursor from events.db (scrape_meta cursor:{source})
+  +-- Get stored cursor from events.db (broker_cursors table)
   |
   +-- Spawn child (fork+exec in sandbox)
   |     |
@@ -635,7 +662,33 @@ patina mother run <name>    # run a source (fetch, validate, route)
 patina mother sources       # show configured sources with status
 ```
 
-### Sandbox Failure Surfacing
+### Sandbox Enforcement
+
+Native children are spawned under the OS sandbox by default. The
+broker applies the sandbox after fork, before exec — the child
+process never runs unsandboxed code. Sandbox enforcement is a broker
+responsibility; children do not self-sandbox.
+
+**Default behavior:** `patina mother run <name>` applies the OS
+sandbox (macOS SBPL via `sandbox_init()`, Linux Landlock v4). If
+the OS cannot enforce sandboxing, spawn is **refused** with an
+explicit error:
+
+```
+[broker] github: sandbox unavailable (Landlock v4 required, kernel 6.7+)
+  Use --no-sandbox to bypass (not recommended for production)
+```
+
+**Override:** `--no-sandbox` flag or `PATINA_SANDBOX_DEBUG=1` env var
+bypasses sandbox enforcement. When used:
+
+```
+[broker] WARNING: sandbox disabled for github-connector — child has unrestricted network access
+```
+
+This is for debugging only. The flag is per-run, not persistent.
+
+**Sandbox failure surfacing:**
 
 When a sandboxed child tries to contact an undeclared domain, the OS
 sandbox blocks the connection with EPERM. The child sees a connection
@@ -649,9 +702,36 @@ surfaces this in two places:
 
 - **`patina mother sources` output:** Shows last run status per source.
   A sandbox-blocked child shows as `last_run: error (Fatal)` with the
-  error message. The `--sandbox-debug` flag or `PATINA_SANDBOX_DEBUG=1`
-  env var re-runs without sandbox to confirm whether the sandbox is
-  the cause.
+  error message. Re-run with `--no-sandbox` to confirm whether the
+  sandbox is the cause.
+
+### Mother Status Enhancements
+
+`patina mother status` extends the existing daemon status display
+(PID, socket, uptime) with broker child state. Data sources:
+
+- **broker_cursors table:** `source_name`, `cursor_value`,
+  `updated_at` — provides last run timestamp per source.
+- **Last WriteResult** (in-memory, per daemon lifetime): `inserted`,
+  `dedup_skipped`, `cursor` — provides fact counts and dedup stats.
+- **Error state** (in-memory): last error message per source, if the
+  most recent run failed.
+
+Output format:
+
+```
+Mother daemon: running (PID 12345, uptime 3h)
+
+Sources:
+  github          last run: 2026-03-07T14:30:00Z  facts: 47  dedup: 3   status: ok
+  test-child      last run: 2026-03-07T12:00:00Z  facts: 3   dedup: 0   status: ok
+  slack           last run: never                  facts: 0   dedup: 0   status: not configured
+```
+
+When run outside the daemon (manual `patina mother run`), status
+reads from `broker_cursors` only (no in-memory WriteResult). Fact
+counts come from `SELECT count(*) FROM eventlog WHERE source_id =
+'child:{name}'`. This is slower but works without the daemon running.
 
 ## On-Scrape Scheduling
 
