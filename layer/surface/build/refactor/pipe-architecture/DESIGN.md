@@ -57,8 +57,10 @@ convenience, not a requirement.
 Three concepts, each with one job:
 
 **Pipe protocol** is how components exchange data. JSON-RPC 2.0 with
-typed messages (`pipe/initialize`, `pipe/fetch`, `pipe/fact`,
-`pipe/health`, `pipe/shutdown`). The protocol doesn't care about
+four request methods (`pipe/initialize`, `pipe/fetch`, `pipe/health`,
+`pipe/shutdown`) and a streaming notification (`pipe/fact` — facts
+delivered one at a time during fetch, no accumulation). The protocol
+doesn't care about
 transport — the same messages travel over stdio (native children), WASM
 host calls (existing plugins), or HTTP (future remote children). A Fact
 is a Fact regardless of how it arrived.
@@ -122,9 +124,8 @@ one job:
 ### Build Order
 
 ```
-pipe-protocol-types ─── pipe-native-transport ─── github-connector
-                                                        │
-                                                  mother-broker
+pipe-protocol-types ─── pipe-native-transport ─┬── github-connector
+                                               └── mother-broker
 
 patina-connect (independent, can start immediately)
 ```
@@ -413,7 +414,7 @@ protocol is the same for both — Mother doesn't care.
 **Native children** (new model):
 - Run as OS processes communicating over stdio
 - JSON-RPC 2.0 over stdin/stdout
-- Sandboxed by OS (macOS sandbox-exec, Linux Landlock)
+- Sandboxed by OS (macOS sandbox_init(), Linux Landlock)
 - Installed user-level in `~/.patina/children/`
 - Normal Rust development: `cargo run`, `cargo test`, `dbg!()`
 
@@ -877,7 +878,7 @@ serving multiple Mothers).
 
 3. **Runtime sandbox**:
    - WASM: wasmtime sandbox. All I/O proxied through host functions.
-   - Native: OS sandbox (macOS sandbox-exec, Linux Landlock).
+   - Native: OS sandbox (macOS sandbox_init(), Linux Landlock).
      No filesystem access, no process spawning, no arbitrary network.
      Only inherited stdio + declared domains.
 

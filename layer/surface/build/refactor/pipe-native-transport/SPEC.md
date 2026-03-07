@@ -50,7 +50,7 @@ patina-pipe). This spec builds the native binding.
 - `Child` trait that native children implement
 - `run()` entry point that handles JSON-RPC protocol
 - `FactEmitter` for streaming fact delivery (no Vec<Fact> OOM)
-- OS sandbox profile for macOS (sandbox-exec)
+- OS sandbox enforcement for macOS (sandbox_init() C API) and Linux (Landlock ABI v4+)
 
 ## Current State
 
@@ -69,8 +69,8 @@ crates/patina-pipe/
     signing.rs      # content_hash + signature stub (until persona-federation)
 
 resources/sandbox/
-    macos-child.sb  # macOS sandbox-exec profile
-    linux-child.rs  # Linux Landlock stub (compiles, warns if unsupported)
+    macos-child.sb  # macOS sandbox profile (applied via sandbox_init() C API)
+    linux-child.rs  # Linux Landlock enforcement (ABI v4+, refuses spawn on older kernels)
 ```
 
 A native child looks like:
@@ -104,10 +104,10 @@ stdin/stdout. stderr is for child logging (not protocol).
    stdout as JSON-RPC notifications (streaming, no accumulation)
 4. Implement pipe/initialize handshake (config delivery, capability
    exchange)
-5. Create OS sandbox profiles: macOS sandbox-exec
-   (`resources/sandbox/macos-child.sb`) restricting to
-   stdin/stdout/stderr + declared network domains; Linux Landlock
-   stub that compiles and logs warning on unsupported kernels
+5. Implement OS sandbox enforcement: macOS via sandbox_init() C API
+   (`resources/sandbox/macos-child.sb` profile, applied after fork
+   before exec); Linux via Landlock ABI v4+ (equivalent restrictions,
+   refuses to spawn on unsupported kernels unless --no-sandbox)
 6. Build a test child binary (`examples/test-child/`) that implements
    Child trait and responds to pipe/fetch
 7. Add minimal Mother-side spawn logic: fork+exec child binary with

@@ -321,7 +321,7 @@ Three layers, always active for all children:
 2. **Capability manifest**: child.toml declares domains, schemas,
    auth requirements. Mother refuses undeclared resources.
 3. **Sandbox**: WASM sandbox (current plugins) or OS sandbox
-   (native children — macOS sandbox-exec, Linux Landlock).
+   (native children — macOS sandbox_init(), Linux Landlock).
 
 Native children: OS sandbox prevents filesystem access and process
 spawning. Network allowed for declared domains only. Credentials
@@ -507,17 +507,18 @@ child specs below, not here.
 ```
 pipe-protocol-types (foundation)
   ├── pipe-native-transport
-  │     └── github-connector
-  │           └── mother-broker
+  │     ├── github-connector
+  │     └── mother-broker
   │
 patina-connect (independent — uses existing vault, no pipe type deps)
 ```
 
 pipe-native-transport and patina-connect can build in parallel.
 patina-connect has no blockers — it creates connection configs and stores
-tokens using existing vault infrastructure. mother-broker comes last — it
-needs the native transport to spawn children and protocol types for
-validation.
+tokens using existing vault infrastructure. mother-broker and
+github-connector can build concurrently once native-transport is ready.
+Mother-broker tests against test-child first; its `mother-run-github` EC
+is verified after github-connector is complete.
 
 ## Exit Criteria
 

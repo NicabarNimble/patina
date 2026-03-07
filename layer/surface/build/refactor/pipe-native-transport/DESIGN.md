@@ -211,9 +211,9 @@ enforcement behavior.
 
 ### Debug Mode
 
-`--sandbox-debug` or `PATINA_SANDBOX_DEBUG=1` skips sandbox-exec
-and logs the profile that would have been applied. For debugging
-sandbox-related connection failures.
+`--sandbox-debug` or `PATINA_SANDBOX_DEBUG=1` skips sandbox
+enforcement and logs the profile that would have been applied. For
+debugging sandbox-related connection failures.
 
 ## Protocol Sequence Diagrams
 
