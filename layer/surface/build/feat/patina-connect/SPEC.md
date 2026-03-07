@@ -12,12 +12,15 @@ beliefs:
 exit_criteria:
 - id: oauth-flow-works
   text: '`patina connect github` completes OAuth device flow — opens browser, user approves, token stored in vault'
+  verify: 'Run `patina connect github`, complete device flow. Confirm: `patina secrets list` shows github:default entry. Token is usable — subsequent `patina mother run github` authenticates successfully.'
   checked: false
 - id: connection-config-created
-  text: Connection config created at ~/.patina/connections/github.toml — links credential (vault reference) to connector child
+  text: 'Connection config created at ~/.patina/connections/github.toml — links credential (vault reference) to connector child'
+  verify: '`cat ~/.patina/connections/github.toml` shows [connection] section with name, provider, credential, child, created fields. credential value matches vault entry name.'
   checked: false
 - id: connect-status-works
   text: '`patina connect status` shows connection health — connected/expired/missing for each configured connection'
+  verify: 'After connect: status shows `github: connected (oauth)`. After remove: status shows no github row. With expired token: status shows `github: expired`.'
   checked: false
 ---
 # feat: Connection Model — `patina connect` with OAuth Device Flow

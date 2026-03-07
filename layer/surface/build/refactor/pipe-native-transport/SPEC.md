@@ -15,12 +15,15 @@ beliefs:
 exit_criteria:
 - id: pipe-crate-compiles
   text: '`patina-pipe` crate compiles with Child trait and run() function — native children can depend on it and implement the trait'
+  verify: '`cargo build -p patina-pipe && cargo test -p patina-pipe` — both succeed. Depends on patina-pipe-types only.'
   checked: false
 - id: test-child-works
-  text: A test child binary can be spawned, initialized (pipe/initialize handshake), and respond to pipe/fetch with streaming pipe/fact notifications
+  text: 'A test child binary can be spawned, initialized (pipe/initialize handshake), and respond to pipe/fetch with streaming pipe/fact notifications'
+  verify: 'Spawn test-child binary, send pipe/initialize + pipe/fetch via stdin. Confirm: pipe/fact notifications arrive on stdout as JSON-RPC notifications (no `id` field), final result message includes emitted count.'
   checked: false
 - id: sandbox-profile-exists
-  text: OS sandbox enforced for native children — macOS sandbox-exec profile restricting filesystem/network to declared domains, Linux Landlock (ABI v4+) enforcing equivalent restrictions. Kernels without Landlock v4 refuse to spawn native children unless `--no-sandbox` is explicitly passed (opt-out, not opt-in).
+  text: 'OS sandbox enforced for native children — macOS sandbox_init() C API restricting filesystem/network to declared domains, Linux Landlock (ABI v4+) enforcing equivalent restrictions. Kernels without Landlock v4 refuse to spawn native children unless `--no-sandbox` is explicitly passed (opt-out, not opt-in).'
+  verify: 'Positive: spawn child with declared domain, confirm successful fetch. Negative: spawn child with undeclared domain, confirm EPERM / connection refused. Negative: on Linux <6.7 (or without Landlock v4), confirm spawn is refused with explicit error unless --no-sandbox passed. Log OS and kernel version tested.'
   checked: false
 ---
 # refactor: Pipe Native Transport — Child Trait + stdio JSON-RPC
