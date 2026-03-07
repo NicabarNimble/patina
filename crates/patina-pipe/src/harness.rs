@@ -102,7 +102,8 @@ impl ChildConnection {
     /// Handle a pipe/http request from the child.
     ///
     /// Delegates to the http_handler, writes the response (or error)
-    /// back to the child's stdin as a JSON-RPC response.
+    /// back to the child's stdin as a JSON-RPC response. Logs audit
+    /// information for every request (domain, method, status, duration).
     fn handle_pipe_http(
         &mut self,
         parsed: &serde_json::Value,
@@ -142,10 +143,35 @@ impl ChildConnection {
             }
         };
 
+        let start = std::time::Instant::now();
         let result = match &mut self.http_handler {
             Some(handler) => handler(&http_request),
             None => Err("pipe/http not available: no handler configured".to_string()),
         };
+        let duration = start.elapsed();
+
+        // Audit log: method, URL, decision, duration
+        match &result {
+            Ok(http_response) => {
+                eprintln!(
+                    "[pipe/http] {} {} -> {} ({:.1}ms, {} bytes)",
+                    http_request.method,
+                    http_request.url,
+                    http_response.status,
+                    duration.as_secs_f64() * 1000.0,
+                    http_response.body.len(),
+                );
+            }
+            Err(err_msg) => {
+                eprintln!(
+                    "[pipe/http] {} {} -> DENIED ({:.1}ms): {}",
+                    http_request.method,
+                    http_request.url,
+                    duration.as_secs_f64() * 1000.0,
+                    err_msg,
+                );
+            }
+        }
 
         let resp = match result {
             Ok(http_response) => {
