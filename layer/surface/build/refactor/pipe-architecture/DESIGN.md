@@ -54,27 +54,28 @@ convenience, not a requirement.
 
 ### How It Works: Protocol, Children, Broker
 
-Three concepts, each with one job:
+Three concepts, each with one job (detailed in §1, §2, §4 below):
 
-**Pipe protocol** is how components exchange data. JSON-RPC 2.0 with
-four request methods (`pipe/initialize`, `pipe/fetch`, `pipe/health`,
-`pipe/shutdown`) and a streaming notification (`pipe/fact` — facts
-delivered one at a time during fetch, no accumulation). The protocol
-doesn't care about
-transport — the same messages travel over stdio (native children), WASM
-host calls (existing plugins), or HTTP (future remote children). A Fact
-is a Fact regardless of how it arrived.
+**Pipe protocol** (§1) is how components exchange data. JSON-RPC 2.0
+with four request methods (`pipe/initialize`, `pipe/fetch`,
+`pipe/health`, `pipe/shutdown`) and a streaming notification
+(`pipe/fact` — facts delivered one at a time during fetch, no
+accumulation). The protocol doesn't care about transport — the same
+messages travel over stdio (native children), WASM host calls (existing
+plugins), or HTTP (future remote children). A Fact is a Fact regardless
+of how it arrived.
 
-**Children** are managed services that speak the protocol. A GitHub
-connector fetches issues. A Slack connector fetches messages. An RSS
-reader fetches feeds. Each child is a normal Rust binary — `cargo run`,
-`cargo test`, `dbg!()`, the full ecosystem. Children run inside OS
-sandboxes (macOS `sandbox_init()`, Linux Landlock) that restrict
-filesystem access and network to declared domains only. Credentials
-arrive via stdin, never through environment variables or files.
+**Children** (§2) are managed services that speak the protocol. A
+GitHub connector fetches issues. A Slack connector fetches messages. An
+RSS reader fetches feeds. Each child is a normal Rust binary —
+`cargo run`, `cargo test`, `dbg!()`, the full ecosystem. Children run
+inside OS sandboxes (macOS `sandbox_init()`, Linux Landlock) that
+restrict filesystem access and network to declared domains only.
+Credentials arrive via stdin, never through environment variables or
+files.
 
-**Mother** is the broker. She reads your project's `sources.toml` to
-learn what external data you want. She resolves credentials from the
+**Mother** (§4) is the broker. She reads your project's `sources.toml`
+to learn what external data you want. She resolves credentials from the
 vault. She spawns the right child, sends it the fetch request, validates
 every fact against declared schemas, deduplicates via content hashing,
 and writes valid facts to your project's event store in a single
@@ -87,41 +88,45 @@ WASM or native — the broker is the single enforcement point.
 The pipe architecture decomposes into five focused specs, each with
 one job:
 
-1. **pipe-protocol-types** — The shared vocabulary. A
-   `patina-pipe-types` crate containing the Fact struct, PipeError enum,
-   Capabilities, canonical JSON serialization, and content hashing. Both
-   WASM and native children depend on these types. The protocol defined
-   in code.
+1. **pipe-protocol-types** ([[spec-pipe-protocol-types]]) — The shared
+   vocabulary. A `patina-pipe-types` crate containing the Fact struct,
+   PipeError enum, Capabilities, canonical JSON serialization, and
+   content hashing. Both WASM and native children depend on these types.
+   The protocol defined in code.
 
-2. **pipe-native-transport** — The native binding. A `patina-pipe`
-   crate with the `Child` trait and `run()` entry point. Developers
-   implement `Child`, call `run()` from `main()`, and get a working
-   connector in ~50 lines. Includes OS sandbox enforcement on both macOS
-   (`sandbox_init()` C API) and Linux (Landlock ABI v4+) — children
-   that can't be sandboxed refuse to start unless explicitly opted out
-   with `--no-sandbox`. No silent security degradation.
+2. **pipe-native-transport** ([[spec-pipe-native-transport]]) — The
+   native binding. A `patina-pipe` crate with the `Child` trait and
+   `run()` entry point. Developers implement `Child`, call `run()` from
+   `main()`, and get a working connector in ~50 lines. Includes OS
+   sandbox enforcement on both macOS (`sandbox_init()` C API) and Linux
+   (Landlock ABI v4+) — children that can't be sandboxed refuse to
+   start unless explicitly opted out with `--no-sandbox`. No silent
+   security degradation.
 
-3. **github-connector** — The first native child. Proves the pattern
-   end-to-end with a real API. Migrates the GitHub REST client from the
-   existing WASM forge plugin to a standalone binary. Emits `github.*`
-   facts (not `forge.*` — connectors own their schema namespace). After
-   parity verification, 2,200+ lines of GitHub-specific code leave the
-   core binary.
+3. **github-connector** ([[spec-github-connector]]) — The first native
+   child. Proves the pattern end-to-end with a real API. Migrates the
+   GitHub REST client from the existing WASM forge plugin to a
+   standalone binary. Emits `github.*` facts (not `forge.*` — connectors
+   own their schema namespace). After parity verification, 2,200+ lines
+   of GitHub-specific code leave the core binary.
 
-4. **patina-connect** — The connection model. `patina connect github`
-   replaces four manual steps with one OAuth device flow. Stores the
-   token in the existing age-encrypted vault, creates the connection
-   config. Works alongside `patina secrets` for manual PAT users. No
-   pipe type dependencies — it's just vault + config.
+4. **patina-connect** ([[spec-patina-connect]]) — The connection model.
+   `patina connect github` replaces four manual steps with one OAuth
+   device flow. Stores the token in the existing age-encrypted vault,
+   creates the connection config. Works alongside `patina secrets` for
+   manual PAT users. No pipe type dependencies — it's just vault +
+   config.
 
-5. **mother-broker** — The routing engine. Mother reads `sources.toml`,
-   spawns children (WASM or native), validates facts, and writes them
-   transactionally with cursors. Adds `patina mother run` and
-   `patina mother sources` commands. Before closing, the WASM fact
-   routing must either be unified through the broker or explicitly
-   declared legacy — no silent drift.
+5. **mother-broker** ([[spec-mother-broker]]) — The routing engine.
+   Mother reads `sources.toml`, spawns children (WASM or native),
+   validates facts, and writes them transactionally with cursors. Adds
+   `patina mother run` and `patina mother sources` commands. Before
+   closing, the WASM fact routing must either be unified through the
+   broker or explicitly declared legacy — no silent drift.
 
 ### Build Order
+
+(See parent SPEC.md §Children for dependency graph and blocked_by.)
 
 ```
 pipe-protocol-types ─── pipe-native-transport ─┬── github-connector
@@ -147,6 +152,8 @@ against a test-child first, then verifies against the real
 github-connector once it's ready.
 
 ### What Exists Today vs What's New
+
+(See §13 Migration Path for phased delivery.)
 
 | Concern | Exists Today | Pipe Architecture Adds |
 |---------|-------------|----------------------|
@@ -1077,7 +1084,50 @@ continuous-operation scheduling.
 Build `patina connect` command. OAuth device flow, vault storage,
 connection config. Replace manual PAT + secret-grants workflow.
 
-## 14. Future Scope (Explicitly Marked)
+## 14. Integration Test Matrix
+
+Verification matrix for marking child specs complete. Rows are test
+scenarios; columns are OS/runtime combinations. Each cell notes expected
+behavior and whether verification is automated or manual.
+
+| Test | macOS (sandbox_init) | Linux 6.7+ (Landlock v4) | Linux <6.7 (no Landlock v4) |
+|------|---------------------|-------------------------|---------------------------|
+| **Native child + sandbox** | sandbox_init() applied, fetch succeeds for declared domains | Landlock v4 applied, equivalent restrictions | Spawn refused with explicit error (unless --no-sandbox) |
+| **Native child + --no-sandbox** | Runs unsandboxed, warning logged | Runs unsandboxed, warning logged | Runs unsandboxed, warning logged |
+| **WASM child** | wasmtime sandbox (existing) | wasmtime sandbox (existing) | wasmtime sandbox (existing) |
+| **pipe/initialize handshake** | Verify capability exchange + auth delivery | Same | Same |
+| **pipe/fetch streaming** | Verify O(1) memory — 1000+ facts, no accumulation | Same | Same |
+| **Content-hash dedup** | Emit same fact twice, verify 1 row in events.db | Same | Same |
+| **Sandbox domain enforcement** | Undeclared domain → EPERM on connect() | Undeclared domain → EPERM | N/A (spawn refused) |
+| **Schema validation** | Undeclared schema → fact dropped, logged | Same | Same |
+| **Cursor transactionality** | Kill Mother mid-write, verify no partial state | Same | Same |
+
+**Automated** (`cargo test`): pipe/initialize handshake, pipe/fetch
+streaming, content-hash dedup, schema validation (using test-child).
+
+**Manual** (requires real environment): sandbox domain enforcement
+(requires OS sandbox), cursor transactionality (requires crash
+simulation), native child + sandbox on each OS (platform-specific).
+
+**Requires real API**: GitHub connector end-to-end (needs GitHub PAT or
+OAuth token, hits api.github.com). Use a test repo with known issue/PR
+counts for deterministic verification.
+
+## 15. Risk Log
+
+External assumptions that could break during implementation. Consolidated
+from open questions across child DESIGN.md files.
+
+| Risk | Impact | Likelihood | Mitigation |
+|------|--------|-----------|-----------|
+| **GitHub OAuth App registration** (patina-connect OQ#1) | Blocks OAuth testing — code works with placeholder client_id but can't verify real device flow | Medium — requires account decision (personal vs org) | Register early. Code against placeholder, swap client_id when registered. <5 min task. |
+| **Landlock ABI v4 availability** (pipe-native-transport) | Linux users on older kernels can't run native children without --no-sandbox | Low for target distros — Ubuntu 24.04 ships 6.8, Fedora 39+ ships 6.5+ | Document minimum kernel version. Fail-hard with clear error. --no-sandbox as escape hatch. Ubuntu 22.04 LTS (kernel 5.15) is explicitly unsupported for sandboxed children. |
+| **sandbox_init() longevity** (pipe-native-transport RQ#1) | Apple could change behavior of the C API in future macOS | Low — kernel mechanism not deprecated, only CLI wrapper was | Monitor macOS release notes. The FFI layer is ~30-50 lines, cheap to adapt. Wrapper abstraction isolates the call site. |
+| **blake3 dependency** (pipe-protocol-types OQ#1) | New dependency not currently in tree | Low — blake3 is no-std compatible, pure Rust fallback, widely used | Confirm acceptable before adding. Alternative: sha2 is already in tree via age, but blake3 is faster and already specified in architecture DESIGN.md. |
+| **chrono dependency** (github-connector OQ#1) | New dependency for cursor timestamps | Low — chrono is common, but adds compilation time | Alternative: use `updated_at` from fetched items as cursor (no new dep, more precise). Decision deferred to implementation session. |
+| **patina-sdk crate structure** (pipe-protocol-types pre-impl note) | SDK may use wit-bindgen macros instead of explicit module files — rename plan may need adjustment | Medium — haven't inspected SDK internals yet | Read `plugins/sdk/src/` before implementing rename. The module layout determines whether it's a simple rename or requires macro changes. |
+
+## 16. Future Scope (Explicitly Marked)
 
 These are NOT in the initial implementation. They are noted here
 so the protocol design doesn't preclude them:
