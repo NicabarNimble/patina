@@ -20,7 +20,7 @@ exit_criteria:
   text: A test child binary can be spawned, initialized (pipe/initialize handshake), and respond to pipe/fetch with streaming pipe/fact notifications
   checked: false
 - id: sandbox-profile-exists
-  text: OS sandbox profiles exist for native children — macOS sandbox-exec profile restricting filesystem/network to declared domains, Linux Landlock stub (compiles, logs warning if unsupported kernel)
+  text: OS sandbox enforced for native children — macOS sandbox-exec profile restricting filesystem/network to declared domains, Linux Landlock (ABI v4+) enforcing equivalent restrictions. Kernels without Landlock v4 refuse to spawn native children unless `--no-sandbox` is explicitly passed (opt-out, not opt-in).
   checked: false
 ---
 # refactor: Pipe Native Transport — Child Trait + stdio JSON-RPC
@@ -84,7 +84,7 @@ impl Child for MyConnector {
     fn capabilities(&self) -> Capabilities { ... }
     fn fetch(&mut self, params: &FetchParams, emitter: &mut FactEmitter)
         -> Result<FetchResult, PipeError> { ... }
-    fn health(&self, params: &FetchParams) -> Result<Status, PipeError> { ... }
+    fn health(&self) -> Result<HealthStatus, PipeError> { ... }
 }
 
 fn main() { run(MyConnector).unwrap(); }

@@ -459,7 +459,19 @@ calls (WASM) or direct `reqwest` calls (native).
    `host_emit` → `emit`, `host_http` → `fetch`, `host_log` → `log`.
    Names should be self-describing for LLMs and humans. (Session 8)
 
-8. **Encryption?** → Mother encrypts at the storage boundary.
+8. **Schema ownership?** → Schema ships with the child (schema.toml
+   alongside child binary). Manual install during development (copy
+   to `.patina/schemas/<name>/`). Auto-install from manifest is
+   future work. Three-part resolution: manifest declares intent,
+   schema.toml defines structure, broker validates against it.
+   (Session 14, DESIGN.md §4.5)
+
+9. **WASM-to-native migration path?** → Forge stays WASM, gains pipe
+   protocol awareness via patina-sdk updates (host_emit → emit
+   rename). Native github-connector coexists to prove both runtimes.
+   No forced migration — WASM path continues to work. (Sessions 5, 8)
+
+10. **Encryption?** → Mother encrypts at the storage boundary.
    Signing proves WHO. Hashing proves INTEGRITY. Encryption (future)
    provides CONFIDENTIALITY. Not in scope for initial pipe protocol
    — acknowledged gap, addressed when persona-federation ships
@@ -470,19 +482,11 @@ calls (WASM) or direct `reqwest` calls (native).
 1. **Child discovery.** How do users find and install community
    children? Registry? GitHub releases? Manual download?
 
-2. **Schema ownership.** Does the schema ship with the child or
-   install independently? Lean toward: ships with the child.
-
-3. **Child versioning.** When output format changes, how do
+2. **Child versioning.** When output format changes, how do
    projections migrate? Schema version in event metadata?
 
-4. **Multi-provider children.** One github connector for all GitHub
+3. **Multi-provider children.** One github connector for all GitHub
    instances, or separate? Lean: one, configured with base_url.
-
-5. **WASM-to-native migration path.** Can the forge connector
-   incrementally adopt pipe protocol while staying WASM? Or must
-   it convert to native? Lean: stay WASM, gain protocol awareness
-   via patina-sdk updates.
 
 ## Children
 
@@ -495,8 +499,8 @@ child specs below, not here.
 | [[pipe-protocol-types]] | `patina-pipe-types` crate (Fact, PipeError, Capabilities, canonical_json), child.toml manifest format, patina-sdk rename (host_* → semantic names) | First (foundation, no blockers) |
 | [[pipe-native-transport]] | `patina-pipe` crate (Child trait, run(), FactEmitter, stdio JSON-RPC), OS sandbox profile | Second (blocked by protocol-types) |
 | [[github-connector]] | GitHub connector as native child, replaces src/forge/, emits github.issue/github.pr facts (own schema, not forge). WASM forge plugin coexists. | Third (blocked by native-transport) |
-| [[patina-connect]] | `patina connect` CLI with OAuth device flow, connection config, credential delivery via pipe/initialize | Parallel with transport (blocked by protocol-types) |
-| [[mother-broker]] | Mother routing engine (sources.toml, fan-out), child lifecycle (WASM + native), schema validation, scheduling | Last (blocked by protocol-types + github-connector) |
+| [[patina-connect]] | `patina connect` CLI with OAuth device flow, connection config, credential delivery via pipe/initialize | Parallel (no blockers — uses existing vault, independent of pipe types) |
+| [[mother-broker]] | Mother routing engine (sources.toml, fan-out), child lifecycle (WASM + native), schema validation, scheduling | Last (blocked by protocol-types + native-transport) |
 
 ### Build Order (dependency graph)
 
@@ -505,12 +509,15 @@ pipe-protocol-types (foundation)
   ├── pipe-native-transport
   │     └── github-connector
   │           └── mother-broker
-  └── patina-connect
+  │
+patina-connect (independent — uses existing vault, no pipe type deps)
 ```
 
 pipe-native-transport and patina-connect can build in parallel.
-mother-broker comes last — it needs something to route (github-connector)
-and the type foundation (pipe-protocol-types).
+patina-connect has no blockers — it creates connection configs and stores
+tokens using existing vault infrastructure. mother-broker comes last — it
+needs the native transport to spawn children and protocol types for
+validation.
 
 ## Exit Criteria
 

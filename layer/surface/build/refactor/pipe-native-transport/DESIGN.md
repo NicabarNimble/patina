@@ -129,11 +129,38 @@ Native children run inside OS-level sandboxes. The sandbox allows
 only what the manifest declares: stdio (pipe protocol), declared
 network domains, basic system operations.
 
-### macOS: sandbox-exec Profile
+### macOS: Sandbox via C API (`sandbox_init`)
 
-Template at `resources/sandbox/macos-child.sb`. Mother generates a
-concrete profile at spawn time by injecting domain regexes from
-`child.toml [domains].allowed`:
+The `sandbox-exec` CLI tool is deprecated (since ~2019, still works on
+macOS 15). The kernel sandbox mechanism itself is NOT deprecated. To
+avoid depending on a tool that may vanish, Mother uses the C API
+directly: `sandbox_init()` from `libsandbox`.
+
+**Invocation path:** Fork → in child process, call `sandbox_init()`
+with the compiled profile → exec the child binary. The profile is
+applied before exec, so the child binary starts already sandboxed.
+No external tool dependency.
+
+```rust
+// src/broker/sandbox/macos.rs (thin FFI layer)
+extern "C" {
+    fn sandbox_init(
+        profile: *const c_char,
+        flags: u64,
+        errorbuf: *mut *mut c_char,
+    ) -> c_int;
+    fn sandbox_free_error(errorbuf: *mut c_char);
+}
+
+const SANDBOX_NAMED: u64 = 0x0001;  // interpret profile as inline SBPL
+
+/// Apply sandbox profile in the current process (call after fork,
+/// before exec). Returns Ok(()) on success, Err with Apple's error
+/// message on failure.
+pub fn apply_sandbox(profile: &str) -> Result<()> { /* ... */ }
+```
+
+Profile format is unchanged — same `.sb` Scheme syntax:
 
 ```scheme
 (version 1)
@@ -148,14 +175,39 @@ concrete profile at spawn time by injecting domain regexes from
 (allow network-outbound (remote udp (remote port 53)))  ;; DNS
 ```
 
-Cost: ~2ms startup, ~0ns runtime (kernel-enforced). Chrome renderer
-process pattern.
+Mother generates a concrete profile at spawn time by injecting domain
+regexes from `child.toml [domains].allowed`.
 
-### Linux: Landlock Stub
+**Cost:** ~2ms startup, ~0ns runtime (kernel-enforced). Same Chrome
+renderer process pattern, but without the deprecated CLI wrapper.
 
-Landlock ABI v4+ supports network restrictions. Implementation
-deferred — compiles on all platforms, logs a warning on Linux,
-no-ops elsewhere.
+**Fail behavior:** If `sandbox_init()` returns an error (e.g., invalid
+profile syntax), Mother refuses to spawn the child and surfaces the
+Apple error message. Same `--no-sandbox` opt-out as Linux.
+
+### Linux: Landlock Enforcement (ABI v4+)
+
+Landlock ABI v4 (kernel 6.7+, Jan 2024) added network restriction —
+the last piece needed for parity with macOS sandbox-exec.
+
+Implementation uses the `landlock` crate to restrict:
+- Filesystem: deny all access (child communicates only via stdio)
+- Network: allow only declared domains (from child.toml) on port 443
+- Process: no spawning child processes
+
+**Fail behavior:** If the running kernel does not support Landlock v4,
+Mother refuses to spawn native children. The error message is explicit:
+"Cannot sandbox native child: kernel does not support Landlock ABI v4+.
+Use --no-sandbox to run without OS-level sandboxing (not recommended)."
+
+The `--no-sandbox` flag is an explicit opt-out — operators acknowledge
+the risk. Without it, unsupported kernels cannot run native children.
+This prevents silent security degradation where Linux users believe
+they have sandbox protection but don't.
+
+**Testing:** Requires a Linux 6.7+ system. Integration tests or manual
+validation notes documenting the tested kernel version and observed
+enforcement behavior.
 
 ### Debug Mode
 
@@ -251,14 +303,17 @@ adds their own deps (reqwest, etc.) in their binary crate.
   transport binding. The Child trait and run() are specific to native
   stdio. The protocol (methods, types, semantics) is shared.
 
+## Resolved Questions
+
+1. **sandbox-exec deprecation.** → Use `sandbox_init()` C API directly
+   instead of the deprecated `sandbox-exec` CLI tool. The kernel sandbox
+   mechanism isn't deprecated — only the CLI wrapper is. Thin FFI layer
+   (~30-50 lines) calls `sandbox_init()` after fork, before exec. Same
+   profile format, no external tool dependency. (Session 15 audit)
+
 ## Open Questions
 
-1. **sandbox-exec deprecation.** Apple has deprecated sandbox-exec in
-   recent macOS versions. It still works but may be removed. The
-   alternative is App Sandbox entitlement (requires code signing) or
-   a manual approach. Monitor deprecation status.
-
-2. **Stdout contention in stream mode.** FactEmitter borrows
+1. **Stdout contention in stream mode.** FactEmitter borrows
    `&mut stdout` during fetch, preventing concurrent health checks.
    Fine for poll mode. Stream mode needs a different approach — likely
    a channel-based writer with a dedicated stdout thread.
@@ -278,10 +333,16 @@ adds their own deps (reqwest, etc.) in their binary crate.
 4. `pipe: add test-child example` — examples/test-child.rs implementing
    Child trait with fake data. Verify protocol end-to-end.
 
-5. `pipe: add macOS sandbox profile` — resources/sandbox/macos-child.sb
-   template with domain placeholder. Linux Landlock stub.
+5. `pipe: add macOS sandbox via sandbox_init() C API` — Thin FFI layer
+   for sandbox_init(), profile template with domain placeholder,
+   fork→sandbox→exec spawn path. No sandbox-exec CLI dependency.
 
-6. `pipe: add Mother-side test harness` — spawn_child_test(),
+6. `pipe: add Linux Landlock enforcement` — Landlock ABI v4+ network
+   and filesystem restrictions. Kernel detection, fail-hard on
+   unsupported kernels, --no-sandbox opt-out. Requires 6.7+ for
+   testing.
+
+7. `pipe: add Mother-side test harness` — spawn_child_test(),
    ChildConnection for integration testing.
 
 ## Key Files

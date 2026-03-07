@@ -1,5 +1,168 @@
 # Design: Pipe Architecture — Protocol + Broker Model
 
+## What Pipe Architecture Solves
+
+Patina is a knowledge system. Five verbs define it: capture, index,
+search, believe, evolve. Today, "capture" means running `patina scrape`
+— it reads your local git history, code structure, sessions, and layer
+files. Everything Patina knows comes from your local machine.
+
+But knowledge doesn't only live locally. Your GitHub issues contain
+decisions. Your Slack threads contain context. Your CI logs contain
+evidence. To feed the belief loop from these sources, Patina needs a
+way to ingest external data — securely, without compiling every possible
+data source into the binary.
+
+That's what the pipe architecture delivers: a protocol for external
+data to enter Patina, a broker to route it, and a security model that
+keeps children sandboxed.
+
+### What Changes for Users
+
+Before pipe architecture, connecting GitHub to Patina required:
+generate a PAT on GitHub's web UI, run `patina secrets add`, hand-edit
+a TOML grants file, configure the forge plugin, then run
+`patina scrape forge`. Five steps requiring knowledge of vault mechanics
+and plugin configuration.
+
+After:
+
+```
+$ patina connect github
+  Opening browser for GitHub authorization...
+  Enter code: ABCD-1234
+  Waiting for approval... approved!
+  Connection configured.
+
+$ patina mother run github
+  github: 47 facts written, 3 dedup, cursor: 2026-03-07T...
+```
+
+Two commands. The first creates the credential and connector config.
+The second fetches data and routes it into your project's knowledge
+base. Run it again tomorrow and it picks up where it left off — the
+cursor is tracked per-source, so each run fetches only what's new.
+Duplicate facts from overlapping fetches are caught by content-hash
+dedup. Idempotent by design.
+
+From there, `patina scry "what are the open issues about auth?"`
+searches GitHub issues alongside your code, sessions, and beliefs.
+
+For users who prefer manual PATs or run headless (CI, servers), the
+existing `patina secrets add` workflow continues to work. OAuth is a
+convenience, not a requirement.
+
+### How It Works: Protocol, Children, Broker
+
+Three concepts, each with one job:
+
+**Pipe protocol** is how components exchange data. JSON-RPC 2.0 with
+typed messages (`pipe/initialize`, `pipe/fetch`, `pipe/fact`,
+`pipe/health`, `pipe/shutdown`). The protocol doesn't care about
+transport — the same messages travel over stdio (native children), WASM
+host calls (existing plugins), or HTTP (future remote children). A Fact
+is a Fact regardless of how it arrived.
+
+**Children** are managed services that speak the protocol. A GitHub
+connector fetches issues. A Slack connector fetches messages. An RSS
+reader fetches feeds. Each child is a normal Rust binary — `cargo run`,
+`cargo test`, `dbg!()`, the full ecosystem. Children run inside OS
+sandboxes (macOS `sandbox_init()`, Linux Landlock) that restrict
+filesystem access and network to declared domains only. Credentials
+arrive via stdin, never through environment variables or files.
+
+**Mother** is the broker. She reads your project's `sources.toml` to
+learn what external data you want. She resolves credentials from the
+vault. She spawns the right child, sends it the fetch request, validates
+every fact against declared schemas, deduplicates via content hashing,
+and writes valid facts to your project's event store in a single
+transaction. Mother routes — she never transforms. Schema validation and
+content-hash dedup happen in Mother regardless of whether the child is
+WASM or native — the broker is the single enforcement point.
+
+### The Five Specs
+
+The pipe architecture decomposes into five focused specs, each with
+one job:
+
+1. **pipe-protocol-types** — The shared vocabulary. A
+   `patina-pipe-types` crate containing the Fact struct, PipeError enum,
+   Capabilities, canonical JSON serialization, and content hashing. Both
+   WASM and native children depend on these types. The protocol defined
+   in code.
+
+2. **pipe-native-transport** — The native binding. A `patina-pipe`
+   crate with the `Child` trait and `run()` entry point. Developers
+   implement `Child`, call `run()` from `main()`, and get a working
+   connector in ~50 lines. Includes OS sandbox enforcement on both macOS
+   (`sandbox_init()` C API) and Linux (Landlock ABI v4+) — children
+   that can't be sandboxed refuse to start unless explicitly opted out
+   with `--no-sandbox`. No silent security degradation.
+
+3. **github-connector** — The first native child. Proves the pattern
+   end-to-end with a real API. Migrates the GitHub REST client from the
+   existing WASM forge plugin to a standalone binary. Emits `github.*`
+   facts (not `forge.*` — connectors own their schema namespace). After
+   parity verification, 2,200+ lines of GitHub-specific code leave the
+   core binary.
+
+4. **patina-connect** — The connection model. `patina connect github`
+   replaces four manual steps with one OAuth device flow. Stores the
+   token in the existing age-encrypted vault, creates the connection
+   config. Works alongside `patina secrets` for manual PAT users. No
+   pipe type dependencies — it's just vault + config.
+
+5. **mother-broker** — The routing engine. Mother reads `sources.toml`,
+   spawns children (WASM or native), validates facts, and writes them
+   transactionally with cursors. Adds `patina mother run` and
+   `patina mother sources` commands. Before closing, the WASM fact
+   routing must either be unified through the broker or explicitly
+   declared legacy — no silent drift.
+
+### Build Order
+
+```
+pipe-protocol-types ─── pipe-native-transport ─── github-connector
+                                                        │
+                                                  mother-broker
+
+patina-connect (independent, can start immediately)
+```
+
+Protocol types are the foundation — everything depends on the shared
+vocabulary. Native transport needs types to define the Child trait, and
+includes real OS sandbox enforcement on both platforms (macOS
+`sandbox_init()`, Linux Landlock v4 — both fail hard if enforcement
+is unavailable). GitHub connector needs native transport to run as a
+process. Mother broker needs native transport to spawn children and
+protocol types for validation.
+
+Patina-connect has no blockers. It uses the existing vault
+infrastructure and writes TOML config files. It can be built in
+parallel with everything else.
+
+Mother broker and github-connector can overlap: the broker tests
+against a test-child first, then verifies against the real
+github-connector once it's ready.
+
+### What Exists Today vs What's New
+
+| Concern | Exists Today | Pipe Architecture Adds |
+|---------|-------------|----------------------|
+| Fact emission | `host_emit::emit_fact()` in WASM host | Formalized as pipe protocol, shared types across runtimes |
+| Schema validation | `host_support::validate_emit()` | Broker-side validation with content-hash dedup |
+| HTTP for children | `host_http::get/post` with domain allowlist | Native children use reqwest directly, OS sandbox enforces domains |
+| Credential delivery | Manual PAT + secret-grants.toml | `patina connect` OAuth + vault, credentials via stdin |
+| Child lifecycle | WASM mother-child world (spawn, heartbeat) | Unified lifecycle for WASM and native (BrokerChild trait) |
+| Routing | Forge writes directly to events.db | Mother broker routes facts to destination based on declarations |
+| Content addressing | None | blake3 over canonical JSON, dedup across sources |
+| OS sandboxing | WASM sandbox (wasmtime) | macOS sandbox_init() + Linux Landlock for native children |
+
+The infrastructure that exists today — the vault, the event store, the
+WASM plugin engine, the MCP server's JSON-RPC pattern — all survive and
+are reused. Pipe architecture names what already works, fills the gaps,
+and extends it to native processes.
+
 ## Design Principles
 
 This design follows the reframing from sessions 7-8:
@@ -730,19 +893,26 @@ serving multiple Mothers).
 
 ### 8.3 Native Child Sandbox Detail
 
+Both platforms use in-process kernel APIs, not external CLI tools:
+
+- **macOS**: `sandbox_init()` C API (not the deprecated `sandbox-exec`
+  CLI). Applied after fork, before exec. Same `.sb` Scheme profile
+  format. Kernel mechanism is not deprecated.
+- **Linux**: Landlock ABI v4+ (kernel 6.7+). Applied via `landlock`
+  crate after fork, before exec. Equivalent filesystem/network
+  restrictions.
+
 ```
-macOS sandbox-exec profile:
-  (deny default)
-  (allow network-outbound
-    (remote tcp (require-all
-      (regex #"^api\.github\.com$")  ; from child.toml domains
-      (port 443))))
-  (allow file-read-data (subpath "/dev/stdin"))
-  (allow file-write-data (subpath "/dev/stdout"))
-  (allow file-write-data (subpath "/dev/stderr"))
+Profile (both platforms enforce equivalent restrictions):
+  - deny all filesystem access
+  - allow stdin/stdout/stderr
+  - allow network to declared domains (from child.toml) on port 443
+  - allow DNS (UDP 53)
 ```
 
-Linux Landlock equivalent restricts the same surfaces.
+**Fail behavior**: If the OS cannot enforce sandboxing (unsupported
+kernel, API error), Mother refuses to spawn the child unless
+`--no-sandbox` is explicitly passed. No silent degradation.
 
 Cost: ~2ms startup, ~0ns runtime (kernel-enforced, no per-call
 overhead). Chrome renderer process pattern.

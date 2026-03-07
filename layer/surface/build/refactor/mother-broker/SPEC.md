@@ -27,7 +27,13 @@ exit_criteria:
   text: '`patina mother run test` spawns test-child (from pipe-native-transport examples/), routes facts to events.db — proves broker works before production connector'
   checked: false
 - id: mother-run-github
-  text: '`patina mother run github` spawns github-connector, routes facts to project events.db — requires github-connector to be built first'
+  text: '`patina mother run github` spawns github-connector, routes facts to project events.db — verified after [[spec-github-connector]] is complete'
+  checked: false
+- id: credentials-via-pipe
+  text: Children receive credentials via pipe/initialize config delivery (Mother reads connection config, decrypts from vault, passes via stdin) — not via environment variables or files
+  checked: false
+- id: wasm-routing-resolved
+  text: 'WASM fact routing unified through broker (forge facts go through broker validation + dedup like native children) OR explicitly decided that forge stays on legacy host_emit path with no new WASM children permitted to bypass broker — decision documented in DESIGN.md'
   checked: false
 - id: mother-status-works
   text: '`patina mother status` shows running children and health — lifecycle state, last run, fact count, errors'

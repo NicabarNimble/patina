@@ -219,10 +219,13 @@ patina-pipe-types (zero deps beyond serde/blake3)
    acceptable before adding. Alternative: sha2 is already in tree,
    but blake3 is faster and the architecture DESIGN.md specifies it.
 
-2. **patina-sdk crate structure.** The workspace Cargo.toml lists
-   `plugins/sdk` as a member. Need to verify the actual module file
-   layout inside `plugins/sdk/src/` before implementing the rename —
-   SDK may use `wit-bindgen` macros instead of explicit module files.
+## Pre-Implementation Notes
+
+- **patina-sdk crate structure.** The workspace Cargo.toml lists
+  `plugins/sdk` as a member. Verify the actual module file layout
+  inside `plugins/sdk/src/` before implementing the rename — SDK may
+  use `wit-bindgen` macros instead of explicit module files. Read the
+  SDK code first.
 
 ## Commits
 

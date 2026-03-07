@@ -3,8 +3,6 @@ type: feat
 id: patina-connect
 status: draft
 created: 2026-03-06
-blocked_by:
-- pipe-protocol-types
 sessions:
   origin: 20260306-171859
 related:
@@ -20,9 +18,6 @@ exit_criteria:
   checked: false
 - id: connect-status-works
   text: '`patina connect status` shows connection health — connected/expired/missing for each configured connection'
-  checked: false
-- id: credentials-via-pipe
-  text: github-connector receives credentials via pipe/initialize config delivery, not via environment variables or files
   checked: false
 ---
 # feat: Connection Model — `patina connect` with OAuth Device Flow

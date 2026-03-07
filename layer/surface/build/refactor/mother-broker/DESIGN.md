@@ -141,17 +141,24 @@ to events.db via `host_emit` — the existing `host_support::emit_fact`
 path. The broker doesn't intercept them. No content-hash dedup for
 WASM children.
 
-This is a conscious trade-off:
-- Only forge is WASM. It works. Don't break it.
+This is a conscious trade-off during development:
+- Only forge is WASM. It works. Don't break it during broker buildout.
 - Unifying WASM emission through the broker requires changing
   host_emit to route through broker instead of writing directly.
   That's a deeper refactor with risk.
-- Accept the asymmetry now. Unify later when the native path proves
-  the broker routing works.
+- The asymmetry is acceptable while the native broker path is being
+  proven, but it MUST be resolved before this spec can close.
 
-[[temporal-layering-causes-drift]] warns about this pattern. Set a
-deadline: unify WASM routing through broker when the next WASM child
-is built (or explicitly decide not to).
+[[temporal-layering-causes-drift]] warns about this pattern. The
+deadline is the spec itself: EC `wasm-routing-resolved` gates
+completion. Before mother-broker is marked complete, either:
+(a) forge routes through the broker (content-hash dedup, schema
+    validation, transactional writes — same path as native children),
+    OR
+(b) forge is explicitly declared legacy with a documented decision
+    that no future WASM child may bypass the broker. The host_emit
+    direct-write path becomes a frozen legacy codepath, not a pattern
+    to follow.
 
 ### 6. Fact Validation Extracted from host_support
 
@@ -297,8 +304,9 @@ a timer.
 
 3. **WASM child fact routing.** WasmBrokerChild bypasses broker
    routing — facts go directly to events.db via host_emit. No
-   content-hash dedup for WASM children. Acceptable for now (only
-   forge is WASM). When should this be unified?
+   content-hash dedup for WASM children. **Gated by EC
+   `wasm-routing-resolved`**: must be unified or formally declared
+   legacy before this spec can close. See DESIGN.md §5.
 
 ## Commits
 
