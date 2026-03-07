@@ -37,14 +37,40 @@ exit_criteria:
 > enforces manifest domains, injects credentials, logs everything.
 > The OS sandbox blocks direct sockets; the only way out is pipe/http.
 
-## Problem
+## How We Got Here
 
-Native children currently expect to call `reqwest` directly. The OS
-sandbox can only filter by port/IP, so the manifest `domains` field
-is unenforced: declaring `[“api.github.com”]` or
-`[“www.googleapis.com”]` does nothing once DNS resolves. The real
-solution is host-proxied I/O. Until this exists the security story
-is dishonest.
+[[spec-pipe-native-transport]] built the native child runtime: Child
+trait, run() dispatcher, FactEmitter, macOS sandbox via sandbox_init(),
+Linux Landlock. All working, all tested.
+
+During testing (session 20260307-092539), we discovered the OS sandbox
+has a fundamental limitation: both macOS SBPL and Linux Landlock
+operate on ports and IPs, not hostnames. The sandbox can block port 80
+but cannot distinguish `api.github.com` from `evil.com` — both use
+port 443. The manifest's `domains` field was unenforced.
+
+The original spec assumed domain-level filtering at the OS sandbox
+layer. That assumption was wrong. This spec fixes it.
+
+**The fix:** mirror what WASM children already have. WASM children
+call `host_http_request()` and Mother checks the domain. Native
+children call `pipe/http` over stdio and Mother does the same check.
+The OS sandbox blocks ALL direct sockets — children can't bypass
+Mother. The belief [[host-proxied-io-is-the-security-model]] is
+delivered, not aspirational.
+
+**What exists now (from pipe-native-transport):**
+- `crates/patina-pipe/src/sandbox.rs` — macOS SBPL and Linux Landlock
+  profiles currently allow port 443 + DNS (port-level restriction)
+- Fork-based tests verify enforcement on both platforms
+- `generate_macos_profile()` and `apply_landlock()` are the functions
+  this spec will tighten (remove 443/53 rules)
+
+**What this spec adds:**
+- `pipe/http` JSON-RPC method (Mother-side handler)
+- `MotherHttpClient` helper (child-side, in patina-pipe)
+- Sandbox tightening (deny ALL outbound sockets)
+- Measure instrumentation for auditability
 
 pipe/http is the universal HTTP proxy for ALL native children —
 GitHub, Google Workspace, Slack, any REST API. Each connector's

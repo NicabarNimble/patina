@@ -150,6 +150,25 @@ stdin/stdout. stderr is for child logging (not protocol).
   correctly or fail loudly with context. (Kelley lens: hidden control
   flow in the "simple" `run()` function is a lie.)
 
+## Known Gap: Domain Enforcement
+
+The OS sandbox (macOS SBPL, Linux Landlock) restricts by port, not
+hostname. Allowing port 443 means any HTTPS host is reachable — the
+manifest `domains` field is unenforced at the sandbox layer.
+
+**This is not a future concern — it is a security gap.**
+[[spec-pipe-mother-io]] fixes it by:
+1. Adding `pipe/http` proxy — children send HTTP requests to Mother,
+   Mother checks the domain against the manifest, makes the call
+2. Tightening sandbox profiles to deny ALL outbound sockets —
+   `generate_macos_profile()` and `apply_landlock()` lose their
+   443/53 rules
+3. Providing `MotherHttpClient` helper so children use
+   `mother.get(url).send()` instead of direct reqwest
+
+Until pipe-mother-io lands, native children have port-level
+restriction only. No connector spec should ship without it.
+
 ## Non-Goals
 
 - HTTP+SSE transport (future, when remote children exist)
