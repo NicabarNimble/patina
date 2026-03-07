@@ -5,6 +5,7 @@
 //! shutdown) for native children via the pipe protocol.
 
 pub mod connection;
+pub mod cursor;
 pub mod http;
 pub mod lifecycle;
 pub mod routing;
