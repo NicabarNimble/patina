@@ -70,7 +70,7 @@ GitHub connector fetches issues. A Slack connector fetches messages. An
 RSS reader fetches feeds. Each child is a normal Rust binary —
 `cargo run`, `cargo test`, `dbg!()`, the full ecosystem. Children run
 inside OS sandboxes (macOS `sandbox_init()`, Linux Landlock) that
-restrict filesystem access and network to declared domains only.
+restrict filesystem access and outbound network to port 443 + DNS.
 Credentials arrive via stdin, never through environment variables or
 files.
 
@@ -887,7 +887,7 @@ serving multiple Mothers).
    - WASM: wasmtime sandbox. All I/O proxied through host functions.
    - Native: OS sandbox (macOS sandbox_init(), Linux Landlock).
      No filesystem access, no process spawning, no arbitrary network.
-     Only inherited stdio + declared domains.
+     Only inherited stdio + port 443/53 outbound.
 
 ### 8.2 Credential Security
 
@@ -914,13 +914,16 @@ Both platforms use in-process kernel APIs, not external CLI tools:
 Profile (both platforms enforce equivalent restrictions):
   - deny all filesystem access
   - allow stdin/stdout/stderr
-  - allow network to declared domains (from child.toml) on port 443
-  - allow DNS (UDP 53)
+  - allow outbound network on port 443 (HTTPS) and port 53 (DNS)
+  - domain-level filtering: NOT supported at OS sandbox layer
+    (SBPL and Landlock operate on ports/IPs, not hostnames).
+    Requires DNS-level enforcement (future work).
 ```
 
 **Fail behavior**: If the OS cannot enforce sandboxing (unsupported
 kernel, API error), Mother refuses to spawn the child unless
 `--no-sandbox` is explicitly passed. No silent degradation.
+`--no-sandbox` is [[spec-mother-broker]] scope.
 
 Cost: ~2ms startup, ~0ns runtime (kernel-enforced, no per-call
 overhead). Chrome renderer process pattern.
@@ -1098,7 +1101,7 @@ behavior and whether verification is automated or manual.
 | **pipe/initialize handshake** | Verify capability exchange + auth delivery | Same | Same |
 | **pipe/fetch streaming** | Verify O(1) memory — 1000+ facts, no accumulation | Same | Same |
 | **Content-hash dedup** | Emit same fact twice, verify 1 row in events.db | Same | Same |
-| **Sandbox domain enforcement** | Undeclared domain → EPERM on connect() | Undeclared domain → EPERM | N/A (spawn refused) |
+| **Sandbox port enforcement** | Non-443 port → EACCES on connect() | Non-443 port → EACCES | N/A (spawn refused) |
 | **Schema validation** | Undeclared schema → fact dropped, logged | Same | Same |
 | **Cursor transactionality** | Kill Mother mid-write, verify no partial state | Same | Same |
 

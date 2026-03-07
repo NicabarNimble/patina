@@ -22,8 +22,8 @@ exit_criteria:
   verify: 'Spawn test-child binary, send pipe/initialize + pipe/fetch via stdin. Confirm: pipe/fact notifications arrive on stdout as JSON-RPC notifications (no `id` field), final result message includes emitted count.'
   checked: false
 - id: sandbox-profile-exists
-  text: 'OS sandbox enforced for native children — macOS sandbox_init() C API restricting filesystem/network to declared domains, Linux Landlock (ABI v4+) enforcing equivalent restrictions. Kernels without Landlock v4 refuse to spawn native children unless `--no-sandbox` is explicitly passed (opt-out, not opt-in).'
-  verify: 'Positive: spawn child with declared domain, confirm successful fetch. Negative: spawn child with undeclared domain, confirm EPERM / connection refused. Negative: on Linux <6.7 (or without Landlock v4), confirm spawn is refused with explicit error unless --no-sandbox passed. Log OS and kernel version tested.'
+  text: 'OS sandbox enforced for native children — macOS sandbox_init() C API denying filesystem access and restricting outbound network to port 443 + DNS (port 53), Linux Landlock (ABI v4+) enforcing equivalent port-level restrictions. Domain-level filtering is not supported at the OS sandbox layer (both SBPL and Landlock operate on ports/IPs, not hostnames) — domain restriction requires DNS-level enforcement (future work). Landlock ABI v4 detection uses HardRequirement probe.'
+  verify: 'macOS: fork-based test applies sandbox via sandbox_init(), confirms /etc/passwd blocked and /dev/null allowed. Linux: fork-based test applies Landlock, confirms non-443 port gets EACCES and port 443 gets ECONNREFUSED (allowed but nothing listening). Both tests use loopback only, no external network. --no-sandbox opt-out is [[spec-mother-broker]] scope.'
   checked: false
 ---
 # refactor: Pipe Native Transport — Child Trait + stdio JSON-RPC
@@ -108,9 +108,11 @@ stdin/stdout. stderr is for child logging (not protocol).
 4. Implement pipe/initialize handshake (config delivery, capability
    exchange)
 5. Implement OS sandbox enforcement: macOS via sandbox_init() C API
-   (`resources/sandbox/macos-child.sb` profile, applied after fork
-   before exec); Linux via Landlock ABI v4+ (equivalent restrictions,
-   refuses to spawn on unsupported kernels unless --no-sandbox)
+   (inline SBPL profile, applied after fork before exec); Linux via
+   Landlock ABI v4+ (equivalent port-level restrictions). Both
+   platforms restrict to port 443 + DNS; domain-level filtering
+   deferred to DNS-level enforcement. `--no-sandbox` opt-out is
+   [[spec-mother-broker]] scope.
 6. Build a test child binary (`examples/test-child/`) that implements
    Child trait and responds to pipe/fetch
 7. Add minimal Mother-side spawn logic: fork+exec child binary with

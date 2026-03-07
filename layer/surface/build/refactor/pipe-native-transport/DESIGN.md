@@ -119,9 +119,11 @@ mode will need a channel-based writer — deferred to a future spec.
 ### 5. Sandbox Must Fail Loud
 
 The Session 12 audit established this constraint. When a sandboxed
-child tries to contact an undeclared domain, it gets EPERM on
+child tries to connect on a non-allowed port, it gets EACCES/EPERM on
 `connect()` — a connection error, NOT a silent timeout. The developer
-sees a clear error, not mysterious hangs.
+sees a clear error, not mysterious hangs. Note: sandbox operates at
+port level (443 + 53 allowed), not domain level — domain filtering
+requires DNS-level enforcement (future work).
 
 ## OS Sandbox Model
 
@@ -152,7 +154,7 @@ extern "C" {
     fn sandbox_free_error(errorbuf: *mut c_char);
 }
 
-const SANDBOX_NAMED: u64 = 0x0001;  // interpret profile as inline SBPL
+const SANDBOX_INLINE: u64 = 0x0000;  // interpret profile as inline SBPL
 
 /// Apply sandbox profile in the current process (call after fork,
 /// before exec). Returns Ok(()) on success, Err with Apple's error
@@ -160,7 +162,10 @@ const SANDBOX_NAMED: u64 = 0x0001;  // interpret profile as inline SBPL
 pub fn apply_sandbox(profile: &str) -> Result<()> { /* ... */ }
 ```
 
-Profile format is unchanged — same `.sb` Scheme syntax:
+Profile format is inline SBPL (Scheme syntax). Sandbox operates at
+port level — SBPL's `remote ip` filter works on IP:port pairs, not
+hostnames. Domain-level filtering requires DNS-level enforcement
+(future work).
 
 ```scheme
 (version 1)
@@ -168,22 +173,20 @@ Profile format is unchanged — same `.sb` Scheme syntax:
 (allow file-read*  (literal "/dev/stdin"))
 (allow file-write* (literal "/dev/stdout"))
 (allow file-write* (literal "/dev/stderr"))
-(allow network-outbound
-  (remote tcp (require-all
-    (regex {{ALLOWED_DOMAINS}})    ;; injected from child.toml
-    (remote port 443))))
-(allow network-outbound (remote udp (remote port 53)))  ;; DNS
+(allow network-outbound (remote ip "*:443"))   ;; HTTPS
+(allow network-outbound (remote ip "*:53"))    ;; DNS
 ```
 
-Mother generates a concrete profile at spawn time by injecting domain
-regexes from `child.toml [domains].allowed`.
+When `allowed_domains` is empty, the port 443 rule is omitted —
+denying all network except DNS.
 
 **Cost:** ~2ms startup, ~0ns runtime (kernel-enforced). Same Chrome
 renderer process pattern, but without the deprecated CLI wrapper.
 
 **Fail behavior:** If `sandbox_init()` returns an error (e.g., invalid
 profile syntax), Mother refuses to spawn the child and surfaces the
-Apple error message. Same `--no-sandbox` opt-out as Linux.
+Apple error message. `--no-sandbox` opt-out is [[spec-mother-broker]]
+scope.
 
 ### Linux: Landlock Enforcement (ABI v4+)
 
@@ -192,18 +195,16 @@ the last piece needed for parity with macOS sandbox-exec.
 
 Implementation uses the `landlock` crate to restrict:
 - Filesystem: deny all access (child communicates only via stdio)
-- Network: allow only declared domains (from child.toml) on port 443
+- Network: allow only port 443 (HTTPS) and port 53 (DNS) outbound
 - Process: no spawning child processes
 
-**Fail behavior:** If the running kernel does not support Landlock v4,
-Mother refuses to spawn native children. The error message is explicit:
-"Cannot sandbox native child: kernel does not support Landlock ABI v4+.
-Use --no-sandbox to run without OS-level sandboxing (not recommended)."
+Like macOS SBPL, Landlock operates at port level, not domain level.
+Domain-level filtering requires DNS-level enforcement (future work).
 
-The `--no-sandbox` flag is an explicit opt-out — operators acknowledge
-the risk. Without it, unsupported kernels cannot run native children.
-This prevents silent security degradation where Linux users believe
-they have sandbox protection but don't.
+**Fail behavior:** If the running kernel does not support Landlock v4,
+`check_landlock_support()` returns an error (uses `HardRequirement`
+probe — `SoftRequirement` would silently downgrade and always succeed).
+`--no-sandbox` opt-out is [[spec-mother-broker]] scope.
 
 **Testing:** Requires a Linux 6.7+ system. Integration tests or manual
 validation notes documenting the tested kernel version and observed
@@ -338,9 +339,9 @@ adds their own deps (reqwest, etc.) in their binary crate.
    fork→sandbox→exec spawn path. No sandbox-exec CLI dependency.
 
 6. `pipe: add Linux Landlock enforcement` — Landlock ABI v4+ network
-   and filesystem restrictions. Kernel detection, fail-hard on
-   unsupported kernels, --no-sandbox opt-out. Requires 6.7+ for
-   testing.
+   and filesystem restrictions. Kernel detection via HardRequirement
+   probe, fail-hard on unsupported kernels. Requires 6.7+ for
+   testing. `--no-sandbox` opt-out is mother-broker scope.
 
 7. `pipe: add Mother-side test harness` — spawn_child_test(),
    ChildConnection for integration testing.
