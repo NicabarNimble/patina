@@ -491,6 +491,7 @@ fn show_status() -> Result<()> {
         if pid.is_some() {
             println!("   (stale PID file exists — run `patina mother stop` to clean up)");
         }
+        println!("\n   Tip: broker source status lives under `patina mother sources`.");
         return Ok(());
     }
 
@@ -515,6 +516,8 @@ fn show_status() -> Result<()> {
             println!("   Health check failed: {}", e);
         }
     }
+
+    println!("\n   Tip: broker source status lives under `patina mother sources`.");
 
     Ok(())
 }
