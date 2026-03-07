@@ -1,176 +1,71 @@
-# Design: Connection Model — patina connect with OAuth Device Flow
+# Design: Connection Model — One Command to Link Data
 
-## Approach
+## Why This Work Exists
 
-New `src/connect/` module in the main binary, plus `patina connect`
-CLI commands. Reuses existing `src/secrets/` vault infrastructure
-for credential storage. Adds OAuth device flow (RFC 8628) for GitHub
-and a connection config format at `~/.patina/connections/`.
+Today, connecting Patina to GitHub is four manual steps:
 
-This is not a new crate — it's a module in the main binary that
-orchestrates vault + connection config. The connection model is the
-bridge between pipe protocol auth and the user.
+1. Generate a PAT on GitHub (navigate settings, create token, copy)
+2. `patina secrets add github-token ghp_xxx` (store in vault)
+3. Edit `secret-grants.toml` to allow the forge plugin to use it
+4. Configure the forge plugin's owner/repo params somewhere
 
-## 1. Module Structure
+This is an expert workflow. It requires understanding vault mechanics,
+secret grants, and plugin configuration. The user has to know how
+Patina's security model works before they can fetch their first issue.
 
-```
-src/
-  connect/
-    mod.rs              # public API: connect, status, refresh, remove
-    oauth.rs            # OAuth device flow (RFC 8628)
-    config.rs           # connection config read/write
-  commands/
-    connect.rs          # CLI subcommands (patina connect ...)
-```
-
-## 2. OAuth Device Flow (RFC 8628)
-
-### 2.1 Protocol Steps
-
-The device flow is designed for CLI tools — no redirect URI needed,
-no embedded web server. The user approves in their browser.
+[[mother-holds-connections-pipes-transform]] says Mother manages
+connections. A connection is a named pair: credential + connector child
+config. One command creates both:
 
 ```
-Step 1: Device Authorization Request
-  POST https://github.com/login/device/code
-  Body: client_id=<patina_client_id>&scope=repo,read:org
-  Response: { device_code, user_code, verification_uri, expires_in, interval }
-
-Step 2: Display Code to User
-  "Enter code ABCD-1234 at https://github.com/login/device"
-  Open browser automatically if possible
-
-Step 3: Poll for Token (every `interval` seconds)
-  POST https://github.com/login/oauth/access_token
-  Body: client_id=<id>&device_code=<code>&grant_type=urn:ietf:params:oauth:grant-type:device_code
-  Response: { access_token, token_type, scope } or { error: "authorization_pending" }
-
-Step 4: Token Acquired
-  Store access_token in vault as "github:<user>" or "github:default"
-  Create connection config at ~/.patina/connections/github.toml
+patina connect github
+  -> OAuth device flow (browser opens, user approves)
+  -> Token stored in vault
+  -> Connection config created
+  -> Done. GitHub data flows on next scrape.
 ```
 
-### 2.2 Implementation
+This is the UX bridge between "install Patina" and "get value from
+external data."
 
-```rust
-// src/connect/oauth.rs
+**Origin:** [[session-20260306-123021]] (connection model: one command
+creates credential + connector config), [[session-20260306-174214]]
+(audit: credential delivery via pipe/initialize, zeroize boundary is
+Mother's code).
 
-use crate::secrets;
-use anyhow::{bail, Result};
+## Design Decisions
 
-/// GitHub OAuth App client ID.
-/// Registered at https://github.com/settings/applications/new
-/// with "Device Flow" enabled. This is a public client ID (no secret).
-const GITHUB_CLIENT_ID: &str = "PLACEHOLDER_REGISTER_BEFORE_BUILD";
+### 1. OAuth Device Flow (RFC 8628), Not Web Redirect
 
-/// GitHub OAuth scopes needed for connector.
-/// - repo: read issues, PRs, code (private repos)
-/// - read:org: read org membership (for org-level queries)
-const GITHUB_SCOPES: &str = "repo,read:org";
+The device flow is designed for CLI tools — no redirect URI, no
+embedded web server, no localhost port conflicts. The user sees a
+code, opens a browser, approves. The CLI polls for the token.
 
-/// Device authorization response from GitHub.
-#[derive(Debug, serde::Deserialize)]
-struct DeviceAuthResponse {
-    device_code: String,
-    user_code: String,
-    verification_uri: String,
-    expires_in: u64,
-    interval: u64,
-}
+This matters because Patina is a terminal tool. A redirect-based
+OAuth flow would require opening a port, handling the callback, and
+dealing with browser trust issues. The device flow is simpler, more
+reliable, and works over SSH.
 
-/// Token response from GitHub.
-#[derive(Debug, serde::Deserialize)]
-struct TokenResponse {
-    access_token: Option<String>,
-    error: Option<String>,
-    error_description: Option<String>,
-}
+**GitHub-specific requirements:**
+- Register a GitHub OAuth App with "Device Flow" enabled
+- Public client (no client secret needed)
+- Scopes: `repo` (read issues/PRs from private repos) + `read:org`
+  (org membership for org-level queries)
 
-/// Run the OAuth device flow for GitHub.
-///
-/// Returns the access token on success.
-pub fn github_device_flow() -> Result<String> {
-    let client = reqwest::blocking::Client::new();
+### 2. Reuse Existing Vault, Don't Reinvent
 
-    // Step 1: Request device code
-    eprintln!("Requesting device authorization from GitHub...");
-    let auth_resp: DeviceAuthResponse = client
-        .post("https://github.com/login/device/code")
-        .header("Accept", "application/json")
-        .form(&[
-            ("client_id", GITHUB_CLIENT_ID),
-            ("scope", GITHUB_SCOPES),
-        ])
-        .send()?
-        .json()?;
+The `src/secrets/` infrastructure already handles:
+- Age-encrypted storage with macOS Keychain + Touch ID
+- Session caching (decrypt once, use many times)
+- Global vs project-scoped secrets
 
-    // Step 2: Display code and open browser
-    eprintln!();
-    eprintln!("  Open: {}", auth_resp.verification_uri);
-    eprintln!("  Enter code: {}", auth_resp.user_code);
-    eprintln!();
+Connections use this directly. The OAuth token is stored as a vault
+secret with name `github:default`. The connection config references
+it by name. No new crypto, no new storage format.
 
-    // Try to open browser automatically
-    #[cfg(target_os = "macos")]
-    {
-        let _ = std::process::Command::new("open")
-            .arg(&auth_resp.verification_uri)
-            .spawn();
-    }
+### 3. Connection Config at ~/.patina/connections/
 
-    // Step 3: Poll for token
-    eprintln!("Waiting for approval...");
-    let poll_interval = std::time::Duration::from_secs(auth_resp.interval.max(5));
-    let deadline = std::time::Instant::now()
-        + std::time::Duration::from_secs(auth_resp.expires_in);
-
-    loop {
-        if std::time::Instant::now() > deadline {
-            bail!("Authorization expired. Run `patina connect github` to try again.");
-        }
-
-        std::thread::sleep(poll_interval);
-
-        let token_resp: TokenResponse = client
-            .post("https://github.com/login/oauth/access_token")
-            .header("Accept", "application/json")
-            .form(&[
-                ("client_id", GITHUB_CLIENT_ID),
-                ("device_code", &auth_resp.device_code),
-                ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
-            ])
-            .send()?
-            .json()?;
-
-        if let Some(token) = token_resp.access_token {
-            eprintln!("  Approved!");
-            return Ok(token);
-        }
-
-        match token_resp.error.as_deref() {
-            Some("authorization_pending") => continue,
-            Some("slow_down") => {
-                // Back off by adding 5 seconds
-                std::thread::sleep(std::time::Duration::from_secs(5));
-                continue;
-            }
-            Some("expired_token") => {
-                bail!("Authorization expired. Run `patina connect github` to try again.");
-            }
-            Some("access_denied") => {
-                bail!("Authorization denied by user.");
-            }
-            Some(other) => {
-                let desc = token_resp.error_description.unwrap_or_default();
-                bail!("OAuth error: {} — {}", other, desc);
-            }
-            None => continue,
-        }
-    }
-}
-```
-
-## 3. Connection Config Format
+Per-provider TOML file linking auth to a connector child:
 
 ```toml
 # ~/.patina/connections/github.toml
@@ -178,407 +73,177 @@ pub fn github_device_flow() -> Result<String> {
 [connection]
 name = "github"
 provider = "github"
-credential = "github:default"          # vault secret name
-child = "github-connector"             # child binary to use
+credential = "github:default"      # vault secret name
+child = "github-connector"         # which child binary to use
 created = "2026-03-06T20:49:43Z"
-method = "oauth"                       # oauth | manual
+method = "oauth"                   # oauth | manual
 
 [oauth]
 client_id = "Iv1.xxxxxxxx"
 scopes = ["repo", "read:org"]
 ```
 
-### 3.1 config.rs — Connection Config Read/Write
-
-```rust
-// src/connect/config.rs
-
-use anyhow::{bail, Result};
-use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
-
-/// Where connections live.
-fn connections_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".patina/connections")
-}
-
-/// A connection config linking auth to a connector child.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConnectionConfig {
-    pub connection: ConnectionMeta,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub oauth: Option<OAuthMeta>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConnectionMeta {
-    pub name: String,
-    pub provider: String,
-    pub credential: String,         // vault secret name
-    pub child: String,              // child binary name
-    pub created: String,            // ISO 8601
-    pub method: String,             // "oauth" or "manual"
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OAuthMeta {
-    pub client_id: String,
-    pub scopes: Vec<String>,
-}
-
-impl ConnectionConfig {
-    /// Load a connection config by name.
-    pub fn load(name: &str) -> Result<Self> {
-        let path = connections_dir().join(format!("{}.toml", name));
-        if !path.exists() {
-            bail!("Connection '{}' not found", name);
-        }
-        let content = std::fs::read_to_string(&path)?;
-        let config: Self = toml::from_str(&content)?;
-        Ok(config)
-    }
-
-    /// Save a connection config.
-    pub fn save(&self) -> Result<()> {
-        let dir = connections_dir();
-        std::fs::create_dir_all(&dir)?;
-        let path = dir.join(format!("{}.toml", self.connection.name));
-        let content = toml::to_string_pretty(self)?;
-        std::fs::write(&path, content)?;
-        Ok(())
-    }
-
-    /// Remove a connection config.
-    pub fn remove(name: &str) -> Result<()> {
-        let path = connections_dir().join(format!("{}.toml", name));
-        if path.exists() {
-            std::fs::remove_file(&path)?;
-        }
-        Ok(())
-    }
-
-    /// List all connection configs.
-    pub fn list() -> Result<Vec<Self>> {
-        let dir = connections_dir();
-        if !dir.exists() {
-            return Ok(vec![]);
-        }
-        let mut configs = Vec::new();
-        for entry in std::fs::read_dir(&dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.extension().map(|e| e == "toml").unwrap_or(false) {
-                if let Ok(config) = Self::load(
-                    path.file_stem().unwrap().to_str().unwrap_or("")
-                ) {
-                    configs.push(config);
-                }
-            }
-        }
-        Ok(configs)
-    }
-}
+This is referenced by name in `sources.toml`:
+```toml
+[sources.github]
+connection = "github"              # -> ~/.patina/connections/github.toml
+params = { owner = "NicabarNimble", repo = "patina" }
 ```
 
-## 4. Public API (connect/mod.rs)
+### 4. Credential Delivery Boundary
+
+The security boundary for credentials is Mother's code, not the
+types crate or the child. The delivery path:
+
+```
+Vault (age-encrypted, Touch ID)
+  |
+  | Mother decrypts -> Zeroizing<String>
+  |
+  | Serialize to child's stdin as InitializeParams.auth.token
+  |
+  | Drop Zeroizing<String> (memory zeroed)
+  |
+Child process (holds token for its lifetime)
+  |
+  | OS sandbox prevents exfiltration
+  |
+Process exits (memory freed)
+```
+
+Mother wraps the token in `Zeroizing<String>` (from the `zeroize`
+crate, already in tree via `age`) for the brief window between vault
+decrypt and pipe write. The child receives a plain `String` because
+it must read the token to use it.
+
+### 5. Manual Fallback for PAT Users
+
+Not everyone wants OAuth. CI systems, headless servers, and users
+with existing PATs need a manual path:
+
+```bash
+patina secrets add github-token ghp_xxx
+
+# Then create connection config manually or via:
+patina connect github --manual
+# (prompts for vault secret name, creates config without OAuth)
+```
+
+The basic workflow (secrets add + hand-edit TOML) already works
+without any new code. The `--manual` flag is a convenience, not a
+requirement. Don't over-build.
+
+## Module Structure
+
+```
+src/
+  connect/
+    mod.rs              # public API: connect, status, refresh, remove
+    oauth.rs            # OAuth device flow (RFC 8628)
+    config.rs           # connection config read/write/list
+  commands/
+    connect.rs          # CLI subcommands
+```
+
+This is a module in the main binary, not a new crate. It orchestrates
+existing vault infrastructure + new connection config. The module
+boundary follows [[dependable-rust]]: `mod.rs` exposes four public
+functions, internals are hidden.
+
+## Public API
 
 ```rust
 // src/connect/mod.rs
 
-mod config;
-mod oauth;
-
-pub use config::ConnectionConfig;
-
-use anyhow::Result;
-
 /// Create a new connection via OAuth device flow.
-///
-/// 1. Run OAuth device flow → get token
-/// 2. Store token in vault (existing secrets infra)
-/// 3. Create connection config
-pub fn connect_github() -> Result<()> {
-    // Run OAuth flow
-    let token = oauth::github_device_flow()?;
+/// Flow: OAuth -> token -> vault store -> connection config
+pub fn connect_github() -> Result<()>;
 
-    // Store in vault
-    let secret_name = "github:default";
-    crate::secrets::add_secret(
-        secret_name,
-        &token,
-        None,       // no env var mapping needed
-        true,       // global vault
-        None,       // no project root
-    )?;
-    eprintln!("  Token stored in vault: {}", secret_name);
+/// Show status of all connections (name, auth status, method).
+pub fn connect_status() -> Result<()>;
 
-    // Create connection config
-    let config = ConnectionConfig {
-        connection: config::ConnectionMeta {
-            name: "github".to_string(),
-            provider: "github".to_string(),
-            credential: secret_name.to_string(),
-            child: "github-connector".to_string(),
-            created: chrono::Utc::now().to_rfc3339(),
-            method: "oauth".to_string(),
-        },
-        oauth: Some(config::OAuthMeta {
-            client_id: oauth::GITHUB_CLIENT_ID.to_string(),
-            scopes: vec!["repo".to_string(), "read:org".to_string()],
-        }),
-    };
-    config.save()?;
-    eprintln!("  Connection configured: ~/.patina/connections/github.toml");
+/// Refresh a connection (re-run OAuth flow, update vault).
+pub fn connect_refresh(name: &str) -> Result<()>;
 
-    eprintln!();
-    eprintln!("Done. GitHub data flows on next `patina mother run github`.");
-    Ok(())
-}
-
-/// Show status of all connections.
-pub fn connect_status() -> Result<()> {
-    let configs = ConnectionConfig::list()?;
-
-    if configs.is_empty() {
-        eprintln!("No connections configured.");
-        eprintln!("Run `patina connect github` to create one.");
-        return Ok(());
-    }
-
-    for config in &configs {
-        let credential_status = match crate::secrets::get_global_secret(
-            &config.connection.credential
-        ) {
-            Ok(Some(_)) => "connected",
-            Ok(None) => "missing credential",
-            Err(_) => "vault error",
-        };
-
-        eprintln!("  {}: {} ({})",
-            config.connection.name,
-            credential_status,
-            config.connection.method,
-        );
-    }
-
-    Ok(())
-}
-
-/// Refresh a connection (re-run OAuth flow).
-pub fn connect_refresh(name: &str) -> Result<()> {
-    // Load existing config to verify it exists
-    let _config = ConnectionConfig::load(name)?;
-
-    match name {
-        "github" => {
-            let token = oauth::github_device_flow()?;
-            let secret_name = "github:default";
-            crate::secrets::add_secret(secret_name, &token, None, true, None)?;
-            eprintln!("  Token refreshed for {}", name);
-        }
-        _ => {
-            anyhow::bail!("Don't know how to refresh '{}'. Only github is supported.", name);
-        }
-    }
-
-    Ok(())
-}
-
-/// Remove a connection (delete config + credential).
-pub fn connect_remove(name: &str) -> Result<()> {
-    let config = ConnectionConfig::load(name)?;
-
-    // Remove credential from vault
-    let _ = crate::secrets::remove_secret(&config.connection.credential, true, None);
-
-    // Remove config file
-    ConnectionConfig::remove(name)?;
-
-    eprintln!("  Removed connection '{}'", name);
-    Ok(())
-}
+/// Remove a connection (delete config + credential from vault).
+pub fn connect_remove(name: &str) -> Result<()>;
 ```
 
-## 5. CLI Commands
+## CLI Commands
 
-```rust
-// src/commands/connect.rs
-
-use clap::Subcommand;
-use anyhow::Result;
-
-#[derive(Subcommand)]
-pub enum ConnectCommand {
-    /// Connect to GitHub via OAuth device flow
-    Github,
-    /// Show connection status
-    Status,
-    /// Refresh a connection (re-authorize)
-    Refresh {
-        /// Connection name to refresh
-        name: String,
-    },
-    /// Remove a connection
-    Remove {
-        /// Connection name to remove
-        name: String,
-    },
-}
-
-pub fn run(cmd: ConnectCommand) -> Result<()> {
-    match cmd {
-        ConnectCommand::Github => crate::connect::connect_github(),
-        ConnectCommand::Status => crate::connect::connect_status(),
-        ConnectCommand::Refresh { name } => crate::connect::connect_refresh(&name),
-        ConnectCommand::Remove { name } => crate::connect::connect_remove(&name),
-    }
-}
+```
+patina connect github          # OAuth device flow
+patina connect status          # show all connections
+patina connect refresh github  # re-authorize
+patina connect remove github   # delete connection + credential
 ```
 
-Integration into main CLI (in `src/main.rs` or wherever clap
-commands are declared):
+Integrates into the existing clap command hierarchy as a top-level
+subcommand.
 
-```rust
-#[derive(Subcommand)]
-enum Commands {
-    // ... existing commands ...
-    /// Manage external connections (GitHub, Slack, etc.)
-    Connect {
-        #[command(subcommand)]
-        command: ConnectCommand,
-    },
-}
-```
+## What's NOT In Scope
 
-## 6. Credential Delivery via pipe/initialize
+- **Token refresh automation** — GitHub PATs don't expire. OAuth
+  tokens from the device flow are long-lived. Automatic refresh
+  is future work if/when expiring tokens become common.
+- **Multi-account UX** — the design uses `github:default` as the
+  vault secret name. Multi-account (`github:personal`,
+  `github:work`) is structurally supported but the UX for choosing
+  between accounts is deferred.
+- **Non-GitHub providers** — the OAuth flow is GitHub-specific (client
+  ID, scopes, endpoints). Slack, Jira, etc. would need their own
+  flow implementations. The connection config format is
+  provider-agnostic; only `oauth.rs` is GitHub-specific.
+- **Credential rotation alerts** — "your token expires in 7 days"
+  notifications. Future work.
 
-When Mother spawns a child, it reads the connection config, decrypts
-the credential from vault, and passes it via pipe/initialize:
+## Belief Anchors
 
-```rust
-// In Mother's spawn logic (src/broker/spawn.rs — mother-broker spec)
+- [[mother-holds-connections-pipes-transform]] — Mother manages
+  connections. This module is where Mother learns about external
+  auth sources.
+- [[host-proxied-io-is-the-security-model]] — credentials never in
+  environment variables or files for children. Vault -> stdin pipe.
+- [[safety-boundaries]] — user consent before OAuth flow. Explicit
+  scope declaration. Vault encryption with biometric auth.
 
-fn build_init_params(connection_name: &str) -> Result<InitializeParams> {
-    let config = ConnectionConfig::load(connection_name)?;
+## Open Questions
 
-    // Decrypt credential from vault — triggers Touch ID if needed
-    let token = crate::secrets::get_global_secret(&config.connection.credential)?
-        .ok_or_else(|| anyhow::anyhow!(
-            "credential '{}' not found in vault. Run `patina connect {}`",
-            config.connection.credential, connection_name
-        ))?;
+1. **GitHub OAuth App registration.** External dependency that blocks
+   testing. Code works with a placeholder client ID. Registration is
+   quick (< 5 minutes) but requires a GitHub account decision
+   (personal vs org). Must be done before OAuth can be tested.
 
-    Ok(InitializeParams {
-        protocol_version: "1.0".to_string(),
-        auth: Some(AuthConfig {
-            token,  // plain String — zeroize happens after serialize
-            provider: config.connection.provider,
-        }),
-    })
-}
-```
-
-The token lives in Mother's memory only long enough to serialize
-to the child's stdin. After `serde_json::to_string()` writes it
-to the pipe, the `InitializeParams` is dropped. Mother can wrap
-the token in `Zeroizing<String>` (from the zeroize crate already in
-tree) for the brief window between vault decrypt and pipe write.
-
-## 7. GitHub OAuth App Registration
-
-External dependency — must be done before OAuth can be tested.
-
-### 7.1 Registration Steps
-
-1. Go to https://github.com/settings/applications/new
-2. Application name: "Patina"
-3. Homepage URL: https://github.com/NicabarNimble/patina
-4. Authorization callback URL: (not used for device flow, any value)
-5. Enable "Device Flow" checkbox
-6. Note the Client ID (public, goes in source code)
-7. No client secret needed (device flow is a public client)
-
-### 7.2 Scope Justification
-
-| Scope | Why |
-|-------|-----|
-| `repo` | Read issues, PRs, code from private repos |
-| `read:org` | Read org membership for org-level queries |
-
-These are the minimum scopes needed for the github-connector to
-fetch issues and PRs from both public and private repos.
-
-### 7.3 Token Storage
-
-The OAuth token is stored as a vault secret with name format
-`github:default` (or `github:<username>` for multi-account future).
-Uses the existing age-encrypted vault with Keychain + Touch ID.
-
-## 8. Manual Fallback (Non-OAuth)
-
-For users who prefer PATs or can't use OAuth (CI, headless):
-
-```bash
-# Existing workflow still works
-patina secrets add github-token ghp_xxx
-
-# Create connection config manually
-# ~/.patina/connections/github.toml
-# [connection]
-# name = "github"
-# provider = "github"
-# credential = "github-token"
-# child = "github-connector"
-# method = "manual"
-```
-
-`patina connect github --manual` could prompt for a token and create
-the connection config without OAuth. But the basic manual workflow
-(secrets add + hand-edit config) already works. Don't over-build.
+2. **Multi-account support.** Current design is single-account per
+   provider. The vault secret naming (`github:default`) and config
+   file naming (`github.toml`) support exactly one. For multi-account,
+   names would be `github:personal`, `github:work` with configs
+   `github-personal.toml`, `github-work.toml`. Doesn't need solving
+   now but the naming convention should anticipate it.
 
 ## Commits
 
-1. `connect: add OAuth device flow for GitHub`
-   — src/connect/oauth.rs with RFC 8628 implementation. Placeholder
-   client ID until GitHub app is registered.
+1. `connect: add OAuth device flow for GitHub` — src/connect/oauth.rs
+   with RFC 8628 implementation. Placeholder client ID.
 
-2. `connect: add connection config format`
-   — src/connect/config.rs with ConnectionConfig read/write/list.
-   ~/.patina/connections/ directory.
+2. `connect: add connection config format` — src/connect/config.rs
+   with ConnectionConfig read/write/list.
 
-3. `connect: add public API (connect, status, refresh, remove)`
-   — src/connect/mod.rs orchestrating OAuth + vault + config.
+3. `connect: add public API (connect, status, refresh, remove)` —
+   src/connect/mod.rs orchestrating OAuth + vault + config.
 
-4. `connect: add CLI commands`
-   — src/commands/connect.rs with clap subcommands. Wire into
-   main CLI. Verify: `patina connect --help` shows subcommands.
+4. `connect: add CLI commands` — src/commands/connect.rs with clap
+   subcommands. Wire into main CLI.
 
-5. `connect: document credential delivery path`
-   — Update mother-broker design to show how InitializeParams
-   gets built from connection config.
+5. `connect: document credential delivery path` — Update mother-broker
+   design to show how InitializeParams gets built from connection
+   config.
 
 ## Key Files
 
-- `src/connect/mod.rs` — public API (connect, status, refresh, remove)
-- `src/connect/oauth.rs` — OAuth device flow (RFC 8628)
+- `src/connect/mod.rs` — public API
+- `src/connect/oauth.rs` — OAuth device flow
 - `src/connect/config.rs` — connection config format
 - `src/commands/connect.rs` — CLI subcommands
 - `src/secrets/mod.rs` — vault (reused for token storage)
 - `src/secrets/vault.rs` — age encryption (reused)
-
-## Open Questions
-
-1. **GitHub OAuth App registration.** This is an external dependency
-   that blocks testing. The code can be written with a placeholder
-   client ID and tested by swapping in the real ID later. Registration
-   itself is quick (< 5 minutes) but requires a GitHub account
-   decision (personal vs org).
-
-2. **Multi-account support.** The design uses `github:default` as the
-   vault secret name. For future multi-account (personal + work), the
-   name would be `github:<label>` and connection configs would be
-   `github-personal.toml`, `github-work.toml`. The current design
-   doesn't preclude this — it just doesn't implement the UX for
-   choosing between accounts.
