@@ -16,19 +16,19 @@ beliefs:
 exit_criteria:
 - id: mother-spawns-children
   text: 'Mother spawns native children based on sources.toml config via BrokerChild trait. WASM children are wrapped by BrokerChild but routing stays on legacy host_emit path (see DESIGN.md §5, gated by EC wasm-routing-resolved).'
-  checked: false
+  checked: true
   verify: '`patina mother run test` spawns test-child (native), routes facts through broker. `patina scrape forge` triggers forge (WASM) via existing path. Both complete successfully. Native facts have content_hash and source_id=child:test-child; WASM facts use source_id=plugin:forge.'
 - id: mother-routes-facts
   text: 'Mother routes facts from native children to destination events.db — sources.toml declarations determine where facts go, one spawn per source (no shared-spawn fan-out in v1, see DESIGN.md §4)'
-  checked: false
+  checked: true
   verify: 'After `patina mother run github`: `SELECT count(*) FROM eventlog WHERE source_id = ''child:github-connector''` returns > 0 in project events.db specified by sources.toml.'
 - id: mother-validates-schemas
   text: 'Mother validates emitted facts against declared schemas in child manifest — undeclared schemas are dropped with a warning (see DESIGN.md §6 decision table: undeclared = drop, uninstalled = warn + pass-through)'
-  checked: false
+  checked: true
   verify: 'Modify test-child to emit a fact with schema "bogus" (not in manifest). Confirm: fact logged as dropped (warning in Mother output), not in events.db. Valid facts from same run ARE present. Separately: remove installed schema file — facts pass through with warning, not dropped.'
 - id: mother-run-test-child
   text: '`patina mother run test` spawns test-child (from pipe-native-transport examples/), routes facts to events.db — proves broker works before production connector'
-  checked: false
+  checked: true
   verify: '`patina mother run test` outputs fact count > 0. `SELECT event_type, count(*) FROM eventlog WHERE source_id = ''child:test-child'' GROUP BY event_type` returns rows.'
 - id: mother-run-github
   text: '`patina mother run github` spawns github-connector, routes github.* facts to project events.db with content-hash dedup — tests routing, not child correctness (see [[spec-github-connector]] EC mother-run-works for child protocol verification). Verified after [[spec-github-connector]] is complete.'
@@ -36,19 +36,19 @@ exit_criteria:
   verify: Run `patina mother run github`. Output shows fact count, dedup count, cursor value. `SELECT event_type, count(*) FROM eventlog WHERE event_type LIKE 'github.%' GROUP BY event_type` returns rows. Run again immediately — dedup count should equal fact count (all duplicates).
 - id: credentials-via-pipe
   text: Children receive credentials via Mother-proxied delivery (Tier 1 — transparent header injection for pipe/http; Tier 2 — raw token in pipe/initialize for children with auth.requires_in_process_token) — not via environment variables or files
-  checked: false
+  checked: true
   verify: 'Tier 1: `patina mother run github` — pipe/http audit log shows Bearer header injected for api.github.com. Confirm no GITHUB_TOKEN env var, no temp credential files. Tier 2: test-child with auth.requires_in_process_token=true — inspect pipe/initialize params showing auth.token present.'
 - id: sandbox-enforcement
   text: Mother refuses to spawn a native child when the OS cannot enforce sandboxing (Landlock v4 unavailable on Linux, sandbox_init() failure on macOS) unless --no-sandbox is explicitly passed. Sandbox enforcement is a broker responsibility — children do not self-sandbox.
-  checked: false
+  checked: true
   verify: 'On Linux <6.7: `patina mother run test` fails with explicit Landlock error. `patina mother run test --no-sandbox` succeeds with warning. On macOS: invalid sandbox profile causes spawn refusal with Apple error message.'
 - id: wasm-routing-resolved
   text: WASM fact routing unified through broker (forge facts go through broker validation + dedup like native children) OR explicitly decided that forge stays on legacy host_emit path with no new WASM children permitted to bypass broker — decision documented in DESIGN.md
-  checked: false
+  checked: true
   verify: 'If unified: forge facts in events.db have content_hash values, dedup works across WASM/native. If legacy: DESIGN.md §5 documents decision with rationale, code comment in host_emit marks path as frozen.'
 - id: mother-status-works
   text: '`patina mother status` shows source state — last run timestamp (from broker_cursors.updated_at), fact count (from eventlog), and last error. Full health/lifecycle data requires daemon; standalone mode shows historical data only (see DESIGN.md Mother Status Enhancements).'
-  checked: false
+  checked: true
   verify: 'After `patina mother run test` and `patina mother run github`: `patina mother status` shows both sources with name, last run timestamp, fact count, and status (ok/error). Verify standalone mode works without daemon running (pulls from broker_cursors + eventlog queries).'
 ---
 # refactor: Mother Broker — Routing Engine + Child Lifecycle
