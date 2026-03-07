@@ -498,7 +498,8 @@ child specs below, not here.
 |------|-----------------|-------------|
 | [[spec-pipe-protocol-types]] | `patina-pipe-types` crate (Fact, PipeError, Capabilities, canonical_json), child.toml manifest format, patina-sdk rename (host_* → semantic names) | First (foundation, no blockers) |
 | [[spec-pipe-native-transport]] | `patina-pipe` crate (Child trait, run(), FactEmitter, stdio JSON-RPC), OS sandbox profile | Second (blocked by protocol-types) |
-| [[spec-github-connector]] | GitHub connector as native child, replaces src/forge/, emits github.issue/github.pr facts (own schema, not forge). WASM forge plugin coexists. | Third (blocked by native-transport) |
+| [[spec-pipe-mother-io]] | Mother-side pipe/http proxy + sandbox tightening (no outbound sockets), patina-pipe HTTP helper, Measure instrumentation | Third (blocked by native-transport) |
+| [[spec-github-connector]] | GitHub connector as native child, replaces src/forge/, emits github.issue/github.pr facts (own schema, not forge). WASM forge plugin coexists. | Fourth (blocked by pipe-mother-io) |
 | [[spec-patina-connect]] | `patina connect` CLI with OAuth device flow, connection config, credential delivery via pipe/initialize | Parallel (no blockers — uses existing vault, independent of pipe types) |
 | [[spec-mother-broker]] | Mother routing engine (sources.toml, fan-out), child lifecycle (WASM + native), schema validation, scheduling | Last (blocked by protocol-types + native-transport) |
 
@@ -507,18 +508,20 @@ child specs below, not here.
 ```
 pipe-protocol-types (foundation)
   ├── pipe-native-transport
-  │     ├── github-connector
-  │     └── mother-broker
+  │     └── pipe-mother-io
+  │            ├── github-connector
+  │            └── mother-broker
   │
 patina-connect (independent — uses existing vault, no pipe type deps)
 ```
 
 pipe-native-transport and patina-connect can build in parallel.
-patina-connect has no blockers — it creates connection configs and stores
-tokens using existing vault infrastructure. mother-broker and
-github-connector can build concurrently once native-transport is ready.
-Mother-broker tests against test-child first; its `mother-run-github` EC
-is verified after github-connector is complete.
+After native-transport lands, pipe-mother-io is next (tightening the
+sandbox + host proxy). patina-connect has no blockers — it creates
+connection configs and stores tokens using existing vault infrastructure.
+Only after pipe-mother-io is complete can github-connector and
+mother-broker proceed. Mother-broker tests against test-child first; its
+`mother-run-github` EC is verified after github-connector is complete.
 
 ## Exit Criteria
 

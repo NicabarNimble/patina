@@ -120,16 +120,20 @@ mode will need a channel-based writer — deferred to a future spec.
 
 The Session 12 audit established this constraint. When a sandboxed
 child tries to connect on a non-allowed port, it gets EACCES/EPERM on
-`connect()` — a connection error, NOT a silent timeout. The developer
-sees a clear error, not mysterious hangs. Note: sandbox operates at
-port level (443 + 53 allowed), not domain level — domain filtering
-requires DNS-level enforcement (future work).
+`connect()` immediately — a connection error, NOT a silent timeout.
+The developer sees a clear error, not mysterious hangs.
+
+Current sandbox restricts to port 443 + DNS (port-level only — OS
+sandboxes cannot filter by hostname). [[spec-pipe-mother-io]] tightens
+this to deny ALL outbound sockets, with children using Mother's
+`pipe/http` proxy for domain-enforced networking.
 
 ## OS Sandbox Model
 
-Native children run inside OS-level sandboxes. The sandbox allows
-only what the manifest declares: stdio (pipe protocol), declared
-network domains, basic system operations.
+Native children run inside OS-level sandboxes. The sandbox denies
+filesystem access and restricts network to port 443 + DNS. Domain-level
+enforcement happens in Mother via `pipe/http` ([[spec-pipe-mother-io]]),
+not in the OS sandbox.
 
 ### macOS: Sandbox via C API (`sandbox_init`)
 
@@ -162,10 +166,9 @@ const SANDBOX_INLINE: u64 = 0x0000;  // interpret profile as inline SBPL
 pub fn apply_sandbox(profile: &str) -> Result<()> { /* ... */ }
 ```
 
-Profile format is inline SBPL (Scheme syntax). Sandbox operates at
-port level — SBPL's `remote ip` filter works on IP:port pairs, not
-hostnames. Domain-level filtering requires DNS-level enforcement
-(future work).
+Profile format is inline SBPL (Scheme syntax). Current profile
+restricts network to port 443 + DNS (port-level). [[spec-pipe-mother-io]]
+will tighten to deny all network-outbound once Mother proxies HTTP.
 
 ```scheme
 (version 1)
@@ -173,8 +176,8 @@ hostnames. Domain-level filtering requires DNS-level enforcement
 (allow file-read*  (literal "/dev/stdin"))
 (allow file-write* (literal "/dev/stdout"))
 (allow file-write* (literal "/dev/stderr"))
-(allow network-outbound (remote ip "*:443"))   ;; HTTPS
-(allow network-outbound (remote ip "*:53"))    ;; DNS
+(allow network-outbound (remote ip "*:443"))   ;; HTTPS — removed by pipe-mother-io
+(allow network-outbound (remote ip "*:53"))    ;; DNS — removed by pipe-mother-io
 ```
 
 When `allowed_domains` is empty, the port 443 rule is omitted —
@@ -198,8 +201,10 @@ Implementation uses the `landlock` crate to restrict:
 - Network: allow only port 443 (HTTPS) and port 53 (DNS) outbound
 - Process: no spawning child processes
 
-Like macOS SBPL, Landlock operates at port level, not domain level.
-Domain-level filtering requires DNS-level enforcement (future work).
+Port-level only — Landlock cannot filter by hostname. Domain-level
+enforcement happens in Mother via `pipe/http` ([[spec-pipe-mother-io]]).
+When pipe-mother-io lands, the 443/53 rules are removed — children
+use Mother's proxy for all HTTP and get EPERM on direct sockets.
 
 **Fail behavior:** If the running kernel does not support Landlock v4,
 `check_landlock_support()` returns an error (uses `HardRequirement`

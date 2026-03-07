@@ -886,8 +886,10 @@ serving multiple Mothers).
 3. **Runtime sandbox**:
    - WASM: wasmtime sandbox. All I/O proxied through host functions.
    - Native: OS sandbox (macOS sandbox_init(), Linux Landlock).
-     No filesystem access, no process spawning, no arbitrary network.
-     Only inherited stdio + port 443/53 outbound.
+     No filesystem access, no process spawning. Network currently
+     restricted to port 443 + DNS (port-level). [[spec-pipe-mother-io]]
+     tightens to deny all outbound sockets — children use Mother's
+     pipe/http proxy for domain-enforced networking.
 
 ### 8.2 Credential Security
 
@@ -915,9 +917,10 @@ Profile (both platforms enforce equivalent restrictions):
   - deny all filesystem access
   - allow stdin/stdout/stderr
   - allow outbound network on port 443 (HTTPS) and port 53 (DNS)
-  - domain-level filtering: NOT supported at OS sandbox layer
-    (SBPL and Landlock operate on ports/IPs, not hostnames).
-    Requires DNS-level enforcement (future work).
+  - port-level only — OS sandboxes cannot filter by hostname
+  - domain-level filtering enforced inside Mother via pipe/http
+    ([[spec-pipe-mother-io]]) — which also tightens sandbox to
+    deny all outbound sockets
 ```
 
 **Fail behavior**: If the OS cannot enforce sandboxing (unsupported
