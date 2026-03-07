@@ -66,6 +66,7 @@ pub fn generate_macos_profile(allowed_domains: &[String]) -> String {
 
 /// Escape a domain name for use in SBPL regex.
 /// Dots become literal `\\.`, rest is literal.
+#[cfg(target_os = "macos")]
 fn regex_escape_domain(domain: &str) -> String {
     domain.replace('.', "\\\\.")
 }
@@ -195,8 +196,13 @@ pub fn apply_landlock(_allowed_domains: &[String]) -> Result<(), String> {
     }
 }
 
+// =========================================================================
+// macOS tests
+// =========================================================================
+
 #[cfg(test)]
-mod tests {
+#[cfg(target_os = "macos")]
+mod macos_tests {
     use super::*;
 
     #[test]
@@ -215,9 +221,7 @@ mod tests {
     fn profile_no_domains() {
         let profile = generate_macos_profile(&[]);
         assert!(profile.contains("(deny default)"));
-        // No network-outbound TCP rule when no domains
         assert!(!profile.contains("(remote port 443)"));
-        // DNS still allowed
         assert!(profile.contains("(remote port 53)"));
     }
 
@@ -228,5 +232,107 @@ mod tests {
             "api\\\\.github\\\\.com"
         );
         assert_eq!(regex_escape_domain("example"), "example");
+    }
+}
+
+// =========================================================================
+// Linux tests
+// =========================================================================
+
+#[cfg(test)]
+#[cfg(target_os = "linux")]
+mod linux_tests {
+    use super::*;
+
+    #[test]
+    fn landlock_support_detected() {
+        // On kernels 6.7+, this should succeed. On older kernels, it
+        // should return a clear error — not panic.
+        match check_landlock_support() {
+            Ok(abi) => {
+                assert!(abi >= 4, "expected ABI v4+, got v{}", abi);
+                eprintln!("[test] Landlock ABI v{} supported", abi);
+            }
+            Err(msg) => {
+                eprintln!("[test] Landlock not supported: {}", msg);
+                assert!(
+                    msg.contains("Landlock"),
+                    "error message should mention Landlock"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn landlock_enforcement_in_subprocess() {
+        // Skip if kernel doesn't support Landlock
+        if check_landlock_support().is_err() {
+            eprintln!("[test] skipping: Landlock not supported on this kernel");
+            return;
+        }
+
+        // Landlock is irrevocable — must test in a subprocess.
+        // Fork a child that applies Landlock, then tries to connect to
+        // port 80 (blocked) and port 443 (allowed).
+        use std::os::unix::process::CommandExt;
+
+        // Test 1: port 80 should be BLOCKED after Landlock
+        let result = unsafe {
+            std::process::Command::new("python3")
+                .args([
+                    "-c",
+                    "import socket; s=socket.socket(); s.settimeout(3); s.connect(('1.1.1.1',80)); print('OPEN')",
+                ])
+                .pre_exec(|| {
+                    apply_landlock(&[]).map_err(|e| {
+                        std::io::Error::new(std::io::ErrorKind::Other, e)
+                    })
+                })
+                .output()
+        };
+
+        match result {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                eprintln!("[test] port 80 subprocess: stdout={}", stdout.trim());
+                assert!(
+                    !stdout.contains("OPEN"),
+                    "port 80 should be blocked by Landlock"
+                );
+            }
+            Err(e) => {
+                // Spawn/connect error = Landlock enforcement working
+                eprintln!("[test] port 80 blocked (error: {})", e);
+            }
+        }
+
+        // Test 2: port 443 should be ALLOWED after Landlock
+        let result = unsafe {
+            std::process::Command::new("python3")
+                .args([
+                    "-c",
+                    "import socket; s=socket.socket(); s.settimeout(5); s.connect(('1.1.1.1',443)); print('OPEN')",
+                ])
+                .pre_exec(|| {
+                    apply_landlock(&[]).map_err(|e| {
+                        std::io::Error::new(std::io::ErrorKind::Other, e)
+                    })
+                })
+                .output()
+        };
+
+        match result {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                eprintln!("[test] port 443 subprocess: stdout={}", stdout.trim());
+                assert!(
+                    stdout.contains("OPEN"),
+                    "port 443 should be allowed by Landlock"
+                );
+            }
+            Err(e) => {
+                panic!("port 443 should be allowed by Landlock, but got: {}", e);
+            }
+        }
     }
 }
