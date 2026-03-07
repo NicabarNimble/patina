@@ -146,11 +146,56 @@ pub fn execute_all() -> Result<()> {
         println!("\n🧠 Scraping beliefs... skipped (no affected beliefs)");
     }
 
+    // Trigger on-scrape sources via broker
+    trigger_on_scrape_sources();
+
     println!(
         "\n✅ All scrapers complete! ({:.1?})",
         total_start.elapsed()
     );
     Ok(())
+}
+
+/// Trigger on-scrape sources after local scrape completes.
+///
+/// Finds all sources with schedule = "on-scrape" in this project's
+/// sources.toml and runs each one. Errors are logged but don't fail
+/// the scrape — the local scrape data is already committed.
+fn trigger_on_scrape_sources() {
+    let project_root = match std::env::current_dir() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+
+    let sources = match patina::broker::sources::load_project_sources(&project_root) {
+        Ok(Some(ps)) => ps.sources,
+        _ => return,
+    };
+
+    let on_scrape: Vec<_> = sources
+        .iter()
+        .filter(|s| s.schedule == "on-scrape")
+        .collect();
+
+    if on_scrape.is_empty() {
+        return;
+    }
+
+    println!("\n🔗 Triggering {} on-scrape source(s)...", on_scrape.len());
+
+    for source in on_scrape {
+        match patina::broker::run_source(source, &project_root, false) {
+            Ok(result) => {
+                println!(
+                    "  {} — {} written, {} dedup",
+                    source.name, result.inserted, result.dedup_skipped
+                );
+            }
+            Err(e) => {
+                eprintln!("  {} — error: {}", source.name, e);
+            }
+        }
+    }
 }
 
 /// Rebuild database from scratch.
