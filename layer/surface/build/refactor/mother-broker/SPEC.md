@@ -15,11 +15,11 @@ beliefs:
 - mother-holds-connections-pipes-transform
 exit_criteria:
 - id: mother-spawns-children
-  text: Mother spawns children (WASM and native) based on sources.toml config — uniform lifecycle management for both runtimes
+  text: 'Mother spawns native children based on sources.toml config via BrokerChild trait. WASM children are wrapped by BrokerChild but routing stays on legacy host_emit path (see DESIGN.md §5, gated by EC wasm-routing-resolved).'
   checked: false
-  verify: '`patina mother run test` spawns test-child (native). `patina scrape forge` triggers forge (WASM). Both complete successfully. Verify via process list or Mother logs.'
+  verify: '`patina mother run test` spawns test-child (native), routes facts through broker. `patina scrape forge` triggers forge (WASM) via existing path. Both complete successfully. Native facts have content_hash and source_id=child:test-child; WASM facts use source_id=plugin:forge.'
 - id: mother-routes-facts
-  text: Mother routes facts from children to destination events.db — sources.toml declarations determine where facts go (fan-out is config, not child logic)
+  text: 'Mother routes facts from native children to destination events.db — sources.toml declarations determine where facts go, one spawn per source (no shared-spawn fan-out in v1, see DESIGN.md §4)'
   checked: false
   verify: 'After `patina mother run github`: `SELECT count(*) FROM eventlog WHERE source_id = ''child:github-connector''` returns > 0 in project events.db specified by sources.toml.'
 - id: mother-validates-schemas
@@ -47,9 +47,9 @@ exit_criteria:
   checked: false
   verify: 'If unified: forge facts in events.db have content_hash values, dedup works across WASM/native. If legacy: DESIGN.md §5 documents decision with rationale, code comment in host_emit marks path as frozen.'
 - id: mother-status-works
-  text: '`patina mother status` shows running children and health — lifecycle state, last run, fact count, errors'
+  text: '`patina mother status` shows source state — last run timestamp (from broker_cursors.updated_at), fact count (from eventlog), and last error. Full health/lifecycle data requires daemon; standalone mode shows historical data only (see DESIGN.md Mother Status Enhancements).'
   checked: false
-  verify: 'After running github-connector and test-child: `patina mother status` shows both with name, lifecycle state, last run timestamp, fact count, and error count.'
+  verify: 'After `patina mother run test` and `patina mother run github`: `patina mother status` shows both sources with name, last run timestamp, fact count, and status (ok/error). Verify standalone mode works without daemon running (pulls from broker_cursors + eventlog queries).'
 ---
 # refactor: Mother Broker — Routing Engine + Child Lifecycle
 
@@ -72,12 +72,17 @@ broker capability.
 - Graph.db for federated FTS5 search
 
 **What this spec adds:**
-- Routing engine — read sources.toml, match source→destination, fan-out
-- Child lifecycle management — spawn (WASM or native), health,
-  restart, shutdown via uniform interface
+- Routing engine — read sources.toml, match source→destination,
+  content-hash dedup (no shared-spawn fan-out optimization — see
+  Design Constraints)
+- Child lifecycle management — spawn native children in sandbox,
+  wrap WASM children via BrokerChild trait (WASM routing stays on
+  legacy host_emit path until EC `wasm-routing-resolved` closes)
 - Schema validation — validate emitted facts against child manifest
-- Scheduling — on-scrape, hourly, daily, stream, manual modes
-- `patina mother run/status/health/logs` CLI commands
+  declarations (see DESIGN.md §6 decision table)
+- Scheduling — manual (`patina mother run`) and on-scrape only.
+  Hourly/daily/stream modes are [[spec-continuous-operation]] scope.
+- `patina mother run/status/sources` CLI commands
 
 ## Current State
 
@@ -95,17 +100,19 @@ MOTHER (broker)
   ├── sources.toml reader
   │   └── for each source: connection → child → params → schedule
   ├── Child lifecycle manager
-  │   ├── WASM: existing mother-child world (wasmtime)
-  │   └── Native: fork+exec in sandbox, stdio pipe protocol
+  │   ├── Native: fork+exec in sandbox, stdio pipe protocol (BrokerChild)
+  │   └── WASM: wrapped via BrokerChild (routing via legacy host_emit
+  │         until wasm-routing-resolved EC closes — see DESIGN.md §5)
   ├── Routing engine
   │   ├── pipe/fact received → validate schema → route to destination
-  │   └── fan-out: one child → multiple destinations (content-hash dedup)
+  │   └── content-hash dedup (one spawn per source, no shared-spawn)
   ├── Schema validator
   │   └── child manifest declares schemas → Mother checks each fact
-  └── Scheduler
+  │       (undeclared = drop, uninstalled = warn + pass-through)
+  └── Scheduler (v1)
       ├── manual: `patina mother run <name>`
-      ├── on-scrape: triggered by `patina scrape`
-      └── scheduled: hourly/daily (via continuous-operation daemon)
+      └── on-scrape: triggered by `patina scrape`
+      (hourly/daily/stream: [[spec-continuous-operation]] scope)
 ```
 
 ### Destination Declarations (sources.toml)
@@ -127,18 +134,20 @@ params → spawn child → route emitted facts to project events.db.
 
 1. Define sources.toml format specification
 2. Implement sources.toml reader in Mother (scan registered projects)
-3. Build unified child lifecycle interface (trait over WASM and native)
+3. Build BrokerChild trait with NativeChild adapter (WASM wrapped
+   but routing stays on legacy path — see DESIGN.md §5)
 4. Implement native child spawn: fork+exec in sandbox, connect stdio
-5. Implement routing engine: receive pipe/fact, validate schema,
-   write to destination events.db
-6. Implement fan-out: multiple sources.toml entries for same connection
-   → shared spawn or separate spawns with dedup
-7. Add `patina mother run <name>` — manual trigger (spawn child,
+5. Implement routing engine: receive pipe/fact, validate schema
+   (§6 decision table), write to destination events.db with
+   content-hash dedup
+6. Add `patina mother run <name>` — manual trigger (spawn child,
    route facts, report results)
-8. Add `patina mother status` — show children, last run, health
-9. Wire scheduling modes (manual first, on-scrape second, daemon
-   scheduled via [[spec-continuous-operation]])
-10. Verify: `patina mother run github` produces events in project
+7. Add `patina mother status` — show children, last run, fact count,
+   errors (daemon: in-memory state; standalone: broker_cursors +
+   eventlog queries)
+8. Wire on-scrape scheduling: `patina scrape` triggers on-scrape
+   sources via `run_source()`
+9. Verify: `patina mother run github` produces events in project
     events.db, facts are schema-validated
 
 ## Key Files
@@ -152,10 +161,14 @@ params → spawn child → route emitted facts to project events.db.
   §2.3 (Child Lifecycle), §4.4 (Schema Validation)
 
 **New:**
-- `src/broker/mod.rs` — routing engine
-- `src/broker/lifecycle.rs` — unified child lifecycle (WASM + native)
-- `src/broker/routing.rs` — fact routing + fan-out
-- `src/broker/validation.rs` — schema validation
+- `src/broker/mod.rs` — routing engine (run_source, status)
+- `src/broker/lifecycle.rs` — BrokerChild trait (NativeChild + WASM stub)
+- `src/broker/routing.rs` — fact validation + content-hash dedup
+- `src/broker/cursor.rs` — transactional cursor management
+- `src/broker/http.rs` — production pipe/http handler
+- `src/broker/connection.rs` — connection config reader
+- `src/broker/sources.rs` — sources.toml reader
+- `src/broker/spawn.rs` — native child spawn with sandbox
 
 ## Design Constraints (from architecture review, session 20260306-174214)
 
@@ -176,6 +189,14 @@ params → spawn child → route emitted facts to project events.db.
 
 ## Non-Goals
 
+- **Stream lifecycle** — always-on children with health monitoring,
+  restart on crash. Poll mode only in v1. Stream children are
+  [[spec-continuous-operation]] scope.
+- **Hourly/daily scheduling** — the broker provides `run_source()`.
+  Timer-driven invocation is [[spec-continuous-operation]] scope.
+- **Fan-out optimization** — no shared-spawn (one child serving
+  multiple destinations). One spawn per `run_source()` call.
+  Content-hash dedup handles overlap. Optimize when measured.
 - P2P sync between Mothers (future, needs persona-federation)
 - Encryption at rest (future, needs persona keypair)
 - Edge deployment (future, separate spec)
