@@ -27,6 +27,8 @@ our methods, types, and evolution).
 
 ### 1.2 Methods
 
+**Initial scope (poll mode):**
+
 ```
 pipe/initialize     →  Capability exchange. Mother sends config,
                        child responds with capabilities.
@@ -35,16 +37,21 @@ pipe/fetch          →  Request data. Mother sends params (types,
                        since, limit). Child streams facts back as
                        notifications, then sends result summary.
 
-pipe/emit           →  Push a fact. Child → Mother. Used in stream
-                       mode for continuous emission.
-
 pipe/health         →  Connectivity check. Returns ok/degraded/down
                        with latency and message.
 
-pipe/capabilities   →  Re-query capabilities (for long-lived children).
-
 pipe/shutdown       →  Graceful shutdown request. Child flushes
                        pending work, then exits.
+```
+
+**Future (stream mode, not in initial implementation):**
+
+```
+pipe/emit           →  Push a fact. Child → Mother. Used in stream
+                       mode for continuous emission.
+
+pipe/capabilities   →  Re-query capabilities (for long-lived children
+                       whose capabilities may change at runtime).
 ```
 
 ### 1.3 Streaming Fact Delivery
@@ -130,79 +137,67 @@ pub fn content_hash(value: &serde_json::Value) -> String {
 
 **Audit fix: undefined error types.**
 
-Pipe protocol errors use JSON-RPC error codes with structured data:
+Pipe protocol errors are Rust enum variants. Callers match on the
+variant, not numeric codes. JSON-RPC error codes are transport detail
+— they live in the transport serialization layer (`patina-pipe`'s
+`send_error()`, `patina-sdk`'s host error mapping), not in the enum.
+
+**Design constraint** (from five-lens audit, session 12): if callers
+match on code numbers, adding new variants breaks everyone. If they
+match on variants, new codes are a transport-layer detail.
 
 ```rust
 // patina-pipe-types/src/error.rs
 
-/// Error categories for pipe protocol.
 pub enum PipeError {
-    /// Retryable — transient failure, try again later.
-    /// Mother should backoff and retry.
-    Transient {
-        code: i32,          // -32001
-        message: String,
-        retry_after_ms: Option<u64>,
-    },
+    Transient { message: String, retry_after_ms: Option<u64> },
+    Fatal { message: String },
+    RateLimited { message: String, retry_after_ms: u64 },
+    Partial { message: String, emitted: u64 },
+}
 
-    /// Fatal — permanent failure, don't retry.
-    /// Bad credentials, schema mismatch, invalid config.
-    Fatal {
-        code: i32,          // -32002
-        message: String,
-    },
-
-    /// Rate limited — source API throttling.
-    /// Mother should wait and retry.
-    RateLimited {
-        code: i32,          // -32003
-        message: String,
-        retry_after_ms: u64,
-    },
-
-    /// Partial — some facts emitted, then failure.
-    /// Mother keeps what it got, retries the rest.
-    Partial {
-        code: i32,          // -32004
-        message: String,
-        emitted: u64,       // facts successfully sent before failure
-    },
+// Transport-only (not part of child author API):
+impl PipeError {
+    pub fn jsonrpc_code(&self) -> i32 { /* -32001..-32004 */ }
+    pub fn from_jsonrpc(code: i32, msg: String, data: Option<Value>) -> Self { /* ... */ }
 }
 ```
 
-JSON-RPC error code ranges:
+JSON-RPC error code mapping (used by transport layers only):
 - `-32001`: Transient (network timeout, service unavailable)
 - `-32002`: Fatal (bad auth, schema not found, invalid config)
 - `-32003`: Rate limited (429 from source API)
 - `-32004`: Partial success (some facts emitted before failure)
 - `-32600` to `-32700`: Standard JSON-RPC errors (parse, method, etc.)
 
-### 1.6 Fact Signing and Content Addressing
+### 1.6 Content Addressing and Signing
 
 Every fact emitted through pipe protocol is:
 
 1. **Canonicalized**: `data` field serialized via canonical JSON
 2. **Hashed**: blake3 over canonical bytes → `content_hash`
-3. **Signed**: ed25519 signature over `content_hash` using persona
-   keypair → `signature`
+3. **Signed** (future): ed25519 signature over `content_hash` using
+   persona keypair → `signature`
 
-The SDK handles all three automatically. Child authors never touch
-crypto. Mother validates signature and checks content_hash for dedup
-before writing to events.db.
+Content addressing (steps 1-2) ships with the initial implementation.
+Child authors never touch hashing — the transport layer computes it
+automatically. Mother checks `content_hash` for dedup before writing
+to events.db.
 
 ```
 Child calls emit("github", "issue", data)
-  → SDK: canonical_json(data) → bytes
-  → SDK: blake3(bytes) → content_hash
-  → SDK: ed25519_sign(content_hash, persona_key) → signature
-  → SDK: send pipe/fact notification with all fields
-  → Mother: verify signature, check content_hash for dedup
+  → Transport: canonical_json(data) → bytes
+  → Transport: blake3(bytes) → content_hash
+  → Transport: send pipe/fact notification
+  → Mother: verify content_hash, check for dedup
   → Mother: write to events.db (or skip if duplicate)
 ```
 
-Note: persona keypair infrastructure depends on
-[[spec-persona-federation]]. Until that ships, signing is stubbed
-(content_hash still works for dedup, signature field is empty).
+**Signing is stubbed until [[spec-persona-federation]] ships keypair
+infrastructure.** The `signature` field exists in the Fact struct
+(empty string) so the wire format is stable. When persona-federation
+ships, signing is added to the transport layer — child code doesn't
+change. Content-hash dedup works without signatures.
 
 ### 1.7 Delivery Guarantees
 
@@ -359,9 +354,8 @@ impl Child for GitHubConnector {
         Ok(FetchResult { emitted: emitter.count() })
     }
 
-    fn health(&self, params: &FetchParams) -> Result<Status, PipeError> {
-        let client = GitHubClient::new(&params.auth)?;
-        client.check_rate_limit()
+    fn health(&self) -> Result<HealthStatus, PipeError> {
+        Ok(HealthStatus { status: Status::Ok, message: None, latency_ms: None })
     }
 }
 
@@ -465,27 +459,24 @@ all registered projects, lakes, and blocks. For each source entry:
 6. Route emitted facts to destination's events.db
 7. Update incremental cursor (last-sync timestamp)
 
-### 4.2 Fan-Out
+### 4.2 No Fan-Out Optimization (Initial Scope)
 
-Multiple destinations can reference the same connection. Mother
-optimizes:
+One child spawn per `run_source()` call. Multiple projects referencing
+the same connection get separate spawns:
 
-**Separate spawns** (default, simple):
 ```
 sources.toml (project A): connection = "github", types = ["issues"]
 sources.toml (project B): connection = "github", types = ["prs"]
 → Mother spawns github-connector twice with different params
 ```
 
-**Shared spawn** (optimization, when params overlap):
-```
-sources.toml (project A): connection = "github", types = ["issues", "prs"]
-sources.toml (lake):      connection = "github", types = ["issues", "prs"]
-→ Mother spawns once, routes facts to both destinations
-→ Content-hash dedup handles any overlap
-```
+Content-hash dedup handles any data overlap between runs. This is
+correct because each source has its own cursor and writes to its own
+project's events.db.
 
-Mother decides strategy. Children don't know about fan-out.
+**Future optimization (deferred):** shared spawn routing facts to
+multiple destinations. Not implemented until measured need exists.
+Children don't know about fan-out regardless of strategy.
 
 ### 4.3 Scheduling
 
@@ -516,20 +507,28 @@ Mother validates every fact before writing to events.db:
 Invalid facts are logged and dropped. Mother never writes unvalidated
 data.
 
-## 5. Persona Enforcement
+## 5. Persona Enforcement (Future — Depends on persona-federation)
 
 **Audit fix: hand-waved persona enforcement.**
 
-### 5.1 Persona Scoping
+**Note:** Persona enforcement requires [[spec-persona-federation]] to
+ship keypair infrastructure. The design below is the target state. The
+initial pipe protocol implementation operates without persona scoping
+— all facts belong to a single implicit persona. The wire format
+(`pipe/initialize`, Fact struct) does NOT include persona fields in
+initial scope; they will be added when persona-federation ships.
 
-Every pipe protocol interaction is scoped to a persona:
+### 5.1 Target: Persona Scoping
 
-- `pipe/initialize` includes `persona` field
-- All emitted facts carry `persona` in the notification
-- Mother routes facts only to destinations owned by the same persona
-- Cross-persona routing is denied at the broker level
+When persona-federation ships, every pipe protocol interaction will
+be scoped to a persona:
 
-### 5.2 Enforcement Points
+- `pipe/initialize` will include `persona` field
+- Emitted facts will carry `persona` in the notification
+- Mother will route facts only to destinations owned by the same persona
+- Cross-persona routing will be denied at the broker level
+
+### 5.2 Target: Enforcement Points
 
 | Point | What | How |
 |---|---|---|
@@ -539,9 +538,9 @@ Every pipe protocol interaction is scoped to a persona:
 | Cross-persona | Denied | Mother refuses to route |
 | Multi-persona | Isolated namespaces | Mother runs separate sessions |
 
-### 5.3 Multi-Persona on One Node
+### 5.3 Target: Multi-Persona on One Node
 
-Mother supports multiple personas on the same machine (e.g., work
+Mother will support multiple personas on the same machine (e.g., work
 persona and personal persona). Each persona:
 
 - Has its own connections, destinations, credentials
@@ -549,7 +548,7 @@ persona and personal persona). Each persona:
 - Has its own belief set
 - Cannot see facts from other personas
 
-The persona is set at the destination level in sources.toml:
+The persona will be set at the destination level in sources.toml:
 ```toml
 [sources.github]
 persona = "work"         # optional, defaults to active persona
@@ -623,7 +622,7 @@ transport as the MCP stdio server (`src/mcp/server/mod.rs`).
 The `run()` function in patina-pipe:
 
 ```rust
-pub fn run<C: Child>(child: C) -> Result<()> {
+pub fn run<C: Child>(mut child: C) -> Result<()> {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     let reader = BufReader::new(stdin.lock());
@@ -632,7 +631,8 @@ pub fn run<C: Child>(child: C) -> Result<()> {
         let request: Request = serde_json::from_str(&line?)?;
         match request.method.as_str() {
             "pipe/initialize" => {
-                let config = parse_init_params(&request)?;
+                let params = parse_init_params(&request)?;
+                child.initialize(&params)?;
                 let caps = child.capabilities();
                 send_response(&mut stdout, &request, &caps)?;
             }
@@ -645,8 +645,7 @@ pub fn run<C: Child>(child: C) -> Result<()> {
                 }
             }
             "pipe/health" => {
-                let params = parse_health_params(&request)?;
-                match child.health(&params) {
+                match child.health() {
                     Ok(status) => send_response(&mut stdout, &request, &status)?,
                     Err(e) => send_error(&mut stdout, &request, &e)?,
                 }
@@ -656,7 +655,7 @@ pub fn run<C: Child>(child: C) -> Result<()> {
                 break;
             }
             _ => send_error(&mut stdout, &request,
-                &PipeError::Fatal { code: -32601, message: "Method not found".into() })?,
+                &PipeError::Fatal { message: "Method not found".into() })?,
         }
     }
     Ok(())
