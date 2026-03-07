@@ -80,7 +80,7 @@ The `pipe/fact` notification:
   "jsonrpc": "2.0",
   "method": "pipe/fact",
   "params": {
-    "schema": "forge",
+    "schema": "github",
     "fact_type": "issue",
     "data": { "number": 42, "title": "...", ... },
     "content_hash": "blake3:abc123...",
@@ -191,7 +191,7 @@ crypto. Mother validates signature and checks content_hash for dedup
 before writing to events.db.
 
 ```
-Child calls emit("forge", "issue", data)
+Child calls emit("github", "issue", data)
   → SDK: canonical_json(data) → bytes
   → SDK: blake3(bytes) → content_hash
   → SDK: ed25519_sign(content_hash, persona_key) → signature
@@ -312,8 +312,8 @@ allowed = ["api.github.com"]
 required = true
 provider = "github"
 
-[schemas.forge]
-package = "patina:schema/forge@1.0.0"
+[schemas.github]
+package = "patina:schema/github@1.0.0"
 ```
 
 For WASM children, this extends the current plugin.toml format.
@@ -350,10 +350,10 @@ impl Child for GitHubConnector {
         let client = GitHubClient::new(&params.auth)?;
 
         for issue in client.fetch_issues(params.since)? {
-            emitter.emit("forge", "issue", &issue)?;
+            emitter.emit("github", "issue", &issue)?;
         }
         for pr in client.fetch_prs(params.since)? {
-            emitter.emit("forge", "pull-request", &pr)?;
+            emitter.emit("github", "pull-request", &pr)?;
         }
 
         Ok(FetchResult { emitted: emitter.count() })

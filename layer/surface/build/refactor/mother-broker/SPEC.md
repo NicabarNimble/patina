@@ -136,6 +136,23 @@ params → spawn child → route emitted facts to project events.db.
 - `src/broker/routing.rs` — fact routing + fan-out
 - `src/broker/validation.rs` — schema validation
 
+## Design Constraints (from architecture review, session 20260306-174214)
+
+- **Cursor update must be transactional with fact writes.** When
+  Mother writes facts to destination events.db and updates the `since`
+  cursor, both must happen in the same SQLite transaction. Otherwise:
+  facts written + cursor not advanced = harmless re-fetch on next run
+  (dedup handles it), but cursor advanced + facts not written = data
+  loss. Same transaction eliminates both failure modes. (Helland lens:
+  at-least-once requires the acknowledgment and the write to be
+  atomic.)
+
+- **No fan-out optimization.** Separate child spawns per destination
+  only. No shared-spawn optimization (one child serving multiple
+  destinations) until there is a measured performance need. Simplicity
+  first. (Kelley lens: solve problems you have, not problems you
+  imagine.)
+
 ## Non-Goals
 
 - P2P sync between Mothers (future, needs persona-federation)

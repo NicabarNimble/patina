@@ -127,6 +127,24 @@ stdin/stdout. stderr is for child logging (not protocol).
 - [[spec-pipe-architecture]] DESIGN.md §2 (Child Framework),
   §7.2 (Native Transport), §8.3 (Sandbox Detail)
 
+## Design Constraints (from architecture review, session 20260306-174214)
+
+- **Sandbox must fail loud.** If the OS sandbox blocks a network
+  connection (e.g., typo in child.toml domains), the child sees a
+  network timeout, not a permission error. The sandbox profile or
+  Mother-side spawn logic should provide diagnostics — either log
+  what's being blocked or provide a `--sandbox-debug` mode. Silent
+  sandbox failures are invisible bugs. (Kelley lens: if something
+  looks like it should work but doesn't, the system should tell you
+  why.)
+
+- **`run()` must handle all protocol errors explicitly.** Malformed
+  JSON from Mother, unknown methods, protocol version mismatch — every
+  error path through `run()` should be enumerable, not panic. If the
+  child author can't observe an error, `run()` must handle it
+  correctly or fail loudly with context. (Kelley lens: hidden control
+  flow in the "simple" `run()` function is a lie.)
+
 ## Non-Goals
 
 - HTTP+SSE transport (future, when remote children exist)

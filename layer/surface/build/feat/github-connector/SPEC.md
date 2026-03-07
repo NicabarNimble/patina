@@ -16,14 +16,14 @@ exit_criteria:
 - id: connector-speaks-pipe
   text: github-connector binary speaks pipe protocol over stdio — responds to pipe/initialize, pipe/fetch, pipe/health, pipe/shutdown
   checked: false
-- id: emits-forge-facts
-  text: Emits forge.issue and forge.pr facts matching existing schema — same data shape, same projections work unchanged
+- id: emits-github-facts
+  text: Emits github.issue and github.pr facts with its own schema — same data shape as existing forge facts, new schema namespace
   checked: false
 - id: src-forge-deleted
   text: src/forge/ deleted from core — completes forge-plugin-extraction EC4 (original gh CLI wrapper removed)
   checked: false
-- id: plugins-forge-retired
-  text: plugins/forge/ retired — WASM version superseded by native connector
+- id: plugins-forge-coexists
+  text: plugins/forge/ continues to run as WASM child (forge.* schema) — coexists with native github-connector (github.* schema) to prove both runtimes
   checked: false
 - id: mother-run-works
   text: '`patina mother run github` triggers the connector via pipe protocol'
@@ -33,7 +33,8 @@ exit_criteria:
 
 > First native child on pipe architecture. Proves the model end-to-end:
 > native binary, pipe protocol over stdio, OS sandbox, real external
-> API. Replaces both the old gh CLI wrapper and the WASM forge plugin.
+> API. Replaces the old gh CLI wrapper. Coexists with the WASM forge
+> plugin to prove both runtimes under mother-broker.
 
 ## Problem
 
@@ -58,7 +59,7 @@ Build `github-connector` as a native Rust binary that:
 - Speaks pipe protocol over stdio (using patina-pipe crate)
 - Makes direct `reqwest` HTTP calls to api.github.com
 - Runs in OS sandbox (macOS sandbox-exec)
-- Emits forge.issue and forge.pr facts (same schema, same projections)
+- Emits github.issue and github.pr facts (own schema, same data shape)
 - Receives credentials via pipe/initialize (not env, not files)
 
 **Credential source is independent of this spec.** Mother reads
@@ -91,18 +92,18 @@ children/github-connector/
    fetch (paginated GitHub API), health (rate limit check)
 4. Migrate `plugins/forge/src/github.rs` API client — replace
    host_http with reqwest, host_emit with FactEmitter
-5. Verify fact output matches existing forge schema (same JSON shape)
+5. Create `.patina/schemas/github/schema.toml` with github.issue and
+   github.pr fact types (same data shape as forge, new schema namespace)
 6. Wire Mother-side: `patina mother run github` spawns connector,
    sends pipe/initialize with credentials, dispatches pipe/fetch
-7. **Parity verification before deletion:** run both old
-   (`patina scrape forge`) and new (`patina mother run github`)
-   against same repo, diff events.db output. Document any expected
-   differences. Only proceed to deletion after parity confirmed.
+7. **Parity verification:** run both old (`patina scrape forge`) and
+   new (`patina mother run github`) against same repo, compare data
+   shape. Schema names differ (forge.* vs github.*), data shape should
+   match. Document any differences.
 8. Delete `src/forge/` from core (2,287 LOC)
 9. Delete `src/commands/scrape/forge/` subcommand handler (604 LOC)
-10. Archive `plugins/forge/` (keep in git history, remove from build)
-11. Verify: `patina mother run github` produces same events.db data
-    as old `patina scrape forge`
+10. plugins/forge/ stays — WASM child coexists with native child to
+    prove both runtimes under mother-broker
 
 ## Key Files
 
@@ -124,6 +125,6 @@ children/github-connector/
 
 - GraphQL API support (REST is sufficient, same as existing code)
 - Comment/review fetching changes (keep current behavior)
-- New fact types beyond forge.issue and forge.pr
+- New fact types beyond github.issue and github.pr
 - OAuth device flow (that's [[spec-patina-connect]])
 - Fan-out routing (that's [[spec-mother-broker]])

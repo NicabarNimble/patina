@@ -129,6 +129,38 @@ this spec with concrete Rust types derived from those sections.
 - `plugins/forge/src/lib.rs` — consumer of SDK, update imports
 - [[spec-pipe-architecture]] DESIGN.md §1, §7.1, §9.1-9.2
 
+## Design Constraints (from architecture review, session 20260306-174214)
+
+- **PipeError: JSON-RPC codes are transport detail, not public API.**
+  The Rust enum variants (Transient, Fatal, RateLimited, Partial) are
+  the public interface. JSON-RPC error codes (-32001, etc.) belong in
+  the transport serialization layer (patina-pipe, patina-sdk), not as
+  fields on the PipeError enum itself. Callers match on the variant,
+  not the code. (Gjengset lens: the abstraction should match how it's
+  consumed.)
+
+- **Credential fields use `SecretString` or zeroize-on-drop.** Any
+  credential data in FetchParams/AuthConfig must not linger in memory
+  as plain strings. Use `secrecy::SecretString` or equivalent.
+  Especially important for stream-mode children where the process is
+  long-lived. (Kelley lens: the simple-looking API shouldn't leak
+  secrets through error messages or memory.)
+
+- **Cursor is opaque to Mother.** The `since` field in FetchParams
+  should be an opaque string that the child owns and interprets — could
+  be a timestamp, page token, etag, or sequence number. Mother stores
+  it and passes it back on next fetch, but never parses it. (Kelley
+  lens: don't assume the cursor is a timestamp when the source API
+  might use pagination tokens.)
+
+- **Document the double-serialization in canonical_json.** Data flows:
+  child serializes struct → JSON string → parsed to serde_json::Value
+  → re-serialized with sorted keys for hashing. This is a conscious
+  trade-off for a simpler emit API (child passes `&str`, not generics).
+  Name the cost in the DESIGN.md so it's not a mystery when profiling
+  100K facts. (Kelley lens: the abstraction should be honest about
+  what it does.)
+
 ## Non-Goals
 
 - Building the native transport (that's [[spec-pipe-native-transport]])
