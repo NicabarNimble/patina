@@ -105,17 +105,17 @@ pub fn check_landlock_support() -> Result<u32, String> {
     let abi = ABI::V4;
 
     // Probe: try to create a ruleset with network access handling.
-    // If the kernel doesn't support ABI v4, handle_access returns empty
-    // flags and create() will fail or return NotEnforced.
+    // HardRequirement ensures this fails if the kernel doesn't support
+    // ABI v4 — SoftRequirement would silently downgrade and always succeed.
     let supported = Ruleset::default()
-        .set_compatibility(landlock::CompatLevel::SoftRequirement)
+        .set_compatibility(landlock::CompatLevel::HardRequirement)
         .handle_access(AccessNet::from_all(abi))
         .is_ok();
 
     if !supported {
         return Err(
-            "Cannot sandbox native child: kernel does not support Landlock ABI v4+. \
-             Use --no-sandbox to run without OS-level sandboxing (not recommended)."
+            "Cannot sandbox native child: kernel does not support Landlock ABI v4+ \
+             (requires kernel 6.7+). Native children cannot run without OS-level sandboxing."
                 .to_string(),
         );
     }
@@ -330,9 +330,19 @@ mod linux_tests {
         }
 
         // Landlock is irrevocable — test in a forked child process.
-        // After fork, child applies Landlock then tries network connections.
-        // Parent reads results from a pipe.
+        // Uses loopback only — no external network dependency.
+        //
+        // Strategy: bind a listener on a non-443 port. After Landlock,
+        // connecting to that port should get EACCES (blocked).
+        // Connecting to 127.0.0.1:443 should get ECONNREFUSED (allowed
+        // by Landlock, but nothing listening) — distinct from EACCES.
         use std::io::Read;
+        use std::net::TcpListener;
+
+        // Bind a listener on an ephemeral port (OS assigns)
+        let listener = TcpListener::bind("127.0.0.1:0").expect("failed to bind listener");
+        let blocked_port = listener.local_addr().unwrap().port();
+        eprintln!("[test] listener bound on port {}", blocked_port);
 
         // Create a pipe for child → parent communication
         let (read_fd, write_fd) = {
@@ -357,7 +367,6 @@ mod linux_tests {
                 Ok(()) => results.push_str("LANDLOCK_OK\n"),
                 Err(e) => {
                     results.push_str(&format!("LANDLOCK_FAIL:{}\n", e));
-                    // Write result and exit — can't test without Landlock
                     unsafe {
                         libc::write(
                             write_fd,
@@ -370,22 +379,30 @@ mod linux_tests {
                 }
             }
 
-            // Test port 80 (should be BLOCKED)
+            // Test blocked port (should get EACCES from Landlock)
+            let blocked_addr = format!("127.0.0.1:{}", blocked_port);
             match std::net::TcpStream::connect_timeout(
-                &"1.1.1.1:80".parse().unwrap(),
+                &blocked_addr.parse().unwrap(),
                 std::time::Duration::from_secs(3),
             ) {
-                Ok(_) => results.push_str("PORT_80:OPEN\n"),
-                Err(_) => results.push_str("PORT_80:BLOCKED\n"),
+                Ok(_) => results.push_str("BLOCKED_PORT:OPEN\n"),
+                Err(e) => {
+                    let kind = e.kind();
+                    results.push_str(&format!("BLOCKED_PORT:ERR:{:?}\n", kind));
+                }
             }
 
-            // Test port 443 (should be ALLOWED)
+            // Test port 443 on loopback (allowed by Landlock, but nothing
+            // listening → ECONNREFUSED, which is distinct from EACCES)
             match std::net::TcpStream::connect_timeout(
-                &"1.1.1.1:443".parse().unwrap(),
-                std::time::Duration::from_secs(5),
+                &"127.0.0.1:443".parse().unwrap(),
+                std::time::Duration::from_secs(3),
             ) {
                 Ok(_) => results.push_str("PORT_443:OPEN\n"),
-                Err(_) => results.push_str("PORT_443:BLOCKED\n"),
+                Err(e) => {
+                    let kind = e.kind();
+                    results.push_str(&format!("PORT_443:ERR:{:?}\n", kind));
+                }
             }
 
             unsafe {
@@ -415,13 +432,18 @@ mod linux_tests {
             results.contains("LANDLOCK_OK"),
             "Landlock should apply successfully"
         );
+        // Blocked port: Landlock returns PermissionDenied (EACCES)
         assert!(
-            results.contains("PORT_80:BLOCKED"),
-            "port 80 should be blocked by Landlock"
+            results.contains("BLOCKED_PORT:ERR:PermissionDenied"),
+            "non-443 port should be blocked by Landlock (EACCES), got: {}",
+            results
         );
+        // Port 443: Landlock allows, but nothing listening → ConnectionRefused
+        // The key assertion: the error is NOT PermissionDenied
         assert!(
-            results.contains("PORT_443:OPEN"),
-            "port 443 should be allowed by Landlock"
+            results.contains("PORT_443:ERR:ConnectionRefused"),
+            "port 443 should be allowed by Landlock (ConnectionRefused, not EACCES), got: {}",
+            results
         );
     }
 }
