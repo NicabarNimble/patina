@@ -78,6 +78,10 @@ pub struct AuthSection {
     pub required: bool,
     #[serde(default)]
     pub provider: Option<String>,
+    /// If true, Mother passes raw token in pipe/initialize params.
+    /// Default false — Mother injects credentials via pipe/http only.
+    #[serde(default)]
+    pub requires_in_process_token: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

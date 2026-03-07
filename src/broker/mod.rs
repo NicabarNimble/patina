@@ -8,3 +8,4 @@ pub mod connection;
 pub mod http;
 pub mod lifecycle;
 pub mod sources;
+pub mod spawn;
