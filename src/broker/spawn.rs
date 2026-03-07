@@ -63,7 +63,11 @@ pub fn load_manifest(binary_path: &Path) -> Result<ChildManifest> {
 }
 
 /// Build pipe/initialize params with optional credential delivery (§9).
-pub fn build_init_params(manifest: &ChildManifest, credential: Option<&str>) -> serde_json::Value {
+pub fn build_init_params(
+    manifest: &ChildManifest,
+    credential: Option<&str>,
+    provider: &str,
+) -> serde_json::Value {
     let mut params = serde_json::json!({
         "protocol_version": "1.0"
     });
@@ -77,7 +81,7 @@ pub fn build_init_params(manifest: &ChildManifest, credential: Option<&str>) -> 
 
     if requires_token {
         if let Some(token) = credential {
-            params["auth"] = serde_json::json!({ "token": token });
+            params["auth"] = serde_json::json!({ "token": token, "provider": provider });
             eprintln!(
                 "[broker] {}: child holds raw credential (audit trail active)",
                 manifest.child.name
@@ -101,6 +105,7 @@ pub fn spawn_native(
     child_name: &str,
     credential: Option<(String, String)>, // (secret_name, secret_value)
     no_sandbox: bool,
+    provider: &str,
 ) -> Result<(NativeChild, ChildManifest)> {
     let binary_path = resolve_child_binary(child_name)?;
     let manifest = load_manifest(&binary_path)?;
@@ -139,7 +144,7 @@ pub fn spawn_native(
 
     // Send pipe/initialize
     let cred_value = credential.as_ref().map(|(_, v)| v.as_str());
-    let init_params = build_init_params(&manifest, cred_value);
+    let init_params = build_init_params(&manifest, cred_value, provider);
 
     let (_notifs, response) = conn
         .request("pipe/initialize", init_params)
@@ -196,7 +201,7 @@ lifecycle = "poll"
         )
         .unwrap();
 
-        let params = build_init_params(&manifest, None);
+        let params = build_init_params(&manifest, None, "test");
         assert_eq!(params["protocol_version"], "1.0");
         assert!(params.get("auth").is_none());
     }
@@ -219,7 +224,7 @@ required = true
         .unwrap();
 
         // Token provided but requires_in_process_token is false (default)
-        let params = build_init_params(&manifest, Some("secret123"));
+        let params = build_init_params(&manifest, Some("secret123"), "github");
         assert!(
             params.get("auth").is_none(),
             "should not include token when not opted in"
@@ -244,8 +249,9 @@ requires_in_process_token = true
         )
         .unwrap();
 
-        let params = build_init_params(&manifest, Some("secret123"));
+        let params = build_init_params(&manifest, Some("secret123"), "github");
         assert_eq!(params["auth"]["token"], "secret123");
+        assert_eq!(params["auth"]["provider"], "github");
     }
 
     #[test]

@@ -21,17 +21,15 @@ impl FetchParams {
     pub fn to_json(&self) -> serde_json::Value {
         let mut obj = serde_json::Map::new();
 
-        if !self.types.is_empty() {
-            obj.insert(
-                "types".to_string(),
-                serde_json::Value::Array(
-                    self.types
-                        .iter()
-                        .map(|t| serde_json::Value::String(t.clone()))
-                        .collect(),
-                ),
-            );
-        }
+        obj.insert(
+            "types".to_string(),
+            serde_json::Value::Array(
+                self.types
+                    .iter()
+                    .map(|t| serde_json::Value::String(t.clone()))
+                    .collect(),
+            ),
+        );
 
         if let Some(ref since) = self.since {
             obj.insert(
@@ -49,12 +47,12 @@ impl FetchParams {
             obj.insert("params".to_string(), serde_json::Value::Object(params_obj));
         }
 
-        if let Some(limit) = self.limit {
-            obj.insert(
-                "limit".to_string(),
-                serde_json::Value::Number(serde_json::Number::from(limit)),
-            );
-        }
+        obj.insert(
+            "limit".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(
+                self.limit.unwrap_or(DEFAULT_MAX_BATCH_SIZE as u64),
+            )),
+        );
 
         serde_json::Value::Object(obj)
     }
@@ -276,9 +274,9 @@ mod tests {
         };
 
         let json = params.to_json();
-        assert!(json.get("types").is_none());
+        assert_eq!(json["types"], serde_json::json!([]));
         assert!(json.get("since").is_none());
-        assert!(json.get("limit").is_none());
+        assert_eq!(json["limit"], DEFAULT_MAX_BATCH_SIZE as u64);
     }
 
     #[test]
