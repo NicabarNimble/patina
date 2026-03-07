@@ -123,10 +123,9 @@ child tries to connect on a non-allowed port, it gets EACCES/EPERM on
 `connect()` immediately — a connection error, NOT a silent timeout.
 The developer sees a clear error, not mysterious hangs.
 
-Current sandbox restricts to port 443 + DNS (port-level only — OS
-sandboxes cannot filter by hostname). [[spec-pipe-mother-io]] tightens
-this to deny ALL outbound sockets, with children using Mother's
-`pipe/http` proxy for domain-enforced networking.
+Sandbox denies ALL outbound network — no port 443, no DNS. Children
+communicate exclusively via stdio. HTTP goes through Mother's `pipe/http`
+proxy, which enforces domain allowlists. Delivered by [[spec-pipe-mother-io]].
 
 ## OS Sandbox Model
 
@@ -166,9 +165,8 @@ const SANDBOX_INLINE: u64 = 0x0000;  // interpret profile as inline SBPL
 pub fn apply_sandbox(profile: &str) -> Result<()> { /* ... */ }
 ```
 
-Profile format is inline SBPL (Scheme syntax). Current profile
-restricts network to port 443 + DNS (port-level). [[spec-pipe-mother-io]]
-will tighten to deny all network-outbound once Mother proxies HTTP.
+Profile format is inline SBPL (Scheme syntax). Profile denies all
+network — no port 443, no DNS. Children use pipe/http through Mother.
 
 ```scheme
 (version 1)
@@ -176,12 +174,8 @@ will tighten to deny all network-outbound once Mother proxies HTTP.
 (allow file-read*  (literal "/dev/stdin"))
 (allow file-write* (literal "/dev/stdout"))
 (allow file-write* (literal "/dev/stderr"))
-(allow network-outbound (remote ip "*:443"))   ;; HTTPS — removed by pipe-mother-io
-(allow network-outbound (remote ip "*:53"))    ;; DNS — removed by pipe-mother-io
+;; No network-outbound rules — deny-all. HTTP via pipe/http.
 ```
-
-When `allowed_domains` is empty, the port 443 rule is omitted —
-denying all network except DNS.
 
 **Cost:** ~2ms startup, ~0ns runtime (kernel-enforced). Same Chrome
 renderer process pattern, but without the deprecated CLI wrapper.
@@ -198,13 +192,12 @@ the last piece needed for parity with macOS sandbox-exec.
 
 Implementation uses the `landlock` crate to restrict:
 - Filesystem: deny all access (child communicates only via stdio)
-- Network: allow only port 443 (HTTPS) and port 53 (DNS) outbound
+- Network: deny ALL outbound (children use pipe/http through Mother)
 - Process: no spawning child processes
 
-Port-level only — Landlock cannot filter by hostname. Domain-level
-enforcement happens in Mother via `pipe/http` ([[spec-pipe-mother-io]]).
-When pipe-mother-io lands, the 443/53 rules are removed — children
-use Mother's proxy for all HTTP and get EPERM on direct sockets.
+Landlock handles AccessNet but adds no NetPort rules — all TCP
+connections are denied. Domain-level enforcement happens in Mother
+via `pipe/http` ([[spec-pipe-mother-io]]), delivered.
 
 **Fail behavior:** If the running kernel does not support Landlock v4,
 `check_landlock_support()` returns an error (uses `HardRequirement`

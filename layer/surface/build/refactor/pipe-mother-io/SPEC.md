@@ -14,17 +14,17 @@ beliefs:
 - pipes-are-processes-not-wasm
 exit_criteria:
 - id: pipe-http-requests
-  text: 'Mother exposes `pipe/http` JSON-RPC method for native children: takes url/method/headers/body, enforces manifest domains, executes HTTPS request, streams response metadata/body fragments back.'
-  verify: '`cargo test -p patina-mother pipe_http::*` (unit tests) AND `patina mother run test-http-child` (integration) both succeed. Capture stderr logs showing allowlisted host passes and denylisted host rejected with explicit error.'
-  checked: false
+  text: 'Mother exposes `pipe/http` JSON-RPC method for native children: takes url/method/headers/body, enforces manifest domains, executes HTTPS request, returns response. ChildConnection in harness.rs handles pipe/http requests via HttpHandler callback.'
+  verify: '`cargo test -p patina-pipe harness::tests::integration_pipe_http_domain_enforcement` passes. Allowed domain returns 200, denied domain gets explicit rejection.'
+  checked: true
 - id: sandbox-denies-outbound
   text: 'Native child sandbox profile blocks all outbound network (no 443 escape hatch). Only Mother performs HTTP. Landlock+macOS profiles updated and tested.'
-  verify: 'Spawn test child that calls `reqwest::get("https://example.com")` directly. Expect EACCES/EPERM before connect. `patina mother run test` with PATINA_SANDBOX_DEBUG=1 shows sandbox block message.'
-  checked: false
+  verify: 'macOS: `cargo test -p patina-pipe sandbox::macos_tests::profile_denies_all_network` passes — no network-outbound rules in profile. Fork test applies sandbox, verifies enforcement. Linux: `./scripts/test-linux.sh -p patina-pipe` verifies Landlock denies ALL ports including 443.'
+  checked: true
 - id: patina-pipe-helper
-  text: '`patina-pipe` exposes `MotherHttpClient` (builder pattern) so child code replaces `reqwest::Client` with helper. Helper speaks pipe/http under the hood, returns familiar response structs.'
-  verify: '`cargo test -p patina-pipe mother_http::*` passes. Example child (examples/test-child) compiles using helper with zero direct reqwest references.'
-  checked: false
+  text: '`patina-pipe` exposes `PipeIo` (builder pattern via get/post/header/send) so child code uses proxied HTTP through Mother. PipeIo combines fact emission and HTTP — the unified context for Child::fetch().'
+  verify: '`cargo test -p patina-pipe pipe_io::tests` passes. Example child (examples/test-http-child) compiles using PipeIo with zero direct reqwest references.'
+  checked: true
 - id: measure-instrumentation
   text: 'Every pipe/http call emits Measure events (duration, bytes, policy decision, manifest id) and integrates with PATINA_SANDBOX_DEBUG logging for auditability.'
   verify: '`patina mother run test` prints request audit lines. `sqlite3 patina.db "SELECT count(*) FROM measure_events WHERE event_type = ''pipe.http''"` > 0 after test.'

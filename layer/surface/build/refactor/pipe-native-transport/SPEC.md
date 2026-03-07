@@ -22,8 +22,8 @@ exit_criteria:
   verify: 'Spawn test-child binary, send pipe/initialize + pipe/fetch via stdin. Confirm: pipe/fact notifications arrive on stdout as JSON-RPC notifications (no `id` field), final result message includes emitted count.'
   checked: false
 - id: sandbox-profile-exists
-  text: 'OS sandbox enforced for native children — macOS sandbox_init() C API denying filesystem access, Linux Landlock (ABI v4+) denying filesystem and restricting network to port 443 + DNS. Landlock ABI v4 detection uses HardRequirement probe. Current sandbox is port-level; [[spec-pipe-mother-io]] tightens to deny ALL outbound sockets once Mother proxies HTTP.'
-  verify: 'macOS: fork-based test applies sandbox via sandbox_init(), confirms /etc/passwd blocked and /dev/null allowed. Linux: fork-based test applies Landlock, confirms non-443 port gets EACCES (PermissionDenied) and port 443 gets ECONNREFUSED (allowed but nothing listening). Both tests use loopback only, no external network. --no-sandbox opt-out is [[spec-mother-broker]] scope.'
+  text: 'OS sandbox enforced for native children — macOS sandbox_init() C API denying filesystem access, Linux Landlock (ABI v4+) denying filesystem and ALL outbound network. Sandbox is deny-all-network — children use pipe/http through Mother for HTTP access. [[spec-pipe-mother-io]] delivered this tightening.'
+  verify: 'macOS: fork-based test applies sandbox via sandbox_init(), confirms /etc/passwd blocked and /dev/null allowed. No network-outbound rules in profile. Linux: fork-based test applies Landlock, confirms ALL ports get EACCES (PermissionDenied) including port 443. Both tests use loopback only, no external network. --no-sandbox opt-out is [[spec-mother-broker]] scope.'
   checked: false
 ---
 # refactor: Pipe Native Transport — Child Trait + stdio JSON-RPC
