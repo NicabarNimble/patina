@@ -5,6 +5,7 @@
 
 pub mod emitter;
 pub mod protocol;
+pub mod sandbox;
 
 pub use emitter::FactEmitter;
 pub use patina_pipe_types::*;
