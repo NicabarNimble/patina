@@ -232,8 +232,8 @@ pub fn spawn_child_with_handler(
 mod tests {
     use super::*;
 
-    /// Build the test-child example and return its absolute path.
-    fn build_test_child() -> String {
+    /// Build an example binary and return its absolute path.
+    fn build_example(name: &str) -> String {
         // Use --message-format=json to get the exact binary path from cargo
         let output = Command::new("cargo")
             .args([
@@ -241,7 +241,7 @@ mod tests {
                 "-p",
                 "patina-pipe",
                 "--example",
-                "test-child",
+                name,
                 "--message-format=json",
             ])
             .output()
@@ -258,7 +258,7 @@ mod tests {
         for line in stdout.lines() {
             if let Ok(msg) = serde_json::from_str::<serde_json::Value>(line) {
                 if msg["reason"] == "compiler-artifact"
-                    && msg["target"]["name"] == "test-child"
+                    && msg["target"]["name"] == name
                     && msg["target"]["kind"]
                         .as_array()
                         .map(|a| a.iter().any(|v| v == "example"))
@@ -271,12 +271,12 @@ mod tests {
             }
         }
 
-        panic!("could not find test-child binary in cargo build output");
+        panic!("could not find {} binary in cargo build output", name);
     }
 
     #[test]
     fn integration_spawn_initialize_fetch_shutdown() {
-        let binary = build_test_child();
+        let binary = build_example("test-child");
         let mut conn = spawn_child(&binary).expect("failed to spawn test-child");
 
         // pipe/initialize
@@ -329,6 +329,95 @@ mod tests {
         assert_eq!(resp["result"], serde_json::json!({}));
 
         // Child should exit cleanly
+        let status = conn.wait().expect("wait failed");
+        assert!(status.success());
+    }
+
+    #[test]
+    fn integration_pipe_http_domain_enforcement() {
+        let binary = build_example("test-http-child");
+
+        // Create a mock HTTP handler with domain allowlist enforcement
+        let handler: HttpHandler = Box::new(|req: &PipeHttpRequest| {
+            // Extract domain from URL (simple parsing for test)
+            let domain = req
+                .url
+                .strip_prefix("https://")
+                .or_else(|| req.url.strip_prefix("http://"))
+                .and_then(|rest| rest.split('/').next())
+                .ok_or_else(|| format!("cannot parse domain from URL: {}", req.url))?;
+
+            // Allowlist check — only api.allowed.com is permitted
+            let allowed = ["api.allowed.com"];
+            if !allowed.contains(&domain) {
+                return Err(format!(
+                    "domain '{}' not in allowlist",
+                    domain
+                ));
+            }
+
+            // Return a mock response for allowed domains
+            Ok(PipeHttpResponse {
+                status: 200,
+                headers: std::collections::HashMap::from([(
+                    "content-type".to_string(),
+                    "application/json".to_string(),
+                )]),
+                body: r#"[{"id":1,"name":"test"}]"#.to_string(),
+            })
+        });
+
+        let mut conn = spawn_child_with_handler(&binary, Some(handler))
+            .expect("failed to spawn test-http-child");
+
+        // pipe/initialize
+        let (_notifs, resp) = conn
+            .request(
+                "pipe/initialize",
+                serde_json::json!({"protocol_version": "1.0"}),
+            )
+            .expect("initialize failed");
+        assert_eq!(resp["result"]["provider"], "test-http");
+
+        // pipe/fetch — child makes two HTTP calls:
+        // 1. api.allowed.com → succeeds (mock returns 200)
+        // 2. evil.com → fails (domain not in allowlist)
+        let (notifs, resp) = conn
+            .request(
+                "pipe/fetch",
+                serde_json::json!({"types": ["items"], "limit": 100}),
+            )
+            .expect("fetch failed");
+
+        // Should get 2 notifications:
+        // 1. http_result (from allowed request)
+        // 2. domain_denied (evil.com blocked)
+        assert_eq!(
+            notifs.len(),
+            2,
+            "expected 2 pipe/fact notifications, got {}:\n{:#?}",
+            notifs.len(),
+            notifs
+        );
+
+        // First notification: successful HTTP result
+        let first_fact = &notifs[0]["params"];
+        assert_eq!(first_fact["fact_type"], "http_result");
+        assert_eq!(first_fact["data"]["status"], 200);
+
+        // Second notification: domain was denied
+        let second_fact = &notifs[1]["params"];
+        assert_eq!(second_fact["fact_type"], "domain_denied");
+        assert_eq!(second_fact["data"]["domain"], "evil.com");
+        assert_eq!(second_fact["data"]["blocked"], true);
+
+        // Fetch result
+        assert_eq!(resp["result"]["emitted"], 2);
+
+        // Shutdown
+        let (_notifs, _resp) = conn
+            .request("pipe/shutdown", serde_json::json!({}))
+            .expect("shutdown failed");
         let status = conn.wait().expect("wait failed");
         assert!(status.success());
     }

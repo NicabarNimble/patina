@@ -9,7 +9,7 @@ use std::io::{BufRead, Write};
 
 use patina_pipe_types::{Fact, PipeError, PipeHttpRequest, PipeHttpResponse};
 
-use crate::protocol::{Notification, Request, Response};
+use crate::protocol::Notification;
 
 /// Unified I/O context for native children.
 ///
