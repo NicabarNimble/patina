@@ -316,14 +316,15 @@ mod tests {
             serde_json::json!(["issues", "prs"])
         );
 
-        // pipe/fetch — should get 3 notifications then response
+        // pipe/fetch — should get 4 notifications then response
+        // (3 valid github facts + 1 bogus schema fact for validation testing)
         let (notifs, resp) = conn
             .request(
                 "pipe/fetch",
                 serde_json::json!({"types": ["issues", "prs"], "limit": 100}),
             )
             .expect("fetch failed");
-        assert_eq!(notifs.len(), 3, "expected 3 pipe/fact notifications");
+        assert_eq!(notifs.len(), 4, "expected 4 pipe/fact notifications");
         for notif in &notifs {
             assert_eq!(notif["method"], "pipe/fact");
             assert!(notif.get("id").is_none() || notif["id"].is_null());
@@ -334,7 +335,7 @@ mod tests {
                 .unwrap()
                 .starts_with("blake3:"));
         }
-        assert_eq!(resp["result"]["emitted"], 3);
+        assert_eq!(resp["result"]["emitted"], 4);
         assert_eq!(resp["result"]["cursor"], "2026-03-07T00:00:00Z");
 
         // pipe/health
