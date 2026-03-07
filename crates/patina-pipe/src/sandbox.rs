@@ -3,16 +3,21 @@
 //! macOS: sandbox_init() C API (kernel sandbox, not deprecated sandbox-exec CLI).
 //! Linux: Landlock ABI v4+ (kernel 6.7+).
 //!
-//! Both platforms deny all filesystem access and restrict network to
-//! declared domains on port 443, plus DNS (UDP 53) and stdio.
+//! Both platforms deny all filesystem access and ALL outbound network.
+//! Children cannot open sockets — all HTTP goes through Mother via pipe/http.
+//! See [[spec-pipe-mother-io]] for the proxied HTTP design.
 
-/// Generate a macOS SBPL sandbox profile for the given allowed domains.
+/// Generate a macOS SBPL sandbox profile for a native child.
 ///
 /// Profile format: Scheme-based `.sb` syntax consumed by sandbox_init().
-/// Allows: stdio, DNS, HTTPS to declared domains. Denies everything else.
+/// Allows: stdio only. Denies ALL filesystem and ALL outbound network.
+/// Children use pipe/http through Mother for all HTTP access.
 #[cfg(target_os = "macos")]
-pub fn generate_macos_profile(allowed_domains: &[String]) -> String {
-    let mut profile = String::from(
+pub fn generate_macos_profile(_allowed_domains: &[String]) -> String {
+    // Deny-all network: no port 443, no DNS. Children communicate
+    // exclusively via stdio (pipe/http for HTTP, pipe/fact for data).
+    // Domain enforcement happens in Mother, not in the OS sandbox.
+    String::from(
         r#"(version 1)
 (deny default)
 (allow file-read* (literal "/dev/stdin"))
@@ -22,20 +27,7 @@ pub fn generate_macos_profile(allowed_domains: &[String]) -> String {
 (allow file-write* (literal "/dev/null"))
 (allow sysctl-read)
 (allow mach-lookup)
-(allow system-socket)
-(allow network-outbound (remote ip "*:53"))
-"#,
-    );
-
-    if !allowed_domains.is_empty() {
-        // Port-level restriction to 443 — domain filtering requires
-        // DNS-level enforcement (future work, per DESIGN.md).
-        profile.push_str("(allow network-outbound (remote ip \"*:443\"))\n");
-    }
-
-    // Allow reading system libraries and TLS certificates
-    profile.push_str(
-        r#"(allow file-read*
+(allow file-read*
   (subpath "/usr/lib")
   (subpath "/usr/share")
   (subpath "/private/etc/ssl")
@@ -43,9 +35,7 @@ pub fn generate_macos_profile(allowed_domains: &[String]) -> String {
   (subpath "/Library/Preferences/com.apple.networkd.plist")
   (subpath "/System"))
 "#,
-    );
-
-    profile
+    )
 }
 
 /// Apply sandbox profile in the current process via sandbox_init() C API.
@@ -127,22 +117,20 @@ pub fn check_landlock_support() -> Result<u32, String> {
 ///
 /// Restricts:
 /// - Filesystem: deny all access (child communicates via stdio only)
-/// - Network: allow only port 443 outbound (domain filtering at DNS level)
+/// - Network: deny ALL outbound (children use pipe/http through Mother)
 ///
 /// Call after fork, before exec. The restrictions are irrevocable.
-///
-/// Note: Landlock restricts port-level, not domain-level. Domain restriction
-/// requires DNS-level enforcement (future work). For now, restricting to
-/// port 443 prevents arbitrary port access.
 #[cfg(target_os = "linux")]
 pub fn apply_landlock(_allowed_domains: &[String]) -> Result<(), String> {
     use landlock::{
-        Access, AccessFs, AccessNet, NetPort, Ruleset, RulesetAttr, RulesetCreatedAttr,
-        RulesetStatus, ABI,
+        Access, AccessFs, AccessNet, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus, ABI,
     };
 
     let abi = ABI::V4;
 
+    // Deny-all network: no port 443, no DNS. Children communicate
+    // exclusively via stdio (pipe/http for HTTP, pipe/fact for data).
+    // No add_rule calls = all network access denied.
     let status = Ruleset::default()
         .handle_access(AccessFs::from_all(abi))
         .map_err(|e| format!("landlock fs ruleset: {}", e))?
@@ -150,12 +138,6 @@ pub fn apply_landlock(_allowed_domains: &[String]) -> Result<(), String> {
         .map_err(|e| format!("landlock net ruleset: {}", e))?
         .create()
         .map_err(|e| format!("landlock create: {}", e))?
-        // Allow outbound HTTPS (port 443)
-        .add_rule(NetPort::new(443, AccessNet::ConnectTcp))
-        .map_err(|e| format!("landlock net rule: {}", e))?
-        // Allow DNS (port 53)
-        .add_rule(NetPort::new(53, AccessNet::ConnectTcp))
-        .map_err(|e| format!("landlock dns rule: {}", e))?
         .restrict_self()
         .map_err(|e| format!("landlock restrict_self: {}", e))?;
 
@@ -181,21 +163,27 @@ mod macos_tests {
     use super::*;
 
     #[test]
-    fn profile_with_domains() {
+    fn profile_denies_all_network() {
         let domains = vec!["api.github.com".to_string(), "hooks.slack.com".to_string()];
         let profile = generate_macos_profile(&domains);
         assert!(profile.contains("(version 1)"));
         assert!(profile.contains("(deny default)"));
-        assert!(profile.contains(r#"(remote ip "*:443")"#));
-        assert!(profile.contains(r#"(remote ip "*:53")"#));
+        // No network rules — all outbound denied. Children use pipe/http.
+        assert!(!profile.contains("*:443"), "port 443 must not be allowed");
+        assert!(!profile.contains("*:53"), "DNS port must not be allowed");
+        assert!(
+            !profile.contains("network-outbound"),
+            "no network-outbound rules allowed"
+        );
     }
 
     #[test]
-    fn profile_no_domains() {
+    fn profile_no_domains_also_denies_all_network() {
         let profile = generate_macos_profile(&[]);
         assert!(profile.contains("(deny default)"));
         assert!(!profile.contains("*:443"));
-        assert!(profile.contains(r#"(remote ip "*:53")"#));
+        assert!(!profile.contains("*:53"));
+        assert!(!profile.contains("network-outbound"));
     }
 
     #[test]
@@ -332,10 +320,9 @@ mod linux_tests {
         // Landlock is irrevocable — test in a forked child process.
         // Uses loopback only — no external network dependency.
         //
-        // Strategy: bind a listener on a non-443 port. After Landlock,
-        // connecting to that port should get EACCES (blocked).
-        // Connecting to 127.0.0.1:443 should get ECONNREFUSED (allowed
-        // by Landlock, but nothing listening) — distinct from EACCES.
+        // Strategy: bind a listener on an ephemeral port and also test
+        // port 443. After Landlock deny-all, BOTH should get EACCES.
+        // No ports are allowed — children use pipe/http through Mother.
         use std::io::Read;
         use std::net::TcpListener;
 
@@ -344,7 +331,7 @@ mod linux_tests {
         let blocked_port = listener.local_addr().unwrap().port();
         eprintln!("[test] listener bound on port {}", blocked_port);
 
-        // Create a pipe for child → parent communication
+        // Create a pipe for child -> parent communication
         let (read_fd, write_fd) = {
             let mut fds = [0i32; 2];
             assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
@@ -379,7 +366,7 @@ mod linux_tests {
                 }
             }
 
-            // Test blocked port (should get EACCES from Landlock)
+            // Test ephemeral port (should get EACCES from Landlock)
             let blocked_addr = format!("127.0.0.1:{}", blocked_port);
             match std::net::TcpStream::connect_timeout(
                 &blocked_addr.parse().unwrap(),
@@ -392,8 +379,8 @@ mod linux_tests {
                 }
             }
 
-            // Test port 443 on loopback (allowed by Landlock, but nothing
-            // listening → ECONNREFUSED, which is distinct from EACCES)
+            // Test port 443 — also blocked now (deny-all network).
+            // Should get PermissionDenied, same as any other port.
             match std::net::TcpStream::connect_timeout(
                 &"127.0.0.1:443".parse().unwrap(),
                 std::time::Duration::from_secs(3),
@@ -432,17 +419,16 @@ mod linux_tests {
             results.contains("LANDLOCK_OK"),
             "Landlock should apply successfully"
         );
-        // Blocked port: Landlock returns PermissionDenied (EACCES)
+        // Ephemeral port: Landlock returns PermissionDenied (EACCES)
         assert!(
             results.contains("BLOCKED_PORT:ERR:PermissionDenied"),
-            "non-443 port should be blocked by Landlock (EACCES), got: {}",
+            "ephemeral port should be blocked by Landlock (EACCES), got: {}",
             results
         );
-        // Port 443: Landlock allows, but nothing listening → ConnectionRefused
-        // The key assertion: the error is NOT PermissionDenied
+        // Port 443: also PermissionDenied — deny-all network, no exceptions
         assert!(
-            results.contains("PORT_443:ERR:ConnectionRefused"),
-            "port 443 should be allowed by Landlock (ConnectionRefused, not EACCES), got: {}",
+            results.contains("PORT_443:ERR:PermissionDenied"),
+            "port 443 should be blocked by Landlock (EACCES, deny-all), got: {}",
             results
         );
     }
