@@ -465,6 +465,22 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
+    fn test_read_machine_id_file() {
+        // /etc/machine-id should exist on systemd-based Linux (Ubuntu CI, Docker)
+        let id = read_machine_id_file("/etc/machine-id")
+            .expect("/etc/machine-id should be readable on Linux CI");
+        assert!(!id.is_empty(), "machine-id should not be empty");
+        assert_eq!(id.len(), 32, "machine-id should be 32 hex chars");
+        assert!(
+            id.chars().all(|c| c.is_ascii_hexdigit()),
+            "machine-id should be hex: {}",
+            id
+        );
+        validate_machine_id(&id).expect("machine-id should pass validation");
+    }
+
+    #[test]
     fn test_derive_key() {
         let machine_id = b"test-machine-id";
         let salt = b"test-salt-32-bytes-long-xxxxxxx";

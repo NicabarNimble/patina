@@ -81,6 +81,11 @@ impl ChildConnection {
 ///
 /// The child's stdin/stdout are connected for JSON-RPC. stderr is inherited
 /// for child logging.
+///
+/// Note: This harness does NOT apply OS sandbox (sandbox_init/Landlock).
+/// The spawn→sandbox→exec path is [[spec-mother-broker]] scope — Mother
+/// applies the sandbox after fork, before exec. The sandbox primitives
+/// are tested independently via fork-based tests in sandbox.rs.
 pub fn spawn_child(binary_path: &str) -> Result<ChildConnection, Box<dyn std::error::Error>> {
     let mut process = Command::new(binary_path)
         .stdin(Stdio::piped())

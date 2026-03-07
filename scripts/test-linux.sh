@@ -24,6 +24,7 @@ fi
 IMAGE="rust:${RUST_VERSION}"
 CONTAINER_NAME="patina-linux-test"
 CACHE_VOLUME="patina-cargo-cache"
+TARGET_VOLUME="patina-target-cache"
 
 echo "🐧 Running Linux tests locally via Docker"
 echo "   Rust: ${RUST_VERSION}"
@@ -47,7 +48,9 @@ echo "   Docker VM kernel: ${KERNEL_VERSION}"
 echo ""
 
 # Build cargo test args
-CARGO_ARGS="test --workspace"
+# Default: patina-pipe only. Full --workspace needs DuckDB, ONNX, wasmtime
+# which aren't installed in the container. Pass explicit args to override.
+CARGO_ARGS="test -p patina-pipe"
 if [ $# -gt 0 ]; then
     CARGO_ARGS="test $*"
 fi
@@ -61,6 +64,7 @@ docker run --rm \
     --name "${CONTAINER_NAME}" \
     -v "${PROJECT_ROOT}:/src" \
     -v "${CACHE_VOLUME}:/usr/local/cargo/registry" \
+    -v "${TARGET_VOLUME}:/tmp/target" \
     -w /src \
     -e CARGO_TARGET_DIR=/tmp/target \
     "${IMAGE}" \
