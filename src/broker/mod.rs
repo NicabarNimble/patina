@@ -5,4 +5,5 @@
 //! shutdown) for native children via the pipe protocol.
 
 pub mod connection;
+pub mod lifecycle;
 pub mod sources;

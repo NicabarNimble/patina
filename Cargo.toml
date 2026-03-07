@@ -103,6 +103,10 @@ wasmtime = { version = "=41", default-features = false, features = [
 # even for pure-computation code. p2 feature = WASIp2 component model.
 wasmtime-wasi = { version = "=41", default-features = false, features = ["p2"] }
 
+# Pipe protocol — native child communication (broker uses harness + types)
+patina-pipe = { path = "crates/patina-pipe" }
+patina-pipe-types = { path = "crates/patina-pipe-types" }
+
 # Secrets v2 - age encryption and macOS Keychain
 age = { version = "0.11", features = ["armor"] }
 sha2 = "0.10"  # ONNX model integrity verification (already in tree via age)
