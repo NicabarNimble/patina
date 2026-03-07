@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: mother-broker
-status: draft
+status: ready
 created: 2026-03-06
 blocked_by:
 - pipe-protocol-types
@@ -15,41 +15,41 @@ beliefs:
 - mother-holds-connections-pipes-transform
 exit_criteria:
 - id: mother-spawns-children
-  text: 'Mother spawns children (WASM and native) based on sources.toml config — uniform lifecycle management for both runtimes'
+  text: Mother spawns children (WASM and native) based on sources.toml config — uniform lifecycle management for both runtimes
+  checked: false
   verify: '`patina mother run test` spawns test-child (native). `patina scrape forge` triggers forge (WASM). Both complete successfully. Verify via process list or Mother logs.'
-  checked: false
 - id: mother-routes-facts
-  text: 'Mother routes facts from children to destination events.db — sources.toml declarations determine where facts go (fan-out is config, not child logic)'
+  text: Mother routes facts from children to destination events.db — sources.toml declarations determine where facts go (fan-out is config, not child logic)
+  checked: false
   verify: 'After `patina mother run github`: `SELECT count(*) FROM eventlog WHERE source_id = ''child:github-connector''` returns > 0 in project events.db specified by sources.toml.'
-  checked: false
 - id: mother-validates-schemas
-  text: 'Mother validates emitted facts against declared schemas in child manifest — undeclared schemas are dropped with a warning'
-  verify: 'Modify test-child to emit a fact with schema "bogus". Confirm: fact logged as dropped (warning in Mother output), not in events.db. Valid facts from same run ARE present.'
+  text: Mother validates emitted facts against declared schemas in child manifest — undeclared schemas are dropped with a warning
   checked: false
+  verify: 'Modify test-child to emit a fact with schema "bogus". Confirm: fact logged as dropped (warning in Mother output), not in events.db. Valid facts from same run ARE present.'
 - id: mother-run-test-child
   text: '`patina mother run test` spawns test-child (from pipe-native-transport examples/), routes facts to events.db — proves broker works before production connector'
-  verify: '`patina mother run test` outputs fact count > 0. `SELECT event_type, count(*) FROM eventlog WHERE source_id = ''child:test-child'' GROUP BY event_type` returns rows.'
   checked: false
+  verify: '`patina mother run test` outputs fact count > 0. `SELECT event_type, count(*) FROM eventlog WHERE source_id = ''child:test-child'' GROUP BY event_type` returns rows.'
 - id: mother-run-github
   text: '`patina mother run github` spawns github-connector, routes github.* facts to project events.db with content-hash dedup — tests routing, not child correctness (see [[spec-github-connector]] EC mother-run-works for child protocol verification). Verified after [[spec-github-connector]] is complete.'
-  verify: 'Run `patina mother run github`. Output shows fact count, dedup count, cursor value. `SELECT event_type, count(*) FROM eventlog WHERE event_type LIKE ''github.%'' GROUP BY event_type` returns rows. Run again immediately — dedup count should equal fact count (all duplicates).'
   checked: false
+  verify: Run `patina mother run github`. Output shows fact count, dedup count, cursor value. `SELECT event_type, count(*) FROM eventlog WHERE event_type LIKE 'github.%' GROUP BY event_type` returns rows. Run again immediately — dedup count should equal fact count (all duplicates).
 - id: credentials-via-pipe
-  text: 'Children receive credentials via pipe/initialize config delivery (Mother reads connection config, decrypts from vault, passes via stdin) — not via environment variables or files'
+  text: Children receive credentials via pipe/initialize config delivery (Mother reads connection config, decrypts from vault, passes via stdin) — not via environment variables or files
+  checked: false
   verify: '`PATINA_SANDBOX_DEBUG=1 patina mother run github` — inspect logged pipe/initialize params showing auth.token present. Confirm: no GITHUB_TOKEN env var set, no temp credential files created.'
-  checked: false
 - id: sandbox-enforcement
-  text: 'Mother refuses to spawn a native child when the OS cannot enforce sandboxing (Landlock v4 unavailable on Linux, sandbox_init() failure on macOS) unless --no-sandbox is explicitly passed. Sandbox enforcement is a broker responsibility — children do not self-sandbox.'
+  text: Mother refuses to spawn a native child when the OS cannot enforce sandboxing (Landlock v4 unavailable on Linux, sandbox_init() failure on macOS) unless --no-sandbox is explicitly passed. Sandbox enforcement is a broker responsibility — children do not self-sandbox.
+  checked: false
   verify: 'On Linux <6.7: `patina mother run test` fails with explicit Landlock error. `patina mother run test --no-sandbox` succeeds with warning. On macOS: invalid sandbox profile causes spawn refusal with Apple error message.'
-  checked: false
 - id: wasm-routing-resolved
-  text: 'WASM fact routing unified through broker (forge facts go through broker validation + dedup like native children) OR explicitly decided that forge stays on legacy host_emit path with no new WASM children permitted to bypass broker — decision documented in DESIGN.md'
-  verify: 'If unified: forge facts in events.db have content_hash values, dedup works across WASM/native. If legacy: DESIGN.md §5 documents decision with rationale, code comment in host_emit marks path as frozen.'
+  text: WASM fact routing unified through broker (forge facts go through broker validation + dedup like native children) OR explicitly decided that forge stays on legacy host_emit path with no new WASM children permitted to bypass broker — decision documented in DESIGN.md
   checked: false
+  verify: 'If unified: forge facts in events.db have content_hash values, dedup works across WASM/native. If legacy: DESIGN.md §5 documents decision with rationale, code comment in host_emit marks path as frozen.'
 - id: mother-status-works
   text: '`patina mother status` shows running children and health — lifecycle state, last run, fact count, errors'
-  verify: 'After running github-connector and test-child: `patina mother status` shows both with name, lifecycle state, last run timestamp, fact count, and error count.'
   checked: false
+  verify: 'After running github-connector and test-child: `patina mother status` shows both with name, lifecycle state, last run timestamp, fact count, and error count.'
 ---
 # refactor: Mother Broker — Routing Engine + Child Lifecycle
 
