@@ -7,7 +7,7 @@
 //! - "report_repo"     → host tells child about a repo (name, path, last_indexed)
 //! - "check_freshness" → return staleness state for all known repos
 
-use patina_sdk::mother_child::host_log;
+use patina_sdk::mother_child::log;
 use patina_sdk::{register_plugin, ChildHealth, HealthStatus, MotherChildPlugin, Toy};
 
 /// Staleness threshold in seconds (24 hours).
@@ -32,8 +32,8 @@ impl MotherChildPlugin for ReposChild {
     }
 
     fn on_load(&mut self) -> Result<(), String> {
-        host_log::log(
-            host_log::LogLevel::Info,
+        log::log(
+            log::LogLevel::Info,
             "repos child loaded (Phase 1: host-fed state)",
         );
         Ok(())
@@ -84,8 +84,8 @@ impl MotherChildPlugin for ReposChild {
         for repo in &self.repos {
             let age = now.saturating_sub(repo.last_indexed);
             if age > STALE_THRESHOLD_SECS {
-                host_log::log(
-                    host_log::LogLevel::Info,
+                log::log(
+                    log::LogLevel::Info,
                     &format!(
                         "repo '{}' stale ({}s since last index), requesting toys",
                         repo.name, age

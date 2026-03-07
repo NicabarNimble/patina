@@ -172,7 +172,11 @@ mod tests {
         let hash = content_hash(&data);
         assert!(hash.starts_with("blake3:"));
         // Pin the expected hash for cross-runtime verification
-        assert_eq!(hash, content_hash(&data), "same input must produce same hash");
+        assert_eq!(
+            hash,
+            content_hash(&data),
+            "same input must produce same hash"
+        );
     }
 
     #[test]
@@ -209,7 +213,11 @@ mod tests {
         // Pin: blake3 of the canonical bytes above
         assert_eq!(
             hash,
-            format!("blake3:{}", blake3::hash(br#"{"number":42,"state":"open","title":"Auth flow broken"}"#).to_hex())
+            format!(
+                "blake3:{}",
+                blake3::hash(br#"{"number":42,"state":"open","title":"Auth flow broken"}"#)
+                    .to_hex()
+            )
         );
     }
 

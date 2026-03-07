@@ -1,14 +1,14 @@
 //! Forge connector plugin — GitHub issues and PRs via REST API.
 //!
 //! Replaces src/forge/ (gh CLI wrapper) with direct GitHub REST API
-//! calls through host_http. Emits forge.issue and forge.pr facts
-//! via host_emit with provenance=external.
+//! calls through fetch. Emits forge.issue and forge.pr facts
+//! via emit with provenance=external.
 //!
 //! Actions:
 //! - "sync"    → full/incremental sync of issues and PRs
 //! - "resolve" → resolve a single #N reference (issue or PR)
 
-use patina_sdk::mother_child::host_log;
+use patina_sdk::mother_child::log;
 use patina_sdk::{register_plugin, ChildHealth, HealthStatus, MotherChildPlugin, Toy};
 
 mod github;
@@ -36,8 +36,8 @@ impl MotherChildPlugin for ForgeChild {
     }
 
     fn on_load(&mut self) -> Result<(), String> {
-        host_log::log(
-            host_log::LogLevel::Info,
+        log::log(
+            log::LogLevel::Info,
             "forge connector loaded (GitHub REST API)",
         );
         Ok(())
@@ -92,15 +92,15 @@ impl ForgeChild {
         let client = GitHubClient::new(owner, repo);
 
         // Fetch and emit issues
-        host_log::log(
-            host_log::LogLevel::Info,
+        log::log(
+            log::LogLevel::Info,
             &format!("syncing issues for {}/{} (limit: {})", owner, repo, limit),
         );
         let issues_result = client.fetch_and_emit_issues(limit, since)?;
 
         // Fetch and emit PRs
-        host_log::log(
-            host_log::LogLevel::Info,
+        log::log(
+            log::LogLevel::Info,
             &format!("syncing PRs for {}/{} (limit: {})", owner, repo, limit),
         );
         let prs_result = client.fetch_and_emit_prs(limit, since)?;
@@ -117,8 +117,8 @@ impl ForgeChild {
             "prs_emitted": prs_result.emitted,
         });
 
-        host_log::log(
-            host_log::LogLevel::Info,
+        log::log(
+            log::LogLevel::Info,
             &format!(
                 "sync complete: {} issues ({} emitted), {} PRs ({} emitted)",
                 issues_result.fetched,
@@ -159,8 +159,8 @@ impl ForgeChild {
                 return serde_json::to_string(&response).map_err(|e| format!("json error: {}", e));
             }
             Err(e) => {
-                host_log::log(
-                    host_log::LogLevel::Debug,
+                log::log(
+                    log::LogLevel::Debug,
                     &format!("#{} not a PR ({}), trying issue", number, e),
                 );
             }

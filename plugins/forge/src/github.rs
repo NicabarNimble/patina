@@ -1,10 +1,10 @@
-//! GitHub REST API client using host_http.
+//! GitHub REST API client using fetch.
 //!
 //! Replaces the gh CLI wrapper in src/forge/github/internal.rs.
-//! All HTTP calls go through host_http which enforces domain allowlist
+//! All HTTP calls go through fetch which enforces domain allowlist
 //! and injects credentials (Bearer token from vault).
 
-use patina_sdk::mother_child::{host_emit, host_http, host_log};
+use patina_sdk::mother_child::{emit, fetch, log};
 use serde::Deserialize;
 
 use crate::{rate_limit_sleep, PER_PAGE};
@@ -103,7 +103,7 @@ impl<'a> GitHubClient<'a> {
 
     /// GET with error checking. Returns response body on success.
     fn get(&self, url: &str) -> Result<String, String> {
-        let response = host_http::get(url)?;
+        let response = fetch::get(url)?;
         if response.status == 200 {
             Ok(response.body)
         } else if response.status == 404 {
@@ -165,11 +165,11 @@ impl<'a> GitHubClient<'a> {
                 }
 
                 let event_data = issue_to_event_json(&item);
-                match host_emit::emit_fact("forge", "issue", &event_data) {
+                match emit::emit_fact("forge", "issue", &event_data) {
                     Ok(_seq) => emitted += 1,
                     Err(e) => {
-                        host_log::log(
-                            host_log::LogLevel::Warn,
+                        log::log(
+                            log::LogLevel::Warn,
                             &format!("emit issue #{} failed: {}", item.number, e),
                         );
                     }
@@ -202,7 +202,7 @@ impl<'a> GitHubClient<'a> {
         }
 
         let event_data = issue_to_event_json(&item);
-        host_emit::emit_fact("forge", "issue", &event_data)?;
+        emit::emit_fact("forge", "issue", &event_data)?;
         Ok(())
     }
 
@@ -263,11 +263,11 @@ impl<'a> GitHubClient<'a> {
                 let reviews = self.fetch_pr_reviews(item.number).unwrap_or_default();
 
                 let event_data = pr_to_event_json(&item, &comments, &reviews);
-                match host_emit::emit_fact("forge", "pull-request", &event_data) {
+                match emit::emit_fact("forge", "pull-request", &event_data) {
                     Ok(_seq) => emitted += 1,
                     Err(e) => {
-                        host_log::log(
-                            host_log::LogLevel::Warn,
+                        log::log(
+                            log::LogLevel::Warn,
                             &format!("emit PR #{} failed: {}", item.number, e),
                         );
                     }
@@ -299,7 +299,7 @@ impl<'a> GitHubClient<'a> {
         let reviews = self.fetch_pr_reviews(number).unwrap_or_default();
 
         let event_data = pr_to_event_json(&item, &comments, &reviews);
-        host_emit::emit_fact("forge", "pull-request", &event_data)?;
+        emit::emit_fact("forge", "pull-request", &event_data)?;
         Ok(())
     }
 
