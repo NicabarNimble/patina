@@ -122,13 +122,16 @@ pub fn apply_sandbox(profile: &str) -> Result<(), String> {
 /// on success, or an error describing why Landlock is unavailable.
 #[cfg(target_os = "linux")]
 pub fn check_landlock_support() -> Result<u32, String> {
-    use landlock::ABI;
+    use landlock::{Access, AccessNet, Compatible, Ruleset, RulesetAttr, ABI};
 
-    // Check best available ABI
     let abi = ABI::V4;
-    let supported = landlock::RulesetCreated::new()
-        .set_compatibility(landlock::CompatLevel::BestEffort)
-        .handle_access(landlock::AccessFs::Execute)
+
+    // Probe: try to create a ruleset with network access handling.
+    // If the kernel doesn't support ABI v4, handle_access returns empty
+    // flags and create() will fail or return NotEnforced.
+    let supported = Ruleset::default()
+        .set_compatibility(landlock::CompatLevel::SoftRequirement)
+        .handle_access(AccessNet::from_all(abi))
         .is_ok();
 
     if !supported {
@@ -170,16 +173,10 @@ pub fn apply_landlock(_allowed_domains: &[String]) -> Result<(), String> {
         .create()
         .map_err(|e| format!("landlock create: {}", e))?
         // Allow outbound HTTPS (port 443)
-        .add_rule(landlock::NetPortRule::new(
-            AccessNet::ConnectTcp,
-            NetPort::new(443),
-        ))
+        .add_rule(NetPort::new(443, AccessNet::ConnectTcp))
         .map_err(|e| format!("landlock net rule: {}", e))?
         // Allow DNS (port 53)
-        .add_rule(landlock::NetPortRule::new(
-            AccessNet::ConnectTcp,
-            NetPort::new(53),
-        ))
+        .add_rule(NetPort::new(53, AccessNet::ConnectTcp))
         .map_err(|e| format!("landlock dns rule: {}", e))?
         .restrict_self()
         .map_err(|e| format!("landlock restrict_self: {}", e))?;
@@ -243,6 +240,7 @@ mod macos_tests {
 #[cfg(target_os = "linux")]
 mod linux_tests {
     use super::*;
+    use std::os::fd::FromRawFd;
 
     #[test]
     fn landlock_support_detected() {
@@ -264,75 +262,106 @@ mod linux_tests {
     }
 
     #[test]
-    fn landlock_enforcement_in_subprocess() {
+    fn landlock_enforcement_via_fork() {
         // Skip if kernel doesn't support Landlock
         if check_landlock_support().is_err() {
             eprintln!("[test] skipping: Landlock not supported on this kernel");
             return;
         }
 
-        // Landlock is irrevocable — must test in a subprocess.
-        // Fork a child that applies Landlock, then tries to connect to
-        // port 80 (blocked) and port 443 (allowed).
-        use std::os::unix::process::CommandExt;
+        // Landlock is irrevocable — test in a forked child process.
+        // After fork, child applies Landlock then tries network connections.
+        // Parent reads results from a pipe.
+        use std::io::Read;
 
-        // Test 1: port 80 should be BLOCKED after Landlock
-        let result = unsafe {
-            std::process::Command::new("python3")
-                .args([
-                    "-c",
-                    "import socket; s=socket.socket(); s.settimeout(3); s.connect(('1.1.1.1',80)); print('OPEN')",
-                ])
-                .pre_exec(|| {
-                    apply_landlock(&[]).map_err(|e| {
-                        std::io::Error::new(std::io::ErrorKind::Other, e)
-                    })
-                })
-                .output()
+        // Create a pipe for child → parent communication
+        let (read_fd, write_fd) = {
+            let mut fds = [0i32; 2];
+            assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+            (fds[0], fds[1])
         };
 
-        match result {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                eprintln!("[test] port 80 subprocess: stdout={}", stdout.trim());
-                assert!(
-                    !stdout.contains("OPEN"),
-                    "port 80 should be blocked by Landlock"
-                );
+        let pid = unsafe { libc::fork() };
+        assert!(pid >= 0, "fork failed");
+
+        if pid == 0 {
+            // Child process: apply Landlock, test connections, write results
+            unsafe { libc::close(read_fd) };
+
+            // Apply Landlock — restricts this process irrevocably
+            let landlock_result = apply_landlock(&[]);
+
+            let mut results = String::new();
+
+            match landlock_result {
+                Ok(()) => results.push_str("LANDLOCK_OK\n"),
+                Err(e) => {
+                    results.push_str(&format!("LANDLOCK_FAIL:{}\n", e));
+                    // Write result and exit — can't test without Landlock
+                    unsafe {
+                        libc::write(
+                            write_fd,
+                            results.as_ptr() as *const libc::c_void,
+                            results.len(),
+                        );
+                        libc::close(write_fd);
+                        libc::_exit(1);
+                    }
+                }
             }
-            Err(e) => {
-                // Spawn/connect error = Landlock enforcement working
-                eprintln!("[test] port 80 blocked (error: {})", e);
+
+            // Test port 80 (should be BLOCKED)
+            match std::net::TcpStream::connect_timeout(
+                &"1.1.1.1:80".parse().unwrap(),
+                std::time::Duration::from_secs(3),
+            ) {
+                Ok(_) => results.push_str("PORT_80:OPEN\n"),
+                Err(_) => results.push_str("PORT_80:BLOCKED\n"),
+            }
+
+            // Test port 443 (should be ALLOWED)
+            match std::net::TcpStream::connect_timeout(
+                &"1.1.1.1:443".parse().unwrap(),
+                std::time::Duration::from_secs(5),
+            ) {
+                Ok(_) => results.push_str("PORT_443:OPEN\n"),
+                Err(_) => results.push_str("PORT_443:BLOCKED\n"),
+            }
+
+            unsafe {
+                libc::write(
+                    write_fd,
+                    results.as_ptr() as *const libc::c_void,
+                    results.len(),
+                );
+                libc::close(write_fd);
+                libc::_exit(0);
             }
         }
 
-        // Test 2: port 443 should be ALLOWED after Landlock
-        let result = unsafe {
-            std::process::Command::new("python3")
-                .args([
-                    "-c",
-                    "import socket; s=socket.socket(); s.settimeout(5); s.connect(('1.1.1.1',443)); print('OPEN')",
-                ])
-                .pre_exec(|| {
-                    apply_landlock(&[]).map_err(|e| {
-                        std::io::Error::new(std::io::ErrorKind::Other, e)
-                    })
-                })
-                .output()
-        };
+        // Parent: read results from child
+        unsafe { libc::close(write_fd) };
+        let mut read_file = unsafe { std::fs::File::from_raw_fd(read_fd) };
+        let mut results = String::new();
+        read_file.read_to_string(&mut results).unwrap();
 
-        match result {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                eprintln!("[test] port 443 subprocess: stdout={}", stdout.trim());
-                assert!(
-                    stdout.contains("OPEN"),
-                    "port 443 should be allowed by Landlock"
-                );
-            }
-            Err(e) => {
-                panic!("port 443 should be allowed by Landlock, but got: {}", e);
-            }
-        }
+        // Wait for child
+        let mut status = 0i32;
+        unsafe { libc::waitpid(pid, &mut status, 0) };
+
+        eprintln!("[test] landlock fork results:\n{}", results);
+
+        assert!(
+            results.contains("LANDLOCK_OK"),
+            "Landlock should apply successfully"
+        );
+        assert!(
+            results.contains("PORT_80:BLOCKED"),
+            "port 80 should be blocked by Landlock"
+        );
+        assert!(
+            results.contains("PORT_443:OPEN"),
+            "port 443 should be allowed by Landlock"
+        );
     }
 }

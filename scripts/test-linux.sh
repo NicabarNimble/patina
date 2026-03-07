@@ -67,9 +67,9 @@ docker run --rm \
     sh -c "
         echo '📦 Running: cargo ${CARGO_ARGS}'
         echo ''
-        cargo ${CARGO_ARGS}
-        echo ''
         echo '🐧 Linux kernel:' \$(uname -r)
+        echo ''
+        cargo ${CARGO_ARGS}
     "
 
 STATUS=$?
