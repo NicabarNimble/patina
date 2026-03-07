@@ -71,6 +71,16 @@ impl Child for TestChild {
             }),
         )?;
 
+        // Emit a fact with undeclared schema "bogus" — broker should drop this
+        io.emit(
+            "bogus",
+            "item",
+            &serde_json::json!({
+                "id": 1,
+                "title": "This should be dropped by the broker"
+            }),
+        )?;
+
         Ok(FetchResult {
             emitted: io.count(),
             cursor: Some("2026-03-07T00:00:00Z".to_string()),
