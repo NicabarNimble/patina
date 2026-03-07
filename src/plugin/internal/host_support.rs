@@ -493,6 +493,13 @@ pub(super) fn validate_emit(
 ///
 /// data-architecture-v3 will add explicit provenance/schema columns; until then
 /// source_id and event_type carry the signal.
+///
+/// FROZEN LEGACY PATH — WASM facts bypass the broker routing engine.
+/// Native children route through broker::routing::validate_fact() which provides
+/// content-hash dedup, manifest schema validation, and transactional cursor writes.
+/// This direct-write path exists only for the forge WASM plugin. No new WASM children
+/// may use this path — all new children must be native and route through the broker.
+/// See DESIGN.md §5 (wasm-routing-resolved).
 pub(super) fn emit_fact(
     schema_facts: &std::collections::HashMap<String, std::collections::HashMap<String, String>>,
     plugin_name: &str,
