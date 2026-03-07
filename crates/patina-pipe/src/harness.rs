@@ -83,10 +83,7 @@ impl ChildConnection {
                     }
                     _ => {
                         // Unknown notification from child — ignore
-                        eprintln!(
-                            "[harness] unknown child notification: {}",
-                            method_name
-                        );
+                        eprintln!("[harness] unknown child notification: {}", method_name);
                     }
                 }
                 continue;
@@ -350,10 +347,7 @@ mod tests {
             // Allowlist check — only api.allowed.com is permitted
             let allowed = ["api.allowed.com"];
             if !allowed.contains(&domain) {
-                return Err(format!(
-                    "domain '{}' not in allowlist",
-                    domain
-                ));
+                return Err(format!("domain '{}' not in allowlist", domain));
             }
 
             // Return a mock response for allowed domains

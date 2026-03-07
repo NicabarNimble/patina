@@ -123,10 +123,9 @@ impl<'a, W: Write, R: BufRead> PipeIo<'a, W, R> {
             })?,
         });
 
-        let line =
-            serde_json::to_string(&rpc_request).map_err(|e| PipeError::Fatal {
-                message: format!("serialize JSON-RPC: {}", e),
-            })?;
+        let line = serde_json::to_string(&rpc_request).map_err(|e| PipeError::Fatal {
+            message: format!("serialize JSON-RPC: {}", e),
+        })?;
 
         writeln!(self.writer, "{}", line).map_err(|e| PipeError::Fatal {
             message: format!("write pipe/http request: {}", e),
@@ -243,7 +242,8 @@ mod tests {
         let mut reader = Cursor::new(Vec::<u8>::new());
         {
             let mut io = PipeIo::new(&mut writer, &mut reader);
-            io.emit("gh", "issue", &serde_json::json!({"n": 1})).unwrap();
+            io.emit("gh", "issue", &serde_json::json!({"n": 1}))
+                .unwrap();
             io.emit("gh", "pr", &serde_json::json!({"n": 2})).unwrap();
             assert_eq!(io.count(), 2);
         }
@@ -305,10 +305,7 @@ mod tests {
 
         {
             let mut io = PipeIo::new(&mut writer, &mut reader);
-            let err = io
-                .get("https://evil.com/steal")
-                .send()
-                .unwrap_err();
+            let err = io.get("https://evil.com/steal").send().unwrap_err();
 
             assert!(err.to_string().contains("evil.com"));
         }

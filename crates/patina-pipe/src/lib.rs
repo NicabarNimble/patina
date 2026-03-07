@@ -111,9 +111,9 @@ pub fn run<C: Child>(mut child: C) -> Result<(), Box<dyn std::error::Error>> {
 
     loop {
         line.clear();
-        let bytes_read = reader.read_line(&mut line).map_err(|e| {
-            format!("stdin read error: {}", e)
-        })?;
+        let bytes_read = reader
+            .read_line(&mut line)
+            .map_err(|e| format!("stdin read error: {}", e))?;
         if bytes_read == 0 {
             break;
         }
