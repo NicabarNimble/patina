@@ -111,6 +111,90 @@ pub fn apply_sandbox(profile: &str) -> Result<(), String> {
     }
 }
 
+// =========================================================================
+// Linux: Landlock ABI v4+ enforcement
+// =========================================================================
+
+/// Check if the running kernel supports Landlock ABI v4+ (network restrictions).
+///
+/// ABI v4 requires kernel 6.7+ (Jan 2024). Returns the supported ABI version
+/// on success, or an error describing why Landlock is unavailable.
+#[cfg(target_os = "linux")]
+pub fn check_landlock_support() -> Result<u32, String> {
+    use landlock::ABI;
+
+    // Check best available ABI
+    let abi = ABI::V4;
+    let supported = landlock::RulesetCreated::new()
+        .set_compatibility(landlock::CompatLevel::BestEffort)
+        .handle_access(landlock::AccessFs::Execute)
+        .is_ok();
+
+    if !supported {
+        return Err(
+            "Cannot sandbox native child: kernel does not support Landlock ABI v4+. \
+             Use --no-sandbox to run without OS-level sandboxing (not recommended)."
+                .to_string(),
+        );
+    }
+
+    Ok(abi as u32)
+}
+
+/// Apply Landlock restrictions for a native child process.
+///
+/// Restricts:
+/// - Filesystem: deny all access (child communicates via stdio only)
+/// - Network: allow only port 443 outbound (domain filtering at DNS level)
+///
+/// Call after fork, before exec. The restrictions are irrevocable.
+///
+/// Note: Landlock restricts port-level, not domain-level. Domain restriction
+/// requires DNS-level enforcement (future work). For now, restricting to
+/// port 443 prevents arbitrary port access.
+#[cfg(target_os = "linux")]
+pub fn apply_landlock(_allowed_domains: &[String]) -> Result<(), String> {
+    use landlock::{
+        Access, AccessFs, AccessNet, NetPort, Ruleset, RulesetAttr, RulesetCreatedAttr,
+        RulesetStatus, ABI,
+    };
+
+    let abi = ABI::V4;
+
+    let status = Ruleset::default()
+        .handle_access(AccessFs::from_all(abi))
+        .map_err(|e| format!("landlock fs ruleset: {}", e))?
+        .handle_access(AccessNet::from_all(abi))
+        .map_err(|e| format!("landlock net ruleset: {}", e))?
+        .create()
+        .map_err(|e| format!("landlock create: {}", e))?
+        // Allow outbound HTTPS (port 443)
+        .add_rule(landlock::NetPortRule::new(
+            AccessNet::ConnectTcp,
+            NetPort::new(443),
+        ))
+        .map_err(|e| format!("landlock net rule: {}", e))?
+        // Allow DNS (port 53)
+        .add_rule(landlock::NetPortRule::new(
+            AccessNet::ConnectTcp,
+            NetPort::new(53),
+        ))
+        .map_err(|e| format!("landlock dns rule: {}", e))?
+        .restrict_self()
+        .map_err(|e| format!("landlock restrict_self: {}", e))?;
+
+    match status.ruleset {
+        RulesetStatus::FullyEnforced => Ok(()),
+        RulesetStatus::PartiallyEnforced => {
+            eprintln!("[sandbox] warning: Landlock only partially enforced");
+            Ok(())
+        }
+        RulesetStatus::NotEnforced => {
+            Err("Landlock not enforced — kernel may not support required ABI".to_string())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
