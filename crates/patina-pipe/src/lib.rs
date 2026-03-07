@@ -199,18 +199,20 @@ pub fn run<C: Child>(mut child: C) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
 
-                let mut emitter = FactEmitter::new(&mut stdout);
-                match child.fetch(&params, &mut emitter) {
+                // Scope emitter so &mut stdout borrow ends before writing response
+                let fetch_result = {
+                    let mut emitter = FactEmitter::new(&mut stdout);
+                    child.fetch(&params, &mut emitter)
+                };
+
+                match fetch_result {
                     Ok(result) => {
                         let result_val = serde_json::to_value(&result).unwrap_or_default();
-                        // Reclaim stdout from emitter (emitter dropped here)
-                        drop(emitter);
                         let resp = Response::success(request.id.clone(), result_val);
                         writeln!(stdout, "{}", serde_json::to_string(&resp)?)?;
                         stdout.flush()?;
                     }
                     Err(e) => {
-                        drop(emitter);
                         let resp = pipe_error_to_response(request.id.clone(), &e);
                         writeln!(stdout, "{}", serde_json::to_string(&resp)?)?;
                         stdout.flush()?;
