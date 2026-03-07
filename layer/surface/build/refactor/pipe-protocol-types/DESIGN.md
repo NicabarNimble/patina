@@ -243,6 +243,11 @@ patina-pipe-types (zero deps beyond serde/blake3)
 5. `forge: update imports to use renamed SDK modules` — Import changes
    only. Verify `cargo build --release` passes for entire workspace.
 
+**Commits 4 and 5 are atomic.** Commit 4 renames SDK modules; commit 5
+updates forge to use the new names. If 4 ships without 5, forge won't
+compile. Both must land in the same build verification cycle. Run
+`cargo build --release` after commit 5 to verify the entire workspace.
+
 ## Key Files
 
 - `crates/patina-pipe-types/src/fact.rs` — Fact struct, FetchResult

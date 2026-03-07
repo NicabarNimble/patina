@@ -229,6 +229,24 @@ patina mother run <name>    # run a source (fetch, validate, route)
 patina mother sources       # show configured sources with status
 ```
 
+### Sandbox Failure Surfacing
+
+When a sandboxed child tries to contact an undeclared domain, the OS
+sandbox blocks the connection with EPERM. The child sees a connection
+error and returns `PipeError::Transient` or `PipeError::Fatal`. Mother
+surfaces this in two places:
+
+- **`patina mother run <name>` output:** The error message from the
+  child includes the connection failure. Mother logs it with context:
+  `[broker] github: Fatal — connection refused to api.slack.com
+  (check child.toml [domains].allowed)`
+
+- **`patina mother sources` output:** Shows last run status per source.
+  A sandbox-blocked child shows as `last_run: error (Fatal)` with the
+  error message. The `--sandbox-debug` flag or `PATINA_SANDBOX_DEBUG=1`
+  env var re-runs without sandbox to confirm whether the sandbox is
+  the cause.
+
 ## On-Scrape Scheduling
 
 After `patina scrape` completes local work, trigger on-scrape sources.

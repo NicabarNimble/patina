@@ -507,6 +507,37 @@ Mother validates every fact before writing to events.db:
 Invalid facts are logged and dropped. Mother never writes unvalidated
 data.
 
+### 4.5 Schema Resolution
+
+Schema ownership spans three specs. This is the unified flow:
+
+1. **Child manifest declares intent.** `child.toml [schemas.github]`
+   says "I emit `github.*` facts." The manifest lives with the child
+   binary (in `children/github-connector/child.toml`). Mother reads
+   it at spawn time to know what schemas to expect.
+
+2. **Schema file defines structure.** `.patina/schemas/github/schema.toml`
+   defines fact types (`github.issue`, `github.pr`), event_type
+   mappings, FTS5 indexes, and embedding config. The schema file
+   lives in the destination project (or globally in `~/.patina/schemas/`).
+
+3. **Broker validates against structure.** Mother loads schema
+   definitions from the destination project, cross-references with the
+   child manifest's declarations, and validates each fact's `schema` +
+   `fact_type` against the loaded definitions.
+
+**Installation:** In initial scope, schema files are installed manually
+(copy `schema.toml` to `.patina/schemas/<name>/`). The connector ships
+its schema definition alongside its binary. Future: Mother auto-installs
+schemas from child manifests on first run.
+
+**Single source of truth:** The schema.toml file IS the source of truth
+for fact structure. The manifest declaration is a reference (package
+name + version) that tells Mother which schema.toml to load. If the
+schema.toml is missing from the destination project, validation fails
+with a clear error: "schema 'github' not installed. Copy from
+children/github-connector/schema.toml."
+
 ## 5. Persona Enforcement (Future — Depends on persona-federation)
 
 **Audit fix: hand-waved persona enforcement.**

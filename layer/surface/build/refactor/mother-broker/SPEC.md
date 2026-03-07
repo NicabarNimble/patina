@@ -5,7 +5,7 @@ status: draft
 created: 2026-03-06
 blocked_by:
 - pipe-protocol-types
-- github-connector
+- pipe-native-transport
 sessions:
   origin: 20260306-171859
 related:
@@ -23,8 +23,11 @@ exit_criteria:
 - id: mother-validates-schemas
   text: Mother validates emitted facts against declared schemas in child manifest — undeclared schemas are dropped with a warning
   checked: false
-- id: mother-run-works
-  text: '`patina mother run github` spawns github-connector, routes facts to project events.db — manual trigger for testing and backfill'
+- id: mother-run-test-child
+  text: '`patina mother run test` spawns test-child (from pipe-native-transport examples/), routes facts to events.db — proves broker works before production connector'
+  checked: false
+- id: mother-run-github
+  text: '`patina mother run github` spawns github-connector, routes facts to project events.db — requires github-connector to be built first'
   checked: false
 - id: mother-status-works
   text: '`patina mother status` shows running children and health — lifecycle state, last run, fact count, errors'
