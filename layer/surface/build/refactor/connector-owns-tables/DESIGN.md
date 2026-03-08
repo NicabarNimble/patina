@@ -517,10 +517,12 @@ domain knowledge in core.
 
 ### Solution: Contract Metadata
 
-When children contribute FTS5 rows via `contribute-search`, they
-choose their own event_type labels. The github-connector might use
-`github.issue` and `github.pr`. A slack-connector might use
-`slack.message`.
+When the generic FTS5 engine writes rows from `[[indexes]]`
+declarations, it uses the event_type from the corresponding
+`[[facts]]` entry as the FTS5 label. The github schema uses
+`github.issue` and `github.pr`. A slack schema would use
+`slack.message`. Core never chooses these labels — they come from
+schema declarations.
 
 For enrichment (scry vector search), the key ID range check
 (`key >= FORGE_ID_OFFSET`) already works generically — it looks up
@@ -529,7 +531,7 @@ The only domain-specific part is the `kind` classification ("PR" vs
 "Issue"). This moves to contract metadata:
 
 ```toml
-# In child manifest or schema
+# In schema.toml
 [[contracts]]
 name = "issues"
 event_type = "github.issue"
@@ -541,11 +543,12 @@ event_type = "github.pr"
 display_kind = "PR"
 ```
 
-Mother stores contract metadata in the capability registry. Enrichment
-queries the registry to determine display kind:
+Core stores contract metadata in the contract_registry (populated
+from `[[contracts]]` at scrape time). Enrichment queries the
+registry to determine display kind:
 
 ```sql
-SELECT display_kind FROM capability_registry WHERE event_type = ?
+SELECT display_kind FROM contract_registry WHERE event_type = ?
 ```
 
 If no match, fall back to the event_type string itself. Core never
@@ -554,18 +557,18 @@ hardcodes "Issue" or "PR".
 ### Search Filter
 
 The `include_issues` flag in assay search currently maps to
-`LIKE '%.issue' OR LIKE '%.pr'`. With contract-driven search, this
+`LIKE '%.issue' OR LIKE '%.pr'`. With schema-driven search, this
 becomes:
 
 ```sql
--- All FTS5 rows contributed by children (vs code.* from local scrape)
+-- All FTS5 rows from schema-driven indexing (vs code.* from local scrape)
 event_type NOT LIKE 'code.%'
 ```
 
 Or, if the user wants a specific contract:
 
 ```sql
-event_type IN (SELECT event_type FROM capability_registry WHERE contract = 'issues')
+event_type IN (SELECT event_type FROM contract_registry WHERE contract = 'issues')
 ```
 
 Either way, core doesn't know what "issues" looks like — it queries

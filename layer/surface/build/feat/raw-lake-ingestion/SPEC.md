@@ -400,8 +400,11 @@ Five questions that must all be "yes":
    lakehouse child. Connector unchanged.
 3. Can Mothers sync beliefs without exposing raw lakes/blocks?
    **Yes** — beliefs are the sync layer. Lakes are node-local.
-4. Does persona isolation exist before network sharing? **Yes** —
-   persona column on lake_registry from day one.
+4. Is persona-aware keying in place before network sharing? **Yes** —
+   persona is part of the primary key in lake_registry and lake_sync
+   from day one. This is forward-compatible keying, not enforcement —
+   real isolation (keypair validation, cross-persona denial) ships
+   with persona-federation.
 5. Is Mother governing rather than executing data-plane concerns?
    **Yes** — Mother routes to lakehouse child. Mother never touches
    Parquet, file layout, or storage mechanics.
