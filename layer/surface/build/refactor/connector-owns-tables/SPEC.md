@@ -63,16 +63,19 @@ Connector children know how to:
 
 `schema-driven-projection` removed hardcoded event type strings from the pipeline. But core still owns connector-specific domain logic:
 
-| What core knows today | Should own it |
+| What core knows today | Moves to |
 |---|---|
-| `CREATE TABLE forge_issues (number, title, body, state, ...)` | Child |
-| `json_extract(e.data, '$.number')` → `number` column mapping | Child |
-| `event_type LIKE '%.issue'` convention for search | Child (via search contract) |
-| `ends_with(".pr")` for enrichment display | Child (via contract metadata) |
-| `forge.issue` / `forge.pr` FTS5 labels | Child (via search contribution) |
-| Dedup by `json_extract(e2.data, '$.number')` | Child |
+| `CREATE TABLE forge_issues (number, title, body, state, ...)` | Schema declarations (`[[projections]]` in schema.toml) |
+| `json_extract(e.data, '$.number')` → `number` column mapping | Schema declarations (`json_path` in projections) |
+| `event_type LIKE '%.issue'` convention for search | Schema declarations (`[[contracts]]` in schema.toml) |
+| `ends_with(".pr")` for enrichment display | Schema declarations (`display_kind` in contracts) |
+| `forge.issue` / `forge.pr` FTS5 labels | Schema declarations (`[[indexes]]` in schema.toml) |
+| Dedup by `json_extract(e2.data, '$.number')` | Schema declarations (`primary_key` in projections) |
 
-Every row above is a boundary violation. Core contains hidden domain knowledge about issues and PRs.
+Every row above is a boundary violation. Core contains hidden domain
+knowledge about issues and PRs. This domain knowledge moves to
+schema.toml declarations — NOT to child runtime code. Core executes
+generic projection from declarations. Connectors stay fetch-only.
 
 ## Target State
 
