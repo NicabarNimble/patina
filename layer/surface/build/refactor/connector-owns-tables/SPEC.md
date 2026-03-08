@@ -33,6 +33,18 @@ exit_criteria:
 - id: domain-change-no-core-edit
   text: "Changing a connector's domain model (adding fields, renaming tables, changing dedup keys) requires zero edits to core or Mother"
   checked: false
+- id: destination-aware-capabilities
+  text: "Capability invocation includes consumer scope (project, lake, block); children can materialize differently per destination; adding a consumer scope requires zero domain knowledge in core"
+  checked: false
+- id: lake-block-independent-write
+  text: "Lake and block consumers have independent write paths; facts are routed to declared destinations, not forced through project events.db"
+  checked: false
+- id: consumer-scope-no-core-knowledge
+  text: "Core routes capabilities to consumer scopes by declaration; core does not interpret what materialization means for any scope"
+  checked: false
+- id: same-child-multi-scope
+  text: "One real child (github-connector) materializes for at least 2 scopes (project + lake) with genuinely different output behavior, proving the scope parameter is functional, not decorative"
+  checked: false
 ---
 # refactor: Connector-Owns-Tables — Children Own Contracts and Materializations
 
@@ -76,24 +88,29 @@ Every row above is a boundary violation. Core contains hidden domain knowledge a
 
 ```
 Child (github-connector)
-  ├── fetch:       emit github.issue / github.pr events → events.db
-  ├── materialize: project events → github_issues / github_prs tables
-  ├── search:      contribute FTS5 rows from its read models
+  ├── fetch:       emit github.issue / github.pr events
+  ├── materialize: events → read models (destination-dependent)
+  │                  project: → github_issues / github_prs in patina.db
+  │                  lake:    → raw github data in lake storage
+  │                  block:   → shaped output in block storage
+  ├── search:      contribute FTS5 rows from materialized read models
   └── contract:    declares "issues" and "pull-requests" capabilities
 
 Child (slack-connector)
-  ├── fetch:       emit slack.message events → events.db
-  ├── materialize: project events → slack_messages table
+  ├── fetch:       emit slack.message events
+  ├── materialize: events → read models (destination-dependent)
+  │                  project: → slack_messages in patina.db
+  │                  lake:    → raw messages in lake storage
   ├── search:      contribute FTS5 rows from its read model
   └── contract:    declares "messages" capability
 
 Mother/Core
-  ├── routes events from children to events.db
-  ├── discovers child capabilities
-  ├── invokes "materialize" generically (for all children)
-  ├── invokes "contribute-search" generically (for all children)
+  ├── routes events from children to declared destinations
+  ├── discovers child capabilities + supported consumer scopes
+  ├── invokes "materialize" with destination context (scope + path)
+  ├── invokes "contribute-search" generically (project scope)
   ├── aggregates search results across contracts
-  └── knows zero domain semantics
+  └── knows zero domain semantics — routes by declaration, not content
 ```
 
 ### Event Log Stays
@@ -102,34 +119,54 @@ events.db remains the canonical write side. Children emit events through Mother.
 
 ### Capability Protocol
 
-Children declare capabilities in their manifest or schema:
+Children declare capabilities and supported consumer scopes in their manifest:
 
 ```toml
 [[capabilities]]
 name = "materialize"
 description = "Project events into read model tables"
+scopes = ["project", "lake"]  # which consumer scopes this child supports
 
 [[capabilities]]
 name = "contribute-search"
 description = "Provide searchable documents for FTS5 index"
+scopes = ["project"]  # search is project-scoped
 ```
 
-Mother invokes these generically:
+Mother invokes these with destination context:
 
-1. `materialize` — child receives its own events from events.db, creates/updates its tables in patina.db
-2. `contribute-search` — child provides (symbol_name, file_path, content, event_type) tuples for FTS5
+1. `materialize(scope, source_path, destination_path)` — child receives its own events from the source, materializes into the destination. The child decides what materialization means for each scope. Project scope writes SQL tables; lake scope might write normalized data; block scope might write shaped output.
+2. `contribute-search(destination_path)` — child provides searchable tuples for FTS5. Project-scoped (search index is per-project).
 
-Core never interprets the content. It passes the database connection and invokes the capability. The child does the domain work.
+Core provides paths and scope. Core never interprets what the child writes. The child does the domain work.
 
-### Consumer Model
+Not every child supports all scopes. Mother matches capability requests to what children declare. If no child supports the requested scope for a contract, Mother fails clearly.
 
-Consumers (scry, assay, user queries) ask for contracts, not connectors:
+### Consumer Classes
+
+All consumer scopes are first-class. The architecture does not privilege project-scoped projection over other consumer scopes.
+
+| Consumer | Write side | Purpose |
+|----------|-----------|---------|
+| **Project** | project events.db → project patina.db | Facts inside a project: read models, search index, embeddings |
+| **Lake** | lake storage (not project events.db) | Raw/normalized shared data, consumed by multiple projects |
+| **Block** | block storage (materialized product) | Shaped data for a purpose: weekly summary, metrics, curated dataset |
+| **Transform** | another contract or block | Input from another child/lake; transforms compose |
+
+**Key properties:**
+- Same source, different consumers, different write sides
+- A child may satisfy the same domain contract differently depending on destination
+- Not every child supports all consumer scopes
+- Mother matches capability requests to what children declare; fails clearly if no match
+- Contracts are consumer-facing; capabilities are destination-aware
+
+**Consumer queries** ask for contracts, not connectors:
 
 - "I want searchable documents" → Mother aggregates `contribute-search` from all children
 - "I want issues" → Mother finds children declaring the "issues" contract
 - "I want messages" → Mother finds children declaring the "messages" contract
 
-If no child supports the requested contract, Mother fails clearly.
+If no child supports the requested contract for the requested scope, Mother fails clearly.
 
 ## Steps
 
@@ -172,21 +209,33 @@ A slack child with completely different domain (messages, not issues). Declares 
 | `oxidize/mod.rs` forge corpus query | Replaced by `contribute-search` capability |
 | `schema_registry` table | Evolves into capability/contract registry |
 
-## Data Flow Modes
+## Data Flow by Consumer Scope
 
-Per [[data-architecture-v3]] and [[mother-maturation]], two modes coexist:
+Per [[pipe-architecture]] §Data Layers and [[mother-maturation]], facts flow through different consumer scopes. All use the same capability protocol. Mother routes by destination declaration, not by data content.
 
-**Direct:** source → project (current github-connector flow)
+**Project (direct):** source → project events.db → child.materialize(project) → project patina.db
 ```
-github-connector → events.db → child.materialize() → patina.db
-```
-
-**Lake:** source → lake → block → project (future, multi-consumer)
-```
-github-connector → events.db (lake) → block extraction → project.materialize()
+github-connector → project events.db → child.materialize("project", events_db, patina_db)
 ```
 
-Both modes use the same capability protocol. The child's `materialize` works regardless of whether events come from a direct fetch or a lake block.
+**Lake:** source → lake event store → child.materialize(lake) → lake storage
+```
+github-connector → lake events.db → child.materialize("lake", events_db, lake_path)
+```
+
+**Block:** lake/project → transform child → block storage
+```
+lake data → transform-child.materialize("block", lake_path, block_path)
+```
+
+**Transform:** child → child (composition)
+```
+child-A output → child-B.materialize("transform", source_path, dest_path)
+```
+
+The child's `materialize` works regardless of consumer scope. The child decides what materialization means for each scope. Core provides paths and scope, never content interpretation.
+
+**Alignment with [[pipe-architecture]]:** This matches the Data Layers flow (Sources → Lakes → Blocks → Projects → Beliefs) and Destination Declarations (pub/sub routing by type). connector-owns-tables is the materialization half of what pipe-architecture routes.
 
 ## Exit Criteria
 
@@ -195,3 +244,7 @@ Both modes use the same capability protocol. The child's `materialize` works reg
 - **core-has-no-connector-knowledge:** zero connector-specific table names, field mappings, or conventions in core
 - **non-forge-connector-works:** non-forge child materializes and searches with zero core changes
 - **domain-change-no-core-edit:** changing a connector's domain requires zero core/Mother edits
+- **destination-aware-capabilities:** capability invocation includes consumer scope; children materialize differently per destination; adding a scope requires zero domain knowledge in core
+- **lake-block-independent-write:** lake and block consumers have independent write paths; facts route to declared destinations, not forced through project events.db
+- **consumer-scope-no-core-knowledge:** core routes capabilities to consumer scopes by declaration; core does not interpret what materialization means for any scope
+- **same-child-multi-scope:** one real child (github-connector) materializes for ≥2 scopes with genuinely different output, proving scope is functional not decorative
