@@ -66,7 +66,8 @@ pub(crate) struct IndexConfig {
 
 /// Load all installed schemas from `.patina/schemas/*/schema.toml`.
 ///
-/// Returns an empty vec if no schemas directory or no valid schemas found.
+/// Returns an empty vec if no schemas directory found.
+/// Warns on stderr for any schema that fails to parse (not silent).
 pub(crate) fn load_all_installed() -> Result<Vec<SchemaMetadata>> {
     let root = find_project_root()?;
     let schemas_dir = paths::project::schemas_dir(&root);
@@ -83,7 +84,13 @@ pub(crate) fn load_all_installed() -> Result<Vec<SchemaMetadata>> {
         }
         match parse_schema_toml(&entry.path()) {
             Ok(metadata) => schemas.push(metadata),
-            Err(_) => continue,
+            Err(e) => {
+                eprintln!(
+                    "Warning: skipping schema {}: {}",
+                    entry.path().display(),
+                    e
+                );
+            }
         }
     }
 

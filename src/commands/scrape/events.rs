@@ -100,7 +100,10 @@ fn populate_schema_registry(conn: &Connection) -> Result<()> {
 
     let schemas = match crate::commands::schema::load_all_installed() {
         Ok(s) => s,
-        Err(_) => return Ok(()), // no schemas installed — empty registry is fine
+        Err(e) => {
+            eprintln!("Warning: failed to load schemas for registry: {}", e);
+            return Ok(());
+        }
     };
 
     let mut stmt = conn.prepare(
@@ -496,14 +499,12 @@ pub fn insert_prs(
 // ============================================================================
 
 /// Populate FTS5 index with forge issues.
+///
+/// DELETE and INSERT use the same label ('forge.issue') so they stay consistent
+/// regardless of which schemas are installed. FTS5 reads from the materialized
+/// view table, not from the eventlog — the label is a display tag, not a filter.
 pub fn populate_fts5_issues(conn: &Connection) -> Result<usize> {
-    // Clear any issue-family event types discovered from schema registry
-    conn.execute(
-        "DELETE FROM code_fts WHERE event_type IN (
-            SELECT event_type FROM schema_registry WHERE table_name = 'forge_issues'
-         )",
-        [],
-    )?;
+    conn.execute("DELETE FROM code_fts WHERE event_type = 'forge.issue'", [])?;
 
     let count = conn.execute(
         r#"
@@ -522,14 +523,10 @@ pub fn populate_fts5_issues(conn: &Connection) -> Result<usize> {
 }
 
 /// Populate FTS5 index with forge PRs.
+///
+/// See populate_fts5_issues for DELETE/INSERT consistency rationale.
 pub fn populate_fts5_prs(conn: &Connection) -> Result<usize> {
-    // Clear any PR-family event types discovered from schema registry
-    conn.execute(
-        "DELETE FROM code_fts WHERE event_type IN (
-            SELECT event_type FROM schema_registry WHERE table_name = 'forge_prs'
-         )",
-        [],
-    )?;
+    conn.execute("DELETE FROM code_fts WHERE event_type = 'forge.pr'", [])?;
 
     let count = conn.execute(
         r#"
