@@ -57,10 +57,10 @@ convenience, not a requirement.
 Three concepts, each with one job (detailed in §1, §2, §4 below):
 
 **Pipe protocol** (§1) is how components exchange data. JSON-RPC 2.0
-with four request methods (`pipe/initialize`, `pipe/fetch`,
-`pipe/health`, `pipe/shutdown`) and a streaming notification
-(`pipe/fact` — facts delivered one at a time during fetch, no
-accumulation). The protocol doesn't care about transport — the same
+with five request methods (`pipe/initialize`, `pipe/fetch`,
+`pipe/ingest`, `pipe/health`, `pipe/shutdown`) and a streaming
+notification (`pipe/fact` — facts delivered one at a time during fetch,
+no accumulation). The protocol doesn't care about transport — the same
 messages travel over stdio (native children), WASM host calls (existing
 plugins), or HTTP (future remote children). A Fact is a Fact regardless
 of how it arrived.
@@ -201,18 +201,32 @@ our methods, types, and evolution).
 **Initial scope (poll mode):**
 
 ```
+Mother → child methods:
+
 pipe/initialize     →  Capability exchange. Mother sends config,
                        child responds with capabilities.
 
 pipe/fetch          →  Request data. Mother sends params (types,
                        since, limit). Child streams facts back as
-                       notifications, then sends result summary.
+                       pipe/fact notifications, then sends result
+                       summary. Direction: Mother requests, child
+                       streams facts + returns result.
+
+pipe/ingest         →  Deliver records. Mother sends a bounded batch
+                       of records to a storage child (e.g., lakehouse).
+                       Child writes, dedup-checks, and returns result.
+                       Hard spec in [[raw-lake-ingestion]] DESIGN.md.
 
 pipe/health         →  Connectivity check. Returns ok/degraded/down
                        with latency and message.
 
 pipe/shutdown       →  Graceful shutdown request. Child flushes
                        pending work, then exits.
+
+Child → Mother notifications (during pipe/fetch):
+
+pipe/fact           →  Single fact delivery. Streaming notification,
+                       not collected into Vec. O(1) memory per fact.
 ```
 
 **Future (stream mode, not in initial implementation):**

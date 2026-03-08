@@ -193,9 +193,12 @@ The pipe protocol is how all Patina components exchange facts.
 JSON-RPC 2.0 + WIT type contracts.
 
 - **Foundation**: JSON-RPC 2.0 (stable RFC, universal, won't change)
-- **Methods**: `pipe/initialize`, `pipe/emit`, `pipe/fetch`,
-  `pipe/health`, `pipe/capabilities`, `pipe/shutdown` — self-owned,
-  not dependent on MCP
+- **Methods**: `pipe/initialize`, `pipe/fetch`, `pipe/ingest`,
+  `pipe/health`, `pipe/shutdown` (initial scope); `pipe/emit`,
+  `pipe/capabilities` (future stream mode) — self-owned, not
+  dependent on MCP. `pipe/fetch` is Mother→connector (child streams
+  facts back). `pipe/ingest` is Mother→storage child (Mother sends
+  bounded record batches down).
 - **Types**: WIT-defined fact shapes, capability declarations, config
   schema — compile-time type safety across languages
 - **Transports**: WASM host calls (current, via patina-sdk), native
@@ -512,14 +515,13 @@ Not blocking — the lakehouse child is native. Track for resolution
 when pipe-protocol-types or pipe-native-transport specs address
 WASM/native convergence.
 
-### pipe/ingest method (from [[raw-lake-ingestion]])
+### pipe/ingest method (from [[raw-lake-ingestion]]) — RESOLVED
 
-raw-lake-ingestion adds `pipe/ingest` to the pipe protocol method
-namespace (§1.2 of DESIGN.md). This method is Mother → child
-direction (reverse of pipe/fetch). Hard specification exists in
-raw-lake-ingestion DESIGN.md. When pipe-protocol-types crate is
-implemented, `IngestParams`, `IngestRecord`, `IngestResult`, and
-`IngestProvenance` types should be added alongside existing types.
+pipe/ingest is now a first-class method in DESIGN.md §1.2 with
+direction annotation (Mother → storage child). Hard specification
+remains in [[raw-lake-ingestion]] DESIGN.md. When pipe-protocol-types
+crate is implemented, `IngestParams`, `IngestRecord`, `IngestResult`,
+and `IngestProvenance` types should be added alongside existing types.
 
 ### host.wit emit routing (from [[raw-lake-ingestion]])
 
