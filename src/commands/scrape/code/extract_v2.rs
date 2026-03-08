@@ -87,34 +87,7 @@ pub fn extract_code_metadata_v2(
     // When extension_filter is set, only load plugins for affected extensions (lazy loading)
     let pipeline_plugins = discover_pipeline_plugins(extension_filter);
 
-    // Scan staging tree for forge data (.forge-issue, .forge-pr files)
-    // These are written by `patina scrape forge` and processed by grammar-forge plugin
-    let staging_dir = paths::project::data_dir(work_dir).join("forge");
-    let mut staged_files: Vec<PathBuf> = Vec::new();
-    if staging_dir.is_dir() {
-        for entry in WalkBuilder::new(&staging_dir)
-            .hidden(false)
-            .git_ignore(false)
-            .build()
-        {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-            let path = entry.path();
-            if path.is_file() {
-                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                if pipeline_plugins.contains_key(ext) {
-                    staged_files.push(path.to_path_buf());
-                }
-            }
-        }
-        if !staged_files.is_empty() {
-            println!("  Found {} staged forge files", staged_files.len());
-        }
-    }
-
-    if all_files.is_empty() && staged_files.is_empty() {
+    if all_files.is_empty() {
         println!("  No source files found. Is this a code repository?");
         return Ok(0);
     }
@@ -203,16 +176,6 @@ pub fn extract_code_metadata_v2(
                         _files_processed += 1;
                     }
                     ExtractedPayload::Issue(issue) => {
-                        // EC3: Validate against schema before DB insert
-                        if let Ok(json) = serde_json::to_value(&issue) {
-                            if let Err(e) =
-                                crate::commands::schema::validate_fact("forge", "issue", &json)
-                            {
-                                eprintln!("  [pipeline] {} rejected: {}", relative_path, e);
-                                files_with_errors += 1;
-                                continue;
-                            }
-                        }
                         let conn = db.connection();
                         match crate::commands::scrape::events::insert_issues(
                             conn,
@@ -234,18 +197,6 @@ pub fn extract_code_metadata_v2(
                         }
                     }
                     ExtractedPayload::PullRequest(pr) => {
-                        // EC3: Validate against schema before DB insert
-                        if let Ok(json) = serde_json::to_value(&pr) {
-                            if let Err(e) = crate::commands::schema::validate_fact(
-                                "forge",
-                                "pull-request",
-                                &json,
-                            ) {
-                                eprintln!("  [pipeline] {} rejected: {}", relative_path, e);
-                                files_with_errors += 1;
-                                continue;
-                            }
-                        }
                         let conn = db.connection();
                         match crate::commands::scrape::events::insert_prs(conn, &events_conn, &[pr])
                         {
@@ -276,131 +227,6 @@ pub fn extract_code_metadata_v2(
                 eprintln!("  ⚠️  Processing error in {}: {}", relative_path, e);
                 db.mark_skipped(&relative_path, &e.to_string())?;
                 files_with_errors += 1;
-            }
-        }
-    }
-
-    // Process staged forge files through pipeline plugins
-    for file_path in staged_files {
-        let display_path = file_path.to_string_lossy().to_string();
-        let content = match std::fs::read(&file_path) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("  ⚠️  Failed to read staged file {}: {}", display_path, e);
-                files_with_errors += 1;
-                continue;
-            }
-        };
-
-        let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-
-        // Staged files dispatch directly to plugin by extension (no Language detection)
-        if let Some(plugin) = pipeline_plugins.get(ext) {
-            let request = build_parse_envelope(&content, ext, &display_path);
-            match plugin
-                .engine
-                .handle(&plugin.component, &plugin.manifest, &request)
-            {
-                Ok(response) => {
-                    // Try ExtractedPayload (has "kind" field) — expected for forge plugins
-                    if let Ok(payload) = serde_json::from_str::<ExtractedPayload>(&response) {
-                        #[allow(unreachable_patterns)]
-                        match payload {
-                            ExtractedPayload::Issue(issue) => {
-                                // EC3: Validate against schema before DB insert
-                                if let Ok(json) = serde_json::to_value(&issue) {
-                                    if let Err(e) = crate::commands::schema::validate_fact(
-                                        "forge", "issue", &json,
-                                    ) {
-                                        eprintln!("  [pipeline] {} rejected: {}", display_path, e);
-                                        files_with_errors += 1;
-                                        continue;
-                                    }
-                                }
-                                let conn = db.connection();
-                                match crate::commands::scrape::events::insert_issues(
-                                    conn,
-                                    &events_conn,
-                                    &[issue],
-                                ) {
-                                    Ok(stats) => {
-                                        forge_issues_inserted += stats.inserted;
-                                        _files_processed += 1;
-                                    }
-                                    Err(e) => {
-                                        eprintln!(
-                                            "  [pipeline] forge issue insert failed for {}: {}",
-                                            display_path, e
-                                        );
-                                        files_with_errors += 1;
-                                    }
-                                }
-                            }
-                            ExtractedPayload::PullRequest(pr) => {
-                                // EC3: Validate against schema before DB insert
-                                if let Ok(json) = serde_json::to_value(&pr) {
-                                    if let Err(e) = crate::commands::schema::validate_fact(
-                                        "forge",
-                                        "pull-request",
-                                        &json,
-                                    ) {
-                                        eprintln!("  [pipeline] {} rejected: {}", display_path, e);
-                                        files_with_errors += 1;
-                                        continue;
-                                    }
-                                }
-                                let conn = db.connection();
-                                match crate::commands::scrape::events::insert_prs(
-                                    conn,
-                                    &events_conn,
-                                    &[pr],
-                                ) {
-                                    Ok(stats) => {
-                                        forge_prs_inserted += stats.inserted;
-                                        _files_processed += 1;
-                                    }
-                                    Err(e) => {
-                                        eprintln!(
-                                            "  [pipeline] forge PR insert failed for {}: {}",
-                                            display_path, e
-                                        );
-                                        files_with_errors += 1;
-                                    }
-                                }
-                            }
-                            ExtractedPayload::Code(extracted) => {
-                                // Unlikely for forge files, but handle gracefully
-                                all_symbols.extend(extracted.symbols);
-                                all_functions.extend(extracted.functions);
-                                all_types.extend(extracted.types);
-                                all_imports.extend(extracted.imports);
-                                all_call_edges.extend(extracted.call_edges);
-                                all_constants.extend(extracted.constants);
-                                all_members.extend(extracted.members);
-                                _files_processed += 1;
-                            }
-                            _ => {
-                                eprintln!(
-                                    "  [pipeline] unknown payload kind from {} — skipping",
-                                    display_path
-                                );
-                            }
-                        }
-                    } else {
-                        eprintln!(
-                            "  [pipeline:{}] invalid response for staged file {}: not ExtractedPayload",
-                            plugin.manifest.name, display_path
-                        );
-                        files_with_errors += 1;
-                    }
-                }
-                Err(e) => {
-                    eprintln!(
-                        "  [pipeline:{}] handle failed for staged file {}: {}",
-                        plugin.manifest.name, display_path, e
-                    );
-                    files_with_errors += 1;
-                }
             }
         }
     }
