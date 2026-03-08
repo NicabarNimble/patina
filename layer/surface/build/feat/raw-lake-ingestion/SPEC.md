@@ -20,35 +20,38 @@ beliefs:
 - raw-lake-is-capture-contract-first
 exit_criteria:
 - id: lake-registered
-  text: "Mother registers a lake by name and location in graph.db lake_registry table; `patina mother status` shows lake name, location, and sync state"
+  text: "Mother registers a lake by name, persona, and location in graph.db lake_registry table; `patina mother status` shows lake name, location, and sync state"
   checked: false
 - id: source-declares-lake-destination
   text: "sources.toml supports a destination field that routes connector output to a named lake instead of project events.db"
   checked: false
-- id: mother-writes-parquet
-  text: "Mother lake writer receives domain records from connector via pipe protocol and writes append-only Parquet files to the lake's raw storage path"
+- id: lakehouse-child-exists
+  text: "A lakehouse child binary exists in children/lakehouse/, speaks pipe protocol, receives records via pipe/ingest, writes append-only Parquet files to a configured lake path"
   checked: false
 - id: parquet-layout-partitioned
-  text: "Raw Parquet files are written in a provider-partitioned layout: `<lake>/raw/<provider>/<owner>/<repo>/<data_type>/` with time-based file naming"
+  text: "Lakehouse child writes Parquet in a provider-partitioned layout: `<lake>/raw/<provider>/<owner>/<repo>/<data_type>/` with time-based file naming"
+  checked: false
+- id: mother-routes-to-lakehouse
+  text: "Mother routes connector output to lakehouse child via pipe protocol — Mother never touches Parquet format, file layout, or storage mechanics"
   checked: false
 - id: cursor-sync-tracked
-  text: "Mother tracks sync cursor per source-lake pair; re-running ingestion fetches only new/updated records; cursor update is transactional with Parquet write"
+  text: "Mother tracks sync cursor per source-lake pair; cursor update follows successful lakehouse write confirmation; re-running ingestion fetches only new/updated records"
   checked: false
 - id: dedup-enforced
-  text: "Mother enforces idempotent append using connector-provided identity fields (e.g. number + updated_at); duplicate records are not written to Parquet"
+  text: "Lakehouse child enforces idempotent append using connector-declared identity fields; duplicate records are not written to Parquet"
   checked: false
 - id: provenance-on-lake-records
   text: "Written Parquet records carry provenance metadata: source connector, ingestion timestamp, content hash"
   checked: false
 - id: v1-litmus-github
-  text: "End-to-end: configure GitHub connection, declare repo as lake source, run `patina mother run github --lake`, raw issue/PR data lands as Parquet, Mother shows metadata, DuckDB can query the files"
+  text: "End-to-end: configure GitHub connection, declare repo as lake source, run ingestion, raw issue/PR data lands as Parquet via lakehouse child, Mother shows metadata, DuckDB can query the files"
   checked: false
 ---
 # feat: Raw Lake Ingestion — V1 Append-Only Parquet Capture
 
-> Connector emits domain records. Mother routes to lake destination.
-> Lake writer materializes append-only Parquet under Mother-managed
-> registry and cursor control. Raw lake has no catalog, no shared
+> Connector emits domain records. Mother routes to lakehouse child.
+> Lakehouse child materializes append-only Parquet. Mother tracks
+> registry and cursor truth. Raw lake has no catalog, no shared
 > tables, no curated semantics.
 
 ## Problem
@@ -70,33 +73,86 @@ files — is the foundation everything else builds on. Without it:
   says "Sources → Project eventlog"
 
 The v1 proving slice makes the raw zone real with one connector,
-one source, one lake.
+one source, one lake, one lakehouse child.
 
 ## Solution
 
+### Role Boundaries
+
+Five actors, strict boundaries:
+
+```
+Connector child          Mother                  Lakehouse child
+source-boundary adapter  node-local control      storage-boundary worker
+                         plane
+
+owns:                    owns:                   owns:
+  domain record shape      routing policy          Parquet format
+  schema/version           lake registry           file layout
+  identity fields          cursor truth            append mechanics
+  API behavior             persona scoping         storage-local dedup
+  source semantics         lifecycle management    provenance columns
+
+does NOT:                does NOT:               does NOT:
+  know about Parquet       write storage           know about GitHub
+  know about lakes         know Parquet format     know source semantics
+  own dedup enforcement    own file layout         own routing policy
+  own cursor truth         execute data-plane      own cursor truth
+```
+
+**Mother governs. Children execute bounded roles.** Mother never
+touches Parquet format, file layout, or storage mechanics. The
+lakehouse child is a real child from day one — not an inline module
+inside Mother.
+
 ### Capture Contract (primary concern)
 
-The capture contract defines what a connector writes, where it goes,
-and what guarantees hold.
+The capture contract defines what a connector emits, how Mother
+routes it, and what the lakehouse child writes.
 
 **Connector responsibility:**
 - Emit stable domain records with typed fields via pipe protocol
 - Declare schema and version in child manifest
 - Provide identity fields for dedup (e.g. `number`, `updated_at`)
 - Handle API pagination, rate limiting, cursor semantics
+- Source-boundary adapter: may ingest from external system AND may
+  apply changes back, but never becomes storage or coordination
 
 **Mother responsibility:**
 - Route records to declared destination (project events.db OR lake)
-- Register lake: name, location, provider, sync state
+- Register lake: name, location, persona, sync state
+- Track sync cursor per source-lake pair (advances after lakehouse
+  confirms write)
+- Spawn and lifecycle-manage connector and lakehouse children
+- Policy: when to run, what to route where
+
+**Lakehouse child responsibility:**
+- Receive records from Mother via pipe protocol (`pipe/ingest`)
 - Write append-only Parquet files in partitioned layout
-- Enforce idempotent append using connector-provided identity fields
-- Track sync cursor per source-lake pair (transactional with write)
-- Attach provenance metadata (source, timestamp, content hash)
+- Enforce idempotent append using identity fields from schema
+- Own file naming, directory creation, Parquet serialization
+- Attach provenance metadata columns to written records
+- Report write results (count, paths) back to Mother
 
 **The connector does not know about Parquet.** It emits domain
-records. Mother decides the destination format. This keeps connectors
-reusable across destination types and makes future format changes
-(e.g. adding Iceberg metadata) transparent to connectors.
+records. **Mother does not know about Parquet.** She routes records
+to the lakehouse child. Only the lakehouse child knows about Parquet.
+
+### Two-Child Pipeline
+
+```
+1. Mother spawns connector child (github-connector)
+2. Connector fetches from GitHub API, emits records to Mother
+3. Mother validates records against declared schema
+4. Mother spawns lakehouse child with lake config
+5. Mother sends records to lakehouse child (pipe/ingest)
+6. Lakehouse child dedup-checks, writes Parquet, reports results
+7. Mother updates lake_sync cursor after confirmed write
+```
+
+This is the same broker pattern as the existing project path, but
+with a lakehouse child at the destination instead of events.db.
+Mother routes. Children execute.
 
 ### Lake Destination in sources.toml
 
@@ -111,13 +167,15 @@ schedule = "on-demand"
 ```
 
 When `destination.type = "lake"`, Mother routes connector output to
-the lake writer instead of project events.db. The lake is identified
-by name, resolved from Mother's lake registry.
+the lakehouse child instead of project events.db. The lake is
+identified by name, resolved from Mother's lake registry.
 
 When `destination.type` is absent or `"project"`, the existing broker
 path writes to events.db (no change to current behavior).
 
 ### Raw Lake Storage
+
+Owned by the lakehouse child, not by Mother:
 
 ```
 ~/.patina/lakes/github-data/
@@ -143,6 +201,9 @@ path writes to events.db (no change to current behavior).
 - Layout is not GitHub-specific: `<provider>/<owner>/<repo>/` is a
   convention that works for any hierarchical source identity
 
+The lakehouse child owns all layout decisions. Mother passes the
+lake root path; the child decides directory structure.
+
 ### Lake Registration in Mother
 
 Mother tracks lakes in `graph.db`:
@@ -151,6 +212,7 @@ Mother tracks lakes in `graph.db`:
 CREATE TABLE IF NOT EXISTS lake_registry (
     name        TEXT PRIMARY KEY,
     location    TEXT NOT NULL,       -- filesystem path
+    persona     TEXT,                -- persona scope (default: single persona for v1)
     created_at  TEXT NOT NULL,
     metadata    TEXT                 -- JSON: provider, description
 );
@@ -166,18 +228,24 @@ CREATE TABLE IF NOT EXISTS lake_sync (
 );
 ```
 
+Lakes are persona-scoped by default. The `persona` column exists
+from day one even though v1 assumes a single persona. This is
+forward-compatible schema, not persona architecture — real persona
+architecture (keying, namespace isolation, sync policy) is
+[[persona-federation]] scope.
+
 ### Dedup and Idempotency
 
-Mother reads previous Parquet files for the same data type partition
-to build a dedup index (identity fields → content hash). New records
+The lakehouse child owns dedup. It reads previous Parquet files for
+the same data type partition to build an identity index. New records
 whose identity matches an existing record with the same content are
 skipped. Changed records (same identity, different content) are
 appended — the raw zone captures history, not just current state.
 
-For v1, the dedup index is built in memory from recent Parquet files.
-For large lakes, this will need a persistent dedup index (future).
-
-**Identity fields** are declared in the connector's schema:
+**Identity fields** come from the connector's schema declaration.
+Mother passes them to the lakehouse child as part of the ingest
+configuration. The connector doesn't participate in dedup — it emits
+all records. The lakehouse child filters.
 
 ```toml
 # children/github-connector/schema.toml
@@ -186,10 +254,6 @@ name = "issue"
 event_type = "github.issue"
 identity_fields = ["number"]
 ```
-
-Mother reads `identity_fields` from the schema to know which fields
-constitute record identity. The connector doesn't participate in
-dedup — it emits all records, Mother filters.
 
 ### Query Path (verification, not primary)
 
@@ -208,21 +272,21 @@ concern. The value of raw lake is the capture contract.
 1. Add `destination` field to sources.toml format; Mother parser
    recognizes `type = "lake"` and resolves lake name from registry
 2. Add `lake_registry` and `lake_sync` tables to graph.db schema
+   (with `persona` column)
 3. Add `patina lake create <name>` — register a lake with Mother,
-   create directory structure
-4. Build lake writer module in Mother: receive facts from broker,
-   serialize to Parquet, write to partitioned path
-5. Add `identity_fields` to schema.toml format; Mother reads them
-   for dedup
-6. Implement dedup: read recent Parquet for partition, build identity
-   index, skip duplicates, append new/changed records
-7. Wire broker routing: when source has lake destination, route to
-   lake writer instead of events.db writer
-8. Track sync cursor in `lake_sync` table (transactional with
-   Parquet write)
-9. Update `patina mother status` to show lake sync state
-10. End-to-end verification: github connection → lake source → run →
-    Parquet output → DuckDB query
+   create root directory
+4. Build lakehouse child: `children/lakehouse/` with Child trait
+   impl, Parquet writer, dedup, layout management
+5. Define `pipe/ingest` method: Mother sends records to lakehouse
+   child with lake path and schema config
+6. Wire broker routing: when source has lake destination, spawn
+   lakehouse child and route records via pipe/ingest
+7. Lakehouse child reports write results; Mother updates lake_sync
+   cursor
+8. Update `patina mother status` to show lake sync state
+9. End-to-end verification: github connection → lake source → run →
+   connector emits → Mother routes → lakehouse writes Parquet →
+   DuckDB query
 
 ## Key Files
 
@@ -230,16 +294,21 @@ concern. The value of raw lake is the capture contract.
 - `src/broker/mod.rs` — routing decision (project vs lake)
 - `src/broker/sources.rs` — destination field in sources.toml
 - `src/mother/` — graph.db schema (lake_registry, lake_sync tables)
+- `crates/patina-pipe-types/` — add pipe/ingest method types
 
 **New:**
-- `src/lake/mod.rs` — lake writer module (Parquet serialization)
-- `src/lake/dedup.rs` — identity-based dedup against existing files
-- `src/lake/layout.rs` — path conventions, directory creation
+- `children/lakehouse/Cargo.toml` — lakehouse child crate
+- `children/lakehouse/child.toml` — type=lakehouse, runtime=native
+- `children/lakehouse/src/main.rs` — Child trait impl, pipe/ingest
+- `children/lakehouse/src/writer.rs` — Parquet serialization
+- `children/lakehouse/src/dedup.rs` — identity-based dedup
+- `children/lakehouse/src/layout.rs` — path conventions
 - `src/commands/lake/` — `patina lake create`, `patina lake query`
 
 **Reference (no changes):**
 - `children/github-connector/` — emits records, unchanged
-- `crates/patina-pipe-types/` — fact types, unchanged
+- `src/broker/routing.rs` — fact validation, unchanged
+- `src/broker/lifecycle.rs` — child lifecycle, unchanged
 
 ## Non-Goals
 
@@ -254,17 +323,21 @@ concern. The value of raw lake is the capture contract.
 - OAuth device flow — manual PAT sufficient for v1
 - Real-time / streaming ingestion — poll mode only
 - Project-scope materialization changes — stays in connector-owns-tables
+- Full persona architecture — forward-compatible column only
+- Inline lakehouse inside Mother — lakehouse is a real child
 
 ## Relationship to Other Specs
 
 **[[pipe-architecture]]** (active, container): Provides vocabulary.
 Data Layers: Sources → Lakes → Projects → Beliefs. raw-lake-ingestion
-implements the Sources → Lakes arrow for the first time.
+implements the Sources → Lakes arrow. Child taxonomy: connector
+(source boundary), lakehouse (storage boundary). Both roles proven
+here.
 
 **[[connector-owns-tables]]** (draft): Owns project-scope
 materialization (events → SQLite read models). raw-lake-ingestion
-owns lake-scope capture (records → Parquet). Together they prove
-the destination-aware model works across scopes.
+owns lake-scope capture (records → Parquet via lakehouse child).
+Together they prove the destination-aware model works across scopes.
 
 **[[lake-registry]]** (draft): Owns Mother-side lake metadata model.
 raw-lake-ingestion implements it for the raw zone.
@@ -274,7 +347,8 @@ proves this spec. All ECs checked — fetch mode works, emits
 github.issue/github.pr records via pipe protocol.
 
 **[[mother-broker]]** (archived, complete): Routing engine exists.
-raw-lake-ingestion extends it with a lake destination writer.
+raw-lake-ingestion extends it with a lake destination route to
+the lakehouse child.
 
 **[[mother-maturation]]** (draft, container): raw-lake-ingestion
 delivers the first concrete lake infrastructure that
@@ -308,3 +382,21 @@ These are visible in the design but not v1 exit criteria:
 
 v1 proves one source → one lake. The layout and metadata model
 support N sources → one lake without structural changes.
+
+## Role Alignment Test
+
+Five questions that must all be "yes":
+
+1. Can the connector be replaced without touching storage? **Yes** —
+   connector emits records, lakehouse child writes them. Different
+   children, no coupling.
+2. Can the lakehouse be replaced without touching connector code?
+   **Yes** — swap Parquet for another format by replacing the
+   lakehouse child. Connector unchanged.
+3. Can Mothers sync beliefs without exposing raw lakes/blocks?
+   **Yes** — beliefs are the sync layer. Lakes are node-local.
+4. Does persona isolation exist before network sharing? **Yes** —
+   persona column on lake_registry from day one.
+5. Is Mother governing rather than executing data-plane concerns?
+   **Yes** — Mother routes to lakehouse child. Mother never touches
+   Parquet, file layout, or storage mechanics.
