@@ -122,9 +122,7 @@ pub fn check_landlock_support() -> Result<u32, String> {
 /// Call after fork, before exec. The restrictions are irrevocable.
 #[cfg(target_os = "linux")]
 pub fn apply_landlock(_allowed_domains: &[String]) -> Result<(), String> {
-    use landlock::{
-        Access, AccessFs, AccessNet, Ruleset, RulesetAttr, RulesetStatus, ABI,
-    };
+    use landlock::{Access, AccessFs, AccessNet, Ruleset, RulesetAttr, RulesetStatus, ABI};
 
     let abi = ABI::V4;
 
