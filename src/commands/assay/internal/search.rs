@@ -160,7 +160,7 @@ fn search_code_fts(
     options: &SearchOptions,
 ) -> Result<Vec<SearchResult>> {
     let event_type_filter = if options.include_issues {
-        "event_type LIKE 'code.%' OR event_type LIKE 'forge.%'"
+        "event_type LIKE 'code.%' OR event_type LIKE 'forge.%' OR event_type LIKE 'github.%'"
     } else {
         "event_type LIKE 'code.%'"
     };
@@ -188,9 +188,9 @@ fn search_code_fts(
         let event_type: String = row.get(3)?;
         let bm25_score: f64 = row.get(4)?;
 
-        let source_id = if event_type == "forge.issue" {
+        let source_id = if event_type == "forge.issue" || event_type == "github.issue" {
             format!("[ISSUE] {}", symbol)
-        } else if event_type == "forge.pr" {
+        } else if event_type == "forge.pr" || event_type == "github.pr" {
             format!("[PR] {}", symbol)
         } else {
             file_path

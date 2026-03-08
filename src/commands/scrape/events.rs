@@ -81,7 +81,7 @@ pub enum PrState {
 fn issue_event_exists(events_conn: &Connection, number: i64, updated_at: &str) -> Result<bool> {
     let count: i64 = events_conn.query_row(
         "SELECT COUNT(*) FROM eventlog
-         WHERE event_type = 'forge.issue'
+         WHERE event_type IN ('forge.issue', 'github.issue')
            AND json_extract(data, '$.number') = ?1
            AND json_extract(data, '$.updated_at') = ?2",
         rusqlite::params![number, updated_at],
@@ -94,7 +94,7 @@ fn issue_event_exists(events_conn: &Connection, number: i64, updated_at: &str) -
 fn pr_event_exists(events_conn: &Connection, number: i64, updated_at: &str) -> Result<bool> {
     let count: i64 = events_conn.query_row(
         "SELECT COUNT(*) FROM eventlog
-         WHERE event_type = 'forge.pr'
+         WHERE event_type IN ('forge.pr', 'github.pr')
            AND json_extract(data, '$.number') = ?1
            AND json_extract(data, '$.updated_at') = ?2",
         rusqlite::params![number, updated_at],
@@ -211,10 +211,10 @@ pub fn project_from_events(patina_conn: &Connection) -> Result<ProjectionStats> 
                e.seq,
                e.timestamp
            FROM events_db.eventlog e
-           WHERE e.event_type = 'forge.issue'
+           WHERE e.event_type IN ('forge.issue', 'github.issue')
              AND e.seq = (
                SELECT MAX(e2.seq) FROM events_db.eventlog e2
-               WHERE e2.event_type = 'forge.issue'
+               WHERE e2.event_type IN ('forge.issue', 'github.issue')
                  AND json_extract(e2.data, '$.number') = json_extract(e.data, '$.number')
              )"#,
         [],
@@ -243,10 +243,10 @@ pub fn project_from_events(patina_conn: &Connection) -> Result<ProjectionStats> 
                e.seq,
                e.timestamp
            FROM events_db.eventlog e
-           WHERE e.event_type = 'forge.pr'
+           WHERE e.event_type IN ('forge.pr', 'github.pr')
              AND e.seq = (
                SELECT MAX(e2.seq) FROM events_db.eventlog e2
-               WHERE e2.event_type = 'forge.pr'
+               WHERE e2.event_type IN ('forge.pr', 'github.pr')
                  AND json_extract(e2.data, '$.number') = json_extract(e.data, '$.number')
              )"#,
         [],
@@ -424,7 +424,7 @@ pub fn insert_prs(
 
 /// Populate FTS5 index with forge issues.
 pub fn populate_fts5_issues(conn: &Connection) -> Result<usize> {
-    conn.execute("DELETE FROM code_fts WHERE event_type = 'forge.issue'", [])?;
+    conn.execute("DELETE FROM code_fts WHERE event_type IN ('forge.issue', 'github.issue')", [])?;
 
     let count = conn.execute(
         r#"
@@ -444,7 +444,7 @@ pub fn populate_fts5_issues(conn: &Connection) -> Result<usize> {
 
 /// Populate FTS5 index with forge PRs.
 pub fn populate_fts5_prs(conn: &Connection) -> Result<usize> {
-    conn.execute("DELETE FROM code_fts WHERE event_type = 'forge.pr'", [])?;
+    conn.execute("DELETE FROM code_fts WHERE event_type IN ('forge.pr', 'github.pr')", [])?;
 
     let count = conn.execute(
         r#"
