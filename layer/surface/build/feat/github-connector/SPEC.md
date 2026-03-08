@@ -1,7 +1,7 @@
 ---
 type: feat
 id: github-connector
-status: draft
+status: ready
 created: 2026-03-06
 blocked_by:
 - pipe-native-transport
@@ -14,25 +14,25 @@ beliefs:
 - patina-is-domain-agnostic-knowledge-system
 exit_criteria:
 - id: connector-speaks-pipe
-  text: 'github-connector binary speaks pipe protocol over stdio — responds to pipe/initialize, pipe/fetch, pipe/health, pipe/shutdown'
+  text: github-connector binary speaks pipe protocol over stdio — responds to pipe/initialize, pipe/fetch, pipe/health, pipe/shutdown
+  checked: false
   verify: 'Send each method via stdin JSON-RPC, confirm valid JSON-RPC responses. Test: initialize with auth token, fetch with types=["issues"], health returns ok, shutdown returns empty result.'
-  checked: false
 - id: emits-github-facts
-  text: 'Emits github.issue and github.pr facts with its own schema — same data shape as existing forge facts, new schema namespace'
+  text: Emits github.issue and github.pr facts with its own schema — same data shape as existing forge facts, new schema namespace
+  checked: false
   verify: 'Run against test repo. Query: `SELECT event_type, count(*) FROM eventlog WHERE event_type LIKE ''github.%'' GROUP BY event_type` — both github.issue and github.pr present with non-zero counts.'
-  checked: false
 - id: src-forge-deleted
-  text: 'src/forge/ deleted from core — completes forge-plugin-extraction EC4 (original gh CLI wrapper removed)'
+  text: src/forge/ deleted from core — completes forge-plugin-extraction EC4 (original gh CLI wrapper removed)
+  checked: false
   verify: '`test ! -d src/forge && cargo build --release` — directory absent and workspace compiles cleanly.'
-  checked: false
 - id: plugins-forge-coexists
-  text: 'plugins/forge/ continues to run as WASM child (forge.* schema) — coexists with native github-connector (github.* schema) to prove both runtimes'
-  verify: '`cargo build -p patina-forge` succeeds. Both forge.* and github.* event_type rows exist in events.db after running both paths.'
+  text: plugins/forge/ continues to run as WASM child (forge.* schema) — coexists with native github-connector (github.* schema) to prove both runtimes
   checked: false
+  verify: '`cargo build -p patina-forge` succeeds. Both forge.* and github.* event_type rows exist in events.db after running both paths.'
 - id: mother-run-works
   text: '`patina mother run github` invokes the connector and the child responds correctly via pipe protocol — tests child invocability by Mother, not routing or storage (see [[spec-mother-broker]] EC mother-run-github for routing verification)'
-  verify: '`patina mother run github` completes without error. Child stdout shows valid pipe/fact notifications. Mother output confirms fact count > 0.'
   checked: false
+  verify: '`patina mother run github` completes without error. Child stdout shows valid pipe/fact notifications. Mother output confirms fact count > 0.'
 ---
 # feat: GitHub Connector — First Native Child on Pipe Architecture
 
