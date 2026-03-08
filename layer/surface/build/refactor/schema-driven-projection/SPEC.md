@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: schema-driven-projection
-status: ready
+status: active
 created: 2026-03-08
 sessions:
   origin: 20260307-234302
