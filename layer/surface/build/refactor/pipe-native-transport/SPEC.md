@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: pipe-native-transport
-status: draft
+status: ready
 created: 2026-03-06
 blocked_by:
 - pipe-protocol-types
@@ -15,16 +15,16 @@ beliefs:
 exit_criteria:
 - id: pipe-crate-compiles
   text: '`patina-pipe` crate compiles with Child trait and run() function — native children can depend on it and implement the trait'
+  checked: true
   verify: '`cargo build -p patina-pipe && cargo test -p patina-pipe` — both succeed. Depends on patina-pipe-types only.'
-  checked: false
 - id: test-child-works
-  text: 'A test child binary can be spawned, initialized (pipe/initialize handshake), and respond to pipe/fetch with streaming pipe/fact notifications'
+  text: A test child binary can be spawned, initialized (pipe/initialize handshake), and respond to pipe/fetch with streaming pipe/fact notifications
+  checked: true
   verify: 'Spawn test-child binary, send pipe/initialize + pipe/fetch via stdin. Confirm: pipe/fact notifications arrive on stdout as JSON-RPC notifications (no `id` field), final result message includes emitted count.'
-  checked: false
 - id: sandbox-profile-exists
-  text: 'OS sandbox enforced for native children — macOS sandbox_init() C API denying filesystem access, Linux Landlock (ABI v4+) denying filesystem and ALL outbound network. Sandbox is deny-all-network — children use pipe/http through Mother for HTTP access. [[spec-pipe-mother-io]] delivered this tightening.'
+  text: OS sandbox enforced for native children — macOS sandbox_init() C API denying filesystem access, Linux Landlock (ABI v4+) denying filesystem and ALL outbound network. Sandbox is deny-all-network — children use pipe/http through Mother for HTTP access. [[spec-pipe-mother-io]] delivered this tightening.
+  checked: true
   verify: 'macOS: fork-based test applies sandbox via sandbox_init(), confirms /etc/passwd blocked and /dev/null allowed. No network-outbound rules in profile. Linux: fork-based test applies Landlock, confirms ALL ports get EACCES (PermissionDenied) including port 443. Both tests use loopback only, no external network. --no-sandbox opt-out is [[spec-mother-broker]] scope.'
-  checked: false
 ---
 # refactor: Pipe Native Transport — Child Trait + stdio JSON-RPC
 
