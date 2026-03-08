@@ -474,6 +474,146 @@ transitively, use the same version.
 - `src/broker/routing.rs` — fact validation, no changes
 - `src/broker/lifecycle.rs` — child lifecycle, no changes
 
+## SDK/WIT/Code Alignment Audit (session 20260308-164629)
+
+The existing code surface encodes assumptions from before the
+role-boundary doctrine was established. This section documents
+what needs to change when raw-lake-ingestion is implemented, so
+protocol debt is tracked — not left as undiscovered surprises.
+
+### host.wit — emit interface assumes events.db
+
+**File:** `wit/deps/patina-host/host.wit` lines 136-155
+
+**Current:** The `emit` interface says "writes to events.db with
+provenance=external." The `emit-fact` function takes schema,
+fact-type, and data — returns a sequence number (from events.db).
+
+**Problem:** This hardcodes the destination as events.db. Under
+raw-lake-ingestion, connector output may route to a lake (via
+lakehouse child) instead of events.db. The WASM host's emit
+implementation is the routing point.
+
+**Required change:** The emit interface itself can stay unchanged
+(it's the child's API — children emit facts, Mother routes them).
+But the HOST IMPLEMENTATION must gain destination awareness: when
+the source has `destination.type = "lake"`, the host routes to
+the lakehouse child instead of writing to events.db. The WIT
+contract doesn't need to change — routing is Mother's concern.
+
+**Tracking:** This change belongs to [[raw-lake-ingestion]] step 6
+("Wire broker routing"). The WIT file itself doesn't change; the
+host implementation in `src/plugin/internal/host_support.rs` does.
+
+### mother-child.wit — broad daemon world, not role-specific
+
+**File:** `plugins/sdk/wit/mother-child/mother-child.wit` (also
+`wit/mother-child/mother-child.wit` — identical copies)
+
+**Current:** Defines a "mother-child" world with init, on-load,
+on-unload, health, handle (string dispatch), and tick (toy requests).
+This is a WASM-era design for long-lived daemon children.
+
+**Problem:** Under pipe-architecture, native children speak pipe
+protocol (JSON-RPC over stdio). WASM children use this WIT world.
+The two interfaces have different shapes:
+- Pipe protocol: initialize, fetch, health, shutdown (role-specific)
+- mother-child.wit: init, load, unload, handle, tick (generic daemon)
+
+The handle(action, payload) function can dispatch pipe protocol
+methods — and the existing forge plugin does exactly this. So
+the WIT world is NOT broken, just unaligned with the naming.
+
+**Required change (future, not this spec):** Two options:
+1. mother-child.wit evolves to mirror pipe protocol methods
+   (initialize, fetch, ingest, health, shutdown exports)
+2. mother-child.wit is deprecated for new children; native pipe
+   protocol is the primary path; WASM children use a new
+   `pipe-child.wit` world that matches pipe protocol
+
+**Tracking:** This is [[pipe-architecture]] scope, not
+raw-lake-ingestion. No change needed for lake v1 since the
+lakehouse child is native (speaks pipe protocol directly).
+Document as discovery note in pipe-architecture.
+
+### sources.rs — no destination or persona model
+
+**File:** `src/broker/sources.rs`
+
+**Current:** `SourceEntry` has: name, connection, params, types,
+schedule. No `destination` field. No `persona` field.
+
+**Problem:** raw-lake-ingestion requires `destination` to route
+connector output to a lake vs project events.db. The current
+`RawSourceEntry` struct doesn't parse `destination`.
+
+**Required change:** Add `destination` to both `RawSourceEntry`
+(deserialization) and `SourceEntry` (public API):
+
+```rust
+#[derive(Debug, Clone)]
+pub struct SourceEntry {
+    pub name: String,
+    pub connection: String,
+    pub params: HashMap<String, toml::Value>,
+    pub types: Vec<String>,
+    pub schedule: String,
+    pub destination: Option<SourceDestination>,  // NEW
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SourceDestination {
+    #[serde(rename = "type")]
+    pub dest_type: String,  // "project" or "lake"
+    pub lake: Option<String>,  // lake name, if type=lake
+}
+```
+
+**Tracking:** This is [[raw-lake-ingestion]] step 1 ("Add
+destination field to sources.toml format").
+
+### broker/mod.rs — terminates at events.db, no lake branching
+
+**File:** `src/broker/mod.rs`
+
+**Current:** `run_source()` follows a linear flow: spawn child →
+fetch → validate → write to events.db. Step 4 opens events.db
+unconditionally. Step 9 writes facts + cursor to events.db.
+
+**Problem:** When `destination.type = "lake"`, the flow must branch:
+step 4 resolves the lake from registry and spawns a lakehouse child
+instead of opening events.db. Step 9 sends records to the lakehouse
+child via pipe/ingest instead of writing to events.db.
+
+**Required change:** Add destination branching:
+
+```
+Step 4: IF destination is project (or absent) → open events.db
+        IF destination is lake → resolve lake, spawn lakehouse child
+
+Step 9: IF project → write_facts_with_cursor (existing)
+        IF lake → pipe/ingest to lakehouse → update lake_sync cursor
+```
+
+The connector is unaware of this branching. It emits facts via pipe
+protocol regardless. Mother decides routing.
+
+**Tracking:** This is [[raw-lake-ingestion]] step 6 ("Wire broker
+routing") and step 7 ("Lakehouse reports results, Mother updates
+lake_sync cursor").
+
+### github-connector — healthy, no changes needed
+
+**File:** `children/github-connector/src/main.rs`
+**File:** `children/github-connector/child.toml`
+
+**Status:** Healthy. The github-connector is a clean source-boundary
+adapter. It implements `Child` trait with `capabilities()` and
+`fetch()`. It emits facts via pipe protocol. It knows nothing about
+destinations, lakes, or materialization. This is exactly right.
+
+No changes needed for raw-lake-ingestion or connector-owns-tables.
+
 ## Open Questions
 
 1. **pipe/ingest batch size.** Should Mother send all records in one
@@ -495,7 +635,6 @@ transitively, use the same version.
 5. **Lake location configuration.** Default is `~/.patina/lakes/`.
    Configurable per lake in future. Fixed for v1.
 
-6. **Schema passthrough to lakehouse.** Mother needs to pass identity
-   fields and schema info to the lakehouse child. This goes in the
-   pipe/ingest params. Does the lakehouse child also need the full
-   schema.toml? Or just identity_fields?
+6. **Schema passthrough to lakehouse.** Resolved by pipe/ingest spec:
+   Mother passes `identity_fields` per event_type and `schema_version`
+   in the ingest params. Lakehouse does not need the full schema.toml.

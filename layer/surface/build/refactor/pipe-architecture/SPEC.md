@@ -489,6 +489,47 @@ calls (WASM) or direct `reqwest` calls (native).
 3. **Multi-provider children.** One github connector for all GitHub
    instances, or separate? Lean: one, configured with base_url.
 
+## Discovery Notes (pushed from other specs)
+
+### mother-child.wit alignment (from [[raw-lake-ingestion]] session 20260308-164629)
+
+`mother-child.wit` defines a generic daemon world (init, load,
+unload, health, handle, tick) that predates the pipe protocol
+design. Native children speak pipe protocol (JSON-RPC: initialize,
+fetch, health, shutdown). WASM children use mother-child.wit with
+handle(action, payload) dispatching pipe methods.
+
+The two interfaces are functionally equivalent (handle() dispatches
+pipe methods) but nominally unaligned. Two options:
+
+1. mother-child.wit evolves to export pipe protocol methods directly
+   (initialize, fetch, ingest, health, shutdown)
+2. mother-child.wit is deprecated; new `pipe-child.wit` matches pipe
+   protocol; legacy WASM children continue on mother-child.wit
+
+Not blocking — the lakehouse child is native. Track for resolution
+when pipe-protocol-types or pipe-native-transport specs address
+WASM/native convergence.
+
+### pipe/ingest method (from [[raw-lake-ingestion]])
+
+raw-lake-ingestion adds `pipe/ingest` to the pipe protocol method
+namespace (§1.2 of DESIGN.md). This method is Mother → child
+direction (reverse of pipe/fetch). Hard specification exists in
+raw-lake-ingestion DESIGN.md. When pipe-protocol-types crate is
+implemented, `IngestParams`, `IngestRecord`, `IngestResult`, and
+`IngestProvenance` types should be added alongside existing types.
+
+### host.wit emit routing (from [[raw-lake-ingestion]])
+
+The `emit` interface in host.wit describes fact emission that
+"writes to events.db." The WIT contract itself doesn't need to
+change (children emit, Mother routes), but the host implementation
+must gain destination awareness when raw-lake-ingestion ships.
+When source has `destination.type = "lake"`, emit routes to
+lakehouse child instead of events.db. Track in [[mother-broker]]
+or [[raw-lake-ingestion]].
+
 ## Children
 
 This is a **container spec** — the architecture reference that child
