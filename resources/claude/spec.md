@@ -1,8 +1,8 @@
 Manage spec lifecycle — query status, mutate state, guide workflow decisions.
 
-This skill covers the full spec surface area. Use MCP tools (spec.*) for
-structured operations. Fall back to CLI (`patina spec <command>`) when MCP
-is unavailable or when the user requests human-readable output.
+This skill covers the full spec surface area. Use CLI (`patina spec <command>`)
+via Bash as the primary interface. Fall back to MCP tools (spec.*) only if
+CLI is unavailable.
 
 ## When to Use Each Operation
 

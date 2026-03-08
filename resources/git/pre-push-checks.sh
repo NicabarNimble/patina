@@ -158,8 +158,33 @@ fi
 echo "   ✓ Tests OK"
 echo ""
 
-# Step 6: MCP thin handler invariants (post mcp-thin-handlers spec)
-echo "📦 [6/6] Checking MCP handler invariants..."
+# Step 6: Broker integration test — catches cross-crate wire format drift
+# Requires: test-child installed at ~/.patina/children/test-child/
+echo "📦 [6/7] Broker integration test..."
+if [ -x "$HOME/.patina/children/test-child/test-child" ] && [ -f ".patina/sources.toml" ]; then
+    # Clean slate: remove previous test data so dedup doesn't mask failures
+    if [ -f ".patina/local/data/events.db" ]; then
+        sqlite3 .patina/local/data/events.db "DELETE FROM eventlog WHERE source_id = 'child:test-child'" 2>/dev/null || true
+        sqlite3 .patina/local/data/events.db "DELETE FROM broker_cursors WHERE source_name = 'test'" 2>/dev/null || true
+    fi
+    # Build test-child from source to match current pipe protocol
+    cargo build -p patina-pipe --example test-child --release --quiet 2>/dev/null
+    cp target/release/examples/test-child "$HOME/.patina/children/test-child/test-child"
+    # Run broker end-to-end (--no-sandbox for CI environments)
+    if ! cargo run --release --quiet -- mother run test --no-sandbox 2>/dev/null | grep -q "facts written"; then
+        echo "   ❌ Broker integration test failed!"
+        echo "   'patina mother run test --no-sandbox' did not produce facts."
+        echo "   This usually means the pipe protocol wire format drifted."
+        exit 1
+    fi
+    echo "   ✓ Broker integration OK (test-child → events.db)"
+else
+    echo "   ⊘ Skipped (test-child not installed or no .patina/sources.toml)"
+fi
+echo ""
+
+# Step 7: MCP thin handler invariants (post mcp-thin-handlers spec)
+echo "📦 [7/7] Checking MCP handler invariants..."
 SQL_IN_MCP=$(rg -c 'SELECT|FROM .* WHERE|ORDER BY' src/mcp/server/scry.rs src/mcp/server/assay.rs 2>/dev/null | awk -F: '{sum+=$2} END {print sum+0}')
 if [ "$SQL_IN_MCP" -gt 0 ]; then
     echo "   ERROR: $SQL_IN_MCP SQL statements found in MCP handlers"

@@ -139,6 +139,9 @@ pub enum Mode {
     /// Evolve mode: session lifecycle
     #[serde(rename = "lifecycle")]
     Lifecycle,
+    /// Capture mode: structural entropy metrics
+    #[serde(rename = "structure")]
+    Structure,
     /// Generic fallback mode
     #[serde(rename = "default")]
     Default,
@@ -155,6 +158,7 @@ impl Mode {
             "eval" => Some(Mode::Eval),
             "audit" => Some(Mode::Audit),
             "lifecycle" => Some(Mode::Lifecycle),
+            "structure" => Some(Mode::Structure),
             "default" => Some(Mode::Default),
             _ => None,
         }
@@ -172,6 +176,7 @@ impl std::fmt::Display for Mode {
             Mode::Eval => write!(f, "eval"),
             Mode::Audit => write!(f, "audit"),
             Mode::Lifecycle => write!(f, "lifecycle"),
+            Mode::Structure => write!(f, "structure"),
             Mode::Default => write!(f, "default"),
         }
     }
@@ -190,11 +195,18 @@ pub struct VerbSummary {
     pub sources: Vec<SourceSummary>,
 }
 
-#[derive(Debug, Serialize, Clone, Copy, PartialEq)]
+/// Verb health status — ordered by severity for worst-verb-wins.
+///
+/// `derive(Ord)` uses declaration order, so variants are arranged from
+/// least severe (NoData) to most severe (Degraded). `max()` returns the worst.
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum VerbStatus {
+    NoData,
     Good,
     NeedsAttention,
-    NoData,
+    Degraded,
 }
 
 impl std::fmt::Display for VerbStatus {
@@ -202,6 +214,7 @@ impl std::fmt::Display for VerbStatus {
         match self {
             VerbStatus::Good => write!(f, "good"),
             VerbStatus::NeedsAttention => write!(f, "needs attention"),
+            VerbStatus::Degraded => write!(f, "degraded"),
             VerbStatus::NoData => write!(f, "no data"),
         }
     }
@@ -253,6 +266,7 @@ pub enum VerbMetrics {
     CaptureLayer(CaptureLayerMetrics),
     CaptureGitScrape(CaptureGitScrapeMetrics),
     CaptureHealthCheck(CaptureHealthCheckMetrics),
+    CaptureStructure(CaptureStructureMetrics),
     Index(IndexMetrics),
     Search(SearchMetrics),
     Believe(BelieveMetrics),
@@ -288,6 +302,8 @@ impl VerbMetrics {
                 serde_json::from_str::<CaptureHealthCheckMetrics>(json_str)
                     .map(VerbMetrics::CaptureHealthCheck)
             }
+            ("capture", "structure") => serde_json::from_str::<CaptureStructureMetrics>(json_str)
+                .map(VerbMetrics::CaptureStructure),
             ("capture", _) => {
                 tracing::warn!(mode, "Unknown capture mode — falling back to raw metrics");
                 let value = serde_json::from_str(json_str).unwrap_or(serde_json::Value::Null);
@@ -365,6 +381,16 @@ impl VerbMetrics {
                 ("missing_tools".into(), m.missing_tools.to_string()),
                 ("new_tools".into(), m.new_tools.to_string()),
             ],
+            VerbMetrics::CaptureStructure(m) => vec![
+                ("module_count".into(), m.module_count.to_string()),
+                (
+                    "pub_interface_count".into(),
+                    m.pub_interface_count.to_string(),
+                ),
+                ("dependency_count".into(), m.dependency_count.to_string()),
+                ("coupling_avg".into(), format!("{:.1}", m.coupling_avg)),
+                ("coupling_max".into(), m.coupling_max.to_string()),
+            ],
             VerbMetrics::Index(m) => vec![(
                 "documents_embedded".into(),
                 m.documents_embedded.to_string(),
@@ -386,6 +412,7 @@ impl VerbMetrics {
                 ("total_beliefs".into(), m.total_beliefs.to_string()),
                 ("floating_count".into(), m.floating_count.to_string()),
                 ("grounded_count".into(), m.grounded_count.to_string()),
+                ("contested_count".into(), m.contested_count.to_string()),
                 ("avg_evidence".into(), format!("{:.2}", m.avg_evidence)),
                 ("avg_health".into(), format!("{:.2}", m.avg_health)),
             ],
@@ -509,6 +536,15 @@ pub struct CaptureHealthCheckMetrics {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct CaptureStructureMetrics {
+    pub module_count: i64,
+    pub pub_interface_count: i64,
+    pub dependency_count: i64,
+    pub coupling_avg: f64,
+    pub coupling_max: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct IndexMetrics {
     pub documents_embedded: i64,
 }
@@ -526,6 +562,8 @@ pub struct BelieveMetrics {
     pub total_beliefs: i64,
     pub floating_count: i64,
     pub grounded_count: i64,
+    #[serde(default)]
+    pub contested_count: i64,
     pub avg_evidence: f64,
     pub avg_health: f64,
 }
@@ -559,6 +597,569 @@ pub struct EvolveHistoryMetrics {
 }
 
 // ============================================================================
+// Full Report Types — typed health layer on existing infrastructure
+// ============================================================================
+
+/// Overall project health report — the `--full` JSON contract.
+///
+/// LLM query surface: every field is typed, no serde_json::Value.
+/// Verbs are keyed by name (BTreeMap) for stable JSON paths.
+#[derive(Debug, Serialize)]
+pub struct FullMeasureReport {
+    pub health: HealthSummary,
+    pub verbs: std::collections::BTreeMap<String, FullVerbSummary>,
+    pub event_counts: EventCounts,
+}
+
+/// Aggregate health across all verbs.
+#[derive(Debug, Serialize)]
+pub struct HealthSummary {
+    pub status: VerbStatus,
+    pub summary: String,
+    pub assessed_at: String,
+}
+
+/// Extended verb summary with freshness and diagnostics.
+#[derive(Debug, Serialize)]
+pub struct FullVerbSummary {
+    pub status: VerbStatus,
+    pub latest_timestamp: Option<String>,
+    pub age_hours: Option<f64>,
+    pub freshness: Option<Freshness>,
+    pub sources: Vec<SourceSummary>,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+/// An actionable diagnostic derived from typed metrics.
+#[derive(Debug, Serialize)]
+pub struct Diagnostic {
+    pub severity: Severity,
+    pub message: String,
+}
+
+/// Event count breakdown.
+#[derive(Debug, Serialize)]
+pub struct EventCounts {
+    pub total_runtime_events: i64,
+    pub by_type: std::collections::BTreeMap<String, i64>,
+}
+
+/// Data freshness — domain-aware interpretation of age.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum Freshness {
+    Fresh,
+    Aging,
+    Stale,
+}
+
+impl std::fmt::Display for Freshness {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Freshness::Fresh => write!(f, "fresh"),
+            Freshness::Aging => write!(f, "aging"),
+            Freshness::Stale => write!(f, "stale"),
+        }
+    }
+}
+
+/// Diagnostic severity level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum Severity {
+    Warning,
+    Error,
+}
+
+/// Freshness thresholds per verb (hours).
+///
+/// Hardcoded — measure is opinionated about what "healthy" means.
+/// `(fresh_ceiling, aging_ceiling)` — above aging_ceiling is stale.
+const FRESHNESS_THRESHOLDS: &[(&str, f64, f64)] = &[
+    ("capture", 24.0, 72.0),   // Active project scrapes daily
+    ("index", 48.0, 168.0),    // 48h fresh, 7d aging ceiling
+    ("search", 168.0, 720.0),  // 7d fresh, 30d aging ceiling
+    ("believe", 168.0, 720.0), // 7d fresh, 30d aging ceiling
+    ("evolve", 168.0, 720.0),  // 7d fresh, 30d aging ceiling
+];
+
+impl Freshness {
+    /// Compute freshness for a verb given its age in hours.
+    pub fn for_verb(verb: &str, age_hours: f64) -> Self {
+        let (fresh_ceil, aging_ceil) = FRESHNESS_THRESHOLDS
+            .iter()
+            .find(|(v, _, _)| *v == verb)
+            .map(|(_, f, a)| (*f, *a))
+            .unwrap_or((168.0, 720.0)); // default to believe/evolve thresholds
+
+        if age_hours < fresh_ceil {
+            Freshness::Fresh
+        } else if age_hours < aging_ceil {
+            Freshness::Aging
+        } else {
+            Freshness::Stale
+        }
+    }
+}
+
+// ============================================================================
+// Derivation — freshness, diagnostics, health
+// ============================================================================
+
+/// Compute age in hours from an RFC3339 or YYYY-MM-DD timestamp.
+fn compute_age_hours(timestamp: &str) -> Option<f64> {
+    if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(timestamp) {
+        let duration = chrono::Utc::now().signed_duration_since(ts);
+        return Some(duration.num_seconds() as f64 / 3600.0);
+    }
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(timestamp, "%Y-%m-%d") {
+        let today = chrono::Utc::now().date_naive();
+        let days = (today - date).num_days();
+        return Some(days as f64 * 24.0);
+    }
+    None
+}
+
+impl BelieveMetrics {
+    /// Diagnostics computed from typed fields.
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        if self.floating_count > 0 && self.total_beliefs > 0 {
+            let pct = (self.floating_count as f64 / self.total_beliefs as f64) * 100.0;
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "{} beliefs have no code grounding ({:.0}% floating)",
+                    self.floating_count, pct
+                ),
+            });
+        }
+        if self.contested_count > 0 {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "{} beliefs have active attacks without resolution",
+                    self.contested_count
+                ),
+            });
+        }
+        if self.avg_health < 0.5 && self.total_beliefs > 0 {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!("average belief health is low ({:.2})", self.avg_health),
+            });
+        }
+        diags
+    }
+}
+
+impl SearchMetrics {
+    /// Diagnostics computed from typed fields.
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        if let Some(p5) = self.p_at_5 {
+            if p5 < 0.4 {
+                diags.push(Diagnostic {
+                    severity: Severity::Warning,
+                    message: format!(
+                        "search precision is low (P@5={:.0}%, threshold 40%)",
+                        p5 * 100.0
+                    ),
+                });
+            }
+        }
+        diags
+    }
+}
+
+impl CaptureHealthCheckMetrics {
+    /// Diagnostics computed from typed fields.
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        if self.missing_tools > 0 {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!("{} expected tools are missing", self.missing_tools),
+            });
+        }
+        diags
+    }
+}
+
+/// Scrape duration threshold (ms) — warn when any scraper exceeds this.
+const SCRAPE_DURATION_WARNING_MS: i64 = 5000;
+
+impl CaptureGitScrapeMetrics {
+    /// Diagnostics: warn when git scrape exceeds duration threshold.
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        if self.duration_ms > SCRAPE_DURATION_WARNING_MS {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "git scrape took {}ms (threshold: {}ms)",
+                    self.duration_ms, SCRAPE_DURATION_WARNING_MS
+                ),
+            });
+        }
+        diags
+    }
+}
+
+impl CaptureBeliefsMetrics {
+    /// Diagnostics: warn when beliefs scrape exceeds duration threshold.
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        if self.duration_ms > SCRAPE_DURATION_WARNING_MS {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "beliefs scrape took {}ms (threshold: {}ms)",
+                    self.duration_ms, SCRAPE_DURATION_WARNING_MS
+                ),
+            });
+        }
+        diags
+    }
+}
+
+impl CaptureStructureMetrics {
+    /// Diagnostics: compare current vs previous structural metrics.
+    ///
+    /// The `previous` parameter comes from the second-most-recent
+    /// measure.capture.structure event. Delta thresholds are hardcoded.
+    pub fn diagnostics_with_delta(
+        &self,
+        previous: Option<&CaptureStructureMetrics>,
+    ) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        let prev = match previous {
+            Some(p) => p,
+            None => return diags,
+        };
+
+        // Module count: warn if +2
+        let module_delta = self.module_count - prev.module_count;
+        if module_delta > 2 {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "module count increased by {} ({}→{}), threshold +2",
+                    module_delta, prev.module_count, self.module_count
+                ),
+            });
+        }
+
+        // Pub interfaces: warn if +10%
+        if prev.pub_interface_count > 0 {
+            let pct = (self.pub_interface_count - prev.pub_interface_count) as f64
+                / prev.pub_interface_count as f64
+                * 100.0;
+            if pct > 10.0 {
+                diags.push(Diagnostic {
+                    severity: Severity::Warning,
+                    message: format!(
+                        "pub interfaces increased by {:.0}% ({}→{}), threshold +10%",
+                        pct, prev.pub_interface_count, self.pub_interface_count
+                    ),
+                });
+            }
+        }
+
+        // Dependency count: warn if +1
+        let dep_delta = self.dependency_count - prev.dependency_count;
+        if dep_delta > 1 {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "dependency count increased by {} ({}→{}), threshold +1",
+                    dep_delta, prev.dependency_count, self.dependency_count
+                ),
+            });
+        }
+
+        // Max fan-out: warn if +2
+        let fanout_delta = self.coupling_max - prev.coupling_max;
+        if fanout_delta > 2 {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "max fan-out increased by {} ({}→{}), threshold +2",
+                    fanout_delta, prev.coupling_max, self.coupling_max
+                ),
+            });
+        }
+
+        diags
+    }
+}
+
+impl CaptureLayerMetrics {
+    /// Diagnostics: warn when layer scrape exceeds duration threshold.
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+        if self.duration_ms > SCRAPE_DURATION_WARNING_MS {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "layer scrape took {}ms (threshold: {}ms)",
+                    self.duration_ms, SCRAPE_DURATION_WARNING_MS
+                ),
+            });
+        }
+        diags
+    }
+}
+
+/// Collect diagnostics from a verb's sources.
+fn collect_source_diagnostics(sources: &[SourceSummary]) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    for src in sources {
+        match &src.latest_metrics {
+            VerbMetrics::Believe(m) => diags.extend(m.diagnostics()),
+            VerbMetrics::Search(m) => diags.extend(m.diagnostics()),
+            VerbMetrics::CaptureHealthCheck(m) => diags.extend(m.diagnostics()),
+            VerbMetrics::CaptureGitScrape(m) => diags.extend(m.diagnostics()),
+            VerbMetrics::CaptureBeliefs(m) => diags.extend(m.diagnostics()),
+            VerbMetrics::CaptureLayer(m) => diags.extend(m.diagnostics()),
+            // CaptureStructure diagnostics need delta (previous event) — handled in build_full_report
+            _ => {}
+        }
+    }
+    diags
+}
+
+/// Collect structure delta diagnostics by comparing current vs previous events.
+fn collect_structure_delta_diagnostics(
+    conn: &Connection,
+    sources: &[SourceSummary],
+) -> Vec<Diagnostic> {
+    // Find the current structure metrics from sources
+    let current = sources.iter().find_map(|s| {
+        if let VerbMetrics::CaptureStructure(m) = &s.latest_metrics {
+            Some(m)
+        } else {
+            None
+        }
+    });
+
+    let current = match current {
+        Some(c) => c,
+        None => return Vec::new(),
+    };
+
+    // Fetch the previous (second-most-recent) structure event from events.db
+    let previous = (|| -> Option<CaptureStructureMetrics> {
+        let mut stmt = conn
+            .prepare(
+                r#"SELECT json_extract(data, '$.metrics') FROM events.eventlog
+               WHERE event_type = 'measure.capture'
+                 AND json_extract(data, '$.mode') = 'structure'
+               ORDER BY seq DESC LIMIT 1 OFFSET 1"#,
+            )
+            .ok()?;
+
+        let json_str: String = stmt.query_row([], |row| row.get(0)).ok()?;
+        serde_json::from_str(&json_str).ok()
+    })();
+
+    current.diagnostics_with_delta(previous.as_ref())
+}
+
+/// Derive a freshness diagnostic if the verb is aging or stale.
+fn freshness_diagnostic(verb: &str, freshness: Freshness, age_hours: f64) -> Option<Diagnostic> {
+    match freshness {
+        Freshness::Aging => Some(Diagnostic {
+            severity: Severity::Warning,
+            message: format!("{} verb data is aging ({:.0}h old)", verb, age_hours),
+        }),
+        Freshness::Stale => Some(Diagnostic {
+            severity: Severity::Error,
+            message: format!("{} verb data is stale ({:.0}h old)", verb, age_hours),
+        }),
+        Freshness::Fresh => None,
+    }
+}
+
+/// Determine verb status factoring in freshness.
+/// Degraded = existing status is NeedsAttention AND freshness is Stale.
+fn effective_status(base_status: VerbStatus, freshness: Option<Freshness>) -> VerbStatus {
+    match (base_status, freshness) {
+        (VerbStatus::NeedsAttention, Some(Freshness::Stale)) => VerbStatus::Degraded,
+        (status, _) => status,
+    }
+}
+
+impl FullMeasureReport {
+    /// Construct a complete report — health derived from verbs, no placeholder state.
+    pub fn new(
+        verbs: std::collections::BTreeMap<String, FullVerbSummary>,
+        event_counts: EventCounts,
+    ) -> Self {
+        let health = Self::derive_health(&verbs);
+        Self {
+            health,
+            verbs,
+            event_counts,
+        }
+    }
+
+    /// Derive health summary from verb map. Private — called by `new()`.
+    ///
+    /// Worst-verb-wins: Degraded > NeedsAttention > Good > NoData.
+    /// The ordering on VerbStatus drives `max()`.
+    fn derive_health(verbs: &std::collections::BTreeMap<String, FullVerbSummary>) -> HealthSummary {
+        let worst_status = verbs
+            .values()
+            .map(|v| v.status)
+            .max()
+            .unwrap_or(VerbStatus::NoData);
+
+        let healthy_count = verbs
+            .values()
+            .filter(|v| v.status == VerbStatus::Good)
+            .count();
+
+        let total = verbs.len();
+
+        // Find the worst verb for the summary sentence
+        let worst_reason = verbs
+            .iter()
+            .filter(|(_, v)| v.status == worst_status && worst_status != VerbStatus::Good)
+            .map(|(name, v)| {
+                if let Some(diag) = v.diagnostics.first() {
+                    format!("{}: {}", name, diag.message)
+                } else {
+                    format!("{}: {}", name, v.status)
+                }
+            })
+            .next()
+            .unwrap_or_default();
+
+        let summary = if worst_status == VerbStatus::Good || worst_status == VerbStatus::NoData {
+            format!("{}/{} verbs healthy.", healthy_count, total)
+        } else {
+            format!(
+                "{}/{} verbs healthy. {}",
+                healthy_count, total, worst_reason
+            )
+        };
+
+        HealthSummary {
+            status: worst_status,
+            summary,
+            assessed_at: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+}
+
+// ============================================================================
+// Full Report Builder
+// ============================================================================
+
+/// ATTACH events.db to an open patina.db connection.
+///
+/// Measure direction: patina.db is primary, events.db is attached.
+/// Callers query `events.eventlog` for measure.* events.
+fn attach_events(conn: &Connection) -> Result<()> {
+    eventlog::ensure_events_db()?;
+    let events_path = Path::new(eventlog::EVENTS_DB);
+    if events_path.exists() {
+        conn.execute(
+            "ATTACH DATABASE ?1 AS events",
+            [events_path.to_str().unwrap_or(eventlog::EVENTS_DB)],
+        )?;
+    }
+    Ok(())
+}
+
+/// Build the full measure report — typed health layer over existing infrastructure.
+///
+/// Reuses `build_*_summary()` verb builders, then wraps each with freshness,
+/// diagnostics, and effective status. Pure library code — no CLI or output.
+pub fn build_full_report(conn: &Connection) -> Result<FullMeasureReport> {
+    let existing_report = build_report(conn)?;
+
+    let mut verbs = std::collections::BTreeMap::new();
+
+    for verb_summary in existing_report.verbs {
+        let verb_name = verb_summary.verb.clone();
+
+        // Compute age and freshness from latest timestamp
+        let age_hours = verb_summary
+            .latest_timestamp
+            .as_deref()
+            .and_then(compute_age_hours);
+
+        let freshness = age_hours.map(|h| Freshness::for_verb(&verb_name, h));
+
+        // Collect diagnostics from typed metric sources
+        let mut diagnostics = collect_source_diagnostics(&verb_summary.sources);
+
+        // Add freshness diagnostic if aging or stale
+        if let (Some(f), Some(h)) = (freshness, age_hours) {
+            if let Some(d) = freshness_diagnostic(&verb_name, f, h) {
+                diagnostics.push(d);
+            }
+        }
+
+        let status = effective_status(verb_summary.status, freshness);
+
+        verbs.insert(
+            verb_name,
+            FullVerbSummary {
+                status,
+                latest_timestamp: verb_summary.latest_timestamp,
+                age_hours,
+                freshness,
+                sources: verb_summary.sources,
+                diagnostics,
+            },
+        );
+    }
+
+    // Structure delta diagnostics — need previous event from events.db
+    if let Some(capture_verb) = verbs.get_mut("capture") {
+        let structure_diags = collect_structure_delta_diagnostics(conn, &capture_verb.sources);
+        capture_verb.diagnostics.extend(structure_diags);
+    }
+
+    // Event counts from events.db
+    let event_counts = build_event_counts(conn)?;
+
+    Ok(FullMeasureReport::new(verbs, event_counts))
+}
+
+/// Count events by type from events.db for the EventCounts field.
+fn build_event_counts(conn: &Connection) -> Result<EventCounts> {
+    let total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM events.eventlog", [], |row| row.get(0))
+        .unwrap_or(0);
+
+    let mut by_type = std::collections::BTreeMap::new();
+
+    let stmt_result = conn.prepare(
+        "SELECT event_type, COUNT(*) FROM events.eventlog GROUP BY event_type ORDER BY event_type",
+    );
+
+    if let Ok(mut stmt) = stmt_result {
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        for (event_type, count) in rows.flatten() {
+            by_type.insert(event_type, count);
+        }
+    }
+
+    Ok(EventCounts {
+        total_runtime_events: total,
+        by_type,
+    })
+}
+
+// ============================================================================
 // Main Entry Point
 // ============================================================================
 
@@ -571,17 +1172,8 @@ pub fn run(options: MeasureOptions) -> Result<()> {
 
     let conn = Connection::open(db_path).context("Failed to open patina.db")?;
 
-    // Ensure events.db exists (migrates runtime events on first run)
-    eventlog::ensure_events_db()?;
-
     // ATTACH events.db for cross-system queries (measure.* events live there)
-    let events_path = Path::new(eventlog::EVENTS_DB);
-    if events_path.exists() {
-        conn.execute(
-            "ATTACH DATABASE ?1 AS events",
-            [events_path.to_str().unwrap_or(eventlog::EVENTS_DB)],
-        )?;
-    }
+    attach_events(&conn)?;
 
     // Check if ANY measurement data exists
     let total_events = count_measurement_events(&conn)?;
@@ -594,6 +1186,16 @@ pub fn run(options: MeasureOptions) -> Result<()> {
 
     if let Some(ref verb) = options.verb {
         return run_verb_drilldown(&conn, verb, &options);
+    }
+
+    if options.full {
+        let full_report = build_full_report(&conn)?;
+        if options.json {
+            println!("{}", serde_json::to_string_pretty(&full_report)?);
+        } else {
+            render_full_user_view(&full_report);
+        }
+        return Ok(());
     }
 
     let report = build_report(&conn)?;
@@ -824,6 +1426,7 @@ fn build_believe_summary(conn: &Connection) -> Result<VerbSummary> {
             r#"SELECT
                 COUNT(*) as total_beliefs,
                 COALESCE(SUM(CASE WHEN grounding_score = 0 THEN 1 ELSE 0 END), 0) as floating,
+                COALESCE(SUM(CASE WHEN contested_by > 0 THEN 1 ELSE 0 END), 0) as contested,
                 COALESCE(AVG(evidence_count), 0) as avg_evidence,
                 COALESCE(AVG(health_score), 0) as avg_health
             FROM beliefs"#,
@@ -832,8 +1435,9 @@ fn build_believe_summary(conn: &Connection) -> Result<VerbSummary> {
                 Ok((
                     row.get::<_, i64>(0)?,
                     row.get::<_, i64>(1)?,
-                    row.get::<_, f64>(2)?,
+                    row.get::<_, i64>(2)?,
                     row.get::<_, f64>(3)?,
+                    row.get::<_, f64>(4)?,
                 ))
             },
         );
@@ -865,7 +1469,7 @@ fn build_believe_summary(conn: &Connection) -> Result<VerbSummary> {
             )
             .unwrap_or(0);
 
-        if let Ok((total, floating, avg_evidence, avg_health)) = result {
+        if let Ok((total, floating, contested, avg_evidence, avg_health)) = result {
             if total > 0 {
                 sources.push(SourceSummary {
                     source_type: SourceType::Beliefs,
@@ -875,6 +1479,7 @@ fn build_believe_summary(conn: &Connection) -> Result<VerbSummary> {
                         total_beliefs: total,
                         floating_count: floating,
                         grounded_count: total - floating,
+                        contested_count: contested,
                         avg_evidence: (avg_evidence * 100.0).round() / 100.0,
                         avg_health: (avg_health * 100.0).round() / 100.0,
                     }),
@@ -1097,6 +1702,86 @@ fn determine_status(sources: &[SourceSummary]) -> VerbStatus {
 // User View (default)
 // ============================================================================
 
+fn render_full_user_view(report: &FullMeasureReport) {
+    println!("\n  Project Health — Full Report\n");
+
+    // Health summary
+    let health_icon = match report.health.status {
+        VerbStatus::Good => "+",
+        VerbStatus::NeedsAttention => "!",
+        VerbStatus::Degraded => "X",
+        VerbStatus::NoData => "-",
+    };
+    println!("  [{}] {}", health_icon, report.health.summary);
+    println!();
+
+    // Per-verb details
+    for (verb_name, verb) in &report.verbs {
+        let icon = match verb.status {
+            VerbStatus::Good => "+",
+            VerbStatus::NeedsAttention => "!",
+            VerbStatus::Degraded => "X",
+            VerbStatus::NoData => "-",
+        };
+
+        let age = verb
+            .latest_timestamp
+            .as_deref()
+            .map(format_age)
+            .unwrap_or_else(|| "never".to_string());
+
+        let freshness_label = verb
+            .freshness
+            .map(|f| format!(" [{}]", f))
+            .unwrap_or_default();
+
+        println!(
+            "  [{}] {:<10} {:<18} {}{}",
+            icon,
+            verb_name,
+            verb.status,
+            if verb.status != VerbStatus::NoData {
+                format!("({})", age)
+            } else {
+                String::new()
+            },
+            freshness_label
+        );
+
+        // Show key metrics per source (same as user view)
+        for src in &verb.sources {
+            let summary = user_friendly_metrics(src);
+            if !summary.is_empty() {
+                println!("        {}", summary);
+            }
+        }
+
+        // Show diagnostics (capped at 3 per verb)
+        let max_diags = 3;
+        for diag in verb.diagnostics.iter().take(max_diags) {
+            let icon = match diag.severity {
+                Severity::Warning => "\u{26a0}", // ⚠
+                Severity::Error => "\u{2716}",   // ✖
+            };
+            println!("        {} {}", icon, diag.message);
+        }
+        if verb.diagnostics.len() > max_diags {
+            println!(
+                "        ... {} more diagnostics (see --json)",
+                verb.diagnostics.len() - max_diags
+            );
+        }
+    }
+
+    // Event counts
+    println!(
+        "\n  Events: {} total runtime events",
+        report.event_counts.total_runtime_events
+    );
+
+    println!();
+}
+
 fn render_user_view(report: &MeasureReport) {
     println!("\n  Project Health\n");
 
@@ -1144,6 +1829,7 @@ fn render_user_view(report: &MeasureReport) {
         let icon = match verb_summary.status {
             VerbStatus::Good => "+",
             VerbStatus::NeedsAttention => "!",
+            VerbStatus::Degraded => "X",
             VerbStatus::NoData => "-",
         };
 
@@ -1220,6 +1906,12 @@ fn user_friendly_metrics(src: &SourceSummary) -> String {
                 src.mode, m.beliefs, m.sessions, m.layer_patterns
             )
         }
+        VerbMetrics::CaptureStructure(m) => {
+            format!(
+                "{}: {} modules, {} pub interfaces, {} deps, avg fan-out {:.1}",
+                src.mode, m.module_count, m.pub_interface_count, m.dependency_count, m.coupling_avg
+            )
+        }
         VerbMetrics::Index(m) => {
             format!("{} documents embedded", m.documents_embedded)
         }
@@ -1236,15 +1928,20 @@ fn user_friendly_metrics(src: &SourceSummary) -> String {
             _ => format!("{}: n/a", src.mode),
         },
         VerbMetrics::Believe(m) => {
+            let contested = if m.contested_count > 0 {
+                format!(", {} contested", m.contested_count)
+            } else {
+                String::new()
+            };
             if m.floating_count > 0 {
                 format!(
-                    "{} beliefs, {} grounded, {} floating, avg health {:.2}",
-                    m.total_beliefs, m.grounded_count, m.floating_count, m.avg_health
+                    "{} beliefs, {} grounded, {} floating{}, avg health {:.2}",
+                    m.total_beliefs, m.grounded_count, m.floating_count, contested, m.avg_health
                 )
             } else {
                 format!(
-                    "{} beliefs, all grounded, avg health {:.2}",
-                    m.total_beliefs, m.avg_health
+                    "{} beliefs, all grounded{}, avg health {:.2}",
+                    m.total_beliefs, contested, m.avg_health
                 )
             }
         }
@@ -1638,39 +2335,39 @@ fn format_metrics_inline(metrics: &VerbMetrics) -> String {
 // MCP Support
 // ============================================================================
 
-/// Generate JSON health summary for MCP tool
-pub fn mcp_measure() -> Result<serde_json::Value> {
+/// Generate typed health report for MCP tool.
+///
+/// Returns the same `FullMeasureReport` as `--full --json`.
+/// MCP and CLI share one code path — no shape divergence.
+pub fn mcp_measure() -> Result<FullMeasureReport> {
     let db_path = Path::new(eventlog::PATINA_DB);
     if !db_path.exists() {
-        return Ok(serde_json::json!({
-            "status": "no_data",
-            "message": "No measurements recorded yet. Run patina scrape, oxidize, and eval first."
-        }));
+        return Ok(FullMeasureReport::new(
+            std::collections::BTreeMap::new(),
+            EventCounts {
+                total_runtime_events: 0,
+                by_type: std::collections::BTreeMap::new(),
+            },
+        ));
     }
 
     let conn = Connection::open(db_path).context("Failed to open patina.db")?;
-
-    // ATTACH events.db for cross-system queries
-    let events_path = Path::new(eventlog::EVENTS_DB);
-    if events_path.exists() {
-        let _ = conn.execute(
-            "ATTACH DATABASE ?1 AS events",
-            [events_path.to_str().unwrap_or(eventlog::EVENTS_DB)],
-        );
-    }
+    let _ = attach_events(&conn);
 
     let total_events = count_measurement_events(&conn)?;
     let has_existing = has_existing_measurement_events(&conn)?;
 
     if total_events == 0 && !has_existing {
-        return Ok(serde_json::json!({
-            "status": "no_data",
-            "message": "No measurements recorded yet. Run patina scrape, oxidize, and eval first."
-        }));
+        return Ok(FullMeasureReport::new(
+            std::collections::BTreeMap::new(),
+            EventCounts {
+                total_runtime_events: 0,
+                by_type: std::collections::BTreeMap::new(),
+            },
+        ));
     }
 
-    let report = build_report(&conn)?;
-    Ok(serde_json::to_value(&report)?)
+    build_full_report(&conn)
 }
 
 #[cfg(test)]
@@ -1847,5 +2544,482 @@ mod tests {
         let json = r#"{"total_beliefs": 178, "floating_count": 5, "grounded_count": 173, "avg_evidence": 1.72, "avg_health": 0.88}"#;
         let result = VerbMetrics::from_db("believe", "beliefs", json);
         assert!(matches!(result, VerbMetrics::Believe(_)));
+    }
+
+    // ================================================================
+    // Full report derivation tests
+    // ================================================================
+
+    #[test]
+    fn freshness_capture_thresholds() {
+        assert_eq!(Freshness::for_verb("capture", 12.0), Freshness::Fresh);
+        assert_eq!(Freshness::for_verb("capture", 48.0), Freshness::Aging);
+        assert_eq!(Freshness::for_verb("capture", 100.0), Freshness::Stale);
+    }
+
+    #[test]
+    fn freshness_believe_thresholds() {
+        assert_eq!(Freshness::for_verb("believe", 24.0), Freshness::Fresh);
+        assert_eq!(Freshness::for_verb("believe", 200.0), Freshness::Aging);
+        assert_eq!(Freshness::for_verb("believe", 800.0), Freshness::Stale);
+    }
+
+    #[test]
+    fn freshness_unknown_verb_uses_default() {
+        // Unknown verb gets believe/evolve thresholds (168h/720h)
+        assert_eq!(Freshness::for_verb("unknown", 100.0), Freshness::Fresh);
+        assert_eq!(Freshness::for_verb("unknown", 500.0), Freshness::Aging);
+        assert_eq!(Freshness::for_verb("unknown", 800.0), Freshness::Stale);
+    }
+
+    #[test]
+    fn believe_diagnostics_floating() {
+        let m = BelieveMetrics {
+            total_beliefs: 178,
+            floating_count: 135,
+            grounded_count: 43,
+            contested_count: 0,
+            avg_evidence: 1.72,
+            avg_health: 0.88,
+        };
+        let diags = m.diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0]
+            .message
+            .contains("135 beliefs have no code grounding"));
+        assert!(diags[0].message.contains("76% floating"));
+        assert!(matches!(diags[0].severity, Severity::Warning));
+    }
+
+    #[test]
+    fn believe_diagnostics_contested() {
+        let m = BelieveMetrics {
+            total_beliefs: 178,
+            floating_count: 0,
+            grounded_count: 178,
+            contested_count: 5,
+            avg_evidence: 2.0,
+            avg_health: 0.9,
+        };
+        let diags = m.diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0]
+            .message
+            .contains("5 beliefs have active attacks without resolution"));
+        assert!(matches!(diags[0].severity, Severity::Warning));
+    }
+
+    #[test]
+    fn believe_diagnostics_floating_and_contested() {
+        let m = BelieveMetrics {
+            total_beliefs: 100,
+            floating_count: 20,
+            grounded_count: 80,
+            contested_count: 3,
+            avg_evidence: 2.0,
+            avg_health: 0.85,
+        };
+        let diags = m.diagnostics();
+        assert_eq!(diags.len(), 2);
+        assert!(diags[0]
+            .message
+            .contains("20 beliefs have no code grounding"));
+        assert!(diags[1]
+            .message
+            .contains("3 beliefs have active attacks without resolution"));
+    }
+
+    #[test]
+    fn believe_diagnostics_all_grounded() {
+        let m = BelieveMetrics {
+            total_beliefs: 50,
+            floating_count: 0,
+            grounded_count: 50,
+            contested_count: 0,
+            avg_evidence: 3.0,
+            avg_health: 0.95,
+        };
+        assert!(m.diagnostics().is_empty());
+    }
+
+    #[test]
+    fn believe_diagnostics_low_health() {
+        let m = BelieveMetrics {
+            total_beliefs: 10,
+            floating_count: 0,
+            grounded_count: 10,
+            contested_count: 0,
+            avg_evidence: 1.0,
+            avg_health: 0.3,
+        };
+        let diags = m.diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("average belief health is low"));
+    }
+
+    #[test]
+    fn search_diagnostics_low_precision() {
+        let m = SearchMetrics {
+            p_at_5: Some(0.2),
+            mrr: Some(0.3),
+            recall_at_5: None,
+        };
+        let diags = m.diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("P@5=20%"));
+    }
+
+    #[test]
+    fn search_diagnostics_good_precision() {
+        let m = SearchMetrics {
+            p_at_5: Some(0.8),
+            mrr: Some(0.75),
+            recall_at_5: None,
+        };
+        assert!(m.diagnostics().is_empty());
+    }
+
+    #[test]
+    fn health_check_diagnostics_missing_tools() {
+        let m = CaptureHealthCheckMetrics {
+            beliefs: 178,
+            sessions: 42,
+            layer_patterns: 12,
+            missing_tools: 2,
+            new_tools: 0,
+        };
+        let diags = m.diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("2 expected tools are missing"));
+    }
+
+    #[test]
+    fn effective_status_degraded_when_stale_and_needs_attention() {
+        assert_eq!(
+            effective_status(VerbStatus::NeedsAttention, Some(Freshness::Stale)),
+            VerbStatus::Degraded
+        );
+    }
+
+    #[test]
+    fn effective_status_preserves_good() {
+        assert_eq!(
+            effective_status(VerbStatus::Good, Some(Freshness::Stale)),
+            VerbStatus::Good
+        );
+    }
+
+    #[test]
+    fn effective_status_preserves_needs_attention_when_fresh() {
+        assert_eq!(
+            effective_status(VerbStatus::NeedsAttention, Some(Freshness::Fresh)),
+            VerbStatus::NeedsAttention
+        );
+    }
+
+    #[test]
+    fn health_summary_worst_verb_wins() {
+        let mut verbs = std::collections::BTreeMap::new();
+        verbs.insert(
+            "capture".to_string(),
+            FullVerbSummary {
+                status: VerbStatus::Good,
+                latest_timestamp: None,
+                age_hours: None,
+                freshness: None,
+                sources: vec![],
+                diagnostics: vec![],
+            },
+        );
+        verbs.insert(
+            "believe".to_string(),
+            FullVerbSummary {
+                status: VerbStatus::NeedsAttention,
+                latest_timestamp: None,
+                age_hours: None,
+                freshness: None,
+                sources: vec![],
+                diagnostics: vec![Diagnostic {
+                    severity: Severity::Warning,
+                    message: "135 beliefs floating".to_string(),
+                }],
+            },
+        );
+
+        let report = FullMeasureReport::new(
+            verbs,
+            EventCounts {
+                total_runtime_events: 0,
+                by_type: std::collections::BTreeMap::new(),
+            },
+        );
+
+        assert_eq!(report.health.status, VerbStatus::NeedsAttention);
+        assert!(report.health.summary.contains("1/2 verbs healthy"));
+        assert!(report.health.summary.contains("believe"));
+    }
+
+    #[test]
+    fn health_summary_all_good() {
+        let mut verbs = std::collections::BTreeMap::new();
+        verbs.insert(
+            "capture".to_string(),
+            FullVerbSummary {
+                status: VerbStatus::Good,
+                latest_timestamp: None,
+                age_hours: None,
+                freshness: None,
+                sources: vec![],
+                diagnostics: vec![],
+            },
+        );
+
+        let report = FullMeasureReport::new(
+            verbs,
+            EventCounts {
+                total_runtime_events: 0,
+                by_type: std::collections::BTreeMap::new(),
+            },
+        );
+
+        assert_eq!(report.health.status, VerbStatus::Good);
+        assert!(report.health.summary.contains("1/1 verbs healthy"));
+    }
+
+    #[test]
+    fn compute_age_hours_rfc3339() {
+        // 1 hour ago
+        let ts = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+        let age = compute_age_hours(&ts).unwrap();
+        assert!(age >= 0.9 && age <= 1.1, "Expected ~1.0h, got {}", age);
+    }
+
+    #[test]
+    fn compute_age_hours_date_only() {
+        let yesterday = (chrono::Utc::now().date_naive() - chrono::Duration::days(1))
+            .format("%Y-%m-%d")
+            .to_string();
+        let age = compute_age_hours(&yesterday).unwrap();
+        assert!(age >= 23.0 && age <= 25.0, "Expected ~24h, got {}", age);
+    }
+
+    #[test]
+    fn compute_age_hours_invalid() {
+        assert!(compute_age_hours("not-a-date").is_none());
+    }
+
+    #[test]
+    fn verb_status_ordering() {
+        // Worst-verb-wins: Degraded > NeedsAttention > Good > NoData
+        assert!(VerbStatus::Degraded > VerbStatus::NeedsAttention);
+        assert!(VerbStatus::NeedsAttention > VerbStatus::Good);
+        assert!(VerbStatus::Good > VerbStatus::NoData);
+
+        // max() returns worst status
+        let statuses = vec![
+            VerbStatus::Good,
+            VerbStatus::NoData,
+            VerbStatus::NeedsAttention,
+        ];
+        assert_eq!(statuses.into_iter().max(), Some(VerbStatus::NeedsAttention));
+    }
+
+    /// JSON shape contract test for FullMeasureReport.
+    ///
+    /// Pins the serialized structure that LLMs and MCP consumers depend on.
+    /// If this test breaks, the JSON contract changed — verify intentionally.
+    #[test]
+    fn full_measure_report_json_shape() {
+        let mut verbs = std::collections::BTreeMap::new();
+        verbs.insert(
+            "believe".to_string(),
+            FullVerbSummary {
+                status: VerbStatus::NeedsAttention,
+                latest_timestamp: Some("2026-02-27T09:00:00Z".to_string()),
+                age_hours: Some(2.0),
+                freshness: Some(Freshness::Fresh),
+                sources: vec![SourceSummary {
+                    source_type: SourceType::Beliefs,
+                    tool: ToolName::Scrape,
+                    mode: Mode::Beliefs,
+                    latest_metrics: VerbMetrics::Believe(BelieveMetrics {
+                        total_beliefs: 178,
+                        floating_count: 135,
+                        grounded_count: 43,
+                        contested_count: 16,
+                        avg_evidence: 1.72,
+                        avg_health: 0.88,
+                    }),
+                    timestamp: "2026-02-27T09:00:00Z".to_string(),
+                    event_count: 178,
+                }],
+                diagnostics: vec![Diagnostic {
+                    severity: Severity::Warning,
+                    message: "135 beliefs have no code grounding (76% floating)".to_string(),
+                }],
+            },
+        );
+        verbs.insert(
+            "capture".to_string(),
+            FullVerbSummary {
+                status: VerbStatus::Good,
+                latest_timestamp: Some("2026-02-27T10:45:00Z".to_string()),
+                age_hours: Some(0.25),
+                freshness: Some(Freshness::Fresh),
+                sources: vec![],
+                diagnostics: vec![],
+            },
+        );
+
+        let mut by_type = std::collections::BTreeMap::new();
+        by_type.insert("measure.capture".to_string(), 12);
+        by_type.insert("scry.query".to_string(), 45);
+
+        let report = FullMeasureReport::new(
+            verbs,
+            EventCounts {
+                total_runtime_events: 142,
+                by_type,
+            },
+        );
+
+        let json = serde_json::to_value(&report).unwrap();
+
+        // Top-level structure
+        assert!(json.get("health").is_some(), "missing top-level 'health'");
+        assert!(json.get("verbs").is_some(), "missing top-level 'verbs'");
+        assert!(
+            json.get("event_counts").is_some(),
+            "missing top-level 'event_counts'"
+        );
+
+        // Health shape
+        let health = &json["health"];
+        assert_eq!(health["status"], "needs_attention");
+        assert!(health["summary"]
+            .as_str()
+            .unwrap()
+            .contains("1/2 verbs healthy"));
+        assert!(health["assessed_at"].as_str().is_some());
+
+        // Verb keys are alphabetically ordered (BTreeMap)
+        let verb_keys: Vec<&str> = json["verbs"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(|k| k.as_str())
+            .collect();
+        assert_eq!(verb_keys, vec!["believe", "capture"]);
+
+        // Verb shape — believe
+        let believe = &json["verbs"]["believe"];
+        assert_eq!(believe["status"], "needs_attention");
+        assert_eq!(believe["latest_timestamp"], "2026-02-27T09:00:00Z");
+        assert_eq!(believe["age_hours"], 2.0);
+        assert_eq!(believe["freshness"], "fresh");
+        assert!(believe["sources"].as_array().is_some());
+        assert!(believe["diagnostics"].as_array().is_some());
+
+        // Source shape
+        let src = &believe["sources"][0];
+        assert_eq!(src["source_type"], "beliefs");
+        assert_eq!(src["tool"], "scrape");
+        assert_eq!(src["mode"], "beliefs");
+        assert_eq!(src["event_count"], 178);
+        let metrics = &src["latest_metrics"];
+        assert_eq!(metrics["total_beliefs"], 178);
+        assert_eq!(metrics["floating_count"], 135);
+        assert_eq!(metrics["grounded_count"], 43);
+        assert_eq!(metrics["contested_count"], 16);
+
+        // Diagnostic shape
+        let diag = &believe["diagnostics"][0];
+        assert_eq!(diag["severity"], "warning");
+        assert!(diag["message"].as_str().unwrap().contains("floating"));
+
+        // Verb shape — capture (no data verb with Good)
+        let capture = &json["verbs"]["capture"];
+        assert_eq!(capture["status"], "good");
+        assert_eq!(capture["freshness"], "fresh");
+
+        // Event counts shape
+        let ec = &json["event_counts"];
+        assert_eq!(ec["total_runtime_events"], 142);
+        assert_eq!(ec["by_type"]["measure.capture"], 12);
+        assert_eq!(ec["by_type"]["scry.query"], 45);
+
+        // VerbStatus serializes as snake_case
+        assert_eq!(
+            serde_json::to_value(VerbStatus::NeedsAttention).unwrap(),
+            "needs_attention"
+        );
+        assert_eq!(serde_json::to_value(VerbStatus::NoData).unwrap(), "no_data");
+        assert_eq!(
+            serde_json::to_value(VerbStatus::Degraded).unwrap(),
+            "degraded"
+        );
+        assert_eq!(serde_json::to_value(VerbStatus::Good).unwrap(), "good");
+
+        // Freshness serializes as lowercase
+        assert_eq!(serde_json::to_value(Freshness::Fresh).unwrap(), "fresh");
+        assert_eq!(serde_json::to_value(Freshness::Aging).unwrap(), "aging");
+        assert_eq!(serde_json::to_value(Freshness::Stale).unwrap(), "stale");
+
+        // Severity serializes as lowercase
+        assert_eq!(serde_json::to_value(Severity::Warning).unwrap(), "warning");
+        assert_eq!(serde_json::to_value(Severity::Error).unwrap(), "error");
+    }
+
+    #[test]
+    fn git_scrape_diagnostics_slow() {
+        let m = CaptureGitScrapeMetrics {
+            commits_processed: 10,
+            tracked_files: 248,
+            tags_indexed: 50,
+            co_change_pairs: 1200,
+            duration_ms: 6000,
+        };
+        let diags = m.diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("git scrape took 6000ms"));
+        assert!(matches!(diags[0].severity, Severity::Warning));
+    }
+
+    #[test]
+    fn git_scrape_diagnostics_fast() {
+        let m = CaptureGitScrapeMetrics {
+            commits_processed: 10,
+            tracked_files: 248,
+            tags_indexed: 50,
+            co_change_pairs: 1200,
+            duration_ms: 2000,
+        };
+        assert!(m.diagnostics().is_empty());
+    }
+
+    #[test]
+    fn layer_scrape_diagnostics_slow() {
+        let m = CaptureLayerMetrics {
+            patterns_processed: 12,
+            sessions_processed: 5,
+            duration_ms: 7000,
+        };
+        let diags = m.diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("layer scrape took 7000ms"));
+    }
+
+    #[test]
+    fn beliefs_scrape_diagnostics_fast() {
+        let m = CaptureBeliefsMetrics {
+            beliefs_processed: 178,
+            beliefs_verified: 43,
+            beliefs_skipped: 0,
+            supports_edges: 96,
+            attacks_edges: 82,
+            values_processed: 10,
+            duration_ms: 1000,
+        };
+        assert!(m.diagnostics().is_empty());
     }
 }

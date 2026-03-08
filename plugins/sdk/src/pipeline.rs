@@ -31,7 +31,7 @@ wit_bindgen::generate!({
 // =========================================================================
 
 /// Host logging — call from plugin code to log through the host.
-pub mod host_log {
+pub mod log {
     pub use super::patina::host::log::LogLevel;
 
     /// Log a message to the host's structured logging.

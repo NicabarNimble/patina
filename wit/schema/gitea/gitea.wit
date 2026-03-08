@@ -1,0 +1,29 @@
+package patina:schema/gitea@1.0.0;
+
+interface types {
+    record issue {
+        id: s64,
+        title: string,
+        body: string,
+        state: string,
+        author: string,
+        labels: list<string>,
+        created-at: string,
+        updated-at: string,
+        url: string,
+    }
+
+    record pull-request {
+        id: s64,
+        title: string,
+        body: string,
+        state: string,
+        author: string,
+        labels: list<string>,
+        created-at: string,
+        merged-at: option<string>,
+        url: string,
+        linked-issues: list<s64>,
+        approvals: s32,
+    }
+}

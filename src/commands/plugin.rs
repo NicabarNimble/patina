@@ -27,8 +27,11 @@ pub fn execute_list() -> Result<()> {
     }
 
     println!("Installed plugins ({}):\n", plugins_dir.display());
-    println!("  {:<20} {:<10} {:<15} STATUS", "NAME", "VERSION", "WORLD");
-    println!("  {}", "-".repeat(60));
+    println!(
+        "  {:<20} {:<10} {:<15} {:<12} STATUS",
+        "NAME", "VERSION", "WORLD", "ROLE"
+    );
+    println!("  {}", "-".repeat(72));
 
     for entry in &entries {
         let wasm_path = entry.path();
@@ -42,17 +45,28 @@ pub fn execute_list() -> Result<()> {
                         Ok(()) => "ready",
                         Err(_) => "denied",
                     };
+                    let role_str = manifest
+                        .role
+                        .as_ref()
+                        .map(|r| r.to_string())
+                        .unwrap_or_else(|| "-".into());
                     println!(
-                        "  {:<20} {:<10} {:<15} {}",
-                        manifest.name, manifest.version, manifest.world, status
+                        "  {:<20} {:<10} {:<15} {:<12} {}",
+                        manifest.name, manifest.version, manifest.world, role_str, status
                     );
                 }
                 Err(e) => {
-                    println!("  {:<20} {:<10} {:<15} error: {}", stem, "?", "?", e);
+                    println!(
+                        "  {:<20} {:<10} {:<15} {:<12} error: {}",
+                        stem, "?", "?", "-", e
+                    );
                 }
             }
         } else {
-            println!("  {:<20} {:<10} {:<15} no manifest", stem, "?", "?");
+            println!(
+                "  {:<20} {:<10} {:<15} {:<12} no manifest",
+                stem, "?", "?", "-"
+            );
         }
     }
 

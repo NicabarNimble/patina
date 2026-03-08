@@ -8,7 +8,7 @@ use wasmtime::component::Component;
 use wasmtime::{Config, Engine};
 
 mod command;
-mod host_support;
+pub(crate) mod host_support;
 mod mother_child;
 mod pipeline;
 mod task;
@@ -58,6 +58,7 @@ impl PluginWorld {
                 "host_query",
                 "host_http",
                 "host_measure",
+                "host_emit",
             ],
             Self::Command => &["host_log", "host_layer", "host_query", "host_measure"],
             Self::Task => &[
@@ -66,6 +67,7 @@ impl PluginWorld {
                 "host_query",
                 "host_http",
                 "host_measure",
+                "host_emit",
             ],
             Self::Pipeline => &["host_log"],
         }
@@ -79,6 +81,57 @@ impl std::fmt::Display for PluginWorld {
             Self::Command => write!(f, "command"),
             Self::Task => write!(f, "task"),
             Self::Pipeline => write!(f, "pipeline"),
+        }
+    }
+}
+
+// =========================================================================
+// Plugin role enum — parsed from manifest, describes purpose (F4)
+// =========================================================================
+
+/// Known plugin roles — what the plugin is FOR (orthogonal to world).
+#[derive(Debug, Clone, PartialEq)]
+pub enum PluginRole {
+    Connector,
+    Grammar,
+    Extension,
+    App,
+}
+
+impl std::str::FromStr for PluginRole {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "connector" => Ok(Self::Connector),
+            "grammar" => Ok(Self::Grammar),
+            "extension" => Ok(Self::Extension),
+            "app" => Ok(Self::App),
+            other => anyhow::bail!("unknown plugin role: '{}'", other),
+        }
+    }
+}
+
+impl PluginRole {
+    /// Worlds where this role is typically used.
+    /// Used for validation warnings — not enforcement.
+    pub fn expected_worlds(&self) -> &[PluginWorld] {
+        match self {
+            Self::Connector => &[PluginWorld::MotherChild, PluginWorld::Task],
+            Self::Grammar => &[PluginWorld::Pipeline],
+            Self::Extension => &[PluginWorld::Command, PluginWorld::Task],
+            Self::App => &[PluginWorld::MotherChild, PluginWorld::Task],
+        }
+    }
+}
+
+impl std::fmt::Display for PluginRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Connector => write!(f, "connector"),
+            Self::Grammar => write!(f, "grammar"),
+            Self::Extension => write!(f, "extension"),
+            Self::App => write!(f, "app"),
         }
     }
 }
@@ -127,6 +180,9 @@ pub struct PluginManifest {
     pub version: String,
     pub description: String,
     pub world: PluginWorld,
+    /// Plugin role — what the plugin is FOR (connector, grammar, extension, app).
+    /// None for legacy plugins that haven't declared a role yet.
+    pub role: Option<PluginRole>,
     pub patina_min: String,
     pub capabilities: Vec<String>,
     /// Toy commands this plugin is allowed to request (from [capabilities.toys].commands).
@@ -173,6 +229,12 @@ pub struct GrantedCapabilities {
     /// Credential mappings: domain → secret name + injection location.
     /// Empty means no credential injection.
     pub credential_mappings: std::collections::HashMap<String, CredentialMapping>,
+    /// Whether plugin can emit facts to eventlog.
+    pub host_emit: bool,
+    /// Parsed schema facts cached at load time. Outer key = schema name,
+    /// inner key = fact-type name, value = event_type string.
+    /// Zero disk reads at emit time — all validation from this cache.
+    pub schema_facts: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
 }
 
 /// What the plugin provides to the system.
@@ -188,7 +250,7 @@ pub struct PluginProvides {
 
 impl PluginManifest {
     /// Parse a plugin manifest from a TOML file.
-    pub(super) fn from_path(path: &Path) -> Result<Self> {
+    pub fn from_path(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let table: toml::Table = content.parse()?;
 
@@ -220,6 +282,12 @@ impl PluginManifest {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("missing plugin.world"))?;
         let world = world_str.parse::<PluginWorld>()?;
+
+        let role = plugin
+            .get("role")
+            .and_then(|v| v.as_str())
+            .map(|s| s.parse::<PluginRole>())
+            .transpose()?;
 
         let patina_min = plugin
             .get("patina_min")
@@ -366,6 +434,7 @@ impl PluginManifest {
             version,
             description,
             world,
+            role,
             patina_min,
             capabilities,
             allowed_toy_commands,
@@ -391,6 +460,8 @@ impl PluginManifest {
     ///
     /// Called once at load time. The resulting GrantedCapabilities is
     /// stored on CommandHostState for O(1) call-time checks.
+    ///
+    /// Schema facts are parsed from disk here — zero disk reads at emit time.
     pub fn granted_capabilities(&self) -> GrantedCapabilities {
         let query_kinds = self.host_query_kinds.iter().cloned().collect();
         let http_domains = self.host_http_domains.iter().cloned().collect();
@@ -400,11 +471,58 @@ impl PluginManifest {
         // For now, default to CurrentProject — AllRepos requires explicit opt-in.
         let query_scope = QueryScope::CurrentProject;
 
+        let host_emit = self.capabilities.contains(&"host_emit".to_string());
+
+        // Parse schemas at load time: schema name → { fact-type → event_type }
+        let schema_facts = Self::parse_schema_facts(&self.schemas);
+
         GrantedCapabilities {
             query_kinds,
             query_scope,
             http_domains,
             credential_mappings,
+            host_emit,
+            schema_facts,
         }
+    }
+
+    /// Parse schema.toml files from disk and cache fact→event_type mappings.
+    ///
+    /// Called once at load time. Returns empty map for schemas that can't
+    /// be found or parsed (load-time validation in check_capabilities
+    /// will warn separately).
+    fn parse_schema_facts(
+        schemas: &std::collections::HashMap<String, String>,
+    ) -> std::collections::HashMap<String, std::collections::HashMap<String, String>> {
+        let project_root = crate::session::SessionManager::find_project_root().ok();
+        let root = match project_root {
+            Some(ref r) => r,
+            None => return std::collections::HashMap::new(),
+        };
+
+        schemas
+            .keys()
+            .filter_map(|schema_name| {
+                let schema_path = root
+                    .join(".patina/schemas")
+                    .join(schema_name)
+                    .join("schema.toml");
+                let content = std::fs::read_to_string(&schema_path).ok()?;
+                let table: toml::Table = content.parse().ok()?;
+                let facts = table.get("facts")?.as_array()?;
+
+                let fact_map: std::collections::HashMap<String, String> = facts
+                    .iter()
+                    .filter_map(|f| {
+                        let t = f.as_table()?;
+                        let name = t.get("name")?.as_str()?.to_string();
+                        let event_type = t.get("event_type")?.as_str()?.to_string();
+                        Some((name, event_type))
+                    })
+                    .collect();
+
+                Some((schema_name.clone(), fact_map))
+            })
+            .collect()
     }
 }

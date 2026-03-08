@@ -146,6 +146,30 @@ mod bindings {
         }
     }
 
+    // patina:host/emit — delegates to host_support
+    impl patina::host::emit::Host for HostState {
+        fn emit_fact(
+            &mut self,
+            schema: String,
+            fact_type: String,
+            data: String,
+        ) -> Result<u64, String> {
+            if !self.grants.host_emit {
+                return Err(format!(
+                    "host_emit not granted for plugin '{}'",
+                    self.plugin_name
+                ));
+            }
+            super::super::host_support::emit_fact(
+                &self.grants.schema_facts,
+                &self.plugin_name,
+                &schema,
+                &fact_type,
+                &data,
+            )
+        }
+    }
+
     // patina:host/measure — delegates to host_support
     impl patina::host::measure::Host for HostState {
         fn record_measurement(
@@ -238,8 +262,17 @@ impl PluginEngine {
             );
         }
 
-        // Boolean capabilities that are always granted (no config needed)
-        let auto_granted = ["host_log", "host_layer", "host_measure"];
+        // Capabilities granted when declared in plugin.toml.
+        // host_http and host_query have additional validation (domain allowlist,
+        // query kind check) that runs below and at call time via GrantedCapabilities.
+        let auto_granted = [
+            "host_log",
+            "host_layer",
+            "host_measure",
+            "host_emit",
+            "host_http",
+            "host_query",
+        ];
 
         let denied: Vec<&str> = manifest
             .capabilities
@@ -297,6 +330,14 @@ impl PluginEngine {
             }
         }
 
+        // Load-time validation: host_emit requires at least one schema
+        if manifest.capabilities.contains(&"host_emit".to_string()) && manifest.schemas.is_empty() {
+            anyhow::bail!(
+                "plugin '{}' declares host_emit but has no [schemas.*] entries",
+                manifest.name
+            );
+        }
+
         // Load-time validation: host_secrets domains must be in host_http
         let http_set: std::collections::HashSet<&str> = manifest
             .host_http_domains
@@ -326,6 +367,26 @@ impl PluginEngine {
                         manifest.name, mapping.secret_name, e
                     );
                 }
+            }
+        }
+
+        // Role-world validation: warn on unusual combinations, don't block.
+        // Roles describe purpose; worlds enforce capabilities. Invalid combos
+        // aren't broken — just unusual. DESIGN.md: "doctor can warn."
+        if let Some(ref role) = manifest.role {
+            let expected_worlds = role.expected_worlds();
+            if !expected_worlds.contains(&manifest.world) {
+                eprintln!(
+                    "[plugin:{}] warning: role '{}' is unusual for world '{}' (expected: {})",
+                    manifest.name,
+                    role,
+                    manifest.world,
+                    expected_worlds
+                        .iter()
+                        .map(|w| w.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
             }
         }
 

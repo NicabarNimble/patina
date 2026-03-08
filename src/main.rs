@@ -411,12 +411,22 @@ enum Commands {
         /// Drill-down into a specific verb with history
         #[arg(long)]
         verb: Option<String>,
+
+        /// Show full health report with freshness, diagnostics, and health summary
+        #[arg(long)]
+        full: bool,
     },
 
     /// Manage development sessions (start, update, note, end)
     Session {
         #[command(subcommand)]
         command: commands::session::SessionCommands,
+    },
+
+    /// Git hook handlers (post-commit, post-merge)
+    Hook {
+        #[command(subcommand)]
+        command: commands::hook::HookCommands,
     },
 
     /// Audit epistemic beliefs — show use/truth metrics
@@ -661,32 +671,6 @@ enum ScrapeCommands {
         /// Full rebuild (ignore incremental)
         #[arg(long)]
         full: bool,
-    },
-    /// Fetch issues and PRs from forge (GitHub, Gitea, etc.)
-    Forge {
-        /// Full rebuild (ignore incremental)
-        #[arg(long)]
-        full: bool,
-
-        /// Show sync status without making changes
-        #[arg(long)]
-        status: bool,
-
-        /// Fork to background and sync all pending refs
-        #[arg(long)]
-        sync: bool,
-
-        /// Tail the sync log file
-        #[arg(long)]
-        log: bool,
-
-        /// Foreground sync with limit (escape hatch)
-        #[arg(long)]
-        limit: Option<usize>,
-
-        /// Target a ref repo instead of current project
-        #[arg(long)]
-        repo: Option<String>,
     },
 }
 
@@ -1190,14 +1174,6 @@ fn main() -> Result<()> {
                         commands::scrape::execute_sessions(full)?
                     }
                     Some(ScrapeCommands::Layer { full }) => commands::scrape::execute_layer(full)?,
-                    Some(ScrapeCommands::Forge {
-                        full,
-                        status,
-                        sync,
-                        log,
-                        limit,
-                        repo,
-                    }) => commands::scrape::execute_forge(full, status, sync, log, limit, repo)?,
                 }
             }
         }
@@ -1404,6 +1380,7 @@ fn main() -> Result<()> {
                         version: "0.0.0".into(),
                         description: String::new(),
                         world: patina::plugin::PluginWorld::Command,
+                        role: None,
                         patina_min: "0.0.0".into(),
                         capabilities: vec!["host_log".into(), "host_layer".into()],
                         allowed_toy_commands: vec![],
@@ -1596,11 +1573,54 @@ fn main() -> Result<()> {
                             std::process::exit(exit_code);
                         }
                     }
+                    patina::plugin::PluginWorld::MotherChild => {
+                        // mother-child: args = [action, payload_json]
+                        let action = args.first().map(|s| s.as_str()).unwrap_or("health");
+                        let payload_str = args.get(1).map(|s| s.as_str()).unwrap_or("{}");
+
+                        let engine = patina::plugin::PluginEngine::new()?;
+                        let component = engine.load_component(&wasm_bytes)?;
+                        let query_fn = make_query_dispatch(&manifest);
+                        let mut child =
+                            engine.instantiate_child(&component, &manifest, query_fn)?;
+
+                        // on_load — initialize the plugin
+                        use patina::mother::MotherHost;
+                        struct CliHost;
+                        impl MotherHost for CliHost {
+                            fn log(&self, child: &str, message: &str) {
+                                eprintln!("[{}] {}", child, message);
+                            }
+                        }
+                        child.on_load(&CliHost)?;
+
+                        if action == "health" {
+                            let health = child.health();
+                            println!("{:?}", health);
+                        } else {
+                            let request = patina::mother::ChildRequest {
+                                action: action.to_string(),
+                                payload: serde_json::from_str(payload_str)
+                                    .unwrap_or(serde_json::Value::String(payload_str.to_string())),
+                            };
+                            match child.handle(&request) {
+                                Ok(response) => {
+                                    println!(
+                                        "{}",
+                                        serde_json::to_string_pretty(&response.payload)?
+                                    );
+                                }
+                                Err(e) => {
+                                    eprintln!("error: {}", e);
+                                    std::process::exit(1);
+                                }
+                            }
+                        }
+                    }
                     other => {
                         anyhow::bail!(
-                            "plugin '{}' has world '{}' — only 'task' and 'command' are supported by `plugin run`",
+                            "plugin '{}' has world '{}' — only 'task', 'command', and 'mother-child' are supported by `plugin run`",
                             name, other
-
                         );
                     }
                 }
@@ -1642,6 +1662,9 @@ fn main() -> Result<()> {
         }
         Some(Commands::Session { command }) => {
             commands::session::execute(command)?;
+        }
+        Some(Commands::Hook { command }) => {
+            commands::hook::execute(command)?;
         }
         Some(Commands::Belief { command }) => {
             commands::belief::execute(command)?;
@@ -1797,8 +1820,18 @@ fn main() -> Result<()> {
             let options = commands::report::ReportOptions { output, repo, json };
             commands::report::execute(options)?;
         }
-        Some(Commands::Measure { system, json, verb }) => {
-            let options = commands::measure::MeasureOptions { system, json, verb };
+        Some(Commands::Measure {
+            system,
+            json,
+            verb,
+            full,
+        }) => {
+            let options = commands::measure::MeasureOptions {
+                system,
+                json,
+                verb,
+                full,
+            };
             commands::measure::execute(options)?;
         }
         Some(Commands::Events { command }) => match command {

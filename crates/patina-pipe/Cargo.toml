@@ -1,0 +1,20 @@
+[package]
+name = "patina-pipe"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Native transport binding for Patina pipe protocol — Child trait, run(), FactEmitter over stdio JSON-RPC"
+repository = "https://github.com/NicabarNimble/patina"
+
+[dependencies]
+patina-pipe-types = { path = "../patina-pipe-types" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Unix: libc for fork-based sandbox tests + Linux runtime
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# Linux-only: Landlock ABI v4+ for native child sandboxing
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = "0.4"

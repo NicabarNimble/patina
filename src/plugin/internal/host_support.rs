@@ -199,8 +199,9 @@ pub(super) fn query(
 /// Shared by mother-child (instantiate_child) and task (run_task) engines.
 /// If a response redirects to a different host, the request is stopped
 /// (prevents allowlist bypass via open redirectors).
-pub(super) fn build_http_client() -> anyhow::Result<reqwest::blocking::Client> {
+pub(crate) fn build_http_client() -> anyhow::Result<reqwest::blocking::Client> {
     reqwest::blocking::Client::builder()
+        .user_agent(format!("patina/{}", env!("CARGO_PKG_VERSION")))
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
             if attempt.url().host_str() != attempt.previous().last().and_then(|u| u.host_str()) {
                 attempt.stop()
@@ -220,7 +221,7 @@ pub(super) fn build_http_client() -> anyhow::Result<reqwest::blocking::Client> {
 /// - No localhost
 ///
 /// Pure function — testable independently of wasmtime.
-pub(super) fn validate_http_url(url: &str) -> Result<String, String> {
+pub(crate) fn validate_http_url(url: &str) -> Result<String, String> {
     let parsed = reqwest::Url::parse(url).map_err(|e| format!("invalid URL: {}", e))?;
 
     // HTTPS only
@@ -348,7 +349,7 @@ fn resolve_credential(
 }
 
 /// Inject credential into a request builder based on the mapping's location.
-pub(super) fn inject_credential(
+pub(crate) fn inject_credential(
     builder: reqwest::blocking::RequestBuilder,
     mapping: &CredentialMapping,
     value: &str,
@@ -359,7 +360,7 @@ pub(super) fn inject_credential(
 }
 
 /// Scan response body for leaked credential values, replacing with [REDACTED].
-pub(super) fn leak_check(body: &str, secret_name: &str, secret_value: &str) -> String {
+pub(crate) fn leak_check(body: &str, secret_name: &str, secret_value: &str) -> String {
     if body.contains(secret_value) {
         eprintln!(
             "[host] credential leak detected in response: secret '{}' found in body, redacting",
@@ -384,7 +385,7 @@ const VALID_VERBS: &[&str] = &["capture", "index", "search", "believe", "evolve"
 /// with source overridden to the plugin name (security: plugins can't
 /// impersonate core).
 pub(super) fn record_measurement(
-    project_root: &Option<PathBuf>,
+    _project_root: &Option<PathBuf>,
     plugin_name: &str,
     verb: &str,
     tool: &str,
@@ -413,13 +414,9 @@ pub(super) fn record_measurement(
         }
     }
 
-    // Open patina.db
-    let root = project_root
-        .as_ref()
-        .ok_or_else(|| "no project root".to_string())?;
-    let db_path = root.join(crate::eventlog::PATINA_DB);
-    let conn =
-        crate::eventlog::initialize(&db_path).map_err(|e| format!("open patina.db: {}", e))?;
+    // Open events.db — measure.* events live in events.db, not patina.db.
+    // Core tools use eventlog::open_events_db(); plugins must use the same path.
+    let conn = crate::eventlog::open_events_db().map_err(|e| format!("open events.db: {}", e))?;
 
     // Build event data — source is always the plugin name
     let event_data = serde_json::json!({
@@ -445,6 +442,97 @@ pub(super) fn record_measurement(
     .map_err(|e| format!("insert measurement event: {}", e))?;
 
     Ok(())
+}
+
+// =========================================================================
+// Emit host support
+// =========================================================================
+
+/// Validate emit parameters and resolve the event_type from cached schema.
+///
+/// Pure validation — no disk I/O. Schemas are parsed once at plugin load
+/// time and cached on GrantedCapabilities.schema_facts.
+///
+/// Checks:
+/// 1. Schema exists in cached facts (was declared in manifest + installed)
+/// 2. Fact-type exists in schema (returns its event_type)
+/// 3. Data is valid JSON
+pub(super) fn validate_emit(
+    schema_facts: &std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+    plugin_name: &str,
+    schema: &str,
+    fact_type: &str,
+    data: &str,
+) -> Result<String, String> {
+    // 1. Schema must exist in cache (parsed at load time from manifest + disk)
+    let facts = schema_facts.get(schema).ok_or_else(|| {
+        format!(
+            "schema '{}' not available for plugin '{}' (not declared or not installed)",
+            schema, plugin_name
+        )
+    })?;
+
+    // 2. Fact-type must exist in schema — resolve to event_type
+    let event_type = facts
+        .get(fact_type)
+        .ok_or_else(|| format!("fact-type '{}' not found in schema '{}'", fact_type, schema))?;
+
+    // 3. Validate data is valid JSON
+    let _: serde_json::Value =
+        serde_json::from_str(data).map_err(|e| format!("invalid JSON data: {}", e))?;
+
+    Ok(event_type.clone())
+}
+
+/// Emit a structured fact to the project eventlog.
+///
+/// Validates via cached schema facts (zero disk I/O), writes plugin data
+/// directly to events.db. Provenance is carried by source_id ("plugin:<name>"),
+/// schema by event_type (e.g., "forge.issue"). No wrapper — data shape matches
+/// what downstream consumers expect.
+///
+/// data-architecture-v3 will add explicit provenance/schema columns; until then
+/// source_id and event_type carry the signal.
+///
+/// FROZEN LEGACY PATH — WASM facts bypass the broker routing engine.
+/// Native children route through broker::routing::validate_fact() which provides
+/// content-hash dedup, manifest schema validation, and transactional cursor writes.
+/// This direct-write path exists only for the forge WASM plugin. No new WASM children
+/// may use this path — all new children must be native and route through the broker.
+/// See DESIGN.md §5 (wasm-routing-resolved).
+pub(super) fn emit_fact(
+    schema_facts: &std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+    plugin_name: &str,
+    schema: &str,
+    fact_type: &str,
+    data: &str,
+) -> Result<u64, String> {
+    let event_type = validate_emit(schema_facts, plugin_name, schema, fact_type, data)?;
+
+    let conn = crate::eventlog::open_events_db().map_err(|e| format!("open events.db: {}", e))?;
+
+    let timestamp = chrono::Utc::now().to_rfc3339();
+    let source_id = format!("plugin:{}", plugin_name);
+
+    // Write plugin data directly — no wrapper envelope.
+    // Provenance: 'external' — plugin-emitted facts are external evidence.
+    // Schema: event_type = "<schema>.<fact>" (e.g., "forge.issue")
+    conn.execute(
+        "INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data, provenance)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        rusqlite::params![
+            &event_type,
+            &timestamp,
+            &source_id,
+            Option::<&str>::None,
+            data,
+            "external"
+        ],
+    )
+    .map_err(|e| format!("insert event: {}", e))?;
+
+    let seq = conn.last_insert_rowid() as u64;
+    Ok(seq)
 }
 
 /// Domain-allowlisted HTTP POST.

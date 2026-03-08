@@ -25,8 +25,8 @@ A local-first RAG network: portable project knowledge + personal mother.
                                     │
                    ┌────────────────┼────────────────┐
                    ▼                ▼                ▼
-             scrape git      scrape code      scrape forge
-           (commits+parsed)   (symbols)      (issues, PRs)
+             scrape git      scrape code      github-connector
+           (commits+parsed)   (symbols)      (issues, PRs via broker)
                    │                │                │
                    └────────────────┴────────────────┘
                                     │
@@ -53,7 +53,7 @@ A local-first RAG network: portable project knowledge + personal mother.
 |---------|------|--------|
 | scrape git | Extract | Capture commits, co-changes, parsed conventional commits |
 | scrape code | Extract | Capture symbols, functions, types |
-| scrape forge | Extract | Capture issues, PRs from GitHub/Gitea |
+| github-connector | Extract | Capture issues, PRs from GitHub (via mother/broker) |
 | oxidize | Prepare (semantic) | Build embeddings from facts |
 | assay | Query (factual) | Structural signals, FTS5 search, temporal, belief grounding |
 | scry | Query (semantic) | Multi-domain vector similarity — meaning, not keywords |

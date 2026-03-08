@@ -960,37 +960,49 @@ use patina::eventlog;
 
 /// Execute feedback loop evaluation - measure real-world precision
 ///
-/// Materializes intermediate results into temp tables for performance,
-/// then reports precision metrics from session query→commit correlation.
+/// Cross-database query: opens events.db (scry.query events), ATTACHes patina.db
+/// (git.commit → commit_files for structured file paths). The ATTACH direction is
+/// opposite from measure — eval owns the scry.query data.
 pub fn execute_feedback() -> Result<()> {
     println!("📊 Feedback Loop Evaluation\n");
     println!("Measuring real-world retrieval precision from session data...\n");
 
-    let conn = Connection::open(eventlog::PATINA_DB)?;
+    // Open events.db as primary — scry.query events live here
+    let conn = eventlog::open_events_db()?;
 
-    // Materialize commit files per session into a temp table (avoids repeated JSON parsing)
+    // ATTACH patina.db for git.commit data and structured commit_files table
+    let patina_path = std::path::Path::new(eventlog::PATINA_DB);
+    if !patina_path.exists() {
+        println!("No patina.db found — cannot correlate queries with commits.");
+        return Ok(());
+    }
+    conn.execute(
+        "ATTACH DATABASE ?1 AS patina",
+        [patina_path.to_str().unwrap_or(eventlog::PATINA_DB)],
+    )?;
+
+    // Step 1: Session → commit SHA mapping from patina.db git.commit events.
+    // Then join with structured commit_files for file paths (no JSON file parsing).
     conn.execute_batch(
         r#"
         DROP TABLE IF EXISTS _fb_commit_files;
         CREATE TEMP TABLE _fb_commit_files AS
-        SELECT session_id, file_path FROM (
+        SELECT DISTINCT sc.session_id, cf.file_path
+        FROM (
             SELECT
                 json_extract(data, '$.session_id') as session_id,
-                json_extract(f.value, '$.path') as file_path,
-                ROW_NUMBER() OVER (
-                    PARTITION BY json_extract(data, '$.sha'), json_extract(f.value, '$.path')
-                    ORDER BY seq DESC
-                ) as rn
-            FROM eventlog, json_each(json_extract(data, '$.files')) as f
+                json_extract(data, '$.sha') as sha
+            FROM patina.eventlog
             WHERE event_type = 'git.commit'
               AND json_extract(data, '$.session_id') IS NOT NULL
-        ) WHERE rn = 1;
+        ) sc
+        JOIN patina.commit_files cf ON cf.sha = sc.sha;
         CREATE INDEX _fb_cf_session ON _fb_commit_files(session_id);
         CREATE INDEX _fb_cf_path ON _fb_commit_files(file_path);
         "#,
     )?;
 
-    // Materialize query results with hits into a temp table.
+    // Step 2: scry.query results from events.db, joined with commit files.
     // Normalize doc_id: strip '::...' suffix and './' prefix before matching.
     conn.execute_batch(
         r#"

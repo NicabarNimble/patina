@@ -6,63 +6,68 @@
 //!
 //! Proves the command world: CLI subcommand that runs without Mother daemon.
 
+use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
+
 use patina_sdk::command::{layer, measure, query};
 use patina_sdk::{register_command, CommandPlugin};
 
-/// JSON structures for health check output.
-/// Mirrors the original compiled-in doctor types.
+/// Typed structs for doctor plugin.
+///
+/// Environment/ToolInfo: deserialized at the JSON boundary (EC3).
+/// HealthCheck/ToolChange: serialized for --json output (EC2).
+/// Wrapper structs preserve the nested JSON shape.
 mod types {
-    use serde_json::Value;
+    use super::*;
 
+    // -- Input boundary: environment JSON → typed structs (EC3) --
+
+    #[derive(Deserialize)]
+    pub struct Environment {
+        #[serde(default)]
+        pub tools: HashMap<String, ToolInfo>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct ToolInfo {
+        #[serde(default)]
+        pub available: bool,
+        pub version: Option<String>,
+    }
+
+    // -- Output: health check → JSON (EC2) --
+
+    #[derive(Serialize)]
     pub struct HealthCheck {
         pub status: String,
+        pub environment_changes: EnvironmentChanges,
+        pub project_config: ProjectConfig,
+        pub recommendations: Vec<String>,
+    }
+
+    #[derive(Serialize)]
+    pub struct EnvironmentChanges {
         pub missing_tools: Vec<ToolChange>,
         pub new_tools: Vec<ToolChange>,
+        pub version_changes: Vec<ToolChange>,
+    }
+
+    #[derive(Serialize)]
+    pub struct ProjectConfig {
         pub llm: String,
         pub adapter_version: Option<String>,
         pub layer_patterns: u32,
         pub sessions: u32,
-        pub uid: Option<String>,
         pub beliefs: Option<u32>,
-        pub recommendations: Vec<String>,
     }
 
+    #[derive(Serialize)]
     pub struct ToolChange {
         pub name: String,
         pub old_version: Option<String>,
         pub new_version: Option<String>,
         pub required: bool,
-    }
-
-    impl HealthCheck {
-        pub fn to_json(&self) -> Value {
-            serde_json::json!({
-                "status": self.status,
-                "environment_changes": {
-                    "missing_tools": self.missing_tools.iter().map(|t| serde_json::json!({
-                        "name": t.name,
-                        "old_version": t.old_version,
-                        "new_version": t.new_version,
-                        "required": t.required,
-                    })).collect::<Vec<_>>(),
-                    "new_tools": self.new_tools.iter().map(|t| serde_json::json!({
-                        "name": t.name,
-                        "old_version": t.old_version,
-                        "new_version": t.new_version,
-                        "required": t.required,
-                    })).collect::<Vec<_>>(),
-                    "version_changes": [],
-                },
-                "project_config": {
-                    "llm": self.llm,
-                    "adapter_version": self.adapter_version,
-                    "layer_patterns": self.layer_patterns,
-                    "sessions": self.sessions,
-                    "beliefs": self.beliefs,
-                },
-                "recommendations": self.recommendations,
-            })
-        }
     }
 }
 
@@ -88,13 +93,13 @@ impl CommandPlugin for DoctorPlugin {
         }
 
         if !json_output {
-            println!("\u{1f3e5} Checking project health...");
+            println!("Checking project health...");
         }
 
         // Get stored tools from project config via host
         let stored_tools = layer::get_stored_tools();
 
-        // Get current environment via host
+        // Get current environment via host — parse into typed struct at boundary (EC3)
         let current_env_json = match layer::detect_environment() {
             Ok(json) => json,
             Err(e) => {
@@ -102,9 +107,7 @@ impl CommandPlugin for DoctorPlugin {
                 return 1;
             }
         };
-
-        // Parse the environment JSON to extract tool info
-        let current_env: serde_json::Value = match serde_json::from_str(&current_env_json) {
+        let current_env: types::Environment = match serde_json::from_str(&current_env_json) {
             Ok(v) => v,
             Err(e) => {
                 eprintln!("Error parsing environment: {}", e);
@@ -113,7 +116,8 @@ impl CommandPlugin for DoctorPlugin {
         };
 
         // Analyze environment changes
-        let mut health = analyze_environment(&current_env, &stored_tools);
+        let (env_changes, recommendations, status) =
+            analyze_environment(&current_env, &stored_tools);
 
         // Get project config for LLM info
         let config_json = match layer::read_config() {
@@ -141,7 +145,7 @@ impl CommandPlugin for DoctorPlugin {
         let adapter_version = layer::check_adapter_version(&llm).ok().flatten();
 
         // Count patterns and sessions via host
-        let pattern_count = ["core", "topics", "projects"]
+        let pattern_count: u32 = ["core", "topics", "projects"]
             .iter()
             .map(|dir| layer::count_layer_files(dir))
             .sum();
@@ -155,20 +159,28 @@ impl CommandPlugin for DoctorPlugin {
             .ok()
             .and_then(|text| extract_belief_count(&text));
 
-        health.llm = llm;
-        health.adapter_version = adapter_version;
-        health.layer_patterns = pattern_count;
-        health.sessions = session_count;
-        health.uid = uid;
-        health.beliefs = beliefs;
+        let project_config = types::ProjectConfig {
+            llm,
+            adapter_version,
+            layer_patterns: pattern_count,
+            sessions: session_count,
+            beliefs,
+        };
 
-        // Emit measurement event
+        let health = types::HealthCheck {
+            status: status.clone(),
+            environment_changes: env_changes,
+            project_config,
+            recommendations,
+        };
+
+        // Emit measurement event (EC1: emit before any results are printed)
         let capture_metrics = serde_json::json!({
-            "missing_tools": health.missing_tools.len(),
-            "new_tools": health.new_tools.len(),
-            "layer_patterns": health.layer_patterns,
-            "sessions": health.sessions,
-            "beliefs": health.beliefs.unwrap_or(0),
+            "missing_tools": health.environment_changes.missing_tools.len(),
+            "new_tools": health.environment_changes.new_tools.len(),
+            "layer_patterns": health.project_config.layer_patterns,
+            "sessions": health.project_config.sessions,
+            "beliefs": health.project_config.beliefs.unwrap_or(0),
         });
 
         if let Err(e) = measure::record_measurement(
@@ -180,18 +192,18 @@ impl CommandPlugin for DoctorPlugin {
             eprintln!("Warning: failed to record measurement: {}", e);
         }
 
-        // Output
+        // Output (EC4: probe framing — brief summary, not full dashboard)
         if json_output {
             println!(
                 "{}",
-                serde_json::to_string_pretty(&health.to_json()).unwrap_or_default()
+                serde_json::to_string_pretty(&health).unwrap_or_default()
             );
         } else {
-            display_health_check(&health);
+            display_probe_summary(&health, uid.as_deref());
         }
 
         // Exit code
-        match health.status.as_str() {
+        match status.as_str() {
             "healthy" => 0,
             "warning" => 2,
             "critical" => 3,
@@ -200,26 +212,23 @@ impl CommandPlugin for DoctorPlugin {
     }
 }
 
+/// Analyze environment against stored tools. Returns (changes, recommendations, status).
+///
+/// Takes typed `Environment` — all JSON parsing happened at the boundary (EC3).
 fn analyze_environment(
-    current_env: &serde_json::Value,
+    env: &types::Environment,
     stored_tools: &[String],
-) -> types::HealthCheck {
-    let tools = current_env
-        .get("tools")
-        .and_then(|v| v.as_object())
-        .cloned()
-        .unwrap_or_default();
-
+) -> (types::EnvironmentChanges, Vec<String>, String) {
     let mut missing_tools = Vec::new();
     let mut new_tools = Vec::new();
     let mut recommendations = Vec::new();
 
-    // Check for missing tools
+    // Check for missing tools — typed field access, no get-chains
     for tool_name in stored_tools {
-        let available = tools
+        let available = env
+            .tools
             .get(tool_name)
-            .and_then(|t| t.get("available"))
-            .and_then(|v| v.as_bool())
+            .map(|t| t.available)
             .unwrap_or(false);
 
         if !available {
@@ -242,20 +251,12 @@ fn analyze_environment(
     }
 
     // Check for new tools
-    for (name, info) in &tools {
-        let available = info
-            .get("available")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        if available && !stored_tools.contains(name) {
-            let version = info
-                .get("version")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
+    for (name, info) in &env.tools {
+        if info.available && !stored_tools.contains(name) {
             new_tools.push(types::ToolChange {
                 name: name.clone(),
                 old_version: None,
-                new_version: version,
+                new_version: info.version.clone(),
                 required: false,
             });
         }
@@ -269,18 +270,13 @@ fn analyze_environment(
         "healthy".to_string()
     };
 
-    types::HealthCheck {
-        status,
+    let env_changes = types::EnvironmentChanges {
         missing_tools,
         new_tools,
-        llm: String::new(),
-        adapter_version: None,
-        layer_patterns: 0,
-        sessions: 0,
-        uid: None,
-        beliefs: None,
-        recommendations,
-    }
+        version_changes: Vec::new(),
+    };
+
+    (env_changes, recommendations, status)
 }
 
 fn is_tool_required(tool: &str) -> bool {
@@ -296,56 +292,70 @@ fn get_install_command(tool: &str) -> &'static str {
     }
 }
 
-fn display_health_check(health: &types::HealthCheck) {
-    println!("\nEnvironment Changes Since Init:");
+/// Display probe summary — brief results + pointer to measure (EC4).
+///
+/// Doctor is a probe: "check complete, emitted to event stream."
+/// Measure is the dashboard: "View full health: patina measure --full."
+fn display_probe_summary(health: &types::HealthCheck, uid: Option<&str>) {
+    println!("\n  Doctor check complete (emitted to event stream)\n");
+    println!("  Environment: {}", health.status);
 
-    for tool in &health.missing_tools {
-        let marker = if tool.required {
-            "\u{26a0}\u{fe0f} "
-        } else {
-            "  "
-        };
-        let old_version = tool.old_version.as_deref().unwrap_or("unknown");
-        let required_msg = if tool.required { " (required!)" } else { "" };
-        println!(
-            "  {} {}: {} \u{2192} NOT FOUND{}",
-            marker, tool.name, old_version, required_msg
-        );
-    }
-
-    for tool in &health.new_tools {
-        let version = tool.new_version.as_deref().unwrap_or("detected");
-        println!("  \u{2713} New tool: {} {}", tool.name, version);
-    }
-
-    println!("\nProject Configuration:");
-    if let Some(uid) = &health.uid {
-        println!("  \u{2713} UID: {}", uid);
-    } else {
-        println!("  \u{26a0} UID: missing (will be created on next scrape)");
-    }
-    let adapter_version = health.adapter_version.as_deref().unwrap_or("unknown");
-    println!(
-        "  \u{2713} LLM: {} (adapter {})",
-        health.llm, adapter_version
-    );
-    println!(
-        "  \u{2713} Layer: {} patterns stored",
-        health.layer_patterns
-    );
-    println!("  \u{2713} Sessions: {} recorded", health.sessions);
-    if let Some(count) = health.beliefs {
-        println!("  \u{2713} Beliefs: {} epistemic", count);
-    }
-
-    if !health.recommendations.is_empty() {
-        println!("\nRecommendations:");
-        for (i, rec) in health.recommendations.iter().enumerate() {
-            println!("  {}. {}", i + 1, rec);
+    // Tool summary
+    if !health.environment_changes.missing_tools.is_empty() {
+        for tool in &health.environment_changes.missing_tools {
+            let marker = if tool.required { "!" } else { "-" };
+            let required_msg = if tool.required { " (required)" } else { "" };
+            println!("    [{}] missing: {}{}", marker, tool.name, required_msg);
         }
-
-        println!("\n\u{1f4a1} Run 'patina init .' to refresh your environment snapshot");
     }
+    if !health.environment_changes.new_tools.is_empty() {
+        for tool in &health.environment_changes.new_tools {
+            let version = tool.new_version.as_deref().unwrap_or("detected");
+            println!("    [+] new: {} {}", tool.name, version);
+        }
+    }
+    if health.environment_changes.missing_tools.is_empty()
+        && health.environment_changes.new_tools.is_empty()
+    {
+        println!("    tools: all present");
+    }
+
+    // Config summary
+    let adapter = health
+        .project_config
+        .adapter_version
+        .as_deref()
+        .unwrap_or("unknown");
+    println!(
+        "    config: {} (adapter {})",
+        health.project_config.llm, adapter
+    );
+
+    // Layer summary
+    let belief_str = health
+        .project_config
+        .beliefs
+        .map(|b| format!(", {} beliefs", b))
+        .unwrap_or_default();
+    println!(
+        "    layer: {} patterns, {} sessions{}",
+        health.project_config.layer_patterns, health.project_config.sessions, belief_str
+    );
+
+    // UID
+    if uid.is_none() {
+        println!("    uid: missing (will be created on next scrape)");
+    }
+
+    // Recommendations
+    if !health.recommendations.is_empty() {
+        println!();
+        for rec in &health.recommendations {
+            println!("    {}", rec);
+        }
+    }
+
+    println!("\n  View full health: patina measure --full\n");
 }
 
 /// Extract belief count from context query output.

@@ -3,6 +3,7 @@ name = "patina-repos"
 version = "0.1.0"
 description = "Reference repository freshness monitoring for Mother daemon"
 world = "mother-child"
+role = "extension"
 patina_min = "0.17.0"
 
 [capabilities]

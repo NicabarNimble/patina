@@ -64,6 +64,35 @@ pub(crate) struct IndexConfig {
 // Schema package operations
 // =========================================================================
 
+/// Load all installed schemas from `.patina/schemas/*/schema.toml`.
+///
+/// Returns an empty vec if no schemas directory found.
+/// Warns on stderr for any schema that fails to parse (not silent).
+pub(crate) fn load_all_installed() -> Result<Vec<SchemaMetadata>> {
+    let root = find_project_root()?;
+    let schemas_dir = paths::project::schemas_dir(&root);
+
+    if !schemas_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut schemas = Vec::new();
+    for entry in std::fs::read_dir(&schemas_dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        match parse_schema_toml(&entry.path()) {
+            Ok(metadata) => schemas.push(metadata),
+            Err(e) => {
+                eprintln!("Warning: skipping schema {}: {}", entry.path().display(), e);
+            }
+        }
+    }
+
+    Ok(schemas)
+}
+
 /// Parse schema.toml from a directory.
 fn parse_schema_toml(dir: &Path) -> Result<SchemaMetadata> {
     let toml_path = dir.join("schema.toml");
@@ -1007,6 +1036,7 @@ pub fn generate(
 ///
 /// Checks that required (non-optional) fields are present and non-empty.
 /// Returns Ok(()) if valid, or an error describing the violation.
+#[allow(dead_code)]
 pub fn validate_fact(schema_name: &str, fact_name: &str, data: &serde_json::Value) -> Result<()> {
     let root = match find_project_root() {
         Ok(r) => r,
@@ -1200,17 +1230,17 @@ package = "patina:schema/empty@1.0.0"
     }
 
     #[test]
-    fn parse_forge_schema_toml() {
-        let forge_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("wit/schema/forge");
-        if !forge_dir.exists() {
+    fn parse_github_schema_toml() {
+        let github_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("wit/schema/github");
+        if !github_dir.exists() {
             return; // skip if not in repo root
         }
-        let meta = parse_schema_toml(&forge_dir).unwrap();
-        assert_eq!(meta.schema.name, "forge");
-        assert_eq!(meta.schema.package, "patina:schema/forge@1.0.0");
+        let meta = parse_schema_toml(&github_dir).unwrap();
+        assert_eq!(meta.schema.name, "github");
+        assert_eq!(meta.schema.package, "patina:schema/github@1.0.0");
         assert_eq!(meta.facts.len(), 2);
-        assert_eq!(meta.facts[0].event_type, "forge.issue");
-        assert_eq!(meta.facts[1].event_type, "forge.pr");
+        assert_eq!(meta.facts[0].event_type, "github.issue");
+        assert_eq!(meta.facts[1].event_type, "github.pr");
         assert!(meta.embedding.is_some());
         assert_eq!(meta.embedding.unwrap().offset_slot, 5);
         assert_eq!(meta.indexes.len(), 2);
@@ -1249,12 +1279,12 @@ package = "patina:schema/empty@1.0.0"
     // =====================================================================
 
     #[test]
-    fn parse_wit_forge_types() {
-        let forge_wit = Path::new(env!("CARGO_MANIFEST_DIR")).join("wit/schema/forge/forge.wit");
-        if !forge_wit.exists() {
+    fn parse_wit_github_types() {
+        let github_wit = Path::new(env!("CARGO_MANIFEST_DIR")).join("wit/schema/github/github.wit");
+        if !github_wit.exists() {
             return;
         }
-        let content = fs::read_to_string(&forge_wit).unwrap();
+        let content = fs::read_to_string(&github_wit).unwrap();
         let types = parse_wit_types(&content);
 
         // Should parse 2 enums: issue-state, pr-state

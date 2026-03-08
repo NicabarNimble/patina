@@ -29,7 +29,7 @@ wit_bindgen::generate!({
 // =========================================================================
 
 /// Host logging — call from plugin code to log through the host.
-pub mod host_log {
+pub mod log {
     pub use super::patina::host::log::LogLevel;
 
     /// Log a message to the host's structured logging.
@@ -65,7 +65,7 @@ pub mod measure {
 /// The host controls domain enforcement, TLS, and credential injection.
 /// Plugin code calls these functions; the host validates URLs against
 /// the domain allowlist from `[capabilities].host_http` in plugin.toml.
-pub mod host_http {
+pub mod fetch {
     pub use super::patina::host::http::HttpResponse;
 
     /// HTTP GET from an allowed domain.

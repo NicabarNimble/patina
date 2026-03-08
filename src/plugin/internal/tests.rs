@@ -190,6 +190,7 @@ fn capabilities_all_granted() {
         version: "0.1.0".into(),
         description: String::new(),
         world: PluginWorld::MotherChild,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
@@ -213,6 +214,7 @@ fn capabilities_empty() {
         version: "0.1.0".into(),
         description: String::new(),
         world: PluginWorld::MotherChild,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec![],
         allowed_toy_commands: vec![],
@@ -236,6 +238,7 @@ fn capabilities_denied() {
         version: "0.1.0".into(),
         description: String::new(),
         world: PluginWorld::MotherChild,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into(), "filesystem".into(), "network".into()],
         allowed_toy_commands: vec![],
@@ -334,6 +337,7 @@ fn check_capabilities_rejects_unknown_query_kinds() {
         version: "0.1.0".into(),
         description: String::new(),
         world: PluginWorld::Command,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
@@ -362,6 +366,7 @@ fn check_capabilities_accepts_known_query_kinds() {
         version: "0.1.0".into(),
         description: String::new(),
         world: PluginWorld::Command,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
@@ -409,6 +414,7 @@ fn wasm_models_child_handle_roundtrip() {
         version: "0.1.0".into(),
         description: "test".into(),
         world: PluginWorld::MotherChild,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
@@ -463,6 +469,7 @@ fn wasm_models_child_health() {
         version: "0.1.0".into(),
         description: "test".into(),
         world: PluginWorld::MotherChild,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
@@ -506,6 +513,7 @@ fn load_repos_child() -> Option<Box<dyn crate::mother::MotherChild>> {
         version: "0.1.0".into(),
         description: "test".into(),
         world: PluginWorld::MotherChild,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec!["git".into(), "patina".into()],
@@ -716,6 +724,7 @@ fn wasm_repos_child_toy_capability_gating() {
         version: "0.1.0".into(),
         description: "test".into(),
         world: PluginWorld::MotherChild,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec!["patina".into()], // git excluded
@@ -800,6 +809,7 @@ fn benchmark_plugin_performance() {
         version: "0.1.0".into(),
         description: "bench".into(),
         world: PluginWorld::MotherChild,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
@@ -930,6 +940,7 @@ fn load_doctor_manifest() -> PluginManifest {
         version: "0.1.0".into(),
         description: "test".into(),
         world: PluginWorld::Command,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into(), "host_layer".into()],
         allowed_toy_commands: vec![],
@@ -1078,6 +1089,7 @@ fn check_capabilities_rejects_empty_http_domain() {
         version: "0.1.0".into(),
         description: String::new(),
         world: PluginWorld::MotherChild,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
@@ -1102,6 +1114,7 @@ fn check_capabilities_rejects_http_domain_with_path() {
         version: "0.1.0".into(),
         description: String::new(),
         world: PluginWorld::MotherChild,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
@@ -1126,6 +1139,7 @@ fn check_capabilities_accepts_valid_http_domains() {
         version: "0.1.0".into(),
         description: String::new(),
         world: PluginWorld::MotherChild,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
@@ -1153,6 +1167,7 @@ fn granted_capabilities_includes_http_domains() {
         version: "0.1.0".into(),
         description: String::new(),
         world: PluginWorld::MotherChild,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
@@ -1248,6 +1263,7 @@ fn hello_task_manifest() -> PluginManifest {
         version: "0.1.0".into(),
         description: "test".into(),
         world: PluginWorld::Task,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into(), "host_layer".into()],
         allowed_toy_commands: vec!["echo".into()],
@@ -1353,6 +1369,7 @@ fn task_hello_unapproved_toy_denied() {
         version: "0.1.0".into(),
         description: "test".into(),
         world: PluginWorld::Task,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into(), "host_layer".into()],
         allowed_toy_commands: vec![], // nothing allowed
@@ -1404,6 +1421,7 @@ fn echo_pipeline_manifest() -> PluginManifest {
         version: "0.1.0".into(),
         description: "test".into(),
         world: PluginWorld::Pipeline,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
@@ -1536,6 +1554,7 @@ fn wasm_trap_pipeline_panic_returns_error() {
         version: "0.1.0".into(),
         description: "deliberate panic".into(),
         world: PluginWorld::Pipeline,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
@@ -1644,6 +1663,7 @@ fn check_capabilities_rejects_pipeline_with_query() {
         version: "0.1.0".into(),
         description: String::new(),
         world: PluginWorld::Pipeline,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into(), "host_query".into()],
         allowed_toy_commands: vec![],
@@ -1673,6 +1693,7 @@ fn check_capabilities_rejects_pipeline_with_http() {
         version: "0.1.0".into(),
         description: String::new(),
         world: PluginWorld::Pipeline,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into(), "host_http".into()],
         allowed_toy_commands: vec![],
@@ -1738,6 +1759,7 @@ fn wasm_trap_mother_child_panic_returns_error() {
         version: "0.1.0".into(),
         description: "world mismatch".into(),
         world: PluginWorld::MotherChild,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
@@ -1852,6 +1874,7 @@ fn check_capabilities_rejects_host_secrets_domain_not_in_host_http() {
         version: "0.1.0".into(),
         description: String::new(),
         world: PluginWorld::MotherChild,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
@@ -1889,6 +1912,7 @@ fn check_capabilities_accepts_host_secrets_with_matching_host_http() {
         version: "0.1.0".into(),
         description: String::new(),
         world: PluginWorld::MotherChild,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
@@ -1924,6 +1948,7 @@ fn granted_capabilities_includes_credential_mappings() {
         version: "0.1.0".into(),
         description: String::new(),
         world: PluginWorld::MotherChild,
+        role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
@@ -2191,4 +2216,485 @@ fn http_get_with_mapping_but_no_grant_sends_no_auth() {
         Ok(r) => assert!(r.status == 200 || r.status == 403),
         Err(_) => {} // network error is acceptable in test environments
     }
+}
+
+// =====================================================================
+// host_emit — validate_emit + schema caching tests
+// =====================================================================
+
+/// Build a cached schema_facts map for testing (simulates load-time parse).
+fn test_schema_facts(
+) -> std::collections::HashMap<String, std::collections::HashMap<String, String>> {
+    let mut forge_facts = std::collections::HashMap::new();
+    forge_facts.insert("issue".to_string(), "forge.issue".to_string());
+    forge_facts.insert("pull-request".to_string(), "forge.pr".to_string());
+
+    let mut schema_facts = std::collections::HashMap::new();
+    schema_facts.insert("forge".to_string(), forge_facts);
+    schema_facts
+}
+
+#[test]
+fn emit_validate_schema_not_available() {
+    let schema_facts = std::collections::HashMap::new(); // empty cache
+
+    let result = host_support::validate_emit(
+        &schema_facts,
+        "test-plugin",
+        "forge",
+        "issue",
+        r#"{"title":"test"}"#,
+    );
+    assert!(result.is_err());
+    assert!(
+        result.unwrap_err().contains("not available"),
+        "should reject unavailable schema"
+    );
+}
+
+#[test]
+fn emit_validate_fact_type_not_found() {
+    let schema_facts = test_schema_facts();
+
+    let result = host_support::validate_emit(
+        &schema_facts,
+        "test-plugin",
+        "forge",
+        "nonexistent-fact",
+        r#"{"title":"test"}"#,
+    );
+    assert!(result.is_err());
+    assert!(
+        result.unwrap_err().contains("not found in schema"),
+        "should reject unknown fact-type"
+    );
+}
+
+#[test]
+fn emit_validate_invalid_json() {
+    let schema_facts = test_schema_facts();
+
+    let result = host_support::validate_emit(
+        &schema_facts,
+        "test-plugin",
+        "forge",
+        "issue",
+        "{not valid json",
+    );
+    assert!(result.is_err());
+    assert!(
+        result.unwrap_err().contains("invalid JSON"),
+        "should reject invalid JSON"
+    );
+}
+
+#[test]
+fn emit_validate_success_returns_event_type() {
+    let schema_facts = test_schema_facts();
+
+    let result = host_support::validate_emit(
+        &schema_facts,
+        "test-plugin",
+        "forge",
+        "issue",
+        r#"{"title":"test issue","number":42}"#,
+    );
+    assert_eq!(result.unwrap(), "forge.issue");
+}
+
+#[test]
+fn emit_validate_pull_request_fact_type() {
+    let schema_facts = test_schema_facts();
+
+    let result = host_support::validate_emit(
+        &schema_facts,
+        "test-plugin",
+        "forge",
+        "pull-request",
+        r#"{"title":"test PR"}"#,
+    );
+    assert_eq!(result.unwrap(), "forge.pr");
+}
+
+#[test]
+fn emit_capability_gating_host_emit_in_manifest() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "forge-connector"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+host_emit = true
+
+[provides]
+child = "forge"
+
+[schemas.forge]
+package = "patina:schema/forge@1.0.0"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert!(m.capabilities.contains(&"host_emit".to_string()));
+    assert!(m.schemas.contains_key("forge"));
+
+    let grants = m.granted_capabilities();
+    assert!(grants.host_emit);
+    // schema_facts will be empty because schema.toml doesn't exist on disk
+    // in this test — that's correct: load-time parse finds nothing.
+    // The real validation is that the cache structure is populated when
+    // schemas ARE installed (tested via setup_schema_dir in integration).
+}
+
+#[test]
+fn emit_capability_gating_not_granted_without_declaration() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "simple-plugin"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+
+[provides]
+child = "simple"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    let grants = m.granted_capabilities();
+    assert!(!grants.host_emit);
+    assert!(grants.schema_facts.is_empty());
+}
+
+#[test]
+fn emit_host_emit_denied_for_pipeline() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "bad-pipeline"
+world = "pipeline"
+
+[capabilities]
+host_log = true
+host_emit = true
+
+[schemas.forge]
+package = "patina:schema/forge@1.0.0"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    let result = PluginEngine::check_capabilities(&m);
+    assert!(result.is_err(), "pipeline should not allow host_emit");
+    assert!(
+        result.unwrap_err().to_string().contains("not allowed"),
+        "should mention world capability denial"
+    );
+}
+
+#[test]
+fn emit_host_emit_denied_for_command() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "bad-command"
+world = "command"
+
+[capabilities]
+host_log = true
+host_emit = true
+
+[provides]
+commands = ["test"]
+
+[schemas.forge]
+package = "patina:schema/forge@1.0.0"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    let result = PluginEngine::check_capabilities(&m);
+    assert!(result.is_err(), "command should not allow host_emit");
+}
+
+#[test]
+fn emit_host_emit_requires_schemas() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "no-schema-connector"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+host_emit = true
+
+[provides]
+child = "forge"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    let result = PluginEngine::check_capabilities(&m);
+    assert!(
+        result.is_err(),
+        "host_emit without schemas should be rejected"
+    );
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("no [schemas.*] entries"),
+        "should mention missing schemas"
+    );
+}
+
+#[test]
+fn emit_host_emit_allowed_for_mother_child() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "forge-connector"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+host_emit = true
+
+[provides]
+child = "forge"
+
+[schemas.forge]
+package = "patina:schema/forge@1.0.0"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    let result = PluginEngine::check_capabilities(&m);
+    assert!(
+        result.is_ok(),
+        "mother-child with host_emit + schemas should be allowed: {:?}",
+        result.unwrap_err()
+    );
+}
+
+#[test]
+fn emit_host_emit_allowed_for_task() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "fetch-task"
+world = "task"
+
+[capabilities]
+host_log = true
+host_emit = true
+
+[schemas.forge]
+package = "patina:schema/forge@1.0.0"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    let result = PluginEngine::check_capabilities(&m);
+    assert!(
+        result.is_ok(),
+        "task with host_emit + schemas should be allowed: {:?}",
+        result.unwrap_err()
+    );
+}
+
+// =====================================================================
+// PluginRole — parsing, display, expected_worlds
+// =====================================================================
+
+#[test]
+fn role_from_str_all_variants() {
+    assert_eq!(
+        "connector".parse::<PluginRole>().unwrap(),
+        PluginRole::Connector
+    );
+    assert_eq!(
+        "grammar".parse::<PluginRole>().unwrap(),
+        PluginRole::Grammar
+    );
+    assert_eq!(
+        "extension".parse::<PluginRole>().unwrap(),
+        PluginRole::Extension
+    );
+    assert_eq!("app".parse::<PluginRole>().unwrap(), PluginRole::App);
+}
+
+#[test]
+fn role_from_str_unknown_errors() {
+    assert!("widget".parse::<PluginRole>().is_err());
+    assert!("CONNECTOR".parse::<PluginRole>().is_err()); // case sensitive
+}
+
+#[test]
+fn role_display() {
+    assert_eq!(PluginRole::Connector.to_string(), "connector");
+    assert_eq!(PluginRole::Grammar.to_string(), "grammar");
+    assert_eq!(PluginRole::Extension.to_string(), "extension");
+    assert_eq!(PluginRole::App.to_string(), "app");
+}
+
+#[test]
+fn role_expected_worlds() {
+    assert!(PluginRole::Connector
+        .expected_worlds()
+        .contains(&PluginWorld::MotherChild));
+    assert!(PluginRole::Grammar
+        .expected_worlds()
+        .contains(&PluginWorld::Pipeline));
+    assert!(PluginRole::Extension
+        .expected_worlds()
+        .contains(&PluginWorld::Command));
+    assert!(PluginRole::App
+        .expected_worlds()
+        .contains(&PluginWorld::MotherChild));
+}
+
+// =====================================================================
+// PluginManifest — role field parsing
+// =====================================================================
+
+#[test]
+fn manifest_with_role_parses() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "test-connector"
+world = "mother-child"
+role = "connector"
+
+[capabilities]
+host_log = true
+
+[provides]
+child = "test"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert_eq!(m.role, Some(PluginRole::Connector));
+}
+
+#[test]
+fn manifest_without_role_is_none() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "legacy-plugin"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+
+[provides]
+child = "legacy"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert_eq!(m.role, None);
+}
+
+#[test]
+fn manifest_unknown_role_errors() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "bad-role"
+world = "mother-child"
+role = "widget"
+
+[capabilities]
+host_log = true
+
+[provides]
+child = "bad"
+"#,
+    );
+    let result = PluginManifest::from_path(f.path());
+    assert!(result.is_err());
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("unknown plugin role"),);
+}
+
+// =====================================================================
+// Role-world validation (warns, does not block)
+// =====================================================================
+
+#[test]
+fn role_world_valid_combo_passes() {
+    let m = PluginManifest {
+        name: "conn".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::MotherChild,
+        role: Some(PluginRole::Connector),
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
+        provides: PluginProvides {
+            child: Some("conn".into()),
+            commands: vec![],
+            ..Default::default()
+        },
+        schemas: std::collections::HashMap::new(),
+    };
+    // connector + mother-child is valid — check_capabilities should pass
+    assert!(PluginEngine::check_capabilities(&m).is_ok());
+}
+
+#[test]
+fn role_world_unusual_combo_still_passes() {
+    // grammar + mother-child is unusual but should NOT block
+    let m = PluginManifest {
+        name: "weird-grammar".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::MotherChild,
+        role: Some(PluginRole::Grammar),
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
+        provides: PluginProvides {
+            child: Some("weird".into()),
+            commands: vec![],
+            ..Default::default()
+        },
+        schemas: std::collections::HashMap::new(),
+    };
+    // Unusual combo warns but does NOT bail
+    assert!(PluginEngine::check_capabilities(&m).is_ok());
+}
+
+#[test]
+fn role_none_skips_validation() {
+    // Legacy plugin with no role — should pass without warnings
+    let m = PluginManifest {
+        name: "legacy".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::MotherChild,
+        role: None,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
+        host_secrets: std::collections::HashMap::new(),
+        provides: PluginProvides {
+            child: Some("legacy".into()),
+            commands: vec![],
+            ..Default::default()
+        },
+        schemas: std::collections::HashMap::new(),
+    };
+    assert!(PluginEngine::check_capabilities(&m).is_ok());
 }

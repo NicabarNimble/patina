@@ -33,7 +33,7 @@ wit_bindgen::generate!({
 pub use patina::host::types::HealthStatus;
 
 /// Host logging — call from plugin code to log through the host.
-pub mod host_log {
+pub mod log {
     pub use super::patina::host::log::LogLevel;
 
     /// Log a message to the host's structured logging.
@@ -69,7 +69,7 @@ pub mod measure {
 /// The host controls domain enforcement, TLS, and credential injection.
 /// Plugin code calls these functions; the host validates URLs against
 /// the domain allowlist from `[capabilities].host_http` in plugin.toml.
-pub mod host_http {
+pub mod fetch {
     pub use super::patina::host::http::HttpResponse;
 
     /// HTTP GET from an allowed domain.
@@ -80,6 +80,24 @@ pub mod host_http {
     /// HTTP POST to an allowed domain.
     pub fn post(url: &str, body: &str, content_type: &str) -> Result<HttpResponse, String> {
         super::patina::host::http::http_post(url, body, content_type)
+    }
+}
+
+/// Host emit — publish facts to the eventlog via schema-validated emission.
+///
+/// Requires `host_emit = true` and a `[schemas.<name>]` entry in plugin.toml.
+/// The host validates the schema and fact type at load time (zero disk I/O
+/// at emit time). Facts are written with provenance="external".
+pub mod emit {
+    /// Emit a fact to the eventlog.
+    ///
+    /// - `schema`: schema name (e.g., "forge") — must match a `[schemas.<name>]` entry
+    /// - `fact_type`: fact name within the schema (e.g., "issue")
+    /// - `data`: JSON payload matching the schema's WIT record type
+    ///
+    /// Returns the event sequence number on success.
+    pub fn emit_fact(schema: &str, fact_type: &str, data: &str) -> Result<u64, String> {
+        super::patina::host::emit::emit_fact(schema, fact_type, data)
     }
 }
 

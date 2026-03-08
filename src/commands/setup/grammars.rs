@@ -229,8 +229,7 @@ fn find_source_root() -> Result<PathBuf> {
 
 /// Get the pipeline directory (~/.patina/pipeline/).
 fn pipeline_dir() -> Result<PathBuf> {
-    let home = dirs::home_dir().context("Cannot determine home directory")?;
-    Ok(home.join(".patina").join("pipeline"))
+    Ok(patina::paths::plugin::pipeline_dir())
 }
 
 /// Format bytes as human-readable size.

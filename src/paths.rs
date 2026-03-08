@@ -197,6 +197,12 @@ pub mod plugin {
         plugins_dir().join(name).join("work")
     }
 
+    /// Pipeline grammar plugins directory: `~/.patina/pipeline/`
+    /// Contains grammar-{lang}/ subdirectories with plugin.wasm + plugin.toml.
+    pub fn pipeline_dir() -> PathBuf {
+        patina_home().join("pipeline")
+    }
+
     /// Secret grants file: `~/.patina/plugin-config/secret-grants.toml`
     /// Maps plugin names to allowed secret names for credential injection.
     pub fn secret_grants_path() -> PathBuf {

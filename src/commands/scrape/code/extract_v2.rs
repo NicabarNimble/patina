@@ -9,7 +9,7 @@
 //! - Type-preserving data structures
 //! - Batch operations for performance
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -22,18 +22,42 @@ use super::languages::Language;
 use super::types::FilePath;
 
 use patina::paths;
-use patina::plugin::{PipelineEngine, PluginManifest};
+use patina::plugin::{PipelineEngine, PluginManifest, PluginWorld};
 
-/// Process all source files and extract metadata using safe database operations
-pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) -> Result<usize> {
+/// Process all source files and extract metadata using safe database operations.
+///
+/// When `extension_filter` is Some, only pipeline plugins claiming those extensions
+/// are compiled (lazy loading). This avoids ~2s of Cranelift JIT when only one
+/// language is affected. See [[scrape-diff-driven]] EC4.
+pub fn extract_code_metadata_v2(
+    db_path: &str,
+    work_dir: &Path,
+    force: bool,
+    extension_filter: Option<&HashSet<String>>,
+) -> Result<usize> {
     println!("🧠 Extracting code metadata with embedded SQLite...");
 
     // Open database connection
     let mut db = Database::open(db_path)?;
     db.init_schema()?;
 
-    // Ensure forge materialized views exist for Issue/PullRequest routing
-    crate::commands::scrape::forge::create_materialized_views(db.connection())?;
+    // Project forge events from events.db into patina.db materialized views.
+    // This picks up events from both scrape and plugin sources.
+    match crate::commands::scrape::events::project_from_events(db.connection()) {
+        Ok(stats) => {
+            if stats.issues_projected > 0 || stats.prs_projected > 0 {
+                println!(
+                    "  Projected {} issues, {} PRs from events.db",
+                    stats.issues_projected, stats.prs_projected
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!("  Warning: forge projection failed: {}", e);
+            // Fall back to just creating tables
+            crate::commands::scrape::events::create_materialized_views(db.connection())?;
+        }
+    }
 
     // Open events.db for forge event writes (runtime events go to events.db)
     let events_conn = patina::eventlog::open_events_db()?;
@@ -60,36 +84,10 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
     println!("  Found {} source files", all_files.len());
 
     // Discover pipeline plugins from ~/.patina/pipeline/
-    let pipeline_plugins = discover_pipeline_plugins();
+    // When extension_filter is set, only load plugins for affected extensions (lazy loading)
+    let pipeline_plugins = discover_pipeline_plugins(extension_filter);
 
-    // Scan staging tree for forge data (.forge-issue, .forge-pr files)
-    // These are written by `patina scrape forge` and processed by grammar-forge plugin
-    let staging_dir = paths::project::data_dir(work_dir).join("forge");
-    let mut staged_files: Vec<PathBuf> = Vec::new();
-    if staging_dir.is_dir() {
-        for entry in WalkBuilder::new(&staging_dir)
-            .hidden(false)
-            .git_ignore(false)
-            .build()
-        {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-            let path = entry.path();
-            if path.is_file() {
-                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                if pipeline_plugins.contains_key(ext) {
-                    staged_files.push(path.to_path_buf());
-                }
-            }
-        }
-        if !staged_files.is_empty() {
-            println!("  Found {} staged forge files", staged_files.len());
-        }
-    }
-
-    if all_files.is_empty() && staged_files.is_empty() {
+    if all_files.is_empty() {
         println!("  No source files found. Is this a code repository?");
         return Ok(0);
     }
@@ -105,9 +103,11 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
 
     let mut files_with_errors = 0;
     let mut _files_processed = 0;
+    let mut files_skipped_mtime = 0;
     let mut forge_issues_inserted = 0;
     let mut forge_prs_inserted = 0;
     let mut forge_skipped = 0;
+    let mut walked_paths: HashSet<String> = HashSet::new();
 
     // Process each file and collect data
     for (file_path, language) in all_files {
@@ -117,15 +117,8 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
             file_path.to_string_lossy().to_string()
         };
 
-        // Read file content
-        let content = match std::fs::read(&file_path) {
-            Ok(content) => content,
-            Err(e) => {
-                eprintln!("  ⚠️  Failed to read {}: {}", relative_path, e);
-                files_with_errors += 1;
-                continue;
-            }
-        };
+        // Track all walked paths for stale entry pruning
+        walked_paths.insert(relative_path.clone());
 
         // Get file metadata for index state
         let mtime = std::fs::metadata(&file_path)
@@ -134,6 +127,29 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
+
+        // Check if file changed since last scrape (mtime skip optimization)
+        if !force {
+            if let Some((stored_mtime, stored_size)) = db.get_index_state(&relative_path)? {
+                let file_size = std::fs::metadata(&file_path)
+                    .map(|m| m.len() as i64)
+                    .unwrap_or(-1);
+                if mtime == stored_mtime && file_size == stored_size {
+                    files_skipped_mtime += 1;
+                    continue;
+                }
+            }
+        }
+
+        // Read file content (only after mtime check — avoid I/O for unchanged files)
+        let content = match std::fs::read(&file_path) {
+            Ok(content) => content,
+            Err(e) => {
+                eprintln!("  ⚠️  Failed to read {}: {}", relative_path, e);
+                files_with_errors += 1;
+                continue;
+            }
+        };
 
         let size = content.len() as i64;
         let line_count = content.iter().filter(|&&b| b == b'\n').count() as i64;
@@ -160,18 +176,8 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                         _files_processed += 1;
                     }
                     ExtractedPayload::Issue(issue) => {
-                        // EC3: Validate against schema before DB insert
-                        if let Ok(json) = serde_json::to_value(&issue) {
-                            if let Err(e) =
-                                crate::commands::schema::validate_fact("forge", "issue", &json)
-                            {
-                                eprintln!("  [pipeline] {} rejected: {}", relative_path, e);
-                                files_with_errors += 1;
-                                continue;
-                            }
-                        }
                         let conn = db.connection();
-                        match crate::commands::scrape::forge::insert_issues(
+                        match crate::commands::scrape::events::insert_issues(
                             conn,
                             &events_conn,
                             &[issue],
@@ -191,20 +197,8 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                         }
                     }
                     ExtractedPayload::PullRequest(pr) => {
-                        // EC3: Validate against schema before DB insert
-                        if let Ok(json) = serde_json::to_value(&pr) {
-                            if let Err(e) = crate::commands::schema::validate_fact(
-                                "forge",
-                                "pull-request",
-                                &json,
-                            ) {
-                                eprintln!("  [pipeline] {} rejected: {}", relative_path, e);
-                                files_with_errors += 1;
-                                continue;
-                            }
-                        }
                         let conn = db.connection();
-                        match crate::commands::scrape::forge::insert_prs(conn, &events_conn, &[pr])
+                        match crate::commands::scrape::events::insert_prs(conn, &events_conn, &[pr])
                         {
                             Ok(stats) => {
                                 forge_prs_inserted += stats.inserted;
@@ -237,129 +231,14 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
         }
     }
 
-    // Process staged forge files through pipeline plugins
-    for file_path in staged_files {
-        let display_path = file_path.to_string_lossy().to_string();
-        let content = match std::fs::read(&file_path) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("  ⚠️  Failed to read staged file {}: {}", display_path, e);
-                files_with_errors += 1;
-                continue;
-            }
-        };
+    if files_skipped_mtime > 0 {
+        println!("  Skipped {} unchanged files (mtime)", files_skipped_mtime);
+    }
 
-        let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-
-        // Staged files dispatch directly to plugin by extension (no Language detection)
-        if let Some(plugin) = pipeline_plugins.get(ext) {
-            let request = build_parse_envelope(&content, ext, &display_path);
-            match plugin
-                .engine
-                .handle(&plugin.component, &plugin.manifest, &request)
-            {
-                Ok(response) => {
-                    // Try ExtractedPayload (has "kind" field) — expected for forge plugins
-                    if let Ok(payload) = serde_json::from_str::<ExtractedPayload>(&response) {
-                        #[allow(unreachable_patterns)]
-                        match payload {
-                            ExtractedPayload::Issue(issue) => {
-                                // EC3: Validate against schema before DB insert
-                                if let Ok(json) = serde_json::to_value(&issue) {
-                                    if let Err(e) = crate::commands::schema::validate_fact(
-                                        "forge", "issue", &json,
-                                    ) {
-                                        eprintln!("  [pipeline] {} rejected: {}", display_path, e);
-                                        files_with_errors += 1;
-                                        continue;
-                                    }
-                                }
-                                let conn = db.connection();
-                                match crate::commands::scrape::forge::insert_issues(
-                                    conn,
-                                    &events_conn,
-                                    &[issue],
-                                ) {
-                                    Ok(stats) => {
-                                        forge_issues_inserted += stats.inserted;
-                                        _files_processed += 1;
-                                    }
-                                    Err(e) => {
-                                        eprintln!(
-                                            "  [pipeline] forge issue insert failed for {}: {}",
-                                            display_path, e
-                                        );
-                                        files_with_errors += 1;
-                                    }
-                                }
-                            }
-                            ExtractedPayload::PullRequest(pr) => {
-                                // EC3: Validate against schema before DB insert
-                                if let Ok(json) = serde_json::to_value(&pr) {
-                                    if let Err(e) = crate::commands::schema::validate_fact(
-                                        "forge",
-                                        "pull-request",
-                                        &json,
-                                    ) {
-                                        eprintln!("  [pipeline] {} rejected: {}", display_path, e);
-                                        files_with_errors += 1;
-                                        continue;
-                                    }
-                                }
-                                let conn = db.connection();
-                                match crate::commands::scrape::forge::insert_prs(
-                                    conn,
-                                    &events_conn,
-                                    &[pr],
-                                ) {
-                                    Ok(stats) => {
-                                        forge_prs_inserted += stats.inserted;
-                                        _files_processed += 1;
-                                    }
-                                    Err(e) => {
-                                        eprintln!(
-                                            "  [pipeline] forge PR insert failed for {}: {}",
-                                            display_path, e
-                                        );
-                                        files_with_errors += 1;
-                                    }
-                                }
-                            }
-                            ExtractedPayload::Code(extracted) => {
-                                // Unlikely for forge files, but handle gracefully
-                                all_symbols.extend(extracted.symbols);
-                                all_functions.extend(extracted.functions);
-                                all_types.extend(extracted.types);
-                                all_imports.extend(extracted.imports);
-                                all_call_edges.extend(extracted.call_edges);
-                                all_constants.extend(extracted.constants);
-                                all_members.extend(extracted.members);
-                                _files_processed += 1;
-                            }
-                            _ => {
-                                eprintln!(
-                                    "  [pipeline] unknown payload kind from {} — skipping",
-                                    display_path
-                                );
-                            }
-                        }
-                    } else {
-                        eprintln!(
-                            "  [pipeline:{}] invalid response for staged file {}: not ExtractedPayload",
-                            plugin.manifest.name, display_path
-                        );
-                        files_with_errors += 1;
-                    }
-                }
-                Err(e) => {
-                    eprintln!(
-                        "  [pipeline:{}] handle failed for staged file {}: {}",
-                        plugin.manifest.name, display_path, e
-                    );
-                    files_with_errors += 1;
-                }
-            }
-        }
+    // Prune stale index_state rows for deleted/renamed files
+    let pruned = db.prune_stale_paths(&walked_paths)?;
+    if pruned > 0 {
+        println!("  Pruned {} stale entries", pruned);
     }
 
     // Bulk insert all collected data
@@ -411,15 +290,26 @@ struct LoadedPipelinePlugin {
 
 /// Discover pipeline plugins from ~/.patina/pipeline/.
 /// Returns a map of file extension → loaded plugin.
-fn discover_pipeline_plugins() -> HashMap<String, LoadedPipelinePlugin> {
-    let pipeline_dir = dirs::home_dir()
-        .map(|h| h.join(".patina").join("pipeline"))
-        .unwrap_or_default();
+///
+/// When `extension_filter` is Some, only plugins claiming those extensions are
+/// compiled. Manifests are always read (cheap TOML parse), but WASM compilation
+/// (~120ms per plugin) is skipped for unclaimed extensions. This is the lazy
+/// loading optimization from [[scrape-diff-driven]] EC4.
+fn discover_pipeline_plugins(
+    extension_filter: Option<&HashSet<String>>,
+) -> HashMap<String, LoadedPipelinePlugin> {
+    let pipeline_dir = paths::plugin::pipeline_dir();
 
     if !pipeline_dir.is_dir() {
         return HashMap::new();
     }
 
+    if let Some(extensions) = extension_filter {
+        // Lazy path: read manifests first, only compile matching plugins
+        return discover_pipeline_plugins_lazy(&pipeline_dir, extensions);
+    }
+
+    // Full path: load all plugins (default for direct `patina scrape code`)
     let engine = match PipelineEngine::new() {
         Ok(e) => e,
         Err(e) => {
@@ -456,6 +346,124 @@ fn discover_pipeline_plugins() -> HashMap<String, LoadedPipelinePlugin> {
             },
         );
     }
+    result
+}
+
+/// Lazy plugin discovery: read manifests first, only compile WASM for plugins
+/// whose claimed languages intersect with the extension filter.
+///
+/// Manifest parsing is ~1ms each (TOML). WASM compilation is ~120ms each
+/// (Cranelift JIT). With 17 plugins and 1 affected extension, this saves
+/// ~16 * 120ms = ~1.9s.
+fn discover_pipeline_plugins_lazy(
+    pipeline_dir: &std::path::Path,
+    extensions: &HashSet<String>,
+) -> HashMap<String, LoadedPipelinePlugin> {
+    let mut result = HashMap::new();
+
+    let entries = match std::fs::read_dir(pipeline_dir) {
+        Ok(e) => e,
+        Err(_) => return result,
+    };
+
+    let mut manifests_read = 0;
+    let mut plugins_compiled = 0;
+    let mut plugins_skipped = 0;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        let manifest_path = path.join("plugin.toml");
+        let wasm_path = path.join("plugin.wasm");
+
+        if !manifest_path.exists() || !wasm_path.exists() {
+            continue;
+        }
+
+        // Read manifest (cheap — TOML parse only)
+        let manifest = match PluginManifest::from_path(&manifest_path) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!(
+                    "[pipeline] failed to load manifest {}: {}",
+                    manifest_path.display(),
+                    e
+                );
+                continue;
+            }
+        };
+        manifests_read += 1;
+
+        // Skip non-pipeline plugins
+        if manifest.world != PluginWorld::Pipeline {
+            continue;
+        }
+
+        // Check if this plugin claims any of the affected extensions
+        let claimed: Vec<&String> = manifest
+            .provides
+            .languages
+            .iter()
+            .filter(|lang| extensions.contains(lang.as_str()))
+            .collect();
+
+        if claimed.is_empty() {
+            plugins_skipped += 1;
+            continue;
+        }
+
+        // This plugin has work — load WASM (with AOT cache)
+        let engine = match PipelineEngine::new() {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!("[pipeline] failed to create engine: {}", e);
+                continue;
+            }
+        };
+
+        let component = match engine.load_component_cached(&wasm_path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[pipeline] failed to load {}: {}", wasm_path.display(), e);
+                continue;
+            }
+        };
+
+        plugins_compiled += 1;
+
+        // Map each claimed (and filtered) language to this plugin
+        for lang in &manifest.provides.languages {
+            if extensions.contains(lang.as_str()) {
+                eprintln!(
+                    "[pipeline] {} claims language '{}' (lazy-loaded)",
+                    manifest.name, lang
+                );
+                let engine = match PipelineEngine::new() {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
+                result.insert(
+                    lang.clone(),
+                    LoadedPipelinePlugin {
+                        engine,
+                        component: component.clone(),
+                        manifest: manifest.clone(),
+                    },
+                );
+            }
+        }
+    }
+
+    if manifests_read > 0 {
+        println!(
+            "  Pipeline plugins: {} manifests read, {} compiled, {} skipped (lazy)",
+            manifests_read, plugins_compiled, plugins_skipped
+        );
+    }
+
     result
 }
 

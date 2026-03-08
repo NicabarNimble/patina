@@ -144,6 +144,30 @@ mod task_bindings {
         }
     }
 
+    // patina:host/emit — delegates to host_support
+    impl patina::host::emit::Host for TaskHostState {
+        fn emit_fact(
+            &mut self,
+            schema: String,
+            fact_type: String,
+            data: String,
+        ) -> Result<u64, String> {
+            if !self.grants.host_emit {
+                return Err(format!(
+                    "host_emit not granted for plugin '{}'",
+                    self.plugin_name
+                ));
+            }
+            super::super::host_support::emit_fact(
+                &self.grants.schema_facts,
+                &self.plugin_name,
+                &schema,
+                &fact_type,
+                &data,
+            )
+        }
+    }
+
     // patina:host/measure — delegates to host_support
     impl patina::host::measure::Host for TaskHostState {
         fn record_measurement(

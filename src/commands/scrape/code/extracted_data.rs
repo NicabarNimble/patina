@@ -16,17 +16,15 @@
 use super::database::{CodeSymbol, FunctionFact, ImportFact, TypeFact};
 use super::types::CallGraphEntry;
 
-use patina::forge;
+use crate::commands::scrape::events;
 
-/// Pipeline-facing issue type. Re-exports `forge::Issue` since the fields
-/// are identical. Will be replaced by schema-generated type in
-/// [[fact-schema-registry]].
-pub type ExtractedIssue = forge::Issue;
+/// Pipeline-facing issue type. Uses scrape::events domain types.
+/// Will be replaced by schema-generated type in [[fact-schema-registry]].
+pub type ExtractedIssue = events::Issue;
 
-/// Pipeline-facing pull request type. Re-exports `forge::PullRequest` since
-/// the fields are identical. Will be replaced by schema-generated type in
-/// [[fact-schema-registry]].
-pub type ExtractedPullRequest = forge::PullRequest;
+/// Pipeline-facing pull request type. Uses scrape::events domain types.
+/// Will be replaced by schema-generated type in [[fact-schema-registry]].
+pub type ExtractedPullRequest = events::PullRequest;
 
 /// Pipeline plugins return JSON matching one of these variants.
 /// If no `kind` field is present, defaults to Code (backward compat).

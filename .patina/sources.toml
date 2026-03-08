@@ -1,0 +1,9 @@
+[sources.test]
+connection = "test"
+schedule = "manual"
+
+[sources.github]
+connection = "github"
+types = ["issues", "prs"]
+params = { owner = "NicabarNimble", repo = "patina" }
+schedule = "manual"

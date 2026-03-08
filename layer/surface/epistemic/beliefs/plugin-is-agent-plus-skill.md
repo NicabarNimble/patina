@@ -39,6 +39,11 @@ A Patina plugin is a bundle of agent (WASM) + skill (prompt template) + manifest
 
 - "Skills are adapter-specific (Claude vs Gemini), plugins are universal" — Valid tension. Bundle may need adapter-agnostic skill definitions or per-adapter skill variants within a single bundle.
 - "Three-part bundles are over-engineered for simple plugins" — Valid for pipeline plugins (swap an embedding model) that need no LLM interaction. Not all bundles require all three parts — agent-only and skill-only bundles are valid subsets.
+- [[wit-is-contract-wasm-is-one-runtime]] — The WIT-contract-with-roles model is the universal plugin architecture. Connectors (I/O), grammars (pure compute), and apps have no LLM interaction and no "skill" component. The agent+skill bundle is one pattern within the broader system, not the universal plugin model.
+
+## Scope
+
+This belief applies to **command and task plugins** that interact with LLMs — where the agent half executes logic and the skill half teaches the LLM how to use it. It does NOT apply to connectors (pure I/O, no LLM), grammars (pure compute, no LLM), or apps (their own deployments). The universal plugin model is WIT contracts with roles ([[wit-is-contract-wasm-is-one-runtime]]); this belief describes one role's internal structure.
 
 ## Applied-In
 
@@ -48,3 +53,4 @@ A Patina plugin is a bundle of agent (WASM) + skill (prompt template) + manifest
 
 - 2026-02-13: Created — metrics computed by `patina scrape`
 - 2026-02-13: Revised — 10-scenario walkthrough validated 4-world model (pipeline, command, task, mother-child). Added evidence for calling-convention distinction. Pipeline defined as pure compute (no host imports beyond log) — side effects pushed into host.
+- 2026-03-04: Scoped — applies to command/task plugins only, not universal plugin model. WIT-contract-with-roles is the broader architecture.

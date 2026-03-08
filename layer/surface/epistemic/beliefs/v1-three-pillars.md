@@ -6,7 +6,7 @@ facets: [architecture, roadmap, versioning]
 confidence:
   score: 0.90
 entrenchment: high
-status: active
+status: defeated
 extracted: 2026-01-29
 revised: 2026-01-29
 ---
@@ -51,7 +51,14 @@ SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE '%feat/v1-release/SP
 
 ## Attacked-By
 
-<!-- Add beliefs that challenge this -->
+- [[patina-is-beliefs-plus-action]] — The domain-agnostic pivot changed Patina's identity. v1 of a "domain-agnostic knowledge system" is a different product than v1 of a "development tool."
+- [[patina-is-domain-agnostic-knowledge-system]] — All three pillar definitions predate this pivot: "epistemic layer" is now beliefs+action, "mother" is now federation+continuity+lakes, "distribution" is now plugin architecture/protocol distillation.
+- [[wit-is-contract-wasm-is-one-runtime]] — The "distribution (modular binary)" pillar was about crates.io size. Plugin architecture is now a much larger concern — 4 roles, WIT contracts, core extraction.
+
+## Defeated
+
+- **Date**: 2026-03-04
+- **Reason**: Predates the domain-agnostic pivot (created 2026-01-29). All three pillar definitions are outdated and revising would replace the entire substance. The governance principle ("define v1 gates before building") is sound but should be re-derived fresh from the current architecture when the spec landscape stabilizes.
 
 ## Applied-In
 
@@ -60,3 +67,4 @@ SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE '%feat/v1-release/SP
 ## Revision Log
 
 - 2026-01-29: Created (confidence: 0.90)
+- 2026-03-04: Defeated — predates domain-agnostic pivot, all three pillar definitions outdated. New v1 definition to be derived from current architecture.

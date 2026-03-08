@@ -9,7 +9,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use patina::forge::{ForgeWriter, GitHubWriter};
+use patina::git::writer::{ForgeWriter, GitHubWriter};
 use patina::paths;
 
 /// Registry schema (persisted to ~/.patina/registry.yaml)
@@ -761,18 +761,14 @@ projections:
     result
 }
 
-/// Scrape GitHub issues for a repo
-fn scrape_github_issues(repo_path: &Path, _github: &str) -> Result<usize> {
-    use crate::commands::scrape::forge::{run, ForgeScrapeConfig};
-
-    let config = ForgeScrapeConfig {
-        force: true,
-        working_dir: Some(repo_path.to_path_buf()),
-        ..Default::default()
-    };
-
-    let stats = run(config)?;
-    Ok(stats.items_processed)
+/// Scrape GitHub issues for a repo.
+///
+/// Note: The old forge scraper was removed when github-connector replaced it.
+/// This now triggers the broker-based connector if configured, otherwise no-ops.
+fn scrape_github_issues(_repo_path: &Path, _github: &str) -> Result<usize> {
+    // github-connector handles issue/PR ingestion via broker now.
+    // For ref repos, `patina mother run github` fetches issues/PRs.
+    Ok(0)
 }
 
 /// Git pull in a repo

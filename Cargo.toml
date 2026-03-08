@@ -1,11 +1,11 @@
 [workspace]
-members = [".", "plugins/sdk", "plugins/models", "plugins/repos", "plugins/doctor"]
+members = [".", "crates/patina-pipe-types", "crates/patina-pipe", "plugins/sdk", "plugins/models", "plugins/repos", "plugins/doctor", "children/github-connector"]
 exclude = ["layer/dust"]
 resolver = "2"
 
 [package]
 name = "patina-ai"
-version = "0.35.7"
+version = "0.40.3"
 edition = "2021"
 license = "MIT"
 description = "Context orchestration for AI development - captures and evolves patterns over time"
@@ -102,6 +102,10 @@ wasmtime = { version = "=41", default-features = false, features = [
 # WASI support — wasm32-wasip2 components always import basic WASI (stdio, env, clocks)
 # even for pure-computation code. p2 feature = WASIp2 component model.
 wasmtime-wasi = { version = "=41", default-features = false, features = ["p2"] }
+
+# Pipe protocol — native child communication (broker uses harness + types)
+patina-pipe = { path = "crates/patina-pipe" }
+patina-pipe-types = { path = "crates/patina-pipe-types" }
 
 # Secrets v2 - age encryption and macOS Keychain
 age = { version = "0.11", features = ["armor"] }

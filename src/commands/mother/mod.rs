@@ -99,6 +99,30 @@ pub enum MotherCommands {
         #[arg(long, default_value = "10")]
         limit: usize,
     },
+
+    /// Run a source — fetch, validate, and route facts to events.db
+    ///
+    /// Spawns the child for the named source, fetches facts, validates
+    /// against the child manifest, and writes to the project's events.db
+    /// with content-hash dedup and transactional cursor management.
+    Run {
+        /// Source name (as defined in .patina/sources.toml)
+        name: String,
+
+        /// Bypass OS sandbox (for debugging only)
+        #[arg(long)]
+        no_sandbox: bool,
+    },
+
+    /// Show configured sources with status
+    ///
+    /// Lists all sources from .patina/sources.toml with last run timestamp,
+    /// fact count, and status. Use --prune to remove orphaned cursors.
+    Sources {
+        /// Remove orphaned cursors (cursors with no matching source)
+        #[arg(long)]
+        prune: bool,
+    },
 }
 
 /// Graph subcommands (nested under `patina mother graph`)
@@ -247,6 +271,8 @@ pub fn execute_cli(
         Some(MotherCommands::Status) => show_status(),
         Some(MotherCommands::Graph(graph_cmd)) => execute_graph(graph_cmd),
         Some(MotherCommands::Search { query, limit }) => graph::search_beliefs_cli(&query, limit),
+        Some(MotherCommands::Run { name, no_sandbox }) => run_source_cli(&name, no_sandbox),
+        Some(MotherCommands::Sources { prune }) => show_sources_cli(prune),
     }
 }
 
@@ -270,6 +296,114 @@ fn execute_graph(command: GraphCommands) -> Result<()> {
         GraphCommands::Learn { alpha } => graph::learn_weights(alpha),
         GraphCommands::Query(query_cmd) => graph::query_beliefs_cli(query_cmd),
     }
+}
+
+// === Broker CLI commands ===
+
+/// Run a source via the broker
+fn run_source_cli(name: &str, no_sandbox: bool) -> Result<()> {
+    let project_root = std::env::current_dir()?;
+
+    // Find the source in this project's sources.toml
+    let source = patina::broker::sources::find_source(&project_root, name)?
+        .with_context(|| format!("source '{}' not found in .patina/sources.toml", name))?;
+
+    let result = patina::broker::run_source(&source, &project_root, no_sandbox)?;
+
+    println!(
+        "{}: {} facts written, {} dedup skipped{}",
+        name,
+        result.inserted,
+        result.dedup_skipped,
+        result
+            .cursor
+            .as_ref()
+            .map(|c| format!(", cursor: {}", c))
+            .unwrap_or_default()
+    );
+
+    Ok(())
+}
+
+/// Show configured sources with status
+fn show_sources_cli(prune: bool) -> Result<()> {
+    let project_root = std::env::current_dir()?;
+
+    if prune {
+        prune_orphaned_cursors(&project_root)?;
+        return Ok(());
+    }
+
+    let statuses = patina::broker::status(&project_root)?;
+
+    if statuses.is_empty() {
+        println!("No sources configured. Add sources to .patina/sources.toml");
+        return Ok(());
+    }
+
+    println!("Sources:");
+    for s in &statuses {
+        println!(
+            "  {:<20} last run: {:<28} facts: {:<6} status: {}",
+            s.name,
+            s.last_run.as_deref().unwrap_or("never"),
+            s.fact_count,
+            s.status,
+        );
+    }
+
+    Ok(())
+}
+
+/// Remove orphaned cursors (cursors with no matching source in sources.toml)
+fn prune_orphaned_cursors(project_root: &Path) -> Result<()> {
+    let project_sources = patina::broker::sources::load_project_sources(project_root)?;
+    let source_names: std::collections::HashSet<String> = project_sources
+        .map(|ps| ps.sources.iter().map(|s| s.name.clone()).collect())
+        .unwrap_or_default();
+
+    let conn = patina::eventlog::open_events_db_at(project_root)?;
+
+    let mut stmt = conn.prepare("SELECT source_name FROM broker_cursors")?;
+    let cursor_names: Vec<String> = stmt
+        .query_map([], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let orphaned: Vec<&String> = cursor_names
+        .iter()
+        .filter(|name| !source_names.contains(*name))
+        .collect();
+
+    if orphaned.is_empty() {
+        println!("No orphaned cursors found.");
+        return Ok(());
+    }
+
+    println!("Orphaned cursors:");
+    for name in &orphaned {
+        println!("  {} (no matching source in sources.toml)", name);
+    }
+
+    print!("Remove {} orphaned cursor(s)? [y/N] ", orphaned.len());
+    std::io::Write::flush(&mut std::io::stdout())?;
+
+    let mut input = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(std::io::stdin()), &mut input)?;
+
+    if input.trim().eq_ignore_ascii_case("y") {
+        for name in &orphaned {
+            conn.execute(
+                "DELETE FROM broker_cursors WHERE source_name = ?1",
+                [name.as_str()],
+            )?;
+        }
+        println!("Removed {} orphaned cursor(s).", orphaned.len());
+    } else {
+        println!("Aborted.");
+    }
+
+    Ok(())
 }
 
 // === Daemon lifecycle commands ===
@@ -357,6 +491,7 @@ fn show_status() -> Result<()> {
         if pid.is_some() {
             println!("   (stale PID file exists — run `patina mother stop` to clean up)");
         }
+        println!("\n   Tip: broker source status lives under `patina mother sources`.");
         return Ok(());
     }
 
@@ -381,6 +516,8 @@ fn show_status() -> Result<()> {
             println!("   Health check failed: {}", e);
         }
     }
+
+    println!("\n   Tip: broker source status lives under `patina mother sources`.");
 
     Ok(())
 }

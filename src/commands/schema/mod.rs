@@ -10,6 +10,14 @@
 
 mod internal;
 
+// Re-export schema metadata types for use by other subsystems (projection, oxidize)
+pub(crate) use internal::SchemaMetadata;
+
+/// Load all installed schemas from `.patina/schemas/*/schema.toml`.
+pub(crate) fn load_all_installed() -> anyhow::Result<Vec<SchemaMetadata>> {
+    internal::load_all_installed()
+}
+
 /// Schema CLI subcommands (used by main.rs via clap)
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum SchemaCommands {
@@ -110,6 +118,7 @@ pub fn show_value(name: &str) -> anyhow::Result<serde_json::Value> {
 }
 
 /// Validate a fact against its schema before DB insertion (EC3)
+#[allow(dead_code)]
 pub fn validate_fact(
     schema_name: &str,
     fact_name: &str,

@@ -133,6 +133,27 @@ interface schema {
     get-field-types: func(schema-name: string, fact-name: string) -> result<string, string>;
 }
 
+/// Fact emission for plugins that ingest external data.
+///
+/// Plugins call emit-fact() during execution. The host validates the
+/// schema and fact-type against installed schemas and the plugin
+/// manifest, then writes to events.db with provenance=external.
+///
+/// Design: host import (not intent). Helland analysis — facts are
+/// independently valid, host validates and writes, plugin gets
+/// confirmation (sequence number). See plugin-infrastructure DESIGN.md.
+interface emit {
+    /// Emit a structured fact to the project eventlog.
+    ///
+    /// schema: schema package name (e.g., "forge")
+    /// fact-type: fact within schema (e.g., "issue")
+    /// data: JSON payload conforming to schema definition
+    ///
+    /// Returns event sequence number on success.
+    /// Host validates: schema installed, plugin declares it, fact-type exists.
+    emit-fact: func(schema: string, fact-type: string, data: string) -> result<u64, string>;
+}
+
 /// Measurement reporting for plugins.
 ///
 /// Plugins call record-measurement to report metrics to the host.

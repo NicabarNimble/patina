@@ -1,0 +1,59 @@
+package patina:schema/github@1.0.0;
+
+/// GitHub domain — issues and pull requests via github-connector.
+///
+/// This schema describes the fact types produced by the github-connector
+/// native child. Types are platform-agnostic (shared with forge domain)
+/// to allow both forge.* and github.* events to coexist in the same
+/// materialized views.
+
+interface types {
+    /// Issue state (platform-agnostic).
+    enum issue-state {
+        open,
+        closed,
+    }
+
+    /// Pull request state (platform-agnostic).
+    enum pr-state {
+        open,
+        merged,
+        closed,
+    }
+
+    /// Comment on an issue or PR.
+    record comment {
+        author: string,
+        body: string,
+        created-at: string,
+    }
+
+    /// Issue from GitHub.
+    record issue {
+        number: s64,
+        title: string,
+        body: option<string>,
+        state: issue-state,
+        author: string,
+        labels: list<string>,
+        created-at: string,
+        updated-at: string,
+        url: string,
+    }
+
+    /// Pull request from GitHub.
+    record pull-request {
+        number: s64,
+        title: string,
+        body: option<string>,
+        state: pr-state,
+        author: string,
+        labels: list<string>,
+        created-at: string,
+        merged-at: option<string>,
+        url: string,
+        linked-issues: list<s64>,
+        comments: list<comment>,
+        approvals: s32,
+    }
+}
