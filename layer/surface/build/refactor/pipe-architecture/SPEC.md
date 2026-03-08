@@ -328,10 +328,13 @@ Three layers, always active for all children:
 3. **Sandbox**: WASM sandbox (current plugins) or OS sandbox
    (native children — macOS sandbox_init(), Linux Landlock).
 
-Native children: OS sandbox prevents filesystem access and process
-spawning. Network allowed for declared domains only. Credentials
-arrive via stdin config, not environment or files. ~2ms startup,
-~0ns runtime — Chrome renderer process pattern.
+Native children: OS sandbox is parameterized by child type.
+Connector children get deny-all filesystem + allowed network.
+Storage children (lakehouse) get scoped filesystem access to a
+Mother-provided path + deny-all network. Mother configures the
+profile at spawn time from child.toml type and destination config.
+Credentials arrive via stdin config, not environment or files.
+~2ms startup, ~0ns runtime — Chrome renderer process pattern.
 
 WASM children: wasmtime sandbox (existing model). All I/O proxied
 through host functions. Proven by forge connector.

@@ -939,8 +939,11 @@ Both platforms use in-process kernel APIs, not external CLI tools:
   crate after fork, before exec. Equivalent filesystem/network
   restrictions.
 
+**Sandbox profiles are parameterized by child type.** Different
+children have different security needs:
+
 ```
-Profile (both platforms enforce equivalent restrictions):
+Connector profile (deny-all filesystem):
   - deny all filesystem access
   - allow stdin/stdout/stderr
   - allow outbound network on port 443 (HTTPS) and port 53 (DNS)
@@ -948,7 +951,33 @@ Profile (both platforms enforce equivalent restrictions):
   - domain-level filtering enforced inside Mother via pipe/http
     ([[spec-pipe-mother-io]]) — which also tightens sandbox to
     deny all outbound sockets
+
+Storage child profile (scoped filesystem):
+  - deny all filesystem access EXCEPT a Mother-provided path
+  - allow read/write to a specific directory (e.g., lake root)
+  - allow stdin/stdout/stderr
+  - deny all outbound network (storage children don't call APIs)
+  - Mother provides the scoped path at spawn time from child.toml
+    type + destination config; the OS enforces the boundary
 ```
+
+Mother determines the sandbox profile at spawn time:
+1. Read `child.toml` type (connector, lakehouse, transform, etc.)
+2. For connectors: deny-all filesystem, allow network
+3. For storage children (lakehouse): scoped filesystem access to
+   the destination path, deny network
+4. Pass the allowed path to sandbox generator
+
+**Implementation:** macOS gets `(allow file-read* file-write*
+(subpath "<lake_path>"))` added to the SBPL profile. Linux gets
+a Landlock `PathBeneath` rule for the allowed directory. The
+sandbox APIs already accept parameters — `generate_macos_profile`
+and `apply_landlock` gain a `allowed_paths: &[&Path]` parameter.
+
+**Role alignment test:**
+1. Can connector be replaced without touching storage? Yes — different sandbox profiles.
+2. Can lakehouse be replaced without touching connector? Yes — different children.
+3. Mother governing, not executing? Yes — Mother configures sandbox at spawn time (policy), OS enforces (execution).
 
 **Fail behavior**: If the OS cannot enforce sandboxing (unsupported
 kernel, API error), Mother refuses to spawn the child unless

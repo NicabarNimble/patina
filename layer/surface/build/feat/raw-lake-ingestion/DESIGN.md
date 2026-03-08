@@ -373,6 +373,27 @@ description = "Raw lake storage — append-only Parquet capture"
 methods = ["ingest"]
 ```
 
+### Sandbox Profile
+
+The lakehouse child uses the **storage child sandbox profile** from
+[[pipe-architecture]] §8.3: scoped filesystem access to the lake
+root path, deny-all network.
+
+Mother configures the sandbox at spawn time:
+1. Read `child.toml` type = "lakehouse"
+2. Resolve the lake root path from the destination config
+3. Generate OS sandbox profile with scoped filesystem access to
+   that path only (macOS: `(allow file-read* file-write* (subpath
+   "<lake_path>"))`; Linux: Landlock `PathBeneath` rule)
+4. Deny all outbound network — lakehouse communicates only via
+   stdio (pipe protocol)
+
+This resolves the conflict between pipe-architecture §8.3 (which
+originally said "deny all filesystem") and the lakehouse's need to
+create directories and write Parquet files. The sandbox is
+parameterized, not weakened — connectors still get deny-all
+filesystem.
+
 ### Parquet Format
 
 Each Parquet file contains all records of one data type from one
