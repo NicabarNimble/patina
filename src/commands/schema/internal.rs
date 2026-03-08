@@ -85,11 +85,7 @@ pub(crate) fn load_all_installed() -> Result<Vec<SchemaMetadata>> {
         match parse_schema_toml(&entry.path()) {
             Ok(metadata) => schemas.push(metadata),
             Err(e) => {
-                eprintln!(
-                    "Warning: skipping schema {}: {}",
-                    entry.path().display(),
-                    e
-                );
+                eprintln!("Warning: skipping schema {}: {}", entry.path().display(), e);
             }
         }
     }
