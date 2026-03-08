@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: schema-driven-projection
-status: draft
+status: ready
 created: 2026-03-08
 sessions:
   origin: 20260307-234302
@@ -11,19 +11,19 @@ related:
 - github-child-owns-forge
 exit_criteria:
 - id: projection-reads-schemas
-  text: "project_from_events() discovers event_type → table mappings from installed schemas, not hardcoded strings"
+  text: project_from_events() discovers event_type → table mappings from installed schemas, not hardcoded strings
   checked: false
 - id: fts5-reads-schemas
-  text: "FTS5 populate discovers event types and field definitions from installed schema index config"
+  text: FTS5 populate discovers event types and field definitions from installed schema index config
   checked: false
 - id: search-discovers-event-types
-  text: "scry enrichment and assay search discover forge-family event types from schemas, not hardcoded matches"
+  text: scry enrichment and assay search discover forge-family event types from schemas, not hardcoded matches
   checked: false
 - id: oxidize-reads-corpus-query
-  text: "oxidize builds embedding corpus using corpus_query from installed schemas"
+  text: oxidize builds embedding corpus using corpus_query from installed schemas
   checked: false
 - id: litmus-new-connector
-  text: "Install a new schema.toml (e.g. gitea) with different event types — pipeline handles it with zero core code changes"
+  text: Install a new schema.toml (e.g. gitea) with different event types — pipeline handles it with zero core code changes
   checked: false
 ---
 # refactor: Schema-Driven Projection — Pipeline Reads Schemas, Not Hardcoded Event Types
