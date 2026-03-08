@@ -672,32 +672,6 @@ enum ScrapeCommands {
         #[arg(long)]
         full: bool,
     },
-    /// Fetch issues and PRs from forge (GitHub, Gitea, etc.)
-    Forge {
-        /// Full rebuild (ignore incremental)
-        #[arg(long)]
-        full: bool,
-
-        /// Show sync status without making changes
-        #[arg(long)]
-        status: bool,
-
-        /// Fork to background and sync all pending refs
-        #[arg(long)]
-        sync: bool,
-
-        /// Tail the sync log file
-        #[arg(long)]
-        log: bool,
-
-        /// Foreground sync with limit (escape hatch)
-        #[arg(long)]
-        limit: Option<usize>,
-
-        /// Target a ref repo instead of current project
-        #[arg(long)]
-        repo: Option<String>,
-    },
 }
 
 #[derive(Subcommand)]
@@ -1200,14 +1174,6 @@ fn main() -> Result<()> {
                         commands::scrape::execute_sessions(full)?
                     }
                     Some(ScrapeCommands::Layer { full }) => commands::scrape::execute_layer(full)?,
-                    Some(ScrapeCommands::Forge {
-                        full,
-                        status,
-                        sync,
-                        log,
-                        limit,
-                        repo,
-                    }) => commands::scrape::execute_forge(full, status, sync, log, limit, repo)?,
                 }
             }
         }

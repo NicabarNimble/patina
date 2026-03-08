@@ -94,14 +94,14 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
     println!("   Indexed {} symbols", fts_count);
 
     // Populate forge FTS5 from projection tables (idempotent — runs after code FTS5)
-    let issue_fts = match super::forge::populate_fts5_issues(&conn) {
+    let issue_fts = match super::events::populate_fts5_issues(&conn) {
         Ok(n) => n,
         Err(e) => {
             eprintln!("  Warning: forge issue FTS5 failed: {}", e);
             0
         }
     };
-    let pr_fts = match super::forge::populate_fts5_prs(&conn) {
+    let pr_fts = match super::events::populate_fts5_prs(&conn) {
         Ok(n) => n,
         Err(e) => {
             eprintln!("  Warning: forge PR FTS5 failed: {}", e);
