@@ -1,0 +1,36 @@
+[schema]
+name = "github"
+version = "1.0.0"
+package = "patina:schema/github@1.0.0"
+description = "GitHub issues and pull requests (native connector)"
+
+[[facts]]
+name = "issue"
+event_type = "github.issue"
+record = "issue"
+
+[[facts]]
+name = "pull-request"
+event_type = "github.pr"
+record = "pull-request"
+
+[embedding]
+offset_slot = 6
+corpus_query = """
+SELECT seq,
+       json_extract(data, '$.title') || ' ' ||
+       COALESCE(json_extract(data, '$.body'), '')
+       as content
+FROM eventlog
+WHERE event_type LIKE 'github.%'
+"""
+
+[[indexes]]
+fact = "issue"
+fts_fields = ["title", "body"]
+table = "github_issues"
+
+[[indexes]]
+fact = "pull-request"
+fts_fields = ["title", "body", "comments"]
+table = "github_prs"
