@@ -2698,4 +2698,3 @@ fn role_none_skips_validation() {
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
 }
-

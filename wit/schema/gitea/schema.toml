@@ -1,0 +1,36 @@
+[schema]
+name = "gitea"
+version = "1.0.0"
+package = "patina:schema/gitea@1.0.0"
+description = "Gitea issues and pull requests (litmus test)"
+
+[[facts]]
+name = "issue"
+event_type = "gitea.issue"
+record = "issue"
+
+[[facts]]
+name = "pull-request"
+event_type = "gitea.pr"
+record = "pull-request"
+
+[embedding]
+offset_slot = 5
+corpus_query = """
+SELECT seq,
+       json_extract(data, '$.title') || ' ' ||
+       COALESCE(json_extract(data, '$.body'), '')
+       as content
+FROM eventlog
+WHERE event_type LIKE 'gitea.%'
+"""
+
+[[indexes]]
+fact = "issue"
+fts_fields = ["title", "body"]
+table = "forge_issues"
+
+[[indexes]]
+fact = "pull-request"
+fts_fields = ["title", "body"]
+table = "forge_prs"
