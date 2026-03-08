@@ -9,7 +9,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use patina::forge::{ForgeWriter, GitHubWriter};
+use patina::git::writer::{ForgeWriter, GitHubWriter};
 use patina::paths;
 
 /// Registry schema (persisted to ~/.patina/registry.yaml)

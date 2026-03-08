@@ -9,6 +9,7 @@
 mod fork;
 mod operations;
 mod validation;
+pub mod writer;
 
 pub use fork::{detect_fork_status, ensure_fork, ForkStatus};
 pub use operations::{

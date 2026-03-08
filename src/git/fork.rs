@@ -1,7 +1,7 @@
 //! Fork detection and creation
 
 use super::operations::{add_remote, has_remote, parse_github_url, remote_url};
-use crate::forge::{ForgeWriter, GitHubWriter};
+use super::writer::{ForgeWriter, GitHubWriter};
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::process::Command;
