@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: mother-broker-github
-status: ready
+status: active
 created: 2026-03-07
 sessions:
   origin: 20260307-234302
