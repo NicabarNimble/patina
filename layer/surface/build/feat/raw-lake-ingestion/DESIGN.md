@@ -126,46 +126,205 @@ The connector is unaware of this branching. It emits facts via pipe
 protocol regardless of destination. Mother decides where they go.
 The lakehouse child is unaware of where facts came from.
 
-### pipe/ingest Method
+### pipe/ingest Method (Normative)
 
-New pipe protocol method for Mother → child record delivery:
+New pipe protocol method for Mother → lakehouse child record delivery.
+Follows the JSON-RPC 2.0 pattern from [[pipe-architecture]] §1.2.
+This specification is normative — implementation must match.
+
+**Direction:** Mother → lakehouse child (Mother sends, child responds).
+This is the reverse of pipe/fetch (child sends facts to Mother).
+
+**When called:** After Mother receives facts from a connector child
+via pipe/fetch, validates them, and determines the destination is a
+lake (from `sources.toml` destination field).
+
+#### Request
 
 ```json
-// Mother sends to lakehouse child:
 {
   "jsonrpc": "2.0",
+  "id": 1,
   "method": "pipe/ingest",
   "params": {
     "lake_path": "/Users/foo/.patina/lakes/github-data",
+    "persona": "default",
     "provider": "github",
-    "source_identity": { "owner": "NicabarNimble", "repo": "patina" },
+    "source_identity": {
+      "owner": "NicabarNimble",
+      "repo": "patina"
+    },
     "schema": "github",
-    "identity_fields": ["number"],
+    "schema_version": "1.0.0",
+    "identity_fields": {
+      "github.issue": ["number"],
+      "github.pr": ["number"]
+    },
     "records": [
-      { "event_type": "github.issue", "data": "{...}", "content_hash": "..." },
-      { "event_type": "github.pr", "data": "{...}", "content_hash": "..." }
+      {
+        "event_type": "github.issue",
+        "data": "{\"number\":42,\"title\":\"Fix auth\",\"body\":\"...\",\"state\":\"open\"}",
+        "content_hash": "blake3:abc123def456..."
+      },
+      {
+        "event_type": "github.pr",
+        "data": "{\"number\":17,\"title\":\"Add caching\",\"body\":\"...\",\"state\":\"merged\"}",
+        "content_hash": "blake3:789xyz012..."
+      }
     ]
   }
 }
+```
 
-// Lakehouse child responds:
+**Required fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `lake_path` | string | Absolute path to lake root directory |
+| `persona` | string | Persona scope for this lake (Mother-provided) |
+| `provider` | string | Provider identifier (from connection config) |
+| `source_identity` | object | Hierarchical source identity (provider-specific keys) |
+| `schema` | string | Schema package name (matches schema.toml) |
+| `schema_version` | string | Schema version (for provenance) |
+| `identity_fields` | object | Map of event_type → list of identity field names (for dedup) |
+| `records` | array | Batch of records to ingest |
+
+**Record fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `event_type` | string | Fact type (e.g., `github.issue`) |
+| `data` | string | JSON payload (canonical serialization from connector) |
+| `content_hash` | string | blake3 hash of canonical data (from pipe protocol) |
+
+**Notes:**
+- `identity_fields` is keyed by event_type because different fact types
+  within the same schema may have different identity keys (e.g., issues
+  dedup by `number`, comments might dedup by `id`).
+- `data` is a JSON string, not a parsed object. The lakehouse child
+  parses it for Parquet column extraction but the raw string is the
+  source of truth for content hashing.
+- `persona` is provided by Mother, not by the connector. Persona
+  scoping is Mother's domain.
+- `source_identity` keys are connector-specific but lakehouse uses
+  them generically for directory layout (joined with `/`).
+
+#### Response (success)
+
+```json
 {
   "jsonrpc": "2.0",
+  "id": 1,
   "result": {
     "written": 42,
     "dedup_skipped": 3,
     "files": [
       "raw/github/NicabarNimble/patina/issues/20260308T134500Z.parquet",
       "raw/github/NicabarNimble/patina/prs/20260308T134500Z.parquet"
-    ]
+    ],
+    "provenance": {
+      "ingested_at": "2026-03-08T13:45:00Z",
+      "source_connector": "github-connector",
+      "schema_version": "1.0.0"
+    }
   }
 }
 ```
 
+**Result fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `written` | integer | Total records written to Parquet |
+| `dedup_skipped` | integer | Records skipped (identity match, same content) |
+| `files` | array of strings | Relative paths (from lake root) of written Parquet files |
+| `provenance` | object | Metadata attached to all written records |
+
+**Provenance fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ingested_at` | string | ISO 8601 timestamp of this ingestion run |
+| `source_connector` | string | Child name that produced the records |
+| `schema_version` | string | Schema version at ingestion time |
+
+#### Response (error)
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32001,
+    "message": "Parquet write failed: disk full",
+    "data": { "records_before_failure": 37 }
+  }
+}
+```
+
+Error codes follow pipe protocol conventions ([[pipe-architecture]] §1.5):
+- `-32001` (Transient): disk full, permission error, temporary I/O failure
+- `-32002` (Fatal): invalid schema, corrupted lake directory, unsupported format
+
+#### Post-Response: Mother Cursor Advance
+
+After receiving a successful result, Mother:
+1. Updates `lake_sync.cursor` in graph.db for this source-lake pair
+2. Updates `lake_sync.records_written` (cumulative)
+3. Updates `lake_sync.last_run` to current timestamp
+4. Updates `lake_sync.status` to `'ok'`
+
+If the response is an error, Mother:
+1. Does NOT advance cursor (next run re-fetches)
+2. Updates `lake_sync.status` to `'error'`
+3. Stores error message in `lake_sync.error`
+
+**Failure mode:** Cursor and Parquet write are not in the same
+transaction (different stores: graph.db vs filesystem). cursor-after-
+confirmed-write is safe because worst case is re-fetch + dedup.
+
+#### Implementation Note
+
+This method should be defined as Rust types in `patina-pipe-types`
+when implemented:
+
+```rust
+// crates/patina-pipe-types/src/ingest.rs
+pub struct IngestParams {
+    pub lake_path: PathBuf,
+    pub persona: String,
+    pub provider: String,
+    pub source_identity: HashMap<String, String>,
+    pub schema: String,
+    pub schema_version: String,
+    pub identity_fields: HashMap<String, Vec<String>>,
+    pub records: Vec<IngestRecord>,
+}
+
+pub struct IngestRecord {
+    pub event_type: String,
+    pub data: String,
+    pub content_hash: String,
+}
+
+pub struct IngestResult {
+    pub written: u64,
+    pub dedup_skipped: u64,
+    pub files: Vec<String>,
+    pub provenance: IngestProvenance,
+}
+
+pub struct IngestProvenance {
+    pub ingested_at: String,
+    pub source_connector: String,
+    pub schema_version: String,
+}
+```
+
 Mother batches records from the connector and sends them to the
-lakehouse child in one call. The lakehouse child partitions by
-data type, dedup-checks, writes Parquet files, and reports what it
-wrote. Mother then updates the cursor.
+lakehouse child in one `pipe/ingest` call. The lakehouse child
+partitions by data type, dedup-checks, writes Parquet files, and
+reports what it wrote. Mother then advances the cursor.
 
 ### Source Identity Extraction
 
