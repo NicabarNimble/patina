@@ -8,11 +8,13 @@ description = "GitHub issues and pull requests (native connector)"
 name = "issue"
 event_type = "github.issue"
 record = "issue"
+identity_fields = ["number"]
 
 [[facts]]
 name = "pull-request"
 event_type = "github.pr"
 record = "pull-request"
+identity_fields = ["number"]
 
 [embedding]
 offset_slot = 6
