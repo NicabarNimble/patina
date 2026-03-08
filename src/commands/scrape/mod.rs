@@ -4,6 +4,7 @@ pub mod beliefs;
 pub mod code;
 pub mod database;
 pub mod delta;
+pub mod events;
 pub mod forge;
 pub mod git;
 pub mod layer;

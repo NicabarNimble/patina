@@ -43,7 +43,7 @@ pub fn extract_code_metadata_v2(
 
     // Project forge events from events.db into patina.db materialized views.
     // This picks up events from both scrape and plugin sources.
-    match crate::commands::scrape::forge::project_from_events(db.connection()) {
+    match crate::commands::scrape::events::project_from_events(db.connection()) {
         Ok(stats) => {
             if stats.issues_projected > 0 || stats.prs_projected > 0 {
                 println!(
@@ -55,7 +55,7 @@ pub fn extract_code_metadata_v2(
         Err(e) => {
             eprintln!("  Warning: forge projection failed: {}", e);
             // Fall back to just creating tables
-            crate::commands::scrape::forge::create_materialized_views(db.connection())?;
+            crate::commands::scrape::events::create_materialized_views(db.connection())?;
         }
     }
 
@@ -214,7 +214,7 @@ pub fn extract_code_metadata_v2(
                             }
                         }
                         let conn = db.connection();
-                        match crate::commands::scrape::forge::insert_issues(
+                        match crate::commands::scrape::events::insert_issues(
                             conn,
                             &events_conn,
                             &[issue],
@@ -247,7 +247,7 @@ pub fn extract_code_metadata_v2(
                             }
                         }
                         let conn = db.connection();
-                        match crate::commands::scrape::forge::insert_prs(conn, &events_conn, &[pr])
+                        match crate::commands::scrape::events::insert_prs(conn, &events_conn, &[pr])
                         {
                             Ok(stats) => {
                                 forge_prs_inserted += stats.inserted;
@@ -318,7 +318,7 @@ pub fn extract_code_metadata_v2(
                                     }
                                 }
                                 let conn = db.connection();
-                                match crate::commands::scrape::forge::insert_issues(
+                                match crate::commands::scrape::events::insert_issues(
                                     conn,
                                     &events_conn,
                                     &[issue],
@@ -350,7 +350,7 @@ pub fn extract_code_metadata_v2(
                                     }
                                 }
                                 let conn = db.connection();
-                                match crate::commands::scrape::forge::insert_prs(
+                                match crate::commands::scrape::events::insert_prs(
                                     conn,
                                     &events_conn,
                                     &[pr],
