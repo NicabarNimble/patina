@@ -23,12 +23,9 @@ exit_criteria:
 - id: external-evidence-survives-rebuild
   text: '`patina scrape --rebuild` preserves all external evidence in events.db — only patina.db projections are rebuilt'
   checked: true
-- id: lake-registry-in-mother
-  text: Mother manages a data lake registry (name, kind, location, credentials) extending the existing ref repo pattern
-  checked: false
-- id: lake-catalog-queryable
-  text: Lake metadata (what data exists, when last synced) is queryable via `patina assay` without pulling full lake content
-  checked: false
+# Lake ECs split to [[lake-registry]] and [[raw-lake-ingestion]] (session 20260308-134326)
+# - lake-registry-in-mother → lake-registry spec EC lake-registry-table
+# - lake-catalog-queryable → deferred to future curated layer spec
 ---
 # refactor: Data Architecture v3 — Provenance and Lake Registry
 
