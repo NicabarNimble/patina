@@ -16,6 +16,8 @@ beliefs:
 - connectors-own-tables-schemas-are-contracts
 - patina-is-domain-agnostic-knowledge-system
 - mother-holds-connections-pipes-transform
+- mother-owns-destination-format
+- raw-lake-is-capture-contract-first
 exit_criteria:
 - id: lake-registered
   text: "Mother registers a lake by name and location in graph.db lake_registry table; `patina mother status` shows lake name, location, and sync state"
