@@ -22,6 +22,7 @@ beliefs:
 - pipe-protocol-is-transport-agnostic
 - persona-keypair-is-node-identity
 - wit-defines-pipe-contract-not-runtime
+- connectors-own-tables-schemas-are-contracts
 exit_criteria:
 - id: children-complete
   text: All child specs (pipe-protocol-types, pipe-native-transport, github-connector, patina-connect, mother-broker) are complete
