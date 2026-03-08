@@ -139,6 +139,20 @@ This is the reverse of pipe/fetch (child sends facts to Mother).
 via pipe/fetch, validates them, and determines the destination is a
 lake (from `sources.toml` destination field).
 
+**Batching:** Mother sends records in bounded batches, not as a single
+unbounded payload. The maximum batch size matches `DEFAULT_MAX_BATCH_SIZE`
+(currently 10,000 records, from [[pipe-architecture]] §13 safety net).
+For fetches exceeding this limit, Mother calls pipe/ingest multiple
+times. The lakehouse child maintains its dedup identity index across
+calls within the same ingestion run.
+
+This is consistent with pipe-architecture §1.3 Streaming Fact Delivery:
+the pipe/fact transport layer delivers facts as individual notifications
+(O(1) per fact). The broker accumulates facts into a bounded batch per
+fetch (O(batch), bounded by limit). pipe/ingest accepts bounded batches
+matching this same bound. Neither the transport nor the broker
+accumulates unbounded data.
+
 #### Request
 
 ```json
@@ -150,10 +164,7 @@ lake (from `sources.toml` destination field).
     "lake_path": "/Users/foo/.patina/lakes/github-data",
     "persona": "default",
     "provider": "github",
-    "source_identity": {
-      "owner": "NicabarNimble",
-      "repo": "patina"
-    },
+    "source_path": "NicabarNimble/patina",
     "schema": "github",
     "schema_version": "1.0.0",
     "identity_fields": {
@@ -183,11 +194,11 @@ lake (from `sources.toml` destination field).
 | `lake_path` | string | Absolute path to lake root directory |
 | `persona` | string | Persona scope for this lake (Mother-provided) |
 | `provider` | string | Provider identifier (from connection config) |
-| `source_identity` | object | Hierarchical source identity (provider-specific keys) |
+| `source_path` | string | Opaque path segment for directory layout (Mother-constructed) |
 | `schema` | string | Schema package name (matches schema.toml) |
 | `schema_version` | string | Schema version (for provenance) |
 | `identity_fields` | object | Map of event_type → list of identity field names (for dedup) |
-| `records` | array | Batch of records to ingest |
+| `records` | array | Bounded batch of records to ingest (max `DEFAULT_MAX_BATCH_SIZE`) |
 
 **Record fields:**
 
@@ -206,8 +217,16 @@ lake (from `sources.toml` destination field).
   source of truth for content hashing.
 - `persona` is provided by Mother, not by the connector. Persona
   scoping is Mother's domain.
-- `source_identity` keys are connector-specific but lakehouse uses
-  them generically for directory layout (joined with `/`).
+- `source_path` is an opaque string constructed by Mother from the
+  source params. Lakehouse uses it for directory layout:
+  `raw/<provider>/<source_path>/<data_type>/`. Mother owns path
+  construction (a routing concern); lakehouse receives it opaque.
+  This replaces the earlier `source_identity: HashMap<String, String>`
+  which was nondeterministic (HashMap iteration order) and could not
+  represent multi-value params like `channels = ["#dev", "#incidents"]`.
+- `records` is a bounded batch. Mother MUST NOT send more than
+  `DEFAULT_MAX_BATCH_SIZE` records per call. For larger fetches,
+  Mother calls pipe/ingest multiple times.
 
 #### Response (success)
 
@@ -294,7 +313,7 @@ pub struct IngestParams {
     pub lake_path: PathBuf,
     pub persona: String,
     pub provider: String,
-    pub source_identity: HashMap<String, String>,
+    pub source_path: String,
     pub schema: String,
     pub schema_version: String,
     pub identity_fields: HashMap<String, Vec<String>>,
@@ -321,15 +340,18 @@ pub struct IngestProvenance {
 }
 ```
 
-Mother batches records from the connector and sends them to the
-lakehouse child in one `pipe/ingest` call. The lakehouse child
-partitions by data type, dedup-checks, writes Parquet files, and
-reports what it wrote. Mother then advances the cursor.
+Mother sends records from the connector to the lakehouse child in
+bounded `pipe/ingest` calls (max `DEFAULT_MAX_BATCH_SIZE` records
+per call). The lakehouse child partitions by data type, dedup-checks,
+writes Parquet files, and reports what it wrote. Mother advances the
+cursor after the final successful ingest call. For fetches within
+the batch limit (typical for v1), this is a single call.
 
-### Source Identity Extraction
+### Source Path Construction
 
-For the partitioned path layout, Mother extracts source identity
-from the source declaration:
+Mother constructs `source_path` from source params and passes it
+as an opaque string to the lakehouse child. The lakehouse child
+uses it for directory layout without parsing it.
 
 ```toml
 [sources.github-lake]
@@ -338,10 +360,30 @@ params = { owner = "NicabarNimble", repo = "patina" }
 destination = { type = "lake", lake = "github-data" }
 ```
 
-Mother passes `provider` (from connection config) and
-`source_identity` (from params) to the lakehouse child. The
-lakehouse child uses these for the directory layout. This is not
-GitHub-specific — any hierarchical source identity works.
+Mother constructs `source_path` by joining hierarchical params:
+`"NicabarNimble/patina"` (from `owner` + `repo`). The lakehouse
+child receives this opaque and constructs:
+`raw/<provider>/<source_path>/<data_type>/` →
+`raw/github/NicabarNimble/patina/issues/`.
+
+**Why Mother owns path construction:**
+- Path construction is a **routing concern** (where does data go).
+  Mother owns routing per role-boundary doctrine.
+- Source params vary by connector (GitHub has owner/repo, Slack has
+  workspace/channel, RSS has feed URL). Mother normalizes these
+  into a deterministic path string.
+- `HashMap` iteration order is nondeterministic — a HashMap of
+  `{ owner, repo }` could produce `"repo/owner"` or `"owner/repo"`
+  on different runs. Mother constructs the path with explicit,
+  deterministic ordering.
+- Multi-value params (e.g., `channels = ["#dev", "#incidents"]`)
+  require decisions about path representation that belong to routing
+  policy, not storage mechanics.
+
+**Convention:** Mother joins params in declaration order, sanitizing
+for filesystem safety (no `/`, `..`, or special characters in values).
+The exact construction algorithm is an implementation detail — the
+lakehouse child treats `source_path` as opaque.
 
 ## Lakehouse Child Implementation
 
@@ -637,10 +679,14 @@ No changes needed for raw-lake-ingestion or connector-owns-tables.
 
 ## Open Questions
 
-1. **pipe/ingest batch size.** Should Mother send all records in one
-   pipe/ingest call, or stream them? For v1, one call is fine (typical
-   GitHub fetch is hundreds of records, not millions). Streaming is
-   future optimization.
+1. **pipe/ingest batch size.** ~~Should Mother send all records in one
+   pipe/ingest call, or stream them?~~ **Resolved:** Mother sends
+   bounded batches (max `DEFAULT_MAX_BATCH_SIZE = 10,000` records per
+   call), matching the existing broker safety net from lifecycle.rs.
+   For v1, typical GitHub fetches are hundreds of records — single
+   call. For larger datasets, Mother calls pipe/ingest multiple times.
+   True per-record streaming (pipe/record notifications) is future
+   optimization. See pipe/ingest §Batching above.
 
 2. **Lakehouse child lifecycle.** Spawn per ingestion run (poll mode)
    or keep alive? Poll mode is simpler and matches the connector

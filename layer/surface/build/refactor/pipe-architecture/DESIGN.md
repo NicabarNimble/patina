@@ -263,8 +263,12 @@ Mother                              Child
 ```
 
 Mother processes each fact as it arrives — validate schema, compute
-hash, write to events.db. No accumulation. A child emitting 100K
-facts uses O(1) memory on both sides.
+hash, stage for write. A child emitting 100K facts uses O(1) memory
+on the transport layer (per-notification). The broker layer
+accumulates facts into a bounded batch (max `DEFAULT_MAX_BATCH_SIZE`,
+currently 10,000) before the transactional write to events.db or
+the pipe/ingest call to a lakehouse child. The batch bound is the
+memory ceiling — not unbounded accumulation.
 
 The `pipe/fact` notification:
 ```json
