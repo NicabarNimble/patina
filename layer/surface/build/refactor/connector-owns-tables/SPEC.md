@@ -126,9 +126,27 @@ a different technology boundary requiring a dedicated child with
 arrow/parquet crates. SQLite projection from JSON events is mechanical
 SQL driven by declarations — no domain-specific runtime code needed.
 
-### Event Log Stays
+### Event Log Stays (Project Scope)
 
-events.db remains the canonical write side. Children emit events through Mother. The CQRS audit trail is preserved. Materialization is a separate capability that transforms the write side into read models.
+events.db is the **project-scope** canonical write side. When a source
+has `destination.type = "project"` (or absent), Mother routes connector
+output to events.db. The CQRS audit trail is preserved. Materialization
+is a separate capability that transforms the write side into read models.
+
+**Lake-bound data bypasses events.db entirely.** When a source has
+`destination.type = "lake"`, Mother routes connector output to the
+lakehouse child via pipe/ingest — records never touch events.db. The
+lake has its own audit trail: append-only Parquet files, lake_sync
+cursor tracking, and provenance columns on every written record.
+
+**Dual routing** (same connector data to both project and lake) is
+achieved via two source entries in sources.toml pointing to the same
+connection with different destinations. This is explicit fan-out via
+config, not implicit dual-write.
+
+**Dedup ownership per scope:**
+- Project scope: events.db content_hash dedup (Mother-managed)
+- Lake scope: identity field dedup against existing Parquet (lakehouse-managed)
 
 ### Schema-Driven Projection Protocol
 

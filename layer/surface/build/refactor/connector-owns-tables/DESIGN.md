@@ -629,16 +629,23 @@ is handled by transform children (future scope) which explicitly own
 domain-specific runtime logic. The escape hatch is a dedicated transform
 child, not a capability bolted onto the connector.
 
-### 2. Event Log Stays as Canonical Write Side
+### 2. Event Log Stays as Project-Scope Canonical Write Side
 
-Children emit events through Mother to events.db. The CQRS audit trail
-is preserved. Materialization is a separate read-side concern, invoked
-after events are captured. This means:
+events.db is the **project-scope** canonical write side. Children with
+project destinations emit events through Mother to events.db. The CQRS
+audit trail is preserved. Materialization is a separate read-side
+concern, invoked after events are captured. This means:
 
 - Events are never lost (write side is durable)
 - Materialization can be re-run (idempotent)
 - Multiple read models can coexist (different schemas, different tables)
 - The event log is the source of truth, tables are derived
+
+**Scope boundary:** Lake-bound connector output bypasses events.db
+entirely — it routes to the lakehouse child via pipe/ingest (see
+[[raw-lake-ingestion]]). Each consumer scope has its own write side
+and audit trail. events.db is not a universal audit log; it is the
+project's event store.
 
 ### 3. Connectors Are Fetch-Only
 

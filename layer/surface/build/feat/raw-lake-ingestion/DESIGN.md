@@ -126,6 +126,16 @@ The connector is unaware of this branching. It emits facts via pipe
 protocol regardless of destination. Mother decides where they go.
 The lakehouse child is unaware of where facts came from.
 
+**events.db bypass:** Lake-bound records never touch events.db. Each
+consumer scope has its own write side and audit trail:
+- Project scope: events.db (content_hash dedup, transactional cursor)
+- Lake scope: Parquet files + lake_sync (identity field dedup,
+  append-only immutable files, provenance columns)
+
+To route the same connector output to both project and lake, configure
+two source entries in sources.toml pointing to the same connection
+with different destinations. This is explicit fan-out via config.
+
 ### pipe/ingest Method (Normative)
 
 New pipe protocol method for Mother → lakehouse child record delivery.
