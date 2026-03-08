@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: github-child-owns-forge
-status: ready
+status: active
 created: 2026-03-08
 sessions:
   origin: 20260307-222328
