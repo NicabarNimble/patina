@@ -10,9 +10,11 @@ ln -sf ../../resources/git/post-commit.sh .git/hooks/post-commit
 ln -sf ../../resources/git/post-merge.sh .git/hooks/post-merge
 ```
 
+The pre-commit and pre-push hooks use exec-style delegation (see `.git/hooks/pre-commit` and `.git/hooks/pre-push`).
+
 Verify:
 ```bash
-ls -la .git/hooks/post-*
+ls -la .git/hooks/pre-commit .git/hooks/pre-push .git/hooks/post-*
 ```
 
 ## Install (other projects)
