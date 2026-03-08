@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: pipe-protocol-types
-status: draft
+status: ready
 created: 2026-03-06
 sessions:
   origin: 20260306-171859
@@ -13,16 +13,16 @@ beliefs:
 exit_criteria:
 - id: pipe-types-crate-compiles
   text: '`patina-pipe-types` crate compiles and is usable by both patina-sdk and future patina-pipe — contains Fact, PipeError, Capabilities, FetchParams, canonical_json(), content_hash()'
+  checked: true
   verify: '`cargo build -p patina-pipe-types && cargo test -p patina-pipe-types` — both succeed with no warnings. Cross-runtime test fixtures produce identical content_hash values for pinned inputs.'
-  checked: false
 - id: child-manifest-defined
   text: 'child.toml manifest format defined with: name, version, type (connector/transport/lakehouse/transform), runtime (native/wasm), lifecycle (poll/stream/manual), capabilities, domains, auth, schemas'
+  checked: true
   verify: 'Parse test fixtures (valid child.toml, invalid child.toml with missing required fields). Round-trip: parse → serialize → parse produces identical ChildManifest.'
-  checked: false
 - id: sdk-renamed
   text: 'patina-sdk renamed: host_emit → emit, host_http → fetch, host_log → log — forge plugin updated to use new names'
+  checked: true
   verify: '`cargo build --release` succeeds for entire workspace. `rg "host_emit|host_http|host_log|host_query" plugins/forge/src/` returns zero matches.'
-  checked: false
 ---
 # refactor: Pipe Protocol Types — Shared Crate + Manifest Format
 
