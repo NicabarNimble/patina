@@ -10,6 +10,14 @@
 
 mod internal;
 
+// Re-export schema metadata types for use by other subsystems (projection, oxidize)
+pub(crate) use internal::SchemaMetadata;
+
+/// Load all installed schemas from `.patina/schemas/*/schema.toml`.
+pub(crate) fn load_all_installed() -> anyhow::Result<Vec<SchemaMetadata>> {
+    internal::load_all_installed()
+}
+
 /// Schema CLI subcommands (used by main.rs via clap)
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum SchemaCommands {

@@ -64,6 +64,32 @@ pub(crate) struct IndexConfig {
 // Schema package operations
 // =========================================================================
 
+/// Load all installed schemas from `.patina/schemas/*/schema.toml`.
+///
+/// Returns an empty vec if no schemas directory or no valid schemas found.
+pub(crate) fn load_all_installed() -> Result<Vec<SchemaMetadata>> {
+    let root = find_project_root()?;
+    let schemas_dir = paths::project::schemas_dir(&root);
+
+    if !schemas_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut schemas = Vec::new();
+    for entry in std::fs::read_dir(&schemas_dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        match parse_schema_toml(&entry.path()) {
+            Ok(metadata) => schemas.push(metadata),
+            Err(_) => continue,
+        }
+    }
+
+    Ok(schemas)
+}
+
 /// Parse schema.toml from a directory.
 fn parse_schema_toml(dir: &Path) -> Result<SchemaMetadata> {
     let toml_path = dir.join("schema.toml");

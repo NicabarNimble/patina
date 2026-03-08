@@ -59,7 +59,7 @@ pub fn enrich_results(
                                 row.get::<_, Option<String>>(3)?.unwrap_or_default();
                             let body: String = row.get::<_, Option<String>>(4)?.unwrap_or_default();
 
-                            let kind = if event_type == "forge.pr" || event_type == "github.pr" {
+                            let kind = if event_type.ends_with(".pr") {
                                 "PR"
                             } else {
                                 "Issue"

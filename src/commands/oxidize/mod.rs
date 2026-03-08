@@ -592,7 +592,7 @@ pub(crate) fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<
 
     // 4. Forge/GitHub facts (issues + PRs) from eventlog
     //
-    // Events are stored in eventlog with event_type 'forge.issue'/'github.issue' or 'forge.pr'/'github.pr'.
+    // Event types are discovered from installed schemas via convention (%.issue, %.pr).
     // Key is FORGE_ID_OFFSET + seq so enrichment can look them back up by seq.
     let forge_count = {
         let mut stmt = conn.prepare(
@@ -600,7 +600,7 @@ pub(crate) fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<
                     json_extract(data, '$.title') as title,
                     json_extract(data, '$.body') as body
              FROM eventlog
-             WHERE event_type IN ('forge.issue', 'forge.pr', 'github.issue', 'github.pr')
+             WHERE event_type LIKE '%.issue' OR event_type LIKE '%.pr'
              ORDER BY seq",
         )?;
 
@@ -613,7 +613,7 @@ pub(crate) fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<
             let title: String = row.get::<_, Option<String>>(3)?.unwrap_or_default();
             let body: String = row.get::<_, Option<String>>(4)?.unwrap_or_default();
 
-            let kind = if event_type == "forge.pr" || event_type == "github.pr" {
+            let kind = if event_type.ends_with(".pr") {
                 "PR"
             } else {
                 "Issue"

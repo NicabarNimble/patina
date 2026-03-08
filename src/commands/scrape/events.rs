@@ -74,6 +74,67 @@ pub enum PrState {
 }
 
 // ============================================================================
+// Schema registry — populated from installed schemas
+// ============================================================================
+
+/// Create schema_registry table in patina.db.
+fn create_schema_registry(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS schema_registry (
+            schema_name TEXT NOT NULL,
+            event_type  TEXT NOT NULL,
+            fact_name   TEXT NOT NULL,
+            table_name  TEXT NOT NULL,
+            fts_fields  TEXT,
+            corpus_query TEXT,
+            offset_slot INTEGER,
+            PRIMARY KEY (schema_name, event_type)
+        );",
+    )?;
+    Ok(())
+}
+
+/// Populate schema_registry from installed schemas (idempotent — rebuilds each time).
+fn populate_schema_registry(conn: &Connection) -> Result<()> {
+    conn.execute("DELETE FROM schema_registry", [])?;
+
+    let schemas = match crate::commands::schema::load_all_installed() {
+        Ok(s) => s,
+        Err(_) => return Ok(()), // no schemas installed — empty registry is fine
+    };
+
+    let mut stmt = conn.prepare(
+        "INSERT OR REPLACE INTO schema_registry
+         (schema_name, event_type, fact_name, table_name, fts_fields, corpus_query, offset_slot)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+    )?;
+
+    for schema in &schemas {
+        let corpus_query = schema.embedding.as_ref().map(|e| e.corpus_query.trim());
+        let offset_slot = schema.embedding.as_ref().map(|e| e.offset_slot);
+
+        for fact in &schema.facts {
+            // Find matching index config for this fact
+            let index = schema.indexes.iter().find(|i| i.fact == fact.name);
+            let table_name = index.map(|i| i.table.as_str()).unwrap_or("");
+            let fts_fields = index.map(|i| serde_json::to_string(&i.fts_fields).unwrap_or_default());
+
+            stmt.execute(rusqlite::params![
+                &schema.schema.name,
+                &fact.event_type,
+                &fact.name,
+                table_name,
+                fts_fields,
+                corpus_query,
+                offset_slot,
+            ])?;
+        }
+    }
+
+    Ok(())
+}
+
+// ============================================================================
 // Dedup helpers
 // ============================================================================
 
@@ -81,7 +142,7 @@ pub enum PrState {
 fn issue_event_exists(events_conn: &Connection, number: i64, updated_at: &str) -> Result<bool> {
     let count: i64 = events_conn.query_row(
         "SELECT COUNT(*) FROM eventlog
-         WHERE event_type IN ('forge.issue', 'github.issue')
+         WHERE event_type LIKE '%.issue'
            AND json_extract(data, '$.number') = ?1
            AND json_extract(data, '$.updated_at') = ?2",
         rusqlite::params![number, updated_at],
@@ -94,7 +155,7 @@ fn issue_event_exists(events_conn: &Connection, number: i64, updated_at: &str) -
 fn pr_event_exists(events_conn: &Connection, number: i64, updated_at: &str) -> Result<bool> {
     let count: i64 = events_conn.query_row(
         "SELECT COUNT(*) FROM eventlog
-         WHERE event_type IN ('forge.pr', 'github.pr')
+         WHERE event_type LIKE '%.pr'
            AND json_extract(data, '$.number') = ?1
            AND json_extract(data, '$.updated_at') = ?2",
         rusqlite::params![number, updated_at],
@@ -185,10 +246,13 @@ pub struct ProjectionStats {
 
 /// Project forge events from events.db into patina.db materialized views.
 ///
-/// Reads all forge.issue and forge.pr events from events.db and upserts
-/// into forge_issues/forge_prs tables in patina.db. Idempotent.
+/// Reads issue/PR events from events.db and upserts into forge_issues/forge_prs
+/// tables in patina.db. Event types are discovered from the schema_registry —
+/// no hardcoded strings. Idempotent.
 pub fn project_from_events(patina_conn: &Connection) -> Result<ProjectionStats> {
     create_materialized_views(patina_conn)?;
+    create_schema_registry(patina_conn)?;
+    populate_schema_registry(patina_conn)?;
 
     patina::eventlog::ensure_events_db()?;
     let events_path = patina::eventlog::EVENTS_DB;
@@ -211,10 +275,14 @@ pub fn project_from_events(patina_conn: &Connection) -> Result<ProjectionStats> 
                e.seq,
                e.timestamp
            FROM events_db.eventlog e
-           WHERE e.event_type IN ('forge.issue', 'github.issue')
+           WHERE e.event_type IN (
+               SELECT event_type FROM schema_registry WHERE table_name = 'forge_issues'
+             )
              AND e.seq = (
                SELECT MAX(e2.seq) FROM events_db.eventlog e2
-               WHERE e2.event_type IN ('forge.issue', 'github.issue')
+               WHERE e2.event_type IN (
+                   SELECT event_type FROM schema_registry WHERE table_name = 'forge_issues'
+                 )
                  AND json_extract(e2.data, '$.number') = json_extract(e.data, '$.number')
              )"#,
         [],
@@ -243,10 +311,14 @@ pub fn project_from_events(patina_conn: &Connection) -> Result<ProjectionStats> 
                e.seq,
                e.timestamp
            FROM events_db.eventlog e
-           WHERE e.event_type IN ('forge.pr', 'github.pr')
+           WHERE e.event_type IN (
+               SELECT event_type FROM schema_registry WHERE table_name = 'forge_prs'
+             )
              AND e.seq = (
                SELECT MAX(e2.seq) FROM events_db.eventlog e2
-               WHERE e2.event_type IN ('forge.pr', 'github.pr')
+               WHERE e2.event_type IN (
+                   SELECT event_type FROM schema_registry WHERE table_name = 'forge_prs'
+                 )
                  AND json_extract(e2.data, '$.number') = json_extract(e.data, '$.number')
              )"#,
         [],
@@ -424,7 +496,13 @@ pub fn insert_prs(
 
 /// Populate FTS5 index with forge issues.
 pub fn populate_fts5_issues(conn: &Connection) -> Result<usize> {
-    conn.execute("DELETE FROM code_fts WHERE event_type IN ('forge.issue', 'github.issue')", [])?;
+    // Clear any issue-family event types discovered from schema registry
+    conn.execute(
+        "DELETE FROM code_fts WHERE event_type IN (
+            SELECT event_type FROM schema_registry WHERE table_name = 'forge_issues'
+         )",
+        [],
+    )?;
 
     let count = conn.execute(
         r#"
@@ -444,7 +522,13 @@ pub fn populate_fts5_issues(conn: &Connection) -> Result<usize> {
 
 /// Populate FTS5 index with forge PRs.
 pub fn populate_fts5_prs(conn: &Connection) -> Result<usize> {
-    conn.execute("DELETE FROM code_fts WHERE event_type IN ('forge.pr', 'github.pr')", [])?;
+    // Clear any PR-family event types discovered from schema registry
+    conn.execute(
+        "DELETE FROM code_fts WHERE event_type IN (
+            SELECT event_type FROM schema_registry WHERE table_name = 'forge_prs'
+         )",
+        [],
+    )?;
 
     let count = conn.execute(
         r#"
