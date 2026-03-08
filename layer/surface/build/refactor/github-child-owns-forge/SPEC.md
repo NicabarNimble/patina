@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: github-child-owns-forge
-status: draft
+status: ready
 created: 2026-03-08
 sessions:
   origin: 20260307-222328
@@ -12,19 +12,19 @@ related:
 - mother-broker-github
 exit_criteria:
 - id: projection-handles-github-events
-  text: "project_from_events() projects both forge.* and github.* event types into materialized views"
+  text: project_from_events() projects both forge.* and github.* event types into materialized views
   checked: true
 - id: scry-returns-github-issues
-  text: "patina scry --include-issues returns results from github-connector data"
+  text: patina scry --include-issues returns results from github-connector data
   checked: true
 - id: assay-searches-github-events
-  text: "patina assay searches github.issue and github.pr events"
+  text: patina assay searches github.issue and github.pr events
   checked: true
 - id: forge-artifacts-deleted
-  text: "grammars/forge/ and wit/schema/forge/ deleted after github schema replaces them"
+  text: grammars/forge/ and wit/schema/forge/ deleted after github schema replaces them
   checked: true
 - id: build-diagram-updated
-  text: "build.md architecture diagram reflects connector model (no more scrape forge)"
+  text: build.md architecture diagram reflects connector model (no more scrape forge)
   checked: true
 ---
 # refactor: GitHub Child Owns All GitHub Interaction
