@@ -8,107 +8,76 @@ sessions:
 related:
 - github-connector
 - pipe-architecture
+- schema-driven-projection
+- mother-broker-github
 exit_criteria:
 - id: projection-handles-github-events
   text: "project_from_events() projects both forge.* and github.* event types into materialized views"
-  checked: false
+  checked: true
 - id: scry-returns-github-issues
   text: "patina scry --include-issues returns results from github-connector data"
-  checked: false
+  checked: true
 - id: assay-searches-github-events
   text: "patina assay searches github.issue and github.pr events"
-  checked: false
-- id: forgewriter-replaced-by-pipe
-  text: "ForgeWriter trait replaced by pipe verb — init/repo flows go through mother to github child"
-  checked: false
+  checked: true
 - id: forge-artifacts-deleted
   text: "grammars/forge/ and wit/schema/forge/ deleted after github schema replaces them"
-  checked: false
+  checked: true
 - id: build-diagram-updated
   text: "build.md architecture diagram reflects connector model (no more scrape forge)"
-  checked: false
+  checked: true
 ---
 # refactor: GitHub Child Owns All GitHub Interaction
 
 > ForgeWriter bypasses pipe by shelling out to gh CLI. github-connector emits events but they dont project into searchable views. Consolidate all GitHub interaction into the github child.
 
-## Current State
+## Current State (post session 20260307-234302)
 
-Two parallel systems for GitHub interaction, neither complete:
+**Read path: COMPLETE.** The github-connector fetches issues/PRs via HTTP, broker routes to events.db, projection handles both `forge.*` and `github.*` event types, FTS5 indexes them, scry and assay find them.
 
-**1. ForgeWriter (legacy, pre-pipe):**
-- `src/git/writer.rs` — trait: `fork()`, `create_repo()`, `is_authenticated()`, `current_user()`, `repo_exists()`
-- Shells out to `gh` CLI directly from init/repo commands
-- Bypasses mother/pipe — no scheduling, retry, telemetry
-- Consumers: `src/git/fork.rs` (init flow), `src/commands/repo/internal.rs` (repo add --contrib)
+**Write path: DEFERRED.** ForgeWriter (`src/git/writer.rs`) still shells out to `gh` CLI for fork/create-repo/auth. This is a separate concern — the init/launcher flow needs pipe protocol expansion (request/response verbs, not just fetch/emit). Deferred to a future spec.
 
-**2. github-connector (v0.40.0, pipe-native):**
-- Native child binary speaking pipe protocol via broker
-- Fetches issues/PRs via HTTP, emits `github.issue` / `github.pr` to events.db
-- 102 facts verified (15 issues + 87 PRs)
-- **Gap:** events land in events.db but never project into materialized views
+**Forge artifacts: DELETED.** `grammars/forge/` and `wit/schema/forge/` removed. `wit/schema/github/` created as replacement. `build.md` updated.
 
-**The projection gap:**
-- `events.rs::project_from_events()` hardcodes `WHERE event_type = 'forge.issue'` / `'forge.pr'`
-- FTS5 indexing reads from `forge_issues`/`forge_prs` tables
-- `scry --include-issues` and `assay` query these tables
-- Result: github-connector data is invisible to search
+**Architectural note:** The projection fix hardcodes `IN ('forge.issue', 'github.issue')` in core code. This works but doesn't scale to new connectors. [[spec-schema-driven-projection]] will make the pipeline read installed schemas instead of hardcoded event types.
 
-**Orphaned forge artifacts (reference, not yet deleted):**
-- `grammars/forge/` — pipeline grammar plugin source, no producer (scrape forge deleted in v0.40.0)
-- `wit/schema/forge/` — WIT schema + schema.toml with embedding/FTS5/table config
-- `build.md` architecture diagram still shows "scrape forge"
+## What Was Done (session 20260307-234302)
 
-## Target State
+### Phase 1: Fix the projection gap (DONE)
 
-The github child owns ALL GitHub interaction:
+Extended 8+ SQL WHERE clauses across 4 subsystems:
+- `src/commands/scrape/events.rs` — projection engine (6 clauses)
+- `src/commands/scry/internal/enrichment.rs` — vector search enrichment
+- `src/commands/assay/internal/search.rs` — FTS5 search filter + source_id formatting
+- `src/commands/oxidize/mod.rs` — embedding corpus query
 
-1. **Read path** (working): fetch issues/PRs via broker → events.db
-2. **Read projection** (broken, fix first): events.db → materialized views → FTS5 → searchable by scry/assay
-3. **Write path** (future): fork, create-repo, auth check via pipe verbs replacing ForgeWriter
+All now handle both `forge.*` and `github.*` event types.
 
-ForgeWriter trait deleted. Init/repo flows request GitHub operations through mother, which routes to the github child.
+### Phase 2: Create github schema (DONE)
 
-## Steps
+- `wit/schema/github/schema.toml` — fact types, embedding config (shares offset slot 5), FTS5 indexes
+- `wit/schema/github/github.wit` — WIT type definitions (same shape as forge, platform-agnostic)
+- Tests updated in `src/commands/schema/internal.rs`
 
-### Phase 1: Fix the projection gap (small, do first)
+### Phase 4: Clean up forge artifacts (DONE)
 
-Extend `events.rs` to handle both event type families:
-- `project_from_events()`: `WHERE event_type IN ('forge.issue', 'github.issue')`
-- Same for `forge.pr` / `github.pr`
-- Dedup helpers: `issue_event_exists()`, `pr_event_exists()`
-- FTS5: `populate_fts5_issues()`, `populate_fts5_prs()`
-- Verify: `patina scrape` → `patina scry --include-issues` returns github-connector data
+- Deleted `grammars/forge/` (plugin source, Cargo.toml, plugin.toml)
+- Deleted `wit/schema/forge/` (schema.toml, forge.wit)
+- Updated `build.md` architecture diagram and command table
+- Updated schema tests to point to `wit/schema/github/`
 
-### Phase 2: Create github schema (wit/schema/github/)
+### Phase 3: Move ForgeWriter into github child (DEFERRED)
 
-Model after `wit/schema/forge/schema.toml`:
-- Fact types: `github.issue`, `github.pr` (already emitted by connector)
-- Embedding config with corpus query
-- FTS5 field definitions
-- Materialized view table references
-
-### Phase 3: Move ForgeWriter into github child
-
-- Define pipe verbs: `github.fork_repo`, `github.create_repo`, `github.auth_check`, `github.current_user`
-- Implement in github-connector child binary
-- Replace `ForgeWriter` calls in `src/git/fork.rs` with mother requests
-- Replace `ForgeWriter` calls in `src/commands/repo/internal.rs` with mother requests
-- Delete `src/git/writer.rs`, remove `pub mod writer` from `src/git/mod.rs`
-- Init/launcher UX stays the same — just the plumbing changes
-
-### Phase 4: Clean up forge artifacts
-
-- Delete `grammars/forge/` (source + target/)
-- Delete `wit/schema/forge/` (superseded by wit/schema/github/)
-- Update `build.md` architecture diagram
-- Remove forge WASM test fixtures from `plugin/internal/tests.rs` (test_schema_facts helper uses "forge" as test data — update to "github")
+ForgeWriter replacement is a separate concern from the read-path fix:
+- Requires pipe protocol expansion for request/response verbs (not just fetch/emit)
+- Open design question: init flow without mother running
+- Depends on pipe-architecture evolution
+- Tracked separately, not part of this spec's exit criteria
 
 ## Exit Criteria
 
-- **projection-handles-github-events:** `project_from_events()` projects both `forge.*` and `github.*` events
-- **scry-returns-github-issues:** `patina scry --include-issues` returns github-connector results
-- **assay-searches-github-events:** `patina assay` finds `github.issue`/`github.pr` events
-- **forgewriter-replaced-by-pipe:** ForgeWriter deleted, init/repo flows use mother
-- **forge-artifacts-deleted:** `grammars/forge/` and `wit/schema/forge/` removed
-- **build-diagram-updated:** `build.md` reflects connector model
+- **projection-handles-github-events:** DONE — projects both `forge.*` and `github.*` events
+- **scry-returns-github-issues:** DONE — verified with `patina scry --include-issues`
+- **assay-searches-github-events:** DONE — verified with `patina assay search --include-issues`
+- **forge-artifacts-deleted:** DONE — `grammars/forge/` and `wit/schema/forge/` removed, `wit/schema/github/` created
+- **build-diagram-updated:** DONE — `build.md` shows github-connector instead of scrape forge
