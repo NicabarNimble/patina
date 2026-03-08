@@ -713,12 +713,25 @@ children/github-connector/schema.toml."
 
 **Audit fix: hand-waved persona enforcement.**
 
-**Note:** Persona enforcement requires [[spec-persona-federation]] to
-ship keypair infrastructure. The design below is the target state. The
-initial pipe protocol implementation operates without persona scoping
-— all facts belong to a single implicit persona. The wire format
-(`pipe/initialize`, Fact struct) does NOT include persona fields in
-initial scope; they will be added when persona-federation ships.
+**Note:** Full persona enforcement requires [[spec-persona-federation]]
+to ship keypair infrastructure. The design below is the target state.
+The initial pipe protocol implementation operates without persona
+enforcement — all facts belong to a single implicit persona (`default`).
+
+**Exception: `pipe/ingest` carries persona pre-federation.** The
+`pipe/ingest` method (Mother → lakehouse child, defined in
+[[raw-lake-ingestion]]) includes a `persona` field because lake
+storage is keyed by persona from day one (`lake_registry` and
+`lake_sync` have `persona` in their primary keys). Pre-federation,
+this is always `"default"`. The field exists so the lakehouse child
+can partition storage by persona without a schema migration when
+persona-federation ships. This is forward-compatible keying, not
+persona enforcement — there is no keypair validation, no cross-persona
+denial, no namespace isolation until persona-federation.
+
+The core pipe protocol (`pipe/initialize`, `pipe/fetch`, Fact struct)
+does NOT include persona fields in initial scope. `pipe/ingest` is
+the exception because it writes to persona-keyed storage.
 
 ### 5.1 Target: Persona Scoping
 

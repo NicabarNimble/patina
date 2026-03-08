@@ -26,10 +26,10 @@ Schemas declare domain contracts via `[[projections]]`, `[[indexes]]`, and `[[co
 
 ## Supports
 
-- [[patina-is-domain-agnostic-knowledge-system]] — domain agnosticism requires children to own their domain logic, not leak it into core
-- [[pipes-are-processes-not-wasm]] — children are independent processes that own their full domain lifecycle
-- [[mother-holds-connections-pipes-transform]] — Mother routes and invokes; children transform and materialize
-- [[pipe-protocol-is-transport-agnostic]] — the capability protocol (materialize, contribute-search) is transport-agnostic; same invocation interface regardless of scope or destination
+- [[patina-is-domain-agnostic-knowledge-system]] — domain agnosticism requires domain knowledge to live in schemas, not in core or child runtime code
+- [[pipes-are-processes-not-wasm]] — connectors are single-purpose fetch services; materialization is a separate concern handled by core infrastructure or dedicated children
+- [[mother-holds-connections-pipes-transform]] — Mother routes and governs; scope-appropriate materializers execute
+- [[connectors-never-materialize]] — connectors are source-boundary adapters; they never write to storage in any scope
 
 ## Attacks
 
@@ -43,8 +43,8 @@ Schemas declare domain contracts via `[[projections]]`, `[[indexes]]`, and `[[co
 
 ## Applied-In
 
-- [[spec-schema-driven-projection]] — foundation layer: schema_registry table, dynamic event type discovery (precursor to full capability model)
-- [[spec-connector-owns-tables]] — full spec: children own materialize + contribute-search capabilities
+- [[spec-schema-driven-projection]] — foundation layer: schema_registry table, dynamic event type discovery (precursor to contract registry)
+- [[spec-connector-owns-tables]] — schema-driven projection: `[[projections]]` and `[[contracts]]` in schema.toml drive generic materialization in core; connectors stay fetch-only
 
 ## Revision Log
 

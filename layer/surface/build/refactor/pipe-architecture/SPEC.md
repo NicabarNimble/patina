@@ -238,9 +238,10 @@ sources to destinations based on declarations.
 Mother does:
 - Spawn and monitor children (lifecycle management)
 - Resolve credentials (vault → config, session caching)
-- Route facts from children to destinations (fan-out)
+- Route facts from children to declared destinations (fan-out)
 - Validate facts against declared schemas
-- Write valid facts to destination events.db
+- Write valid facts to destination: project events.db (direct) or
+  route to lakehouse child via pipe/ingest (lake destination)
 - Schedule children (poll intervals, stream health, manual triggers)
 - Multi-persona isolation (separate data namespaces)
 - P2P sync with other Mothers via Iroh (same persona, belief sync)

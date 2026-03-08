@@ -210,29 +210,34 @@ Mother tracks lakes in `graph.db`:
 
 ```sql
 CREATE TABLE IF NOT EXISTS lake_registry (
-    name        TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    persona     TEXT NOT NULL DEFAULT 'default',
     location    TEXT NOT NULL,       -- filesystem path
-    persona     TEXT,                -- persona scope (default: single persona for v1)
     created_at  TEXT NOT NULL,
-    metadata    TEXT                 -- JSON: provider, description
+    metadata    TEXT,                -- JSON: provider, description
+    PRIMARY KEY (name, persona)
 );
 
 CREATE TABLE IF NOT EXISTS lake_sync (
     lake_name   TEXT NOT NULL,
+    persona     TEXT NOT NULL DEFAULT 'default',
     source_name TEXT NOT NULL,       -- from sources.toml
     cursor      TEXT,                -- opaque, connector-owned semantics
     last_run    TEXT,                -- ISO 8601
     records_written INTEGER DEFAULT 0,
     status      TEXT DEFAULT 'never_run',
-    PRIMARY KEY (lake_name, source_name)
+    PRIMARY KEY (lake_name, persona, source_name)
 );
 ```
 
-Lakes are persona-scoped by default. The `persona` column exists
-from day one even though v1 assumes a single persona. This is
-forward-compatible schema, not persona architecture — real persona
-architecture (keying, namespace isolation, sync policy) is
-[[persona-federation]] scope.
+Lakes are persona-scoped from day one. Persona is part of the
+primary key in both tables, so two personas can safely reuse the
+same lake name and source name without collision. V1 uses
+`'default'` as the single implicit persona. When persona-federation
+ships, the persona value becomes a real identifier — the key
+structure doesn't change. This is forward-compatible keying, not
+full persona architecture (namespace isolation, sync policy) which
+is [[persona-federation]] scope.
 
 ### Dedup and Idempotency
 

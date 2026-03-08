@@ -212,18 +212,17 @@ All consumer scopes are first-class. The architecture does not privilege project
 
 **Key properties:**
 - Same source, different consumers, different write sides
-- A child may satisfy the same domain contract differently depending on destination
-- Not every child supports all consumer scopes
-- Mother matches capability requests to what children declare; fails clearly if no match
-- Contracts are consumer-facing; capabilities are destination-aware
+- Each scope has a technology-appropriate materializer (not the connector)
+- Schemas declare what data a connector provides; materializers decide how to write it
+- Contracts are consumer-facing; schemas are the declaration mechanism
 
 **Consumer queries** ask for contracts, not connectors:
 
-- "I want searchable documents" → Mother aggregates `contribute-search` from all children
-- "I want issues" → Mother finds children declaring the "issues" contract
-- "I want messages" → Mother finds children declaring the "messages" contract
+- "I want searchable documents" → Core runs generic FTS5 engine from `[[indexes]]` declarations
+- "I want issues" → Core queries contract_registry for schemas declaring "issues" contract
+- "I want messages" → Core queries contract_registry for schemas declaring "messages" contract
 
-If no child supports the requested contract for the requested scope, Mother fails clearly.
+If no schema declares the requested contract, Mother fails clearly.
 
 ## Steps
 

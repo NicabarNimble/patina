@@ -44,28 +44,40 @@ There is no lake concept in Mother. data-architecture-v3 designed a
 
 ```sql
 CREATE TABLE IF NOT EXISTS lake_registry (
-    name        TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    persona     TEXT NOT NULL DEFAULT 'default',  -- persona scope; part of PK
     location    TEXT NOT NULL,       -- filesystem path (e.g. ~/.patina/lakes/github-data)
-    persona     TEXT,                -- persona scope (single persona for v1; forward-compatible)
     created_at  TEXT NOT NULL,       -- ISO 8601
-    metadata    TEXT                 -- JSON: provider, description, zone info
+    metadata    TEXT,                -- JSON: provider, description, zone info
+    PRIMARY KEY (name, persona)
 );
 ```
+
+**Persona as part of the primary key:** Two personas can safely reuse
+the same lake name — they are distinct lakes scoped to different
+personas. V1 uses `'default'` for the single implicit persona.
+When persona-federation ships, the persona value becomes a real
+persona identifier. The key structure doesn't need to change.
 
 ### Lake Sync Table
 
 ```sql
 CREATE TABLE IF NOT EXISTS lake_sync (
     lake_name   TEXT NOT NULL,
+    persona     TEXT NOT NULL DEFAULT 'default',  -- matches lake_registry
     source_name TEXT NOT NULL,       -- from sources.toml
     cursor      TEXT,                -- opaque, connector-owned semantics
     last_run    TEXT,                -- ISO 8601
     records_written INTEGER DEFAULT 0,
     status      TEXT DEFAULT 'never_run',  -- never_run, ok, error
     error       TEXT,                -- last error message if status=error
-    PRIMARY KEY (lake_name, source_name)
+    PRIMARY KEY (lake_name, persona, source_name)
 );
 ```
+
+**Persona in sync key:** A source feeding lake "github-data" under
+persona A tracks cursor independently from the same source under
+persona B. This prevents cross-persona cursor contamination.
 
 ### Commands
 
