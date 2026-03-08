@@ -12,19 +12,19 @@ related:
 exit_criteria:
 - id: projection-reads-schemas
   text: project_from_events() discovers event_type → table mappings from installed schemas, not hardcoded strings
-  checked: false
+  checked: true
 - id: fts5-reads-schemas
   text: FTS5 populate discovers event types and field definitions from installed schema index config
-  checked: false
+  checked: true
 - id: search-discovers-event-types
   text: scry enrichment and assay search discover forge-family event types from schemas, not hardcoded matches
-  checked: false
+  checked: true
 - id: oxidize-reads-corpus-query
   text: oxidize builds embedding corpus using corpus_query from installed schemas
-  checked: false
+  checked: true
 - id: litmus-new-connector
   text: Install a new schema.toml (e.g. gitea) with different event types — pipeline handles it with zero core code changes
-  checked: false
+  checked: true
 ---
 # refactor: Schema-Driven Projection — Pipeline Reads Schemas, Not Hardcoded Event Types
 

@@ -1033,6 +1033,7 @@ pub fn generate(
 ///
 /// Checks that required (non-optional) fields are present and non-empty.
 /// Returns Ok(()) if valid, or an error describing the violation.
+#[allow(dead_code)]
 pub fn validate_fact(schema_name: &str, fact_name: &str, data: &serde_json::Value) -> Result<()> {
     let root = match find_project_root() {
         Ok(r) => r,

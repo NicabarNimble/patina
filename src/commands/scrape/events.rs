@@ -117,7 +117,8 @@ fn populate_schema_registry(conn: &Connection) -> Result<()> {
             // Find matching index config for this fact
             let index = schema.indexes.iter().find(|i| i.fact == fact.name);
             let table_name = index.map(|i| i.table.as_str()).unwrap_or("");
-            let fts_fields = index.map(|i| serde_json::to_string(&i.fts_fields).unwrap_or_default());
+            let fts_fields =
+                index.map(|i| serde_json::to_string(&i.fts_fields).unwrap_or_default());
 
             stmt.execute(rusqlite::params![
                 &schema.schema.name,

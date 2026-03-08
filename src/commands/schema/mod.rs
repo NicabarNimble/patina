@@ -118,6 +118,7 @@ pub fn show_value(name: &str) -> anyhow::Result<serde_json::Value> {
 }
 
 /// Validate a fact against its schema before DB insertion (EC3)
+#[allow(dead_code)]
 pub fn validate_fact(
     schema_name: &str,
     fact_name: &str,
