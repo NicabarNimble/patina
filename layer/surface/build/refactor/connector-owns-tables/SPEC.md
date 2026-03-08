@@ -19,39 +19,45 @@ beliefs:
 - pipes-are-processes-not-wasm
 - mother-holds-connections-pipes-transform
 exit_criteria:
-- id: child-owns-materialize
-  text: "Children expose a generic `materialize` capability for project scope; Mother invokes it without knowing table names, column mappings, or dedup rules"
+- id: schema-drives-projection
+  text: "Schema declarations (`[[projections]]` in schema.toml) drive read model creation; core materializes generically without knowing table names, column mappings, or dedup rules"
   checked: false
-- id: child-owns-search-contrib
-  text: "Children expose a generic `contribute-search` capability that provides searchable corpus; core aggregates without knowing domain semantics"
+- id: schema-drives-search
+  text: "Schema declarations (`[[indexes]]` in schema.toml) drive FTS5 contribution; core aggregates search without knowing domain semantics"
   checked: false
 - id: core-has-no-connector-knowledge
   text: "Core contains zero connector-specific table names, field mappings, event type conventions (no %.issue, no %.pr, no forge_*)"
   checked: false
-- id: domain-change-no-core-edit
-  text: "Changing a connector's domain model (adding fields, renaming tables, changing dedup keys) requires zero edits to core or Mother"
+- id: domain-change-schema-only
+  text: "Changing a connector's domain model (adding fields, renaming tables, changing dedup keys) requires only schema.toml edits — zero changes to core, Mother, or child binaries"
   checked: false
 ---
-# refactor: Connector-Owns-Tables — Children Own Contracts and Materializations
+# refactor: Connector-Owns-Tables — Schema-Declared Contracts, Generic Materialization
 
-> Core owns routing, validation, and capability invocation; children own domain contracts, event semantics, materialization, and search/index contributions. If changing a connector's domain model requires editing core, the boundary is wrong.
+> Schemas declare domain contracts. Core materializes generically from
+> declarations. Connectors stay pure source-boundary adapters (fetch only).
+> If changing a connector's domain model requires editing anything other
+> than schema.toml, the boundary is wrong.
 
 ## Core Invariant
 
-**If adding or changing a connector's domain model requires core changes, the design is wrong.**
+**If adding or changing a connector's domain model requires core changes or child binary changes, the design is wrong.**
 
 Core (Mother) knows how to:
-- Ask: "what contracts do you provide?"
-- Invoke: "materialize this contract" / "contribute searchable corpus"
+- Read schema declarations (projections, indexes, contracts)
+- Execute generic materialization from declarations
+- Execute generic FTS5 contribution from declarations
 - Route, validate, schedule, lifecycle
 
-Children know how to:
-- Declare contracts/capabilities
-- Fetch and emit facts/events
-- Materialize events into read models (tables, views)
-- Contribute searchable documents/FTS rows
-- Handle identity/dedup rules
-- Manage schema migrations/evolution
+Schemas (schema.toml) declare:
+- Fact types, field types, identity fields
+- Projection rules (events → read model tables)
+- FTS5 contribution rules (which fields to index)
+- Contract metadata (display kind, embedding config)
+
+Connector children know how to:
+- Fetch and emit facts from external sources
+- Nothing else — they are source-boundary adapters
 
 ## Current State
 
@@ -73,60 +79,125 @@ Every row above is a boundary violation. Core contains hidden domain knowledge a
 ### Architecture
 
 ```
-Child (github-connector)
-  ├── fetch:       emit github.issue / github.pr events
-  ├── materialize: events → read models (destination-dependent)
-  │                  project: → github_issues / github_prs in patina.db
-  │                  lake:    → raw github data in lake storage
-  │                  block:   → shaped output in block storage
-  ├── search:      contribute FTS5 rows from materialized read models
-  └── contract:    declares "issues" and "pull-requests" capabilities
+Schema (github/schema.toml)
+  ├── facts:       declares github.issue, github.pr with field types
+  ├── projections: declares github_issues, github_prs table DDL
+  │                  column mappings from JSON → table columns
+  │                  identity fields for dedup
+  ├── indexes:     declares FTS5 contribution (title, body fields)
+  └── contracts:   declares display_kind ("Issue", "PR")
 
-Child (slack-connector)
-  ├── fetch:       emit slack.message events
-  ├── materialize: events → read models (destination-dependent)
-  │                  project: → slack_messages in patina.db
-  │                  lake:    → raw messages in lake storage
-  ├── search:      contribute FTS5 rows from its read model
-  └── contract:    declares "messages" capability
+Schema (slack/schema.toml)
+  ├── facts:       declares slack.message with field types
+  ├── projections: declares slack_messages table DDL
+  ├── indexes:     declares FTS5 contribution (text field)
+  └── contracts:   declares display_kind ("Message")
 
-Mother/Core
+Child (github-connector) — fetch ONLY
+  ├── fetch:       emit github.issue / github.pr events via pipe protocol
+  └── does NOT:    materialize, write tables, contribute search
+
+Child (slack-connector) — fetch ONLY
+  ├── fetch:       emit slack.message events via pipe protocol
+  └── does NOT:    materialize, write tables, contribute search
+
+Mother/Core — generic projection engine
+  ├── reads schema declarations for installed connectors
+  ├── executes generic projection: events.db → read model tables
+  │     (CREATE TABLE from [[projections]], INSERT from event JSON)
+  ├── executes generic FTS5: read models → FTS5 rows
+  │     (from [[indexes]] declarations)
+  ├── populates contract registry from schema [[contracts]]
   ├── routes events from children to declared destinations
-  ├── discovers child capabilities + supported consumer scopes
-  ├── invokes "materialize" with destination context (scope + path)
-  ├── invokes "contribute-search" generically (project scope)
-  ├── aggregates search results across contracts
-  └── knows zero domain semantics — routes by declaration, not content
+  └── knows zero domain semantics — all behavior from declarations
 ```
+
+**Why connectors don't materialize:** The same role-boundary logic that
+says "Mother doesn't write Parquet" says "connectors don't write SQLite
+tables." Connectors are source-boundary adapters. Materialization is a
+storage concern. For lake scope, the lakehouse child handles storage.
+For project scope, generic schema-driven projection handles storage.
+In both cases, the connector just fetches.
+
+**Why materialization is core infrastructure, not a child:** Project
+materialization is SQLite → SQLite generic projection. The same
+technology stack core already owns. Compare to lakehouse: Parquet is
+a different technology boundary requiring a dedicated child with
+arrow/parquet crates. SQLite projection from JSON events is mechanical
+SQL driven by declarations — no domain-specific runtime code needed.
 
 ### Event Log Stays
 
 events.db remains the canonical write side. Children emit events through Mother. The CQRS audit trail is preserved. Materialization is a separate capability that transforms the write side into read models.
 
-### Capability Protocol
+### Schema-Driven Projection Protocol
 
-Children declare capabilities and supported consumer scopes in their manifest:
+Schemas declare projections and indexes in schema.toml. Core executes
+them mechanically. No runtime capability negotiation needed — the schema
+IS the contract.
 
 ```toml
-[[capabilities]]
-name = "materialize"
-description = "Project events into read model tables"
-scopes = ["project", "lake"]  # which consumer scopes this child supports
+# children/github-connector/schema.toml (extended)
 
-[[capabilities]]
-name = "contribute-search"
-description = "Provide searchable documents for FTS5 index"
-scopes = ["project"]  # search is project-scoped
+[[projections]]
+fact = "issue"
+table = "github_issues"
+primary_key = "number"
+columns = [
+    { name = "number", type = "INTEGER", json_path = "$.number" },
+    { name = "title", type = "TEXT", json_path = "$.title" },
+    { name = "body", type = "TEXT", json_path = "$.body" },
+    { name = "state", type = "TEXT", json_path = "$.state" },
+    { name = "created_at", type = "TEXT", json_path = "$.created_at" },
+    { name = "updated_at", type = "TEXT", json_path = "$.updated_at" },
+]
+
+[[projections]]
+fact = "pull-request"
+table = "github_prs"
+primary_key = "number"
+columns = [
+    { name = "number", type = "INTEGER", json_path = "$.number" },
+    { name = "title", type = "TEXT", json_path = "$.title" },
+    { name = "body", type = "TEXT", json_path = "$.body" },
+    { name = "state", type = "TEXT", json_path = "$.state" },
+]
+
+[[indexes]]
+fact = "issue"
+fts_fields = ["title", "body"]
+table = "github_issues"
+
+[[indexes]]
+fact = "pull-request"
+fts_fields = ["title", "body"]
+table = "github_prs"
+
+[[contracts]]
+name = "issues"
+event_type = "github.issue"
+display_kind = "Issue"
+
+[[contracts]]
+name = "pull-requests"
+event_type = "github.pr"
+display_kind = "PR"
 ```
 
-Mother invokes these with destination context:
+Core reads these declarations and executes generic SQL:
 
-1. `materialize(scope, source_path, destination_path)` — child receives its own events from the source, materializes into the destination. The child decides what materialization means for each scope. Project scope writes SQL tables; lake scope might write normalized data; block scope might write shaped output.
-2. `contribute-search(destination_path)` — child provides searchable tuples for FTS5. Project-scoped (search index is per-project).
+1. **Projection:** For each `[[projections]]` entry, CREATE TABLE IF NOT
+   EXISTS with declared columns. INSERT OR REPLACE from events.db using
+   json_extract with declared json_paths. Dedup by declared primary_key.
+2. **FTS5 contribution:** For each `[[indexes]]` entry, DELETE existing
+   FTS5 rows for this event_type, INSERT FTS5 rows from the projected
+   table using declared fts_fields.
+3. **Contract registry:** For each `[[contracts]]` entry, populate the
+   contract registry with display_kind metadata.
 
-Core provides paths and scope. Core never interprets what the child writes. The child does the domain work.
-
-Not every child supports all scopes. Mother matches capability requests to what children declare. If no child supports the requested scope for a contract, Mother fails clearly.
+Core never interprets column values or field semantics. It mechanically
+maps declarations to SQL. The domain knowledge lives in schema.toml,
+authored by the connector developer.
 
 ### Consumer Classes
 
@@ -156,103 +227,144 @@ If no child supports the requested contract for the requested scope, Mother fail
 
 ## Steps
 
-### 1. Define capability protocol for materialize + contribute-search
+### 1. Extend schema.toml with `[[projections]]` and `[[contracts]]`
 
-Extend the pipe protocol (or child manifest) with generic capability declarations. Define the invocation interface — what Mother passes, what child returns.
+Add `[[projections]]` section to github-connector's schema.toml
+declaring table DDL (column names, types, json_paths, primary key).
+Add `[[contracts]]` section declaring display_kind metadata. The
+`[[indexes]]` section already exists.
 
-### 2. Move projection into github-connector
+### 2. Build generic projection engine in core
 
-Extract `project_from_events()` issue/PR logic from `events.rs` into the github-connector child. The child receives a database connection (or path) and handles its own CREATE TABLE, INSERT/SELECT, and dedup.
+New module in core that reads `[[projections]]` from installed schemas,
+generates CREATE TABLE DDL and INSERT/REPLACE SQL from declarations,
+executes against patina.db. No connector-specific SQL — all behavior
+derived from schema declarations.
 
-### 3. Move FTS5 contribution into github-connector
+### 3. Build generic FTS5 contribution engine in core
 
-Extract `populate_fts5_issues()` / `populate_fts5_prs()` into the github-connector. The child provides FTS5 rows through the `contribute-search` capability.
+Extend the projection engine to read `[[indexes]]` from installed
+schemas, generate FTS5 INSERT SQL from declarations, execute against
+patina.db code_fts table. Replace the hardcoded populate_fts5_issues/prs
+functions.
 
-### 4. Remove connector-specific code from core
+### 4. Build contract registry from schema declarations
 
-Delete `create_materialized_views()` (the forge-shaped DDL), the hardcoded projection SQL, the convention-based search filters (`LIKE '%.issue'`), and the enrichment display logic (`ends_with(".pr")`). Replace with generic capability invocation.
+Replace schema_registry with contract_registry populated from
+`[[contracts]]` sections. Core reads display_kind from registry for
+enrichment display, replacing the hardcoded `ends_with(".pr")` logic.
 
-### 5. Implement scrape as capability invocation
+### 5. Rewire scrape to use generic engines
 
-`patina scrape` becomes: discover children with `materialize` capability → invoke each → discover children with `contribute-search` → invoke each → aggregate FTS5. Core orchestrates, children execute.
+`patina scrape` becomes: run generic projection engine (reads all
+installed schemas, projects all event types) → run generic FTS5 engine
+→ contract registry for enrichment. Delete all hardcoded domain SQL.
 
-### 6. Litmus: add a slack-connector
+### 6. Litmus: add a slack-connector schema
 
-A slack child with completely different domain (messages, not issues). Declares its own materialize + contribute-search. Produces `slack_messages` table, contributes searchable text. Zero core changes.
+Add `slack/schema.toml` with different domain shape (messages, not
+issues). Declares `[[projections]]` for `slack_messages` table,
+`[[indexes]]` for FTS5, `[[contracts]]` for display_kind. Zero core
+changes. Zero child binary changes (slack-connector only needs fetch).
+Generic engines handle projection automatically.
 
 ## What This Means for Existing Code
 
 | Current code | Disposition |
 |---|---|
-| `events.rs::create_materialized_views()` | Moves to github-connector |
-| `events.rs::project_from_events()` | Moves to github-connector |
-| `events.rs::populate_fts5_issues/prs()` | Moves to github-connector |
-| `events.rs::issue_event_exists/pr_event_exists()` | Moves to github-connector |
-| `events.rs::insert_issues/insert_prs()` | Moves to github-connector |
-| `events.rs` domain types (Issue, PullRequest, etc.) | Moves to github-connector |
-| `enrichment.rs` kind detection (`ends_with(".pr")`) | Replaced by contract metadata |
-| `search.rs` event_type filter (`LIKE '%.issue'`) | Replaced by capability-contributed FTS5 |
-| `oxidize/mod.rs` forge corpus query | Replaced by `contribute-search` capability |
-| `schema_registry` table | Evolves into capability/contract registry |
+| `events.rs::create_materialized_views()` | Replaced by generic projection engine reading `[[projections]]` |
+| `events.rs::project_from_events()` | Replaced by generic projection engine |
+| `events.rs::populate_fts5_issues/prs()` | Replaced by generic FTS5 engine reading `[[indexes]]` |
+| `events.rs::issue_event_exists/pr_event_exists()` | Replaced by generic dedup using declared primary_key |
+| `events.rs::insert_issues/insert_prs()` | Replaced by generic INSERT from json_extract declarations |
+| `events.rs` domain types (Issue, PullRequest, etc.) | Deleted — not needed; projection works from JSON directly |
+| `enrichment.rs` kind detection (`ends_with(".pr")`) | Replaced by contract registry lookup (from `[[contracts]]`) |
+| `search.rs` event_type filter (`LIKE '%.issue'`) | Replaced by contract registry query |
+| `oxidize/mod.rs` forge corpus query | Replaced by schema `corpus_query` execution (already exists) |
+| `schema_registry` table | Evolves into contract_registry populated from `[[contracts]]` |
+| github-connector binary | Stays as fetch-only — NO materialize or search modes added |
 
 ## Data Flow by Consumer Scope
 
-Per [[pipe-architecture]] §Data Layers and [[mother-maturation]], facts flow through different consumer scopes. All use the same capability protocol. Mother routes by destination declaration, not by data content.
+Per [[pipe-architecture]] §Data Layers and [[mother-maturation]], facts
+flow through different consumer scopes. Each scope has its own
+materialization mechanism. Mother routes by destination declaration.
 
-**Project (direct):** source → project events.db → child.materialize(project) → project patina.db
+**Project (this spec):** source → project events.db → generic projection → project patina.db
 ```
-github-connector → project events.db → child.materialize("project", events_db, patina_db)
+github-connector → events.db → core projection engine (from schema.toml) → patina.db
 ```
+Materialization is core infrastructure: schema-driven, generic,
+no domain code. Technology: SQLite → SQLite.
 
-**Lake:** source → lake event store → child.materialize(lake) → lake storage
+**Lake (raw-lake-ingestion):** source → Mother → lakehouse child → Parquet
 ```
-github-connector → lake events.db → child.materialize("lake", events_db, lake_path)
+github-connector → Mother routes → lakehouse child → raw Parquet files
 ```
+Materialization is a dedicated child: Parquet requires arrow/parquet
+crates, different technology boundary. Lakehouse child is domain-agnostic.
 
-**Block:** lake/project → transform child → block storage
-```
-lake data → transform-child.materialize("block", lake_path, block_path)
-```
+**Block/Transform (future specs):** transform children read from lake or
+project, produce shaped output. Different concern, different mechanism.
 
-**Transform:** child → child (composition)
-```
-child-A output → child-B.materialize("transform", source_path, dest_path)
-```
+**Pattern:** each scope has a materializer appropriate to its technology:
+- Project scope: generic SQL projection (core infrastructure)
+- Lake scope: Parquet writer (lakehouse child)
+- Block scope: transform child (future)
+Connectors never materialize in any scope. They fetch and emit.
 
-The child's `materialize` works regardless of consumer scope. The child decides what materialization means for each scope. Core provides paths and scope, never content interpretation.
-
-**Alignment with [[pipe-architecture]]:** This matches the Data Layers flow (Sources → Lakes → Blocks → Projects → Beliefs) and Destination Declarations (pub/sub routing by type). connector-owns-tables is the materialization half of what pipe-architecture routes.
+**Alignment with [[pipe-architecture]]:** This matches the Data Layers
+flow (Sources → Lakes → Blocks → Projects → Beliefs). connector-owns-tables
+provides the project-scope materialization mechanism via schema-driven
+projection.
 
 ## Exit Criteria
 
-- **child-owns-materialize:** children expose `materialize`; Mother invokes without domain knowledge
-- **child-owns-search-contrib:** children expose `contribute-search`; core aggregates without domain semantics
+- **schema-drives-projection:** `[[projections]]` in schema.toml drive read model creation; core materializes generically
+- **schema-drives-search:** `[[indexes]]` in schema.toml drive FTS5 contribution; core aggregates without domain semantics
 - **core-has-no-connector-knowledge:** zero connector-specific table names, field mappings, or conventions in core
-- **non-forge-connector-works:** non-forge child materializes and searches with zero core changes
-- **domain-change-no-core-edit:** changing a connector's domain requires zero core/Mother edits
-- **destination-aware-capabilities:** capability invocation includes consumer scope; children materialize differently per destination; adding a scope requires zero domain knowledge in core
-- **lake-block-independent-write:** lake and block consumers have independent write paths; facts route to declared destinations, not forced through project events.db
-## Scope Narrowing (session 20260308-134326)
+- **domain-change-schema-only:** changing a connector's domain requires only schema.toml edits — zero changes to core, Mother, or child binaries
+## Scope Narrowing (session 20260308-134326, revised 20260308-164629)
 
-This spec was narrowed to **project-scope materialization** only.
-Lake-scope, block-scope, and transform-scope capabilities are
-tracked by separate specs.
+This spec is **project-scope materialization** only.
+Lake-scope, block-scope, and transform-scope are tracked by
+separate specs.
+
+**Session 20260308-164629 revision — schema-driven projection:**
+The original spec had connectors gaining `materialize` and
+`contribute-search` capability modes. This was role-smearing: it
+makes connectors both source-boundary (fetcher) AND storage-boundary
+(materializer). The same pattern we corrected for lakehouse
+("Mother doesn't write Parquet inline") applies here:
+**connectors don't write SQLite tables.**
+
+**Revised approach:** Schemas declare projection contracts.
+Core executes generic materialization from declarations.
+Connectors stay pure source-boundary adapters. See
+"Schema-Driven Projection Protocol" section above.
 
 **Moved to [[raw-lake-ingestion]]:**
-- Lake destination write path (raw Parquet capture)
-- Lake-block independent write paths
-- Same-child multi-scope demonstration (project + lake)
+- Lake destination write path (raw Parquet capture via lakehouse child)
 
 **Moved to future specs:**
 - Full multi-consumer architecture (block, transform scopes)
-- Consumer-scope-no-core-knowledge (architectural proof across all scopes)
-- Non-forge connector litmus test (slack-connector)
+- Non-forge connector litmus test (slack-connector) — can be proved
+  with schema.toml only (no slack-connector binary needed for the
+  materialization proof; only fetch requires the binary)
 
 **Relationship to [[raw-lake-ingestion]]:**
-raw-lake-ingestion proves lake-scope capture (records → Parquet).
-This spec proves project-scope materialization (events → SQLite
-read models). Together they demonstrate destination-aware capabilities
-work across scopes. Neither spec is blocked by the other.
+raw-lake-ingestion proves lake-scope capture (records → Parquet via
+lakehouse child). This spec proves project-scope materialization
+(events → SQLite read models via schema-driven projection). Together
+they demonstrate that connectors fetch, dedicated mechanisms
+materialize, and schemas declare the contracts.
 
-The DESIGN.md retains the full multi-consumer architecture context
-as future direction. The exit criteria are project-scope only.
+**Role-boundary consistency:**
+
+| Scope | Materializer | Technology | Domain code? |
+|-------|-------------|------------|--------------|
+| Project | Generic projection engine (core) | SQLite → SQLite | No — schema-driven |
+| Lake | Lakehouse child | JSON → Parquet | No — schema-driven |
+| Block | Transform child (future) | Various | Domain-specific (by design) |
+
+Connectors are source-boundary in ALL scopes. They never materialize.
