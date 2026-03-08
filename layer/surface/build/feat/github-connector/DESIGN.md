@@ -25,22 +25,23 @@ three things at once:
 own schema namespaces — `github.*` not `forge.*`),
 [[session-20260305-170212]] (forge extraction session: deep audit of
 what exists before extraction), [[session-20260306-061745]] (pipes are
-processes: github-connector is a normal Rust binary with reqwest).
+processes: github-connector is a normal Rust binary with pipe/http).
 
 ## The Migration: What Changes, What Stays
 
 The domain logic — pagination, JSON parsing, data shapes, rate limit
 handling — stays identical. Only the I/O boundary changes.
 
-| Concern | Old (WASM via host functions) | New (native via reqwest) |
-|---------|------------------------------|-------------------------|
-| HTTP calls | `host_http::get(url)?` | `self.get(url)?` (reqwest::blocking) |
-| Fact emission | `host_emit::emit_fact("forge", "issue", &json)` | `emitter.emit("github", "issue", &value)?` |
+| Concern | Old (WASM via host functions) | New (native via pipe/http) |
+|---------|------------------------------|---------------------------|
+| HTTP calls | `host_http::get(url)?` | `io.get(url).send()?` (pipe/http, proxied through Mother) |
+| Fact emission | `host_emit::emit_fact("forge", "issue", &json)` | `io.emit("github", "issue", &value)?` |
 | Logging | `host_log::log(Level::Info, msg)` | `eprintln!("[github] {}", msg)` |
 | Error types | `Result<_, String>` | `Result<_, PipeError>` |
 | Rate limiting | `crate::rate_limit_sleep()` | `std::thread::sleep(Duration::from_millis(750))` |
 | Schema namespace | `forge.*` | `github.*` |
 | Auth delivery | Host-injected via capability grants | `pipe/initialize` params |
+| Network access | Direct (via host proxy) | None — OS sandbox denies all sockets, Mother proxies HTTP |
 
 The JSON shapes for issues and PRs are identical. The API response
 structs (`GhApiIssue`, `GhApiPullRequest`, `GhApiComment`,
@@ -77,24 +78,33 @@ The 401/403 ambiguity is GitHub-specific: rate limit exhaustion
 returns 403 with a body containing "rate limit". The connector checks
 the body before deciding Fatal vs RateLimited.
 
-### 3. reqwest::blocking, Not async
+### 3. pipe/http, Not reqwest
 
-Matches the codebase's sync-first position. The Child trait is sync.
-The connector makes sequential paginated API calls. No benefit from
-async here — each page depends on the previous response (link headers,
-cursor). If concurrent page fetching becomes needed, a local tokio
-runtime inside `fetch()` is the escape hatch.
+The connector does NOT bundle reqwest or open sockets directly. All
+HTTP goes through Mother via `pipe/http` — the child calls
+`io.get(url).send()` and Mother validates the domain against the
+manifest allowlist, executes the call, and returns the response.
 
-### 4. Cursor via Wall Clock Time
+This is mandated by [[host-proxied-io-is-the-security-model]]: the OS
+sandbox denies ALL outbound network. The child binary has zero TLS
+dependencies. Mother already has `build_production_handler()` in
+`src/broker/http.rs` that handles domain enforcement and credential
+injection.
 
-The connector uses `chrono::Utc::now().to_rfc3339()` as the cursor.
-GitHub's `/issues` endpoint accepts a `since` parameter (ISO 8601) to
-filter by `updated_at`. This gives incremental fetching: each run
-fetches only issues updated since the last run.
+The Child trait is sync. Sequential paginated API calls. Each page
+depends on the previous response (link headers). No async needed.
 
-Alternative: use the latest `updated_at` from fetched items as the
-cursor. More precise but requires tracking state across the fetch.
-Wall clock is simpler and the overlap is handled by dedup.
+### 4. Cursor via Latest `updated_at`
+
+The connector tracks the latest `updated_at` timestamp from fetched
+items and returns it as the cursor in `FetchResult`. On the next fetch,
+Mother passes this cursor back via `FetchParams.since`, and the
+connector uses it as GitHub's `since` parameter (ISO 8601) to filter
+by `updated_at`. This gives incremental fetching without a chrono
+dependency.
+
+Overlap between runs is handled by content-hash dedup in the broker
+(`broker::routing::validate_fact()` + `broker::cursor::write_facts_with_cursor()`).
 
 ## github.* Schema Definition
 
@@ -143,34 +153,43 @@ Schema ships with the connector. Manual installation during development
 (copy to `.patina/schemas/github/`). Automatic installation from
 child.toml is mother-broker scope.
 
-## Parity Verification Plan
+## Parity Verification Plan (AB Test)
 
-Before deleting `src/forge/`, prove the new connector produces
-equivalent knowledge:
+Before deleting `src/forge/` (Step 6), run all three methods against
+the same repo set. This is a **gating requirement** for deletion —
+the historical rationale must be captured before the code disappears.
 
-1. Run `patina scrape forge` against a test repo, capture events
-   where `event_type LIKE 'forge.%'`
-2. Run `patina mother run github` against same repo, capture events
-   where `event_type LIKE 'github.%'`
-3. Compare data shapes:
+### Test Protocol
 
-```sql
--- Should produce identical rows (modulo event_type prefix)
-SELECT json_extract(data, '$.number'),
-       json_extract(data, '$.title'),
-       json_extract(data, '$.state')
-FROM eventlog WHERE event_type = 'forge.issue'
-ORDER BY json_extract(data, '$.number');
-```
+1. Pick 2-3 repos (document owner/repo, commit hash, timestamp)
+2. Run all three methods:
+   - Method 1: `patina scrape forge` (gh CLI → staging files)
+   - Method 2: `patina mother run forge-wasm` (WASM plugin → direct events.db)
+   - Method 3: `patina mother run github` (native child → broker → events.db)
+3. Capture metrics: latency, request count, error rates, rate-limit hits
+4. Normalize payloads before diffing (Method 2 uses `forge.*` namespace,
+   translate to `github.*` schema for field-level comparison)
+
+### Report Structure
+
+- **Context/Goals:** sunsetting src/forge, last parity snapshot
+- **Method Snapshots:** data flow, schema namespace, security model,
+  maintenance state (to-be-deleted / legacy-frozen / future)
+- **Metrics:** latency, request volume, error rates, rate-limit behavior
+- **Data Drift Findings:** missing/mismatched fields with root causes.
+  Note: Method 2 bypasses broker (no content-hash dedup, no cursors)
+- **Recommendation:** delete src/forge once confidence is high
 
 ### Expected Differences
 
-| Field | forge.* | github.* | Why |
-|-------|---------|----------|-----|
-| event_type | forge.issue | github.issue | Schema namespace change |
-| source_id | plugin:patina-forge | child:github-connector | Source type change |
-| content_hash | (absent) | blake3:... | New capability |
-| Data shape | Identical | Identical | Same API, same parsing |
+| Field | Method 1 (forge) | Method 2 (WASM) | Method 3 (native) |
+|-------|------------------|-----------------|-------------------|
+| event_type | forge.issue | forge.issue | github.issue |
+| source_id | (staging files) | plugin:forge | child:github-connector |
+| content_hash | (absent) | (absent) | blake3:... |
+| Dedup | (none) | (none) | broker content-hash |
+| Cursor | (none) | (none) | broker-managed |
+| Data shape | Issue/PR structs | Same | Same |
 
 ## src/forge/ Deletion Checklist
 
@@ -198,13 +217,16 @@ After parity is verified. Total: 2,921 LOC removed from core.
 ## Crate Structure
 
 ```
-children/github-connector/
-  Cargo.toml              # patina-pipe, patina-pipe-types, reqwest, serde
+children/github-connector/        # workspace member in Cargo.toml
+  Cargo.toml              # patina-pipe, patina-pipe-types, serde, serde_json
   child.toml              # manifest for Mother
   src/
     main.rs               # Child trait impl + main()
     github.rs             # GitHub REST API client (migrated from forge)
 ```
+
+No reqwest dependency — HTTP goes through pipe/http. No chrono — cursor
+uses `updated_at` from fetched items. Minimal dependency footprint.
 
 ## What's NOT In Scope
 
@@ -224,39 +246,50 @@ children/github-connector/
   doesn't belong in core. A law firm installing Patina shouldn't
   compile GitHub API types.
 - [[pipes-are-processes-not-wasm]] — the connector is a normal Rust
-  binary. `cargo run`, `cargo test`, `dbg!()`, reqwest, the full
-  ecosystem. No WASM toolchain needed.
+  binary. `cargo run`, `cargo test`, `dbg!()`. No WASM toolchain, no
+  reqwest (pipe/http handles HTTP). Minimal dependency footprint.
 - [[host-proxied-io-is-the-security-model]] — OS sandbox restricts
   the connector to `api.github.com` only. Credentials arrive via
   `pipe/initialize`, not environment variables.
 
-## Open Questions
+## Resolved Questions
 
-1. **chrono dependency.** The cursor uses `chrono::Utc::now()`. chrono
-   is in the main binary's dep tree but not the connector's. Add it,
-   or use a simpler approach (pass back the latest `updated_at` from
-   fetched items as the cursor)?
+1. **~~chrono dependency~~** — Resolved: use latest `updated_at` from
+   fetched items as cursor. No chrono needed. Dedup handles overlap.
+   (Session 20260307-202447)
+
+2. **~~reqwest vs pipe/http~~** — Resolved: connector uses `io.get(url).send()`
+   via pipe/http. No reqwest, no direct sockets. Mother proxies all HTTP
+   with domain enforcement. (Session 20260307-202447)
+
+3. **~~Crate location~~** — Resolved: `children/github-connector/` as
+   workspace member. Children isolated from core libraries.
+   (Session 20260307-202447)
 
 ## Commits
 
 1. `github-connector: create binary crate with Child trait impl` —
    children/github-connector/ with Cargo.toml, child.toml, main.rs.
+   Add to workspace members.
 
 2. `github-connector: migrate GitHub REST API client` — github.rs
    migrated from plugins/forge/src/github.rs. Replace host_http with
-   reqwest, host_emit with emitter.emit(), errors with PipeError.
+   io.get(url).send() (pipe/http), host_emit with io.emit(), errors
+   with PipeError. No reqwest dependency.
 
 3. `github-connector: add github.* schema definition` —
    .patina/schemas/github/schema.toml with fact types.
 
-4. `github-connector: wire patina mother run github` — Mother-side
-   spawn, pipe/initialize with credentials, pipe/fetch, pipe/shutdown.
+4. `github-connector: wire connection + source config` — Connection
+   config, source entry. `patina mother run github` invokes connector.
 
-5. `github-connector: parity verification` — Run both connectors,
-   compare data shapes. Document results.
+5. `github-connector: AB parity verification` — Run all three methods
+   against same repos, capture metrics and data shapes. Write report
+   per AB Test Protocol above. Gate Step 6 on report.
 
 6. `forge: delete src/forge/ (2,216 LOC) and scrape forge command
    (705 LOC)` — Remove old code. Keep plugins/forge/ (WASM).
+   Only after AB report confirms parity.
 
 ## Key Files
 
