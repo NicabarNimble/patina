@@ -1200,17 +1200,17 @@ package = "patina:schema/empty@1.0.0"
     }
 
     #[test]
-    fn parse_forge_schema_toml() {
-        let forge_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("wit/schema/forge");
-        if !forge_dir.exists() {
+    fn parse_github_schema_toml() {
+        let github_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("wit/schema/github");
+        if !github_dir.exists() {
             return; // skip if not in repo root
         }
-        let meta = parse_schema_toml(&forge_dir).unwrap();
-        assert_eq!(meta.schema.name, "forge");
-        assert_eq!(meta.schema.package, "patina:schema/forge@1.0.0");
+        let meta = parse_schema_toml(&github_dir).unwrap();
+        assert_eq!(meta.schema.name, "github");
+        assert_eq!(meta.schema.package, "patina:schema/github@1.0.0");
         assert_eq!(meta.facts.len(), 2);
-        assert_eq!(meta.facts[0].event_type, "forge.issue");
-        assert_eq!(meta.facts[1].event_type, "forge.pr");
+        assert_eq!(meta.facts[0].event_type, "github.issue");
+        assert_eq!(meta.facts[1].event_type, "github.pr");
         assert!(meta.embedding.is_some());
         assert_eq!(meta.embedding.unwrap().offset_slot, 5);
         assert_eq!(meta.indexes.len(), 2);
@@ -1249,12 +1249,12 @@ package = "patina:schema/empty@1.0.0"
     // =====================================================================
 
     #[test]
-    fn parse_wit_forge_types() {
-        let forge_wit = Path::new(env!("CARGO_MANIFEST_DIR")).join("wit/schema/forge/forge.wit");
-        if !forge_wit.exists() {
+    fn parse_wit_github_types() {
+        let github_wit = Path::new(env!("CARGO_MANIFEST_DIR")).join("wit/schema/github/github.wit");
+        if !github_wit.exists() {
             return;
         }
-        let content = fs::read_to_string(&forge_wit).unwrap();
+        let content = fs::read_to_string(&github_wit).unwrap();
         let types = parse_wit_types(&content);
 
         // Should parse 2 enums: issue-state, pr-state
