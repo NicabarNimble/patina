@@ -39,7 +39,7 @@ Spec EC text and verify fields must describe what the code does today, not what 
 
 - [[spec-pipe-native-transport]] EC3 — rewritten from "deny all outbound sockets" to "port 443 + DNS, tested via fork-based tests." Forward reference to pipe-mother-io for tightening.
 - [[spec-pipe-native-transport]] "Known Gap: Domain Enforcement" section — explicitly states the gap and names the fix, rather than pretending the gap doesn't exist.
-- [[commit-b5c527c5]] — corrected 3 specs that described future state as current.
+- [[commit-7f1cd08b]] — corrected 3 specs that described future state as current.
 
 ## Revision Log
 
