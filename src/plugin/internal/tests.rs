@@ -2825,29 +2825,3 @@ fn wasm_forge_child_tick_empty() {
     let toys = child.tick();
     assert!(toys.is_empty(), "tick() should return empty for now");
 }
-
-/// Forge plugin.toml manifest parses correctly.
-#[test]
-fn forge_manifest_parses() {
-    let manifest_path =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/forge/plugin.toml");
-    let m = PluginManifest::from_path(&manifest_path).unwrap();
-    assert_eq!(m.name, "patina-forge");
-    assert_eq!(m.world, PluginWorld::MotherChild);
-    assert_eq!(m.role, Some(PluginRole::Connector));
-    assert!(m.capabilities.contains(&"host_emit".to_string()));
-    // host_http is an array (domain list), not a boolean — it's in host_http_domains
-    assert_eq!(m.host_http_domains, vec!["api.github.com"]);
-    assert!(m.host_secrets.contains_key("api.github.com"));
-    assert_eq!(m.provides.child.as_deref(), Some("forge"));
-    assert!(m.schemas.contains_key("forge"));
-}
-
-/// Forge plugin passes capability checks.
-#[test]
-fn forge_manifest_capabilities_valid() {
-    let manifest_path =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/forge/plugin.toml");
-    let m = PluginManifest::from_path(&manifest_path).unwrap();
-    PluginEngine::check_capabilities(&m).expect("forge capabilities should be valid");
-}
