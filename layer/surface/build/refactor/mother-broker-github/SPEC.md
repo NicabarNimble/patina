@@ -1,22 +1,22 @@
 ---
 type: refactor
 id: mother-broker-github
-status: draft
+status: ready
 created: 2026-03-07
 sessions:
   origin: 20260307-234302
-split_from: mother-broker
 related:
 - pipe-architecture
 - github-child-owns-forge
 - schema-driven-projection
 exit_criteria:
 - id: mother-run-github
-  text: "`patina mother run github` spawns github-connector, routes github.* facts to project events.db with content-hash dedup"
+  text: '`patina mother run github` spawns github-connector, routes github.* facts to project events.db with content-hash dedup'
   checked: true
 - id: github-events-searchable
-  text: "github.issue and github.pr events are projected into materialized views and searchable via scry/assay"
+  text: github.issue and github.pr events are projected into materialized views and searchable via scry/assay
   checked: true
+split_from: mother-broker
 ---
 # refactor: Mother Broker GitHub — End-to-End GitHub Connector Verification
 
