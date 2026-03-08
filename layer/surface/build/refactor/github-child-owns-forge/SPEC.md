@@ -8,12 +8,11 @@ sessions:
 related:
 - github-connector
 - pipe-architecture
-- core-extraction
 exit_criteria: []
 ---
 # refactor: GitHub Child Owns All GitHub Interaction
 
-> ForgeWriter bypasses the pipe architecture by shelling out to gh CLI directly. The github-connector emits events but they don't project into searchable materialized views. Consolidate all GitHub interaction into the github child so mother manages it.
+> ForgeWriter bypasses pipe by shelling out to gh CLI. github-connector emits events but they dont project into searchable views. Consolidate all GitHub interaction into the github child.
 
 ## Current State
 
