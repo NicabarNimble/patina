@@ -1464,6 +1464,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "github-connector"
+version = "0.1.0"
+dependencies = [
+ "patina-pipe",
+ "patina-pipe-types",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "glob"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2622,15 +2632,6 @@ dependencies = [
  "serde",
  "serde_json",
  "toml 0.8.23",
-]
-
-[[package]]
-name = "patina-plugin-forge"
-version = "0.1.0"
-dependencies = [
- "patina-sdk",
- "serde",
- "serde_json",
 ]
 
 [[package]]
