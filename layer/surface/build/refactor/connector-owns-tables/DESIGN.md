@@ -1,557 +1,440 @@
-# Design: Connector-Owns-Tables — Schema-Driven DDL and Domain-Specific Materialized Views
+# Design: Connector-Owns-Tables — Children Own Contracts and Materializations
 
 ## Why This Work Exists
 
 [[schema-driven-projection]] removed hardcoded event type strings from
-the pipeline. Projection now discovers event types from installed
-schemas via the `schema_registry` table. But three things remain
-hardcoded in `src/commands/scrape/events.rs`:
+the pipeline — projection now discovers event types from the
+`schema_registry` table. But core still contains hidden domain
+knowledge: table DDL, column mappings, dedup rules, FTS5 labels,
+and display conventions for issues and PRs.
 
-1. **Table DDL.** `create_materialized_views()` hardcodes two CREATE
-   TABLE statements with fixed column sets — issue shape and PR shape.
-   A Slack connector can't project `slack.message` events because
-   there's no `slack_messages` table and no way to declare one.
+The boundary test is: **if changing a connector's domain model
+requires editing core, the boundary is wrong.** Today, adding a Slack
+connector requires editing `events.rs` (new table DDL, new projection
+SQL, new dedup logic), `search.rs` (new FTS5 filter), `enrichment.rs`
+(new display logic), and `oxidize/mod.rs` (new corpus query). That's
+4 subsystems in core for one connector's domain.
 
-2. **Projection shape.** `project_from_events()` hardcodes which JSON
-   fields map to which columns: `json_extract(e.data, '$.number')` →
-   `number`, `json_extract(e.data, '$.title')` → `title`, etc. A
-   different data shape requires different mappings.
+The fix is not "core reads schema.toml and builds tables on behalf of
+connectors" — that still makes core the hidden owner of connector
+domains. The fix is: **children own their materializations and search
+contributions; Mother invokes them through generic capabilities.**
 
-3. **Table naming.** Everything is called `forge_*` — a name from the
-   WASM plugin era when there was only one source. GitHub issues sit
-   in `forge_issues`. This is confusing and wrong.
-
-[[connectors-own-tables-schemas-are-contracts]] captures the principle:
-each connector declares its own materialized tables via schema.toml.
-Schemas are contracts between producer (connector) and consumer
-(project), not shared infrastructure.
-
-**Origin:** [[session-20260308-070818]] — during schema-driven-projection
-work, user identified that `forge_issues`/`forge_prs` shared tables
-can't support non-forge connectors. A Google Workspace or Slack
-connector would need its own table shapes. The discussion established
-Option B (connector-owns-tables) over Option A (shared domain tables).
+**Origin:** [[session-20260308-070818]] — user established that the
+boundary in the initial spec draft was too weak. Core should not own
+connector-specific projection logic. Children should be self-contained.
+The tighter rule: "Core owns routing, validation, and capability
+invocation; children own domain contracts, event semantics,
+materialization, and search/index contributions."
 
 ## What Exists Today
 
-### Table DDL (hardcoded)
+### Boundary Violations in Core
 
-`create_materialized_views()` in `events.rs:176` creates two tables:
+Every item below is connector-specific domain logic living in core:
 
-```sql
-CREATE TABLE IF NOT EXISTS forge_issues (
-    number INTEGER PRIMARY KEY,
-    title TEXT NOT NULL,
-    body TEXT,
-    state TEXT NOT NULL,
-    labels TEXT,           -- JSON array
-    author TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    url TEXT NOT NULL,
-    event_seq INTEGER,
-    ingested_at TEXT
-);
+| Location | What it knows | Why it's wrong |
+|----------|---------------|----------------|
+| `events.rs:176` | `CREATE TABLE forge_issues (number INTEGER PRIMARY KEY, title TEXT, ...)` | Core knows issue table shape |
+| `events.rs:258` | `json_extract(e.data, '$.number')` → `number` | Core knows issue JSON structure |
+| `events.rs:142` | `WHERE event_type LIKE '%.issue'` | Core knows naming convention |
+| `events.rs:155` | Dedup by `json_extract(data, '$.number')` | Core knows issue identity |
+| `events.rs:499` | FTS5 label `'forge.issue'` | Core brands connector data |
+| `search.rs:162` | `LIKE '%.issue' OR LIKE '%.pr'` | Core infers domain from naming |
+| `search.rs:191` | `ends_with(".issue")` → `[ISSUE]` | Core formats domain display |
+| `enrichment.rs:62` | `ends_with(".pr")` → `"PR"` | Core classifies domain data |
+| `oxidize/mod.rs:603` | `LIKE '%.issue' OR LIKE '%.pr'` | Core filters domain for embedding |
+| `oxidize/mod.rs:616` | `ends_with(".pr")` → `"PR"` | Core classifies for embedding |
 
-CREATE TABLE IF NOT EXISTS forge_prs (
-    number INTEGER PRIMARY KEY,
-    title TEXT NOT NULL,
-    body TEXT,
-    state TEXT NOT NULL,
-    labels TEXT,           -- JSON array
-    author TEXT,
-    created_at TEXT NOT NULL,
-    merged_at TEXT,
-    url TEXT NOT NULL,
-    linked_issues TEXT,    -- JSON array
-    approvals INTEGER DEFAULT 0,
-    event_seq INTEGER,
-    ingested_at TEXT
-);
-```
+All of this moves to the github-connector (or equivalent child).
 
-These are the only two materialized view shapes. Adding a third
-requires editing this function.
+### What Core Should Keep
 
-### Projection (hardcoded column mappings)
+| Concern | Why core owns it |
+|---------|-----------------|
+| `events.db` eventlog schema | Universal write side, connector-agnostic |
+| Event routing (Mother/broker) | Transport, not domain |
+| Child lifecycle (spawn, health, shutdown) | Infrastructure |
+| Capability discovery ("what can you do?") | Contract negotiation |
+| Capability invocation ("do it") | Generic execution |
+| FTS5 table schema (`code_fts`) | Shared search infrastructure |
+| Embedding index infrastructure (USearch) | Shared embedding infrastructure |
+| `schema_registry` → capability/contract registry | Discovery, not domain logic |
 
-`project_from_events()` in `events.rs:258` has two SQL statements,
-each with hardcoded `json_extract` → column mappings:
+## Capability Protocol
 
-```sql
--- Issue projection (13 columns, 13 json_extract calls)
-INSERT OR REPLACE INTO forge_issues
-    (number, title, body, state, labels, author, created_at, updated_at,
-     url, event_seq, ingested_at)
-    SELECT
-        json_extract(e.data, '$.number'),
-        json_extract(e.data, '$.title'),
-        ...
-```
+### Two Core Capabilities
 
-A connector with different JSON field names (e.g., Slack's `$.ts`,
-`$.channel`, `$.text`) can't use this projection.
+Every data-producing child can expose two capabilities:
 
-### Schema Registry (already dynamic)
+**1. `materialize`**
 
-The `schema_registry` table maps `event_type` → `table_name`:
+Mother invokes after events are in events.db. Child receives:
+- Path to `events.db` (read)
+- Path to `patina.db` (read/write)
+- Optional: last materialization timestamp (for incremental)
 
-```
-forge  | forge.issue  | forge_issues
-forge  | forge.pr     | forge_prs
-github | github.issue | forge_issues
-github | github.pr    | forge_prs
-```
+Child does whatever it needs:
+- CREATE TABLE IF NOT EXISTS (its own tables)
+- INSERT OR REPLACE from events.db eventlog
+- Dedup by its own identity rules
+- Schema migrations if table shape changed
 
-This tells the projection *which* table to use, but not *how* to
-build the table or *how* to extract columns from the JSON.
+Child returns:
+- Count of rows materialized
+- Table names created/updated (for registry)
 
-### FTS5 (hardcoded label, partially coupled)
+**2. `contribute-search`**
 
-`populate_fts5_issues()` and `populate_fts5_prs()` use fixed labels
-(`'forge.issue'`, `'forge.pr'`) and read from fixed tables
-(`forge_issues`, `forge_prs`). The label is a display tag — DELETE
-and INSERT match on it consistently (fixed in P1 bugfix). But FTS5
-still assumes two tables with known column names.
+Mother invokes after materialization. Child receives:
+- Path to `patina.db` (read/write, specifically `code_fts` table)
+- Its own table names (from materialize result)
 
-## Target State
+Child does:
+- DELETE its own FTS5 rows (by its own label)
+- INSERT FTS5 rows from its read model tables
+- Choose which fields to index, what labels to use
 
-### Extended schema.toml Format
+Child returns:
+- Count of documents contributed
 
-Each schema declares its tables with column definitions and JSON
-source paths:
+### Invocation Modes
+
+Children are native binaries invoked via the pipe protocol. Two
+invocation patterns:
+
+**Fetch mode** (existing): Mother spawns child, child fetches from
+external API, emits events via pipe protocol to events.db.
+
+**Materialize mode** (new): Mother spawns child with a `materialize`
+or `contribute-search` command. Child receives database paths, does
+its work, exits.
+
+This is not a new runtime. It's the same native child binary with a
+different entry point. The child manifest declares which capabilities
+the child supports:
 
 ```toml
-# .patina/schemas/github/schema.toml
+# children/github-connector/child.toml
+[child]
+name = "github-connector"
+binary = "github-connector"
 
-[schema]
-name = "github"
-version = "2.0.0"
-package = "patina:schema/github@2.0.0"
+[[capabilities]]
+name = "fetch"
+description = "Fetch issues and PRs from GitHub API"
 
-[[facts]]
-name = "issue"
-event_type = "github.issue"
-record = "issue"
+[[capabilities]]
+name = "materialize"
+description = "Project github.* events into github_issues/github_prs tables"
 
-[[facts]]
-name = "pull-request"
-event_type = "github.pr"
-record = "pull-request"
-
-[[tables]]
-fact = "issue"
-name = "github_issues"
-columns = [
-    { name = "number",     source = "$.number",     type = "INTEGER PRIMARY KEY" },
-    { name = "title",      source = "$.title",      type = "TEXT NOT NULL" },
-    { name = "body",       source = "$.body",        type = "TEXT" },
-    { name = "state",      source = "$.state",       type = "TEXT NOT NULL" },
-    { name = "labels",     source = "$.labels",      type = "TEXT" },
-    { name = "author",     source = "$.author",      type = "TEXT" },
-    { name = "created_at", source = "$.created_at",  type = "TEXT NOT NULL" },
-    { name = "updated_at", source = "$.updated_at",  type = "TEXT NOT NULL" },
-    { name = "url",        source = "$.url",          type = "TEXT NOT NULL" },
-]
-
-[[tables]]
-fact = "pull-request"
-name = "github_prs"
-columns = [
-    { name = "number",        source = "$.number",        type = "INTEGER PRIMARY KEY" },
-    { name = "title",         source = "$.title",         type = "TEXT NOT NULL" },
-    { name = "body",          source = "$.body",           type = "TEXT" },
-    { name = "state",         source = "$.state",          type = "TEXT NOT NULL" },
-    { name = "labels",        source = "$.labels",         type = "TEXT" },
-    { name = "author",        source = "$.author",         type = "TEXT" },
-    { name = "created_at",    source = "$.created_at",     type = "TEXT NOT NULL" },
-    { name = "merged_at",     source = "$.merged_at",      type = "TEXT" },
-    { name = "url",           source = "$.url",             type = "TEXT NOT NULL" },
-    { name = "linked_issues", source = "$.linked_issues",  type = "TEXT" },
-    { name = "approvals",     source = "$.approvals",      type = "INTEGER DEFAULT 0" },
-]
-
-[[indexes]]
-fact = "issue"
-table = "github_issues"
-fts_fields = ["title", "body"]
-
-[[indexes]]
-fact = "pull-request"
-table = "github_prs"
-fts_fields = ["title", "body"]
-
-[embedding]
-offset_slot = 5
-corpus_query = """
-SELECT seq,
-       json_extract(data, '$.title') || ' ' ||
-       COALESCE(json_extract(data, '$.body'), '')
-       as content
-FROM eventlog
-WHERE event_type LIKE 'github.%'
-"""
+[[capabilities]]
+name = "contribute-search"
+description = "Index github issues and PRs for FTS5 search"
 ```
 
-A completely different domain works without core changes:
+### What Mother Does at Scrape Time
 
-```toml
-# .patina/schemas/slack/schema.toml
-
-[schema]
-name = "slack"
-version = "1.0.0"
-package = "patina:schema/slack@1.0.0"
-
-[[facts]]
-name = "message"
-event_type = "slack.message"
-record = "message"
-
-[[tables]]
-fact = "message"
-name = "slack_messages"
-columns = [
-    { name = "ts",        source = "$.ts",        type = "TEXT PRIMARY KEY" },
-    { name = "channel",   source = "$.channel",   type = "TEXT NOT NULL" },
-    { name = "user_name", source = "$.user",      type = "TEXT" },
-    { name = "text",      source = "$.text",       type = "TEXT" },
-    { name = "thread_ts", source = "$.thread_ts", type = "TEXT" },
-]
-
-[[indexes]]
-fact = "message"
-table = "slack_messages"
-fts_fields = ["text"]
-
-[embedding]
-offset_slot = 7
-corpus_query = """
-SELECT seq,
-       COALESCE(json_extract(data, '$.text'), '')
-       as content
-FROM eventlog
-WHERE event_type LIKE 'slack.%'
-"""
+```
+patina scrape:
+  1. Local capture (code facts, patterns, commits, etc.) — unchanged
+  2. Discover children with "materialize" capability
+  3. For each: invoke child materialize(events_db, patina_db)
+  4. Discover children with "contribute-search" capability
+  5. For each: invoke child contribute_search(patina_db)
+  6. Build embedding indices (oxidize) — children contribute via corpus_query or contribute-search
 ```
 
-### Dynamic Table Creation
+Core orchestrates. Children execute. Core never touches
+connector-specific tables, columns, or logic.
 
-Replace `create_materialized_views()` with a schema-driven function:
+## Migration: github-connector Gains Capabilities
+
+### Code Movement
+
+The github-connector binary currently has one mode: fetch issues/PRs
+from GitHub API, emit events. It gains two more modes:
+
+**From `events.rs` → `github-connector`:**
+- `create_materialized_views()` — the issue/PR table DDL
+- `project_from_events()` — the issue/PR projection SQL
+- `issue_event_exists()` / `pr_event_exists()` — dedup helpers
+- `populate_fts5_issues()` / `populate_fts5_prs()` — FTS5 contributions
+- Domain types: `Issue`, `PullRequest`, `Comment`, `IssueState`, `PrState`
+
+**From `events.rs` → deleted (no new home):**
+- `insert_issues()` / `insert_prs()` — the ForgeReader insert path (dead code, ForgeReader is deleted)
+
+**From `enrichment.rs` → contract metadata or child:**
+- `ends_with(".pr")` kind detection — replaced by contract-level metadata ("this contract's fact type is PR")
+
+**From `search.rs` → generic capability:**
+- `LIKE '%.issue' OR LIKE '%.pr'` — replaced by querying FTS5 rows contributed by children (no domain filter needed)
+
+### github-connector Binary Changes
 
 ```rust
-fn create_tables_from_schemas(conn: &Connection) -> Result<()> {
-    let schemas = crate::commands::schema::load_all_installed()?;
+fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
 
-    for schema in &schemas {
-        for table_def in &schema.tables {
-            // Build DDL from column definitions
-            let columns: Vec<String> = table_def.columns.iter()
-                .map(|c| format!("    {} {}", c.name, c.col_type))
-                .collect();
-
-            // Always add event_seq and ingested_at tracking columns
-            let ddl = format!(
-                "CREATE TABLE IF NOT EXISTS {} (\n{},\n    event_seq INTEGER,\n    ingested_at TEXT\n)",
-                table_def.name,
-                columns.join(",\n")
-            );
-
-            conn.execute_batch(&ddl)?;
-        }
+    match args.get(1).map(|s| s.as_str()) {
+        Some("fetch") | None => fetch_mode()?,       // existing
+        Some("materialize") => materialize_mode()?,   // new
+        Some("contribute-search") => search_mode()?,  // new
+        _ => bail!("unknown mode"),
     }
+
     Ok(())
 }
-```
 
-The existing `create_materialized_views()` remains as a fallback for
-projects with no installed schemas (backward compatibility), or is
-removed entirely if we commit to schema-driven.
+fn materialize_mode() -> Result<()> {
+    let events_db = std::env::var("PATINA_EVENTS_DB")?;
+    let patina_db = std::env::var("PATINA_DB")?;
 
-### Dynamic Projection
+    let conn = Connection::open(&patina_db)?;
 
-Replace hardcoded INSERT/SELECT with schema-driven column mappings:
+    // Create tables (child owns DDL)
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS github_issues (
+            number INTEGER PRIMARY KEY,
+            title TEXT NOT NULL,
+            body TEXT,
+            state TEXT NOT NULL,
+            labels TEXT,
+            author TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            url TEXT NOT NULL,
+            event_seq INTEGER,
+            ingested_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS github_prs (...);
+    ")?;
 
-```rust
-fn project_table(
-    conn: &Connection,
-    table_def: &TableDef,
-    event_types: &[String],
-) -> Result<usize> {
-    // Build column list and json_extract list from schema
-    let col_names: Vec<&str> = table_def.columns.iter()
-        .map(|c| c.name.as_str())
-        .collect();
-    let extracts: Vec<String> = table_def.columns.iter()
-        .map(|c| format!("json_extract(e.data, '{}')", c.source))
-        .collect();
-
-    // Build the event_type IN-list from registry
-    let placeholders: String = event_types.iter()
-        .map(|_| "?").collect::<Vec<_>>().join(",");
-
-    // Find the primary key column for dedup
-    let pk_col = table_def.columns.iter()
-        .find(|c| c.col_type.contains("PRIMARY KEY"))
-        .map(|c| &c.source)
-        .unwrap_or(&table_def.columns[0].source);
-
-    let sql = format!(
-        "INSERT OR REPLACE INTO {} ({}, event_seq, ingested_at)
-         SELECT {}, e.seq, e.timestamp
+    // Project (child owns column mappings + dedup)
+    conn.execute("ATTACH DATABASE ?1 AS events_db", [&events_db])?;
+    conn.execute(
+        "INSERT OR REPLACE INTO github_issues (...)
+         SELECT json_extract(e.data, '$.number'), ...
          FROM events_db.eventlog e
-         WHERE e.event_type IN ({})
-           AND e.seq = (
-             SELECT MAX(e2.seq) FROM events_db.eventlog e2
-             WHERE e2.event_type IN ({})
-               AND json_extract(e2.data, '{}') = json_extract(e.data, '{}')
-           )",
-        table_def.name,
-        col_names.join(", "),
-        extracts.join(", "),
-        placeholders,
-        placeholders,
-        pk_col,
-        pk_col,
-    );
+         WHERE e.event_type IN ('github.issue')
+           AND e.seq = (SELECT MAX(e2.seq) ...)",
+        [],
+    )?;
+    // ... same for github_prs ...
+    conn.execute("DETACH DATABASE events_db", [])?;
 
-    let params: Vec<&dyn rusqlite::types::ToSql> = event_types.iter()
-        .map(|s| s as &dyn rusqlite::types::ToSql)
-        .collect();
-
-    // Duplicate params for both IN-lists
-    let mut all_params = params.clone();
-    all_params.extend(params);
-
-    Ok(conn.execute(&sql, all_params.as_slice())?)
-}
-```
-
-### Dynamic FTS5
-
-FTS5 indexing reads from the schema-declared tables instead of
-hardcoded `forge_issues`/`forge_prs`:
-
-```rust
-fn populate_fts5_from_schemas(conn: &Connection) -> Result<usize> {
-    let schemas = crate::commands::schema::load_all_installed()?;
-    let mut total = 0;
-
-    for schema in &schemas {
-        for index_cfg in &schema.indexes {
-            let table_def = schema.tables.iter()
-                .find(|t| t.fact == index_cfg.fact);
-            let table_name = &index_cfg.table;
-
-            // Use first fts_field as symbol_name, rest as content
-            let symbol_field = &index_cfg.fts_fields[0];
-            let content_fields: Vec<String> = index_cfg.fts_fields[1..].iter()
-                .map(|f| format!("COALESCE({}, '')", f))
-                .collect();
-            let content_expr = if content_fields.is_empty() {
-                "''".to_string()
-            } else {
-                content_fields.join(" || ' ' || ")
-            };
-
-            // Use table name as the FTS5 event_type label
-            let label = table_name;
-
-            conn.execute(
-                &format!("DELETE FROM code_fts WHERE event_type = '{}'", label),
-                [],
-            )?;
-
-            let count = conn.execute(
-                &format!(
-                    "INSERT INTO code_fts (symbol_name, file_path, content, event_type)
-                     SELECT {symbol_field}, COALESCE(url, ''), {content_expr}, '{label}'
-                     FROM {table_name}",
-                ),
-                [],
-            )?;
-
-            total += count;
-        }
-    }
-
-    Ok(total)
-}
-```
-
-### Enrichment and Search (Registry-Driven)
-
-The convention-based approach (`ends_with(".pr")`, `LIKE '%.issue'`)
-is replaced with registry lookups. The `schema_registry` table already
-has `fact_name` which distinguishes fact types:
-
-```rust
-// Load known fact types from registry at query time
-let issue_types: HashSet<String> = conn.prepare(
-    "SELECT event_type FROM schema_registry WHERE fact_name = 'issue'"
-)?.query_map([], |r| r.get(0))?.filter_map(|r| r.ok()).collect();
-
-let kind = if issue_types.contains(&event_type) { "Issue" } else { "PR" };
-```
-
-For assay search FTS5 filter, the event_type filter becomes:
-
-```sql
-event_type LIKE 'code.%'
-OR event_type IN (SELECT table_name FROM schema_registry)
-```
-
-This replaces the `LIKE '%.issue' OR LIKE '%.pr'` convention that
-only works for forge-family naming.
-
-## Migration
-
-### Table Rename
-
-Existing `forge_issues`/`forge_prs` tables must be renamed. Two options:
-
-| Option | DDL | Risk |
-|--------|-----|------|
-| ALTER TABLE RENAME | `ALTER TABLE forge_issues RENAME TO github_issues` | Low — SQLite supports this natively since 3.25.0 |
-| Copy + drop | `CREATE TABLE github_issues AS SELECT * FROM forge_issues; DROP TABLE forge_issues` | Loses indexes, constraints |
-
-**Recommendation:** ALTER TABLE RENAME. Run as a one-time migration
-during scrape if old table exists and new doesn't.
-
-```rust
-fn migrate_forge_tables(conn: &Connection) -> Result<()> {
-    // Only migrate if old tables exist and new ones don't
-    let has_old: bool = conn.query_row(
-        "SELECT COUNT(*) FROM sqlite_master WHERE name = 'forge_issues'",
-        [], |r| r.get::<_, i64>(0),
-    ).map(|c| c > 0).unwrap_or(false);
-
-    let has_new: bool = conn.query_row(
-        "SELECT COUNT(*) FROM sqlite_master WHERE name = 'github_issues'",
-        [], |r| r.get::<_, i64>(0),
-    ).map(|c| c > 0).unwrap_or(false);
-
-    if has_old && !has_new {
-        conn.execute_batch("
-            ALTER TABLE forge_issues RENAME TO github_issues;
-            ALTER TABLE forge_prs RENAME TO github_prs;
-        ")?;
-        eprintln!("Migrated forge_issues → github_issues, forge_prs → github_prs");
-    }
     Ok(())
 }
 ```
 
-### Schema Update
+This is the same SQL that lives in `events.rs` today — it just moves
+to the child binary. The logic is unchanged. The ownership changes.
 
-The `forge` schema stays as-is (describes legacy `forge.*` events).
-The `github` schema updates its `[[indexes]]` table names:
+## Enrichment and Search Without Domain Knowledge
+
+### Problem
+
+Today, `enrichment.rs` uses `ends_with(".pr")` to decide whether a
+forge event is a PR or an Issue. `search.rs` uses
+`LIKE '%.issue' OR LIKE '%.pr'` to filter FTS5 results. Both are
+domain knowledge in core.
+
+### Solution: Contract Metadata
+
+When children contribute FTS5 rows via `contribute-search`, they
+choose their own event_type labels. The github-connector might use
+`github.issue` and `github.pr`. A slack-connector might use
+`slack.message`.
+
+For enrichment (scry vector search), the key ID range check
+(`key >= FORGE_ID_OFFSET`) already works generically — it looks up
+the event in eventlog and uses whatever `event_type` is stored there.
+The only domain-specific part is the `kind` classification ("PR" vs
+"Issue"). This moves to contract metadata:
 
 ```toml
-# Before
-[[indexes]]
-fact = "issue"
-table = "forge_issues"   # shared legacy name
+# In child manifest or schema
+[[contracts]]
+name = "issues"
+event_type = "github.issue"
+display_kind = "Issue"
 
-# After
-[[indexes]]
-fact = "issue"
-table = "github_issues"  # connector-specific
+[[contracts]]
+name = "pull-requests"
+event_type = "github.pr"
+display_kind = "PR"
 ```
 
-### forge_refs Table
+Mother stores contract metadata in the capability registry. Enrichment
+queries the registry to determine display kind:
 
-`forge_refs` (incremental sync backlog) also lives in
-`create_materialized_views()`. This table is GitHub-specific (repo +
-ref_number + ref_kind) and should move into the github schema's
-`[[tables]]` section or into the github-connector's own setup.
+```sql
+SELECT display_kind FROM capability_registry WHERE event_type = ?
+```
+
+If no match, fall back to the event_type string itself. Core never
+hardcodes "Issue" or "PR".
+
+### Search Filter
+
+The `include_issues` flag in assay search currently maps to
+`LIKE '%.issue' OR LIKE '%.pr'`. With contract-driven search, this
+becomes:
+
+```sql
+-- All FTS5 rows contributed by children (vs code.* from local scrape)
+event_type NOT LIKE 'code.%'
+```
+
+Or, if the user wants a specific contract:
+
+```sql
+event_type IN (SELECT event_type FROM capability_registry WHERE contract = 'issues')
+```
+
+Either way, core doesn't know what "issues" looks like — it queries
+the registry.
+
+## Oxidize Without Domain Knowledge
+
+### Problem
+
+`query_knowledge_corpus()` in `oxidize/mod.rs` uses
+`LIKE '%.issue' OR LIKE '%.pr'` and `ends_with(".pr")` to build the
+forge/issue/PR embedding corpus.
+
+### Solution
+
+Each child's schema already declares a `corpus_query` in the
+`[embedding]` section. Oxidize already knows how to load installed
+schemas. The fix:
+
+1. Remove the hardcoded forge event query from `query_knowledge_corpus()`
+2. For each installed schema with `[embedding].corpus_query`, execute
+   that query against events.db
+3. The child's `corpus_query` handles its own domain logic (which
+   event types, which fields to embed)
+
+This is the one place where the schema.toml declaration (rather than
+a runtime capability invocation) is appropriate — the corpus query is
+static SQL, not domain logic that changes at runtime. The schema
+declares it, oxidize executes it mechanically.
+
+## Table Rename / Migration
+
+The `forge_issues` / `forge_prs` tables cease to exist when projection
+moves to the github-connector. The child creates `github_issues` /
+`github_prs` (or whatever it chooses). Migration:
+
+1. On first `materialize` invocation, child checks for old
+   `forge_issues` table
+2. If present: `ALTER TABLE forge_issues RENAME TO github_issues`
+3. Child owns this migration — core doesn't know about it
+
+The `forge` schema (describing legacy `forge.*` events) stays in
+`.patina/schemas/forge/` for backward compatibility with old events
+in events.db. But no new events use `forge.*` — the github-connector
+emits `github.*`.
 
 ## Design Decisions
 
-### 1. Schemas Declare DDL, Not Shapes
+### 1. Children Are Native Binaries, Not SQL Templates
 
-The `[[tables]]` section is explicit DDL — column names, SQL types,
-JSON source paths. This is more verbose than a "shape" abstraction
-but avoids inventing a type system. SQLite already has one. The schema
-just declares how to use it.
+The earlier design had core reading `[[tables]]` column definitions
+from schema.toml and generating SQL. This makes core the executor of
+connector-specific logic — a weaker boundary. Instead, children are
+native binaries that own their SQL directly. Core invokes them.
 
-The `source` field is a `json_extract` path. This is a direct mapping
-— no transformation, no computed columns. If a connector needs
-computed values (e.g., `CASE ... WHEN`), it should compute them
-before emitting the event, not in the schema.
+The child binary already exists (github-connector). It gains two new
+entry points (materialize, contribute-search). No new runtime needed.
 
-### 2. event_seq and ingested_at Are Implicit
+### 2. Event Log Stays as Canonical Write Side
 
-Every materialized table gets `event_seq INTEGER` and
-`ingested_at TEXT` columns automatically. These are not declared in
-the schema because they're infrastructure — the cross-db reference
-to events.db and the insertion timestamp. The projection engine adds
-them to every table.
+Children emit events through Mother to events.db. The CQRS audit trail
+is preserved. Materialization is a separate read-side concern, invoked
+after events are captured. This means:
 
-### 3. Primary Key Drives Dedup
+- Events are never lost (write side is durable)
+- Materialization can be re-run (idempotent)
+- Multiple read models can coexist (different children, different tables)
+- The event log is the source of truth, tables are derived
 
-The projection's dedup logic (`AND e.seq = (SELECT MAX ...)`) needs
-to know which field uniquely identifies a record. The primary key
-column from the DDL serves this purpose. `json_extract(e2.data, '$.number')`
-becomes `json_extract(e2.data, columns[pk].source)`.
+### 3. Capability Invocation, Not Plugin Architecture
 
-If a table has a composite primary key, the dedup query must match
-on all PK columns. This is an open question — single PK covers all
-current use cases.
+Children are not plugins loaded into the core process. They are
+separate binaries invoked via the pipe protocol with different
+commands (fetch, materialize, contribute-search). This is consistent
+with [[pipes-are-processes-not-wasm]] and means:
 
-### 4. FTS5 Labels Use Table Names
+- No shared memory or process coupling
+- Children can be written in any language
+- Children can be updated independently
+- Failure in one child doesn't crash core
 
-The FTS5 event_type label switches from connector-specific strings
-(`'forge.issue'`) to table names (`'github_issues'`). This is more
-stable — the table name is the canonical identifier for a materialized
-view. The label only needs to be consistent between DELETE and INSERT.
+### 4. schema_registry Evolves Into Capability Registry
 
-### 5. Backward Compatibility via Fallback
+The current `schema_registry` table maps event_type → table_name.
+This evolves into a `capability_registry` that maps:
 
-Projects without any installed schemas still work. If
-`load_all_installed()` returns empty, the pipeline falls back to the
-hardcoded `create_materialized_views()`. This allows gradual migration
-— existing projects keep working, new projects use schema-driven
-tables from the start.
+- child_name → capabilities (fetch, materialize, contribute-search)
+- event_type → contract metadata (display_kind, contract_name)
+- contract_name → which children can satisfy it
 
-This fallback is temporary. Once all projects have installed schemas,
-the hardcoded DDL can be deleted.
+The registry is populated when children register (on Mother startup
+or schema install), not rebuilt on every scrape.
+
+### 5. Two Data Modes Coexist
+
+Per [[data-architecture-v3]] and [[mother-maturation]]:
+
+- **Direct:** child → events.db → child.materialize() → patina.db
+- **Lake:** child → events.db (lake) → block → project.materialize()
+
+Both use the same materialize capability. The child doesn't care
+whether its events came from a direct fetch or a lake extraction. The
+capability protocol is the same.
 
 ## Key Files
 
 | File | Current State | Target State |
 |------|---------------|--------------|
-| `src/commands/schema/internal.rs` | Parses schema.toml (facts, indexes, embedding) | Also parses `[[tables]]` with column defs |
-| `src/commands/scrape/events.rs` | Hardcoded CREATE TABLE + INSERT/SELECT | Schema-driven table creation + projection |
-| `src/commands/assay/internal/search.rs` | Convention: `LIKE '%.issue'` | Registry: `IN (SELECT table_name ...)` |
-| `src/commands/scry/internal/enrichment.rs` | Convention: `ends_with(".pr")` | Registry: lookup from `schema_registry` |
-| `src/commands/oxidize/mod.rs` | Convention: `LIKE '%.issue'` | Already uses `corpus_query` from schema; convention remains for kind detection |
-| `wit/schema/github/schema.toml` | Declares facts + indexes + embedding | Also declares `[[tables]]` with column defs |
-| `wit/schema/forge/schema.toml` | Declares facts + indexes + embedding | Unchanged (legacy events) |
+| `src/commands/scrape/events.rs` | Domain types, DDL, projection, FTS5 | Generic capability invocation only |
+| `children/github-connector/` | Fetch mode only | Fetch + materialize + contribute-search |
+| `src/commands/scry/internal/enrichment.rs` | `ends_with(".pr")` | Capability registry lookup |
+| `src/commands/assay/internal/search.rs` | `LIKE '%.issue'` convention | FTS5 rows from children (no domain filter) |
+| `src/commands/oxidize/mod.rs` | Hardcoded forge corpus query | Schema `corpus_query` execution |
+| `src/broker/` | Child lifecycle (fetch only) | Extended for materialize/contribute-search |
 
 ## Open Questions
 
-1. **Composite primary keys.** Current dedup assumes a single PK
-   column. Slack messages use `ts` (unique within channel) but need
-   `(channel, ts)` for global uniqueness. Should the schema declare
-   explicit dedup keys separate from the DDL primary key?
+1. **Database access model.** Children currently don't write to
+   patina.db. Materialize requires write access. Options: (a) child
+   opens patina.db directly (simple, requires path passing), (b) child
+   sends SQL over pipe protocol (more isolation, more complexity).
+   Recommendation: (a) for v1 — pass paths via env vars.
 
-2. **COALESCE and defaults.** The current projection uses `COALESCE`
-   for several columns (e.g., `COALESCE(json_extract(...), '[]')`).
-   Should the schema declare default values per column, or should the
-   connector guarantee well-formed JSON?
+2. **Incremental materialization.** Full re-projection on every scrape
+   is idempotent but slow for large event logs. Should the capability
+   protocol include a "since" parameter? The child can track its own
+   high-water mark.
 
-3. **Table versioning.** If a schema updates its table columns
-   (v1 → v2), how does the pipeline handle the migration? Options:
-   drop + recreate (lossy), ALTER TABLE ADD COLUMN (additive only),
-   or versioned table names (`github_issues_v2`).
+3. **Capability registration timing.** When does Mother learn about
+   child capabilities? Options: (a) scan child.toml on startup,
+   (b) child self-registers on first invocation, (c) `patina schema install`
+   also registers capabilities. Recommendation: (a) — child.toml is
+   already parsed by the broker.
 
-4. **Multi-project isolation testing.** EC5 requires proving two
-   projects with different schemas materialize different tables. This
-   needs the `patina repo` infrastructure to be functional. May need
-   to defer or simplify this EC.
+4. **forge legacy.** The `forge` schema describes events from the
+   deleted ForgeReader (pre-v0.40). Should we keep projecting
+   `forge.*` events? They exist in old event logs. Recommendation:
+   the forge schema stays, a trivial forge-compat child handles
+   materialization, or we accept that old forge events are queryable
+   via eventlog but not materialized.
 
-5. **forge_refs ownership.** The `forge_refs` table is used by the
-   incremental sync system (`forge_refs_pending`). Does it belong in
-   the github schema, in a separate sync infrastructure, or stay
-   hardcoded as pipeline infrastructure?
+5. **Cross-child search ranking.** When multiple children contribute
+   FTS5 rows, the per-table normalization in `assay_search()` needs
+   to handle variable numbers of tables. Currently it normalizes
+   code, commits, patterns, eventlog. Adding child-contributed tables
+   requires the normalization loop to be dynamic. This is a
+   mechanical change, not a design question.

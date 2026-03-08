@@ -12,35 +12,38 @@ revised: 2026-03-08
 
 # connectors-own-tables-schemas-are-contracts
 
-Each connector declares its own materialized tables via schema.toml; schemas are contracts between producer (connector) and consumer (project), not shared infrastructure
+Core owns routing, validation, and capability invocation; children own domain contracts, event semantics, materialization, and search/index contributions. If changing a connector's domain model requires editing core, the boundary is wrong.
 
 ## Statement
 
-Each connector declares its own materialized tables via schema.toml; schemas are contracts between producer (connector) and consumer (project), not shared infrastructure
+Core owns routing, validation, and capability invocation; children own domain contracts, event semantics, materialization, and search/index contributions. If changing a connector's domain model requires editing core, the boundary is wrong.
 
 ## Evidence
 
-- [[session-20260308-070818]]: [[session-20260308-070818]] - Schema-driven projection revealed forge_issues/forge_prs shared tables can't support non-forge connectors (Slack, Google Workspace). Connector-owns-tables means each schema.toml declares DDL, table names, projection shape. Different projects install different schemas. (weight: 0.9)
+- [[session-20260308-070818]]: Schema-driven projection revealed forge_issues/forge_prs shared tables can't support non-forge connectors (Slack, Google Workspace). Initial spec had core reading schema.toml and building tables — user identified this as too weak. Stronger boundary: children own materialization and search contributions as capabilities; Mother invokes generically. (weight: 0.9)
 
 ## Supports
 
-- [[patina-is-domain-agnostic-knowledge-system]] — domain agnosticism requires connectors to own their own shapes, not share a forge-centric table
-- [[pipes-are-processes-not-wasm]] — connectors as independent processes aligns with each owning its schema contract
-- [[mother-holds-connections-pipes-transform]] — mother routes events; schemas tell consumers how to materialize them
+- [[patina-is-domain-agnostic-knowledge-system]] — domain agnosticism requires children to own their domain logic, not leak it into core
+- [[pipes-are-processes-not-wasm]] — children are independent processes that own their full domain lifecycle
+- [[mother-holds-connections-pipes-transform]] — Mother routes and invokes; children transform and materialize
 
 ## Attacks
 
+- Core-reads-schema-and-builds-tables — the intermediate approach where core generates DDL/projection from schema.toml declarations. Still makes core the hidden executor of connector domain logic. Core should invoke capabilities, not interpret schemas.
 - Shared tables (forge_issues/forge_prs) — the legacy approach where all connectors funnel into the same table structure. Works only when all sources share the same data shape.
 
 ## Attacked-By
 
-- Shared tables simplify search (one table to query for "all issues"). Counter: registry-based discovery solves this.
+- Shared tables simplify search (one table to query for "all issues"). Counter: contract-driven search contribution solves this — children contribute FTS5 rows, core aggregates.
+- Children writing to patina.db creates coupling. Counter: database path passing is a minimal contract; children don't depend on core's schema.
 
 ## Applied-In
 
-- [[spec-schema-driven-projection]] — schema_registry table populated from installed schemas, projection reads registry instead of hardcoded strings
-- `wit/schema/gitea/schema.toml` — litmus test schema declaring its own event types that project with zero core changes
+- [[spec-schema-driven-projection]] — foundation layer: schema_registry table, dynamic event type discovery (precursor to full capability model)
+- [[spec-connector-owns-tables]] — full spec: children own materialize + contribute-search capabilities
 
 ## Revision Log
 
-- 2026-03-08: Created — metrics computed by `patina scrape`
+- 2026-03-08: Created — initial framing as "connector declares tables via schema.toml"
+- 2026-03-08: Revised — strengthened to "children own contracts and materializations; core invokes capabilities"
