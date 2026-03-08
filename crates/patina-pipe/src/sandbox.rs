@@ -123,7 +123,7 @@ pub fn check_landlock_support() -> Result<u32, String> {
 #[cfg(target_os = "linux")]
 pub fn apply_landlock(_allowed_domains: &[String]) -> Result<(), String> {
     use landlock::{
-        Access, AccessFs, AccessNet, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus, ABI,
+        Access, AccessFs, AccessNet, Ruleset, RulesetAttr, RulesetStatus, ABI,
     };
 
     let abi = ABI::V4;
