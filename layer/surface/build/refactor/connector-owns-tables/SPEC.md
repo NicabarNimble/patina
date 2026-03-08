@@ -12,6 +12,7 @@ related:
 - mother-maturation
 - scrape-simplification
 - patina-connect
+- raw-lake-ingestion
 beliefs:
 - connectors-own-tables-schemas-are-contracts
 - patina-is-domain-agnostic-knowledge-system
@@ -19,7 +20,7 @@ beliefs:
 - mother-holds-connections-pipes-transform
 exit_criteria:
 - id: child-owns-materialize
-  text: "Children expose a generic `materialize` capability; Mother invokes it without knowing table names, column mappings, or dedup rules"
+  text: "Children expose a generic `materialize` capability for project scope; Mother invokes it without knowing table names, column mappings, or dedup rules"
   checked: false
 - id: child-owns-search-contrib
   text: "Children expose a generic `contribute-search` capability that provides searchable corpus; core aggregates without knowing domain semantics"
@@ -27,23 +28,8 @@ exit_criteria:
 - id: core-has-no-connector-knowledge
   text: "Core contains zero connector-specific table names, field mappings, event type conventions (no %.issue, no %.pr, no forge_*)"
   checked: false
-- id: non-forge-connector-works
-  text: "A non-forge child (e.g. slack) with a different data shape (messages, not issues) materializes and contributes to search with zero core code changes"
-  checked: false
 - id: domain-change-no-core-edit
   text: "Changing a connector's domain model (adding fields, renaming tables, changing dedup keys) requires zero edits to core or Mother"
-  checked: false
-- id: destination-aware-capabilities
-  text: "Capability invocation includes consumer scope (project, lake, block); children can materialize differently per destination; adding a consumer scope requires zero domain knowledge in core"
-  checked: false
-- id: lake-block-independent-write
-  text: "Lake and block consumers have independent write paths; facts are routed to declared destinations, not forced through project events.db"
-  checked: false
-- id: consumer-scope-no-core-knowledge
-  text: "Core routes capabilities to consumer scopes by declaration; core does not interpret what materialization means for any scope"
-  checked: false
-- id: same-child-multi-scope
-  text: "One real child (github-connector) materializes for at least 2 scopes (project + lake) with genuinely different output behavior, proving the scope parameter is functional, not decorative"
   checked: false
 ---
 # refactor: Connector-Owns-Tables — Children Own Contracts and Materializations
@@ -246,5 +232,27 @@ The child's `materialize` works regardless of consumer scope. The child decides 
 - **domain-change-no-core-edit:** changing a connector's domain requires zero core/Mother edits
 - **destination-aware-capabilities:** capability invocation includes consumer scope; children materialize differently per destination; adding a scope requires zero domain knowledge in core
 - **lake-block-independent-write:** lake and block consumers have independent write paths; facts route to declared destinations, not forced through project events.db
-- **consumer-scope-no-core-knowledge:** core routes capabilities to consumer scopes by declaration; core does not interpret what materialization means for any scope
-- **same-child-multi-scope:** one real child (github-connector) materializes for ≥2 scopes with genuinely different output, proving scope is functional not decorative
+## Scope Narrowing (session 20260308-134326)
+
+This spec was narrowed to **project-scope materialization** only.
+Lake-scope, block-scope, and transform-scope capabilities are
+tracked by separate specs.
+
+**Moved to [[raw-lake-ingestion]]:**
+- Lake destination write path (raw Parquet capture)
+- Lake-block independent write paths
+- Same-child multi-scope demonstration (project + lake)
+
+**Moved to future specs:**
+- Full multi-consumer architecture (block, transform scopes)
+- Consumer-scope-no-core-knowledge (architectural proof across all scopes)
+- Non-forge connector litmus test (slack-connector)
+
+**Relationship to [[raw-lake-ingestion]]:**
+raw-lake-ingestion proves lake-scope capture (records → Parquet).
+This spec proves project-scope materialization (events → SQLite
+read models). Together they demonstrate destination-aware capabilities
+work across scopes. Neither spec is blocked by the other.
+
+The DESIGN.md retains the full multi-consumer architecture context
+as future direction. The exit criteria are project-scope only.
