@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: pipe-native-transport
-status: ready
+status: active
 created: 2026-03-06
 blocked_by:
 - pipe-protocol-types
