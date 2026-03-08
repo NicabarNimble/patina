@@ -46,6 +46,7 @@ There is no lake concept in Mother. data-architecture-v3 designed a
 CREATE TABLE IF NOT EXISTS lake_registry (
     name        TEXT PRIMARY KEY,
     location    TEXT NOT NULL,       -- filesystem path (e.g. ~/.patina/lakes/github-data)
+    persona     TEXT,                -- persona scope (single persona for v1; forward-compatible)
     created_at  TEXT NOT NULL,       -- ISO 8601
     metadata    TEXT                 -- JSON: provider, description, zone info
 );
