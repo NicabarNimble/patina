@@ -375,4 +375,3 @@ pub fn execute_layer(full: bool) -> Result<()> {
     println!("  • Database size: {} KB", stats.database_size_kb);
     Ok(())
 }
-

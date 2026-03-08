@@ -50,7 +50,10 @@ impl Child for GitHubConnector {
 
         // Fetch issues if requested
         if params.types.iter().any(|t| t == "issues") {
-            eprintln!("[github] syncing issues for {}/{} (limit: {})", owner, repo, limit);
+            eprintln!(
+                "[github] syncing issues for {}/{} (limit: {})",
+                owner, repo, limit
+            );
             let result = client.fetch_and_emit_issues(limit, since, io)?;
             total_emitted += result.emitted as u64;
             merge_cursor(&mut latest_cursor, result.latest_updated_at);
@@ -62,7 +65,10 @@ impl Child for GitHubConnector {
 
         // Fetch PRs if requested
         if params.types.iter().any(|t| t == "prs") {
-            eprintln!("[github] syncing PRs for {}/{} (limit: {})", owner, repo, limit);
+            eprintln!(
+                "[github] syncing PRs for {}/{} (limit: {})",
+                owner, repo, limit
+            );
             let result = client.fetch_and_emit_prs(limit, since, io)?;
             total_emitted += result.emitted as u64;
             merge_cursor(&mut latest_cursor, result.latest_updated_at);
