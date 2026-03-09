@@ -510,13 +510,18 @@ pub fn insert_prs(
 /// to columns that actually exist in the projection table. This honors the
 /// schema contract rather than hardcoding column names.
 pub fn populate_fts5_from_schema(conn: &Connection) -> Result<usize> {
-    let schemas = match crate::commands::schema::load_all_installed() {
+    let mut schemas = match crate::commands::schema::load_all_installed() {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Warning: failed to load schemas for FTS5: {}", e);
             return Ok(0);
         }
     };
+
+    // Sort by schema name so the first-wins dedup is deterministic across
+    // machines and runs. Without this, read_dir() order decides which
+    // event_type label a shared table gets.
+    schemas.sort_by(|a, b| a.schema.name.cmp(&b.schema.name));
 
     let mut total = 0;
     let mut indexed_tables = std::collections::HashSet::new();
