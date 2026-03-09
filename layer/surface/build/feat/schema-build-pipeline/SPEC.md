@@ -10,19 +10,19 @@ related:
 exit_criteria:
 - id: broker-rejects-facts-when-installed-schema-is-missing-fail-closed
   text: Broker rejects facts when installed schema is missing (fail closed)
-  checked: false
+  checked: true
 - id: broker-rejects-facts-with-fact-type-not-declared-in-installed-schema
   text: Broker rejects facts with fact_type not declared in installed schema
-  checked: false
+  checked: true
 - id: ci-check-validates-canonical-schema-matches-installed-copy-full-directory-not-just-toml
   text: CI check validates canonical schema matches installed copy (full directory, not just TOML)
-  checked: false
+  checked: true
 - id: patina-schema-build-name-orchestrates-validate-install-with-optional-generate
   text: patina schema build <name> orchestrates validate→install, with optional generate
-  checked: false
+  checked: true
 - id: src-generated-schemas-removed-or-regenerated-from-installed-schemas-not-forge-only
   text: src/generated/schemas/ removed or regenerated from installed schemas (not forge-only)
-  checked: false
+  checked: true
 ---
 # feat: Schema Build Pipeline — Single Source, Runtime Validation, CI Enforcement
 
