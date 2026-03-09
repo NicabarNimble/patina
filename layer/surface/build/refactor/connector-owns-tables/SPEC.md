@@ -21,16 +21,16 @@ beliefs:
 exit_criteria:
 - id: schema-drives-projection
   text: Schema declarations (`[[projections]]` in schema.toml) drive read model creation; core materializes generically without knowing table names, column mappings, or dedup rules
-  checked: false
+  checked: true
 - id: schema-drives-search
   text: Schema declarations (`[[indexes]]` in schema.toml) drive FTS5 contribution; core aggregates search without knowing domain semantics
-  checked: false
+  checked: true
 - id: core-has-no-connector-knowledge
   text: Core contains zero connector-specific table names, field mappings, event type conventions (no %.issue, no %.pr, no forge_*)
-  checked: false
+  checked: true
 - id: domain-change-schema-only
   text: Changing a connector's domain model (adding fields, renaming tables, changing dedup keys) requires only schema.toml edits — zero changes to core, Mother, or child binaries
-  checked: false
+  checked: true
 ---
 # refactor: Connector-Owns-Tables — Schema-Declared Contracts, Generic Materialization
 
