@@ -66,7 +66,10 @@ pub fn project_from_schemas(patina_conn: &Connection) -> Result<ProjectionStats>
                 continue;
             }
 
-            // CREATE TABLE IF NOT EXISTS from declared columns
+            // DROP + CREATE from declared columns. Safe: data is always
+            // reprojected from events.db. This handles schema evolution
+            // (e.g., columns added/removed) without stale DDL conflicts.
+            patina_conn.execute(&format!("DROP TABLE IF EXISTS {}", projection.table), [])?;
             let ddl = generate_create_table(projection);
             patina_conn.execute_batch(&ddl)?;
             stats.tables_created += 1;

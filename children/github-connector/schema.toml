@@ -48,7 +48,6 @@ columns = [
     { name = "state", type = "TEXT", json_path = "$.state" },
     { name = "labels", type = "TEXT", json_path = "$.labels" },
     { name = "author", type = "TEXT", json_path = "$.author" },
-    { name = "created_at", type = "TEXT", json_path = "$.created_at" },
     { name = "updated_at", type = "TEXT", json_path = "$.updated_at" },
     { name = "url", type = "TEXT", json_path = "$.url" },
 ]
@@ -64,7 +63,6 @@ columns = [
     { name = "state", type = "TEXT", json_path = "$.state" },
     { name = "labels", type = "TEXT", json_path = "$.labels" },
     { name = "author", type = "TEXT", json_path = "$.author" },
-    { name = "created_at", type = "TEXT", json_path = "$.created_at" },
     { name = "merged_at", type = "TEXT", json_path = "$.merged_at" },
     { name = "url", type = "TEXT", json_path = "$.url" },
     { name = "linked_issues", type = "TEXT", json_path = "$.linked_issues" },
