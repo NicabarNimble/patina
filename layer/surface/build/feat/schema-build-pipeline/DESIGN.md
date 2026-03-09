@@ -196,86 +196,116 @@ copy. The connector-local duplicate drifted exactly this way.
 
 ### Design
 
-Add a check to `resources/git/pre-push-checks.sh` after the WIT consistency
-checks. For each schema under `wit/schema/*/`:
+Add a `patina schema check` subcommand (Rust, consistent with Rust-first
+principle) that the pre-push script calls. This avoids Python in the CI path
+and gives a reusable command for developers.
 
-1. **Installed drift**: if `.patina/schemas/<name>/` exists, diff the entire
-   directory (schema.toml AND .wit files) against `wit/schema/<name>/`
-2. **Manifest match**: for each `children/*/child.toml` declaring a schema,
-   use Rust-based parsing to compare package versions (not grep)
+**Key insight:** checking only the existing installed copy is a no-op on clean
+machines and CI. The check must actively install each canonical schema into a
+temp directory and diff the result against canonical — proving installability
+and content integrity in one step.
+
+#### `patina schema check` subcommand
+
+```rust
+/// Check schema consistency: canonical installs cleanly, installed matches,
+/// connector manifests agree on package versions
+Check,
+```
+
+Implementation in `schema/internal.rs`:
+
+```rust
+pub fn check_schemas() -> Result<()> {
+    let root = find_project_root()?;
+    let canonical_dir = root.join("wit/schema");
+    if !canonical_dir.exists() {
+        println!("No canonical schemas in wit/schema/");
+        return Ok(());
+    }
+
+    let mut ok = true;
+
+    for entry in std::fs::read_dir(&canonical_dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() { continue; }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let source = entry.path();
+
+        // 1. Validate: canonical schema parses cleanly
+        if let Err(e) = validate_package(&source) {
+            eprintln!("  ERROR: wit/schema/{} fails validation: {}", name, e);
+            ok = false;
+            continue;
+        }
+
+        // 2. Install to temp dir, diff against canonical (proves installability)
+        let tmp = tempfile::tempdir()?;
+        let tmp_schemas = tmp.path().join(".patina/schemas");
+        std::fs::create_dir_all(&tmp_schemas)?;
+        let tmp_target = tmp_schemas.join(&name);
+        // Copy source to tmp_target (same as install_schema does)
+        copy_dir_contents(&source, &tmp_target)?;
+        // Diff: tmp_target should be byte-identical to source
+        if !dirs_match(&source, &tmp_target)? {
+            eprintln!("  ERROR: wit/schema/{} install produces different output", name);
+            ok = false;
+        }
+
+        // 3. If installed copy exists in project, diff against canonical
+        let installed = paths::project::schemas_dir(&root).join(&name);
+        if installed.exists() && !dirs_match(&source, &installed)? {
+            eprintln!("  ERROR: installed schema '{}' differs from canonical", name);
+            eprintln!("  Fix: patina schema install wit/schema/{}", name);
+            ok = false;
+        }
+
+        // 4. Check connector manifest package versions
+        let canonical_meta = parse_schema_toml(&source)?;
+        let canonical_pkg = &canonical_meta.schema.package;
+        for child_entry in std::fs::read_dir(root.join("children"))
+            .into_iter().flatten().flatten()
+        {
+            let child_toml = child_entry.path().join("child.toml");
+            if !child_toml.exists() { continue; }
+            let content = std::fs::read_to_string(&child_toml)?;
+            let manifest = ChildManifest::from_toml(&content)?;
+            if let Some(schema_ref) = manifest.schemas.get(&name) {
+                if schema_ref.package != *canonical_pkg {
+                    eprintln!("  ERROR: {} declares package '{}' but canonical is '{}'",
+                        child_toml.display(), schema_ref.package, canonical_pkg);
+                    ok = false;
+                }
+            }
+        }
+    }
+
+    if ok {
+        println!("  ✓ Schema consistency OK");
+        Ok(())
+    } else {
+        bail!("Schema consistency check failed")
+    }
+}
+
+/// Compare two directories recursively (all files must match).
+fn dirs_match(a: &Path, b: &Path) -> Result<bool> {
+    // Collect sorted file lists, compare contents
+    // ...
+}
+```
+
+#### Pre-push script integration
 
 ```bash
-# In pre-push-checks.sh, after WIT checks:
 echo "📦 [N/M] Checking schema consistency..."
-schema_ok=true
-
-for schema_src in wit/schema/*/; do
-    name=$(basename "$schema_src")
-    [ -f "$schema_src/schema.toml" ] || continue
-
-    # Drift check: diff entire installed directory against canonical
-    installed=".patina/schemas/$name"
-    if [ -d "$installed" ]; then
-        if ! diff -r "$schema_src" "$installed" > /dev/null 2>&1; then
-            echo "   ERROR: installed schema '$name' differs from canonical"
-            echo "   Fix: patina schema install wit/schema/$name"
-            schema_ok=false
-        fi
-    fi
-done
-
-# Manifest version check: use patina binary to parse TOML correctly
-for child_toml in children/*/child.toml; do
-    [ -f "$child_toml" ] || continue
-    child_dir=$(dirname "$child_toml")
-    child_name=$(basename "$child_dir")
-
-    # Extract schema references from child.toml using cargo/patina parsing
-    # For each [schemas.<name>] section, verify package matches canonical
-    for schema_src in wit/schema/*/; do
-        name=$(basename "$schema_src")
-        [ -f "$schema_src/schema.toml" ] || continue
-
-        # Parse canonical package from schema.toml
-        canonical_pkg=$(python3 -c "
-import tomllib, sys
-with open('$schema_src/schema.toml', 'rb') as f:
-    d = tomllib.load(f)
-print(d.get('schema', {}).get('package', ''))
-" 2>/dev/null || echo "")
-
-        # Parse child manifest package for this schema
-        child_pkg=$(python3 -c "
-import tomllib, sys
-with open('$child_toml', 'rb') as f:
-    d = tomllib.load(f)
-pkg = d.get('schemas', {}).get('$name', {}).get('package', '')
-print(pkg)
-" 2>/dev/null || echo "")
-
-        if [ -n "$child_pkg" ] && [ -n "$canonical_pkg" ] && \
-           [ "$child_pkg" != "$canonical_pkg" ]; then
-            echo "   ERROR: $child_toml declares package '$child_pkg'"
-            echo "          but canonical schema '$name' is '$canonical_pkg'"
-            schema_ok=false
-        fi
-    done
-done
-
-if [ "$schema_ok" = false ]; then
+if ! patina schema check; then
     echo "❌ Schema consistency check failed!"
     exit 1
 fi
-echo "   ✓ Schema consistency OK"
 ```
 
-Note: Uses `python3 -c` with `tomllib` (stdlib since 3.11) for reliable TOML
-parsing instead of brittle grep. This is a CI-only tool, not a runtime
-dependency — the pre-push script already shells out to cargo/patina.
-
-Alternative: write a `patina schema check-consistency` subcommand in Rust
-and call it from the script. Cleaner but more code for Phase 2. Can refactor
-in a later pass.
+One line. All logic in Rust. Runs on any machine regardless of Python version.
 
 ### Files changed
 
