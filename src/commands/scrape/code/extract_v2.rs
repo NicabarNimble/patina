@@ -196,11 +196,8 @@ pub fn extract_code_metadata_v2(
                     }
                     ExtractedPayload::PullRequest(pr) => {
                         let conn = db.connection();
-                        match crate::commands::scrape::events::insert_prs(
-                            conn,
-                            &events_conn,
-                            &[pr],
-                        ) {
+                        match crate::commands::scrape::events::insert_prs(conn, &events_conn, &[pr])
+                        {
                             Ok(stats) => {
                                 prs_inserted += stats.inserted;
                                 events_skipped += stats.skipped;

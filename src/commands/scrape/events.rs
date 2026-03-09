@@ -542,8 +542,11 @@ mod tests {
         populate_fts5_for_table(&conn, "github_issues", "github.issue", &fts_fields).unwrap();
         assert_eq!(fts_count(&conn, "github.issue"), 1);
 
-        conn.execute("UPDATE github_issues SET title = 'New' WHERE number = 1", [])
-            .unwrap();
+        conn.execute(
+            "UPDATE github_issues SET title = 'New' WHERE number = 1",
+            [],
+        )
+        .unwrap();
         populate_fts5_for_table(&conn, "github_issues", "github.issue", &fts_fields).unwrap();
         assert_eq!(fts_count(&conn, "github.issue"), 1);
     }

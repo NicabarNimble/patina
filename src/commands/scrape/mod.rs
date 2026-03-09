@@ -6,8 +6,8 @@ pub mod database;
 pub mod delta;
 pub mod events;
 pub mod git;
-pub mod projection;
 pub mod layer;
+pub mod projection;
 pub mod sessions;
 
 use anyhow::Result;

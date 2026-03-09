@@ -151,10 +151,7 @@ fn populate_schema_registry(conn: &Connection, schemas: &[SchemaMetadata]) -> Re
 /// Declared columns come from the schema. The engine auto-adds two provenance
 /// columns (event_seq, ingested_at) for cross-db tracing back to events.db.
 fn generate_create_table(projection: &ProjectionDef) -> String {
-    let mut sql = format!(
-        "CREATE TABLE IF NOT EXISTS {} (\n",
-        projection.table
-    );
+    let mut sql = format!("CREATE TABLE IF NOT EXISTS {} (\n", projection.table);
 
     for (i, col) in projection.columns.iter().enumerate() {
         if i > 0 {
@@ -190,10 +187,7 @@ fn generate_insert_sql(projection: &ProjectionDef, event_type: &str) -> String {
         .columns
         .iter()
         .map(|c| format!("json_extract(e.data, '{}')", c.json_path))
-        .chain([
-            "e.seq".to_string(),
-            "e.timestamp".to_string(),
-        ])
+        .chain(["e.seq".to_string(), "e.timestamp".to_string()])
         .collect();
 
     // Dedup: for each primary_key value, take the row with the highest seq
@@ -427,7 +421,9 @@ mod tests {
         assert!(sql.contains("e.seq"));
         assert!(sql.contains("e.timestamp"));
         assert!(sql.contains("WHERE e.event_type = 'github.issue'"));
-        assert!(sql.contains("json_extract(e2.data, '$.number') = json_extract(e.data, '$.number')"));
+        assert!(
+            sql.contains("json_extract(e2.data, '$.number') = json_extract(e.data, '$.number')")
+        );
     }
 
     #[test]
@@ -473,11 +469,9 @@ mod tests {
         assert!(table_exists(&conn, "github_issues").unwrap());
 
         let title: String = conn
-            .query_row(
-                "SELECT title FROM github_issues WHERE id = 1",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT title FROM github_issues WHERE id = 1", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(title, "test");
     }
@@ -552,29 +546,25 @@ mod tests {
 
         // INSERT — using main db as if it were attached as events_db
         // We need to simulate the ATTACH by using the same db
-        let insert_sql = generate_insert_sql(&proj, "test.item")
-            .replace("events_db.eventlog", "eventlog");
+        let insert_sql =
+            generate_insert_sql(&proj, "test.item").replace("events_db.eventlog", "eventlog");
         let count = conn.execute(&insert_sql, []).unwrap();
 
         // Should have 2 rows (id=1 deduped to latest, id=2)
         assert_eq!(count, 2);
 
         let name: String = conn
-            .query_row(
-                "SELECT name FROM test_items WHERE id = 1",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT name FROM test_items WHERE id = 1", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(name, "first-updated", "latest seq should win for dedup");
 
         // Provenance columns populated
         let seq: i64 = conn
-            .query_row(
-                "SELECT event_seq FROM test_items WHERE id = 1",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT event_seq FROM test_items WHERE id = 1", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(seq, 3, "event_seq should be the seq of the winning row");
     }

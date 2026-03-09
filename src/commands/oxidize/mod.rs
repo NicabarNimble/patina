@@ -613,7 +613,8 @@ pub(crate) fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<
                                 Ok(s) => s,
                                 Err(_) => continue,
                             };
-                            let content: String = row.get::<_, Option<String>>(1)
+                            let content: String = row
+                                .get::<_, Option<String>>(1)
                                 .unwrap_or(None)
                                 .unwrap_or_default();
 
@@ -621,8 +622,7 @@ pub(crate) fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<
                                 continue;
                             }
 
-                            let preview: String =
-                                content.chars().take(MAX_CONTENT_CHARS).collect();
+                            let preview: String = content.chars().take(MAX_CONTENT_CHARS).collect();
                             events.push((FORGE_ID_OFFSET + seq, preview));
                             count += 1;
                         }
