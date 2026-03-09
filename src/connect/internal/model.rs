@@ -161,6 +161,15 @@ pub enum ConnectionStatus {
     Unchecked,
 }
 
+/// Summary for connection listing — name, provider, account, computed status.
+#[derive(Debug, Clone)]
+pub struct ConnectionSummary {
+    pub name: String,
+    pub provider: String,
+    pub account_id: Option<String>,
+    pub status: ConnectionStatus,
+}
+
 // =============================================================================
 // Errors
 // =============================================================================
