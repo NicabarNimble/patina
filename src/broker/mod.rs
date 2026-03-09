@@ -60,6 +60,7 @@ pub fn run_source(
         credential,
         no_sandbox,
         &conn_config.provider,
+        None, // storage_path — project sources use events.db, not lake storage
     )
     .with_context(|| format!("spawning child for source '{}'", source.name))?;
 

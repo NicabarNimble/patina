@@ -5,7 +5,8 @@
 
 use anyhow::{bail, Context, Result};
 use patina_pipe::harness::{spawn_child_with_handler, HttpHandler};
-use patina_pipe_types::manifest::ChildManifest;
+use patina_pipe::sandbox::SandboxProfile;
+use patina_pipe_types::manifest::{ChildManifest, ChildType};
 use std::path::{Path, PathBuf};
 
 use super::http::build_production_handler;
@@ -92,20 +93,52 @@ pub fn build_init_params(
     params
 }
 
+/// Determine the sandbox profile for a child based on its type.
+///
+/// Connector/transport/transform: deny-all (no filesystem, no network).
+/// Lakehouse: scoped filesystem access to the storage path, no network.
+/// Per DESIGN.md §8.3 and [[sandbox-profiles-are-parameterized]].
+pub fn sandbox_profile_for_child(
+    child_type: &ChildType,
+    storage_path: Option<&str>,
+) -> Result<SandboxProfile> {
+    match child_type {
+        ChildType::Connector | ChildType::Transport | ChildType::Transform => {
+            Ok(SandboxProfile::DenyAll)
+        }
+        ChildType::Lakehouse => {
+            let path = storage_path.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "lakehouse child requires a storage_path for scoped filesystem access"
+                )
+            })?;
+            Ok(SandboxProfile::ScopedStorage {
+                path: path.to_string(),
+            })
+        }
+    }
+}
+
 /// Spawn a native child with full broker setup.
 ///
 /// 1. Resolve binary
 /// 2. Load manifest
 /// 3. Build HTTP handler with credential
-/// 4. Spawn with sandbox
-/// 5. Send pipe/initialize
+/// 4. Determine sandbox profile from child type
+/// 5. Spawn with sandbox
+/// 6. Send pipe/initialize
 ///
 /// Returns (NativeChild, ChildManifest) for the caller to use.
+///
+/// `storage_path` is required for lakehouse children — it specifies the
+/// scoped filesystem path the sandbox will allow. Pass `None` for
+/// connector/transport/transform children.
 pub fn spawn_native(
     child_name: &str,
     credential: Option<(String, String)>, // (secret_name, secret_value)
     no_sandbox: bool,
     provider: &str,
+    storage_path: Option<&str>,
 ) -> Result<(NativeChild, ChildManifest)> {
     let binary_path = resolve_child_binary(child_name)?;
     let manifest = load_manifest(&binary_path)?;
@@ -127,15 +160,27 @@ pub fn spawn_native(
         None
     };
 
+    // Determine sandbox profile from child type (DESIGN.md §8.3)
+    let sandbox_profile =
+        sandbox_profile_for_child(&manifest.child.child_type, storage_path)?;
+
     // Sandbox enforcement (DESIGN.md §Sandbox Enforcement)
     if !no_sandbox {
         check_sandbox_available()?;
+        eprintln!(
+            "[broker] {}: sandbox profile {:?}",
+            child_name, sandbox_profile
+        );
     } else {
         eprintln!(
-            "[broker] WARNING: sandbox disabled for {} — child has unrestricted network access",
+            "[broker] WARNING: sandbox disabled for {} — child has unrestricted access",
             child_name
         );
     }
+
+    // Note: actual sandbox application via pre_exec is [[spec-mother-broker]] scope.
+    // The profile is computed here for logging and future use.
+    let _ = &sandbox_profile;
 
     // Spawn child process
     let binary_str = binary_path.to_string_lossy().to_string();
@@ -259,5 +304,43 @@ requires_in_process_token = true
         let result = resolve_child_binary("nonexistent-child-binary-xyz");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[test]
+    fn sandbox_profile_connector_is_deny_all() {
+        let profile = sandbox_profile_for_child(&ChildType::Connector, None).unwrap();
+        assert!(matches!(profile, SandboxProfile::DenyAll));
+    }
+
+    #[test]
+    fn sandbox_profile_transport_is_deny_all() {
+        let profile = sandbox_profile_for_child(&ChildType::Transport, None).unwrap();
+        assert!(matches!(profile, SandboxProfile::DenyAll));
+    }
+
+    #[test]
+    fn sandbox_profile_transform_is_deny_all() {
+        let profile = sandbox_profile_for_child(&ChildType::Transform, None).unwrap();
+        assert!(matches!(profile, SandboxProfile::DenyAll));
+    }
+
+    #[test]
+    fn sandbox_profile_lakehouse_requires_path() {
+        let result = sandbox_profile_for_child(&ChildType::Lakehouse, None);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("storage_path"));
+    }
+
+    #[test]
+    fn sandbox_profile_lakehouse_scoped() {
+        let profile =
+            sandbox_profile_for_child(&ChildType::Lakehouse, Some("/tmp/lake")).unwrap();
+        assert!(matches!(
+            profile,
+            SandboxProfile::ScopedStorage { path } if path == "/tmp/lake"
+        ));
     }
 }
