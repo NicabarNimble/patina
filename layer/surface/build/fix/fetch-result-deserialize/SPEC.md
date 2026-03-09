@@ -1,7 +1,7 @@
 ---
 type: fix
 id: fetch-result-deserialize
-status: ready
+status: active
 created: 2026-03-09
 related:
 - pipe-contract-safety
