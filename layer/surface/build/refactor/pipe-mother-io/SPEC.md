@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: pipe-mother-io
-status: ready
+status: active
 created: 2026-03-07
 blocked_by:
 - pipe-protocol-types
