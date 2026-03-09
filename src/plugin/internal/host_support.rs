@@ -488,7 +488,7 @@ pub(super) fn validate_emit(
 ///
 /// Validates via cached schema facts (zero disk I/O), writes plugin data
 /// directly to events.db. Provenance is carried by source_id ("plugin:<name>"),
-/// schema by event_type (e.g., "forge.issue"). No wrapper — data shape matches
+/// schema by event_type (e.g., "github.issue"). No wrapper — data shape matches
 /// what downstream consumers expect.
 ///
 /// data-architecture-v3 will add explicit provenance/schema columns; until then
@@ -516,7 +516,7 @@ pub(super) fn emit_fact(
 
     // Write plugin data directly — no wrapper envelope.
     // Provenance: 'external' — plugin-emitted facts are external evidence.
-    // Schema: event_type = "<schema>.<fact>" (e.g., "forge.issue")
+    // Schema: event_type = "<schema>.<fact>" (e.g., "github.issue")
     conn.execute(
         "INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data, provenance)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",

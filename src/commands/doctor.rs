@@ -374,7 +374,7 @@ fn check_data_integrity(recommendations: &mut Vec<String>) -> DataIntegrity {
 }
 
 /// Non-schema event types that should have emitters wired in code.
-/// Schema-driven event types (forge.issue, github.issue, etc.) are
+/// Schema-driven event types (github.issue, github.pr, etc.) are
 /// resolved at runtime from installed schemas.
 const CORE_EVENT_TYPES: &[&str] = &[
     "measure.capture",
