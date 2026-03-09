@@ -58,117 +58,107 @@ regenerates from installed schemas.
 doesn't check that `fact.fact_type` maps to a real `facts[].event_type` in the
 installed schema. A child emitting `github.typo` passes silently.
 
-### Design
+### Design principle: one entry point, fail closed
 
-Add Step 3 to `validate_fact()` in `routing.rs`. The project root is available —
-`write_to_project()` receives `project_root: &Path`. Thread it through to
-`validate_fact()`.
+All fact validation stays inside `routing::validate_fact()`. No pre-validation
+logic in `broker/mod.rs`. Caching is an implementation detail inside the
+validation function, not a responsibility of the caller.
+
+**Fail closed:** If a schema is declared in `child.toml` but not installed on
+disk, facts for that schema are rejected with a clear error. The install step
+is not optional — if you declare a schema, it must be installed. This enforces
+the "runtime reads installed schemas only" model.
+
+### Signature change
 
 ```rust
-// routing.rs — validate_fact() signature change
+// routing.rs — validate_fact()
 pub fn validate_fact(
     fact: &BrokerFact,
     manifest: &ChildManifest,
     child_name: &str,
-    project_root: &Path,           // NEW
-    warned_schemas: &mut HashSet<String>,
+    project_root: &Path,                              // NEW
+    schema_cache: &mut HashMap<String, HashSet<String>>, // NEW — replaces _warned_schemas
 ) -> Result<ValidatedFact>
 ```
 
-Step 3 implementation:
+The `schema_cache` maps schema name → set of valid event_types. Populated on
+first fact for each schema, then reused. Owned by the caller (`write_to_project`)
+but only read/written through `validate_fact`.
+
+### Implementation
 
 ```rust
-// Step 3: validate fact_type against installed schema
+// Step 2: schema must be declared in manifest (existing)
+if !manifest.schemas.contains_key(&fact.schema) {
+    bail!("child '{}': schema '{}' not declared in manifest — fact dropped",
+        child_name, fact.schema);
+}
+
+// Step 3: validate fact_type against installed schema (NEW)
 let event_type = format!("{}.{}", fact.schema, fact.fact_type);
-let schemas_dir = patina::paths::project::schemas_dir(project_root);
-let schema_dir = schemas_dir.join(&fact.schema);
-if schema_dir.join("schema.toml").exists() {
-    if let Ok(metadata) = crate::commands::schema::load_schema_metadata(&schema_dir) {
-        let valid = metadata.facts.iter().any(|f| f.event_type == event_type);
-        if !valid {
-            bail!(
-                "child '{}': fact_type '{}' not declared in schema '{}' — fact dropped",
-                child_name, event_type, fact.schema
-            );
-        }
+
+let valid_types = match schema_cache.entry(fact.schema.clone()) {
+    std::collections::hash_map::Entry::Occupied(e) => e.into_mut(),
+    std::collections::hash_map::Entry::Vacant(e) => {
+        // Load installed schema — fail closed if missing
+        let schema_dir = patina::paths::project::schemas_dir(project_root)
+            .join(&fact.schema);
+        let metadata = crate::commands::schema::load_schema_metadata(&schema_dir)
+            .with_context(|| format!(
+                "schema '{}' declared in manifest but not installed — \
+                 run: patina schema install wit/schema/{}",
+                fact.schema, fact.schema
+            ))?;
+        let types: HashSet<String> = metadata.facts.iter()
+            .map(|f| f.event_type.clone())
+            .collect();
+        e.insert(types)
     }
+};
+
+if !valid_types.contains(&event_type) {
+    bail!(
+        "child '{}': fact_type '{}' not declared in installed schema '{}' — fact dropped",
+        child_name, event_type, fact.schema
+    );
 }
 ```
-
-### Schema loading
-
-Use the existing `SchemaMetadata` deserialization (`pub(crate)`). Expose a thin
-`load_schema_metadata(dir: &Path) -> Result<SchemaMetadata>` from
-`commands::schema` — just re-exports the existing `parse_schema_toml()`. No new
-parsing code.
-
-### Performance
-
-`parse_schema_toml()` is called per-fact currently. To avoid re-parsing on every
-fact, cache parsed event types. The `warned_schemas` `HashSet` is already threaded
-through for this purpose (currently unused, prefixed `_`). Replace it with:
-
-```rust
-// In broker/mod.rs, at the call site:
-let mut schema_event_types: HashMap<String, HashSet<String>> = HashMap::new();
-
-// On first fact for a schema, populate:
-if !schema_event_types.contains_key(&fact.schema) {
-    // load + cache event types
-}
-```
-
-This avoids changing the `validate_fact` signature further — the cache lives at
-the call site in `write_to_project()`.
 
 ### Call site change
 
 ```rust
-// broker/mod.rs write_to_project() line 106-107
-let mut schema_event_types: HashMap<String, HashSet<String>> = HashMap::new();
+// broker/mod.rs write_to_project()
+let mut schema_cache: HashMap<String, HashSet<String>> = HashMap::new();
 
 let fetch_result = child.fetch(&fetch_params, &mut |fact| {
-    // Cache-check fact_type before full validation
-    let event_type = format!("{}.{}", fact.schema, fact.fact_type);
-    if let Some(valid_types) = schema_event_types.get(&fact.schema) {
-        if !valid_types.contains(&event_type) {
-            eprintln!("[broker] {}: fact_type '{}' not in schema — dropped", child_name, event_type);
-            return Ok(());
+    match validate_fact(&fact, manifest, &child_name, project_root, &mut schema_cache) {
+        Ok(validated) => {
+            validated_facts.push(validated);
+            Ok(())
         }
-    } else {
-        // First fact for this schema — load and cache
-        let schemas_dir = patina::paths::project::schemas_dir(project_root);
-        let schema_dir = schemas_dir.join(&fact.schema);
-        if let Ok(metadata) = crate::commands::schema::load_schema_metadata(&schema_dir) {
-            let types: HashSet<String> = metadata.facts.iter()
-                .map(|f| f.event_type.clone())
-                .collect();
-            let valid = types.contains(&event_type);
-            schema_event_types.insert(fact.schema.clone(), types);
-            if !valid {
-                eprintln!("[broker] {}: fact_type '{}' not in schema — dropped", child_name, event_type);
-                return Ok(());
-            }
+        Err(e) => {
+            eprintln!("[broker] {}: {}", child_name, e);
+            Ok(())
         }
-        // If schema not installed, pass through (graceful degradation)
-    }
-
-    match validate_fact(&fact, manifest, &child_name, &mut warned_schemas) {
-        // ... existing code
     }
 });
 ```
 
-This approach:
-- Keeps `validate_fact()` signature unchanged (no project_root param)
-- Caches per-schema, not per-fact
-- Gracefully degrades if schema not installed
-- Drops invalid facts with a log message, doesn't abort the fetch
+The caller is unchanged in structure — just passes `project_root` and
+`schema_cache` instead of `_warned_schemas`. All validation logic stays
+inside `validate_fact`.
+
+### Schema loading
+
+Expose `load_schema_metadata()` from `commands::schema` — a thin re-export
+of the existing `parse_schema_toml()`. Internal import, not a public API leak.
 
 ### Files changed
 
+- `src/broker/routing.rs` — add project_root + schema_cache params, add Step 3
+- `src/broker/mod.rs` — pass project_root and schema_cache to validate_fact
 - `src/commands/schema/mod.rs` — expose `load_schema_metadata()`
-- `src/broker/mod.rs` — add fact_type cache and validation in `write_to_project()`
 
 ### Tests
 
@@ -177,73 +167,96 @@ Add to `src/broker/routing.rs` tests:
 ```rust
 #[test]
 fn validate_unknown_fact_type_rejects() {
-    // Setup: temp dir with .patina/schemas/github/schema.toml containing github.issue, github.pr
+    // Setup: temp dir with .patina/schemas/github/schema.toml
+    //   containing facts with event_type = github.issue, github.pr
     // Emit fact with schema="github", fact_type="typo"
-    // Assert: fact is dropped
+    // Assert: rejected with "not declared in installed schema"
 }
 
 #[test]
 fn validate_known_fact_type_passes() {
     // Same setup, fact_type="issue"
-    // Assert: passes
+    // Assert: passes validation
 }
 
 #[test]
-fn validate_no_installed_schema_passes() {
+fn validate_missing_installed_schema_rejects() {
     // Empty project_root (no .patina/schemas/)
-    // Assert: passes (graceful degradation)
+    // Schema declared in manifest but not installed
+    // Assert: rejected with "not installed" error
 }
 ```
-
-Also update the existing broker integration test in pre-push-checks.sh to verify
-that fact_type validation doesn't break the happy path.
 
 ## Phase 2: CI drift checks
 
 ### Problem
 
-Nothing prevents `wit/schema/github/schema.toml` from diverging from
-`.patina/schemas/github/schema.toml` after install.
+Nothing prevents the canonical schema from diverging from the installed runtime
+copy. The connector-local duplicate drifted exactly this way.
 
 ### Design
 
 Add a check to `resources/git/pre-push-checks.sh` after the WIT consistency
 checks. For each schema under `wit/schema/*/`:
 
-1. **Installed drift**: if `.patina/schemas/<name>/schema.toml` exists, diff
-   against `wit/schema/<name>/schema.toml`
-2. **Manifest match**: for each `children/*/child.toml` declaring
-   `[schemas.<name>]`, verify `package` version matches canonical
+1. **Installed drift**: if `.patina/schemas/<name>/` exists, diff the entire
+   directory (schema.toml AND .wit files) against `wit/schema/<name>/`
+2. **Manifest match**: for each `children/*/child.toml` declaring a schema,
+   use Rust-based parsing to compare package versions (not grep)
 
 ```bash
 # In pre-push-checks.sh, after WIT checks:
 echo "📦 [N/M] Checking schema consistency..."
 schema_ok=true
 
-for schema_dir in wit/schema/*/; do
-    name=$(basename "$schema_dir")
-    canonical="$schema_dir/schema.toml"
-    [ -f "$canonical" ] || continue
+for schema_src in wit/schema/*/; do
+    name=$(basename "$schema_src")
+    [ -f "$schema_src/schema.toml" ] || continue
 
-    # Drift check: installed vs canonical
-    installed=".patina/schemas/$name/schema.toml"
-    if [ -f "$installed" ]; then
-        if ! diff "$canonical" "$installed" > /dev/null 2>&1; then
+    # Drift check: diff entire installed directory against canonical
+    installed=".patina/schemas/$name"
+    if [ -d "$installed" ]; then
+        if ! diff -r "$schema_src" "$installed" > /dev/null 2>&1; then
             echo "   ERROR: installed schema '$name' differs from canonical"
             echo "   Fix: patina schema install wit/schema/$name"
             schema_ok=false
         fi
     fi
+done
 
-    # Manifest version check
-    canonical_pkg=$(grep '^package' "$canonical" | head -1 | \
-        sed 's/.*= *"\(.*\)"/\1/')
-    for child_toml in children/*/child.toml; do
-        [ -f "$child_toml" ] || continue
-        child_pkg=$(grep -A1 "schemas.$name" "$child_toml" 2>/dev/null | \
-            grep 'package' | sed 's/.*= *"\(.*\)"/\1/')
-        if [ -n "$child_pkg" ] && [ "$child_pkg" != "$canonical_pkg" ]; then
-            echo "   ERROR: $child_toml package '$child_pkg' != canonical '$canonical_pkg'"
+# Manifest version check: use patina binary to parse TOML correctly
+for child_toml in children/*/child.toml; do
+    [ -f "$child_toml" ] || continue
+    child_dir=$(dirname "$child_toml")
+    child_name=$(basename "$child_dir")
+
+    # Extract schema references from child.toml using cargo/patina parsing
+    # For each [schemas.<name>] section, verify package matches canonical
+    for schema_src in wit/schema/*/; do
+        name=$(basename "$schema_src")
+        [ -f "$schema_src/schema.toml" ] || continue
+
+        # Parse canonical package from schema.toml
+        canonical_pkg=$(python3 -c "
+import tomllib, sys
+with open('$schema_src/schema.toml', 'rb') as f:
+    d = tomllib.load(f)
+print(d.get('schema', {}).get('package', ''))
+" 2>/dev/null || echo "")
+
+        # Parse child manifest package for this schema
+        child_pkg=$(python3 -c "
+import tomllib, sys
+with open('$child_toml', 'rb') as f:
+    d = tomllib.load(f)
+pkg = d.get('schemas', {}).get('$name', {}).get('package', '')
+print(pkg)
+" 2>/dev/null || echo "")
+
+        if [ -n "$child_pkg" ] && [ -n "$canonical_pkg" ] && \
+           [ "$child_pkg" != "$canonical_pkg" ]; then
+            echo "   ERROR: $child_toml declares package '$child_pkg'"
+            echo "          but canonical schema '$name' is '$canonical_pkg'"
             schema_ok=false
         fi
     done
@@ -255,6 +268,14 @@ if [ "$schema_ok" = false ]; then
 fi
 echo "   ✓ Schema consistency OK"
 ```
+
+Note: Uses `python3 -c` with `tomllib` (stdlib since 3.11) for reliable TOML
+parsing instead of brittle grep. This is a CI-only tool, not a runtime
+dependency — the pre-push script already shells out to cargo/patina.
+
+Alternative: write a `patina schema check-consistency` subcommand in Rust
+and call it from the script. Cleaner but more code for Phase 2. Can refactor
+in a later pass.
 
 ### Files changed
 
@@ -269,10 +290,11 @@ Two manual steps, easy to forget one.
 
 ### Design
 
-Add `Build` variant to `SchemaCommands`:
+Add `Build` variant to `SchemaCommands`. Orchestrates validate → install,
+with optional generate outputs behind flags.
 
 ```rust
-/// Build a schema: validate, install, and optionally generate code
+/// Build a schema: validate and install, with optional code generation
 Build {
     /// Schema name (looks up wit/schema/<name>/)
     name: String,
@@ -332,7 +354,7 @@ pub fn build_schema(name: &str, types: bool, migrations: bool, embeddings: bool)
 | Order | Phase | Risk | Effort | Files |
 |-------|-------|------|--------|-------|
 | 1st | Phase 4: delete dead code | None | 1 commit | 4 deleted |
-| 2nd | Phase 1: broker validation | Low | 1-2 commits | 2-3 changed |
+| 2nd | Phase 1: broker validation | Low | 1-2 commits | 3 changed |
 | 3rd | Phase 2: CI checks | None | 1 commit | 1 changed |
 | 4th | Phase 3: build command | None | 1 commit | 3 changed |
 
@@ -341,16 +363,17 @@ Phase 4 first (zero risk). Phase 1 next (the real safety win). Phases 2-3 additi
 ## Commits
 
 1. `delete src/generated/schemas/ dead code` — 4 files deleted
-2. `broker: validate fact_type against installed schema` — routing + cache
-3. `ci: schema drift and manifest version checks` — pre-push script
-4. `feat: patina schema build orchestration wrapper` — new subcommand
+2. `broker: validate fact_type against installed schema, fail closed` — routing + cache
+3. `ci: schema drift checks (full directory) and manifest version` — pre-push script
+4. `feat: patina schema build — validate + install + optional generate` — new subcommand
 
 ## Key Files
 
-- `src/broker/mod.rs` — fact_type cache + validation in write_to_project
+- `src/broker/routing.rs` — fact_type validation with cache, fail closed
+- `src/broker/mod.rs` — pass project_root and schema_cache to validate_fact
 - `src/commands/schema/mod.rs` — expose load_schema_metadata, add Build command
 - `src/commands/schema/internal.rs` — build_schema implementation
-- `resources/git/pre-push-checks.sh` — schema consistency checks
+- `resources/git/pre-push-checks.sh` — schema consistency checks (full dir diff)
 - `src/generated/schemas/` — deleted
 
 ## Open Questions

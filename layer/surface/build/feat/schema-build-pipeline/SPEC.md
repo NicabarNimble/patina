@@ -8,9 +8,10 @@ sessions:
 related:
 - connector-owns-tables
 exit_criteria:
+  - Broker rejects facts when installed schema is missing (fail closed)
   - Broker rejects facts with fact_type not declared in installed schema
-  - CI check validates canonical schema installs cleanly and matches installed copy
-  - patina schema build <name> orchestrates validate→install→generate
+  - CI check validates canonical schema matches installed copy (full directory, not just TOML)
+  - patina schema build <name> orchestrates validate→install, with optional generate
   - src/generated/schemas/ removed or regenerated from installed schemas (not forge-only)
 ---
 # feat: Schema Build Pipeline — Single Source, Runtime Validation, CI Enforcement
@@ -44,21 +45,19 @@ the pipeline between them has gaps:
 Phased, in priority order:
 
 ### Phase 1: Broker fact-type validation
-- Load installed schema at routing time (project context available via
-  destination path in source config).
-- Reject facts whose `fact_type` doesn't match any `facts[].event_type`
-  in the installed schema. Log warning + drop the fact.
-- Files: `src/broker/routing.rs`
+- Fail closed: if schema is declared in manifest but not installed, reject facts.
+- Validate `fact_type` against installed schema `facts[].event_type`.
+- One validation entry point: `routing::validate_fact()` with internal caching.
+- Files: `src/broker/routing.rs`, `src/broker/mod.rs`
 
 ### Phase 2: CI drift checks
 - Add to `pre-push-checks.sh`:
-  - Canonical schema (`wit/schema/<name>/`) installs cleanly
-  - Installed copy matches canonical (byte-compare or parsed-compare)
+  - Diff entire installed schema directory against canonical (TOML + WIT)
   - Connector manifest `package` version matches canonical `schema.package`
 - Files: `resources/git/pre-push-checks.sh`
 
 ### Phase 3: `patina schema build <name>`
-- Thin orchestration wrapper: validate → install → optional generate
+- Thin orchestration wrapper: validate → install, with optional generate
 - Replaces manual two-step flow
 - Files: `src/commands/schema/mod.rs`, `src/commands/schema/internal.rs`
 
@@ -69,10 +68,11 @@ Phased, in priority order:
 
 ## Exit Criteria
 
-1. Broker rejects facts with fact_type not declared in installed schema
-2. CI check validates canonical schema installs cleanly and matches installed copy
-3. `patina schema build <name>` orchestrates validate→install→generate
-4. `src/generated/schemas/` removed or regenerated from installed schemas (not forge-only)
+1. Broker rejects facts when installed schema is missing (fail closed)
+2. Broker rejects facts with fact_type not declared in installed schema
+3. CI check validates canonical schema matches installed copy (full directory)
+4. `patina schema build <name>` orchestrates validate→install, with optional generate
+5. `src/generated/schemas/` removed or regenerated from installed schemas (not forge-only)
 
 ## Non-Goals
 
