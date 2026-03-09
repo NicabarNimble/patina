@@ -159,8 +159,10 @@ fn search_code_fts(
     fts_query: &str,
     options: &SearchOptions,
 ) -> Result<Vec<SearchResult>> {
+    // When include_issues is true, include all FTS5 rows (code + connector-contributed).
+    // Connector-contributed rows (github.issue, github.pr, etc.) are schema-driven.
     let event_type_filter = if options.include_issues {
-        "event_type LIKE 'code.%' OR event_type LIKE '%.issue' OR event_type LIKE '%.pr'"
+        "1=1"
     } else {
         "event_type LIKE 'code.%'"
     };
@@ -188,12 +190,12 @@ fn search_code_fts(
         let event_type: String = row.get(3)?;
         let bm25_score: f64 = row.get(4)?;
 
-        let source_id = if event_type.ends_with(".issue") {
-            format!("[ISSUE] {}", symbol)
-        } else if event_type.ends_with(".pr") {
-            format!("[PR] {}", symbol)
-        } else {
+        let source_id = if event_type.starts_with("code.") {
             file_path
+        } else {
+            // Connector-contributed row — use display_kind from contract
+            let kind = display_kind_for_event_type(&event_type);
+            format!("[{}] {}", kind.to_uppercase(), symbol)
         };
 
         Ok(SearchResult {
@@ -206,6 +208,24 @@ fn search_code_fts(
     })?;
 
     Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Resolve display kind from event_type using installed schema contracts.
+fn display_kind_for_event_type(event_type: &str) -> String {
+    if let Ok(schemas) = crate::commands::schema::load_all_installed() {
+        for schema in &schemas {
+            for contract in &schema.contracts {
+                if contract.event_type == event_type {
+                    return contract.display_kind.clone();
+                }
+            }
+        }
+    }
+    event_type
+        .rsplit('.')
+        .next()
+        .unwrap_or(event_type)
+        .to_string()
 }
 
 /// Search commits_fts table

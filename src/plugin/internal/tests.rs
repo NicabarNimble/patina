@@ -150,20 +150,23 @@ fn manifest_parses_schemas_section() {
     let f = write_temp_manifest(
         r#"
 [plugin]
-name = "grammar-forge"
+name = "grammar-github"
 world = "pipeline"
 
 [provides]
 pipeline_ops = ["parse"]
-languages = ["forge-issue", "forge-pr"]
+languages = ["github-issue", "github-pr"]
 
-[schemas.forge]
-package = "patina:schema/forge@1.0.0"
+[schemas.github]
+package = "patina:schema/github@1.0.0"
 "#,
     );
     let m = PluginManifest::from_path(f.path()).unwrap();
     assert_eq!(m.schemas.len(), 1);
-    assert_eq!(m.schemas.get("forge").unwrap(), "patina:schema/forge@1.0.0");
+    assert_eq!(
+        m.schemas.get("github").unwrap(),
+        "patina:schema/github@1.0.0"
+    );
 }
 
 #[test]
@@ -2225,12 +2228,12 @@ fn http_get_with_mapping_but_no_grant_sends_no_auth() {
 /// Build a cached schema_facts map for testing (simulates load-time parse).
 fn test_schema_facts(
 ) -> std::collections::HashMap<String, std::collections::HashMap<String, String>> {
-    let mut forge_facts = std::collections::HashMap::new();
-    forge_facts.insert("issue".to_string(), "forge.issue".to_string());
-    forge_facts.insert("pull-request".to_string(), "forge.pr".to_string());
+    let mut github_facts = std::collections::HashMap::new();
+    github_facts.insert("issue".to_string(), "github.issue".to_string());
+    github_facts.insert("pull-request".to_string(), "github.pr".to_string());
 
     let mut schema_facts = std::collections::HashMap::new();
-    schema_facts.insert("forge".to_string(), forge_facts);
+    schema_facts.insert("github".to_string(), github_facts);
     schema_facts
 }
 
@@ -2241,7 +2244,7 @@ fn emit_validate_schema_not_available() {
     let result = host_support::validate_emit(
         &schema_facts,
         "test-plugin",
-        "forge",
+        "github",
         "issue",
         r#"{"title":"test"}"#,
     );
@@ -2259,7 +2262,7 @@ fn emit_validate_fact_type_not_found() {
     let result = host_support::validate_emit(
         &schema_facts,
         "test-plugin",
-        "forge",
+        "github",
         "nonexistent-fact",
         r#"{"title":"test"}"#,
     );
@@ -2277,7 +2280,7 @@ fn emit_validate_invalid_json() {
     let result = host_support::validate_emit(
         &schema_facts,
         "test-plugin",
-        "forge",
+        "github",
         "issue",
         "{not valid json",
     );
@@ -2295,11 +2298,11 @@ fn emit_validate_success_returns_event_type() {
     let result = host_support::validate_emit(
         &schema_facts,
         "test-plugin",
-        "forge",
+        "github",
         "issue",
         r#"{"title":"test issue","number":42}"#,
     );
-    assert_eq!(result.unwrap(), "forge.issue");
+    assert_eq!(result.unwrap(), "github.issue");
 }
 
 #[test]
@@ -2309,11 +2312,11 @@ fn emit_validate_pull_request_fact_type() {
     let result = host_support::validate_emit(
         &schema_facts,
         "test-plugin",
-        "forge",
+        "github",
         "pull-request",
         r#"{"title":"test PR"}"#,
     );
-    assert_eq!(result.unwrap(), "forge.pr");
+    assert_eq!(result.unwrap(), "github.pr");
 }
 
 #[test]

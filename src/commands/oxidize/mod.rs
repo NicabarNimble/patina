@@ -590,53 +590,55 @@ pub(crate) fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<
 
     let belief_count = events.len() - pattern_count - commit_count;
 
-    // 4. Forge/GitHub facts (issues + PRs) from eventlog
+    // 4. Connector facts (issues, PRs) from eventlog via schema corpus_query
     //
-    // Event types are discovered from installed schemas via convention (%.issue, %.pr).
+    // Each installed schema with an [embedding] section declares a corpus_query.
     // Key is FORGE_ID_OFFSET + seq so enrichment can look them back up by seq.
-    let forge_count = {
-        let mut stmt = conn.prepare(
-            "SELECT seq, event_type, source_id,
-                    json_extract(data, '$.title') as title,
-                    json_extract(data, '$.body') as body
-             FROM eventlog
-             WHERE event_type LIKE '%.issue' OR event_type LIKE '%.pr'
-             ORDER BY seq",
-        )?;
-
+    let connector_count = {
+        let schemas = crate::commands::schema::load_all_installed().unwrap_or_default();
         let mut count = 0;
-        let mut rows = stmt.query([])?;
-        while let Some(row) = rows.next()? {
-            let seq: i64 = row.get(0)?;
-            let event_type: String = row.get(1)?;
-            let source_id: String = row.get(2)?;
-            let title: String = row.get::<_, Option<String>>(3)?.unwrap_or_default();
-            let body: String = row.get::<_, Option<String>>(4)?.unwrap_or_default();
 
-            let kind = if event_type.ends_with(".pr") {
-                "PR"
-            } else {
-                "Issue"
-            };
+        for schema in &schemas {
+            if let Some(embedding) = &schema.embedding {
+                let query = embedding.corpus_query.trim();
+                if query.is_empty() {
+                    continue;
+                }
 
-            let mut desc = format!("{} #{}: {}", kind, source_id, title);
-            if !body.is_empty() {
-                let preview: String = body.chars().take(MAX_CONTENT_CHARS).collect();
-                desc.push_str(&format!(". {}", preview));
+                // Schema corpus_query returns (seq, content)
+                if let Ok(mut stmt) = conn.prepare(query) {
+                    if let Ok(mut rows) = stmt.query([]) {
+                        while let Some(row) = rows.next().unwrap_or(None) {
+                            let seq: i64 = match row.get(0) {
+                                Ok(s) => s,
+                                Err(_) => continue,
+                            };
+                            let content: String = row.get::<_, Option<String>>(1)
+                                .unwrap_or(None)
+                                .unwrap_or_default();
+
+                            if content.trim().is_empty() {
+                                continue;
+                            }
+
+                            let preview: String =
+                                content.chars().take(MAX_CONTENT_CHARS).collect();
+                            events.push((FORGE_ID_OFFSET + seq, preview));
+                            count += 1;
+                        }
+                    }
+                }
             }
-
-            events.push((FORGE_ID_OFFSET + seq, desc));
-            count += 1;
         }
         count
     };
 
     println!(
-        "   Knowledge corpus: {} patterns + {} commits + {} beliefs + {} forge = {} items",
+        "   Knowledge corpus: {} patterns + {} commits + {} beliefs + {} connector = {} items",
         pattern_count,
         commit_count,
         belief_count,
-        forge_count,
+        connector_count,
         events.len()
     );
 

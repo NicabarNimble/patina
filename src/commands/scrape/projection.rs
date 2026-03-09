@@ -35,6 +35,7 @@ pub fn project_from_schemas(patina_conn: &Connection) -> Result<ProjectionStats>
     // One-time migration: forge_* tables → github_*, forge.* events → github.*
     migrate_forge_tables(patina_conn)?;
     migrate_forge_events()?;
+    migrate_forge_events_in_patina(patina_conn)?;
 
     // Schema registry (still needed for write-side event type resolution)
     create_schema_registry(patina_conn)?;
@@ -292,6 +293,41 @@ fn migrate_forge_events() -> Result<()> {
             "  Migrated {} forge.* events to github.* in events.db",
             forge_count
         );
+    }
+
+    Ok(())
+}
+
+/// Migrate forge.* event types in patina.db's eventlog (pre-split legacy events).
+fn migrate_forge_events_in_patina(patina_conn: &Connection) -> Result<()> {
+    let has_eventlog: bool = patina_conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='eventlog'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+    if !has_eventlog {
+        return Ok(());
+    }
+
+    let forge_count: i64 = patina_conn.query_row(
+        "SELECT COUNT(*) FROM eventlog WHERE event_type LIKE 'forge.%'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if forge_count > 0 {
+        patina_conn.execute(
+            "UPDATE eventlog SET event_type = 'github.issue' WHERE event_type = 'forge.issue'",
+            [],
+        )?;
+        patina_conn.execute(
+            "UPDATE eventlog SET event_type = 'github.pr' WHERE event_type = 'forge.pr'",
+            [],
+        )?;
     }
 
     Ok(())
