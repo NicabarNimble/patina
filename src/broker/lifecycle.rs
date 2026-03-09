@@ -6,57 +6,7 @@
 
 use anyhow::{bail, Context, Result};
 use patina_pipe::harness::ChildConnection;
-use std::collections::HashMap;
-
-/// Parameters for a fetch operation.
-#[derive(Debug, Clone)]
-pub struct FetchParams {
-    pub types: Vec<String>,
-    pub since: Option<String>,
-    pub params: HashMap<String, toml::Value>,
-    pub limit: Option<u64>,
-}
-
-impl FetchParams {
-    pub fn to_json(&self) -> serde_json::Value {
-        let mut obj = serde_json::Map::new();
-
-        obj.insert(
-            "types".to_string(),
-            serde_json::Value::Array(
-                self.types
-                    .iter()
-                    .map(|t| serde_json::Value::String(t.clone()))
-                    .collect(),
-            ),
-        );
-
-        if let Some(ref since) = self.since {
-            obj.insert(
-                "since".to_string(),
-                serde_json::Value::String(since.clone()),
-            );
-        }
-
-        if !self.params.is_empty() {
-            let params_obj: serde_json::Map<String, serde_json::Value> = self
-                .params
-                .iter()
-                .filter_map(|(k, v)| serde_json::to_value(v).ok().map(|jv| (k.clone(), jv)))
-                .collect();
-            obj.insert("params".to_string(), serde_json::Value::Object(params_obj));
-        }
-
-        obj.insert(
-            "limit".to_string(),
-            serde_json::Value::Number(serde_json::Number::from(
-                self.limit.unwrap_or(DEFAULT_MAX_BATCH_SIZE as u64),
-            )),
-        );
-
-        serde_json::Value::Object(obj)
-    }
-}
+use patina_pipe_types::{FetchParams, FetchResult};
 
 /// A fact emitted by a child during fetch.
 #[derive(Debug, Clone)]
@@ -65,13 +15,6 @@ pub struct BrokerFact {
     pub fact_type: String,
     pub data: serde_json::Value,
     pub content_hash: Option<String>,
-}
-
-/// Result of a fetch operation.
-#[derive(Debug, Clone)]
-pub struct FetchResult {
-    pub emitted: u64,
-    pub cursor: Option<String>,
 }
 
 /// Health status of a child.
@@ -165,7 +108,11 @@ impl BrokerChild for NativeChild {
     ) -> Result<FetchResult> {
         let (notifications, response) = self
             .conn
-            .request("pipe/fetch", params.to_json())
+            .request(
+                "pipe/fetch",
+                serde_json::to_value(params)
+                    .map_err(|e| anyhow::anyhow!("FetchParams serialization: {}", e))?,
+            )
             .map_err(|e| anyhow::anyhow!("pipe/fetch failed: {}", e))?;
 
         // Check batch size limit (§13 safety net)
@@ -238,46 +185,6 @@ impl BrokerChild for NativeChild {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn fetch_params_to_json_full() {
-        let params = FetchParams {
-            types: vec!["issues".to_string(), "prs".to_string()],
-            since: Some("2026-03-07T00:00:00Z".to_string()),
-            params: HashMap::from([
-                (
-                    "owner".to_string(),
-                    toml::Value::String("NicabarNimble".to_string()),
-                ),
-                (
-                    "repo".to_string(),
-                    toml::Value::String("patina".to_string()),
-                ),
-            ]),
-            limit: Some(100),
-        };
-
-        let json = params.to_json();
-        assert_eq!(json["types"], serde_json::json!(["issues", "prs"]));
-        assert_eq!(json["since"], "2026-03-07T00:00:00Z");
-        assert_eq!(json["limit"], 100);
-        assert_eq!(json["params"]["owner"], "NicabarNimble");
-    }
-
-    #[test]
-    fn fetch_params_to_json_minimal() {
-        let params = FetchParams {
-            types: vec![],
-            since: None,
-            params: HashMap::new(),
-            limit: None,
-        };
-
-        let json = params.to_json();
-        assert_eq!(json["types"], serde_json::json!([]));
-        assert!(json.get("since").is_none());
-        assert_eq!(json["limit"], DEFAULT_MAX_BATCH_SIZE as u64);
-    }
 
     #[test]
     fn parse_pipe_fact_valid() {

@@ -19,7 +19,7 @@ use std::path::Path;
 
 use self::connection::load_connection;
 use self::cursor::{get_cursor, write_facts_with_cursor};
-use self::lifecycle::{BrokerChild, FetchParams, NativeChild};
+use self::lifecycle::{BrokerChild, NativeChild, DEFAULT_MAX_BATCH_SIZE};
 use self::routing::{validate_fact, ValidatedFact, WriteResult};
 use self::sources::{Destination, SourceEntry};
 use self::spawn::spawn_native;
@@ -90,12 +90,13 @@ fn write_to_project(
     // 5. Get stored cursor
     let stored_cursor = get_cursor(&events_conn, &source.name)?;
 
-    // 6. Build fetch params
-    let fetch_params = FetchParams {
+    // 6. Build fetch params — shared type with boundary conversions
+    let fetch_params = patina_pipe_types::FetchParams {
         types: source.types.clone(),
         since: stored_cursor,
-        params: source.params.clone(),
-        limit: None,
+        limit: DEFAULT_MAX_BATCH_SIZE as u64,
+        params: serde_json::to_value(&source.params)
+            .with_context(|| "serializing source params to JSON")?,
     };
 
     // 7. Fetch facts from child
