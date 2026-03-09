@@ -88,9 +88,15 @@ fn create_schema_registry(conn: &Connection) -> Result<()> {
             fts_fields  TEXT,
             corpus_query TEXT,
             offset_slot INTEGER,
+            priority    INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (schema_name, event_type)
         );",
     )?;
+    // Migration: add priority column to existing tables (idempotent)
+    let _ = conn.execute(
+        "ALTER TABLE schema_registry ADD COLUMN priority INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
     Ok(())
 }
 
@@ -108,13 +114,19 @@ fn populate_schema_registry(conn: &Connection) -> Result<()> {
 
     let mut stmt = conn.prepare(
         "INSERT OR REPLACE INTO schema_registry
-         (schema_name, event_type, fact_name, table_name, fts_fields, corpus_query, offset_slot)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+         (schema_name, event_type, fact_name, table_name, fts_fields, corpus_query, offset_slot, priority)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
     )?;
 
     for schema in &schemas {
         let corpus_query = schema.embedding.as_ref().map(|e| e.corpus_query.trim());
         let offset_slot = schema.embedding.as_ref().map(|e| e.offset_slot);
+
+        // Schemas with [[contracts]] are active connectors (priority 1).
+        // Schemas without contracts are legacy/read-only (priority 0).
+        // This ensures resolve_event_type() prefers active connectors for
+        // new writes — e.g., github.issue over forge.issue.
+        let priority: i32 = if schema.contracts.is_empty() { 0 } else { 1 };
 
         for fact in &schema.facts {
             // Find matching index config for this fact
@@ -131,6 +143,7 @@ fn populate_schema_registry(conn: &Connection) -> Result<()> {
                 fts_fields,
                 corpus_query,
                 offset_slot,
+                priority,
             ])?;
         }
     }
@@ -144,15 +157,19 @@ fn populate_schema_registry(conn: &Connection) -> Result<()> {
 
 /// Resolve the write event_type for a given projection table from schema_registry.
 ///
-/// Returns the event_type from the alphabetically-first schema (deterministic,
-/// consistent with FTS5 dedup). Falls back to `fallback` if schema_registry
-/// is not populated or the table is unknown.
+/// Prefers active connectors (schemas with `[[contracts]]`, priority=1) over
+/// legacy schemas (no contracts, priority=0). Within the same priority tier,
+/// alphabetical-first wins as a deterministic tiebreaker.
+///
+/// This ensures new writes use the active connector's event_type (e.g.,
+/// github.issue) rather than legacy labels (e.g., forge.issue).
+/// Falls back to `fallback` if schema_registry is not populated.
 pub fn resolve_event_type(patina_conn: &Connection, table_name: &str, fallback: &str) -> String {
     patina_conn
         .query_row(
             "SELECT event_type FROM schema_registry
              WHERE table_name = ?1
-             ORDER BY schema_name
+             ORDER BY priority DESC, schema_name ASC
              LIMIT 1",
             [table_name],
             |row| row.get(0),
@@ -1043,6 +1060,9 @@ mod tests {
     }
 
     /// Set up patina.db with schema_registry + materialized views (for insert tests).
+    ///
+    /// Mirrors real schema state: forge has no contracts (legacy, priority=0),
+    /// github has contracts (active connector, priority=1).
     fn setup_patina_db_with_registry() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
@@ -1054,6 +1074,7 @@ mod tests {
                 fts_fields  TEXT,
                 corpus_query TEXT,
                 offset_slot INTEGER,
+                priority    INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (schema_name, event_type)
             );
             CREATE TABLE forge_issues (
@@ -1085,16 +1106,16 @@ mod tests {
         )
         .unwrap();
 
-        // Populate with both forge and github schemas (shared tables)
+        // Populate with both forge (legacy, priority=0) and github (active, priority=1)
         conn.execute_batch(
-            "INSERT INTO schema_registry (schema_name, event_type, fact_name, table_name)
-             VALUES ('forge', 'forge.issue', 'issue', 'forge_issues');
-             INSERT INTO schema_registry (schema_name, event_type, fact_name, table_name)
-             VALUES ('forge', 'forge.pr', 'pull-request', 'forge_prs');
-             INSERT INTO schema_registry (schema_name, event_type, fact_name, table_name)
-             VALUES ('github', 'github.issue', 'issue', 'forge_issues');
-             INSERT INTO schema_registry (schema_name, event_type, fact_name, table_name)
-             VALUES ('github', 'github.pr', 'pull-request', 'forge_prs');",
+            "INSERT INTO schema_registry (schema_name, event_type, fact_name, table_name, priority)
+             VALUES ('forge', 'forge.issue', 'issue', 'forge_issues', 0);
+             INSERT INTO schema_registry (schema_name, event_type, fact_name, table_name, priority)
+             VALUES ('forge', 'forge.pr', 'pull-request', 'forge_prs', 0);
+             INSERT INTO schema_registry (schema_name, event_type, fact_name, table_name, priority)
+             VALUES ('github', 'github.issue', 'issue', 'forge_issues', 1);
+             INSERT INTO schema_registry (schema_name, event_type, fact_name, table_name, priority)
+             VALUES ('github', 'github.pr', 'pull-request', 'forge_prs', 1);",
         )
         .unwrap();
 
@@ -1102,15 +1123,16 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_event_type_from_registry() {
+    fn test_resolve_event_type_prefers_active_connector() {
         let conn = setup_patina_db_with_registry();
 
-        // Alphabetically first schema wins: "forge" < "github"
+        // github has priority=1 (has contracts), forge has priority=0 (no contracts)
+        // Active connector wins over legacy schema
         let et = resolve_event_type(&conn, "forge_issues", "fallback");
-        assert_eq!(et, "forge.issue");
+        assert_eq!(et, "github.issue");
 
         let et = resolve_event_type(&conn, "forge_prs", "fallback");
-        assert_eq!(et, "forge.pr");
+        assert_eq!(et, "github.pr");
     }
 
     #[test]
@@ -1119,6 +1141,33 @@ mod tests {
         // No schema_registry table — should use fallback
         let et = resolve_event_type(&conn, "forge_issues", "my.fallback");
         assert_eq!(et, "my.fallback");
+    }
+
+    #[test]
+    fn test_resolve_event_type_priority_over_alphabetical() {
+        // Even if a legacy schema is alphabetically first, an active connector
+        // with higher priority wins. Ensures "forge" doesn't beat "github"
+        // just because 'f' < 'g'.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_registry (
+                schema_name TEXT NOT NULL, event_type TEXT NOT NULL,
+                fact_name TEXT NOT NULL, table_name TEXT NOT NULL,
+                priority INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (schema_name, event_type)
+            );
+            INSERT INTO schema_registry (schema_name, event_type, fact_name, table_name, priority)
+            VALUES ('aaa_legacy', 'aaa.item', 'item', 'items', 0);
+            INSERT INTO schema_registry (schema_name, event_type, fact_name, table_name, priority)
+            VALUES ('zzz_active', 'zzz.item', 'item', 'items', 1);",
+        )
+        .unwrap();
+
+        let et = resolve_event_type(&conn, "items", "fallback");
+        assert_eq!(
+            et, "zzz.item",
+            "active connector should win despite alphabetical order"
+        );
     }
 
     #[test]
