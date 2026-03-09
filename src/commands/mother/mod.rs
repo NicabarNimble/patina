@@ -100,11 +100,12 @@ pub enum MotherCommands {
         limit: usize,
     },
 
-    /// Run a source — fetch, validate, and route facts to events.db
+    /// Run a source — fetch, validate, and route facts to destination
     ///
     /// Spawns the child for the named source, fetches facts, validates
-    /// against the child manifest, and writes to the project's events.db
-    /// with content-hash dedup and transactional cursor management.
+    /// against the child manifest, and routes to the configured destination
+    /// (project events.db or lake) with content-hash dedup and transactional
+    /// cursor management. Auth is resolved via the connect subsystem.
     Run {
         /// Source name (as defined in .patina/sources.toml)
         name: String,
