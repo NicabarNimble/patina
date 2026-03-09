@@ -29,6 +29,9 @@ const ERR_PARTIAL: i32 = -32004;
 /// Implement this and call `run()` to create a native child binary.
 /// All methods use `&mut self` to allow mutable state (connection pools,
 /// rate limit tracking, cached auth) across calls.
+///
+/// Connector children implement `fetch()`. Storage children (lakehouse)
+/// implement `ingest()`. Both get the rest for free via defaults.
 pub trait Child {
     /// Declare what this child can do. Called during pipe/initialize.
     fn capabilities(&self) -> Capabilities;
@@ -44,11 +47,28 @@ pub trait Child {
     /// Use `io.emit()` to stream facts and `io.get(url).send()` for HTTP
     /// calls proxied through Mother. Return `FetchResult` with the emitted
     /// count and optional cursor.
+    ///
+    /// Connector children implement this. Storage children leave the default.
     fn fetch(
         &mut self,
-        params: &FetchParams,
-        io: &mut PipeIo<impl Write, impl BufRead>,
-    ) -> Result<FetchResult, PipeError>;
+        _params: &FetchParams,
+        _io: &mut PipeIo<impl Write, impl BufRead>,
+    ) -> Result<FetchResult, PipeError> {
+        Err(PipeError::Fatal {
+            message: "pipe/fetch not implemented by this child".to_string(),
+        })
+    }
+
+    /// Receive records from Mother for storage (pipe/ingest).
+    ///
+    /// Storage children (lakehouse) implement this. Connector children
+    /// leave the default, which returns Fatal.
+    /// Hard specification in [[raw-lake-ingestion]] DESIGN.md.
+    fn ingest(&mut self, _params: &IngestParams) -> Result<IngestResult, PipeError> {
+        Err(PipeError::Fatal {
+            message: "pipe/ingest not implemented by this child".to_string(),
+        })
+    }
 
     /// Health check. Called by Mother to monitor child status.
     fn health(&self) -> Result<Status, PipeError> {
@@ -230,6 +250,47 @@ pub fn run<C: Child>(mut child: C) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
+            "pipe/ingest" => {
+                if !initialized {
+                    let resp = Response::error(
+                        request.id.clone(),
+                        ERR_FATAL,
+                        "pipe/ingest before pipe/initialize",
+                    );
+                    writeln!(stdout, "{}", serde_json::to_string(&resp)?)?;
+                    stdout.flush()?;
+                    continue;
+                }
+
+                let params: IngestParams = match serde_json::from_value(request.params.clone()) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        let resp = Response::error(
+                            request.id.clone(),
+                            -32602,
+                            &format!("Invalid ingest params: {}", e),
+                        );
+                        writeln!(stdout, "{}", serde_json::to_string(&resp)?)?;
+                        stdout.flush()?;
+                        continue;
+                    }
+                };
+
+                match child.ingest(&params) {
+                    Ok(result) => {
+                        let result_val = serde_json::to_value(&result).unwrap_or_default();
+                        let resp = Response::success(request.id.clone(), result_val);
+                        writeln!(stdout, "{}", serde_json::to_string(&resp)?)?;
+                        stdout.flush()?;
+                    }
+                    Err(e) => {
+                        let resp = pipe_error_to_response(request.id.clone(), &e);
+                        writeln!(stdout, "{}", serde_json::to_string(&resp)?)?;
+                        stdout.flush()?;
+                    }
+                }
+            }
+
             "pipe/health" => match child.health() {
                 Ok(status) => {
                     let result = serde_json::to_value(&status).unwrap_or_default();
@@ -391,6 +452,30 @@ mod tests {
                     let resp = Response::success(request.id.clone(), result_val);
                     output.push(serde_json::to_string(&resp).unwrap());
                 }
+                "pipe/ingest" => {
+                    if !initialized {
+                        let resp = Response::error(
+                            request.id.clone(),
+                            ERR_FATAL,
+                            "pipe/ingest before pipe/initialize",
+                        );
+                        output.push(serde_json::to_string(&resp).unwrap());
+                        continue;
+                    }
+                    let params: IngestParams =
+                        serde_json::from_value(request.params.clone()).unwrap();
+                    match child.ingest(&params) {
+                        Ok(result) => {
+                            let result_val = serde_json::to_value(&result).unwrap();
+                            let resp = Response::success(request.id.clone(), result_val);
+                            output.push(serde_json::to_string(&resp).unwrap());
+                        }
+                        Err(e) => {
+                            let resp = pipe_error_to_response(request.id.clone(), &e);
+                            output.push(serde_json::to_string(&resp).unwrap());
+                        }
+                    }
+                }
                 "pipe/shutdown" => {
                     let resp = Response::success(request.id.clone(), serde_json::json!({}));
                     output.push(serde_json::to_string(&resp).unwrap());
@@ -482,5 +567,37 @@ mod tests {
         assert!(json.contains(&format!("\"code\":{}", ERR_RATE_LIMITED)));
         assert!(json.contains("slow down"));
         assert!(json.contains("60000"));
+    }
+
+    #[test]
+    fn ingest_before_initialize_errors() {
+        let ingest = r#"{"jsonrpc":"2.0","id":1,"method":"pipe/ingest","params":{"lake_path":"/tmp/lake","persona":"default","provider":"github","source_path":"org/repo","schema":"github","schema_version":"1.0.0","records":[]}}"#;
+        let output = run_with_input(&format!("{}\n", ingest));
+        assert_eq!(output.len(), 1);
+        let resp: serde_json::Value = serde_json::from_str(&output[0]).unwrap();
+        assert!(resp["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("before pipe/initialize"));
+    }
+
+    #[test]
+    fn ingest_default_returns_fatal() {
+        // TestChild is a connector — it doesn't implement ingest().
+        // The default impl should return a Fatal error.
+        let init = r#"{"jsonrpc":"2.0","id":1,"method":"pipe/initialize","params":{"protocol_version":"1.0"}}"#;
+        let ingest = r#"{"jsonrpc":"2.0","id":2,"method":"pipe/ingest","params":{"lake_path":"/tmp/lake","persona":"default","provider":"github","source_path":"org/repo","schema":"github","schema_version":"1.0.0","records":[]}}"#;
+        let input = format!("{}\n{}\n", init, ingest);
+        let output = run_with_input(&input);
+
+        // init response + ingest error response = 2 lines
+        assert_eq!(output.len(), 2);
+
+        let resp: serde_json::Value = serde_json::from_str(&output[1]).unwrap();
+        assert_eq!(resp["error"]["code"], ERR_FATAL);
+        assert!(resp["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("not implemented"));
     }
 }
