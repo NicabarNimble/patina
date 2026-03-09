@@ -1,18 +1,28 @@
 ---
 type: feat
 id: schema-build-pipeline
-status: draft
+status: ready
 created: 2026-03-09
 sessions:
   origin: 20260309-090701
 related:
 - connector-owns-tables
 exit_criteria:
-  - Broker rejects facts when installed schema is missing (fail closed)
-  - Broker rejects facts with fact_type not declared in installed schema
-  - CI check validates canonical schema matches installed copy (full directory, not just TOML)
-  - patina schema build <name> orchestrates validate→install, with optional generate
-  - src/generated/schemas/ removed or regenerated from installed schemas (not forge-only)
+- id: broker-rejects-facts-when-installed-schema-is-missing-fail-closed
+  text: Broker rejects facts when installed schema is missing (fail closed)
+  checked: false
+- id: broker-rejects-facts-with-fact-type-not-declared-in-installed-schema
+  text: Broker rejects facts with fact_type not declared in installed schema
+  checked: false
+- id: ci-check-validates-canonical-schema-matches-installed-copy-full-directory-not-just-toml
+  text: CI check validates canonical schema matches installed copy (full directory, not just TOML)
+  checked: false
+- id: patina-schema-build-name-orchestrates-validate-install-with-optional-generate
+  text: patina schema build <name> orchestrates validate→install, with optional generate
+  checked: false
+- id: src-generated-schemas-removed-or-regenerated-from-installed-schemas-not-forge-only
+  text: src/generated/schemas/ removed or regenerated from installed schemas (not forge-only)
+  checked: false
 ---
 # feat: Schema Build Pipeline — Single Source, Runtime Validation, CI Enforcement
 
