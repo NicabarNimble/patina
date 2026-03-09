@@ -495,51 +495,206 @@ pub fn insert_prs(
 }
 
 // ============================================================================
-// FTS5 indexing
+// FTS5 indexing — schema-driven (Seam 2: contract model consumer)
 // ============================================================================
 
-/// Populate FTS5 index with forge issues.
+/// Populate FTS5 index from schema-driven projection tables.
 ///
-/// DELETE and INSERT use the same label ('forge.issue') so they stay consistent
-/// regardless of which schemas are installed. FTS5 reads from the materialized
-/// view table, not from the eventlog — the label is a display tag, not a filter.
-pub fn populate_fts5_issues(conn: &Connection) -> Result<usize> {
-    conn.execute("DELETE FROM code_fts WHERE event_type = 'forge.issue'", [])?;
+/// Reads table names and event types from installed schemas instead of
+/// hardcoding them. For each schema fact with an [[indexes]] entry, deletes
+/// existing FTS rows for that event_type and re-inserts from the projection
+/// table. Tables that don't exist yet are silently skipped.
+///
+/// Replaces the former `populate_fts5_issues()` + `populate_fts5_prs()`
+/// which hardcoded `forge_issues`/`forge_prs` table names and
+/// `forge.issue`/`forge.pr` event type strings.
+pub fn populate_fts5_from_schema(conn: &Connection) -> Result<usize> {
+    let schemas = match crate::commands::schema::load_all_installed() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Warning: failed to load schemas for FTS5: {}", e);
+            return Ok(0);
+        }
+    };
 
-    let count = conn.execute(
-        r#"
-        INSERT INTO code_fts (symbol_name, file_path, content, event_type)
-        SELECT
-            title as symbol_name,
-            url as file_path,
-            COALESCE(body, '') as content,
-            'forge.issue' as event_type
-        FROM forge_issues
-        "#,
-        [],
-    )?;
+    let mut total = 0;
 
+    for schema in &schemas {
+        for fact in &schema.facts {
+            // Find matching index config for this fact
+            let index = match schema.indexes.iter().find(|i| i.fact == fact.name) {
+                Some(i) => i,
+                None => continue,
+            };
+
+            total += populate_fts5_for_table(conn, &index.table, &fact.event_type)?;
+        }
+    }
+
+    Ok(total)
+}
+
+/// Populate FTS5 from a single projection table.
+///
+/// Validates the table name, checks it exists, then DELETEs existing FTS rows
+/// for this event_type and re-INSERTs from the projection table.
+fn populate_fts5_for_table(conn: &Connection, table_name: &str, event_type: &str) -> Result<usize> {
+    // Validate table name is a safe SQL identifier (alphanumeric + underscore)
+    if !table_name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        eprintln!(
+            "Warning: skipping FTS5 for invalid table name: {}",
+            table_name
+        );
+        return Ok(0);
+    }
+
+    // Check if the projection table exists
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+            [table_name],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+    if !table_exists {
+        return Ok(0);
+    }
+
+    // Delete existing FTS entries for this event type, then re-insert.
+    // DELETE and INSERT use the same event_type so they stay consistent.
+    conn.execute("DELETE FROM code_fts WHERE event_type = ?1", [event_type])?;
+
+    // FTS5 column mapping: title→symbol_name, url→file_path, body→content.
+    // This mapping is inherent to code_fts table design, not schema-specific.
+    let sql = format!(
+        "INSERT INTO code_fts (symbol_name, file_path, content, event_type) \
+         SELECT title, url, COALESCE(body, ''), ?1 FROM {table_name}"
+    );
+
+    let count = conn.execute(&sql, [event_type])?;
     Ok(count)
 }
 
-/// Populate FTS5 index with forge PRs.
-///
-/// See populate_fts5_issues for DELETE/INSERT consistency rationale.
-pub fn populate_fts5_prs(conn: &Connection) -> Result<usize> {
-    conn.execute("DELETE FROM code_fts WHERE event_type = 'forge.pr'", [])?;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let count = conn.execute(
-        r#"
-        INSERT INTO code_fts (symbol_name, file_path, content, event_type)
-        SELECT
-            title as symbol_name,
-            url as file_path,
-            COALESCE(body, '') as content,
-            'forge.pr' as event_type
-        FROM forge_prs
-        "#,
-        [],
-    )?;
+    /// Set up an in-memory database with code_fts and a projection table.
+    fn setup_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE VIRTUAL TABLE code_fts USING fts5(
+                symbol_name, file_path, content, event_type
+            );
+            CREATE TABLE forge_issues (
+                number INTEGER PRIMARY KEY,
+                title TEXT NOT NULL,
+                body TEXT,
+                url TEXT NOT NULL
+            );",
+        )
+        .unwrap();
+        conn
+    }
 
-    Ok(count)
+    #[test]
+    fn test_populate_fts5_for_table_basic() {
+        let conn = setup_test_db();
+
+        // Insert test data into projection table
+        conn.execute(
+            "INSERT INTO forge_issues (number, title, body, url) VALUES (1, 'Bug fix', 'Fix the thing', 'https://example.com/1')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO forge_issues (number, title, body, url) VALUES (2, 'Feature', NULL, 'https://example.com/2')",
+            [],
+        ).unwrap();
+
+        let count = populate_fts5_for_table(&conn, "forge_issues", "github.issue").unwrap();
+        assert_eq!(count, 2);
+
+        // Verify FTS5 entries
+        let fts_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM code_fts WHERE event_type = 'github.issue'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(fts_count, 2);
+    }
+
+    #[test]
+    fn test_populate_fts5_for_table_replaces_existing() {
+        let conn = setup_test_db();
+
+        conn.execute(
+            "INSERT INTO forge_issues (number, title, body, url) VALUES (1, 'Old', 'old body', 'https://example.com/1')",
+            [],
+        ).unwrap();
+
+        // First population
+        let count1 = populate_fts5_for_table(&conn, "forge_issues", "github.issue").unwrap();
+        assert_eq!(count1, 1);
+
+        // Update data and re-populate — should replace, not duplicate
+        conn.execute("UPDATE forge_issues SET title = 'New' WHERE number = 1", [])
+            .unwrap();
+
+        let count2 = populate_fts5_for_table(&conn, "forge_issues", "github.issue").unwrap();
+        assert_eq!(count2, 1);
+
+        // Verify only one entry exists
+        let fts_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM code_fts WHERE event_type = 'github.issue'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(fts_count, 1);
+    }
+
+    #[test]
+    fn test_populate_fts5_for_table_missing_table() {
+        let conn = setup_test_db();
+        let count = populate_fts5_for_table(&conn, "nonexistent_table", "test.event").unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_populate_fts5_for_table_invalid_name() {
+        let conn = setup_test_db();
+        let count = populate_fts5_for_table(&conn, "bad; DROP TABLE", "test.event").unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_populate_fts5_null_body_coalesced() {
+        let conn = setup_test_db();
+
+        conn.execute(
+            "INSERT INTO forge_issues (number, title, body, url) VALUES (1, 'No body', NULL, 'https://example.com/1')",
+            [],
+        ).unwrap();
+
+        let count = populate_fts5_for_table(&conn, "forge_issues", "github.issue").unwrap();
+        assert_eq!(count, 1);
+
+        // Verify content is empty string, not NULL
+        let content: String = conn
+            .query_row(
+                "SELECT content FROM code_fts WHERE event_type = 'github.issue'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(content, "");
+    }
 }
