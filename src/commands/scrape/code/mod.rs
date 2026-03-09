@@ -93,16 +93,16 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
     };
     println!("   Indexed {} symbols", fts_count);
 
-    // Populate forge FTS5 from schema-driven projection tables (Seam 2: contract model)
-    let forge_fts = match super::events::populate_fts5_from_schema(&conn) {
+    // Populate FTS5 from schema-driven projection tables
+    let schema_fts = match super::events::populate_fts5_from_schema(&conn) {
         Ok(n) => n,
         Err(e) => {
             eprintln!("  Warning: schema-driven FTS5 failed: {}", e);
             0
         }
     };
-    if forge_fts > 0 {
-        println!("   Indexed {} forge entries in FTS5", forge_fts);
+    if schema_fts > 0 {
+        println!("   Indexed {} connector entries in FTS5", schema_fts);
     }
 
     // Get database size

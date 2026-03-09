@@ -10,7 +10,7 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
-use crate::commands::schema::{ColumnDef, ProjectionDef, SchemaMetadata};
+use crate::commands::schema::{ProjectionDef, SchemaMetadata};
 
 // ============================================================================
 // Public interface
@@ -313,6 +313,7 @@ fn is_safe_identifier(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::schema::ColumnDef;
 
     fn make_column(name: &str, col_type: &str, json_path: &str) -> ColumnDef {
         ColumnDef {
