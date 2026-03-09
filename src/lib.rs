@@ -5,6 +5,7 @@ pub mod db;
 pub mod embeddings;
 pub mod environment;
 pub mod eventlog;
+pub mod http_util;
 pub mod git;
 pub mod layer;
 pub mod measure;

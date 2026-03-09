@@ -4,7 +4,6 @@
 //! sources.toml declarations. Manages child lifecycle (spawn, fetch,
 //! shutdown) for native children via the pipe protocol.
 
-pub mod connection;
 pub mod cursor;
 pub mod http;
 pub mod lifecycle;
@@ -17,51 +16,39 @@ use patina_pipe_types::manifest::ChildManifest;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use self::connection::load_connection;
 use self::cursor::{get_cursor, write_facts_with_cursor};
 use self::lifecycle::{BrokerChild, NativeChild, DEFAULT_MAX_BATCH_SIZE};
 use self::routing::{validate_fact, ValidatedFact, WriteResult};
 use self::sources::{Destination, SourceEntry};
-use self::spawn::spawn_native;
+use self::spawn::spawn_native_with_plan;
 
-/// Run a single source: spawn child, fetch facts, validate, route to destination.
+/// Run a single source: resolve auth, spawn child, fetch facts, validate, route to destination.
 ///
 /// This is the full flow from DESIGN.md — the broker's primary operation.
 /// Routes to project events.db or lake based on source.destination.
+///
+/// FAIL CLOSED: auth resolution errors propagate — the child is never
+/// spawned without a valid AuthPlan.
 pub fn run_source(
     source: &SourceEntry,
     project_root: &Path,
     no_sandbox: bool,
 ) -> Result<WriteResult> {
-    // 1. Load connection config
-    let conn_config = load_connection(&source.connection)
+    // 1. Load connection record from connect module
+    let record = crate::connect::load(&source.connection)
+        .map_err(|e| anyhow::anyhow!("{}", e))
         .with_context(|| format!("loading connection for source '{}'", source.name))?;
 
-    // 2. Decrypt credential from vault
-    let credential = match crate::secrets::get_global_secret(&conn_config.credential) {
-        Ok(Some(value)) => Some((conn_config.credential.clone(), value)),
-        Ok(None) => {
-            eprintln!(
-                "[broker] {}: credential '{}' not found in vault, proceeding without auth",
-                source.name, conn_config.credential
-            );
-            None
-        }
-        Err(e) => {
-            eprintln!(
-                "[broker] {}: failed to decrypt credential '{}': {}, proceeding without auth",
-                source.name, conn_config.credential, e
-            );
-            None
-        }
-    };
+    // 2. Resolve auth plan — FAIL CLOSED (no "proceeding without auth")
+    let auth_plan = crate::connect::resolve_auth(&record)
+        .map_err(|e| anyhow::anyhow!("{}", e))
+        .with_context(|| format!("resolving auth for source '{}'", source.name))?;
 
-    // 3. Spawn child with sandbox and credential delivery
-    let (mut child, manifest) = spawn_native(
-        &conn_config.child,
-        credential,
+    // 3. Spawn child with AuthPlan-driven credential delivery
+    let (mut child, manifest) = spawn_native_with_plan(
+        &auth_plan,
         no_sandbox,
-        &conn_config.provider,
+        &record.identity.provider,
         None, // storage_path — project sources use events.db, not lake storage
     )
     .with_context(|| format!("spawning child for source '{}'", source.name))?;
@@ -212,11 +199,10 @@ pub fn status(project_root: &Path) -> Result<Vec<SourceStatus>> {
             )
             .ok();
 
-        // Count facts from this source
-        let conn_config = load_connection(&source.connection).ok();
-        let child_name = conn_config
-            .as_ref()
-            .map(|c| c.child.clone())
+        // Count facts from this source — use connection's child name
+        let child_name = crate::connect::load(&source.connection)
+            .ok()
+            .map(|r| r.auth.child.clone())
             .unwrap_or_else(|| source.name.clone());
         let source_id = format!("child:{}", child_name);
 

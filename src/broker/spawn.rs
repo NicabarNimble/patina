@@ -1,6 +1,6 @@
 //! Native child spawn with sandbox enforcement and credential delivery.
 //!
-//! Resolves child binary, loads manifest, decrypts credentials,
+//! Resolves child binary, loads manifest, dispatches on AuthPlan,
 //! spawns the child under OS sandbox, and initializes via pipe/initialize.
 
 use anyhow::{bail, Context, Result};
@@ -9,6 +9,8 @@ use patina_pipe::sandbox::SandboxProfile;
 use patina_pipe_types::config::{AuthConfig, InitializeParams};
 use patina_pipe_types::manifest::{ChildManifest, ChildType};
 use std::path::{Path, PathBuf};
+
+use crate::connect::{AuthPlan, InjectionStrategy};
 
 use super::http::build_production_handler;
 use super::lifecycle::NativeChild;
@@ -64,7 +66,7 @@ pub fn load_manifest(binary_path: &Path) -> Result<ChildManifest> {
         .with_context(|| format!("parsing child manifest {}", manifest_path.display()))
 }
 
-/// Build pipe/initialize params with optional credential delivery (§9).
+/// Build pipe/initialize params with optional credential delivery.
 ///
 /// Constructs `pipe_types::InitializeParams` for compile-time field checking,
 /// then serializes to `serde_json::Value` for `conn.request()` compatibility.
@@ -131,47 +133,36 @@ pub fn sandbox_profile_for_child(
     }
 }
 
-/// Spawn a native child with full broker setup.
+/// Spawn a native child with full broker setup, driven by AuthPlan.
 ///
 /// 1. Resolve binary
 /// 2. Load manifest
-/// 3. Build HTTP handler with credential
+/// 3. Build HTTP handler from AuthPlan (strategy dispatch, not hardcoded Bearer)
 /// 4. Determine sandbox profile from child type
 /// 5. Spawn with sandbox
-/// 6. Send pipe/initialize
+/// 6. Send pipe/initialize (InProcess credential delivery if applicable)
 ///
 /// Returns (NativeChild, ChildManifest) for the caller to use.
 ///
 /// `storage_path` is required for lakehouse children — it specifies the
 /// scoped filesystem path the sandbox will allow. Pass `None` for
 /// connector/transport/transform children.
-pub fn spawn_native(
-    child_name: &str,
-    credential: Option<(String, String)>, // (secret_name, secret_value)
+pub fn spawn_native_with_plan(
+    auth_plan: &AuthPlan,
     no_sandbox: bool,
     provider: &str,
     storage_path: Option<&str>,
 ) -> Result<(NativeChild, ChildManifest)> {
-    let binary_path = resolve_child_binary(child_name)?;
+    let binary_path = resolve_child_binary(&auth_plan.child)?;
     let manifest = load_manifest(&binary_path)?;
 
-    // Build allowed domains list from manifest
-    let allowed_domains: Vec<String> = manifest
-        .domains
-        .as_ref()
-        .map(|d| d.allowed.clone())
-        .unwrap_or_default();
-
-    // Build production HTTP handler
-    let http_handler: Option<HttpHandler> = if !allowed_domains.is_empty() || credential.is_some() {
-        Some(build_production_handler(
-            &allowed_domains,
-            credential.clone(),
-            child_name,
-        )?)
-    } else {
-        None
-    };
+    // Build production HTTP handler from AuthPlan
+    let http_handler: Option<HttpHandler> =
+        if !auth_plan.allowed_domains.is_empty() || auth_plan.credential.is_some() {
+            Some(build_production_handler(auth_plan, &auth_plan.child)?)
+        } else {
+            None
+        };
 
     // Determine sandbox profile from child type (DESIGN.md §8.3)
     let sandbox_profile = sandbox_profile_for_child(&manifest.child.child_type, storage_path)?;
@@ -181,12 +172,12 @@ pub fn spawn_native(
         check_sandbox_available()?;
         eprintln!(
             "[broker] {}: sandbox profile {:?}",
-            child_name, sandbox_profile
+            auth_plan.child, sandbox_profile
         );
     } else {
         eprintln!(
             "[broker] WARNING: sandbox disabled for {} — child has unrestricted access",
-            child_name
+            auth_plan.child
         );
     }
 
@@ -197,21 +188,36 @@ pub fn spawn_native(
     // Spawn child process
     let binary_str = binary_path.to_string_lossy().to_string();
     let mut conn = spawn_child_with_handler(&binary_str, http_handler)
-        .map_err(|e| anyhow::anyhow!("failed to spawn {}: {}", child_name, e))?;
+        .map_err(|e| anyhow::anyhow!("failed to spawn {}: {}", auth_plan.child, e))?;
 
-    // Send pipe/initialize
-    let cred_value = credential.as_ref().map(|(_, v)| v.as_str());
+    // Send pipe/initialize — InProcess credential delivery goes here
+    let cred_value = auth_plan.credential.as_ref().and_then(|c| {
+        if matches!(c.injection, InjectionStrategy::InProcess) {
+            Some(c.value.as_str())
+        } else {
+            None
+        }
+    });
     let init_params = build_init_params(&manifest, cred_value, provider);
 
     let (_notifs, response) = conn
         .request("pipe/initialize", init_params)
-        .map_err(|e| anyhow::anyhow!("pipe/initialize failed for {}: {}", child_name, e))?;
+        .map_err(|e| {
+            anyhow::anyhow!("pipe/initialize failed for {}: {}", auth_plan.child, e)
+        })?;
 
     if let Some(error) = response.get("error") {
-        bail!("child '{}' rejected initialization: {}", child_name, error);
+        bail!(
+            "child '{}' rejected initialization: {}",
+            auth_plan.child,
+            error
+        );
     }
 
-    Ok((NativeChild::new(child_name.to_string(), conn), manifest))
+    Ok((
+        NativeChild::new(auth_plan.child.clone(), conn),
+        manifest,
+    ))
 }
 
 /// Check if OS sandbox is available. Fails with actionable error if not.

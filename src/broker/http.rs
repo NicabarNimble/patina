@@ -1,7 +1,7 @@
 //! Production pipe/http handler for broker-spawned children.
 //!
-//! Reuses host_support functions (validate_http_url, build_http_client,
-//! inject_credential, leak_check) with pub(crate) visibility.
+//! Dispatches on `AuthPlan` injection strategy (Bearer, Header, InProcess).
+//! Imports from `connect` + `http_util` — no plugin auth types.
 //! Per-child HTTP client caching. Domain normalization: lowercase, port-stripped.
 
 use anyhow::Result;
@@ -9,32 +9,29 @@ use patina_pipe::harness::HttpHandler;
 use patina_pipe_types::{PipeHttpRequest, PipeHttpResponse};
 use std::collections::{HashMap, HashSet};
 
-use crate::plugin::internal::host_support;
-use crate::plugin::{CredentialMapping, InjectionLocation};
+use crate::connect::{AuthPlan, InjectionStrategy, ResolvedCredential};
+use crate::http_util;
 
 /// Build a production HTTP handler for a broker-managed child.
 ///
 /// The handler validates domains against the allowlist, injects credentials
-/// for authed domains, and returns the response. One HTTP client per child
-/// (avoids TLS handshake churn).
+/// per the AuthPlan's injection strategy, and returns the response. One HTTP
+/// client per child (avoids TLS handshake churn).
 ///
 /// Every pipe/http call emits a Measure event (verb=capture, tool=pipe,
 /// mode=http) with duration, bytes, policy decision, and child name.
 /// Set PATINA_SANDBOX_DEBUG=1 for enhanced domain rejection logging.
-pub fn build_production_handler(
-    allowed_domains: &[String],
-    credential: Option<(String, String)>, // (secret_name, secret_value)
-    child_name: &str,
-) -> Result<HttpHandler> {
-    let client = host_support::build_http_client()?;
+pub fn build_production_handler(auth_plan: &AuthPlan, child_name: &str) -> Result<HttpHandler> {
+    let client = http_util::build_http_client()?;
 
     // Normalize allowlist: lowercase, port-stripped
-    let allowed: HashSet<String> = allowed_domains
+    let allowed: HashSet<String> = auth_plan
+        .allowed_domains
         .iter()
         .map(|d| normalize_domain(d))
         .collect();
 
-    let cred = credential;
+    let cred: Option<ResolvedCredential> = auth_plan.credential.clone();
     let child_name_owned = child_name.to_string();
     let sandbox_debug = std::env::var("PATINA_SANDBOX_DEBUG").is_ok();
 
@@ -42,7 +39,7 @@ pub fn build_production_handler(
         let start = std::time::Instant::now();
 
         let result: Result<PipeHttpResponse, String> = (|| {
-            let domain = host_support::validate_http_url(&req.url)?;
+            let domain = http_util::validate_http_url(&req.url)?;
             let normalized = normalize_domain(&domain);
 
             if !allowed.contains(&normalized) {
@@ -76,13 +73,20 @@ pub fn build_production_handler(
                 builder = builder.header(key, value);
             }
 
-            // Inject credential if available for this domain
-            if let Some((ref _secret_name, ref secret_value)) = cred {
-                let mapping = CredentialMapping {
-                    secret_name: String::new(),
-                    location: InjectionLocation::Bearer,
-                };
-                builder = host_support::inject_credential(builder, &mapping, secret_value);
+            // Inject credential based on AuthPlan injection strategy
+            if let Some(ref resolved) = cred {
+                match &resolved.injection {
+                    InjectionStrategy::Bearer => {
+                        builder = builder
+                            .header("Authorization", format!("Bearer {}", resolved.value));
+                    }
+                    InjectionStrategy::Header { name } => {
+                        builder = builder.header(name, &resolved.value);
+                    }
+                    InjectionStrategy::InProcess => {
+                        // No HTTP injection — credential delivered via pipe/initialize
+                    }
+                }
             }
 
             let response = builder
@@ -98,8 +102,8 @@ pub fn build_production_handler(
 
             // Leak detection: scan response for injected credential value
             let resp_body = match &cred {
-                Some((ref secret_name, ref secret_value)) => {
-                    host_support::leak_check(&resp_body, secret_name, secret_value)
+                Some(ref resolved) => {
+                    http_util::leak_check(&resp_body, "connection-credential", &resolved.value)
                 }
                 None => resp_body,
             };
@@ -171,8 +175,12 @@ mod tests {
 
     #[test]
     fn handler_rejects_unlisted_domain() {
-        let handler_result =
-            build_production_handler(&["api.github.com".to_string()], None, "test-child");
+        let plan = AuthPlan {
+            child: "test-child".to_string(),
+            credential: None,
+            allowed_domains: vec!["api.github.com".to_string()],
+        };
+        let handler_result = build_production_handler(&plan, "test-child");
         assert!(handler_result.is_ok());
         let mut handler = handler_result.unwrap();
 
@@ -185,5 +193,51 @@ mod tests {
         let result = handler(&req);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not in allowlist"));
+    }
+
+    #[test]
+    fn handler_with_bearer_auth_plan() {
+        let plan = AuthPlan {
+            child: "test-child".to_string(),
+            credential: Some(ResolvedCredential {
+                value: "ghp_test123".to_string(),
+                injection: InjectionStrategy::Bearer,
+            }),
+            allowed_domains: vec!["api.github.com".to_string()],
+        };
+        // Just verify handler construction succeeds with AuthPlan
+        let handler_result = build_production_handler(&plan, "test-child");
+        assert!(handler_result.is_ok());
+    }
+
+    #[test]
+    fn handler_with_header_auth_plan() {
+        let plan = AuthPlan {
+            child: "test-child".to_string(),
+            credential: Some(ResolvedCredential {
+                value: "apikey123".to_string(),
+                injection: InjectionStrategy::Header {
+                    name: "X-Api-Key".to_string(),
+                },
+            }),
+            allowed_domains: vec!["api.example.com".to_string()],
+        };
+        let handler_result = build_production_handler(&plan, "test-child");
+        assert!(handler_result.is_ok());
+    }
+
+    #[test]
+    fn handler_with_inprocess_auth_plan() {
+        let plan = AuthPlan {
+            child: "test-child".to_string(),
+            credential: Some(ResolvedCredential {
+                value: "token123".to_string(),
+                injection: InjectionStrategy::InProcess,
+            }),
+            allowed_domains: vec![],
+        };
+        // InProcess means no HTTP injection — handler still builds
+        let handler_result = build_production_handler(&plan, "test-child");
+        assert!(handler_result.is_ok());
     }
 }

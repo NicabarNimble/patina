@@ -196,59 +196,16 @@ pub(super) fn query(
 
 /// Build an HTTP client with cross-domain redirect rejection.
 ///
-/// Shared by mother-child (instantiate_child) and task (run_task) engines.
-/// If a response redirects to a different host, the request is stopped
-/// (prevents allowlist bypass via open redirectors).
+/// Delegates to `crate::http_util::build_http_client()`.
 pub(crate) fn build_http_client() -> anyhow::Result<reqwest::blocking::Client> {
-    reqwest::blocking::Client::builder()
-        .user_agent(format!("patina/{}", env!("CARGO_PKG_VERSION")))
-        .redirect(reqwest::redirect::Policy::custom(|attempt| {
-            if attempt.url().host_str() != attempt.previous().last().and_then(|u| u.host_str()) {
-                attempt.stop()
-            } else {
-                attempt.follow()
-            }
-        }))
-        .build()
-        .map_err(|e| anyhow::anyhow!("build HTTP client: {}", e))
+    crate::http_util::build_http_client()
 }
 
 /// Validate and parse an HTTP URL for domain-allowlisted access.
 ///
-/// Returns the extracted domain on success. Enforces:
-/// - HTTPS only (no plaintext HTTP)
-/// - No IP addresses (IPv4 or IPv6)
-/// - No localhost
-///
-/// Pure function — testable independently of wasmtime.
+/// Delegates to `crate::http_util::validate_http_url()`.
 pub(crate) fn validate_http_url(url: &str) -> Result<String, String> {
-    let parsed = reqwest::Url::parse(url).map_err(|e| format!("invalid URL: {}", e))?;
-
-    // HTTPS only
-    if parsed.scheme() != "https" {
-        return Err(format!("only HTTPS allowed, got '{}'", parsed.scheme()));
-    }
-
-    let host = parsed
-        .host_str()
-        .ok_or_else(|| "no host in URL".to_string())?;
-
-    // No localhost
-    if host == "localhost" {
-        return Err("localhost not allowed".to_string());
-    }
-
-    // No IP addresses (IPv4 or IPv6)
-    // host_str() returns brackets for IPv6 (e.g., "[::1]") — strip them
-    let bare_host = host
-        .strip_prefix('[')
-        .and_then(|h| h.strip_suffix(']'))
-        .unwrap_or(host);
-    if bare_host.parse::<std::net::IpAddr>().is_ok() {
-        return Err("IP addresses not allowed".to_string());
-    }
-
-    Ok(bare_host.to_string())
+    crate::http_util::validate_http_url(url)
 }
 
 /// Result of an HTTP operation — plain types for cross-world portability.
@@ -360,16 +317,10 @@ pub(crate) fn inject_credential(
 }
 
 /// Scan response body for leaked credential values, replacing with [REDACTED].
+///
+/// Delegates to `crate::http_util::leak_check()`.
 pub(crate) fn leak_check(body: &str, secret_name: &str, secret_value: &str) -> String {
-    if body.contains(secret_value) {
-        eprintln!(
-            "[host] credential leak detected in response: secret '{}' found in body, redacting",
-            secret_name
-        );
-        body.replace(secret_value, "[REDACTED]")
-    } else {
-        body.to_string()
-    }
+    crate::http_util::leak_check(body, secret_name, secret_value)
 }
 
 // =========================================================================
