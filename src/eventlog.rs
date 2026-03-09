@@ -308,6 +308,9 @@ fn ensure_events_db_inner() -> Result<()> {
                    WHERE event_type LIKE 'measure.%'
                       OR event_type LIKE 'scry.%'
                       OR event_type LIKE 'forge.%'
+                      OR event_type LIKE 'github.%'
+                      OR event_type LIKE 'context.%'
+                      OR event_type LIKE 'assay.%'
                    ORDER BY seq ASC"#,
                 [],
             )?;
