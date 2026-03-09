@@ -13,15 +13,15 @@ beliefs:
 exit_criteria:
 - id: auth-init-shared-type
   text: Auth payload in pipe/initialize uses a shared struct (e.g., pipe_types::AuthInit) serialized by both broker and child — no ad-hoc serde_json::json!() maps for auth.
-  checked: false
+  checked: true
   verify: build_init_params() takes AuthInit struct. Child deserializes InitializeParams.auth as Option<AuthInit>. Changing a field in AuthInit causes compile errors on both sides.
 - id: fetch-params-single-source
   text: Broker FetchParams::to_json() is replaced by serializing pipe_types::FetchParams directly — one struct definition, zero manual field mapping.
-  checked: false
+  checked: true
   verify: broker::lifecycle::FetchParams removed or wraps pipe_types::FetchParams. Adding a required field to pipe FetchParams causes compile error in broker.
 - id: wire-format-test
   text: A compile-time or unit test in patina-pipe-types validates that broker-produced JSON round-trips through child-side deserialization for all protocol messages.
-  checked: false
+  checked: true
   verify: cargo test -p patina-pipe-types includes round-trip serde tests for InitializeParams (with auth), FetchParams, and FetchResult.
 ---
 # refactor: Pipe Contract Safety — Shared Types for Cross-Crate Wire Formats
