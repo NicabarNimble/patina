@@ -122,7 +122,6 @@ patina assay belief <id>            # Find evidence for a belief
 ### Cross-Project Knowledge
 ```bash
 patina repo dojoengine/dojo              # Clone + scrape to ~/.patina/repos/
-patina repo add <url> --with-issues      # Also fetch GitHub issues
 patina repo list                         # Show registered repos
 patina repo update dojo                  # Git pull + rescrape
 patina repo remove dojo                  # Remove repo
@@ -289,7 +288,7 @@ Patina uses **E5-base-v2** (768-dim) with trained MLP projections per dimension.
 - Rust (edition 2021, tested on 1.90+)
 - Git
 - Docker (optional, for `patina yolo` devcontainer generation)
-- `gh` CLI (optional, for `--with-issues` GitHub integration)
+- `gh` CLI (optional, for GitHub authentication)
 
 ## Development
 
