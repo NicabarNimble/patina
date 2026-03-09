@@ -443,7 +443,7 @@ fn pr_to_event_json(
         .join("\n");
 
     let approvals = reviews.iter().filter(|r| r.state == "APPROVED").count() as i32;
-    let linked_issues: Vec<i64> = Vec::new();
+    let linked_issues = extract_linked_issues(item.body.as_deref().unwrap_or(""));
 
     serde_json::json!({
         "number": item.number,
@@ -461,6 +461,42 @@ fn pr_to_event_json(
         "comments_text": comments_text,
         "approvals": approvals,
     })
+}
+
+/// Extract issue numbers from PR body text.
+///
+/// Looks for GitHub closing keywords followed by `#N`:
+/// fixes, closes, resolves (and their conjugated forms).
+fn extract_linked_issues(body: &str) -> Vec<i64> {
+    const KEYWORDS: &[&str] = &[
+        "fix ", "fixes ", "fixed ",
+        "close ", "closes ", "closed ",
+        "resolve ", "resolves ", "resolved ",
+    ];
+    let lower = body.to_lowercase();
+    let mut issues = Vec::new();
+
+    for keyword in KEYWORDS {
+        let mut search_from = 0;
+        while let Some(pos) = lower[search_from..].find(keyword) {
+            let after = search_from + pos + keyword.len();
+            if let Some(rest) = lower.get(after..) {
+                let rest = rest.trim_start();
+                if let Some(rest) = rest.strip_prefix('#') {
+                    let num_str: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+                    if let Ok(n) = num_str.parse::<i64>() {
+                        if !issues.contains(&n) {
+                            issues.push(n);
+                        }
+                    }
+                }
+            }
+            search_from = after;
+        }
+    }
+
+    issues.sort();
+    issues
 }
 
 /// Track the latest updated_at timestamp for cursor.
@@ -485,5 +521,44 @@ fn truncate(s: &str, max: usize) -> &str {
         s
     } else {
         s.get(..max).unwrap_or(s)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_linked_issues_fixes() {
+        assert_eq!(extract_linked_issues("Fixes #42"), vec![42]);
+        assert_eq!(extract_linked_issues("fixes #1 and fixes #2"), vec![1, 2]);
+        assert_eq!(extract_linked_issues("Fixed #10"), vec![10]);
+    }
+
+    #[test]
+    fn test_extract_linked_issues_closes() {
+        assert_eq!(extract_linked_issues("Closes #7"), vec![7]);
+        assert_eq!(extract_linked_issues("close #3"), vec![3]);
+    }
+
+    #[test]
+    fn test_extract_linked_issues_resolves() {
+        assert_eq!(extract_linked_issues("Resolves #99"), vec![99]);
+    }
+
+    #[test]
+    fn test_extract_linked_issues_dedup() {
+        assert_eq!(extract_linked_issues("fixes #5, closes #5"), vec![5]);
+    }
+
+    #[test]
+    fn test_extract_linked_issues_none() {
+        assert_eq!(extract_linked_issues("no issues here"), Vec::<i64>::new());
+        assert_eq!(extract_linked_issues("see #123"), Vec::<i64>::new());
+    }
+
+    #[test]
+    fn test_extract_linked_issues_sorted() {
+        assert_eq!(extract_linked_issues("fixes #30, fixes #10, fixes #20"), vec![10, 20, 30]);
     }
 }
