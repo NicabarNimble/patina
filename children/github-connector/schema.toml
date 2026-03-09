@@ -17,7 +17,7 @@ record = "pull-request"
 identity_fields = ["number"]
 
 [embedding]
-offset_slot = 6
+offset_slot = 5
 corpus_query = """
 SELECT seq,
        json_extract(data, '$.title') || ' ' ||
@@ -46,8 +46,11 @@ columns = [
     { name = "title", type = "TEXT", json_path = "$.title" },
     { name = "body", type = "TEXT", json_path = "$.body" },
     { name = "state", type = "TEXT", json_path = "$.state" },
+    { name = "labels", type = "TEXT", json_path = "$.labels" },
+    { name = "author", type = "TEXT", json_path = "$.author" },
     { name = "created_at", type = "TEXT", json_path = "$.created_at" },
     { name = "updated_at", type = "TEXT", json_path = "$.updated_at" },
+    { name = "url", type = "TEXT", json_path = "$.url" },
 ]
 
 [[projections]]
@@ -59,6 +62,13 @@ columns = [
     { name = "title", type = "TEXT", json_path = "$.title" },
     { name = "body", type = "TEXT", json_path = "$.body" },
     { name = "state", type = "TEXT", json_path = "$.state" },
+    { name = "labels", type = "TEXT", json_path = "$.labels" },
+    { name = "author", type = "TEXT", json_path = "$.author" },
+    { name = "created_at", type = "TEXT", json_path = "$.created_at" },
+    { name = "merged_at", type = "TEXT", json_path = "$.merged_at" },
+    { name = "url", type = "TEXT", json_path = "$.url" },
+    { name = "linked_issues", type = "TEXT", json_path = "$.linked_issues" },
+    { name = "approvals", type = "INTEGER", json_path = "$.approvals" },
 ]
 
 [[contracts]]
