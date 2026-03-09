@@ -1861,10 +1861,30 @@ path_template = "{source}"
         assert_eq!(meta.facts[0].identity_fields, vec!["number"]);
         assert_eq!(meta.facts[1].identity_fields, vec!["number"]);
 
-        // projections present
+        // projections must match source schema (wit/schema/github)
         assert_eq!(meta.projections.len(), 2);
         assert_eq!(meta.projections[0].table, "github_issues");
-        assert!(meta.projections[0].columns.len() >= 4);
+        assert_eq!(meta.projections[0].columns.len(), 8);
+        assert_eq!(meta.projections[1].table, "github_prs");
+        assert_eq!(meta.projections[1].columns.len(), 11);
+
+        // PR projection must include comments_text
+        let pr_col_names: Vec<&str> = meta.projections[1]
+            .columns
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        assert!(
+            pr_col_names.contains(&"comments_text"),
+            "PR projection missing comments_text column"
+        );
+
+        // PR FTS index must use comments_text (not comments)
+        let pr_index = meta.indexes.iter().find(|i| i.fact == "pull-request").unwrap();
+        assert!(
+            pr_index.fts_fields.contains(&"comments_text".to_string()),
+            "PR FTS index should use comments_text, not comments"
+        );
 
         // contracts present
         assert_eq!(meta.contracts.len(), 2);

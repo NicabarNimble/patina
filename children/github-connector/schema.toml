@@ -34,7 +34,7 @@ table = "github_issues"
 
 [[indexes]]
 fact = "pull-request"
-fts_fields = ["title", "body", "comments"]
+fts_fields = ["title", "body", "comments_text"]
 table = "github_prs"
 
 [[projections]]
@@ -65,6 +65,7 @@ columns = [
     { name = "author", type = "TEXT", json_path = "$.author" },
     { name = "merged_at", type = "TEXT", json_path = "$.merged_at" },
     { name = "url", type = "TEXT", json_path = "$.url" },
+    { name = "comments_text", type = "TEXT", json_path = "$.comments_text" },
     { name = "linked_issues", type = "TEXT", json_path = "$.linked_issues" },
     { name = "approvals", type = "INTEGER", json_path = "$.approvals" },
 ]
