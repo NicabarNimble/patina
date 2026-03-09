@@ -359,6 +359,13 @@ JSON-RPC error code mapping (used by transport layers only):
 - `-32004`: Partial success (some facts emitted before failure)
 - `-32600` to `-32700`: Standard JSON-RPC errors (parse, method, etc.)
 
+**Boundary rule:** `-32001..-32004` pass through `PipeError` (child
+returns a variant, transport maps it to a code). `-32600..-32700` are
+serialized directly by the transport layer — they never touch
+`PipeError`. The `run()` dispatcher (§7.2) uses `Response::error()`
+directly for parse errors, invalid version, invalid params, and unknown
+methods. This keeps PipeError's job to one thing: child-facing errors.
+
 ### 1.6 Content Addressing and Signing
 
 Every fact emitted through pipe protocol is:
@@ -853,10 +860,12 @@ One JSON-RPC message per line (newline-delimited). This is the same
 transport as the MCP stdio server (`src/mcp/server/mod.rs`).
 
 The `run()` function in patina-pipe dispatches all pipe protocol
-methods. The `Child` trait has default implementations that return
-`MethodNotFound` for methods a child doesn't support — connector
-children implement `fetch()`, lakehouse children implement
-`ingest()`, both get the rest for free:
+methods. Unknown methods are rejected at the transport layer with
+standard JSON-RPC `-32601` (Method not found) — this bypasses
+`PipeError` entirely, consistent with §1.5's boundary: standard
+protocol errors are transport concerns, not child concerns.
+Connector children implement `fetch()`, lakehouse children
+implement `ingest()`, both get the rest for free:
 
 ```rust
 pub fn run<C: Child>(mut child: C) -> Result<()> {
@@ -883,8 +892,8 @@ pub fn run<C: Child>(mut child: C) -> Result<()> {
             }
             "pipe/ingest" => {
                 // Storage children (lakehouse) handle ingest.
-                // Connector children don't implement this — they
-                // return MethodNotFound, which is correct.
+                // Connector children don't implement this — the
+                // `_ =>` arm below returns -32601 at transport level.
                 let params = parse_ingest_params(&request)?;
                 match child.ingest(&params) {
                     Ok(result) => send_response(&mut stdout, &request, &result)?,
@@ -901,8 +910,12 @@ pub fn run<C: Child>(mut child: C) -> Result<()> {
                 send_response(&mut stdout, &request, &json!({}))?;
                 break;
             }
-            _ => send_error(&mut stdout, &request,
-                &PipeError::Fatal { message: "Method not found".into() })?,
+            _ => {
+                // Transport-layer error: standard JSON-RPC -32601.
+                // Does NOT use PipeError — method routing is a transport
+                // concern, not a child concern (see §1.5).
+                send_response_error(&mut stdout, &request, -32601, "Method not found")?;
+            }
         }
     }
     Ok(())
