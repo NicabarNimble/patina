@@ -139,33 +139,81 @@ fn populate_schema_registry(conn: &Connection) -> Result<()> {
 }
 
 // ============================================================================
-// Dedup helpers
+// Schema-driven event type resolution
 // ============================================================================
 
-/// Check if we already have this issue at this updated_at timestamp.
-fn issue_event_exists(events_conn: &Connection, number: i64, updated_at: &str) -> Result<bool> {
-    let count: i64 = events_conn.query_row(
-        "SELECT COUNT(*) FROM eventlog
-         WHERE event_type LIKE '%.issue'
-           AND json_extract(data, '$.number') = ?1
-           AND json_extract(data, '$.updated_at') = ?2",
-        rusqlite::params![number, updated_at],
-        |row| row.get(0),
-    )?;
-    Ok(count > 0)
+/// Resolve the write event_type for a given projection table from schema_registry.
+///
+/// Returns the event_type from the alphabetically-first schema (deterministic,
+/// consistent with FTS5 dedup). Falls back to `fallback` if schema_registry
+/// is not populated or the table is unknown.
+pub fn resolve_event_type(patina_conn: &Connection, table_name: &str, fallback: &str) -> String {
+    patina_conn
+        .query_row(
+            "SELECT event_type FROM schema_registry
+             WHERE table_name = ?1
+             ORDER BY schema_name
+             LIMIT 1",
+            [table_name],
+            |row| row.get(0),
+        )
+        .unwrap_or_else(|_| fallback.to_string())
 }
 
-/// Check if we already have this PR at this updated_at timestamp.
-fn pr_event_exists(events_conn: &Connection, number: i64, updated_at: &str) -> Result<bool> {
-    let count: i64 = events_conn.query_row(
-        "SELECT COUNT(*) FROM eventlog
-         WHERE event_type LIKE '%.pr'
-           AND json_extract(data, '$.number') = ?1
-           AND json_extract(data, '$.updated_at') = ?2",
-        rusqlite::params![number, updated_at],
-        |row| row.get(0),
-    )?;
-    Ok(count > 0)
+/// Resolve all event_types that map to a given projection table.
+///
+/// Used for dedup: when checking if an event already exists, we must check
+/// ALL event_types that could have written to this table (e.g., both
+/// forge.issue and github.issue for forge_issues).
+///
+/// Falls back to vec![fallback] if schema_registry is not populated.
+fn resolve_dedup_event_types(
+    patina_conn: &Connection,
+    table_name: &str,
+    fallback: &str,
+) -> Vec<String> {
+    let result: Vec<String> = patina_conn
+        .prepare("SELECT event_type FROM schema_registry WHERE table_name = ?1")
+        .and_then(|mut stmt| {
+            stmt.query_map([table_name], |row| row.get(0))
+                .map(|rows| rows.flatten().collect())
+        })
+        .unwrap_or_default();
+
+    if result.is_empty() {
+        vec![fallback.to_string()]
+    } else {
+        result
+    }
+}
+
+// ============================================================================
+// Dedup helpers — exact event_type matching via schema registry
+// ============================================================================
+
+/// Check if we already have this event (by number + updated_at) under any
+/// of the given event_types. Replaces suffix-based LIKE matching with
+/// exact-match queries driven by the schema registry.
+fn event_exists(
+    events_conn: &Connection,
+    event_types: &[String],
+    number: i64,
+    updated_at: &str,
+) -> Result<bool> {
+    for event_type in event_types {
+        let count: i64 = events_conn.query_row(
+            "SELECT COUNT(*) FROM eventlog
+             WHERE event_type = ?1
+               AND json_extract(data, '$.number') = ?2
+               AND json_extract(data, '$.updated_at') = ?3",
+            rusqlite::params![event_type, number, updated_at],
+            |row| row.get(0),
+        )?;
+        if count > 0 {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 // ============================================================================
@@ -347,13 +395,22 @@ pub struct InsertStats {
 }
 
 /// Insert issues into events.db eventlog and patina.db materialized views.
+///
+/// `event_type` is the schema-driven event type to write (e.g., "forge.issue").
+/// Dedup checks all event_types that map to the same projection table via
+/// schema_registry, so old forge.* events and new schema-driven events are
+/// both considered when detecting duplicates.
 pub fn insert_issues(
     patina_conn: &Connection,
     events_conn: &Connection,
     issues: &[Issue],
+    event_type: &str,
 ) -> Result<InsertStats> {
     let mut inserted = 0;
     let mut skipped = 0;
+
+    // Resolve all event_types for forge_issues table (dedup across schemas)
+    let dedup_types = resolve_dedup_event_types(patina_conn, "forge_issues", event_type);
 
     let mut issue_stmt = patina_conn.prepare(
         "INSERT OR REPLACE INTO forge_issues
@@ -368,7 +425,7 @@ pub fn insert_issues(
             IssueState::Closed => "closed",
         };
 
-        let seq = if issue_event_exists(events_conn, issue.number, &issue.updated_at)? {
+        let seq = if event_exists(events_conn, &dedup_types, issue.number, &issue.updated_at)? {
             skipped += 1;
             None
         } else {
@@ -385,7 +442,7 @@ pub fn insert_issues(
 
             let seq = database::insert_event(
                 events_conn,
-                "forge.issue",
+                event_type,
                 &issue.created_at,
                 &issue.number.to_string(),
                 Some(&issue.url),
@@ -413,13 +470,22 @@ pub fn insert_issues(
 }
 
 /// Insert PRs into events.db eventlog and patina.db materialized views.
+///
+/// `event_type` is the schema-driven event type to write (e.g., "forge.pr").
+/// Dedup checks all event_types that map to the same projection table via
+/// schema_registry, so old forge.* events and new schema-driven events are
+/// both considered when detecting duplicates.
 pub fn insert_prs(
     patina_conn: &Connection,
     events_conn: &Connection,
     prs: &[PullRequest],
+    event_type: &str,
 ) -> Result<InsertStats> {
     let mut inserted = 0;
     let mut skipped = 0;
+
+    // Resolve all event_types for forge_prs table (dedup across schemas)
+    let dedup_types = resolve_dedup_event_types(patina_conn, "forge_prs", event_type);
 
     let mut pr_stmt = patina_conn.prepare(
         "INSERT OR REPLACE INTO forge_prs
@@ -438,7 +504,7 @@ pub fn insert_prs(
 
         let updated_at = &pr.created_at;
 
-        let seq = if pr_event_exists(events_conn, pr.number, updated_at)? {
+        let seq = if event_exists(events_conn, &dedup_types, pr.number, updated_at)? {
             skipped += 1;
             None
         } else {
@@ -465,7 +531,7 @@ pub fn insert_prs(
 
             let seq = database::insert_event(
                 events_conn,
-                "forge.pr",
+                event_type,
                 &pr.created_at,
                 &pr.number.to_string(),
                 Some(&pr.url),
@@ -952,5 +1018,272 @@ mod tests {
         let expr = build_fts_content_expr(&fts_fields, &available);
         // Only "title" passes identifier validation
         assert_eq!(expr, "COALESCE(title, '')");
+    }
+
+    // --- write-side event_type parameterization tests ---
+
+    /// Set up an in-memory events.db with eventlog table (for dedup tests).
+    fn setup_events_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE eventlog (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                source_file TEXT,
+                data TEXT NOT NULL,
+                provenance TEXT NOT NULL DEFAULT 'local',
+                CHECK(json_valid(data))
+            );
+            CREATE INDEX idx_eventlog_type ON eventlog(event_type);",
+        )
+        .unwrap();
+        conn
+    }
+
+    /// Set up patina.db with schema_registry + materialized views (for insert tests).
+    fn setup_patina_db_with_registry() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_registry (
+                schema_name TEXT NOT NULL,
+                event_type  TEXT NOT NULL,
+                fact_name   TEXT NOT NULL,
+                table_name  TEXT NOT NULL,
+                fts_fields  TEXT,
+                corpus_query TEXT,
+                offset_slot INTEGER,
+                PRIMARY KEY (schema_name, event_type)
+            );
+            CREATE TABLE forge_issues (
+                number INTEGER PRIMARY KEY,
+                title TEXT NOT NULL,
+                body TEXT,
+                state TEXT NOT NULL,
+                labels TEXT,
+                author TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                url TEXT NOT NULL,
+                event_seq INTEGER
+            );
+            CREATE TABLE forge_prs (
+                number INTEGER PRIMARY KEY,
+                title TEXT NOT NULL,
+                body TEXT,
+                state TEXT NOT NULL,
+                labels TEXT,
+                author TEXT,
+                created_at TEXT NOT NULL,
+                merged_at TEXT,
+                url TEXT NOT NULL,
+                linked_issues TEXT,
+                approvals INTEGER DEFAULT 0,
+                event_seq INTEGER
+            );",
+        )
+        .unwrap();
+
+        // Populate with both forge and github schemas (shared tables)
+        conn.execute_batch(
+            "INSERT INTO schema_registry (schema_name, event_type, fact_name, table_name)
+             VALUES ('forge', 'forge.issue', 'issue', 'forge_issues');
+             INSERT INTO schema_registry (schema_name, event_type, fact_name, table_name)
+             VALUES ('forge', 'forge.pr', 'pull-request', 'forge_prs');
+             INSERT INTO schema_registry (schema_name, event_type, fact_name, table_name)
+             VALUES ('github', 'github.issue', 'issue', 'forge_issues');
+             INSERT INTO schema_registry (schema_name, event_type, fact_name, table_name)
+             VALUES ('github', 'github.pr', 'pull-request', 'forge_prs');",
+        )
+        .unwrap();
+
+        conn
+    }
+
+    #[test]
+    fn test_resolve_event_type_from_registry() {
+        let conn = setup_patina_db_with_registry();
+
+        // Alphabetically first schema wins: "forge" < "github"
+        let et = resolve_event_type(&conn, "forge_issues", "fallback");
+        assert_eq!(et, "forge.issue");
+
+        let et = resolve_event_type(&conn, "forge_prs", "fallback");
+        assert_eq!(et, "forge.pr");
+    }
+
+    #[test]
+    fn test_resolve_event_type_fallback_no_registry() {
+        let conn = Connection::open_in_memory().unwrap();
+        // No schema_registry table — should use fallback
+        let et = resolve_event_type(&conn, "forge_issues", "my.fallback");
+        assert_eq!(et, "my.fallback");
+    }
+
+    #[test]
+    fn test_resolve_dedup_event_types_returns_all() {
+        let conn = setup_patina_db_with_registry();
+
+        let types = resolve_dedup_event_types(&conn, "forge_issues", "fallback");
+        assert_eq!(types.len(), 2);
+        assert!(types.contains(&"forge.issue".to_string()));
+        assert!(types.contains(&"github.issue".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_dedup_event_types_fallback() {
+        let conn = Connection::open_in_memory().unwrap();
+        let types = resolve_dedup_event_types(&conn, "forge_issues", "my.fallback");
+        assert_eq!(types, vec!["my.fallback"]);
+    }
+
+    #[test]
+    fn test_event_exists_exact_match() {
+        let events_conn = setup_events_db();
+
+        // Insert an event with forge.issue type
+        events_conn
+            .execute(
+                "INSERT INTO eventlog (event_type, timestamp, source_id, data)
+                 VALUES ('forge.issue', '2026-01-01', '42', ?1)",
+                [r#"{"number": 42, "updated_at": "2026-01-01T00:00:00Z"}"#],
+            )
+            .unwrap();
+
+        // Exact match: forge.issue should find it
+        let types = vec!["forge.issue".to_string()];
+        assert!(event_exists(&events_conn, &types, 42, "2026-01-01T00:00:00Z").unwrap());
+
+        // Multi-type match: should also find via combined types
+        let types = vec!["forge.issue".to_string(), "github.issue".to_string()];
+        assert!(event_exists(&events_conn, &types, 42, "2026-01-01T00:00:00Z").unwrap());
+
+        // Non-matching type should not find it
+        let types = vec!["github.issue".to_string()];
+        assert!(!event_exists(&events_conn, &types, 42, "2026-01-01T00:00:00Z").unwrap());
+    }
+
+    #[test]
+    fn test_event_exists_cross_schema_dedup() {
+        let events_conn = setup_events_db();
+
+        // Old event written as forge.issue
+        events_conn
+            .execute(
+                "INSERT INTO eventlog (event_type, timestamp, source_id, data)
+                 VALUES ('forge.issue', '2026-01-01', '7', ?1)",
+                [r#"{"number": 7, "updated_at": "2026-01-01T12:00:00Z"}"#],
+            )
+            .unwrap();
+
+        // Dedup with both types should catch the old forge.issue event
+        let types = vec!["forge.issue".to_string(), "github.issue".to_string()];
+        assert!(event_exists(&events_conn, &types, 7, "2026-01-01T12:00:00Z").unwrap());
+
+        // Different number should not match
+        assert!(!event_exists(&events_conn, &types, 8, "2026-01-01T12:00:00Z").unwrap());
+
+        // Different updated_at should not match
+        assert!(!event_exists(&events_conn, &types, 7, "2026-02-01T00:00:00Z").unwrap());
+    }
+
+    #[test]
+    fn test_insert_issues_uses_provided_event_type() {
+        let patina_conn = setup_patina_db_with_registry();
+        let events_conn = setup_events_db();
+
+        let issues = vec![Issue {
+            number: 1,
+            title: "Test issue".to_string(),
+            body: Some("Body".to_string()),
+            state: IssueState::Open,
+            author: "user".to_string(),
+            labels: vec![],
+            created_at: "2026-01-01".to_string(),
+            updated_at: "2026-01-01T12:00:00Z".to_string(),
+            url: "https://example.com/1".to_string(),
+        }];
+
+        let stats = insert_issues(&patina_conn, &events_conn, &issues, "forge.issue").unwrap();
+        assert_eq!(stats.inserted, 1);
+        assert_eq!(stats.skipped, 0);
+
+        // Verify event was written with the provided event_type
+        let stored_type: String = events_conn
+            .query_row(
+                "SELECT event_type FROM eventlog WHERE json_extract(data, '$.number') = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored_type, "forge.issue");
+    }
+
+    #[test]
+    fn test_insert_issues_dedup_across_schemas() {
+        let patina_conn = setup_patina_db_with_registry();
+        let events_conn = setup_events_db();
+
+        // Insert an event manually as "forge.issue" (simulating old data)
+        events_conn
+            .execute(
+                "INSERT INTO eventlog (event_type, timestamp, source_id, data)
+                 VALUES ('forge.issue', '2026-01-01', '1', ?1)",
+                [r#"{"number": 1, "updated_at": "2026-01-01T12:00:00Z"}"#],
+            )
+            .unwrap();
+
+        // Now try to insert the same issue via insert_issues with "github.issue"
+        let issues = vec![Issue {
+            number: 1,
+            title: "Test issue".to_string(),
+            body: Some("Body".to_string()),
+            state: IssueState::Open,
+            author: "user".to_string(),
+            labels: vec![],
+            created_at: "2026-01-01".to_string(),
+            updated_at: "2026-01-01T12:00:00Z".to_string(),
+            url: "https://example.com/1".to_string(),
+        }];
+
+        // Should skip because schema_registry maps both forge.issue and
+        // github.issue to forge_issues — cross-schema dedup catches the old event
+        let stats = insert_issues(&patina_conn, &events_conn, &issues, "github.issue").unwrap();
+        assert_eq!(stats.inserted, 0);
+        assert_eq!(stats.skipped, 1);
+    }
+
+    #[test]
+    fn test_insert_prs_uses_provided_event_type() {
+        let patina_conn = setup_patina_db_with_registry();
+        let events_conn = setup_events_db();
+
+        let prs = vec![PullRequest {
+            number: 10,
+            title: "Test PR".to_string(),
+            body: Some("PR Body".to_string()),
+            state: PrState::Open,
+            author: "dev".to_string(),
+            labels: vec![],
+            created_at: "2026-01-01".to_string(),
+            merged_at: None,
+            url: "https://example.com/10".to_string(),
+            linked_issues: vec![],
+            comments: vec![],
+            approvals: 0,
+        }];
+
+        let stats = insert_prs(&patina_conn, &events_conn, &prs, "forge.pr").unwrap();
+        assert_eq!(stats.inserted, 1);
+
+        let stored_type: String = events_conn
+            .query_row(
+                "SELECT event_type FROM eventlog WHERE json_extract(data, '$.number') = 10",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored_type, "forge.pr");
     }
 }

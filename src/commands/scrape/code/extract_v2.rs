@@ -62,6 +62,21 @@ pub fn extract_code_metadata_v2(
     // Open events.db for forge event writes (runtime events go to events.db)
     let events_conn = patina::eventlog::open_events_db()?;
 
+    // Resolve schema-driven event types for write path.
+    // Uses schema_registry (populated by project_from_events above) to determine
+    // which event_type to write. Alphabetically-first schema wins, consistent
+    // with FTS5 dedup logic.
+    let issue_event_type = crate::commands::scrape::events::resolve_event_type(
+        db.connection(),
+        "forge_issues",
+        "forge.issue",
+    );
+    let pr_event_type = crate::commands::scrape::events::resolve_event_type(
+        db.connection(),
+        "forge_prs",
+        "forge.pr",
+    );
+
     // Find all supported language files
     let mut all_files: Vec<(PathBuf, Language)> = Vec::new();
 
@@ -181,6 +196,7 @@ pub fn extract_code_metadata_v2(
                             conn,
                             &events_conn,
                             &[issue],
+                            &issue_event_type,
                         ) {
                             Ok(stats) => {
                                 forge_issues_inserted += stats.inserted;
@@ -198,8 +214,12 @@ pub fn extract_code_metadata_v2(
                     }
                     ExtractedPayload::PullRequest(pr) => {
                         let conn = db.connection();
-                        match crate::commands::scrape::events::insert_prs(conn, &events_conn, &[pr])
-                        {
+                        match crate::commands::scrape::events::insert_prs(
+                            conn,
+                            &events_conn,
+                            &[pr],
+                            &pr_event_type,
+                        ) {
                             Ok(stats) => {
                                 forge_prs_inserted += stats.inserted;
                                 forge_skipped += stats.skipped;
