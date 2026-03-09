@@ -8,6 +8,24 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+/// Where a source's facts are routed after validation.
+///
+/// Sources without a destination default to Project (backward compat).
+/// Lake destinations route facts to a lakehouse child via pipe/ingest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Destination {
+    /// Write to the project's events.db (current behavior, default).
+    Project,
+    /// Route to a named lake via pipe/ingest to lakehouse child.
+    Lake { name: String },
+}
+
+impl Default for Destination {
+    fn default() -> Self {
+        Destination::Project
+    }
+}
+
 /// A single source entry from sources.toml.
 #[derive(Debug, Clone)]
 pub struct SourceEntry {
@@ -16,6 +34,7 @@ pub struct SourceEntry {
     pub params: HashMap<String, toml::Value>,
     pub types: Vec<String>,
     pub schedule: String,
+    pub destination: Destination,
 }
 
 /// All sources for a single project.
@@ -41,10 +60,45 @@ struct RawSourceEntry {
     types: Vec<String>,
     #[serde(default = "default_schedule")]
     schedule: String,
+    #[serde(default)]
+    destination: Option<RawDestination>,
+}
+
+#[derive(Deserialize)]
+struct RawDestination {
+    #[serde(rename = "type")]
+    dest_type: String,
+    /// Lake name (required when type = "lake").
+    lake: Option<String>,
 }
 
 fn default_schedule() -> String {
     "manual".to_string()
+}
+
+fn parse_destination(raw: Option<RawDestination>, source_name: &str) -> Result<Destination> {
+    match raw {
+        None => Ok(Destination::Project),
+        Some(dest) => match dest.dest_type.as_str() {
+            "project" => Ok(Destination::Project),
+            "lake" => {
+                let name = dest.lake.ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "source '{}': destination type 'lake' requires a 'lake' field",
+                        source_name
+                    )
+                })?;
+                Ok(Destination::Lake { name })
+            }
+            other => {
+                anyhow::bail!(
+                    "source '{}': unknown destination type '{}' (expected 'project' or 'lake')",
+                    source_name,
+                    other
+                )
+            }
+        },
+    }
 }
 
 /// Load sources.toml from a specific project root.
@@ -119,17 +173,18 @@ pub fn scan_all_sources() -> Result<Vec<ProjectSources>> {
 fn parse_sources(content: &str) -> Result<Vec<SourceEntry>> {
     let raw: RawSourcesFile = toml::from_str(content).with_context(|| "parsing sources.toml")?;
 
-    let mut entries: Vec<SourceEntry> = raw
-        .sources
-        .into_iter()
-        .map(|(name, raw)| SourceEntry {
+    let mut entries: Vec<SourceEntry> = Vec::new();
+    for (name, raw) in raw.sources {
+        let destination = parse_destination(raw.destination, &name)?;
+        entries.push(SourceEntry {
             name,
             connection: raw.connection,
             params: raw.params,
             types: raw.types,
             schedule: raw.schedule,
-        })
-        .collect();
+            destination,
+        });
+    }
 
     // Sort by name for deterministic ordering
     entries.sort_by(|a, b| a.name.cmp(&b.name));
@@ -211,5 +266,109 @@ schedule = "daily"
 "#;
         let result = parse_sources(toml);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_source_no_destination_defaults_to_project() {
+        let toml = r#"
+[sources.github]
+connection = "github"
+types = ["issues"]
+"#;
+        let entries = parse_sources(toml).unwrap();
+        assert_eq!(entries[0].destination, Destination::Project);
+    }
+
+    #[test]
+    fn parse_source_explicit_project_destination() {
+        let toml = r#"
+[sources.github]
+connection = "github"
+types = ["issues"]
+
+[sources.github.destination]
+type = "project"
+"#;
+        let entries = parse_sources(toml).unwrap();
+        assert_eq!(entries[0].destination, Destination::Project);
+    }
+
+    #[test]
+    fn parse_source_lake_destination() {
+        let toml = r#"
+[sources.github-lake]
+connection = "github"
+types = ["issues", "prs"]
+schedule = "hourly"
+
+[sources.github-lake.destination]
+type = "lake"
+lake = "github-data"
+"#;
+        let entries = parse_sources(toml).unwrap();
+        assert_eq!(
+            entries[0].destination,
+            Destination::Lake {
+                name: "github-data".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_lake_destination_missing_name_errors() {
+        let toml = r#"
+[sources.bad]
+connection = "github"
+
+[sources.bad.destination]
+type = "lake"
+"#;
+        let result = parse_sources(toml);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("lake"));
+    }
+
+    #[test]
+    fn parse_unknown_destination_type_errors() {
+        let toml = r#"
+[sources.bad]
+connection = "github"
+
+[sources.bad.destination]
+type = "bucket"
+"#;
+        let result = parse_sources(toml);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown destination type"));
+    }
+
+    #[test]
+    fn parse_mixed_destinations() {
+        let toml = r#"
+[sources.github]
+connection = "github"
+types = ["issues"]
+
+[sources.github-lake]
+connection = "github"
+types = ["issues", "prs"]
+
+[sources.github-lake.destination]
+type = "lake"
+lake = "org-lake"
+"#;
+        let entries = parse_sources(toml).unwrap();
+        assert_eq!(entries.len(), 2);
+
+        let project = entries.iter().find(|e| e.name == "github").unwrap();
+        assert_eq!(project.destination, Destination::Project);
+
+        let lake = entries.iter().find(|e| e.name == "github-lake").unwrap();
+        assert_eq!(
+            lake.destination,
+            Destination::Lake {
+                name: "org-lake".to_string()
+            }
+        );
     }
 }
