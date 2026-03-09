@@ -373,11 +373,10 @@ fn check_data_integrity(recommendations: &mut Vec<String>) -> DataIntegrity {
     integrity
 }
 
-/// Active event types from the Layer 0 registry (data-architecture-v2 SPEC).
-///
-/// These are the event types that should have emitters wired in code.
-/// Checked at runtime — not static analysis.
-const ACTIVE_EVENT_TYPES: &[&str] = &[
+/// Non-schema event types that should have emitters wired in code.
+/// Schema-driven event types (forge.issue, github.issue, etc.) are
+/// resolved at runtime from installed schemas.
+const CORE_EVENT_TYPES: &[&str] = &[
     "measure.capture",
     "measure.search",
     "measure.index",
@@ -386,16 +385,37 @@ const ACTIVE_EVENT_TYPES: &[&str] = &[
     "scry.query",
     "scry.use",
     "scry.feedback",
-    "forge.issue",
-    "forge.pr",
     "context.query",
     "assay.query",
 ];
 
+/// Build the full list of active event types: core (hardcoded) + schema-driven.
+///
+/// Schema event types are loaded from installed schemas at runtime, so new
+/// connectors automatically appear in doctor checks without code changes.
+fn build_active_event_types() -> Vec<String> {
+    let mut types: Vec<String> = CORE_EVENT_TYPES.iter().map(|s| s.to_string()).collect();
+
+    // Add event types from installed schemas
+    if let Ok(schemas) = crate::commands::schema::load_all_installed() {
+        for schema in &schemas {
+            for fact in &schema.facts {
+                if !types.contains(&fact.event_type) {
+                    types.push(fact.event_type.clone());
+                }
+            }
+        }
+    }
+
+    types
+}
+
 /// Check emission coverage: which registered event types have data in events.db.
 fn check_emission_coverage(recommendations: &mut Vec<String>) -> EmissionCoverage {
+    let active_types = build_active_event_types();
+
     let mut coverage = EmissionCoverage {
-        types_checked: ACTIVE_EVENT_TYPES.len(),
+        types_checked: active_types.len(),
         ..Default::default()
     };
 
@@ -404,11 +424,11 @@ fn check_emission_coverage(recommendations: &mut Vec<String>) -> EmissionCoverag
         Err(_) => return coverage,
     };
 
-    for &event_type in ACTIVE_EVENT_TYPES {
+    for event_type in &active_types {
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM eventlog WHERE event_type = ?1",
-                [event_type],
+                [event_type.as_str()],
                 |row| row.get(0),
             )
             .unwrap_or(0);
