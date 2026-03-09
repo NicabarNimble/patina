@@ -41,3 +41,13 @@ pub fn create(record: &ConnectionRecord, credential: &str) -> Result<(), Connect
 pub fn remove(name: &str, force: bool) -> Result<(), ConnectError> {
     internal::store::remove(name, force)
 }
+
+// Auth resolution (consumption layer)
+
+/// Resolve a ConnectionRecord into an execution-ready AuthPlan.
+///
+/// This is the ONLY place that decrypts vault material for connection use.
+/// FAIL CLOSED: missing credential = error, not warning.
+pub fn resolve_auth(record: &ConnectionRecord) -> Result<AuthPlan, ConnectError> {
+    internal::resolve::resolve_auth(record)
+}
