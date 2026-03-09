@@ -1346,6 +1346,28 @@ package = "patina:schema/empty@1.0.0"
         assert_eq!(meta.projections[1].table, "github_prs");
         assert_eq!(meta.projections[1].columns.len(), 11);
 
+        // PR projection must include comments_text
+        let pr_col_names: Vec<&str> = meta.projections[1]
+            .columns
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        assert!(
+            pr_col_names.contains(&"comments_text"),
+            "PR projection missing comments_text column"
+        );
+
+        // PR FTS index must use comments_text (not comments)
+        let pr_index = meta
+            .indexes
+            .iter()
+            .find(|i| i.fact == "pull-request")
+            .unwrap();
+        assert!(
+            pr_index.fts_fields.contains(&"comments_text".to_string()),
+            "PR FTS index should use comments_text, not comments"
+        );
+
         // contracts
         assert_eq!(meta.contracts.len(), 2);
         assert_eq!(meta.contracts[0].name, "issues");
@@ -1848,58 +1870,16 @@ path_template = "{source}"
         );
     }
 
+    /// Verify the canonical github schema (wit/schema/github/) is the single
+    /// source of truth. There should be no connector-local schema.toml.
     #[test]
-    fn parse_github_connector_schema() {
-        let connector_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("children/github-connector");
-        if !connector_dir.exists() {
-            return;
-        }
-        let meta = parse_schema_toml(&connector_dir).unwrap();
-        assert_eq!(meta.schema.name, "github");
-
-        // identity_fields present
-        assert_eq!(meta.facts[0].identity_fields, vec!["number"]);
-        assert_eq!(meta.facts[1].identity_fields, vec!["number"]);
-
-        // projections must match source schema (wit/schema/github)
-        assert_eq!(meta.projections.len(), 2);
-        assert_eq!(meta.projections[0].table, "github_issues");
-        assert_eq!(meta.projections[0].columns.len(), 8);
-        assert_eq!(meta.projections[1].table, "github_prs");
-        assert_eq!(meta.projections[1].columns.len(), 11);
-
-        // PR projection must include comments_text
-        let pr_col_names: Vec<&str> = meta.projections[1]
-            .columns
-            .iter()
-            .map(|c| c.name.as_str())
-            .collect();
+    fn no_connector_local_schema() {
+        let connector_schema =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("children/github-connector/schema.toml");
         assert!(
-            pr_col_names.contains(&"comments_text"),
-            "PR projection missing comments_text column"
-        );
-
-        // PR FTS index must use comments_text (not comments)
-        let pr_index = meta
-            .indexes
-            .iter()
-            .find(|i| i.fact == "pull-request")
-            .unwrap();
-        assert!(
-            pr_index.fts_fields.contains(&"comments_text".to_string()),
-            "PR FTS index should use comments_text, not comments"
-        );
-
-        // contracts present
-        assert_eq!(meta.contracts.len(), 2);
-        assert_eq!(meta.contracts[0].display_kind, "Issue");
-        assert_eq!(meta.contracts[1].display_kind, "PR");
-
-        // lake present
-        assert!(meta.lake.is_some());
-        assert_eq!(
-            meta.lake.as_ref().unwrap().path_template.as_deref(),
-            Some("{owner}/{repo}")
+            !connector_schema.exists(),
+            "children/github-connector/schema.toml should not exist — \
+             wit/schema/github/schema.toml is the canonical source"
         );
     }
 }
