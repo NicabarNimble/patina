@@ -1,7 +1,7 @@
 ---
 type: feat
 id: patina-connect
-status: ready
+status: active
 created: 2026-03-06
 sessions:
   origin: 20260306-171859
