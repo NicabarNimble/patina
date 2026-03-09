@@ -316,6 +316,15 @@ enum Commands {
         command: Option<commands::model::ModelCommands>,
     },
 
+    /// Manage external service connections (OAuth, tokens, credentials)
+    ///
+    /// Create, list, and manage connections to external services like GitHub.
+    /// Connections store credentials in the vault and are consumed by the broker.
+    Connect {
+        #[command(subcommand)]
+        command: Option<commands::connect::ConnectCommands>,
+    },
+
     /// The Patina daemon — cross-project knowledge, caching, and routing
     ///
     /// Mother is the always-running daemon that provides hot model caching,
@@ -1628,6 +1637,7 @@ fn main() -> Result<()> {
             contrib,
         }) => commands::repo::execute_cli(command, url, contrib)?,
         Some(Commands::Model { command }) => commands::model::execute_cli(command)?,
+        Some(Commands::Connect { command }) => commands::connect::execute_cli(command)?,
         Some(Commands::Mother { command }) => {
             commands::mother::execute_cli(command, mcp::run_mcp_server)?
         }

@@ -2,6 +2,7 @@ pub mod adapter;
 pub mod assay;
 pub mod belief;
 pub mod bench;
+pub mod connect;
 pub mod context;
 #[cfg(feature = "bundled-doctor")]
 pub mod doctor;
