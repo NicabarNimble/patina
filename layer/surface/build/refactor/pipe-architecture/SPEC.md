@@ -559,11 +559,24 @@ live in one SQLite transaction. Lake writes introduce filesystem
 writes, bounded multi-batch ingest, post-confirmation cursor advance,
 and error/status tracking in a different store.
 
+**Seam 1 is larger than "broker routing."** The visible work is in
+`mod.rs` and `sources.rs`, but the real dependency is the runtime
+surface: `Child` trait, protocol module, sandbox profiles, and spawn
+path still reflect a fetch-only, connector-only world. If treated as
+a broker-only refactor, work will stall when `pipe/ingest`, child-type
+sandboxing, and spawn-time path scoping are needed.
+
+**Intra-seam order:** Extend transport/spawn/source config first
+(`crates/patina-pipe/src/lib.rs`, `protocol.rs`, `sandbox.rs`,
+`src/broker/spawn.rs`), then broker routing (`mod.rs`, `sources.rs`).
+
 **Specs:** [[spec-pipe-architecture]] (mother-broker child),
 [[spec-raw-lake-ingestion]] (destination routing, lakehouse child)
 
 **Key files:** `src/broker/mod.rs`, `src/broker/sources.rs`,
-`src/broker/cursor.rs`, `src/broker/routing.rs`
+`src/broker/cursor.rs`, `src/broker/routing.rs`,
+`crates/patina-pipe/src/lib.rs`, `crates/patina-pipe/src/protocol.rs`,
+`crates/patina-pipe/src/sandbox.rs`, `src/broker/spawn.rs`
 
 ### Seam 2: Schema as Contract Layer (parallel)
 
@@ -582,7 +595,20 @@ classify content by suffix conventions.
 
 This is the broadest refactor surface but the most parallelizable —
 each subsystem (scrape, search, enrichment, oxidize) can be rewired
-independently once the schema parser grows.
+independently once the schema parser grows. **However, parallelism
+only unlocks after the schema model is stabilized.** If consumers
+are rewired before landing one canonical schema type with
+`identity_fields`, `projections`, `contracts`, `path_template`, and
+lake metadata, duplicate partial parsers will proliferate.
+
+This is also partly a **migration** problem, not just a new engine
+problem. Live assumptions are embedded in table names
+(`forge_issues`, `forge_prs`) and `schema_registry`. The projection
+engine must handle both old and new schemas during transition.
+
+**Intra-seam order:** Define the schema model and registry shape
+first (`internal.rs`), then rewrite consumers (scrape, search,
+enrichment, oxidize) against the stable model.
 
 **Spec:** [[spec-connector-owns-tables]]
 
@@ -599,8 +625,17 @@ and search tables, but no `lake_registry` or `lake_sync`. The CLI
 surface describes `patina mother run` as routing to `events.db`,
 and there is no `patina lake` command family.
 
+**Do not start with the lakehouse binary.** `children/lakehouse/`
+is dead code until Seam 1 can route to it and spawn/sandbox can
+give it scoped FS access. The graph.db tables and CLI surface are
+also premature until the runtime contract (pipe/ingest +
+destination-aware broker) exists.
+
 Depends on Seam 1 for the routing path and Seam 2 for
 schema-driven dedup/identity.
+
+**Intra-seam order:** Seam 1's transport/spawn/routing work must
+land first. Then graph.db schema + lakehouse child + CLI.
 
 **Spec:** [[spec-raw-lake-ingestion]]
 
@@ -610,8 +645,48 @@ schema-driven dedup/identity.
 
 ```
 Seam 2 (schema contracts)  ←  independent, parallel
+                               BUT: schema model before consumers
 Seam 1 (broker routing)    →  Seam 3 (lake control plane)
+       transport/spawn first      lakehouse last
 ```
+
+**Intra-seam rule:** Within every seam, shared contracts land before
+consumers. This is where build agents most commonly fail — they see
+the consumer code as the obvious hotspot and start rewiring it before
+the contract it depends on is stable.
+
+### Build Agent Traps
+
+Known failure modes for automated implementation (from outside audit,
+session 20260308-210134):
+
+1. **Generalizing `write_facts_with_cursor()` for lakes.** The existing
+   correctness model is "facts + cursor in one SQLite transaction."
+   Lake writes are explicitly different (filesystem, post-confirmation
+   cursor advance). Introduce a separate lake-sync flow — do not
+   generalize the existing helper. (`src/broker/cursor.rs`)
+
+2. **Treating schema validation as "good enough."** Current broker
+   validation only checks declared schema names and synthesizes
+   `event_type`; it does not load installed schema structure or fact
+   definitions. Too weak for Seam 1 lake dedup config and Seam 2
+   contract-driven projection. (`src/broker/routing.rs`)
+
+3. **Solving Seam 2 only inside `scrape/events.rs`.** That file is the
+   obvious hotspot, but search (`assay/internal/search.rs`), enrichment
+   (`scry/internal/enrichment.rs`), and oxidize (`oxidize/mod.rs`) still
+   contain issue/PR suffix logic. If those don't move with the
+   projection changes, the repo compiles but still violates the contract
+   boundary.
+
+4. **Accidentally unifying the WASM path.** The direct-write path
+   (`host_support::emit_fact()`) is explicitly frozen legacy. Build
+   agents will try to "clean it up" while touching routing. That is
+   scope creep and will destabilize the broker work.
+
+5. **Underestimating schema/data migration.** Live assumptions in table
+   names (`forge_issues`, `forge_prs`) and `schema_registry` mean
+   Seam 2 is partly a migration problem, not just a new engine problem.
 
 ### Deliberate Split-Brain: WASM Path
 
@@ -620,6 +695,7 @@ still writes directly to `events.db` and explicitly bypasses the
 broker. This is a deliberate v1 boundary: lake work is native-only.
 The WASM path will gain destination awareness when [[mother-broker]]
 ships, tracked in the host.wit emit routing discovery note above.
+**Do not touch this path during Seam 1 work.**
 
 ## Children
 
