@@ -32,11 +32,6 @@ pub struct ProjectionStats {
 pub fn project_from_schemas(patina_conn: &Connection) -> Result<ProjectionStats> {
     let schemas = crate::commands::schema::load_all_installed()?;
 
-    // One-time migration: forge_* tables → github_*, forge.* events → github.*
-    migrate_forge_tables(patina_conn)?;
-    migrate_forge_events()?;
-    migrate_forge_events_in_patina(patina_conn)?;
-
     // Schema registry (still needed for write-side event type resolution)
     create_schema_registry(patina_conn)?;
     populate_schema_registry(patina_conn, &schemas)?;
@@ -214,123 +209,6 @@ fn generate_insert_sql(projection: &ProjectionDef, event_type: &str) -> String {
 }
 
 // ============================================================================
-// One-time forge → github migration
-// ============================================================================
-
-/// Rename forge_* tables to github_* in patina.db (one-time, idempotent).
-fn migrate_forge_tables(conn: &Connection) -> Result<()> {
-    rename_table_if_needed(conn, "forge_issues", "github_issues")?;
-    rename_table_if_needed(conn, "forge_prs", "github_prs")?;
-
-    // Drop forge_refs (sync backlog) — not schema-driven, no longer referenced
-    drop_table_if_exists(conn, "forge_refs")?;
-
-    // Drop stale indexes from the old tables
-    let _ = conn.execute("DROP INDEX IF EXISTS idx_forge_issues_state", []);
-    let _ = conn.execute("DROP INDEX IF EXISTS idx_forge_issues_updated", []);
-    let _ = conn.execute("DROP INDEX IF EXISTS idx_forge_prs_state", []);
-    let _ = conn.execute("DROP INDEX IF EXISTS idx_forge_prs_merged", []);
-    let _ = conn.execute("DROP INDEX IF EXISTS idx_forge_refs_pending", []);
-
-    Ok(())
-}
-
-/// Rename a table if the source exists and the target does not.
-fn rename_table_if_needed(conn: &Connection, from: &str, to: &str) -> Result<()> {
-    let from_exists = table_exists(conn, from)?;
-    if !from_exists {
-        return Ok(());
-    }
-
-    let to_exists = table_exists(conn, to)?;
-    if to_exists {
-        // Both exist — target was already created (e.g., by a previous generic
-        // projection run). Drop the old source table; the target has fresh data.
-        conn.execute(&format!("DROP TABLE {}", from), [])?;
-    } else {
-        conn.execute(&format!("ALTER TABLE {} RENAME TO {}", from, to), [])?;
-    }
-    Ok(())
-}
-
-fn drop_table_if_exists(conn: &Connection, name: &str) -> Result<()> {
-    conn.execute(&format!("DROP TABLE IF EXISTS {}", name), [])?;
-    Ok(())
-}
-
-fn table_exists(conn: &Connection, name: &str) -> Result<bool> {
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
-        [name],
-        |row| row.get(0),
-    )?;
-    Ok(count > 0)
-}
-
-/// Migrate forge.* event types to github.* in events.db (one-time, idempotent).
-fn migrate_forge_events() -> Result<()> {
-    let events_conn = patina::eventlog::open_events_db()?;
-
-    let forge_count: i64 = events_conn.query_row(
-        "SELECT COUNT(*) FROM eventlog WHERE event_type LIKE 'forge.%'",
-        [],
-        |row| row.get(0),
-    )?;
-
-    if forge_count > 0 {
-        events_conn.execute(
-            "UPDATE eventlog SET event_type = 'github.issue' WHERE event_type = 'forge.issue'",
-            [],
-        )?;
-        events_conn.execute(
-            "UPDATE eventlog SET event_type = 'github.pr' WHERE event_type = 'forge.pr'",
-            [],
-        )?;
-        eprintln!(
-            "  Migrated {} forge.* events to github.* in events.db",
-            forge_count
-        );
-    }
-
-    Ok(())
-}
-
-/// Migrate forge.* event types in patina.db's eventlog (pre-split legacy events).
-fn migrate_forge_events_in_patina(patina_conn: &Connection) -> Result<()> {
-    let has_eventlog: bool = patina_conn
-        .query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='eventlog'",
-            [],
-            |row| row.get::<_, i64>(0),
-        )
-        .map(|c| c > 0)
-        .unwrap_or(false);
-
-    if !has_eventlog {
-        return Ok(());
-    }
-
-    let forge_count: i64 = patina_conn.query_row(
-        "SELECT COUNT(*) FROM eventlog WHERE event_type LIKE 'forge.%'",
-        [],
-        |row| row.get(0),
-    )?;
-
-    if forge_count > 0 {
-        patina_conn.execute(
-            "UPDATE eventlog SET event_type = 'github.issue' WHERE event_type = 'forge.issue'",
-            [],
-        )?;
-        patina_conn.execute(
-            "UPDATE eventlog SET event_type = 'github.pr' WHERE event_type = 'forge.pr'",
-            [],
-        )?;
-    }
-
-    Ok(())
-}
-
-// ============================================================================
 // Shared utilities
 // ============================================================================
 
@@ -454,53 +332,6 @@ mod tests {
         assert!(!is_safe_identifier(""));
         assert!(!is_safe_identifier("bad; DROP TABLE"));
         assert!(!is_safe_identifier("has space"));
-    }
-
-    // --- Migration tests ---
-
-    #[test]
-    fn test_rename_table_source_exists_target_does_not() {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("CREATE TABLE forge_issues (id INTEGER PRIMARY KEY, title TEXT);")
-            .unwrap();
-        conn.execute("INSERT INTO forge_issues VALUES (1, 'test')", [])
-            .unwrap();
-
-        rename_table_if_needed(&conn, "forge_issues", "github_issues").unwrap();
-
-        assert!(!table_exists(&conn, "forge_issues").unwrap());
-        assert!(table_exists(&conn, "github_issues").unwrap());
-
-        let title: String = conn
-            .query_row("SELECT title FROM github_issues WHERE id = 1", [], |row| {
-                row.get(0)
-            })
-            .unwrap();
-        assert_eq!(title, "test");
-    }
-
-    #[test]
-    fn test_rename_table_both_exist_drops_source() {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE forge_issues (id INTEGER PRIMARY KEY, title TEXT);
-             CREATE TABLE github_issues (id INTEGER PRIMARY KEY, title TEXT);
-             INSERT INTO forge_issues VALUES (1, 'old');
-             INSERT INTO github_issues VALUES (2, 'new');",
-        )
-        .unwrap();
-
-        rename_table_if_needed(&conn, "forge_issues", "github_issues").unwrap();
-
-        assert!(!table_exists(&conn, "forge_issues").unwrap());
-        assert!(table_exists(&conn, "github_issues").unwrap());
-    }
-
-    #[test]
-    fn test_rename_table_source_does_not_exist_noop() {
-        let conn = Connection::open_in_memory().unwrap();
-        rename_table_if_needed(&conn, "nonexistent", "target").unwrap();
-        assert!(!table_exists(&conn, "target").unwrap());
     }
 
     // --- End-to-end projection test ---

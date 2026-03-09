@@ -57,9 +57,6 @@ pub fn extract_code_metadata_v2(
         }
     }
 
-    // Open events.db for event writes (runtime events go to events.db)
-    let events_conn = patina::eventlog::open_events_db()?;
-
     // Find all supported language files
     let mut all_files: Vec<(PathBuf, Language)> = Vec::new();
 
@@ -102,9 +99,6 @@ pub fn extract_code_metadata_v2(
     let mut files_with_errors = 0;
     let mut _files_processed = 0;
     let mut files_skipped_mtime = 0;
-    let mut issues_inserted = 0;
-    let mut prs_inserted = 0;
-    let mut events_skipped = 0;
     let mut walked_paths: HashSet<String> = HashSet::new();
 
     // Process each file and collect data
@@ -173,41 +167,10 @@ pub fn extract_code_metadata_v2(
                         all_members.extend(extracted.members);
                         _files_processed += 1;
                     }
-                    ExtractedPayload::Issue(issue) => {
-                        match crate::commands::scrape::events::insert_issues(&events_conn, &[issue])
-                        {
-                            Ok(stats) => {
-                                issues_inserted += stats.inserted;
-                                events_skipped += stats.skipped;
-                                _files_processed += 1;
-                            }
-                            Err(e) => {
-                                eprintln!(
-                                    "  [pipeline] issue insert failed for {}: {}",
-                                    relative_path, e
-                                );
-                                files_with_errors += 1;
-                            }
-                        }
-                    }
-                    ExtractedPayload::PullRequest(pr) => {
-                        match crate::commands::scrape::events::insert_prs(&events_conn, &[pr]) {
-                            Ok(stats) => {
-                                prs_inserted += stats.inserted;
-                                events_skipped += stats.skipped;
-                                _files_processed += 1;
-                            }
-                            Err(e) => {
-                                eprintln!(
-                                    "  [pipeline] PR insert failed for {}: {}",
-                                    relative_path, e
-                                );
-                                files_with_errors += 1;
-                            }
-                        }
-                    }
                     _ => {
-                        // #[non_exhaustive] catch-all for future variants
+                        // #[non_exhaustive] catch-all for future variants.
+                        // Connector-specific facts (issues, PRs) are emitted via
+                        // the broker routing path, not the pipeline protocol.
                         eprintln!(
                             "  [pipeline] unknown payload kind from {} — skipping",
                             relative_path
@@ -248,20 +211,6 @@ pub fn extract_code_metadata_v2(
         "  ✅ Inserted: {} symbols, {} functions, {} types, {} imports, {} call edges, {} constants, {} members",
         symbols_count, functions_count, types_count, imports_count, edges_count, constants_count, members_count
     );
-
-    if issues_inserted > 0 || prs_inserted > 0 {
-        if events_skipped > 0 {
-            println!(
-                "  📊 Pipeline: {} issues, {} PRs ({} unchanged)",
-                issues_inserted, prs_inserted, events_skipped
-            );
-        } else {
-            println!(
-                "  📊 Pipeline: {} issues, {} PRs",
-                issues_inserted, prs_inserted
-            );
-        }
-    }
 
     if files_with_errors > 0 {
         println!(
