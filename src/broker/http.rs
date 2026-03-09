@@ -77,8 +77,8 @@ pub fn build_production_handler(auth_plan: &AuthPlan, child_name: &str) -> Resul
             if let Some(ref resolved) = cred {
                 match &resolved.injection {
                     InjectionStrategy::Bearer => {
-                        builder = builder
-                            .header("Authorization", format!("Bearer {}", resolved.value));
+                        builder =
+                            builder.header("Authorization", format!("Bearer {}", resolved.value));
                     }
                     InjectionStrategy::Header { name } => {
                         builder = builder.header(name, &resolved.value);

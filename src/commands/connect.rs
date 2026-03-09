@@ -97,8 +97,7 @@ fn connect_github(manual: bool, name: Option<String>) -> Result<()> {
         );
     }
 
-    let provider = patina::connect::provider("github")
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let provider = patina::connect::provider("github").map_err(|e| anyhow::anyhow!("{}", e))?;
 
     let result = if manual {
         eprintln!("Enter a GitHub personal access token (PAT).");
@@ -119,9 +118,7 @@ fn connect_github(manual: bool, name: Option<String>) -> Result<()> {
             .acquire_manual(&token)
             .map_err(|e| anyhow::anyhow!("{}", e))?
     } else {
-        provider
-            .acquire()
-            .map_err(|e| anyhow::anyhow!("{}", e))?
+        provider.acquire().map_err(|e| anyhow::anyhow!("{}", e))?
     };
 
     // Build connection record
@@ -152,13 +149,9 @@ fn connect_github(manual: bool, name: Option<String>) -> Result<()> {
     };
 
     // Create connection (writes TOML + vault entry)
-    patina::connect::create(&record, &result.credential)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    patina::connect::create(&record, &result.credential).map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    println!(
-        "Connection '{}' created successfully.",
-        conn_name
-    );
+    println!("Connection '{}' created successfully.", conn_name);
     if let Some(ref account) = record.identity.account_id {
         println!("  Account: {}", account);
     }
@@ -170,8 +163,7 @@ fn connect_github(manual: bool, name: Option<String>) -> Result<()> {
 
 /// List all connections with status.
 fn list_connections() -> Result<()> {
-    let connections = patina::connect::list()
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let connections = patina::connect::list().map_err(|e| anyhow::anyhow!("{}", e))?;
 
     if connections.is_empty() {
         println!("No connections configured.");
@@ -179,10 +171,7 @@ fn list_connections() -> Result<()> {
         return Ok(());
     }
 
-    println!(
-        "{:<16} {:<12} {:<20} {}",
-        "NAME", "PROVIDER", "ACCOUNT", "STATUS"
-    );
+    println!("{:<16} {:<12} {:<20} STATUS", "NAME", "PROVIDER", "ACCOUNT");
     for conn in &connections {
         println!(
             "{:<16} {:<12} {:<20} {}",
@@ -198,8 +187,7 @@ fn list_connections() -> Result<()> {
 
 /// Show detailed information for a connection.
 fn show_connection(name: &str) -> Result<()> {
-    let record = patina::connect::load(name)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let record = patina::connect::load(name).map_err(|e| anyhow::anyhow!("{}", e))?;
 
     println!("Connection: {}", record.identity.name);
     println!("  Provider: {}", record.identity.provider);
@@ -236,8 +224,7 @@ fn show_connection(name: &str) -> Result<()> {
 
 /// Show health summary for all connections.
 fn show_status() -> Result<()> {
-    let connections = patina::connect::list()
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let connections = patina::connect::list().map_err(|e| anyhow::anyhow!("{}", e))?;
 
     if connections.is_empty() {
         println!("No connections configured.");
@@ -252,11 +239,7 @@ fn show_status() -> Result<()> {
             _ => issues += 1,
         }
         if !matches!(conn.status, patina::connect::ConnectionStatus::Connected) {
-            eprintln!(
-                "  {}: {}",
-                conn.name,
-                format_status(&conn.status)
-            );
+            eprintln!("  {}: {}", conn.name, format_status(&conn.status));
         }
     }
 
@@ -272,8 +255,7 @@ fn show_status() -> Result<()> {
 
 /// Refresh a connection's credential.
 fn refresh_connection(name: &str) -> Result<()> {
-    let record = patina::connect::load(name)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let record = patina::connect::load(name).map_err(|e| anyhow::anyhow!("{}", e))?;
 
     if !record.auth.refresh_capable {
         bail!(
@@ -286,9 +268,7 @@ fn refresh_connection(name: &str) -> Result<()> {
     let provider = patina::connect::provider(&record.identity.provider)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    let result = provider
-        .acquire()
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let result = provider.acquire().map_err(|e| anyhow::anyhow!("{}", e))?;
 
     // Update the connection record with new credential
     let now = chrono::Utc::now().to_rfc3339();
@@ -297,8 +277,7 @@ fn refresh_connection(name: &str) -> Result<()> {
     updated.identity.account_id = result.account_id.clone();
     updated.auth.last_error = None;
 
-    patina::connect::create(&updated, &result.credential)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    patina::connect::create(&updated, &result.credential).map_err(|e| anyhow::anyhow!("{}", e))?;
 
     println!("Connection '{}' refreshed.", name);
     if let Some(ref account) = result.account_id {
@@ -311,8 +290,7 @@ fn refresh_connection(name: &str) -> Result<()> {
 /// Remove a connection.
 fn remove_connection(name: &str, force: bool) -> Result<()> {
     // Verify it exists first
-    let _record = patina::connect::load(name)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let _record = patina::connect::load(name).map_err(|e| anyhow::anyhow!("{}", e))?;
 
     if !force {
         // Confirm with user
@@ -328,8 +306,7 @@ fn remove_connection(name: &str, force: bool) -> Result<()> {
         }
     }
 
-    patina::connect::remove(name, force)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    patina::connect::remove(name, force).map_err(|e| anyhow::anyhow!("{}", e))?;
 
     println!("Connection '{}' removed.", name);
     Ok(())

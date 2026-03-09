@@ -202,9 +202,7 @@ pub fn spawn_native_with_plan(
 
     let (_notifs, response) = conn
         .request("pipe/initialize", init_params)
-        .map_err(|e| {
-            anyhow::anyhow!("pipe/initialize failed for {}: {}", auth_plan.child, e)
-        })?;
+        .map_err(|e| anyhow::anyhow!("pipe/initialize failed for {}: {}", auth_plan.child, e))?;
 
     if let Some(error) = response.get("error") {
         bail!(
@@ -214,10 +212,7 @@ pub fn spawn_native_with_plan(
         );
     }
 
-    Ok((
-        NativeChild::new(auth_plan.child.clone(), conn),
-        manifest,
-    ))
+    Ok((NativeChild::new(auth_plan.child.clone(), conn), manifest))
 }
 
 /// Check if OS sandbox is available. Fails with actionable error if not.
