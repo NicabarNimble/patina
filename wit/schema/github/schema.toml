@@ -11,11 +11,13 @@ description = "GitHub issues and pull requests (via github-connector)"
 name = "issue"
 event_type = "github.issue"
 record = "issue"
+identity_fields = ["number"]
 
 [[facts]]
 name = "pull-request"
 event_type = "github.pr"
 record = "pull-request"
+identity_fields = ["number"]
 
 # Embedding configuration.
 # offset_slot indexes into embeddings::offsets (slot 5 = FORGE_ID_OFFSET).
@@ -47,3 +49,47 @@ table = "forge_issues"
 fact = "pull-request"
 fts_fields = ["title", "body", "comments"]
 table = "forge_prs"
+
+# Projection declarations — table DDL, column mappings, primary keys.
+# Used by the generic projection engine (connector-owns-tables spec).
+
+[[projections]]
+fact = "issue"
+table = "github_issues"
+primary_key = "number"
+columns = [
+    { name = "number", type = "INTEGER", json_path = "$.number" },
+    { name = "title", type = "TEXT", json_path = "$.title" },
+    { name = "body", type = "TEXT", json_path = "$.body" },
+    { name = "state", type = "TEXT", json_path = "$.state" },
+    { name = "created_at", type = "TEXT", json_path = "$.created_at" },
+    { name = "updated_at", type = "TEXT", json_path = "$.updated_at" },
+]
+
+[[projections]]
+fact = "pull-request"
+table = "github_prs"
+primary_key = "number"
+columns = [
+    { name = "number", type = "INTEGER", json_path = "$.number" },
+    { name = "title", type = "TEXT", json_path = "$.title" },
+    { name = "body", type = "TEXT", json_path = "$.body" },
+    { name = "state", type = "TEXT", json_path = "$.state" },
+]
+
+# Contract declarations — consumer-facing metadata per fact type.
+
+[[contracts]]
+name = "issues"
+event_type = "github.issue"
+display_kind = "Issue"
+
+[[contracts]]
+name = "pull-requests"
+event_type = "github.pr"
+display_kind = "PR"
+
+# Lake-scope metadata.
+
+[lake]
+path_template = "{owner}/{repo}"

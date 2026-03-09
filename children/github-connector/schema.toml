@@ -36,3 +36,40 @@ table = "github_issues"
 fact = "pull-request"
 fts_fields = ["title", "body", "comments"]
 table = "github_prs"
+
+[[projections]]
+fact = "issue"
+table = "github_issues"
+primary_key = "number"
+columns = [
+    { name = "number", type = "INTEGER", json_path = "$.number" },
+    { name = "title", type = "TEXT", json_path = "$.title" },
+    { name = "body", type = "TEXT", json_path = "$.body" },
+    { name = "state", type = "TEXT", json_path = "$.state" },
+    { name = "created_at", type = "TEXT", json_path = "$.created_at" },
+    { name = "updated_at", type = "TEXT", json_path = "$.updated_at" },
+]
+
+[[projections]]
+fact = "pull-request"
+table = "github_prs"
+primary_key = "number"
+columns = [
+    { name = "number", type = "INTEGER", json_path = "$.number" },
+    { name = "title", type = "TEXT", json_path = "$.title" },
+    { name = "body", type = "TEXT", json_path = "$.body" },
+    { name = "state", type = "TEXT", json_path = "$.state" },
+]
+
+[[contracts]]
+name = "issues"
+event_type = "github.issue"
+display_kind = "Issue"
+
+[[contracts]]
+name = "pull-requests"
+event_type = "github.pr"
+display_kind = "PR"
+
+[lake]
+path_template = "{owner}/{repo}"

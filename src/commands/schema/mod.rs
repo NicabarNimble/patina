@@ -11,7 +11,9 @@
 mod internal;
 
 // Re-export schema metadata types for use by other subsystems (projection, oxidize)
-pub(crate) use internal::SchemaMetadata;
+pub(crate) use internal::{
+    ColumnDef, ContractDef, LakeConfig, ProjectionDef, SchemaMetadata,
+};
 
 /// Load all installed schemas from `.patina/schemas/*/schema.toml`.
 pub(crate) fn load_all_installed() -> anyhow::Result<Vec<SchemaMetadata>> {
