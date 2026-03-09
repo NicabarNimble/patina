@@ -1338,13 +1338,13 @@ package = "patina:schema/empty@1.0.0"
         assert_eq!(meta.projections[0].fact, "issue");
         assert_eq!(meta.projections[0].table, "github_issues");
         assert_eq!(meta.projections[0].primary_key, "number");
-        assert_eq!(meta.projections[0].columns.len(), 6);
+        assert_eq!(meta.projections[0].columns.len(), 8);
         assert_eq!(meta.projections[0].columns[0].name, "number");
         assert_eq!(meta.projections[0].columns[0].col_type, "INTEGER");
         assert_eq!(meta.projections[0].columns[0].json_path, "$.number");
         assert_eq!(meta.projections[1].fact, "pull-request");
         assert_eq!(meta.projections[1].table, "github_prs");
-        assert_eq!(meta.projections[1].columns.len(), 4);
+        assert_eq!(meta.projections[1].columns.len(), 11);
 
         // contracts
         assert_eq!(meta.contracts.len(), 2);
