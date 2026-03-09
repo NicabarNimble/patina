@@ -1,7 +1,7 @@
 ---
 type: feat
 id: schema-build-pipeline
-status: ready
+status: active
 created: 2026-03-09
 sessions:
   origin: 20260309-090701
