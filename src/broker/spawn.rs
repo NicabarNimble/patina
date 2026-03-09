@@ -167,6 +167,7 @@ pub fn spawn_native(
         Some(build_production_handler(
             &allowed_domains,
             credential.clone(),
+            child_name,
         )?)
     } else {
         None
