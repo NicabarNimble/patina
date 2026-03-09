@@ -69,14 +69,14 @@ pub fn validate_fact(
         std::collections::hash_map::Entry::Occupied(e) => e.into_mut(),
         std::collections::hash_map::Entry::Vacant(e) => {
             // Load installed schema — fail closed if missing
-            let schema_dir = crate::paths::project::schemas_dir(project_root)
-                .join(&fact.schema);
-            let types = load_fact_types(&schema_dir)
-                .with_context(|| format!(
+            let schema_dir = crate::paths::project::schemas_dir(project_root).join(&fact.schema);
+            let types = load_fact_types(&schema_dir).with_context(|| {
+                format!(
                     "schema '{}' declared in manifest but not installed — \
                      run: patina schema install wit/schema/{}",
                     fact.schema, fact.schema
-                ))?;
+                )
+            })?;
             e.insert(types)
         }
     };
@@ -84,7 +84,9 @@ pub fn validate_fact(
     if !valid_types.contains(&event_type) {
         bail!(
             "child '{}': fact_type '{}' not declared in installed schema '{}' — fact dropped",
-            child_name, event_type, fact.schema
+            child_name,
+            event_type,
+            fact.schema
         );
     }
 
@@ -111,15 +113,19 @@ fn load_fact_types(schema_dir: &Path) -> Result<HashSet<String>> {
     let toml_path = schema_dir.join("schema.toml");
     let content = std::fs::read_to_string(&toml_path)
         .with_context(|| format!("reading {}", toml_path.display()))?;
-    let table: toml::Table = toml::from_str(&content)
-        .with_context(|| format!("parsing {}", toml_path.display()))?;
+    let table: toml::Table =
+        toml::from_str(&content).with_context(|| format!("parsing {}", toml_path.display()))?;
     let facts = table
         .get("facts")
         .and_then(|v| v.as_array())
         .ok_or_else(|| anyhow::anyhow!("no [[facts]] in {}", toml_path.display()))?;
     let types: HashSet<String> = facts
         .iter()
-        .filter_map(|f| f.get("event_type").and_then(|v| v.as_str()).map(String::from))
+        .filter_map(|f| {
+            f.get("event_type")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+        })
         .collect();
     if types.is_empty() {
         bail!("no facts with event_type in {}", toml_path.display());
@@ -220,7 +226,11 @@ identity_fields = ["number"]
         .unwrap();
 
         // Minimal WIT file (not parsed by validation, but present for completeness)
-        std::fs::write(schema_dir.join("github.wit"), "package patina:schema/github@1.0.0;\n").unwrap();
+        std::fs::write(
+            schema_dir.join("github.wit"),
+            "package patina:schema/github@1.0.0;\n",
+        )
+        .unwrap();
 
         dir
     }
@@ -237,7 +247,8 @@ identity_fields = ["number"]
         };
 
         let mut cache = HashMap::new();
-        let validated = validate_fact(&fact, &manifest, "test-child", project.path(), &mut cache).unwrap();
+        let validated =
+            validate_fact(&fact, &manifest, "test-child", project.path(), &mut cache).unwrap();
         assert_eq!(validated.event_type, "github.issue");
         assert_eq!(validated.source_id, "child:test-child");
         assert_eq!(validated.content_hash, "blake3:abc123");
@@ -295,7 +306,11 @@ identity_fields = ["number"]
         let result = validate_fact(&fact, &manifest, "test-child", project.path(), &mut cache);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("not declared in installed schema"), "got: {}", err);
+        assert!(
+            err.contains("not declared in installed schema"),
+            "got: {}",
+            err
+        );
     }
 
     #[test]
@@ -314,7 +329,12 @@ identity_fields = ["number"]
                 content_hash: Some(format!("blake3:{}", fact_type)),
             };
             let result = validate_fact(&fact, &manifest, "test-child", project.path(), &mut cache);
-            assert!(result.is_ok(), "expected {} to pass, got: {:?}", fact_type, result);
+            assert!(
+                result.is_ok(),
+                "expected {} to pass, got: {:?}",
+                fact_type,
+                result
+            );
         }
 
         // Cache should be populated

@@ -276,7 +276,8 @@ pub fn check_schemas() -> Result<()> {
         };
 
         // 2. Install to temp dir, diff against canonical (proves installability)
-        let tmp_base = std::env::temp_dir().join(format!("patina-schema-check-{}", std::process::id()));
+        let tmp_base =
+            std::env::temp_dir().join(format!("patina-schema-check-{}", std::process::id()));
         let tmp_target = tmp_base.join(&name);
         std::fs::create_dir_all(&tmp_target)?;
         // Copy files (same as install_schema does)
@@ -290,18 +291,22 @@ pub fn check_schemas() -> Result<()> {
         // Clean up temp dir
         let _ = std::fs::remove_dir_all(&tmp_base);
         if !install_matches {
-            eprintln!("  ERROR: wit/schema/{} install produces different output", name);
+            eprintln!(
+                "  ERROR: wit/schema/{} install produces different output",
+                name
+            );
             ok = false;
         }
 
         // 3. If installed copy exists in project, diff against canonical
         let installed = paths::project::schemas_dir(&root).join(&name);
-        if installed.exists() {
-            if !dirs_match(&source, &installed)? {
-                eprintln!("  ERROR: installed schema '{}' differs from canonical", name);
-                eprintln!("  Fix: patina schema install wit/schema/{}", name);
-                ok = false;
-            }
+        if installed.exists() && !dirs_match(&source, &installed)? {
+            eprintln!(
+                "  ERROR: installed schema '{}' differs from canonical",
+                name
+            );
+            eprintln!("  Fix: patina schema install wit/schema/{}", name);
+            ok = false;
         }
 
         // 4. Check connector manifest package versions
@@ -314,9 +319,8 @@ pub fn check_schemas() -> Result<()> {
                     continue;
                 }
                 let content = std::fs::read_to_string(&child_toml)?;
-                let manifest: patina_pipe_types::manifest::ChildManifest =
-                    toml::from_str(&content)
-                        .with_context(|| format!("parsing {}", child_toml.display()))?;
+                let manifest: patina_pipe_types::manifest::ChildManifest = toml::from_str(&content)
+                    .with_context(|| format!("parsing {}", child_toml.display()))?;
                 if let Some(schema_ref) = manifest.schemas.get(&name) {
                     if schema_ref.package != *canonical_pkg {
                         eprintln!(
@@ -382,7 +386,9 @@ pub fn build_schema(name: &str, types: bool, migrations: bool, embeddings: bool)
     let metadata = validate_package(&source)?;
     println!(
         "  ✓ {} v{} — {} facts",
-        metadata.schema.name, metadata.schema.version, metadata.facts.len()
+        metadata.schema.name,
+        metadata.schema.version,
+        metadata.facts.len()
     );
 
     // 2. Install

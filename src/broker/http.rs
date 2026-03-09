@@ -92,9 +92,7 @@ pub fn build_production_handler(
             let resp_headers: HashMap<String, String> = response
                 .headers()
                 .iter()
-                .filter_map(|(k, v)| {
-                    v.to_str().ok().map(|vs| (k.to_string(), vs.to_string()))
-                })
+                .filter_map(|(k, v)| v.to_str().ok().map(|vs| (k.to_string(), vs.to_string())))
                 .collect();
             let resp_body = response.text().map_err(|e| format!("read body: {}", e))?;
 

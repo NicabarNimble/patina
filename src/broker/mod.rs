@@ -105,7 +105,13 @@ fn write_to_project(
     let child_name = child.name().to_string();
 
     let fetch_result = child.fetch(&fetch_params, &mut |fact| {
-        match validate_fact(&fact, manifest, &child_name, project_root, &mut schema_cache) {
+        match validate_fact(
+            &fact,
+            manifest,
+            &child_name,
+            project_root,
+            &mut schema_cache,
+        ) {
             Ok(validated) => {
                 validated_facts.push(validated);
                 Ok(())
