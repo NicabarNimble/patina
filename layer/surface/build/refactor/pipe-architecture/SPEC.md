@@ -25,8 +25,8 @@ beliefs:
 - connectors-own-tables-schemas-are-contracts
 exit_criteria:
 - id: children-complete
-  text: All child specs (pipe-protocol-types, pipe-native-transport, github-connector, patina-connect, mother-broker) are complete
-  checked: false
+  text: 'Architecture child specs complete: pipe-protocol-types, pipe-native-transport, github-connector, mother-broker, pipe-mother-io, pipe-contract-safety. patina-connect (OAuth UX) is independent — consumes the architecture, not part of it.'
+  checked: true
 ---
 # refactor: Pipe Architecture — Protocol + Broker Model
 
