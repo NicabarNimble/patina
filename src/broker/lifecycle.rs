@@ -141,19 +141,15 @@ impl BrokerChild for NativeChild {
             })?;
         }
 
-        // Parse fetch result
+        // Parse fetch result via shared type
         let result = response
             .get("result")
             .with_context(|| "pipe/fetch response missing result")?;
 
-        let emitted = result.get("emitted").and_then(|e| e.as_u64()).unwrap_or(0);
+        let fetch_result: FetchResult = serde_json::from_value(result.clone())
+            .with_context(|| "pipe/fetch response: invalid FetchResult")?;
 
-        let cursor = result
-            .get("cursor")
-            .and_then(|c| c.as_str())
-            .map(|s| s.to_string());
-
-        Ok(FetchResult { emitted, cursor })
+        Ok(fetch_result)
     }
 
     fn health(&self) -> Result<HealthStatus> {
