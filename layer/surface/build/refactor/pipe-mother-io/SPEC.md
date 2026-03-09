@@ -27,7 +27,7 @@ exit_criteria:
   verify: '`cargo test -p patina-pipe pipe_io::tests` passes. Example child (examples/test-http-child) compiles using PipeIo with zero direct reqwest references.'
 - id: measure-instrumentation
   text: Every pipe/http call emits Measure events (duration, bytes, policy decision, manifest id) and integrates with PATINA_SANDBOX_DEBUG logging for auditability.
-  checked: false
+  checked: true
   verify: '`patina mother run test` prints request audit lines. `sqlite3 patina.db "SELECT count(*) FROM measure_events WHERE event_type = ''pipe.http''"` > 0 after test.'
 ---
 # refactor: Pipe Mother I/O — Proxied HTTP for Native Children
