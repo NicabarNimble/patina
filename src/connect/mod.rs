@@ -13,12 +13,16 @@
 //! ```
 
 mod internal;
+pub(crate) mod providers;
 
 // Domain model types
 pub use internal::model::{
     AuthConfig, AuthMethod, AuthPlan, ConnectError, ConnectionIdentity, ConnectionRecord,
     ConnectionScope, ConnectionStatus, ConnectionSummary, InjectionStrategy, ResolvedCredential,
 };
+
+// Provider types
+pub use providers::{AcquisitionResult, Provider};
 
 // Store operations (persistence layer)
 
@@ -40,6 +44,20 @@ pub fn create(record: &ConnectionRecord, credential: &str) -> Result<(), Connect
 /// Remove a connection: deletes TOML + vault entry (checks references first).
 pub fn remove(name: &str, force: bool) -> Result<(), ConnectError> {
     internal::store::remove(name, force)
+}
+
+// Provider registry (acquisition layer)
+
+/// Look up a provider by name (e.g., "github").
+pub fn provider(name: &str) -> Result<Box<dyn Provider>, ConnectError> {
+    providers::get(name).ok_or_else(|| ConnectError::UnknownProvider {
+        provider: name.to_string(),
+    })
+}
+
+/// List all registered provider names.
+pub fn available_providers() -> Vec<&'static str> {
+    providers::list_providers()
 }
 
 // Auth resolution (consumption layer)

@@ -198,6 +198,12 @@ pub enum ConnectError {
     },
     /// I/O error during store operations.
     IoError { detail: String },
+    /// Provider not found in registry.
+    UnknownProvider { provider: String },
+    /// Credential acquisition failed (OAuth flow, manual entry, etc.).
+    AcquisitionFailed { provider: String, detail: String },
+    /// User cancelled the operation.
+    Cancelled,
 }
 
 impl fmt::Display for ConnectError {
@@ -248,6 +254,19 @@ impl fmt::Display for ConnectError {
             }
             ConnectError::IoError { detail } => {
                 write!(f, "connection I/O error: {}", detail)
+            }
+            ConnectError::UnknownProvider { provider } => {
+                write!(f, "unknown provider '{}' (available: github)", provider)
+            }
+            ConnectError::AcquisitionFailed { provider, detail } => {
+                write!(
+                    f,
+                    "credential acquisition failed for '{}': {}",
+                    provider, detail
+                )
+            }
+            ConnectError::Cancelled => {
+                write!(f, "operation cancelled by user")
             }
         }
     }
