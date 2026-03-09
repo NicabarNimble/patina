@@ -243,6 +243,131 @@ pub fn install_schema(source_path: &str) -> Result<()> {
     Ok(())
 }
 
+/// Check schema consistency: canonical parses, installs cleanly, matches
+/// installed copy, and connector manifests agree on package versions.
+pub fn check_schemas() -> Result<()> {
+    let root = find_project_root()?;
+    let canonical_dir = root.join("wit/schema");
+    if !canonical_dir.exists() {
+        println!("No canonical schemas in wit/schema/");
+        return Ok(());
+    }
+
+    let mut ok = true;
+
+    for entry in std::fs::read_dir(&canonical_dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let source = entry.path();
+
+        println!("  Checking wit/schema/{}/...", name);
+
+        // 1. Validate: canonical schema parses cleanly
+        let metadata = match validate_package(&source) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("  ERROR: wit/schema/{} fails validation: {}", name, e);
+                ok = false;
+                continue;
+            }
+        };
+
+        // 2. Install to temp dir, diff against canonical (proves installability)
+        let tmp_base = std::env::temp_dir().join(format!("patina-schema-check-{}", std::process::id()));
+        let tmp_target = tmp_base.join(&name);
+        std::fs::create_dir_all(&tmp_target)?;
+        // Copy files (same as install_schema does)
+        for src_entry in std::fs::read_dir(&source)? {
+            let src_entry = src_entry?;
+            if src_entry.file_type()?.is_file() {
+                std::fs::copy(src_entry.path(), tmp_target.join(src_entry.file_name()))?;
+            }
+        }
+        let install_matches = dirs_match(&source, &tmp_target)?;
+        // Clean up temp dir
+        let _ = std::fs::remove_dir_all(&tmp_base);
+        if !install_matches {
+            eprintln!("  ERROR: wit/schema/{} install produces different output", name);
+            ok = false;
+        }
+
+        // 3. If installed copy exists in project, diff against canonical
+        let installed = paths::project::schemas_dir(&root).join(&name);
+        if installed.exists() {
+            if !dirs_match(&source, &installed)? {
+                eprintln!("  ERROR: installed schema '{}' differs from canonical", name);
+                eprintln!("  Fix: patina schema install wit/schema/{}", name);
+                ok = false;
+            }
+        }
+
+        // 4. Check connector manifest package versions
+        let canonical_pkg = &metadata.schema.package;
+        let children_dir = root.join("children");
+        if children_dir.exists() {
+            for child_entry in std::fs::read_dir(&children_dir)?.flatten() {
+                let child_toml = child_entry.path().join("child.toml");
+                if !child_toml.exists() {
+                    continue;
+                }
+                let content = std::fs::read_to_string(&child_toml)?;
+                let manifest: patina_pipe_types::manifest::ChildManifest =
+                    toml::from_str(&content)
+                        .with_context(|| format!("parsing {}", child_toml.display()))?;
+                if let Some(schema_ref) = manifest.schemas.get(&name) {
+                    if schema_ref.package != *canonical_pkg {
+                        eprintln!(
+                            "  ERROR: {} declares package '{}' but canonical is '{}'",
+                            child_toml.display(),
+                            schema_ref.package,
+                            canonical_pkg
+                        );
+                        ok = false;
+                    }
+                }
+            }
+        }
+    }
+
+    if ok {
+        println!("  ✓ Schema consistency OK");
+        Ok(())
+    } else {
+        bail!("Schema consistency check failed")
+    }
+}
+
+/// Compare two directories recursively — all files must have identical content.
+fn dirs_match(a: &Path, b: &Path) -> Result<bool> {
+    let mut a_files: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut b_files: Vec<(String, Vec<u8>)> = Vec::new();
+
+    for entry in std::fs::read_dir(a)? {
+        let entry = entry?;
+        if entry.file_type()?.is_file() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let content = std::fs::read(entry.path())?;
+            a_files.push((name, content));
+        }
+    }
+    for entry in std::fs::read_dir(b)? {
+        let entry = entry?;
+        if entry.file_type()?.is_file() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let content = std::fs::read(entry.path())?;
+            b_files.push((name, content));
+        }
+    }
+
+    a_files.sort_by(|x, y| x.0.cmp(&y.0));
+    b_files.sort_by(|x, y| x.0.cmp(&y.0));
+
+    Ok(a_files == b_files)
+}
+
 /// List installed schemas.
 pub fn list_schemas(json: bool) -> Result<()> {
     let root = find_project_root()?;

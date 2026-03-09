@@ -82,6 +82,9 @@ pub enum SchemaCommands {
         #[arg(long)]
         schema: Option<String>,
     },
+
+    /// Check schema consistency: canonical parses, installed matches, manifests agree
+    Check,
 }
 
 /// Install a schema package from a local path to .patina/schemas/<name>/
@@ -127,6 +130,11 @@ pub fn validate_fact(
     data: &serde_json::Value,
 ) -> anyhow::Result<()> {
     internal::validate_fact(schema_name, fact_name, data)
+}
+
+/// Check schema consistency (CI gate)
+pub fn check() -> anyhow::Result<()> {
+    internal::check_schemas()
 }
 
 /// Generate code from installed schemas

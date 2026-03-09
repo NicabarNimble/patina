@@ -1799,6 +1799,9 @@ fn main() -> Result<()> {
             } => {
                 commands::schema::generate(types, migrations, embeddings, schema.as_deref())?;
             }
+            commands::schema::SchemaCommands::Check => {
+                commands::schema::check()?;
+            }
         },
         Some(Commands::Serve { host, port, mcp }) => {
             // Deprecated: delegate to mother start with warning
