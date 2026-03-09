@@ -852,7 +852,11 @@ New. JSON-RPC 2.0 over stdio (stdin/stdout):
 One JSON-RPC message per line (newline-delimited). This is the same
 transport as the MCP stdio server (`src/mcp/server/mod.rs`).
 
-The `run()` function in patina-pipe:
+The `run()` function in patina-pipe dispatches all pipe protocol
+methods. The `Child` trait has default implementations that return
+`MethodNotFound` for methods a child doesn't support — connector
+children implement `fetch()`, lakehouse children implement
+`ingest()`, both get the rest for free:
 
 ```rust
 pub fn run<C: Child>(mut child: C) -> Result<()> {
@@ -873,6 +877,16 @@ pub fn run<C: Child>(mut child: C) -> Result<()> {
                 let params = parse_fetch_params(&request)?;
                 let mut emitter = FactEmitter::new(&mut stdout);
                 match child.fetch(&params, &mut emitter) {
+                    Ok(result) => send_response(&mut stdout, &request, &result)?,
+                    Err(e) => send_error(&mut stdout, &request, &e)?,
+                }
+            }
+            "pipe/ingest" => {
+                // Storage children (lakehouse) handle ingest.
+                // Connector children don't implement this — they
+                // return MethodNotFound, which is correct.
+                let params = parse_ingest_params(&request)?;
+                match child.ingest(&params) {
                     Ok(result) => send_response(&mut stdout, &request, &result)?,
                     Err(e) => send_error(&mut stdout, &request, &e)?,
                 }
@@ -956,13 +970,19 @@ Connector profile (deny-all filesystem):
     ([[spec-pipe-mother-io]]) — which also tightens sandbox to
     deny all outbound sockets
 
-Storage child profile (scoped filesystem):
+Storage child profile — local (scoped filesystem, v1):
   - deny all filesystem access EXCEPT a Mother-provided path
   - allow read/write to a specific directory (e.g., lake root)
   - allow stdin/stdout/stderr
-  - deny all outbound network (storage children don't call APIs)
+  - deny all outbound network (local storage doesn't call APIs)
   - Mother provides the scoped path at spawn time from child.toml
     type + destination config; the OS enforces the boundary
+
+Storage child profile — remote (scoped filesystem + network, future):
+  - same scoped filesystem as local profile
+  - allow outbound network (e.g., S3 API endpoint)
+  - required when lakehouse writes to cloud storage
+  - NOT in v1 scope — v1 lakehouse is local Parquet only
 ```
 
 Mother determines the sandbox profile at spawn time:
@@ -1019,6 +1039,7 @@ patina-pipe-types/
   src/
     lib.rs          # re-exports
     fact.rs         # Fact, FetchResult, content_hash, signature
+    ingest.rs       # IngestParams, IngestRecord, IngestResult, IngestProvenance
     error.rs        # PipeError (Transient, Fatal, RateLimited, Partial)
     capabilities.rs # Capabilities, Status
     config.rs       # FetchParams, AuthConfig
@@ -1026,7 +1047,8 @@ patina-pipe-types/
 ```
 
 Zero dependencies beyond serde, serde_json, blake3. This crate is
-the protocol definition in code.
+the protocol definition in code. `ingest.rs` defines the types for
+pipe/ingest (hard spec in [[raw-lake-ingestion]] DESIGN.md).
 
 ### 9.2 patina-sdk (updated)
 

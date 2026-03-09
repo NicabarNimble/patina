@@ -61,7 +61,7 @@ never decides file format, never owns dedup logic.
 |---------|--------------|
 | Parquet serialization | Converts domain records to Parquet record batches |
 | File emission | Writes Parquet files to the lake path |
-| Path layout | `raw/<provider>/<owner>/<repo>/<type>/` convention |
+| Path layout | `raw/<provider>/<source_path>/<type>/` — receives `source_path` opaque from Mother |
 | File naming | ISO 8601 timestamp-based file names |
 | Dedup enforcement | Reads identity fields from config, checks against existing files |
 | Append semantics | New file per ingestion run, never modify existing files |
@@ -70,7 +70,10 @@ never decides file format, never owns dedup logic.
 
 The lakehouse child owns the storage boundary. It receives records
 via pipe protocol and writes them. It does not know about GitHub,
-source APIs, or routing policy.
+source APIs, or routing policy. Layout ownership is split: Mother
+provides `source_path` (routing decision — which source goes where),
+lakehouse owns everything below that (file naming, Parquet format,
+data type partitioning, append semantics).
 
 ### Shared Responsibility
 
@@ -382,18 +385,31 @@ child receives this opaque and constructs:
 - Source params vary by connector (GitHub has owner/repo, Slack has
   workspace/channel, RSS has feed URL). Mother normalizes these
   into a deterministic path string.
-- `HashMap` iteration order is nondeterministic — a HashMap of
-  `{ owner, repo }` could produce `"repo/owner"` or `"owner/repo"`
-  on different runs. Mother constructs the path with explicit,
-  deterministic ordering.
+- `HashMap` iteration order is nondeterministic — the current
+  `sources.rs` stores params as `HashMap<String, toml::Value>`,
+  so iteration order cannot produce deterministic paths.
 - Multi-value params (e.g., `channels = ["#dev", "#incidents"]`)
   require decisions about path representation that belong to routing
   policy, not storage mechanics.
 
-**Convention:** Mother joins params in declaration order, sanitizing
-for filesystem safety (no `/`, `..`, or special characters in values).
-The exact construction algorithm is an implementation detail — the
-lakehouse child treats `source_path` as opaque.
+**Resolution:** The connector's schema.toml declares a `path_template`
+that defines the deterministic path construction:
+
+```toml
+# children/github-connector/schema.toml
+[lake]
+path_template = "{owner}/{repo}"
+```
+
+Mother reads the template, substitutes params by name (not by
+iteration order), and produces the `source_path` string. This is
+deterministic because the template explicitly names the params and
+their order. Connectors that don't declare a `path_template` get
+a fallback: the source entry name from sources.toml (e.g.,
+`"github-lake"`).
+
+The lakehouse child treats `source_path` as opaque regardless of
+how it was constructed.
 
 ## Lakehouse Child Implementation
 

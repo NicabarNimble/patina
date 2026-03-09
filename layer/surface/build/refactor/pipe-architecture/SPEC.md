@@ -226,7 +226,7 @@ All have lifecycle management (spawn, health, restart, shutdown).
 |---|---|---|
 | **Connector** | Bridge external sources | GitHub, Slack, RSS |
 | **Transport** | Hold complex connections | WebSocket, webhook listener |
-| **Lakehouse** | Manage data storage | Parquet across local/S3/remote |
+| **Lakehouse** | Manage data storage | Local Parquet (v1); S3/remote requires network-allowed sandbox profile (future) |
 | **Transform** | Curate and enrich data | Filter, embed, aggregate |
 
 Children can be WASM components (current mother-child world) or

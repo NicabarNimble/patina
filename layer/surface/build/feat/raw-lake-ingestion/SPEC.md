@@ -201,8 +201,11 @@ Owned by the lakehouse child, not by Mother:
 - Layout is not GitHub-specific: `<provider>/<owner>/<repo>/` is a
   convention that works for any hierarchical source identity
 
-The lakehouse child owns all layout decisions. Mother passes the
-lake root path; the child decides directory structure.
+Layout ownership is split: Mother constructs `source_path` (an
+opaque routing decision — which source's data goes where), lakehouse
+child owns everything below that (file naming, Parquet format,
+append semantics, data type partitioning). Mother passes `lake_path`,
+`provider`, and `source_path`; the child decides the rest.
 
 ### Lake Registration in Mother
 
