@@ -7,7 +7,11 @@ sessions:
   origin: 20260309-090701
 related:
 - connector-owns-tables
-exit_criteria: []
+exit_criteria:
+  - Broker rejects facts with fact_type not declared in installed schema
+  - CI check validates canonical schema installs cleanly and matches installed copy
+  - patina schema build <name> orchestrates validate→install→generate
+  - src/generated/schemas/ removed or regenerated from installed schemas (not forge-only)
 ---
 # feat: Schema Build Pipeline — Single Source, Runtime Validation, CI Enforcement
 
@@ -15,8 +19,63 @@ exit_criteria: []
 
 ## Problem
 
+After connector-owns-tables, `wit/schema/<name>/schema.toml` is the canonical
+schema source and `.patina/schemas/<name>/` is the installed runtime copy. But
+the pipeline between them has gaps:
+
+1. **No runtime fact-type validation.** `src/broker/routing.rs:50` checks that
+   the schema *name* is declared in child.toml but not that the `fact_type`
+   exists in the installed schema. A child emitting `github.typo` passes
+   routing silently.
+
+2. **No CI drift enforcement.** Nothing prevents the canonical source from
+   diverging from the installed copy. The connector-local duplicate drifted
+   exactly this way (fixed in ebdc7bcb).
+
+3. **No orchestration command.** Today the flow is manual: `schema install`
+   then `schema generate`. No single command validates, installs, and
+   regenerates.
+
+4. **Dead generated code.** `src/generated/schemas/` contains forge-only
+   types that are not imported anywhere.
+
 ## Solution
+
+Phased, in priority order:
+
+### Phase 1: Broker fact-type validation
+- Load installed schema at routing time (project context available via
+  destination path in source config).
+- Reject facts whose `fact_type` doesn't match any `facts[].event_type`
+  in the installed schema. Log warning + drop the fact.
+- Files: `src/broker/routing.rs`
+
+### Phase 2: CI drift checks
+- Add to `pre-push-checks.sh`:
+  - Canonical schema (`wit/schema/<name>/`) installs cleanly
+  - Installed copy matches canonical (byte-compare or parsed-compare)
+  - Connector manifest `package` version matches canonical `schema.package`
+- Files: `resources/git/pre-push-checks.sh`
+
+### Phase 3: `patina schema build <name>`
+- Thin orchestration wrapper: validate → install → optional generate
+- Replaces manual two-step flow
+- Files: `src/commands/schema/mod.rs`, `src/commands/schema/internal.rs`
+
+### Phase 4: Generated schema cleanup
+- Confirm `src/generated/schemas/` is dead code (no imports)
+- Either delete it or regenerate from installed schemas (github + forge)
+- Files: `src/generated/schemas/`
 
 ## Exit Criteria
 
+1. Broker rejects facts with fact_type not declared in installed schema
+2. CI check validates canonical schema installs cleanly and matches installed copy
+3. `patina schema build <name>` orchestrates validate→install→generate
+4. `src/generated/schemas/` removed or regenerated from installed schemas (not forge-only)
+
 ## Non-Goals
+
+- New top-level `schemas/` directory (keep `wit/schema/<name>/`)
+- Schema versioning or migration (pre-v1, single-user)
+- Auto-install on `mother run` (explicit install is the right UX for now)
