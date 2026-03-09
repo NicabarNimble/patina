@@ -1243,23 +1243,31 @@ so the protocol design doesn't preclude them:
 
 ## Key Files (Implementation Reference)
 
-**Existing code that embodies pipe protocol today:**
+**Already built (pipe protocol infrastructure):**
+- `crates/patina-pipe-types/src/` — shared types: Fact, PipeError,
+  Capabilities, FetchParams, canonical_json, content_hash, ChildManifest
+- `crates/patina-pipe/src/` — native transport: Child trait, run()
+  dispatcher, FactEmitter, PipeIo, sandbox profiles, test harness
+- `children/github-connector/src/` — first native child (GitHub
+  issues + PRs via REST API, emits github.issue/github.pr facts)
+- `src/broker/` — Mother routing engine: spawn, lifecycle, cursor,
+  sources.toml parsing, fact routing + validation, HTTP proxy
 - `src/plugin/internal/host_support.rs` — emit_fact IS pipe/fact
   over WASM transport. Security patterns (validate, hash, check)
   apply to all transports.
-- `src/mcp/server/mod.rs` — stdio JSON-RPC 2.0 server. The native
-  transport binding follows this exact pattern.
+- `src/mcp/server/mod.rs` — stdio JSON-RPC 2.0 server pattern
+  that native transport follows.
 - `src/secrets/mod.rs` — vault, identity, session caching. Reused
   by connection model.
-- `plugins/forge/src/github.rs` — first child implementation.
-  Migrates to native with `host_http` → `reqwest`.
-- `plugins/forge/plugin.toml` — child manifest prototype.
+- `plugins/forge/src/github.rs` — WASM child (coexists with native
+  github-connector).
 
-**New code to build:**
-- `crates/patina-pipe-types/` — shared types (Fact, Error, etc.)
-- `crates/patina-pipe/` — native transport (Child trait, run())
-- `children/github-connector/` — first native child
-- `src/broker/` — Mother routing engine
+**Remaining gaps (see SPEC.md §Implementation Gap Analysis):**
+- `src/broker/mod.rs` — multi-destination routing (Seam 1)
+- `src/broker/sources.rs` — destination model in sources.toml (Seam 1)
+- `src/commands/schema/internal.rs` — schema parser expansion (Seam 2)
+- `src/commands/scrape/events.rs` — generic projection (Seam 2)
+- `src/mother/graph.rs` — lake_registry, lake_sync tables (Seam 3)
+- `children/lakehouse/` — lakehouse child binary (Seam 3)
+- `src/commands/lake/` — `patina lake create/query` CLI (Seam 3)
 - `src/connect/` — connection management (`patina connect`)
-- `src/commands/connect.rs` — CLI commands
-- `src/commands/mother.rs` — `patina mother run/status/health/logs`

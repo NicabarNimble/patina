@@ -536,6 +536,91 @@ When source has `destination.type = "lake"`, emit routes to
 lakehouse child instead of events.db. Track in [[mother-broker]]
 or [[raw-lake-ingestion]].
 
+## Implementation Gap Analysis (session 20260308-210134)
+
+The pipe transport, native child spawn path, GitHub connector,
+content-hash dedup, and the project-scope broker loop already exist.
+The remaining implementation work is not blank-slate infrastructure —
+it is where those existing pieces still assume "project events.db
+only." Three major seams organize the work:
+
+### Seam 1: Multi-Destination Broker
+
+The broker is single-destination. `run_source()` in `src/broker/mod.rs`
+always opens a project `events.db`, fetches, accumulates validated
+facts, and commits facts + cursor transactionally. `sources.toml`
+parsing (`src/broker/sources.rs`) has no `destination` model.
+
+Lake routing is a core broker refactor, not an additive child.
+The broker must branch after validation (project events.db vs lake
+via pipe/ingest to lakehouse child). The correctness model changes
+materially: current cursor handling is simple because facts + cursor
+live in one SQLite transaction. Lake writes introduce filesystem
+writes, bounded multi-batch ingest, post-confirmation cursor advance,
+and error/status tracking in a different store.
+
+**Specs:** [[spec-pipe-architecture]] (mother-broker child),
+[[spec-raw-lake-ingestion]] (destination routing, lakehouse child)
+
+**Key files:** `src/broker/mod.rs`, `src/broker/sources.rs`,
+`src/broker/cursor.rs`, `src/broker/routing.rs`
+
+### Seam 2: Schema as Contract Layer (parallel)
+
+The schema parser (`src/commands/schema/internal.rs`) only knows
+`facts`, `embedding`, and `indexes`. It does not model
+`identity_fields`, `path_template`, `projections`, `contracts`,
+or a lake section. The GitHub schema file already contains
+`identity_fields`, so the parser is silently behind the authoring
+surface.
+
+Project materialization/search/enrichment are hardcoded around
+forge-style issues and PRs: `schema_registry` exists, but projection
+still creates `forge_issues`/`forge_prs`, dedup keys off
+`LIKE '%.issue'`/`LIKE '%.pr'`, and search/enrichment/oxidize
+classify content by suffix conventions.
+
+This is the broadest refactor surface but the most parallelizable —
+each subsystem (scrape, search, enrichment, oxidize) can be rewired
+independently once the schema parser grows.
+
+**Spec:** [[spec-connector-owns-tables]]
+
+**Key files:** `src/commands/schema/internal.rs`,
+`src/commands/scrape/events.rs`, `src/commands/scry/internal/enrichment.rs`,
+`src/commands/assay/internal/search.rs`, `src/commands/oxidize/mod.rs`,
+`children/github-connector/schema.toml`
+
+### Seam 3: Lake Control Plane
+
+The Mother/lake control plane is mostly greenfield. `graph.db`
+initialization (`src/mother/graph.rs`) has nodes, edges, beliefs,
+and search tables, but no `lake_registry` or `lake_sync`. The CLI
+surface describes `patina mother run` as routing to `events.db`,
+and there is no `patina lake` command family.
+
+Depends on Seam 1 for the routing path and Seam 2 for
+schema-driven dedup/identity.
+
+**Spec:** [[spec-raw-lake-ingestion]]
+
+**Key files:** `src/mother/graph.rs`, `src/commands/mother/mod.rs`
+
+### Seam Dependencies
+
+```
+Seam 2 (schema contracts)  ←  independent, parallel
+Seam 1 (broker routing)    →  Seam 3 (lake control plane)
+```
+
+### Deliberate Split-Brain: WASM Path
+
+`host_support::emit_fact()` (`src/plugin/internal/host_support.rs`)
+still writes directly to `events.db` and explicitly bypasses the
+broker. This is a deliberate v1 boundary: lake work is native-only.
+The WASM path will gain destination awareness when [[mother-broker]]
+ships, tracked in the host.wit emit routing discovery note above.
+
 ## Children
 
 This is a **container spec** — the architecture reference that child
