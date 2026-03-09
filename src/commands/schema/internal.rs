@@ -1880,7 +1880,11 @@ path_template = "{source}"
         );
 
         // PR FTS index must use comments_text (not comments)
-        let pr_index = meta.indexes.iter().find(|i| i.fact == "pull-request").unwrap();
+        let pr_index = meta
+            .indexes
+            .iter()
+            .find(|i| i.fact == "pull-request")
+            .unwrap();
         assert!(
             pr_index.fts_fields.contains(&"comments_text".to_string()),
             "PR FTS index should use comments_text, not comments"
