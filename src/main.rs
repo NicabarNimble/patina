@@ -1802,6 +1802,14 @@ fn main() -> Result<()> {
             commands::schema::SchemaCommands::Check => {
                 commands::schema::check()?;
             }
+            commands::schema::SchemaCommands::Build {
+                name,
+                types,
+                migrations,
+                embeddings,
+            } => {
+                commands::schema::build(&name, types, migrations, embeddings)?;
+            }
         },
         Some(Commands::Serve { host, port, mcp }) => {
             // Deprecated: delegate to mother start with warning

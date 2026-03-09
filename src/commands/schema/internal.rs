@@ -368,6 +368,35 @@ fn dirs_match(a: &Path, b: &Path) -> Result<bool> {
     Ok(a_files == b_files)
 }
 
+/// Build a schema: validate → install, with optional code generation.
+pub fn build_schema(name: &str, types: bool, migrations: bool, embeddings: bool) -> Result<()> {
+    let root = find_project_root()?;
+    let source = root.join("wit/schema").join(name);
+
+    if !source.exists() {
+        bail!("canonical schema not found: wit/schema/{}/", name);
+    }
+
+    // 1. Validate
+    println!("Validating wit/schema/{}/...", name);
+    let metadata = validate_package(&source)?;
+    println!(
+        "  ✓ {} v{} — {} facts",
+        metadata.schema.name, metadata.schema.version, metadata.facts.len()
+    );
+
+    // 2. Install
+    install_schema(&source.to_string_lossy())?;
+
+    // 3. Generate (if requested)
+    if types || migrations || embeddings {
+        generate(types, migrations, embeddings, Some(name))?;
+    }
+
+    println!("\nSchema '{}' built", name);
+    Ok(())
+}
+
 /// List installed schemas.
 pub fn list_schemas(json: bool) -> Result<()> {
     let root = find_project_root()?;

@@ -85,6 +85,24 @@ pub enum SchemaCommands {
 
     /// Check schema consistency: canonical parses, installed matches, manifests agree
     Check,
+
+    /// Build a schema: validate and install, with optional code generation
+    Build {
+        /// Schema name (looks up wit/schema/<name>/)
+        name: String,
+
+        /// Also generate Rust types
+        #[arg(long)]
+        types: bool,
+
+        /// Also generate SQLite migration DDL
+        #[arg(long)]
+        migrations: bool,
+
+        /// Also generate embedding config
+        #[arg(long)]
+        embeddings: bool,
+    },
 }
 
 /// Install a schema package from a local path to .patina/schemas/<name>/
@@ -135,6 +153,11 @@ pub fn validate_fact(
 /// Check schema consistency (CI gate)
 pub fn check() -> anyhow::Result<()> {
     internal::check_schemas()
+}
+
+/// Build a schema: validate → install, with optional generate
+pub fn build(name: &str, types: bool, migrations: bool, embeddings: bool) -> anyhow::Result<()> {
+    internal::build_schema(name, types, migrations, embeddings)
 }
 
 /// Generate code from installed schemas
