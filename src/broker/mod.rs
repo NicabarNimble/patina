@@ -13,19 +13,21 @@ pub mod sources;
 pub mod spawn;
 
 use anyhow::{Context, Result};
+use patina_pipe_types::manifest::ChildManifest;
 use std::collections::HashSet;
 use std::path::Path;
 
 use self::connection::load_connection;
 use self::cursor::{get_cursor, write_facts_with_cursor};
-use self::lifecycle::{BrokerChild, FetchParams};
+use self::lifecycle::{BrokerChild, FetchParams, NativeChild};
 use self::routing::{validate_fact, ValidatedFact, WriteResult};
-use self::sources::SourceEntry;
+use self::sources::{Destination, SourceEntry};
 use self::spawn::spawn_native;
 
-/// Run a single source: spawn child, fetch facts, validate, write to events.db.
+/// Run a single source: spawn child, fetch facts, validate, route to destination.
 ///
 /// This is the full flow from DESIGN.md — the broker's primary operation.
+/// Routes to project events.db or lake based on source.destination.
 pub fn run_source(
     source: &SourceEntry,
     project_root: &Path,
@@ -64,6 +66,23 @@ pub fn run_source(
     )
     .with_context(|| format!("spawning child for source '{}'", source.name))?;
 
+    // Route based on destination
+    match &source.destination {
+        Destination::Project => write_to_project(source, project_root, &mut child, &manifest),
+        Destination::Lake { name } => route_to_lake(source, name, &mut child),
+    }
+}
+
+/// Write facts to the project's events.db (current default behavior).
+///
+/// Opens events.db, reads stored cursor, fetches from child, validates,
+/// writes facts + cursor transactionally, shuts down child.
+fn write_to_project(
+    source: &SourceEntry,
+    project_root: &Path,
+    child: &mut NativeChild,
+    manifest: &ChildManifest,
+) -> Result<WriteResult> {
     // 4. Open destination events.db
     let events_conn = crate::eventlog::open_events_db_at(project_root)
         .with_context(|| format!("opening events.db for {}", project_root.display()))?;
@@ -85,7 +104,7 @@ pub fn run_source(
     let child_name = child.name().to_string();
 
     let fetch_result = child.fetch(&fetch_params, &mut |fact| {
-        match validate_fact(&fact, &manifest, &child_name, &mut warned_schemas) {
+        match validate_fact(&fact, manifest, &child_name, &mut warned_schemas) {
             Ok(validated) => {
                 validated_facts.push(validated);
                 Ok(())
@@ -126,6 +145,32 @@ pub fn run_source(
     );
 
     Ok(write_result)
+}
+
+/// Route facts to a named lake via lakehouse child (stub).
+///
+/// Lake routing requires the lakehouse child process (Seam 3).
+/// For now, this logs the intent and returns an error.
+fn route_to_lake(
+    source: &SourceEntry,
+    lake_name: &str,
+    child: &mut NativeChild,
+) -> Result<WriteResult> {
+    eprintln!(
+        "[broker] {}: destination is lake '{}' — lake routing not yet implemented (Seam 3)",
+        source.name, lake_name
+    );
+
+    // Shutdown child cleanly even though we can't route
+    if let Err(e) = child.shutdown() {
+        eprintln!("[broker] {}: shutdown warning: {}", source.name, e);
+    }
+
+    anyhow::bail!(
+        "source '{}': lake destination '{}' requires lakehouse child (not yet implemented)",
+        source.name,
+        lake_name
+    )
 }
 
 /// Source status information for display.
