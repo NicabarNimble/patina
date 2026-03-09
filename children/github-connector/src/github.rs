@@ -252,6 +252,9 @@ impl<'a> GitHubClient<'a> {
     // ========================================================================
 
     /// Fetch PRs and emit them as github.pr facts.
+    ///
+    /// GitHub's pulls endpoint doesn't support `since`, so we sort by
+    /// `updated desc` and stop when we see an item older than `since`.
     pub fn fetch_and_emit_prs(
         &self,
         limit: usize,
@@ -262,13 +265,14 @@ impl<'a> GitHubClient<'a> {
         let mut emitted = 0;
         let mut latest_updated_at: Option<String> = None;
         let mut page = 1;
+        let mut hit_since_cutoff = false;
 
         loop {
-            if fetched >= limit {
+            if fetched >= limit || hit_since_cutoff {
                 break;
             }
 
-            let url = self.prs_url(page, since);
+            let url = self.prs_url(page);
             let response = self.get(&url, io)?;
             let items: Vec<GhApiPullRequest> =
                 serde_json::from_str(&response.body).map_err(|e| PipeError::Fatal {
@@ -284,6 +288,15 @@ impl<'a> GitHubClient<'a> {
             for item in &items {
                 if fetched >= limit {
                     break;
+                }
+
+                // Client-side since filter: results are sorted by updated desc,
+                // so once we see an older item, all remaining are older too.
+                if let Some(cutoff) = since {
+                    if item.updated_at.as_str() <= cutoff {
+                        hit_since_cutoff = true;
+                        break;
+                    }
                 }
 
                 // Track latest updated_at for cursor
@@ -348,9 +361,7 @@ impl<'a> GitHubClient<'a> {
         })
     }
 
-    fn prs_url(&self, page: usize, _since: Option<&str>) -> String {
-        // GitHub's pulls endpoint doesn't have a `since` parameter,
-        // so we sort by updated desc and stop early when needed.
+    fn prs_url(&self, page: usize) -> String {
         format!(
             "{}/pulls?state=all&per_page={}&page={}&sort=updated&direction=desc",
             self.api_base(),
