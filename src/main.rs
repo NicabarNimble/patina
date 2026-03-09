@@ -308,7 +308,6 @@ enum Commands {
         /// Enable contribution mode (create fork for PRs)
         #[arg(long, requires = "url")]
         contrib: bool,
-
     },
 
     /// Manage embedding models in mother cache

@@ -469,9 +469,15 @@ fn pr_to_event_json(
 /// fixes, closes, resolves (and their conjugated forms).
 fn extract_linked_issues(body: &str) -> Vec<i64> {
     const KEYWORDS: &[&str] = &[
-        "fix ", "fixes ", "fixed ",
-        "close ", "closes ", "closed ",
-        "resolve ", "resolves ", "resolved ",
+        "fix ",
+        "fixes ",
+        "fixed ",
+        "close ",
+        "closes ",
+        "closed ",
+        "resolve ",
+        "resolves ",
+        "resolved ",
     ];
     let lower = body.to_lowercase();
     let mut issues = Vec::new();
@@ -559,6 +565,9 @@ mod tests {
 
     #[test]
     fn test_extract_linked_issues_sorted() {
-        assert_eq!(extract_linked_issues("fixes #30, fixes #10, fixes #20"), vec![10, 20, 30]);
+        assert_eq!(
+            extract_linked_issues("fixes #30, fixes #10, fixes #20"),
+            vec![10, 20, 30]
+        );
     }
 }

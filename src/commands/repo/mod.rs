@@ -104,24 +104,14 @@ pub fn execute_cli(
             no_oxidize,
         },
         (Some(RepoCommands::List { status }), _) => RepoCommand::List { status },
-        (
-            Some(RepoCommands::Update {
-                name,
-                all,
-                oxidize,
-            }),
-            _,
-        ) => {
+        (Some(RepoCommands::Update { name, all, oxidize }), _) => {
             if all {
                 RepoCommand::Update {
                     name: None,
                     oxidize,
                 }
             } else {
-                RepoCommand::Update {
-                    name,
-                    oxidize,
-                }
+                RepoCommand::Update { name, oxidize }
             }
         }
         (Some(RepoCommands::Remove { name }), _) => RepoCommand::Remove { name },
@@ -286,10 +276,7 @@ pub fn execute(command: RepoCommand) -> Result<()> {
             }
             Ok(())
         }
-        RepoCommand::Update {
-            name,
-            oxidize,
-        } => {
+        RepoCommand::Update { name, oxidize } => {
             if let Some(n) = name {
                 update(&n, oxidize)
             } else {
