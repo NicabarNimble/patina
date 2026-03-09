@@ -10,7 +10,7 @@ beliefs:
 exit_criteria:
 - id: from-value-deserialize
   text: NativeChild::fetch() deserializes the pipe/fetch response result via serde_json::from_value::<FetchResult>() instead of manual .get()/.as_u64() field plucking.
-  checked: false
+  checked: true
   verify: lifecycle.rs contains `serde_json::from_value` for FetchResult. No manual .get("emitted") or .get("cursor") calls remain in the fetch response path.
 ---
 # fix: FetchResult response parsing should use serde_json::from_value()
