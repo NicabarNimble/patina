@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: connector-owns-tables
-status: ready
+status: active
 created: 2026-03-08
 sessions:
   origin: 20260308-070818
