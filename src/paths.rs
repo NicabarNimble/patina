@@ -18,6 +18,7 @@
 //! ├── config.toml              # Global config
 //! ├── registry.yaml            # Project/repo registry
 //! ├── adapters/                # LLM adapter templates
+//! ├── connections/             # Connection records (TOML)
 //! ├── personas/default/events/ # Source (valuable)
 //! ├── run/                     # Runtime (socket, pid, token)
 //! │   ├── serve.sock           # Unix domain socket
@@ -222,6 +223,21 @@ pub mod user_layer {
     }
 }
 
+/// Connection record paths (user-level, global scope in v1)
+pub mod connections {
+    use super::*;
+
+    /// Connection configs directory: `~/.patina/connections/`
+    pub fn connections_dir() -> PathBuf {
+        patina_home().join("connections")
+    }
+
+    /// Individual connection config: `~/.patina/connections/{name}.toml`
+    pub fn connection_path(name: &str) -> PathBuf {
+        connections_dir().join(format!("{}.toml", name))
+    }
+}
+
 /// Mother paths (cross-project graph and federation)
 pub mod mother {
     use super::*;
@@ -423,6 +439,17 @@ mod tests {
         let beliefs = user_layer::beliefs_dir();
         assert!(beliefs.to_string_lossy().contains("layer/surface/beliefs"));
         assert!(beliefs.starts_with(patina_home()));
+    }
+
+    #[test]
+    fn test_connections_paths() {
+        let dir = connections::connections_dir();
+        assert!(dir.to_string_lossy().ends_with(".patina/connections"));
+        assert!(dir.starts_with(patina_home()));
+
+        let path = connections::connection_path("github");
+        assert!(path.to_string_lossy().ends_with("connections/github.toml"));
+        assert!(path.starts_with(connections::connections_dir()));
     }
 
     #[test]
