@@ -14,7 +14,7 @@ pub mod spawn;
 
 use anyhow::{Context, Result};
 use patina_pipe_types::manifest::ChildManifest;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use self::connection::load_connection;
@@ -100,11 +100,11 @@ fn write_to_project(
 
     // 7. Fetch facts from child
     let mut validated_facts: Vec<ValidatedFact> = Vec::new();
-    let mut warned_schemas: HashSet<String> = HashSet::new();
+    let mut schema_cache: HashMap<String, HashSet<String>> = HashMap::new();
     let child_name = child.name().to_string();
 
     let fetch_result = child.fetch(&fetch_params, &mut |fact| {
-        match validate_fact(&fact, manifest, &child_name, &mut warned_schemas) {
+        match validate_fact(&fact, manifest, &child_name, project_root, &mut schema_cache) {
             Ok(validated) => {
                 validated_facts.push(validated);
                 Ok(())
