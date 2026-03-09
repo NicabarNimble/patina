@@ -456,11 +456,10 @@ Mother configures the sandbox at spawn time:
 4. Deny all outbound network — lakehouse communicates only via
    stdio (pipe protocol)
 
-This resolves the conflict between pipe-architecture §8.3 (which
-originally said "deny all filesystem") and the lakehouse's need to
-create directories and write Parquet files. The sandbox is
-parameterized, not weakened — connectors still get deny-all
-filesystem.
+This follows [[pipe-architecture]] §8.3, which specifies parameterized
+sandbox profiles per child type. Connectors get deny-all filesystem;
+storage children get scoped filesystem access. The sandbox is
+parameterized, not weakened.
 
 ### Parquet Format
 
