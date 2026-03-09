@@ -6,6 +6,7 @@
 use anyhow::{bail, Context, Result};
 use patina_pipe::harness::{spawn_child_with_handler, HttpHandler};
 use patina_pipe::sandbox::SandboxProfile;
+use patina_pipe_types::config::{AuthConfig, InitializeParams};
 use patina_pipe_types::manifest::{ChildManifest, ChildType};
 use std::path::{Path, PathBuf};
 
@@ -64,15 +65,14 @@ pub fn load_manifest(binary_path: &Path) -> Result<ChildManifest> {
 }
 
 /// Build pipe/initialize params with optional credential delivery (§9).
+///
+/// Constructs `pipe_types::InitializeParams` for compile-time field checking,
+/// then serializes to `serde_json::Value` for `conn.request()` compatibility.
 pub fn build_init_params(
     manifest: &ChildManifest,
     credential: Option<&str>,
     provider: &str,
 ) -> serde_json::Value {
-    let mut params = serde_json::json!({
-        "protocol_version": "1.0"
-    });
-
     // Tier 2: include raw token if child opts in
     let requires_token = manifest
         .auth
@@ -80,17 +80,29 @@ pub fn build_init_params(
         .map(|a| a.requires_in_process_token)
         .unwrap_or(false);
 
-    if requires_token {
+    let auth = if requires_token {
         if let Some(token) = credential {
-            params["auth"] = serde_json::json!({ "token": token, "provider": provider });
             eprintln!(
                 "[broker] {}: child holds raw credential (audit trail active)",
                 manifest.child.name
             );
+            Some(AuthConfig {
+                token: token.to_string(),
+                provider: provider.to_string(),
+            })
+        } else {
+            None
         }
-    }
+    } else {
+        None
+    };
 
-    params
+    let init_params = InitializeParams {
+        protocol_version: "1.0".to_string(),
+        auth,
+    };
+
+    serde_json::to_value(init_params).expect("InitializeParams serialization cannot fail")
 }
 
 /// Determine the sandbox profile for a child based on its type.
