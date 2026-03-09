@@ -1,15 +1,14 @@
 //! Event insertion for pipeline-produced issues and PRs.
 //!
-//! "Do X": Insert typed events from pipeline plugins into events.db and
-//! projected tables.
+//! "Do X": Insert typed events from pipeline plugins into events.db.
 //!
 //! Pipeline plugins (WASM) produce typed Issue/PullRequest structs. This
-//! module writes them to events.db (write side) and directly to the
-//! github_issues/github_prs tables (read side) for immediate consistency.
+//! module writes them to events.db (write side). Event types are resolved
+//! at runtime from installed schema declarations — no hardcoded connector
+//! knowledge.
 //!
-//! The generic projection engine (projection.rs) handles bulk projection
-//! from events.db into schema-declared tables. This module handles the
-//! incremental write path from pipeline plugins.
+//! The generic projection engine (projection.rs) handles materialization
+//! from events.db into schema-declared read model tables.
 
 use anyhow::Result;
 use rusqlite::Connection;
@@ -19,10 +18,10 @@ use serde_json::json;
 use super::database;
 
 // ============================================================================
-// Domain types (platform-agnostic forge data)
+// Domain types (platform-agnostic connector data)
 // ============================================================================
 
-/// Issue from any forge platform.
+/// Issue from any connector platform.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Issue {
     pub number: i64,
@@ -36,7 +35,7 @@ pub struct Issue {
     pub url: String,
 }
 
-/// Pull/Merge Request from any forge platform.
+/// Pull/Merge Request from any connector platform.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PullRequest {
     pub number: i64,
@@ -61,7 +60,7 @@ pub struct Comment {
     pub created_at: String,
 }
 
-/// Issue state (platform-agnostic).
+/// Issue state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum IssueState {
@@ -69,7 +68,7 @@ pub enum IssueState {
     Closed,
 }
 
-/// Pull request state (platform-agnostic).
+/// Pull request state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PrState {
@@ -101,7 +100,7 @@ fn event_exists(
 }
 
 // ============================================================================
-// Insert: typed structs → events.db + projected tables
+// Insert: typed structs → events.db (projection engine handles read model)
 // ============================================================================
 
 /// Stats returned from insert operations.
@@ -110,149 +109,117 @@ pub struct InsertStats {
     pub skipped: usize,
 }
 
-/// Insert issues into events.db eventlog and github_issues table.
-pub fn insert_issues(
-    patina_conn: &Connection,
-    events_conn: &Connection,
-    issues: &[Issue],
-) -> Result<InsertStats> {
+/// Resolve event_type for a fact name from installed schemas.
+fn resolve_event_type_for_fact(fact_name: &str) -> Result<String> {
+    let schemas = crate::commands::schema::load_all_installed()?;
+    for schema in &schemas {
+        for fact in &schema.facts {
+            if fact.name == fact_name {
+                return Ok(fact.event_type.clone());
+            }
+        }
+    }
+    anyhow::bail!("no installed schema declares fact '{}'", fact_name)
+}
+
+/// Insert issues into events.db eventlog.
+///
+/// Event type is resolved from installed schemas (fact name "issue").
+/// Read model tables are rebuilt by the generic projection engine.
+pub fn insert_issues(events_conn: &Connection, issues: &[Issue]) -> Result<InsertStats> {
+    let event_type = resolve_event_type_for_fact("issue")?;
     let mut inserted = 0;
     let mut skipped = 0;
 
-    let mut issue_stmt = patina_conn.prepare(
-        "INSERT OR REPLACE INTO github_issues
-         (number, title, body, state, labels, author, created_at, updated_at, url, event_seq)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-    )?;
-
     for issue in issues {
-        let labels_str = serde_json::to_string(&issue.labels)?;
         let state_str = match issue.state {
             IssueState::Open => "open",
             IssueState::Closed => "closed",
         };
 
-        let seq = if event_exists(events_conn, "github.issue", issue.number, &issue.updated_at)? {
+        if event_exists(events_conn, &event_type, issue.number, &issue.updated_at)? {
             skipped += 1;
-            None
-        } else {
-            let event_data = json!({
-                "number": issue.number,
-                "title": &issue.title,
-                "body": &issue.body,
-                "state": state_str,
-                "labels": &issue.labels,
-                "author": &issue.author,
-                "url": &issue.url,
-                "updated_at": &issue.updated_at,
-            });
+            continue;
+        }
 
-            let seq = database::insert_event(
-                events_conn,
-                "github.issue",
-                &issue.created_at,
-                &issue.number.to_string(),
-                Some(&issue.url),
-                &event_data.to_string(),
-            )?;
-            inserted += 1;
-            Some(seq)
-        };
+        let event_data = json!({
+            "number": issue.number,
+            "title": &issue.title,
+            "body": &issue.body,
+            "state": state_str,
+            "labels": &issue.labels,
+            "author": &issue.author,
+            "url": &issue.url,
+            "updated_at": &issue.updated_at,
+        });
 
-        issue_stmt.execute(rusqlite::params![
-            issue.number,
-            &issue.title,
-            &issue.body,
-            state_str,
-            &labels_str,
-            &issue.author,
+        database::insert_event(
+            events_conn,
+            &event_type,
             &issue.created_at,
-            &issue.updated_at,
-            &issue.url,
-            seq,
-        ])?;
+            &issue.number.to_string(),
+            Some(&issue.url),
+            &event_data.to_string(),
+        )?;
+        inserted += 1;
     }
 
     Ok(InsertStats { inserted, skipped })
 }
 
-/// Insert PRs into events.db eventlog and github_prs table.
-pub fn insert_prs(
-    patina_conn: &Connection,
-    events_conn: &Connection,
-    prs: &[PullRequest],
-) -> Result<InsertStats> {
+/// Insert PRs into events.db eventlog.
+///
+/// Event type is resolved from installed schemas (fact name "pull-request").
+/// Read model tables are rebuilt by the generic projection engine.
+pub fn insert_prs(events_conn: &Connection, prs: &[PullRequest]) -> Result<InsertStats> {
+    let event_type = resolve_event_type_for_fact("pull-request")?;
     let mut inserted = 0;
     let mut skipped = 0;
 
-    let mut pr_stmt = patina_conn.prepare(
-        "INSERT OR REPLACE INTO github_prs
-         (number, title, body, state, labels, author, created_at, merged_at, url, linked_issues, approvals, event_seq)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-    )?;
-
     for pr in prs {
-        let labels_str = serde_json::to_string(&pr.labels)?;
-        let linked_str = serde_json::to_string(&pr.linked_issues)?;
+        let updated_at = &pr.created_at;
+
+        if event_exists(events_conn, &event_type, pr.number, updated_at)? {
+            skipped += 1;
+            continue;
+        }
+
         let state_str = match pr.state {
             PrState::Open => "open",
             PrState::Merged => "merged",
             PrState::Closed => "closed",
         };
 
-        let updated_at = &pr.created_at;
+        let comments_text: String = pr
+            .comments
+            .iter()
+            .map(|c| format!("{}: {}", c.author, c.body))
+            .collect::<Vec<_>>()
+            .join("\n");
 
-        let seq = if event_exists(events_conn, "github.pr", pr.number, updated_at)? {
-            skipped += 1;
-            None
-        } else {
-            let comments_text: String = pr
-                .comments
-                .iter()
-                .map(|c| format!("{}: {}", c.author, c.body))
-                .collect::<Vec<_>>()
-                .join("\n");
+        let event_data = json!({
+            "number": pr.number,
+            "title": &pr.title,
+            "body": &pr.body,
+            "state": state_str,
+            "labels": &pr.labels,
+            "author": &pr.author,
+            "url": &pr.url,
+            "linked_issues": &pr.linked_issues,
+            "comments": &comments_text,
+            "approvals": pr.approvals,
+            "updated_at": updated_at,
+        });
 
-            let event_data = json!({
-                "number": pr.number,
-                "title": &pr.title,
-                "body": &pr.body,
-                "state": state_str,
-                "labels": &pr.labels,
-                "author": &pr.author,
-                "url": &pr.url,
-                "linked_issues": &pr.linked_issues,
-                "comments": &comments_text,
-                "approvals": pr.approvals,
-                "updated_at": updated_at,
-            });
-
-            let seq = database::insert_event(
-                events_conn,
-                "github.pr",
-                &pr.created_at,
-                &pr.number.to_string(),
-                Some(&pr.url),
-                &event_data.to_string(),
-            )?;
-            inserted += 1;
-            Some(seq)
-        };
-
-        pr_stmt.execute(rusqlite::params![
-            pr.number,
-            &pr.title,
-            &pr.body,
-            state_str,
-            &labels_str,
-            &pr.author,
+        database::insert_event(
+            events_conn,
+            &event_type,
             &pr.created_at,
-            &pr.merged_at,
-            &pr.url,
-            &linked_str,
-            pr.approvals,
-            seq,
-        ])?;
+            &pr.number.to_string(),
+            Some(&pr.url),
+            &event_data.to_string(),
+        )?;
+        inserted += 1;
     }
 
     Ok(InsertStats { inserted, skipped })

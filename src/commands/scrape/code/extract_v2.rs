@@ -174,12 +174,8 @@ pub fn extract_code_metadata_v2(
                         _files_processed += 1;
                     }
                     ExtractedPayload::Issue(issue) => {
-                        let conn = db.connection();
-                        match crate::commands::scrape::events::insert_issues(
-                            conn,
-                            &events_conn,
-                            &[issue],
-                        ) {
+                        match crate::commands::scrape::events::insert_issues(&events_conn, &[issue])
+                        {
                             Ok(stats) => {
                                 issues_inserted += stats.inserted;
                                 events_skipped += stats.skipped;
@@ -195,9 +191,7 @@ pub fn extract_code_metadata_v2(
                         }
                     }
                     ExtractedPayload::PullRequest(pr) => {
-                        let conn = db.connection();
-                        match crate::commands::scrape::events::insert_prs(conn, &events_conn, &[pr])
-                        {
+                        match crate::commands::scrape::events::insert_prs(&events_conn, &[pr]) {
                             Ok(stats) => {
                                 prs_inserted += stats.inserted;
                                 events_skipped += stats.skipped;
