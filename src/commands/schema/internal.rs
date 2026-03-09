@@ -1850,8 +1850,7 @@ path_template = "{source}"
 
     #[test]
     fn parse_github_connector_schema() {
-        let connector_dir =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("children/github-connector");
+        let connector_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("children/github-connector");
         if !connector_dir.exists() {
             return;
         }

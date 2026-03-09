@@ -12,18 +12,13 @@ use std::path::{Path, PathBuf};
 ///
 /// Sources without a destination default to Project (backward compat).
 /// Lake destinations route facts to a lakehouse child via pipe/ingest.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Destination {
     /// Write to the project's events.db (current behavior, default).
+    #[default]
     Project,
     /// Route to a named lake via pipe/ingest to lakehouse child.
     Lake { name: String },
-}
-
-impl Default for Destination {
-    fn default() -> Self {
-        Destination::Project
-    }
 }
 
 /// A single source entry from sources.toml.
@@ -339,7 +334,10 @@ type = "bucket"
 "#;
         let result = parse_sources(toml);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("unknown destination type"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("unknown destination type"));
     }
 
     #[test]

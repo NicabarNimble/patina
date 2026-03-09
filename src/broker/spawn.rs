@@ -161,8 +161,7 @@ pub fn spawn_native(
     };
 
     // Determine sandbox profile from child type (DESIGN.md §8.3)
-    let sandbox_profile =
-        sandbox_profile_for_child(&manifest.child.child_type, storage_path)?;
+    let sandbox_profile = sandbox_profile_for_child(&manifest.child.child_type, storage_path)?;
 
     // Sandbox enforcement (DESIGN.md §Sandbox Enforcement)
     if !no_sandbox {
@@ -328,16 +327,12 @@ requires_in_process_token = true
     fn sandbox_profile_lakehouse_requires_path() {
         let result = sandbox_profile_for_child(&ChildType::Lakehouse, None);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("storage_path"));
+        assert!(result.unwrap_err().to_string().contains("storage_path"));
     }
 
     #[test]
     fn sandbox_profile_lakehouse_scoped() {
-        let profile =
-            sandbox_profile_for_child(&ChildType::Lakehouse, Some("/tmp/lake")).unwrap();
+        let profile = sandbox_profile_for_child(&ChildType::Lakehouse, Some("/tmp/lake")).unwrap();
         assert!(matches!(
             profile,
             SandboxProfile::ScopedStorage { path } if path == "/tmp/lake"

@@ -218,7 +218,9 @@ mod macos_tests {
             path: "/Users/test/.patina/lakes/github".to_string(),
         });
         assert!(profile.contains("(deny default)"));
-        assert!(profile.contains("(allow file-read* file-write* (subpath \"/Users/test/.patina/lakes/github\"))"));
+        assert!(profile.contains(
+            "(allow file-read* file-write* (subpath \"/Users/test/.patina/lakes/github\"))"
+        ));
         // Still no network
         assert!(!profile.contains("network-outbound"));
     }
@@ -328,7 +330,12 @@ mod macos_tests {
         // Must use canonical path — macOS sandbox_init() resolves symlinks
         // (/var → /private/var, /tmp → /private/tmp).
         let tmp = tempfile::tempdir().unwrap();
-        let scoped_path = tmp.path().canonicalize().unwrap().to_string_lossy().to_string();
+        let scoped_path = tmp
+            .path()
+            .canonicalize()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
 
         // Pre-create a test file in the scoped path
         std::fs::write(tmp.path().join("test.txt"), "hello").unwrap();
@@ -371,9 +378,7 @@ mod macos_tests {
             // Reading the scoped path should be ALLOWED
             let test_file = format!("{}/test.txt", scoped_path);
             match std::fs::read_to_string(&test_file) {
-                Ok(content) if content == "hello" => {
-                    results.push_str("READ_SCOPED:ALLOWED\n")
-                }
+                Ok(content) if content == "hello" => results.push_str("READ_SCOPED:ALLOWED\n"),
                 Ok(_) => results.push_str("READ_SCOPED:WRONG_CONTENT\n"),
                 Err(_) => results.push_str("READ_SCOPED:BLOCKED\n"),
             }
@@ -535,33 +540,18 @@ mod linux_tests {
             }
         }
 
-        // Parent: read results from child
         unsafe { libc::close(write_fd) };
         let mut read_file = unsafe { std::fs::File::from_raw_fd(read_fd) };
         let mut results = String::new();
         read_file.read_to_string(&mut results).unwrap();
 
-        // Wait for child
         let mut status = 0i32;
         unsafe { libc::waitpid(pid, &mut status, 0) };
 
         eprintln!("[test] landlock fork results:\n{}", results);
 
-        assert!(
-            results.contains("LANDLOCK_OK"),
-            "Landlock should apply successfully"
-        );
-        // Ephemeral port: Landlock returns PermissionDenied (EACCES)
-        assert!(
-            results.contains("BLOCKED_PORT:ERR:PermissionDenied"),
-            "ephemeral port should be blocked by Landlock (EACCES), got: {}",
-            results
-        );
-        // Port 443: also PermissionDenied — deny-all network, no exceptions
-        assert!(
-            results.contains("PORT_443:ERR:PermissionDenied"),
-            "port 443 should be blocked by Landlock (EACCES, deny-all), got: {}",
-            results
-        );
+        assert!(results.contains("LANDLOCK_OK"));
+        assert!(results.contains("BLOCKED_PORT:ERR:PermissionDenied"));
+        assert!(results.contains("PORT_443:ERR:PermissionDenied"));
     }
 }

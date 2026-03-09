@@ -10,10 +10,10 @@
 
 mod internal;
 
-// Re-export schema metadata types for use by other subsystems (projection, oxidize)
-pub(crate) use internal::{
-    ColumnDef, ContractDef, LakeConfig, ProjectionDef, SchemaMetadata,
-};
+// Re-export schema metadata types for use by other subsystems (projection, oxidize).
+// Consumers don't exist yet (contracts-before-consumers) — suppress until Seam 3.
+#[allow(unused_imports)]
+pub(crate) use internal::{ColumnDef, ContractDef, LakeConfig, ProjectionDef, SchemaMetadata};
 
 /// Load all installed schemas from `.patina/schemas/*/schema.toml`.
 pub(crate) fn load_all_installed() -> anyhow::Result<Vec<SchemaMetadata>> {
