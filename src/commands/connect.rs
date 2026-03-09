@@ -139,7 +139,7 @@ fn connect_github(manual: bool, name: Option<String>) -> Result<()> {
         },
         auth: patina::connect::AuthConfig {
             injection: provider.default_injection(),
-            secret_ref: format!("{}:{}", provider.name(), conn_name),
+            secret_ref: format!("{}-{}", provider.name(), conn_name),
             child: provider.default_child().to_string(),
             allowed_domains: provider.allowed_domains(),
             refresh_capable: !manual,

@@ -12,12 +12,9 @@
 use crate::connect::internal::model::{AuthMethod, ConnectError, InjectionStrategy};
 use crate::connect::providers::{AcquisitionResult, Provider};
 
-/// GitHub OAuth App client ID.
-///
-/// TODO: Replace with registered OAuth App client_id.
-/// See DESIGN.md Open Question 1 — registration is quick but requires
-/// a GitHub account decision (personal vs org). Code is testable without it.
-const GITHUB_CLIENT_ID: &str = "PLACEHOLDER_CLIENT_ID";
+/// GitHub OAuth App client ID (registered at github.com/settings/developers).
+/// Public by design — identifies the app, not a secret.
+const GITHUB_CLIENT_ID: &str = "Ov23liDYPjTJ7JgHpMlm";
 
 /// Default scopes for GitHub OAuth.
 const DEFAULT_SCOPES: &[&str] = &["repo", "read:org"];
