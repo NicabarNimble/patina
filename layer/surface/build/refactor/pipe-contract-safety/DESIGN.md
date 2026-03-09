@@ -92,9 +92,14 @@ checking.
 
 **lifecycle.rs changes:**
 - Delete `pub struct FetchParams` and `impl FetchParams` (35-line `to_json()`).
-- Re-export `pub use patina_pipe_types::FetchParams;` (or import at call sites).
-- Keep `BrokerFact`, `FetchResult`, `DEFAULT_MAX_BATCH_SIZE`, `BrokerChild`
-  trait, `NativeChild` — those are broker-side types, not wire types.
+- Delete `pub struct FetchResult` — identical to `pipe_types::FetchResult`
+  (`emitted: u64`, `cursor: Option<String>`). Re-export from pipe_types.
+- Re-export both at module level or import at call sites.
+- Keep `BrokerFact` — structurally similar to `pipe_types::Fact` but
+  `content_hash` is `Option<String>` (broker validates presence in
+  routing.rs Step 1, so optionality is intentional at this layer).
+- Keep `DEFAULT_MAX_BATCH_SIZE`, `BrokerChild` trait, `NativeChild` —
+  those are broker-side concerns, not wire types.
 
 **mod.rs changes:**
 - `write_to_project()` constructs `pipe_types::FetchParams` directly:
@@ -117,11 +122,10 @@ checking.
 
 ### 3. `test: round-trip serde tests for pipe protocol messages`
 
-**patina-pipe-types changes:**
-- Add `#[cfg(test)] mod tests` in `config.rs` with round-trip tests:
-  - `InitializeParams` with and without auth
-  - `FetchParams` with full and minimal fields
-  - `FetchResult` (already tested? check — if so, skip)
+**patina-pipe-types changes — tests colocated with their types:**
+- `config.rs`: add round-trip serde tests for `InitializeParams`
+  (with and without auth) and `FetchParams` (full and minimal fields).
+- `fact.rs`: add round-trip serde test for `FetchResult`.
 - Each test: construct → `serde_json::to_value()` → `serde_json::from_value()` →
   assert fields match. Proves the JSON the broker produces is what the
   child will successfully deserialize.
