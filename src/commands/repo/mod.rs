@@ -40,10 +40,6 @@ pub enum RepoCommands {
         #[arg(long)]
         contrib: bool,
 
-        /// Also fetch and index GitHub issues
-        #[arg(long)]
-        with_issues: bool,
-
         /// Skip building semantic indices (faster, lexical search only)
         #[arg(long)]
         no_oxidize: bool,
@@ -68,10 +64,6 @@ pub enum RepoCommands {
         /// Also run oxidize to build semantic indices
         #[arg(long)]
         oxidize: bool,
-
-        /// Also fetch and index GitHub issues
-        #[arg(long)]
-        with_issues: bool,
     },
 
     /// Remove a repository
@@ -96,7 +88,6 @@ pub fn execute_cli(
     command: Option<RepoCommands>,
     url: Option<String>,
     contrib: bool,
-    with_issues: bool,
 ) -> Result<()> {
     let cmd = match (command, url) {
         // Subcommand form: patina repo add/list/update/etc
@@ -104,14 +95,12 @@ pub fn execute_cli(
             Some(RepoCommands::Add {
                 url,
                 contrib,
-                with_issues,
                 no_oxidize,
             }),
             _,
         ) => RepoCommand::Add {
             url,
             contrib,
-            with_issues,
             no_oxidize,
         },
         (Some(RepoCommands::List { status }), _) => RepoCommand::List { status },
@@ -120,7 +109,6 @@ pub fn execute_cli(
                 name,
                 all,
                 oxidize,
-                with_issues,
             }),
             _,
         ) => {
@@ -128,25 +116,22 @@ pub fn execute_cli(
                 RepoCommand::Update {
                     name: None,
                     oxidize,
-                    with_issues,
                 }
             } else {
                 RepoCommand::Update {
                     name,
                     oxidize,
-                    with_issues,
                 }
             }
         }
         (Some(RepoCommands::Remove { name }), _) => RepoCommand::Remove { name },
         (Some(RepoCommands::Show { name }), _) => RepoCommand::Show { name },
 
-        // Shorthand form: patina repo <url> [--contrib] [--with-issues]
+        // Shorthand form: patina repo <url> [--contrib]
         // Note: --no-oxidize not available in shorthand, defaults to false (oxidize runs)
         (None, Some(url)) => RepoCommand::Add {
             url,
             contrib,
-            with_issues,
             no_oxidize: false,
         },
 
@@ -163,10 +148,9 @@ pub fn execute_cli(
 /// scaffolds `.patina/` structure, runs scrape, and builds semantic indices.
 ///
 /// With `--contrib`, also creates a GitHub fork and sets up push remote.
-/// With `--with-issues`, also fetches and indexes GitHub issues.
 /// With `--no-oxidize`, skips building semantic indices (faster, lexical search only).
-pub fn add(url: &str, contrib: bool, with_issues: bool, no_oxidize: bool) -> Result<()> {
-    internal::add_repo(url, contrib, with_issues, no_oxidize)
+pub fn add(url: &str, contrib: bool, no_oxidize: bool) -> Result<()> {
+    internal::add_repo(url, contrib, no_oxidize)
 }
 
 /// List all registered repositories
@@ -174,14 +158,14 @@ pub fn list() -> Result<Vec<RepoEntry>> {
     internal::list_repos()
 }
 
-/// Update a repository (git pull + rescrape + optional oxidize + optional issues)
-pub fn update(name: &str, oxidize: bool, with_issues: bool) -> Result<()> {
-    internal::update_repo(name, oxidize, with_issues)
+/// Update a repository (git pull + rescrape + optional oxidize)
+pub fn update(name: &str, oxidize: bool) -> Result<()> {
+    internal::update_repo(name, oxidize)
 }
 
 /// Update all repositories
-pub fn update_all(oxidize: bool, with_issues: bool) -> Result<()> {
-    internal::update_all_repos(oxidize, with_issues)
+pub fn update_all(oxidize: bool) -> Result<()> {
+    internal::update_all_repos(oxidize)
 }
 
 /// Remove a repository
@@ -268,9 +252,8 @@ pub fn execute(command: RepoCommand) -> Result<()> {
         RepoCommand::Add {
             url,
             contrib,
-            with_issues,
             no_oxidize,
-        } => add(&url, contrib, with_issues, no_oxidize),
+        } => add(&url, contrib, no_oxidize),
         RepoCommand::List { status } => {
             let repos = list()?;
             if repos.is_empty() {
@@ -306,12 +289,11 @@ pub fn execute(command: RepoCommand) -> Result<()> {
         RepoCommand::Update {
             name,
             oxidize,
-            with_issues,
         } => {
             if let Some(n) = name {
-                update(&n, oxidize, with_issues)
+                update(&n, oxidize)
             } else {
-                update_all(oxidize, with_issues)
+                update_all(oxidize)
             }
         }
         RepoCommand::Remove { name } => remove(&name),
@@ -325,7 +307,6 @@ pub enum RepoCommand {
     Add {
         url: String,
         contrib: bool,
-        with_issues: bool,
         no_oxidize: bool,
     },
     List {
@@ -334,7 +315,6 @@ pub enum RepoCommand {
     Update {
         name: Option<String>,
         oxidize: bool,
-        with_issues: bool,
     },
     Remove {
         name: String,
@@ -353,7 +333,6 @@ mod tests {
         let add = RepoCommand::Add {
             url: "https://github.com/test/repo".to_string(),
             contrib: false,
-            with_issues: true,
             no_oxidize: false,
         };
         assert!(matches!(add, RepoCommand::Add { .. }));

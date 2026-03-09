@@ -309,9 +309,6 @@ enum Commands {
         #[arg(long, requires = "url")]
         contrib: bool,
 
-        /// Also fetch and index GitHub issues
-        #[arg(long, requires = "url")]
-        with_issues: bool,
     },
 
     /// Manage embedding models in mother cache
@@ -1630,8 +1627,7 @@ fn main() -> Result<()> {
             command,
             url,
             contrib,
-            with_issues,
-        }) => commands::repo::execute_cli(command, url, contrib, with_issues)?,
+        }) => commands::repo::execute_cli(command, url, contrib)?,
         Some(Commands::Model { command }) => commands::model::execute_cli(command)?,
         Some(Commands::Mother { command }) => {
             commands::mother::execute_cli(command, mcp::run_mcp_server)?

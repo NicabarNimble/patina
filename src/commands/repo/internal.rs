@@ -95,7 +95,7 @@ impl Registry {
 }
 
 /// Add a repository
-pub fn add_repo(url: &str, contrib: bool, with_issues: bool, no_oxidize: bool) -> Result<()> {
+pub fn add_repo(url: &str, contrib: bool, no_oxidize: bool) -> Result<()> {
     // Parse GitHub URL
     let (owner, repo_name) = parse_github_url(url)?;
     let github = format!("{}/{}", owner, repo_name);
@@ -139,26 +139,6 @@ pub fn add_repo(url: &str, contrib: bool, with_issues: bool, no_oxidize: bool) -
     // Run scrape
     println!("🔍 Scraping codebase...");
     let event_count = scrape_repo(&repo_path)?;
-
-    // Scrape GitHub issues if requested
-    let issue_count = if with_issues {
-        println!("🐙 Fetching GitHub issues...");
-        match scrape_github_issues(&repo_path, &github) {
-            Ok(count) => {
-                println!("  💰 Indexed {} issues", count);
-                count
-            }
-            Err(e) => {
-                println!(
-                    "  ⚠️  GitHub scrape failed: {}. Continuing without issues.",
-                    e
-                );
-                0
-            }
-        }
-    } else {
-        0
-    };
 
     // Handle fork if contrib mode
     let fork = if contrib {
@@ -227,18 +207,10 @@ pub fn add_repo(url: &str, contrib: bool, with_issues: bool, no_oxidize: bool) -
     println!("   Path: {}", repo_path.display());
     println!("   Code events: {}", event_count);
     println!("   Search: {}", search_mode);
-    if issue_count > 0 {
-        println!("   GitHub issues: {}", issue_count);
-        println!(
-            "\n   Query with: patina scry \"your query\" --repo {} --include-issues",
-            github
-        );
-    } else {
-        println!(
-            "\n   Query with: patina scry \"your query\" --repo {}",
-            github
-        );
-    }
+    println!(
+        "\n   Query with: patina scry \"your query\" --repo {}",
+        github
+    );
 
     Ok(())
 }
@@ -259,7 +231,7 @@ pub fn list_repos() -> Result<Vec<RepoEntry>> {
 }
 
 /// Update a specific repository
-pub fn update_repo(name: &str, oxidize: bool, with_issues: bool) -> Result<()> {
+pub fn update_repo(name: &str, oxidize: bool) -> Result<()> {
     let mut registry = Registry::load()?;
     let entry = registry
         .repos
@@ -282,27 +254,6 @@ pub fn update_repo(name: &str, oxidize: bool, with_issues: bool) -> Result<()> {
     println!("🔍 Re-scraping codebase...");
     let event_count = scrape_repo(repo_path)?;
 
-    // Fetch GitHub issues if requested
-    let issue_count = if with_issues {
-        let github = &entry.github;
-        println!("🐙 Fetching GitHub issues...");
-        match scrape_github_issues(repo_path, github) {
-            Ok(count) => {
-                println!("  Indexed {} issues/PRs", count);
-                count
-            }
-            Err(e) => {
-                println!(
-                    "  ⚠️  GitHub scrape failed: {}. Continuing without issues.",
-                    e
-                );
-                0
-            }
-        }
-    } else {
-        0
-    };
-
     // Oxidize if requested
     if oxidize {
         println!("\n🧪 Building semantic indices...");
@@ -315,10 +266,7 @@ pub fn update_repo(name: &str, oxidize: bool, with_issues: bool) -> Result<()> {
         registry.save()?;
     }
 
-    println!("\n✅ Updated {} ({} events", name, event_count);
-    if issue_count > 0 {
-        println!("   + {} issues/PRs indexed", issue_count);
-    }
+    println!("\n✅ Updated {} ({} events)", name, event_count);
     if oxidize {
         println!("   Semantic indices built - scry will use vector search");
     }
@@ -327,7 +275,7 @@ pub fn update_repo(name: &str, oxidize: bool, with_issues: bool) -> Result<()> {
 }
 
 /// Update all repositories
-pub fn update_all_repos(oxidize: bool, with_issues: bool) -> Result<()> {
+pub fn update_all_repos(oxidize: bool) -> Result<()> {
     let repos = list_repos()?;
 
     if repos.is_empty() {
@@ -340,7 +288,7 @@ pub fn update_all_repos(oxidize: bool, with_issues: bool) -> Result<()> {
     let mut success = 0;
     for repo in &repos {
         print!("  {} ... ", repo.name);
-        match update_repo(&repo.name, oxidize, with_issues) {
+        match update_repo(&repo.name, oxidize) {
             Ok(_) => {
                 println!("✓");
                 success += 1;
@@ -759,16 +707,6 @@ projections:
     std::env::set_current_dir(original_dir)?;
 
     result
-}
-
-/// Scrape GitHub issues for a repo.
-///
-/// Note: The old forge scraper was removed when github-connector replaced it.
-/// This now triggers the broker-based connector if configured, otherwise no-ops.
-fn scrape_github_issues(_repo_path: &Path, _github: &str) -> Result<usize> {
-    // github-connector handles issue/PR ingestion via broker now.
-    // For ref repos, `patina mother run github` fetches issues/PRs.
-    Ok(0)
 }
 
 /// Git pull in a repo
