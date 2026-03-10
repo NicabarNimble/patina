@@ -348,6 +348,7 @@ fn train_projection(
     let mut projection = Projection::new(input_dim, config.hidden_dim(), config.output_dim());
 
     let learning_rate = 0.001;
+    let train_start = std::time::Instant::now();
     let _losses = projection.train(
         &anchors,
         &positives,
@@ -355,8 +356,21 @@ fn train_projection(
         config.epochs,
         learning_rate,
     )?;
+    let train_ms = train_start.elapsed().as_millis();
 
-    println!("   Training complete!");
+    println!("   Training complete! ({} ms)", train_ms);
+
+    patina::measure::emit_or_warn(
+        "index",
+        "oxidize",
+        "train",
+        &serde_json::json!({
+            "projection": name,
+            "triplets": anchors.len(),
+            "epochs": config.epochs,
+            "duration_ms": train_ms,
+        }),
+    );
 
     Ok(projection)
 }

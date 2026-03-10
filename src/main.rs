@@ -302,7 +302,6 @@ enum Commands {
         command: Option<RepoCommands>,
 
         /// Repository URL (shorthand for 'patina repo add <url>')
-        #[arg(conflicts_with = "command")]
         url: Option<String>,
 
         /// Enable contribution mode (create fork for PRs)

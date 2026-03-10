@@ -15,39 +15,39 @@ beliefs:
 exit_criteria:
 - id: connection-domain-model
   text: 'ConnectionRecord type with identity metadata (provider, account_id, auth_method, scopes, timestamps, is_default) and durable auth metadata (injection_strategy, secret_refs, allowed_domains, refresh_capability, expiry_state) — replaces bare ConnectionConfig'
-  checked: false
+  checked: true
   verify: 'ConnectionRecord round-trips through TOML with all fields. Unit tests construct records with OAuth and manual auth methods. broker/connection.rs ConnectionConfig replaced by import from connect module.'
 - id: auth-plan-resolution
   text: 'resolve_auth(record) → AuthPlan is the single seam between durable metadata and runtime credential use. AuthPlan contains resolved credential value, injection strategy, and allowed domains. Broker consumes AuthPlan without knowing credential origin. Auth-required children fail closed — resolve_auth returns error, broker never spawns unauthenticated.'
-  checked: false
+  checked: true
   verify: 'Unit tests: resolve_auth with Bearer strategy produces AuthPlan with token + Bearer injection. resolve_auth with missing vault entry returns typed error (not a warning). Broker run_source calls connect::load() then connect::resolve_auth(), never calls get_global_secret directly. grep for "proceeding without auth" in broker/ returns zero matches.'
 - id: auth-strategy-dispatch
   text: 'Broker HTTP handler dispatches on AuthPlan injection strategy (Bearer, Header, InProcess) — not on provider identity. Replaces hardcoded Bearer in broker/http.rs:80. Broker has no import of plugin auth types.'
-  checked: false
+  checked: true
   verify: 'broker/http.rs build_production_handler takes AuthPlan (not raw credential tuple). Test: construct AuthPlan with Bearer strategy, verify Authorization header injected. Test: construct AuthPlan with no credential, verify no header injected. grep for "plugin::.*Credential\|plugin::.*Injection\|host_support" in src/broker/ returns zero matches.'
 - id: provider-interface
   text: 'Provider trait defines acquisition interface — acquire(), probe_account(), default_scopes(), default_child(). GitHub is first implementation. Adding a second provider requires only a new Provider impl, not changes to connection or broker logic.'
-  checked: false
+  checked: true
   verify: 'GitHub provider implements trait. Test: mock provider with different scopes and child name populates ConnectionRecord correctly. No GitHub-specific code outside src/connect/providers/github.rs.'
 - id: connection-paths
   text: 'paths::connections module in src/paths.rs — connections_dir(), connection_path(name). Replaces hardcoded path in broker/connection.rs:42-48.'
-  checked: false
+  checked: true
   verify: 'All connection path references go through paths::connections. grep for hardcoded .patina/connections in src/ returns zero matches outside paths.rs.'
 - id: connection-lifecycle
   text: 'Create (OAuth or manual), load, list, remove (with referential integrity check against sources.toml across registered projects), refresh. Store writes connection TOML + vault entry atomically.'
-  checked: false
+  checked: true
   verify: 'Unit tests: create writes both TOML and vault entry. Remove of connection referenced by a sources.toml returns error naming the project. List returns all connections with computed status. Refresh updates vault entry and timestamps without losing identity metadata.'
 - id: cli-surface
   text: '`patina connect` subcommands: <provider> (acquire), list, show <name>, status, refresh <name>, remove <name> — integrated into clap hierarchy as top-level command'
-  checked: false
+  checked: true
   verify: '`patina connect --help` shows all subcommands. `patina connect list` with zero connections prints empty table. `patina connect show nonexistent` returns actionable error. `patina connect remove` on referenced connection warns before proceeding.'
 - id: architectural-cleanup
   text: 'Broker has no plugin-era auth dependencies. broker/http.rs does not import from plugin module. Shared HTTP utilities (validate_http_url, build_http_client, leak_check) extracted to a shared module — not copied into broker. broker/connection.rs deleted (replaced by connect module). broker/mod.rs does not call get_global_secret or load_connection directly. Stale CLI text in commands/mother/mod.rs updated to reflect destination routing.'
-  checked: false
+  checked: true
   verify: 'grep for "use crate::plugin" in src/broker/ returns zero matches. Shared HTTP utility module exists and is imported by both broker/http.rs and plugin/internal/host_support.rs — no duplicated leak_check or validate_http_url implementations. ls src/broker/connection.rs fails (file deleted). grep for "get_global_secret\|load_connection" in src/broker/mod.rs returns zero matches. `patina mother run --help` text does not claim "write to events.db" as only behavior.'
 - id: end-to-end
   text: '`patina connect github` → `patina mother run <source>` works: OAuth device flow acquires token, stores in vault, creates connection record, broker resolves auth plan, child fetches data successfully'
-  checked: false
+  checked: true
   verify: 'Full flow: connect github, verify connection in list, run a source that references it, confirm facts written to events.db. Then: remove connection, verify source run fails with actionable error.'
 ---
 # feat: patina-connect — Connection Subsystem
