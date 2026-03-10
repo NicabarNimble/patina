@@ -2,18 +2,20 @@
 
 ## Approach
 
-The DuckLake child has agency. Mother grants it toy approvals
-(connector binary, credentials, lake path, domain allowlist) via
-`pipe/initialize`, then gets out of the way. The child uses its
-approved toys independently — spawns the connector, drives the
+The DuckLake child has agency. Mother grants it two toys —
+a connector (authority to fetch) and storage (authority to write)
+— via `pipe/initialize`, then gets out of the way. The child
+uses its approved toys independently: spawns the connector,
+derives HTTP enforcement from the connector grant, drives the
 fetch cycle, handles partial failures, stores results. Mother is
 capability grantor, not runtime dispatcher.
 
 This is a different model from the current broker flow, where
 Mother orchestrates every step. Here, Mother grants capabilities
 and the child makes all workflow decisions. Per
-[[children-have-agency-toys-are-capabilities]] and
-[[initialize-is-capability-grant]].
+[[children-have-agency-toys-are-capabilities]],
+[[initialize-is-capability-grant]], and
+[[connector-toy-is-indivisible-authority]].
 
 ## §1 — DuckLake Child
 
@@ -46,7 +48,8 @@ lifecycle = "poll"
 description = "Autonomous DuckDB + DuckLake data lake"
 
 [capabilities]
-methods = ["ingest"]
+methods = ["run"]
+agency = true
 ```
 
 The `duckdb` crate bundles DuckDB as a C library (like `rusqlite`
@@ -55,42 +58,56 @@ the main patina binary.
 
 ### Initialization — Capability Grant
 
-Mother grants toy approvals via `pipe/initialize`. The init
-payload is the capability token set — it defines everything
+Mother grants two toys via `pipe/initialize`. The init
+payload is the capability grant — it defines everything
 the child is authorized to use:
 
 ```rust
-/// Approved toys — everything Mother grants the child.
+/// Two toys — everything Mother grants the child.
 /// This is a security boundary, not just startup config.
 struct LakeConfig {
-    lake_path: PathBuf,            // storage toy: where to write
-    connector: ConnectorToy,       // connector toy: what to fetch with
+    connector: ConnectorToy,       // authority to fetch
+    storage: StorageToy,           // authority to write
 }
 
-/// Approved connector toy — child uses this on its own.
+/// Connector toy — indivisible capability bundle.
+/// The child derives HTTP enforcement from this grant;
+/// the proxy is not a separate toy. Per
+/// [[connector-toy-is-indivisible-authority]].
 struct ConnectorToy {
-    binary: String,                // "github-connector"
-    credential: String,            // decrypted PAT
-    params: Value,                 // { owner, repo }
-    types: Vec<String>,            // ["issues", "prs"]
-    allowed_domains: Vec<String>,  // HTTP toy: approved domains
+    binary: String,                // executable identity: "github-connector"
+    credential: Option<String>,    // secret material: OAuth token
+    injection: InjectionStrategy,  // how credential reaches the API
+    allowed_domains: Vec<String>,  // policy boundary: approved domains
+    params: Value,                 // behavior scope: { owner, repo }
+    types: Vec<String>,            // behavior scope: ["issues", "prs"]
+}
+
+/// Storage toy — where the child writes results.
+struct StorageToy {
+    lake_path: PathBuf,            // ~/.patina/lakes/<name>/
 }
 ```
 
-On initialize, the child receives its toy approvals and sets up
-DuckDB + DuckLake:
+The connector toy bundles executable identity, secret material,
+policy boundary, and behavior scope as one indivisible authority.
+The child derives its HTTP proxy from this grant — it cannot have
+"connector without policy" or "policy without connector."
+
+On initialize, the child receives its two toys and sets up
+DuckDB + DuckLake using the storage toy:
 
 ```rust
 fn initialize(&mut self, params: &InitializeParams) -> Result<(), PipeError> {
-    let config: LakeConfig = // from params
+    let config: LakeConfig = // from params.toys
 
     let db = Connection::open_in_memory()?;
     db.execute_batch("INSTALL ducklake; LOAD ducklake;")?;
 
-    let catalog = config.lake_path.join("lake.ducklake");
+    let catalog = config.storage.lake_path.join("lake.ducklake");
     db.execute_batch(&format!(
         "ATTACH 'ducklake:{}' AS lake (DATA_PATH '{}')",
-        catalog.display(), config.lake_path.display()
+        catalog.display(), config.storage.lake_path.display()
     ))?;
 
     db.execute_batch("
@@ -170,7 +187,7 @@ fn fetch_and_store(
         "params": self.config.connector.params,
     });
 
-    let (facts, fetch_result) = connector.request("fetch", fetch_params)?;
+    let (facts, fetch_result) = connector.request("pipe/fetch", fetch_params)?;
 
     // Auto-create table
     let table = event_type_to_table(data_type);
@@ -212,47 +229,64 @@ the PR failure is recorded. Next run only re-fetches PRs.
 
 ### Using the Approved Connector Toy
 
-The child uses its approved connector toy via `ChildConnection`
-from `patina-pipe` — the same broker substrate Mother uses. The
-child spawns the connector on its own schedule, using only the
-binary path and credentials Mother approved:
+The child uses its connector toy via `ChildConnection` from
+`patina-pipe` — the same substrate Mother uses. The critical
+step: the child **derives** its HTTP proxy from the connector
+grant. The proxy is not a separate toy — it is the enforcement
+mechanism that makes connector use safe. Per
+[[connector-toy-is-indivisible-authority]].
 
 ```rust
-fn use_connector_toy(config: &ConnectorToy) -> Result<ChildConnection> {
-    // Resolve approved binary path
-    let path = resolve_child_binary(&config.binary)?;
+fn use_connector_toy(connector: &ConnectorToy) -> Result<ChildConnection> {
+    // Resolve approved binary (executable identity)
+    let path = resolve_child_binary(&connector.binary)?;
 
-    // Build HTTP proxy from approved capabilities
+    // Derive HTTP enforcement from the connector grant.
+    // The proxy is built FROM the grant — policy boundary +
+    // secret material → enforcement mechanism. The child cannot
+    // have connector access without going through this step.
     let http_handler = patina_pipe::http_proxy::build_http_proxy(HttpProxyConfig {
-        allowed_domains: config.allowed_domains.clone(),
-        credential: Some(ProxyCredential {
-            value: config.credential.clone(),
-            injection: ProxyInjection::Bearer,
+        allowed_domains: connector.allowed_domains.clone(),
+        credential: connector.credential.as_ref().map(|cred| ProxyCredential {
+            value: cred.clone(),
+            injection: match &connector.injection {
+                InjectionStrategy::Bearer => ProxyInjection::Bearer,
+                InjectionStrategy::Header { name } => ProxyInjection::Header { name: name.clone() },
+                InjectionStrategy::InProcess => ProxyInjection::InProcess,
+            },
         }),
     });
 
-    // Spawn connector toy with proxy
+    // Spawn connector with derived enforcement
     let mut conn = ChildConnection::spawn_with_http(&path, http_handler)?;
 
-    // Initialize connector toy with credential
-    conn.request("initialize", json!({
+    // Initialize connector — InProcess credential delivery if applicable
+    let auth = match &connector.injection {
+        InjectionStrategy::InProcess => connector.credential.as_ref().map(|c| json!({
+            "token": c, "provider": "oauth"
+        })),
+        _ => None,
+    };
+    conn.request("pipe/initialize", json!({
         "protocol_version": "1.0",
-        "auth": { "token": &config.credential }
+        "auth": auth,
     }))?;
 
     Ok(conn)
 }
 ```
 
-The child becomes a mini-broker for its connector toy, using
-the same `ChildConnection` substrate Mother uses. The HTTP proxy
-toy is built from the approved domain allowlist and credentials —
-the child cannot expand these beyond what Mother granted.
+The chain of authority:
+1. Mother grants `ConnectorToy` (indivisible capability)
+2. Child derives HTTP proxy from the grant (`build_http_proxy`)
+3. Child spawns connector with derived enforcement (`ChildConnection`)
+4. Connector has no direct network access — all HTTP proxied
 
-Same security properties as Mother's broker: domain allowlist,
-HTTPS only, credential injection, leak detection. The connector
-toy has no direct network access. All HTTP goes through the
-child's proxy, bounded by approved domains.
+The child becomes a mini-broker for its connector toy, using
+the same substrate Mother uses. The connector toy is not raw
+network permission — it is permission to spawn a specific
+connector and proxy its HTTP through policy derived from the
+grant. The child cannot expand beyond what Mother granted.
 
 ### Error Escalation
 
@@ -323,17 +357,20 @@ fn grant_lake_capabilities(
     let lake_child_path = resolve_child_binary("ducklake")?;
     let mut lake_child = spawn_child(&lake_child_path.to_string_lossy())?;
 
-    // 3. Grant toy approvals via pipe/initialize (capability grant)
+    // 3. Grant two toys via pipe/initialize (capability grant)
     lake_child.request("pipe/initialize", json!({
         "protocol_version": "1.0",
         "toys": {
-            "storage": { "lake_path": lake_path },
             "connector": {
                 "binary": auth_plan.child,
                 "credential": auth_plan.credential.as_ref().map(|c| &c.value),
+                "injection": injection_to_string(&auth_plan),
+                "allowed_domains": auth_plan.allowed_domains,
                 "params": source.params,
                 "types": source.types,
-                "allowed_domains": auth_plan.allowed_domains,
+            },
+            "storage": {
+                "lake_path": lake_path,
             }
         }
     }))?;
@@ -492,10 +529,16 @@ boundary keeps it separate.
 ## Dependencies
 
 - **[[http-proxy-extraction]]** must land first. The DuckLake
-  child uses `patina-pipe::http_proxy::build_http_proxy` to
-  build an HTTP proxy toy from its approved domain allowlist
-  and credentials. The child cannot proxy HTTP without this
-  shared capability in patina-pipe.
+  child derives its HTTP enforcement from the connector grant
+  using `patina_pipe::http_proxy::build_http_proxy`. This is
+  not convenience reuse — it is the mechanism that preserves
+  the broker security invariant when authority moves from
+  Mother to child. Per [[connector-toy-is-indivisible-authority]].
+
+- **[[measure-process-owned]]** must land first. The DuckLake
+  child needs `MeasureEvent` and `VALID_VERBS` from patina-pipe
+  to emit telemetry to its local `_measure` table using the
+  shared vocabulary.
 
 ## Open Questions
 

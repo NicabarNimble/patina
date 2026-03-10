@@ -6,11 +6,11 @@ created: 2026-03-10
 sessions:
   origin: 20260310-074810
 related:
-- raw-lake-ingestion
-- lake-registry
 - data-architecture-v3
 - patina-connect
 - pipe-architecture
+- http-proxy-extraction
+- measure-process-owned
 beliefs:
 - connectors-own-tables-schemas-are-contracts
 - mother-holds-connections-pipes-transform
@@ -18,6 +18,7 @@ beliefs:
 - raw-lake-is-capture-contract-first
 - children-have-agency-toys-are-capabilities
 - initialize-is-capability-grant
+- connector-toy-is-indivisible-authority
 exit_criteria:
 - id: ducklake-child-exists
   text: "A DuckLake child binary exists in children/ducklake/, embeds DuckDB+DuckLake extension, uses approved connector toys, manages catalog and Parquet files autonomously"
@@ -26,7 +27,7 @@ exit_criteria:
   text: "DuckLake child drives the fetch→store cycle: uses its approved connector toy, handles partial failures per data type, advances cursors independently per type"
   checked: false
 - id: mother-grants-capabilities
-  text: "Mother grants toy approvals via pipe/initialize (lake path, connector binary, credentials, domain allowlist); Mother does not manage the data flow after capability grant"
+  text: "Mother grants two toys via pipe/initialize — connector (indivisible: binary, credential, injection, domains, params, types) and storage (lake path); Mother does not manage the data flow after capability grant"
   checked: false
 - id: error-escalation
   text: "Child handles data flow errors (partial fetch, connector failures). Auth/credential errors escalate to Mother. Mother talks to user about infrastructure problems."
@@ -40,13 +41,14 @@ exit_criteria:
 ---
 # feat: DuckLake — DuckDB Child with Local Parquet Lake
 
-> Mother grants capabilities. She spins up a DuckLake child and
-> approves its toys: a connector, credentials, a lake path, and
-> an HTTP domain allowlist. The child uses those toys on its own —
-> fetch, store, handle failures. Mother is capability grantor and
-> boundary setter, not runtime dispatcher.
-> Per [[children-have-agency-toys-are-capabilities]] and
-> [[initialize-is-capability-grant]].
+> Mother grants two toys: a connector (binary, credential, domain
+> allowlist, params, types — one indivisible capability) and storage
+> (lake path). The DuckLake child derives HTTP enforcement from the
+> connector grant, uses its toys on its own — fetch, store, handle
+> failures. Mother is capability grantor, not runtime dispatcher.
+> Per [[children-have-agency-toys-are-capabilities]],
+> [[initialize-is-capability-grant]], and
+> [[connector-toy-is-indivisible-authority]].
 
 ## Problem
 
