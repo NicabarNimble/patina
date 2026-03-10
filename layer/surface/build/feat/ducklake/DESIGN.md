@@ -58,56 +58,83 @@ the main patina binary.
 
 ### Initialization — Capability Grant
 
-Mother grants two toys via `pipe/initialize`. The init
-payload is the capability grant — it defines everything
-the child is authorized to use:
+Mother grants a typed capability via `pipe/initialize`. The
+grant is a concrete `DuckLakeGrant` on `InitializeParams` — not
+an untyped blob. Authority is modeled, not improvised.
 
 ```rust
-/// Two toys — everything Mother grants the child.
-/// This is a security boundary, not just startup config.
-struct LakeConfig {
-    connector: ConnectorToy,       // authority to fetch
-    storage: StorageToy,           // authority to write
+// crates/patina-pipe-types/src/config.rs
+
+/// Parameters sent by Mother during pipe/initialize.
+pub struct InitializeParams {
+    pub protocol_version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth: Option<AuthConfig>,
+    /// Typed capability grant for DuckLake children.
+    /// Concrete before generic — no Option<Value> at trust boundaries.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ducklake: Option<DuckLakeGrant>,
+}
+
+/// Capability grant for the DuckLake child.
+/// Two toys: connector (authority to fetch) and storage
+/// (authority to write). Fail closed on missing or malformed.
+pub struct DuckLakeGrant {
+    pub connector: ConnectorToy,
+    pub storage: StorageToy,
 }
 
 /// Connector toy — indivisible capability bundle.
 /// The child derives HTTP enforcement from this grant;
 /// the proxy is not a separate toy. Per
 /// [[connector-toy-is-indivisible-authority]].
-struct ConnectorToy {
-    binary: String,                // executable identity: "github-connector"
-    credential: Option<String>,    // secret material: OAuth token
-    injection: InjectionStrategy,  // how credential reaches the API
-    allowed_domains: Vec<String>,  // policy boundary: approved domains
-    params: Value,                 // behavior scope: { owner, repo }
-    types: Vec<String>,            // behavior scope: ["issues", "prs"]
+pub struct ConnectorToy {
+    pub binary: String,                // executable identity: "github-connector"
+    pub credential: Option<String>,    // secret material: OAuth token
+    pub injection: InjectionStrategy,  // how credential reaches the API
+    pub allowed_domains: Vec<String>,  // policy boundary: approved domains
+    pub params: Value,                 // behavior scope: { owner, repo }
+    pub types: Vec<String>,            // behavior scope: ["issues", "prs"]
 }
 
 /// Storage toy — where the child writes results.
-struct StorageToy {
-    lake_path: PathBuf,            // ~/.patina/lakes/<name>/
+pub struct StorageToy {
+    pub lake_path: String,             // ~/.patina/lakes/<name>/
 }
 ```
+
+The grant is typed all the way through — Mother constructs a
+`DuckLakeGrant`, serde serializes it, the child deserializes it
+back to the same type. No manual `Value` parsing. If the grant
+is malformed, deserialization fails and init is rejected (fail
+closed).
 
 The connector toy bundles executable identity, secret material,
 policy boundary, and behavior scope as one indivisible authority.
 The child derives its HTTP proxy from this grant — it cannot have
 "connector without policy" or "policy without connector."
 
-On initialize, the child receives its two toys and sets up
-DuckDB + DuckLake using the storage toy:
+When a second agentic child type exists, it gets its own typed
+grant field on `InitializeParams`. Duplication is acceptable
+until a real abstraction emerges. The pattern to copy is clear.
+
+On initialize, the child extracts its typed grant — fail closed
+if missing:
 
 ```rust
 fn initialize(&mut self, params: &InitializeParams) -> Result<(), PipeError> {
-    let config: LakeConfig = // from params.toys
+    let grant = params.ducklake.as_ref().ok_or_else(|| PipeError::Fatal {
+        message: "ducklake child requires a DuckLakeGrant in pipe/initialize".into(),
+    })?;
 
+    let lake_path = PathBuf::from(&grant.storage.lake_path);
     let db = Connection::open_in_memory()?;
     db.execute_batch("INSTALL ducklake; LOAD ducklake;")?;
 
-    let catalog = config.storage.lake_path.join("lake.ducklake");
+    let catalog = lake_path.join("lake.ducklake");
     db.execute_batch(&format!(
         "ATTACH 'ducklake:{}' AS lake (DATA_PATH '{}')",
-        catalog.display(), config.storage.lake_path.display()
+        catalog.display(), lake_path.display()
     ))?;
 
     db.execute_batch("
@@ -124,7 +151,7 @@ fn initialize(&mut self, params: &InitializeParams) -> Result<(), PipeError> {
     ")?;
 
     self.db = Some(db);
-    self.config = Some(config);
+    self.grant = Some(grant.clone());
     Ok(())
 }
 ```
@@ -357,23 +384,30 @@ fn grant_lake_capabilities(
     let lake_child_path = resolve_child_binary("ducklake")?;
     let mut lake_child = spawn_child(&lake_child_path.to_string_lossy())?;
 
-    // 3. Grant two toys via pipe/initialize (capability grant)
-    lake_child.request("pipe/initialize", json!({
-        "protocol_version": "1.0",
-        "toys": {
-            "connector": {
-                "binary": auth_plan.child,
-                "credential": auth_plan.credential.as_ref().map(|c| &c.value),
-                "injection": injection_to_string(&auth_plan),
-                "allowed_domains": auth_plan.allowed_domains,
-                "params": source.params,
-                "types": source.types,
-            },
-            "storage": {
-                "lake_path": lake_path,
-            }
-        }
-    }))?;
+    // 3. Build typed capability grant — no untyped blobs at trust boundaries
+    let grant = DuckLakeGrant {
+        connector: ConnectorToy {
+            binary: auth_plan.child.clone(),
+            credential: auth_plan.credential.as_ref().map(|c| c.value.clone()),
+            injection: auth_plan.credential.as_ref()
+                .map(|c| c.injection.clone())
+                .unwrap_or(InjectionStrategy::Bearer),
+            allowed_domains: auth_plan.allowed_domains.clone(),
+            params: serde_json::to_value(&source.params)?,
+            types: source.types.clone(),
+        },
+        storage: StorageToy {
+            lake_path: lake_path.to_string_lossy().to_string(),
+        },
+    };
+
+    let init_params = InitializeParams {
+        protocol_version: "1.0".to_string(),
+        auth: None,  // credential is in the grant, not auth
+        ducklake: Some(grant),
+    };
+
+    lake_child.request("pipe/initialize", serde_json::to_value(&init_params)?)?;
 
     // 4. Tell child to run — child uses toys from here
     let (_notifs, result) = lake_child.request("pipe/run", json!({}))?;
@@ -490,17 +524,18 @@ boundary keeps it separate.
 ## Commits
 
 1. **`pipe-types: extend protocol for agentic children`**
-   Two changes in patina-pipe-types:
-   - Add `toys: Option<Value>` to `InitializeParams` (capability
-     grant payload — connectors ignore it, lake children deserialize
-     into their own `LakeConfig`). Existing `build_init_params` in
-     `spawn.rs` never sets toys, so connector path is unchanged.
+   In patina-pipe-types:
+   - Add `DuckLakeGrant`, `ConnectorToy`, `StorageToy` structs.
+     Typed capability grant — no `Option<Value>` at trust boundaries.
+   - Add `ducklake: Option<DuckLakeGrant>` to `InitializeParams`.
+     Connectors ignore it (it's `None`). Existing `build_init_params`
+     in `spawn.rs` never sets it, so connector path is unchanged.
    - Add `RunResult`, `RunReport`, `TypeReport`, `Escalation` types.
    In patina-pipe: add `run()` to `Child` trait with default
    Fatal("not implemented"). Add `pipe/run` dispatch to `lib.rs`
    run loop (after `pipe/ingest`, before `pipe/health`).
-   These enable the autonomous child model where children with
-   agency receive capability grants and drive their own workflow.
+   When a second agentic child type exists, it gets its own typed
+   grant field. Duplication is acceptable until abstraction emerges.
 
 2. **`lake: add patina lake create + lake.toml`**
    `src/commands/lake.rs` — create directory, write lake.toml.
