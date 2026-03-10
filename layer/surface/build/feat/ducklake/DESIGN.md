@@ -489,11 +489,18 @@ boundary keeps it separate.
 
 ## Commits
 
-1. **`pipe-types: add pipe/run method types`**
-   RunResult, RunReport, TypeReport, Escalation types in
-   patina-pipe-types. Add `run()` to Child trait with default
-   Fatal("not implemented"). These enable the autonomous child
-   model where children with agency drive their own workflow.
+1. **`pipe-types: extend protocol for agentic children`**
+   Two changes in patina-pipe-types:
+   - Add `toys: Option<Value>` to `InitializeParams` (capability
+     grant payload — connectors ignore it, lake children deserialize
+     into their own `LakeConfig`). Existing `build_init_params` in
+     `spawn.rs` never sets toys, so connector path is unchanged.
+   - Add `RunResult`, `RunReport`, `TypeReport`, `Escalation` types.
+   In patina-pipe: add `run()` to `Child` trait with default
+   Fatal("not implemented"). Add `pipe/run` dispatch to `lib.rs`
+   run loop (after `pipe/ingest`, before `pipe/health`).
+   These enable the autonomous child model where children with
+   agency receive capability grants and drive their own workflow.
 
 2. **`lake: add patina lake create + lake.toml`**
    `src/commands/lake.rs` — create directory, write lake.toml.
