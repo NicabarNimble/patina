@@ -1,7 +1,7 @@
 ---
 type: fix
 id: oxidize-parallelism
-status: ready
+status: active
 created: 2026-03-10
 sessions:
   origin: 20260309-182853
