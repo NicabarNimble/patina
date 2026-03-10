@@ -104,7 +104,7 @@ wasmtime = { version = "=41", default-features = false, features = [
 wasmtime-wasi = { version = "=41", default-features = false, features = ["p2"] }
 
 # Pipe protocol — native child communication (broker uses harness + types)
-patina-pipe = { path = "crates/patina-pipe" }
+patina-pipe = { path = "crates/patina-pipe", features = ["http-proxy"] }
 patina-pipe-types = { path = "crates/patina-pipe-types" }
 
 # Secrets v2 - age encryption and macOS Keychain

@@ -6,8 +6,13 @@ license = "MIT"
 description = "Native transport binding for Patina pipe protocol — Child trait, run(), FactEmitter over stdio JSON-RPC"
 repository = "https://github.com/NicabarNimble/patina"
 
+[features]
+http-proxy = ["reqwest", "anyhow"]
+
 [dependencies]
+anyhow = { version = "1", optional = true }
 patina-pipe-types = { path = "../patina-pipe-types" }
+reqwest = { version = "0.12", features = ["blocking", "rustls-tls"], default-features = false, optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
