@@ -79,11 +79,11 @@ knows lake exists   uses toys independently
 ```
 
 **Mother** is the capability grantor. She creates the lake,
-approves which toys the child can use (connector binary,
-credentials, storage path, domain allowlist), and handles
+grants two toys — connector (binary, credential, injection,
+domains, params, types) and storage (lake path) — and handles
 escalation for things she owns (auth, connections). She does
 NOT manage the data flow. Per [[initialize-is-capability-grant]],
-the init payload IS the capability token set.
+the init payload is a typed `DuckLakeGrant`, not untyped config.
 
 **DuckLake child** has agency. It makes decisions: what to fetch,
 how to handle failures, when to advance cursors, what to report.
@@ -104,11 +104,12 @@ Mother's job is granting capabilities and getting out of the way:
 1. **Hear "datalake"** → knows this means DuckDB + DuckLake
 2. **Create lake** → `~/.patina/lakes/<name>/`
 3. **Resolve connection** → find connector binary + credentials
-4. **Spawn DuckLake child** with capability grant via
+4. **Spawn DuckLake child** with typed `DuckLakeGrant` via
    `pipe/initialize`:
+   - Connector toy: binary, credential, injection, domains, params, types
    - Storage toy: lake path
-   - Connector toy: binary path + credential + params + types
-   - HTTP toy: approved domain allowlist
+   HTTP enforcement is derived from the connector grant by the child,
+   not granted as a separate toy.
 5. **(Optional) add ref repo** → `patina repo add` if not present
 6. **Get out of the way** → child uses toys independently
 
@@ -279,7 +280,7 @@ Query: duckdb ~/.patina/lakes/github-data/lake.ducklake
 
 **Extend (patina-pipe + pipe-types):**
 - `crates/patina-pipe/src/lib.rs` — add `pipe/run` dispatch + `run()` to Child trait
-- `crates/patina-pipe-types/src/config.rs` — `InitializeParams` must accept child-type-specific toy approvals (Option C: child reads extra fields from raw params)
+- `crates/patina-pipe-types/src/config.rs` — `InitializeParams` gains typed `ducklake: Option<DuckLakeGrant>` field; `DuckLakeGrant`, `ConnectorToy`, `StorageToy` structs
 - `crates/patina-pipe-types/src/` — add `RunResult`, `TypeReport`, `Escalation` types
 
 **Unchanged:**

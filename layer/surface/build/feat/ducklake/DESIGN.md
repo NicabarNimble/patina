@@ -162,21 +162,16 @@ After initialization, the child runs the full pipeline:
 
 ```rust
 fn run(&mut self) -> Result<RunReport> {
-    let config = &self.config;
-    let db = &self.db;
+    let grant = self.grant.as_ref().expect("run() called after init");
 
-    // 1. Spawn connector with credentials Mother provided
-    let mut connector = spawn_connector(
-        &config.connector.binary,
-        &config.connector.credential,
-        &config.connector.allowed_domains,
-    )?;
+    // 1. Spawn connector via the boundary-preserving path
+    let mut connector = use_connector_toy(&grant.connector)?;
 
     let mut report = RunReport::default();
 
     // 2. Fetch each type independently
-    for data_type in &config.connector.types {
-        let cursor = self.load_cursor(&config.source_name(), data_type);
+    for data_type in &grant.connector.types {
+        let cursor = self.load_cursor(data_type);
 
         match self.fetch_and_store(&mut connector, data_type, cursor) {
             Ok(result) => {
@@ -206,12 +201,14 @@ fn fetch_and_store(
     data_type: &str,
     cursor: Option<String>,
 ) -> Result<StoreResult> {
+    let grant = self.grant.as_ref().unwrap();
+
     // Send pipe/fetch for this type
     let fetch_params = json!({
         "types": [data_type],
         "since": cursor,
         "limit": 10000,
-        "params": self.config.connector.params,
+        "params": grant.connector.params,
     });
 
     let (facts, fetch_result) = connector.request("pipe/fetch", fetch_params)?;
