@@ -15,9 +15,18 @@ use beliefs::generate_belief_pairs;
 use commits::generate_commit_pairs;
 use dependency::generate_dependency_pairs;
 use pairs::TrainingPair;
+use rayon::prelude::*;
 use recipe::{OxidizeRecipe, ProjectionConfig};
 use temporal::generate_temporal_pairs;
 use trainer::Projection;
+
+/// Max rayon workers for parallel embedding. Caps memory from per-thread model loading.
+fn embedding_worker_count() -> usize {
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    cores.min(8)
+}
 
 /// Run oxidize command
 pub fn oxidize() -> Result<()> {
@@ -54,9 +63,8 @@ pub fn oxidize() -> Result<()> {
     let output_dir = format!(".patina/local/data/embeddings/{}/projections", model_name);
     std::fs::create_dir_all(&output_dir)?;
 
-    // Create embedder once, reuse for all projections
-    use patina::embeddings::create_embedder;
-    let mut embedder = create_embedder()?;
+    let workers = embedding_worker_count();
+    println!("   Workers: {} (parallel embedding)", workers);
 
     // Build each domain (sorted for deterministic order)
     let mut sorted_projections: Vec<_> = recipe.projections.iter().collect();
@@ -84,12 +92,12 @@ pub fn oxidize() -> Result<()> {
             let input_dim = config.input_dim(&recipe)?;
             println!("\n🔍 Building USearch index ({}d raw E5)...", input_dim);
             total_documents_embedded +=
-                build_projection_index(name, db_path, &mut embedder, None, input_dim, &output_dir)?;
+                build_projection_index(name, db_path, None, input_dim, &output_dir, workers)?;
         } else {
             println!("📊 Training {} projection...", name);
             println!("{}", "=".repeat(60));
 
-            let projection = train_projection(name, config, &recipe, db_path, &mut embedder)?;
+            let projection = train_projection(name, config, &recipe, db_path, workers)?;
 
             // Save trained weights
             println!("\n💾 Saving projection weights...");
@@ -102,10 +110,10 @@ pub fn oxidize() -> Result<()> {
             total_documents_embedded += build_projection_index(
                 name,
                 db_path,
-                &mut embedder,
                 Some(&projection),
                 config.output_dim(),
                 &output_dir,
+                workers,
             )?;
         }
 
@@ -214,8 +222,10 @@ fn train_projection(
     config: &ProjectionConfig,
     recipe: &OxidizeRecipe,
     db_path: &str,
-    embedder: &mut Box<dyn patina::embeddings::EmbeddingEngine>,
+    workers: usize,
 ) -> Result<Projection> {
+    use patina::embeddings::create_embedder_deterministic;
+
     // Generate pairs based on projection type
     // Phase 5c: use ALL available pairs, not a random subset.
     // Phase 5d: knowledge domain combines commit + belief co-reference pairs.
@@ -263,16 +273,65 @@ fn train_projection(
 
     println!("   Generated {} training pairs", pairs.len());
 
-    // Generate embeddings
-    println!("\n🔮 Generating embeddings...");
-    let mut anchors = Vec::new();
-    let mut positives = Vec::new();
-    let mut negatives = Vec::new();
+    // Generate embeddings using rayon parallel workers
+    println!("\n🔮 Generating embeddings ({} workers)...", workers);
 
-    for pair in &pairs {
-        anchors.push(embedder.embed_passage(&pair.anchor)?);
-        positives.push(embedder.embed_passage(&pair.positive)?);
-        negatives.push(embedder.embed_passage(&pair.negative)?);
+    // Flatten all texts with indices for deterministic ordering
+    let indexed_texts: Vec<(usize, String)> = pairs
+        .iter()
+        .enumerate()
+        .flat_map(|(i, p)| {
+            [
+                (i * 3, p.anchor.clone()),
+                (i * 3 + 1, p.positive.clone()),
+                (i * 3 + 2, p.negative.clone()),
+            ]
+        })
+        .collect();
+
+    // Embed in parallel with per-worker deterministic ONNX sessions
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(workers)
+        .build()
+        .context("Failed to build rayon thread pool")?;
+
+    let mut all_embeddings: Vec<(usize, Vec<f32>)> = pool.install(|| {
+        indexed_texts
+            .par_chunks(64)
+            .map_init(
+                || create_embedder_deterministic().expect("Failed to create embedder for worker"),
+                |embedder, chunk| {
+                    chunk
+                        .iter()
+                        .map(|(idx, text)| {
+                            let emb = embedder.embed_passage(text)?;
+                            Ok((*idx, emb))
+                        })
+                        .collect::<Result<Vec<_>>>()
+                },
+            )
+            .collect::<Result<Vec<_>>>()
+    })?
+    .into_iter()
+    .flatten()
+    .collect();
+
+    // Sort by original index for deterministic deinterleaving
+    all_embeddings.sort_by_key(|(idx, _)| *idx);
+
+    // Deinterleave back to anchors/positives/negatives
+    let pair_count = pairs.len();
+    let mut anchors = Vec::with_capacity(pair_count);
+    let mut positives = Vec::with_capacity(pair_count);
+    let mut negatives = Vec::with_capacity(pair_count);
+
+    for (idx, emb) in all_embeddings {
+        match idx % 3 {
+            0 => anchors.push(emb),
+            1 => positives.push(emb),
+            2 => negatives.push(emb),
+            _ => unreachable!(),
+        }
     }
 
     println!("   Embedded {} triplets", anchors.len());
@@ -310,11 +369,12 @@ fn train_projection(
 fn build_projection_index(
     projection_name: &str,
     db_path: &str,
-    embedder: &mut Box<dyn patina::embeddings::EmbeddingEngine>,
     projection: Option<&Projection>,
     index_dim: usize,
     output_dir: &str,
+    workers: usize,
 ) -> Result<usize> {
+    use patina::embeddings::create_embedder_deterministic;
     use rusqlite::Connection;
     use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
 
@@ -354,23 +414,57 @@ fn build_projection_index(
         .reserve(events.len())
         .context("Failed to reserve index capacity")?;
 
-    // Embed (and optionally project) and add to index
+    // Embed in parallel, then insert in deterministic order
     let mode = if projection.is_some() {
         "projecting"
     } else {
         "raw"
     };
-    println!("   Embedding vectors ({} mode)...", mode);
-    for (id, content) in &events {
-        let embedding = embedder
-            .embed_passage(content)
-            .context("Failed to generate embedding")?;
-        let vector = match projection {
-            Some(proj) => proj.forward(&embedding),
-            None => embedding,
-        };
+    println!("   Embedding vectors ({} mode, {} workers)...", mode, workers);
+
+    // Build indexed list for order preservation
+    let indexed_events: Vec<(usize, &i64, &String)> = events
+        .iter()
+        .enumerate()
+        .map(|(i, (id, content))| (i, id, content))
+        .collect();
+
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(workers)
+        .build()
+        .context("Failed to build rayon thread pool")?;
+
+    let mut embeddings: Vec<(usize, i64, Vec<f32>)> = pool.install(|| {
+        indexed_events
+            .par_chunks(64)
+            .map_init(
+                || create_embedder_deterministic().expect("Failed to create embedder for worker"),
+                |embedder, chunk| {
+                    chunk
+                        .iter()
+                        .map(|(order, id, content)| {
+                            let emb = embedder.embed_passage(content)?;
+                            let vec = match projection {
+                                Some(proj) => proj.forward(&emb),
+                                None => emb,
+                            };
+                            Ok((*order, **id, vec))
+                        })
+                        .collect::<Result<Vec<_>>>()
+                },
+            )
+            .collect::<Result<Vec<_>>>()
+    })?
+    .into_iter()
+    .flatten()
+    .collect();
+
+    // Sort by original order for deterministic index insertion
+    embeddings.sort_by_key(|(order, _, _)| *order);
+
+    for (_, id, vector) in &embeddings {
         index
-            .add(*id as u64, &vector)
+            .add(*id as u64, vector)
             .context("Failed to add vector to index")?;
     }
 
