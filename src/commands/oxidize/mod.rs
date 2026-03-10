@@ -295,26 +295,30 @@ fn train_projection(
         .build()
         .context("Failed to build rayon thread pool")?;
 
-    let mut all_embeddings: Vec<(usize, Vec<f32>)> = pool.install(|| {
-        indexed_texts
-            .par_chunks(64)
-            .map_init(
-                || create_embedder_deterministic().expect("Failed to create embedder for worker"),
-                |embedder, chunk| {
-                    chunk
-                        .iter()
-                        .map(|(idx, text)| {
-                            let emb = embedder.embed_passage(text)?;
-                            Ok((*idx, emb))
-                        })
-                        .collect::<Result<Vec<_>>>()
-                },
-            )
-            .collect::<Result<Vec<_>>>()
-    })?
-    .into_iter()
-    .flatten()
-    .collect();
+    let mut all_embeddings: Vec<(usize, Vec<f32>)> = pool
+        .install(|| {
+            indexed_texts
+                .par_chunks(64)
+                .map_init(
+                    || {
+                        create_embedder_deterministic()
+                            .expect("Failed to create embedder for worker")
+                    },
+                    |embedder, chunk| {
+                        chunk
+                            .iter()
+                            .map(|(idx, text)| {
+                                let emb = embedder.embed_passage(text)?;
+                                Ok((*idx, emb))
+                            })
+                            .collect::<Result<Vec<_>>>()
+                    },
+                )
+                .collect::<Result<Vec<_>>>()
+        })?
+        .into_iter()
+        .flatten()
+        .collect();
 
     // Sort by original index for deterministic deinterleaving
     all_embeddings.sort_by_key(|(idx, _)| *idx);
@@ -434,7 +438,10 @@ fn build_projection_index(
     } else {
         "raw"
     };
-    println!("   Embedding vectors ({} mode, {} workers)...", mode, workers);
+    println!(
+        "   Embedding vectors ({} mode, {} workers)...",
+        mode, workers
+    );
 
     // Build indexed list for order preservation
     let indexed_events: Vec<(usize, &i64, &String)> = events
@@ -448,30 +455,34 @@ fn build_projection_index(
         .build()
         .context("Failed to build rayon thread pool")?;
 
-    let mut embeddings: Vec<(usize, i64, Vec<f32>)> = pool.install(|| {
-        indexed_events
-            .par_chunks(64)
-            .map_init(
-                || create_embedder_deterministic().expect("Failed to create embedder for worker"),
-                |embedder, chunk| {
-                    chunk
-                        .iter()
-                        .map(|(order, id, content)| {
-                            let emb = embedder.embed_passage(content)?;
-                            let vec = match projection {
-                                Some(proj) => proj.forward(&emb),
-                                None => emb,
-                            };
-                            Ok((*order, **id, vec))
-                        })
-                        .collect::<Result<Vec<_>>>()
-                },
-            )
-            .collect::<Result<Vec<_>>>()
-    })?
-    .into_iter()
-    .flatten()
-    .collect();
+    let mut embeddings: Vec<(usize, i64, Vec<f32>)> = pool
+        .install(|| {
+            indexed_events
+                .par_chunks(64)
+                .map_init(
+                    || {
+                        create_embedder_deterministic()
+                            .expect("Failed to create embedder for worker")
+                    },
+                    |embedder, chunk| {
+                        chunk
+                            .iter()
+                            .map(|(order, id, content)| {
+                                let emb = embedder.embed_passage(content)?;
+                                let vec = match projection {
+                                    Some(proj) => proj.forward(&emb),
+                                    None => emb,
+                                };
+                                Ok((*order, **id, vec))
+                            })
+                            .collect::<Result<Vec<_>>>()
+                    },
+                )
+                .collect::<Result<Vec<_>>>()
+        })?
+        .into_iter()
+        .flatten()
+        .collect();
 
     // Sort by original order for deterministic index insertion
     embeddings.sort_by_key(|(order, _, _)| *order);

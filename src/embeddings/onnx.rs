@@ -111,8 +111,7 @@ impl OnnxEmbedder {
             verify_model_integrity(model_path, DEFAULT_MODEL_SHA256)?;
         }
 
-        let builder = Session::builder()
-            .context("Failed to create ONNX session builder")?;
+        let builder = Session::builder().context("Failed to create ONNX session builder")?;
 
         let session = match mode {
             OnnxMode::FastQuery => {
@@ -231,7 +230,11 @@ impl OnnxEmbedder {
             .collect::<Result<Vec<_>>>()?;
 
         // Find max sequence length for padding
-        let max_seq_len = tokenized.iter().map(|(ids, _)| ids.len()).max().unwrap_or(0);
+        let max_seq_len = tokenized
+            .iter()
+            .map(|(ids, _)| ids.len())
+            .max()
+            .unwrap_or(0);
 
         // Build padded tensors: [batch_size, max_seq_len]
         let mut all_input_ids = vec![0i64; batch_size * max_seq_len];
@@ -248,9 +251,8 @@ impl OnnxEmbedder {
             }
         }
 
-        let input_ids_array =
-            Array2::from_shape_vec((batch_size, max_seq_len), all_input_ids)
-                .context("Failed to create batched input_ids array")?;
+        let input_ids_array = Array2::from_shape_vec((batch_size, max_seq_len), all_input_ids)
+            .context("Failed to create batched input_ids array")?;
         let attention_mask_array =
             Array2::from_shape_vec((batch_size, max_seq_len), all_attention_mask.clone())
                 .context("Failed to create batched attention_mask array")?;
@@ -289,8 +291,9 @@ impl OnnxEmbedder {
         for i in 0..batch_size {
             let item_offset = i * seq_len * hidden_dim;
             let item_data = &flat_data[item_offset..item_offset + seq_len * hidden_dim];
-            let token_embeddings = Array2::from_shape_vec((seq_len, hidden_dim), item_data.to_vec())
-                .context("Failed to reshape batch item embeddings")?;
+            let token_embeddings =
+                Array2::from_shape_vec((seq_len, hidden_dim), item_data.to_vec())
+                    .context("Failed to reshape batch item embeddings")?;
 
             // Get this item's attention mask for mean pooling
             let item_mask_start = i * max_seq_len;
