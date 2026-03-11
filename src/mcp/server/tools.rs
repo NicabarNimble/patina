@@ -1,6 +1,6 @@
 //! MCP tool schema definitions
 //!
-//! All 21 tool schemas live here. handle_list_tools() returns them
+//! Tool schemas live here. handle_list_tools() returns them
 //! as the tools/list response.
 
 use super::super::protocol::{Request, Response};
@@ -175,6 +175,62 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                                 "description": "Query all registered repos (default: false)"
                             }
                         }
+                    }
+                },
+                {
+                    "name": "session.start",
+                    "description": "Start a Patina session for the current interface without scraping CLI prose. Returns the live session ids, tags, and durable artifact path.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "title": {
+                                "type": "string",
+                                "description": "Session title"
+                            },
+                            "adapter": {
+                                "type": "string",
+                                "description": "Adapter/interface name (defaults to the current AI interface)"
+                            }
+                        },
+                        "required": ["title"]
+                    }
+                },
+                {
+                    "name": "session.update",
+                    "description": "Append a timestamped update to the current live session artifact with git metrics. Use session=<runtime_id|file_id> when multiple active sessions exist.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "session": {
+                                "type": "string",
+                                "description": "Optional runtime_id or file_id of the session to update"
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "session.end",
+                    "description": "Archive the current live session, compute final metrics, and write the last-session pointer. Use session=<runtime_id|file_id> when multiple active sessions exist.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "session": {
+                                "type": "string",
+                                "description": "Optional runtime_id or file_id of the session to end"
+                            },
+                            "note": {
+                                "type": "string",
+                                "description": "Optional outcome note to append before archiving"
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "session.list",
+                    "description": "List active, stale, and recent sessions with ids and artifact paths for operator use.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
                     }
                 },
                 {
@@ -488,4 +544,42 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
             ]
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mcp::protocol::Request;
+
+    #[test]
+    fn tools_list_includes_session_and_spec_operator_slice() {
+        let req = Request {
+            jsonrpc: "2.0".to_string(),
+            id: Some(serde_json::json!(1)),
+            method: "tools/list".to_string(),
+            params: serde_json::json!({}),
+        };
+
+        let response = handle_list_tools(&req);
+        let result = response.result.unwrap();
+        let tools = result["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|tool| tool["name"].as_str())
+            .collect::<Vec<_>>();
+
+        for expected in [
+            "session.start",
+            "session.update",
+            "session.end",
+            "session.list",
+            "spec.list",
+            "spec.next",
+            "spec.show",
+            "spec.check",
+        ] {
+            assert!(tools.contains(&expected), "missing {}", expected);
+        }
+    }
 }

@@ -11,6 +11,7 @@ use crate::retrieval::QueryEngine;
 
 mod assay;
 mod scry;
+mod session;
 mod spec;
 mod tools;
 
@@ -255,6 +256,20 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine, conn: &Connection) -> R
             assay::handle(req, args, conn)
         }
         "measure" => handle_measure(req),
+        n if n.starts_with("session.") => {
+            let tool_name = name.clone();
+            let args: session::SessionArgs = match serde_json::from_value(arguments) {
+                Ok(a) => a,
+                Err(e) => {
+                    return Response::error(
+                        req.id.clone(),
+                        ERR_INVALID_PARAMS,
+                        &format!("Invalid session params: {}", e),
+                    )
+                }
+            };
+            session::handle(req, &tool_name, args)
+        }
         n if n.starts_with("spec.") || n.starts_with("schemas.") => {
             let tool_name = name.clone();
             let args: spec::SpecArgs = match serde_json::from_value(arguments) {
