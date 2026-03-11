@@ -34,6 +34,15 @@
 /// - `evolve` — schema or model evolution
 pub const VALID_VERBS: &[&str] = &["capture", "index", "search", "believe", "evolve"];
 
+/// Registered tools in the measure vocabulary.
+///
+/// New tools require updating this list. Children cannot define new tools
+/// without updating the shared vocabulary. See module-level docs for the
+/// full tool/mode/owner table.
+pub const REGISTERED_TOOLS: &[&str] = &[
+    "scrape", "oxidize", "eval", "belief", "session", "pipe", "hook", "bench", "doctor", "lake",
+];
+
 /// Canonical measure event envelope.
 ///
 /// Every measure event — from core, plugins, or children — uses this shape.
