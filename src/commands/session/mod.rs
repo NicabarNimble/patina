@@ -24,10 +24,18 @@ pub enum SessionCommands {
         /// LLM adapter override (default: from config.adapters.default)
         #[arg(long)]
         adapter: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// Record progress update with git metrics
-    Update,
+    Update {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 
     /// Add a timestamped note to the active session
     Note {
@@ -36,7 +44,11 @@ pub enum SessionCommands {
     },
 
     /// End the active session (tag, classify, archive)
-    End,
+    End {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 
     /// List active, stale, and recent sessions
     List {
@@ -53,30 +65,52 @@ pub fn execute(command: SessionCommands) -> Result<()> {
     let project_root = std::env::current_dir()?;
 
     match command {
-        SessionCommands::Start { title, adapter } => {
-            start(&project_root, &title, adapter.as_deref())
-        }
-        SessionCommands::Update => update(&project_root),
+        SessionCommands::Start {
+            title,
+            adapter,
+            json,
+        } => start(&project_root, &title, adapter.as_deref(), json),
+        SessionCommands::Update { json } => update(&project_root, json),
         SessionCommands::Note { content } => note(&project_root, &content),
-        SessionCommands::End => end(&project_root),
+        SessionCommands::End { json } => end(&project_root, json),
         SessionCommands::List { json } => list(&project_root, json),
     }
 }
+
+pub(crate) use internal::{
+    end_live_session_value, list_sessions_value, start_session_value, update_live_session_value,
+    SessionStartRequest,
+};
 
 /// Start a new development session
 ///
 /// Creates git tag, writes active session markdown, writes session.started event.
 /// Handles incomplete previous sessions (cleanup/archive).
-pub fn start(project_root: &Path, title: &str, adapter: Option<&str>) -> Result<()> {
-    internal::start_session(project_root, title, adapter)
+pub fn start(project_root: &Path, title: &str, adapter: Option<&str>, json: bool) -> Result<()> {
+    if json {
+        let result = internal::start_session_value(
+            project_root,
+            SessionStartRequest::legacy_cli(title, adapter),
+        )?;
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        Ok(())
+    } else {
+        internal::start_session(project_root, title, adapter)
+    }
 }
 
 /// Record progress update with git metrics
 ///
 /// Computes git metrics (commits, files changed, last commit time),
 /// appends timestamped update section, writes session.update event.
-pub fn update(project_root: &Path) -> Result<()> {
-    internal::update_session(project_root)
+pub fn update(project_root: &Path, json: bool) -> Result<()> {
+    if json {
+        let result = internal::update_session_json(project_root)?;
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        Ok(())
+    } else {
+        internal::update_session(project_root)
+    }
 }
 
 /// Add a timestamped note to the active session
@@ -90,8 +124,14 @@ pub fn note(project_root: &Path, content: &str) -> Result<()> {
 ///
 /// Creates end tag, computes final metrics, classifies work,
 /// archives to layer/sessions/, writes session.ended event.
-pub fn end(project_root: &Path) -> Result<()> {
-    internal::end_session(project_root)
+pub fn end(project_root: &Path, json: bool) -> Result<()> {
+    if json {
+        let result = internal::end_session_json(project_root)?;
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        Ok(())
+    } else {
+        internal::end_session(project_root)
+    }
 }
 
 /// List active, stale, and recent sessions
