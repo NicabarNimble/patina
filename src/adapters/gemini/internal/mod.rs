@@ -4,7 +4,7 @@ use anyhow::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::adapters::templates;
+use crate::adapters::{launch, templates};
 use crate::environment::Environment;
 
 /// Path constants for Gemini adapter
@@ -45,9 +45,10 @@ pub fn ensure_context_file(
     let gemini_path = project_path.join(ADAPTER_DIR);
     fs::create_dir_all(&gemini_path)?;
     let managed_context_path = gemini_path.join(MANAGED_CONTEXT_FILE);
+    let mcp_available = launch::native_interface_mcp_available("gemini")?;
     fs::write(
         &managed_context_path,
-        generate_managed_context(project_name, environment),
+        generate_managed_context(project_name, environment, mcp_available),
     )?;
 
     let context_path = gemini_path.join(CONTEXT_FILE);
@@ -75,7 +76,11 @@ pub fn ensure_context_file(
 }
 
 /// Generate Patina-managed context for Gemini.
-fn generate_managed_context(project_name: &str, environment: &Environment) -> String {
+fn generate_managed_context(
+    project_name: &str,
+    environment: &Environment,
+    mcp_available: bool,
+) -> String {
     let mut content = String::new();
 
     // Header
@@ -113,37 +118,54 @@ fn generate_managed_context(project_name: &str, environment: &Environment) -> St
     content.push_str("## Patterns\n\n");
     content.push_str("See files in `layer/` directory for patterns and documentation.\n\n");
 
-    content.push_str("## MCP Tools (Use These First)\n\n");
-    content.push_str(
-        "Patina's authoritative interface surface is MCP, not shell-output scraping.\n\n",
-    );
-    content.push_str("**Core discovery**\n");
-    content.push_str(
-        "- `context` - architecture, beliefs, and project patterns before non-trivial changes\n",
-    );
-    content.push_str("- `scry` - codebase knowledge search when you need implementation context\n");
-    content.push_str("- `assay` - exact structural/code inventory questions\n\n");
-    content.push_str("**Session workflow**\n");
-    content.push_str(
-        "- `session.start` - start a new Patina session and get the durable artifact path\n",
-    );
-    content
-        .push_str("- `session.update` - append a git-aware update to the current live session\n");
-    content.push_str(
-        "- `session.end` - archive the live session and update the last-session pointer\n",
-    );
-    content.push_str(
-        "- `session.list` - inspect active/stale/recent sessions if selection is ambiguous\n\n",
-    );
-    content.push_str("**Spec workflow**\n");
-    content.push_str("- `spec.next` - decide what should be worked next\n");
-    content.push_str("- `spec.list` / `spec.ready` / `spec.blocked` - navigate the queue\n");
-    content.push_str("- `spec.show` - load spec context before coding\n");
-    content.push_str("- `spec.check` - verify exit criteria truthfully\n");
-    content.push_str("- `spec.create` / `spec.set` - mutate spec state only when the workflow actually needs it\n\n");
-    content.push_str(
-        "Prefer MCP for session/spec actions. Use CLI `--json` only when MCP is unavailable.\n\n",
-    );
+    if mcp_available {
+        content.push_str("## MCP Tools (Available In This Runtime)\n\n");
+        content.push_str(
+            "Patina MCP is configured for this Gemini runtime. Prefer MCP over shell-output scraping.\n\n",
+        );
+        content.push_str("**Core discovery**\n");
+        content.push_str(
+            "- `context` - architecture, beliefs, and project patterns before non-trivial changes\n",
+        );
+        content.push_str(
+            "- `scry` - codebase knowledge search when you need implementation context\n",
+        );
+        content.push_str("- `assay` - exact structural/code inventory questions\n\n");
+        content.push_str("**Session workflow**\n");
+        content.push_str(
+            "- `session.start` - start a new Patina session and get the durable artifact path\n",
+        );
+        content.push_str(
+            "- `session.update` - append a git-aware update to the current live session\n",
+        );
+        content.push_str(
+            "- `session.end` - archive the live session and update the last-session pointer\n",
+        );
+        content.push_str(
+            "- `session.list` - inspect active/stale/recent sessions if selection is ambiguous\n\n",
+        );
+        content.push_str("**Spec workflow**\n");
+        content.push_str("- `spec.next` - decide what should be worked next\n");
+        content.push_str("- `spec.list` / `spec.ready` / `spec.blocked` - navigate the queue\n");
+        content.push_str("- `spec.show` - load spec context before coding\n");
+        content.push_str("- `spec.check` - verify exit criteria truthfully\n");
+        content.push_str(
+            "- `spec.create` / `spec.set` - mutate spec state only when the workflow actually needs it\n\n",
+        );
+        content.push_str(
+            "If a session command cannot use MCP at runtime, fall back to `patina ai session ... --json` rather than `patina session ... --json`.\n\n",
+        );
+    } else {
+        content.push_str("## Session Surface (MCP Unavailable Here)\n\n");
+        content.push_str(
+            "Patina MCP is not configured for this Gemini runtime. Do not assume `session.*`, `spec.*`, `context`, `scry`, or `assay` MCP tools exist here.\n\n",
+        );
+        content.push_str("Use the native machine-readable session fallback instead:\n");
+        content.push_str("- `patina ai session start --json --adapter gemini \"<title>\"`\n");
+        content.push_str("- `patina ai session update --json`\n");
+        content.push_str("- `patina ai session end --json`\n");
+        content.push_str("- `patina ai session list --json` when selection is ambiguous\n\n");
+    }
 
     // Footer
     content.push_str(&format!(
@@ -213,7 +235,7 @@ mod tests {
 
     #[test]
     fn managed_context_includes_session_and_spec_tools() {
-        let content = generate_managed_context("patina", &fake_environment());
+        let content = generate_managed_context("patina", &fake_environment(), true);
         assert!(content.contains("session.start"));
         assert!(content.contains("session.update"));
         assert!(content.contains("session.end"));

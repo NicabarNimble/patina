@@ -92,10 +92,20 @@ mod tests {
         std::fs::create_dir_all(&patina_home).unwrap();
 
         let old = std::env::var_os("PATINA_HOME");
+        let old_home = std::env::var_os("HOME");
         unsafe {
             std::env::set_var("PATINA_HOME", &patina_home);
+            std::env::set_var("HOME", temp.path());
         }
         let result = f();
+        match old_home {
+            Some(value) => unsafe {
+                std::env::set_var("HOME", value);
+            },
+            None => unsafe {
+                std::env::remove_var("HOME");
+            },
+        }
         match old {
             Some(value) => unsafe {
                 std::env::set_var("PATINA_HOME", value);
@@ -122,6 +132,16 @@ mod tests {
             .join(".opencode/commands/session-start.md")
             .exists());
         assert!(temp.path().join(".opencode/PATINA.md").exists());
+        let session_start =
+            std::fs::read_to_string(temp.path().join(".opencode/commands/session-start.md"))
+                .unwrap();
+        assert!(session_start.contains(".opencode/PATINA.md"));
+        assert!(session_start.contains("patina ai session start --json --adapter opencode"));
+
+        let managed_context =
+            std::fs::read_to_string(temp.path().join(".opencode/PATINA.md")).unwrap();
+        assert!(managed_context.contains("Patina MCP is not configured"));
+        assert!(!managed_context.contains("session.start"));
     }
 
     #[test]

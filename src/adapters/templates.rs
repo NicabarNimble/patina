@@ -447,14 +447,26 @@ mod tests {
         install_opencode_templates(temp.path()).unwrap();
 
         let templates_dir = temp.path().join("opencode/templates");
-        assert!(templates_dir.join(".opencode/bin/session-start.sh").exists());
+        assert!(templates_dir
+            .join(".opencode/bin/session-start.sh")
+            .exists());
         assert!(templates_dir
             .join(".opencode/commands/session-start.md")
             .exists());
 
         let session_start =
             fs::read_to_string(templates_dir.join(".opencode/commands/session-start.md")).unwrap();
+        assert!(session_start.contains(".opencode/PATINA.md"));
         assert!(session_start.contains("session.start"));
+        assert!(session_start.contains("patina ai session start --json --adapter opencode"));
         assert!(session_start.contains("spec.check"));
+
+        let session_update =
+            fs::read_to_string(templates_dir.join(".opencode/commands/session-update.md")).unwrap();
+        assert!(session_update.contains("patina ai session update --json"));
+
+        let session_end =
+            fs::read_to_string(templates_dir.join(".opencode/commands/session-end.md")).unwrap();
+        assert!(session_end.contains("patina ai session end --json"));
     }
 }
