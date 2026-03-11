@@ -102,6 +102,7 @@ pub fn build_init_params(
     let init_params = InitializeParams {
         protocol_version: "1.0".to_string(),
         auth,
+        ducklake: None,
     };
 
     serde_json::to_value(init_params).expect("InitializeParams serialization cannot fail")

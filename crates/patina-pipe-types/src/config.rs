@@ -6,6 +6,95 @@ pub struct InitializeParams {
     pub protocol_version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth: Option<AuthConfig>,
+    /// Typed capability grant for DuckLake children.
+    /// Concrete before generic — no Option<Value> at trust boundaries.
+    /// Per [[initialize-is-capability-grant]].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ducklake: Option<DuckLakeGrant>,
+}
+
+/// Capability grant for the DuckLake child.
+/// Two toys: connector (authority to fetch) and storage (authority to write).
+/// Fail closed on missing or malformed.
+/// Per [[children-have-agency-toys-are-capabilities]].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuckLakeGrant {
+    pub connector: ConnectorToy,
+    pub storage: StorageToy,
+}
+
+/// Connector toy — indivisible capability bundle.
+/// The child derives HTTP enforcement from this grant;
+/// the proxy is not a separate toy.
+/// Per [[connector-toy-is-indivisible-authority]].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectorToy {
+    /// Executable identity: "github-connector"
+    pub binary: String,
+    /// Secret material: OAuth token
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credential: Option<String>,
+    /// How credential reaches the API
+    pub injection: GrantInjection,
+    /// Policy boundary: approved domains
+    pub allowed_domains: Vec<String>,
+    /// Behavior scope: { owner, repo }
+    pub params: serde_json::Value,
+    /// Behavior scope: ["issues", "prs"]
+    pub types: Vec<String>,
+}
+
+/// How a credential is injected — wire format for capability grants.
+///
+/// Parallel to connect::InjectionStrategy but lives in pipe-types
+/// (no dependency on the main binary).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase", tag = "type")]
+pub enum GrantInjection {
+    Bearer,
+    Header { name: String },
+    #[serde(rename = "inprocess")]
+    InProcess,
+}
+
+/// Storage toy — where the child writes results.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageToy {
+    /// ~/.patina/lakes/<name>/
+    pub lake_path: String,
+}
+
+/// Result of pipe/run — the child's full report.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunResult {
+    /// Per-type results.
+    #[serde(default)]
+    pub types: std::collections::HashMap<String, TypeReport>,
+    /// Escalation to Mother (auth failures, missing binaries).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub escalation: Option<Escalation>,
+}
+
+/// Per-type fetch+store result.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TypeReport {
+    pub status: String,
+    #[serde(default)]
+    pub written: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Escalation from child to Mother — things the child can't fix.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Escalation {
+    #[serde(rename = "type")]
+    pub escalation_type: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
 }
 
 /// Authentication configuration delivered to a child.
@@ -81,6 +170,7 @@ mod tests {
                 token: "ghp_secret".to_string(),
                 provider: "github".to_string(),
             }),
+            ducklake: None,
         };
 
         let json = serde_json::to_value(&original).unwrap();
@@ -90,6 +180,7 @@ mod tests {
         let auth = restored.auth.unwrap();
         assert_eq!(auth.token, "ghp_secret");
         assert_eq!(auth.provider, "github");
+        assert!(restored.ducklake.is_none());
     }
 
     #[test]
@@ -97,15 +188,162 @@ mod tests {
         let original = InitializeParams {
             protocol_version: "1.0".to_string(),
             auth: None,
+            ducklake: None,
         };
 
         let json = serde_json::to_value(&original).unwrap();
-        // Verify auth is omitted from JSON (skip_serializing_if)
+        // Verify auth and ducklake are omitted from JSON (skip_serializing_if)
         assert!(json.get("auth").is_none());
+        assert!(json.get("ducklake").is_none());
 
         let restored: InitializeParams = serde_json::from_value(json).unwrap();
         assert_eq!(restored.protocol_version, "1.0");
         assert!(restored.auth.is_none());
+        assert!(restored.ducklake.is_none());
+    }
+
+    #[test]
+    fn ducklake_grant_round_trip() {
+        let grant = DuckLakeGrant {
+            connector: ConnectorToy {
+                binary: "github-connector".to_string(),
+                credential: Some("ghp_secret".to_string()),
+                injection: GrantInjection::Bearer,
+                allowed_domains: vec!["api.github.com".to_string()],
+                params: serde_json::json!({"owner": "anthropics", "repo": "claude-code"}),
+                types: vec!["issues".to_string(), "prs".to_string()],
+            },
+            storage: StorageToy {
+                lake_path: "/tmp/test-lake".to_string(),
+            },
+        };
+
+        let json = serde_json::to_value(&grant).unwrap();
+        let restored: DuckLakeGrant = serde_json::from_value(json).unwrap();
+
+        assert_eq!(restored.connector.binary, "github-connector");
+        assert_eq!(restored.connector.credential.as_deref(), Some("ghp_secret"));
+        assert_eq!(restored.connector.allowed_domains, vec!["api.github.com"]);
+        assert_eq!(restored.connector.types, vec!["issues", "prs"]);
+        assert_eq!(restored.storage.lake_path, "/tmp/test-lake");
+    }
+
+    #[test]
+    fn initialize_params_with_ducklake_grant() {
+        let original = InitializeParams {
+            protocol_version: "1.0".to_string(),
+            auth: None,
+            ducklake: Some(DuckLakeGrant {
+                connector: ConnectorToy {
+                    binary: "github-connector".to_string(),
+                    credential: None,
+                    injection: GrantInjection::InProcess,
+                    allowed_domains: vec![],
+                    params: serde_json::json!({}),
+                    types: vec!["issues".to_string()],
+                },
+                storage: StorageToy {
+                    lake_path: "/tmp/lake".to_string(),
+                },
+            }),
+        };
+
+        let json = serde_json::to_value(&original).unwrap();
+        assert!(json.get("ducklake").is_some());
+        assert!(json.get("auth").is_none());
+
+        let restored: InitializeParams = serde_json::from_value(json).unwrap();
+        let grant = restored.ducklake.unwrap();
+        assert_eq!(grant.connector.binary, "github-connector");
+        assert!(grant.connector.credential.is_none());
+        assert_eq!(grant.storage.lake_path, "/tmp/lake");
+    }
+
+    #[test]
+    fn grant_injection_variants_round_trip() {
+        // Bearer
+        let json = serde_json::to_value(&GrantInjection::Bearer).unwrap();
+        assert_eq!(json["type"], "bearer");
+        let _: GrantInjection = serde_json::from_value(json).unwrap();
+
+        // Header
+        let json =
+            serde_json::to_value(&GrantInjection::Header { name: "X-Api-Key".into() }).unwrap();
+        assert_eq!(json["type"], "header");
+        assert_eq!(json["name"], "X-Api-Key");
+        let _: GrantInjection = serde_json::from_value(json).unwrap();
+
+        // InProcess
+        let json = serde_json::to_value(&GrantInjection::InProcess).unwrap();
+        assert_eq!(json["type"], "inprocess");
+        let _: GrantInjection = serde_json::from_value(json).unwrap();
+    }
+
+    #[test]
+    fn run_result_round_trip() {
+        let mut types = std::collections::HashMap::new();
+        types.insert(
+            "issues".to_string(),
+            TypeReport {
+                status: "ok".to_string(),
+                written: 847,
+                cursor: Some("2026-03-12T00:00:00Z".to_string()),
+                error: None,
+            },
+        );
+        types.insert(
+            "prs".to_string(),
+            TypeReport {
+                status: "failed".to_string(),
+                written: 0,
+                cursor: None,
+                error: Some("rate limited".to_string()),
+            },
+        );
+
+        let result = RunResult {
+            types,
+            escalation: None,
+        };
+
+        let json = serde_json::to_value(&result).unwrap();
+        assert!(json.get("escalation").is_none());
+
+        let restored: RunResult = serde_json::from_value(json).unwrap();
+        assert_eq!(restored.types["issues"].written, 847);
+        assert_eq!(restored.types["prs"].status, "failed");
+    }
+
+    #[test]
+    fn escalation_round_trip() {
+        let result = RunResult {
+            types: std::collections::HashMap::new(),
+            escalation: Some(Escalation {
+                escalation_type: "auth_failed".to_string(),
+                message: "GitHub API returned 401".to_string(),
+                action: Some("patina connect refresh github".to_string()),
+            }),
+        };
+
+        let json = serde_json::to_value(&result).unwrap();
+        let restored: RunResult = serde_json::from_value(json).unwrap();
+        let esc = restored.escalation.unwrap();
+        assert_eq!(esc.escalation_type, "auth_failed");
+        assert_eq!(esc.action.as_deref(), Some("patina connect refresh github"));
+    }
+
+    #[test]
+    fn connector_toy_no_credential_omitted() {
+        let toy = ConnectorToy {
+            binary: "test".to_string(),
+            credential: None,
+            injection: GrantInjection::Bearer,
+            allowed_domains: vec![],
+            params: serde_json::json!({}),
+            types: vec![],
+        };
+        let json = serde_json::to_value(&toy).unwrap();
+        assert!(json.get("credential").is_none());
     }
 
     #[test]

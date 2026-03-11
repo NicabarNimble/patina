@@ -73,6 +73,18 @@ pub trait Child {
         })
     }
 
+    /// Run autonomously using granted toys (pipe/run).
+    ///
+    /// Agentic children implement this. The child uses its approved toys
+    /// from pipe/initialize to drive the full pipeline. Returns RunResult
+    /// with per-type reports and optional escalation.
+    /// Per [[children-have-agency-toys-are-capabilities]].
+    fn run(&mut self) -> Result<RunResult, PipeError> {
+        Err(PipeError::Fatal {
+            message: "pipe/run not implemented by this child".to_string(),
+        })
+    }
+
     /// Health check. Called by Mother to monitor child status.
     fn health(&self) -> Result<Status, PipeError> {
         Ok(Status {
@@ -294,6 +306,33 @@ pub fn run<C: Child>(mut child: C) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
+            "pipe/run" => {
+                if !initialized {
+                    let resp = Response::error(
+                        request.id.clone(),
+                        ERR_FATAL,
+                        "pipe/run before pipe/initialize",
+                    );
+                    writeln!(stdout, "{}", serde_json::to_string(&resp)?)?;
+                    stdout.flush()?;
+                    continue;
+                }
+
+                match child.run() {
+                    Ok(result) => {
+                        let result_val = serde_json::to_value(&result).unwrap_or_default();
+                        let resp = Response::success(request.id.clone(), result_val);
+                        writeln!(stdout, "{}", serde_json::to_string(&resp)?)?;
+                        stdout.flush()?;
+                    }
+                    Err(e) => {
+                        let resp = pipe_error_to_response(request.id.clone(), &e);
+                        writeln!(stdout, "{}", serde_json::to_string(&resp)?)?;
+                        stdout.flush()?;
+                    }
+                }
+            }
+
             "pipe/health" => match child.health() {
                 Ok(status) => {
                     let result = serde_json::to_value(&status).unwrap_or_default();
@@ -479,6 +518,28 @@ mod tests {
                         }
                     }
                 }
+                "pipe/run" => {
+                    if !initialized {
+                        let resp = Response::error(
+                            request.id.clone(),
+                            ERR_FATAL,
+                            "pipe/run before pipe/initialize",
+                        );
+                        output.push(serde_json::to_string(&resp).unwrap());
+                        continue;
+                    }
+                    match child.run() {
+                        Ok(result) => {
+                            let result_val = serde_json::to_value(&result).unwrap();
+                            let resp = Response::success(request.id.clone(), result_val);
+                            output.push(serde_json::to_string(&resp).unwrap());
+                        }
+                        Err(e) => {
+                            let resp = pipe_error_to_response(request.id.clone(), &e);
+                            output.push(serde_json::to_string(&resp).unwrap());
+                        }
+                    }
+                }
                 "pipe/shutdown" => {
                     let resp = Response::success(request.id.clone(), serde_json::json!({}));
                     output.push(serde_json::to_string(&resp).unwrap());
@@ -570,6 +631,35 @@ mod tests {
         assert!(json.contains(&format!("\"code\":{}", ERR_RATE_LIMITED)));
         assert!(json.contains("slow down"));
         assert!(json.contains("60000"));
+    }
+
+    #[test]
+    fn run_before_initialize_errors() {
+        let run = r#"{"jsonrpc":"2.0","id":1,"method":"pipe/run","params":{}}"#;
+        let output = run_with_input(&format!("{}\n", run));
+        assert_eq!(output.len(), 1);
+        let resp: serde_json::Value = serde_json::from_str(&output[0]).unwrap();
+        assert!(resp["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("before pipe/initialize"));
+    }
+
+    #[test]
+    fn run_default_returns_fatal() {
+        // TestChild doesn't implement run() — default impl returns Fatal.
+        let init = r#"{"jsonrpc":"2.0","id":1,"method":"pipe/initialize","params":{"protocol_version":"1.0"}}"#;
+        let run = r#"{"jsonrpc":"2.0","id":2,"method":"pipe/run","params":{}}"#;
+        let input = format!("{}\n{}\n", init, run);
+        let output = run_with_input(&input);
+
+        assert_eq!(output.len(), 2);
+        let resp: serde_json::Value = serde_json::from_str(&output[1]).unwrap();
+        assert_eq!(resp["error"]["code"], ERR_FATAL);
+        assert!(resp["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("not implemented"));
     }
 
     #[test]
