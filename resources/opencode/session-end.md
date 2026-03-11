@@ -1,28 +1,16 @@
-End the current Patina session with Git work classification:
+End the current Patina live session through MCP:
 
-1. First, run a final update to capture recent work:
-   - Execute `/session-update` command
-   - This captures activity since the last update
+1. Run `/session-update` first if recent work has not been captured yet.
 
-2. Then archive the session:
-   `patina session end`
+2. Call MCP tool `session.end`.
+   - If multiple active sessions exist, call `session.list` first and retry with `session=<runtime_id|file_id>`.
+   - If you need a final outcome sentence, pass it as `note`.
 
-   This will:
-   - Check for uncommitted changes (warns but doesn't block)
-   - Classify work type based on commits (Exploration/Experiment/Feature)
-   - Archive session to layer/sessions/<ID>.md
-   - Update last-session.md pointer
-   - Clean up active-session.md
-   - Tag the session end point for preservation
+3. Use the returned fields to summarize the outcome:
+   - `classification`
+   - `files_changed`
+   - `commits_made`
+   - `start_tag` and `end_tag`
+   - `artifact_path`
 
-3. The command will show:
-   - "Session archived: <ID>.md"
-   - Work classification
-   - Session tags: session-[timestamp]-start..session-[timestamp]-end
-
-4. After archiving, you can:
-   - View session work: `git log session-[timestamp]-start..session-[timestamp]-end`
-   - Cherry-pick commits: `git cherry-pick session-[timestamp]-start..session-[timestamp]-end`
-   - Continue on current branch or switch as needed
-
-Note: All sessions are preserved via tags as searchable memory - failed experiments prevent future mistakes.
+4. Remind the user that the durable session is archived and the `last_session_path` pointer was updated.

@@ -21,9 +21,7 @@ pub fn init_project(
     templates::copy_to_project("opencode", project_path)?;
 
     // Generate context file in .opencode/
-    let opencode_path = project_path.join(ADAPTER_DIR);
-    let content = generate_minimal_context(project_name, environment);
-    fs::write(opencode_path.join(CONTEXT_FILE), content)?;
+    ensure_context_file(project_path, project_name, environment)?;
 
     Ok(())
 }
@@ -31,6 +29,21 @@ pub fn init_project(
 /// Get context file path
 pub fn get_context_file_path(project_path: &Path) -> PathBuf {
     project_path.join(ADAPTER_DIR).join(CONTEXT_FILE)
+}
+
+pub fn ensure_context_file(
+    project_path: &Path,
+    project_name: &str,
+    environment: &Environment,
+) -> Result<PathBuf> {
+    let opencode_path = project_path.join(ADAPTER_DIR);
+    fs::create_dir_all(&opencode_path)?;
+    let context_path = opencode_path.join(CONTEXT_FILE);
+    if !context_path.exists() {
+        let content = generate_minimal_context(project_name, environment);
+        fs::write(&context_path, content)?;
+    }
+    Ok(context_path)
 }
 
 /// Generate minimal context for OpenCode
@@ -73,17 +86,24 @@ fn generate_minimal_context(project_name: &str, environment: &Environment) -> St
     content.push_str("See files in `layer/` directory for patterns and documentation.\n\n");
 
     // MCP Tools
-    content.push_str("## MCP Tools (Use These!)\n\n");
-    content.push_str("**`scry`** - Search codebase knowledge\n");
-    content.push_str("- USE FIRST for any question about the code\n");
-    content.push_str("- Searches indexed symbols, functions, git history, session learnings\n");
-    content.push_str("- Example: \"how does authentication work?\"\n\n");
-    content.push_str("**`context`** - Get project patterns\n");
-    content.push_str("- USE to understand design rules before making changes\n");
-    content.push_str("- Returns core patterns (eternal principles) and surface patterns (active architecture)\n\n");
-    content.push_str(
-        "💡 These tools search pre-indexed knowledge - faster than manual file exploration.\n\n",
-    );
+    content.push_str("## MCP Tools (Use These First)\n\n");
+    content.push_str("Patina's authoritative interface surface is MCP, not shell-output scraping.\n\n");
+    content.push_str("**Core discovery**\n");
+    content.push_str("- `context` - architecture, beliefs, and project patterns before non-trivial changes\n");
+    content.push_str("- `scry` - codebase knowledge search when you need implementation context\n");
+    content.push_str("- `assay` - exact structural/code inventory questions\n\n");
+    content.push_str("**Session workflow**\n");
+    content.push_str("- `session.start` - start a new Patina session and get the durable artifact path\n");
+    content.push_str("- `session.update` - append a git-aware update to the current live session\n");
+    content.push_str("- `session.end` - archive the live session and update the last-session pointer\n");
+    content.push_str("- `session.list` - inspect active/stale/recent sessions if selection is ambiguous\n\n");
+    content.push_str("**Spec workflow**\n");
+    content.push_str("- `spec.next` - decide what should be worked next\n");
+    content.push_str("- `spec.list` / `spec.ready` / `spec.blocked` - navigate the queue\n");
+    content.push_str("- `spec.show` - load spec context before coding\n");
+    content.push_str("- `spec.check` - verify exit criteria truthfully\n");
+    content.push_str("- `spec.create` / `spec.set` - mutate spec state only when the workflow actually needs it\n\n");
+    content.push_str("Prefer MCP for session/spec actions. Use CLI `--json` only when MCP is unavailable.\n\n");
 
     // Footer
     content.push_str(&format!(
@@ -92,4 +112,29 @@ fn generate_minimal_context(project_name: &str, environment: &Environment) -> St
     ));
 
     content
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generated_context_surfaces_session_and_spec_mcp_tools() {
+        let environment = Environment {
+            os: "macos".to_string(),
+            arch: "arm64".to_string(),
+            home_dir: "/tmp".to_string(),
+            current_dir: "/tmp/project".to_string(),
+            tools: Default::default(),
+            languages: Default::default(),
+            env_vars: Default::default(),
+        };
+
+        let content = generate_minimal_context("patina", &environment);
+        assert!(content.contains("session.start"));
+        assert!(content.contains("session.update"));
+        assert!(content.contains("session.end"));
+        assert!(content.contains("spec.next"));
+        assert!(content.contains("spec.check"));
+    }
 }

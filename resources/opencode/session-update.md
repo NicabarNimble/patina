@@ -1,31 +1,16 @@
-Update the current Patina session with Git-aware progress tracking:
+Update the current Patina live session through MCP:
 
-1. Execute the session update command:
-   `patina session update`
+1. Call MCP tool `session.update`.
+   - If multiple active sessions exist, call `session.list` first and retry with `session=<runtime_id|file_id>`.
 
-2. The command will show what time period to document (e.g., "14:15 → 14:45")
+2. Read the returned `artifact_path` and find the new update section.
 
-3. Note the Git status shown (uncommitted changes, last commit time)
+3. Fill in that section with what happened since `since`:
+   - Work completed
+   - Key decisions and why
+   - Challenges/debugging
+   - Reusable patterns or lessons
 
-4. Read `.patina/local/active-session.md` and find the new update section
+4. Use the returned git metrics (`recent_commits`, `session_changed_files`, working tree fields) to anchor the summary in real changes.
 
-5. Fill in the update section with what happened during that time period:
-   - **Work completed**: Code written, files modified, problems solved
-   - **Discussion context**: Key questions asked, reasoning frameworks used, why we chose this approach
-   - **Key decisions**: Design choices, trade-offs, reasoning behind changes
-   - **Challenges faced**: Errors encountered, debugging steps, solutions found
-   - **Patterns observed**: Reusable insights, things that worked well
-
-6. **Check for beliefs to capture**: Review the update and ask yourself:
-   - Any design decisions made? ("We chose X because Y")
-   - Any repeated patterns? (Said 3+ times)
-   - Any strong principles? ("Never do X", "Always Y")
-   - Any lessons learned? ("That was wrong because...")
-
-   If yes, suggest to user: "This sounds like a belief worth capturing: '{statement}'. Should I create it?"
-
-7. If the command suggests a commit (30+ minutes or 100+ lines changed), consider:
-   - Creating a checkpoint: `git commit -am "checkpoint: [description]"`
-   - Breaking large changes into smaller logical commits
-
-Note: Each update creates a time-stamped checkpoint with Git context for future reference.
+5. If the update reveals spec movement, use `spec.show` or `spec.check` and record the relevant state truthfully.

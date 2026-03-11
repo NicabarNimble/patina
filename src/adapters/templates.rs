@@ -371,6 +371,13 @@ mod tests {
     }
 
     #[test]
+    fn test_opencode_templates_compile() {
+        assert!(opencode_templates::SESSION_START_MD.contains("session.start"));
+        assert!(opencode_templates::SESSION_UPDATE_MD.contains("session.update"));
+        assert!(opencode_templates::SESSION_END_MD.contains("session.end"));
+    }
+
+    #[test]
     fn test_wrapper_scripts_content() {
         // Verify wrapper scripts forward to patina session commands
         assert!(WRAPPER_START.contains("patina session start"));
@@ -432,5 +439,22 @@ mod tests {
         let wrapper =
             fs::read_to_string(templates_dir.join(".gemini/bin/session-start.sh")).unwrap();
         assert!(wrapper.contains("patina session start"));
+    }
+
+    #[test]
+    fn test_install_opencode_templates() {
+        let temp = TempDir::new().unwrap();
+        install_opencode_templates(temp.path()).unwrap();
+
+        let templates_dir = temp.path().join("opencode/templates");
+        assert!(templates_dir.join(".opencode/bin/session-start.sh").exists());
+        assert!(templates_dir
+            .join(".opencode/commands/session-start.md")
+            .exists());
+
+        let session_start =
+            fs::read_to_string(templates_dir.join(".opencode/commands/session-start.md")).unwrap();
+        assert!(session_start.contains("session.start"));
+        assert!(session_start.contains("spec.check"));
     }
 }
