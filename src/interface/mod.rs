@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::session::InterfaceKind;
 
+pub use internal::assets;
 pub use internal::bootstrap::{
     ensure_adapter_bootstrap, ensure_adapter_projection, BootstrapResult, ProjectionMode,
 };

@@ -51,7 +51,8 @@ use anyhow::Result;
 /// - Create devcontainer (use `patina yolo` for that)
 ///
 /// Use `patina adapter add <adapter>` to allow an interface for this project.
-/// For native OpenCode/Gemini projection, then run `patina ai setup <opencode|gemini>`.
+/// For native OpenCode/Gemini projection, then run
+/// `patina interface setup <opencode|gemini>` (`patina ai setup` remains a compatibility alias).
 ///
 /// # Re-initialization
 ///

@@ -436,6 +436,18 @@ enum Commands {
         command: commands::session::SessionCommands,
     },
 
+    /// Native AI interface surface over Mother-backed sessions
+    Ai {
+        #[command(subcommand)]
+        command: Option<commands::ai::AiCommands>,
+    },
+
+    /// Manage project-local interface projection surfaces
+    Interface {
+        #[command(subcommand)]
+        command: commands::interface::InterfaceCommands,
+    },
+
     /// Git hook handlers (post-commit, post-merge)
     Hook {
         #[command(subcommand)]
@@ -1406,16 +1418,16 @@ fn main() -> Result<()> {
                             ..Default::default()
                         },
                         schemas: std::collections::HashMap::new(),
-        state_enabled: false,
-        checkpoint_streams: vec![],
-        lake_names: vec![],
-        subscribed_streams: vec![],
-        task_intent_names: vec![],
-        task_intents: vec![],
-        graph_read: false,
-        graph_write_actions: vec![],
-        belief_read: false,
-        belief_write_actions: vec![],
+                        state_enabled: false,
+                        checkpoint_streams: vec![],
+                        lake_names: vec![],
+                        subscribed_streams: vec![],
+                        task_intent_names: vec![],
+                        task_intents: vec![],
+                        graph_read: false,
+                        graph_write_actions: vec![],
+                        belief_read: false,
+                        belief_write_actions: vec![],
                         toys: patina::mother::GrantedToys::default(),
                     }
                 };
@@ -1624,7 +1636,9 @@ fn main() -> Result<()> {
                         } else if action == "drain" {
                             let limit = payload_str.parse::<u32>().unwrap_or(64);
                             match child.drain(limit) {
-                                Ok(events) => println!("{}", serde_json::to_string_pretty(&events)?),
+                                Ok(events) => {
+                                    println!("{}", serde_json::to_string_pretty(&events)?)
+                                }
                                 Err(e) => {
                                     eprintln!("error: {}", e);
                                     std::process::exit(1);
@@ -1740,6 +1754,12 @@ fn main() -> Result<()> {
         }
         Some(Commands::Session { command }) => {
             commands::session::execute(command)?;
+        }
+        Some(Commands::Ai { command }) => {
+            commands::ai::execute(command)?;
+        }
+        Some(Commands::Interface { command }) => {
+            commands::interface::execute(command)?;
         }
         Some(Commands::Hook { command }) => {
             commands::hook::execute(command)?;

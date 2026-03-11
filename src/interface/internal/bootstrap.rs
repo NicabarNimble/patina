@@ -264,7 +264,7 @@ fn write_managed_directory_metadata(path: &Path, adapter_name: &str) -> Result<(
     let metadata = ManagedDirectoryMetadata {
         adapter: adapter_name.to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
-        managed_by: "patina ai setup".to_string(),
+        managed_by: "patina interface setup".to_string(),
     };
     fs::write(&metadata_path, toml::to_string_pretty(&metadata)?)
         .with_context(|| format!("Failed to write {}", metadata_path.display()))?;

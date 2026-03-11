@@ -45,7 +45,7 @@ pub enum AiSessionCommands {
 
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum AiCommands {
-    /// Create or refresh Patina-managed projection for a native AI interface
+    /// Compatibility alias for `patina interface setup` on native AI/code interfaces
     Setup {
         adapter: String,
 
@@ -125,7 +125,7 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             adapter,
             path,
             force,
-        }) => internal::setup(&adapter, path, force),
+        }) => crate::commands::interface::setup(&adapter, path, force),
         Some(AiCommands::OpenCode {
             title,
             session,

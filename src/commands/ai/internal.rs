@@ -20,20 +20,6 @@ pub fn launch_default() -> Result<()> {
     launch(adapter_name, None, None, None, None, false)
 }
 
-pub fn setup(adapter_name: &str, path: Option<String>, force: bool) -> Result<()> {
-    let project_path = launch_internal::resolve_project_path(path.as_deref())?;
-    let (adapter, bootstrap) = ensure_native_interface_ready(adapter_name, &project_path, force)?;
-
-    println!("Patina AI setup refreshed {}", adapter.display_name());
-    println!("  Context: {}", bootstrap.context_path.display());
-    println!("  Bootstrap: {}", bootstrap.bootstrap_path.display());
-    if let Some(backup_snapshot) = &bootstrap.backup_snapshot {
-        println!("  Backup: {}", backup_snapshot.display());
-    }
-
-    Ok(())
-}
-
 pub fn launch(
     adapter_name: &str,
     title: Option<String>,
@@ -84,7 +70,8 @@ pub fn launch(
         }
     }
 
-    let (adapter, bootstrap) = ensure_native_interface_ready(adapter_name, &project_path, false)?;
+    let (adapter, bootstrap) =
+        crate::commands::interface::ensure_ready(adapter_name, &project_path, false)?;
     let checkin = check_in(&InterfaceCheckIn {
         interface_kind: adapter.interface_kind(),
         adapter_name: adapter_name.to_string(),
@@ -489,34 +476,6 @@ fn ensure_workspace_ready() -> Result<()> {
     Ok(())
 }
 
-fn ensure_native_interface_ready(
-    adapter_name: &str,
-    project_path: &Path,
-    force: bool,
-) -> Result<(
-    Box<dyn patina::interface::AiAdapter>,
-    interface::BootstrapResult,
-)> {
-    ensure_native_adapter_allowed(project_path, adapter_name)?;
-
-    let adapter = load_adapter(adapter_name).map_err(|_| {
-        anyhow::anyhow!(
-            "Adapter '{}' does not use the native `patina ai` setup path.\nUse the Claude compatibility flow for Claude, or choose one of: opencode, gemini.",
-            adapter_name
-        )
-    })?;
-    let bootstrap = if force {
-        interface::ensure_adapter_projection(
-            adapter_name,
-            project_path,
-            interface::ProjectionMode::ForceRewrite,
-        )?
-    } else {
-        adapter.bootstrap(project_path)?
-    };
-    Ok((adapter, bootstrap))
-}
-
 fn ensure_native_adapter_allowed(project_path: &Path, adapter_name: &str) -> Result<()> {
     let config = project::load_with_migration(project_path)?;
     if !config.adapters.allowed.contains(&adapter_name.to_string()) {
@@ -647,7 +606,12 @@ mod tests {
         let temp = setup_project("opencode");
 
         with_temp_patina_home(&temp, || {
-            setup("opencode", Some(temp.path().display().to_string()), false).unwrap();
+            crate::commands::interface::setup(
+                "opencode",
+                Some(temp.path().display().to_string()),
+                false,
+            )
+            .unwrap();
         });
 
         assert!(temp
@@ -660,14 +624,39 @@ mod tests {
     }
 
     #[test]
+    fn ai_setup_alias_creates_projection_for_opencode() {
+        let temp = setup_project("opencode");
+
+        with_temp_patina_home(&temp, || {
+            crate::commands::ai::execute(Some(crate::commands::ai::AiCommands::Setup {
+                adapter: "opencode".to_string(),
+                path: Some(temp.path().display().to_string()),
+                force: false,
+            }))
+            .unwrap();
+        });
+
+        assert!(temp.path().join("AGENTS.md").exists());
+        assert!(temp
+            .path()
+            .join(".opencode/commands/session-start.md")
+            .exists());
+    }
+
+    #[test]
     fn setup_rejects_claude_native_setup_path() {
         let temp = setup_project("claude");
         let error = with_temp_patina_home(&temp, || {
-            setup("claude", Some(temp.path().display().to_string()), false).unwrap_err()
+            crate::commands::interface::setup(
+                "claude",
+                Some(temp.path().display().to_string()),
+                false,
+            )
+            .unwrap_err()
         });
 
         assert!(error
             .to_string()
-            .contains("does not use the native `patina ai` setup path"));
+            .contains("does not use the native Patina interface setup path"));
     }
 }

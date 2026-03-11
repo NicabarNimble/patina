@@ -195,7 +195,8 @@ pub fn execute_init(name: String, force: bool, local: bool, no_commit: bool) -> 
 
     println!("\n✨ Project '{name}' initialized successfully!");
     println!("  Allow an adapter: patina adapter add <claude|gemini|opencode>");
-    println!("  Native OpenCode/Gemini setup: patina ai setup <opencode|gemini>");
+    println!("  Native OpenCode/Gemini setup: patina interface setup <opencode|gemini>");
+    println!("  Compatibility alias: patina ai setup <opencode|gemini>");
 
     Ok(())
 }
