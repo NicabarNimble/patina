@@ -4,7 +4,7 @@ use anyhow::Result;
 
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum InterfaceCommands {
-    /// Create or refresh Patina-managed projection for a project-local interface
+    /// Compatibility shim for refreshing the Patina AI surface
     Setup {
         name: String,
 
@@ -20,10 +20,6 @@ pub fn execute(command: InterfaceCommands) -> Result<()> {
     match command {
         InterfaceCommands::Setup { name, path, force } => internal::setup(&name, path, force),
     }
-}
-
-pub fn setup(name: &str, path: Option<String>, force: bool) -> Result<()> {
-    internal::setup(name, path, force)
 }
 
 pub fn ensure_ready(

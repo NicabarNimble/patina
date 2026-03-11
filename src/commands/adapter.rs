@@ -19,7 +19,7 @@
 //! // patina adapter default gemini --project
 //!
 //! // Add adapter to project
-//! // patina adapter add gemini
+//! // patina adapter add gemini  # compatibility shim for `patina ai setup`
 //!
 //! // Remove adapter from project (with backup)
 //! // patina adapter remove claude
@@ -166,9 +166,8 @@ fn set_default(name: &str, is_project: bool) -> Result<()> {
         let mut config = project::load_with_migration(&cwd)?;
         if !config.adapters.allowed.contains(&name.to_string()) {
             anyhow::bail!(
-                "Adapter '{}' is not in allowed list. Add it first: patina adapter add {}",
+                "Adapter '{}' is not in allowed list. Prepare the Patina AI surface first with: patina ai setup",
                 name,
-                name
             );
         }
         config.adapters.default = name.to_string();
@@ -214,12 +213,48 @@ fn add(name: &str, no_commit: bool) -> Result<()> {
         anyhow::bail!("Not a patina project. Run `patina init .` first.");
     }
 
+    if interface::is_supported_ai_interface(name) {
+        let config = project::load_with_migration(&cwd)?;
+        let default_interface = if config.adapters.default.is_empty() {
+            Some(name)
+        } else {
+            None
+        };
+
+        println!("  Compatibility shim: preparing the Patina AI surface...");
+        interface::ensure_ai_surface(interface::AiSurfaceRequest {
+            project_root: &cwd,
+            force: false,
+            default_interface,
+        })?;
+        println!("  ✓ Prepared Patina AI surface");
+
+        if !no_commit {
+            println!("\n📦 Committing adapter setup...");
+            let mut files_to_add = Vec::new();
+            collect_ai_surface_paths(&cwd, &mut files_to_add);
+            if cwd.join(".patina/config.toml").exists() {
+                files_to_add.push(".patina/config.toml".to_string());
+            }
+
+            let refs: Vec<&str> = files_to_add.iter().map(|s| s.as_str()).collect();
+            patina::git::add_paths(&refs)?;
+            if patina::git::has_staged_changes()? {
+                patina::git::commit(&format!("chore: prepare patina ai surface via {}", name))?;
+                println!("✓ Committed adapter files");
+            } else {
+                println!("  ℹ No trackable changes to commit");
+            }
+        }
+
+        return Ok(());
+    }
+
     let mut config = project::load_with_migration(&cwd)?;
     let already_allowed = config.adapters.allowed.contains(&name.to_string());
 
     if !already_allowed {
         config.adapters.allowed.push(name.to_string());
-        // Set as default if this is the first adapter
         if config.adapters.default.is_empty() {
             config.adapters.default = name.to_string();
         }
@@ -230,17 +265,12 @@ fn add(name: &str, no_commit: bool) -> Result<()> {
         println!("Adapter '{}' is already in allowed list.", name);
     }
 
-    // Create adapter files if they don't exist
     let adapter_dir = cwd.join(format!(".{}", name));
     let bootstrap_file = get_bootstrap_filename(name);
     let bootstrap_path = cwd.join(&bootstrap_file);
     let created_files = !adapter_dir.exists() || !bootstrap_path.exists();
 
-    if is_native_ai_adapter(name) {
-        println!("  Preparing native AI projection...");
-        interface::ensure_adapter_bootstrap(name, &cwd)?;
-        println!("  ✓ Prepared native AI projection");
-    } else {
+    {
         if !adapter_dir.exists() {
             println!("  Creating .{}/ directory...", name);
             patina::adapters::templates::copy_to_project(name, &cwd)?;
@@ -344,11 +374,24 @@ fn collect_adapter_surface_paths(
         out.push(bootstrap_file);
     }
 
+    if interface::is_supported_ai_interface(name)
+        && project_root.join("AGENTS.md").exists()
+        && !out.iter().any(|path| path == "AGENTS.md")
+    {
+        out.push("AGENTS.md".to_string());
+    }
+
     if matches!(name, "gemini" | "opencode")
         && project_root.join("AGENTS.md").exists()
         && !out.iter().any(|path| path == "AGENTS.md")
     {
         out.push("AGENTS.md".to_string());
+    }
+}
+
+fn collect_ai_surface_paths(project_root: &std::path::Path, out: &mut Vec<String>) {
+    for interface_name in interface::supported_ai_interfaces() {
+        collect_adapter_surface_paths(project_root, interface_name, out);
     }
 }
 
@@ -365,33 +408,36 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
     let config = project::load_with_migration(&cwd)?;
     if !config.adapters.allowed.contains(&name.to_string()) {
         anyhow::bail!(
-            "Adapter '{}' is not in allowed list. Add it first: patina adapter add {}",
+            "Adapter '{}' is not in allowed list. Prepare the Patina AI surface first with: patina ai setup",
             name,
-            name
         );
     }
 
     println!("🔄 Refreshing {} adapter...\n", name);
 
-    if is_native_ai_adapter(name) {
-        interface::ensure_adapter_bootstrap(name, &cwd)?;
+    if interface::is_supported_ai_interface(name) {
+        interface::ensure_ai_surface(interface::AiSurfaceRequest {
+            project_root: &cwd,
+            force: false,
+            default_interface: None,
+        })?;
 
         if !no_commit {
             println!("\n📦 Committing refresh...");
             let mut files_to_add = Vec::new();
-            collect_adapter_surface_paths(&cwd, name, &mut files_to_add);
+            collect_ai_surface_paths(&cwd, &mut files_to_add);
             let refs: Vec<&str> = files_to_add.iter().map(|s| s.as_str()).collect();
             patina::git::add_paths(&refs)?;
 
             if patina::git::has_staged_changes()? {
-                patina::git::commit(&format!("chore: refresh {} adapter", name))?;
+                patina::git::commit(&format!("chore: refresh patina ai surface via {}", name))?;
                 println!("  ✓ Committed adapter refresh");
             } else {
                 println!("  ℹ No trackable changes to commit (adapter dir may be gitignored)");
             }
         }
 
-        println!("\n✨ {} adapter refreshed successfully!", name);
+        println!("\n✨ Patina AI surface refreshed successfully!");
         return Ok(());
     }
 
@@ -449,10 +495,6 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
 
     println!("\n✨ {} adapter refreshed successfully!", name);
     Ok(())
-}
-
-fn is_native_ai_adapter(name: &str) -> bool {
-    matches!(name, "opencode" | "gemini")
 }
 
 /// Template-managed command files (not user-created)
@@ -587,7 +629,7 @@ fn doctor() -> Result<()> {
 
     if config.adapters.allowed.is_empty() {
         println!("⚠️  No adapters configured.");
-        println!("   Run: patina adapter add <claude|gemini|opencode>");
+        println!("   Run: patina ai setup");
         return Ok(());
     }
 

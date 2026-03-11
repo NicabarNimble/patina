@@ -14,8 +14,8 @@ use patina::version::VersionManifest;
 
 /// Create project configuration file (unified config.toml format)
 ///
-/// Note: This creates a minimal skeleton config with empty adapters.
-/// Use 'patina adapter add <name>' to add LLM support.
+/// Note: This creates a minimal skeleton config before the Patina AI surface
+/// is prepared via `patina ai setup` or `patina ai <interface>`.
 pub fn create_project_config(
     project_path: &Path,
     name: &str,

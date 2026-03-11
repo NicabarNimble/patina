@@ -17,8 +17,8 @@
 //!     false, // no_commit
 //! ).expect("Failed to initialize project");
 //!
-//! // Then add an adapter:
-//! // patina adapter add claude
+//! // Then prepare the Patina AI surface:
+//! // patina ai setup
 //! ```
 
 pub mod design_wizard;
@@ -50,14 +50,13 @@ use anyhow::Result;
 /// - Run scrape or oxidize
 /// - Create devcontainer (use `patina yolo` for that)
 ///
-/// Use `patina adapter add <adapter>` to allow an interface for this project.
-/// For native OpenCode/Gemini projection, then run
-/// `patina interface setup <opencode|gemini>` (`patina ai setup` remains a compatibility alias).
+/// Use `patina ai setup` to prepare the project-local Patina AI surface, or
+/// launch directly with `patina ai <claude|opencode|gemini>`.
 ///
 /// # Re-initialization
 ///
 /// When run in an existing Patina project:
-/// - Preserves adapter config (adapters.allowed, adapters.default)
+/// - Preserves project AI interface config (adapters.allowed, adapters.default)
 /// - Refreshes environment detection
 ///
 /// # Errors

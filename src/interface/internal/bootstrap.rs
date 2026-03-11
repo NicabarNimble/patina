@@ -92,6 +92,21 @@ const OPENCODE_SURFACE_PATHS: &[ManagedPathSpec] = &[
     },
 ];
 
+const CLAUDE_SURFACE_PATHS: &[ManagedPathSpec] = &[
+    ManagedPathSpec {
+        relative_path: "AGENTS.md",
+        kind: ManagedPathKind::File,
+    },
+    ManagedPathSpec {
+        relative_path: "CLAUDE.md",
+        kind: ManagedPathKind::File,
+    },
+    ManagedPathSpec {
+        relative_path: ".claude",
+        kind: ManagedPathKind::Directory,
+    },
+];
+
 const GEMINI_SURFACE_PATHS: &[ManagedPathSpec] = &[
     ManagedPathSpec {
         relative_path: "AGENTS.md",
@@ -122,6 +137,10 @@ pub fn ensure_adapter_projection(
     let reconciliation = reconcile_interface_surface(adapter_name, project_root, mode)?;
 
     match adapter_name {
+        "claude" => {
+            sync_managed_templates("claude", project_root, mode)?;
+            write_managed_directory_metadata(&project_root.join(".claude"), "claude")?;
+        }
         "opencode" => {
             sync_managed_templates("opencode", project_root, mode)?;
             write_managed_directory_metadata(&project_root.join(".opencode"), "opencode")?;
@@ -219,6 +238,10 @@ fn reconcile_interface_surface(
 
 fn managed_surface(adapter_name: &str) -> Result<ManagedSurfaceSpec> {
     match adapter_name {
+        "claude" => Ok(ManagedSurfaceSpec {
+            adapter_name: "claude",
+            paths: CLAUDE_SURFACE_PATHS,
+        }),
         "opencode" => Ok(ManagedSurfaceSpec {
             adapter_name: "opencode",
             paths: OPENCODE_SURFACE_PATHS,
@@ -264,7 +287,7 @@ fn write_managed_directory_metadata(path: &Path, adapter_name: &str) -> Result<(
     let metadata = ManagedDirectoryMetadata {
         adapter: adapter_name.to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
-        managed_by: "patina interface setup".to_string(),
+        managed_by: "patina ai setup".to_string(),
     };
     fs::write(&metadata_path, toml::to_string_pretty(&metadata)?)
         .with_context(|| format!("Failed to write {}", metadata_path.display()))?;

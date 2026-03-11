@@ -1,16 +1,14 @@
-Update the current Patina session with Git-aware progress tracking:
+Update the current Patina session using the truthful Claude runtime surface:
 
-1. Execute the session update command:
-   `patina session update`
+1. Read root `AGENTS.md` first and determine whether the `Claude Code` runtime section says Patina MCP is available in this runtime.
 
-2. The command will show what time period to document (e.g., "14:15 → 14:45")
+2. Update the session using exactly one truthful path:
+   - If `AGENTS.md` says MCP is available for Claude Code, call MCP tool `session.update`.
+   - Otherwise, execute `patina ai session update --json`.
 
-3. Note from stdout:
-   - Git status: commits, changed files, working tree status
-   - Spec files changed this session (if any)
-   - Paused spec warnings (if any)
+3. Read the returned JSON and extract `artifact_path`.
 
-4. Read `.patina/local/active-session.md` and find the new update section
+4. Read the session artifact and find the new update section.
 
 5. Fill in the update section with what happened during that time period:
    - **Work completed**: Code written, files modified, problems solved
@@ -35,8 +33,4 @@ Update the current Patina session with Git-aware progress tracking:
 
    If yes, suggest to user: "This sounds like a belief worth capturing: '{statement}'. Should I create it?"
 
-7. If the command suggests a commit (30+ minutes or 100+ lines changed), consider:
-   - Creating a checkpoint: `git commit -am "checkpoint: [description]"`
-   - Breaking large changes into smaller logical commits
-
-Note: Each update creates a time-stamped checkpoint with Git context for future reference.
+7. If the update shows a large or risky change set, suggest a small checkpoint commit before continuing.

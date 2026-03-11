@@ -230,12 +230,12 @@ pub fn is_mcp_configured(name: &str) -> Result<bool> {
     Ok(content.contains("\"patina\"") && content.contains("mcpServers"))
 }
 
-/// Truthful MCP availability for native interface projection.
+/// Truthful MCP availability for Patina AI interface projection.
 ///
 /// This is intentionally conservative. If Patina cannot find a known adapter
 /// config with a configured Patina MCP server, projection should assume MCP is
-/// unavailable and teach the native JSON fallback instead.
-pub fn native_interface_mcp_available(name: &str) -> Result<bool> {
+/// unavailable and teach the JSON CLI fallback instead.
+pub fn interface_mcp_available(name: &str) -> Result<bool> {
     let adapter =
         Adapter::from_name(name).ok_or_else(|| anyhow::anyhow!("Unknown adapter: {}", name))?;
 
@@ -549,8 +549,9 @@ fn canonical_agents_section(environment: &Environment) -> Result<String> {
         })
         .collect();
 
-    let opencode_mcp = native_interface_mcp_available("opencode")?;
-    let gemini_mcp = native_interface_mcp_available("gemini")?;
+    let claude_mcp = interface_mcp_available("claude")?;
+    let opencode_mcp = interface_mcp_available("opencode")?;
+    let gemini_mcp = interface_mcp_available("gemini")?;
 
     let tools_line = if available.is_empty() {
         String::new()
@@ -567,6 +568,10 @@ fn canonical_agents_section(environment: &Environment) -> Result<String> {
             ),
             ("{{directory}}", environment.current_dir.clone()),
             ("{{tools_line}}", tools_line),
+            (
+                "{{claude_runtime}}",
+                runtime_surface_section("Claude Code", "claude", claude_mcp),
+            ),
             (
                 "{{opencode_runtime}}",
                 runtime_surface_section("OpenCode", "opencode", opencode_mcp),
@@ -680,25 +685,29 @@ mod tests {
 
     #[test]
     fn canonical_agents_section_contains_runtime_specific_truth() {
-        let environment = Environment {
-            os: "macos".to_string(),
-            arch: "arm64".to_string(),
-            home_dir: "/tmp".to_string(),
-            current_dir: "/tmp/project".to_string(),
-            tools: Default::default(),
-            languages: Default::default(),
-            env_vars: Default::default(),
-        };
-        let section = canonical_agents_section(&environment).unwrap();
-        assert!(section.contains("Read `layer/` before non-trivial changes."));
-        assert!(section.contains("Use `patina --help` to discover command surfaces."));
-        assert!(section.contains("### OpenCode"));
-        assert!(section.contains("### Gemini CLI"));
-        assert!(section.contains(
-            "Do not assume MCP exists unless that runtime section says it is configured."
-        ));
-        assert!(section.contains("patina ai session start --json --adapter opencode"));
-        assert!(section.contains("patina ai session start --json --adapter gemini"));
+        with_temp_home(|_| {
+            let environment = Environment {
+                os: "macos".to_string(),
+                arch: "arm64".to_string(),
+                home_dir: "/tmp".to_string(),
+                current_dir: "/tmp/project".to_string(),
+                tools: Default::default(),
+                languages: Default::default(),
+                env_vars: Default::default(),
+            };
+            let section = canonical_agents_section(&environment).unwrap();
+            assert!(section.contains("Read `layer/` before non-trivial changes."));
+            assert!(section.contains("Use `patina --help` to discover command surfaces."));
+            assert!(section.contains("### Claude Code"));
+            assert!(section.contains("### OpenCode"));
+            assert!(section.contains("### Gemini CLI"));
+            assert!(section.contains(
+                "Do not assume MCP exists unless that runtime section says it is configured."
+            ));
+            assert!(section.contains("patina ai session start --json --adapter claude"));
+            assert!(section.contains("patina ai session start --json --adapter opencode"));
+            assert!(section.contains("patina ai session start --json --adapter gemini"));
+        });
     }
 
     #[test]
@@ -719,7 +728,7 @@ mod tests {
             )
             .unwrap();
 
-            assert!(native_interface_mcp_available("opencode").unwrap());
+        assert!(interface_mcp_available("opencode").unwrap());
         });
     }
 

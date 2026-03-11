@@ -1,26 +1,25 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 use std::path::Path;
 
 use patina::interface::{self, adapter as load_adapter};
-use patina::project;
 
 use crate::commands::launch::internal as launch_internal;
 
 pub fn setup(interface_name: &str, path: Option<String>, force: bool) -> Result<()> {
     let project_path = launch_internal::resolve_project_path(path.as_deref())?;
-    let (adapter, bootstrap) = ensure_interface_ready(interface_name, &project_path, force)?;
-
-    println!(
-        "Patina interface setup refreshed {}",
-        adapter.display_name()
-    );
-    println!("  Context: {}", bootstrap.context_path.display());
-    println!("  Bootstrap: {}", bootstrap.bootstrap_path.display());
-    if let Some(backup_snapshot) = &bootstrap.backup_snapshot {
-        println!("  Backup: {}", backup_snapshot.display());
+    if !interface::is_supported_ai_interface(interface_name) {
+        anyhow::bail!(
+            "Interface '{}' is not part of the Patina AI surface. Choose one of: {}.",
+            interface_name,
+            interface::supported_ai_interfaces().join(", ")
+        );
     }
 
-    Ok(())
+    crate::commands::ai::surface::setup(crate::commands::ai::surface::AiSetupRequest {
+        interface: None,
+        path: Some(project_path.display().to_string()),
+        force,
+    })
 }
 
 pub fn ensure_interface_ready(
@@ -31,12 +30,13 @@ pub fn ensure_interface_ready(
     Box<dyn patina::interface::AiAdapter>,
     interface::BootstrapResult,
 )> {
-    ensure_interface_allowed(project_path, interface_name)?;
+    interface::ensure_ai_project_config(project_path, None)?;
 
     let adapter = load_adapter(interface_name).map_err(|_| {
         anyhow::anyhow!(
-            "Interface '{}' does not use the native Patina interface setup path.\nUse the Claude compatibility flow for Claude, or choose one of: opencode, gemini.",
-            interface_name
+            "Unsupported Patina AI interface '{}'. Choose one of: {}.",
+            interface_name,
+            interface::supported_ai_interfaces().join(", ")
         )
     })?;
     let bootstrap = if force {
@@ -49,24 +49,6 @@ pub fn ensure_interface_ready(
         adapter.bootstrap(project_path)?
     };
     Ok((adapter, bootstrap))
-}
-
-fn ensure_interface_allowed(project_path: &Path, interface_name: &str) -> Result<()> {
-    let config = project::load_with_migration(project_path)?;
-    if config
-        .adapters
-        .allowed
-        .iter()
-        .any(|allowed| allowed == interface_name)
-    {
-        return Ok(());
-    }
-
-    bail!(
-        "Interface '{}' is not allowed for this project.\nAllow it first with: patina adapter add {}",
-        interface_name,
-        interface_name
-    );
 }
 
 #[cfg(test)]
@@ -128,9 +110,13 @@ mod tests {
         });
 
         assert!(temp.path().join("AGENTS.md").exists());
+        assert!(temp.path().join("CLAUDE.md").exists());
+        assert!(temp.path().join("GEMINI.md").exists());
+        assert!(temp.path().join(".claude/commands/session-start.md").exists());
         assert!(temp
             .path()
             .join(".opencode/commands/session-start.md")
             .exists());
+        assert!(temp.path().join(".gemini/commands/session-start.toml").exists());
     }
 }

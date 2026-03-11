@@ -12,6 +12,11 @@ pub use internal::bootstrap::{
 pub use internal::checkin::{
     check_in, CheckInResult, InterfaceCapabilities, InterfaceCheckIn, LaunchPolicy,
 };
+pub use internal::surface::{
+    ensure_ai_project_config, ensure_ai_surface, is_supported_ai_interface,
+    resolve_preferred_ai_interface, supported_ai_interfaces, set_project_default_interface,
+    AiProjectConfigResult, AiSurfaceRequest, AiSurfaceResult, PreparedInterface,
+};
 pub use internal::tmux::{
     check_tmux_version, derive_interface_session_name, derive_session_name, launch_adapter_cli,
     resolve_tmux_decision, OffReason, TmuxDecision,
@@ -69,9 +74,30 @@ pub trait AiAdapter {
 
 pub fn adapter(name: &str) -> Result<Box<dyn AiAdapter>> {
     match name {
+        "claude" => Ok(Box::new(ClaudeInterface)),
         "opencode" => Ok(Box::new(OpenCodeInterface)),
         "gemini" => Ok(Box::new(GeminiInterface)),
         other => bail!("Unsupported ai adapter: {}", other),
+    }
+}
+
+struct ClaudeInterface;
+
+impl AiAdapter for ClaudeInterface {
+    fn name(&self) -> &'static str {
+        "claude"
+    }
+
+    fn display_name(&self) -> &'static str {
+        "Claude Code"
+    }
+
+    fn interface_kind(&self) -> InterfaceKind {
+        InterfaceKind::Claude
+    }
+
+    fn context_file(&self, project_root: &Path) -> PathBuf {
+        project_root.join("AGENTS.md")
     }
 }
 

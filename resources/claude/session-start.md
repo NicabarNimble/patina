@@ -1,28 +1,21 @@
-Start a new Patina development session with Git branch creation:
+Start a new Patina session using the truthful Claude runtime surface:
 
-1. Execute the session start command:
-   `patina session start "$ARGUMENTS"`
+1. Read root `AGENTS.md` first and determine whether the `Claude Code` runtime section says Patina MCP is available in this runtime.
 
-2. Read `.patina/local/last-session.md` if it exists. This file contains a reference to the full session file in `layer/sessions/`. You MUST read the full session file referenced there (e.g., if it says "See: layer/sessions/20250904-102821.md", read that file) to understand what actually happened. Then fill in the "Previous Session Context" section with a substantive 2-3 sentence summary of what was actually accomplished, key fixes/changes made, and any open items. Don't write generic fluff - include specific accomplishments.
+2. Start the session using exactly one truthful path:
+   - If `AGENTS.md` says MCP is available for Claude Code, call MCP tool `session.start` with `title = $ARGUMENTS`.
+   - Otherwise, execute `patina ai session start --json --adapter claude "$ARGUMENTS"`.
 
-3. Read the newly created `.patina/local/active-session.md` file
+3. Read the returned JSON and extract `artifact_path`.
 
-4. Note the session context printed to stdout:
-   - Branch handling and session tag
-   - Spec landscape: active, paused, blocked, and draft specs
-   - Recommended next spec to work on
-   - Previous session reference and beliefs
+4. If `last_session_path` exists, read it. It points to the previous durable session in `layer/sessions/`; read that referenced file and fill the new session's "Previous Session Context" section with a concrete 2-3 sentence summary of what actually happened.
 
-5. If we've been discussing work already in this conversation:
-   - Update the Goals section with specific tasks we've identified
-   - Add context about why this session was started
-   - Note any decisions or constraints we've discussed
+5. Update the new session artifact's Goals section with the real tasks, decisions, and constraints already established in this conversation.
 
 6. Ask the user: "Would you like me to create todos for '$ARGUMENTS'?"
 
-7. Remind the user about session workflow:
-   - Use `/session-update` periodically to capture progress
+7. Remind the user about the workflow:
+   - Use `/session-update` to capture progress
    - Use `/session-note` for important insights
-   - End with `/session-end` to archive, distill learnings, and handle branch cleanup
-
-The session is now tracking both code changes and Git history.
+   - Use `/session-end` to archive the session
+   - Use `spec.next`, `spec.show`, and `spec.check` when spec workflow is relevant
