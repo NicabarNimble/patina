@@ -7,3 +7,13 @@ connection = "github"
 types = ["issues", "prs"]
 params = { owner = "NicabarNimble", repo = "patina" }
 schedule = "manual"
+
+[sources.github-lake]
+connection = "github"
+types = ["issues", "prs"]
+params = { owner = "NicabarNimble", repo = "patina" }
+schedule = "manual"
+
+[sources.github-lake.destination]
+type = "lake"
+lake = "github-data"

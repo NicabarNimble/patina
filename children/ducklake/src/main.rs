@@ -78,16 +78,17 @@ impl Child for DuckLakeChild {
         })?;
 
         // Create cursor tracking table
+        // No PRIMARY KEY or DEFAULT — DuckLake only supports literal defaults
+        // and no PK constraints. Upsert via DELETE + INSERT.
         db.execute_batch(
             "CREATE TABLE IF NOT EXISTS lake._sync_cursors (
                 source_name VARCHAR,
                 data_type   VARCHAR,
                 cursor      VARCHAR,
                 last_run    TIMESTAMP,
-                records_written BIGINT DEFAULT 0,
-                status      VARCHAR DEFAULT 'ok',
-                last_error  VARCHAR,
-                PRIMARY KEY (source_name, data_type)
+                records_written BIGINT,
+                status      VARCHAR,
+                last_error  VARCHAR
             )",
         )
         .map_err(|e| PipeError::Fatal {
@@ -210,8 +211,13 @@ impl DuckLakeChild {
         let Some(grant) = &self.grant else { return };
         let cursor_val = cursor.as_deref().unwrap_or("");
 
+        // DELETE + INSERT (DuckLake doesn't support INSERT OR REPLACE)
         let _ = db.execute(
-            "INSERT OR REPLACE INTO lake._sync_cursors
+            "DELETE FROM lake._sync_cursors WHERE source_name = ? AND data_type = ?",
+            duckdb::params![grant.connector.binary, data_type],
+        );
+        let _ = db.execute(
+            "INSERT INTO lake._sync_cursors
              (source_name, data_type, cursor, last_run, records_written, status)
              VALUES (?, ?, ?, current_timestamp, ?, 'ok')",
             duckdb::params![grant.connector.binary, data_type, cursor_val, written as i64],
@@ -222,25 +228,25 @@ impl DuckLakeChild {
         let Some(db) = &self.db else { return };
         let Some(grant) = &self.grant else { return };
 
+        // Preserve existing cursor value
+        let existing_cursor: String = db
+            .query_row(
+                "SELECT cursor FROM lake._sync_cursors WHERE source_name = ? AND data_type = ?",
+                duckdb::params![grant.connector.binary, data_type],
+                |row| row.get(0),
+            )
+            .unwrap_or_default();
+
+        // DELETE + INSERT (DuckLake doesn't support INSERT OR REPLACE)
         let _ = db.execute(
-            "INSERT OR REPLACE INTO lake._sync_cursors
+            "DELETE FROM lake._sync_cursors WHERE source_name = ? AND data_type = ?",
+            duckdb::params![grant.connector.binary, data_type],
+        );
+        let _ = db.execute(
+            "INSERT INTO lake._sync_cursors
              (source_name, data_type, cursor, last_run, status, last_error)
-             VALUES (
-                ?,
-                ?,
-                COALESCE((SELECT cursor FROM lake._sync_cursors
-                          WHERE source_name = ? AND data_type = ?), ''),
-                current_timestamp,
-                'error',
-                ?
-             )",
-            duckdb::params![
-                grant.connector.binary,
-                data_type,
-                grant.connector.binary,
-                data_type,
-                error
-            ],
+             VALUES (?, ?, ?, current_timestamp, 'error', ?)",
+            duckdb::params![grant.connector.binary, data_type, existing_cursor, error],
         );
     }
 
@@ -254,9 +260,10 @@ impl DuckLakeChild {
         let db = self.db.as_ref().unwrap();
 
         // Send pipe/fetch for this type
+        // cursor is Option<&str> — serialize as null when None (not empty string)
         let fetch_params = serde_json::json!({
             "types": [data_type],
-            "since": cursor,
+            "since": cursor.filter(|s| !s.is_empty()),
             "limit": 10000,
             "params": grant.connector.params,
         });
@@ -284,10 +291,11 @@ impl DuckLakeChild {
             .map(|s| s.to_string());
 
         // Auto-create table
+        // No DEFAULT expressions — DuckLake only supports literal defaults.
         let table = event_type_to_table(data_type);
         db.execute_batch(&format!(
             "CREATE TABLE IF NOT EXISTS lake.{} (
-                _ingested_at TIMESTAMP DEFAULT current_timestamp,
+                _ingested_at TIMESTAMP,
                 _source_id VARCHAR,
                 _content_hash VARCHAR,
                 data JSON
@@ -295,10 +303,10 @@ impl DuckLakeChild {
             table
         ))?;
 
-        // Batch insert from fact notifications
+        // Batch insert from fact notifications (supply timestamp explicitly)
         let mut written = 0u64;
         let mut stmt = db.prepare(&format!(
-            "INSERT INTO lake.{} (_source_id, _content_hash, data) VALUES (?, ?, ?)",
+            "INSERT INTO lake.{} (_ingested_at, _source_id, _content_hash, data) VALUES (current_timestamp, ?, ?, ?)",
             table
         ))?;
 
