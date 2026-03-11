@@ -78,8 +78,8 @@ pub fn execute(command: SessionCommands) -> Result<()> {
 }
 
 pub(crate) use internal::{
-    end_live_session_value, list_sessions_value, start_session_value, update_live_session_value,
-    SessionStartRequest,
+    end_live_session_value, list_sessions_value, resolve_live_session, start_session_value,
+    update_live_session_value, SessionStartRequest,
 };
 
 /// Start a new development session
@@ -90,7 +90,7 @@ pub fn start(project_root: &Path, title: &str, adapter: Option<&str>, json: bool
     if json {
         let result = internal::start_session_value(
             project_root,
-            SessionStartRequest::legacy_cli(title, adapter),
+            SessionStartRequest::compatibility_cli(title, adapter),
         )?;
         println!("{}", serde_json::to_string_pretty(&result)?);
         Ok(())

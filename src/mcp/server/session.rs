@@ -42,19 +42,20 @@ pub(super) fn handle(req: &Request, name: &str, args: SessionArgs) -> Response {
                 .unwrap_or_else(|| "opencode".to_string());
             let result = crate::commands::session::start_session_value(
                 &project_root,
-                crate::commands::session::SessionStartRequest {
-                    title: title.to_string(),
-                    adapter: Some(adapter.clone()),
-                    interface_kind: patina::session::InterfaceKind::from_adapter_name(&adapter),
-                    write_compatibility_projection: false,
-                },
+                crate::commands::session::SessionStartRequest::native(title, &adapter),
             );
             session_response(req, result)
         }
         "session.update" => {
-            let handle = match resolve_session(&project_root, args.session.as_deref()) {
+            let handle = match crate::commands::session::resolve_live_session(
+                &project_root,
+                args.session.as_deref(),
+                None,
+            ) {
                 Ok(handle) => handle,
-                Err(e) => return Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
+                Err(e) => {
+                    return Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string())
+                }
             };
             session_response(
                 req,
@@ -62,9 +63,15 @@ pub(super) fn handle(req: &Request, name: &str, args: SessionArgs) -> Response {
             )
         }
         "session.end" => {
-            let handle = match resolve_session(&project_root, args.session.as_deref()) {
+            let handle = match crate::commands::session::resolve_live_session(
+                &project_root,
+                args.session.as_deref(),
+                None,
+            ) {
                 Ok(handle) => handle,
-                Err(e) => return Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
+                Err(e) => {
+                    return Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string())
+                }
             };
             session_response(
                 req,
@@ -75,9 +82,10 @@ pub(super) fn handle(req: &Request, name: &str, args: SessionArgs) -> Response {
                 ),
             )
         }
-        "session.list" => {
-            session_response(req, crate::commands::session::list_sessions_value(&project_root))
-        }
+        "session.list" => session_response(
+            req,
+            crate::commands::session::list_sessions_value(&project_root),
+        ),
         _ => Response::error(
             req.id.clone(),
             super::ERR_INVALID_PARAMS,
@@ -86,10 +94,7 @@ pub(super) fn handle(req: &Request, name: &str, args: SessionArgs) -> Response {
     }
 }
 
-fn session_response<T: serde::Serialize>(
-    req: &Request,
-    result: anyhow::Result<T>,
-) -> Response {
+fn session_response<T: serde::Serialize>(req: &Request, result: anyhow::Result<T>) -> Response {
     match result {
         Ok(result) => {
             let text = serde_json::to_string_pretty(&result).unwrap_or_default();
@@ -104,62 +109,21 @@ fn session_response<T: serde::Serialize>(
     }
 }
 
-fn resolve_session(
-    project_root: &std::path::Path,
-    selector: Option<&str>,
-) -> anyhow::Result<patina::session::LiveSessionHandle> {
-    if let Some(selector) = selector {
-        return load_session(project_root, selector)?
-            .ok_or_else(|| anyhow::anyhow!("No active session found for selector '{}'", selector));
-    }
-
-    if let Some(runtime_id) = std::env::var("PATINA_SESSION_RUNTIME_ID").ok().filter(|v| !v.is_empty()) {
-        if let Some(handle) = patina::session::load_session(project_root, &runtime_id)? {
-            return Ok(handle);
-        }
-    }
-
-    if let Some(file_id) = std::env::var("PATINA_SESSION_ID").ok().filter(|v| !v.is_empty()) {
-        if let Some(handle) = patina::session::load_session_by_file_id(project_root, &file_id)? {
-            return Ok(handle);
-        }
-    }
-
-    let mut sessions = patina::session::list_active_sessions(project_root)?;
-    if let Some(adapter) = std::env::var("PATINA_AI_INTERFACE").ok().filter(|v| !v.is_empty()) {
-        sessions.retain(|handle| handle.adapter_name == adapter);
-    }
-
-    match sessions.len() {
-        1 => Ok(sessions.remove(0)),
-        0 => anyhow::bail!("No active session found"),
-        _ => {
-            let choices = sessions
-                .iter()
-                .map(|handle| format!("{} ({})", handle.file_id, handle.title))
-                .collect::<Vec<_>>()
-                .join(", ");
-            anyhow::bail!(
-                "Multiple active sessions match. Retry with session=<id>. Choices: {}",
-                choices
-            )
-        }
-    }
-}
-
-fn load_session(
-    project_root: &std::path::Path,
-    selector: &str,
-) -> anyhow::Result<Option<patina::session::LiveSessionHandle>> {
-    if let Some(handle) = patina::session::load_session(project_root, selector)? {
-        return Ok(Some(handle));
-    }
-    patina::session::load_session_by_file_id(project_root, selector)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use patina::project::{self, ProjectConfig};
+    use tempfile::TempDir;
+
+    fn setup_project() -> TempDir {
+        let temp = TempDir::new().unwrap();
+        let mut config = ProjectConfig::with_name("patina");
+        config.adapters.allowed = vec!["opencode".to_string()];
+        config.adapters.default = "opencode".to_string();
+        project::save(temp.path(), &config).unwrap();
+        std::fs::create_dir_all(temp.path().join(".patina/local/data")).unwrap();
+        temp
+    }
 
     #[test]
     fn start_requires_title() {
@@ -187,5 +151,54 @@ mod tests {
             .unwrap()
             .message
             .contains("session.start requires 'title'"));
+    }
+
+    #[test]
+    fn session_start_handler_preserves_native_interface_semantics() {
+        let temp = setup_project();
+        let old_dir = std::env::current_dir().unwrap();
+        let patina_home = temp.path().join("patina-home");
+        std::fs::create_dir_all(&patina_home).unwrap();
+        let old_patina_home = std::env::var_os("PATINA_HOME");
+        std::env::set_current_dir(temp.path()).unwrap();
+        unsafe {
+            std::env::set_var("PATINA_HOME", &patina_home);
+        }
+
+        let req = Request {
+            jsonrpc: "2.0".to_string(),
+            id: Some(serde_json::json!(1)),
+            method: "tools/call".to_string(),
+            params: serde_json::json!({}),
+        };
+
+        let response = handle(
+            &req,
+            "session.start",
+            SessionArgs {
+                title: Some("Native MCP session".to_string()),
+                session: None,
+                adapter: Some("opencode".to_string()),
+                note: None,
+            },
+        );
+
+        std::env::set_current_dir(old_dir).unwrap();
+        match old_patina_home {
+            Some(value) => unsafe {
+                std::env::set_var("PATINA_HOME", value);
+            },
+            None => unsafe {
+                std::env::remove_var("PATINA_HOME");
+            },
+        }
+
+        let text = response.result.unwrap()["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let payload: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(payload["interface"].as_str(), Some("opencode"));
+        assert!(payload["active_session_path"].is_null());
     }
 }

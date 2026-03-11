@@ -11,6 +11,7 @@ use patina::project;
 use patina::session::{self, ArchiveSessionRequest, SessionManager};
 use patina::{git, workspace};
 
+use super::AiSessionCommands;
 use crate::commands::launch::internal::{self as launch_internal, BranchAction};
 
 pub fn launch_default() -> Result<()> {
@@ -93,7 +94,7 @@ pub fn launch(
     })?;
 
     if !checkin.attached_existing {
-        record_ai_session_started(adapter_name, &checkin)?;
+        record_ai_session_started(&project_path, adapter_name, &checkin)?;
     }
 
     println!(
@@ -223,6 +224,23 @@ pub fn list(json_output: bool) -> Result<()> {
     Ok(())
 }
 
+pub fn session(command: AiSessionCommands) -> Result<()> {
+    match command {
+        AiSessionCommands::Start {
+            title,
+            adapter,
+            json,
+        } => start_session(&title, adapter, json),
+        AiSessionCommands::Update { session, json } => update_session(session, json),
+        AiSessionCommands::End {
+            session,
+            note,
+            json,
+        } => end_session(session, note, json),
+        AiSessionCommands::List { json } => list(json),
+    }
+}
+
 pub fn end(
     session_selector: Option<String>,
     note: Option<String>,
@@ -262,7 +280,7 @@ pub fn end(
             end_tag: Some(end_tag.clone()),
         },
     )?;
-    record_ai_session_ended(&handle, &end_tag)?;
+    record_ai_session_ended(&project_root, &handle, &end_tag)?;
 
     if json_output {
         println!(
@@ -283,6 +301,69 @@ pub fn end(
     Ok(())
 }
 
+fn start_session(title: &str, adapter: Option<String>, json_output: bool) -> Result<()> {
+    let project_root = SessionManager::find_project_root()?;
+    let adapter_name = resolve_native_session_adapter(&project_root, adapter.as_deref())?;
+    let result = crate::commands::session::start_session_value(
+        &project_root,
+        crate::commands::session::SessionStartRequest::native(title, &adapter_name),
+    )?;
+
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        return Ok(());
+    }
+
+    println!("Started native AI session {}", result.session_id);
+    println!("  Adapter: {}", result.adapter);
+    println!("  Artifact: {}", result.artifact_path);
+    Ok(())
+}
+
+fn update_session(session_selector: Option<String>, json_output: bool) -> Result<()> {
+    let project_root = SessionManager::find_project_root()?;
+    let handle = crate::commands::session::resolve_live_session(
+        &project_root,
+        session_selector.as_deref(),
+        current_interface_adapter().as_deref(),
+    )?;
+    let result = crate::commands::session::update_live_session_value(&project_root, &handle)?;
+
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        return Ok(());
+    }
+
+    println!("Updated native AI session {}", result.session_id);
+    println!("  Artifact: {}", result.artifact_path);
+    Ok(())
+}
+
+fn end_session(
+    session_selector: Option<String>,
+    note: Option<String>,
+    json_output: bool,
+) -> Result<()> {
+    let project_root = SessionManager::find_project_root()?;
+    let handle = crate::commands::session::resolve_live_session(
+        &project_root,
+        session_selector.as_deref(),
+        current_interface_adapter().as_deref(),
+    )?;
+    let result =
+        crate::commands::session::end_live_session_value(&project_root, &handle, note.as_deref())?;
+
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        return Ok(());
+    }
+
+    println!("Archived native AI session {}", result.session_id);
+    println!("  Artifact: {}", result.artifact_path);
+    println!("  Tag: {}", result.end_tag);
+    Ok(())
+}
+
 fn append_outcome_note(markdown: &str, note: &str) -> String {
     if let Some((head, tail)) = markdown.split_once("## Outcome\n") {
         return format!("{head}## Outcome\n{note}\n\n{tail}");
@@ -290,8 +371,12 @@ fn append_outcome_note(markdown: &str, note: &str) -> String {
     format!("{markdown}\n\n## Outcome\n{note}\n")
 }
 
-fn record_ai_session_started(adapter_name: &str, checkin: &CheckInResult) -> Result<()> {
-    let conn = patina::eventlog::open_events_db()?;
+fn record_ai_session_started(
+    project_root: &Path,
+    adapter_name: &str,
+    checkin: &CheckInResult,
+) -> Result<()> {
+    let conn = patina::eventlog::open_events_db_at(project_root)?;
     let timestamp = chrono::Utc::now().to_rfc3339();
     let payload = json!({
         "session_id": checkin.session_file_id,
@@ -311,8 +396,12 @@ fn record_ai_session_started(adapter_name: &str, checkin: &CheckInResult) -> Res
     Ok(())
 }
 
-fn record_ai_session_ended(handle: &session::LiveSessionHandle, end_tag: &str) -> Result<()> {
-    let conn = patina::eventlog::open_events_db()?;
+fn record_ai_session_ended(
+    project_root: &Path,
+    handle: &session::LiveSessionHandle,
+    end_tag: &str,
+) -> Result<()> {
+    let conn = patina::eventlog::open_events_db_at(project_root)?;
     let timestamp = chrono::Utc::now().to_rfc3339();
     let payload = json!({
         "session_id": handle.file_id,
@@ -359,6 +448,27 @@ fn preferred_adapter(project_root: &std::path::Path) -> Result<&'static str> {
         "No supported `patina ai` adapter is both allowed for this project and installed. Allowed adapters: {:?}",
         config.adapters.allowed
     );
+}
+
+fn resolve_native_session_adapter(project_root: &Path, adapter: Option<&str>) -> Result<String> {
+    let resolved = adapter
+        .map(ToOwned::to_owned)
+        .or_else(current_interface_adapter)
+        .unwrap_or(preferred_adapter(project_root)?.to_string());
+    ensure_native_adapter_allowed(project_root, &resolved)?;
+    let _ = load_adapter(&resolved).map_err(|_| {
+        anyhow::anyhow!(
+            "Adapter '{}' does not use the native `patina ai` session path.\nChoose one of: opencode, gemini.",
+            resolved
+        )
+    })?;
+    Ok(resolved)
+}
+
+fn current_interface_adapter() -> Option<String> {
+    std::env::var("PATINA_AI_INTERFACE")
+        .ok()
+        .filter(|value| !value.is_empty())
 }
 
 fn ensure_workspace_ready() -> Result<()> {

@@ -3,6 +3,47 @@ mod internal;
 use anyhow::Result;
 
 #[derive(Debug, Clone, clap::Subcommand)]
+pub enum AiSessionCommands {
+    /// Start a native AI session without launching an interface
+    Start {
+        title: String,
+
+        #[arg(long)]
+        adapter: Option<String>,
+
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Update the current native AI session artifact
+    Update {
+        #[arg(long)]
+        session: Option<String>,
+
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// End a native AI session and archive its durable artifact
+    End {
+        #[arg(long)]
+        session: Option<String>,
+
+        #[arg(long)]
+        note: Option<String>,
+
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// List active native AI sessions for this project
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
 pub enum AiCommands {
     /// Create or refresh Patina-managed projection for a native AI interface
     Setup {
@@ -66,6 +107,12 @@ pub enum AiCommands {
         #[arg(long)]
         json: bool,
     },
+
+    /// Machine-readable native session lifecycle commands
+    Session {
+        #[command(subcommand)]
+        command: AiSessionCommands,
+    },
 }
 
 pub fn execute(command: Option<AiCommands>) -> Result<()> {
@@ -92,5 +139,6 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             note,
             json,
         }) => internal::end(session, note, json),
+        Some(AiCommands::Session { command }) => internal::session(command),
     }
 }

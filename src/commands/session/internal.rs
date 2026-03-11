@@ -83,21 +83,55 @@ struct SessionGit {
     end_tag: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum SessionSurfaceMode {
+    CompatibilityCli,
+    NativeInterface { interface_kind: InterfaceKind },
+}
+
+impl SessionSurfaceMode {
+    fn compatibility_projection(self) -> bool {
+        matches!(self, Self::CompatibilityCli)
+    }
+
+    fn interface_kind(self) -> InterfaceKind {
+        match self {
+            Self::CompatibilityCli => InterfaceKind::LegacyCli,
+            Self::NativeInterface { interface_kind } => interface_kind,
+        }
+    }
+
+    fn participant_role(self) -> &'static str {
+        match self {
+            Self::CompatibilityCli => "operator",
+            Self::NativeInterface { .. } => "interface",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct SessionStartRequest {
     pub title: String,
-    pub adapter: Option<String>,
-    pub interface_kind: InterfaceKind,
-    pub write_compatibility_projection: bool,
+    pub adapter: String,
+    pub mode: SessionSurfaceMode,
 }
 
 impl SessionStartRequest {
-    pub(crate) fn legacy_cli(title: &str, adapter: Option<&str>) -> Self {
+    pub(crate) fn compatibility_cli(title: &str, adapter: Option<&str>) -> Self {
         Self {
             title: title.to_string(),
-            adapter: adapter.map(ToOwned::to_owned),
-            interface_kind: InterfaceKind::LegacyCli,
-            write_compatibility_projection: true,
+            adapter: adapter.unwrap_or_default().to_string(),
+            mode: SessionSurfaceMode::CompatibilityCli,
+        }
+    }
+
+    pub(crate) fn native(title: &str, adapter: &str) -> Self {
+        Self {
+            title: title.to_string(),
+            adapter: adapter.to_string(),
+            mode: SessionSurfaceMode::NativeInterface {
+                interface_kind: InterfaceKind::from_adapter_name(adapter),
+            },
         }
     }
 }
@@ -307,7 +341,7 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
     fs::write(&last_update_path, &time_str)?;
 
     // 9. Write session.started event to events.db (runtime events)
-    let conn = patina::eventlog::open_events_db()?;
+    let conn = patina::eventlog::open_events_db_at(project_root)?;
     let timestamp = now.to_rfc3339();
     let data = json!({
         "session_id": session_id,
@@ -392,12 +426,28 @@ pub(crate) fn start_session_value(
     project_root: &Path,
     request: SessionStartRequest,
 ) -> Result<SessionStartResult> {
-    let adapter = resolve_adapter(request.adapter.as_deref(), project_root)?;
+    let adapter = resolve_adapter(
+        (!request.adapter.is_empty()).then_some(request.adapter.as_str()),
+        project_root,
+    )?;
     let session_path = project_root.join(ACTIVE_SESSION_PATH);
     let last_update_path = project_root.join(LAST_UPDATE_PATH);
     let dev_branch = dev_branch_name(project_root);
+    let mode = request.mode;
 
-    if request.write_compatibility_projection && session_path.exists() {
+    if matches!(
+        mode,
+        SessionSurfaceMode::NativeInterface {
+            interface_kind: InterfaceKind::Unknown
+        }
+    ) {
+        bail!(
+            "Native session mode requires a native interface adapter, got '{}'",
+            adapter
+        );
+    }
+
+    if mode.compatibility_projection() && session_path.exists() {
         let content = fs::read_to_string(&session_path).unwrap_or_default();
         let line_count = content.lines().count();
         if line_count > 10 {
@@ -431,7 +481,7 @@ pub(crate) fn start_session_value(
         BeginSessionRequest {
             title: request.title.clone(),
             adapter_name: adapter.clone(),
-            interface_kind: request.interface_kind,
+            interface_kind: mode.interface_kind(),
             persona_uid: None,
             parent_runtime_id: None,
             handoff_from_runtime_id: None,
@@ -441,15 +491,11 @@ pub(crate) fn start_session_value(
                     std::env::var("USER").unwrap_or_else(|_| "operator".to_string()),
                     std::process::id()
                 ),
-                role: if request.interface_kind == InterfaceKind::LegacyCli {
-                    "operator".to_string()
-                } else {
-                    "interface".to_string()
-                },
-                interface_kind: request.interface_kind,
+                role: mode.participant_role().to_string(),
+                interface_kind: mode.interface_kind(),
                 adapter_name: Some(adapter.clone()),
                 display_name: std::env::var("USER").ok().or_else(|| {
-                    (request.interface_kind != InterfaceKind::LegacyCli)
+                    (mode.interface_kind() != InterfaceKind::LegacyCli)
                         .then(|| Some(adapter.clone()))
                         .flatten()
                 }),
@@ -457,13 +503,13 @@ pub(crate) fn start_session_value(
         },
     )?;
 
-    if request.write_compatibility_projection {
+    if mode.compatibility_projection() {
         fs::create_dir_all(session_path.parent().unwrap())?;
         fs::write(&session_path, &start.document)?;
         fs::write(&last_update_path, now.format("%H:%M").to_string())?;
     }
 
-    let conn = patina::eventlog::open_events_db()?;
+    let conn = patina::eventlog::open_events_db_at(project_root)?;
     let timestamp = now.to_rfc3339();
     let data = json!({
         "session_id": start.handle.file_id,
@@ -474,7 +520,7 @@ pub(crate) fn start_session_value(
         "starting_commit": start.handle.starting_commit,
         "tag": start.handle.start_tag,
     });
-    let source_path = if request.write_compatibility_projection {
+    let source_path = if mode.compatibility_projection() {
         ACTIVE_SESSION_PATH.to_string()
     } else {
         start.handle.artifact_path.display().to_string()
@@ -499,8 +545,8 @@ pub(crate) fn start_session_value(
         starting_commit: start.handle.starting_commit.clone(),
         start_tag: start.handle.start_tag.clone(),
         artifact_path: start.handle.artifact_path.display().to_string(),
-        active_session_path: request
-            .write_compatibility_projection
+        active_session_path: mode
+            .compatibility_projection()
             .then(|| session_path.display().to_string()),
         last_session_path: project_root.join(LAST_SESSION_PATH).display().to_string(),
     })
@@ -567,6 +613,67 @@ pub(crate) fn end_live_session_value(
     )
 }
 
+pub(crate) fn resolve_live_session(
+    project_root: &Path,
+    selector: Option<&str>,
+    adapter_filter: Option<&str>,
+) -> Result<session::LiveSessionHandle> {
+    if let Some(selector) = selector {
+        return load_session(project_root, selector)?
+            .ok_or_else(|| anyhow::anyhow!("No active session found for selector '{}'", selector));
+    }
+
+    if let Some(runtime_id) = std::env::var("PATINA_SESSION_RUNTIME_ID")
+        .ok()
+        .filter(|value| !value.is_empty())
+    {
+        if let Some(handle) = session::load_session(project_root, &runtime_id)? {
+            return Ok(handle);
+        }
+    }
+
+    if let Some(file_id) = std::env::var("PATINA_SESSION_ID")
+        .ok()
+        .filter(|value| !value.is_empty())
+    {
+        if let Some(handle) = session::load_session_by_file_id(project_root, &file_id)? {
+            return Ok(handle);
+        }
+    }
+
+    let mut sessions = session::list_active_sessions(project_root)?;
+    if let Some(adapter) = adapter_filter
+        .map(ToOwned::to_owned)
+        .or_else(|| std::env::var("PATINA_AI_INTERFACE").ok())
+        .filter(|value| !value.is_empty())
+    {
+        sessions.retain(|handle| handle.adapter_name == adapter);
+    }
+
+    match sessions.len() {
+        1 => Ok(sessions.remove(0)),
+        0 => bail!("No active session found"),
+        _ => {
+            let choices = sessions
+                .iter()
+                .map(|handle| format!("{} ({})", handle.file_id, handle.title))
+                .collect::<Vec<_>>()
+                .join(", ");
+            bail!(
+                "Multiple active sessions match. Retry with session=<id>. Choices: {}",
+                choices
+            )
+        }
+    }
+}
+
+fn load_session(project_root: &Path, selector: &str) -> Result<Option<session::LiveSessionHandle>> {
+    if let Some(handle) = session::load_session(project_root, selector)? {
+        return Ok(Some(handle));
+    }
+    session::load_session_by_file_id(project_root, selector)
+}
+
 fn update_session_document_value(
     project_root: &Path,
     session_path: &Path,
@@ -597,7 +704,10 @@ fn update_session_document_value(
         Vec::new()
     };
     let commit_list = git::log_oneline(commits_this_session.min(20)).unwrap_or_default();
-    let recent_commits = commit_list.lines().map(ToOwned::to_owned).collect::<Vec<_>>();
+    let recent_commits = commit_list
+        .lines()
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
 
     let now = Local::now();
     let time_str = now.format("%H:%M").to_string();
@@ -654,7 +764,7 @@ fn update_session_document_value(
         fs::write(path, &time_str)?;
     }
 
-    let conn = patina::eventlog::open_events_db()?;
+    let conn = patina::eventlog::open_events_db_at(project_root)?;
     let timestamp = now.to_rfc3339();
     let data = json!({
         "session_id": session_id,
@@ -715,13 +825,9 @@ fn end_session_document_value(
 
     {
         let content = fs::read_to_string(session_path)?;
-        let updated = session::rewrite_document_status(
-            &content,
-            "completed",
-            &Utc::now().to_rfc3339(),
-            None,
-        )
-        .unwrap_or(content);
+        let updated =
+            session::rewrite_document_status(&content, "completed", &Utc::now().to_rfc3339(), None)
+                .unwrap_or(content);
         fs::write(session_path, &updated)?;
     }
 
@@ -806,7 +912,7 @@ fn end_session_document_value(
 
     let now = Local::now();
     let timestamp = now.to_rfc3339();
-    let conn = patina::eventlog::open_events_db()?;
+    let conn = patina::eventlog::open_events_db_at(project_root)?;
     let data = json!({
         "session_id": session_id,
         "runtime_id": runtime_id,
@@ -1062,7 +1168,7 @@ pub fn update_session(project_root: &Path) -> Result<()> {
     fs::write(&last_update_path, &time_str)?;
 
     // 8. Write session.update event to events.db (runtime events)
-    let conn = patina::eventlog::open_events_db()?;
+    let conn = patina::eventlog::open_events_db_at(project_root)?;
     let timestamp = now.to_rfc3339();
     let data = json!({
         "session_id": session_id,
@@ -1326,7 +1432,7 @@ pub fn end_session(project_root: &Path) -> Result<()> {
 
     // 15. Write session.ended event to events.db (runtime events)
     let now = Local::now();
-    let conn = patina::eventlog::open_events_db()?;
+    let conn = patina::eventlog::open_events_db_at(project_root)?;
     let timestamp = now.to_rfc3339();
     let data = json!({
         "session_id": session_id,
@@ -2031,9 +2137,18 @@ pub(crate) fn list_sessions_value(project_root: &Path) -> Result<SessionListResu
     let now = Utc::now();
 
     Ok(SessionListResult {
-        active: active.iter().map(|s| session_summary_entry(s, &now)).collect(),
-        stale: stale.iter().map(|s| session_summary_entry(s, &now)).collect(),
-        recent: recent.iter().map(|s| session_summary_entry(s, &now)).collect(),
+        active: active
+            .iter()
+            .map(|s| session_summary_entry(s, &now))
+            .collect(),
+        stale: stale
+            .iter()
+            .map(|s| session_summary_entry(s, &now))
+            .collect(),
+        recent: recent
+            .iter()
+            .map(|s| session_summary_entry(s, &now))
+            .collect(),
     })
 }
 
@@ -2208,7 +2323,40 @@ pub fn resolve_adapter(explicit: Option<&str>, project_root: &Path) -> Result<St
 #[cfg(test)]
 mod tests {
     use super::*;
+    use patina::project::{self, ProjectConfig};
     use tempfile::TempDir;
+
+    fn setup_project() -> TempDir {
+        let temp = TempDir::new().unwrap();
+        let mut config = ProjectConfig::with_name("patina");
+        config.adapters.allowed = vec!["opencode".to_string(), "gemini".to_string()];
+        config.adapters.default = "opencode".to_string();
+        project::save(temp.path(), &config).unwrap();
+        fs::create_dir_all(temp.path().join(".patina/local/data")).unwrap();
+        temp
+    }
+
+    fn in_project<T>(project_root: &Path, f: impl FnOnce() -> T) -> T {
+        let old_dir = std::env::current_dir().unwrap();
+        let patina_home = project_root.join("patina-home");
+        fs::create_dir_all(&patina_home).unwrap();
+        let old_patina_home = std::env::var_os("PATINA_HOME");
+        std::env::set_current_dir(project_root).unwrap();
+        unsafe {
+            std::env::set_var("PATINA_HOME", &patina_home);
+        }
+        let result = f();
+        std::env::set_current_dir(old_dir).unwrap();
+        match old_patina_home {
+            Some(value) => unsafe {
+                std::env::set_var("PATINA_HOME", value);
+            },
+            None => unsafe {
+                std::env::remove_var("PATINA_HOME");
+            },
+        }
+        result
+    }
 
     #[test]
     fn session_list_value_serializes_recent_archived_sessions() {
@@ -2280,5 +2428,61 @@ git:
         assert_eq!(json["commits_this_session"].as_u64(), Some(2));
         assert!(json["recent_commits"].is_array());
         assert!(json["session_changed_files"].is_array());
+    }
+
+    #[test]
+    fn session_start_mode_keeps_native_and_compatibility_semantics_separate() {
+        let temp = setup_project();
+
+        let native = in_project(temp.path(), || {
+            start_session_value(
+                temp.path(),
+                SessionStartRequest::native("Native session", "opencode"),
+            )
+            .unwrap()
+        });
+
+        assert_eq!(native.interface, "opencode");
+        assert!(native.active_session_path.is_none());
+        assert!(!temp.path().join(ACTIVE_SESSION_PATH).exists());
+        let native_document = fs::read_to_string(&native.artifact_path).unwrap();
+        assert!(native_document.contains("interface: opencode"));
+
+        let compatibility = in_project(temp.path(), || {
+            start_session_value(
+                temp.path(),
+                SessionStartRequest::compatibility_cli("Compatibility session", Some("opencode")),
+            )
+            .unwrap()
+        });
+
+        assert_eq!(compatibility.interface, "legacy-cli");
+        assert!(compatibility.active_session_path.is_some());
+        assert!(temp.path().join(ACTIVE_SESSION_PATH).exists());
+        let compatibility_document = fs::read_to_string(&compatibility.artifact_path).unwrap();
+        assert!(compatibility_document.contains("interface: legacy-cli"));
+    }
+
+    #[test]
+    fn resolve_live_session_prefers_native_interface_filter() {
+        let temp = setup_project();
+        let started = in_project(temp.path(), || {
+            start_session_value(
+                temp.path(),
+                SessionStartRequest::native("Native session", "opencode"),
+            )
+            .unwrap()
+        });
+
+        unsafe {
+            std::env::set_var("PATINA_AI_INTERFACE", "opencode");
+        }
+        let resolved = resolve_live_session(temp.path(), None, None).unwrap();
+        unsafe {
+            std::env::remove_var("PATINA_AI_INTERFACE");
+        }
+
+        assert_eq!(resolved.file_id, started.session_id);
+        assert_eq!(resolved.interface_kind, InterfaceKind::OpenCode);
     }
 }
