@@ -196,16 +196,16 @@ pub(super) fn query(
 
 /// Build an HTTP client with cross-domain redirect rejection.
 ///
-/// Delegates to `crate::http_util::build_http_client()`.
+/// Delegates to `patina_pipe::http_proxy::build_http_client()`.
 pub(crate) fn build_http_client() -> anyhow::Result<reqwest::blocking::Client> {
-    crate::http_util::build_http_client()
+    patina_pipe::http_proxy::build_http_client()
 }
 
 /// Validate and parse an HTTP URL for domain-allowlisted access.
 ///
-/// Delegates to `crate::http_util::validate_http_url()`.
+/// Delegates to `patina_pipe::http_proxy::validate_http_url()`.
 pub(crate) fn validate_http_url(url: &str) -> Result<String, String> {
-    crate::http_util::validate_http_url(url)
+    patina_pipe::http_proxy::validate_http_url(url)
 }
 
 /// Result of an HTTP operation — plain types for cross-world portability.
@@ -318,9 +318,9 @@ pub(crate) fn inject_credential(
 
 /// Scan response body for leaked credential values, replacing with [REDACTED].
 ///
-/// Delegates to `crate::http_util::leak_check()`.
+/// Delegates to `patina_pipe::http_proxy::leak_check()`.
 pub(crate) fn leak_check(body: &str, secret_name: &str, secret_value: &str) -> String {
-    crate::http_util::leak_check(body, secret_name, secret_value)
+    patina_pipe::http_proxy::leak_check(body, secret_name, secret_value)
 }
 
 // =========================================================================
