@@ -168,7 +168,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         let bootstrap_path = project_path.join(bootstrap_file);
         if !bootstrap_path.exists() {
             println!("  ✓ Generating {} bootstrap", bootstrap_file);
-            adapters::generate_bootstrap(&adapter_name, &project_path)?;
+            adapters::generate_bootstrap(&adapter_name, &project_path, false)?;
         }
     }
 

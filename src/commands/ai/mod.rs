@@ -51,6 +51,9 @@ pub enum AiCommands {
 
         #[arg(long)]
         path: Option<String>,
+
+        #[arg(long)]
+        force: bool,
     },
 
     /// Launch OpenCode through the native Patina AI interface
@@ -118,7 +121,11 @@ pub enum AiCommands {
 pub fn execute(command: Option<AiCommands>) -> Result<()> {
     match command {
         None => internal::launch_default(),
-        Some(AiCommands::Setup { adapter, path }) => internal::setup(&adapter, path),
+        Some(AiCommands::Setup {
+            adapter,
+            path,
+            force,
+        }) => internal::setup(&adapter, path, force),
         Some(AiCommands::OpenCode {
             title,
             session,

@@ -58,18 +58,17 @@ pub fn ensure_context_file(
     }
 
     let existing = fs::read_to_string(&context_path)?;
-    if has_managed_markers(&existing) {
-        fs::write(
-            &context_path,
-            replace_managed_section(
-                &existing,
-                &managed_shell_section(project_name, &managed_context_path),
-            ),
-        )?;
-        return Ok(context_path);
-    }
+    let shell = if has_managed_markers(&existing) {
+        replace_managed_section(
+            &existing,
+            &managed_shell_section(project_name, &managed_context_path),
+        )
+    } else {
+        generate_context_shell(project_name, &managed_context_path)
+    };
+    fs::write(&context_path, shell)?;
 
-    Ok(managed_context_path)
+    Ok(context_path)
 }
 
 /// Generate Patina-managed context for OpenCode.
@@ -258,7 +257,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_user_owned_shell_without_markers() {
+    fn rewrites_unmanaged_shell_without_markers() {
         let temp = TempDir::new().unwrap();
         let project_root = temp.path();
         let adapter_dir = project_root.join(".opencode");
@@ -278,11 +277,10 @@ mod tests {
 
         let context_path = ensure_context_file(project_root, "patina", &environment).unwrap();
 
-        assert_eq!(context_path, adapter_dir.join("PATINA.md"));
-        assert_eq!(
-            fs::read_to_string(&shell_path).unwrap(),
-            "# User shell\n\nKeep this.\n"
-        );
+        assert_eq!(context_path, shell_path);
+        let rewritten = fs::read_to_string(&shell_path).unwrap();
+        assert!(rewritten.contains("## Patina Managed Context"));
+        assert!(rewritten.contains("Project-specific instructions for OpenCode belong here."));
         assert!(fs::read_to_string(adapter_dir.join("PATINA.md"))
             .unwrap()
             .contains("Patina-managed context fragment"));

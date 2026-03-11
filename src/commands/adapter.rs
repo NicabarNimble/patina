@@ -250,7 +250,7 @@ fn add(name: &str, no_commit: bool) -> Result<()> {
         // Create bootstrap file (CLAUDE.md, GEMINI.md, etc.) if it doesn't exist
         if !bootstrap_path.exists() {
             println!("  Creating {}...", bootstrap_file);
-            adapters::generate_bootstrap(name, &cwd)?;
+            adapters::generate_bootstrap(name, &cwd, false)?;
             println!("  ✓ Created {}", bootstrap_file);
         }
     }
@@ -400,7 +400,7 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
     // Create/refresh bootstrap file (CLAUDE.md, GEMINI.md, etc.)
     let bootstrap_file = get_bootstrap_filename(name);
     println!("  Generating {}...", bootstrap_file);
-    adapters::generate_bootstrap(name, &cwd)?;
+    adapters::generate_bootstrap(name, &cwd, false)?;
     println!("  ✓ Created {}", bootstrap_file);
 
     // Step 5: Restore preserved user files

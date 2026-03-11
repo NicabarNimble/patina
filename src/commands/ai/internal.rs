@@ -20,13 +20,16 @@ pub fn launch_default() -> Result<()> {
     launch(adapter_name, None, None, None, None, false)
 }
 
-pub fn setup(adapter_name: &str, path: Option<String>) -> Result<()> {
+pub fn setup(adapter_name: &str, path: Option<String>, force: bool) -> Result<()> {
     let project_path = launch_internal::resolve_project_path(path.as_deref())?;
-    let (adapter, bootstrap) = ensure_native_interface_ready(adapter_name, &project_path)?;
+    let (adapter, bootstrap) = ensure_native_interface_ready(adapter_name, &project_path, force)?;
 
     println!("Patina AI setup refreshed {}", adapter.display_name());
     println!("  Context: {}", bootstrap.context_path.display());
     println!("  Bootstrap: {}", bootstrap.bootstrap_path.display());
+    if let Some(backup_snapshot) = &bootstrap.backup_snapshot {
+        println!("  Backup: {}", backup_snapshot.display());
+    }
 
     Ok(())
 }
@@ -81,7 +84,7 @@ pub fn launch(
         }
     }
 
-    let (adapter, bootstrap) = ensure_native_interface_ready(adapter_name, &project_path)?;
+    let (adapter, bootstrap) = ensure_native_interface_ready(adapter_name, &project_path, false)?;
     let checkin = check_in(&InterfaceCheckIn {
         interface_kind: adapter.interface_kind(),
         adapter_name: adapter_name.to_string(),
@@ -109,6 +112,9 @@ pub fn launch(
     println!("  Adapter: {}", adapter.display_name());
     println!("  Context: {}", bootstrap.context_path.display());
     println!("  Bootstrap: {}", bootstrap.bootstrap_path.display());
+    if let Some(backup_snapshot) = &bootstrap.backup_snapshot {
+        println!("  Backup: {}", backup_snapshot.display());
+    }
     println!("  Artifact: {}", checkin.artifact_path.display());
 
     let env_disabled = std::env::var("PATINA_TMUX")
@@ -486,6 +492,7 @@ fn ensure_workspace_ready() -> Result<()> {
 fn ensure_native_interface_ready(
     adapter_name: &str,
     project_path: &Path,
+    force: bool,
 ) -> Result<(
     Box<dyn patina::interface::AiAdapter>,
     interface::BootstrapResult,
@@ -498,7 +505,15 @@ fn ensure_native_interface_ready(
             adapter_name
         )
     })?;
-    let bootstrap = adapter.bootstrap(project_path)?;
+    let bootstrap = if force {
+        interface::ensure_adapter_projection(
+            adapter_name,
+            project_path,
+            interface::ProjectionMode::ForceRewrite,
+        )?
+    } else {
+        adapter.bootstrap(project_path)?
+    };
     Ok((adapter, bootstrap))
 }
 
@@ -632,7 +647,7 @@ mod tests {
         let temp = setup_project("opencode");
 
         with_temp_patina_home(&temp, || {
-            setup("opencode", Some(temp.path().display().to_string())).unwrap();
+            setup("opencode", Some(temp.path().display().to_string()), false).unwrap();
         });
 
         assert!(temp
@@ -647,7 +662,7 @@ mod tests {
     fn setup_rejects_claude_native_setup_path() {
         let temp = setup_project("claude");
         let error = with_temp_patina_home(&temp, || {
-            setup("claude", Some(temp.path().display().to_string())).unwrap_err()
+            setup("claude", Some(temp.path().display().to_string()), false).unwrap_err()
         });
 
         assert!(error

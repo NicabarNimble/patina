@@ -1,21 +1,104 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
+use chrono::{DateTime, Local};
+use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::{Path, PathBuf};
+use walkdir::WalkDir;
 
 use crate::adapters::launch::Adapter;
 use crate::adapters::{gemini::GeminiAdapter, opencode::OpenCodeAdapter, templates};
 use crate::{project, Environment};
 
+const MANAGED_DIR_METADATA_FILE: &str = ".patina-managed.toml";
+const BACKUP_SUBDIR: &str = "interface";
+const SUFFIX_ALPHABET: &[u8; 32] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
 #[derive(Debug, Clone)]
 pub struct BootstrapResult {
     pub bootstrap_path: PathBuf,
     pub context_path: PathBuf,
+    pub backup_snapshot: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectionMode {
     CreateMissing,
     RefreshManaged,
+    ForceRewrite,
 }
+
+#[derive(Debug, Clone, Copy)]
+enum ManagedPathKind {
+    File,
+    Directory,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ManagedPathSpec {
+    relative_path: &'static str,
+    kind: ManagedPathKind,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ManagedSurfaceSpec {
+    adapter_name: &'static str,
+    paths: &'static [ManagedPathSpec],
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ExistingPathKind {
+    File,
+    Directory,
+}
+
+#[derive(Debug, Clone)]
+struct BackupEntry {
+    absolute_path: PathBuf,
+    relative_path: PathBuf,
+    kind: ExistingPathKind,
+}
+
+#[derive(Debug, Clone)]
+struct SurfaceReconciliation {
+    backup_snapshot: Option<PathBuf>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ManagedDirectoryMetadata {
+    adapter: String,
+    version: String,
+    managed_by: String,
+}
+
+#[derive(Debug, Serialize)]
+struct BackupManifest {
+    adapter: String,
+    mode: String,
+    created_at: String,
+    paths: Vec<String>,
+}
+
+const OPENCODE_SURFACE_PATHS: &[ManagedPathSpec] = &[
+    ManagedPathSpec {
+        relative_path: "OPENCODE.md",
+        kind: ManagedPathKind::File,
+    },
+    ManagedPathSpec {
+        relative_path: ".opencode",
+        kind: ManagedPathKind::Directory,
+    },
+];
+
+const GEMINI_SURFACE_PATHS: &[ManagedPathSpec] = &[
+    ManagedPathSpec {
+        relative_path: "GEMINI.md",
+        kind: ManagedPathKind::File,
+    },
+    ManagedPathSpec {
+        relative_path: ".gemini",
+        kind: ManagedPathKind::Directory,
+    },
+];
 
 pub fn ensure_adapter_bootstrap(
     adapter_name: &str,
@@ -29,22 +112,32 @@ pub fn ensure_adapter_projection(
     project_root: &Path,
     mode: ProjectionMode,
 ) -> Result<BootstrapResult> {
+    let reconciliation = reconcile_interface_surface(adapter_name, project_root, mode)?;
     let project_name = project::load_with_migration(project_root)?.project.name;
     let environment = Environment::detect()?;
 
     let context_path = match adapter_name {
         "opencode" => {
             sync_managed_templates("opencode", project_root, mode)?;
-            OpenCodeAdapter::ensure_context(project_root, &project_name, &environment)?
+            let context =
+                OpenCodeAdapter::ensure_context(project_root, &project_name, &environment)?;
+            write_managed_directory_metadata(&project_root.join(".opencode"), "opencode")?;
+            context
         }
         "gemini" => {
             sync_managed_templates("gemini", project_root, mode)?;
-            GeminiAdapter::ensure_context(project_root, &project_name, &environment)?
+            let context = GeminiAdapter::ensure_context(project_root, &project_name, &environment)?;
+            write_managed_directory_metadata(&project_root.join(".gemini"), "gemini")?;
+            context
         }
         other => bail!("Unsupported ai adapter bootstrap: {}", other),
     };
 
-    crate::adapters::launch::generate_bootstrap(adapter_name, project_root)?;
+    crate::adapters::launch::generate_bootstrap(
+        adapter_name,
+        project_root,
+        mode == ProjectionMode::ForceRewrite,
+    )?;
     let bootstrap_file = Adapter::from_name(adapter_name)
         .ok_or_else(|| anyhow::anyhow!("unknown adapter {}", adapter_name))?
         .bootstrap_file();
@@ -53,6 +146,7 @@ pub fn ensure_adapter_projection(
     Ok(BootstrapResult {
         bootstrap_path,
         context_path,
+        backup_snapshot: reconciliation.backup_snapshot,
     })
 }
 
@@ -69,10 +163,257 @@ fn sync_managed_templates(
     templates::copy_to_project(adapter_name, project_root)
 }
 
+fn reconcile_interface_surface(
+    adapter_name: &str,
+    project_root: &Path,
+    mode: ProjectionMode,
+) -> Result<SurfaceReconciliation> {
+    if mode == ProjectionMode::CreateMissing {
+        return Ok(SurfaceReconciliation {
+            backup_snapshot: None,
+        });
+    }
+
+    let surface = managed_surface(adapter_name)?;
+    let mut entries = Vec::new();
+
+    for path in surface.paths {
+        let absolute_path = project_root.join(path.relative_path);
+        if !absolute_path.exists() {
+            continue;
+        }
+
+        let managed = match path.kind {
+            ManagedPathKind::File => file_is_patina_managed(&absolute_path)?,
+            ManagedPathKind::Directory => {
+                directory_is_patina_managed(&absolute_path, surface.adapter_name)?
+            }
+        };
+
+        if mode == ProjectionMode::ForceRewrite || !managed {
+            entries.push(BackupEntry {
+                absolute_path,
+                relative_path: PathBuf::from(path.relative_path),
+                kind: existing_path_kind(&project_root.join(path.relative_path))?,
+            });
+        }
+    }
+
+    let backup_snapshot = if entries.is_empty() {
+        None
+    } else {
+        Some(write_backup_snapshot(
+            project_root,
+            surface.adapter_name,
+            mode,
+            &entries,
+        )?)
+    };
+
+    for entry in entries {
+        remove_existing_path(&entry.absolute_path, entry.kind)?;
+    }
+
+    Ok(SurfaceReconciliation { backup_snapshot })
+}
+
+fn managed_surface(adapter_name: &str) -> Result<ManagedSurfaceSpec> {
+    match adapter_name {
+        "opencode" => Ok(ManagedSurfaceSpec {
+            adapter_name: "opencode",
+            paths: OPENCODE_SURFACE_PATHS,
+        }),
+        "gemini" => Ok(ManagedSurfaceSpec {
+            adapter_name: "gemini",
+            paths: GEMINI_SURFACE_PATHS,
+        }),
+        other => bail!("Unsupported ai adapter bootstrap: {}", other),
+    }
+}
+
+fn file_is_patina_managed(path: &Path) -> Result<bool> {
+    if !path.is_file() {
+        return Ok(false);
+    }
+
+    let content =
+        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    Ok(content.contains("<!-- PATINA:START -->") && content.contains("<!-- PATINA:END -->"))
+}
+
+fn directory_is_patina_managed(path: &Path, adapter_name: &str) -> Result<bool> {
+    if !path.is_dir() {
+        return Ok(false);
+    }
+
+    let metadata_path = path.join(MANAGED_DIR_METADATA_FILE);
+    if !metadata_path.exists() {
+        return Ok(false);
+    }
+
+    let content = fs::read_to_string(&metadata_path)
+        .with_context(|| format!("Failed to read {}", metadata_path.display()))?;
+    let metadata: ManagedDirectoryMetadata = toml::from_str(&content)
+        .with_context(|| format!("Failed to parse {}", metadata_path.display()))?;
+    Ok(metadata.adapter == adapter_name)
+}
+
+fn write_managed_directory_metadata(path: &Path, adapter_name: &str) -> Result<()> {
+    fs::create_dir_all(path)?;
+    let metadata_path = path.join(MANAGED_DIR_METADATA_FILE);
+    let metadata = ManagedDirectoryMetadata {
+        adapter: adapter_name.to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        managed_by: "patina ai setup".to_string(),
+    };
+    fs::write(&metadata_path, toml::to_string_pretty(&metadata)?)
+        .with_context(|| format!("Failed to write {}", metadata_path.display()))?;
+    Ok(())
+}
+
+fn existing_path_kind(path: &Path) -> Result<ExistingPathKind> {
+    let metadata =
+        fs::metadata(path).with_context(|| format!("Failed to stat {}", path.display()))?;
+    if metadata.is_dir() {
+        Ok(ExistingPathKind::Directory)
+    } else {
+        Ok(ExistingPathKind::File)
+    }
+}
+
+fn remove_existing_path(path: &Path, kind: ExistingPathKind) -> Result<()> {
+    match kind {
+        ExistingPathKind::File => {
+            fs::remove_file(path).with_context(|| format!("Failed to remove {}", path.display()))?
+        }
+        ExistingPathKind::Directory => fs::remove_dir_all(path)
+            .with_context(|| format!("Failed to remove {}", path.display()))?,
+    }
+    Ok(())
+}
+
+fn write_backup_snapshot(
+    project_root: &Path,
+    adapter_name: &str,
+    mode: ProjectionMode,
+    entries: &[BackupEntry],
+) -> Result<PathBuf> {
+    let backup_dir = project::backups_dir(project_root).join(BACKUP_SUBDIR);
+    fs::create_dir_all(&backup_dir)
+        .with_context(|| format!("Failed to create {}", backup_dir.display()))?;
+
+    let backup_id = generate_backup_id(Local::now());
+    let snapshot_path = backup_dir.join(format!("patina-setup-backup-{}", backup_id));
+    fs::create_dir_all(&snapshot_path)
+        .with_context(|| format!("Failed to create {}", snapshot_path.display()))?;
+
+    let manifest_path = snapshot_path.join("manifest.toml");
+    let manifest = BackupManifest {
+        adapter: adapter_name.to_string(),
+        mode: projection_mode_name(mode).to_string(),
+        created_at: Local::now().to_rfc3339(),
+        paths: entries
+            .iter()
+            .map(|entry| normalize_snapshot_path(&entry.relative_path))
+            .collect(),
+    };
+    fs::write(&manifest_path, toml::to_string_pretty(&manifest)?)
+        .with_context(|| format!("Failed to write {}", manifest_path.display()))?;
+
+    for entry in entries {
+        let dest_path = snapshot_path.join(&entry.relative_path);
+        match entry.kind {
+            ExistingPathKind::File => {
+                if let Some(parent) = dest_path.parent() {
+                    fs::create_dir_all(parent)
+                        .with_context(|| format!("Failed to create {}", parent.display()))?;
+                }
+                fs::copy(&entry.absolute_path, &dest_path).with_context(|| {
+                    format!(
+                        "Failed to copy {} to {}",
+                        entry.absolute_path.display(),
+                        dest_path.display()
+                    )
+                })?;
+            }
+            ExistingPathKind::Directory => {
+                copy_dir_recursive(&entry.absolute_path, &dest_path)?;
+            }
+        }
+    }
+
+    Ok(snapshot_path)
+}
+
+fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
+    fs::create_dir_all(dest).with_context(|| format!("Failed to create {}", dest.display()))?;
+
+    for entry in WalkDir::new(src) {
+        let entry = entry?;
+        let path = entry.path();
+        let relative = path
+            .strip_prefix(src)
+            .with_context(|| format!("Failed to strip prefix for {}", path.display()))?;
+        if relative.as_os_str().is_empty() {
+            continue;
+        }
+        let dest_path = dest.join(relative);
+
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&dest_path)
+                .with_context(|| format!("Failed to create {}", dest_path.display()))?;
+            continue;
+        }
+
+        if let Some(parent) = dest_path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create {}", parent.display()))?;
+        }
+        fs::copy(path, &dest_path).with_context(|| {
+            format!(
+                "Failed to copy {} to {}",
+                path.display(),
+                dest_path.display()
+            )
+        })?;
+    }
+
+    Ok(())
+}
+
+fn normalize_snapshot_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn generate_backup_id(now: DateTime<Local>) -> String {
+    let mut value = fastrand::u32(..) & 0x000f_ffff;
+    let mut suffix = ['A'; 4];
+    for idx in (0..4).rev() {
+        let alphabet_idx = (value & 0b1_1111) as usize;
+        suffix[idx] = SUFFIX_ALPHABET[alphabet_idx] as char;
+        value >>= 5;
+    }
+
+    format!(
+        "{}-{}",
+        now.format("%Y%m%d-%H%M%S"),
+        suffix.iter().collect::<String>()
+    )
+}
+
+fn projection_mode_name(mode: ProjectionMode) -> &'static str {
+    match mode {
+        ProjectionMode::CreateMissing => "create-missing",
+        ProjectionMode::RefreshManaged => "refresh-managed",
+        ProjectionMode::ForceRewrite => "force-rewrite",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::project::{self, ProjectConfig};
+    use chrono::TimeZone;
     use std::sync::{Mutex, OnceLock};
     use tempfile::TempDir;
 
@@ -117,6 +458,10 @@ mod tests {
         result
     }
 
+    fn snapshot_entry_text(snapshot_path: &Path, name: &str) -> String {
+        std::fs::read_to_string(snapshot_path.join(name)).unwrap()
+    }
+
     #[test]
     fn creates_native_projection_for_opencode() {
         let temp = setup_project("opencode");
@@ -132,6 +477,7 @@ mod tests {
             .join(".opencode/commands/session-start.md")
             .exists());
         assert!(temp.path().join(".opencode/PATINA.md").exists());
+        assert!(temp.path().join(".opencode/.patina-managed.toml").exists());
         let session_start =
             std::fs::read_to_string(temp.path().join(".opencode/commands/session-start.md"))
                 .unwrap();
@@ -142,26 +488,116 @@ mod tests {
             std::fs::read_to_string(temp.path().join(".opencode/PATINA.md")).unwrap();
         assert!(managed_context.contains("Patina MCP is not configured"));
         assert!(!managed_context.contains("session.start"));
+        assert!(result.backup_snapshot.is_none());
     }
 
     #[test]
-    fn refreshes_managed_files_without_overwriting_user_shell() {
+    fn setup_takes_over_unmanaged_surface_and_creates_one_backup_snapshot() {
         let temp = setup_project("gemini");
         let adapter_dir = temp.path().join(".gemini");
-        std::fs::create_dir_all(&adapter_dir).unwrap();
-        let shell_path = adapter_dir.join("GEMINI.md");
-        std::fs::write(&shell_path, "# User shell\n").unwrap();
+        std::fs::create_dir_all(adapter_dir.join("commands")).unwrap();
+        std::fs::write(temp.path().join("GEMINI.md"), "# Foreign root\n").unwrap();
+        std::fs::write(adapter_dir.join("GEMINI.md"), "# Foreign shell\n").unwrap();
+        std::fs::write(adapter_dir.join("commands/custom.toml"), "stale = true\n").unwrap();
 
         let result = with_temp_patina_home(&temp, || {
             ensure_adapter_projection("gemini", temp.path(), ProjectionMode::RefreshManaged)
                 .unwrap()
         });
 
-        assert_eq!(result.context_path, adapter_dir.join("PATINA.md"));
-        assert_eq!(
-            std::fs::read_to_string(&shell_path).unwrap(),
-            "# User shell\n"
+        let snapshot_path = result.backup_snapshot.expect("expected backup snapshot");
+        assert!(snapshot_path.starts_with(temp.path().join(".patina/local/backups/interface")));
+        assert!(snapshot_path.is_dir());
+        assert!(snapshot_entry_text(&snapshot_path, "GEMINI.md").contains("Foreign root"));
+        assert!(snapshot_entry_text(&snapshot_path, ".gemini/GEMINI.md").contains("Foreign shell"));
+        assert!(
+            snapshot_entry_text(&snapshot_path, ".gemini/commands/custom.toml")
+                .contains("stale = true")
         );
-        assert!(temp.path().join("GEMINI.md").exists());
+
+        let root_bootstrap = std::fs::read_to_string(temp.path().join("GEMINI.md")).unwrap();
+        assert!(root_bootstrap.contains("<!-- PATINA:START -->"));
+        assert!(root_bootstrap.contains("Add project-specific"));
+
+        let shell = std::fs::read_to_string(adapter_dir.join("GEMINI.md")).unwrap();
+        assert!(shell.contains("## Patina Managed Context"));
+        assert!(shell.contains("Project-specific instructions for Gemini belong here."));
+        assert!(adapter_dir.join(".patina-managed.toml").exists());
+    }
+
+    #[test]
+    fn rerun_refreshes_managed_surface_without_new_backup() {
+        let temp = setup_project("gemini");
+
+        with_temp_patina_home(&temp, || {
+            ensure_adapter_projection("gemini", temp.path(), ProjectionMode::RefreshManaged)
+                .unwrap()
+        });
+
+        let root_path = temp.path().join("GEMINI.md");
+        let root_with_user_text = format!(
+            "My notes stay here.\n\n{}",
+            std::fs::read_to_string(&root_path).unwrap()
+        );
+        std::fs::write(&root_path, root_with_user_text).unwrap();
+
+        let result = with_temp_patina_home(&temp, || {
+            ensure_adapter_projection("gemini", temp.path(), ProjectionMode::RefreshManaged)
+                .unwrap()
+        });
+
+        assert!(result.backup_snapshot.is_none());
+        let updated_root = std::fs::read_to_string(&root_path).unwrap();
+        assert!(updated_root.contains("My notes stay here."));
+        assert!(updated_root.contains("<!-- PATINA:START -->"));
+    }
+
+    #[test]
+    fn force_rewrite_creates_fresh_backup_of_managed_surface() {
+        let temp = setup_project("opencode");
+
+        with_temp_patina_home(&temp, || {
+            ensure_adapter_projection("opencode", temp.path(), ProjectionMode::RefreshManaged)
+                .unwrap()
+        });
+        std::fs::write(temp.path().join("OPENCODE.md"), "# Replaced shell\n").unwrap();
+
+        let result = with_temp_patina_home(&temp, || {
+            ensure_adapter_projection("opencode", temp.path(), ProjectionMode::ForceRewrite)
+                .unwrap()
+        });
+
+        let snapshot_path = result.backup_snapshot.expect("expected force backup");
+        assert!(snapshot_entry_text(&snapshot_path, "OPENCODE.md").contains("Replaced shell"));
+        let bootstrap = std::fs::read_to_string(temp.path().join("OPENCODE.md")).unwrap();
+        assert!(bootstrap.contains("<!-- PATINA:START -->"));
+        assert!(bootstrap.contains("Add project-specific"));
+    }
+
+    #[test]
+    fn nested_agent_files_outside_managed_surface_are_left_alone() {
+        let temp = setup_project("opencode");
+        let nested = temp.path().join("packages/tool/AGENTS.md");
+        std::fs::create_dir_all(nested.parent().unwrap()).unwrap();
+        std::fs::write(&nested, "# Package local\n").unwrap();
+
+        let result = with_temp_patina_home(&temp, || {
+            ensure_adapter_projection("opencode", temp.path(), ProjectionMode::RefreshManaged)
+                .unwrap()
+        });
+
+        assert!(result.backup_snapshot.is_none());
+        assert_eq!(
+            std::fs::read_to_string(&nested).unwrap(),
+            "# Package local\n"
+        );
+    }
+
+    #[test]
+    fn backup_id_matches_session_style_shape() {
+        let now = Local.with_ymd_and_hms(2026, 3, 11, 20, 15, 0).unwrap();
+        let id = generate_backup_id(now);
+        assert!(id.starts_with("20260311-201500-"));
+        assert_eq!(id.len(), "20260311-201500-ABCD".len());
     }
 }
