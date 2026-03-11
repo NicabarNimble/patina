@@ -25,24 +25,24 @@ pub use patina_pipe::measure::VALID_VERBS;
 /// # Errors
 /// Returns error if verb is invalid or eventlog write fails.
 pub fn emit(verb: &str, tool: &str, mode: &str, metrics: &serde_json::Value) -> Result<()> {
-    anyhow::ensure!(
-        VALID_VERBS.contains(&verb),
-        "invalid verb '{}': must be one of {:?}",
-        verb,
-        VALID_VERBS
-    );
+    let timestamp = chrono::Utc::now().to_rfc3339();
+
+    // Build and validate using the canonical envelope
+    let event = patina_pipe::measure::MeasureEvent {
+        schema_version: 1,
+        verb: verb.to_string(),
+        tool: tool.to_string(),
+        mode: mode.to_string(),
+        metrics: metrics.clone(),
+        timestamp: timestamp.clone(),
+        source: "core".to_string(),
+    };
+    patina_pipe::measure::validate(&event)
+        .map_err(|e| anyhow::anyhow!("measure validation: {}", e))?;
 
     let event_type = format!("measure.{}", verb);
     let source_id = format!("{}:{}", tool, mode);
-    let timestamp = chrono::Utc::now().to_rfc3339();
-
-    let data = serde_json::json!({
-        "verb": verb,
-        "tool": tool,
-        "mode": mode,
-        "metrics": metrics,
-        "source": "core",
-    });
+    let data = serde_json::to_value(&event)?;
 
     let conn = crate::eventlog::open_events_db()?;
     crate::eventlog::insert_event(
