@@ -8,8 +8,8 @@
 
 use anyhow::Result;
 
-/// Valid protocol verbs for measurement events.
-pub const VALID_VERBS: &[&str] = &["capture", "index", "search", "believe", "evolve"];
+// Single source of truth for the verb vocabulary — defined in patina-pipe.
+pub use patina_pipe::measure::VALID_VERBS;
 
 /// Emit a measurement event to events.db.
 ///

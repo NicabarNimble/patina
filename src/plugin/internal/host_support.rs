@@ -327,8 +327,8 @@ pub(crate) fn leak_check(body: &str, secret_name: &str, secret_value: &str) -> S
 // Measure host support
 // =========================================================================
 
-/// Valid protocol verbs for measurement events.
-const VALID_VERBS: &[&str] = &["capture", "index", "search", "believe", "evolve"];
+// Single source of truth — shared vocabulary from patina-pipe.
+use patina_pipe::measure::VALID_VERBS;
 
 /// Record a measurement event from a plugin.
 ///
