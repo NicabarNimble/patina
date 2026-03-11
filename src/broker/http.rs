@@ -165,4 +165,124 @@ mod tests {
         let handler_result = build_production_handler(&plan, "test-child");
         assert!(handler_result.is_ok());
     }
+
+    // =========================================================================
+    // Exhaustive AuthPlan -> HttpProxyConfig mapping tests
+    //
+    // The mapping is a security boundary — the only place where policy
+    // decisions translate to proxy behavior. These tests catch regressions
+    // if new InjectionStrategy variants are added.
+    // =========================================================================
+
+    #[test]
+    fn map_bearer_produces_proxy_bearer() {
+        let plan = AuthPlan {
+            child: "test".to_string(),
+            credential: Some(ResolvedCredential {
+                value: "ghp_abc".to_string(),
+                injection: InjectionStrategy::Bearer,
+            }),
+            allowed_domains: vec![],
+        };
+        let cred = map_credential(&plan).expect("credential should be Some");
+        assert_eq!(cred.value, "ghp_abc");
+        assert!(matches!(cred.injection, ProxyInjection::Bearer));
+    }
+
+    #[test]
+    fn map_header_produces_proxy_header_with_name() {
+        let plan = AuthPlan {
+            child: "test".to_string(),
+            credential: Some(ResolvedCredential {
+                value: "key123".to_string(),
+                injection: InjectionStrategy::Header {
+                    name: "X-Api-Key".to_string(),
+                },
+            }),
+            allowed_domains: vec![],
+        };
+        let cred = map_credential(&plan).expect("credential should be Some");
+        assert_eq!(cred.value, "key123");
+        match cred.injection {
+            ProxyInjection::Header { name } => assert_eq!(name, "X-Api-Key"),
+            other => panic!("expected Header, got {:?}", variant_name(&other)),
+        }
+    }
+
+    #[test]
+    fn map_inprocess_produces_proxy_inprocess() {
+        let plan = AuthPlan {
+            child: "test".to_string(),
+            credential: Some(ResolvedCredential {
+                value: "secret".to_string(),
+                injection: InjectionStrategy::InProcess,
+            }),
+            allowed_domains: vec![],
+        };
+        let cred = map_credential(&plan).expect("credential should be Some");
+        assert_eq!(cred.value, "secret");
+        assert!(matches!(cred.injection, ProxyInjection::InProcess));
+    }
+
+    #[test]
+    fn map_no_credential_produces_none() {
+        let plan = AuthPlan {
+            child: "test".to_string(),
+            credential: None,
+            allowed_domains: vec!["api.github.com".to_string()],
+        };
+        assert!(map_credential(&plan).is_none());
+    }
+
+    /// The dangerous direction: InProcess credentials must NOT become
+    /// Bearer or Header injections. This would expose secrets via HTTP
+    /// headers that should only travel via pipe/initialize.
+    #[test]
+    fn inprocess_never_becomes_bearer_or_header() {
+        let plan = AuthPlan {
+            child: "test".to_string(),
+            credential: Some(ResolvedCredential {
+                value: "pipe-only-secret".to_string(),
+                injection: InjectionStrategy::InProcess,
+            }),
+            allowed_domains: vec![],
+        };
+        let cred = map_credential(&plan).unwrap();
+        assert!(
+            !matches!(cred.injection, ProxyInjection::Bearer),
+            "InProcess must not map to Bearer"
+        );
+        assert!(
+            !matches!(cred.injection, ProxyInjection::Header { .. }),
+            "InProcess must not map to Header"
+        );
+    }
+
+    #[test]
+    fn map_domains_passed_through() {
+        let plan = AuthPlan {
+            child: "test".to_string(),
+            credential: None,
+            allowed_domains: vec![
+                "api.github.com".to_string(),
+                "uploads.github.com".to_string(),
+            ],
+        };
+        let config = HttpProxyConfig {
+            allowed_domains: plan.allowed_domains.clone(),
+            credential: map_credential(&plan),
+        };
+        assert_eq!(config.allowed_domains.len(), 2);
+        assert_eq!(config.allowed_domains[0], "api.github.com");
+        assert_eq!(config.allowed_domains[1], "uploads.github.com");
+    }
+
+    /// Helper to name a ProxyInjection variant for error messages.
+    fn variant_name(inj: &ProxyInjection) -> &'static str {
+        match inj {
+            ProxyInjection::Bearer => "Bearer",
+            ProxyInjection::Header { .. } => "Header",
+            ProxyInjection::InProcess => "InProcess",
+        }
+    }
 }
