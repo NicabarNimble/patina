@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use patina::adapters::launch as adapters;
 use patina::git;
+use patina::interface;
 use patina::paths;
 use patina::project;
 use patina::workspace;
@@ -154,17 +155,21 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         let _ = adapters::configure_mcp(&adapter_name);
     }
 
-    // Step 8: Ensure bootstrap file exists
-    let bootstrap_file = match adapter_name.as_str() {
-        "claude" => "CLAUDE.md",
-        "gemini" => "GEMINI.md",
-        "opencode" => "OPENCODE.md",
-        _ => "CLAUDE.md",
-    };
-    let bootstrap_path = project_path.join(bootstrap_file);
-    if !bootstrap_path.exists() {
-        println!("  ✓ Generating {} bootstrap", bootstrap_file);
-        adapters::generate_bootstrap(&adapter_name, &project_path)?;
+    // Step 8: Ensure bootstrap/projection exists
+    if matches!(adapter_name.as_str(), "gemini" | "opencode") {
+        interface::ensure_adapter_bootstrap(&adapter_name, &project_path)?;
+    } else {
+        let bootstrap_file = match adapter_name.as_str() {
+            "claude" => "CLAUDE.md",
+            "gemini" => "GEMINI.md",
+            "opencode" => "OPENCODE.md",
+            _ => "CLAUDE.md",
+        };
+        let bootstrap_path = project_path.join(bootstrap_file);
+        if !bootstrap_path.exists() {
+            println!("  ✓ Generating {} bootstrap", bootstrap_file);
+            adapters::generate_bootstrap(&adapter_name, &project_path)?;
+        }
     }
 
     // Step 9: Resolve tmux decision and launch adapter
@@ -214,7 +219,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
 }
 
 /// Resolve project path from options or current directory
-fn resolve_project_path(path_opt: Option<&str>) -> Result<PathBuf> {
+pub(crate) fn resolve_project_path(path_opt: Option<&str>) -> Result<PathBuf> {
     let path = match path_opt {
         Some(p) => PathBuf::from(shellexpand::tilde(p).as_ref()),
         None => env::current_dir().context("Failed to get current directory")?,
@@ -252,7 +257,7 @@ pub fn check_mother_health() -> bool {
 }
 
 /// Ensure mother is running, start if needed
-fn ensure_mother_running() -> Result<()> {
+pub(crate) fn ensure_mother_running() -> Result<()> {
     if check_mother_health() {
         println!("  ✓ Mother running");
         return Ok(());
@@ -296,7 +301,7 @@ pub fn start_mother_daemon() -> Result<()> {
 ///
 /// If `explicit_adapter` is Some, uses that adapter without prompting for selection.
 /// If None, detects available adapters and prompts user to choose.
-fn prompt_are_you_lost(
+pub(crate) fn prompt_are_you_lost(
     project_path: &Path,
     explicit_adapter: Option<&str>,
 ) -> Result<Option<String>> {
@@ -399,7 +404,7 @@ pub enum BranchAction {
 
 /// Ensure we're on patina branch using "Do and Inform" model
 /// Returns the action taken so caller can display appropriate message
-fn ensure_on_patina_branch() -> Result<BranchAction> {
+pub(crate) fn ensure_on_patina_branch() -> Result<BranchAction> {
     // Check if this is a git repo
     if !git::is_git_repo()? {
         return Ok(BranchAction::NotGitRepo);

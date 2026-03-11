@@ -29,6 +29,7 @@
 
 use anyhow::Result;
 use patina::adapters::launch as adapters;
+use patina::interface;
 use patina::project;
 
 /// Adapter subcommands (re-exported for main.rs)
@@ -235,17 +236,23 @@ fn add(name: &str, no_commit: bool) -> Result<()> {
     let bootstrap_path = cwd.join(&bootstrap_file);
     let created_files = !adapter_dir.exists() || !bootstrap_path.exists();
 
-    if !adapter_dir.exists() {
-        println!("  Creating .{}/ directory...", name);
-        patina::adapters::templates::copy_to_project(name, &cwd)?;
-        println!("  ✓ Created adapter files");
-    }
+    if is_native_ai_adapter(name) {
+        println!("  Preparing native AI projection...");
+        interface::ensure_adapter_bootstrap(name, &cwd)?;
+        println!("  ✓ Prepared native AI projection");
+    } else {
+        if !adapter_dir.exists() {
+            println!("  Creating .{}/ directory...", name);
+            patina::adapters::templates::copy_to_project(name, &cwd)?;
+            println!("  ✓ Created adapter files");
+        }
 
-    // Create bootstrap file (CLAUDE.md, GEMINI.md, etc.) if it doesn't exist
-    if !bootstrap_path.exists() {
-        println!("  Creating {}...", bootstrap_file);
-        adapters::generate_bootstrap(name, &cwd)?;
-        println!("  ✓ Created {}", bootstrap_file);
+        // Create bootstrap file (CLAUDE.md, GEMINI.md, etc.) if it doesn't exist
+        if !bootstrap_path.exists() {
+            println!("  Creating {}...", bootstrap_file);
+            adapters::generate_bootstrap(name, &cwd)?;
+            println!("  ✓ Created {}", bootstrap_file);
+        }
     }
 
     // Commit if files were created and not in no_commit mode
@@ -349,6 +356,28 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
 
     println!("🔄 Refreshing {} adapter...\n", name);
 
+    if is_native_ai_adapter(name) {
+        interface::ensure_adapter_bootstrap(name, &cwd)?;
+
+        if !no_commit {
+            println!("\n📦 Committing refresh...");
+            let adapter_dir_name = format!(".{}", name);
+            let bootstrap_file = get_bootstrap_filename(name);
+            let refs = [adapter_dir_name.as_str(), bootstrap_file.as_str()];
+            patina::git::add_paths(&refs)?;
+
+            if patina::git::has_staged_changes()? {
+                patina::git::commit(&format!("chore: refresh {} adapter", name))?;
+                println!("  ✓ Committed adapter refresh");
+            } else {
+                println!("  ℹ No trackable changes to commit (adapter dir may be gitignored)");
+            }
+        }
+
+        println!("\n✨ {} adapter refreshed successfully!", name);
+        return Ok(());
+    }
+
     // Step 1: Backup existing files (including session files)
     println!("📦 Backing up existing files...");
     backup_adapter_files(&cwd, name)?;
@@ -409,6 +438,10 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
 
     println!("\n✨ {} adapter refreshed successfully!", name);
     Ok(())
+}
+
+fn is_native_ai_adapter(name: &str) -> bool {
+    matches!(name, "opencode" | "gemini")
 }
 
 /// Template-managed command files (not user-created)
