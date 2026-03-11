@@ -51,6 +51,10 @@ use std::path::{Path, PathBuf};
 
 /// User's patina home directory: `~/.patina/`
 pub fn patina_home() -> PathBuf {
+    if let Some(override_path) = std::env::var_os("PATINA_HOME") {
+        return PathBuf::from(override_path);
+    }
+
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".patina")
