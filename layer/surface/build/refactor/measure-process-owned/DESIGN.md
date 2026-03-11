@@ -153,12 +153,11 @@ always queryable, even when the child isn't running.
 
 ## Open Questions
 
-1. **Mode enforcement.** The spec says "modes are documented per tool"
-   and "new modes require updating the vocabulary." Should `validate()`
-   also check tool+mode pairs, or just verb? Recommendation: verb-only
-   validation in patina-pipe (keeps it simple), tool+mode documentation
-   as constants for discoverability. Runtime mode validation is future
-   tightening if sprawl actually happens.
+1. **Mode enforcement.** ~~Resolved:~~ `validate()` enforces verb and
+   tool at runtime (`VALID_VERBS` + `REGISTERED_TOOLS`). Mode remains
+   documentation-only for now — modes are tool-scoped and the
+   combinatorial table is harder to maintain as a runtime check.
+   Tighten if sprawl actually happens.
 
 2. **schema_version migration.** Adding `schema_version: 1` to event
    data means existing events in events.db don't have it. Queries that
