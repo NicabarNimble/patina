@@ -101,8 +101,7 @@ pub fn build_http_proxy(config: HttpProxyConfig) -> Result<HttpHandler, String> 
         if let Some(ref resolved) = cred {
             match &resolved.injection {
                 ProxyInjection::Bearer => {
-                    builder =
-                        builder.header("Authorization", format!("Bearer {}", resolved.value));
+                    builder = builder.header("Authorization", format!("Bearer {}", resolved.value));
                 }
                 ProxyInjection::Header { name } => {
                     builder = builder.header(name, &resolved.value);
@@ -126,9 +125,7 @@ pub fn build_http_proxy(config: HttpProxyConfig) -> Result<HttpHandler, String> 
 
         // Leak detection: scan response for injected credential value
         let resp_body = match &cred {
-            Some(ref resolved) => {
-                leak_check(&resp_body, "connection-credential", &resolved.value)
-            }
+            Some(ref resolved) => leak_check(&resp_body, "connection-credential", &resolved.value),
             None => resp_body,
         };
 

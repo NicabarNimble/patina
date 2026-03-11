@@ -6,9 +6,7 @@
 
 use anyhow::Result;
 use patina_pipe::harness::HttpHandler;
-use patina_pipe::http_proxy::{
-    build_http_proxy, HttpProxyConfig, ProxyCredential, ProxyInjection,
-};
+use patina_pipe::http_proxy::{build_http_proxy, HttpProxyConfig, ProxyCredential, ProxyInjection};
 use patina_pipe_types::PipeHttpRequest;
 
 use crate::connect::{AuthPlan, InjectionStrategy};
@@ -19,9 +17,7 @@ fn map_credential(auth_plan: &AuthPlan) -> Option<ProxyCredential> {
         value: c.value.clone(),
         injection: match &c.injection {
             InjectionStrategy::Bearer => ProxyInjection::Bearer,
-            InjectionStrategy::Header { name } => ProxyInjection::Header {
-                name: name.clone(),
-            },
+            InjectionStrategy::Header { name } => ProxyInjection::Header { name: name.clone() },
             InjectionStrategy::InProcess => ProxyInjection::InProcess,
         },
     })
