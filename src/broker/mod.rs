@@ -53,13 +53,9 @@ pub fn run_source(
     match &source.destination {
         Destination::Project => {
             // Current path: Mother spawns connector, drives fetch
-            let (mut child, manifest) = spawn_native_with_plan(
-                &auth_plan,
-                no_sandbox,
-                &record.identity.provider,
-                None,
-            )
-            .with_context(|| format!("spawning child for source '{}'", source.name))?;
+            let (mut child, manifest) =
+                spawn_native_with_plan(&auth_plan, no_sandbox, &record.identity.provider, None)
+                    .with_context(|| format!("spawning child for source '{}'", source.name))?;
 
             write_to_project(source, project_root, &mut child, &manifest)
         }
@@ -166,8 +162,8 @@ fn grant_lake_capabilities(
     use patina_pipe::harness::spawn_child;
 
     // 1. Resolve lake path (storage toy)
-    let lake_path = crate::paths::lakes::resolve_lake_path(lake_name)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let lake_path =
+        crate::paths::lakes::resolve_lake_path(lake_name).map_err(|e| anyhow::anyhow!("{}", e))?;
 
     // 2. Spawn DuckLake child (the child, not the connector)
     let lake_binary = spawn::resolve_child_binary("ducklake")?;
@@ -218,8 +214,7 @@ fn grant_lake_capabilities(
     let (_notifs, response) = lake_child
         .request(
             "pipe/initialize",
-            serde_json::to_value(&init_params)
-                .with_context(|| "serializing init params")?,
+            serde_json::to_value(&init_params).with_context(|| "serializing init params")?,
         )
         .map_err(|e| anyhow::anyhow!("ducklake pipe/initialize failed: {}", e))?;
 
@@ -248,7 +243,10 @@ fn grant_lake_capabilities(
         );
     }
 
-    let run_result = result.get("result").cloned().unwrap_or(serde_json::json!({}));
+    let run_result = result
+        .get("result")
+        .cloned()
+        .unwrap_or(serde_json::json!({}));
 
     if let Some(escalation) = run_result.get("escalation") {
         if !escalation.is_null() {

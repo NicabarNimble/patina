@@ -11,9 +11,7 @@ use std::path::PathBuf;
 use duckdb::Connection;
 use patina_pipe::harness::ChildConnection;
 use patina_pipe::http_proxy::{build_http_proxy, HttpProxyConfig, ProxyCredential, ProxyInjection};
-use patina_pipe::{
-    run, Capabilities, Child, InitializeParams, PipeError, RunResult, TypeReport,
-};
+use patina_pipe::{run, Capabilities, Child, InitializeParams, PipeError, RunResult, TypeReport};
 use patina_pipe_types::config::{ConnectorToy, DuckLakeGrant, Escalation, GrantInjection};
 
 struct DuckLakeChild {
@@ -73,9 +71,10 @@ impl Child for DuckLakeChild {
             catalog.display(),
             lake_path.display()
         );
-        db.execute_batch(&attach_sql).map_err(|e| PipeError::Fatal {
-            message: format!("failed to attach DuckLake catalog: {}", e),
-        })?;
+        db.execute_batch(&attach_sql)
+            .map_err(|e| PipeError::Fatal {
+                message: format!("failed to attach DuckLake catalog: {}", e),
+            })?;
 
         // Create cursor tracking table
         // No PRIMARY KEY or DEFAULT — DuckLake only supports literal defaults
@@ -97,7 +96,10 @@ impl Child for DuckLakeChild {
 
         self.db = Some(db);
         self.grant = Some(grant.clone());
-        eprintln!("[ducklake] initialized with lake at {}", lake_path.display());
+        eprintln!(
+            "[ducklake] initialized with lake at {}",
+            lake_path.display()
+        );
         Ok(())
     }
 
@@ -153,7 +155,10 @@ impl Child for DuckLakeChild {
                 }
                 Err(ref e) if is_auth_error(e.as_ref()) => {
                     let msg = format!("{}", e);
-                    eprintln!("[ducklake] {}: auth error — escalating to Mother", data_type);
+                    eprintln!(
+                        "[ducklake] {}: auth error — escalating to Mother",
+                        data_type
+                    );
                     escalation = Some(Escalation {
                         escalation_type: "auth_failed".to_string(),
                         message: msg,
@@ -220,7 +225,12 @@ impl DuckLakeChild {
             "INSERT INTO lake._sync_cursors
              (source_name, data_type, cursor, last_run, records_written, status)
              VALUES (?, ?, ?, current_timestamp, ?, 'ok')",
-            duckdb::params![grant.connector.binary, data_type, cursor_val, written as i64],
+            duckdb::params![
+                grant.connector.binary,
+                data_type,
+                cursor_val,
+                written as i64
+            ],
         );
     }
 
@@ -321,11 +331,7 @@ impl DuckLakeChild {
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "{}".to_string());
 
-            stmt.execute(duckdb::params![
-                grant.connector.binary,
-                content_hash,
-                data
-            ])?;
+            stmt.execute(duckdb::params![grant.connector.binary, content_hash, data])?;
             written += 1;
         }
 
@@ -345,10 +351,7 @@ struct StoreResult {
 /// "issues" → "issues", "prs" → "prs", "github.issue" → "issues"
 fn event_type_to_table(data_type: &str) -> String {
     // Strip provider prefix if present
-    let base = data_type
-        .rsplit('.')
-        .next()
-        .unwrap_or(data_type);
+    let base = data_type.rsplit('.').next().unwrap_or(data_type);
 
     // Pluralize if needed
     if base.ends_with('s') {
@@ -411,7 +414,10 @@ fn use_connector_toy(
         .into());
     }
 
-    eprintln!("[ducklake] connector '{}' spawned and initialized", connector.binary);
+    eprintln!(
+        "[ducklake] connector '{}' spawned and initialized",
+        connector.binary
+    );
     Ok(conn)
 }
 

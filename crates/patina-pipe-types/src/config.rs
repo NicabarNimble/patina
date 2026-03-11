@@ -52,7 +52,9 @@ pub struct ConnectorToy {
 #[serde(rename_all = "lowercase", tag = "type")]
 pub enum GrantInjection {
     Bearer,
-    Header { name: String },
+    Header {
+        name: String,
+    },
     #[serde(rename = "inprocess")]
     InProcess,
 }
@@ -267,8 +269,10 @@ mod tests {
         let _: GrantInjection = serde_json::from_value(json).unwrap();
 
         // Header
-        let json =
-            serde_json::to_value(&GrantInjection::Header { name: "X-Api-Key".into() }).unwrap();
+        let json = serde_json::to_value(&GrantInjection::Header {
+            name: "X-Api-Key".into(),
+        })
+        .unwrap();
         assert_eq!(json["type"], "header");
         assert_eq!(json["name"], "X-Api-Key");
         let _: GrantInjection = serde_json::from_value(json).unwrap();
