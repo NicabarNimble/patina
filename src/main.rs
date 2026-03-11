@@ -60,7 +60,7 @@ impl Llm {
 #[derive(Parser)]
 #[command(author, version = env!("CARGO_PKG_VERSION"), about = "Context management for AI-assisted development", long_about = None)]
 struct Cli {
-    /// Adapter to launch (claude, gemini, codex). Default: from config.
+    /// AI interface to launch (claude, gemini, opencode). Default: from config.
     #[arg(long = "adapter", global = true)]
     adapter: Option<String>,
 
@@ -74,7 +74,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize a new project (skeleton only - use 'patina adapter add' for LLM support)
+    /// Initialize a new project skeleton, then prepare Patina AI with `patina ai setup`
     Init {
         /// Project name or "." for current directory
         name: String,
@@ -436,13 +436,13 @@ enum Commands {
         command: commands::session::SessionCommands,
     },
 
-    /// Native AI interface surface over Mother-backed sessions
+    /// Patina AI interface surface over Mother-backed sessions
     Ai {
         #[command(subcommand)]
         command: Option<commands::ai::AiCommands>,
     },
 
-    /// Manage project-local interface projection surfaces
+    /// Compatibility shims for project-local interface projection surfaces
     Interface {
         #[command(subcommand)]
         command: commands::interface::InterfaceCommands,
