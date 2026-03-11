@@ -7,6 +7,7 @@ pub mod emitter;
 pub mod harness;
 #[cfg(feature = "http-proxy")]
 pub mod http_proxy;
+pub mod measure;
 pub mod pipe_io;
 pub mod protocol;
 pub mod sandbox;
