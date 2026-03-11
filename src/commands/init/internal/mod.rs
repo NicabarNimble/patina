@@ -194,7 +194,8 @@ pub fn execute_init(name: String, force: bool, local: bool, no_commit: bool) -> 
     suggest_missing_tools(&environment)?;
 
     println!("\n✨ Project '{name}' initialized successfully!");
-    println!("  Add an adapter: patina adapter add <claude|gemini|opencode>");
+    println!("  Allow an adapter: patina adapter add <claude|gemini|opencode>");
+    println!("  Native OpenCode/Gemini setup: patina ai setup <opencode|gemini>");
 
     Ok(())
 }

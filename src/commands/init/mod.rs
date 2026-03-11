@@ -50,7 +50,8 @@ use anyhow::Result;
 /// - Run scrape or oxidize
 /// - Create devcontainer (use `patina yolo` for that)
 ///
-/// Use `patina adapter add <claude|gemini|opencode>` to add LLM support.
+/// Use `patina adapter add <adapter>` to allow an interface for this project.
+/// For native OpenCode/Gemini projection, then run `patina ai setup <opencode|gemini>`.
 ///
 /// # Re-initialization
 ///
@@ -73,7 +74,32 @@ pub fn execute(name: String, force: bool, local: bool, no_commit: bool) -> Resul
 mod tests {
     use super::*;
     use std::fs;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
     use tempfile::TempDir;
+
+    struct CurrentDirGuard {
+        _lock: MutexGuard<'static, ()>,
+        previous: std::path::PathBuf,
+    }
+
+    impl CurrentDirGuard {
+        fn enter(path: &std::path::Path) -> Result<Self> {
+            static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+            let guard = LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+            let previous = std::env::current_dir()?;
+            std::env::set_current_dir(path)?;
+            Ok(Self {
+                _lock: guard,
+                previous,
+            })
+        }
+    }
+
+    impl Drop for CurrentDirGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.previous);
+        }
+    }
 
     #[test]
     fn test_init_creates_structure() -> Result<()> {
@@ -103,6 +129,23 @@ value = "Ensures init works"
         // assert!(project_path.join(".patina").exists());
         // assert!(project_path.join("layer").exists());
         // assert!(project_path.join(".claude").exists());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_init_current_dir_stays_core_only() -> Result<()> {
+        let temp = TempDir::new()?;
+        let _cwd = CurrentDirGuard::enter(temp.path())?;
+
+        execute(".".to_string(), false, true, true)?;
+
+        assert!(temp.path().join(".patina").exists());
+        assert!(temp.path().join("layer").exists());
+        assert!(!temp.path().join(".opencode").exists());
+        assert!(!temp.path().join(".gemini").exists());
+        assert!(!temp.path().join("OPENCODE.md").exists());
+        assert!(!temp.path().join("GEMINI.md").exists());
 
         Ok(())
     }
