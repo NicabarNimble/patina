@@ -10,6 +10,7 @@ pub mod eval;
 pub mod events;
 pub mod hook;
 pub mod init;
+pub mod lake;
 pub mod launch;
 pub mod measure;
 pub mod model;

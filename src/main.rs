@@ -324,6 +324,15 @@ enum Commands {
         command: Option<commands::connect::ConnectCommands>,
     },
 
+    /// Manage DuckLake data lakes
+    ///
+    /// Create and list data lakes. Lakes are DuckDB + DuckLake storage
+    /// backed by autonomous child processes.
+    Lake {
+        #[command(subcommand)]
+        command: Option<commands::lake::LakeCommands>,
+    },
+
     /// The Patina daemon — cross-project knowledge, caching, and routing
     ///
     /// Mother is the always-running daemon that provides hot model caching,
@@ -1637,6 +1646,7 @@ fn main() -> Result<()> {
         }) => commands::repo::execute_cli(command, url, contrib)?,
         Some(Commands::Model { command }) => commands::model::execute_cli(command)?,
         Some(Commands::Connect { command }) => commands::connect::execute_cli(command)?,
+        Some(Commands::Lake { command }) => commands::lake::execute_cli(command)?,
         Some(Commands::Mother { command }) => {
             commands::mother::execute_cli(command, mcp::run_mcp_server)?
         }
