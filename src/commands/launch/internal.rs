@@ -412,6 +412,7 @@ fn initialize_project(project_path: &Path, adapter_name: &str) -> Result<bool> {
     Ok(true) // Continue to launch
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Try to get the Claude OAuth token from the global secrets vault.
 ///
 /// Checks conflict guards first (ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN),
@@ -441,6 +442,7 @@ fn try_get_claude_token() -> Option<String> {
 }
 
 /// Launch the adapter CLI, optionally wrapped in tmux
+#[cfg_attr(not(test), allow(dead_code))]
 fn launch_adapter_cli(
     adapter_name: &str,
     project_path: &Path,

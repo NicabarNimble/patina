@@ -13,12 +13,13 @@
 //! patina launch ~/project    # Different project, default adapter
 //! ```
 
-mod internal;
+pub(crate) mod internal;
 
 use anyhow::Result;
 use std::fmt;
 use std::path::Path;
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Why tmux wrapping was disabled
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OffReason {
@@ -36,6 +37,7 @@ pub enum OffReason {
     TmuxTooOld,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Whether to wrap the adapter launch in tmux
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TmuxDecision {
@@ -45,6 +47,7 @@ pub enum TmuxDecision {
     Off(OffReason),
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Resolve tmux decision from environmental inputs.
 ///
 /// Pure function — all 6 inputs are bools, checked in priority order.
@@ -78,6 +81,7 @@ pub fn resolve_tmux_decision(
     TmuxDecision::Auto
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Check tmux version by running `tmux -V`.
 ///
 /// Returns (version_ok, version_string).
@@ -131,6 +135,7 @@ fn fnv1a_32(bytes: &[u8]) -> u32 {
     hash
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Derive a deterministic tmux session name from a project path.
 ///
 /// Format: `patina_<slug>_<hash>` where:
@@ -180,6 +185,7 @@ pub struct LaunchOptions {
     /// Adapter to use (default: from config)
     pub adapter: Option<String>,
     /// Start mother in background if not running
+    #[allow(dead_code)]
     pub auto_start_mother: bool,
     /// Initialize project if needed (prompt user)
     pub auto_init: bool,
