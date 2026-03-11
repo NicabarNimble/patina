@@ -70,7 +70,8 @@ pub struct MeasureEvent {
 ///
 /// Checks:
 /// - verb is in `VALID_VERBS`
-/// - tool and mode are non-empty
+/// - tool is in `REGISTERED_TOOLS`
+/// - mode is non-empty
 /// - source is non-empty and has a recognized prefix
 /// - metrics is a JSON object
 pub fn validate(event: &MeasureEvent) -> Result<(), String> {
@@ -81,8 +82,11 @@ pub fn validate(event: &MeasureEvent) -> Result<(), String> {
         ));
     }
 
-    if event.tool.is_empty() {
-        return Err("tool must not be empty".to_string());
+    if !REGISTERED_TOOLS.contains(&event.tool.as_str()) {
+        return Err(format!(
+            "invalid tool '{}': must be one of {:?}",
+            event.tool, REGISTERED_TOOLS
+        ));
     }
 
     if event.mode.is_empty() {
@@ -130,30 +134,44 @@ mod tests {
     #[test]
     fn valid_verbs_accepted() {
         for verb in VALID_VERBS {
-            let event = make_event(verb, "test", "unit", "core");
+            let event = make_event(verb, "scrape", "code", "core");
             assert!(validate(&event).is_ok(), "verb '{}' should be valid", verb);
         }
     }
 
     #[test]
     fn invalid_verb_rejected() {
-        let event = make_event("destroy", "test", "unit", "core");
+        let event = make_event("destroy", "scrape", "code", "core");
         let err = validate(&event).unwrap_err();
         assert!(err.contains("invalid verb"));
         assert!(err.contains("destroy"));
     }
 
     #[test]
+    fn unregistered_tool_rejected() {
+        let event = make_event("capture", "invented-tool", "unit", "core");
+        let err = validate(&event).unwrap_err();
+        assert!(err.contains("invalid tool"));
+        assert!(err.contains("invented-tool"));
+    }
+
+    #[test]
     fn empty_tool_rejected() {
         let event = make_event("capture", "", "unit", "core");
-        assert!(validate(&event)
-            .unwrap_err()
-            .contains("tool must not be empty"));
+        assert!(validate(&event).unwrap_err().contains("invalid tool"));
+    }
+
+    #[test]
+    fn registered_tools_accepted() {
+        for tool in REGISTERED_TOOLS {
+            let event = make_event("capture", tool, "unit", "core");
+            assert!(validate(&event).is_ok(), "tool '{}' should be valid", tool);
+        }
     }
 
     #[test]
     fn empty_mode_rejected() {
-        let event = make_event("capture", "test", "", "core");
+        let event = make_event("capture", "scrape", "", "core");
         assert!(validate(&event)
             .unwrap_err()
             .contains("mode must not be empty"));
@@ -161,7 +179,7 @@ mod tests {
 
     #[test]
     fn empty_source_rejected() {
-        let event = make_event("capture", "test", "unit", "");
+        let event = make_event("capture", "scrape", "code", "");
         assert!(validate(&event)
             .unwrap_err()
             .contains("source must not be empty"));
@@ -187,14 +205,14 @@ mod tests {
 
     #[test]
     fn source_unknown_prefix_rejected() {
-        let event = make_event("capture", "test", "unit", "rogue:attacker");
+        let event = make_event("capture", "scrape", "code", "rogue:attacker");
         let err = validate(&event).unwrap_err();
         assert!(err.contains("invalid source"));
     }
 
     #[test]
     fn metrics_must_be_object() {
-        let mut event = make_event("capture", "test", "unit", "core");
+        let mut event = make_event("capture", "scrape", "code", "core");
         event.metrics = serde_json::json!([1, 2, 3]);
         assert!(validate(&event)
             .unwrap_err()

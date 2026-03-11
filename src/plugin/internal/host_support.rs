@@ -328,7 +328,7 @@ pub(crate) fn leak_check(body: &str, secret_name: &str, secret_value: &str) -> S
 // =========================================================================
 
 // Single source of truth — shared vocabulary from patina-pipe.
-use patina_pipe::measure::VALID_VERBS;
+use patina_pipe::measure::{REGISTERED_TOOLS, VALID_VERBS};
 
 /// Record a measurement event from a plugin.
 ///
@@ -348,6 +348,14 @@ pub(super) fn record_measurement(
         return Err(format!(
             "invalid verb '{}': must be one of {:?}",
             verb, VALID_VERBS
+        ));
+    }
+
+    // Validate tool
+    if !REGISTERED_TOOLS.contains(&tool) {
+        return Err(format!(
+            "invalid tool '{}': must be one of {:?}",
+            tool, REGISTERED_TOOLS
         ));
     }
 
