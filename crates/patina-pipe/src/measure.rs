@@ -146,19 +146,25 @@ mod tests {
     #[test]
     fn empty_tool_rejected() {
         let event = make_event("capture", "", "unit", "core");
-        assert!(validate(&event).unwrap_err().contains("tool must not be empty"));
+        assert!(validate(&event)
+            .unwrap_err()
+            .contains("tool must not be empty"));
     }
 
     #[test]
     fn empty_mode_rejected() {
         let event = make_event("capture", "test", "", "core");
-        assert!(validate(&event).unwrap_err().contains("mode must not be empty"));
+        assert!(validate(&event)
+            .unwrap_err()
+            .contains("mode must not be empty"));
     }
 
     #[test]
     fn empty_source_rejected() {
         let event = make_event("capture", "test", "unit", "");
-        assert!(validate(&event).unwrap_err().contains("source must not be empty"));
+        assert!(validate(&event)
+            .unwrap_err()
+            .contains("source must not be empty"));
     }
 
     #[test]
@@ -190,7 +196,9 @@ mod tests {
     fn metrics_must_be_object() {
         let mut event = make_event("capture", "test", "unit", "core");
         event.metrics = serde_json::json!([1, 2, 3]);
-        assert!(validate(&event).unwrap_err().contains("metrics must be a JSON object"));
+        assert!(validate(&event)
+            .unwrap_err()
+            .contains("metrics must be a JSON object"));
     }
 
     #[test]
