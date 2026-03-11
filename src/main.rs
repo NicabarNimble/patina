@@ -1406,6 +1406,17 @@ fn main() -> Result<()> {
                             ..Default::default()
                         },
                         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+                        toys: patina::mother::GrantedToys::default(),
                     }
                 };
                 let engine = patina::plugin::CommandEngine::new()?;
@@ -1586,6 +1597,59 @@ fn main() -> Result<()> {
                             std::process::exit(exit_code);
                         }
                     }
+                    patina::plugin::PluginWorld::KnowledgeChild => {
+                        let action = args.first().map(|s| s.as_str()).unwrap_or("health");
+                        let payload_str = args.get(1).map(|s| s.as_str()).unwrap_or("{}");
+
+                        let engine = patina::plugin::KnowledgeChildEngine::new()?;
+                        let component = engine.load_component(&wasm_bytes)?;
+                        let query_fn = make_query_dispatch(&manifest);
+                        let mut child =
+                            engine.instantiate_child(&component, &manifest, query_fn)?;
+
+                        use patina::mother::MotherHost;
+                        struct CliHost;
+                        impl MotherHost for CliHost {
+                            fn log(&self, child: &str, message: &str) {
+                                eprintln!("[{}] {}", child, message);
+                            }
+                        }
+                        child.on_load(&CliHost)?;
+
+                        if action == "health" {
+                            let health = child.health();
+                            println!("{:?}", health);
+                        } else if action == "tick" {
+                            println!("{}", serde_json::to_string_pretty(&child.tick())?);
+                        } else if action == "drain" {
+                            let limit = payload_str.parse::<u32>().unwrap_or(64);
+                            match child.drain(limit) {
+                                Ok(events) => println!("{}", serde_json::to_string_pretty(&events)?),
+                                Err(e) => {
+                                    eprintln!("error: {}", e);
+                                    std::process::exit(1);
+                                }
+                            }
+                        } else {
+                            let request = patina::mother::ChildRequest {
+                                action: action.to_string(),
+                                payload: serde_json::from_str(payload_str)
+                                    .unwrap_or(serde_json::Value::String(payload_str.to_string())),
+                            };
+                            match child.handle(&request) {
+                                Ok(response) => {
+                                    println!(
+                                        "{}",
+                                        serde_json::to_string_pretty(&response.payload)?
+                                    );
+                                }
+                                Err(e) => {
+                                    eprintln!("error: {}", e);
+                                    std::process::exit(1);
+                                }
+                            }
+                        }
+                    }
                     patina::plugin::PluginWorld::MotherChild => {
                         // mother-child: args = [action, payload_json]
                         let action = args.first().map(|s| s.as_str()).unwrap_or("health");
@@ -1632,7 +1696,7 @@ fn main() -> Result<()> {
                     }
                     other => {
                         anyhow::bail!(
-                            "plugin '{}' has world '{}' — only 'task', 'command', and 'mother-child' are supported by `plugin run`",
+                            "plugin '{}' has world '{}' — only 'task', 'command', 'mother-child', and 'knowledge-child' are supported by `plugin run`",
                             name, other
                         );
                     }

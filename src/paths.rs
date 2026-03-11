@@ -281,6 +281,11 @@ pub mod mother {
     pub fn graph_db() -> PathBuf {
         data_dir().join("graph.db")
     }
+
+    /// Knowledge-child runtime state: `~/.patina/mother/runtime.db`
+    pub fn runtime_db() -> PathBuf {
+        data_dir().join("runtime.db")
+    }
 }
 
 /// Model management paths (base models shared across projects)

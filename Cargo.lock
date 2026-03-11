@@ -3056,6 +3056,7 @@ dependencies = [
  "console",
  "core-foundation",
  "dirs 5.0.1",
+ "duckdb",
  "fastrand",
  "glob",
  "hkdf",
@@ -3099,6 +3100,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "patina-child-sdk"
+version = "0.1.0"
+dependencies = [
+ "patina-toy-sdk",
+ "serde",
+ "serde_json",
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
 name = "patina-doctor"
 version = "0.1.0"
 dependencies = [
@@ -3132,6 +3143,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "patina-plugin-belief-verifier"
+version = "0.1.0"
+dependencies = [
+ "patina-child-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "patina-plugin-ducklake"
+version = "0.1.0"
+dependencies = [
+ "patina-child-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "patina-plugin-models"
 version = "0.1.0"
 dependencies = [
@@ -3155,6 +3184,14 @@ dependencies = [
  "serde",
  "serde_json",
  "wit-bindgen 0.41.0",
+]
+
+[[package]]
+name = "patina-toy-sdk"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

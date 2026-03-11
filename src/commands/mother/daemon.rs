@@ -122,12 +122,19 @@ const HEARTBEAT_INTERVAL_SECS: u64 = 60;
 /// Tracks in-flight toys to prevent duplicate spawning.
 fn spawn_heartbeat(state: Arc<ServerState>) {
     let in_flight: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+    let runtime = patina::mother::KnowledgeRuntimeStore::default();
 
     std::thread::Builder::new()
         .name("mother-heartbeat".to_string())
         .spawn(move || loop {
             std::thread::sleep(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
-            let toys = state.registry.tick_all();
+            if let Err(error) = state
+                .registry
+                .run_knowledge_cycles(&runtime, "mother-heartbeat")
+            {
+                eprintln!("[mother] knowledge-child heartbeat failed: {}", error);
+            }
+            let toys = state.registry.tick_legacy_all();
             for toy in toys {
                 let mut flight = in_flight.lock().unwrap_or_else(|e| e.into_inner());
                 if flight.contains(&toy.name) {
@@ -546,6 +553,7 @@ impl Default for DaemonOptions {
 pub fn run_server(options: DaemonOptions) -> Result<()> {
     // Build and load child registry
     let mut registry = ChildRegistry::new();
+    let runtime = patina::mother::KnowledgeRuntimeStore::default();
 
     // Compiled-in children (always available)
     registry
@@ -553,56 +561,51 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         .expect("failed to register secrets child");
 
     // WASM children (discovered from ~/.patina/children/)
-    match patina::plugin::PluginEngine::new() {
-        Ok(plugin_engine) => {
-            let children_dir = patina::paths::plugin::children_dir();
-            if children_dir.exists() {
-                if let Ok(entries) = std::fs::read_dir(&children_dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.extension().and_then(|e| e.to_str()) == Some("wasm") {
-                            let manifest_path = path.with_extension("toml");
-                            match load_wasm_child(&plugin_engine, &path, &manifest_path) {
-                                Ok(child) => {
-                                    let name = child.name().to_string();
-                                    match registry.register(child) {
-                                        Ok(()) => {
-                                            eprintln!("[mother] loaded WASM child: {}", name);
-                                        }
-                                        Err(e) => {
-                                            eprintln!(
-                                                "[mother] skipping {}: {}",
-                                                path.display(),
-                                                e
-                                            );
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("[mother] failed to load {}: {}", path.display(), e);
-                                }
+    let children_dir = patina::paths::plugin::children_dir();
+    if children_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&children_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("wasm") {
+                    let manifest_path = path.with_extension("toml");
+                    match load_wasm_child(&path, &manifest_path) {
+                        Ok(LoadedWasmChild::Legacy { child, name }) => match registry.register_legacy(child) {
+                            Ok(()) => eprintln!("[mother] loaded legacy WASM child: {}", name),
+                            Err(e) => eprintln!("[mother] skipping {}: {}", path.display(), e),
+                        },
+                        Ok(LoadedWasmChild::Knowledge {
+                            child,
+                            name,
+                            subscribed_streams,
+                        }) => {
+                            if let Err(error) = runtime.ensure_subscriptions(&name, &subscribed_streams) {
+                                eprintln!(
+                                    "[mother] failed to persist subscriptions for {}: {}",
+                                    name, error
+                                );
+                                continue;
+                            }
+                            match registry.register_knowledge(child) {
+                                Ok(()) => eprintln!("[mother] loaded knowledge WASM child: {}", name),
+                                Err(e) => eprintln!("[mother] skipping {}: {}", path.display(), e),
                             }
                         }
-                    }
-                }
-                // Detect orphaned .toml manifests (no matching .wasm)
-                if let Ok(entries) = std::fs::read_dir(&children_dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.extension().and_then(|e| e.to_str()) == Some("toml")
-                            && !path.with_extension("wasm").exists()
-                        {
-                            eprintln!("[mother] orphaned manifest (no .wasm): {}", path.display());
+                        Err(e) => {
+                            eprintln!("[mother] failed to load {}: {}", path.display(), e);
                         }
                     }
                 }
             }
         }
-        Err(e) => {
-            eprintln!(
-                "[mother] plugin engine init failed: {} (WASM children disabled)",
-                e
-            );
+        if let Ok(entries) = std::fs::read_dir(&children_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("toml")
+                    && !path.with_extension("wasm").exists()
+                {
+                    eprintln!("[mother] orphaned manifest (no .wasm): {}", path.display());
+                }
+            }
         }
     }
 
@@ -703,16 +706,49 @@ fn accept_loop_uds(listener: std::os::unix::net::UnixListener, state: Arc<Server
     std::process::exit(0);
 }
 
+enum LoadedWasmChild {
+    Legacy {
+        child: Box<dyn patina::mother::MotherChild>,
+        name: String,
+    },
+    Knowledge {
+        child: Box<dyn patina::mother::KnowledgeChild>,
+        name: String,
+        subscribed_streams: Vec<String>,
+    },
+}
+
 /// Load a WASM child from a .wasm file + plugin.toml manifest.
 fn load_wasm_child(
-    engine: &patina::plugin::PluginEngine,
     wasm_path: &std::path::Path,
     manifest_path: &std::path::Path,
-) -> Result<Box<dyn patina::mother::MotherChild>> {
-    let manifest = patina::plugin::PluginEngine::load_manifest(manifest_path)?;
+) -> Result<LoadedWasmChild> {
+    let manifest = patina::plugin::PluginManifest::from_path(manifest_path)?;
     let wasm_bytes = std::fs::read(wasm_path)?;
-    let component = engine.load_component(&wasm_bytes)?;
-    engine.instantiate_child(&component, &manifest, None)
+    match manifest.world {
+        patina::plugin::PluginWorld::KnowledgeChild => {
+            let engine = patina::plugin::KnowledgeChildEngine::new()?;
+            let component = engine.load_component(&wasm_bytes)?;
+            let child = engine.instantiate_child(&component, &manifest, None)?;
+            let name = child.name().to_string();
+            Ok(LoadedWasmChild::Knowledge {
+                child,
+                name,
+                subscribed_streams: manifest.subscribed_streams.clone(),
+            })
+        }
+        patina::plugin::PluginWorld::MotherChild => {
+            let engine = patina::plugin::PluginEngine::new()?;
+            let component = engine.load_component(&wasm_bytes)?;
+            let child = engine.instantiate_child(&component, &manifest, None)?;
+            let name = child.name().to_string();
+            Ok(LoadedWasmChild::Legacy { child, name })
+        }
+        other => anyhow::bail!(
+            "child manifest world '{}' is not loadable by the daemon child loader",
+            other
+        ),
+    }
 }
 
 /// Write PID file for daemon lifecycle management

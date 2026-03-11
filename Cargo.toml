@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/patina-pipe-types", "crates/patina-pipe", "plugins/sdk", "plugins/models", "plugins/repos", "plugins/doctor", "children/github-connector", "children/ducklake"]
+members = [".", "crates/patina-pipe-types", "crates/patina-pipe", "crates/patina-child-sdk", "crates/patina-toy-sdk", "plugins/sdk", "plugins/models", "plugins/repos", "plugins/doctor", "plugins/ducklake", "plugins/belief-verifier", "children/github-connector", "children/ducklake"]
 exclude = ["layer/dust"]
 resolver = "2"
 
@@ -92,6 +92,7 @@ usearch = "2.21"                                                     # Fast vect
 safetensors = "0.7"                                                  # Standard weight format (MLX-compatible, HuggingFace)
 zerocopy = "0.7"                                                     # Efficient vector byte conversion
 regex = "1.12.2"
+duckdb = { version = "1", features = ["bundled"] }
 
 # WASM plugin runtime
 wasmtime = { version = "=41", default-features = false, features = [

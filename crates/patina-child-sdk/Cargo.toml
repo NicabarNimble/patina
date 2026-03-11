@@ -1,0 +1,13 @@
+[package]
+name = "patina-child-sdk"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Guest SDK for Patina knowledge-child WASM plugins"
+include = ["src/**", "wit/**", "Cargo.toml", "README.md", "LICENSE*"]
+
+[dependencies]
+patina-toy-sdk = { path = "../patina-toy-sdk" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+wit-bindgen = "0.41"

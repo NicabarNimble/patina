@@ -1,0 +1,29 @@
+[plugin]
+name = "patina-ducklake"
+version = "0.1.0"
+description = "Canonical DuckLake knowledge child for Mother"
+world = "knowledge-child"
+role = "app"
+patina_min = "0.41.0"
+
+[capabilities]
+host_log = true
+host_measure = true
+host_http = true
+
+[capabilities.state]
+enabled = true
+
+[capabilities.checkpoint]
+streams = ["ducklake.sync"]
+
+[capabilities.tasks]
+intents = ["fetch-source"]
+
+[toys]
+fetch = true
+lake = ["default"]
+measure = true
+
+[provides]
+child = "ducklake"

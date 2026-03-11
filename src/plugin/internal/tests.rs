@@ -1,4 +1,5 @@
 use super::*;
+use crate::mother::TaskIntentKind;
 use std::io::Write;
 
 fn write_temp_manifest(content: &str) -> tempfile::NamedTempFile {
@@ -182,6 +183,120 @@ world = "pipeline"
     assert!(m.schemas.is_empty());
 }
 
+#[test]
+fn manifest_parses_knowledge_child_capabilities_and_toys() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "ducklake"
+world = "knowledge-child"
+
+[capabilities]
+host_log = true
+host_measure = true
+
+[capabilities.state]
+enabled = true
+
+[capabilities.checkpoint]
+streams = ["ducklake.sync"]
+
+[capabilities.events]
+subscribe = ["ducklake.sync", "belief.changed"]
+
+[capabilities.tasks]
+intents = ["fetch-source", "verify-belief"]
+
+[capabilities.graph]
+read = true
+write = ["link", "tag"]
+
+[capabilities.belief]
+read = true
+write = ["record-verification"]
+
+[toys]
+fetch = true
+lake = ["default", "archive"]
+query = true
+measure = true
+graph = true
+belief = true
+
+[provides]
+child = "ducklake"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert_eq!(m.world, PluginWorld::KnowledgeChild);
+    assert!(m.state_enabled);
+    assert_eq!(m.checkpoint_streams, vec!["ducklake.sync"]);
+    assert_eq!(
+        m.subscribed_streams,
+        vec!["ducklake.sync", "belief.changed"]
+    );
+    assert_eq!(m.task_intent_names, vec!["fetch-source", "verify-belief"]);
+    assert_eq!(
+        m.task_intents,
+        vec![TaskIntentKind::FetchSource, TaskIntentKind::VerifyBelief]
+    );
+    assert!(m.graph_read);
+    assert_eq!(m.graph_write_actions, vec!["link", "tag"]);
+    assert!(m.belief_read);
+    assert_eq!(m.belief_write_actions, vec!["record-verification"]);
+    assert!(m.toys.fetch);
+    assert!(m.toys.query);
+    assert!(m.toys.measure);
+    assert!(m.toys.graph);
+    assert!(m.toys.belief);
+    assert!(m.toys.lake_names.contains("default"));
+    assert!(m.toys.lake_names.contains("archive"));
+}
+
+#[test]
+fn knowledge_child_rejects_unknown_event_stream() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "bad-child"
+world = "knowledge-child"
+
+[capabilities]
+host_log = true
+
+[capabilities.events]
+subscribe = ["unknown.stream"]
+
+[provides]
+child = "bad-child"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    let err = KnowledgeChildEngine::check_capabilities(&m).unwrap_err();
+    assert!(
+        err.to_string().contains("unknown event stream 'unknown.stream'"),
+        "got: {}",
+        err
+    );
+}
+
+#[test]
+fn knowledge_child_example_manifests_validate() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for path in [
+        root.join("plugins/ducklake/plugin.toml"),
+        root.join("plugins/belief-verifier/plugin.toml"),
+    ] {
+        let manifest = PluginManifest::from_path(&path).unwrap();
+        assert_eq!(manifest.world, PluginWorld::KnowledgeChild);
+        assert!(
+            KnowledgeChildEngine::check_capabilities(&manifest).is_ok(),
+            "manifest failed validation: {}",
+            path.display()
+        );
+    }
+}
+
 // =====================================================================
 // check_capabilities
 // =====================================================================
@@ -206,6 +321,17 @@ fn capabilities_all_granted() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
 }
@@ -230,6 +356,17 @@ fn capabilities_empty() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
 }
@@ -254,6 +391,17 @@ fn capabilities_denied() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
@@ -353,6 +501,17 @@ fn check_capabilities_rejects_unknown_query_kinds() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
     assert!(
@@ -382,6 +541,17 @@ fn check_capabilities_accepts_known_query_kinds() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
 }
@@ -430,6 +600,17 @@ fn wasm_models_child_handle_roundtrip() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
 
     let child = engine
@@ -485,6 +666,17 @@ fn wasm_models_child_health() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
 
     let child = engine
@@ -529,6 +721,17 @@ fn load_repos_child() -> Option<Box<dyn crate::mother::MotherChild>> {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
 
     Some(
@@ -740,6 +943,17 @@ fn wasm_repos_child_toy_capability_gating() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
 
     let mut child = engine
@@ -825,6 +1039,17 @@ fn benchmark_plugin_performance() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     let t2 = Instant::now();
     let child = engine
@@ -956,6 +1181,17 @@ fn load_doctor_manifest() -> PluginManifest {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     }
 }
 
@@ -1105,6 +1341,17 @@ fn check_capabilities_rejects_empty_http_domain() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
     assert!(err.to_string().contains("empty"), "got: {}", err);
@@ -1130,6 +1377,17 @@ fn check_capabilities_rejects_http_domain_with_path() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
     assert!(err.to_string().contains("path"), "got: {}", err);
@@ -1155,6 +1413,17 @@ fn check_capabilities_accepts_valid_http_domains() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
 }
@@ -1183,6 +1452,17 @@ fn granted_capabilities_includes_http_domains() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     let grants = m.granted_capabilities();
     assert!(grants.http_domains.contains("api.github.com"));
@@ -1279,6 +1559,17 @@ fn hello_task_manifest() -> PluginManifest {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     }
 }
 
@@ -1385,6 +1676,17 @@ fn task_hello_unapproved_toy_denied() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
 
     let (_exit_code, toys) = engine
@@ -1436,6 +1738,17 @@ fn echo_pipeline_manifest() -> PluginManifest {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     }
 }
 
@@ -1569,6 +1882,17 @@ fn wasm_trap_pipeline_panic_returns_error() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
 
     let request = r#"{"op":"echo","version":"1","payload":{}}"#;
@@ -1678,6 +2002,17 @@ fn check_capabilities_rejects_pipeline_with_query() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
@@ -1708,6 +2043,17 @@ fn check_capabilities_rejects_pipeline_with_http() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
@@ -1774,6 +2120,17 @@ fn wasm_trap_mother_child_panic_returns_error() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
 
     // Instantiation with wrong world should fail cleanly
@@ -1890,6 +2247,17 @@ fn check_capabilities_rejects_host_secrets_domain_not_in_host_http() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
@@ -1928,6 +2296,17 @@ fn check_capabilities_accepts_host_secrets_with_matching_host_http() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
 }
@@ -1964,6 +2343,17 @@ fn granted_capabilities_includes_credential_mappings() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     let grants = m.granted_capabilities();
     assert!(grants.credential_mappings.contains_key("api.github.com"));
@@ -2646,6 +3036,17 @@ fn role_world_valid_combo_passes() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     // connector + mother-child is valid — check_capabilities should pass
     assert!(PluginEngine::check_capabilities(&m).is_ok());
@@ -2672,6 +3073,17 @@ fn role_world_unusual_combo_still_passes() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     // Unusual combo warns but does NOT bail
     assert!(PluginEngine::check_capabilities(&m).is_ok());
@@ -2698,6 +3110,17 @@ fn role_none_skips_validation() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        state_enabled: false,
+        checkpoint_streams: vec![],
+        lake_names: vec![],
+        subscribed_streams: vec![],
+        task_intent_names: vec![],
+        task_intents: vec![],
+        graph_read: false,
+        graph_write_actions: vec![],
+        belief_read: false,
+        belief_write_actions: vec![],
+        toys: crate::mother::GrantedToys::default(),
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
 }

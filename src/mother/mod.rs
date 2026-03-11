@@ -26,13 +26,26 @@
 //! ```
 
 mod child;
+pub(crate) mod belief_host;
+pub(crate) mod checkpoint;
 mod graph;
+pub(crate) mod graph_host;
 mod internal;
+pub(crate) mod lake_host;
+pub(crate) mod state;
+pub(crate) mod tasks;
+mod toys;
+pub(crate) mod events;
 
 use anyhow::Result;
 
 // Child trait exports
-pub use child::{ChildHealth, ChildRequest, ChildResponse, MotherChild, MotherHost, Toy};
+pub use child::{
+    ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, MotherChild, MotherHost,
+    PendingEvent, TaskIntent, TaskIntentKind, Toy,
+};
+pub use state::{KnowledgeRuntimeStore, QueuedTask, RunStatus, TaskStatus};
+pub use toys::GrantedToys;
 
 // Graph exports
 pub use graph::{

@@ -1,35 +1,46 @@
-//! MotherChild trait and supporting types
+//! Mother Child runtime traits and supporting types.
 //!
-//! Defines the plugin interface for Mother's children.
-//! Children are black boxes that own state and handle requests.
-//! Mother iterates children, routes to them, doesn't know their internals.
-//!
-//! Today these are native Rust traits (dependable-rust pattern).
-//! The trait maps to a WIT world — when patina-platform lands,
-//! children become WASM plugins. Same shape at both stages.
-//!
-//! See: layer/surface/build/feat/mother-architecture/SPEC.md
+//! `KnowledgeChild` is the target WASM-first runtime contract.
+//! `MotherChild` + `Toy` remain only as an explicitly isolated legacy bridge
+//! for older shell-toy children while the knowledge-child platform takes over.
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 // =========================================================================
 // Core Trait
 // =========================================================================
 
-/// A child plugin running in Mother's daemon context.
+/// Knowledge child plugin running in Mother's daemon context.
 ///
-/// Children are black boxes: they own some state and handle requests.
-/// Mother iterates children, routes to them by name, doesn't know their
-/// internals. Children never spawn processes directly — they request
-/// toys via `tick()` and Mother runs them.
+/// Mother owns runtime state, event offsets, and task leases.
+/// The child owns workflow and business policy. Typed task intents replace
+/// shell command recipes.
+pub trait KnowledgeChild: Send + Sync {
+    fn name(&self) -> &str;
+
+    fn on_load(&mut self, host: &dyn MotherHost) -> Result<()>;
+
+    fn on_unload(&mut self) {}
+
+    fn health(&self) -> ChildHealth;
+
+    fn handle(&self, request: &ChildRequest) -> Result<ChildResponse>;
+
+    fn drain(&mut self, _limit: u32) -> Result<Vec<PendingEvent>> {
+        Ok(vec![])
+    }
+
+    fn tick(&mut self) -> Vec<TaskIntent> {
+        vec![]
+    }
+}
+
+/// Legacy shell-toy child plugin.
 ///
-/// # Concurrency
-///
-/// `handle()` takes `&self` because the daemon serves requests concurrently.
-/// Children needing mutable state in handlers use interior mutability (Mutex).
-/// `on_load()`, `on_unload()`, and `tick()` take `&mut self` — they run
-/// single-threaded in the daemon's lifecycle/heartbeat loop.
+/// Migration-only bridge for the old `mother-child` world. New knowledge
+/// children must target `KnowledgeChild`.
 pub trait MotherChild: Send + Sync {
     /// Identity — unique name used for request routing
     fn name(&self) -> &str;
@@ -113,21 +124,81 @@ pub struct ChildResponse {
 }
 
 // =========================================================================
-// Toys
+// Knowledge runtime types
 // =========================================================================
 
-/// Work that a child asks Mother to run.
-///
-/// The child decides *what*. Mother handles *how*.
-/// Children never spawn processes directly — they return toys
-/// from `tick()` and Mother spawns and monitors them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TaskIntentKind {
+    FetchSource,
+    RunQuery,
+    EmitFacts,
+    MaterializeIndex,
+    VerifyBelief,
+    SyncGraph,
+    RefreshCredential,
+    NativeJob,
+}
+
+impl TaskIntentKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FetchSource => "fetch-source",
+            Self::RunQuery => "run-query",
+            Self::EmitFacts => "emit-facts",
+            Self::MaterializeIndex => "materialize-index",
+            Self::VerifyBelief => "verify-belief",
+            Self::SyncGraph => "sync-graph",
+            Self::RefreshCredential => "refresh-credential",
+            Self::NativeJob => "native-job",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "fetch-source" => Some(Self::FetchSource),
+            "run-query" => Some(Self::RunQuery),
+            "emit-facts" => Some(Self::EmitFacts),
+            "materialize-index" => Some(Self::MaterializeIndex),
+            "verify-belief" => Some(Self::VerifyBelief),
+            "sync-graph" => Some(Self::SyncGraph),
+            "refresh-credential" => Some(Self::RefreshCredential),
+            "native-job" => Some(Self::NativeJob),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for TaskIntentKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskIntent {
+    pub kind: TaskIntentKind,
+    pub payload: serde_json::Value,
+    pub dedupe_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingEvent {
+    pub stream: String,
+    pub offset: u64,
+    pub event_type: String,
+    pub payload: serde_json::Value,
+    pub occurred_at: String,
+}
+
+// =========================================================================
+// Legacy toys
+// =========================================================================
+
 #[derive(Debug, Clone)]
 pub struct Toy {
-    /// Descriptive name for logging and status display
     pub name: String,
-    /// Shell command to execute
     pub command: String,
-    /// Command arguments
     pub args: Vec<String>,
 }
 
