@@ -33,7 +33,7 @@ pub fn execute_cli(command: Option<LakeCommands>) -> Result<()> {
 
 /// Lakes directory: ~/.patina/lakes/
 fn lakes_dir() -> PathBuf {
-    paths::patina_home().join("lakes")
+    paths::lakes::lakes_dir()
 }
 
 /// Create a new data lake.
@@ -110,26 +110,6 @@ fn list() -> Result<()> {
     Ok(())
 }
 
-/// Resolve a lake path by name.
-///
-/// Returns the lake directory path if it exists and has a lake.toml.
-pub fn resolve_lake_path(name: &str) -> Result<PathBuf> {
-    let lake_dir = lakes_dir().join(name);
-    let lake_toml = lake_dir.join("lake.toml");
-
-    if !lake_toml.exists() {
-        bail!(
-            "lake '{}' not found (expected {} to exist)\n  \
-             Run: patina lake create {}",
-            name,
-            lake_toml.display(),
-            name
-        );
-    }
-
-    Ok(lake_dir)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,8 +155,8 @@ mod tests {
 
     #[test]
     fn resolve_nonexistent_lake() {
-        let result = resolve_lake_path("nonexistent-lake-xyz-12345");
+        let result = paths::lakes::resolve_lake_path("nonexistent-lake-xyz-12345");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("not found"));
+        assert!(result.unwrap_err().contains("not found"));
     }
 }

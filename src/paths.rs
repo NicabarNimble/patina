@@ -223,6 +223,36 @@ pub mod user_layer {
     }
 }
 
+/// Lake paths (DuckLake storage)
+pub mod lakes {
+    use super::*;
+
+    /// Lakes directory: `~/.patina/lakes/`
+    pub fn lakes_dir() -> PathBuf {
+        patina_home().join("lakes")
+    }
+
+    /// Resolve a lake path by name.
+    ///
+    /// Returns the lake directory path if it exists and has a lake.toml.
+    pub fn resolve_lake_path(name: &str) -> Result<PathBuf, String> {
+        let lake_dir = lakes_dir().join(name);
+        let lake_toml = lake_dir.join("lake.toml");
+
+        if !lake_toml.exists() {
+            return Err(format!(
+                "lake '{}' not found (expected {} to exist)\n  \
+                 Run: patina lake create {}",
+                name,
+                lake_toml.display(),
+                name
+            ));
+        }
+
+        Ok(lake_dir)
+    }
+}
+
 /// Connection record paths (user-level, global scope in v1)
 pub mod connections {
     use super::*;
