@@ -654,8 +654,9 @@ mod tests {
             .path()
             .join(".opencode/commands/session-start.md")
             .exists());
-        assert!(temp.path().join(".opencode/PATINA.md").exists());
-        assert!(temp.path().join("OPENCODE.md").exists());
+        assert!(temp.path().join("AGENTS.md").exists());
+        assert!(!temp.path().join("OPENCODE.md").exists());
+        assert!(!temp.path().join(".opencode/PATINA.md").exists());
     }
 
     #[test]

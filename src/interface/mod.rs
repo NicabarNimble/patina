@@ -90,7 +90,7 @@ impl AiAdapter for OpenCodeInterface {
     }
 
     fn context_file(&self, project_root: &Path) -> PathBuf {
-        project_root.join(".opencode").join("AGENTS.md")
+        project_root.join("AGENTS.md")
     }
 }
 
@@ -110,6 +110,6 @@ impl AiAdapter for GeminiInterface {
     }
 
     fn context_file(&self, project_root: &Path) -> PathBuf {
-        project_root.join(".gemini").join("GEMINI.md")
+        project_root.join("AGENTS.md")
     }
 }

@@ -60,9 +60,6 @@ mod gemini_templates {
     pub const SESSION_NOTE_TOML: &str = include_str!("../../resources/gemini/session-note.toml");
     pub const SESSION_END_TOML: &str = include_str!("../../resources/gemini/session-end.toml");
     pub const PATINA_REVIEW_TOML: &str = include_str!("../../resources/gemini/patina-review.toml");
-
-    // Context template
-    pub const GEMINI_MD: &str = include_str!("../../resources/gemini/GEMINI.md");
 }
 
 // =============================================================================
@@ -233,9 +230,6 @@ fn install_gemini_templates(adapters_dir: &Path) -> Result<()> {
         gemini_templates::PATINA_REVIEW_TOML,
     )?;
 
-    // Write GEMINI.md template
-    fs::write(templates_dir.join("GEMINI.md"), gemini_templates::GEMINI_MD)?;
-
     Ok(())
 }
 
@@ -367,7 +361,6 @@ mod tests {
     fn test_gemini_templates_compile() {
         // Verify command definitions are embedded correctly
         assert!(!gemini_templates::SESSION_START_TOML.is_empty());
-        assert!(!gemini_templates::GEMINI_MD.is_empty());
     }
 
     #[test]
@@ -433,7 +426,6 @@ mod tests {
         assert!(templates_dir
             .join(".gemini/commands/session-start.toml")
             .exists());
-        assert!(templates_dir.join("GEMINI.md").exists());
 
         // Wrapper scripts should forward to patina session
         let wrapper =
@@ -456,7 +448,7 @@ mod tests {
 
         let session_start =
             fs::read_to_string(templates_dir.join(".opencode/commands/session-start.md")).unwrap();
-        assert!(session_start.contains(".opencode/PATINA.md"));
+        assert!(session_start.contains("Read root `AGENTS.md` first"));
         assert!(session_start.contains("session.start"));
         assert!(session_start.contains("patina ai session start --json --adapter opencode"));
         assert!(session_start.contains("spec.check"));

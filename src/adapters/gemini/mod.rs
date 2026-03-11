@@ -21,6 +21,14 @@ impl GeminiAdapter {
     pub fn new() -> Self {
         Self
     }
+
+    pub fn ensure_context(
+        project_path: &Path,
+        project_name: &str,
+        environment: &Environment,
+    ) -> Result<PathBuf> {
+        internal::ensure_context_file(project_path, project_name, environment)
+    }
 }
 
 impl Default for GeminiAdapter {

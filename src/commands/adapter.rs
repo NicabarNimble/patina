@@ -258,14 +258,8 @@ fn add(name: &str, no_commit: bool) -> Result<()> {
     // Commit if files were created and not in no_commit mode
     if created_files && !no_commit {
         println!("\n📦 Committing adapter setup...");
-        let adapter_dir = format!(".{}", name);
         let mut files_to_add = Vec::new();
-        if cwd.join(&adapter_dir).exists() {
-            files_to_add.push(adapter_dir);
-        }
-        if cwd.join(&bootstrap_file).exists() {
-            files_to_add.push(bootstrap_file.clone());
-        }
+        collect_adapter_surface_paths(&cwd, name, &mut files_to_add);
         if cwd.join(".patina/config.toml").exists() {
             files_to_add.push(".patina/config.toml".to_string());
         }
@@ -330,8 +324,31 @@ fn get_bootstrap_filename(name: &str) -> String {
         "claude" => "CLAUDE.md".to_string(),
         "gemini" => "GEMINI.md".to_string(),
         "codex" => "AGENTS.md".to_string(),
-        "opencode" => "OPENCODE.md".to_string(),
+        "opencode" => "AGENTS.md".to_string(),
         _ => format!("{}.md", name.to_uppercase()),
+    }
+}
+
+fn collect_adapter_surface_paths(
+    project_root: &std::path::Path,
+    name: &str,
+    out: &mut Vec<String>,
+) {
+    let adapter_dir = format!(".{}", name);
+    if project_root.join(&adapter_dir).exists() {
+        out.push(adapter_dir);
+    }
+
+    let bootstrap_file = get_bootstrap_filename(name);
+    if project_root.join(&bootstrap_file).exists() {
+        out.push(bootstrap_file);
+    }
+
+    if matches!(name, "gemini" | "opencode")
+        && project_root.join("AGENTS.md").exists()
+        && !out.iter().any(|path| path == "AGENTS.md")
+    {
+        out.push("AGENTS.md".to_string());
     }
 }
 
@@ -361,9 +378,9 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
 
         if !no_commit {
             println!("\n📦 Committing refresh...");
-            let adapter_dir_name = format!(".{}", name);
-            let bootstrap_file = get_bootstrap_filename(name);
-            let refs = [adapter_dir_name.as_str(), bootstrap_file.as_str()];
+            let mut files_to_add = Vec::new();
+            collect_adapter_surface_paths(&cwd, name, &mut files_to_add);
+            let refs: Vec<&str> = files_to_add.iter().map(|s| s.as_str()).collect();
             patina::git::add_paths(&refs)?;
 
             if patina::git::has_staged_changes()? {
@@ -415,14 +432,8 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
     // Step 6: Commit if not in no_commit mode
     if !no_commit {
         println!("\n📦 Committing refresh...");
-        let adapter_dir_name = format!(".{}", name);
         let mut files_to_add = Vec::new();
-        if cwd.join(&adapter_dir_name).exists() {
-            files_to_add.push(adapter_dir_name);
-        }
-        if cwd.join(&bootstrap_file).exists() {
-            files_to_add.push(bootstrap_file);
-        }
+        collect_adapter_surface_paths(&cwd, name, &mut files_to_add);
 
         let refs: Vec<&str> = files_to_add.iter().map(|s| s.as_str()).collect();
         patina::git::add_paths(&refs)?;

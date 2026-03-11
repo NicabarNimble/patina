@@ -161,8 +161,6 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
     } else {
         let bootstrap_file = match adapter_name.as_str() {
             "claude" => "CLAUDE.md",
-            "gemini" => "GEMINI.md",
-            "opencode" => "OPENCODE.md",
             _ => "CLAUDE.md",
         };
         let bootstrap_path = project_path.join(bootstrap_file);

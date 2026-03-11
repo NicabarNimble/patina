@@ -5,9 +5,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-use crate::adapters::launch::Adapter;
-use crate::adapters::{gemini::GeminiAdapter, opencode::OpenCodeAdapter, templates};
-use crate::{project, Environment};
+use crate::adapters::{launch, templates};
+use crate::project;
 
 const MANAGED_DIR_METADATA_FILE: &str = ".patina-managed.toml";
 const BACKUP_SUBDIR: &str = "interface";
@@ -80,6 +79,10 @@ struct BackupManifest {
 
 const OPENCODE_SURFACE_PATHS: &[ManagedPathSpec] = &[
     ManagedPathSpec {
+        relative_path: "AGENTS.md",
+        kind: ManagedPathKind::File,
+    },
+    ManagedPathSpec {
         relative_path: "OPENCODE.md",
         kind: ManagedPathKind::File,
     },
@@ -90,6 +93,10 @@ const OPENCODE_SURFACE_PATHS: &[ManagedPathSpec] = &[
 ];
 
 const GEMINI_SURFACE_PATHS: &[ManagedPathSpec] = &[
+    ManagedPathSpec {
+        relative_path: "AGENTS.md",
+        kind: ManagedPathKind::File,
+    },
     ManagedPathSpec {
         relative_path: "GEMINI.md",
         kind: ManagedPathKind::File,
@@ -113,35 +120,27 @@ pub fn ensure_adapter_projection(
     mode: ProjectionMode,
 ) -> Result<BootstrapResult> {
     let reconciliation = reconcile_interface_surface(adapter_name, project_root, mode)?;
-    let project_name = project::load_with_migration(project_root)?.project.name;
-    let environment = Environment::detect()?;
 
-    let context_path = match adapter_name {
+    match adapter_name {
         "opencode" => {
             sync_managed_templates("opencode", project_root, mode)?;
-            let context =
-                OpenCodeAdapter::ensure_context(project_root, &project_name, &environment)?;
             write_managed_directory_metadata(&project_root.join(".opencode"), "opencode")?;
-            context
         }
         "gemini" => {
             sync_managed_templates("gemini", project_root, mode)?;
-            let context = GeminiAdapter::ensure_context(project_root, &project_name, &environment)?;
             write_managed_directory_metadata(&project_root.join(".gemini"), "gemini")?;
-            context
         }
         other => bail!("Unsupported ai adapter bootstrap: {}", other),
     };
 
-    crate::adapters::launch::generate_bootstrap(
+    launch::generate_bootstrap(
         adapter_name,
         project_root,
         mode == ProjectionMode::ForceRewrite,
     )?;
-    let bootstrap_file = Adapter::from_name(adapter_name)
-        .ok_or_else(|| anyhow::anyhow!("unknown adapter {}", adapter_name))?
-        .bootstrap_file();
-    let bootstrap_path = project_root.join(bootstrap_file);
+    let context_path = launch::canonical_agents_path(project_root);
+    let bootstrap_path = launch::vendor_bootstrap_path(adapter_name, project_root)?
+        .unwrap_or_else(|| context_path.clone());
 
     Ok(BootstrapResult {
         bootstrap_path,
@@ -191,10 +190,11 @@ fn reconcile_interface_surface(
         };
 
         if mode == ProjectionMode::ForceRewrite || !managed {
+            let kind = existing_path_kind(&absolute_path)?;
             entries.push(BackupEntry {
                 absolute_path,
                 relative_path: PathBuf::from(path.relative_path),
-                kind: existing_path_kind(&project_root.join(path.relative_path))?,
+                kind,
             });
         }
     }
@@ -471,23 +471,26 @@ mod tests {
                 .unwrap()
         });
 
-        assert_eq!(result.bootstrap_path, temp.path().join("OPENCODE.md"));
+        assert_eq!(result.bootstrap_path, temp.path().join("AGENTS.md"));
+        assert_eq!(result.context_path, temp.path().join("AGENTS.md"));
         assert!(temp
             .path()
             .join(".opencode/commands/session-start.md")
             .exists());
-        assert!(temp.path().join(".opencode/PATINA.md").exists());
+        assert!(!temp.path().join(".opencode/PATINA.md").exists());
+        assert!(!temp.path().join(".opencode/AGENTS.md").exists());
         assert!(temp.path().join(".opencode/.patina-managed.toml").exists());
         let session_start =
             std::fs::read_to_string(temp.path().join(".opencode/commands/session-start.md"))
                 .unwrap();
-        assert!(session_start.contains(".opencode/PATINA.md"));
+        assert!(session_start.contains("Read root `AGENTS.md` first"));
         assert!(session_start.contains("patina ai session start --json --adapter opencode"));
 
-        let managed_context =
-            std::fs::read_to_string(temp.path().join(".opencode/PATINA.md")).unwrap();
-        assert!(managed_context.contains("Patina MCP is not configured"));
-        assert!(!managed_context.contains("session.start"));
+        let agents = std::fs::read_to_string(temp.path().join("AGENTS.md")).unwrap();
+        assert!(agents.contains("### OpenCode"));
+        assert!(agents.contains("### Gemini CLI"));
+        assert!(agents.contains("patina ai session start --json --adapter opencode"));
+        assert!(agents.contains("patina ai session start --json --adapter gemini"));
         assert!(result.backup_snapshot.is_none());
     }
 
@@ -496,7 +499,8 @@ mod tests {
         let temp = setup_project("gemini");
         let adapter_dir = temp.path().join(".gemini");
         std::fs::create_dir_all(adapter_dir.join("commands")).unwrap();
-        std::fs::write(temp.path().join("GEMINI.md"), "# Foreign root\n").unwrap();
+        std::fs::write(temp.path().join("AGENTS.md"), "# Foreign root\n").unwrap();
+        std::fs::write(temp.path().join("GEMINI.md"), "# Foreign shim\n").unwrap();
         std::fs::write(adapter_dir.join("GEMINI.md"), "# Foreign shell\n").unwrap();
         std::fs::write(adapter_dir.join("commands/custom.toml"), "stale = true\n").unwrap();
 
@@ -508,20 +512,22 @@ mod tests {
         let snapshot_path = result.backup_snapshot.expect("expected backup snapshot");
         assert!(snapshot_path.starts_with(temp.path().join(".patina/local/backups/interface")));
         assert!(snapshot_path.is_dir());
-        assert!(snapshot_entry_text(&snapshot_path, "GEMINI.md").contains("Foreign root"));
+        assert!(snapshot_entry_text(&snapshot_path, "AGENTS.md").contains("Foreign root"));
+        assert!(snapshot_entry_text(&snapshot_path, "GEMINI.md").contains("Foreign shim"));
         assert!(snapshot_entry_text(&snapshot_path, ".gemini/GEMINI.md").contains("Foreign shell"));
         assert!(
             snapshot_entry_text(&snapshot_path, ".gemini/commands/custom.toml")
                 .contains("stale = true")
         );
 
-        let root_bootstrap = std::fs::read_to_string(temp.path().join("GEMINI.md")).unwrap();
-        assert!(root_bootstrap.contains("<!-- PATINA:START -->"));
-        assert!(root_bootstrap.contains("Add project-specific"));
+        let agents = std::fs::read_to_string(temp.path().join("AGENTS.md")).unwrap();
+        assert!(agents.contains("<!-- PATINA:START -->"));
+        assert!(agents.contains("### Gemini CLI"));
 
-        let shell = std::fs::read_to_string(adapter_dir.join("GEMINI.md")).unwrap();
-        assert!(shell.contains("## Patina Managed Context"));
-        assert!(shell.contains("Project-specific instructions for Gemini belong here."));
+        let shim = std::fs::read_to_string(temp.path().join("GEMINI.md")).unwrap();
+        assert!(shim.contains("Read `AGENTS.md` first."));
+        assert!(!adapter_dir.join("GEMINI.md").exists());
+        assert!(!adapter_dir.join("PATINA.md").exists());
         assert!(adapter_dir.join(".patina-managed.toml").exists());
     }
 
@@ -534,7 +540,7 @@ mod tests {
                 .unwrap()
         });
 
-        let root_path = temp.path().join("GEMINI.md");
+        let root_path = temp.path().join("AGENTS.md");
         let root_with_user_text = format!(
             "My notes stay here.\n\n{}",
             std::fs::read_to_string(&root_path).unwrap()
@@ -560,7 +566,7 @@ mod tests {
             ensure_adapter_projection("opencode", temp.path(), ProjectionMode::RefreshManaged)
                 .unwrap()
         });
-        std::fs::write(temp.path().join("OPENCODE.md"), "# Replaced shell\n").unwrap();
+        std::fs::write(temp.path().join("AGENTS.md"), "# Replaced shell\n").unwrap();
 
         let result = with_temp_patina_home(&temp, || {
             ensure_adapter_projection("opencode", temp.path(), ProjectionMode::ForceRewrite)
@@ -568,10 +574,10 @@ mod tests {
         });
 
         let snapshot_path = result.backup_snapshot.expect("expected force backup");
-        assert!(snapshot_entry_text(&snapshot_path, "OPENCODE.md").contains("Replaced shell"));
-        let bootstrap = std::fs::read_to_string(temp.path().join("OPENCODE.md")).unwrap();
+        assert!(snapshot_entry_text(&snapshot_path, "AGENTS.md").contains("Replaced shell"));
+        let bootstrap = std::fs::read_to_string(temp.path().join("AGENTS.md")).unwrap();
         assert!(bootstrap.contains("<!-- PATINA:START -->"));
-        assert!(bootstrap.contains("Add project-specific"));
+        assert!(bootstrap.contains("### OpenCode"));
     }
 
     #[test]

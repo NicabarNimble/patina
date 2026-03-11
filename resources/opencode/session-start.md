@@ -1,9 +1,9 @@
 Start a new Patina session using the truthful Patina surface for this runtime:
 
-1. Read `.opencode/PATINA.md` first and determine whether it says Patina MCP is available in this OpenCode runtime.
+1. Read root `AGENTS.md` first and determine whether the `OpenCode` runtime section says Patina MCP is available in this runtime.
 
 2. Start the session using exactly one truthful path:
-   - If `.opencode/PATINA.md` says MCP is available, call MCP tool `session.start` with `title = $ARGUMENTS`.
+   - If `AGENTS.md` says MCP is available for OpenCode, call MCP tool `session.start` with `title = $ARGUMENTS`.
    - Otherwise, execute `patina ai session start --json --adapter opencode "$ARGUMENTS"`.
 
 3. Read the returned JSON and extract `artifact_path`.

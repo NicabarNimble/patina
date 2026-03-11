@@ -29,6 +29,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::workspace;
+use crate::Environment;
 
 /// Available adapter names
 pub const ADAPTERS: &[&str] = &["claude", "gemini", "opencode"];
@@ -36,6 +37,7 @@ pub const ADAPTERS: &[&str] = &["claude", "gemini", "opencode"];
 /// Markers for Patina-managed section in bootstrap files
 const MARKER_START: &str = "<!-- PATINA:START -->";
 const MARKER_END: &str = "<!-- PATINA:END -->";
+pub const CANONICAL_AGENTS_FILE: &str = "AGENTS.md";
 
 // =============================================================================
 // Types
@@ -79,7 +81,15 @@ impl Adapter {
         match self {
             Adapter::Claude => "CLAUDE.md",
             Adapter::Gemini => "GEMINI.md",
-            Adapter::OpenCode => "OPENCODE.md",
+            Adapter::OpenCode => CANONICAL_AGENTS_FILE,
+        }
+    }
+
+    pub fn vendor_bootstrap_file(&self) -> Option<&'static str> {
+        match self {
+            Adapter::Claude => Some("CLAUDE.md"),
+            Adapter::Gemini => Some("GEMINI.md"),
+            Adapter::OpenCode => None,
         }
     }
 
@@ -174,27 +184,24 @@ pub fn set_default(name: &str) -> Result<()> {
 /// - If file exists with markers: replace only content between markers
 /// - If file exists without markers: replace with a clean shell (takeover should
 ///   already have been backed up by setup reconciliation)
+pub fn canonical_agents_path(project_path: &Path) -> PathBuf {
+    project_path.join(CANONICAL_AGENTS_FILE)
+}
+
+pub fn vendor_bootstrap_path(name: &str, project_path: &Path) -> Result<Option<PathBuf>> {
+    let adapter =
+        Adapter::from_name(name).ok_or_else(|| anyhow::anyhow!("Unknown adapter: {}", name))?;
+    Ok(adapter
+        .vendor_bootstrap_file()
+        .map(|file| project_path.join(file)))
+}
+
 pub fn generate_bootstrap(name: &str, project_path: &Path, force_rewrite: bool) -> Result<()> {
     let adapter =
         Adapter::from_name(name).ok_or_else(|| anyhow::anyhow!("Unknown adapter: {}", name))?;
 
-    let bootstrap_path = project_path.join(adapter.bootstrap_file());
-    let section = patina_section(&adapter, native_interface_mcp_available(adapter.name())?);
-
-    let new_content = if bootstrap_path.exists() && !force_rewrite {
-        let content = fs::read_to_string(&bootstrap_path)
-            .with_context(|| format!("Failed to read {}", bootstrap_path.display()))?;
-        if content.contains(MARKER_START) && content.contains(MARKER_END) {
-            update_or_append_section(&content, &section)
-        } else {
-            bootstrap_shell(&adapter, &section)
-        }
-    } else {
-        bootstrap_shell(&adapter, &section)
-    };
-
-    fs::write(&bootstrap_path, new_content)
-        .with_context(|| format!("Failed to write {}", bootstrap_path.display()))?;
+    write_canonical_agents(project_path, force_rewrite)?;
+    write_vendor_bootstrap(&adapter, project_path, force_rewrite)?;
 
     Ok(())
 }
@@ -459,60 +466,156 @@ fn update_or_append_section(content: &str, section: &str) -> String {
     format!("{}\n\n{}", content.trim_end(), section)
 }
 
-fn bootstrap_shell(adapter: &Adapter, section: &str) -> String {
+fn managed_shell(title: &str, section: &str) -> String {
     format!(
-        "# {} Instructions\n\n\
+        "# {title}\n\n\
 Add project-specific notes outside the Patina block.\n\n\
 {}\n",
-        adapter.display(),
         section
     )
 }
 
-/// Generate Patina section with markers
-fn patina_section(adapter: &Adapter, mcp_available: bool) -> String {
-    let managed_context = match adapter {
-        Adapter::Claude => None,
-        Adapter::Gemini => Some(".gemini/PATINA.md"),
-        Adapter::OpenCode => Some(".opencode/PATINA.md"),
+fn write_canonical_agents(project_path: &Path, force_rewrite: bool) -> Result<()> {
+    let agents_path = canonical_agents_path(project_path);
+    let environment = Environment::detect()?;
+    let section = canonical_agents_section(&environment)?;
+
+    let new_content = if agents_path.exists() && !force_rewrite {
+        let content = fs::read_to_string(&agents_path)
+            .with_context(|| format!("Failed to read {}", agents_path.display()))?;
+        if content.contains(MARKER_START) && content.contains(MARKER_END) {
+            update_or_append_section(&content, &section)
+        } else {
+            return Ok(());
+        }
+    } else {
+        managed_shell("Agent Instructions", &section)
     };
 
-    let managed_context_line = managed_context
-        .map(|path| format!("Managed context: `{path}`\n"))
-        .unwrap_or_default();
-    let capability_block = if mcp_available {
-        "MCP tools:\n\
+    fs::write(&agents_path, new_content)
+        .with_context(|| format!("Failed to write {}", agents_path.display()))?;
+    Ok(())
+}
+
+fn write_vendor_bootstrap(
+    adapter: &Adapter,
+    project_path: &Path,
+    force_rewrite: bool,
+) -> Result<()> {
+    let Some(bootstrap_path) = adapter
+        .vendor_bootstrap_file()
+        .map(|file| project_path.join(file))
+    else {
+        return Ok(());
+    };
+    let section = vendor_shim_section(adapter);
+
+    let new_content = if bootstrap_path.exists() && !force_rewrite {
+        let content = fs::read_to_string(&bootstrap_path)
+            .with_context(|| format!("Failed to read {}", bootstrap_path.display()))?;
+        if content.contains(MARKER_START) && content.contains(MARKER_END) {
+            update_or_append_section(&content, &section)
+        } else {
+            managed_shell(&format!("{} Instructions", adapter.display()), &section)
+        }
+    } else {
+        managed_shell(&format!("{} Instructions", adapter.display()), &section)
+    };
+
+    fs::write(&bootstrap_path, new_content)
+        .with_context(|| format!("Failed to write {}", bootstrap_path.display()))?;
+    Ok(())
+}
+
+fn canonical_agents_section(environment: &Environment) -> Result<String> {
+    let tools = ["cargo", "git", "docker", "python"];
+    let available: Vec<_> = tools
+        .iter()
+        .filter_map(|&tool| {
+            environment
+                .tools
+                .get(tool)
+                .filter(|info| info.available)
+                .map(|_| tool)
+        })
+        .collect();
+
+    let opencode_mcp = native_interface_mcp_available("opencode")?;
+    let gemini_mcp = native_interface_mcp_available("gemini")?;
+
+    let mut content = String::new();
+    content.push_str("<!-- PATINA:START -->\n");
+    content.push_str("## Patina\n\n");
+    content.push_str(
+        "This is the canonical Patina instruction surface for this project. Vendor shim files such as `GEMINI.md` or `CLAUDE.md` should point here instead of duplicating the main Patina payload.\n\n",
+    );
+    content.push_str("## Environment\n\n");
+    content.push_str(&format!(
+        "- **Platform**: {} ({})\n",
+        environment.os, environment.arch
+    ));
+    content.push_str(&format!("- **Directory**: {}\n", environment.current_dir));
+    if !available.is_empty() {
+        content.push_str(&format!("- **Tools**: {}\n", available.join(", ")));
+    }
+    content.push('\n');
+    content.push_str("## Patterns\n\n");
+    content.push_str("Read `layer/` before non-trivial changes. Specs decide, code executes.\n\n");
+    content.push_str("## Runtime Truth\n\n");
+    content.push_str(
+        "Use the section matching the current runtime. Do not assume MCP exists unless that runtime section says it is configured.\n\n",
+    );
+    content.push_str(&runtime_surface_section(
+        "OpenCode",
+        "opencode",
+        opencode_mcp,
+    ));
+    content.push('\n');
+    content.push_str(&runtime_surface_section("Gemini CLI", "gemini", gemini_mcp));
+    content.push('\n');
+    content.push_str("Setup snapshots unmanaged conflicting files under `.patina/local/backups/` before takeover. Reruns refresh only the Patina-managed block unless `patina ai setup --force` is used.\n\n");
+    content.push_str("*Generated by Patina*\n");
+    content.push_str("<!-- PATINA:END -->");
+    Ok(content)
+}
+
+fn runtime_surface_section(display: &str, adapter_name: &str, mcp_available: bool) -> String {
+    let header = format!("### {display}\n\n");
+    let body = if mcp_available {
+        "Patina MCP is configured for this runtime.\n\n\
+Use MCP directly for Patina workflow:\n\
 - Discovery: `context`, `scry`, `assay`\n\
 - Sessions: `session.start`, `session.update`, `session.end`, `session.list`\n\
 - Specs: `spec.next`, `spec.list`, `spec.show`, `spec.check`\n\n\
-Use MCP for Patina session/spec workflow. Native JSON fallback exists if MCP is temporarily unavailable.\n\n"
+If a session command cannot use MCP at runtime, fall back to the native machine-readable session path instead of `patina session ... --json`.\n"
             .to_string()
     } else {
         format!(
-            "Patina MCP is not currently configured for this {adapter} runtime.\n\
-Do not assume MCP tools are available here.\n\n\
-Native session fallback:\n\
-- `patina ai session start --json --adapter {name} \"<title>\"`\n\
-- `patina ai session update --json`\n\
-- `patina ai session end --json`\n\
-- `patina ai session list --json`\n\n",
-            adapter = adapter.display(),
-            name = adapter.name()
+            "Patina MCP is not configured for this runtime. Do not assume `context`, `scry`, `assay`, `session.*`, or `spec.*` MCP tools exist here.\n\n\
+Use CLI/native fallbacks instead:\n\
+- Discovery: `patina context`, `patina scry`, `patina assay`\n\
+- Specs: `patina spec show <id>`, `patina spec check <id> --json`, `patina spec next`\n\
+- Sessions: `patina ai session start --json --adapter {adapter_name} \"<title>\"`\n\
+- Sessions: `patina ai session update --json`\n\
+- Sessions: `patina ai session end --json`\n\
+- Sessions: `patina ai session list --json`\n"
         )
     };
 
+    format!("{header}{body}")
+}
+
+fn vendor_shim_section(adapter: &Adapter) -> String {
     format!(
         r#"<!-- PATINA:START -->
 ## Patina
 
-{}
+Read `AGENTS.md` first. This file is a compatibility shim for {} and should not carry the primary Patina workflow payload.
 
-{}Setup snapshots unmanaged conflicting files under `.patina/local/backups/` before takeover. Reruns refresh only the managed block unless `patina ai setup --force` is used.
+Keep custom notes outside the Patina block.
 
-*Generated by Patina | Adapter: {}*
+*Generated by Patina | Compatibility shim*
 <!-- PATINA:END -->"#,
-        capability_block,
-        managed_context_line,
         adapter.display()
     )
 }
@@ -572,23 +675,38 @@ mod tests {
     fn test_bootstrap_files() {
         assert_eq!(Adapter::Claude.bootstrap_file(), "CLAUDE.md");
         assert_eq!(Adapter::Gemini.bootstrap_file(), "GEMINI.md");
-        assert_eq!(Adapter::OpenCode.bootstrap_file(), "OPENCODE.md");
+        assert_eq!(Adapter::OpenCode.bootstrap_file(), "AGENTS.md");
+        assert_eq!(Adapter::Claude.vendor_bootstrap_file(), Some("CLAUDE.md"));
+        assert_eq!(Adapter::Gemini.vendor_bootstrap_file(), Some("GEMINI.md"));
+        assert_eq!(Adapter::OpenCode.vendor_bootstrap_file(), None);
     }
 
     #[test]
-    fn patina_section_mentions_managed_context_for_native_interfaces() {
-        let section = patina_section(&Adapter::OpenCode, true);
-        assert!(section.contains(".opencode/PATINA.md"));
-        assert!(section.contains("OPENCODE.md"));
-        assert!(section.contains("session.start"));
-    }
-
-    #[test]
-    fn patina_section_uses_native_fallback_when_mcp_is_unavailable() {
-        let section = patina_section(&Adapter::OpenCode, false);
-        assert!(section.contains("Patina MCP is not currently configured"));
+    fn canonical_agents_section_contains_runtime_specific_truth() {
+        let environment = Environment {
+            os: "macos".to_string(),
+            arch: "arm64".to_string(),
+            home_dir: "/tmp".to_string(),
+            current_dir: "/tmp/project".to_string(),
+            tools: Default::default(),
+            languages: Default::default(),
+            env_vars: Default::default(),
+        };
+        let section = canonical_agents_section(&environment).unwrap();
+        assert!(section.contains("### OpenCode"));
+        assert!(section.contains("### Gemini CLI"));
+        assert!(section.contains(
+            "Do not assume MCP exists unless that runtime section says it is configured."
+        ));
         assert!(section.contains("patina ai session start --json --adapter opencode"));
-        assert!(!section.contains("session.start"));
+        assert!(section.contains("patina ai session start --json --adapter gemini"));
+    }
+
+    #[test]
+    fn vendor_shim_points_to_root_agents() {
+        let section = vendor_shim_section(&Adapter::Gemini);
+        assert!(section.contains("Read `AGENTS.md` first."));
+        assert!(section.contains("compatibility shim"));
     }
 
     #[test]
