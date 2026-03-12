@@ -1,7 +1,7 @@
 ---
 type: fix
 id: session-skill-convergence
-status: draft
+status: ready
 created: 2026-03-12
 sessions:
   origin: 20260311-223303-3EP2
@@ -10,22 +10,31 @@ related:
 - cli-mcp-skill-unification
 exit_criteria:
 - id: tag-format-cleanup
-  description: "Git tags use session-YYYYMMDD-HHMMSS-interface-{start|end} format — no random suffix"
+  text: Git tags use session-YYYYMMDD-HHMMSS-interface-{start|end} format — no random suffix
   checked: false
 - id: opencode-wrappers-fixed
-  description: "OpenCode shell wrappers use `patina ai session` with --json, --adapter, and PATINA_AI_INTERFACE env var"
+  text: OpenCode shell wrappers use `patina ai session` with --json, --adapter, and PATINA_AI_INTERFACE env var
   checked: false
 - id: opencode-commands-use-wrappers
-  description: "OpenCode command files reference .opencode/bin/ wrappers instead of inlining CLI calls"
+  text: OpenCode command files reference .opencode/bin/ wrappers instead of inlining CLI calls
   checked: false
 - id: session-note-parity
-  description: "/session-note referenced in all adapter workflow reminders"
+  text: /session-note referenced in all adapter workflow reminders
   checked: false
 - id: shared-guidance-converged
-  description: "Wikilink conventions, belief capture, and checkpoint commit guidance present in all adapters"
+  text: Wikilink conventions, belief capture, and checkpoint commit guidance present in all adapters
   checked: false
 - id: multi-session-handling
-  description: "Multiple active session handling documented in all adapter commands"
+  text: Multiple active session handling documented in all adapter commands
+  checked: false
+- id: skill-tone-restored
+  text: Session skills restore the human tone and lost features from golden era — work classification, commit thresholds, natural language guidance — adapted for Mother-backed architecture
+  checked: false
+- id: mother-architecture-accurate
+  text: Skills correctly reference Mother-backed flow (artifact_path from JSON, durable layer/sessions/ artifacts, interface pointers) — no references to deleted active-session.md or .claude/context/ paths
+  checked: false
+- id: gemini-wrappers-fixed
+  text: Gemini shell wrappers use `patina ai session` with --json, --adapter, and PATINA_AI_INTERFACE env var
   checked: false
 ---
 # fix: Session Skill Convergence & Tag Format Cleanup
@@ -79,5 +88,26 @@ All adapter command files should include:
 
 - Multiple session list/selector handling
 - `--note` parameter on session-end
+
+### 6. Restore skill tone and lost features
+
+The golden-era commands (pre-`b1b49ef9`) had personality and practical guidance that got stripped during the architecture migration. Restore:
+
+- **Work classification**: Exploration / Experiment / Feature based on commit patterns
+- **Commit thresholds**: "30+ minutes or 100+ lines changed" as checkpoint triggers
+- **Natural language**: "Don't write generic fluff — include specific accomplishments"
+- **Inline git context**: "The script will show what time period to document"
+- **Discussion context prompt**: Key questions asked, reasoning frameworks, why we chose this approach
+
+These must be adapted to the new Mother-backed architecture — the old versions referenced `.claude/context/active-session.md` and shell scripts that did git work directly. The new versions should:
+- Reference `artifact_path` from wrapper JSON output (not active-session.md)
+- Store durable artifacts in `layer/sessions/` (not `.claude/context/sessions/`)
+- Use `.patina/local/last-session.md` for previous session pointer
+- Acknowledge Mother owns the session lifecycle (start/sync/archive)
+- Keep the wrappers as the invocation path (not raw CLI or MCP)
+
+### 7. Fix Gemini wrappers
+
+`.gemini/bin/session-*.sh` need the same treatment as OpenCode — `patina ai session` with `--json`, `--adapter gemini`, and `PATINA_AI_INTERFACE=gemini`.
 
 ## Exit Criteria
