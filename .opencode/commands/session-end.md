@@ -1,19 +1,27 @@
-End the current Patina live session using the truthful Patina surface for this runtime:
+End the current Patina session with Git work classification:
 
-1. Run `/session-update` first if recent work has not been captured yet.
+1. First, run a final update to capture recent work:
+   - Execute `/session-update` command
+   - This captures activity since the last update
+   - Ensure all artifact references use `[[wikilinks]]` (beliefs, sessions, commits, specs)
 
-2. Read root `AGENTS.md` first. Even if the `OpenCode` runtime section says Patina MCP is available, session lifecycle uses the native machine-readable CLI path for this phase.
+2. Archive the session with the bundled wrapper:
+   `.opencode/bin/session-end.sh`
+   If multiple active sessions exist, use `.opencode/bin/session-end.sh --session <id>`.
+   To include a final outcome sentence: `.opencode/bin/session-end.sh --note "what we accomplished"`.
 
-3. End the session with:
-   - `patina ai session end --json`
-   - If multiple active sessions exist, use `patina ai session list --json`, then retry with `--session <runtime_id|file_id>`.
-   - If you need a final outcome sentence, pass `--note "<text>"`.
+3. Read the returned JSON and confirm the archive artifact and end tag.
+   - Work classification: Exploration / Experiment / Feature based on commit patterns
+   - Session tags: `session-[timestamp]-[interface]-start..session-[timestamp]-[interface]-end`
 
-4. Use the returned fields to summarize the outcome:
-   - `classification`
-   - `files_changed`
-   - `commits_made`
-   - `start_tag` and `end_tag`
-   - `artifact_path`
+4. After archiving, you can:
+   - View session work: `git log session-[timestamp]-[interface]-start..session-[timestamp]-[interface]-end`
+   - Cherry-pick commits: `git cherry-pick session-[timestamp]-[interface]-start..session-[timestamp]-[interface]-end`
+   - Continue on current branch or switch as needed
 
-5. Remind the user that the durable session is archived and the `last_session_path` pointer was updated.
+5. **Linking convention** — before archiving, verify the activity log uses `[[wikilinks]]` for all artifact references:
+   - Beliefs: `[[belief-id]]`, Sessions: `[[session-YYYYMMDD-HHMMSS]]`, Commits: `[[commit-SHA]]`
+   - Specs: `[[spec-id]]` or relative path links, Source files: backtick paths
+   - Unlinked plain-text mentions are invisible to `patina scrape` and the knowledge graph.
+
+All sessions are preserved via tags as searchable memory — failed experiments prevent future mistakes.

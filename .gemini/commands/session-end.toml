@@ -1,24 +1,30 @@
 description = "End and archive the current session"
 prompt = """
-End and archive the current Patina session:
+End the current Patina session with Git work classification:
 
-1. Run `/session-update` first if recent work has not been captured yet.
+1. First, run a final update to capture recent work:
+   - Execute `/session-update` command
+   - This captures activity since the last update
+   - Ensure all artifact references use `[[wikilinks]]` (beliefs, sessions, commits, specs)
 
-2. Read root `AGENTS.md` first. Even if the `Gemini CLI` runtime section says Patina MCP is available, session lifecycle uses the native machine-readable CLI path for this phase.
+2. Archive the session with the bundled wrapper:
+   `.gemini/bin/session-end.sh`
+   If multiple active sessions exist, use `.gemini/bin/session-end.sh --session <id>`.
+   To include a final outcome sentence: `.gemini/bin/session-end.sh --note "what we accomplished"`.
 
-3. Execute the session end command:
-   `patina ai session end --json`
+3. Read the returned JSON and confirm the archive artifact and end tag.
+   - Work classification: Exploration / Experiment / Feature based on commit patterns
+   - Session tags: `session-[timestamp]-[interface]-start..session-[timestamp]-[interface]-end`
 
-4. Read the returned JSON and confirm:
-   - archive artifact path
-   - classification
-   - start/end tags
-   - that `last_session_path` now points to this durable session
+4. After archiving, you can:
+   - View session work: `git log session-[timestamp]-[interface]-start..session-[timestamp]-[interface]-end`
+   - Cherry-pick commits: `git cherry-pick session-[timestamp]-[interface]-start..session-[timestamp]-[interface]-end`
+   - Continue on current branch or switch as needed
 
-5. Ask the user if they'd like to:
-   - Review the session summary
-   - Commit any remaining changes
-   - Start a new session
+5. **Linking convention** — before archiving, verify the activity log uses `[[wikilinks]]` for all artifact references:
+   - Beliefs: `[[belief-id]]`, Sessions: `[[session-YYYYMMDD-HHMMSS]]`, Commits: `[[commit-SHA]]`
+   - Specs: `[[spec-id]]` or relative path links, Source files: backtick paths
+   - Unlinked plain-text mentions are invisible to `patina scrape` and the knowledge graph.
 
-The session work is now preserved in project history.
+All sessions are preserved via tags as searchable memory — failed experiments prevent future mistakes.
 """

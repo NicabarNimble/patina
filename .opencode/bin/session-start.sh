@@ -1,2 +1,2 @@
 #!/bin/bash
-exec patina session start "$@"
+exec env PATINA_AI_INTERFACE=opencode patina ai session start --json --adapter opencode "$@"

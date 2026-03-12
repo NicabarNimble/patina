@@ -11,31 +11,31 @@ related:
 exit_criteria:
 - id: tag-format-cleanup
   text: Git tags use session-YYYYMMDD-HHMMSS-interface-{start|end} format — no random suffix
-  checked: false
+  checked: true
 - id: opencode-wrappers-fixed
   text: OpenCode shell wrappers use `patina ai session` with --json, --adapter, and PATINA_AI_INTERFACE env var
-  checked: false
+  checked: true
 - id: opencode-commands-use-wrappers
   text: OpenCode command files reference .opencode/bin/ wrappers instead of inlining CLI calls
-  checked: false
+  checked: true
 - id: session-note-parity
   text: /session-note referenced in all adapter workflow reminders
-  checked: false
+  checked: true
 - id: shared-guidance-converged
   text: Wikilink conventions, belief capture, and checkpoint commit guidance present in all adapters
-  checked: false
+  checked: true
 - id: multi-session-handling
   text: Multiple active session handling documented in all adapter commands
-  checked: false
+  checked: true
 - id: skill-tone-restored
   text: Session skills restore the human tone and lost features from golden era — work classification, commit thresholds, natural language guidance — adapted for Mother-backed architecture
-  checked: false
+  checked: true
 - id: mother-architecture-accurate
   text: Skills correctly reference Mother-backed flow (artifact_path from JSON, durable layer/sessions/ artifacts, interface pointers) — no references to deleted active-session.md or .claude/context/ paths
-  checked: false
+  checked: true
 - id: gemini-wrappers-fixed
   text: Gemini shell wrappers use `patina ai session` with --json, --adapter, and PATINA_AI_INTERFACE env var
-  checked: false
+  checked: true
 ---
 # fix: Session Skill Convergence & Tag Format Cleanup
 

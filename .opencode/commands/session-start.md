@@ -1,19 +1,23 @@
-Start a new Patina session using the truthful Patina surface for this runtime:
+Start a new Patina development session with Git tagging:
 
-1. Read root `AGENTS.md` first. Even if the `OpenCode` runtime section says Patina MCP is available, session lifecycle uses the native machine-readable CLI path for this phase.
+1. Execute the bundled session start wrapper:
+   `.opencode/bin/session-start.sh "$ARGUMENTS"`
 
-2. Start the session with:
-   - `patina ai session start --json --adapter opencode "$ARGUMENTS"`
+2. Read the returned JSON and use `artifact_path` to open the new durable session artifact in `layer/sessions/`.
 
-3. Read the returned JSON and extract `artifact_path`.
+3. If `last_session_path` exists, read it. It points to the previous session artifact. You MUST read the full session file referenced there to understand what actually happened. Then fill in the "Previous Session Context" section with a substantive 2-3 sentence summary. Don't write generic fluff — include specific accomplishments, key fixes, and open items.
 
-4. If `last_session_path` exists, read it. It points to the previous durable session in `layer/sessions/`; read that referenced file and fill the new session's "Previous Session Context" section with a concrete 2-3 sentence summary of what actually happened.
+4. If we've been discussing work already in this conversation:
+   - Update the Goals section with specific tasks we've identified
+   - Add context about why this session was started
+   - Note any decisions or constraints we've discussed
 
-5. Update the new session artifact's Goals section with the real tasks, decisions, and constraints already established in this conversation.
+5. Ask the user: "Would you like me to create todos for '$ARGUMENTS'?"
 
-6. Ask the user: "Would you like me to create todos for '$ARGUMENTS'?"
-
-7. Remind the user about the workflow:
-   - Use `/session-update` to capture progress
-   - Use `/session-end` to archive the session
+6. Remind the user about session workflow:
+   - Use `/session-update` periodically to capture progress
+   - Use `/session-note` for important insights
+   - Use `/session-end` to archive, classify work, and tag the session range
    - Use `spec.next`, `spec.show`, and `spec.check` when spec workflow is relevant
+
+The session is now tracking code changes and Git history. Mother owns the session lifecycle.

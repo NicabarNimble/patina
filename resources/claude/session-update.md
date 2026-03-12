@@ -1,11 +1,12 @@
-Update the current Patina session:
+Update the current Patina session with Git-aware progress tracking:
 
 1. Execute the bundled session update wrapper:
-   - `.claude/bin/session-update.sh`
+   `.claude/bin/session-update.sh`
+   If multiple active sessions exist, use `.claude/bin/session-update.sh --session <id>`.
 
 2. Read the returned JSON and use `artifact_path` to open the durable session artifact.
 
-3. Read the session artifact and find the new update section.
+3. Read the session artifact and find the new update section. Note the time period to document.
 
 4. Fill in the update section with what happened during that time period:
    - **Work completed**: Code written, files modified, problems solved
@@ -30,4 +31,4 @@ Update the current Patina session:
 
    If yes, suggest to user: "This sounds like a belief worth capturing: '{statement}'. Should I create it?"
 
-6. If the update shows a large or risky change set, suggest a small checkpoint commit before continuing.
+6. If the update shows a large or risky change set (30+ minutes of work or 100+ lines changed), suggest a checkpoint commit before continuing.
