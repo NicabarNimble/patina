@@ -1,7 +1,7 @@
 ---
 type: fix
 id: claude-session-skill-subagent
-status: ready
+status: active
 created: 2026-03-12
 sessions:
   origin: 20260311-232857
