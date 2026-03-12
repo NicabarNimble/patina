@@ -2,10 +2,13 @@ use anyhow::Result;
 use std::path::Path;
 
 use crate::adapters::launch;
+use crate::interface::internal::bootstrap::bundle_deployment_status;
+use crate::interface::internal::bundle::{
+    canonical_interface_name, canonicalize_required_interface, interface_bundle,
+    interface_bundle_catalog,
+};
 use crate::interface::{self, BootstrapResult, ProjectionMode};
 use crate::project;
-
-const SUPPORTED_AI_INTERFACES: [&str; 3] = ["claude", "opencode", "gemini"];
 
 #[derive(Debug, Clone)]
 pub struct AiProjectConfigResult {
@@ -18,6 +21,7 @@ pub struct PreparedInterface {
     pub name: String,
     pub display_name: String,
     pub bootstrap: BootstrapResult,
+    pub current: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -35,11 +39,15 @@ pub struct AiSurfaceRequest<'a> {
 }
 
 pub fn supported_ai_interfaces() -> &'static [&'static str] {
-    &SUPPORTED_AI_INTERFACES
-}
-
-pub fn is_supported_ai_interface(name: &str) -> bool {
-    canonical_interface_name(name).is_some()
+    static SUPPORTED: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    SUPPORTED
+        .get_or_init(|| {
+            interface_bundle_catalog()
+                .iter()
+                .map(|bundle| bundle.name)
+                .collect()
+        })
+        .as_slice()
 }
 
 pub fn resolve_preferred_ai_interface(project_root: &Path) -> Result<String> {
@@ -60,7 +68,12 @@ pub fn ensure_ai_project_config(
     let mut updated = false;
 
     for supported in supported_ai_interfaces() {
-        if !config.adapters.allowed.iter().any(|allowed| allowed == supported) {
+        if !config
+            .adapters
+            .allowed
+            .iter()
+            .any(|allowed| allowed == supported)
+        {
             config.adapters.allowed.push((*supported).to_string());
             updated = true;
         }
@@ -91,12 +104,13 @@ pub fn ensure_ai_surface(request: AiSurfaceRequest<'_>) -> Result<AiSurfaceResul
     let mut prepared = Vec::new();
 
     for name in supported_ai_interfaces() {
-        let adapter = interface::adapter(name)?;
-        let bootstrap = interface::ensure_adapter_projection(name, request.project_root, mode)?;
+        let status = bundle_deployment_status(name, request.project_root)?;
+        let bootstrap = interface::ensure_bundle_projection(name, request.project_root, mode)?;
         prepared.push(PreparedInterface {
             name: (*name).to_string(),
-            display_name: adapter.display_name().to_string(),
+            display_name: interface_bundle(name)?.display_name.to_string(),
             bootstrap,
+            current: status.current,
         });
     }
 
@@ -104,6 +118,33 @@ pub fn ensure_ai_surface(request: AiSurfaceRequest<'_>) -> Result<AiSurfaceResul
         prepared,
         default_interface: config.default_interface,
         config_updated: config.updated,
+    })
+}
+
+pub fn prepare_ai_bundle(
+    project_root: &Path,
+    interface_name: &str,
+    force: bool,
+) -> Result<PreparedInterface> {
+    let interface_name = canonicalize_required_interface(interface_name)?;
+    let status = bundle_deployment_status(interface_name, project_root)?;
+    let mode = if force {
+        ProjectionMode::ForceRewrite
+    } else {
+        ProjectionMode::RefreshManaged
+    };
+    let bootstrap = if force {
+        interface::ensure_bundle_projection(interface_name, project_root, mode)?
+    } else {
+        interface::ensure_bundle_bootstrap(interface_name, project_root)?
+    };
+    let bundle = interface_bundle(interface_name)?;
+
+    Ok(PreparedInterface {
+        name: bundle.name.to_string(),
+        display_name: bundle.display_name.to_string(),
+        bootstrap,
+        current: status.current && !force,
     })
 }
 
@@ -126,30 +167,15 @@ fn choose_default_interface(
     }
 
     for candidate in supported_ai_interfaces() {
-        if launch::get(candidate).map(|info| info.detected).unwrap_or(false) {
+        if launch::get(candidate)
+            .map(|info| info.detected)
+            .unwrap_or(false)
+        {
             return Ok((*candidate).to_string());
         }
     }
 
-    Ok(SUPPORTED_AI_INTERFACES[0].to_string())
-}
-
-fn canonicalize_required_interface(name: &str) -> Result<&'static str> {
-    canonical_interface_name(name).ok_or_else(|| {
-        anyhow::anyhow!(
-            "Unsupported Patina AI interface '{}'. Choose one of: {}.",
-            name,
-            supported_ai_interfaces().join(", ")
-        )
-    })
-}
-
-fn canonical_interface_name(name: &str) -> Option<&'static str> {
-    let normalized = name.trim().to_ascii_lowercase();
-    supported_ai_interfaces()
-        .iter()
-        .copied()
-        .find(|candidate| *candidate == normalized)
+    Ok(supported_ai_interfaces()[0].to_string())
 }
 
 #[cfg(test)]
@@ -205,13 +231,19 @@ mod tests {
     fn ensure_ai_project_config_populates_supported_interfaces_and_default() {
         let temp = setup_project();
 
-        let result = with_temp_env(&temp, || ensure_ai_project_config(temp.path(), None).unwrap());
+        let result = with_temp_env(&temp, || {
+            ensure_ai_project_config(temp.path(), None).unwrap()
+        });
 
         let config = project::load_with_migration(temp.path()).unwrap();
         assert!(result.updated);
         assert_eq!(config.adapters.default, result.default_interface);
         assert!(config.adapters.allowed.iter().any(|name| name == "claude"));
-        assert!(config.adapters.allowed.iter().any(|name| name == "opencode"));
+        assert!(config
+            .adapters
+            .allowed
+            .iter()
+            .any(|name| name == "opencode"));
         assert!(config.adapters.allowed.iter().any(|name| name == "gemini"));
     }
 
@@ -233,19 +265,59 @@ mod tests {
         assert!(temp.path().join("AGENTS.md").exists());
         assert!(temp.path().join("CLAUDE.md").exists());
         assert!(temp.path().join("GEMINI.md").exists());
-        assert!(temp.path().join(".claude/commands/session-start.md").exists());
+        assert!(temp
+            .path()
+            .join(".claude/commands/session-start.md")
+            .exists());
         assert!(temp
             .path()
             .join(".opencode/commands/session-start.md")
             .exists());
-        assert!(temp.path().join(".gemini/commands/session-start.toml").exists());
+        assert!(temp.path().join(".opencode/commands/spec.md").exists());
+        assert!(temp
+            .path()
+            .join(".opencode/commands/epistemic-beliefs.md")
+            .exists());
+        assert!(temp
+            .path()
+            .join(".gemini/commands/session-start.toml")
+            .exists());
+        assert!(temp.path().join(".gemini/commands/spec.toml").exists());
+        assert!(temp
+            .path()
+            .join(".gemini/commands/epistemic-beliefs.toml")
+            .exists());
+    }
+
+    #[test]
+    fn prepare_ai_bundle_refreshes_only_requested_interface() {
+        let temp = setup_project();
+
+        with_temp_env(&temp, || {
+            ensure_ai_surface(AiSurfaceRequest {
+                project_root: temp.path(),
+                force: false,
+                default_interface: Some("claude"),
+            })
+            .unwrap()
+        });
+
+        let bootstrap = with_temp_env(&temp, || {
+            prepare_ai_bundle(temp.path(), "gemini", false).unwrap()
+        });
+
+        assert_eq!(bootstrap.name, "gemini");
+        assert_eq!(bootstrap.display_name, "Gemini CLI");
+        assert!(bootstrap.bootstrap.bootstrap_path.ends_with("GEMINI.md"));
     }
 
     #[test]
     fn set_project_default_interface_updates_project_default() {
         let temp = setup_project();
 
-        with_temp_env(&temp, || set_project_default_interface(temp.path(), "gemini").unwrap());
+        with_temp_env(&temp, || {
+            set_project_default_interface(temp.path(), "gemini").unwrap()
+        });
 
         let config = project::load_with_migration(temp.path()).unwrap();
         assert_eq!(config.adapters.default, "gemini");

@@ -7,15 +7,21 @@ use crate::session::InterfaceKind;
 
 pub use internal::assets;
 pub use internal::bootstrap::{
-    ensure_adapter_bootstrap, ensure_adapter_projection, BootstrapResult, ProjectionMode,
+    bundle_deployment_status, ensure_adapter_bootstrap, ensure_adapter_projection,
+    ensure_bundle_bootstrap, ensure_bundle_projection, BootstrapResult, BundleDeploymentStatus,
+    ProjectionMode,
+};
+pub use internal::bundle::{
+    interface_bundle, interface_bundle_catalog, is_supported_ai_interface, supported_ai_interfaces,
+    InterfaceBundle,
 };
 pub use internal::checkin::{
     check_in, CheckInResult, InterfaceCapabilities, InterfaceCheckIn, LaunchPolicy,
 };
 pub use internal::surface::{
-    ensure_ai_project_config, ensure_ai_surface, is_supported_ai_interface,
-    resolve_preferred_ai_interface, supported_ai_interfaces, set_project_default_interface,
-    AiProjectConfigResult, AiSurfaceRequest, AiSurfaceResult, PreparedInterface,
+    ensure_ai_project_config, ensure_ai_surface, prepare_ai_bundle, resolve_preferred_ai_interface,
+    set_project_default_interface, AiProjectConfigResult, AiSurfaceRequest, AiSurfaceResult,
+    PreparedInterface,
 };
 pub use internal::tmux::{
     check_tmux_version, derive_interface_session_name, derive_session_name, launch_adapter_cli,
@@ -52,7 +58,7 @@ pub trait AiAdapter {
     }
 
     fn bootstrap(&self, project_root: &Path) -> Result<BootstrapResult> {
-        ensure_adapter_bootstrap(self.name(), project_root)
+        ensure_bundle_bootstrap(self.name(), project_root)
     }
 
     fn context_file(&self, project_root: &Path) -> PathBuf;

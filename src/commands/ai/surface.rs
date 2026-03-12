@@ -15,6 +15,13 @@ pub struct AiSetupRequest {
 }
 
 #[derive(Debug, Clone)]
+pub struct AiRefreshRequest {
+    pub interface: Option<String>,
+    pub path: Option<String>,
+    pub force: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct AiLaunchRequest {
     pub interface_name: String,
     pub title: Option<String>,
@@ -47,11 +54,60 @@ pub fn setup(request: AiSetupRequest) -> Result<()> {
         default_interface: request.interface.as_deref(),
     })?;
 
-    println!("Patina AI setup refreshed {}", result.default_interface);
+    println!(
+        "Patina AI bundles deployed. Default interface: {}",
+        result.default_interface
+    );
     for prepared in result.prepared {
         println!("  {}:", prepared.display_name);
         println!("    Context: {}", prepared.bootstrap.context_path.display());
-        println!("    Bootstrap: {}", prepared.bootstrap.bootstrap_path.display());
+        println!(
+            "    Bootstrap: {}",
+            prepared.bootstrap.bootstrap_path.display()
+        );
+        if let Some(backup_snapshot) = prepared.bootstrap.backup_snapshot {
+            println!("    Backup: {}", backup_snapshot.display());
+        }
+    }
+
+    Ok(())
+}
+
+pub fn refresh(request: AiRefreshRequest) -> Result<()> {
+    let project_path = launch_internal::resolve_project_path(request.path.as_deref())?;
+    interface::ensure_ai_project_config(&project_path, None)?;
+
+    let prepared = if let Some(interface_name) = request.interface.as_deref() {
+        vec![interface::prepare_ai_bundle(
+            &project_path,
+            interface_name,
+            request.force,
+        )?]
+    } else {
+        interface::ensure_ai_surface(interface::AiSurfaceRequest {
+            project_root: &project_path,
+            force: request.force,
+            default_interface: None,
+        })?
+        .prepared
+    };
+
+    println!("Patina AI bundles refreshed.");
+    for prepared in prepared {
+        println!("  {}:", prepared.display_name);
+        println!("    Context: {}", prepared.bootstrap.context_path.display());
+        println!(
+            "    Bootstrap: {}",
+            prepared.bootstrap.bootstrap_path.display()
+        );
+        println!(
+            "    Status: {}",
+            if prepared.current {
+                "already current"
+            } else {
+                "refreshed"
+            }
+        );
         if let Some(backup_snapshot) = prepared.bootstrap.backup_snapshot {
             println!("    Backup: {}", backup_snapshot.display());
         }
@@ -202,7 +258,9 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
 
     let session_name = match &checkin.launch_policy {
         LaunchPolicy::TmuxPreferred { session_name } => session_name.clone(),
-        LaunchPolicy::Direct => interface::derive_interface_session_name(&project_path, &interface_name),
+        LaunchPolicy::Direct => {
+            interface::derive_interface_session_name(&project_path, &interface_name)
+        }
     };
     let env = vec![
         (
@@ -322,5 +380,32 @@ mod tests {
         assert!(temp.path().join(".claude").exists());
         assert!(temp.path().join(".opencode").exists());
         assert!(temp.path().join(".gemini").exists());
+    }
+
+    #[test]
+    fn refresh_can_target_single_bundle_without_changing_default() {
+        let temp = setup_project();
+
+        with_temp_env(&temp, || {
+            setup(AiSetupRequest {
+                interface: Some("claude".to_string()),
+                path: Some(temp.path().display().to_string()),
+                force: false,
+            })
+            .unwrap();
+        });
+
+        with_temp_env(&temp, || {
+            refresh(AiRefreshRequest {
+                interface: Some("gemini".to_string()),
+                path: Some(temp.path().display().to_string()),
+                force: false,
+            })
+            .unwrap();
+        });
+
+        let config = project::load_with_migration(temp.path()).unwrap();
+        assert_eq!(config.adapters.default, "claude");
+        assert!(temp.path().join(".gemini/commands/spec.toml").exists());
     }
 }

@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::adapters::{launch, templates};
+use crate::interface::internal::bundle::{interface_bundle, InterfaceBundle, ManagedPathKind};
 use crate::project;
 
 const MANAGED_DIR_METADATA_FILE: &str = ".patina-managed.toml";
@@ -26,22 +27,17 @@ pub enum ProjectionMode {
     ForceRewrite,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum ManagedPathKind {
-    File,
-    Directory,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct ManagedPathSpec {
-    relative_path: &'static str,
-    kind: ManagedPathKind,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct ManagedSurfaceSpec {
-    adapter_name: &'static str,
-    paths: &'static [ManagedPathSpec],
+#[derive(Debug, Clone)]
+pub struct BundleDeploymentStatus {
+    pub bundle_name: String,
+    pub display_name: String,
+    pub deployed: bool,
+    pub current: bool,
+    pub expected_version: String,
+    pub observed_version: Option<String>,
+    pub missing_paths: Vec<String>,
+    pub unmanaged_paths: Vec<String>,
+    pub stale_paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -64,9 +60,18 @@ struct SurfaceReconciliation {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ManagedDirectoryMetadata {
-    adapter: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    adapter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    bundle: Option<String>,
     version: String,
     managed_by: String,
+}
+
+impl ManagedDirectoryMetadata {
+    fn owner_name(&self) -> Option<&str> {
+        self.bundle.as_deref().or(self.adapter.as_deref())
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -77,56 +82,38 @@ struct BackupManifest {
     paths: Vec<String>,
 }
 
-const OPENCODE_SURFACE_PATHS: &[ManagedPathSpec] = &[
-    ManagedPathSpec {
-        relative_path: "AGENTS.md",
-        kind: ManagedPathKind::File,
-    },
-    ManagedPathSpec {
-        relative_path: "OPENCODE.md",
-        kind: ManagedPathKind::File,
-    },
-    ManagedPathSpec {
-        relative_path: ".opencode",
-        kind: ManagedPathKind::Directory,
-    },
-];
+pub fn ensure_bundle_bootstrap(bundle_name: &str, project_root: &Path) -> Result<BootstrapResult> {
+    let status = bundle_deployment_status(bundle_name, project_root)?;
+    if status.current {
+        return bootstrap_result(bundle_name, project_root, None);
+    }
 
-const CLAUDE_SURFACE_PATHS: &[ManagedPathSpec] = &[
-    ManagedPathSpec {
-        relative_path: "AGENTS.md",
-        kind: ManagedPathKind::File,
-    },
-    ManagedPathSpec {
-        relative_path: "CLAUDE.md",
-        kind: ManagedPathKind::File,
-    },
-    ManagedPathSpec {
-        relative_path: ".claude",
-        kind: ManagedPathKind::Directory,
-    },
-];
-
-const GEMINI_SURFACE_PATHS: &[ManagedPathSpec] = &[
-    ManagedPathSpec {
-        relative_path: "AGENTS.md",
-        kind: ManagedPathKind::File,
-    },
-    ManagedPathSpec {
-        relative_path: "GEMINI.md",
-        kind: ManagedPathKind::File,
-    },
-    ManagedPathSpec {
-        relative_path: ".gemini",
-        kind: ManagedPathKind::Directory,
-    },
-];
+    ensure_bundle_projection(bundle_name, project_root, ProjectionMode::RefreshManaged)
+}
 
 pub fn ensure_adapter_bootstrap(
     adapter_name: &str,
     project_root: &Path,
 ) -> Result<BootstrapResult> {
-    ensure_adapter_projection(adapter_name, project_root, ProjectionMode::RefreshManaged)
+    ensure_bundle_bootstrap(adapter_name, project_root)
+}
+
+pub fn ensure_bundle_projection(
+    bundle_name: &str,
+    project_root: &Path,
+    mode: ProjectionMode,
+) -> Result<BootstrapResult> {
+    let bundle = interface_bundle(bundle_name)?;
+    let reconciliation = reconcile_interface_surface(bundle, project_root, mode)?;
+    sync_managed_templates(bundle.name, project_root, mode)?;
+    write_managed_directory_metadata(project_root, bundle)?;
+    launch::generate_bootstrap(
+        bundle.name,
+        project_root,
+        mode == ProjectionMode::ForceRewrite,
+    )?;
+
+    bootstrap_result(bundle.name, project_root, reconciliation.backup_snapshot)
 }
 
 pub fn ensure_adapter_projection(
@@ -134,37 +121,63 @@ pub fn ensure_adapter_projection(
     project_root: &Path,
     mode: ProjectionMode,
 ) -> Result<BootstrapResult> {
-    let reconciliation = reconcile_interface_surface(adapter_name, project_root, mode)?;
+    ensure_bundle_projection(adapter_name, project_root, mode)
+}
 
-    match adapter_name {
-        "claude" => {
-            sync_managed_templates("claude", project_root, mode)?;
-            write_managed_directory_metadata(&project_root.join(".claude"), "claude")?;
-        }
-        "opencode" => {
-            sync_managed_templates("opencode", project_root, mode)?;
-            write_managed_directory_metadata(&project_root.join(".opencode"), "opencode")?;
-        }
-        "gemini" => {
-            sync_managed_templates("gemini", project_root, mode)?;
-            write_managed_directory_metadata(&project_root.join(".gemini"), "gemini")?;
-        }
-        other => bail!("Unsupported ai adapter bootstrap: {}", other),
-    };
+pub fn bundle_deployment_status(
+    bundle_name: &str,
+    project_root: &Path,
+) -> Result<BundleDeploymentStatus> {
+    let bundle = interface_bundle(bundle_name)?;
+    let mut missing_paths = Vec::new();
+    let mut unmanaged_paths = Vec::new();
+    let mut stale_paths = Vec::new();
+    let mut observed_version = None;
 
-    launch::generate_bootstrap(
-        adapter_name,
-        project_root,
-        mode == ProjectionMode::ForceRewrite,
-    )?;
-    let context_path = launch::canonical_agents_path(project_root);
-    let bootstrap_path = launch::vendor_bootstrap_path(adapter_name, project_root)?
-        .unwrap_or_else(|| context_path.clone());
+    for path in bundle.managed_paths {
+        let absolute_path = project_root.join(path.relative_path);
+        if !absolute_path.exists() {
+            missing_paths.push(path.relative_path.to_string());
+            continue;
+        }
 
-    Ok(BootstrapResult {
-        bootstrap_path,
-        context_path,
-        backup_snapshot: reconciliation.backup_snapshot,
+        match path.kind {
+            ManagedPathKind::File => {
+                if !file_is_patina_managed(&absolute_path)? {
+                    unmanaged_paths.push(path.relative_path.to_string());
+                }
+            }
+            ManagedPathKind::Directory => match read_managed_directory_metadata(&absolute_path)? {
+                Some(metadata) => {
+                    let owner_matches = metadata
+                        .owner_name()
+                        .map(|owner| owner == bundle.name)
+                        .unwrap_or(false);
+                    if !owner_matches {
+                        unmanaged_paths.push(path.relative_path.to_string());
+                    } else if metadata.version != bundle.version {
+                        observed_version = Some(metadata.version.clone());
+                        stale_paths.push(path.relative_path.to_string());
+                    }
+                }
+                None => unmanaged_paths.push(path.relative_path.to_string()),
+            },
+        }
+    }
+
+    let deployed = missing_paths.is_empty() && unmanaged_paths.is_empty();
+    let current = deployed && stale_paths.is_empty();
+
+    Ok(BundleDeploymentStatus {
+        bundle_name: bundle.name.to_string(),
+        display_name: bundle.display_name.to_string(),
+        deployed,
+        current,
+        expected_version: bundle.version.to_string(),
+        observed_version,
+        missing_paths,
+        unmanaged_paths,
+        stale_paths,
     })
 }
 
@@ -181,8 +194,24 @@ fn sync_managed_templates(
     templates::copy_to_project(adapter_name, project_root)
 }
 
+fn bootstrap_result(
+    bundle_name: &str,
+    project_root: &Path,
+    backup_snapshot: Option<PathBuf>,
+) -> Result<BootstrapResult> {
+    let context_path = launch::canonical_agents_path(project_root);
+    let bootstrap_path = launch::vendor_bootstrap_path(bundle_name, project_root)?
+        .unwrap_or_else(|| context_path.clone());
+
+    Ok(BootstrapResult {
+        bootstrap_path,
+        context_path,
+        backup_snapshot,
+    })
+}
+
 fn reconcile_interface_surface(
-    adapter_name: &str,
+    bundle: &InterfaceBundle,
     project_root: &Path,
     mode: ProjectionMode,
 ) -> Result<SurfaceReconciliation> {
@@ -192,10 +221,9 @@ fn reconcile_interface_surface(
         });
     }
 
-    let surface = managed_surface(adapter_name)?;
     let mut entries = Vec::new();
 
-    for path in surface.paths {
+    for path in bundle.managed_paths {
         let absolute_path = project_root.join(path.relative_path);
         if !absolute_path.exists() {
             continue;
@@ -203,9 +231,7 @@ fn reconcile_interface_surface(
 
         let managed = match path.kind {
             ManagedPathKind::File => file_is_patina_managed(&absolute_path)?,
-            ManagedPathKind::Directory => {
-                directory_is_patina_managed(&absolute_path, surface.adapter_name)?
-            }
+            ManagedPathKind::Directory => directory_is_patina_managed(&absolute_path, bundle)?,
         };
 
         if mode == ProjectionMode::ForceRewrite || !managed {
@@ -223,7 +249,7 @@ fn reconcile_interface_surface(
     } else {
         Some(write_backup_snapshot(
             project_root,
-            surface.adapter_name,
+            bundle.name,
             mode,
             &entries,
         )?)
@@ -236,24 +262,6 @@ fn reconcile_interface_surface(
     Ok(SurfaceReconciliation { backup_snapshot })
 }
 
-fn managed_surface(adapter_name: &str) -> Result<ManagedSurfaceSpec> {
-    match adapter_name {
-        "claude" => Ok(ManagedSurfaceSpec {
-            adapter_name: "claude",
-            paths: CLAUDE_SURFACE_PATHS,
-        }),
-        "opencode" => Ok(ManagedSurfaceSpec {
-            adapter_name: "opencode",
-            paths: OPENCODE_SURFACE_PATHS,
-        }),
-        "gemini" => Ok(ManagedSurfaceSpec {
-            adapter_name: "gemini",
-            paths: GEMINI_SURFACE_PATHS,
-        }),
-        other => bail!("Unsupported ai adapter bootstrap: {}", other),
-    }
-}
-
 fn file_is_patina_managed(path: &Path) -> Result<bool> {
     if !path.is_file() {
         return Ok(false);
@@ -264,30 +272,50 @@ fn file_is_patina_managed(path: &Path) -> Result<bool> {
     Ok(content.contains("<!-- PATINA:START -->") && content.contains("<!-- PATINA:END -->"))
 }
 
-fn directory_is_patina_managed(path: &Path, adapter_name: &str) -> Result<bool> {
+fn read_managed_directory_metadata(path: &Path) -> Result<Option<ManagedDirectoryMetadata>> {
     if !path.is_dir() {
-        return Ok(false);
+        return Ok(None);
     }
 
     let metadata_path = path.join(MANAGED_DIR_METADATA_FILE);
     if !metadata_path.exists() {
-        return Ok(false);
+        return Ok(None);
     }
 
     let content = fs::read_to_string(&metadata_path)
         .with_context(|| format!("Failed to read {}", metadata_path.display()))?;
     let metadata: ManagedDirectoryMetadata = toml::from_str(&content)
         .with_context(|| format!("Failed to parse {}", metadata_path.display()))?;
-    Ok(metadata.adapter == adapter_name)
+    Ok(Some(metadata))
 }
 
-fn write_managed_directory_metadata(path: &Path, adapter_name: &str) -> Result<()> {
-    fs::create_dir_all(path)?;
+fn directory_is_patina_managed(path: &Path, bundle: &InterfaceBundle) -> Result<bool> {
+    let Some(metadata) = read_managed_directory_metadata(path)? else {
+        return Ok(false);
+    };
+    Ok(metadata
+        .owner_name()
+        .map(|owner| owner == bundle.name)
+        .unwrap_or(false))
+}
+
+fn write_managed_directory_metadata(project_root: &Path, bundle: &InterfaceBundle) -> Result<()> {
+    let Some(directory) = bundle
+        .managed_paths
+        .iter()
+        .find(|path| path.kind == ManagedPathKind::Directory)
+    else {
+        return Ok(());
+    };
+
+    let path = project_root.join(directory.relative_path);
+    fs::create_dir_all(&path)?;
     let metadata_path = path.join(MANAGED_DIR_METADATA_FILE);
     let metadata = ManagedDirectoryMetadata {
-        adapter: adapter_name.to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        managed_by: "patina ai setup".to_string(),
+        adapter: Some(bundle.name.to_string()),
+        bundle: Some(bundle.name.to_string()),
+        version: bundle.version.to_string(),
+        managed_by: "patina ai refresh".to_string(),
     };
     fs::write(&metadata_path, toml::to_string_pretty(&metadata)?)
         .with_context(|| format!("Failed to write {}", metadata_path.display()))?;
@@ -503,11 +531,21 @@ mod tests {
         assert!(!temp.path().join(".opencode/PATINA.md").exists());
         assert!(!temp.path().join(".opencode/AGENTS.md").exists());
         assert!(temp.path().join(".opencode/.patina-managed.toml").exists());
+        assert!(temp.path().join(".opencode/commands/spec.md").exists());
+        assert!(temp
+            .path()
+            .join(".opencode/commands/epistemic-beliefs.md")
+            .exists());
+        assert!(temp.path().join(".opencode/bin/create-belief.sh").exists());
         let session_start =
             std::fs::read_to_string(temp.path().join(".opencode/commands/session-start.md"))
                 .unwrap();
         assert!(session_start.contains("Read root `AGENTS.md` first"));
         assert!(session_start.contains("patina ai session start --json --adapter opencode"));
+        let belief_command =
+            std::fs::read_to_string(temp.path().join(".opencode/commands/epistemic-beliefs.md"))
+                .unwrap();
+        assert!(belief_command.contains(".opencode/bin/create-belief.sh"));
 
         let agents = std::fs::read_to_string(temp.path().join("AGENTS.md")).unwrap();
         assert!(agents.contains("### OpenCode"));
@@ -515,6 +553,45 @@ mod tests {
         assert!(agents.contains("patina ai session start --json --adapter opencode"));
         assert!(agents.contains("patina ai session start --json --adapter gemini"));
         assert!(result.backup_snapshot.is_none());
+    }
+
+    #[test]
+    fn bundle_status_reports_current_after_projection() {
+        let temp = setup_project("gemini");
+
+        with_temp_patina_home(&temp, || {
+            ensure_bundle_projection("gemini", temp.path(), ProjectionMode::RefreshManaged).unwrap()
+        });
+
+        let status = bundle_deployment_status("gemini", temp.path()).unwrap();
+        assert!(status.deployed);
+        assert!(status.current);
+        assert!(status.missing_paths.is_empty());
+        assert!(status.unmanaged_paths.is_empty());
+        assert!(status.stale_paths.is_empty());
+    }
+
+    #[test]
+    fn ensure_bundle_bootstrap_skips_backup_when_bundle_is_current() {
+        let temp = setup_project("claude");
+
+        with_temp_patina_home(&temp, || {
+            ensure_bundle_projection("claude", temp.path(), ProjectionMode::RefreshManaged).unwrap()
+        });
+
+        let result = with_temp_patina_home(&temp, || {
+            ensure_bundle_bootstrap("claude", temp.path()).unwrap()
+        });
+
+        assert!(result.backup_snapshot.is_none());
+        assert!(temp
+            .path()
+            .join(".claude/skills/epistemic-beliefs/SKILL.md")
+            .exists());
+        assert!(temp
+            .path()
+            .join(".claude/skills/epistemic-beliefs/references/verification-schema.md")
+            .exists());
     }
 
     #[test]

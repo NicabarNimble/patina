@@ -221,13 +221,13 @@ fn add(name: &str, no_commit: bool) -> Result<()> {
             None
         };
 
-        println!("  Compatibility shim: preparing the Patina AI surface...");
+        println!("  Compatibility shim: deploying the Patina AI bundles...");
         interface::ensure_ai_surface(interface::AiSurfaceRequest {
             project_root: &cwd,
             force: false,
             default_interface,
         })?;
-        println!("  ✓ Prepared Patina AI surface");
+        println!("  ✓ Deployed Patina AI bundles");
 
         if !no_commit {
             println!("\n📦 Committing adapter setup...");
@@ -408,12 +408,12 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
     let config = project::load_with_migration(&cwd)?;
     if !config.adapters.allowed.contains(&name.to_string()) {
         anyhow::bail!(
-            "Adapter '{}' is not in allowed list. Prepare the Patina AI surface first with: patina ai setup",
+            "Adapter '{}' is not in allowed list. Deploy the Patina AI bundles first with: patina ai setup",
             name,
         );
     }
 
-    println!("🔄 Refreshing {} adapter...\n", name);
+    println!("🔄 Refreshing {} bundle projection...\n", name);
 
     if interface::is_supported_ai_interface(name) {
         interface::ensure_ai_surface(interface::AiSurfaceRequest {
@@ -437,7 +437,7 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
             }
         }
 
-        println!("\n✨ Patina AI surface refreshed successfully!");
+        println!("\n✨ Patina AI bundles refreshed successfully!");
         return Ok(());
     }
 
@@ -660,7 +660,7 @@ fn doctor() -> Result<()> {
             println!("  ✓ .{}/ directory exists", adapter_name);
         } else {
             println!("  ✗ .{}/ directory missing", adapter_name);
-            println!("    Fix: patina adapter refresh {}", adapter_name);
+            println!("    Fix: patina ai refresh {}", adapter_name);
             all_healthy = false;
         }
 
@@ -671,7 +671,7 @@ fn doctor() -> Result<()> {
             println!("  ✓ {} exists", bootstrap_file);
         } else {
             println!("  ✗ {} missing", bootstrap_file);
-            println!("    Fix: patina adapter refresh {}", adapter_name);
+            println!("    Fix: patina ai refresh {}", adapter_name);
             all_healthy = false;
         }
 

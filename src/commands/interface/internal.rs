@@ -39,15 +39,7 @@ pub fn ensure_interface_ready(
             interface::supported_ai_interfaces().join(", ")
         )
     })?;
-    let bootstrap = if force {
-        interface::ensure_adapter_projection(
-            interface_name,
-            project_path,
-            interface::ProjectionMode::ForceRewrite,
-        )?
-    } else {
-        adapter.bootstrap(project_path)?
-    };
+    let bootstrap = interface::prepare_ai_bundle(project_path, interface_name, force)?.bootstrap;
     Ok((adapter, bootstrap))
 }
 
@@ -112,11 +104,17 @@ mod tests {
         assert!(temp.path().join("AGENTS.md").exists());
         assert!(temp.path().join("CLAUDE.md").exists());
         assert!(temp.path().join("GEMINI.md").exists());
-        assert!(temp.path().join(".claude/commands/session-start.md").exists());
+        assert!(temp
+            .path()
+            .join(".claude/commands/session-start.md")
+            .exists());
         assert!(temp
             .path()
             .join(".opencode/commands/session-start.md")
             .exists());
-        assert!(temp.path().join(".gemini/commands/session-start.toml").exists());
+        assert!(temp
+            .path()
+            .join(".gemini/commands/session-start.toml")
+            .exists());
     }
 }

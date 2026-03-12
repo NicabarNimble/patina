@@ -68,9 +68,21 @@ pub struct AiLaunchArgs {
 
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum AiCommands {
-    /// Prepare the Patina AI surface for this project
+    /// Deploy the Patina AI bundles for this project
     Setup {
         #[arg(value_name = "interface", hide = true)]
+        interface: Option<String>,
+
+        #[arg(long)]
+        path: Option<String>,
+
+        #[arg(long)]
+        force: bool,
+    },
+
+    /// Refresh one bundle or all Patina AI bundles for this project
+    Refresh {
+        #[arg(value_name = "interface")]
         interface: Option<String>,
 
         #[arg(long)]
@@ -132,6 +144,15 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             path,
             force,
         }) => surface::setup(surface::AiSetupRequest {
+            interface,
+            path,
+            force,
+        }),
+        Some(AiCommands::Refresh {
+            interface,
+            path,
+            force,
+        }) => surface::refresh(surface::AiRefreshRequest {
             interface,
             path,
             force,
@@ -206,6 +227,17 @@ mod tests {
         let parsed = AiCli::try_parse_from(["patina", "setup"]).unwrap();
         match parsed.command {
             AiCommands::Setup { interface, .. } => assert!(interface.is_none()),
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn refresh_command_accepts_optional_interface_argument() {
+        let parsed = AiCli::try_parse_from(["patina", "refresh", "gemini"]).unwrap();
+        match parsed.command {
+            AiCommands::Refresh { interface, .. } => {
+                assert_eq!(interface.as_deref(), Some("gemini"))
+            }
             other => panic!("unexpected command: {other:?}"),
         }
     }
