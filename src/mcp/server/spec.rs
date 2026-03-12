@@ -159,7 +159,7 @@ pub(super) fn handle(req: &Request, name: &str, args: SpecArgs) -> Response {
         // Spec mutation tools
         "spec.promote" => {
             let id = require!(req, args.id, "spec.promote", "id");
-            match crate::commands::spec::promote_spec_value(id) {
+            match crate::commands::spec::promote_spec_value(id, false) {
                 Ok(result) => {
                     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
                     Response::success(

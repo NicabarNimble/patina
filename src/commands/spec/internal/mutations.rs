@@ -74,6 +74,103 @@ pub enum MutationDetail {
     },
 }
 
+fn lint_ready_spec(loaded: &LoadedSpec) -> Result<()> {
+    let required_headings = [
+        "## Problem",
+        "## Goal",
+        "## Status",
+        "## Non-Goals",
+        "## Solution",
+        "## Implementation Order",
+        "## Resolved Decisions",
+        "## Verification",
+        "## Build Readiness",
+    ];
+
+    let mut missing = Vec::new();
+    for heading in required_headings {
+        if !loaded.body.contains(heading) {
+            missing.push(heading);
+        }
+    }
+
+    if !missing.is_empty() {
+        anyhow::bail!(
+            "Spec '{}' is not ready: missing required sections: {}",
+            loaded.frontmatter.id,
+            missing.join(", ")
+        );
+    }
+
+    let design_path = Path::new(&loaded.file_path)
+        .parent()
+        .map(|dir| dir.join("DESIGN.md"))
+        .filter(|p| p.exists())
+        .context("Spec is not ready: missing DESIGN.md")?;
+    let design = std::fs::read_to_string(&design_path)
+        .with_context(|| format!("Failed to read {}", design_path.display()))?;
+
+    let required_design_headings = [
+        "## Why This Design",
+        "## Build Target",
+        "## Resolved Decisions",
+        "## Commits",
+        "## Direct Code Targets",
+        "## Verification Plan",
+        "## Build Readiness",
+    ];
+    let mut missing_design = Vec::new();
+    for heading in required_design_headings {
+        if !design.contains(heading) {
+            missing_design.push(heading);
+        }
+    }
+    if !missing_design.is_empty() {
+        anyhow::bail!(
+            "Spec '{}' is not ready: DESIGN.md missing required sections: {}",
+            loaded.frontmatter.id,
+            missing_design.join(", ")
+        );
+    }
+
+    let body_lower = loaded.body.to_ascii_lowercase();
+    let design_lower = design.to_ascii_lowercase();
+    let ambiguous = [
+        "maybe",
+        "consider ",
+        "if needed",
+        "one possible",
+        "could be",
+    ];
+    let mut hits = Vec::new();
+    for token in ambiguous {
+        if body_lower.contains(token) || design_lower.contains(token) {
+            hits.push(token.trim());
+        }
+    }
+    if !hits.is_empty() {
+        anyhow::bail!(
+            "Spec '{}' is not ready: ambiguous architecture language present ({}) — revise or use --force",
+            loaded.frontmatter.id,
+            hits.join(", ")
+        );
+    }
+
+    let has_code_targets = design.contains("`src/")
+        || design.contains("`crates/")
+        || design.contains("`wit/")
+        || design.contains("`plugins/")
+        || design.contains("`layer/");
+    if !has_code_targets {
+        anyhow::bail!(
+            "Spec '{}' is not ready: DESIGN.md needs direct code targets",
+            loaded.frontmatter.id
+        );
+    }
+
+    Ok(())
+}
+
 /// Core YAML + DB status update. Takes a fully loaded spec, applies a mutation
 /// closure to the frontmatter, writes the file back, and updates the DB.
 pub(super) fn mutate_spec<F>(loaded: LoadedSpec, mutate: F) -> Result<MutationOutput>
@@ -159,8 +256,8 @@ pub(super) fn next_tag_number(id: &str, prefix: &str) -> Result<u32> {
 
 /// Promote a spec: draft → ready, or ready → active.
 /// When promoting to active, creates tag spec/<id>-start.
-pub fn promote_spec(id: &str, json: bool) -> Result<()> {
-    let result = promote_spec_value(id)?;
+pub fn promote_spec(id: &str, force: bool, json: bool) -> Result<()> {
+    let result = promote_spec_value(id, force)?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&result)?);
@@ -178,8 +275,13 @@ pub fn promote_spec(id: &str, json: bool) -> Result<()> {
 }
 
 /// Promote a spec and return structured result (for MCP).
-pub fn promote_spec_value(id: &str) -> Result<MutationResult> {
-    let out = load_and_mutate(id, |fm| match fm.status {
+pub fn promote_spec_value(id: &str, force: bool) -> Result<MutationResult> {
+    let loaded = load_spec(id)?;
+    if loaded.frontmatter.status == Some(SpecStatus::Draft) && !force {
+        lint_ready_spec(&loaded)?;
+    }
+
+    let out = mutate_spec(loaded, |fm| match fm.status {
         Some(SpecStatus::Draft) => {
             fm.status = Some(SpecStatus::Ready);
             Ok(())

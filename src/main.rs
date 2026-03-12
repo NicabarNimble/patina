@@ -1819,8 +1819,8 @@ fn main() -> Result<()> {
             } => {
                 commands::spec::list(status, target, json)?;
             }
-            commands::spec::SpecCommands::Promote { id, json } => {
-                commands::spec::promote(&id, json)?;
+            commands::spec::SpecCommands::Promote { id, force, json } => {
+                commands::spec::promote(&id, force, json)?;
             }
             commands::spec::SpecCommands::Complete {
                 id,
@@ -1855,8 +1855,8 @@ fn main() -> Result<()> {
             } => {
                 commands::spec::split(&id, new_id.as_deref(), description.as_deref(), json)?;
             }
-            commands::spec::SpecCommands::Show { id, json } => {
-                commands::spec::show(&id, json)?;
+            commands::spec::SpecCommands::Show { id, handoff, json } => {
+                commands::spec::show(&id, handoff, json)?;
             }
             commands::spec::SpecCommands::Set {
                 id,

@@ -105,6 +105,10 @@ pub enum SpecCommands {
         /// Spec ID to promote
         id: String,
 
+        /// Override readiness lint when promoting draft -> ready
+        #[arg(long)]
+        force: bool,
+
         /// Output as JSON (for agent use)
         #[arg(long)]
         json: bool,
@@ -211,6 +215,10 @@ pub enum SpecCommands {
         /// Spec ID to show
         id: String,
 
+        /// Show compact implementation handoff view
+        #[arg(long)]
+        handoff: bool,
+
         /// Output as JSON (for agent use)
         #[arg(long)]
         json: bool,
@@ -309,8 +317,8 @@ pub fn list(status: Option<String>, target: Option<String>, json: bool) -> Resul
 }
 
 /// Promote a spec: draft → ready, ready → active
-pub fn promote(id: &str, json: bool) -> Result<()> {
-    internal::promote_spec(id, json)
+pub fn promote(id: &str, force: bool, json: bool) -> Result<()> {
+    internal::promote_spec(id, force, json)
 }
 
 /// Complete an active spec (release + archive)
@@ -349,8 +357,8 @@ pub fn set(id: &str, field: &str, value: &str, json: bool) -> Result<()> {
 }
 
 /// Show full spec context (body, design, key files)
-pub fn show(id: &str, json: bool) -> Result<()> {
-    internal::show_spec(id, json)
+pub fn show(id: &str, handoff: bool, json: bool) -> Result<()> {
+    internal::show_spec(id, handoff, json)
 }
 
 /// Check exit criteria status for a spec

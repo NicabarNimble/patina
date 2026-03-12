@@ -678,6 +678,16 @@ pub struct ShowResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub design_outline: Option<Vec<String>>,
     pub files: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub direct_code_targets: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub resolved_decisions: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub implementation_order: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub verification_points: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub open_questions: Vec<String>,
     /// File path to SPEC.md — use Read tool for specific sections
     pub path: String,
     /// File path to DESIGN.md (if it exists)
@@ -705,6 +715,47 @@ fn extract_outline(text: &str) -> Vec<String> {
     headings
 }
 
+fn extract_section_items(text: &str, heading: &str) -> Vec<String> {
+    let mut in_section = false;
+    let mut items = Vec::new();
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed == heading {
+            in_section = true;
+            continue;
+        }
+        if in_section && trimmed.starts_with("## ") {
+            break;
+        }
+        if in_section {
+            if trimmed.starts_with("- ")
+                || trimmed.starts_with("1. ")
+                || trimmed.starts_with("2. ")
+                || trimmed.starts_with("3. ")
+                || trimmed.starts_with("4. ")
+                || trimmed.starts_with("5. ")
+                || trimmed.starts_with("6. ")
+                || trimmed.starts_with("7. ")
+                || trimmed.starts_with("8. ")
+                || trimmed.starts_with("9. ")
+            {
+                items.push(trimmed.to_string());
+            }
+        }
+    }
+
+    items
+}
+
+fn extract_code_targets(text: &str) -> Vec<String> {
+    let mut targets = extract_section_items(text, "## Direct Code Targets");
+    if targets.is_empty() {
+        targets = extract_key_files(text);
+    }
+    targets
+}
+
 /// Load spec context: frontmatter + heading outlines + key files.
 ///
 /// Default mode returns outlines only — compact for MCP (~500 tokens vs 17k).
@@ -726,6 +777,17 @@ pub fn show_spec_value(id: &str) -> Result<ShowResult> {
     let outline = extract_outline(&loaded.body);
     let design_outline = design_text.as_ref().map(|d| extract_outline(d));
     let files = extract_key_files(&loaded.body);
+    let direct_code_targets = design_text
+        .as_ref()
+        .map(|d| extract_code_targets(d))
+        .unwrap_or_default();
+    let resolved_decisions = extract_section_items(&loaded.body, "## Resolved Decisions");
+    let implementation_order = extract_section_items(&loaded.body, "## Implementation Order");
+    let verification_points = extract_section_items(&loaded.body, "## Verification");
+    let open_questions = design_text
+        .as_ref()
+        .map(|d| extract_section_items(d, "## Open Questions"))
+        .unwrap_or_default();
 
     Ok(ShowResult {
         id: loaded.frontmatter.id.clone(),
@@ -733,6 +795,11 @@ pub fn show_spec_value(id: &str) -> Result<ShowResult> {
         outline,
         design_outline,
         files,
+        direct_code_targets,
+        resolved_decisions,
+        implementation_order,
+        verification_points,
+        open_questions,
         path: spec_path,
         design_path: design_path.map(|p| p.to_string_lossy().to_string()),
     })
@@ -742,7 +809,7 @@ pub fn show_spec_value(id: &str) -> Result<ShowResult> {
 ///
 /// Shows frontmatter, heading outlines, key files, and file paths.
 /// Use `cat` or a Read tool on the printed path for full content.
-pub fn show_spec(id: &str, json: bool) -> Result<()> {
+pub fn show_spec(id: &str, handoff: bool, json: bool) -> Result<()> {
     let result = show_spec_value(id)?;
 
     if json {
@@ -754,6 +821,49 @@ pub fn show_spec(id: &str, json: bool) -> Result<()> {
     let status = result.frontmatter.status.map_or("unknown", |s| s.as_str());
     println!("{} [{}]", result.id, status);
     println!();
+
+    if handoff {
+        if !result.resolved_decisions.is_empty() {
+            println!("Resolved decisions:");
+            for item in &result.resolved_decisions {
+                println!("  {}", item);
+            }
+            println!();
+        }
+        if !result.implementation_order.is_empty() {
+            println!("Implementation order:");
+            for item in &result.implementation_order {
+                println!("  {}", item);
+            }
+            println!();
+        }
+        if !result.direct_code_targets.is_empty() {
+            println!("Direct code targets:");
+            for item in &result.direct_code_targets {
+                println!("  {}", item);
+            }
+            println!();
+        }
+        if !result.verification_points.is_empty() {
+            println!("Verification:");
+            for item in &result.verification_points {
+                println!("  {}", item);
+            }
+            println!();
+        }
+        if !result.open_questions.is_empty() {
+            println!("Open questions:");
+            for item in &result.open_questions {
+                println!("  {}", item);
+            }
+            println!();
+        }
+        println!("Spec: {}", result.path);
+        if let Some(dp) = &result.design_path {
+            println!("Design: {}", dp);
+        }
+        return Ok(());
+    }
 
     // Exit criteria
     let criteria = &result.frontmatter.exit_criteria;
@@ -1045,6 +1155,15 @@ src/mcp/server.rs                      — new spec.show tool handler
         let body = "## Key Files\n\nJust text, no code fence.\n\n## Exit Criteria\n";
         let files = extract_key_files(body);
         assert!(files.is_empty());
+    }
+
+    #[test]
+    fn test_extract_section_items_bullets_and_numbers() {
+        let text = "## Resolved Decisions\n\n- first\n- second\n\n## Next\n\n1. third\n";
+        assert_eq!(
+            extract_section_items(text, "## Resolved Decisions"),
+            vec!["- first", "- second"]
+        );
     }
 
     #[test]

@@ -15,19 +15,19 @@ beliefs:
 exit_criteria:
 - id: create-scaffold-has-strong-flow
   text: New feat/refactor specs are scaffolded with a stronger deterministic flow including Problem, Goal, Status, Non-Goals, Target Shape, Resolved Decisions, Implementation Order, Verification, and Build Readiness
-  checked: false
+  checked: true
 - id: design-scaffold-has-implementation-contract
   text: New DESIGN.md files scaffold direct code targets, resolved decisions, build target, and build readiness instead of a minimal open-ended outline
-  checked: false
+  checked: true
 - id: readiness-lint-detects-ambiguous-specs
   text: Spec tooling can flag or fail specs that still contain unresolved ambiguous architecture language when promoted to ready
-  checked: false
+  checked: true
 - id: code-targets-supported-first-class
   text: Spec workflow supports direct code target capture so agents can anchor implementation to concrete files and lines without relying only on prose
-  checked: false
+  checked: true
 - id: thin-interface-layer-preserved
   text: Spec tooling improvements focus on deterministic spec structure and agent handoff, not on baking interface-specific skill behavior into the core spec lifecycle
-  checked: false
+  checked: true
 ---
 # feat: Deterministic Spec Scaffolds For Agents
 
