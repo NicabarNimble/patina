@@ -1,7 +1,7 @@
 ---
 type: fix
 id: session-skill-convergence
-status: ready
+status: active
 created: 2026-03-12
 sessions:
   origin: 20260311-223303-3EP2
