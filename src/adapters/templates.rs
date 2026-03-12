@@ -46,6 +46,9 @@ mod claude_templates {
     pub const SKILL_EPISTEMIC_BELIEFS_EXAMPLE_MD: &str = include_str!(
         "../../resources/claude/skills/epistemic-beliefs/references/belief-example.md"
     );
+    pub const SKILL_EPISTEMIC_BELIEFS_VERIFICATION_SCHEMA_MD: &str = include_str!(
+        "../../resources/claude/skills/epistemic-beliefs/references/verification-schema.md"
+    );
 }
 
 // =============================================================================
@@ -60,6 +63,9 @@ mod gemini_templates {
     pub const SESSION_NOTE_TOML: &str = include_str!("../../resources/gemini/session-note.toml");
     pub const SESSION_END_TOML: &str = include_str!("../../resources/gemini/session-end.toml");
     pub const PATINA_REVIEW_TOML: &str = include_str!("../../resources/gemini/patina-review.toml");
+    pub const SPEC_TOML: &str = include_str!("../../resources/gemini/spec.toml");
+    pub const EPISTEMIC_BELIEFS_TOML: &str =
+        include_str!("../../resources/gemini/epistemic-beliefs.toml");
 }
 
 // =============================================================================
@@ -73,6 +79,9 @@ mod opencode_templates {
     pub const SESSION_NOTE_MD: &str = include_str!("../../resources/opencode/session-note.md");
     pub const SESSION_END_MD: &str = include_str!("../../resources/opencode/session-end.md");
     pub const PATINA_REVIEW_MD: &str = include_str!("../../resources/opencode/patina-review.md");
+    pub const SPEC_MD: &str = include_str!("../../resources/opencode/spec.md");
+    pub const EPISTEMIC_BELIEFS_MD: &str =
+        include_str!("../../resources/opencode/epistemic-beliefs.md");
 }
 
 // =============================================================================
@@ -183,6 +192,10 @@ fn install_claude_templates(adapters_dir: &Path) -> Result<()> {
         epistemic_refs_dir.join("belief-example.md"),
         claude_templates::SKILL_EPISTEMIC_BELIEFS_EXAMPLE_MD,
     )?;
+    fs::write(
+        epistemic_refs_dir.join("verification-schema.md"),
+        claude_templates::SKILL_EPISTEMIC_BELIEFS_VERIFICATION_SCHEMA_MD,
+    )?;
 
     Ok(())
 }
@@ -229,6 +242,15 @@ fn install_gemini_templates(adapters_dir: &Path) -> Result<()> {
         commands_dir.join("patina-review.toml"),
         gemini_templates::PATINA_REVIEW_TOML,
     )?;
+    fs::write(commands_dir.join("spec.toml"), gemini_templates::SPEC_TOML)?;
+    fs::write(
+        commands_dir.join("epistemic-beliefs.toml"),
+        gemini_templates::EPISTEMIC_BELIEFS_TOML,
+    )?;
+    write_executable(
+        &bin_dir.join("create-belief.sh"),
+        claude_templates::SKILL_EPISTEMIC_BELIEFS_CREATE_SH,
+    )?;
 
     Ok(())
 }
@@ -274,6 +296,15 @@ fn install_opencode_templates(adapters_dir: &Path) -> Result<()> {
     fs::write(
         commands_dir.join("patina-review.md"),
         opencode_templates::PATINA_REVIEW_MD,
+    )?;
+    fs::write(commands_dir.join("spec.md"), opencode_templates::SPEC_MD)?;
+    fs::write(
+        commands_dir.join("epistemic-beliefs.md"),
+        opencode_templates::EPISTEMIC_BELIEFS_MD,
+    )?;
+    write_executable(
+        &bin_dir.join("create-belief.sh"),
+        claude_templates::SKILL_EPISTEMIC_BELIEFS_CREATE_SH,
     )?;
 
     Ok(())
@@ -355,12 +386,15 @@ mod tests {
         assert!(!claude_templates::SKILL_EPISTEMIC_BELIEFS_MD.is_empty());
         assert!(!claude_templates::SKILL_EPISTEMIC_BELIEFS_CREATE_SH.is_empty());
         assert!(!claude_templates::SKILL_EPISTEMIC_BELIEFS_EXAMPLE_MD.is_empty());
+        assert!(!claude_templates::SKILL_EPISTEMIC_BELIEFS_VERIFICATION_SCHEMA_MD.is_empty());
     }
 
     #[test]
     fn test_gemini_templates_compile() {
         // Verify command definitions are embedded correctly
         assert!(!gemini_templates::SESSION_START_TOML.is_empty());
+        assert!(!gemini_templates::SPEC_TOML.is_empty());
+        assert!(!gemini_templates::EPISTEMIC_BELIEFS_TOML.is_empty());
     }
 
     #[test]
@@ -368,6 +402,8 @@ mod tests {
         assert!(opencode_templates::SESSION_START_MD.contains("session.start"));
         assert!(opencode_templates::SESSION_UPDATE_MD.contains("session.update"));
         assert!(opencode_templates::SESSION_END_MD.contains("session.end"));
+        assert!(opencode_templates::SPEC_MD.contains("patina spec"));
+        assert!(opencode_templates::EPISTEMIC_BELIEFS_MD.contains("create-belief.sh"));
     }
 
     #[test]
@@ -413,6 +449,9 @@ mod tests {
         assert!(templates_dir
             .join(".claude/skills/epistemic-beliefs/references/belief-example.md")
             .exists());
+        assert!(templates_dir
+            .join(".claude/skills/epistemic-beliefs/references/verification-schema.md")
+            .exists());
     }
 
     #[test]
@@ -426,6 +465,11 @@ mod tests {
         assert!(templates_dir
             .join(".gemini/commands/session-start.toml")
             .exists());
+        assert!(templates_dir.join(".gemini/commands/spec.toml").exists());
+        assert!(templates_dir
+            .join(".gemini/commands/epistemic-beliefs.toml")
+            .exists());
+        assert!(templates_dir.join(".gemini/bin/create-belief.sh").exists());
 
         // Wrapper scripts should forward to patina session
         let wrapper =
@@ -445,6 +489,13 @@ mod tests {
         assert!(templates_dir
             .join(".opencode/commands/session-start.md")
             .exists());
+        assert!(templates_dir.join(".opencode/commands/spec.md").exists());
+        assert!(templates_dir
+            .join(".opencode/commands/epistemic-beliefs.md")
+            .exists());
+        assert!(templates_dir
+            .join(".opencode/bin/create-belief.sh")
+            .exists());
 
         let session_start =
             fs::read_to_string(templates_dir.join(".opencode/commands/session-start.md")).unwrap();
@@ -460,5 +511,13 @@ mod tests {
         let session_end =
             fs::read_to_string(templates_dir.join(".opencode/commands/session-end.md")).unwrap();
         assert!(session_end.contains("patina ai session end --json"));
+
+        let spec = fs::read_to_string(templates_dir.join(".opencode/commands/spec.md")).unwrap();
+        assert!(spec.contains("patina spec check"));
+
+        let beliefs =
+            fs::read_to_string(templates_dir.join(".opencode/commands/epistemic-beliefs.md"))
+                .unwrap();
+        assert!(beliefs.contains(".opencode/bin/create-belief.sh"));
     }
 }

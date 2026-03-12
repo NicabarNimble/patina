@@ -707,6 +707,7 @@ mod tests {
             assert!(section.contains("patina ai session start --json --adapter claude"));
             assert!(section.contains("patina ai session start --json --adapter opencode"));
             assert!(section.contains("patina ai session start --json --adapter gemini"));
+            assert!(section.contains("patina spec check <id> --json"));
         });
     }
 
@@ -728,7 +729,7 @@ mod tests {
             )
             .unwrap();
 
-        assert!(interface_mcp_available("opencode").unwrap());
+            assert!(interface_mcp_available("opencode").unwrap());
         });
     }
 
