@@ -1,14 +1,15 @@
 Update the current Patina session with Git-aware progress tracking:
 
-1. Execute the bundled session update wrapper:
-   `.claude/bin/session-update.sh`
-   If multiple active sessions exist, use `.claude/bin/session-update.sh --session <id>`.
+1. Launch an Agent (subagent) to run the session update backend. The agent should:
+   - Run: `.claude/bin/session-update.sh`
+     If multiple active sessions exist, use `.claude/bin/session-update.sh --session <id>`.
+   - Parse the returned JSON and extract all fields
+   - Read the session artifact at the returned `artifact_path`
+   - Return to the main context: `artifact_path` and the full text of the session artifact
 
-2. Read the returned JSON and use `artifact_path` to open the durable session artifact.
+2. Using the returned artifact content, find the new update section. Note the time period to document.
 
-3. Read the session artifact and find the new update section. Note the time period to document.
-
-4. Fill in the update section with what happened during that time period:
+3. Fill in the update section with what happened during that time period:
    - **Work completed**: Code written, files modified, problems solved
    - **Discussion context**: Key questions asked, reasoning frameworks used, why we chose this approach
    - **Key decisions**: Design choices, trade-offs, reasoning behind changes
@@ -23,7 +24,7 @@ Update the current Patina session with Git-aware progress tracking:
    - Source files: backtick paths (e.g., `src/mcp/server.rs`)
    Unlinked plain-text mentions are invisible to the knowledge graph.
 
-5. **Check for beliefs to capture**: Review the update and ask yourself:
+4. **Check for beliefs to capture**: Review the update and ask yourself:
    - Any design decisions made? ("We chose X because Y")
    - Any repeated patterns? (Said 3+ times)
    - Any strong principles? ("Never do X", "Always Y")
@@ -31,4 +32,4 @@ Update the current Patina session with Git-aware progress tracking:
 
    If yes, suggest to user: "This sounds like a belief worth capturing: '{statement}'. Should I create it?"
 
-6. If the update shows a large or risky change set (30+ minutes of work or 100+ lines changed), suggest a checkpoint commit before continuing.
+5. If the update shows a large or risky change set (30+ minutes of work or 100+ lines changed), suggest a checkpoint commit before continuing.

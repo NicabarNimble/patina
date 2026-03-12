@@ -10,22 +10,22 @@ related:
 exit_criteria:
 - id: session-start-md-wraps-bash-last-session-reads-in-agent-call
   text: session-start.md wraps Bash + last-session reads in Agent call
-  checked: false
+  checked: true
 - id: session-update-md-wraps-bash-artifact-read-in-agent-call
   text: session-update.md wraps Bash + artifact read in Agent call
-  checked: false
+  checked: true
 - id: session-end-md-wraps-end-bash-call-in-agent-call
   text: session-end.md wraps end Bash call in Agent call
-  checked: false
+  checked: true
 - id: session-note-md-unchanged
   text: session-note.md unchanged
-  checked: false
+  checked: true
 - id: no-changes-to-opencode-gemini-or-shell-wrappers
   text: No changes to OpenCode, Gemini, or shell wrappers
-  checked: false
+  checked: true
 - id: deployed-via-build-install-refresh
   text: Deployed via build, install, refresh
-  checked: false
+  checked: true
 ---
 # fix: Wrap Claude session skill Bash calls in subagents to hide JSON from verbose output
 
@@ -64,9 +64,9 @@ Pattern per skill:
 
 ## Exit Criteria
 
-- [ ] `resources/claude/session-start.md` wraps Bash + last-session reads in an Agent call
-- [ ] `resources/claude/session-update.md` wraps Bash + artifact read in an Agent call
-- [ ] `resources/claude/session-end.md` wraps end Bash call in an Agent call
-- [ ] `resources/claude/session-note.md` is unchanged
-- [ ] No changes to OpenCode, Gemini, or shell wrappers
-- [ ] Deploy via `cargo build --release && cargo install --path .` then `patina ai refresh`
+- [x] `resources/claude/session-start.md` wraps Bash + last-session reads in an Agent call
+- [x] `resources/claude/session-update.md` wraps Bash + artifact read in an Agent call
+- [x] `resources/claude/session-end.md` wraps end Bash call in an Agent call
+- [x] `resources/claude/session-note.md` is unchanged
+- [x] No changes to OpenCode, Gemini, or shell wrappers
+- [x] Deploy via `cargo build --release && cargo install --path .` then `patina ai refresh`

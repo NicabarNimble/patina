@@ -1,11 +1,14 @@
 Start a new Patina development session with Git tagging:
 
-1. Execute the bundled session start wrapper:
-   `.claude/bin/session-start.sh "$ARGUMENTS"`
+1. Launch an Agent (subagent) to initialize the session and gather context. The agent should:
+   - Run: `.claude/bin/session-start.sh "$ARGUMENTS"`
+   - Parse the returned JSON and extract all fields
+   - If `last_session_path` exists in the JSON, read that file, follow the session artifact reference inside it, and read the full previous session artifact
+   - Return to the main context: all JSON fields (`session_id`, `artifact_path`, `start_tag`, `last_session_path`) and the full text of the previous session artifact if it exists
 
-2. Read the returned JSON and use `artifact_path` to open the new durable session artifact in `layer/sessions/`.
+2. Read the session artifact at the returned `artifact_path` in `layer/sessions/`.
 
-3. If `last_session_path` exists, read it. It points to the previous session artifact. You MUST read the full session file referenced there to understand what actually happened. Then fill in the "Previous Session Context" section with a substantive 2-3 sentence summary. Don't write generic fluff — include specific accomplishments, key fixes, and open items.
+3. If the agent returned previous session content, fill in the "Previous Session Context" section with a substantive 2-3 sentence summary. Don't write generic fluff — include specific accomplishments, key fixes, and open items.
 
 4. If we've been discussing work already in this conversation:
    - Update the Goals section with specific tasks we've identified
