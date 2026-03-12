@@ -56,12 +56,11 @@ impl DuckLakeChild {
         let config: SourceConfig =
             serde_json::from_str(payload).map_err(|e| format!("invalid source config: {}", e))?;
         let key = Self::source_key(&config.source_id);
-        self.toys
-            .state
-            .put(&key, &serde_json::to_string(&config).map_err(|e| e.to_string())?)?;
-        Ok(
-            serde_json::json!({"status": "configured", "source_id": config.source_id}).to_string(),
-        )
+        self.toys.state.put(
+            &key,
+            &serde_json::to_string(&config).map_err(|e| e.to_string())?,
+        )?;
+        Ok(serde_json::json!({"status": "configured", "source_id": config.source_id}).to_string())
     }
 
     fn sync_source(&mut self, payload: &str) -> Result<String, String> {
@@ -84,13 +83,15 @@ impl DuckLakeChild {
                     .as_deref()
                     .ok_or_else(|| "http mode requires data_url".to_string())?;
                 let body = self.toys.fetch.get(url)?;
-                let parsed: serde_json::Value =
-                    serde_json::from_str(&body).map_err(|e| format!("invalid fetch response: {}", e))?;
+                let parsed: serde_json::Value = serde_json::from_str(&body)
+                    .map_err(|e| format!("invalid fetch response: {}", e))?;
                 let rows = parsed
                     .get("rows")
                     .and_then(|v| v.as_array())
                     .or_else(|| parsed.as_array())
-                    .ok_or_else(|| "fetched payload must be an array or {rows:[...]}" .to_string())?;
+                    .ok_or_else(|| {
+                        "fetched payload must be an array or {rows:[...]}".to_string()
+                    })?;
                 rows.iter()
                     .map(|row| serde_json::to_string(row).map_err(|e| e.to_string()))
                     .collect::<Result<Vec<_>, _>>()?
@@ -100,10 +101,12 @@ impl DuckLakeChild {
 
         self.toys.lake.ensure_lake(&config.lake)?;
         self.toys.lake.ensure_table(&config.lake, &config.table)?;
-        let written = self
-            .toys
-            .lake
-            .append_json_batch(&config.lake, &config.table, &config.source_id, &rows)?;
+        let written = self.toys.lake.append_json_batch(
+            &config.lake,
+            &config.table,
+            &config.source_id,
+            &rows,
+        )?;
         let cursor = Some(format!("{}:{}", config.source_id, written));
         self.toys.lake.save_cursor(
             &config.lake,
@@ -123,9 +126,12 @@ impl DuckLakeChild {
             })
             .to_string(),
         )?;
-        self.toys
-            .measure
-            .record("capture", "ducklake", "sync", &serde_json::json!({"written": written}).to_string())?;
+        self.toys.measure.record(
+            "capture",
+            "ducklake",
+            "sync",
+            &serde_json::json!({"written": written}).to_string(),
+        )?;
         Ok(
             serde_json::json!({"status": "synced", "source_id": source_id, "written": written})
                 .to_string(),
@@ -135,13 +141,11 @@ impl DuckLakeChild {
     fn status(&self) -> Result<String, String> {
         let sources = self.toys.state.list_prefix("source:");
         let checkpoint = self.toys.checkpoint.load("ducklake.sync");
-        Ok(
-            serde_json::json!({
-                "sources": sources,
-                "checkpoint": checkpoint,
-            })
-            .to_string(),
-        )
+        Ok(serde_json::json!({
+            "sources": sources,
+            "checkpoint": checkpoint,
+        })
+        .to_string())
     }
 }
 

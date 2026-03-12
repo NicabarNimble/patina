@@ -389,11 +389,12 @@ fn initialize_project(project_path: &Path, adapter_name: &str) -> Result<bool> {
     }
 
     // Step 2: Prepare the Patina AI surface and establish the selected default
-    let adapter_result = crate::commands::ai::surface::setup(crate::commands::ai::surface::AiSetupRequest {
-        interface: Some(adapter_name.to_string()),
-        path: Some(project_path.display().to_string()),
-        force: false,
-    });
+    let adapter_result =
+        crate::commands::ai::surface::setup(crate::commands::ai::surface::AiSetupRequest {
+            interface: Some(adapter_name.to_string()),
+            path: Some(project_path.display().to_string()),
+            force: false,
+        });
 
     if let Err(e) = adapter_result {
         env::set_current_dir(original_dir)?;
@@ -693,16 +694,26 @@ mod tests {
         let config = project::load_with_migration(temp.path()).unwrap();
         assert_eq!(config.adapters.default, "gemini");
         assert!(config.adapters.allowed.iter().any(|name| name == "claude"));
-        assert!(config.adapters.allowed.iter().any(|name| name == "opencode"));
+        assert!(config
+            .adapters
+            .allowed
+            .iter()
+            .any(|name| name == "opencode"));
         assert!(config.adapters.allowed.iter().any(|name| name == "gemini"));
         assert!(temp.path().join("AGENTS.md").exists());
         assert!(temp.path().join("CLAUDE.md").exists());
         assert!(temp.path().join("GEMINI.md").exists());
-        assert!(temp.path().join(".claude/commands/session-start.md").exists());
+        assert!(temp
+            .path()
+            .join(".claude/commands/session-start.md")
+            .exists());
         assert!(temp
             .path()
             .join(".opencode/commands/session-start.md")
             .exists());
-        assert!(temp.path().join(".gemini/commands/session-start.toml").exists());
+        assert!(temp
+            .path()
+            .join(".gemini/commands/session-start.toml")
+            .exists());
     }
 }

@@ -7,6 +7,9 @@ blocked_by:
 - persona-federation
 sessions:
   origin: 20260304-120702
+related:
+- agentic-surface-architecture
+- session-narrative-system
 beliefs:
 - mother-is-connection-and-continuity
 - local-first-edge-deployable
@@ -75,7 +78,7 @@ Mother daemon runs continuously (launchd on macOS, systemd on Linux):
 - Survives terminal close
 - Manages connector schedules (configurable per connector)
 - Delivers belief streams between linked personas
-- Provides health endpoint for edge apps
+- Provides health endpoint for edge apps and other interface actors
 
 ```
 MOTHER DAEMON (always running)

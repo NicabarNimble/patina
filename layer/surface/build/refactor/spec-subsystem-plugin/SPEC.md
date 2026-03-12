@@ -8,6 +8,8 @@ blocked_by:
 sessions:
   origin: 20260310-064604
 related:
+- agentic-surface-architecture
+- session-narrative-system
 - layer/surface/build/refactor/core-plugin-extraction/SPEC.md
 - layer/surface/build/refactor/core-plugin-extraction/DESIGN.md
 - layer/surface/build/refactor/mother-maturation/SPEC.md
@@ -81,6 +83,8 @@ This gives Patina a cleaner architecture:
 - **core** = protocol + stores
 - **spec plugin** = workflow behavior
 - **Mother** = execution authority and broker
+- **session system** = narrative/handoff layer adjacent to spec
+  governance, not a hidden side channel
 
 ### Design decisions
 

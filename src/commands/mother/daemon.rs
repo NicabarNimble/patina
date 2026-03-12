@@ -569,16 +569,20 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
                 if path.extension().and_then(|e| e.to_str()) == Some("wasm") {
                     let manifest_path = path.with_extension("toml");
                     match load_wasm_child(&path, &manifest_path) {
-                        Ok(LoadedWasmChild::Legacy { child, name }) => match registry.register_legacy(child) {
-                            Ok(()) => eprintln!("[mother] loaded legacy WASM child: {}", name),
-                            Err(e) => eprintln!("[mother] skipping {}: {}", path.display(), e),
-                        },
+                        Ok(LoadedWasmChild::Legacy { child, name }) => {
+                            match registry.register_legacy(child) {
+                                Ok(()) => eprintln!("[mother] loaded legacy WASM child: {}", name),
+                                Err(e) => eprintln!("[mother] skipping {}: {}", path.display(), e),
+                            }
+                        }
                         Ok(LoadedWasmChild::Knowledge {
                             child,
                             name,
                             subscribed_streams,
                         }) => {
-                            if let Err(error) = runtime.ensure_subscriptions(&name, &subscribed_streams) {
+                            if let Err(error) =
+                                runtime.ensure_subscriptions(&name, &subscribed_streams)
+                            {
                                 eprintln!(
                                     "[mother] failed to persist subscriptions for {}: {}",
                                     name, error
@@ -586,7 +590,9 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
                                 continue;
                             }
                             match registry.register_knowledge(child) {
-                                Ok(()) => eprintln!("[mother] loaded knowledge WASM child: {}", name),
+                                Ok(()) => {
+                                    eprintln!("[mother] loaded knowledge WASM child: {}", name)
+                                }
                                 Err(e) => eprintln!("[mother] skipping {}: {}", path.display(), e),
                             }
                         }

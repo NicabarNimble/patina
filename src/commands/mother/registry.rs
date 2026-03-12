@@ -35,18 +35,14 @@ impl ChildRegistry {
 
     pub fn register_legacy(&mut self, child: Box<dyn MotherChild>) -> Result<()> {
         let name = child.name().to_string();
-        if self
-            .children
-            .iter()
-            .any(|c| match c {
-                RegisteredChild::Legacy(child) => {
-                    child.read().unwrap_or_else(|e| e.into_inner()).name() == name
-                }
-                RegisteredChild::Knowledge(child) => {
-                    child.read().unwrap_or_else(|e| e.into_inner()).name() == name
-                }
-            })
-        {
+        if self.children.iter().any(|c| match c {
+            RegisteredChild::Legacy(child) => {
+                child.read().unwrap_or_else(|e| e.into_inner()).name() == name
+            }
+            RegisteredChild::Knowledge(child) => {
+                child.read().unwrap_or_else(|e| e.into_inner()).name() == name
+            }
+        }) {
             anyhow::bail!("duplicate child name: {}", name);
         }
         self.children
@@ -56,18 +52,14 @@ impl ChildRegistry {
 
     pub fn register_knowledge(&mut self, child: Box<dyn KnowledgeChild>) -> Result<()> {
         let name = child.name().to_string();
-        if self
-            .children
-            .iter()
-            .any(|c| match c {
-                RegisteredChild::Legacy(child) => {
-                    child.read().unwrap_or_else(|e| e.into_inner()).name() == name
-                }
-                RegisteredChild::Knowledge(child) => {
-                    child.read().unwrap_or_else(|e| e.into_inner()).name() == name
-                }
-            })
-        {
+        if self.children.iter().any(|c| match c {
+            RegisteredChild::Legacy(child) => {
+                child.read().unwrap_or_else(|e| e.into_inner()).name() == name
+            }
+            RegisteredChild::Knowledge(child) => {
+                child.read().unwrap_or_else(|e| e.into_inner()).name() == name
+            }
+        }) {
             anyhow::bail!("duplicate child name: {}", name);
         }
         self.children
@@ -126,7 +118,10 @@ impl ChildRegistry {
             let mut metrics = serde_json::Map::new();
             let result = (|| -> Result<()> {
                 let drained = child.drain(64)?;
-                metrics.insert("drained_events".into(), serde_json::Value::from(drained.len() as u64));
+                metrics.insert(
+                    "drained_events".into(),
+                    serde_json::Value::from(drained.len() as u64),
+                );
 
                 let tick_intents = child.tick();
                 metrics.insert(
@@ -147,7 +142,9 @@ impl ChildRegistry {
                     };
                     match child.handle(&request) {
                         Ok(_) => runtime.mark_task_succeeded(&task.id)?,
-                        Err(error) => runtime.mark_task_failed(&task.id, task.attempts, &error.to_string())?,
+                        Err(error) => {
+                            runtime.mark_task_failed(&task.id, task.attempts, &error.to_string())?
+                        }
                     }
                     executed += 1;
                 }
@@ -177,16 +174,14 @@ impl ChildRegistry {
     pub fn health_all(&self) -> Vec<(String, ChildHealth)> {
         self.children
             .iter()
-            .filter_map(|entry| {
-                match entry {
-                    RegisteredChild::Legacy(child) => {
-                        let child = child.read().ok()?;
-                        Some((child.name().to_string(), child.health()))
-                    }
-                    RegisteredChild::Knowledge(child) => {
-                        let child = child.read().ok()?;
-                        Some((child.name().to_string(), child.health()))
-                    }
+            .filter_map(|entry| match entry {
+                RegisteredChild::Legacy(child) => {
+                    let child = child.read().ok()?;
+                    Some((child.name().to_string(), child.health()))
+                }
+                RegisteredChild::Knowledge(child) => {
+                    let child = child.read().ok()?;
+                    Some((child.name().to_string(), child.health()))
                 }
             })
             .collect()

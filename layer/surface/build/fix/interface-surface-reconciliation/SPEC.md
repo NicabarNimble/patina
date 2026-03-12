@@ -1,7 +1,7 @@
 ---
 type: fix
 id: interface-surface-reconciliation
-status: draft
+status: complete
 created: 2026-03-11
 sessions:
   origin: 20260311-135625-KH7V
@@ -23,7 +23,7 @@ exit_criteria:
     text: '`patina ai setup` manages only a small explicit interface path set and does not recursively sweep arbitrary nested AGENTS.md, GEMINI.md, or CLAUDE.md files'
     checked: true
   - id: snapshot-before-takeover
-    text: 'When setup first encounters unmanaged files at Patina-managed interface paths, it archives them under `.patina/local/backups/` using the session-style timestamp/uid convention before takeover'
+    text: 'When setup first encounters unmanaged files at Patina-managed interface paths, it snapshots them under `.patina/local/backups/` using the session-style timestamp/uid convention before takeover'
     checked: true
   - id: managed-markers-enable-reruns
     text: 'Patina-generated interface files contain clear managed markers or metadata so reruns can distinguish Patina-owned surfaces from foreign/user-owned files without guessing'
@@ -32,7 +32,7 @@ exit_criteria:
     text: 'Normal setup reruns refresh Patina-managed content without creating repeated backups or clobbering user-editable content outside managed sections'
     checked: true
   - id: force-resets-safely
-    text: '`patina ai setup --force` creates a fresh backup bundle and rewrites the managed interface surface from current templates'
+    text: '`patina ai setup --force` creates a fresh backup snapshot and rewrites the managed interface surface from current templates'
     checked: true
   - id: tests-cover-lifecycle
     text: 'Targeted tests cover first takeover, rerun refresh, force rewrite, backup placement, and protection against nested-package false positives'
@@ -128,7 +128,7 @@ Backups belong under:
 using the same timestamp/uid style Patina already uses for session
 identity, for example:
 
-- `patina-setup-backup-20260311-201500-ABCD.zip`
+- `patina-setup-backup-20260311-201500-ABCD/`
 
 This keeps backups:
 
@@ -164,7 +164,7 @@ This is the stable maintenance path.
 
 `patina ai setup --force` should mean:
 
-- create a fresh backup archive from the current managed path set
+- create a fresh backup snapshot from the current managed path set
 - rewrite the managed interface surface from current templates
 - treat the operation as a deliberate re-takeover/hard reset
 
@@ -215,7 +215,7 @@ prompt/template hacks per interface.
    and does not recursively sweep arbitrary nested `AGENTS.md`,
    `GEMINI.md`, or `CLAUDE.md` files.
 2. When setup first encounters unmanaged files at Patina-managed
-   interface paths, it archives them under `.patina/local/backups/`
+   interface paths, it snapshots them under `.patina/local/backups/`
    using the session-style timestamp/uid convention before takeover.
 3. Patina-generated interface files contain clear managed markers or
    metadata so reruns can distinguish Patina-owned surfaces from
@@ -223,7 +223,7 @@ prompt/template hacks per interface.
 4. Normal setup reruns refresh Patina-managed content without creating
    repeated backups or clobbering user-editable content outside managed
    sections.
-5. `patina ai setup --force` creates a fresh backup bundle and rewrites
+5. `patina ai setup --force` creates a fresh backup snapshot and rewrites
    the managed interface surface from current templates.
 6. Targeted tests cover first takeover, rerun refresh, force rewrite,
    backup placement, and protection against nested-package false

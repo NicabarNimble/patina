@@ -1,0 +1,26 @@
+description = "Update current session with progress"
+prompt = """
+Update the current Patina session:
+
+1. Read root `AGENTS.md` first. Even if the `Gemini CLI` runtime section says Patina MCP is available, session lifecycle uses the native machine-readable CLI path for this phase.
+
+2. Execute the session update command:
+   `patina ai session update --json`
+
+3. Read the returned JSON and use `artifact_path` to open the updated durable session artifact.
+
+4. Fill in the update section with:
+   - Work completed since last update
+   - Key decisions and reasoning
+   - Challenges faced and solutions
+   - Patterns observed
+
+5. **Check for beliefs to capture**: Any design decisions, repeated patterns, strong principles, or lessons learned? If yes, suggest: "This sounds like a belief worth capturing. Should I create it?"
+
+6. If there are uncommitted changes, remind the user about git best practices:
+   - Make small, focused commits
+   - Each commit should have ONE clear purpose
+   - Use `git add -p` for surgical staging
+
+The session update has been recorded.
+"""

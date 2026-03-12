@@ -623,6 +623,16 @@ pub(crate) fn resolve_live_session(
             .ok_or_else(|| anyhow::anyhow!("No active session found for selector '{}'", selector));
     }
 
+    if let Some(adapter) = adapter_filter
+        .map(ToOwned::to_owned)
+        .or_else(|| std::env::var("PATINA_AI_INTERFACE").ok())
+        .filter(|value| !value.is_empty())
+    {
+        if let Some(handle) = session::load_current_interface_session(project_root, &adapter)? {
+            return Ok(handle);
+        }
+    }
+
     if let Some(runtime_id) = std::env::var("PATINA_SESSION_RUNTIME_ID")
         .ok()
         .filter(|value| !value.is_empty())
@@ -2515,7 +2525,7 @@ git:
     }
 
     #[test]
-    fn resolve_live_session_prefers_explicit_runtime_id_over_other_active_sessions() {
+    fn resolve_live_session_prefers_explicit_selector_over_pointer_and_env() {
         let temp = setup_project();
         let first = in_project(temp.path(), || {
             start_session_value(
@@ -2532,22 +2542,60 @@ git:
             .unwrap()
         });
 
-        unsafe {
-            std::env::set_var("PATINA_SESSION_RUNTIME_ID", &second.runtime_id);
-            std::env::set_var("PATINA_AI_INTERFACE", "opencode");
-        }
         let resolved = in_project(temp.path(), || {
-            resolve_live_session(temp.path(), None, None)
+            unsafe {
+                std::env::set_var("PATINA_SESSION_RUNTIME_ID", &first.runtime_id);
+                std::env::set_var("PATINA_AI_INTERFACE", "opencode");
+            }
+            let result = resolve_live_session(temp.path(), Some(&second.runtime_id), None);
+            unsafe {
+                std::env::remove_var("PATINA_SESSION_RUNTIME_ID");
+                std::env::remove_var("PATINA_AI_INTERFACE");
+            }
+            result
         })
         .unwrap();
-        unsafe {
-            std::env::remove_var("PATINA_SESSION_RUNTIME_ID");
-            std::env::remove_var("PATINA_AI_INTERFACE");
-        }
 
         assert_eq!(resolved.file_id, second.session_id);
         assert_ne!(resolved.file_id, first.session_id);
         assert_eq!(resolved.interface_kind, InterfaceKind::Gemini);
+    }
+
+    #[test]
+    fn resolve_live_session_prefers_interface_pointer_over_stale_launch_env() {
+        let temp = setup_project();
+        let first = in_project(temp.path(), || {
+            start_session_value(
+                temp.path(),
+                SessionStartRequest::native("First native session", "opencode"),
+            )
+            .unwrap()
+        });
+        let second = in_project(temp.path(), || {
+            start_session_value(
+                temp.path(),
+                SessionStartRequest::native("Second native session", "opencode"),
+            )
+            .unwrap()
+        });
+
+        let resolved = in_project(temp.path(), || {
+            unsafe {
+                std::env::set_var("PATINA_SESSION_RUNTIME_ID", &first.runtime_id);
+                std::env::set_var("PATINA_AI_INTERFACE", "opencode");
+            }
+            let result = resolve_live_session(temp.path(), None, None);
+            unsafe {
+                std::env::remove_var("PATINA_SESSION_RUNTIME_ID");
+                std::env::remove_var("PATINA_AI_INTERFACE");
+            }
+            result
+        })
+        .unwrap();
+
+        assert_eq!(resolved.file_id, second.session_id);
+        assert_ne!(resolved.file_id, first.session_id);
+        assert_eq!(resolved.interface_kind, InterfaceKind::OpenCode);
     }
 
     #[test]
@@ -2573,5 +2621,30 @@ git:
         assert!(artifact.contains("captured wrapper-first UX"));
         assert!(artifact.contains("### "));
         assert!(!temp.path().join(ACTIVE_SESSION_PATH).exists());
+    }
+
+    #[test]
+    fn end_live_session_clears_native_interface_pointer() {
+        let temp = setup_project();
+        let started = in_project(temp.path(), || {
+            start_session_value(
+                temp.path(),
+                SessionStartRequest::native("Native session", "opencode"),
+            )
+            .unwrap()
+        });
+        let pointer_path = temp
+            .path()
+            .join(".patina/local/interface-sessions/opencode.toml");
+        assert!(pointer_path.exists());
+
+        let handle = in_project(temp.path(), || {
+            resolve_live_session(temp.path(), Some(&started.runtime_id), None).unwrap()
+        });
+        in_project(temp.path(), || {
+            end_live_session_value(temp.path(), &handle, Some("archive")).unwrap()
+        });
+
+        assert!(!pointer_path.exists());
     }
 }

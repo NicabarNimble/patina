@@ -1,9 +1,7 @@
 mod wasm_cell;
 
 pub use patina_toy_sdk as toys;
-use patina_toy_sdk::{
-    PendingEvent as ToyPendingEvent, TaskIntent as ToyTaskIntent,
-};
+use patina_toy_sdk::{PendingEvent as ToyPendingEvent, TaskIntent as ToyTaskIntent};
 
 #[cfg(target_arch = "wasm32")]
 #[used]
@@ -181,13 +179,7 @@ pub mod host {
             last_error: Option<&str>,
         ) -> Result<(), String> {
             patina::host::lake::save_cursor(
-                lake,
-                source,
-                data_type,
-                cursor,
-                written,
-                status,
-                last_error,
+                lake, source, data_type, cursor, written, status, last_error,
             )
         }
         fn ensure_table(lake: &str, table: &str) -> Result<(), String> {

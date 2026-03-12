@@ -6,6 +6,7 @@ pub mod embeddings;
 pub mod environment;
 pub mod eventlog;
 pub mod git;
+pub mod interface;
 pub mod layer;
 pub mod measure;
 pub mod migration;

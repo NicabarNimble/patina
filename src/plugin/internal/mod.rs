@@ -129,10 +129,18 @@ impl PluginRole {
     /// Used for validation warnings — not enforcement.
     pub fn expected_worlds(&self) -> &[PluginWorld] {
         match self {
-            Self::Connector => &[PluginWorld::KnowledgeChild, PluginWorld::MotherChild, PluginWorld::Task],
+            Self::Connector => &[
+                PluginWorld::KnowledgeChild,
+                PluginWorld::MotherChild,
+                PluginWorld::Task,
+            ],
             Self::Grammar => &[PluginWorld::Pipeline],
             Self::Extension => &[PluginWorld::Command, PluginWorld::Task],
-            Self::App => &[PluginWorld::KnowledgeChild, PluginWorld::MotherChild, PluginWorld::Task],
+            Self::App => &[
+                PluginWorld::KnowledgeChild,
+                PluginWorld::MotherChild,
+                PluginWorld::Task,
+            ],
         }
     }
 }

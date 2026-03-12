@@ -85,7 +85,12 @@ pub fn ensure_table(lake: &str, table: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn append_json_batch(lake: &str, table: &str, source: &str, rows_json: &[String]) -> Result<u64> {
+pub fn append_json_batch(
+    lake: &str,
+    table: &str,
+    source: &str,
+    rows_json: &[String],
+) -> Result<u64> {
     let lake_path = ensure_lake(lake)?;
     let conn = open_lake_db(Path::new(&lake_path))?;
     let table = sanitize_table_name(table)?;

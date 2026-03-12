@@ -1,0 +1,4 @@
+adapter = "gemini"
+bundle = "gemini"
+version = "0.41.4"
+managed_by = "patina ai refresh"

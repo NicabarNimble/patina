@@ -1,16 +1,12 @@
 <!-- PATINA:START -->
 ## Patina
 
-Patina MCP is not currently configured for this OpenCode runtime.
-Do not assume MCP tools are available here.
+MCP tools:
+- Discovery: `context`, `scry`, `assay`
+- Sessions: `session.start`, `session.update`, `session.end`, `session.list`
+- Specs: `spec.next`, `spec.list`, `spec.show`, `spec.check`
 
-Native session fallback:
-- `patina ai session start --json --adapter opencode "<title>"`
-- `patina ai session update --json`
-- `patina ai session end --json`
-- `patina ai session list --json`
-
-
+Use MCP for Patina session/spec workflow. Prefer CLI `--json` only when MCP is unavailable.
 
 Managed context: `.opencode/PATINA.md`
 If `OPENCODE.md` already exists without Patina markers, Patina preserves it and refreshes only its managed files/sections.

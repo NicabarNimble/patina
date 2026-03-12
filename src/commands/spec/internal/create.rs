@@ -48,11 +48,10 @@ fn design_template(title: &str) -> String {
 
 /// Detect active session ID from .patina/local/active-session.md frontmatter.
 fn active_session_id() -> Option<String> {
-    let content = std::fs::read_to_string(".patina/local/active-session.md").ok()?;
-    let content = content.strip_prefix("---")?;
-    let end = content.find("\n---")?;
-    let frontmatter: serde_yaml::Value = serde_yaml::from_str(&content[..end]).ok()?;
-    frontmatter.get("id")?.as_str().map(|s| s.to_string())
+    let project_root = patina::session::SessionManager::find_project_root().ok()?;
+    patina::session::current_session_file_id(&project_root)
+        .ok()
+        .flatten()
 }
 
 /// Validate kebab-case identifier: ^[a-z][a-z0-9-]*$

@@ -57,7 +57,12 @@ pub fn pull(stream: &str, after_offset: Option<u64>, limit: u32) -> Result<Vec<P
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
-pub fn ack_through(store: &KnowledgeRuntimeStore, plugin_name: &str, stream: &str, offset: u64) -> Result<()> {
+pub fn ack_through(
+    store: &KnowledgeRuntimeStore,
+    plugin_name: &str,
+    stream: &str,
+    offset: u64,
+) -> Result<()> {
     if !KNOWN_STREAMS.contains(&stream) {
         anyhow::bail!("unknown stream '{}'", stream);
     }

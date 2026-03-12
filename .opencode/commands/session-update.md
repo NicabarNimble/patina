@@ -1,11 +1,10 @@
 Update the current Patina live session using the truthful Patina surface for this runtime:
 
-1. Read `.opencode/PATINA.md` first and determine whether it says Patina MCP is available in this OpenCode runtime.
+1. Read root `AGENTS.md` first. Even if the `OpenCode` runtime section says Patina MCP is available, session lifecycle uses the native machine-readable CLI path for this phase.
 
-2. Update the session using exactly one truthful path:
-   - If `.opencode/PATINA.md` says MCP is available, call MCP tool `session.update`.
-   - Otherwise, execute `patina ai session update --json`.
-   - If multiple active sessions exist, use `session.list` on the MCP path or `patina ai session list --json` on the native fallback path, then retry with `session=<runtime_id|file_id>`.
+2. Update the session with:
+   - `patina ai session update --json`
+   - If multiple active sessions exist, use `patina ai session list --json`, then retry with `--session <runtime_id|file_id>`.
 
 3. Read the returned JSON, then use `artifact_path` to find the new update section.
 

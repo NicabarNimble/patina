@@ -157,7 +157,13 @@ impl<B> MeasureToy<B> {
     }
 }
 impl<B: MeasureBackend> MeasureToy<B> {
-    pub fn record(&self, verb: &str, tool: &str, mode: &str, metrics_json: &str) -> Result<(), String> {
+    pub fn record(
+        &self,
+        verb: &str,
+        tool: &str,
+        mode: &str,
+        metrics_json: &str,
+    ) -> Result<(), String> {
         B::record(verb, tool, mode, metrics_json)
     }
 }

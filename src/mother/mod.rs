@@ -25,9 +25,10 @@
 //! let related = graph.get_related("patina", &[EdgeType::Uses, EdgeType::TestsWith])?;
 //! ```
 
-mod child;
 pub(crate) mod belief_host;
 pub(crate) mod checkpoint;
+mod child;
+pub(crate) mod events;
 mod graph;
 pub(crate) mod graph_host;
 mod internal;
@@ -35,7 +36,6 @@ pub(crate) mod lake_host;
 pub(crate) mod state;
 pub(crate) mod tasks;
 mod toys;
-pub(crate) mod events;
 
 use anyhow::Result;
 
@@ -44,7 +44,10 @@ pub use child::{
     ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, MotherChild, MotherHost,
     PendingEvent, TaskIntent, TaskIntentKind, Toy,
 };
-pub use state::{KnowledgeRuntimeStore, QueuedTask, RunStatus, TaskStatus};
+pub use state::{
+    KnowledgeRuntimeStore, MotherSessionParticipant, MotherSessionRecord, MotherSessionStatus,
+    QueuedTask, RunStatus, TaskStatus,
+};
 pub use toys::GrantedToys;
 
 // Graph exports

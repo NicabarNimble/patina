@@ -7,6 +7,8 @@ blocked_by: []
 sessions:
   origin: 20260303-184231
 related:
+- agentic-surface-architecture
+- session-narrative-system
 - forge-plugin-extraction
 - core-plugin-extraction
 - data-architecture-v3
@@ -62,7 +64,7 @@ This matters because:
    should be a separate persona from a dev Patina (tracking code)
 2. Cross-project learning ("evolve" verb) requires persona identity
    to track where knowledge came from
-3. Edge apps need to identify themselves to Mother
+3. Interfaces and edge apps need to identify themselves to Mother
 4. Multi-user scenarios need per-user personas, not shared state
 
 ## Solution
@@ -83,6 +85,10 @@ CREATE TABLE persona_registry (
 
 `patina init` selects or creates a persona. Each persona is a full
 Patina instance — own beliefs, own plugins, own projects.
+
+Interactive interfaces and edge apps check in to Mother under a persona
+context. They do not bypass persona boundaries and reach children or
+belief streams directly.
 
 **Provenance:** Every belief carries its persona UID. The `persona`
 field in belief frontmatter maps to a Mother-registered UID. When

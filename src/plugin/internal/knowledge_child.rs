@@ -144,12 +144,18 @@ mod bindings {
 
     impl patina::host::state::Host for HostState {
         fn get(&mut self, key: String) -> Option<String> {
-            self.runtime.get_state(&self.plugin_name, &key).ok().flatten()
+            self.runtime
+                .get_state(&self.plugin_name, &key)
+                .ok()
+                .flatten()
         }
 
         fn put(&mut self, key: String, value_json: String) -> Result<(), String> {
             if !self.grants.state_enabled {
-                return Err(format!("state not granted for plugin '{}'", self.plugin_name));
+                return Err(format!(
+                    "state not granted for plugin '{}'",
+                    self.plugin_name
+                ));
             }
             self.runtime
                 .put_state(&self.plugin_name, &key, &value_json)
@@ -158,7 +164,10 @@ mod bindings {
 
         fn delete(&mut self, key: String) -> Result<(), String> {
             if !self.grants.state_enabled {
-                return Err(format!("state not granted for plugin '{}'", self.plugin_name));
+                return Err(format!(
+                    "state not granted for plugin '{}'",
+                    self.plugin_name
+                ));
             }
             self.runtime
                 .delete_state(&self.plugin_name, &key)
@@ -196,7 +205,10 @@ mod bindings {
     impl patina::host::lake::Host for HostState {
         fn ensure_lake(&mut self, name: String) -> Result<String, String> {
             if !self.grants.lake_names.contains(&name) {
-                return Err(format!("lake '{}' not granted for '{}'", name, self.plugin_name));
+                return Err(format!(
+                    "lake '{}' not granted for '{}'",
+                    name, self.plugin_name
+                ));
             }
             crate::mother::lake_host::ensure_lake(&name).map_err(|e| e.to_string())
         }
@@ -226,7 +238,10 @@ mod bindings {
             last_error: Option<String>,
         ) -> Result<(), String> {
             if !self.grants.lake_names.contains(&lake) {
-                return Err(format!("lake '{}' not granted for '{}'", lake, self.plugin_name));
+                return Err(format!(
+                    "lake '{}' not granted for '{}'",
+                    lake, self.plugin_name
+                ));
             }
             crate::mother::lake_host::save_cursor(
                 &self.runtime,
@@ -243,7 +258,10 @@ mod bindings {
 
         fn ensure_table(&mut self, lake: String, table: String) -> Result<(), String> {
             if !self.grants.lake_names.contains(&lake) {
-                return Err(format!("lake '{}' not granted for '{}'", lake, self.plugin_name));
+                return Err(format!(
+                    "lake '{}' not granted for '{}'",
+                    lake, self.plugin_name
+                ));
             }
             crate::mother::lake_host::ensure_table(&lake, &table).map_err(|e| e.to_string())
         }
@@ -256,7 +274,10 @@ mod bindings {
             rows_json: Vec<String>,
         ) -> Result<u64, String> {
             if !self.grants.lake_names.contains(&lake) {
-                return Err(format!("lake '{}' not granted for '{}'", lake, self.plugin_name));
+                return Err(format!(
+                    "lake '{}' not granted for '{}'",
+                    lake, self.plugin_name
+                ));
             }
             crate::mother::lake_host::append_json_batch(&lake, &table, &source, &rows_json)
                 .map_err(|e| e.to_string())
@@ -264,7 +285,10 @@ mod bindings {
 
         fn query_json(&mut self, lake: String, sql: String) -> Result<String, String> {
             if !self.grants.lake_names.contains(&lake) {
-                return Err(format!("lake '{}' not granted for '{}'", lake, self.plugin_name));
+                return Err(format!(
+                    "lake '{}' not granted for '{}'",
+                    lake, self.plugin_name
+                ));
             }
             crate::mother::lake_host::query_json(&lake, &sql).map_err(|e| e.to_string())
         }
@@ -291,7 +315,8 @@ mod bindings {
                     stream_name: event.stream,
                     offset: event.offset,
                     event_type: event.event_type,
-                    payload_json: serde_json::to_string(&event.payload).unwrap_or_else(|_| "null".into()),
+                    payload_json: serde_json::to_string(&event.payload)
+                        .unwrap_or_else(|_| "null".into()),
                     occurred_at: event.occurred_at,
                 })
                 .collect())
@@ -316,17 +341,36 @@ mod bindings {
     impl patina::host::task::Host for HostState {
         fn enqueue(&mut self, intent: patina::host::task::TaskIntent) -> Result<String, String> {
             let kind = match intent.kind {
-                patina::host::task::TaskIntentKind::FetchSource => crate::mother::TaskIntentKind::FetchSource,
-                patina::host::task::TaskIntentKind::RunQuery => crate::mother::TaskIntentKind::RunQuery,
-                patina::host::task::TaskIntentKind::EmitFacts => crate::mother::TaskIntentKind::EmitFacts,
-                patina::host::task::TaskIntentKind::MaterializeIndex => crate::mother::TaskIntentKind::MaterializeIndex,
-                patina::host::task::TaskIntentKind::VerifyBelief => crate::mother::TaskIntentKind::VerifyBelief,
-                patina::host::task::TaskIntentKind::SyncGraph => crate::mother::TaskIntentKind::SyncGraph,
-                patina::host::task::TaskIntentKind::RefreshCredential => crate::mother::TaskIntentKind::RefreshCredential,
-                patina::host::task::TaskIntentKind::NativeJob => crate::mother::TaskIntentKind::NativeJob,
+                patina::host::task::TaskIntentKind::FetchSource => {
+                    crate::mother::TaskIntentKind::FetchSource
+                }
+                patina::host::task::TaskIntentKind::RunQuery => {
+                    crate::mother::TaskIntentKind::RunQuery
+                }
+                patina::host::task::TaskIntentKind::EmitFacts => {
+                    crate::mother::TaskIntentKind::EmitFacts
+                }
+                patina::host::task::TaskIntentKind::MaterializeIndex => {
+                    crate::mother::TaskIntentKind::MaterializeIndex
+                }
+                patina::host::task::TaskIntentKind::VerifyBelief => {
+                    crate::mother::TaskIntentKind::VerifyBelief
+                }
+                patina::host::task::TaskIntentKind::SyncGraph => {
+                    crate::mother::TaskIntentKind::SyncGraph
+                }
+                patina::host::task::TaskIntentKind::RefreshCredential => {
+                    crate::mother::TaskIntentKind::RefreshCredential
+                }
+                patina::host::task::TaskIntentKind::NativeJob => {
+                    crate::mother::TaskIntentKind::NativeJob
+                }
             };
             if !self.grants.task_intents.contains(&kind) {
-                return Err(format!("task intent '{}' not granted for '{}'", kind, self.plugin_name));
+                return Err(format!(
+                    "task intent '{}' not granted for '{}'",
+                    kind, self.plugin_name
+                ));
             }
             let payload = serde_json::from_str(&intent.payload_json)
                 .map_err(|e| format!("invalid task payload json: {}", e))?;
@@ -358,15 +402,23 @@ mod bindings {
                     action, self.plugin_name
                 ));
             }
-            crate::mother::graph_host::mutate(&self.runtime, &self.plugin_name, &action, &payload_json)
-                .map_err(|e| e.to_string())
+            crate::mother::graph_host::mutate(
+                &self.runtime,
+                &self.plugin_name,
+                &action,
+                &payload_json,
+            )
+            .map_err(|e| e.to_string())
         }
     }
 
     impl patina::host::belief::Host for HostState {
         fn query(&mut self, kind: String, params_json: String) -> Result<String, String> {
             if !self.grants.belief_read {
-                return Err(format!("belief read not granted for '{}'", self.plugin_name));
+                return Err(format!(
+                    "belief read not granted for '{}'",
+                    self.plugin_name
+                ));
             }
             crate::mother::belief_host::query(&kind, &params_json).map_err(|e| e.to_string())
         }
@@ -399,10 +451,10 @@ impl KnowledgeChildEngine {
     pub fn new() -> Result<Self> {
         let mut linker = Linker::new(wasm_engine());
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
-        bindings::KnowledgeChild::add_to_linker::<HostState, wasmtime::component::HasSelf<HostState>>(
-            &mut linker,
-            |s| s,
-        )?;
+        bindings::KnowledgeChild::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(&mut linker, |s| s)?;
         Ok(Self { linker })
     }
 
@@ -505,8 +557,12 @@ impl KnowledgeChildEngine {
             );
         }
 
-        const BELIEF_ACTIONS: &[&str] =
-            &["attach-evidence", "record-verification", "link-related", "supersede"];
+        const BELIEF_ACTIONS: &[&str] = &[
+            "attach-evidence",
+            "record-verification",
+            "link-related",
+            "supersede",
+        ];
         let unknown_belief: Vec<&str> = manifest
             .belief_write_actions
             .iter()
@@ -603,10 +659,18 @@ impl KnowledgeChild for WasmKnowledgeChild {
                 match h.status {
                     bindings::patina::host::types::HealthStatus::Healthy => ChildHealth::Healthy,
                     bindings::patina::host::types::HealthStatus::Degraded => {
-                        ChildHealth::Degraded(if reason.is_empty() { "degraded".into() } else { reason })
+                        ChildHealth::Degraded(if reason.is_empty() {
+                            "degraded".into()
+                        } else {
+                            reason
+                        })
                     }
                     bindings::patina::host::types::HealthStatus::Unhealthy => {
-                        ChildHealth::Unhealthy(if reason.is_empty() { "unhealthy".into() } else { reason })
+                        ChildHealth::Unhealthy(if reason.is_empty() {
+                            "unhealthy".into()
+                        } else {
+                            reason
+                        })
                     }
                 }
             }
@@ -654,14 +718,30 @@ impl KnowledgeChild for WasmKnowledgeChild {
                 .filter_map(|intent| {
                     Some(TaskIntent {
                         kind: match intent.kind {
-                            bindings::patina::host::task::TaskIntentKind::FetchSource => crate::mother::TaskIntentKind::FetchSource,
-                            bindings::patina::host::task::TaskIntentKind::RunQuery => crate::mother::TaskIntentKind::RunQuery,
-                            bindings::patina::host::task::TaskIntentKind::EmitFacts => crate::mother::TaskIntentKind::EmitFacts,
-                            bindings::patina::host::task::TaskIntentKind::MaterializeIndex => crate::mother::TaskIntentKind::MaterializeIndex,
-                            bindings::patina::host::task::TaskIntentKind::VerifyBelief => crate::mother::TaskIntentKind::VerifyBelief,
-                            bindings::patina::host::task::TaskIntentKind::SyncGraph => crate::mother::TaskIntentKind::SyncGraph,
-                            bindings::patina::host::task::TaskIntentKind::RefreshCredential => crate::mother::TaskIntentKind::RefreshCredential,
-                            bindings::patina::host::task::TaskIntentKind::NativeJob => crate::mother::TaskIntentKind::NativeJob,
+                            bindings::patina::host::task::TaskIntentKind::FetchSource => {
+                                crate::mother::TaskIntentKind::FetchSource
+                            }
+                            bindings::patina::host::task::TaskIntentKind::RunQuery => {
+                                crate::mother::TaskIntentKind::RunQuery
+                            }
+                            bindings::patina::host::task::TaskIntentKind::EmitFacts => {
+                                crate::mother::TaskIntentKind::EmitFacts
+                            }
+                            bindings::patina::host::task::TaskIntentKind::MaterializeIndex => {
+                                crate::mother::TaskIntentKind::MaterializeIndex
+                            }
+                            bindings::patina::host::task::TaskIntentKind::VerifyBelief => {
+                                crate::mother::TaskIntentKind::VerifyBelief
+                            }
+                            bindings::patina::host::task::TaskIntentKind::SyncGraph => {
+                                crate::mother::TaskIntentKind::SyncGraph
+                            }
+                            bindings::patina::host::task::TaskIntentKind::RefreshCredential => {
+                                crate::mother::TaskIntentKind::RefreshCredential
+                            }
+                            bindings::patina::host::task::TaskIntentKind::NativeJob => {
+                                crate::mother::TaskIntentKind::NativeJob
+                            }
                         },
                         payload: serde_json::from_str(&intent.payload_json).ok()?,
                         dedupe_key: intent.dedupe_key,

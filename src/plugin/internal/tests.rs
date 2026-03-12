@@ -274,7 +274,8 @@ child = "bad-child"
     let m = PluginManifest::from_path(f.path()).unwrap();
     let err = KnowledgeChildEngine::check_capabilities(&m).unwrap_err();
     assert!(
-        err.to_string().contains("unknown event stream 'unknown.stream'"),
+        err.to_string()
+            .contains("unknown event stream 'unknown.stream'"),
         "got: {}",
         err
     );

@@ -60,6 +60,68 @@ pub struct KnowledgeRuntimeStore {
     path: PathBuf,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MotherSessionStatus {
+    Active,
+    Completed,
+    Archived,
+}
+
+impl MotherSessionStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Completed => "completed",
+            Self::Archived => "archived",
+        }
+    }
+
+    fn from_db(value: &str) -> Self {
+        match value {
+            "completed" => Self::Completed,
+            "archived" => Self::Archived,
+            _ => Self::Active,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MotherSessionRecord {
+    pub runtime_id: String,
+    pub project_uid: String,
+    pub file_id: String,
+    pub title: String,
+    pub persona_uid: Option<String>,
+    pub status: MotherSessionStatus,
+    pub interface_kind: String,
+    pub adapter_name: String,
+    pub branch: Option<String>,
+    pub start_tag: Option<String>,
+    pub end_tag: Option<String>,
+    pub parent_runtime_id: Option<String>,
+    pub handoff_from_runtime_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl MotherSessionRecord {
+    pub fn starting_commit(&self) -> String {
+        "none".to_string()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MotherSessionParticipant {
+    pub session_runtime_id: String,
+    pub participant_id: String,
+    pub role: String,
+    pub interface_kind: Option<String>,
+    pub adapter_name: Option<String>,
+    pub display_name: Option<String>,
+    pub joined_at: String,
+    pub left_at: Option<String>,
+}
+
 impl Default for KnowledgeRuntimeStore {
     fn default() -> Self {
         Self::new(crate::paths::mother::runtime_db())
@@ -201,6 +263,47 @@ impl KnowledgeRuntimeStore {
                 created_at TEXT NOT NULL,
                 PRIMARY KEY (belief_id, related_belief_id, relation, plugin_name)
             );
+
+            CREATE TABLE IF NOT EXISTS mother_sessions (
+                runtime_id TEXT PRIMARY KEY,
+                project_uid TEXT NOT NULL,
+                file_id TEXT NOT NULL UNIQUE,
+                title TEXT NOT NULL,
+                persona_uid TEXT,
+                status TEXT NOT NULL,
+                interface_kind TEXT NOT NULL,
+                adapter_name TEXT NOT NULL,
+                branch TEXT,
+                start_tag TEXT,
+                end_tag TEXT,
+                parent_runtime_id TEXT,
+                handoff_from_runtime_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_mother_sessions_project_status
+            ON mother_sessions (project_uid, status, updated_at DESC);
+
+            CREATE TABLE IF NOT EXISTS mother_session_participants (
+                session_runtime_id TEXT NOT NULL,
+                participant_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                interface_kind TEXT,
+                adapter_name TEXT,
+                display_name TEXT,
+                joined_at TEXT NOT NULL,
+                left_at TEXT,
+                PRIMARY KEY (session_runtime_id, participant_id, joined_at)
+            );
+
+            CREATE TABLE IF NOT EXISTS mother_session_handoffs (
+                id INTEGER PRIMARY KEY,
+                from_runtime_id TEXT NOT NULL,
+                to_runtime_id TEXT NOT NULL,
+                reason TEXT,
+                created_at TEXT NOT NULL
+            );
             "#,
         )?;
         Ok(())
@@ -265,7 +368,12 @@ impl KnowledgeRuntimeStore {
         .map_err(Into::into)
     }
 
-    pub fn save_checkpoint(&self, plugin_name: &str, stream: &str, checkpoint_json: &str) -> Result<()> {
+    pub fn save_checkpoint(
+        &self,
+        plugin_name: &str,
+        stream: &str,
+        checkpoint_json: &str,
+    ) -> Result<()> {
         let conn = self.open()?;
         let now = Utc::now().to_rfc3339();
         conn.execute(
@@ -358,7 +466,11 @@ impl KnowledgeRuntimeStore {
         Ok(id)
     }
 
-    pub fn lease_next_task(&self, plugin_name: &str, lease_owner: &str) -> Result<Option<QueuedTask>> {
+    pub fn lease_next_task(
+        &self,
+        plugin_name: &str,
+        lease_owner: &str,
+    ) -> Result<Option<QueuedTask>> {
         let conn = self.open()?;
         let now = Utc::now();
         let now_str = now.to_rfc3339();
@@ -552,7 +664,12 @@ impl KnowledgeRuntimeStore {
         Ok(())
     }
 
-    pub fn load_lake_cursor(&self, lake_name: &str, source_name: &str, data_type: &str) -> Result<Option<String>> {
+    pub fn load_lake_cursor(
+        &self,
+        lake_name: &str,
+        source_name: &str,
+        data_type: &str,
+    ) -> Result<Option<String>> {
         let conn = self.open()?;
         conn.query_row(
             "SELECT cursor_value FROM mother_lake_cursors WHERE lake_name = ?1 AND source_name = ?2 AND data_type = ?3",
@@ -563,7 +680,12 @@ impl KnowledgeRuntimeStore {
         .map_err(Into::into)
     }
 
-    pub fn record_graph_mutation(&self, plugin_name: &str, action: &str, payload_json: &str) -> Result<()> {
+    pub fn record_graph_mutation(
+        &self,
+        plugin_name: &str,
+        action: &str,
+        payload_json: &str,
+    ) -> Result<()> {
         let conn = self.open()?;
         let now = Utc::now().to_rfc3339();
         conn.execute(
@@ -573,7 +695,12 @@ impl KnowledgeRuntimeStore {
         Ok(())
     }
 
-    pub fn record_belief_mutation(&self, plugin_name: &str, action: &str, payload_json: &str) -> Result<()> {
+    pub fn record_belief_mutation(
+        &self,
+        plugin_name: &str,
+        action: &str,
+        payload_json: &str,
+    ) -> Result<()> {
         let conn = self.open()?;
         let now = Utc::now().to_rfc3339();
         conn.execute(
@@ -632,9 +759,204 @@ impl KnowledgeRuntimeStore {
         Ok(())
     }
 
+    pub fn create_mother_session(
+        &self,
+        record: &MotherSessionRecord,
+        participants: &[MotherSessionParticipant],
+    ) -> Result<()> {
+        let mut conn = self.open()?;
+        let tx = conn.transaction()?;
+        tx.execute(
+            r#"
+            INSERT INTO mother_sessions (
+                runtime_id, project_uid, file_id, title, persona_uid, status,
+                interface_kind, adapter_name, branch, start_tag, end_tag,
+                parent_runtime_id, handoff_from_runtime_id, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            "#,
+            params![
+                record.runtime_id,
+                record.project_uid,
+                record.file_id,
+                record.title,
+                record.persona_uid,
+                record.status.as_str(),
+                record.interface_kind,
+                record.adapter_name,
+                record.branch,
+                record.start_tag,
+                record.end_tag,
+                record.parent_runtime_id,
+                record.handoff_from_runtime_id,
+                record.created_at,
+                record.updated_at,
+            ],
+        )?;
+
+        for participant in participants {
+            tx.execute(
+                r#"
+                INSERT INTO mother_session_participants (
+                    session_runtime_id, participant_id, role, interface_kind,
+                    adapter_name, display_name, joined_at, left_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                "#,
+                params![
+                    participant.session_runtime_id,
+                    participant.participant_id,
+                    participant.role,
+                    participant.interface_kind,
+                    participant.adapter_name,
+                    participant.display_name,
+                    participant.joined_at,
+                    participant.left_at,
+                ],
+            )?;
+        }
+
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn get_mother_session(&self, runtime_id: &str) -> Result<Option<MotherSessionRecord>> {
+        let conn = self.open()?;
+        conn.query_row(
+            r#"
+            SELECT runtime_id, project_uid, file_id, title, persona_uid, status,
+                   interface_kind, adapter_name, branch, start_tag, end_tag,
+                   parent_runtime_id, handoff_from_runtime_id, created_at, updated_at
+            FROM mother_sessions
+            WHERE runtime_id = ?1
+            "#,
+            params![runtime_id],
+            map_mother_session_row,
+        )
+        .optional()
+        .map_err(Into::into)
+    }
+
+    pub fn get_mother_session_by_file_id(
+        &self,
+        file_id: &str,
+    ) -> Result<Option<MotherSessionRecord>> {
+        let conn = self.open()?;
+        conn.query_row(
+            r#"
+            SELECT runtime_id, project_uid, file_id, title, persona_uid, status,
+                   interface_kind, adapter_name, branch, start_tag, end_tag,
+                   parent_runtime_id, handoff_from_runtime_id, created_at, updated_at
+            FROM mother_sessions
+            WHERE file_id = ?1
+            "#,
+            params![file_id],
+            map_mother_session_row,
+        )
+        .optional()
+        .map_err(Into::into)
+    }
+
+    pub fn list_active_mother_sessions(
+        &self,
+        project_uid: &str,
+    ) -> Result<Vec<MotherSessionRecord>> {
+        let conn = self.open()?;
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT runtime_id, project_uid, file_id, title, persona_uid, status,
+                   interface_kind, adapter_name, branch, start_tag, end_tag,
+                   parent_runtime_id, handoff_from_runtime_id, created_at, updated_at
+            FROM mother_sessions
+            WHERE project_uid = ?1 AND status = 'active'
+            ORDER BY updated_at DESC, created_at DESC
+            "#,
+        )?;
+        let rows = stmt
+            .query_map(params![project_uid], map_mother_session_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn find_active_mother_session_for_interface(
+        &self,
+        project_uid: &str,
+        adapter_name: &str,
+        interface_kind: &str,
+    ) -> Result<Option<MotherSessionRecord>> {
+        let conn = self.open()?;
+        conn.query_row(
+            r#"
+            SELECT runtime_id, project_uid, file_id, title, persona_uid, status,
+                   interface_kind, adapter_name, branch, start_tag, end_tag,
+                   parent_runtime_id, handoff_from_runtime_id, created_at, updated_at
+            FROM mother_sessions
+            WHERE project_uid = ?1
+              AND status = 'active'
+              AND adapter_name = ?2
+              AND interface_kind = ?3
+            ORDER BY updated_at DESC, created_at DESC
+            LIMIT 1
+            "#,
+            params![project_uid, adapter_name, interface_kind],
+            map_mother_session_row,
+        )
+        .optional()
+        .map_err(Into::into)
+    }
+
+    pub fn touch_mother_session(&self, runtime_id: &str, updated_at: &str) -> Result<()> {
+        let conn = self.open()?;
+        conn.execute(
+            "UPDATE mother_sessions SET updated_at = ?2 WHERE runtime_id = ?1",
+            params![runtime_id, updated_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn finish_mother_session(
+        &self,
+        runtime_id: &str,
+        status: MotherSessionStatus,
+        end_tag: Option<&str>,
+        updated_at: &str,
+    ) -> Result<()> {
+        let conn = self.open()?;
+        conn.execute(
+            r#"
+            UPDATE mother_sessions
+            SET status = ?2,
+                end_tag = COALESCE(?3, end_tag),
+                updated_at = ?4
+            WHERE runtime_id = ?1
+            "#,
+            params![runtime_id, status.as_str(), end_tag, updated_at],
+        )?;
+        Ok(())
+    }
+
     pub fn path(&self) -> &PathBuf {
         &self.path
     }
+}
+
+fn map_mother_session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MotherSessionRecord> {
+    let status: String = row.get(5)?;
+    Ok(MotherSessionRecord {
+        runtime_id: row.get(0)?,
+        project_uid: row.get(1)?,
+        file_id: row.get(2)?,
+        title: row.get(3)?,
+        persona_uid: row.get(4)?,
+        status: MotherSessionStatus::from_db(&status),
+        interface_kind: row.get(6)?,
+        adapter_name: row.get(7)?,
+        branch: row.get(8)?,
+        start_tag: row.get(9)?,
+        end_tag: row.get(10)?,
+        parent_runtime_id: row.get(11)?,
+        handoff_from_runtime_id: row.get(12)?,
+        created_at: row.get(13)?,
+        updated_at: row.get(14)?,
+    })
 }
 
 #[cfg(test)]
@@ -653,8 +975,12 @@ mod tests {
     fn state_checkpoints_and_offsets_are_namespaced_and_persistent() {
         let store = temp_store();
 
-        store.put_state("ducklake", "source:one", r#"{"ok":true}"#).unwrap();
-        store.put_state("belief-verifier", "source:one", r#"{"ok":false}"#).unwrap();
+        store
+            .put_state("ducklake", "source:one", r#"{"ok":true}"#)
+            .unwrap();
+        store
+            .put_state("belief-verifier", "source:one", r#"{"ok":false}"#)
+            .unwrap();
         store
             .save_checkpoint("ducklake", "ducklake.sync", r#"{"offset":7}"#)
             .unwrap();
@@ -667,7 +993,10 @@ mod tests {
 
         let reopened = KnowledgeRuntimeStore::new(store.path().clone());
         assert_eq!(
-            reopened.get_state("ducklake", "source:one").unwrap().as_deref(),
+            reopened
+                .get_state("ducklake", "source:one")
+                .unwrap()
+                .as_deref(),
             Some(r#"{"ok":true}"#)
         );
         assert_eq!(
@@ -724,5 +1053,75 @@ mod tests {
             .lease_next_task("ducklake", "worker-2")
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn mother_sessions_support_parallel_active_records() {
+        let store = temp_store();
+        let created_at = Utc::now().to_rfc3339();
+
+        let first = MotherSessionRecord {
+            runtime_id: uuid::Uuid::new_v4().to_string(),
+            project_uid: "proj-1234".to_string(),
+            file_id: "20260311-100000-ABCD".to_string(),
+            title: "OpenCode session".to_string(),
+            persona_uid: None,
+            status: MotherSessionStatus::Active,
+            interface_kind: "opencode".to_string(),
+            adapter_name: "opencode".to_string(),
+            branch: Some("patina".to_string()),
+            start_tag: Some("session-20260311-100000-ABCD-opencode-start".to_string()),
+            end_tag: None,
+            parent_runtime_id: None,
+            handoff_from_runtime_id: None,
+            created_at: created_at.clone(),
+            updated_at: created_at.clone(),
+        };
+        let second = MotherSessionRecord {
+            runtime_id: uuid::Uuid::new_v4().to_string(),
+            project_uid: "proj-1234".to_string(),
+            file_id: "20260311-100001-EFGH".to_string(),
+            title: "Gemini session".to_string(),
+            persona_uid: Some("persona-1".to_string()),
+            status: MotherSessionStatus::Active,
+            interface_kind: "gemini".to_string(),
+            adapter_name: "gemini".to_string(),
+            branch: Some("patina".to_string()),
+            start_tag: Some("session-20260311-100001-EFGH-gemini-start".to_string()),
+            end_tag: None,
+            parent_runtime_id: None,
+            handoff_from_runtime_id: None,
+            created_at: created_at.clone(),
+            updated_at: created_at.clone(),
+        };
+
+        store.create_mother_session(&first, &[]).unwrap();
+        store.create_mother_session(&second, &[]).unwrap();
+
+        let active = store.list_active_mother_sessions("proj-1234").unwrap();
+        assert_eq!(active.len(), 2);
+        assert!(store
+            .find_active_mother_session_for_interface("proj-1234", "opencode", "opencode")
+            .unwrap()
+            .is_some());
+
+        store
+            .finish_mother_session(
+                &first.runtime_id,
+                MotherSessionStatus::Archived,
+                Some("session-20260311-100000-ABCD-opencode-end"),
+                &Utc::now().to_rfc3339(),
+            )
+            .unwrap();
+
+        let reloaded = store
+            .get_mother_session(&first.runtime_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(reloaded.status, MotherSessionStatus::Archived);
+        assert_eq!(
+            reloaded.end_tag.as_deref(),
+            Some("session-20260311-100000-ABCD-opencode-end")
+        );
     }
 }

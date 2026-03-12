@@ -32,9 +32,10 @@ impl BeliefVerifierChild {
 
     fn increment_verification_count(&self) -> Result<(), String> {
         let next = self.verification_count() + 1;
-        self.toys
-            .state
-            .put("verification-count", &serde_json::to_string(&next).map_err(|e| e.to_string())?)
+        self.toys.state.put(
+            "verification-count",
+            &serde_json::to_string(&next).map_err(|e| e.to_string())?,
+        )
     }
 
     fn verify_belief(&mut self, payload: &str) -> Result<String, String> {
@@ -49,12 +50,12 @@ impl BeliefVerifierChild {
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
-        let belief_json = self
-            .toys
-            .belief
-            .query("by-id", &serde_json::json!({"belief_id": belief_id}).to_string())?;
-        let belief: serde_json::Value =
-            serde_json::from_str(&belief_json).map_err(|e| format!("invalid belief response: {}", e))?;
+        let belief_json = self.toys.belief.query(
+            "by-id",
+            &serde_json::json!({"belief_id": belief_id}).to_string(),
+        )?;
+        let belief: serde_json::Value = serde_json::from_str(&belief_json)
+            .map_err(|e| format!("invalid belief response: {}", e))?;
         let statement = belief
             .get("belief")
             .and_then(|b| b.get("statement"))
@@ -92,9 +93,7 @@ impl BeliefVerifierChild {
             "verify",
             &serde_json::json!({"count": 1}).to_string(),
         )?;
-        Ok(
-            serde_json::json!({"belief_id": belief_id, "status": status}).to_string(),
-        )
+        Ok(serde_json::json!({"belief_id": belief_id, "status": status}).to_string())
     }
 }
 
@@ -121,7 +120,9 @@ impl KnowledgeChildPlugin for BeliefVerifierChild {
     fn handle(&mut self, action: &str, payload: &str) -> Result<String, String> {
         match action {
             "verify-belief" => self.verify_belief(payload),
-            "status" => Ok(serde_json::json!({"verification_count": self.verification_count()}).to_string()),
+            "status" => Ok(
+                serde_json::json!({"verification_count": self.verification_count()}).to_string(),
+            ),
             other => Err(format!("belief-verifier: unknown action '{}'", other)),
         }
     }
@@ -159,7 +160,9 @@ impl KnowledgeChildPlugin for BeliefVerifierChild {
             last_offset = event.offset;
         }
         if last_offset > checkpoint.unwrap_or(0) {
-            self.toys.events.ack_through("belief.changed", last_offset)?;
+            self.toys
+                .events
+                .ack_through("belief.changed", last_offset)?;
             self.toys.checkpoint.save(
                 "belief.changed",
                 &serde_json::json!({"offset": last_offset}).to_string(),

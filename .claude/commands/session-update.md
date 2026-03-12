@@ -1,18 +1,13 @@
-Update the current Patina session with Git-aware progress tracking:
+Update the current Patina session:
 
-1. Execute the session update command:
-   `patina session update`
+1. Execute the bundled session update wrapper:
+   - `.claude/bin/session-update.sh`
 
-2. The command will show what time period to document (e.g., "14:15 → 14:45")
+2. Read the returned JSON and use `artifact_path` to open the durable session artifact.
 
-3. Note from stdout:
-   - Git status: commits, changed files, working tree status
-   - Spec files changed this session (if any)
-   - Paused spec warnings (if any)
+3. Read the session artifact and find the new update section.
 
-4. Read `.patina/local/active-session.md` and find the new update section
-
-5. Fill in the update section with what happened during that time period:
+4. Fill in the update section with what happened during that time period:
    - **Work completed**: Code written, files modified, problems solved
    - **Discussion context**: Key questions asked, reasoning frameworks used, why we chose this approach
    - **Key decisions**: Design choices, trade-offs, reasoning behind changes
@@ -27,16 +22,7 @@ Update the current Patina session with Git-aware progress tracking:
    - Source files: backtick paths (e.g., `src/mcp/server.rs`)
    Unlinked plain-text mentions are invisible to the knowledge graph.
 
-6. **Compression pass check**: Review uncommitted changes and recent commits since last update:
-   - Any duplication introduced? (Same logic in two places)
-   - Any unnecessary abstractions added? (Wrapper that doesn't add value)
-   - Any runtime checks that could be types? (String where enum would work)
-   - Any indirection increase without justification?
-
-   If yes, note it in the update: "Compression opportunity: {description}"
-   This is a lightweight check, not a mandatory refactor — flag it for the next coding pass.
-
-7. **Check for beliefs to capture**: Review the update and ask yourself:
+5. **Check for beliefs to capture**: Review the update and ask yourself:
    - Any design decisions made? ("We chose X because Y")
    - Any repeated patterns? (Said 3+ times)
    - Any strong principles? ("Never do X", "Always Y")
@@ -44,8 +30,4 @@ Update the current Patina session with Git-aware progress tracking:
 
    If yes, suggest to user: "This sounds like a belief worth capturing: '{statement}'. Should I create it?"
 
-8. If the command suggests a commit (30+ minutes or 100+ lines changed), consider:
-   - Creating a checkpoint: `git commit -am "checkpoint: [description]"`
-   - Breaking large changes into smaller logical commits
-
-Note: Each update creates a time-stamped checkpoint with Git context for future reference.
+6. If the update shows a large or risky change set, suggest a small checkpoint commit before continuing.

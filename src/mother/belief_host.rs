@@ -31,16 +31,15 @@ pub fn query(kind: &str, params_json: &str) -> Result<String> {
                 .unwrap_or_default();
             if source.is_empty() {
                 let conn = graph_conn()?;
-                let mut stmt = conn.prepare(
-                    "SELECT source FROM beliefs WHERE id = ?1 ORDER BY source LIMIT 1",
-                )?;
+                let mut stmt = conn
+                    .prepare("SELECT source FROM beliefs WHERE id = ?1 ORDER BY source LIMIT 1")?;
                 if let Some(source) = stmt
                     .query_row(params![belief_id], |row| row.get::<_, String>(0))
                     .optional()?
                 {
-                    let (entry, path) = graph.get_belief(belief_id, &source)?.ok_or_else(|| {
-                        anyhow::anyhow!("belief '{}' not found", belief_id)
-                    })?;
+                    let (entry, path) = graph
+                        .get_belief(belief_id, &source)?
+                        .ok_or_else(|| anyhow::anyhow!("belief '{}' not found", belief_id))?;
                     serde_json::json!({"belief": entry, "source_path": path})
                 } else {
                     serde_json::Value::Null
@@ -118,7 +117,12 @@ pub fn mutate(
                 .get("evidence_id")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow::anyhow!("attach-evidence requires 'evidence_id'"))?;
-            store.attach_belief_evidence(plugin_name, belief_id, evidence_id, Some(payload_json))?;
+            store.attach_belief_evidence(
+                plugin_name,
+                belief_id,
+                evidence_id,
+                Some(payload_json),
+            )?;
         }
         "record-verification" => {
             let belief_id = payload
