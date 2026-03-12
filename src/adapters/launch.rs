@@ -590,9 +590,12 @@ fn runtime_surface_section(display: &str, adapter_name: &str, mcp_available: boo
         "Patina MCP is configured for this runtime.\n\n\
 Use MCP directly for Patina workflow:\n\
 - Discovery: `context`, `scry`, `assay`\n\
-- Sessions: `session.start`, `session.update`, `session.end`, `session.list`\n\
 - Specs: `spec.next`, `spec.list`, `spec.show`, `spec.check`\n\n\
-If a session command cannot use MCP at runtime, fall back to the native machine-readable session path instead of `patina session ... --json`.\n"
+Session lifecycle remains on the native machine-readable CLI path even when MCP is configured:\n\
+- Sessions: `patina ai session start --json --adapter {adapter_name} \"<title>\"`\n\
+- Sessions: `patina ai session update --json`\n\
+- Sessions: `patina ai session end --json`\n\
+- Sessions: `patina ai session list --json`\n"
             .to_string()
     } else {
         format!(
@@ -704,6 +707,7 @@ mod tests {
             assert!(section.contains(
                 "Do not assume MCP exists unless that runtime section says it is configured."
             ));
+            assert!(!section.contains("session.start"));
             assert!(section.contains("patina ai session start --json --adapter claude"));
             assert!(section.contains("patina ai session start --json --adapter opencode"));
             assert!(section.contains("patina ai session start --json --adapter gemini"));

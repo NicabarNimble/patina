@@ -78,8 +78,8 @@ pub fn execute(command: SessionCommands) -> Result<()> {
 }
 
 pub(crate) use internal::{
-    end_live_session_value, list_sessions_value, resolve_live_session, start_session_value,
-    update_live_session_value, SessionStartRequest,
+    end_live_session_value, resolve_live_session, start_session_value, update_live_session_value,
+    SessionStartRequest,
 };
 
 /// Start a new development session

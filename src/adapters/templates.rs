@@ -399,9 +399,9 @@ mod tests {
 
     #[test]
     fn test_opencode_templates_compile() {
-        assert!(opencode_templates::SESSION_START_MD.contains("session.start"));
-        assert!(opencode_templates::SESSION_UPDATE_MD.contains("session.update"));
-        assert!(opencode_templates::SESSION_END_MD.contains("session.end"));
+        assert!(opencode_templates::SESSION_START_MD.contains("patina ai session start --json"));
+        assert!(opencode_templates::SESSION_UPDATE_MD.contains("patina ai session update --json"));
+        assert!(opencode_templates::SESSION_END_MD.contains("patina ai session end --json"));
         assert!(opencode_templates::SPEC_MD.contains("patina spec"));
         assert!(opencode_templates::EPISTEMIC_BELIEFS_MD.contains("create-belief.sh"));
     }
@@ -500,17 +500,18 @@ mod tests {
         let session_start =
             fs::read_to_string(templates_dir.join(".opencode/commands/session-start.md")).unwrap();
         assert!(session_start.contains("Read root `AGENTS.md` first"));
-        assert!(session_start.contains("session.start"));
         assert!(session_start.contains("patina ai session start --json --adapter opencode"));
         assert!(session_start.contains("spec.check"));
 
         let session_update =
             fs::read_to_string(templates_dir.join(".opencode/commands/session-update.md")).unwrap();
         assert!(session_update.contains("patina ai session update --json"));
+        assert!(!session_update.contains("session.update"));
 
         let session_end =
             fs::read_to_string(templates_dir.join(".opencode/commands/session-end.md")).unwrap();
         assert!(session_end.contains("patina ai session end --json"));
+        assert!(!session_end.contains("session.end"));
 
         let spec = fs::read_to_string(templates_dir.join(".opencode/commands/spec.md")).unwrap();
         assert!(spec.contains("patina spec check"));

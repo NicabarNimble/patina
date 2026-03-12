@@ -1,10 +1,9 @@
 Update the current Patina session using the truthful Claude runtime surface:
 
-1. Read root `AGENTS.md` first and determine whether the `Claude Code` runtime section says Patina MCP is available in this runtime.
+1. Read root `AGENTS.md` first. Even if the `Claude Code` runtime section says Patina MCP is available, session lifecycle uses the native machine-readable CLI path for this phase.
 
-2. Update the session using exactly one truthful path:
-   - If `AGENTS.md` says MCP is available for Claude Code, call MCP tool `session.update`.
-   - Otherwise, execute `patina ai session update --json`.
+2. Update the session with:
+   - `patina ai session update --json`
 
 3. Read the returned JSON and extract `artifact_path`.
 

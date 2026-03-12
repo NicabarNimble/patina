@@ -2324,6 +2324,7 @@ pub fn resolve_adapter(explicit: Option<&str>, project_root: &Path) -> Result<St
 mod tests {
     use super::*;
     use patina::project::{self, ProjectConfig};
+    use std::sync::{Mutex, OnceLock};
     use tempfile::TempDir;
 
     fn setup_project() -> TempDir {
@@ -2337,6 +2338,8 @@ mod tests {
     }
 
     fn in_project<T>(project_root: &Path, f: impl FnOnce() -> T) -> T {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _guard = LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let old_dir = std::env::current_dir().unwrap();
         let patina_home = project_root.join("patina-home");
         fs::create_dir_all(&patina_home).unwrap();
@@ -2477,12 +2480,51 @@ git:
         unsafe {
             std::env::set_var("PATINA_AI_INTERFACE", "opencode");
         }
-        let resolved = resolve_live_session(temp.path(), None, None).unwrap();
+        let resolved = in_project(temp.path(), || {
+            resolve_live_session(temp.path(), None, None)
+        })
+        .unwrap();
         unsafe {
             std::env::remove_var("PATINA_AI_INTERFACE");
         }
 
         assert_eq!(resolved.file_id, started.session_id);
         assert_eq!(resolved.interface_kind, InterfaceKind::OpenCode);
+    }
+
+    #[test]
+    fn resolve_live_session_prefers_explicit_runtime_id_over_other_active_sessions() {
+        let temp = setup_project();
+        let first = in_project(temp.path(), || {
+            start_session_value(
+                temp.path(),
+                SessionStartRequest::native("First native session", "opencode"),
+            )
+            .unwrap()
+        });
+        let second = in_project(temp.path(), || {
+            start_session_value(
+                temp.path(),
+                SessionStartRequest::native("Second native session", "gemini"),
+            )
+            .unwrap()
+        });
+
+        unsafe {
+            std::env::set_var("PATINA_SESSION_RUNTIME_ID", &second.runtime_id);
+            std::env::set_var("PATINA_AI_INTERFACE", "opencode");
+        }
+        let resolved = in_project(temp.path(), || {
+            resolve_live_session(temp.path(), None, None)
+        })
+        .unwrap();
+        unsafe {
+            std::env::remove_var("PATINA_SESSION_RUNTIME_ID");
+            std::env::remove_var("PATINA_AI_INTERFACE");
+        }
+
+        assert_eq!(resolved.file_id, second.session_id);
+        assert_ne!(resolved.file_id, first.session_id);
+        assert_eq!(resolved.interface_kind, InterfaceKind::Gemini);
     }
 }

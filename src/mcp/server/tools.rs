@@ -178,62 +178,6 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                     }
                 },
                 {
-                    "name": "session.start",
-                    "description": "Start a Patina session for the current interface without scraping CLI prose. Returns the live session ids, tags, and durable artifact path.",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "title": {
-                                "type": "string",
-                                "description": "Session title"
-                            },
-                            "adapter": {
-                                "type": "string",
-                                "description": "Adapter/interface name (defaults to the current AI interface)"
-                            }
-                        },
-                        "required": ["title"]
-                    }
-                },
-                {
-                    "name": "session.update",
-                    "description": "Append a timestamped update to the current live session artifact with git metrics. Use session=<runtime_id|file_id> when multiple active sessions exist.",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "session": {
-                                "type": "string",
-                                "description": "Optional runtime_id or file_id of the session to update"
-                            }
-                        }
-                    }
-                },
-                {
-                    "name": "session.end",
-                    "description": "Archive the current live session, compute final metrics, and write the last-session pointer. Use session=<runtime_id|file_id> when multiple active sessions exist.",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "session": {
-                                "type": "string",
-                                "description": "Optional runtime_id or file_id of the session to end"
-                            },
-                            "note": {
-                                "type": "string",
-                                "description": "Optional outcome note to append before archiving"
-                            }
-                        }
-                    }
-                },
-                {
-                    "name": "session.list",
-                    "description": "List active, stale, and recent sessions with ids and artifact paths for operator use.",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {}
-                    }
-                },
-                {
                     "name": "spec.list",
                     "description": "List all specs with optional filters. Returns specs from the filesystem merged with DB data.",
                     "inputSchema": {
@@ -552,7 +496,7 @@ mod tests {
     use crate::mcp::protocol::Request;
 
     #[test]
-    fn tools_list_includes_session_and_spec_operator_slice() {
+    fn tools_list_includes_spec_operator_slice_but_not_session_lifecycle() {
         let req = Request {
             jsonrpc: "2.0".to_string(),
             id: Some(serde_json::json!(1)),
@@ -569,17 +513,16 @@ mod tests {
             .filter_map(|tool| tool["name"].as_str())
             .collect::<Vec<_>>();
 
-        for expected in [
+        for expected in ["spec.list", "spec.next", "spec.show", "spec.check"] {
+            assert!(tools.contains(&expected), "missing {}", expected);
+        }
+        for forbidden in [
             "session.start",
             "session.update",
             "session.end",
             "session.list",
-            "spec.list",
-            "spec.next",
-            "spec.show",
-            "spec.check",
         ] {
-            assert!(tools.contains(&expected), "missing {}", expected);
+            assert!(!tools.contains(&forbidden), "unexpected {}", forbidden);
         }
     }
 }

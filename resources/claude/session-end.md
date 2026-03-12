@@ -5,11 +5,10 @@ End the current Patina session using the truthful Claude runtime surface:
    - This captures activity since the last update
    - Ensure all artifact references use `[[wikilinks]]` (beliefs, sessions, commits, specs)
 
-2. Read root `AGENTS.md` first and determine whether the `Claude Code` runtime section says Patina MCP is available in this runtime.
+2. Read root `AGENTS.md` first. Even if the `Claude Code` runtime section says Patina MCP is available, session lifecycle uses the native machine-readable CLI path for this phase.
 
-3. Archive the session using exactly one truthful path:
-   - If `AGENTS.md` says MCP is available for Claude Code, call MCP tool `session.end`.
-   - Otherwise, execute `patina ai session end --json`.
+3. Archive the session with:
+   - `patina ai session end --json`
 
 4. Read the returned JSON and confirm the archive artifact and end tag.
 

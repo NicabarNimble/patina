@@ -11,7 +11,6 @@ use crate::retrieval::QueryEngine;
 
 mod assay;
 mod scry;
-mod session;
 mod spec;
 mod tools;
 
@@ -256,20 +255,6 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine, conn: &Connection) -> R
             assay::handle(req, args, conn)
         }
         "measure" => handle_measure(req),
-        n if n.starts_with("session.") => {
-            let tool_name = name.clone();
-            let args: session::SessionArgs = match serde_json::from_value(arguments) {
-                Ok(a) => a,
-                Err(e) => {
-                    return Response::error(
-                        req.id.clone(),
-                        ERR_INVALID_PARAMS,
-                        &format!("Invalid session params: {}", e),
-                    )
-                }
-            };
-            session::handle(req, &tool_name, args)
-        }
         n if n.starts_with("spec.") || n.starts_with("schemas.") => {
             let tool_name = name.clone();
             let args: spec::SpecArgs = match serde_json::from_value(arguments) {
@@ -289,5 +274,32 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine, conn: &Connection) -> R
             ERR_INVALID_PARAMS,
             &format!("Unknown tool: {}", name),
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mcp::protocol::Request;
+
+    #[test]
+    fn session_lifecycle_tools_are_rejected() {
+        let req = Request {
+            jsonrpc: "2.0".to_string(),
+            id: Some(serde_json::json!(1)),
+            method: "tools/call".to_string(),
+            params: serde_json::json!({
+                "name": "session.start",
+                "arguments": {
+                    "title": "should fail"
+                }
+            }),
+        };
+        let engine = QueryEngine::new();
+        let conn = Connection::open_in_memory().unwrap();
+
+        let response = handle_tool_call(&req, &engine, &conn);
+        let error = response.error.expect("expected MCP error");
+        assert!(error.message.contains("Unknown tool: session.start"));
     }
 }
