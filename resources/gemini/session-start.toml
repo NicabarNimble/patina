@@ -2,23 +2,21 @@ description = "Start a new patina development session"
 prompt = """
 Start a new Patina development session:
 
-1. Read root `AGENTS.md` first. Even if the `Gemini CLI` runtime section says Patina MCP is available, session lifecycle uses the native machine-readable CLI path for this phase.
+1. Execute the bundled session start wrapper:
+   `.gemini/bin/session-start.sh "{{args}}"`
 
-2. Execute the session start command:
-   `patina ai session start --json --adapter gemini "{{args}}"`
+2. Read the returned JSON and use `artifact_path` to open the durable session artifact.
 
-3. Read the returned JSON and use `artifact_path` to open the durable session artifact.
+3. Read `last_session_path` if it exists and use the referenced durable session to fill in the "Previous Session Context" section with a concrete 2-3 sentence summary.
 
-4. Read `last_session_path` if it exists and use the referenced durable session to fill in the "Previous Session Context" section with a concrete 2-3 sentence summary.
-
-5. If we've been discussing work already in this conversation:
+4. If we've been discussing work already in this conversation:
    - Update the Goals section with specific tasks we've identified
    - Add context about why this session was started
    - Note any decisions or constraints we've discussed
 
-6. Ask the user: "Would you like me to create todos for '{{args}}'?"
+5. Ask the user: "Would you like me to create todos for '{{args}}'?"
 
-7. Remind the user about session workflow:
+6. Remind the user about session workflow:
    - Use `/session-update` periodically to capture progress
    - Use `/session-note` for important insights
    - End with `/session-end` to archive and distill learnings

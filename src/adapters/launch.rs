@@ -586,27 +586,29 @@ fn canonical_agents_section(environment: &Environment) -> Result<String> {
 
 fn runtime_surface_section(display: &str, adapter_name: &str, mcp_available: bool) -> String {
     let header = format!("### {display}\n\n");
+    let wrapper_root = format!(".{adapter_name}/bin");
     let body = if mcp_available {
-        "Patina MCP is configured for this runtime.\n\n\
+        format!(
+            "Patina MCP is configured for this runtime.\n\n\
 Use MCP directly for Patina workflow:\n\
 - Discovery: `context`, `scry`, `assay`\n\
 - Specs: `spec.next`, `spec.list`, `spec.show`, `spec.check`\n\n\
-Session lifecycle remains on the native machine-readable CLI path even when MCP is configured:\n\
-- Sessions: `patina ai session start --json --adapter {adapter_name} \"<title>\"`\n\
-- Sessions: `patina ai session update --json`\n\
-- Sessions: `patina ai session end --json`\n\
-- Sessions: `patina ai session list --json`\n"
-            .to_string()
+Session lifecycle stays on the bundled native wrapper path even when MCP is configured:\n\
+- Sessions: `{wrapper_root}/session-start.sh \"<title>\"`\n\
+- Sessions: `{wrapper_root}/session-update.sh`\n\
+- Sessions: `{wrapper_root}/session-note.sh \"<note>\"`\n\
+- Sessions: `{wrapper_root}/session-end.sh`\n"
+        )
     } else {
         format!(
             "Patina MCP is not configured for this runtime. Do not assume `context`, `scry`, `assay`, `session.*`, or `spec.*` MCP tools exist here.\n\n\
 Use CLI/native fallbacks instead:\n\
 - Discovery: `patina context`, `patina scry`, `patina assay`\n\
 - Specs: `patina spec show <id>`, `patina spec check <id> --json`, `patina spec next`\n\
-- Sessions: `patina ai session start --json --adapter {adapter_name} \"<title>\"`\n\
-- Sessions: `patina ai session update --json`\n\
-- Sessions: `patina ai session end --json`\n\
-- Sessions: `patina ai session list --json`\n"
+- Sessions: `{wrapper_root}/session-start.sh \"<title>\"`\n\
+- Sessions: `{wrapper_root}/session-update.sh`\n\
+- Sessions: `{wrapper_root}/session-note.sh \"<note>\"`\n\
+- Sessions: `{wrapper_root}/session-end.sh`\n"
         )
     };
 
@@ -708,9 +710,10 @@ mod tests {
                 "Do not assume MCP exists unless that runtime section says it is configured."
             ));
             assert!(!section.contains("session.start"));
-            assert!(section.contains("patina ai session start --json --adapter claude"));
-            assert!(section.contains("patina ai session start --json --adapter opencode"));
-            assert!(section.contains("patina ai session start --json --adapter gemini"));
+            assert!(section.contains(".claude/bin/session-start.sh"));
+            assert!(section.contains(".opencode/bin/session-start.sh"));
+            assert!(section.contains(".gemini/bin/session-start.sh"));
+            assert!(section.contains("session-note.sh"));
             assert!(section.contains("patina spec check <id> --json"));
         });
     }

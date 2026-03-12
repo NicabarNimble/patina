@@ -1,8 +1,7 @@
 //! Session script generation for Claude adapter
 //!
 //! Deploys command definitions (.md) and thin wrapper scripts that forward
-//! to `patina session` Rust commands. The wrapper scripts provide backward
-//! compatibility for any code still calling .claude/bin/session-*.sh.
+//! to the native AI session backend while preserving local script entrypoints.
 
 use anyhow::Result;
 use std::fs;
@@ -22,12 +21,23 @@ const PATINA_REVIEW_MD: &str = include_str!("../../../../resources/claude/patina
 // Embed /spec skill from resources
 const SPEC_MD: &str = include_str!("../../../../resources/claude/spec.md");
 
-/// Thin wrapper scripts that forward to `patina session` commands.
-/// Deployed to .claude/bin/ for backward compatibility.
-const WRAPPER_START: &str = "#!/bin/bash\nexec patina session start \"$@\"\n";
-const WRAPPER_UPDATE: &str = "#!/bin/bash\nexec patina session update \"$@\"\n";
-const WRAPPER_NOTE: &str = "#!/bin/bash\nexec patina session note \"$@\"\n";
-const WRAPPER_END: &str = "#!/bin/bash\nexec patina session end \"$@\"\n";
+fn wrapper_start() -> String {
+    "#!/bin/bash\nexec env PATINA_AI_INTERFACE=claude patina ai session start --json --adapter claude \"$@\"\n".to_string()
+}
+
+fn wrapper_update() -> String {
+    "#!/bin/bash\nexec env PATINA_AI_INTERFACE=claude patina ai session update --json \"$@\"\n"
+        .to_string()
+}
+
+fn wrapper_note() -> String {
+    "#!/bin/bash\nexec env PATINA_AI_INTERFACE=claude patina ai session note \"$@\"\n".to_string()
+}
+
+fn wrapper_end() -> String {
+    "#!/bin/bash\nexec env PATINA_AI_INTERFACE=claude patina ai session end --json \"$@\"\n"
+        .to_string()
+}
 
 /// Create all session scripts and command definitions
 pub fn create_session_scripts(project_path: &Path) -> Result<()> {
@@ -39,10 +49,10 @@ pub fn create_session_scripts(project_path: &Path) -> Result<()> {
     fs::create_dir_all(&bin_path)?;
 
     // Deploy wrapper scripts (backward compatibility)
-    write_script(&bin_path.join("session-start.sh"), WRAPPER_START)?;
-    write_script(&bin_path.join("session-update.sh"), WRAPPER_UPDATE)?;
-    write_script(&bin_path.join("session-note.sh"), WRAPPER_NOTE)?;
-    write_script(&bin_path.join("session-end.sh"), WRAPPER_END)?;
+    write_script(&bin_path.join("session-start.sh"), &wrapper_start())?;
+    write_script(&bin_path.join("session-update.sh"), &wrapper_update())?;
+    write_script(&bin_path.join("session-note.sh"), &wrapper_note())?;
+    write_script(&bin_path.join("session-end.sh"), &wrapper_end())?;
 
     // Deploy command definitions
     fs::write(commands_path.join("session-start.md"), SESSION_START_MD)?;

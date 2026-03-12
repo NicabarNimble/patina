@@ -540,8 +540,7 @@ mod tests {
         let session_start =
             std::fs::read_to_string(temp.path().join(".opencode/commands/session-start.md"))
                 .unwrap();
-        assert!(session_start.contains("Read root `AGENTS.md` first"));
-        assert!(session_start.contains("patina ai session start --json --adapter opencode"));
+        assert!(session_start.contains(".opencode/bin/session-start.sh"));
         let belief_command =
             std::fs::read_to_string(temp.path().join(".opencode/commands/epistemic-beliefs.md"))
                 .unwrap();
@@ -550,8 +549,8 @@ mod tests {
         let agents = std::fs::read_to_string(temp.path().join("AGENTS.md")).unwrap();
         assert!(agents.contains("### OpenCode"));
         assert!(agents.contains("### Gemini CLI"));
-        assert!(agents.contains("patina ai session start --json --adapter opencode"));
-        assert!(agents.contains("patina ai session start --json --adapter gemini"));
+        assert!(agents.contains(".opencode/bin/session-start.sh"));
+        assert!(agents.contains(".gemini/bin/session-start.sh"));
         assert!(result.backup_snapshot.is_none());
     }
 

@@ -3,9 +3,9 @@ use serde_json::json;
 use std::fs;
 use std::path::Path;
 
+use patina::git;
 use patina::interface::adapter as load_adapter;
 use patina::session::{self, ArchiveSessionRequest, SessionManager};
-use patina::git;
 
 use super::AiSessionCommands;
 
@@ -63,6 +63,7 @@ pub fn session(command: AiSessionCommands) -> Result<()> {
             json,
         } => start_session(&title, adapter, json),
         AiSessionCommands::Update { session, json } => update_session(session, json),
+        AiSessionCommands::Note { content, session } => note_session(content, session),
         AiSessionCommands::End {
             session,
             note,
@@ -170,6 +171,16 @@ fn update_session(session_selector: Option<String>, json_output: bool) -> Result
     Ok(())
 }
 
+fn note_session(content: String, session_selector: Option<String>) -> Result<()> {
+    let project_root = SessionManager::find_project_root()?;
+    let handle = crate::commands::session::resolve_live_session(
+        &project_root,
+        session_selector.as_deref(),
+        current_interface_adapter().as_deref(),
+    )?;
+    crate::commands::session::note_live_session(&project_root, &handle, &content)
+}
+
 fn end_session(
     session_selector: Option<String>,
     note: Option<String>,
@@ -231,7 +242,9 @@ fn resolve_native_session_adapter(project_root: &Path, adapter: Option<&str>) ->
     let resolved = adapter
         .map(ToOwned::to_owned)
         .or_else(current_interface_adapter)
-        .unwrap_or(patina::interface::resolve_preferred_ai_interface(project_root)?);
+        .unwrap_or(patina::interface::resolve_preferred_ai_interface(
+            project_root,
+        )?);
     patina::interface::ensure_ai_project_config(project_root, None)?;
     let _ = load_adapter(&resolved).map_err(|_| {
         anyhow::anyhow!(

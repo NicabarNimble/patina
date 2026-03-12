@@ -26,6 +26,14 @@ pub enum AiSessionCommands {
         json: bool,
     },
 
+    /// Add a note to the current AI session artifact
+    Note {
+        content: String,
+
+        #[arg(long)]
+        session: Option<String>,
+    },
+
     /// End an AI session and archive its durable artifact
     End {
         #[arg(long)]
@@ -237,6 +245,32 @@ mod tests {
         match parsed.command {
             AiCommands::Refresh { interface, .. } => {
                 assert_eq!(interface.as_deref(), Some("gemini"))
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ai_session_note_command_parses_content_and_selector() {
+        let parsed = AiCli::try_parse_from([
+            "patina",
+            "session",
+            "note",
+            "capture this",
+            "--session",
+            "runtime-123",
+        ])
+        .unwrap();
+
+        match parsed.command {
+            AiCommands::Session {
+                command:
+                    AiSessionCommands::Note {
+                        content, session, ..
+                    },
+            } => {
+                assert_eq!(content, "capture this");
+                assert_eq!(session.as_deref(), Some("runtime-123"));
             }
             other => panic!("unexpected command: {other:?}"),
         }

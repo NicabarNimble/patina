@@ -13,15 +13,32 @@ use std::path::Path;
 use crate::paths;
 
 // =============================================================================
-// Thin wrapper scripts — shared across all adapters
+// Thin wrapper scripts — generated per adapter
 // =============================================================================
-// These forward to `patina session` Rust commands. Deployed to .{adapter}/bin/
-// for backward compatibility with any code still calling session-*.sh directly.
+// These keep the native session backend behind local interface scripts so the
+// command markdown/TOML can stay workflow-oriented.
 
-const WRAPPER_START: &str = "#!/bin/bash\nexec patina session start \"$@\"\n";
-const WRAPPER_UPDATE: &str = "#!/bin/bash\nexec patina session update \"$@\"\n";
-const WRAPPER_NOTE: &str = "#!/bin/bash\nexec patina session note \"$@\"\n";
-const WRAPPER_END: &str = "#!/bin/bash\nexec patina session end \"$@\"\n";
+fn wrapper_start(adapter: &str) -> String {
+    format!(
+        "#!/bin/bash\nexec env PATINA_AI_INTERFACE={adapter} patina ai session start --json --adapter {adapter} \"$@\"\n"
+    )
+}
+
+fn wrapper_update(adapter: &str) -> String {
+    format!(
+        "#!/bin/bash\nexec env PATINA_AI_INTERFACE={adapter} patina ai session update --json \"$@\"\n"
+    )
+}
+
+fn wrapper_note(adapter: &str) -> String {
+    format!("#!/bin/bash\nexec env PATINA_AI_INTERFACE={adapter} patina ai session note \"$@\"\n")
+}
+
+fn wrapper_end(adapter: &str) -> String {
+    format!(
+        "#!/bin/bash\nexec env PATINA_AI_INTERFACE={adapter} patina ai session end --json \"$@\"\n"
+    )
+}
 
 // =============================================================================
 // Embedded Templates - Claude
@@ -145,10 +162,13 @@ fn install_claude_templates(adapters_dir: &Path) -> Result<()> {
     fs::create_dir_all(&skills_dir)?;
 
     // Write wrapper scripts (forward to patina session commands)
-    write_executable(&bin_dir.join("session-start.sh"), WRAPPER_START)?;
-    write_executable(&bin_dir.join("session-update.sh"), WRAPPER_UPDATE)?;
-    write_executable(&bin_dir.join("session-note.sh"), WRAPPER_NOTE)?;
-    write_executable(&bin_dir.join("session-end.sh"), WRAPPER_END)?;
+    write_executable(&bin_dir.join("session-start.sh"), &wrapper_start("claude"))?;
+    write_executable(
+        &bin_dir.join("session-update.sh"),
+        &wrapper_update("claude"),
+    )?;
+    write_executable(&bin_dir.join("session-note.sh"), &wrapper_note("claude"))?;
+    write_executable(&bin_dir.join("session-end.sh"), &wrapper_end("claude"))?;
 
     // Write commands
     fs::write(
@@ -216,10 +236,13 @@ fn install_gemini_templates(adapters_dir: &Path) -> Result<()> {
     fs::create_dir_all(&commands_dir)?;
 
     // Write wrapper scripts (forward to patina session commands)
-    write_executable(&bin_dir.join("session-start.sh"), WRAPPER_START)?;
-    write_executable(&bin_dir.join("session-update.sh"), WRAPPER_UPDATE)?;
-    write_executable(&bin_dir.join("session-note.sh"), WRAPPER_NOTE)?;
-    write_executable(&bin_dir.join("session-end.sh"), WRAPPER_END)?;
+    write_executable(&bin_dir.join("session-start.sh"), &wrapper_start("gemini"))?;
+    write_executable(
+        &bin_dir.join("session-update.sh"),
+        &wrapper_update("gemini"),
+    )?;
+    write_executable(&bin_dir.join("session-note.sh"), &wrapper_note("gemini"))?;
+    write_executable(&bin_dir.join("session-end.sh"), &wrapper_end("gemini"))?;
 
     // Write commands (TOML format for Gemini)
     fs::write(
@@ -271,10 +294,16 @@ fn install_opencode_templates(adapters_dir: &Path) -> Result<()> {
     fs::create_dir_all(&commands_dir)?;
 
     // Write wrapper scripts (forward to patina session commands)
-    write_executable(&bin_dir.join("session-start.sh"), WRAPPER_START)?;
-    write_executable(&bin_dir.join("session-update.sh"), WRAPPER_UPDATE)?;
-    write_executable(&bin_dir.join("session-note.sh"), WRAPPER_NOTE)?;
-    write_executable(&bin_dir.join("session-end.sh"), WRAPPER_END)?;
+    write_executable(
+        &bin_dir.join("session-start.sh"),
+        &wrapper_start("opencode"),
+    )?;
+    write_executable(
+        &bin_dir.join("session-update.sh"),
+        &wrapper_update("opencode"),
+    )?;
+    write_executable(&bin_dir.join("session-note.sh"), &wrapper_note("opencode"))?;
+    write_executable(&bin_dir.join("session-end.sh"), &wrapper_end("opencode"))?;
 
     // Write commands (markdown format, same as Claude)
     fs::write(
@@ -399,20 +428,28 @@ mod tests {
 
     #[test]
     fn test_opencode_templates_compile() {
-        assert!(opencode_templates::SESSION_START_MD.contains("patina ai session start --json"));
-        assert!(opencode_templates::SESSION_UPDATE_MD.contains("patina ai session update --json"));
-        assert!(opencode_templates::SESSION_END_MD.contains("patina ai session end --json"));
+        assert!(opencode_templates::SESSION_START_MD.contains(".opencode/bin/session-start.sh"));
+        assert!(opencode_templates::SESSION_UPDATE_MD.contains(".opencode/bin/session-update.sh"));
+        assert!(opencode_templates::SESSION_END_MD.contains(".opencode/bin/session-end.sh"));
         assert!(opencode_templates::SPEC_MD.contains("patina spec"));
         assert!(opencode_templates::EPISTEMIC_BELIEFS_MD.contains("create-belief.sh"));
     }
 
     #[test]
     fn test_wrapper_scripts_content() {
-        // Verify wrapper scripts forward to patina session commands
-        assert!(WRAPPER_START.contains("patina session start"));
-        assert!(WRAPPER_UPDATE.contains("patina session update"));
-        assert!(WRAPPER_NOTE.contains("patina session note"));
-        assert!(WRAPPER_END.contains("patina session end"));
+        let start = wrapper_start("claude");
+        let update = wrapper_update("opencode");
+        let note = wrapper_note("gemini");
+        let end = wrapper_end("claude");
+
+        assert!(start.contains("PATINA_AI_INTERFACE=claude"));
+        assert!(start.contains("patina ai session start --json --adapter claude"));
+        assert!(update.contains("PATINA_AI_INTERFACE=opencode"));
+        assert!(update.contains("patina ai session update --json"));
+        assert!(note.contains("PATINA_AI_INTERFACE=gemini"));
+        assert!(note.contains("patina ai session note"));
+        assert!(end.contains("PATINA_AI_INTERFACE=claude"));
+        assert!(end.contains("patina ai session end --json"));
     }
 
     #[test]
@@ -434,10 +471,11 @@ mod tests {
         assert!(!templates_dir.join(".claude/bin/launch.sh").exists());
         assert!(!templates_dir.join(".claude/bin/persona-start.sh").exists());
 
-        // Wrapper scripts should forward to patina session
+        // Wrapper scripts should forward to the native AI session backend
         let wrapper =
             fs::read_to_string(templates_dir.join(".claude/bin/session-start.sh")).unwrap();
-        assert!(wrapper.contains("patina session start"));
+        assert!(wrapper.contains("PATINA_AI_INTERFACE=claude"));
+        assert!(wrapper.contains("patina ai session start --json --adapter claude"));
 
         // Skills should be installed
         assert!(templates_dir
@@ -471,10 +509,11 @@ mod tests {
             .exists());
         assert!(templates_dir.join(".gemini/bin/create-belief.sh").exists());
 
-        // Wrapper scripts should forward to patina session
+        // Wrapper scripts should forward to the native AI session backend
         let wrapper =
             fs::read_to_string(templates_dir.join(".gemini/bin/session-start.sh")).unwrap();
-        assert!(wrapper.contains("patina session start"));
+        assert!(wrapper.contains("PATINA_AI_INTERFACE=gemini"));
+        assert!(wrapper.contains("patina ai session start --json --adapter gemini"));
     }
 
     #[test]
@@ -499,18 +538,17 @@ mod tests {
 
         let session_start =
             fs::read_to_string(templates_dir.join(".opencode/commands/session-start.md")).unwrap();
-        assert!(session_start.contains("Read root `AGENTS.md` first"));
-        assert!(session_start.contains("patina ai session start --json --adapter opencode"));
+        assert!(session_start.contains(".opencode/bin/session-start.sh"));
         assert!(session_start.contains("spec.check"));
 
         let session_update =
             fs::read_to_string(templates_dir.join(".opencode/commands/session-update.md")).unwrap();
-        assert!(session_update.contains("patina ai session update --json"));
+        assert!(session_update.contains(".opencode/bin/session-update.sh"));
         assert!(!session_update.contains("session.update"));
 
         let session_end =
             fs::read_to_string(templates_dir.join(".opencode/commands/session-end.md")).unwrap();
-        assert!(session_end.contains("patina ai session end --json"));
+        assert!(session_end.contains(".opencode/bin/session-end.sh"));
         assert!(!session_end.contains("session.end"));
 
         let spec = fs::read_to_string(templates_dir.join(".opencode/commands/spec.md")).unwrap();

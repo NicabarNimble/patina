@@ -4,18 +4,16 @@ End and archive the current Patina session:
 
 1. Run `/session-update` first if recent work has not been captured yet.
 
-2. Read root `AGENTS.md` first. Even if the `Gemini CLI` runtime section says Patina MCP is available, session lifecycle uses the native machine-readable CLI path for this phase.
+2. Execute the bundled session end wrapper:
+   `.gemini/bin/session-end.sh`
 
-3. Execute the session end command:
-   `patina ai session end --json`
-
-4. Read the returned JSON and confirm:
+3. Read the returned JSON and confirm:
    - archive artifact path
    - classification
    - start/end tags
    - that `last_session_path` now points to this durable session
 
-5. Ask the user if they'd like to:
+4. Ask the user if they'd like to:
    - Review the session summary
    - Commit any remaining changes
    - Start a new session

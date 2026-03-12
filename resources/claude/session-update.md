@@ -1,15 +1,13 @@
-Update the current Patina session using the truthful Claude runtime surface:
+Update the current Patina session:
 
-1. Read root `AGENTS.md` first. Even if the `Claude Code` runtime section says Patina MCP is available, session lifecycle uses the native machine-readable CLI path for this phase.
+1. Execute the bundled session update wrapper:
+   - `.claude/bin/session-update.sh`
 
-2. Update the session with:
-   - `patina ai session update --json`
+2. Read the returned JSON and use `artifact_path` to open the durable session artifact.
 
-3. Read the returned JSON and extract `artifact_path`.
+3. Read the session artifact and find the new update section.
 
-4. Read the session artifact and find the new update section.
-
-5. Fill in the update section with what happened during that time period:
+4. Fill in the update section with what happened during that time period:
    - **Work completed**: Code written, files modified, problems solved
    - **Discussion context**: Key questions asked, reasoning frameworks used, why we chose this approach
    - **Key decisions**: Design choices, trade-offs, reasoning behind changes
@@ -24,7 +22,7 @@ Update the current Patina session using the truthful Claude runtime surface:
    - Source files: backtick paths (e.g., `src/mcp/server.rs`)
    Unlinked plain-text mentions are invisible to the knowledge graph.
 
-6. **Check for beliefs to capture**: Review the update and ask yourself:
+5. **Check for beliefs to capture**: Review the update and ask yourself:
    - Any design decisions made? ("We chose X because Y")
    - Any repeated patterns? (Said 3+ times)
    - Any strong principles? ("Never do X", "Always Y")
@@ -32,4 +30,4 @@ Update the current Patina session using the truthful Claude runtime surface:
 
    If yes, suggest to user: "This sounds like a belief worth capturing: '{statement}'. Should I create it?"
 
-7. If the update shows a large or risky change set, suggest a small checkpoint commit before continuing.
+6. If the update shows a large or risky change set, suggest a small checkpoint commit before continuing.

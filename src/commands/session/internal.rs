@@ -1210,6 +1210,28 @@ pub fn note_session(project_root: &Path, content: &str) -> Result<()> {
         );
     }
 
+    note_session_document(project_root, &session_path, ACTIVE_SESSION_PATH, content)
+}
+
+pub(crate) fn note_live_session(
+    project_root: &Path,
+    handle: &session::LiveSessionHandle,
+    content: &str,
+) -> Result<()> {
+    note_session_document(
+        project_root,
+        &handle.artifact_path,
+        &handle.artifact_path.display().to_string(),
+        content,
+    )
+}
+
+fn note_session_document(
+    project_root: &Path,
+    session_path: &Path,
+    source_path: &str,
+    content: &str,
+) -> Result<()> {
     // 2. Get git context
     let branch = git::current_branch().unwrap_or_else(|_| "detached".to_string());
     let sha = git::short_sha().unwrap_or_else(|_| "no-commits".to_string());
@@ -1243,7 +1265,7 @@ pub fn note_session(project_root: &Path, content: &str) -> Result<()> {
         "session.observation",
         &timestamp,
         &session_id,
-        Some(ACTIVE_SESSION_PATH),
+        Some(source_path),
         &data.to_string(),
     )?;
 
@@ -2526,5 +2548,30 @@ git:
         assert_eq!(resolved.file_id, second.session_id);
         assert_ne!(resolved.file_id, first.session_id);
         assert_eq!(resolved.interface_kind, InterfaceKind::Gemini);
+    }
+
+    #[test]
+    fn note_live_session_appends_to_native_artifact() {
+        let temp = setup_project();
+        let started = in_project(temp.path(), || {
+            start_session_value(
+                temp.path(),
+                SessionStartRequest::native("Native session", "opencode"),
+            )
+            .unwrap()
+        });
+
+        let handle = in_project(temp.path(), || {
+            resolve_live_session(temp.path(), Some(&started.runtime_id), None).unwrap()
+        });
+
+        in_project(temp.path(), || {
+            note_live_session(temp.path(), &handle, "captured wrapper-first UX").unwrap()
+        });
+
+        let artifact = fs::read_to_string(&started.artifact_path).unwrap();
+        assert!(artifact.contains("captured wrapper-first UX"));
+        assert!(artifact.contains("### "));
+        assert!(!temp.path().join(ACTIVE_SESSION_PATH).exists());
     }
 }
