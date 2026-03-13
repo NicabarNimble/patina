@@ -223,6 +223,9 @@ measure = true
 graph = true
 belief = true
 
+[toys.ingress.github]
+endpoint = "https://api.github.com/repos/openai/openai/issues"
+
 [provides]
 child = "ducklake"
 "#,
@@ -251,6 +254,11 @@ child = "ducklake"
     assert!(m.toys.belief);
     assert!(m.toys.lake_names.contains("default"));
     assert!(m.toys.lake_names.contains("archive"));
+    assert_eq!(
+        m.ingress_sources["github"].endpoint,
+        "https://api.github.com/repos/openai/openai/issues"
+    );
+    assert_eq!(m.toys.ingress_sources["github"].name, "github");
 }
 
 #[test]
@@ -298,6 +306,56 @@ fn knowledge_child_example_manifests_validate() {
     }
 }
 
+#[test]
+fn knowledge_child_rejects_invalid_ingress_endpoint() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "bad-ingress"
+world = "knowledge-child"
+
+[capabilities]
+host_log = true
+
+[toys.ingress.bad]
+endpoint = "http://localhost/internal"
+
+[provides]
+child = "bad-ingress"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    let err = KnowledgeChildEngine::check_capabilities(&m).unwrap_err();
+    assert!(
+        err.to_string().contains("invalid ingress source 'bad'"),
+        "got: {}",
+        err
+    );
+}
+
+#[test]
+fn ducklake_manifest_uses_granted_ingress_not_ambient_http() {
+    let path =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins/ducklake/plugin.toml");
+    let manifest = PluginManifest::from_path(&path).unwrap();
+    assert!(manifest.host_http_domains.is_empty());
+    assert!(!manifest.capabilities.contains(&"host_http".to_string()));
+    assert!(manifest.toys.connector);
+}
+
+#[test]
+fn ducklake_manifest_runtime_grants_sdk_story_stays_connected() {
+    let path =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins/ducklake/plugin.toml");
+    let manifest = PluginManifest::from_path(&path).unwrap();
+    let grants = manifest.granted_capabilities();
+
+    assert!(grants.toys.connector);
+    assert!(grants.toys.lake_names.contains("default"));
+    assert!(!grants.toys.fetch);
+    assert!(!grants.http_domains.contains("api.github.com"));
+}
+
 // =====================================================================
 // check_capabilities
 // =====================================================================
@@ -325,6 +383,7 @@ fn capabilities_all_granted() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -360,6 +419,7 @@ fn capabilities_empty() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -395,6 +455,7 @@ fn capabilities_denied() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -505,6 +566,7 @@ fn check_capabilities_rejects_unknown_query_kinds() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -545,6 +607,7 @@ fn check_capabilities_accepts_known_query_kinds() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -604,6 +667,7 @@ fn wasm_models_child_handle_roundtrip() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -670,6 +734,7 @@ fn wasm_models_child_health() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -725,6 +790,7 @@ fn load_repos_child() -> Option<Box<dyn crate::mother::MotherChild>> {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -947,6 +1013,7 @@ fn wasm_repos_child_toy_capability_gating() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -1043,6 +1110,7 @@ fn benchmark_plugin_performance() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -1185,6 +1253,7 @@ fn load_doctor_manifest() -> PluginManifest {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -1345,6 +1414,7 @@ fn check_capabilities_rejects_empty_http_domain() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -1381,6 +1451,7 @@ fn check_capabilities_rejects_http_domain_with_path() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -1417,6 +1488,7 @@ fn check_capabilities_accepts_valid_http_domains() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -1456,6 +1528,7 @@ fn granted_capabilities_includes_http_domains() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -1563,6 +1636,7 @@ fn hello_task_manifest() -> PluginManifest {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -1680,6 +1754,7 @@ fn task_hello_unapproved_toy_denied() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -1742,6 +1817,7 @@ fn echo_pipeline_manifest() -> PluginManifest {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -1886,6 +1962,7 @@ fn wasm_trap_pipeline_panic_returns_error() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -2006,6 +2083,7 @@ fn check_capabilities_rejects_pipeline_with_query() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -2047,6 +2125,7 @@ fn check_capabilities_rejects_pipeline_with_http() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -2124,6 +2203,7 @@ fn wasm_trap_mother_child_panic_returns_error() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -2251,6 +2331,7 @@ fn check_capabilities_rejects_host_secrets_domain_not_in_host_http() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -2300,6 +2381,7 @@ fn check_capabilities_accepts_host_secrets_with_matching_host_http() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -2347,6 +2429,7 @@ fn granted_capabilities_includes_credential_mappings() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -3040,6 +3123,7 @@ fn role_world_valid_combo_passes() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -3077,6 +3161,7 @@ fn role_world_unusual_combo_still_passes() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],
@@ -3114,6 +3199,7 @@ fn role_none_skips_validation() {
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
+        ingress_sources: std::collections::HashMap::new(),
         subscribed_streams: vec![],
         task_intent_names: vec![],
         task_intents: vec![],

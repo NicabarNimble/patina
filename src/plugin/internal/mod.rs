@@ -7,6 +7,8 @@ use anyhow::Result;
 use wasmtime::component::Component;
 use wasmtime::{Config, Engine};
 
+use crate::mother::GrantedIngressSource;
+
 mod command;
 pub(crate) mod host_support;
 mod knowledge_child;
@@ -224,6 +226,7 @@ pub struct PluginManifest {
     pub state_enabled: bool,
     pub checkpoint_streams: Vec<String>,
     pub lake_names: Vec<String>,
+    pub ingress_sources: std::collections::HashMap<String, GrantedIngressSource>,
     pub subscribed_streams: Vec<String>,
     pub task_intent_names: Vec<String>,
     pub task_intents: Vec<crate::mother::TaskIntentKind>,
@@ -497,6 +500,26 @@ impl PluginManifest {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
+        let ingress_sources = toys_table
+            .and_then(|toys| toys.get("ingress"))
+            .and_then(|v| v.as_table())
+            .map(|ingress| {
+                ingress
+                    .iter()
+                    .filter_map(|(name, value)| {
+                        let table = value.as_table()?;
+                        let endpoint = table.get("endpoint")?.as_str()?.to_string();
+                        Some((
+                            name.clone(),
+                            GrantedIngressSource {
+                                name: name.clone(),
+                                endpoint,
+                            },
+                        ))
+                    })
+                    .collect::<std::collections::HashMap<_, _>>()
+            })
+            .unwrap_or_default();
         let subscribed_streams = cap_table
             .and_then(|cap| cap.get("events"))
             .and_then(|v| v.as_table())
@@ -563,6 +586,13 @@ impl PluginManifest {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false),
             lake_names: lake_names.iter().cloned().collect(),
+            ingress_sources: ingress_sources.clone(),
+            connector: toys_table
+                .and_then(|t| t.get("connector"))
+                .and_then(|v| v.as_table())
+                .and_then(|t| t.get("enabled"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
             query: toys_table
                 .and_then(|t| t.get("query"))
                 .and_then(|v| v.as_bool())
@@ -603,6 +633,7 @@ impl PluginManifest {
             state_enabled,
             checkpoint_streams,
             lake_names,
+            ingress_sources,
             subscribed_streams,
             task_intent_names,
             task_intents,
@@ -628,6 +659,12 @@ impl PluginManifest {
     pub fn granted_capabilities(&self) -> GrantedCapabilities {
         let query_kinds = self.host_query_kinds.iter().cloned().collect();
         let http_domains = self.host_http_domains.iter().cloned().collect();
+        let mut http_domains: std::collections::HashSet<String> = http_domains;
+        for source in self.ingress_sources.values() {
+            if let Ok(domain) = self::host_support::validate_http_url(&source.endpoint) {
+                http_domains.insert(domain);
+            }
+        }
         let credential_mappings = self.host_secrets.clone();
 
         // Parse query_scope from capabilities table if present.

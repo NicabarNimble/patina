@@ -1421,6 +1421,7 @@ fn main() -> Result<()> {
                         state_enabled: false,
                         checkpoint_streams: vec![],
                         lake_names: vec![],
+                        ingress_sources: std::collections::HashMap::new(),
                         subscribed_streams: vec![],
                         task_intent_names: vec![],
                         task_intents: vec![],
@@ -1920,7 +1921,11 @@ fn main() -> Result<()> {
             if mcp {
                 mcp::run_mcp_server()?;
             } else {
-                let options = commands::mother::DaemonOptions { host, port };
+                let options = commands::mother::DaemonOptions {
+                    host,
+                    port,
+                    legacy_migration: false,
+                };
                 commands::mother::daemon::run_server(options)?;
             }
         }

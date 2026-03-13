@@ -48,7 +48,7 @@ pub use state::{
     KnowledgeRuntimeStore, MotherSessionParticipant, MotherSessionRecord, MotherSessionStatus,
     QueuedTask, RunStatus, TaskStatus,
 };
-pub use toys::GrantedToys;
+pub use toys::{GrantedIngressSource, GrantedToys};
 
 // Graph exports
 pub use graph::{
