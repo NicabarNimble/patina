@@ -63,6 +63,12 @@ pub fn check_in(request: &InterfaceCheckIn) -> Result<CheckInResult> {
         }
     }
 
+    if let Some(handle) =
+        session::load_current_interface_session(&request.project_root, &request.adapter_name)?
+    {
+        return Ok(result_from_handle(request, handle, true));
+    }
+
     let active_interface_sessions = active_interface_sessions(request)?;
     if let Some(handle) = select_reusable_session(&request.adapter_name, active_interface_sessions)?
     {
@@ -168,7 +174,10 @@ fn select_reusable_session(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mother::{KnowledgeRuntimeStore, MotherSessionRecord, MotherSessionStatus};
+    use std::fs;
     use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
 
     fn handle(
         file_id: &str,
@@ -224,5 +233,108 @@ mod tests {
             .to_string()
             .contains("Multiple active opencode sessions exist"));
         assert!(error.to_string().contains("--session <id>"));
+    }
+
+    #[test]
+    fn check_in_prefers_current_interface_pointer_over_ambiguous_matches() {
+        let temp = tempfile::TempDir::new().unwrap();
+        with_temp_patina_home(&temp, || {
+            let project_uid = project::create_uid_if_missing(temp.path()).unwrap();
+            let store = KnowledgeRuntimeStore::default();
+
+            let first = MotherSessionRecord {
+                runtime_id: "runtime-first".to_string(),
+                project_uid: project_uid.clone(),
+                file_id: "20260312-000230-AAAA".to_string(),
+                title: "First OpenCode session".to_string(),
+                persona_uid: None,
+                status: MotherSessionStatus::Active,
+                interface_kind: "opencode".to_string(),
+                adapter_name: "opencode".to_string(),
+                branch: Some("patina".to_string()),
+                start_tag: Some("session-20260312-000230-AAAA-opencode-start".to_string()),
+                end_tag: None,
+                parent_runtime_id: None,
+                handoff_from_runtime_id: None,
+                created_at: "2026-03-12T00:02:30Z".to_string(),
+                updated_at: "2026-03-12T00:02:30Z".to_string(),
+            };
+            let second = MotherSessionRecord {
+                runtime_id: "runtime-second".to_string(),
+                project_uid,
+                file_id: "20260312-000231-BBBB".to_string(),
+                title: "Second OpenCode session".to_string(),
+                persona_uid: None,
+                status: MotherSessionStatus::Active,
+                interface_kind: "opencode".to_string(),
+                adapter_name: "opencode".to_string(),
+                branch: Some("patina".to_string()),
+                start_tag: Some("session-20260312-000231-BBBB-opencode-start".to_string()),
+                end_tag: None,
+                parent_runtime_id: None,
+                handoff_from_runtime_id: None,
+                created_at: "2026-03-12T00:02:31Z".to_string(),
+                updated_at: "2026-03-12T00:02:31Z".to_string(),
+            };
+
+            for record in [&first, &second] {
+                store.create_mother_session(record, &[]).unwrap();
+                let artifact_path = session::durable_session_path(temp.path(), &record.file_id);
+                fs::create_dir_all(artifact_path.parent().unwrap()).unwrap();
+                fs::write(&artifact_path, format!("session {}", record.file_id)).unwrap();
+            }
+
+            let pointer_path = temp
+                .path()
+                .join(".patina/local/interface-sessions/opencode.toml");
+            fs::create_dir_all(pointer_path.parent().unwrap()).unwrap();
+            fs::write(
+                &pointer_path,
+                "adapter = \"opencode\"\nruntime_id = \"runtime-second\"\nfile_id = \"20260312-000231-BBBB\"\n",
+            )
+            .unwrap();
+
+            let result = check_in(&InterfaceCheckIn {
+                interface_kind: InterfaceKind::OpenCode,
+                adapter_name: "opencode".to_string(),
+                project_root: temp.path().to_path_buf(),
+                project_uid: None,
+                requested_persona: None,
+                requested_session: None,
+                title: None,
+                capabilities: InterfaceCapabilities::default(),
+            })
+            .unwrap();
+
+            assert!(result.attached_existing);
+            assert_eq!(result.session_runtime_id, second.runtime_id);
+            assert_eq!(result.session_file_id, second.file_id);
+            assert_ne!(result.session_runtime_id, first.runtime_id);
+        });
+    }
+
+    fn with_temp_patina_home<T>(temp: &tempfile::TempDir, f: impl FnOnce() -> T) -> T {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _guard = LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let patina_home = temp.path().join("patina-home");
+        fs::create_dir_all(&patina_home).unwrap();
+
+        let old_patina_home = std::env::var_os("PATINA_HOME");
+        unsafe {
+            std::env::set_var("PATINA_HOME", &patina_home);
+        }
+        let result = f();
+        match old_patina_home {
+            Some(value) => unsafe {
+                std::env::set_var("PATINA_HOME", value);
+            },
+            None => unsafe {
+                std::env::remove_var("PATINA_HOME");
+            },
+        }
+        result
     }
 }

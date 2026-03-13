@@ -9,7 +9,6 @@ patina_min = "0.41.0"
 [capabilities]
 host_log = true
 host_measure = true
-host_http = true
 
 [capabilities.state]
 enabled = true
@@ -21,9 +20,11 @@ streams = ["ducklake.sync"]
 intents = ["fetch-source"]
 
 [toys]
-fetch = true
 lake = ["default"]
 measure = true
+
+[toys.connector]
+enabled = true
 
 [provides]
 child = "ducklake"

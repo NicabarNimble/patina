@@ -197,7 +197,10 @@ mod tests {
 
     fn with_temp_env<T>(temp: &TempDir, f: impl FnOnce() -> T) -> T {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let _guard = LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let _guard = LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let patina_home = temp.path().join("patina-home");
         fs::create_dir_all(&patina_home).unwrap();
 
