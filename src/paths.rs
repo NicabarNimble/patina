@@ -406,10 +406,38 @@ pub mod project {
 mod tests {
     use super::*;
 
+    fn with_temp_patina_home<T>(f: impl FnOnce(PathBuf) -> T) -> T {
+        let _guard = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp = tempfile::TempDir::new().unwrap();
+        let expected_home = temp.path().join("patina-home");
+        std::fs::create_dir_all(&expected_home).unwrap();
+        let old = std::env::var_os("PATINA_HOME");
+        unsafe {
+            std::env::set_var("PATINA_HOME", &expected_home);
+        }
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(expected_home)));
+        match old {
+            Some(value) => unsafe {
+                std::env::set_var("PATINA_HOME", value);
+            },
+            None => unsafe {
+                std::env::remove_var("PATINA_HOME");
+            },
+        }
+        match result {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
+    }
+
     #[test]
     fn test_patina_home() {
-        let home = patina_home();
-        assert!(home.ends_with(".patina"));
+        with_temp_patina_home(|expected_home| {
+            let home = patina_home();
+            assert_eq!(home, expected_home);
+        });
     }
 
     #[test]
@@ -460,17 +488,19 @@ mod tests {
 
     #[test]
     fn test_serve_paths() {
-        let run = serve::run_dir();
-        assert!(run.to_string_lossy().ends_with(".patina/run"));
+        with_temp_patina_home(|expected_home| {
+            let run = serve::run_dir();
+            assert_eq!(run, expected_home.join("run"));
 
-        let sock = serve::socket_path();
-        assert!(sock.to_string_lossy().ends_with("run/serve.sock"));
+            let sock = serve::socket_path();
+            assert_eq!(sock, expected_home.join("run/serve.sock"));
 
-        let token = serve::token_path();
-        assert!(token.to_string_lossy().ends_with("run/serve.token"));
+            let token = serve::token_path();
+            assert_eq!(token, expected_home.join("run/serve.token"));
 
-        let pid = serve::pid_path();
-        assert!(pid.to_string_lossy().ends_with("run/mother.pid"));
+            let pid = serve::pid_path();
+            assert_eq!(pid, expected_home.join("run/mother.pid"));
+        });
     }
 
     #[test]
@@ -482,13 +512,15 @@ mod tests {
 
     #[test]
     fn test_connections_paths() {
-        let dir = connections::connections_dir();
-        assert!(dir.to_string_lossy().ends_with(".patina/connections"));
-        assert!(dir.starts_with(patina_home()));
+        with_temp_patina_home(|expected_home| {
+            let dir = connections::connections_dir();
+            assert_eq!(dir, expected_home.join("connections"));
+            assert!(dir.starts_with(patina_home()));
 
-        let path = connections::connection_path("github");
-        assert!(path.to_string_lossy().ends_with("connections/github.toml"));
-        assert!(path.starts_with(connections::connections_dir()));
+            let path = connections::connection_path("github");
+            assert_eq!(path, expected_home.join("connections/github.toml"));
+            assert!(path.starts_with(connections::connections_dir()));
+        });
     }
 
     #[test]

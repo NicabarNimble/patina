@@ -465,7 +465,6 @@ mod tests {
     use super::*;
     use crate::project::{self, ProjectConfig};
     use chrono::TimeZone;
-    use std::sync::{Mutex, OnceLock};
     use tempfile::TempDir;
 
     fn setup_project(adapter_name: &str) -> TempDir {
@@ -478,8 +477,9 @@ mod tests {
     }
 
     fn with_temp_patina_home<T>(temp: &TempDir, f: impl FnOnce() -> T) -> T {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let _guard = LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let _guard = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let patina_home = temp.path().join("patina-home");
         std::fs::create_dir_all(&patina_home).unwrap();
 
@@ -489,7 +489,7 @@ mod tests {
             std::env::set_var("PATINA_HOME", &patina_home);
             std::env::set_var("HOME", temp.path());
         }
-        let result = f();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
         match old_home {
             Some(value) => unsafe {
                 std::env::set_var("HOME", value);
@@ -506,7 +506,10 @@ mod tests {
                 std::env::remove_var("PATINA_HOME");
             },
         }
-        result
+        match result {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
     }
 
     fn snapshot_entry_text(snapshot_path: &Path, name: &str) -> String {

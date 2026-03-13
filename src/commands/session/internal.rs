@@ -2356,7 +2356,6 @@ pub fn resolve_adapter(explicit: Option<&str>, project_root: &Path) -> Result<St
 mod tests {
     use super::*;
     use patina::project::{self, ProjectConfig};
-    use std::sync::{Mutex, OnceLock};
     use tempfile::TempDir;
 
     fn setup_project() -> TempDir {
@@ -2370,8 +2369,9 @@ mod tests {
     }
 
     fn in_project<T>(project_root: &Path, f: impl FnOnce() -> T) -> T {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let _guard = LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let _guard = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let old_dir = std::env::current_dir().unwrap();
         let patina_home = project_root.join("patina-home");
         fs::create_dir_all(&patina_home).unwrap();
@@ -2380,7 +2380,7 @@ mod tests {
         unsafe {
             std::env::set_var("PATINA_HOME", &patina_home);
         }
-        let result = f();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
         std::env::set_current_dir(old_dir).unwrap();
         match old_patina_home {
             Some(value) => unsafe {
@@ -2390,7 +2390,10 @@ mod tests {
                 std::env::remove_var("PATINA_HOME");
             },
         }
-        result
+        match result {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
     }
 
     #[test]

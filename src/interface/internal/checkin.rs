@@ -177,7 +177,6 @@ mod tests {
     use crate::mother::{KnowledgeRuntimeStore, MotherSessionRecord, MotherSessionStatus};
     use std::fs;
     use std::path::PathBuf;
-    use std::sync::{Mutex, OnceLock};
 
     fn handle(
         file_id: &str,
@@ -314,9 +313,7 @@ mod tests {
     }
 
     fn with_temp_patina_home<T>(temp: &tempfile::TempDir, f: impl FnOnce() -> T) -> T {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let _guard = LOCK
-            .get_or_init(|| Mutex::new(()))
+        let _guard = crate::test_support::env_test_mutex()
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let patina_home = temp.path().join("patina-home");
@@ -326,7 +323,7 @@ mod tests {
         unsafe {
             std::env::set_var("PATINA_HOME", &patina_home);
         }
-        let result = f();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
         match old_patina_home {
             Some(value) => unsafe {
                 std::env::set_var("PATINA_HOME", value);
@@ -335,6 +332,9 @@ mod tests {
                 std::env::remove_var("PATINA_HOME");
             },
         }
-        result
+        match result {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
     }
 }

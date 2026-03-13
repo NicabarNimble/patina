@@ -639,18 +639,18 @@ const MCP_TEMPLATE: &str = r#"{
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, OnceLock};
     use tempfile::TempDir;
 
     fn with_temp_home<T>(f: impl FnOnce(&TempDir) -> T) -> T {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let _guard = LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let _guard = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let temp = TempDir::new().unwrap();
         let old_home = std::env::var_os("HOME");
         unsafe {
             std::env::set_var("HOME", temp.path());
         }
-        let result = f(&temp);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&temp)));
         match old_home {
             Some(value) => unsafe {
                 std::env::set_var("HOME", value);
@@ -659,7 +659,10 @@ mod tests {
                 std::env::remove_var("HOME");
             },
         }
-        result
+        match result {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
     }
 
     #[test]

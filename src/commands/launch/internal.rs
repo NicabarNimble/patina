@@ -536,12 +536,9 @@ mod tests {
     use super::*;
     use std::fs;
     use std::process::Command;
-    use std::sync::Mutex;
     use tempfile::TempDir;
 
     // Serialize env-var tests to avoid races (env is process-global)
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
     #[test]
     fn test_resolve_current_dir() {
         let path = resolve_project_path(None);
@@ -562,7 +559,9 @@ mod tests {
 
     #[test]
     fn test_claude_token_blocked_by_anthropic_api_key() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         // Save and set
         let prev = env::var("ANTHROPIC_API_KEY").ok();
         env::set_var("ANTHROPIC_API_KEY", "sk-ant-test");
@@ -589,7 +588,9 @@ mod tests {
 
     #[test]
     fn test_claude_token_blocked_by_existing_oauth_token() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         // Save and set
         let prev_api = env::var("ANTHROPIC_API_KEY").ok();
         env::remove_var("ANTHROPIC_API_KEY");
@@ -615,7 +616,9 @@ mod tests {
 
     #[test]
     fn test_claude_token_clean_env_attempts_vault() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         // Save and clear both
         let prev_api = env::var("ANTHROPIC_API_KEY").ok();
         let prev_oauth = env::var("CLAUDE_CODE_OAUTH_TOKEN").ok();
@@ -643,7 +646,9 @@ mod tests {
 
     #[test]
     fn initialize_project_prepares_unified_ai_surface_and_default() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let temp = TempDir::new().unwrap();
 
         let status = Command::new("git")
@@ -677,7 +682,9 @@ mod tests {
         }
         env::set_current_dir(temp.path()).unwrap();
 
-        let result = initialize_project(temp.path(), "gemini");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            initialize_project(temp.path(), "gemini")
+        }));
 
         env::set_current_dir(old_dir).unwrap();
         match old_patina_home {
@@ -689,6 +696,10 @@ mod tests {
             },
         }
 
+        let result = match result {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        };
         assert!(result.unwrap());
 
         let config = project::load_with_migration(temp.path()).unwrap();
