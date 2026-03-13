@@ -1,7 +1,7 @@
 ---
 type: fix
 id: clippy-backlog-batch-1
-status: ready
+status: active
 created: 2026-03-13
 sessions:
   origin: 20260312-160150
