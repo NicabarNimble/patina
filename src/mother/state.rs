@@ -625,6 +625,7 @@ impl KnowledgeRuntimeStore {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn save_lake_cursor(
         &self,
         lake_name: &str,
@@ -671,13 +672,14 @@ impl KnowledgeRuntimeStore {
         data_type: &str,
     ) -> Result<Option<String>> {
         let conn = self.open()?;
-        conn.query_row(
-            "SELECT cursor_value FROM mother_lake_cursors WHERE lake_name = ?1 AND source_name = ?2 AND data_type = ?3",
-            params![lake_name, source_name, data_type],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(Into::into)
+        let value: Option<Option<String>> = conn
+            .query_row(
+                "SELECT cursor_value FROM mother_lake_cursors WHERE lake_name = ?1 AND source_name = ?2 AND data_type = ?3",
+                params![lake_name, source_name, data_type],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(value.flatten())
     }
 
     pub fn record_graph_mutation(
@@ -1053,6 +1055,27 @@ mod tests {
             .lease_next_task("ducklake", "worker-2")
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn lake_cursor_roundtrips_null_cursor_values() {
+        let store = temp_store();
+        store
+            .save_lake_cursor(
+                "default",
+                "github-lake-small",
+                "issues",
+                None,
+                0,
+                "ok",
+                None,
+            )
+            .unwrap();
+
+        let cursor = store
+            .load_lake_cursor("default", "github-lake-small", "issues")
+            .unwrap();
+        assert_eq!(cursor, None);
     }
 
     #[test]

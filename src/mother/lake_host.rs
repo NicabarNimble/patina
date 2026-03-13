@@ -57,6 +57,7 @@ pub fn load_cursor(
     store.load_lake_cursor(lake, source, data_type)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn save_cursor(
     store: &KnowledgeRuntimeStore,
     lake: &str,
