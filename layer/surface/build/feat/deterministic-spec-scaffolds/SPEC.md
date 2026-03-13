@@ -1,7 +1,7 @@
 ---
 type: feat
 id: deterministic-spec-scaffolds
-status: ready
+status: complete
 created: 2026-03-12
 sessions:
   origin: 20260312-001728
@@ -75,10 +75,11 @@ results even when interface skills differ.
 
 Current state:
 
-- `patina spec create` works and creates usable draft specs
-- `patina spec promote` / `patina spec check` support lifecycle flow
-- strong specs do exist in-tree, but mostly because the author supplied
-  them manually rather than because the tool scaffold required them
+- the stronger deterministic scaffold work shipped on 2026-03-12
+- `patina spec create` and related readiness flow now encode a better
+  implementation-oriented quality floor
+- follow-on work now belongs to queue cleanup and CLI-first workflow
+  alignment, not this finished scaffold baseline
 
 The best evidence is the gap between:
 

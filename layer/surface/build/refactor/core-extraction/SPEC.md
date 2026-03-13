@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: core-extraction
-status: active
+status: draft
 created: 2026-03-04
 blocked_by: []
 sessions:
@@ -23,8 +23,10 @@ exit_criteria:
 
 ## Context
 
-This is a **container spec** tracking three child specs that together
-shrink Patina core to protocol + stores.
+This is a **container spec** retained as architectural lineage, not the
+current execution queue. If revived, it should be rewritten around the
+newer CLI-first and Mother-doctrine-cleanup direction rather than used
+as-is.
 
 **Architecture context:**
 - [[session-20260303-190855]] — "scrape code is NOT core — it's a

@@ -3,7 +3,6 @@ type: feat
 id: spec-knowledge-evolution
 status: draft
 created: 2026-02-22
-target: '7'
 sessions:
 - 20260222-054702
 - 20260223-120524

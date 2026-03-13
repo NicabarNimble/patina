@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: agentic-surface-architecture
-status: active
+status: draft
 created: 2026-03-11
 related:
 - mother-maturation
@@ -61,7 +61,8 @@ But the current operator surface still reflects older assumptions:
   and session evolution
 
 Without a unifying spec, these areas can drift into overlapping partial
-systems.
+systems. This spec now serves better as a roadmap/index than as an
+active implementation queue item.
 
 ## Target State
 

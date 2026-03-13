@@ -14,7 +14,7 @@ beliefs:
 - local-first-edge-deployable
 exit_criteria:
 - id: children-complete
-  text: All child specs (data-architecture-v3, lake-registry, persona-federation, continuous-operation) are complete
+  text: Remaining downstream specs are either completed, rewritten, or explicitly superseded, and the surviving Mother roadmap no longer depends on missing child specs
   checked: false
 ---
 # refactor: Mother Maturation — Federation, Lakes, and Continuity
@@ -71,9 +71,9 @@ this container spec coordinates.
 | Spec | What it delivers | Build order |
 |------|-----------------|-------------|
 | [[data-architecture-v3]] | Provenance on events (local/external/derived) | **Complete** (v0.39.3) |
-| [[lake-registry]] | Lake registry in Mother (split from data-architecture-v3) | After connectors exist |
-| [[persona-federation]] | Persona registry, belief provenance, linking | Second (or parallel) |
-| [[continuous-operation]] | Mother daemon, streaming, always-on | Third (depends on lakes + personas) |
+| [[mother-doctrine-cleanup]] | Clean Mother/child/toy doctrine before broader expansion | **Complete** (2026-03-12) |
+| [[persona-federation]] | Persona registry, belief provenance, linking | Future build after queue cleanup |
+| [[continuous-operation]] | Mother daemon, streaming, always-on | Future build after queue cleanup |
 
 ## Implementation Prerequisites
 
