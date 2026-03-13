@@ -127,6 +127,11 @@ pub struct ChildResponse {
 // Knowledge runtime types
 // =========================================================================
 
+/// Task intents are Mother's runtime-substrate request language.
+///
+/// Children can ask Mother to enqueue work through these typed intents, but the
+/// intents are not ordinary domain toys and should not read like a peer
+/// capability bundle next to granted toys such as lake or belief.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TaskIntentKind {

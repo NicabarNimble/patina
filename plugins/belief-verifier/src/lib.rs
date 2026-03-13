@@ -1,24 +1,40 @@
-use patina_child_sdk::host::GuestHost;
-use patina_child_sdk::toys::{
-    BeliefToy, CheckpointToy, EventToy, LogToy, MeasureToy, PendingEvent, StateToy, TaskIntent,
-    TaskIntentKind, TaskToy,
-};
+use patina_child_sdk::granted::{self, Bundle as GrantedBundle};
+use patina_child_sdk::substrate::{self, PendingEvent, TaskIntent, TaskIntentKind};
 use patina_child_sdk::{register_knowledge_child, ChildHealth, HealthStatus, KnowledgeChildPlugin};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 struct BeliefVerifierToys {
-    log: LogToy<GuestHost>,
-    measure: MeasureToy<GuestHost>,
-    state: StateToy<GuestHost>,
-    checkpoint: CheckpointToy<GuestHost>,
-    events: EventToy<GuestHost>,
-    tasks: TaskToy<GuestHost>,
-    belief: BeliefToy<GuestHost>,
+    log: granted::Log,
+    measure: granted::Measure,
+    state: granted::State,
+    checkpoint: granted::Checkpoint,
+    events: granted::Events,
+    belief: granted::Belief,
 }
 
-#[derive(Default)]
+impl GrantedBundle for BeliefVerifierToys {
+    fn granted() -> Self {
+        Self {
+            log: granted::log(),
+            measure: granted::measure(),
+            state: granted::state(),
+            checkpoint: granted::checkpoint(),
+            events: granted::events(),
+            belief: granted::belief(),
+        }
+    }
+}
+
 struct BeliefVerifierChild {
     toys: BeliefVerifierToys,
+}
+
+impl Default for BeliefVerifierChild {
+    fn default() -> Self {
+        Self {
+            toys: BeliefVerifierToys::granted(),
+        }
+    }
 }
 
 impl BeliefVerifierChild {
@@ -148,7 +164,7 @@ impl KnowledgeChildPlugin for BeliefVerifierChild {
                         event.offset
                     )
                 })?;
-            self.toys.tasks.enqueue(&TaskIntent {
+            substrate::enqueue(&TaskIntent {
                 kind: TaskIntentKind::VerifyBelief,
                 payload_json: serde_json::json!({
                     "belief_id": queued_belief_id,
