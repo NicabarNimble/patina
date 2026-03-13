@@ -2,6 +2,8 @@
 
 This is a complete example of an epistemic belief file.
 
+The example includes a clear belief statement section.
+
 ## Complete Example: sync-first
 
 ```markdown
