@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: ducklake-knowledge-child-cutover
-status: ready
+status: active
 created: 2026-03-12
 sessions:
   origin: 20260312-140904
