@@ -14,7 +14,7 @@ pub fn execute(bump: Option<&str>, dry_run: bool) -> Result<()> {
     // Run tests
     println!("2️⃣ Running tests...");
     let test_output = Command::new("cargo")
-        .args(&["test", "--workspace", "--quiet"])
+        .args(["test", "--workspace", "--quiet"])
         .output()
         .context("Failed to run tests")?;
 
@@ -27,7 +27,7 @@ pub fn execute(bump: Option<&str>, dry_run: bool) -> Result<()> {
     // Check formatting
     println!("3️⃣ Checking formatting...");
     let fmt_output = Command::new("cargo")
-        .args(&["fmt", "--", "--check"])
+        .args(["fmt", "--", "--check"])
         .output()
         .context("Failed to check formatting")?;
 
@@ -40,7 +40,7 @@ pub fn execute(bump: Option<&str>, dry_run: bool) -> Result<()> {
     // Run clippy
     println!("4️⃣ Running clippy...");
     let clippy_output = Command::new("cargo")
-        .args(&["clippy", "--workspace", "--", "-D", "warnings"])
+        .args(["clippy", "--workspace", "--", "-D", "warnings"])
         .output()
         .context("Failed to run clippy")?;
 
@@ -53,7 +53,7 @@ pub fn execute(bump: Option<&str>, dry_run: bool) -> Result<()> {
     // Check for uncommitted changes
     println!("5️⃣ Checking git status...");
     let git_output = Command::new("git")
-        .args(&["status", "--porcelain"])
+        .args(["status", "--porcelain"])
         .output()
         .context("Failed to check git status")?;
 
@@ -144,7 +144,7 @@ fn bump_version(bump_type: &str) -> Result<()> {
 
     // Update Cargo.lock
     Command::new("cargo")
-        .args(&["update", "--workspace"])
+        .args(["update", "--workspace"])
         .output()
         .context("Failed to update Cargo.lock")?;
 

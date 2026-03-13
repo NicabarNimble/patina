@@ -217,7 +217,7 @@ mod tests {
                 "code.function",
                 "2026-01-30T00:00:00Z",
                 source_id,
-                Some(&source_id.split("::").next().unwrap_or("")),
+                Some(source_id.split("::").next().unwrap_or("")),
                 &data,
             )?;
         }

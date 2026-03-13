@@ -459,9 +459,10 @@ fn print_findings(findings: &[scanner::Finding]) {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn test_secrets_command_parse() {
-        // Just verify the module compiles
-        assert!(true);
+        let _ = execute;
     }
 }

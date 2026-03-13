@@ -116,7 +116,7 @@ fn test_belief_semantic_search() {
     let mut embedder = get_test_embedder();
 
     // Simulate belief statements
-    let beliefs = vec![
+    let beliefs = [
         (
             "prefers_rust_for_cli_tools",
             "I prefer using Rust for command-line tools",

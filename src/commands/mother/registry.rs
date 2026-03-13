@@ -216,7 +216,7 @@ mod tests {
     }
 
     impl StubChild {
-        fn new(name: &str) -> Box<dyn MotherChild> {
+        fn boxed(name: &str) -> Box<dyn MotherChild> {
             Box::new(Self {
                 child_name: name.to_string(),
             })
@@ -243,16 +243,16 @@ mod tests {
     #[test]
     fn register_unique_names() {
         let mut registry = ChildRegistry::new();
-        assert!(registry.register(StubChild::new("alpha")).is_ok());
-        assert!(registry.register(StubChild::new("beta")).is_ok());
+        assert!(registry.register(StubChild::boxed("alpha")).is_ok());
+        assert!(registry.register(StubChild::boxed("beta")).is_ok());
         assert_eq!(registry.knowledge_len() + registry.legacy_len(), 2);
     }
 
     #[test]
     fn register_duplicate_name_rejected() {
         let mut registry = ChildRegistry::new();
-        assert!(registry.register(StubChild::new("alpha")).is_ok());
-        let err = registry.register(StubChild::new("alpha")).unwrap_err();
+        assert!(registry.register(StubChild::boxed("alpha")).is_ok());
+        let err = registry.register(StubChild::boxed("alpha")).unwrap_err();
         assert!(
             err.to_string().contains("duplicate child name: alpha"),
             "got: {}",

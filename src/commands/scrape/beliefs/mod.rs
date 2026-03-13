@@ -1855,19 +1855,23 @@ Prefer synchronous code.
     #[test]
     fn test_last_activity_max() {
         // All four signals present → MAX of strong signals wins
-        let mut m = BeliefMetrics::default();
-        m.last_frontmatter_revision = Some("2026-01-10".to_string());
-        m.last_session_citation = Some("2026-02-05".to_string());
-        m.last_verification_run = Some("2026-01-20".to_string());
-        m.last_file_touch = Some("2026-02-16".to_string());
+        let m = BeliefMetrics {
+            last_frontmatter_revision: Some("2026-01-10".to_string()),
+            last_session_citation: Some("2026-02-05".to_string()),
+            last_verification_run: Some("2026-01-20".to_string()),
+            last_file_touch: Some("2026-02-16".to_string()),
+            ..Default::default()
+        };
         assert_eq!(
             compute_last_activity(&m),
             Some("2026-02-05".to_string()) // session citation is MAX of strong
         );
 
         // Only file touch → fallback
-        let mut m2 = BeliefMetrics::default();
-        m2.last_file_touch = Some("2026-02-16".to_string());
+        let m2 = BeliefMetrics {
+            last_file_touch: Some("2026-02-16".to_string()),
+            ..Default::default()
+        };
         assert_eq!(compute_last_activity(&m2), Some("2026-02-16".to_string()));
 
         // All NULL → NULL
@@ -1875,9 +1879,11 @@ Prefer synchronous code.
         assert_eq!(compute_last_activity(&m3), None);
 
         // Strong signal present → file touch ignored
-        let mut m4 = BeliefMetrics::default();
-        m4.last_frontmatter_revision = Some("2025-06-01".to_string());
-        m4.last_file_touch = Some("2026-02-16".to_string()); // much more recent but weak
+        let m4 = BeliefMetrics {
+            last_frontmatter_revision: Some("2025-06-01".to_string()),
+            last_file_touch: Some("2026-02-16".to_string()), // much more recent but weak
+            ..Default::default()
+        };
         assert_eq!(
             compute_last_activity(&m4),
             Some("2025-06-01".to_string()) // strong signal wins, not file touch
@@ -1914,12 +1920,14 @@ Prefer synchronous code.
             .to_string();
 
         // Zero-evidence: max possible score is 0.6 (use + freshness, no truth)
-        let mut m = BeliefMetrics::default();
-        m.cited_by_beliefs = 3;
-        m.cited_by_sessions = 3; // use_score = min(1.0, 6/3) = 1.0
-        m.evidence_count = 0;
-        m.evidence_verified = 0;
-        m.last_activity = Some(recent.clone()); // fresh
+        let m = BeliefMetrics {
+            cited_by_beliefs: 3,
+            cited_by_sessions: 3, // use_score = min(1.0, 6/3) = 1.0
+            evidence_count: 0,
+            evidence_verified: 0,
+            last_activity: Some(recent.clone()), // fresh
+            ..Default::default()
+        };
         let score = compute_health_score(&m, 90);
         assert!(
             score <= 0.61,
@@ -1929,12 +1937,14 @@ Prefer synchronous code.
         assert!(score >= 0.5, "zero-evidence should be ~0.5+, got {}", score);
 
         // All-healthy: near 1.0
-        let mut m2 = BeliefMetrics::default();
-        m2.cited_by_beliefs = 3;
-        m2.cited_by_sessions = 3;
-        m2.evidence_count = 3;
-        m2.evidence_verified = 3;
-        m2.last_activity = Some(recent);
+        let m2 = BeliefMetrics {
+            cited_by_beliefs: 3,
+            cited_by_sessions: 3,
+            evidence_count: 3,
+            evidence_verified: 3,
+            last_activity: Some(recent),
+            ..Default::default()
+        };
         let score2 = compute_health_score(&m2, 90);
         assert!(
             score2 > 0.95,
@@ -1943,12 +1953,14 @@ Prefer synchronous code.
         );
 
         // All-stale: freshness = 0.0
-        let mut m3 = BeliefMetrics::default();
-        m3.cited_by_beliefs = 3;
-        m3.cited_by_sessions = 3;
-        m3.evidence_count = 3;
-        m3.evidence_verified = 3;
-        m3.last_activity = Some("2025-01-01".to_string()); // very old
+        let m3 = BeliefMetrics {
+            cited_by_beliefs: 3,
+            cited_by_sessions: 3,
+            evidence_count: 3,
+            evidence_verified: 3,
+            last_activity: Some("2025-01-01".to_string()), // very old
+            ..Default::default()
+        };
         let score3 = compute_health_score(&m3, 90);
         // freshness = 0.0, use = 1.0, truth = 1.0 → 0.3 + 0.4 + 0.0 = 0.7
         assert!(
@@ -1958,12 +1970,14 @@ Prefer synchronous code.
         );
 
         // NULL last_activity → freshness = 0.0
-        let mut m4 = BeliefMetrics::default();
-        m4.cited_by_beliefs = 3;
-        m4.cited_by_sessions = 3;
-        m4.evidence_count = 3;
-        m4.evidence_verified = 3;
-        m4.last_activity = None;
+        let m4 = BeliefMetrics {
+            cited_by_beliefs: 3,
+            cited_by_sessions: 3,
+            evidence_count: 3,
+            evidence_verified: 3,
+            last_activity: None,
+            ..Default::default()
+        };
         let score4 = compute_health_score(&m4, 90);
         assert!(
             (score4 - 0.7).abs() < 0.01,

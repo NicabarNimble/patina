@@ -482,7 +482,7 @@ allowed_domains = ["api.github.com"]
     #[test]
     fn connection_status_variants() {
         // Verify all variants exist and are distinct
-        let statuses = vec![
+        let statuses = [
             ConnectionStatus::Connected,
             ConnectionStatus::Missing,
             ConnectionStatus::Expired,

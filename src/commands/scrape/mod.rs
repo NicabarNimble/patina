@@ -47,24 +47,6 @@ pub struct ScrapeStats {
     pub database_size_kb: u64,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::Duration;
-
-    #[test]
-    fn test_scrape_stats_creation() {
-        let stats = ScrapeStats {
-            items_processed: 100,
-            time_elapsed: Duration::from_secs(5),
-            database_size_kb: 1024,
-        };
-        assert_eq!(stats.items_processed, 100);
-        assert_eq!(stats.time_elapsed.as_secs(), 5);
-        assert_eq!(stats.database_size_kb, 1024);
-    }
-}
-
 /// Run all scrapers in sequence (code, git, layer, beliefs)
 ///
 /// This is the default when running `patina scrape` with no subcommand.
@@ -375,4 +357,22 @@ pub fn execute_layer(full: bool) -> Result<()> {
     println!("  • Time elapsed: {:?}", stats.time_elapsed);
     println!("  • Database size: {} KB", stats.database_size_kb);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn test_scrape_stats_creation() {
+        let stats = ScrapeStats {
+            items_processed: 100,
+            time_elapsed: Duration::from_secs(5),
+            database_size_kb: 1024,
+        };
+        assert_eq!(stats.items_processed, 100);
+        assert_eq!(stats.time_elapsed.as_secs(), 5);
+        assert_eq!(stats.database_size_kb, 1024);
+    }
 }

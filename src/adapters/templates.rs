@@ -407,23 +407,23 @@ mod tests {
 
     #[test]
     fn test_claude_templates_compile() {
-        // Verify command definitions are embedded correctly
-        assert!(!claude_templates::SESSION_START_MD.is_empty());
-        assert!(!claude_templates::SESSION_END_MD.is_empty());
-        assert!(!claude_templates::SPEC_MD.is_empty());
-        // Skills
-        assert!(!claude_templates::SKILL_EPISTEMIC_BELIEFS_MD.is_empty());
-        assert!(!claude_templates::SKILL_EPISTEMIC_BELIEFS_CREATE_SH.is_empty());
-        assert!(!claude_templates::SKILL_EPISTEMIC_BELIEFS_EXAMPLE_MD.is_empty());
-        assert!(!claude_templates::SKILL_EPISTEMIC_BELIEFS_VERIFICATION_SCHEMA_MD.is_empty());
+        assert!(claude_templates::SESSION_START_MD.contains("session-start.sh"));
+        assert!(claude_templates::SESSION_END_MD.contains("session-end.sh"));
+        assert!(claude_templates::SPEC_MD.contains("patina spec"));
+        assert!(claude_templates::SKILL_EPISTEMIC_BELIEFS_MD.contains("belief"));
+        assert!(claude_templates::SKILL_EPISTEMIC_BELIEFS_CREATE_SH.contains("create-belief"));
+        assert!(claude_templates::SKILL_EPISTEMIC_BELIEFS_EXAMPLE_MD.contains("statement"));
+        assert!(
+            claude_templates::SKILL_EPISTEMIC_BELIEFS_VERIFICATION_SCHEMA_MD
+                .contains("verification")
+        );
     }
 
     #[test]
     fn test_gemini_templates_compile() {
-        // Verify command definitions are embedded correctly
-        assert!(!gemini_templates::SESSION_START_TOML.is_empty());
-        assert!(!gemini_templates::SPEC_TOML.is_empty());
-        assert!(!gemini_templates::EPISTEMIC_BELIEFS_TOML.is_empty());
+        assert!(gemini_templates::SESSION_START_TOML.contains("session-start.sh"));
+        assert!(gemini_templates::SPEC_TOML.contains("patina spec"));
+        assert!(gemini_templates::EPISTEMIC_BELIEFS_TOML.contains("create-belief.sh"));
     }
 
     #[test]

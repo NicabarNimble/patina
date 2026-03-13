@@ -81,50 +81,6 @@ pub fn resolve_tmux_decision(
     TmuxDecision::Auto
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
-/// Check tmux version by running `tmux -V`.
-///
-/// Returns (version_ok, version_string).
-/// - Success, parseable: "tmux X.Y" → require ≥ 1.9
-/// - Success, unparseable: assume ok (don't block on novel formats)
-/// - Failure (I/O error, non-zero exit): assume too old (conservative)
-pub fn check_tmux_version() -> (bool, String) {
-    use std::process::Command;
-
-    let output = match Command::new("tmux").arg("-V").output() {
-        Ok(o) if o.status.success() => o,
-        _ => return (false, "unknown (tmux -V failed)".to_string()),
-    };
-
-    let version_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if version_str.is_empty() {
-        return (false, "unknown (tmux -V failed)".to_string());
-    }
-
-    // Parse "tmux X.Y" or "tmux X.Ya" (e.g., "tmux 1.8a", "tmux 3.4")
-    let stripped = version_str.strip_prefix("tmux ").unwrap_or(&version_str);
-
-    // Extract major.minor from start of version string
-    let mut parts = stripped.split('.');
-    let major = parts.next().and_then(|s| s.parse::<u32>().ok());
-    let minor = parts.next().and_then(|s| {
-        // Strip trailing non-digit chars like "8a" → "8"
-        let digits: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
-        digits.parse::<u32>().ok()
-    });
-
-    match (major, minor) {
-        (Some(maj), Some(min)) => {
-            let ok = (maj, min) >= (1, 9);
-            (ok, format!("{}.{}", maj, min))
-        }
-        _ => {
-            // Unparseable — assume ok (don't block on novel version strings)
-            (true, "unknown".to_string())
-        }
-    }
-}
-
 /// FNV-1a 32-bit hash
 fn fnv1a_32(bytes: &[u8]) -> u32 {
     let mut hash: u32 = 2_166_136_261; // FNV offset basis

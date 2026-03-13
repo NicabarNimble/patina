@@ -314,7 +314,7 @@ mod tests {
         assert_eq!(vault.values.len(), 1);
 
         vault.remove("test-secret");
-        assert!(vault.values.get("test-secret").is_none());
+        assert!(!vault.values.contains_key("test-secret"));
         assert!(vault.values.is_empty());
     }
 

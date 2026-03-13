@@ -116,24 +116,20 @@ fn calculate_new_version(current: &str, bump_type: &str) -> Result<String> {
 
 fn update_version_in_code(component: &str, new_version: &str) -> Result<()> {
     // Update version constants in the appropriate files
-    match component {
-        "claude-adapter" => {
-            let path = "src/adapters/claude.rs";
-            if let Ok(content) = fs::read_to_string(path) {
-                let new_content = content.replace(
-                    "const CLAUDE_ADAPTER_VERSION: &str = ",
-                    &format!(
-                        "const CLAUDE_ADAPTER_VERSION: &str = \"{}\"; // ",
-                        new_version
-                    ),
-                );
-                if content != new_content {
-                    fs::write(path, new_content)?;
-                }
+    if component == "claude-adapter" {
+        let path = "src/adapters/claude.rs";
+        if let Ok(content) = fs::read_to_string(path) {
+            let new_content = content.replace(
+                "const CLAUDE_ADAPTER_VERSION: &str = ",
+                &format!(
+                    "const CLAUDE_ADAPTER_VERSION: &str = \"{}\"; // ",
+                    new_version
+                ),
+            );
+            if content != new_content {
+                fs::write(path, new_content)?;
             }
         }
-        // Add other components as needed
-        _ => {}
     }
 
     Ok(())

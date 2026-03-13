@@ -442,95 +442,6 @@ fn try_get_claude_token() -> Option<String> {
     }
 }
 
-/// Launch the adapter CLI, optionally wrapped in tmux
-#[cfg_attr(not(test), allow(dead_code))]
-fn launch_adapter_cli(
-    adapter_name: &str,
-    project_path: &Path,
-    decision: &super::TmuxDecision,
-    session_name: &str,
-) -> Result<()> {
-    // Inject Claude auth token if available (adapter-gated)
-    // All warnings print HERE — before exec/tmux takes over stderr.
-    let claude_token = if adapter_name == "claude" {
-        try_get_claude_token()
-    } else {
-        None
-    };
-
-    // Use exec to replace current process (Unix-style)
-    // On Windows, we'd spawn and wait instead
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-
-        match decision {
-            super::TmuxDecision::Auto => {
-                eprintln!(
-                    "Launching {} in tmux session: {}",
-                    adapter_name, session_name
-                );
-                eprintln!("  Reconnect: tmux attach -t {}", session_name);
-                io::stderr().flush().ok();
-
-                let mut cmd = Command::new("tmux");
-                cmd.args(["new-session", "-A", "-D", "-s", session_name, "-c"]);
-                cmd.arg(project_path.as_os_str()); // non-UTF-8 safe
-                cmd.arg(adapter_name);
-                cmd.current_dir(project_path);
-                if let Some(ref token) = claude_token {
-                    cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
-                }
-                io::stderr().flush().ok();
-
-                let err = cmd.exec();
-                // exec only returns on error — fall back to direct launch
-                eprintln!(
-                    "Warning: failed to exec tmux ({}) — launching {} directly (no session created)",
-                    err, adapter_name
-                );
-                io::stderr().flush().ok();
-                // fall through to direct exec below
-            }
-            super::TmuxDecision::Off(_) => {
-                println!("\nLaunching {}...\n", adapter_name);
-            }
-        }
-
-        // Direct exec (Off path, or Auto fallback after tmux exec failure)
-        let mut cmd = Command::new(adapter_name);
-        cmd.current_dir(project_path);
-        if let Some(ref token) = claude_token {
-            cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
-        }
-        io::stderr().flush().ok();
-
-        let err = cmd.exec();
-        // exec only returns on error
-        bail!("Failed to exec {}: {}", adapter_name, err);
-    }
-
-    #[cfg(not(unix))]
-    {
-        // tmux not available on non-Unix — always direct launch
-        println!("\nLaunching {}...\n", adapter_name);
-        let mut cmd = Command::new(adapter_name);
-        cmd.current_dir(project_path);
-        if let Some(ref token) = claude_token {
-            cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
-        }
-
-        let status = cmd
-            .status()
-            .with_context(|| format!("Failed to run {}", adapter_name))?;
-
-        if !status.success() {
-            bail!("{} exited with status: {}", adapter_name, status);
-        }
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -559,7 +470,7 @@ mod tests {
 
     #[test]
     fn test_claude_token_blocked_by_anthropic_api_key() {
-        let _lock = crate::test_support::env_test_mutex()
+        let _lock = patina::test_support::env_test_mutex()
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         // Save and set
@@ -588,7 +499,7 @@ mod tests {
 
     #[test]
     fn test_claude_token_blocked_by_existing_oauth_token() {
-        let _lock = crate::test_support::env_test_mutex()
+        let _lock = patina::test_support::env_test_mutex()
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         // Save and set
@@ -616,7 +527,7 @@ mod tests {
 
     #[test]
     fn test_claude_token_clean_env_attempts_vault() {
-        let _lock = crate::test_support::env_test_mutex()
+        let _lock = patina::test_support::env_test_mutex()
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         // Save and clear both
@@ -646,7 +557,7 @@ mod tests {
 
     #[test]
     fn initialize_project_prepares_unified_ai_surface_and_default() {
-        let _lock = crate::test_support::env_test_mutex()
+        let _lock = patina::test_support::env_test_mutex()
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let temp = TempDir::new().unwrap();
@@ -672,7 +583,7 @@ mod tests {
             .unwrap();
         assert!(status.success());
 
-        let old_dir = env::current_dir().unwrap();
+        let old_dir = env::current_dir().ok();
         let old_patina_home = env::var_os("PATINA_HOME");
         let patina_home = temp.path().join("patina-home");
         fs::create_dir_all(&patina_home).unwrap();
@@ -686,7 +597,9 @@ mod tests {
             initialize_project(temp.path(), "gemini")
         }));
 
-        env::set_current_dir(old_dir).unwrap();
+        if let Some(path) = old_dir {
+            let _ = env::set_current_dir(path);
+        }
         match old_patina_home {
             Some(value) => unsafe {
                 env::set_var("PATINA_HOME", value);

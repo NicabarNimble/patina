@@ -2498,7 +2498,7 @@ fn no_credential_mapping_means_no_injection() {
     };
     // Verify no credential mapping for the domain
     assert!(
-        grants.credential_mappings.get("api.github.com").is_none(),
+        !grants.credential_mappings.contains_key("api.github.com"),
         "should have no credential mapping"
     );
 }
@@ -2521,9 +2521,9 @@ fn credential_mapping_only_for_mapped_domain() {
         ..Default::default()
     };
     // api.github.com has mapping
-    assert!(grants.credential_mappings.get("api.github.com").is_some());
+    assert!(grants.credential_mappings.contains_key("api.github.com"));
     // api.other.com does NOT have mapping
-    assert!(grants.credential_mappings.get("api.other.com").is_none());
+    assert!(!grants.credential_mappings.contains_key("api.other.com"));
 }
 
 // =====================================================================
@@ -2657,9 +2657,8 @@ fn http_get_without_mapping_sends_no_auth() {
     );
     // Either succeeds (200) or fails (network error in CI) — but never panics
     // and never injects credentials
-    match result {
-        Ok(r) => assert!(r.status == 200 || r.status == 403),
-        Err(_) => {} // network error is acceptable in test environments
+    if let Ok(r) = result {
+        assert!(r.status == 200 || r.status == 403);
     }
 }
 
@@ -2689,9 +2688,8 @@ fn http_get_with_mapping_but_no_grant_sends_no_auth() {
         "https://api.github.com/zen",
     );
     // Should succeed unauthenticated — the grant denial means no credential injected
-    match result {
-        Ok(r) => assert!(r.status == 200 || r.status == 403),
-        Err(_) => {} // network error is acceptable in test environments
+    if let Ok(r) = result {
+        assert!(r.status == 200 || r.status == 403);
     }
 }
 

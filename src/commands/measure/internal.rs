@@ -2791,7 +2791,7 @@ mod tests {
         // 1 hour ago
         let ts = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
         let age = compute_age_hours(&ts).unwrap();
-        assert!(age >= 0.9 && age <= 1.1, "Expected ~1.0h, got {}", age);
+        assert!((0.9..=1.1).contains(&age), "Expected ~1.0h, got {}", age);
     }
 
     #[test]
@@ -2800,7 +2800,7 @@ mod tests {
             .format("%Y-%m-%d")
             .to_string();
         let age = compute_age_hours(&yesterday).unwrap();
-        assert!(age >= 23.0 && age <= 25.0, "Expected ~24h, got {}", age);
+        assert!((23.0..=25.0).contains(&age), "Expected ~24h, got {}", age);
     }
 
     #[test]

@@ -351,9 +351,8 @@ mod tests {
         let result = check_references("nonexistent-conn");
         // Should succeed (empty vec) or at worst return an error
         // In test environments without a registry, this returns Ok(vec![])
-        match result {
-            Ok(refs) => assert!(refs.is_empty()),
-            Err(_) => {} // acceptable if registry path is weird
+        if let Ok(refs) = result {
+            assert!(refs.is_empty());
         }
     }
 }

@@ -388,7 +388,7 @@ mod tests {
     #[test]
     fn test_format_result_float() {
         assert_eq!(format_result(4.08), "4.08");
-        assert_eq!(format_result(3.14159), "3.14");
+        assert_eq!(format_result(std::f64::consts::PI), "3.14");
     }
 
     // SQL execution tests (in-memory DB)
