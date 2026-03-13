@@ -57,6 +57,38 @@ pub enum ConnectCommands {
         #[arg(long)]
         force: bool,
     },
+
+    /// Manage DuckLake repo bindings (knowledge-child control plane)
+    #[command(subcommand)]
+    Binding(BindingCommands),
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum BindingCommands {
+    /// Create or update a repo binding
+    Upsert {
+        /// Stable binding id
+        binding_id: String,
+        /// Existing connection name (from `patina connect list`)
+        #[arg(long)]
+        connection: String,
+        /// GitHub owner/org
+        #[arg(long)]
+        owner: String,
+        /// GitHub repository
+        #[arg(long)]
+        repo: String,
+        /// Data types to sync (repeat flag)
+        #[arg(long = "type", default_values_t = vec!["issues".to_string(), "prs".to_string()])]
+        types: Vec<String>,
+    },
+    /// List active bindings
+    List,
+    /// Remove a binding and source record
+    Remove {
+        /// Binding id
+        binding_id: String,
+    },
 }
 
 /// Execute connect command from CLI.
@@ -79,7 +111,119 @@ pub fn execute_cli(command: Option<ConnectCommands>) -> Result<()> {
         Some(ConnectCommands::Status) => show_status(),
         Some(ConnectCommands::Refresh { name }) => refresh_connection(&name),
         Some(ConnectCommands::Remove { name, force }) => remove_connection(&name, force),
+        Some(ConnectCommands::Binding(command)) => manage_binding(command),
     }
+}
+
+fn manage_binding(command: BindingCommands) -> Result<()> {
+    let runtime = patina::mother::KnowledgeRuntimeStore::default();
+    let plugin = "patina-ducklake";
+
+    match command {
+        BindingCommands::Upsert {
+            binding_id,
+            connection,
+            owner,
+            repo,
+            types,
+        } => {
+            let valid: Vec<String> = types
+                .into_iter()
+                .filter(|t| t == "issues" || t == "prs")
+                .collect();
+            if !(valid.iter().any(|t| t == "issues") && valid.iter().any(|t| t == "prs")) {
+                bail!("DuckLake GitHub scope contract requires both --type issues and --type prs");
+            }
+            let include_pr_commits = false;
+            let scope_contract = serde_json::json!({
+                "version": 1,
+                "owner": &owner,
+                "repo": &repo,
+                "issues": {"list": true, "comments": true, "events": true},
+                "pulls": {
+                    "list": true,
+                    "comments": true,
+                    "reviews": true,
+                    "review_comments": true,
+                    "commits": include_pr_commits,
+                },
+                "incremental": {"watermark_key": "updated_at", "tie_breaker": "id"},
+            })
+            .to_string();
+            runtime.put_state(
+                plugin,
+                &format!("connector:scope-contract:{}", binding_id),
+                &scope_contract,
+            )?;
+
+            let binding = serde_json::json!({
+                "binding_id": &binding_id,
+                "connection": &connection,
+                "owner": &owner,
+                "repo": &repo,
+                "types": valid,
+                "scope_version": 1,
+                "include_pr_commits": include_pr_commits,
+            })
+            .to_string();
+            runtime.put_state(
+                plugin,
+                &format!("connector:binding:{}", binding_id),
+                &binding,
+            )?;
+
+            let source = serde_json::json!({
+                "source_id": &binding_id,
+                "table_prefix": format!("{}_{}", owner, repo).replace('-', "_"),
+                "binding_id": &binding_id,
+                "data_types": serde_json::from_str::<serde_json::Value>(&binding)?.get("types").cloned().unwrap_or(serde_json::json!(["issues", "prs"])),
+                "scope_contract_key": format!("connector:scope-contract:{}", binding_id),
+            })
+            .to_string();
+            runtime.put_state(plugin, &format!("source:{}", binding_id), &source)?;
+            println!("Binding '{}' upserted for {}/{}.", binding_id, owner, repo);
+        }
+        BindingCommands::List => {
+            let keys = runtime.list_state_prefix(plugin, "connector:binding:")?;
+            if keys.is_empty() {
+                println!("No DuckLake repo bindings found.");
+                return Ok(());
+            }
+            for key in keys {
+                if let Some(raw) = runtime.get_state(plugin, &key)? {
+                    let value: serde_json::Value = serde_json::from_str(&raw)?;
+                    let id = value
+                        .get("binding_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?");
+                    let conn = value
+                        .get("connection")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?");
+                    let owner = value.get("owner").and_then(|v| v.as_str()).unwrap_or("?");
+                    let repo = value.get("repo").and_then(|v| v.as_str()).unwrap_or("?");
+                    let types = value
+                        .get("types")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str())
+                                .collect::<Vec<_>>()
+                                .join(",")
+                        })
+                        .unwrap_or_default();
+                    println!("{}  {}  {}/{}  [{}]", id, conn, owner, repo, types);
+                }
+            }
+        }
+        BindingCommands::Remove { binding_id } => {
+            runtime.delete_state(plugin, &format!("connector:binding:{}", binding_id))?;
+            runtime.delete_state(plugin, &format!("source:{}", binding_id))?;
+            runtime.delete_state(plugin, &format!("connector:scope-contract:{}", binding_id))?;
+            println!("Binding '{}' removed.", binding_id);
+        }
+    }
+    Ok(())
 }
 
 /// Connect to GitHub via OAuth device flow or manual token.

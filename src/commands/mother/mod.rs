@@ -71,6 +71,10 @@ pub enum MotherCommands {
         /// Run as MCP server (JSON-RPC over stdio) instead of HTTP
         #[arg(long)]
         mcp: bool,
+
+        /// Enable legacy `mother-child` migration loading and heartbeat.
+        #[arg(long)]
+        legacy_migration: bool,
     },
 
     /// Stop the mother daemon (not yet implemented)
@@ -113,6 +117,20 @@ pub enum MotherCommands {
         /// Bypass OS sandbox (for debugging only)
         #[arg(long)]
         no_sandbox: bool,
+    },
+
+    /// Legacy parity command (retired after native DuckLake removal)
+    Parity {
+        /// Source name (as defined in .patina/sources.toml)
+        name: String,
+
+        /// Bypass OS sandbox (for debugging only)
+        #[arg(long)]
+        no_sandbox: bool,
+
+        /// Optional fresh lake name for clean parity baseline
+        #[arg(long)]
+        fresh_lake: Option<String>,
     },
 
     /// Show configured sources with status
@@ -260,11 +278,20 @@ pub fn execute_cli(
             println!("Run 'patina mother --help' for details.");
             Ok(())
         }
-        Some(MotherCommands::Start { host, port, mcp }) => {
+        Some(MotherCommands::Start {
+            host,
+            port,
+            mcp,
+            legacy_migration,
+        }) => {
             if mcp {
                 run_mcp()
             } else {
-                let options = DaemonOptions { host, port };
+                let options = DaemonOptions {
+                    host,
+                    port,
+                    legacy_migration,
+                };
                 daemon::run_server(options)
             }
         }
@@ -273,6 +300,11 @@ pub fn execute_cli(
         Some(MotherCommands::Graph(graph_cmd)) => execute_graph(graph_cmd),
         Some(MotherCommands::Search { query, limit }) => graph::search_beliefs_cli(&query, limit),
         Some(MotherCommands::Run { name, no_sandbox }) => run_source_cli(&name, no_sandbox),
+        Some(MotherCommands::Parity {
+            name,
+            no_sandbox,
+            fresh_lake,
+        }) => run_source_parity_cli(&name, no_sandbox, fresh_lake.as_deref()),
         Some(MotherCommands::Sources { prune }) => show_sources_cli(prune),
     }
 }
@@ -324,6 +356,13 @@ fn run_source_cli(name: &str, no_sandbox: bool) -> Result<()> {
     );
 
     Ok(())
+}
+
+fn run_source_parity_cli(name: &str, no_sandbox: bool, fresh_lake: Option<&str>) -> Result<()> {
+    let _ = (name, no_sandbox, fresh_lake);
+    bail!(
+        "legacy DuckLake runtime identity has been removed; `patina mother parity` is retired for this branch"
+    )
 }
 
 /// Show configured sources with status
@@ -680,6 +719,7 @@ mod tests {
             host: None,
             port: 50051,
             mcp: false,
+            legacy_migration: false,
         };
         assert!(matches!(start, MotherCommands::Start { .. }));
 

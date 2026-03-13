@@ -12,12 +12,10 @@ pub mod sources;
 pub mod spawn;
 
 use anyhow::{Context, Result};
-use patina_pipe_types::config::{
-    ConnectorToy, DuckLakeGrant, GrantInjection, InitializeParams, StorageToy,
-};
 use patina_pipe_types::manifest::ChildManifest;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use self::cursor::{get_cursor, write_facts_with_cursor};
 use self::lifecycle::{BrokerChild, NativeChild, DEFAULT_MAX_BATCH_SIZE};
@@ -60,8 +58,7 @@ pub fn run_source(
             write_to_project(source, project_root, &mut child, &manifest)
         }
         Destination::Lake { name } => {
-            // New path: Mother spawns lakehouse child, grants toy approvals
-            grant_lake_capabilities(source, name, &auth_plan, no_sandbox)
+            route_lake_via_knowledge_child(source, project_root, name, &auth_plan, no_sandbox)
         }
     }
 }
@@ -152,147 +149,287 @@ fn write_to_project(
 /// Mother's involvement ends after the capability grant. The child uses its
 /// approved toys and reports back. Per [[children-have-agency-toys-are-capabilities]]
 /// and [[initialize-is-capability-grant]].
-fn grant_lake_capabilities(
+fn route_lake_via_knowledge_child(
     source: &SourceEntry,
+    project_root: &Path,
     lake_name: &str,
     auth_plan: &crate::connect::AuthPlan,
     no_sandbox: bool,
 ) -> Result<WriteResult> {
-    use crate::connect::InjectionStrategy;
-    use patina_pipe::harness::spawn_child;
+    const REQUIRED_TYPES: [&str; 2] = ["issues", "prs"];
 
-    // 1. Resolve lake path (storage toy)
-    let lake_path =
-        crate::paths::lakes::resolve_lake_path(lake_name).map_err(|e| anyhow::anyhow!("{}", e))?;
-
-    // 2. Spawn DuckLake child (the child, not the connector)
-    let lake_binary = spawn::resolve_child_binary("ducklake")?;
-    let mut lake_child = spawn_child(&lake_binary.to_string_lossy())
-        .map_err(|e| anyhow::anyhow!("failed to spawn ducklake: {}", e))?;
-
-    if !no_sandbox {
-        eprintln!("[broker] ducklake: sandbox profile ScopedStorage");
-    }
-
-    // 3. Build typed capability grant — no untyped blobs at trust boundaries
-    let grant = DuckLakeGrant {
-        connector: ConnectorToy {
-            binary: auth_plan.child.clone(),
-            credential: auth_plan.credential.as_ref().map(|c| c.value.clone()),
-            injection: auth_plan
-                .credential
-                .as_ref()
-                .map(|c| match &c.injection {
-                    InjectionStrategy::Bearer => GrantInjection::Bearer,
-                    InjectionStrategy::Header { name } => {
-                        GrantInjection::Header { name: name.clone() }
-                    }
-                    InjectionStrategy::InProcess => GrantInjection::InProcess,
-                })
-                .unwrap_or(GrantInjection::Bearer),
-            allowed_domains: auth_plan.allowed_domains.clone(),
-            params: serde_json::to_value(&source.params)
-                .with_context(|| "serializing source params to JSON")?,
-            types: source.types.clone(),
-        },
-        storage: StorageToy {
-            lake_path: lake_path.to_string_lossy().to_string(),
-        },
-    };
-
-    let init_params = InitializeParams {
-        protocol_version: "1.0".to_string(),
-        auth: None, // credential is in the grant, not auth
-        ducklake: Some(grant),
-    };
-
-    eprintln!(
-        "[broker] {}: granting lake capabilities to ducklake (lake: {}, types: {:?})",
-        source.name, lake_name, source.types
-    );
-
-    let (_notifs, response) = lake_child
-        .request(
-            "pipe/initialize",
-            serde_json::to_value(&init_params).with_context(|| "serializing init params")?,
-        )
-        .map_err(|e| anyhow::anyhow!("ducklake pipe/initialize failed: {}", e))?;
-
-    if let Some(error) = response.get("error") {
+    if auth_plan.credential.is_none() {
         anyhow::bail!(
-            "ducklake rejected initialization: {}",
-            error["message"].as_str().unwrap_or("unknown error")
+            "source '{}' connection has no OAuth credential; run `patina connect refresh {}`",
+            source.name,
+            source.connection
+        );
+    }
+    if !auth_plan
+        .allowed_domains
+        .iter()
+        .any(|d| d == "api.github.com")
+    {
+        anyhow::bail!(
+            "source '{}' connection is not scoped for api.github.com",
+            source.name
         );
     }
 
-    // 4. Tell child to run — child uses toys from here
-    let (_notifs, result) = lake_child
-        .request("pipe/run", serde_json::json!({}))
-        .map_err(|e| anyhow::anyhow!("ducklake pipe/run failed: {}", e))?;
+    let runtime = crate::mother::KnowledgeRuntimeStore::default();
+    let plugin_name = "patina-ducklake";
 
-    // 5. Shutdown ducklake child
-    if let Err(e) = lake_child.request("pipe/shutdown", serde_json::json!({})) {
-        eprintln!("[broker] ducklake: shutdown warning: {}", e);
-    }
+    let owner = source
+        .params
+        .get("owner")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("source '{}' is missing params.owner", source.name))?;
+    let repo = source
+        .params
+        .get("repo")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("source '{}' is missing params.repo", source.name))?;
+    let include_pr_commits = source
+        .params
+        .get("include_pr_commits")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let contract_types = REQUIRED_TYPES
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect::<Vec<_>>();
+    let scope_contract = serde_json::json!({
+        "version": 1,
+        "owner": owner,
+        "repo": repo,
+        "issues": {
+            "list": true,
+            "comments": true,
+            "events": true,
+        },
+        "pulls": {
+            "list": true,
+            "comments": true,
+            "reviews": true,
+            "review_comments": true,
+            "commits": include_pr_commits,
+        },
+        "incremental": {
+            "watermark_key": "updated_at",
+            "tie_breaker": "id",
+        },
+    });
+    runtime.put_state(
+        plugin_name,
+        &format!("connector:scope-contract:{}", source.name),
+        &scope_contract.to_string(),
+    )?;
 
-    // 6. Handle escalation if any
-    if let Some(error) = result.get("error") {
-        anyhow::bail!(
-            "ducklake run error: {}",
-            error["message"].as_str().unwrap_or("unknown error")
-        );
-    }
+    let binding_id = source.name.clone();
+    let binding_json = serde_json::json!({
+        "binding_id": binding_id,
+        "connection": source.connection,
+        "owner": owner,
+        "repo": repo,
+        "types": contract_types,
+        "scope_version": 1,
+        "include_pr_commits": include_pr_commits,
+    })
+    .to_string();
+    runtime.put_state(
+        plugin_name,
+        &format!("connector:binding:{}", source.name),
+        &binding_json,
+    )?;
 
-    let run_result = result
-        .get("result")
-        .cloned()
-        .unwrap_or(serde_json::json!({}));
+    let table_prefix = format!("{}_{}", owner, repo).replace('-', "_");
+    let source_json = serde_json::json!({
+        "source_id": source.name,
+        "table_prefix": table_prefix,
+        "binding_id": source.name,
+        "data_types": REQUIRED_TYPES,
+        "scope_contract_key": format!("connector:scope-contract:{}", source.name),
+    })
+    .to_string();
+    runtime.put_state(
+        plugin_name,
+        &format!("source:{}", source.name),
+        &source_json,
+    )?;
 
-    if let Some(escalation) = run_result.get("escalation") {
-        if !escalation.is_null() {
-            let msg = escalation["message"].as_str().unwrap_or("unknown");
-            let action = escalation["action"].as_str().unwrap_or("");
-            eprintln!(
-                "[broker] {}: lake escalation: {}\n  Action: {}",
-                source.name, msg, action
-            );
+    migrate_legacy_cursor(
+        project_root,
+        &runtime,
+        lake_name,
+        &source.name,
+        &REQUIRED_TYPES
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect::<Vec<_>>(),
+    )?;
+
+    let intent = crate::mother::TaskIntent {
+        kind: crate::mother::TaskIntentKind::FetchSource,
+        payload: serde_json::json!({"source_id": source.name}),
+        dedupe_key: Some(format!("ducklake:{}", source.name)),
+    };
+    let task_id = runtime.enqueue_task(plugin_name, &intent)?;
+
+    let mut child = load_ducklake_knowledge_child(no_sandbox)?;
+    struct BrokerHost;
+    impl crate::mother::MotherHost for BrokerHost {
+        fn log(&self, child: &str, message: &str) {
+            eprintln!("[broker:{}] {}", child, message);
         }
     }
+    child.on_load(&BrokerHost)?;
 
-    // 7. Build WriteResult from run result
-    let types = run_result.get("types").and_then(|t| t.as_object());
-    let total_written: u64 = types
-        .map(|t| {
-            t.values()
-                .filter_map(|v| v.get("written").and_then(|w| w.as_u64()))
-                .sum()
-        })
-        .unwrap_or(0);
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let mut written_total = None;
 
-    let type_summaries: Vec<String> = types
-        .map(|t| {
-            t.iter()
-                .map(|(k, v)| {
-                    let status = v["status"].as_str().unwrap_or("?");
-                    let written = v["written"].as_u64().unwrap_or(0);
-                    format!("{}: {} ({})", k, written, status)
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    while Instant::now() < deadline {
+        if let Some(task) = runtime.lease_next_task(plugin_name, "broker-lake")? {
+            runtime.mark_task_running(&task.id)?;
+            let request = crate::mother::ChildRequest {
+                action: task.kind.as_str().to_string(),
+                payload: serde_json::from_str(&task.payload_json)
+                    .unwrap_or(serde_json::Value::Null),
+            };
+            match child.handle(&request) {
+                Ok(response) => {
+                    runtime.mark_task_succeeded(&task.id)?;
+                    written_total = response.payload.get("written").and_then(|v| v.as_u64());
+                }
+                Err(error) => {
+                    runtime.mark_task_failed(&task.id, task.attempts, &error.to_string())?;
+                    anyhow::bail!(
+                        "ducklake knowledge-child task failed for source '{}' (task {}): {}",
+                        source.name,
+                        task.id,
+                        error
+                    );
+                }
+            }
+        }
 
-    eprintln!(
-        "[broker] {}: lake '{}' — {}",
+        if let Some(checkpoint) = runtime.load_checkpoint(plugin_name, "ducklake.sync")? {
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&checkpoint) {
+                if value.get("source_id").and_then(|v| v.as_str()) == Some(source.name.as_str()) {
+                    let inserted = written_total
+                        .or_else(|| value.get("written").and_then(|v| v.as_u64()))
+                        .unwrap_or(0);
+                    return Ok(WriteResult {
+                        inserted,
+                        dedup_skipped: 0,
+                        cursor: None,
+                    });
+                }
+            }
+        }
+
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    anyhow::bail!(
+        "ducklake knowledge-child timed out waiting for '{}' (task {})",
         source.name,
-        lake_name,
-        type_summaries.join(", ")
-    );
+        task_id
+    )
+}
 
-    Ok(WriteResult {
-        inserted: total_written,
-        dedup_skipped: 0,
-        cursor: None,
-    })
+fn migrate_legacy_cursor(
+    project_root: &Path,
+    runtime: &crate::mother::KnowledgeRuntimeStore,
+    lake_name: &str,
+    source_name: &str,
+    data_types: &[String],
+) -> Result<()> {
+    let conn = crate::eventlog::open_events_db_at(project_root)
+        .with_context(|| format!("opening events.db for {}", project_root.display()))?;
+    let legacy_cursor = cursor::get_cursor(&conn, source_name).unwrap_or(None);
+    let Some(cursor) = legacy_cursor else {
+        return Ok(());
+    };
+
+    for data_type in data_types {
+        if runtime
+            .load_lake_cursor(lake_name, source_name, data_type)?
+            .is_none()
+        {
+            runtime.save_lake_cursor(
+                lake_name,
+                source_name,
+                data_type,
+                Some(&cursor),
+                0,
+                "migrated",
+                None,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn load_ducklake_knowledge_child(
+    no_sandbox: bool,
+) -> Result<Box<dyn crate::mother::KnowledgeChild>> {
+    let engine = crate::plugin::KnowledgeChildEngine::new()?;
+
+    let mut candidates: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
+    let installed_dir = crate::paths::plugin::children_dir();
+    if installed_dir.exists() {
+        for entry in std::fs::read_dir(&installed_dir).with_context(|| {
+            format!("reading installed children dir {}", installed_dir.display())
+        })? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("toml") {
+                let wasm = path.with_extension("wasm");
+                if wasm.exists() {
+                    candidates.push((wasm, path));
+                }
+            }
+        }
+    }
+    candidates.push((
+        std::path::PathBuf::from("target/wasm32-wasip2/release/patina_plugin_ducklake.wasm"),
+        std::path::PathBuf::from("plugins/ducklake/plugin.toml"),
+    ));
+
+    for (wasm_path, manifest_path) in candidates {
+        if !wasm_path.exists() || !manifest_path.exists() {
+            continue;
+        }
+        let manifest = match crate::plugin::PluginManifest::from_path(&manifest_path) {
+            Ok(manifest) => manifest,
+            Err(error) => {
+                eprintln!(
+                    "[broker] skipping unreadable child manifest {}: {}",
+                    manifest_path.display(),
+                    error
+                );
+                continue;
+            }
+        };
+        if manifest.provides.child.as_deref() != Some("ducklake") {
+            continue;
+        }
+        if !no_sandbox {
+            eprintln!(
+                "[broker] using knowledge-child ducklake component {}",
+                wasm_path.display()
+            );
+        }
+        let wasm = std::fs::read(&wasm_path)
+            .with_context(|| format!("reading {}", wasm_path.display()))?;
+        let component = engine.load_component(&wasm)?;
+        return engine.instantiate_child(&component, &manifest, None);
+    }
+
+    anyhow::bail!(
+        "ducklake knowledge-child component not found. Install one under {} or build plugins/ducklake for wasm32-wasip2",
+        crate::paths::plugin::children_dir().display()
+    )
 }
 
 /// Source status information for display.
@@ -355,4 +492,99 @@ pub fn status(project_root: &Path) -> Result<Vec<SourceStatus>> {
     }
 
     Ok(statuses)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_runtime() -> crate::mother::KnowledgeRuntimeStore {
+        let path =
+            std::env::temp_dir().join(format!("patina-broker-runtime-{}.db", uuid::Uuid::new_v4()));
+        crate::mother::KnowledgeRuntimeStore::new(path)
+    }
+
+    #[test]
+    fn migration_copies_legacy_cursor_into_per_type_lake_cursors() {
+        let project = tempfile::tempdir().unwrap();
+        let conn = crate::eventlog::open_events_db_at(project.path()).unwrap();
+        conn.execute(
+            "INSERT INTO broker_cursors (source_name, cursor_value, updated_at) VALUES (?1, ?2, ?3)",
+            rusqlite::params!["gh-main", "2026-03-12T00:00:00Z", chrono::Utc::now().to_rfc3339()],
+        )
+        .unwrap();
+
+        let runtime = temp_runtime();
+        migrate_legacy_cursor(
+            project.path(),
+            &runtime,
+            "default",
+            "gh-main",
+            &["issues".into(), "prs".into()],
+        )
+        .unwrap();
+
+        assert_eq!(
+            runtime
+                .load_lake_cursor("default", "gh-main", "issues")
+                .unwrap()
+                .as_deref(),
+            Some("2026-03-12T00:00:00Z")
+        );
+        assert_eq!(
+            runtime
+                .load_lake_cursor("default", "gh-main", "prs")
+                .unwrap()
+                .as_deref(),
+            Some("2026-03-12T00:00:00Z")
+        );
+    }
+
+    #[test]
+    fn migration_is_idempotent_and_does_not_overwrite_existing_cursor() {
+        let project = tempfile::tempdir().unwrap();
+        let conn = crate::eventlog::open_events_db_at(project.path()).unwrap();
+        conn.execute(
+            "INSERT INTO broker_cursors (source_name, cursor_value, updated_at) VALUES (?1, ?2, ?3)",
+            rusqlite::params!["gh-main", "cursor-v1", chrono::Utc::now().to_rfc3339()],
+        )
+        .unwrap();
+
+        let runtime = temp_runtime();
+        runtime
+            .save_lake_cursor(
+                "default",
+                "gh-main",
+                "issues",
+                Some("already-set"),
+                0,
+                "ok",
+                None,
+            )
+            .unwrap();
+
+        migrate_legacy_cursor(
+            project.path(),
+            &runtime,
+            "default",
+            "gh-main",
+            &["issues".into(), "prs".into()],
+        )
+        .unwrap();
+
+        assert_eq!(
+            runtime
+                .load_lake_cursor("default", "gh-main", "issues")
+                .unwrap()
+                .as_deref(),
+            Some("already-set")
+        );
+        assert_eq!(
+            runtime
+                .load_lake_cursor("default", "gh-main", "prs")
+                .unwrap()
+                .as_deref(),
+            Some("cursor-v1")
+        );
+    }
 }
