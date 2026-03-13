@@ -359,6 +359,16 @@ mod bindings {
     }
 
     impl patina::host::lake::Host for HostState {
+        fn ensure_lake(&mut self, name: String) -> Result<String, String> {
+            if !self.grants.lake_names.contains(&name) {
+                return Err(format!(
+                    "lake '{}' not granted for '{}'",
+                    name, self.plugin_name
+                ));
+            }
+            crate::mother::lake_host::ensure_lake(&name).map_err(|e| e.to_string())
+        }
+
         fn list_granted_lakes(&mut self) -> Result<Vec<patina::host::lake::GrantedLake>, String> {
             self.grants
                 .lake_names
