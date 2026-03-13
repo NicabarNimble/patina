@@ -36,6 +36,7 @@ docker-compose.yml.backup/
 
 # Patina local data (regeneratable by patina scrape/oxidize)
 .patina/local/
+.patina/logs/
 .patina/schemas/
 
 # Generated code
