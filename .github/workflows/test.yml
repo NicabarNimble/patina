@@ -55,6 +55,12 @@ jobs:
       if: steps.cache-models-test.outputs.cache-hit != 'true'
       run: ./scripts/download-active-model.sh
 
+    - name: Check crate naming policy
+      run: bash resources/scripts/check-crate-names.sh
+
+    - name: Check single SDK surface
+      run: bash resources/scripts/check-single-sdk-surface.sh
+
     - name: Check Rust formatting
       run: cargo fmt --all -- --check
 

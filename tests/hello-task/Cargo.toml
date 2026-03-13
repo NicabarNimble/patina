@@ -10,4 +10,4 @@ description = "Minimal task plugin for conformance testing"
 crate-type = ["cdylib"]
 
 [dependencies]
-patina-sdk = { path = "../../plugins/sdk", features = ["task"] }
+patina-sdk = { path = "../../sdk/patina-sdk", features = ["task"] }

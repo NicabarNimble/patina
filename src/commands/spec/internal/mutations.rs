@@ -158,6 +158,8 @@ fn lint_ready_spec(loaded: &LoadedSpec) -> Result<()> {
 
     let has_code_targets = design.contains("`src/")
         || design.contains("`crates/")
+        || design.contains("`sdk/")
+        || design.contains("`children/")
         || design.contains("`wit/")
         || design.contains("`plugins/")
         || design.contains("`layer/");

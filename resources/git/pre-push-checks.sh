@@ -26,15 +26,15 @@ done
 # Step 1b: SDK WIT consistency — ensure published SDK ships current WIT
 # Compare world definitions AND their deps/patina-host/host.wit copies
 echo "   Checking SDK WIT consistency..."
-for world in command mother-child pipeline task; do
-    if ! diff "wit/$world/$world.wit" "plugins/sdk/wit/$world/$world.wit" > /dev/null 2>&1; then
-        echo "   ERROR: plugins/sdk/wit/$world/$world.wit differs from canonical"
-        echo "   Fix: cp wit/$world/$world.wit plugins/sdk/wit/$world/$world.wit"
+for world in command knowledge-child mother-child pipeline task; do
+    if ! diff "wit/$world/$world.wit" "sdk/patina-sdk/wit/$world/$world.wit" > /dev/null 2>&1; then
+        echo "   ERROR: sdk/patina-sdk/wit/$world/$world.wit differs from canonical"
+        echo "   Fix: cp wit/$world/$world.wit sdk/patina-sdk/wit/$world/$world.wit"
         wit_ok=false
     fi
-    if ! diff "wit/$world/deps/patina-host/host.wit" "plugins/sdk/wit/$world/deps/patina-host/host.wit" > /dev/null 2>&1; then
-        echo "   ERROR: plugins/sdk/wit/$world/deps/patina-host/host.wit differs from canonical"
-        echo "   Fix: cp wit/$world/deps/patina-host/host.wit plugins/sdk/wit/$world/deps/patina-host/host.wit"
+    if ! diff "wit/$world/deps/patina-host/host.wit" "sdk/patina-sdk/wit/$world/deps/patina-host/host.wit" > /dev/null 2>&1; then
+        echo "   ERROR: sdk/patina-sdk/wit/$world/deps/patina-host/host.wit differs from canonical"
+        echo "   Fix: cp wit/$world/deps/patina-host/host.wit sdk/patina-sdk/wit/$world/deps/patina-host/host.wit"
         wit_ok=false
     fi
 done
@@ -83,13 +83,15 @@ else
     # Check world-level deps AND SDK mirror deps — same canonical file
     COPIES=(
         "wit/mother-child/deps/patina-host/host.wit"
+        "wit/knowledge-child/deps/patina-host/host.wit"
         "wit/command/deps/patina-host/host.wit"
         "wit/task/deps/patina-host/host.wit"
         "wit/pipeline/deps/patina-host/host.wit"
-        "plugins/sdk/wit/mother-child/deps/patina-host/host.wit"
-        "plugins/sdk/wit/command/deps/patina-host/host.wit"
-        "plugins/sdk/wit/task/deps/patina-host/host.wit"
-        "plugins/sdk/wit/pipeline/deps/patina-host/host.wit"
+        "sdk/patina-sdk/wit/mother-child/deps/patina-host/host.wit"
+        "sdk/patina-sdk/wit/knowledge-child/deps/patina-host/host.wit"
+        "sdk/patina-sdk/wit/command/deps/patina-host/host.wit"
+        "sdk/patina-sdk/wit/task/deps/patina-host/host.wit"
+        "sdk/patina-sdk/wit/pipeline/deps/patina-host/host.wit"
     )
     for COPY in "${COPIES[@]}"; do
         if [ ! -f "$COPY" ]; then

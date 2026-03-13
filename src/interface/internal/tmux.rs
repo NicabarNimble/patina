@@ -1,8 +1,10 @@
 use anyhow::{bail, Result};
 use std::env;
+use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OffReason {
@@ -113,6 +115,12 @@ pub fn launch_adapter_cli(
     session_name: &str,
     extra_env: &[(String, String)],
 ) -> Result<()> {
+    let tmux_log_dir = project_root.join(".patina/local/logs/tmux");
+    let tmux_events_log = tmux_log_dir.join("events.log");
+    let tmux_verbose = env_truthy("PATINA_TMUX_VERBOSE");
+
+    let _ = fs::create_dir_all(&tmux_log_dir);
+
     let claude_token = if adapter_name == "claude" {
         try_get_claude_token()
     } else {
@@ -125,18 +133,37 @@ pub fn launch_adapter_cli(
 
         match decision {
             TmuxDecision::Auto => {
+                let tmux_socket = derive_tmux_socket_name(session_name);
+
                 eprintln!(
                     "Launching {} in tmux session: {}",
                     adapter_name, session_name
                 );
-                eprintln!("  Reconnect: tmux attach -t {}", session_name);
+                eprintln!(
+                    "  Reconnect: tmux -L {} attach -t {}",
+                    tmux_socket, session_name
+                );
                 io::stderr().flush().ok();
 
+                append_tmux_event(
+                    &tmux_events_log,
+                    "launch_tmux",
+                    adapter_name,
+                    session_name,
+                    Some(&tmux_socket),
+                    Some(tmux_verbose),
+                    None,
+                );
+
                 let mut cmd = Command::new("tmux");
+                cmd.arg("-L").arg(&tmux_socket);
+                if tmux_verbose {
+                    cmd.arg("-vv");
+                }
                 cmd.args(["new-session", "-A", "-D", "-s", session_name, "-c"]);
                 cmd.arg(project_root.as_os_str());
                 cmd.arg(adapter_name);
-                cmd.current_dir(project_root);
+                cmd.current_dir(&tmux_log_dir);
                 for (key, value) in extra_env {
                     cmd.env(key, value);
                 }
@@ -144,12 +171,30 @@ pub fn launch_adapter_cli(
                     cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
                 }
                 let err = cmd.exec();
+                append_tmux_event(
+                    &tmux_events_log,
+                    "tmux_exec_failed",
+                    adapter_name,
+                    session_name,
+                    Some(&tmux_socket),
+                    Some(tmux_verbose),
+                    Some(&err.to_string()),
+                );
                 eprintln!(
                     "Warning: failed to exec tmux ({}) — launching {} directly",
                     err, adapter_name
                 );
             }
             TmuxDecision::Off(_) => {
+                append_tmux_event(
+                    &tmux_events_log,
+                    "launch_direct_tmux_off",
+                    adapter_name,
+                    session_name,
+                    None,
+                    Some(tmux_verbose),
+                    None,
+                );
                 println!("\nLaunching {}...\n", adapter_name);
             }
         }
@@ -184,6 +229,58 @@ pub fn launch_adapter_cli(
         }
         Ok(())
     }
+}
+
+fn derive_tmux_socket_name(session_name: &str) -> String {
+    format!("{}_sock", session_name)
+}
+
+fn env_truthy(key: &str) -> bool {
+    matches!(
+        env::var(key).ok().as_deref(),
+        Some("1") | Some("true") | Some("TRUE") | Some("yes") | Some("on")
+    )
+}
+
+fn append_tmux_event(
+    path: &Path,
+    event: &str,
+    adapter_name: &str,
+    session_name: &str,
+    socket_name: Option<&str>,
+    verbose: Option<bool>,
+    error: Option<&str>,
+) {
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+
+    let mut line = format!(
+        "ts={} event={} adapter={} session={}",
+        ts, event, adapter_name, session_name
+    );
+    if let Some(socket_name) = socket_name {
+        line.push_str(&format!(" socket={}", socket_name));
+    }
+    if let Some(verbose) = verbose {
+        line.push_str(&format!(" verbose={}", verbose));
+    }
+    if let Some(error) = error {
+        line.push_str(&format!(" error={}", sanitize_for_log(error)));
+    }
+    line.push('\n');
+
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        let _ = file.write_all(line.as_bytes());
+    }
+}
+
+fn sanitize_for_log(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| if ch.is_ascii_whitespace() { '_' } else { ch })
+        .collect()
 }
 
 fn try_get_claude_token() -> Option<String> {

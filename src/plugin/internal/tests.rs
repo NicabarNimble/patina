@@ -293,8 +293,8 @@ child = "bad-child"
 fn knowledge_child_example_manifests_validate() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for path in [
-        root.join("plugins/ducklake/plugin.toml"),
-        root.join("plugins/belief-verifier/plugin.toml"),
+        root.join("children/ducklake-wasm/plugin.toml"),
+        root.join("children/belief-verifier-wasm/plugin.toml"),
     ] {
         let manifest = PluginManifest::from_path(&path).unwrap();
         assert_eq!(manifest.world, PluginWorld::KnowledgeChild);
@@ -335,8 +335,8 @@ child = "bad-ingress"
 
 #[test]
 fn ducklake_manifest_uses_granted_ingress_not_ambient_http() {
-    let path =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins/ducklake/plugin.toml");
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("children/ducklake-wasm/plugin.toml");
     let manifest = PluginManifest::from_path(&path).unwrap();
     assert!(manifest.host_http_domains.is_empty());
     assert!(!manifest.capabilities.contains(&"host_http".to_string()));
@@ -345,8 +345,8 @@ fn ducklake_manifest_uses_granted_ingress_not_ambient_http() {
 
 #[test]
 fn ducklake_manifest_runtime_grants_sdk_story_stays_connected() {
-    let path =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins/ducklake/plugin.toml");
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("children/ducklake-wasm/plugin.toml");
     let manifest = PluginManifest::from_path(&path).unwrap();
     let grants = manifest.granted_capabilities();
 

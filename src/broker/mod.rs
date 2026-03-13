@@ -393,7 +393,7 @@ fn load_ducklake_knowledge_child(
     }
     candidates.push((
         std::path::PathBuf::from("target/wasm32-wasip2/release/patina_plugin_ducklake.wasm"),
-        std::path::PathBuf::from("plugins/ducklake/plugin.toml"),
+        std::path::PathBuf::from("children/ducklake-wasm/plugin.toml"),
     ));
 
     for (wasm_path, manifest_path) in candidates {
@@ -427,7 +427,7 @@ fn load_ducklake_knowledge_child(
     }
 
     anyhow::bail!(
-        "ducklake knowledge-child component not found. Install one under {} or build plugins/ducklake for wasm32-wasip2",
+        "ducklake knowledge-child component not found. Install one under {} or build children/ducklake-wasm for wasm32-wasip2",
         crate::paths::plugin::children_dir().display()
     )
 }

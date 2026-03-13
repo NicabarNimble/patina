@@ -17,3 +17,43 @@ schedule = "manual"
 [sources.github-lake.destination]
 type = "lake"
 lake = "github-data"
+
+[sources.github-lake-small]
+connection = "github"
+types = ["issues"]
+params = { owner = "NicabarNimble", repo = "patina" }
+schedule = "manual"
+
+[sources.github-lake-small.destination]
+type = "lake"
+lake = "github-parity-small"
+
+[sources.github-lake-small-2]
+connection = "github"
+types = ["issues"]
+params = { owner = "NicabarNimble", repo = "patina" }
+schedule = "manual"
+
+[sources.github-lake-small-2.destination]
+type = "lake"
+lake = "github-parity-small-2"
+
+[sources.github-lake-codex]
+connection = "github"
+types = ["issues", "prs"]
+params = { owner = "openai", repo = "codex" }
+schedule = "manual"
+
+[sources.github-lake-codex.destination]
+type = "lake"
+lake = "github-parity-codex"
+
+[sources.github-lake-google-cli]
+connection = "github"
+types = ["issues", "prs"]
+params = { owner = "googleworkspace", repo = "cli" }
+schedule = "manual"
+
+[sources.github-lake-google-cli.destination]
+type = "lake"
+lake = "github-parity-google-cli"

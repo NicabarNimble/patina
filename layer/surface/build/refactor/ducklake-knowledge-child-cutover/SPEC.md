@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: ducklake-knowledge-child-cutover
-status: complete
+status: active
 created: 2026-03-12
 sessions:
   origin: 20260312-140904
@@ -9,8 +9,8 @@ related:
 - src/plugin/internal/knowledge_child.rs
 - src/mother/lake_host.rs
 - src/broker/mod.rs
-- plugins/ducklake/src/lib.rs
-- plugins/ducklake/plugin.toml
+- children/ducklake-wasm/src/lib.rs
+- children/ducklake-wasm/plugin.toml
 - crates/patina-child-sdk/src/lib.rs
 - wit/knowledge-child/deps/patina-host/host.wit
 - src/connect/internal/resolve.rs
@@ -21,7 +21,7 @@ related:
 - src/commands/connect.rs
 exit_criteria:
 - id: ducklake-has-single-knowledge-child-identity
-  text: DuckLake runs through one authoritative knowledge-child identity (`plugins/ducklake`) and the native child is no longer a parallel runtime identity
+  text: DuckLake runs through one authoritative knowledge-child identity (`children/ducklake-wasm`) and the native child path (`children/ducklake`) is removed from runtime + workspace membership
   checked: false
 - id: broker-to-knowledge-child-invocation-model-is-explicit
   text: The cutover defines and implements one explicit invocation model for `Destination::Lake` (enqueue + bounded wait via Mother runtime), with no ambiguous dual execution semantics
@@ -30,7 +30,7 @@ exit_criteria:
   text: '`Destination::Lake` cutover routes through the knowledge-child orchestration path, not direct native ducklake spawn in broker'
   checked: true
 - id: lake-toy-host-parity-reaches-real-ducklake-semantics
-  text: Mother lake host behind granted `lake` toy supports real DuckLake semantics required for current issues/PR ingestion parity
+  text: Mother lake host behind granted `lake` toy supports required DuckLake semantics (table lifecycle, append/query behavior, cursor semantics) proven by parity integration tests
   checked: false
 - id: connector-or-ingress-capability-supports-repo-scoped-issues-and-prs
   text: Granted child capability model supports repo-scoped GitHub issues and pull requests for any user-selected repository with policy-scoped grants
@@ -42,13 +42,13 @@ exit_criteria:
   text: DuckLake source model supports multiple repos, per-type sync (issues/prs), and cursor-driven incremental ingestion with durable checkpoints
   checked: true
 - id: migration-preserves-existing-native-cursor-and-checkpoint-continuity
-  text: Cutover includes an explicit migration/compat path so existing native DuckLake cursor/checkpoint state is honored or migrated without silent re-ingest or continuity loss
+  text: Cutover includes explicit migration/compat behavior for legacy native cursor/checkpoint state with rollback-safe handling and tests proving no silent re-ingest or continuity loss
   checked: false
 - id: repo-binding-control-plane-is-implemented
   text: A concrete command/API surface provisions repo bindings, grant-scoped connector capability, and source records for the knowledge-child path
   checked: true
 - id: wasm-ducklake-and-old-native-path-pass-parity-suite-before-removal
-  text: New DuckLake path matches old path outputs and failure handling on a parity suite before old path removal
+  text: New DuckLake path matches old path outputs + failure handling on a defined parity suite, and native path removal happens only after that suite passes in CI
   checked: false
 - id: sdk-and-wit-contract-minimum-is-stable-for-cutover
   text: WIT + child SDK + toy SDK expose stable typed contracts and one reference flow sufficient to build DuckLake-style apps without internal runtime context
@@ -62,7 +62,7 @@ exit_criteria:
 
 DuckLake currently exists in two runtime realities:
 
-- `plugins/ducklake` is the doctrine-aligned knowledge-child app shape.
+- `children/ducklake-wasm` is the doctrine-aligned knowledge-child app shape.
 - `children/ducklake` still carries the richer native ingestion path used by
   broker lake routing.
 
@@ -97,12 +97,35 @@ knowledge-child path.
 
 ## Status
 
-Partially complete foundation, incomplete cutover:
+Partially complete foundation, incomplete cutover (active tail):
 
 - Complete: doctrine cleanup, knowledge-child runtime defaults, grant-shaped
   ingress in WIT/runtime/SDK, proof-child alignment.
 - Incomplete: full DuckLake parity in host capability layer, broker cutover,
-  source model parity, and old native child removal.
+  migration continuity hardening, parity-suite proof, and old native child
+  removal.
+
+## Cutover Tail Contract
+
+The following work is required before this spec can return to `complete`:
+
+1. **Single identity enforcement**
+   - Remove `children/ducklake` from workspace runtime path and cargo workspace members.
+   - Keep only `children/ducklake-wasm` as DuckLake app runtime identity.
+
+2. **Lake host parity proof**
+   - Add integration tests that compare legacy/native expectations vs knowledge-child
+     host behavior for table creation, append semantics, query shape, and cursor behavior.
+   - Include at least one failure-path assertion (invalid table/data contract).
+
+3. **Migration continuity proof**
+   - Add tests that seed legacy cursor/checkpoint state and verify migration to
+     knowledge-child state without duplicate ingest on next run.
+   - Include partial-failure behavior expectations (idempotent retry / no destructive loss).
+
+4. **Parity gate before native removal**
+   - Define a named parity suite command in this repo and run it in CI.
+   - Native path removal is allowed only after parity suite is green.
 
 ## Non-Goals
 
@@ -115,7 +138,7 @@ Partially complete foundation, incomplete cutover:
 
 ## Current State
 
-- New DuckLake knowledge-child (`plugins/ducklake`) supports configured sources,
+- New DuckLake knowledge-child (`children/ducklake-wasm`) supports configured sources,
   lake writes, ingress fetch, and checkpoints.
 - Current ingress grant is narrow and static (example endpoint) and not a full
   repo-scoped connector model.
@@ -128,7 +151,7 @@ Partially complete foundation, incomplete cutover:
 ## Target State
 
 - DuckLake has one runtime identity: knowledge-child app in
-  `plugins/ducklake`.
+  `children/ducklake-wasm`.
 - User-selected repository bindings create grant-scoped DuckLake source entries
   and schedule sync through knowledge-child tasks.
 - Issues + pull requests ingest through granted connector/ingress capability
@@ -143,7 +166,7 @@ Partially complete foundation, incomplete cutover:
 
 ### 1. Define one canonical DuckLake runtime identity
 
-- Keep `plugins/ducklake` as authoritative DuckLake app identity.
+- Keep `children/ducklake-wasm` as authoritative DuckLake app identity.
 - Treat native DuckLake runtime as migration reference only until parity is met.
 - Remove parallel identity after cutover.
 
@@ -207,7 +230,7 @@ Partially complete foundation, incomplete cutover:
 4. Implement host runtime support for new interfaces and vault-auth path.
 5. Update `patina-toy-sdk` / `patina-child-sdk` to expose typed APIs.
 6. Build repo-binding command/API surface and grant provisioning flow.
-7. Upgrade `plugins/ducklake` source model for repo-scoped issues/prs ingestion.
+7. Upgrade `children/ducklake-wasm` source model for repo-scoped issues/prs ingestion.
 8. Add cursor/checkpoint migration/compat path from native state.
 9. Cut broker `Destination::Lake` to knowledge-child route.
 10. Run parity + failure-path + migration suite.
@@ -241,6 +264,10 @@ Partially complete foundation, incomplete cutover:
 - Parity tests: new path output and operational behavior match legacy baseline.
 - Builder minimum test: one reference app flow compiles and runs using typed
   toy APIs only (full ecosystem docs can follow in a separate spec).
+- Tail gate verification to close this spec:
+  - `patina spec check ducklake-knowledge-child-cutover --json` reports 11/11 checked
+  - parity/migration test suite command(s) added and green in CI
+  - `children/ducklake` no longer present as active runtime path
 
 ## Exit Criteria
 
