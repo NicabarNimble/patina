@@ -5,6 +5,8 @@ world knowledge-child {
     import patina:host/measure@0.1.0;
     import patina:host/query@0.1.0;
     import patina:host/http@0.1.0;
+    import patina:host/ingress@0.1.0;
+    import patina:host/connector@0.1.0;
     import patina:host/emit@0.1.0;
     import patina:host/state@0.1.0;
     import patina:host/checkpoint@0.1.0;

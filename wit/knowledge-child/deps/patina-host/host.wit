@@ -71,10 +71,15 @@ interface checkpoint {
 }
 
 interface lake {
-    ensure-lake: func(name: string) -> result<string, string>;
-    load-cursor: func(lake: string, source: string, data-type: string) -> option<string>;
+    record granted-lake {
+        name: string,
+        path: string,
+    }
+
+    list-granted-lakes: func() -> result<list<granted-lake>, string>;
+    load-cursor: func(lake-name: string, source: string, data-type: string) -> option<string>;
     save-cursor: func(
-        lake: string,
+        lake-name: string,
         source: string,
         data-type: string,
         cursor: option<string>,
@@ -82,14 +87,50 @@ interface lake {
         status: string,
         last-error: option<string>,
     ) -> result<_, string>;
-    ensure-table: func(lake: string, table: string) -> result<_, string>;
+    ensure-table: func(lake-name: string, table: string) -> result<_, string>;
     append-json-batch: func(
-        lake: string,
+        lake-name: string,
         table: string,
         source: string,
         rows-json: list<string>,
     ) -> result<u64, string>;
-    query-json: func(lake: string, sql: string) -> result<string, string>;
+    query-json: func(lake-name: string, sql: string) -> result<string, string>;
+}
+
+interface ingress {
+    record granted-source {
+        name: string,
+        endpoint: string,
+    }
+
+    list-granted-sources: func() -> list<granted-source>;
+    fetch: func(source-name: string) -> result<string, string>;
+}
+
+interface connector {
+    record repo-binding {
+        binding-id: string,
+        connection: string,
+        owner: string,
+        repo: string,
+        types: list<string>,
+    }
+
+    record sync-result {
+        binding-id: string,
+        data-type: string,
+        cursor: option<string>,
+        rows-json: list<string>,
+    }
+
+    list-bindings: func() -> result<list<repo-binding>, string>;
+    upsert-binding: func(binding: repo-binding) -> result<repo-binding, string>;
+    remove-binding: func(binding-id: string) -> result<_, string>;
+    sync-binding: func(
+        binding-id: string,
+        data-type: string,
+        since: option<string>,
+    ) -> result<sync-result, string>;
 }
 
 interface events {
