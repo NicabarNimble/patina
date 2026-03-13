@@ -12,19 +12,18 @@ use patina::mother::{
     MotherHost, RunStatus, Toy,
 };
 
-enum RegisteredChild {
-    Legacy(Arc<RwLock<Box<dyn MotherChild>>>),
-    Knowledge(Arc<RwLock<Box<dyn KnowledgeChild>>>),
-}
-
 /// Registry of Mother's children.
 pub struct ChildRegistry {
-    children: Vec<RegisteredChild>,
+    knowledge_children: Vec<Arc<RwLock<Box<dyn KnowledgeChild>>>>,
+    legacy_children: Vec<Arc<RwLock<Box<dyn MotherChild>>>>,
 }
 
 impl ChildRegistry {
     pub fn new() -> Self {
-        Self { children: vec![] }
+        Self {
+            knowledge_children: vec![],
+            legacy_children: vec![],
+        }
     }
 
     /// Register a child. Call before load_all().
@@ -35,69 +34,57 @@ impl ChildRegistry {
 
     pub fn register_legacy(&mut self, child: Box<dyn MotherChild>) -> Result<()> {
         let name = child.name().to_string();
-        if self.children.iter().any(|c| match c {
-            RegisteredChild::Legacy(child) => {
-                child.read().unwrap_or_else(|e| e.into_inner()).name() == name
-            }
-            RegisteredChild::Knowledge(child) => {
-                child.read().unwrap_or_else(|e| e.into_inner()).name() == name
-            }
-        }) {
+        if self.child_name_exists(&name) {
             anyhow::bail!("duplicate child name: {}", name);
         }
-        self.children
-            .push(RegisteredChild::Legacy(Arc::new(RwLock::new(child))));
+        self.legacy_children.push(Arc::new(RwLock::new(child)));
         Ok(())
     }
 
     pub fn register_knowledge(&mut self, child: Box<dyn KnowledgeChild>) -> Result<()> {
         let name = child.name().to_string();
-        if self.children.iter().any(|c| match c {
-            RegisteredChild::Legacy(child) => {
-                child.read().unwrap_or_else(|e| e.into_inner()).name() == name
-            }
-            RegisteredChild::Knowledge(child) => {
-                child.read().unwrap_or_else(|e| e.into_inner()).name() == name
-            }
-        }) {
+        if self.child_name_exists(&name) {
             anyhow::bail!("duplicate child name: {}", name);
         }
-        self.children
-            .push(RegisteredChild::Knowledge(Arc::new(RwLock::new(child))));
+        self.knowledge_children.push(Arc::new(RwLock::new(child)));
         Ok(())
+    }
+
+    fn child_name_exists(&self, name: &str) -> bool {
+        self.knowledge_children
+            .iter()
+            .any(|child| child.read().unwrap_or_else(|e| e.into_inner()).name() == name)
+            || self
+                .legacy_children
+                .iter()
+                .any(|child| child.read().unwrap_or_else(|e| e.into_inner()).name() == name)
     }
 
     /// Load all children — calls on_load() for each in order.
     /// Fails fast if any child fails to load.
     pub fn load_all(&self, host: &dyn MotherHost) -> Result<()> {
-        for entry in &self.children {
-            match entry {
-                RegisteredChild::Legacy(entry) => {
-                    let mut child = entry.write().unwrap_or_else(|e| e.into_inner());
-                    let name = child.name().to_string();
-                    host.log(&name, "loading");
-                    child.on_load(host)?;
-                    host.log(&name, "loaded");
-                }
-                RegisteredChild::Knowledge(entry) => {
-                    let mut child = entry.write().unwrap_or_else(|e| e.into_inner());
-                    let name = child.name().to_string();
-                    host.log(&name, "loading");
-                    child.on_load(host)?;
-                    host.log(&name, "loaded");
-                }
-            }
+        for entry in &self.legacy_children {
+            let mut child = entry.write().unwrap_or_else(|e| e.into_inner());
+            let name = child.name().to_string();
+            host.log(&name, "loading legacy migration child");
+            child.on_load(host)?;
+            host.log(&name, "loaded legacy migration child");
+        }
+        for entry in &self.knowledge_children {
+            let mut child = entry.write().unwrap_or_else(|e| e.into_inner());
+            let name = child.name().to_string();
+            host.log(&name, "loading");
+            child.on_load(host)?;
+            host.log(&name, "loaded");
         }
         Ok(())
     }
 
     pub fn tick_legacy_all(&self) -> Vec<Toy> {
         let mut toys = vec![];
-        for entry in &self.children {
-            if let RegisteredChild::Legacy(entry) = entry {
-                if let Ok(mut child) = entry.write() {
-                    toys.extend(child.tick());
-                }
+        for entry in &self.legacy_children {
+            if let Ok(mut child) = entry.write() {
+                toys.extend(child.tick());
             }
         }
         toys
@@ -108,10 +95,7 @@ impl ChildRegistry {
         runtime: &KnowledgeRuntimeStore,
         lease_owner: &str,
     ) -> Result<()> {
-        for entry in &self.children {
-            let RegisteredChild::Knowledge(entry) = entry else {
-                continue;
-            };
+        for entry in &self.knowledge_children {
             let mut child = entry.write().unwrap_or_else(|e| e.into_inner());
             let plugin_name = child.name().to_string();
             let run_id = runtime.record_run_start(&plugin_name)?;
@@ -172,51 +156,53 @@ impl ChildRegistry {
 
     /// Health check all children.
     pub fn health_all(&self) -> Vec<(String, ChildHealth)> {
-        self.children
-            .iter()
-            .filter_map(|entry| match entry {
-                RegisteredChild::Legacy(child) => {
-                    let child = child.read().ok()?;
-                    Some((child.name().to_string(), child.health()))
-                }
-                RegisteredChild::Knowledge(child) => {
-                    let child = child.read().ok()?;
-                    Some((child.name().to_string(), child.health()))
-                }
-            })
-            .collect()
+        let mut statuses = Vec::new();
+        for child in &self.knowledge_children {
+            let child = match child.read() {
+                Ok(child) => child,
+                Err(_) => continue,
+            };
+            statuses.push((child.name().to_string(), child.health()));
+        }
+        for child in &self.legacy_children {
+            let child = match child.read() {
+                Ok(child) => child,
+                Err(_) => continue,
+            };
+            statuses.push((child.name().to_string(), child.health()));
+        }
+        statuses
     }
 
     /// Route a request to a child by name.
     pub fn handle(&self, child_name: &str, request: &ChildRequest) -> Result<ChildResponse> {
-        let entry = self
-            .children
+        if let Some(child) = self
+            .knowledge_children
             .iter()
-            .find(|c| match c {
-                RegisteredChild::Legacy(child) => {
-                    child.read().unwrap_or_else(|e| e.into_inner()).name() == child_name
-                }
-                RegisteredChild::Knowledge(child) => {
-                    child.read().unwrap_or_else(|e| e.into_inner()).name() == child_name
-                }
-            })
-            .ok_or_else(|| anyhow::anyhow!("unknown child: {}", child_name))?;
-
-        match entry {
-            RegisteredChild::Legacy(child) => {
-                let child = child.read().unwrap_or_else(|e| e.into_inner());
-                child.handle(request)
-            }
-            RegisteredChild::Knowledge(child) => {
-                let child = child.read().unwrap_or_else(|e| e.into_inner());
-                child.handle(request)
-            }
+            .find(|child| child.read().unwrap_or_else(|e| e.into_inner()).name() == child_name)
+        {
+            let child = child.read().unwrap_or_else(|e| e.into_inner());
+            return child.handle(request);
         }
+
+        if let Some(child) = self
+            .legacy_children
+            .iter()
+            .find(|child| child.read().unwrap_or_else(|e| e.into_inner()).name() == child_name)
+        {
+            let child = child.read().unwrap_or_else(|e| e.into_inner());
+            return child.handle(request);
+        }
+
+        Err(anyhow::anyhow!("unknown child: {}", child_name))
     }
 
-    /// Number of registered children.
-    pub fn len(&self) -> usize {
-        self.children.len()
+    pub fn legacy_len(&self) -> usize {
+        self.legacy_children.len()
+    }
+
+    pub fn knowledge_len(&self) -> usize {
+        self.knowledge_children.len()
     }
 }
 
@@ -259,7 +245,7 @@ mod tests {
         let mut registry = ChildRegistry::new();
         assert!(registry.register(StubChild::new("alpha")).is_ok());
         assert!(registry.register(StubChild::new("beta")).is_ok());
-        assert_eq!(registry.len(), 2);
+        assert_eq!(registry.knowledge_len() + registry.legacy_len(), 2);
     }
 
     #[test]
@@ -272,6 +258,6 @@ mod tests {
             "got: {}",
             err
         );
-        assert_eq!(registry.len(), 1);
+        assert_eq!(registry.knowledge_len() + registry.legacy_len(), 1);
     }
 }

@@ -1,40 +1,61 @@
-use patina_child_sdk::host::GuestHost;
-use patina_child_sdk::toys::{
-    CheckpointToy, FetchToy, LakeToy, LogToy, MeasureToy, StateToy, TaskIntent, TaskIntentKind,
-};
+use patina_child_sdk::granted::{self, Bundle as GrantedBundle};
+use patina_child_sdk::substrate::{TaskIntent, TaskIntentKind};
 use patina_child_sdk::{register_knowledge_child, ChildHealth, HealthStatus, KnowledgeChildPlugin};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 struct DuckLakeToys {
-    log: LogToy<GuestHost>,
-    measure: MeasureToy<GuestHost>,
-    state: StateToy<GuestHost>,
-    checkpoint: CheckpointToy<GuestHost>,
-    fetch: FetchToy<GuestHost>,
-    lake: LakeToy<GuestHost>,
+    log: granted::Log,
+    measure: granted::Measure,
+    state: granted::State,
+    checkpoint: granted::Checkpoint,
+    lake: granted::Lake,
+    connectors: granted::Connectors,
+}
+
+impl GrantedBundle for DuckLakeToys {
+    fn granted() -> Self {
+        Self {
+            log: granted::log(),
+            measure: granted::measure(),
+            state: granted::state(),
+            checkpoint: granted::checkpoint(),
+            lake: granted::lake("default"),
+            connectors: granted::connectors(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SourceConfig {
     source_id: String,
-    lake: String,
-    table: String,
-    #[serde(default = "default_mode")]
-    mode: String,
+    #[serde(alias = "table")]
+    table_prefix: String,
+    binding_id: String,
     #[serde(default)]
-    data_url: Option<String>,
-    #[serde(default)]
-    rows: Vec<serde_json::Value>,
+    data_types: Vec<String>,
 }
 
-fn default_mode() -> String {
-    "inline".into()
+impl SourceConfig {
+    fn normalized_types(&self) -> Vec<String> {
+        if self.data_types.is_empty() {
+            vec!["issues".into(), "prs".into()]
+        } else {
+            self.data_types.clone()
+        }
+    }
 }
 
-#[derive(Default)]
 struct DuckLakeChild {
     toys: DuckLakeToys,
+}
+
+impl Default for DuckLakeChild {
+    fn default() -> Self {
+        Self {
+            toys: DuckLakeToys::granted(),
+        }
+    }
 }
 
 impl DuckLakeChild {
@@ -71,69 +92,57 @@ impl DuckLakeChild {
             .and_then(|v| v.as_str())
             .ok_or_else(|| "missing 'source_id'".to_string())?;
         let config = self.load_source(source_id)?;
-        let rows = match config.mode.as_str() {
-            "inline" => config
-                .rows
-                .iter()
-                .map(|row| serde_json::to_string(row).map_err(|e| e.to_string()))
-                .collect::<Result<Vec<_>, _>>()?,
-            "http" => {
-                let url = config
-                    .data_url
-                    .as_deref()
-                    .ok_or_else(|| "http mode requires data_url".to_string())?;
-                let body = self.toys.fetch.get(url)?;
-                let parsed: serde_json::Value = serde_json::from_str(&body)
-                    .map_err(|e| format!("invalid fetch response: {}", e))?;
-                let rows = parsed
-                    .get("rows")
-                    .and_then(|v| v.as_array())
-                    .or_else(|| parsed.as_array())
-                    .ok_or_else(|| {
-                        "fetched payload must be an array or {rows:[...]}".to_string()
-                    })?;
-                rows.iter()
-                    .map(|row| serde_json::to_string(row).map_err(|e| e.to_string()))
-                    .collect::<Result<Vec<_>, _>>()?
-            }
-            other => return Err(format!("unsupported source mode '{}'", other)),
-        };
+        let binding = self.toys.connectors.require(&config.binding_id)?;
+        let mut per_type = serde_json::Map::new();
+        let mut written_total = 0_u64;
 
-        self.toys.lake.ensure_lake(&config.lake)?;
-        self.toys.lake.ensure_table(&config.lake, &config.table)?;
-        let written = self.toys.lake.append_json_batch(
-            &config.lake,
-            &config.table,
-            &config.source_id,
-            &rows,
-        )?;
-        let cursor = Some(format!("{}:{}", config.source_id, written));
-        self.toys.lake.save_cursor(
-            &config.lake,
-            &config.source_id,
-            &config.table,
-            cursor.as_deref(),
-            written,
-            "ok",
-            None,
-        )?;
+        for data_type in config.normalized_types() {
+            let cursor_before = self.toys.lake.load_cursor(&config.source_id, &data_type);
+            let sync = binding.sync(&data_type, cursor_before.as_deref())?;
+            let table = format!("{}_{}", config.table_prefix, data_type).replace('-', "_");
+            self.toys.lake.ensure_table(&table)?;
+            let written =
+                self.toys
+                    .lake
+                    .append_json_batch(&table, &config.source_id, &sync.rows_json)?;
+            self.toys
+                .lake
+                .save_cursor(&patina_child_sdk::toys::LakeCursorRecord {
+                    source: config.source_id.clone(),
+                    data_type: data_type.clone(),
+                    cursor: sync.cursor.clone(),
+                    written,
+                    status: "ok".into(),
+                    last_error: None,
+                })?;
+            written_total += written;
+            per_type.insert(
+                data_type,
+                serde_json::json!({
+                    "written": written,
+                    "cursor": sync.cursor,
+                }),
+            );
+        }
+
         self.toys.checkpoint.save(
             "ducklake.sync",
             &serde_json::json!({
                 "source_id": config.source_id,
-                "cursor": cursor,
-                "written": written
+                "binding_id": config.binding_id,
+                "types": per_type,
+                "written": written_total,
             })
             .to_string(),
         )?;
         self.toys.measure.record(
             "capture",
-            "ducklake",
+            "lake",
             "sync",
-            &serde_json::json!({"written": written}).to_string(),
+            &serde_json::json!({"written": written_total}).to_string(),
         )?;
         Ok(
-            serde_json::json!({"status": "synced", "source_id": source_id, "written": written})
+            serde_json::json!({"status": "synced", "source_id": source_id, "written": written_total})
                 .to_string(),
         )
     }

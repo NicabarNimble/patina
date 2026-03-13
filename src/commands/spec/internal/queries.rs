@@ -728,8 +728,8 @@ fn extract_section_items(text: &str, heading: &str) -> Vec<String> {
         if in_section && trimmed.starts_with("## ") {
             break;
         }
-        if in_section {
-            if trimmed.starts_with("- ")
+        if in_section
+            && (trimmed.starts_with("- ")
                 || trimmed.starts_with("1. ")
                 || trimmed.starts_with("2. ")
                 || trimmed.starts_with("3. ")
@@ -738,10 +738,9 @@ fn extract_section_items(text: &str, heading: &str) -> Vec<String> {
                 || trimmed.starts_with("6. ")
                 || trimmed.starts_with("7. ")
                 || trimmed.starts_with("8. ")
-                || trimmed.starts_with("9. ")
-            {
-                items.push(trimmed.to_string());
-            }
+                || trimmed.starts_with("9. "))
+        {
+            items.push(trimmed.to_string());
         }
     }
 

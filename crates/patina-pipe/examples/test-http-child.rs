@@ -9,8 +9,7 @@
 use std::io::{BufRead, Write};
 
 use patina_pipe::{
-    run, Capabilities, Child, FetchParams, FetchResult, HealthStatus, InitializeParams, PipeError,
-    PipeIo, Status,
+    run, Capabilities, Child, FetchParams, FetchResult, HealthStatus, PipeError, PipeIo, Status,
 };
 
 struct TestHttpChild;

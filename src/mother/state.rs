@@ -45,6 +45,17 @@ impl RunStatus {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct LakeCursorUpdate<'a> {
+    pub lake_name: &'a str,
+    pub source_name: &'a str,
+    pub data_type: &'a str,
+    pub cursor_value: Option<&'a str>,
+    pub records_written: u64,
+    pub status: &'a str,
+    pub last_error: Option<&'a str>,
+}
+
 #[derive(Debug, Clone)]
 pub struct QueuedTask {
     pub id: String,
@@ -625,17 +636,7 @@ impl KnowledgeRuntimeStore {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn save_lake_cursor(
-        &self,
-        lake_name: &str,
-        source_name: &str,
-        data_type: &str,
-        cursor_value: Option<&str>,
-        records_written: u64,
-        status: &str,
-        last_error: Option<&str>,
-    ) -> Result<()> {
+    pub fn save_lake_cursor(&self, update: &LakeCursorUpdate<'_>) -> Result<()> {
         let conn = self.open()?;
         let now = Utc::now().to_rfc3339();
         conn.execute(
@@ -652,13 +653,13 @@ impl KnowledgeRuntimeStore {
                 updated_at = excluded.updated_at
             "#,
             params![
-                lake_name,
-                source_name,
-                data_type,
-                cursor_value,
-                records_written as i64,
-                status,
-                last_error,
+                update.lake_name,
+                update.source_name,
+                update.data_type,
+                update.cursor_value,
+                update.records_written as i64,
+                update.status,
+                update.last_error,
                 now
             ],
         )?;
@@ -1061,15 +1062,15 @@ mod tests {
     fn lake_cursor_roundtrips_null_cursor_values() {
         let store = temp_store();
         store
-            .save_lake_cursor(
-                "default",
-                "github-lake-small",
-                "issues",
-                None,
-                0,
-                "ok",
-                None,
-            )
+            .save_lake_cursor(&LakeCursorUpdate {
+                lake_name: "default",
+                source_name: "github-lake-small",
+                data_type: "issues",
+                cursor_value: None,
+                records_written: 0,
+                status: "ok",
+                last_error: None,
+            })
             .unwrap();
 
         let cursor = store

@@ -1252,15 +1252,15 @@ fn note_session_document(
     let time_str = now.format("%H:%M").to_string();
     let note_section = format!("\n### {} - Note {}\n{}\n", time_str, git_context, content);
 
-    let mut file = OpenOptions::new().append(true).open(&session_path)?;
+    let mut file = OpenOptions::new().append(true).open(session_path)?;
     file.write_all(note_section.as_bytes())?;
-    let runtime_id = read_session_field(&session_path, "**Runtime ID**: ")?;
-    let current_markdown = fs::read_to_string(&session_path)?;
+    let runtime_id = read_session_field(session_path, "**Runtime ID**: ")?;
+    let current_markdown = fs::read_to_string(session_path)?;
     let _ = session::sync_session_document(project_root, &runtime_id, &current_markdown);
 
     // 4. Write session.observation event to eventlog
     //    Read session ID from the active session file for the source_id
-    let session_id = read_session_id(&session_path)?;
+    let session_id = read_session_id(session_path)?;
     let db_path = project_root.join(patina::eventlog::PATINA_DB);
     let conn = patina::eventlog::initialize(&db_path)?;
     let timestamp = now.to_rfc3339();

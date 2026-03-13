@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+/// Mother/runtime substrate intent kind.
+///
+/// These intents are not normal domain toys; they are the child-facing
+/// request language for Mother's orchestration substrate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TaskIntentKind {
@@ -45,6 +49,45 @@ pub struct PendingEvent {
     pub occurred_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GrantedLake {
+    pub name: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LakeCursorRecord {
+    pub source: String,
+    pub data_type: String,
+    pub cursor: Option<String>,
+    pub written: u64,
+    pub status: String,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GrantedIngressSource {
+    pub name: String,
+    pub endpoint: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GrantedConnectorBinding {
+    pub binding_id: String,
+    pub connection: String,
+    pub owner: String,
+    pub repo: String,
+    pub types: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConnectorSyncResult {
+    pub binding_id: String,
+    pub data_type: String,
+    pub cursor: Option<String>,
+    pub rows_json: Vec<String>,
+}
+
 pub trait LogBackend {
     fn debug(message: &str);
     fn info(message: &str);
@@ -82,7 +125,7 @@ pub trait CheckpointBackend {
 }
 
 pub trait LakeBackend {
-    fn ensure_lake(name: &str) -> Result<String, String>;
+    fn list_granted_lakes() -> Result<Vec<GrantedLake>, String>;
     fn load_cursor(lake: &str, source: &str, data_type: &str) -> Option<String>;
     fn save_cursor(
         lake: &str,
@@ -103,6 +146,23 @@ pub trait LakeBackend {
     fn query_json(lake: &str, sql: &str) -> Result<String, String>;
 }
 
+pub trait IngressBackend {
+    fn list_granted_sources() -> Vec<GrantedIngressSource>;
+    fn fetch(source: &str) -> Result<String, String>;
+}
+
+pub trait ConnectorBackend {
+    fn list_bindings() -> Result<Vec<GrantedConnectorBinding>, String>;
+    fn upsert_binding(binding: &GrantedConnectorBinding)
+        -> Result<GrantedConnectorBinding, String>;
+    fn remove_binding(binding_id: &str) -> Result<(), String>;
+    fn sync_binding(
+        binding_id: &str,
+        data_type: &str,
+        since: Option<&str>,
+    ) -> Result<ConnectorSyncResult, String>;
+}
+
 pub trait EventBackend {
     fn pull(
         stream: &str,
@@ -113,6 +173,7 @@ pub trait EventBackend {
     fn list_streams() -> Vec<String>;
 }
 
+/// Mother/runtime substrate backend for task submission.
 pub trait TaskBackend {
     fn enqueue(intent: &TaskIntent) -> Result<String, String>;
 }
@@ -248,46 +309,180 @@ impl<B: CheckpointBackend> CheckpointToy<B> {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct LakeToy<B>(std::marker::PhantomData<B>);
+#[derive(Debug, Clone)]
+pub struct LakeToy<B> {
+    granted: GrantedLake,
+    _marker: std::marker::PhantomData<B>,
+}
 impl<B> LakeToy<B> {
+    pub fn new(granted: GrantedLake) -> Self {
+        Self {
+            granted,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    pub fn grant(&self) -> &GrantedLake {
+        &self.granted
+    }
+}
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LakeCatalog<B>(std::marker::PhantomData<B>);
+impl<B> LakeCatalog<B> {
     pub fn new() -> Self {
         Self(std::marker::PhantomData)
     }
 }
 impl<B: LakeBackend> LakeToy<B> {
-    pub fn ensure_lake(&self, name: &str) -> Result<String, String> {
-        B::ensure_lake(name)
+    pub fn load_cursor(&self, source: &str, data_type: &str) -> Option<String> {
+        B::load_cursor(&self.granted.name, source, data_type)
     }
-    pub fn load_cursor(&self, lake: &str, source: &str, data_type: &str) -> Option<String> {
-        B::load_cursor(lake, source, data_type)
+    pub fn save_cursor(&self, record: &LakeCursorRecord) -> Result<(), String> {
+        B::save_cursor(
+            &self.granted.name,
+            &record.source,
+            &record.data_type,
+            record.cursor.as_deref(),
+            record.written,
+            &record.status,
+            record.last_error.as_deref(),
+        )
     }
-    pub fn save_cursor(
-        &self,
-        lake: &str,
-        source: &str,
-        data_type: &str,
-        cursor: Option<&str>,
-        written: u64,
-        status: &str,
-        last_error: Option<&str>,
-    ) -> Result<(), String> {
-        B::save_cursor(lake, source, data_type, cursor, written, status, last_error)
-    }
-    pub fn ensure_table(&self, lake: &str, table: &str) -> Result<(), String> {
-        B::ensure_table(lake, table)
+    pub fn ensure_table(&self, table: &str) -> Result<(), String> {
+        B::ensure_table(&self.granted.name, table)
     }
     pub fn append_json_batch(
         &self,
-        lake: &str,
         table: &str,
         source: &str,
         rows_json: &[String],
     ) -> Result<u64, String> {
-        B::append_json_batch(lake, table, source, rows_json)
+        B::append_json_batch(&self.granted.name, table, source, rows_json)
     }
-    pub fn query_json(&self, lake: &str, sql: &str) -> Result<String, String> {
-        B::query_json(lake, sql)
+    pub fn query_json(&self, sql: &str) -> Result<String, String> {
+        B::query_json(&self.granted.name, sql)
+    }
+}
+impl<B: LakeBackend> LakeCatalog<B> {
+    pub fn list(&self) -> Result<Vec<LakeToy<B>>, String> {
+        Ok(B::list_granted_lakes()?
+            .into_iter()
+            .map(LakeToy::new)
+            .collect())
+    }
+
+    pub fn require(&self, name: &str) -> Result<LakeToy<B>, String> {
+        self.list()?
+            .into_iter()
+            .find(|lake| lake.grant().name == name)
+            .ok_or_else(|| format!("lake '{}' not granted", name))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct IngressToy<B> {
+    granted: GrantedIngressSource,
+    _marker: std::marker::PhantomData<B>,
+}
+impl<B> IngressToy<B> {
+    pub fn new(granted: GrantedIngressSource) -> Self {
+        Self {
+            granted,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    pub fn grant(&self) -> &GrantedIngressSource {
+        &self.granted
+    }
+}
+#[derive(Debug, Clone, Copy, Default)]
+pub struct IngressCatalog<B>(std::marker::PhantomData<B>);
+impl<B> IngressCatalog<B> {
+    pub fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+impl<B: IngressBackend> IngressToy<B> {
+    pub fn fetch(&self) -> Result<String, String> {
+        B::fetch(&self.granted.name)
+    }
+}
+impl<B: IngressBackend> IngressCatalog<B> {
+    pub fn list(&self) -> Vec<IngressToy<B>> {
+        B::list_granted_sources()
+            .into_iter()
+            .map(IngressToy::new)
+            .collect()
+    }
+
+    pub fn require(&self, name: &str) -> Result<IngressToy<B>, String> {
+        self.list()
+            .into_iter()
+            .find(|source| source.grant().name == name)
+            .ok_or_else(|| format!("ingress source '{}' not granted", name))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ConnectorBinding<B> {
+    granted: GrantedConnectorBinding,
+    _marker: std::marker::PhantomData<B>,
+}
+
+impl<B> ConnectorBinding<B> {
+    pub fn new(granted: GrantedConnectorBinding) -> Self {
+        Self {
+            granted,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    pub fn grant(&self) -> &GrantedConnectorBinding {
+        &self.granted
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ConnectorCatalog<B>(std::marker::PhantomData<B>);
+
+impl<B> ConnectorCatalog<B> {
+    pub fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<B: ConnectorBackend> ConnectorBinding<B> {
+    pub fn sync(
+        &self,
+        data_type: &str,
+        since: Option<&str>,
+    ) -> Result<ConnectorSyncResult, String> {
+        B::sync_binding(&self.granted.binding_id, data_type, since)
+    }
+}
+
+impl<B: ConnectorBackend> ConnectorCatalog<B> {
+    pub fn list(&self) -> Result<Vec<ConnectorBinding<B>>, String> {
+        Ok(B::list_bindings()?
+            .into_iter()
+            .map(ConnectorBinding::new)
+            .collect())
+    }
+
+    pub fn require(&self, binding_id: &str) -> Result<ConnectorBinding<B>, String> {
+        self.list()?
+            .into_iter()
+            .find(|binding| binding.grant().binding_id == binding_id)
+            .ok_or_else(|| format!("connector binding '{}' not granted", binding_id))
+    }
+
+    pub fn upsert(&self, binding: &GrantedConnectorBinding) -> Result<ConnectorBinding<B>, String> {
+        B::upsert_binding(binding).map(ConnectorBinding::new)
+    }
+
+    pub fn remove(&self, binding_id: &str) -> Result<(), String> {
+        B::remove_binding(binding_id)
     }
 }
 
@@ -316,6 +511,7 @@ impl<B: EventBackend> EventToy<B> {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
+/// Substrate wrapper for Mother's task queue, not a normal domain toy.
 pub struct TaskToy<B>(std::marker::PhantomData<B>);
 impl<B> TaskToy<B> {
     pub fn new() -> Self {
@@ -357,5 +553,91 @@ impl<B: BeliefBackend> BeliefToy<B> {
     }
     pub fn mutate(&self, action: &str, payload_json: &str) -> Result<(), String> {
         B::mutate(action, payload_json)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct MockLake;
+
+    impl LakeBackend for MockLake {
+        fn list_granted_lakes() -> Result<Vec<GrantedLake>, String> {
+            Ok(vec![GrantedLake {
+                name: "default".into(),
+                path: "/tmp/default".into(),
+            }])
+        }
+
+        fn load_cursor(lake: &str, source: &str, data_type: &str) -> Option<String> {
+            Some(format!("{}:{}:{}", lake, source, data_type))
+        }
+
+        fn save_cursor(
+            _lake: &str,
+            _source: &str,
+            _data_type: &str,
+            _cursor: Option<&str>,
+            _written: u64,
+            _status: &str,
+            _last_error: Option<&str>,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn ensure_table(_lake: &str, _table: &str) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn append_json_batch(
+            _lake: &str,
+            _table: &str,
+            _source: &str,
+            rows_json: &[String],
+        ) -> Result<u64, String> {
+            Ok(rows_json.len() as u64)
+        }
+
+        fn query_json(lake: &str, sql: &str) -> Result<String, String> {
+            Ok(format!("{}:{}", lake, sql))
+        }
+    }
+
+    struct MockIngress;
+
+    impl IngressBackend for MockIngress {
+        fn list_granted_sources() -> Vec<GrantedIngressSource> {
+            vec![GrantedIngressSource {
+                name: "github".into(),
+                endpoint: "https://api.github.com/repos/openai/openai/issues".into(),
+            }]
+        }
+
+        fn fetch(source: &str) -> Result<String, String> {
+            Ok(format!("fetched:{}", source))
+        }
+    }
+
+    #[test]
+    fn lake_catalog_binds_scope_into_object_shape() {
+        let lake = LakeCatalog::<MockLake>::new().require("default").unwrap();
+        assert_eq!(lake.grant().name, "default");
+        assert_eq!(
+            lake.load_cursor("ducklake", "issues").as_deref(),
+            Some("default:ducklake:issues")
+        );
+    }
+
+    #[test]
+    fn ingress_catalog_only_exposes_granted_sources() {
+        let ingress = IngressCatalog::<MockIngress>::new()
+            .require("github")
+            .unwrap();
+        assert_eq!(ingress.grant().name, "github");
+        assert_eq!(ingress.fetch().unwrap(), "fetched:github");
+        assert!(IngressCatalog::<MockIngress>::new()
+            .require("other")
+            .is_err());
     }
 }

@@ -57,18 +57,11 @@ pub fn load_cursor(
     store.load_lake_cursor(lake, source, data_type)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn save_cursor(
     store: &KnowledgeRuntimeStore,
-    lake: &str,
-    source: &str,
-    data_type: &str,
-    cursor: Option<&str>,
-    written: u64,
-    status: &str,
-    last_error: Option<&str>,
+    update: &crate::mother::state::LakeCursorUpdate<'_>,
 ) -> Result<()> {
-    store.save_lake_cursor(lake, source, data_type, cursor, written, status, last_error)
+    store.save_lake_cursor(update)
 }
 
 pub fn ensure_table(lake: &str, table: &str) -> Result<()> {

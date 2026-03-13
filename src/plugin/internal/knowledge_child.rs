@@ -14,6 +14,162 @@ use crate::mother::{
 };
 
 mod bindings {
+    use rayon::prelude::*;
+    use serde::{Deserialize, Serialize};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    const CONNECTOR_BINDING_PREFIX: &str = "connector:binding:";
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct ConnectorBindingRecord {
+        binding_id: String,
+        connection: String,
+        owner: String,
+        repo: String,
+        types: Vec<String>,
+    }
+
+    #[derive(Debug)]
+    struct GithubPageResult {
+        page: u32,
+        raw_count: usize,
+        rows: Vec<serde_json::Value>,
+    }
+
+    fn env_usize(name: &str, default: usize) -> usize {
+        std::env::var(name)
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(default)
+    }
+
+    fn backoff_seconds(headers: &reqwest::header::HeaderMap, attempt: usize) -> u64 {
+        if let Some(retry_after) = headers
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok())
+        {
+            return retry_after.max(1);
+        }
+
+        if let (Some(remaining), Some(reset_epoch)) = (
+            headers
+                .get("x-ratelimit-remaining")
+                .and_then(|h| h.to_str().ok()),
+            headers
+                .get("x-ratelimit-reset")
+                .and_then(|h| h.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok()),
+        ) {
+            if remaining == "0" {
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                if reset_epoch > now {
+                    return (reset_epoch - now + 1).min(60);
+                }
+            }
+        }
+
+        (1_u64 << attempt.min(5)).min(30)
+    }
+
+    fn fetch_github_page(
+        client: &reqwest::blocking::Client,
+        credential: &crate::connect::ResolvedCredential,
+        endpoint: &str,
+        data_type: &str,
+        since: Option<&str>,
+        page: u32,
+    ) -> Result<GithubPageResult, String> {
+        let mut attempt = 0usize;
+        loop {
+            let mut url = reqwest::Url::parse(endpoint).map_err(|e| e.to_string())?;
+            {
+                let mut query = url.query_pairs_mut();
+                query.append_pair("state", "all");
+                query.append_pair("per_page", "100");
+                query.append_pair("page", &page.to_string());
+                query.append_pair("sort", "updated");
+                query.append_pair("direction", "desc");
+                if data_type == "issues" {
+                    if let Some(cursor) = since {
+                        if !cursor.trim().is_empty() {
+                            query.append_pair("since", cursor);
+                        }
+                    }
+                }
+            }
+
+            let mut request = client
+                .get(url)
+                .header("User-Agent", "patina-ducklake")
+                .header("Accept", "application/vnd.github+json");
+            request = match &credential.injection {
+                crate::connect::InjectionStrategy::Bearer
+                | crate::connect::InjectionStrategy::InProcess => request.header(
+                    "Authorization",
+                    format!("Bearer {}", credential.value.as_str()),
+                ),
+                crate::connect::InjectionStrategy::Header { name } => {
+                    request.header(name, credential.value.as_str())
+                }
+            };
+
+            let response = request.send().map_err(|e| e.to_string())?;
+            let status = response.status().as_u16();
+            let headers = response.headers().clone();
+            let body = response.text().map_err(|e| e.to_string())?;
+
+            if status == 401 {
+                return Err("github auth denied (status 401)".into());
+            }
+
+            if status == 429 || status == 403 {
+                let secondary = body.to_ascii_lowercase().contains("secondary rate limit");
+                let primary_exhausted = headers
+                    .get("x-ratelimit-remaining")
+                    .and_then(|h| h.to_str().ok())
+                    .is_some_and(|remaining| remaining == "0");
+                if (secondary || primary_exhausted || status == 429) && attempt < 6 {
+                    let sleep_secs = backoff_seconds(&headers, attempt);
+                    std::thread::sleep(Duration::from_secs(sleep_secs));
+                    attempt += 1;
+                    continue;
+                }
+                return Err(format!("github auth/rate-limit denied (status {})", status));
+            }
+
+            if status >= 400 {
+                return Err(format!("github sync failed (status {})", status));
+            }
+
+            let mut page_rows: Vec<serde_json::Value> = serde_json::from_str(&body)
+                .map_err(|e| format!("invalid github payload: {}", e))?;
+            let raw_count = page_rows.len();
+
+            if data_type == "issues" {
+                page_rows.retain(|row| row.get("pull_request").is_none());
+            } else if let Some(cursor) = since {
+                if !cursor.is_empty() {
+                    page_rows.retain(|row| {
+                        row.get("updated_at")
+                            .and_then(|v| v.as_str())
+                            .map(|updated| updated > cursor)
+                            .unwrap_or(true)
+                    });
+                }
+            }
+
+            return Ok(GithubPageResult {
+                page,
+                raw_count,
+                rows: page_rows,
+            });
+        }
+    }
+
     pub struct HostState {
         pub plugin_name: String,
         pub wasi: wasmtime_wasi::WasiCtx,
@@ -203,14 +359,17 @@ mod bindings {
     }
 
     impl patina::host::lake::Host for HostState {
-        fn ensure_lake(&mut self, name: String) -> Result<String, String> {
-            if !self.grants.lake_names.contains(&name) {
-                return Err(format!(
-                    "lake '{}' not granted for '{}'",
-                    name, self.plugin_name
-                ));
-            }
-            crate::mother::lake_host::ensure_lake(&name).map_err(|e| e.to_string())
+        fn list_granted_lakes(&mut self) -> Result<Vec<patina::host::lake::GrantedLake>, String> {
+            self.grants
+                .lake_names
+                .iter()
+                .cloned()
+                .map(|name| {
+                    let path =
+                        crate::mother::lake_host::ensure_lake(&name).map_err(|e| e.to_string())?;
+                    Ok(patina::host::lake::GrantedLake { name, path })
+                })
+                .collect()
         }
 
         fn load_cursor(
@@ -245,13 +404,15 @@ mod bindings {
             }
             crate::mother::lake_host::save_cursor(
                 &self.runtime,
-                &lake,
-                &source,
-                &data_type,
-                cursor.as_deref(),
-                written,
-                &status,
-                last_error.as_deref(),
+                &crate::mother::state::LakeCursorUpdate {
+                    lake_name: &lake,
+                    source_name: &source,
+                    data_type: &data_type,
+                    cursor_value: cursor.as_deref(),
+                    records_written: written,
+                    status: &status,
+                    last_error: last_error.as_deref(),
+                },
             )
             .map_err(|e| e.to_string())
         }
@@ -291,6 +452,271 @@ mod bindings {
                 ));
             }
             crate::mother::lake_host::query_json(&lake, &sql).map_err(|e| e.to_string())
+        }
+    }
+
+    impl patina::host::ingress::Host for HostState {
+        fn list_granted_sources(&mut self) -> Vec<patina::host::ingress::GrantedSource> {
+            self.grants
+                .toys
+                .ingress_sources
+                .values()
+                .map(|source| patina::host::ingress::GrantedSource {
+                    name: source.name.clone(),
+                    endpoint: source.endpoint.clone(),
+                })
+                .collect()
+        }
+
+        fn fetch(&mut self, source_name: String) -> Result<String, String> {
+            let source = self
+                .grants
+                .toys
+                .ingress_sources
+                .get(&source_name)
+                .ok_or_else(|| {
+                    format!(
+                        "ingress source '{}' not granted for '{}'",
+                        source_name, self.plugin_name
+                    )
+                })?;
+            super::super::host_support::http_get(
+                &self.http_client,
+                &self.grants,
+                &self.plugin_name,
+                &source.endpoint,
+            )
+            .map(|result| result.body)
+        }
+    }
+
+    impl patina::host::connector::Host for HostState {
+        fn list_bindings(&mut self) -> Result<Vec<patina::host::connector::RepoBinding>, String> {
+            if !self.grants.toys.connector {
+                return Err(format!(
+                    "connector toy not granted for plugin '{}'",
+                    self.plugin_name
+                ));
+            }
+
+            let keys = self
+                .runtime
+                .list_state_prefix(&self.plugin_name, CONNECTOR_BINDING_PREFIX)
+                .map_err(|e| e.to_string())?;
+
+            let mut out = Vec::new();
+            for key in keys {
+                let Some(raw) = self
+                    .runtime
+                    .get_state(&self.plugin_name, &key)
+                    .map_err(|e| e.to_string())?
+                else {
+                    continue;
+                };
+                let parsed: ConnectorBindingRecord = serde_json::from_str(&raw)
+                    .map_err(|e| format!("invalid connector binding '{}': {}", key, e))?;
+                out.push(patina::host::connector::RepoBinding {
+                    binding_id: parsed.binding_id,
+                    connection: parsed.connection,
+                    owner: parsed.owner,
+                    repo: parsed.repo,
+                    types: parsed.types,
+                });
+            }
+            Ok(out)
+        }
+
+        fn upsert_binding(
+            &mut self,
+            binding: patina::host::connector::RepoBinding,
+        ) -> Result<patina::host::connector::RepoBinding, String> {
+            if !self.grants.toys.connector {
+                return Err(format!(
+                    "connector toy not granted for plugin '{}'",
+                    self.plugin_name
+                ));
+            }
+            if binding.binding_id.trim().is_empty()
+                || binding.connection.trim().is_empty()
+                || binding.owner.trim().is_empty()
+                || binding.repo.trim().is_empty()
+            {
+                return Err("binding-id, connection, owner, and repo are required".into());
+            }
+            if binding.types.is_empty() {
+                return Err("binding requires at least one type".into());
+            }
+            for data_type in &binding.types {
+                if data_type != "issues" && data_type != "prs" {
+                    return Err(format!(
+                        "unsupported connector type '{}' (expected 'issues' or 'prs')",
+                        data_type
+                    ));
+                }
+            }
+
+            let record = ConnectorBindingRecord {
+                binding_id: binding.binding_id.clone(),
+                connection: binding.connection.clone(),
+                owner: binding.owner.clone(),
+                repo: binding.repo.clone(),
+                types: binding.types.clone(),
+            };
+            let key = format!("{}{}", CONNECTOR_BINDING_PREFIX, binding.binding_id);
+            let payload = serde_json::to_string(&record).map_err(|e| e.to_string())?;
+            self.runtime
+                .put_state(&self.plugin_name, &key, &payload)
+                .map_err(|e| e.to_string())?;
+            Ok(binding)
+        }
+
+        fn remove_binding(&mut self, binding_id: String) -> Result<(), String> {
+            if !self.grants.toys.connector {
+                return Err(format!(
+                    "connector toy not granted for plugin '{}'",
+                    self.plugin_name
+                ));
+            }
+            let key = format!("{}{}", CONNECTOR_BINDING_PREFIX, binding_id);
+            self.runtime
+                .delete_state(&self.plugin_name, &key)
+                .map_err(|e| e.to_string())
+        }
+
+        fn sync_binding(
+            &mut self,
+            binding_id: String,
+            data_type: String,
+            since: Option<String>,
+        ) -> Result<patina::host::connector::SyncResult, String> {
+            if !self.grants.toys.connector {
+                return Err(format!(
+                    "connector toy not granted for plugin '{}'",
+                    self.plugin_name
+                ));
+            }
+
+            let key = format!("{}{}", CONNECTOR_BINDING_PREFIX, binding_id);
+            let binding_raw = self
+                .runtime
+                .get_state(&self.plugin_name, &key)
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("unknown connector binding '{}'", key))?;
+            let binding: ConnectorBindingRecord = serde_json::from_str(&binding_raw)
+                .map_err(|e| format!("invalid connector binding '{}': {}", key, e))?;
+            if !binding.types.iter().any(|t| t == &data_type) {
+                return Err(format!(
+                    "type '{}' not enabled for binding '{}'",
+                    data_type, binding.binding_id
+                ));
+            }
+
+            let connection = crate::connect::load(&binding.connection)
+                .map_err(|e| format!("connection '{}': {}", binding.connection, e))?;
+            let auth = crate::connect::resolve_auth(&connection)
+                .map_err(|e| format!("connection '{}': {}", binding.connection, e))?;
+            let credential = auth
+                .credential
+                .ok_or_else(|| format!("connection '{}' has no credential", binding.connection))?;
+            if !auth.allowed_domains.iter().any(|d| d == "api.github.com") {
+                return Err(format!(
+                    "connection '{}' is not allowed for api.github.com",
+                    binding.connection
+                ));
+            }
+
+            let endpoint = match data_type.as_str() {
+                "issues" => format!(
+                    "https://api.github.com/repos/{}/{}/issues",
+                    binding.owner, binding.repo
+                ),
+                "prs" => format!(
+                    "https://api.github.com/repos/{}/{}/pulls",
+                    binding.owner, binding.repo
+                ),
+                other => {
+                    return Err(format!(
+                        "unsupported connector type '{}' (expected 'issues' or 'prs')",
+                        other
+                    ));
+                }
+            };
+
+            let max_pages = env_usize("PATINA_GITHUB_MAX_PAGES", 500).clamp(1, 5_000) as u32;
+            let max_parallel = env_usize("PATINA_GITHUB_MAX_PARALLEL", 4).clamp(1, 16);
+            let mut rows: Vec<serde_json::Value> = Vec::new();
+            let mut next_page = 1_u32;
+            let since_ref = since.as_deref();
+
+            while next_page <= max_pages {
+                let upper = (next_page + max_parallel as u32 - 1).min(max_pages);
+                let pages: Vec<u32> = (next_page..=upper).collect();
+                let client = self.http_client.clone();
+                let credential = credential.clone();
+                let endpoint_cloned = endpoint.clone();
+                let data_type_cloned = data_type.clone();
+
+                let mut batch = pages
+                    .into_par_iter()
+                    .map(|page| {
+                        fetch_github_page(
+                            &client,
+                            &credential,
+                            &endpoint_cloned,
+                            &data_type_cloned,
+                            since_ref,
+                            page,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+
+                batch.sort_by_key(|item| item.as_ref().map(|p| p.page).unwrap_or(u32::MAX));
+                let mut reached_end = false;
+                for page in batch {
+                    let page = page.map_err(|error| {
+                        format!(
+                            "github sync failed for {}/{} {} via connection '{}': {}",
+                            binding.owner, binding.repo, data_type, binding.connection, error
+                        )
+                    })?;
+                    let raw_count = page.raw_count;
+                    rows.extend(page.rows);
+                    if raw_count < 100 {
+                        reached_end = true;
+                        break;
+                    }
+                }
+
+                if reached_end {
+                    break;
+                }
+                next_page = upper + 1;
+            }
+
+            if next_page > max_pages {
+                return Err(format!(
+                    "github sync exceeded max pages ({}) for {}/{} {}. Increase PATINA_GITHUB_MAX_PAGES to continue.",
+                    max_pages, binding.owner, binding.repo, data_type
+                ));
+            }
+
+            let cursor = rows
+                .iter()
+                .filter_map(|row| row.get("updated_at").and_then(|v| v.as_str()))
+                .max()
+                .map(ToString::to_string)
+                .or(since);
+            let rows_json = rows
+                .into_iter()
+                .map(|row| serde_json::to_string(&row).map_err(|e| e.to_string()))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            Ok(patina::host::connector::SyncResult {
+                binding_id: binding.binding_id,
+                data_type,
+                cursor,
+                rows_json,
+            })
         }
     }
 
@@ -527,6 +953,17 @@ impl KnowledgeChildEngine {
                     stream
                 );
             }
+        }
+        for source in manifest.ingress_sources.values() {
+            super::host_support::validate_http_url(&source.endpoint).map_err(|error| {
+                anyhow::anyhow!(
+                    "plugin '{}' declares invalid ingress source '{}' endpoint '{}': {}",
+                    manifest.name,
+                    source.name,
+                    source.endpoint,
+                    error
+                )
+            })?;
         }
         let unknown_intents: Vec<&str> = manifest
             .task_intent_names

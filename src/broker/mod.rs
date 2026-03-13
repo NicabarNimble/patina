@@ -356,15 +356,15 @@ fn migrate_legacy_cursor(
             .load_lake_cursor(lake_name, source_name, data_type)?
             .is_none()
         {
-            runtime.save_lake_cursor(
+            runtime.save_lake_cursor(&crate::mother::state::LakeCursorUpdate {
                 lake_name,
                 source_name,
                 data_type,
-                Some(&cursor),
-                0,
-                "migrated",
-                None,
-            )?;
+                cursor_value: Some(&cursor),
+                records_written: 0,
+                status: "migrated",
+                last_error: None,
+            })?;
         }
     }
     Ok(())
@@ -552,15 +552,15 @@ mod tests {
 
         let runtime = temp_runtime();
         runtime
-            .save_lake_cursor(
-                "default",
-                "gh-main",
-                "issues",
-                Some("already-set"),
-                0,
-                "ok",
-                None,
-            )
+            .save_lake_cursor(&crate::mother::state::LakeCursorUpdate {
+                lake_name: "default",
+                source_name: "gh-main",
+                data_type: "issues",
+                cursor_value: Some("already-set"),
+                records_written: 0,
+                status: "ok",
+                last_error: None,
+            })
             .unwrap();
 
         migrate_legacy_cursor(
