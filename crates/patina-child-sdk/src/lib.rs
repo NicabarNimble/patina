@@ -19,6 +19,120 @@ pub use patina::host::types::HealthStatus;
 
 use crate::wasm_cell::WasmCell;
 
+/// Primary child authoring surface: explicit granted toys.
+pub mod granted {
+    use super::host::GuestHost;
+    use super::toys;
+
+    pub type Log = toys::LogToy<GuestHost>;
+    pub type Measure = toys::MeasureToy<GuestHost>;
+    pub type Query = toys::QueryToy<GuestHost>;
+    pub type Fetch = toys::FetchToy<GuestHost>;
+    pub type Emit = toys::EmitToy<GuestHost>;
+    pub type State = toys::StateToy<GuestHost>;
+    pub type Checkpoint = toys::CheckpointToy<GuestHost>;
+    pub type Lakes = toys::LakeCatalog<GuestHost>;
+    pub type Lake = toys::LakeToy<GuestHost>;
+    pub type IngressSources = toys::IngressCatalog<GuestHost>;
+    pub type Ingress = toys::IngressToy<GuestHost>;
+    pub type Connectors = toys::ConnectorCatalog<GuestHost>;
+    pub type Connector = toys::ConnectorBinding<GuestHost>;
+    pub type Events = toys::EventToy<GuestHost>;
+    pub type Graph = toys::GraphToy<GuestHost>;
+    pub type Belief = toys::BeliefToy<GuestHost>;
+
+    pub trait Bundle {
+        fn granted() -> Self;
+    }
+
+    pub fn log() -> Log {
+        Log::new()
+    }
+
+    pub fn measure() -> Measure {
+        Measure::new()
+    }
+
+    pub fn query() -> Query {
+        Query::new()
+    }
+
+    pub fn fetch() -> Fetch {
+        Fetch::new()
+    }
+
+    pub fn emit() -> Emit {
+        Emit::new()
+    }
+
+    pub fn state() -> State {
+        State::new()
+    }
+
+    pub fn checkpoint() -> Checkpoint {
+        Checkpoint::new()
+    }
+
+    pub fn lakes() -> Lakes {
+        Lakes::new()
+    }
+
+    pub fn lake(name: &str) -> Lake {
+        lakes()
+            .require(name)
+            .unwrap_or_else(|error| panic!("missing granted lake '{}': {}", name, error))
+    }
+
+    pub fn ingress_sources() -> IngressSources {
+        IngressSources::new()
+    }
+
+    pub fn ingress(name: &str) -> Ingress {
+        ingress_sources()
+            .require(name)
+            .unwrap_or_else(|error| panic!("missing granted ingress source '{}': {}", name, error))
+    }
+
+    pub fn connectors() -> Connectors {
+        Connectors::new()
+    }
+
+    pub fn connector(binding_id: &str) -> Connector {
+        connectors().require(binding_id).unwrap_or_else(|error| {
+            panic!(
+                "missing granted connector binding '{}': {}",
+                binding_id, error
+            )
+        })
+    }
+
+    pub fn events() -> Events {
+        Events::new()
+    }
+
+    pub fn graph() -> Graph {
+        Graph::new()
+    }
+
+    pub fn belief() -> Belief {
+        Belief::new()
+    }
+}
+
+/// Mother-owned runtime substrate surfaced to children.
+///
+/// These APIs are part of the child's operating environment rather than
+/// ordinary granted domain toys. They may still have ergonomic wrappers,
+/// but their semantics are owned by Mother's continuity/orchestration
+/// layer.
+pub mod substrate {
+    pub use super::toys::{PendingEvent, TaskIntent, TaskIntentKind};
+
+    pub fn enqueue(intent: &TaskIntent) -> Result<String, String> {
+        super::host::GuestHost::enqueue_task(intent)
+    }
+}
+
 pub trait KnowledgeChildPlugin {
     fn name(&self) -> String;
 
@@ -46,18 +160,22 @@ pub trait KnowledgeChildPlugin {
     }
 }
 
+#[doc(hidden)]
 pub mod host {
     use super::patina;
     use super::toys::{
-        BeliefBackend, CheckpointBackend, EmitBackend, EventBackend, FetchBackend, GraphBackend,
-        LakeBackend, LogBackend, MeasureBackend, PendingEvent, QueryBackend, StateBackend,
-        TaskBackend, TaskIntent, TaskIntentKind,
+        BeliefBackend, CheckpointBackend, ConnectorBackend, EmitBackend, EventBackend,
+        FetchBackend, GraphBackend, IngressBackend, LakeBackend, LogBackend, MeasureBackend,
+        PendingEvent, QueryBackend, StateBackend, TaskBackend, TaskIntent, TaskIntentKind,
     };
 
     #[derive(Debug, Clone, Copy, Default)]
     pub struct GuestHost;
 
     impl GuestHost {
+        // Compatibility-only constructor helpers. Third-party child code should
+        // prefer `granted::*` bundles so the granted capability story stays
+        // explicit in authored code.
         pub fn log() -> super::toys::LogToy<Self> {
             super::toys::LogToy::new()
         }
@@ -79,14 +197,20 @@ pub mod host {
         pub fn checkpoint() -> super::toys::CheckpointToy<Self> {
             super::toys::CheckpointToy::new()
         }
-        pub fn lake() -> super::toys::LakeToy<Self> {
-            super::toys::LakeToy::new()
+        pub fn lake(name: &str) -> super::toys::LakeToy<Self> {
+            super::toys::LakeCatalog::<Self>::new()
+                .require(name)
+                .unwrap_or_else(|error| panic!("missing granted lake '{}': {}", name, error))
+        }
+        pub fn ingress(name: &str) -> super::toys::IngressToy<Self> {
+            super::toys::IngressCatalog::<Self>::new()
+                .require(name)
+                .unwrap_or_else(|error| {
+                    panic!("missing granted ingress source '{}': {}", name, error)
+                })
         }
         pub fn events() -> super::toys::EventToy<Self> {
             super::toys::EventToy::new()
-        }
-        pub fn tasks() -> super::toys::TaskToy<Self> {
-            super::toys::TaskToy::new()
         }
         pub fn graph() -> super::toys::GraphToy<Self> {
             super::toys::GraphToy::new()
@@ -163,8 +287,16 @@ pub mod host {
     }
 
     impl LakeBackend for GuestHost {
-        fn ensure_lake(name: &str) -> Result<String, String> {
-            patina::host::lake::ensure_lake(name)
+        fn list_granted_lakes() -> Result<Vec<super::toys::GrantedLake>, String> {
+            patina::host::lake::list_granted_lakes().map(|lakes| {
+                lakes
+                    .into_iter()
+                    .map(|lake| super::toys::GrantedLake {
+                        name: lake.name,
+                        path: lake.path,
+                    })
+                    .collect()
+            })
         }
         fn load_cursor(lake: &str, source: &str, data_type: &str) -> Option<String> {
             patina::host::lake::load_cursor(lake, source, data_type)
@@ -195,6 +327,77 @@ pub mod host {
         }
         fn query_json(lake: &str, sql: &str) -> Result<String, String> {
             patina::host::lake::query_json(lake, sql)
+        }
+    }
+
+    impl IngressBackend for GuestHost {
+        fn list_granted_sources() -> Vec<super::toys::GrantedIngressSource> {
+            patina::host::ingress::list_granted_sources()
+                .into_iter()
+                .map(|source| super::toys::GrantedIngressSource {
+                    name: source.name,
+                    endpoint: source.endpoint,
+                })
+                .collect()
+        }
+
+        fn fetch(source: &str) -> Result<String, String> {
+            patina::host::ingress::fetch(source)
+        }
+    }
+
+    impl ConnectorBackend for GuestHost {
+        fn list_bindings() -> Result<Vec<super::toys::GrantedConnectorBinding>, String> {
+            patina::host::connector::list_bindings().map(|bindings| {
+                bindings
+                    .into_iter()
+                    .map(|binding| super::toys::GrantedConnectorBinding {
+                        binding_id: binding.binding_id,
+                        connection: binding.connection,
+                        owner: binding.owner,
+                        repo: binding.repo,
+                        types: binding.types,
+                    })
+                    .collect()
+            })
+        }
+
+        fn upsert_binding(
+            binding: &super::toys::GrantedConnectorBinding,
+        ) -> Result<super::toys::GrantedConnectorBinding, String> {
+            patina::host::connector::upsert_binding(&patina::host::connector::RepoBinding {
+                binding_id: binding.binding_id.clone(),
+                connection: binding.connection.clone(),
+                owner: binding.owner.clone(),
+                repo: binding.repo.clone(),
+                types: binding.types.clone(),
+            })
+            .map(|saved| super::toys::GrantedConnectorBinding {
+                binding_id: saved.binding_id,
+                connection: saved.connection,
+                owner: saved.owner,
+                repo: saved.repo,
+                types: saved.types,
+            })
+        }
+
+        fn remove_binding(binding_id: &str) -> Result<(), String> {
+            patina::host::connector::remove_binding(binding_id)
+        }
+
+        fn sync_binding(
+            binding_id: &str,
+            data_type: &str,
+            since: Option<&str>,
+        ) -> Result<super::toys::ConnectorSyncResult, String> {
+            patina::host::connector::sync_binding(binding_id, data_type, since).map(|result| {
+                super::toys::ConnectorSyncResult {
+                    binding_id: result.binding_id,
+                    data_type: result.data_type,
+                    cursor: result.cursor,
+                    rows_json: result.rows_json,
+                }
+            })
         }
     }
 
@@ -246,6 +449,12 @@ pub mod host {
                 payload_json: intent.payload_json.clone(),
                 dedupe_key: intent.dedupe_key.clone(),
             })
+        }
+    }
+
+    impl GuestHost {
+        pub fn enqueue_task(intent: &TaskIntent) -> Result<String, String> {
+            <Self as TaskBackend>::enqueue(intent)
         }
     }
 
