@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: ducklake-knowledge-child-cutover
-status: draft
+status: ready
 created: 2026-03-12
 sessions:
   origin: 20260312-140904
@@ -21,37 +21,37 @@ related:
 - src/commands/connect.rs
 exit_criteria:
 - id: ducklake-has-single-knowledge-child-identity
-  text: "DuckLake runs through one authoritative knowledge-child identity (`plugins/ducklake`) and the native child is no longer a parallel runtime identity"
+  text: DuckLake runs through one authoritative knowledge-child identity (`plugins/ducklake`) and the native child is no longer a parallel runtime identity
   checked: false
 - id: broker-to-knowledge-child-invocation-model-is-explicit
-  text: "The cutover defines and implements one explicit invocation model for `Destination::Lake` (enqueue + bounded wait via Mother runtime), with no ambiguous dual execution semantics"
+  text: The cutover defines and implements one explicit invocation model for `Destination::Lake` (enqueue + bounded wait via Mother runtime), with no ambiguous dual execution semantics
   checked: true
 - id: destination-lake-routes-through-knowledge-child
-  text: "`Destination::Lake` cutover routes through the knowledge-child orchestration path, not direct native ducklake spawn in broker"
+  text: '`Destination::Lake` cutover routes through the knowledge-child orchestration path, not direct native ducklake spawn in broker'
   checked: true
 - id: lake-toy-host-parity-reaches-real-ducklake-semantics
-  text: "Mother lake host behind granted `lake` toy supports real DuckLake semantics required for current issues/PR ingestion parity"
+  text: Mother lake host behind granted `lake` toy supports real DuckLake semantics required for current issues/PR ingestion parity
   checked: false
 - id: connector-or-ingress-capability-supports-repo-scoped-issues-and-prs
-  text: "Granted child capability model supports repo-scoped GitHub issues and pull requests for any user-selected repository with policy-scoped grants"
+  text: Granted child capability model supports repo-scoped GitHub issues and pull requests for any user-selected repository with policy-scoped grants
   checked: true
 - id: oauth-vault-auth-is-authoritative-in-knowledge-child-path
-  text: "OAuth credentials from Patina vault are used through host-granted credential injection in the new DuckLake path (no ambient token assumptions)"
+  text: OAuth credentials from Patina vault are used through host-granted credential injection in the new DuckLake path (no ambient token assumptions)
   checked: true
 - id: source-model-supports-multi-repo-and-incremental-sync
-  text: "DuckLake source model supports multiple repos, per-type sync (issues/prs), and cursor-driven incremental ingestion with durable checkpoints"
+  text: DuckLake source model supports multiple repos, per-type sync (issues/prs), and cursor-driven incremental ingestion with durable checkpoints
   checked: true
 - id: migration-preserves-existing-native-cursor-and-checkpoint-continuity
-  text: "Cutover includes an explicit migration/compat path so existing native DuckLake cursor/checkpoint state is honored or migrated without silent re-ingest or continuity loss"
+  text: Cutover includes an explicit migration/compat path so existing native DuckLake cursor/checkpoint state is honored or migrated without silent re-ingest or continuity loss
   checked: false
 - id: repo-binding-control-plane-is-implemented
-  text: "A concrete command/API surface provisions repo bindings, grant-scoped connector capability, and source records for the knowledge-child path"
+  text: A concrete command/API surface provisions repo bindings, grant-scoped connector capability, and source records for the knowledge-child path
   checked: true
 - id: wasm-ducklake-and-old-native-path-pass-parity-suite-before-removal
-  text: "New DuckLake path matches old path outputs and failure handling on a parity suite before old path removal"
+  text: New DuckLake path matches old path outputs and failure handling on a parity suite before old path removal
   checked: false
 - id: sdk-and-wit-contract-minimum-is-stable-for-cutover
-  text: "WIT + child SDK + toy SDK expose stable typed contracts and one reference flow sufficient to build DuckLake-style apps without internal runtime context"
+  text: WIT + child SDK + toy SDK expose stable typed contracts and one reference flow sufficient to build DuckLake-style apps without internal runtime context
   checked: true
 ---
 # refactor: DuckLake Knowledge-Child Cutover
