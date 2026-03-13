@@ -28,6 +28,7 @@ interface types {
         command: string,
         args: list<string>,
     }
+
 }
 
 interface query {
