@@ -7,6 +7,8 @@ mod commands;
 mod mcp;
 mod preflight;
 mod retrieval;
+#[cfg(test)]
+mod test_support;
 
 // ============================================================================
 // Typed CLI enums (Phase 0d: type safety for string args)

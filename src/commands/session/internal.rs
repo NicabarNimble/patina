@@ -2369,10 +2369,10 @@ mod tests {
     }
 
     fn in_project<T>(project_root: &Path, f: impl FnOnce() -> T) -> T {
-        let _guard = crate::test_support::env_test_mutex()
+        let _guard = patina::test_support::env_test_mutex()
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let old_dir = std::env::current_dir().unwrap();
+        let old_dir = std::env::current_dir().ok();
         let patina_home = project_root.join("patina-home");
         fs::create_dir_all(&patina_home).unwrap();
         let old_patina_home = std::env::var_os("PATINA_HOME");
@@ -2381,7 +2381,9 @@ mod tests {
             std::env::set_var("PATINA_HOME", &patina_home);
         }
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-        std::env::set_current_dir(old_dir).unwrap();
+        if let Some(path) = old_dir {
+            let _ = std::env::set_current_dir(path);
+        }
         match old_patina_home {
             Some(value) => unsafe {
                 std::env::set_var("PATINA_HOME", value);

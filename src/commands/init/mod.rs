@@ -74,32 +74,7 @@ pub fn execute(name: String, force: bool, local: bool, no_commit: bool) -> Resul
 mod tests {
     use super::*;
     use std::fs;
-    use std::sync::{Mutex, MutexGuard, OnceLock};
     use tempfile::TempDir;
-
-    struct CurrentDirGuard {
-        _lock: MutexGuard<'static, ()>,
-        previous: std::path::PathBuf,
-    }
-
-    impl CurrentDirGuard {
-        fn enter(path: &std::path::Path) -> Result<Self> {
-            static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-            let guard = LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
-            let previous = std::env::current_dir()?;
-            std::env::set_current_dir(path)?;
-            Ok(Self {
-                _lock: guard,
-                previous,
-            })
-        }
-    }
-
-    impl Drop for CurrentDirGuard {
-        fn drop(&mut self) {
-            let _ = std::env::set_current_dir(&self.previous);
-        }
-    }
 
     #[test]
     fn test_init_creates_structure() -> Result<()> {
@@ -136,9 +111,11 @@ value = "Ensures init works"
     #[test]
     fn test_init_current_dir_stays_core_only() -> Result<()> {
         let temp = TempDir::new()?;
-        let _cwd = CurrentDirGuard::enter(temp.path())?;
+        let _guard = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
 
-        execute(".".to_string(), false, true, true)?;
+        execute(temp.path().display().to_string(), false, true, true)?;
 
         assert!(temp.path().join(".patina").exists());
         assert!(temp.path().join("layer").exists());

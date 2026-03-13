@@ -64,17 +64,22 @@ mod tests {
     }
 
     fn with_temp_patina_home<T>(temp: &TempDir, f: impl FnOnce() -> T) -> T {
-        let _guard = crate::test_support::env_test_mutex()
+        let _guard = patina::test_support::env_test_mutex()
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let patina_home = temp.path().join("patina-home");
         fs::create_dir_all(&patina_home).unwrap();
 
+        let old_dir = std::env::current_dir().ok();
         let old = std::env::var_os("PATINA_HOME");
+        std::env::set_current_dir(temp.path()).unwrap();
         unsafe {
             std::env::set_var("PATINA_HOME", &patina_home);
         }
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        if let Some(path) = old_dir {
+            let _ = std::env::set_current_dir(path);
+        }
         match old {
             Some(value) => unsafe {
                 std::env::set_var("PATINA_HOME", value);

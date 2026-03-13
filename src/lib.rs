@@ -23,7 +23,6 @@ pub mod spec;
 pub mod version;
 pub mod workspace;
 
-#[cfg(test)]
 pub mod test_support;
 
 // Re-export commonly used types
