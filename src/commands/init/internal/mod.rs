@@ -63,7 +63,7 @@ pub fn execute_init(name: String, force: bool, local: bool, no_commit: bool) -> 
     // Devcontainer generation is handled by 'patina yolo', not init
 
     // Check for nested project
-    if name != "." && Path::new(".patina").exists() {
+    if name != "." && Path::new(".patina").exists() && !force {
         println!("⚠️  You're already in a Patina project!");
         println!(
             "   Running 'patina init {}' would create: {}",
