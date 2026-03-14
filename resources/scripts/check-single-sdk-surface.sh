@@ -42,13 +42,18 @@ if rg -n "plugins/sdk|plugins/ducklake|plugins/belief-verifier" \
     exit 1
 fi
 
-echo "Checking native DuckLake runtime is not reintroduced..."
-if rg -n "children/ducklake(/|$)" \
+echo "Checking deprecated DuckLake paths are not reintroduced..."
+if rg -n "children/ducklake-wasm" \
     --glob '!layer/**' \
-    --glob '!children/ducklake-wasm/**' \
     --glob '!resources/scripts/check-single-sdk-surface.sh' \
+    --glob '!resources/scripts/check-runtime-boundaries.sh' \
     src children sdk tests Cargo.toml .github resources/scripts 2>/dev/null; then
-    echo "error: found legacy native DuckLake runtime path references"
+    echo "error: found deprecated ducklake-wasm path references"
+    exit 1
+fi
+
+if [[ -f "children/ducklake/src/main.rs" ]]; then
+    echo "error: found legacy native ducklake entrypoint children/ducklake/src/main.rs"
     exit 1
 fi
 

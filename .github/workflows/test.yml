@@ -61,6 +61,12 @@ jobs:
     - name: Check single SDK surface
       run: bash resources/scripts/check-single-sdk-surface.sh
 
+    - name: Check runtime boundary drift
+      run: bash resources/scripts/check-runtime-boundaries.sh
+
+    - name: Check layer output contract
+      run: bash resources/scripts/check-layer-output-contract.sh
+
     - name: Check DuckLake wasm parity
       run: bash resources/scripts/check-ducklake-parity.sh
 
