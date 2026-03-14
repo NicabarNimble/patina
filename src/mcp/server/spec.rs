@@ -141,6 +141,51 @@ pub(super) fn handle(req: &Request, name: &str, args: SpecArgs) -> Response {
                 Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
             }
         }
+        "spec.prompt" => {
+            let id = require!(req, args.id, "spec.prompt", "id");
+            match crate::commands::spec::prompt_spec_value(id) {
+                Ok(result) => {
+                    let text = serde_json::to_string_pretty(&result).unwrap_or_default();
+                    Response::success(
+                        req.id.clone(),
+                        serde_json::json!({
+                            "content": [{ "type": "text", "text": text }]
+                        }),
+                    )
+                }
+                Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
+            }
+        }
+        "spec.handoff" => {
+            let id = require!(req, args.id, "spec.handoff", "id");
+            match crate::commands::spec::handoff_spec_value(id) {
+                Ok(result) => {
+                    let text = serde_json::to_string_pretty(&result).unwrap_or_default();
+                    Response::success(
+                        req.id.clone(),
+                        serde_json::json!({
+                            "content": [{ "type": "text", "text": text }]
+                        }),
+                    )
+                }
+                Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
+            }
+        }
+        "spec.packet" => {
+            let id = require!(req, args.id, "spec.packet", "id");
+            match crate::commands::spec::packet_spec_value(id) {
+                Ok(result) => {
+                    let text = serde_json::to_string_pretty(&result).unwrap_or_default();
+                    Response::success(
+                        req.id.clone(),
+                        serde_json::json!({
+                            "content": [{ "type": "text", "text": text }]
+                        }),
+                    )
+                }
+                Err(e) => Response::error(req.id.clone(), super::ERR_INTERNAL, &e.to_string()),
+            }
+        }
         "spec.check" => {
             let id = require!(req, args.id, "spec.check", "id");
             match crate::commands::spec::check_spec_value(id) {

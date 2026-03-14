@@ -13,7 +13,8 @@ pub(crate) use internal::{
 
 // Query data functions re-exported for MCP (Phase 6)
 pub(crate) use internal::{
-    check_spec_value, get_ready_specs, history_spec_value, next_spec_value, show_spec_value,
+    check_spec_value, get_ready_specs, handoff_spec_value, history_spec_value, next_spec_value,
+    packet_spec_value, prompt_spec_value, show_spec_value,
 };
 
 // Mutation _value() functions re-exported for MCP (Phase 6)
@@ -224,6 +225,36 @@ pub enum SpecCommands {
         json: bool,
     },
 
+    /// Generate build-ready execution prompt packet from spec/design
+    Prompt {
+        /// Spec ID to generate prompt for
+        id: String,
+
+        /// Output as JSON packet
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Generate continuation handoff packet for next agent
+    Handoff {
+        /// Spec ID to generate handoff for
+        id: String,
+
+        /// Output as JSON packet
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Generate combined prompt + handoff packet
+    Packet {
+        /// Spec ID to generate packet for
+        id: String,
+
+        /// Output as JSON packet bundle
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Check exit criteria status for a spec
     Check {
         /// Spec ID to check
@@ -359,6 +390,21 @@ pub fn set(id: &str, field: &str, value: &str, json: bool) -> Result<()> {
 /// Show full spec context (body, design, key files)
 pub fn show(id: &str, handoff: bool, json: bool) -> Result<()> {
     internal::show_spec(id, handoff, json)
+}
+
+/// Generate build-ready execution prompt packet
+pub fn prompt(id: &str, json: bool) -> Result<()> {
+    internal::prompt_spec(id, json)
+}
+
+/// Generate handoff packet for next agent
+pub fn handoff(id: &str, json: bool) -> Result<()> {
+    internal::handoff_spec(id, json)
+}
+
+/// Generate combined prompt + handoff packet
+pub fn packet(id: &str, json: bool) -> Result<()> {
+    internal::packet_spec(id, json)
 }
 
 /// Check exit criteria status for a spec

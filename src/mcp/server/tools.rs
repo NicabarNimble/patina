@@ -370,6 +370,48 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                     }
                 },
                 {
+                    "name": "spec.prompt",
+                    "description": "Generate a build-ready prompt packet projected from SPEC + DESIGN for a given spec.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Spec ID to generate prompt for"
+                            }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
+                    "name": "spec.handoff",
+                    "description": "Generate a continuation handoff packet for next-agent execution from spec state.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Spec ID to generate handoff for"
+                            }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
+                    "name": "spec.packet",
+                    "description": "Generate combined prompt + handoff packet payload for orchestration.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Spec ID to generate packet bundle for"
+                            }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
                     "name": "spec.check",
                     "description": "Check exit criteria status for a spec. Returns pass/fail with details on which criteria are checked/unchecked. Specs without exit_criteria pass by default.",
                     "inputSchema": {
@@ -513,7 +555,15 @@ mod tests {
             .filter_map(|tool| tool["name"].as_str())
             .collect::<Vec<_>>();
 
-        for expected in ["spec.list", "spec.next", "spec.show", "spec.check"] {
+        for expected in [
+            "spec.list",
+            "spec.next",
+            "spec.show",
+            "spec.prompt",
+            "spec.handoff",
+            "spec.packet",
+            "spec.check",
+        ] {
             assert!(tools.contains(&expected), "missing {}", expected);
         }
         for forbidden in [
