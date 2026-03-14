@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/patina-pipe-types", "crates/patina-pipe", "sdk/patina-sdk", "plugins/models", "plugins/repos", "plugins/doctor", "children/ducklake-wasm", "children/belief-verifier-wasm", "children/github-connector", "children/ducklake"]
+members = [".", "crates/patina-pipe-types", "crates/patina-pipe", "sdk/patina-sdk", "plugins/models", "plugins/repos", "plugins/doctor", "children/ducklake", "children/belief-verifier-wasm", "children/github-connector"]
 exclude = ["layer/dust"]
 resolver = "2"
 

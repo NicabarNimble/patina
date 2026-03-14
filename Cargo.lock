@@ -1367,19 +1367,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ducklake"
-version = "0.1.0"
-dependencies = [
- "dirs 6.0.0",
- "duckdb",
- "patina-pipe",
- "patina-pipe-types",
- "serde",
- "serde_json",
- "which",
-]
-
-[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

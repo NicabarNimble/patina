@@ -109,7 +109,7 @@ existing operator expectation of request/response feedback.
   - Host implementation of new WIT interfaces, capability enforcement.
 - `src/plugin/internal/mod.rs`
   - Manifest parsing and grant plumbing for repo-scoped connectors.
-- `src/mother/lake_host.rs`
+- `src/toys/lake.rs`
   - Lake host backend parity semantics.
 - `src/broker/mod.rs`
   - Route `Destination::Lake` through knowledge-child enqueue + bounded wait path.

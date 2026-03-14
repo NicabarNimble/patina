@@ -18,7 +18,7 @@ failures=0
 
 is_legacy_exact() {
     case "$1" in
-        patina-pipe|patina-pipe-types|patina-doctor|patina-plugin-models|patina-plugin-repos|patina-plugin-ducklake|patina-plugin-belief-verifier|ducklake|github-connector)
+        patina-pipe|patina-pipe-types|patina-doctor|patina-plugin-models|patina-plugin-repos|patina-plugin-ducklake|patina-plugin-belief-verifier|github-connector)
             return 0
             ;;
         *)

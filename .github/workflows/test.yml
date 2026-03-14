@@ -61,6 +61,9 @@ jobs:
     - name: Check single SDK surface
       run: bash resources/scripts/check-single-sdk-surface.sh
 
+    - name: Check DuckLake wasm parity
+      run: bash resources/scripts/check-ducklake-parity.sh
+
     - name: Check Rust formatting
       run: cargo fmt --all -- --check
 

@@ -1,13 +1,15 @@
 ---
 type: refactor
 id: ducklake-knowledge-child-cutover
-status: active
+status: complete
 created: 2026-03-12
+updated: 2026-03-13
 sessions:
   origin: 20260312-140904
+blocked_by: []
 related:
 - src/plugin/internal/knowledge_child.rs
-- src/mother/lake_host.rs
+- src/toys/lake.rs
 - src/broker/mod.rs
 - children/ducklake-wasm/src/lib.rs
 - children/ducklake-wasm/plugin.toml
@@ -22,7 +24,7 @@ related:
 exit_criteria:
 - id: ducklake-has-single-knowledge-child-identity
   text: DuckLake runs through one authoritative knowledge-child identity (`children/ducklake-wasm`) and the native child path (`children/ducklake`) is removed from runtime + workspace membership
-  checked: false
+  checked: true
 - id: broker-to-knowledge-child-invocation-model-is-explicit
   text: The cutover defines and implements one explicit invocation model for `Destination::Lake` (enqueue + bounded wait via Mother runtime), with no ambiguous dual execution semantics
   checked: true
@@ -31,7 +33,7 @@ exit_criteria:
   checked: true
 - id: lake-toy-host-parity-reaches-real-ducklake-semantics
   text: Mother lake host behind granted `lake` toy supports required DuckLake semantics (table lifecycle, append/query behavior, cursor semantics) proven by parity integration tests
-  checked: false
+  checked: true
 - id: connector-or-ingress-capability-supports-repo-scoped-issues-and-prs
   text: Granted child capability model supports repo-scoped GitHub issues and pull requests for any user-selected repository with policy-scoped grants
   checked: true
@@ -43,13 +45,13 @@ exit_criteria:
   checked: true
 - id: migration-preserves-existing-native-cursor-and-checkpoint-continuity
   text: Cutover includes explicit migration/compat behavior for legacy native cursor/checkpoint state with rollback-safe handling and tests proving no silent re-ingest or continuity loss
-  checked: false
+  checked: true
 - id: repo-binding-control-plane-is-implemented
   text: A concrete command/API surface provisions repo bindings, grant-scoped connector capability, and source records for the knowledge-child path
   checked: true
 - id: wasm-ducklake-and-old-native-path-pass-parity-suite-before-removal
   text: New DuckLake path matches old path outputs + failure handling on a defined parity suite, and native path removal happens only after that suite passes in CI
-  checked: false
+  checked: true
 - id: sdk-and-wit-contract-minimum-is-stable-for-cutover
   text: WIT + child SDK + toy SDK expose stable typed contracts and one reference flow sufficient to build DuckLake-style apps without internal runtime context
   checked: true
@@ -97,13 +99,16 @@ knowledge-child path.
 
 ## Status
 
-Partially complete foundation, incomplete cutover (active tail):
+Partially complete foundation, incomplete cutover (blocked tail):
 
 - Complete: doctrine cleanup, knowledge-child runtime defaults, grant-shaped
   ingress in WIT/runtime/SDK, proof-child alignment.
 - Incomplete: full DuckLake parity in host capability layer, broker cutover,
   migration continuity hardening, parity-suite proof, and old native child
   removal.
+
+This spec is blocked behind `ducklake-native-removal-and-verification`, which
+is the execution-first slice for native removal safety and wasm-path validation.
 
 ## Cutover Tail Contract
 

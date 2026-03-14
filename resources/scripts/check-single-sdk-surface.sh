@@ -42,4 +42,14 @@ if rg -n "plugins/sdk|plugins/ducklake|plugins/belief-verifier" \
     exit 1
 fi
 
+echo "Checking native DuckLake runtime is not reintroduced..."
+if rg -n "children/ducklake(/|$)" \
+    --glob '!layer/**' \
+    --glob '!children/ducklake-wasm/**' \
+    --glob '!resources/scripts/check-single-sdk-surface.sh' \
+    src children sdk tests Cargo.toml .github resources/scripts 2>/dev/null; then
+    echo "error: found legacy native DuckLake runtime path references"
+    exit 1
+fi
+
 echo "ok: single SDK surface enforced"

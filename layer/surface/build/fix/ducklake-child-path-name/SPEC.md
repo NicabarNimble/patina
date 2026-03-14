@@ -1,27 +1,36 @@
 ---
 type: fix
 id: ducklake-child-path-name
-status: draft
+status: complete
 created: 2026-03-13
+updated: 2026-03-13
 sessions:
   origin: 20260313-061738
+blocked_by: []
+related:
+- layer/surface/build/refactor/ducklake-native-removal-and-verification/SPEC.md
 exit_criteria:
 - id: canonical-path-renamed
   text: Canonical DuckLake knowledge-child path is children/ducklake
-  checked: false
+  checked: true
 - id: no-wasm-suffix-references
   text: No runtime/test/workspace references remain to children/ducklake-wasm
-  checked: false
+  checked: true
 - id: legacy-native-path-explicit
-  text: Legacy native child path is moved to explicit legacy location/name
-  checked: false
+  text: Legacy native child runtime path remains removed with no fallback native location introduced
+  checked: true
 - id: verification-green
   text: Workspace and ducklake child verification commands pass after rename
-  checked: false
+  checked: true
 ---
 # fix: fix: rename ducklake-wasm child path to ducklake
 
 > Align child naming with doctrine by removing wasm suffix from canonical ducklake child path
+
+## Status Note
+
+Native DuckLake removal and wasm-only stabilization are now complete, so this
+rename is unblocked and ready for execution.
 
 ## Problem
 
@@ -38,21 +47,19 @@ temporary compromise now conflicts with the desired naming model.
 ## Fix
 
 Rename canonical DuckLake knowledge-child directory to `children/ducklake` and
-move the existing native legacy child to an explicit legacy name/path (for
-example `children/ducklake-native`). Update workspace/runtime/tests/spec
-references accordingly.
+update workspace/runtime/tests/spec references accordingly while preserving the
+native-runtime removal decision from the prior spec.
 
 ### Move Matrix
 
 - `children/ducklake-wasm` -> `children/ducklake`
-- existing native `children/ducklake` -> `children/ducklake-native` (or another
-  explicitly legacy path agreed at implementation time)
+- no native fallback path introduced
 
 ### Verification
 
 - `cargo check --workspace`
 - `cargo build --target wasm32-wasip2 -p patina-plugin-ducklake`
-- `cargo test -q -p patina-ai -- src/plugin/internal/tests.rs`
+- `bash resources/scripts/check-ducklake-parity.sh`
 - `rg "children/ducklake-wasm" src children sdk tests Cargo.toml` returns no matches
 - `patina spec check ducklake-child-path-name --json`
 

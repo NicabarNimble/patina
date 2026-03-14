@@ -445,7 +445,7 @@ impl KnowledgeRuntimeStore {
         if let Some(dedupe_key) = intent.dedupe_key.as_deref() {
             if let Some(existing) = conn
                 .query_row(
-                    "SELECT id FROM mother_child_tasks WHERE plugin_name = ?1 AND dedupe_key = ?2",
+                    "SELECT id FROM mother_child_tasks WHERE plugin_name = ?1 AND dedupe_key = ?2 AND status IN ('queued', 'leased', 'running')",
                     params![plugin_name, dedupe_key],
                     |row| row.get::<_, String>(0),
                 )
@@ -453,6 +453,11 @@ impl KnowledgeRuntimeStore {
             {
                 return Ok(existing);
             }
+
+            conn.execute(
+                "DELETE FROM mother_child_tasks WHERE plugin_name = ?1 AND dedupe_key = ?2 AND status IN ('succeeded', 'dead_letter')",
+                params![plugin_name, dedupe_key],
+            )?;
         }
 
         let now = Utc::now().to_rfc3339();
@@ -1056,6 +1061,14 @@ mod tests {
             .lease_next_task("ducklake", "worker-2")
             .unwrap()
             .is_none());
+
+        let after_success = store.enqueue_task("ducklake", &intent).unwrap();
+        assert_ne!(after_success, first);
+        let leased_again = store
+            .lease_next_task("ducklake", "worker-3")
+            .unwrap()
+            .expect("expected re-enqueued task after terminal status");
+        assert_eq!(leased_again.id, after_success);
     }
 
     #[test]
