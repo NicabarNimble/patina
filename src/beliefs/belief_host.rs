@@ -1,8 +1,8 @@
 use anyhow::Result;
 use rusqlite::{params, Connection, OptionalExtension};
 
-use super::KnowledgeRuntimeStore;
-use crate::mother::Graph;
+use crate::beliefs::Graph;
+use crate::mother::KnowledgeRuntimeStore;
 
 fn graph_conn() -> Result<Connection> {
     Ok(Connection::open(crate::paths::mother::graph_db())?)

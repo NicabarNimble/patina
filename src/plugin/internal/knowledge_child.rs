@@ -708,7 +708,7 @@ mod bindings {
             if !self.grants.graph_read {
                 return Err(format!("graph read not granted for '{}'", self.plugin_name));
             }
-            crate::mother::graph_host::query(&kind, &params_json).map_err(|e| e.to_string())
+            crate::beliefs::graph_host::query(&kind, &params_json).map_err(|e| e.to_string())
         }
 
         fn mutate(&mut self, action: String, payload_json: String) -> Result<(), String> {
@@ -718,7 +718,7 @@ mod bindings {
                     action, self.plugin_name
                 ));
             }
-            crate::mother::graph_host::mutate(
+            crate::beliefs::graph_host::mutate(
                 &self.runtime,
                 &self.plugin_name,
                 &action,
@@ -736,7 +736,7 @@ mod bindings {
                     self.plugin_name
                 ));
             }
-            crate::mother::belief_host::query(&kind, &params_json).map_err(|e| e.to_string())
+            crate::beliefs::belief_host::query(&kind, &params_json).map_err(|e| e.to_string())
         }
 
         fn mutate(&mut self, action: String, payload_json: String) -> Result<(), String> {
@@ -746,7 +746,7 @@ mod bindings {
                     action, self.plugin_name
                 ));
             }
-            crate::mother::belief_host::mutate(
+            crate::beliefs::belief_host::mutate(
                 &self.runtime,
                 &self.plugin_name,
                 &action,

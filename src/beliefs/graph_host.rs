@@ -1,8 +1,8 @@
 use anyhow::Result;
 use rusqlite::{params, Connection};
 
-use super::KnowledgeRuntimeStore;
-use crate::mother::{EdgeType, Graph};
+use crate::beliefs::{EdgeType, Graph};
+use crate::mother::KnowledgeRuntimeStore;
 
 pub fn query(kind: &str, params_json: &str) -> Result<String> {
     let graph = Graph::open()?;
