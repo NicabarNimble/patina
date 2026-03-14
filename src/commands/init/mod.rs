@@ -115,7 +115,11 @@ value = "Ensures init works"
             .lock()
             .unwrap_or_else(|error| error.into_inner());
 
-        execute(temp.path().display().to_string(), false, true, true)?;
+        let original_dir = std::env::current_dir()?;
+        std::env::set_current_dir(temp.path())?;
+        let result = execute(".".to_string(), false, true, true);
+        std::env::set_current_dir(original_dir)?;
+        result?;
 
         assert!(temp.path().join(".patina").exists());
         assert!(temp.path().join("layer").exists());
