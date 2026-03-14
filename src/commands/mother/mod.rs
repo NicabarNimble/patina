@@ -338,10 +338,10 @@ fn run_source_cli(name: &str, no_sandbox: bool) -> Result<()> {
     let project_root = std::env::current_dir()?;
 
     // Find the source in this project's sources.toml
-    let source = patina::broker::sources::find_source(&project_root, name)?
+    let source = patina::mother::broker::sources::find_source(&project_root, name)?
         .with_context(|| format!("source '{}' not found in .patina/sources.toml", name))?;
 
-    let result = patina::broker::run_source(&source, &project_root, no_sandbox)?;
+    let result = patina::mother::broker::run_source(&source, &project_root, no_sandbox)?;
 
     println!(
         "{}: {} facts written, {} dedup skipped{}",
@@ -374,7 +374,7 @@ fn show_sources_cli(prune: bool) -> Result<()> {
         return Ok(());
     }
 
-    let statuses = patina::broker::status(&project_root)?;
+    let statuses = patina::mother::broker::status(&project_root)?;
 
     if statuses.is_empty() {
         println!("No sources configured. Add sources to .patina/sources.toml");
@@ -397,7 +397,7 @@ fn show_sources_cli(prune: bool) -> Result<()> {
 
 /// Remove orphaned cursors (cursors with no matching source in sources.toml)
 fn prune_orphaned_cursors(project_root: &Path) -> Result<()> {
-    let project_sources = patina::broker::sources::load_project_sources(project_root)?;
+    let project_sources = patina::mother::broker::sources::load_project_sources(project_root)?;
     let source_names: std::collections::HashSet<String> = project_sources
         .map(|ps| ps.sources.iter().map(|s| s.name.clone()).collect())
         .unwrap_or_default();

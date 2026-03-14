@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::path::Path;
 
-use patina::interface::{self, adapter as load_adapter};
+use patina::interface::{self, interface as load_interface};
 
 use crate::commands::launch::internal as launch_internal;
 
@@ -27,12 +27,12 @@ pub fn ensure_interface_ready(
     project_path: &Path,
     force: bool,
 ) -> Result<(
-    Box<dyn patina::interface::AiAdapter>,
+    Box<dyn patina::interface::AiInterface>,
     interface::BootstrapResult,
 )> {
     interface::ensure_ai_project_config(project_path, None)?;
 
-    let adapter = load_adapter(interface_name).map_err(|_| {
+    let adapter = load_interface(interface_name).map_err(|_| {
         anyhow::anyhow!(
             "Unsupported Patina AI interface '{}'. Choose one of: {}.",
             interface_name,
@@ -55,7 +55,7 @@ mod tests {
         fs::write(
             temp.path().join(".patina/config.toml"),
             format!(
-                "[adapters]\nallowed = [\"{}\"]\ndefault = \"{}\"\n",
+                "[interfaces]\nallowed = [\"{}\"]\ndefault = \"{}\"\n",
                 adapter, adapter
             ),
         )

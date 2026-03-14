@@ -1,22 +1,22 @@
-//! Launcher functionality for adapters
+//! Launcher functionality for interfaces
 //!
 //! Provides CLI detection, MCP configuration, and bootstrap generation
-//! for launching AI adapters. This complements the init-time functionality
-//! in the adapter modules.
+//! for launching AI interfaces. This complements the init-time functionality
+//! in the interface runtime modules.
 //!
 //! # Example
 //!
 //! ```no_run
-//! use patina::adapters::launch;
+//! use patina::interface::runtime::launch;
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // List available adapters
-//!     let adapters = launch::list()?;
-//!     for f in &adapters {
+//!     // List available interfaces
+//!     let interfaces = launch::list()?;
+//!     for f in &interfaces {
 //!         println!("{}: {} (detected: {})", f.name, f.display, f.detected);
 //!     }
 //!
-//!     // Get specific adapter
+//!     // Get specific interface
 //!     let claude = launch::get("claude")?;
 //!     Ok(())
 //! }
@@ -32,8 +32,9 @@ use crate::interface::assets as interface_assets;
 use crate::workspace;
 use crate::Environment;
 
-/// Available adapter names
-pub const ADAPTERS: &[&str] = &["claude", "gemini", "opencode"];
+/// Available interface names
+pub const INTERFACES: &[&str] = &["claude", "gemini", "opencode"];
+pub const ADAPTERS: &[&str] = INTERFACES;
 
 /// Markers for Patina-managed section in bootstrap files
 const MARKER_START: &str = "<!-- PATINA:START -->";
@@ -44,68 +45,70 @@ pub const CANONICAL_AGENTS_FILE: &str = "AGENTS.md";
 // Types
 // =============================================================================
 
-/// Adapter identifier
+/// Interface identifier
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Adapter {
+pub enum InterfaceKind {
     Claude,
     Gemini,
     OpenCode,
 }
 
-impl Adapter {
+pub type Adapter = InterfaceKind;
+
+impl InterfaceKind {
     pub fn name(&self) -> &'static str {
         match self {
-            Adapter::Claude => "claude",
-            Adapter::Gemini => "gemini",
-            Adapter::OpenCode => "opencode",
+            InterfaceKind::Claude => "claude",
+            InterfaceKind::Gemini => "gemini",
+            InterfaceKind::OpenCode => "opencode",
         }
     }
 
     pub fn display(&self) -> &'static str {
         match self {
-            Adapter::Claude => "Claude Code",
-            Adapter::Gemini => "Gemini CLI",
-            Adapter::OpenCode => "OpenCode",
+            InterfaceKind::Claude => "Claude Code",
+            InterfaceKind::Gemini => "Gemini CLI",
+            InterfaceKind::OpenCode => "OpenCode",
         }
     }
 
     pub fn from_name(name: &str) -> Option<Self> {
         match name.to_lowercase().as_str() {
-            "claude" => Some(Adapter::Claude),
-            "gemini" => Some(Adapter::Gemini),
-            "opencode" => Some(Adapter::OpenCode),
+            "claude" => Some(InterfaceKind::Claude),
+            "gemini" => Some(InterfaceKind::Gemini),
+            "opencode" => Some(InterfaceKind::OpenCode),
             _ => None,
         }
     }
 
     pub fn bootstrap_file(&self) -> &'static str {
         match self {
-            Adapter::Claude => "CLAUDE.md",
-            Adapter::Gemini => "GEMINI.md",
-            Adapter::OpenCode => CANONICAL_AGENTS_FILE,
+            InterfaceKind::Claude => "CLAUDE.md",
+            InterfaceKind::Gemini => "GEMINI.md",
+            InterfaceKind::OpenCode => CANONICAL_AGENTS_FILE,
         }
     }
 
     pub fn vendor_bootstrap_file(&self) -> Option<&'static str> {
         match self {
-            Adapter::Claude => Some("CLAUDE.md"),
-            Adapter::Gemini => Some("GEMINI.md"),
-            Adapter::OpenCode => None,
+            InterfaceKind::Claude => Some("CLAUDE.md"),
+            InterfaceKind::Gemini => Some("GEMINI.md"),
+            InterfaceKind::OpenCode => None,
         }
     }
 
     pub fn detect_commands(&self) -> &'static [&'static str] {
         match self {
-            Adapter::Claude => &["claude --version"],
-            Adapter::Gemini => &["gemini --version"],
-            Adapter::OpenCode => &["opencode --version"],
+            InterfaceKind::Claude => &["claude --version"],
+            InterfaceKind::Gemini => &["gemini --version"],
+            InterfaceKind::OpenCode => &["opencode --version"],
         }
     }
 }
 
-/// Runtime adapter info with detection status
+/// Runtime interface info with detection status
 #[derive(Debug, Clone)]
-pub struct AdapterInfo {
+pub struct InterfaceInfo {
     pub name: String,
     pub display: String,
     pub detected: bool,
@@ -113,7 +116,9 @@ pub struct AdapterInfo {
     pub mcp: Option<McpConfig>,
 }
 
-/// MCP configuration for an adapter
+pub type AdapterInfo = InterfaceInfo;
+
+/// MCP configuration for an interface
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpConfig {
     pub config_path: String,
@@ -126,56 +131,64 @@ pub struct McpConfig {
 // Public API
 // =============================================================================
 
-/// List all available adapters with detection status
-pub fn list() -> Result<Vec<AdapterInfo>> {
-    let mut adapters = Vec::new();
+/// List all available interfaces with detection status
+pub fn list() -> Result<Vec<InterfaceInfo>> {
+    let mut interfaces = Vec::new();
 
-    for name in ADAPTERS {
+    for name in INTERFACES {
         if let Ok(info) = get(name) {
-            adapters.push(info);
+            interfaces.push(info);
         }
     }
 
-    Ok(adapters)
+    Ok(interfaces)
 }
 
-/// Get info for a specific adapter
-pub fn get(name: &str) -> Result<AdapterInfo> {
-    let adapter =
-        Adapter::from_name(name).ok_or_else(|| anyhow::anyhow!("Unknown adapter: {}", name))?;
+/// Get info for a specific interface
+pub fn get(name: &str) -> Result<InterfaceInfo> {
+    let interface = InterfaceKind::from_name(name)
+        .ok_or_else(|| anyhow::anyhow!("Unknown interface: {}", name))?;
 
-    let (detected, version) = detect_cli(&adapter);
+    let (detected, version) = detect_cli(&interface);
 
-    Ok(AdapterInfo {
-        name: adapter.name().to_string(),
-        display: adapter.display().to_string(),
+    Ok(InterfaceInfo {
+        name: interface.name().to_string(),
+        display: interface.display().to_string(),
         detected,
         version,
-        mcp: get_mcp_config(&adapter),
+        mcp: get_mcp_config(&interface),
     })
 }
 
-/// Check if an adapter CLI is available
+/// Check if an interface CLI is available
 pub fn is_available(name: &str) -> bool {
     get(name).map(|f| f.detected).unwrap_or(false)
 }
 
-/// Get the default adapter name from global config
-pub fn default_name() -> Result<String> {
+/// Get the default interface name from global config
+pub fn default_interface_name() -> Result<String> {
     let config = workspace::config()?;
     Ok(config.adapter.default)
 }
 
-/// Set the default adapter
-pub fn set_default(name: &str) -> Result<()> {
-    // Verify adapter exists
-    let _ = Adapter::from_name(name).ok_or_else(|| anyhow::anyhow!("Unknown adapter: {}", name))?;
+pub fn default_name() -> Result<String> {
+    default_interface_name()
+}
+
+/// Set the default interface
+pub fn set_default_interface(name: &str) -> Result<()> {
+    let _ = InterfaceKind::from_name(name)
+        .ok_or_else(|| anyhow::anyhow!("Unknown interface: {}", name))?;
 
     let mut config = workspace::config()?;
     config.adapter.default = name.to_string();
     workspace::save_config(&config)?;
 
     Ok(())
+}
+
+pub fn set_default(name: &str) -> Result<()> {
+    set_default_interface(name)
 }
 
 /// Generate bootstrap file for a project
@@ -190,30 +203,30 @@ pub fn canonical_agents_path(project_path: &Path) -> PathBuf {
 }
 
 pub fn vendor_bootstrap_path(name: &str, project_path: &Path) -> Result<Option<PathBuf>> {
-    let adapter =
-        Adapter::from_name(name).ok_or_else(|| anyhow::anyhow!("Unknown adapter: {}", name))?;
-    Ok(adapter
+    let interface = InterfaceKind::from_name(name)
+        .ok_or_else(|| anyhow::anyhow!("Unknown interface: {}", name))?;
+    Ok(interface
         .vendor_bootstrap_file()
         .map(|file| project_path.join(file)))
 }
 
 pub fn generate_bootstrap(name: &str, project_path: &Path, force_rewrite: bool) -> Result<()> {
-    let adapter =
-        Adapter::from_name(name).ok_or_else(|| anyhow::anyhow!("Unknown adapter: {}", name))?;
+    let interface = InterfaceKind::from_name(name)
+        .ok_or_else(|| anyhow::anyhow!("Unknown interface: {}", name))?;
 
     write_canonical_agents(project_path, force_rewrite)?;
-    write_vendor_bootstrap(&adapter, project_path, force_rewrite)?;
+    write_vendor_bootstrap(&interface, project_path, force_rewrite)?;
 
     Ok(())
 }
 
-/// Check if MCP is configured for an adapter (patina server present in config)
+/// Check if MCP is configured for an interface (patina server present in config)
 pub fn is_mcp_configured(name: &str) -> Result<bool> {
     let info = get(name)?;
 
     let mcp = match info.mcp.as_ref() {
         Some(m) => m,
-        None => return Ok(true), // No MCP config needed for this adapter
+        None => return Ok(true), // No MCP config needed for this interface
     };
 
     let config_path = PathBuf::from(shellexpand::tilde(&mcp.config_path).as_ref());
@@ -232,29 +245,29 @@ pub fn is_mcp_configured(name: &str) -> Result<bool> {
 
 /// Truthful MCP availability for Patina AI interface projection.
 ///
-/// This is intentionally conservative. If Patina cannot find a known adapter
+/// This is intentionally conservative. If Patina cannot find a known interface
 /// config with a configured Patina MCP server, projection should assume MCP is
 /// unavailable and teach the JSON CLI fallback instead.
 pub fn interface_mcp_available(name: &str) -> Result<bool> {
-    let adapter =
-        Adapter::from_name(name).ok_or_else(|| anyhow::anyhow!("Unknown adapter: {}", name))?;
+    let interface = InterfaceKind::from_name(name)
+        .ok_or_else(|| anyhow::anyhow!("Unknown interface: {}", name))?;
 
-    if let Some(config) = get_mcp_config(&adapter) {
+    if let Some(config) = get_mcp_config(&interface) {
         return config_contains_patina_server(&config.config_path);
     }
 
-    let candidates = match adapter {
-        Adapter::Gemini => &[
+    let candidates = match interface {
+        InterfaceKind::Gemini => &[
             "~/.gemini/settings.json",
             "~/.config/gemini/settings.json",
             "~/.config/google-gemini/settings.json",
         ][..],
-        Adapter::OpenCode => &[
+        InterfaceKind::OpenCode => &[
             "~/.config/opencode/config.json",
             "~/.config/opencode/opencode.json",
             "~/.config/opencode/config.toml",
         ][..],
-        Adapter::Claude => &[][..],
+        InterfaceKind::Claude => &[][..],
     };
 
     for path in candidates {
@@ -266,14 +279,14 @@ pub fn interface_mcp_available(name: &str) -> Result<bool> {
     Ok(false)
 }
 
-/// Configure MCP for an adapter (update its config file)
+/// Configure MCP for an interface (update its config file)
 pub fn configure_mcp(name: &str) -> Result<()> {
     let info = get(name)?;
 
     let mcp = info
         .mcp
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Adapter {} has no MCP configuration", name))?;
+        .ok_or_else(|| anyhow::anyhow!("Interface {} has no MCP configuration", name))?;
 
     let config_path = PathBuf::from(shellexpand::tilde(&mcp.config_path).as_ref());
 
@@ -320,42 +333,42 @@ pub fn configure_mcp(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Detect CLI version for an adapter
+/// Detect CLI version for an interface
 pub fn detect_version(name: &str) -> Option<String> {
-    let adapter = Adapter::from_name(name)?;
-    let (_, version) = detect_cli(&adapter);
+    let interface = InterfaceKind::from_name(name)?;
+    let (_, version) = detect_cli(&interface);
     version
 }
 
-/// Select an adapter from available options.
+/// Select an interface from available options.
 ///
-/// Returns the chosen adapter name.
+/// Returns the chosen interface name.
 ///
 /// Behavior:
 /// - 0 available: Error with installation instructions
 /// - 1 available: Returns it (no prompt)
 /// - 2+ available: Prompts user to choose
 ///
-/// If `preference` matches an available adapter, it becomes the default selection.
+/// If `preference` matches an available interface, it becomes the default selection.
 /// This is used to honor the global config default without forcing it.
-pub fn select_adapter(available: &[AdapterInfo], preference: Option<&str>) -> Result<String> {
+pub fn select_interface(available: &[InterfaceInfo], preference: Option<&str>) -> Result<String> {
     use std::io::{self, Write};
 
     match available.len() {
         0 => {
             anyhow::bail!(
-                "No AI adapters detected on this system.\n\
+                "No AI interfaces detected on this system.\n\
                  Install one of: {}",
-                ADAPTERS.join(", ")
+                INTERFACES.join(", ")
             );
         }
         1 => {
-            // Single adapter - use it without prompting
+            // Single interface - use it without prompting
             Ok(available[0].name.clone())
         }
         _ => {
-            // Multiple adapters - prompt user to choose
-            println!("\n📱 Available adapters:");
+            // Multiple interfaces - prompt user to choose
+            println!("\n📱 Available interfaces:");
 
             // Find which index should be default (1-based for display)
             let default_idx = preference
@@ -363,13 +376,13 @@ pub fn select_adapter(available: &[AdapterInfo], preference: Option<&str>) -> Re
                 .map(|i| i + 1)
                 .unwrap_or(1);
 
-            for (i, adapter) in available.iter().enumerate() {
+            for (i, interface) in available.iter().enumerate() {
                 let num = i + 1;
                 let default_marker = if num == default_idx { " (default)" } else { "" };
-                println!("  [{}] {}{}", num, adapter.display, default_marker);
+                println!("  [{}] {}{}", num, interface.display, default_marker);
             }
 
-            print!("\nSelect adapter [{}]: ", default_idx);
+            print!("\nSelect interface [{}]: ", default_idx);
             io::stdout().flush()?;
 
             let mut input = String::new();
@@ -393,13 +406,17 @@ pub fn select_adapter(available: &[AdapterInfo], preference: Option<&str>) -> Re
     }
 }
 
+pub fn select_adapter(available: &[AdapterInfo], preference: Option<&str>) -> Result<String> {
+    select_interface(available, preference)
+}
+
 // =============================================================================
 // Internal
 // =============================================================================
 
 /// Detect if CLI is installed and get version
-fn detect_cli(adapter: &Adapter) -> (bool, Option<String>) {
-    for cmd in adapter.detect_commands() {
+fn detect_cli(interface: &InterfaceKind) -> (bool, Option<String>) {
+    for cmd in interface.detect_commands() {
         if let Some(version) = try_command(cmd) {
             return (true, Some(version));
         }
@@ -430,16 +447,16 @@ fn try_command(cmd: &str) -> Option<String> {
     }
 }
 
-/// Get MCP config for an adapter
-fn get_mcp_config(adapter: &Adapter) -> Option<McpConfig> {
-    match adapter {
-        Adapter::Claude => Some(McpConfig {
+/// Get MCP config for an interface
+fn get_mcp_config(interface: &InterfaceKind) -> Option<McpConfig> {
+    match interface {
+        InterfaceKind::Claude => Some(McpConfig {
             config_path: "~/.claude/settings.json".to_string(),
             config_format: "json".to_string(),
             config_template: Some(MCP_TEMPLATE.to_string()),
         }),
-        Adapter::Gemini => None,   // TBD
-        Adapter::OpenCode => None, // TBD
+        InterfaceKind::Gemini => None,   // TBD
+        InterfaceKind::OpenCode => None, // TBD
     }
 }
 
@@ -507,17 +524,17 @@ fn write_canonical_agents(project_path: &Path, force_rewrite: bool) -> Result<()
 }
 
 fn write_vendor_bootstrap(
-    adapter: &Adapter,
+    interface: &InterfaceKind,
     project_path: &Path,
     force_rewrite: bool,
 ) -> Result<()> {
-    let Some(bootstrap_path) = adapter
+    let Some(bootstrap_path) = interface
         .vendor_bootstrap_file()
         .map(|file| project_path.join(file))
     else {
         return Ok(());
     };
-    let section = vendor_shim_section(adapter);
+    let section = vendor_shim_section(interface);
 
     let new_content = if bootstrap_path.exists() && !force_rewrite {
         let content = fs::read_to_string(&bootstrap_path)
@@ -525,10 +542,10 @@ fn write_vendor_bootstrap(
         if content.contains(MARKER_START) && content.contains(MARKER_END) {
             update_or_append_section(&content, &section)
         } else {
-            managed_shell(&format!("{} Instructions", adapter.display()), &section)
+            managed_shell(&format!("{} Instructions", interface.display()), &section)
         }
     } else {
-        managed_shell(&format!("{} Instructions", adapter.display()), &section)
+        managed_shell(&format!("{} Instructions", interface.display()), &section)
     };
 
     fs::write(&bootstrap_path, new_content)
@@ -615,15 +632,15 @@ Use CLI/native fallbacks instead:\n\
     format!("{header}{body}")
 }
 
-fn vendor_shim_section(adapter: &Adapter) -> String {
-    let template = match adapter {
-        Adapter::Claude => interface_assets::claude_shim_template(),
-        Adapter::Gemini => interface_assets::gemini_shim_template(),
-        Adapter::OpenCode => return String::new(),
+fn vendor_shim_section(interface: &InterfaceKind) -> String {
+    let template = match interface {
+        InterfaceKind::Claude => interface_assets::claude_shim_template(),
+        InterfaceKind::Gemini => interface_assets::gemini_shim_template(),
+        InterfaceKind::OpenCode => return String::new(),
     };
     render_template(
         &template,
-        &[("{{display_name}}", adapter.display().to_string())],
+        &[("{{display_name}}", interface.display().to_string())],
     )
 }
 
@@ -666,29 +683,47 @@ mod tests {
     }
 
     #[test]
-    fn test_adapter_names() {
-        assert_eq!(Adapter::Claude.name(), "claude");
-        assert_eq!(Adapter::Gemini.name(), "gemini");
-        assert_eq!(Adapter::OpenCode.name(), "opencode");
+    fn test_interface_names() {
+        assert_eq!(InterfaceKind::Claude.name(), "claude");
+        assert_eq!(InterfaceKind::Gemini.name(), "gemini");
+        assert_eq!(InterfaceKind::OpenCode.name(), "opencode");
     }
 
     #[test]
-    fn test_adapter_from_name() {
-        assert_eq!(Adapter::from_name("claude"), Some(Adapter::Claude));
-        assert_eq!(Adapter::from_name("CLAUDE"), Some(Adapter::Claude));
-        assert_eq!(Adapter::from_name("opencode"), Some(Adapter::OpenCode));
-        assert_eq!(Adapter::from_name("OpenCode"), Some(Adapter::OpenCode));
-        assert_eq!(Adapter::from_name("unknown"), None);
+    fn test_interface_from_name() {
+        assert_eq!(
+            InterfaceKind::from_name("claude"),
+            Some(InterfaceKind::Claude)
+        );
+        assert_eq!(
+            InterfaceKind::from_name("CLAUDE"),
+            Some(InterfaceKind::Claude)
+        );
+        assert_eq!(
+            InterfaceKind::from_name("opencode"),
+            Some(InterfaceKind::OpenCode)
+        );
+        assert_eq!(
+            InterfaceKind::from_name("OpenCode"),
+            Some(InterfaceKind::OpenCode)
+        );
+        assert_eq!(InterfaceKind::from_name("unknown"), None);
     }
 
     #[test]
     fn test_bootstrap_files() {
-        assert_eq!(Adapter::Claude.bootstrap_file(), "CLAUDE.md");
-        assert_eq!(Adapter::Gemini.bootstrap_file(), "GEMINI.md");
-        assert_eq!(Adapter::OpenCode.bootstrap_file(), "AGENTS.md");
-        assert_eq!(Adapter::Claude.vendor_bootstrap_file(), Some("CLAUDE.md"));
-        assert_eq!(Adapter::Gemini.vendor_bootstrap_file(), Some("GEMINI.md"));
-        assert_eq!(Adapter::OpenCode.vendor_bootstrap_file(), None);
+        assert_eq!(InterfaceKind::Claude.bootstrap_file(), "CLAUDE.md");
+        assert_eq!(InterfaceKind::Gemini.bootstrap_file(), "GEMINI.md");
+        assert_eq!(InterfaceKind::OpenCode.bootstrap_file(), "AGENTS.md");
+        assert_eq!(
+            InterfaceKind::Claude.vendor_bootstrap_file(),
+            Some("CLAUDE.md")
+        );
+        assert_eq!(
+            InterfaceKind::Gemini.vendor_bootstrap_file(),
+            Some("GEMINI.md")
+        );
+        assert_eq!(InterfaceKind::OpenCode.vendor_bootstrap_file(), None);
     }
 
     #[test]
@@ -723,7 +758,7 @@ mod tests {
 
     #[test]
     fn vendor_shim_points_to_root_agents() {
-        let section = vendor_shim_section(&Adapter::Gemini);
+        let section = vendor_shim_section(&InterfaceKind::Gemini);
         assert!(section.contains("Read `AGENTS.md` first."));
         assert!(section.contains("compatibility shim"));
     }
@@ -744,47 +779,47 @@ mod tests {
     }
 
     #[test]
-    fn test_adapters_list() {
-        assert!(ADAPTERS.contains(&"claude"));
-        assert!(ADAPTERS.contains(&"gemini"));
-        assert!(ADAPTERS.contains(&"opencode"));
-        assert_eq!(ADAPTERS.len(), 3);
+    fn test_interfaces_list() {
+        assert!(INTERFACES.contains(&"claude"));
+        assert!(INTERFACES.contains(&"gemini"));
+        assert!(INTERFACES.contains(&"opencode"));
+        assert_eq!(INTERFACES.len(), 3);
     }
 
     #[test]
     fn test_select_adapter_zero_available() {
-        let available: Vec<AdapterInfo> = vec![];
-        let result = select_adapter(&available, None);
+        let available: Vec<InterfaceInfo> = vec![];
+        let result = select_interface(&available, None);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("No AI adapters detected"));
+        assert!(err.contains("No AI interfaces detected"));
     }
 
     #[test]
     fn test_select_adapter_single_available() {
-        let available = vec![AdapterInfo {
+        let available = vec![InterfaceInfo {
             name: "claude".to_string(),
             display: "Claude Code".to_string(),
             detected: true,
             version: Some("1.0".to_string()),
             mcp: None,
         }];
-        let result = select_adapter(&available, None);
+        let result = select_interface(&available, None);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "claude");
     }
 
     #[test]
     fn test_select_adapter_single_ignores_preference() {
-        let available = vec![AdapterInfo {
+        let available = vec![InterfaceInfo {
             name: "gemini".to_string(),
             display: "Gemini CLI".to_string(),
             detected: true,
             version: None,
             mcp: None,
         }];
-        // Even with claude preference, returns the only available adapter
-        let result = select_adapter(&available, Some("claude"));
+        // Even with claude preference, returns the only available interface
+        let result = select_interface(&available, Some("claude"));
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "gemini");
     }

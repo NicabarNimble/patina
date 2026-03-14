@@ -128,7 +128,7 @@ pub fn execute(json_output: bool) -> Result<i32> {
 
     // Check project status - use adapters.default as the LLM
     let llm = &config.adapters.default;
-    let adapter = patina::adapters::get_adapter(llm);
+    let adapter = patina::interface::runtime::get_interface_provider(llm);
     let adapter_version = adapter
         .check_for_updates(&project_root)?
         .map(|(current, _)| current);

@@ -148,7 +148,7 @@ fn trigger_on_scrape_sources() {
         Err(_) => return,
     };
 
-    let sources = match patina::broker::sources::load_project_sources(&project_root) {
+    let sources = match patina::mother::broker::sources::load_project_sources(&project_root) {
         Ok(Some(ps)) => ps.sources,
         _ => return,
     };
@@ -165,7 +165,7 @@ fn trigger_on_scrape_sources() {
     println!("\n🔗 Triggering {} on-scrape source(s)...", on_scrape.len());
 
     for source in on_scrape {
-        match patina::broker::run_source(source, &project_root, false) {
+        match patina::mother::broker::run_source(source, &project_root, false) {
             Ok(result) => {
                 println!(
                     "  {} — {} written, {} dedup",

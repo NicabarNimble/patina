@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use patina::git;
-use patina::interface::adapter as load_adapter;
+use patina::interface::interface as load_interface;
 use patina::session::{self, ArchiveSessionRequest, SessionManager};
 
 use super::AiSessionCommands;
@@ -246,7 +246,7 @@ fn resolve_native_session_adapter(project_root: &Path, adapter: Option<&str>) ->
             project_root,
         )?);
     patina::interface::ensure_ai_project_config(project_root, None)?;
-    let _ = load_adapter(&resolved).map_err(|_| {
+    let _ = load_interface(&resolved).map_err(|_| {
         anyhow::anyhow!(
             "Unsupported Patina AI interface '{}'. Choose one of: {}.",
             resolved,

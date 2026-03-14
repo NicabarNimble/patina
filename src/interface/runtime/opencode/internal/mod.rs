@@ -1,21 +1,21 @@
-//! Internal implementation for Gemini adapter
+//! Internal implementation for OpenCode adapter
 
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
-use crate::adapters::templates;
 use crate::environment::Environment;
+use crate::interface::runtime::templates;
 
-/// Initialize Gemini project structure.
+/// Initialize OpenCode project structure.
 ///
 /// Native Patina projection now uses root `AGENTS.md` as the canonical
-/// instruction surface. `.gemini/` only carries adapter-local command assets.
+/// instruction surface. `.opencode/` only carries adapter-local command assets.
 pub fn init_project(
     project_path: &Path,
     _project_name: &str,
     _environment: &Environment,
 ) -> Result<()> {
-    templates::copy_to_project("gemini", project_path)
+    templates::copy_to_project("opencode", project_path)
 }
 
 /// Get canonical context file path.

@@ -63,8 +63,8 @@ impl Llm {
 #[command(author, version = env!("CARGO_PKG_VERSION"), about = "Context management for AI-assisted development", long_about = None)]
 struct Cli {
     /// AI interface to launch (claude, gemini, opencode). Default: from config.
-    #[arg(long = "adapter", global = true)]
-    adapter: Option<String>,
+    #[arg(long = "interface", alias = "adapter", global = true)]
+    interface: Option<String>,
 
     /// Disable tmux session wrapping (launch adapter directly)
     #[arg(long = "no-tmux", global = true)]
@@ -909,9 +909,9 @@ enum DevCommands {
         dry_run: bool,
     },
 
-    /// Sync adapter templates from resources
+    /// Sync interface templates from resources
     SyncAdapters {
-        /// Specific adapter to sync (claude, gemini, etc)
+        /// Specific interface to sync (claude, gemini, opencode)
         adapter: Option<String>,
 
         /// Dry run - show what would change
@@ -1134,7 +1134,7 @@ fn main() -> Result<()> {
         None => {
             let options = commands::launch::LaunchOptions {
                 path: None,
-                adapter: cli.adapter,
+                adapter: cli.interface,
                 auto_start_mother: true,
                 auto_init: true,
                 no_tmux: cli.no_tmux,
@@ -1860,6 +1860,15 @@ fn main() -> Result<()> {
             }
             commands::spec::SpecCommands::Show { id, handoff, json } => {
                 commands::spec::show(&id, handoff, json)?;
+            }
+            commands::spec::SpecCommands::Prompt { id, json } => {
+                commands::spec::prompt(&id, json)?;
+            }
+            commands::spec::SpecCommands::Handoff { id, json } => {
+                commands::spec::handoff(&id, json)?;
+            }
+            commands::spec::SpecCommands::Packet { id, json } => {
+                commands::spec::packet(&id, json)?;
             }
             commands::spec::SpecCommands::Set {
                 id,

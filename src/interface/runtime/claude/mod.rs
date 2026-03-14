@@ -6,8 +6,8 @@
 //! - MCP (Model Context Protocol) support
 //! - Custom command definitions
 
-use crate::adapters::LLMAdapter;
 use crate::environment::Environment;
+use crate::interface::runtime::InterfaceProvider;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
@@ -32,7 +32,7 @@ impl Default for ClaudeAdapter {
     }
 }
 
-impl LLMAdapter for ClaudeAdapter {
+impl InterfaceProvider for ClaudeAdapter {
     fn name(&self) -> &'static str {
         "claude"
     }

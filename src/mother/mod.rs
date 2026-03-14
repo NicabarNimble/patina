@@ -26,13 +26,13 @@
 //! ```
 
 pub(crate) mod belief_host;
+pub mod broker;
 pub(crate) mod checkpoint;
 mod child;
 pub(crate) mod events;
 mod graph;
 pub(crate) mod graph_host;
 mod internal;
-pub(crate) mod lake_host;
 pub(crate) mod state;
 pub(crate) mod tasks;
 mod toys;

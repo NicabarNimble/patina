@@ -20,7 +20,7 @@ use crate::connect::internal::model::{
 /// The broker must not proceed without auth.
 pub(crate) fn resolve_auth(record: &ConnectionRecord) -> Result<AuthPlan, ConnectError> {
     // 1. Resolve child binary existence
-    if crate::broker::spawn::resolve_child_binary(&record.auth.child).is_err() {
+    if crate::mother::broker::resolve_child_binary(&record.auth.child).is_err() {
         return Err(ConnectError::ChildNotFound {
             connection: record.identity.name.clone(),
             child: record.auth.child.clone(),

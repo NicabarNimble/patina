@@ -27,7 +27,7 @@ pub fn ensure_ready(
     project_path: &std::path::Path,
     force: bool,
 ) -> Result<(
-    Box<dyn patina::interface::AiAdapter>,
+    Box<dyn patina::interface::AiInterface>,
     patina::interface::BootstrapResult,
 )> {
     internal::ensure_interface_ready(name, project_path, force)

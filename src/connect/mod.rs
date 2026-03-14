@@ -12,10 +12,12 @@
 //!   (durable TOML)       (vault seam)      (execution-ready)
 //! ```
 
+mod access;
 mod internal;
 pub(crate) mod providers;
 
 // Domain model types
+pub use access::{require_auth_plan_domain, resolve_credential_for_domain};
 pub use internal::model::{
     AuthConfig, AuthMethod, AuthPlan, ConnectError, ConnectionIdentity, ConnectionRecord,
     ConnectionScope, ConnectionStatus, ConnectionSummary, InjectionStrategy, ResolvedCredential,

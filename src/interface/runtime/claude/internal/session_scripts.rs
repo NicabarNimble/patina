@@ -10,16 +10,16 @@ use std::path::Path;
 use super::paths;
 
 // Embed command definitions from resources
-const SESSION_START_MD: &str = include_str!("../../../../resources/claude/session-start.md");
-const SESSION_UPDATE_MD: &str = include_str!("../../../../resources/claude/session-update.md");
-const SESSION_NOTE_MD: &str = include_str!("../../../../resources/claude/session-note.md");
-const SESSION_END_MD: &str = include_str!("../../../../resources/claude/session-end.md");
+const SESSION_START_MD: &str = include_str!("../../../../../resources/claude/session-start.md");
+const SESSION_UPDATE_MD: &str = include_str!("../../../../../resources/claude/session-update.md");
+const SESSION_NOTE_MD: &str = include_str!("../../../../../resources/claude/session-note.md");
+const SESSION_END_MD: &str = include_str!("../../../../../resources/claude/session-end.md");
 
 // Embed patina-review command from resources
-const PATINA_REVIEW_MD: &str = include_str!("../../../../resources/claude/patina-review.md");
+const PATINA_REVIEW_MD: &str = include_str!("../../../../../resources/claude/patina-review.md");
 
 // Embed /spec skill from resources
-const SPEC_MD: &str = include_str!("../../../../resources/claude/spec.md");
+const SPEC_MD: &str = include_str!("../../../../../resources/claude/spec.md");
 
 fn wrapper_start() -> String {
     "#!/bin/bash\nexec env PATINA_AI_INTERFACE=claude patina ai session start --json --adapter claude \"$@\"\n".to_string()

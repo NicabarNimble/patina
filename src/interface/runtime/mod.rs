@@ -9,14 +9,14 @@ use anyhow::Result;
 use std::path::Path;
 
 // Re-export launcher types for convenience
-pub use launch::{Adapter, AdapterInfo, McpConfig};
+pub use launch::{InterfaceInfo, InterfaceKind, McpConfig};
 
-/// Trait for LLM-specific implementations
-pub trait LLMAdapter {
-    /// Get the name of this LLM adapter
+/// Trait for AI interface-specific implementations
+pub trait InterfaceProvider {
+    /// Get the name of this interface
     fn name(&self) -> &'static str;
 
-    /// Initialize LLM-specific files and directories during project creation
+    /// Initialize interface-specific files and directories during project creation
     fn init_project(
         &self,
         project_path: &Path,
@@ -25,7 +25,7 @@ pub trait LLMAdapter {
     ) -> Result<()>;
 
     /// Called after project initialization to perform additional setup
-    /// This is where adapters can create development environment files, etc.
+    /// This is where interfaces can create development environment files, etc.
     fn post_init(&self, _project_path: &Path) -> Result<()> {
         Ok(()) // Default: no-op
     }
@@ -33,21 +33,21 @@ pub trait LLMAdapter {
     // TODO: Figure out actual pattern extraction and context generation
     // For now, removing the broken pattern-based approach
 
-    /// Get custom commands for this LLM
+    /// Get custom commands for this interface
     fn get_custom_commands(&self) -> Vec<(&'static str, &'static str)> {
         vec![]
     }
 
-    /// Get the main context file path for this LLM
+    /// Get the main context file path for this interface
     fn get_context_file_path(&self, project_path: &Path) -> std::path::PathBuf;
 
-    /// Check if adapter files need updating
+    /// Check if interface files need updating
     /// Returns Some((current_version, available_version)) if update available
     fn check_for_updates(&self, _project_path: &Path) -> Result<Option<(String, String)>> {
         Ok(None) // Default: no updates
     }
 
-    /// Update adapter files to latest version
+    /// Update interface files to latest version
     fn update_adapter_files(&self, _project_path: &Path) -> Result<()> {
         Ok(()) // Default: no-op
     }
@@ -62,20 +62,20 @@ pub trait LLMAdapter {
         Vec::new() // Default: no changelog
     }
 
-    /// Get the sessions directory path for this adapter
+    /// Get the sessions directory path for this interface
     fn get_sessions_path(&self, _project_path: &Path) -> Option<std::path::PathBuf> {
         None // Default: no sessions directory
     }
 
-    /// Get the version of this adapter
+    /// Get the version of this interface
     fn version(&self) -> &'static str {
         "0.1.0" // Default version
     }
 }
 
-/// Get an LLM adapter by name
-pub fn get_adapter(llm_name: &str) -> Box<dyn LLMAdapter> {
-    match llm_name.to_lowercase().as_str() {
+/// Get an AI interface provider by name
+pub fn get_interface_provider(interface_name: &str) -> Box<dyn InterfaceProvider> {
+    match interface_name.to_lowercase().as_str() {
         "claude" => Box::new(claude::ClaudeAdapter),
         "gemini" => Box::new(gemini::GeminiAdapter::new()),
         "opencode" => Box::new(opencode::OpenCodeAdapter::new()),

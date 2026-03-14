@@ -129,7 +129,7 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         );
     }
 
-    let interface_info = patina::adapters::launch::get(&interface_name)?;
+    let interface_info = patina::interface::runtime::launch::get(&interface_name)?;
     if !interface_info.detected {
         bail!(
             "Interface '{}' ({}) is not installed.",

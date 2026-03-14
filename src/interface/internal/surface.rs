@@ -1,12 +1,12 @@
 use anyhow::Result;
 use std::path::Path;
 
-use crate::adapters::launch;
 use crate::interface::internal::bootstrap::bundle_deployment_status;
 use crate::interface::internal::bundle::{
     canonical_interface_name, canonicalize_required_interface, interface_bundle,
     interface_bundle_catalog,
 };
+use crate::interface::runtime::launch;
 use crate::interface::{self, BootstrapResult, ProjectionMode};
 use crate::project;
 
@@ -160,7 +160,7 @@ fn choose_default_interface(
         return Ok(name.to_string());
     }
 
-    if let Ok(workspace_default) = launch::default_name() {
+    if let Ok(workspace_default) = launch::default_interface_name() {
         if let Some(name) = canonical_interface_name(&workspace_default) {
             return Ok(name.to_string());
         }

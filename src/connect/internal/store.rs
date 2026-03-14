@@ -5,10 +5,10 @@
 //! Writes credentials to vault via `secrets::add_secret`.
 //! Never holds decrypted credential values.
 
-use crate::broker::sources;
 use crate::connect::internal::model::{
     ConnectError, ConnectionRecord, ConnectionStatus, ConnectionSummary,
 };
+use crate::mother::broker::sources;
 use crate::paths;
 use std::fs;
 

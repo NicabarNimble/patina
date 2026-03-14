@@ -1,6 +1,6 @@
 //! Workspace module - Global Patina configuration and first-run setup
 //!
-//! Manages `~/.patina/` directory structure, global config, adapter installation,
+//! Manages `~/.patina/` directory structure, global config, interface installation,
 //! and workspace folder. This is the foundation for the launcher architecture.
 //!
 //! # Example
@@ -16,7 +16,7 @@
 //!
 //!     // Load global config
 //!     let config = workspace::config()?;
-//!     println!("Default adapter: {}", config.adapter.default);
+//!     println!("Default interface: {}", config.adapter.default);
 //!     Ok(())
 //! }
 //! ```
@@ -37,7 +37,7 @@ pub fn is_first_run() -> bool {
 /// Creates:
 /// - `~/.patina/` directory structure
 /// - `~/Projects/Patina` workspace folder (configurable)
-/// - Default adapters (claude, gemini, codex)
+/// - Default interfaces (claude, gemini, opencode)
 /// - Global config file
 pub fn setup() -> Result<SetupResult> {
     internal::setup()
@@ -75,11 +75,11 @@ pub struct SetupResult {
     pub mother_path: std::path::PathBuf,
     /// Path to workspace folder
     pub workspace_path: std::path::PathBuf,
-    /// Installed adapters
+    /// Installed interfaces
     pub adapters_installed: Vec<String>,
-    /// Detected adapter CLIs
+    /// Detected interface CLIs
     pub adapters_detected: Vec<String>,
-    /// Default adapter set
+    /// Default interface set
     pub default_adapter: Option<String>,
 }
 

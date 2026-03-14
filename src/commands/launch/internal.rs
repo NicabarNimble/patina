@@ -11,8 +11,8 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
-use patina::adapters::launch as adapters;
 use patina::git;
+use patina::interface::runtime::launch as interfaces;
 use patina::paths;
 use patina::project;
 
@@ -23,7 +23,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
     let project_path = resolve_project_path(options.path.as_deref())?;
     let explicit_adapter: Option<String> = options.adapter.clone();
     if let Some(ref name) = explicit_adapter {
-        let adapter_info = adapters::get(name)?;
+        let adapter_info = interfaces::get(name)?;
         if !adapter_info.detected {
             bail!(
                 "Adapter '{}' ({}) is not installed.\n\
@@ -57,7 +57,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
             );
         }
     } else {
-        // Existing project - resolve adapter name
+        // Existing project - resolve interface name
         // Priority: explicit flag > project default > global default
         let project_config = project::load_with_migration(&project_path)?;
         adapter_name = explicit_adapter.unwrap_or_else(|| {
@@ -65,16 +65,16 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
             if !project_config.adapters.default.is_empty() {
                 project_config.adapters.default.clone()
             } else {
-                adapters::default_name().unwrap_or_else(|_| "claude".to_string())
+                interfaces::default_interface_name().unwrap_or_else(|_| "claude".to_string())
             }
         });
 
-        // Validate adapter is installed
-        let adapter_info = adapters::get(&adapter_name)?;
+        // Validate interface is installed
+        let adapter_info = interfaces::get(&adapter_name)?;
         if !adapter_info.detected {
             bail!(
-                "Adapter '{}' ({}) is not installed.\n\
-                 Install it and try again, or use a different adapter.",
+                "Interface '{}' ({}) is not installed.\n\
+                 Install it and try again, or use a different interface.",
                 adapter_name,
                 adapter_info.display
             );
@@ -177,10 +177,10 @@ pub fn start_mother_daemon() -> Result<()> {
 ///
 /// Returns:
 /// - Ok(None) - user declined to init
-/// - Ok(Some(adapter_name)) - user accepted, project initialized with this adapter
+/// - Ok(Some(interface_name)) - user accepted, project initialized with this interface
 ///
-/// If `explicit_adapter` is Some, uses that adapter without prompting for selection.
-/// If None, detects available adapters and prompts user to choose.
+/// If `explicit_adapter` is Some, uses that interface without prompting for selection.
+/// If None, detects available interfaces and prompts user to choose.
 pub(crate) fn prompt_are_you_lost(
     project_path: &Path,
     explicit_adapter: Option<&str>,
@@ -227,22 +227,22 @@ pub(crate) fn prompt_are_you_lost(
         return Ok(None);
     }
 
-    // User wants to init - determine which adapter to use
+    // User wants to init - determine which interface to use
     let adapter_name = if let Some(explicit) = explicit_adapter {
-        // Flow A: explicit adapter from --adapter flag
+        // Flow A: explicit interface from --interface flag
         explicit.to_string()
     } else {
-        // Flow B: detect available adapters and let user choose
-        let all_adapters = adapters::list()?;
+        // Flow B: detect available interfaces and let user choose
+        let all_adapters = interfaces::list()?;
         let available: Vec<_> = all_adapters.into_iter().filter(|a| a.detected).collect();
 
         // Get global default as preference
-        let preference = adapters::default_name().ok();
+        let preference = interfaces::default_interface_name().ok();
 
-        adapters::select_adapter(&available, preference.as_deref())?
+        interfaces::select_interface(&available, preference.as_deref())?
     };
 
-    // Initialize the project with selected adapter
+    // Initialize the project with selected interface
     println!();
     if initialize_project(project_path, &adapter_name)? {
         Ok(Some(adapter_name))

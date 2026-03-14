@@ -1,4 +1,5 @@
 mod internal;
+pub mod runtime;
 
 use anyhow::{bail, Result};
 use std::path::{Path, PathBuf};
@@ -43,13 +44,13 @@ pub struct LaunchRequest {
     pub env: Vec<(String, String)>,
 }
 
-pub trait AiAdapter {
+pub trait AiInterface {
     fn name(&self) -> &'static str;
     fn display_name(&self) -> &'static str;
     fn interface_kind(&self) -> InterfaceKind;
 
     fn detect(&self) -> Result<AdapterDetection> {
-        let info = crate::adapters::launch::get(self.name())?;
+        let info = crate::interface::runtime::launch::get(self.name())?;
         Ok(AdapterDetection {
             detected: info.detected,
             display_name: info.display,
@@ -78,18 +79,18 @@ pub trait AiAdapter {
     }
 }
 
-pub fn adapter(name: &str) -> Result<Box<dyn AiAdapter>> {
+pub fn interface(name: &str) -> Result<Box<dyn AiInterface>> {
     match name {
         "claude" => Ok(Box::new(ClaudeInterface)),
         "opencode" => Ok(Box::new(OpenCodeInterface)),
         "gemini" => Ok(Box::new(GeminiInterface)),
-        other => bail!("Unsupported ai adapter: {}", other),
+        other => bail!("Unsupported ai interface: {}", other),
     }
 }
 
 struct ClaudeInterface;
 
-impl AiAdapter for ClaudeInterface {
+impl AiInterface for ClaudeInterface {
     fn name(&self) -> &'static str {
         "claude"
     }
@@ -109,7 +110,7 @@ impl AiAdapter for ClaudeInterface {
 
 struct OpenCodeInterface;
 
-impl AiAdapter for OpenCodeInterface {
+impl AiInterface for OpenCodeInterface {
     fn name(&self) -> &'static str {
         "opencode"
     }
@@ -129,7 +130,7 @@ impl AiAdapter for OpenCodeInterface {
 
 struct GeminiInterface;
 
-impl AiAdapter for GeminiInterface {
+impl AiInterface for GeminiInterface {
     fn name(&self) -> &'static str {
         "gemini"
     }

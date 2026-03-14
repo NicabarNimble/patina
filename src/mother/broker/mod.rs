@@ -11,17 +11,15 @@ pub mod routing;
 pub mod sources;
 pub mod spawn;
 
+pub use self::spawn::resolve_child_binary;
+
 use anyhow::{Context, Result};
-use patina_pipe_types::manifest::ChildManifest;
-use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use self::cursor::{get_cursor, write_facts_with_cursor};
-use self::lifecycle::{BrokerChild, NativeChild, DEFAULT_MAX_BATCH_SIZE};
-use self::routing::{validate_fact, ValidatedFact, WriteResult};
+use self::cursor::get_cursor;
+use self::routing::WriteResult;
 use self::sources::{Destination, SourceEntry};
-use self::spawn::spawn_native_with_plan;
 
 /// Run a single source: resolve auth, spawn child, fetch facts, validate, route to destination.
 ///
@@ -37,6 +35,14 @@ pub fn run_source(
     project_root: &Path,
     no_sandbox: bool,
 ) -> Result<WriteResult> {
+    if matches!(source.destination, Destination::Project) {
+        anyhow::bail!(
+            "source '{}' uses destination=project, which is retired. Set [sources.{}.destination] type = 'lake' and lake = '<name>'",
+            source.name,
+            source.name
+        );
+    }
+
     // 1. Load connection record from connect module
     let record = crate::connect::load(&source.connection)
         .map_err(|e| anyhow::anyhow!("{}", e))
@@ -49,99 +55,11 @@ pub fn run_source(
 
     // 3. Branch BEFORE spawn based on destination
     match &source.destination {
-        Destination::Project => {
-            // Current path: Mother spawns connector, drives fetch
-            let (mut child, manifest) =
-                spawn_native_with_plan(&auth_plan, no_sandbox, &record.identity.provider, None)
-                    .with_context(|| format!("spawning child for source '{}'", source.name))?;
-
-            write_to_project(source, project_root, &mut child, &manifest)
-        }
+        Destination::Project => unreachable!("project destination is rejected above"),
         Destination::Lake { name } => {
             route_lake_via_knowledge_child(source, project_root, name, &auth_plan, no_sandbox)
         }
     }
-}
-
-/// Write facts to the project's events.db (current default behavior).
-///
-/// Opens events.db, reads stored cursor, fetches from child, validates,
-/// writes facts + cursor transactionally, shuts down child.
-fn write_to_project(
-    source: &SourceEntry,
-    project_root: &Path,
-    child: &mut NativeChild,
-    manifest: &ChildManifest,
-) -> Result<WriteResult> {
-    // 4. Open destination events.db
-    let events_conn = crate::eventlog::open_events_db_at(project_root)
-        .with_context(|| format!("opening events.db for {}", project_root.display()))?;
-
-    // 5. Get stored cursor
-    let stored_cursor = get_cursor(&events_conn, &source.name)?;
-
-    // 6. Build fetch params — shared type with boundary conversions
-    let fetch_params = patina_pipe_types::FetchParams {
-        types: source.types.clone(),
-        since: stored_cursor,
-        limit: DEFAULT_MAX_BATCH_SIZE as u64,
-        params: serde_json::to_value(&source.params)
-            .with_context(|| "serializing source params to JSON")?,
-    };
-
-    // 7. Fetch facts from child
-    let mut validated_facts: Vec<ValidatedFact> = Vec::new();
-    let mut schema_cache: HashMap<String, HashSet<String>> = HashMap::new();
-    let child_name = child.name().to_string();
-
-    let fetch_result = child.fetch(&fetch_params, &mut |fact| {
-        match validate_fact(
-            &fact,
-            manifest,
-            &child_name,
-            project_root,
-            &mut schema_cache,
-        ) {
-            Ok(validated) => {
-                validated_facts.push(validated);
-                Ok(())
-            }
-            Err(e) => {
-                eprintln!("[broker] {}: {}", child_name, e);
-                // Validation errors are logged and the fact is dropped,
-                // but we don't abort the entire fetch
-                Ok(())
-            }
-        }
-    })?;
-
-    // 8. Shutdown child
-    if let Err(e) = child.shutdown() {
-        eprintln!("[broker] {}: shutdown warning: {}", source.name, e);
-    }
-
-    // 9. Write facts + cursor transactionally
-    let write_result = write_facts_with_cursor(
-        &events_conn,
-        &source.name,
-        &validated_facts,
-        fetch_result.cursor.as_deref(),
-    )?;
-
-    // 10. Report
-    eprintln!(
-        "[broker] {}: {} written, {} dedup{}",
-        source.name,
-        write_result.inserted,
-        write_result.dedup_skipped,
-        write_result
-            .cursor
-            .as_ref()
-            .map(|c| format!(", cursor: {}", c))
-            .unwrap_or_default()
-    );
-
-    Ok(write_result)
 }
 
 /// Grant lake capabilities — spawn ducklake child, grant toy approvals, call pipe/run.
@@ -158,23 +76,14 @@ fn route_lake_via_knowledge_child(
 ) -> Result<WriteResult> {
     const REQUIRED_TYPES: [&str; 2] = ["issues", "prs"];
 
-    if auth_plan.credential.is_none() {
-        anyhow::bail!(
-            "source '{}' connection has no OAuth credential; run `patina connect refresh {}`",
-            source.name,
-            source.connection
-        );
-    }
-    if !auth_plan
-        .allowed_domains
-        .iter()
-        .any(|d| d == "api.github.com")
-    {
-        anyhow::bail!(
-            "source '{}' connection is not scoped for api.github.com",
-            source.name
-        );
-    }
+    crate::connect::require_auth_plan_domain(&source.connection, auth_plan, "api.github.com")
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "source '{}' connection is invalid for GitHub lake route: {}",
+                source.name,
+                e
+            )
+        })?;
 
     let runtime = crate::mother::KnowledgeRuntimeStore::default();
     let plugin_name = "patina-ducklake";
@@ -393,7 +302,7 @@ fn load_ducklake_knowledge_child(
     }
     candidates.push((
         std::path::PathBuf::from("target/wasm32-wasip2/release/patina_plugin_ducklake.wasm"),
-        std::path::PathBuf::from("children/ducklake-wasm/plugin.toml"),
+        std::path::PathBuf::from("children/ducklake/plugin.toml"),
     ));
 
     for (wasm_path, manifest_path) in candidates {
@@ -427,7 +336,7 @@ fn load_ducklake_knowledge_child(
     }
 
     anyhow::bail!(
-        "ducklake knowledge-child component not found. Install one under {} or build children/ducklake-wasm for wasm32-wasip2",
+        "ducklake knowledge-child component not found. Install one under {} or build children/ducklake for wasm32-wasip2",
         crate::paths::plugin::children_dir().display()
     )
 }
@@ -497,6 +406,10 @@ pub fn status(project_root: &Path) -> Result<Vec<SourceStatus>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+
+    use crate::connect::{AuthPlan, InjectionStrategy, ResolvedCredential};
+    use crate::mother::broker::sources::{Destination, SourceEntry};
 
     fn temp_runtime() -> crate::mother::KnowledgeRuntimeStore {
         let path =
@@ -585,6 +498,102 @@ mod tests {
                 .unwrap()
                 .as_deref(),
             Some("cursor-v1")
+        );
+    }
+
+    #[test]
+    fn lake_route_fails_closed_without_oauth_credential() {
+        let project = tempfile::tempdir().unwrap();
+        let source = SourceEntry {
+            name: "gh-main".to_string(),
+            connection: "github".to_string(),
+            params: HashMap::from([
+                (
+                    "owner".to_string(),
+                    toml::Value::String("NicabarNimble".into()),
+                ),
+                ("repo".to_string(), toml::Value::String("patina".into())),
+            ]),
+            types: vec!["issues".into(), "prs".into()],
+            schedule: "manual".to_string(),
+            destination: Destination::Lake {
+                name: "default".to_string(),
+            },
+        };
+        let auth_plan = AuthPlan {
+            child: "github-connector".to_string(),
+            credential: None,
+            allowed_domains: vec!["api.github.com".to_string()],
+        };
+
+        let error =
+            route_lake_via_knowledge_child(&source, project.path(), "default", &auth_plan, true)
+                .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("connection 'github' has no credential"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn lake_route_fails_closed_without_github_domain_scope() {
+        let project = tempfile::tempdir().unwrap();
+        let source = SourceEntry {
+            name: "gh-main".to_string(),
+            connection: "github".to_string(),
+            params: HashMap::from([
+                (
+                    "owner".to_string(),
+                    toml::Value::String("NicabarNimble".into()),
+                ),
+                ("repo".to_string(), toml::Value::String("patina".into())),
+            ]),
+            types: vec!["issues".into(), "prs".into()],
+            schedule: "manual".to_string(),
+            destination: Destination::Lake {
+                name: "default".to_string(),
+            },
+        };
+        let auth_plan = AuthPlan {
+            child: "github-connector".to_string(),
+            credential: Some(ResolvedCredential {
+                value: "token".to_string(),
+                injection: InjectionStrategy::Bearer,
+            }),
+            allowed_domains: vec!["example.com".to_string()],
+        };
+
+        let error =
+            route_lake_via_knowledge_child(&source, project.path(), "default", &auth_plan, true)
+                .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("connection 'github' is not allowed for api.github.com"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn run_source_rejects_project_destination_path() {
+        let project = tempfile::tempdir().unwrap();
+        let source = SourceEntry {
+            name: "legacy-project-path".to_string(),
+            connection: "github".to_string(),
+            params: HashMap::new(),
+            types: vec!["issues".into()],
+            schedule: "manual".to_string(),
+            destination: Destination::Project,
+        };
+
+        let error = run_source(&source, project.path(), true).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("destination=project, which is retired"),
+            "unexpected error: {error}"
         );
     }
 }

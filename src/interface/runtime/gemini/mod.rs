@@ -3,8 +3,8 @@
 //! Placeholder for future Gemini AI integration.
 //! Creates basic `.gemini/` structure with context file.
 
-use crate::adapters::LLMAdapter;
 use crate::environment::Environment;
+use crate::interface::runtime::InterfaceProvider;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
@@ -37,7 +37,7 @@ impl Default for GeminiAdapter {
     }
 }
 
-impl LLMAdapter for GeminiAdapter {
+impl InterfaceProvider for GeminiAdapter {
     fn name(&self) -> &'static str {
         "gemini"
     }

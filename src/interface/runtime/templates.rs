@@ -46,25 +46,25 @@ fn wrapper_end(adapter: &str) -> String {
 
 mod claude_templates {
     // Commands (markdown)
-    pub const SESSION_START_MD: &str = include_str!("../../resources/claude/session-start.md");
-    pub const SESSION_UPDATE_MD: &str = include_str!("../../resources/claude/session-update.md");
-    pub const SESSION_NOTE_MD: &str = include_str!("../../resources/claude/session-note.md");
-    pub const SESSION_END_MD: &str = include_str!("../../resources/claude/session-end.md");
-    pub const PATINA_REVIEW_MD: &str = include_str!("../../resources/claude/patina-review.md");
+    pub const SESSION_START_MD: &str = include_str!("../../../resources/claude/session-start.md");
+    pub const SESSION_UPDATE_MD: &str = include_str!("../../../resources/claude/session-update.md");
+    pub const SESSION_NOTE_MD: &str = include_str!("../../../resources/claude/session-note.md");
+    pub const SESSION_END_MD: &str = include_str!("../../../resources/claude/session-end.md");
+    pub const PATINA_REVIEW_MD: &str = include_str!("../../../resources/claude/patina-review.md");
 
     // /spec skill
-    pub const SPEC_MD: &str = include_str!("../../resources/claude/spec.md");
+    pub const SPEC_MD: &str = include_str!("../../../resources/claude/spec.md");
 
     // Skills - epistemic-beliefs
     pub const SKILL_EPISTEMIC_BELIEFS_MD: &str =
-        include_str!("../../resources/claude/skills/epistemic-beliefs/SKILL.md");
+        include_str!("../../../resources/claude/skills/epistemic-beliefs/SKILL.md");
     pub const SKILL_EPISTEMIC_BELIEFS_CREATE_SH: &str =
-        include_str!("../../resources/claude/skills/epistemic-beliefs/scripts/create-belief.sh");
+        include_str!("../../../resources/claude/skills/epistemic-beliefs/scripts/create-belief.sh");
     pub const SKILL_EPISTEMIC_BELIEFS_EXAMPLE_MD: &str = include_str!(
-        "../../resources/claude/skills/epistemic-beliefs/references/belief-example.md"
+        "../../../resources/claude/skills/epistemic-beliefs/references/belief-example.md"
     );
     pub const SKILL_EPISTEMIC_BELIEFS_VERIFICATION_SCHEMA_MD: &str = include_str!(
-        "../../resources/claude/skills/epistemic-beliefs/references/verification-schema.md"
+        "../../../resources/claude/skills/epistemic-beliefs/references/verification-schema.md"
     );
 }
 
@@ -74,15 +74,17 @@ mod claude_templates {
 
 mod gemini_templates {
     // Commands (TOML format for Gemini)
-    pub const SESSION_START_TOML: &str = include_str!("../../resources/gemini/session-start.toml");
+    pub const SESSION_START_TOML: &str =
+        include_str!("../../../resources/gemini/session-start.toml");
     pub const SESSION_UPDATE_TOML: &str =
-        include_str!("../../resources/gemini/session-update.toml");
-    pub const SESSION_NOTE_TOML: &str = include_str!("../../resources/gemini/session-note.toml");
-    pub const SESSION_END_TOML: &str = include_str!("../../resources/gemini/session-end.toml");
-    pub const PATINA_REVIEW_TOML: &str = include_str!("../../resources/gemini/patina-review.toml");
-    pub const SPEC_TOML: &str = include_str!("../../resources/gemini/spec.toml");
+        include_str!("../../../resources/gemini/session-update.toml");
+    pub const SESSION_NOTE_TOML: &str = include_str!("../../../resources/gemini/session-note.toml");
+    pub const SESSION_END_TOML: &str = include_str!("../../../resources/gemini/session-end.toml");
+    pub const PATINA_REVIEW_TOML: &str =
+        include_str!("../../../resources/gemini/patina-review.toml");
+    pub const SPEC_TOML: &str = include_str!("../../../resources/gemini/spec.toml");
     pub const EPISTEMIC_BELIEFS_TOML: &str =
-        include_str!("../../resources/gemini/epistemic-beliefs.toml");
+        include_str!("../../../resources/gemini/epistemic-beliefs.toml");
 }
 
 // =============================================================================
@@ -91,14 +93,15 @@ mod gemini_templates {
 
 mod opencode_templates {
     // Commands (markdown format, same as Claude)
-    pub const SESSION_START_MD: &str = include_str!("../../resources/opencode/session-start.md");
-    pub const SESSION_UPDATE_MD: &str = include_str!("../../resources/opencode/session-update.md");
-    pub const SESSION_NOTE_MD: &str = include_str!("../../resources/opencode/session-note.md");
-    pub const SESSION_END_MD: &str = include_str!("../../resources/opencode/session-end.md");
-    pub const PATINA_REVIEW_MD: &str = include_str!("../../resources/opencode/patina-review.md");
-    pub const SPEC_MD: &str = include_str!("../../resources/opencode/spec.md");
+    pub const SESSION_START_MD: &str = include_str!("../../../resources/opencode/session-start.md");
+    pub const SESSION_UPDATE_MD: &str =
+        include_str!("../../../resources/opencode/session-update.md");
+    pub const SESSION_NOTE_MD: &str = include_str!("../../../resources/opencode/session-note.md");
+    pub const SESSION_END_MD: &str = include_str!("../../../resources/opencode/session-end.md");
+    pub const PATINA_REVIEW_MD: &str = include_str!("../../../resources/opencode/patina-review.md");
+    pub const SPEC_MD: &str = include_str!("../../../resources/opencode/spec.md");
     pub const EPISTEMIC_BELIEFS_MD: &str =
-        include_str!("../../resources/opencode/epistemic-beliefs.md");
+        include_str!("../../../resources/opencode/epistemic-beliefs.md");
 }
 
 // =============================================================================
