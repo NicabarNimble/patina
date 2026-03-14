@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: cli-first-spec-workflow
-status: active
+status: abandoned
 created: 2026-03-12
 sessions:
   origin: 20260312-001728
@@ -62,6 +62,12 @@ surface that interfaces and agents can trust.
 - spec truth is easier to test, upgrade, and reason about locally
 
 ## Status
+
+Abandoned.
+
+Rationale: CLI-first is still the desired direction, but this spec's execution
+shape predates the current architecture trajectory and should be replaced with
+new architecture-aligned slices.
 
 Current state:
 

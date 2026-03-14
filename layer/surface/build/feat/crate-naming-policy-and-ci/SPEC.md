@@ -1,10 +1,12 @@
 ---
 type: feat
 id: crate-naming-policy-and-ci
-status: active
+status: blocked
 created: 2026-03-13
 sessions:
   origin: 20260313-061738
+blocked_by:
+  - mother-child-toy-beliefs-layout
 exit_criteria:
   - id: naming-matrix-defined
     text: Spec contains an explicit current->target naming matrix for all workspace crates
@@ -47,7 +49,11 @@ grandfather fallback. The only locked crate names are published crates.io names
 
 ## Status
 
-In progress
+Blocked.
+
+Rationale: this spec is critical, but final crate naming must run after full
+folder/module boundary restructuring so the naming matrix targets the final
+architecture and avoids churn from intermediate paths.
 
 ## Non-Goals
 
@@ -89,6 +95,8 @@ Notes:
 
 - This spec migrates crate package names only. Directory layout moves are separate.
 - `ducklake` native child remains transitional and should be removed by cutover specs.
+- Naming matrix is provisional until boundary reorg is complete and crate
+  ownership surfaces are finalized.
 
 ## Solution
 
@@ -111,10 +119,12 @@ Notes:
 ## Implementation Order
 
 1. Lock naming matrix in this spec.
-2. Rename all workspace crates to target names and update dependency references.
-3. Update policy text in contributor docs and SDK README to final (no fallback).
-4. Update `resources/scripts/check-crate-names.sh` to strict matrix validation.
-5. Run local validation and ensure CI check is green.
+2. Complete full folder/module boundary restructuring.
+3. Refresh naming matrix against final crate boundaries.
+4. Rename all workspace crates to target names and update dependency references.
+5. Update policy text in contributor docs and SDK README to final (no fallback).
+6. Update `resources/scripts/check-crate-names.sh` to strict matrix validation.
+7. Run local validation and ensure CI check is green.
 
 ## Resolved Decisions
 

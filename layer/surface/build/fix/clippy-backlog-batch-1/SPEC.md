@@ -1,7 +1,7 @@
 ---
 type: fix
 id: clippy-backlog-batch-1
-status: active
+status: abandoned
 created: 2026-03-13
 sessions:
   origin: 20260312-160150
@@ -21,7 +21,12 @@ Land a first low-risk batch of no-behavior-change lint fixes that measurably red
 
 ## Status
 
-Active.
+Abandoned.
+
+Rationale: this batch predates current SDK and boundary reorg execution lanes,
+and it has no frontmatter exit criteria contract (`exit_criteria: []`). Clippy
+hygiene remains enforced by existing CI/pre-push checks and should be captured
+in a fresh scoped spec if needed.
 
 ## Non-Goals
 

@@ -1,7 +1,7 @@
 ---
 type: feat
 id: spec-shadow-knowledge-child
-status: blocked
+status: abandoned
 created: 2026-03-13
 blocked_by:
 - doctrine-boundary-reorg-no-core-tools
@@ -34,6 +34,14 @@ Spec-as-child experimentation is valuable, but replacing current spec flow immed
 ## Goal
 
 Ship a parallel shadow implementation first, prove parity and performance characteristics, then decide cutover via follow-up spec.
+
+## Status
+
+Abandoned.
+
+Rationale: not critical for current execution lanes and intentionally deferred
+until the full reorg is complete. Concepts can be re-explored post-reorg with
+fresh scope and slice-first implementation planning.
 
 ## Non-Goals
 

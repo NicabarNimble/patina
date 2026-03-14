@@ -1,10 +1,12 @@
 ---
 type: refactor
 id: ducklake-github-lakehouse-ingestion
-status: active
+status: blocked
 created: 2026-03-12
 sessions:
   origin: 20260312-160150
+blocked_by:
+  - mother-child-toy-beliefs-layout
 related:
 - layer/surface/build/refactor/ducklake-knowledge-child-cutover/SPEC.md
 beliefs:
@@ -13,8 +15,8 @@ beliefs:
 - patina-is-combination-of-knowledge-and-action
 exit_criteria:
 - id: legacy-ducklake-runtime-identity-is-removed
-  text: Native legacy DuckLake runtime identity and dual-route execution paths are removed; `Destination::Lake` is knowledge-child only
-  checked: false
+  text: Wasm-only DuckLake runtime baseline remains enforced and `Destination::Lake` stays knowledge-child only
+  checked: true
 - id: github-scope-contract-is-explicit-and-complete
   text: Scope contract explicitly defines full issues/PR ingestion surface (issues, issue comments, issue events, pulls, pull comments, reviews, review comments, optional commits) with retention/backfill and incremental key rules
   checked: false
@@ -45,7 +47,7 @@ exit_criteria:
 
 ## Problem
 
-The current DuckLake cutover has improved runtime authority boundaries, but it
+DuckLake runtime cutover and wasm-only baseline are complete, but ingestion
 still behaves as a migration-stage implementation:
 
 - parity with legacy semantics is incomplete for full PR/issue enrichment
@@ -61,6 +63,14 @@ lakehouse-style outputs that downstream transforms and agent/apps can consume.
 Ship a full DuckLake knowledge-child ingestion system for GitHub issue/PR data
 with deterministic continuity, comprehensive scope coverage, encrypted parquet
 outputs, DuckDB metadata management, and explicit operational telemetry.
+
+## Status
+
+Blocked.
+
+Rationale: this is a critical enterprise-correctness spec, but execution is
+deferred until boundary restructuring (`mother-child-toy-beliefs-layout`) is
+stabilized so ingestion ownership surfaces do not churn mid-implementation.
 
 ## Contract
 
@@ -85,14 +95,13 @@ Contract also defines:
 
 ## Implementation Plan
 
-1. Remove legacy runtime identity and dual-route logic.
-2. Implement explicit contract-driven endpoint planner.
-3. Implement two-phase ingestion with bounded fanout and adaptive backoff.
-4. Implement idempotent upsert materialization keyed by stable identifiers.
-5. Write bronze/silver/gold outputs as encrypted parquet partitions.
-6. Maintain metadata/checkpoints/manifests in DuckDB.
-7. Add reconciliation, late-arrival, dead-letter, and parity verification suite.
-8. Emit measure telemetry sufficient for operator-level run diagnostics.
+1. Lock explicit contract-driven endpoint planner.
+2. Implement two-phase ingestion with bounded fanout and adaptive backoff.
+3. Implement idempotent upsert materialization keyed by stable identifiers.
+4. Write bronze/silver/gold outputs as encrypted parquet partitions.
+5. Maintain metadata/checkpoints/manifests in DuckDB.
+6. Add reconciliation, late-arrival, dead-letter, and parity verification suite.
+7. Emit measure telemetry sufficient for operator-level run diagnostics.
 
 ## Non-Goals
 
