@@ -3,13 +3,16 @@ type: refactor
 id: mother-child-toy-beliefs-layout
 status: active
 created: 2026-03-13
+updated: 2026-03-13
 sessions:
   origin: 20260313-061738
+blocked_by: []
 related:
-- layer/surface/build/refactor/mother-doctrine-cleanup/DESIGN.md
-- layer/surface/build/refactor/single-patina-sdk-consolidation/SPEC.md
-- layer/surface/build/refactor/child-surface-path-realignment/SPEC.md
 - layer/surface/build/refactor/ducklake-knowledge-child-cutover/SPEC.md
+- layer/surface/build/refactor/ducklake-native-removal-and-verification/SPEC.md
+- layer/surface/build/refactor/child-plugin-sdk-alignment/SPEC.md
+- layer/surface/build/refactor/doctrine-boundary-reorg-no-core-tools/SPEC.md
+- layer/surface/build/feat/spec-shadow-knowledge-child/SPEC.md
 exit_criteria:
 - id: beliefs-core-surface-is-explicit
   text: Core beliefs engine code is grouped under explicit beliefs/core-belief modules and documented as system center
@@ -19,10 +22,10 @@ exit_criteria:
   checked: false
 - id: toy-catalog-and-discoverability-exist
   text: Toys have one canonical catalog/registry location so capabilities are discoverable without code hunting
-  checked: false
+  checked: true
 - id: ducklake-legacy-native-path-removed
   text: Legacy native ducklake path is deleted and no legacy folder is introduced for ducklake fallback
-  checked: false
+  checked: true
 - id: core-tools-surface-extracted
   text: Core tools (including spec and scrape-code surfaces) are moved under explicit core-tools ownership boundary
   checked: false
@@ -36,6 +39,19 @@ exit_criteria:
 # refactor: refactor: mother-child-toy-beliefs layout and debt cleanup
 
 > Restructure Patina around beliefs core plus mother/child/toys boundaries, remove legacy ducklake debt, and extract core tools like spec/scrape-code into explicit core-tools surface
+
+## Status Note
+
+This spec runs in small execution slices to reduce blast radius.
+
+Execution lane now is:
+
+1. `ducklake-native-removal-and-verification` (complete)
+2. `ducklake-knowledge-child-cutover` (complete)
+3. `ducklake-child-path-name` (complete)
+4. `mother-child-toy-beliefs-layout` (active, this spec)
+
+The broad architecture intent remains valid, but implementation proceeds through the split specs above.
 
 ## Problem
 
@@ -66,7 +82,28 @@ The result should reduce ambiguity and increase shipping velocity.
 
 ## Status
 
-Active.
+Active (slice execution).
+
+Slice A (root boundary wiring) is in progress: canonical root facades now exist
+for `beliefs`, `child`, `toys`, and `core_tools`, and a canonical toy catalog
+surface is available at `src/toys/catalog.rs`.
+
+Slice B started: lake toy host ownership moved from `src/mother/lake_host.rs`
+to `src/toys/lake.rs`, and knowledge-child host calls now route through
+`crate::toys::lake::*`.
+
+Slice B continued: ingress toy host helpers extracted to `src/toys/ingress.rs`
+and knowledge-child ingress host methods now delegate grant/source resolution
+through `crate::toys::ingress::*`.
+
+Slice B continued again: connector toy binding lifecycle helpers extracted to
+`src/toys/connector.rs` (grant gating, list/upsert/remove/load, endpoint/type
+validation), and knowledge-child connector host methods now delegate through
+`crate::toys::connector::*`.
+
+Slice B continued again: query and HTTP toy host delegation now route through
+`src/toys/query.rs` and `src/toys/http.rs`, with `knowledge_child.rs` retaining
+WIT host orchestration and grant wiring while behavior lives in toy modules.
 
 ## Non-Goals
 

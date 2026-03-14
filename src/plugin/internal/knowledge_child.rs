@@ -15,19 +15,7 @@ use crate::mother::{
 
 mod bindings {
     use rayon::prelude::*;
-    use serde::{Deserialize, Serialize};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-    const CONNECTOR_BINDING_PREFIX: &str = "connector:binding:";
-
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    struct ConnectorBindingRecord {
-        binding_id: String,
-        connection: String,
-        owner: String,
-        repo: String,
-        types: Vec<String>,
-    }
 
     #[derive(Debug)]
     struct GithubPageResult {
@@ -211,7 +199,7 @@ mod bindings {
 
     impl patina::host::query::Host for HostState {
         fn query(&mut self, kind: String, params: String) -> Result<String, String> {
-            super::super::host_support::query(
+            crate::toys::query::dispatch(
                 &self.plugin_name,
                 &self.grants,
                 &mut self.query_fn,
@@ -228,7 +216,7 @@ mod bindings {
             body: String,
             content_type: String,
         ) -> Result<patina::host::http::HttpResponse, String> {
-            let r = super::super::host_support::http_post(
+            let r = crate::toys::http::post(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
@@ -243,12 +231,8 @@ mod bindings {
         }
 
         fn http_get(&mut self, url: String) -> Result<patina::host::http::HttpResponse, String> {
-            let r = super::super::host_support::http_get(
-                &self.http_client,
-                &self.grants,
-                &self.plugin_name,
-                &url,
-            )?;
+            let r =
+                crate::toys::http::get(&self.http_client, &self.grants, &self.plugin_name, &url)?;
             Ok(patina::host::http::HttpResponse {
                 status: r.status,
                 body: r.body,
@@ -366,7 +350,7 @@ mod bindings {
                     name, self.plugin_name
                 ));
             }
-            crate::mother::lake_host::ensure_lake(&name).map_err(|e| e.to_string())
+            crate::toys::lake::ensure_lake(&name).map_err(|e| e.to_string())
         }
 
         fn list_granted_lakes(&mut self) -> Result<Vec<patina::host::lake::GrantedLake>, String> {
@@ -375,8 +359,7 @@ mod bindings {
                 .iter()
                 .cloned()
                 .map(|name| {
-                    let path =
-                        crate::mother::lake_host::ensure_lake(&name).map_err(|e| e.to_string())?;
+                    let path = crate::toys::lake::ensure_lake(&name).map_err(|e| e.to_string())?;
                     Ok(patina::host::lake::GrantedLake { name, path })
                 })
                 .collect()
@@ -391,7 +374,7 @@ mod bindings {
             if !self.grants.lake_names.contains(&lake) {
                 return None;
             }
-            crate::mother::lake_host::load_cursor(&self.runtime, &lake, &source, &data_type)
+            crate::toys::lake::load_cursor(&self.runtime, &lake, &source, &data_type)
                 .ok()
                 .flatten()
         }
@@ -412,7 +395,7 @@ mod bindings {
                     lake, self.plugin_name
                 ));
             }
-            crate::mother::lake_host::save_cursor(
+            crate::toys::lake::save_cursor(
                 &self.runtime,
                 &crate::mother::state::LakeCursorUpdate {
                     lake_name: &lake,
@@ -434,7 +417,7 @@ mod bindings {
                     lake, self.plugin_name
                 ));
             }
-            crate::mother::lake_host::ensure_table(&lake, &table).map_err(|e| e.to_string())
+            crate::toys::lake::ensure_table(&lake, &table).map_err(|e| e.to_string())
         }
 
         fn append_json_batch(
@@ -450,7 +433,7 @@ mod bindings {
                     lake, self.plugin_name
                 ));
             }
-            crate::mother::lake_host::append_json_batch(&lake, &table, &source, &rows_json)
+            crate::toys::lake::append_json_batch(&lake, &table, &source, &rows_json)
                 .map_err(|e| e.to_string())
         }
 
@@ -461,40 +444,29 @@ mod bindings {
                     lake, self.plugin_name
                 ));
             }
-            crate::mother::lake_host::query_json(&lake, &sql).map_err(|e| e.to_string())
+            crate::toys::lake::query_json(&lake, &sql).map_err(|e| e.to_string())
         }
     }
 
     impl patina::host::ingress::Host for HostState {
         fn list_granted_sources(&mut self) -> Vec<patina::host::ingress::GrantedSource> {
-            self.grants
-                .toys
-                .ingress_sources
-                .values()
-                .map(|source| patina::host::ingress::GrantedSource {
-                    name: source.name.clone(),
-                    endpoint: source.endpoint.clone(),
-                })
+            crate::toys::ingress::list_granted_sources(&self.grants.toys)
+                .into_iter()
+                .map(|(name, endpoint)| patina::host::ingress::GrantedSource { name, endpoint })
                 .collect()
         }
 
         fn fetch(&mut self, source_name: String) -> Result<String, String> {
-            let source = self
-                .grants
-                .toys
-                .ingress_sources
-                .get(&source_name)
-                .ok_or_else(|| {
-                    format!(
-                        "ingress source '{}' not granted for '{}'",
-                        source_name, self.plugin_name
-                    )
-                })?;
+            let endpoint = crate::toys::ingress::resolve_source_endpoint(
+                &self.grants.toys,
+                &self.plugin_name,
+                &source_name,
+            )?;
             super::super::host_support::http_get(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
-                &source.endpoint,
+                &endpoint,
             )
             .map(|result| result.body)
         }
@@ -502,95 +474,40 @@ mod bindings {
 
     impl patina::host::connector::Host for HostState {
         fn list_bindings(&mut self) -> Result<Vec<patina::host::connector::RepoBinding>, String> {
-            if !self.grants.toys.connector {
-                return Err(format!(
-                    "connector toy not granted for plugin '{}'",
-                    self.plugin_name
-                ));
-            }
-
-            let keys = self
-                .runtime
-                .list_state_prefix(&self.plugin_name, CONNECTOR_BINDING_PREFIX)
-                .map_err(|e| e.to_string())?;
-
-            let mut out = Vec::new();
-            for key in keys {
-                let Some(raw) = self
-                    .runtime
-                    .get_state(&self.plugin_name, &key)
-                    .map_err(|e| e.to_string())?
-                else {
-                    continue;
-                };
-                let parsed: ConnectorBindingRecord = serde_json::from_str(&raw)
-                    .map_err(|e| format!("invalid connector binding '{}': {}", key, e))?;
-                out.push(patina::host::connector::RepoBinding {
-                    binding_id: parsed.binding_id,
-                    connection: parsed.connection,
-                    owner: parsed.owner,
-                    repo: parsed.repo,
-                    types: parsed.types,
-                });
-            }
-            Ok(out)
+            crate::toys::connector::ensure_granted(self.grants.toys.connector, &self.plugin_name)?;
+            crate::toys::connector::list_bindings(&self.runtime, &self.plugin_name).map(|items| {
+                items
+                    .into_iter()
+                    .map(|parsed| patina::host::connector::RepoBinding {
+                        binding_id: parsed.binding_id,
+                        connection: parsed.connection,
+                        owner: parsed.owner,
+                        repo: parsed.repo,
+                        types: parsed.types,
+                    })
+                    .collect()
+            })
         }
 
         fn upsert_binding(
             &mut self,
             binding: patina::host::connector::RepoBinding,
         ) -> Result<patina::host::connector::RepoBinding, String> {
-            if !self.grants.toys.connector {
-                return Err(format!(
-                    "connector toy not granted for plugin '{}'",
-                    self.plugin_name
-                ));
-            }
-            if binding.binding_id.trim().is_empty()
-                || binding.connection.trim().is_empty()
-                || binding.owner.trim().is_empty()
-                || binding.repo.trim().is_empty()
-            {
-                return Err("binding-id, connection, owner, and repo are required".into());
-            }
-            if binding.types.is_empty() {
-                return Err("binding requires at least one type".into());
-            }
-            for data_type in &binding.types {
-                if data_type != "issues" && data_type != "prs" {
-                    return Err(format!(
-                        "unsupported connector type '{}' (expected 'issues' or 'prs')",
-                        data_type
-                    ));
-                }
-            }
-
-            let record = ConnectorBindingRecord {
+            crate::toys::connector::ensure_granted(self.grants.toys.connector, &self.plugin_name)?;
+            let record = crate::toys::connector::ConnectorBindingRecord {
                 binding_id: binding.binding_id.clone(),
                 connection: binding.connection.clone(),
                 owner: binding.owner.clone(),
                 repo: binding.repo.clone(),
                 types: binding.types.clone(),
             };
-            let key = format!("{}{}", CONNECTOR_BINDING_PREFIX, binding.binding_id);
-            let payload = serde_json::to_string(&record).map_err(|e| e.to_string())?;
-            self.runtime
-                .put_state(&self.plugin_name, &key, &payload)
-                .map_err(|e| e.to_string())?;
+            crate::toys::connector::upsert_binding(&self.runtime, &self.plugin_name, record)?;
             Ok(binding)
         }
 
         fn remove_binding(&mut self, binding_id: String) -> Result<(), String> {
-            if !self.grants.toys.connector {
-                return Err(format!(
-                    "connector toy not granted for plugin '{}'",
-                    self.plugin_name
-                ));
-            }
-            let key = format!("{}{}", CONNECTOR_BINDING_PREFIX, binding_id);
-            self.runtime
-                .delete_state(&self.plugin_name, &key)
-                .map_err(|e| e.to_string())
+            crate::toys::connector::ensure_granted(self.grants.toys.connector, &self.plugin_name)?;
+            crate::toys::connector::remove_binding(&self.runtime, &self.plugin_name, &binding_id)
         }
 
         fn sync_binding(
@@ -599,58 +516,21 @@ mod bindings {
             data_type: String,
             since: Option<String>,
         ) -> Result<patina::host::connector::SyncResult, String> {
-            if !self.grants.toys.connector {
-                return Err(format!(
-                    "connector toy not granted for plugin '{}'",
-                    self.plugin_name
-                ));
-            }
+            crate::toys::connector::ensure_granted(self.grants.toys.connector, &self.plugin_name)?;
 
-            let key = format!("{}{}", CONNECTOR_BINDING_PREFIX, binding_id);
-            let binding_raw = self
-                .runtime
-                .get_state(&self.plugin_name, &key)
-                .map_err(|e| e.to_string())?
-                .ok_or_else(|| format!("unknown connector binding '{}'", key))?;
-            let binding: ConnectorBindingRecord = serde_json::from_str(&binding_raw)
-                .map_err(|e| format!("invalid connector binding '{}': {}", key, e))?;
-            if !binding.types.iter().any(|t| t == &data_type) {
-                return Err(format!(
-                    "type '{}' not enabled for binding '{}'",
-                    data_type, binding.binding_id
-                ));
-            }
+            let binding = crate::toys::connector::load_binding(
+                &self.runtime,
+                &self.plugin_name,
+                &binding_id,
+            )?;
+            crate::toys::connector::ensure_type_enabled(&binding, &data_type)?;
 
             let connection = crate::connect::load(&binding.connection)
                 .map_err(|e| format!("connection '{}': {}", binding.connection, e))?;
-            let auth = crate::connect::resolve_auth(&connection)
-                .map_err(|e| format!("connection '{}': {}", binding.connection, e))?;
-            let credential = auth
-                .credential
-                .ok_or_else(|| format!("connection '{}' has no credential", binding.connection))?;
-            if !auth.allowed_domains.iter().any(|d| d == "api.github.com") {
-                return Err(format!(
-                    "connection '{}' is not allowed for api.github.com",
-                    binding.connection
-                ));
-            }
+            let credential =
+                crate::connect::resolve_credential_for_domain(&connection, "api.github.com")?;
 
-            let endpoint = match data_type.as_str() {
-                "issues" => format!(
-                    "https://api.github.com/repos/{}/{}/issues",
-                    binding.owner, binding.repo
-                ),
-                "prs" => format!(
-                    "https://api.github.com/repos/{}/{}/pulls",
-                    binding.owner, binding.repo
-                ),
-                other => {
-                    return Err(format!(
-                        "unsupported connector type '{}' (expected 'issues' or 'prs')",
-                        other
-                    ));
-                }
-            };
+            let endpoint = crate::toys::connector::endpoint_for(&binding, &data_type)?;
 
             let max_pages = env_usize("PATINA_GITHUB_MAX_PAGES", 500).clamp(1, 5_000) as u32;
             let max_parallel = env_usize("PATINA_GITHUB_MAX_PARALLEL", 4).clamp(1, 16);

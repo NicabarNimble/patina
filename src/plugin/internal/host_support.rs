@@ -105,7 +105,7 @@ pub(super) fn check_adapter_version(
     let root = project_root
         .as_ref()
         .ok_or_else(|| "no project root".to_string())?;
-    let adapter = crate::adapters::get_adapter(adapter_name);
+    let adapter = crate::interface::runtime::get_interface_provider(adapter_name);
     adapter
         .check_for_updates(root)
         .map(|opt| opt.map(|(current, _)| current))
@@ -151,7 +151,7 @@ pub(super) fn sanitize_query_params(params: &str, scope: &QueryScope) -> String 
 /// Defense in depth: kinds are validated at load time (check_capabilities)
 /// AND at call time (grants.query_kinds check below). Query scope is
 /// enforced at call time — all_repos requires AllRepos scope.
-pub(super) fn query(
+pub(crate) fn query(
     plugin_name: &str,
     grants: &GrantedCapabilities,
     query_fn: &mut Option<QueryDispatchFn>,
@@ -209,7 +209,7 @@ pub(crate) fn validate_http_url(url: &str) -> Result<String, String> {
 }
 
 /// Result of an HTTP operation — plain types for cross-world portability.
-pub(super) struct HttpResult {
+pub(crate) struct HttpResult {
     pub status: u16,
     pub body: String,
 }
@@ -499,7 +499,7 @@ pub(super) fn emit_fact(
 /// Defense in depth: domains are validated at load time (check_capabilities)
 /// AND at call time (grants.http_domains check). URLs are sanitized by
 /// validate_http_url. Cross-domain redirects rejected by client policy.
-pub(super) fn http_post(
+pub(crate) fn http_post(
     http_client: &reqwest::blocking::Client,
     grants: &GrantedCapabilities,
     plugin_name: &str,
@@ -550,7 +550,7 @@ pub(super) fn http_post(
 }
 
 /// Domain-allowlisted HTTP GET.
-pub(super) fn http_get(
+pub(crate) fn http_get(
     http_client: &reqwest::blocking::Client,
     grants: &GrantedCapabilities,
     plugin_name: &str,
