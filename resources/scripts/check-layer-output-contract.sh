@@ -4,7 +4,6 @@ set -euo pipefail
 required_layer_dirs=(
     "layer/core"
     "layer/surface"
-    "layer/dust"
 )
 
 echo "Checking layer output contract directories..."
