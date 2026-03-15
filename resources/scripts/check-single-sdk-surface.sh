@@ -34,6 +34,8 @@ if $has_rg; then
         src sdk plugins children crates scripts resources .github CONTRIBUTING.md README.md AGENTS.md CLAUDE.md GEMINI.md 2>/dev/null || true)
 else
     removed_sdk_refs=$(grep -RInE "patina_child_sdk|patina_toy_sdk|patina-child-sdk|patina-toy-sdk" \
+        --exclude-dir=.git \
+        --exclude-dir=target \
         src sdk plugins children crates scripts resources .github CONTRIBUTING.md README.md AGENTS.md CLAUDE.md GEMINI.md 2>/dev/null \
         | grep -v "resources/scripts/check-single-sdk-surface.sh" \
         | grep -v "sdk/patina-sdk/README.md" || true)
@@ -52,6 +54,8 @@ if $has_rg; then
         src sdk plugins children crates scripts resources .github Cargo.toml tests 2>/dev/null || true)
 else
     legacy_path_refs=$(grep -RInE "plugins/sdk|plugins/ducklake|plugins/belief-verifier" \
+        --exclude-dir=.git \
+        --exclude-dir=target \
         src sdk plugins children crates scripts resources .github Cargo.toml tests 2>/dev/null \
         | grep -v "resources/scripts/check-single-sdk-surface.sh" || true)
 fi
@@ -70,6 +74,8 @@ if $has_rg; then
         src children sdk tests Cargo.toml .github resources/scripts 2>/dev/null || true)
 else
     deprecated_ducklake_refs=$(grep -RInE "children/ducklake-wasm" \
+        --exclude-dir=.git \
+        --exclude-dir=target \
         src children sdk tests Cargo.toml .github resources/scripts 2>/dev/null \
         | grep -v "resources/scripts/check-single-sdk-surface.sh" \
         | grep -v "resources/scripts/check-runtime-boundaries.sh" || true)

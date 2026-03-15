@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if ! command -v rg >/dev/null 2>&1; then
-    echo "error: rg not found (required for boundary checks)" >&2
-    exit 1
+has_rg=false
+if command -v rg >/dev/null 2>&1; then
+    has_rg=true
+else
+    echo "warning: rg not found, falling back to grep for boundary checks" >&2
 fi
 
 required_dirs=(
@@ -46,16 +48,36 @@ if [[ -f "src/mother/lake_host.rs" ]]; then
 fi
 
 echo "Checking no direct mother::*host calls remain in active runtime..."
-if rg -n "crate::mother::(lake_host|graph_host|belief_host)::" src 2>/dev/null; then
+if $has_rg; then
+    legacy_host_calls=$(rg -n "crate::mother::(lake_host|graph_host|belief_host)::" src 2>/dev/null || true)
+else
+    legacy_host_calls=$(grep -RInE "crate::mother::(lake_host|graph_host|belief_host)::" \
+        --exclude-dir=.git \
+        --exclude-dir=target \
+        src 2>/dev/null || true)
+fi
+if [[ -n "$legacy_host_calls" ]]; then
+    echo "$legacy_host_calls"
     echo "error: found legacy mother host direct calls"
     exit 1
 fi
 
 echo "Checking no ducklake-wasm path references remain in active code..."
-if rg -n "children/ducklake-wasm" \
-    --glob '!resources/scripts/check-runtime-boundaries.sh' \
-    --glob '!resources/scripts/check-single-sdk-surface.sh' \
-    src children sdk tests Cargo.toml .github resources/scripts 2>/dev/null; then
+if $has_rg; then
+    ducklake_wasm_refs=$(rg -n "children/ducklake-wasm" \
+        --glob '!resources/scripts/check-runtime-boundaries.sh' \
+        --glob '!resources/scripts/check-single-sdk-surface.sh' \
+        src children sdk tests Cargo.toml .github resources/scripts 2>/dev/null || true)
+else
+    ducklake_wasm_refs=$(grep -RInE "children/ducklake-wasm" \
+        --exclude-dir=.git \
+        --exclude-dir=target \
+        src children sdk tests Cargo.toml .github resources/scripts 2>/dev/null \
+        | grep -v "resources/scripts/check-runtime-boundaries.sh" \
+        | grep -v "resources/scripts/check-single-sdk-surface.sh" || true)
+fi
+if [[ -n "$ducklake_wasm_refs" ]]; then
+    echo "$ducklake_wasm_refs"
     echo "error: found deprecated ducklake-wasm path reference"
     exit 1
 fi
