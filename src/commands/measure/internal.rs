@@ -139,6 +139,9 @@ pub enum Mode {
     /// Evolve mode: session lifecycle
     #[serde(rename = "lifecycle")]
     Lifecycle,
+    /// Evolve mode: launcher runtime hygiene
+    #[serde(rename = "runtime-hygiene")]
+    RuntimeHygiene,
     /// Capture mode: structural entropy metrics
     #[serde(rename = "structure")]
     Structure,
@@ -158,6 +161,7 @@ impl Mode {
             "eval" => Some(Mode::Eval),
             "audit" => Some(Mode::Audit),
             "lifecycle" => Some(Mode::Lifecycle),
+            "runtime-hygiene" => Some(Mode::RuntimeHygiene),
             "structure" => Some(Mode::Structure),
             "default" => Some(Mode::Default),
             _ => None,
@@ -176,6 +180,7 @@ impl std::fmt::Display for Mode {
             Mode::Eval => write!(f, "eval"),
             Mode::Audit => write!(f, "audit"),
             Mode::Lifecycle => write!(f, "lifecycle"),
+            Mode::RuntimeHygiene => write!(f, "runtime-hygiene"),
             Mode::Structure => write!(f, "structure"),
             Mode::Default => write!(f, "default"),
         }
@@ -271,6 +276,7 @@ pub enum VerbMetrics {
     Search(SearchMetrics),
     Believe(BelieveMetrics),
     Evolve(EvolveMetrics),
+    EvolveRuntimeHygiene(EvolveRuntimeHygieneMetrics),
     BelieveHistory(BelieveHistoryMetrics),
     EvolveHistory(EvolveHistoryMetrics),
     /// Fallback for unrecognized metric shapes — preserves data, logs warning.
@@ -317,7 +323,12 @@ impl VerbMetrics {
                 serde_json::from_str::<BelieveMetrics>(json_str).map(VerbMetrics::Believe)
             }
             ("evolve", _) => {
-                serde_json::from_str::<EvolveMetrics>(json_str).map(VerbMetrics::Evolve)
+                if mode == "runtime-hygiene" {
+                    serde_json::from_str::<EvolveRuntimeHygieneMetrics>(json_str)
+                        .map(VerbMetrics::EvolveRuntimeHygiene)
+                } else {
+                    serde_json::from_str::<EvolveMetrics>(json_str).map(VerbMetrics::Evolve)
+                }
             }
             _ => {
                 tracing::warn!(verb, mode, "Unknown verb — falling back to raw metrics");
@@ -430,6 +441,35 @@ impl VerbMetrics {
                 (
                     "total_patterns_modified".into(),
                     m.total_patterns_modified.to_string(),
+                ),
+            ],
+            VerbMetrics::EvolveRuntimeHygiene(m) => vec![
+                ("tmux_decision".into(), m.tmux_decision.clone()),
+                (
+                    "cwd_matches_project_root".into(),
+                    m.cwd_matches_project_root.to_string(),
+                ),
+                ("ssh_session".into(), m.ssh_session.to_string()),
+                ("inside_tmux".into(), m.inside_tmux.to_string()),
+                ("tmux_available".into(), m.tmux_available.to_string()),
+                ("tmux_version_ok".into(), m.tmux_version_ok.to_string()),
+                (
+                    "set_clipboard_on".into(),
+                    m.set_clipboard_on
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "unknown".to_string()),
+                ),
+                (
+                    "copy_command_set".into(),
+                    m.copy_command_set
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "unknown".to_string()),
+                ),
+                (
+                    "allow_passthrough_on".into(),
+                    m.allow_passthrough_on
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "unknown".to_string()),
                 ),
             ],
             VerbMetrics::BelieveHistory(m) => vec![
@@ -575,6 +615,21 @@ pub struct EvolveMetrics {
     pub total_files_changed: i64,
     pub total_beliefs_captured: i64,
     pub total_patterns_modified: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EvolveRuntimeHygieneMetrics {
+    pub tmux_decision: String,
+    #[serde(default)]
+    pub off_reason: Option<String>,
+    pub cwd_matches_project_root: bool,
+    pub ssh_session: bool,
+    pub inside_tmux: bool,
+    pub tmux_available: bool,
+    pub tmux_version_ok: bool,
+    pub set_clipboard_on: Option<bool>,
+    pub copy_command_set: Option<bool>,
+    pub allow_passthrough_on: Option<bool>,
 }
 
 /// History-only metrics for believe drill-down. Field names are disjoint
@@ -913,6 +968,42 @@ impl CaptureLayerMetrics {
     }
 }
 
+impl EvolveRuntimeHygieneMetrics {
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        let mut diags = Vec::new();
+
+        if !self.cwd_matches_project_root {
+            diags.push(Diagnostic {
+                severity: Severity::Warning,
+                message: "launcher cwd differs from project root (session may start in wrong project lane)".to_string(),
+            });
+        }
+
+        if self.tmux_decision == "auto" {
+            if self.set_clipboard_on == Some(false) {
+                diags.push(Diagnostic {
+                    severity: Severity::Warning,
+                    message: "tmux set-clipboard is off".to_string(),
+                });
+            }
+            if self.copy_command_set == Some(false) {
+                diags.push(Diagnostic {
+                    severity: Severity::Warning,
+                    message: "tmux copy-command is empty".to_string(),
+                });
+            }
+            if self.ssh_session && self.allow_passthrough_on == Some(false) {
+                diags.push(Diagnostic {
+                    severity: Severity::Warning,
+                    message: "tmux allow-passthrough is off for SSH session".to_string(),
+                });
+            }
+        }
+
+        diags
+    }
+}
+
 /// Collect diagnostics from a verb's sources.
 fn collect_source_diagnostics(sources: &[SourceSummary]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -924,6 +1015,7 @@ fn collect_source_diagnostics(sources: &[SourceSummary]) -> Vec<Diagnostic> {
             VerbMetrics::CaptureGitScrape(m) => diags.extend(m.diagnostics()),
             VerbMetrics::CaptureBeliefs(m) => diags.extend(m.diagnostics()),
             VerbMetrics::CaptureLayer(m) => diags.extend(m.diagnostics()),
+            VerbMetrics::EvolveRuntimeHygiene(m) => diags.extend(m.diagnostics()),
             // CaptureStructure diagnostics need delta (previous event) — handled in build_full_report
             _ => {}
         }
@@ -1967,6 +2059,28 @@ fn user_friendly_metrics(src: &SourceSummary) -> String {
                     "beliefs"
                 },
             )
+        }
+        VerbMetrics::EvolveRuntimeHygiene(m) => {
+            if m.tmux_decision == "off" {
+                format!(
+                    "launcher: tmux off ({})",
+                    m.off_reason.as_deref().unwrap_or("unknown")
+                )
+            } else {
+                format!(
+                    "launcher: cwd={}, clipboard={}, copy-command={}, passthrough={}",
+                    m.cwd_matches_project_root,
+                    m.set_clipboard_on
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    m.copy_command_set
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    m.allow_passthrough_on
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "unknown".to_string())
+                )
+            }
         }
         VerbMetrics::BelieveHistory(_) | VerbMetrics::EvolveHistory(_) => String::new(),
         VerbMetrics::Raw(_) => String::new(),

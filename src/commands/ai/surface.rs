@@ -1,9 +1,12 @@
 use anyhow::{bail, Result};
 use std::io::IsTerminal;
+use std::path::Path;
+use std::process::Command;
 
 use patina::interface::{self, check_in, InterfaceCheckIn, LaunchPolicy};
 use patina::project;
 use patina::workspace;
+use serde_json::json;
 
 use crate::commands::launch::internal::{self as launch_internal, BranchAction};
 
@@ -278,6 +281,15 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         ),
     ];
 
+    emit_runtime_hygiene_measure(
+        &project_path,
+        &decision,
+        &session_name,
+        tmux_in_path,
+        tmux_version_ok,
+        inside_tmux,
+    );
+
     adapter.launch(interface::LaunchRequest {
         project_root: project_path,
         tmux_decision: decision,
@@ -321,6 +333,88 @@ fn record_ai_session_started(
         &payload.to_string(),
     )?;
     Ok(())
+}
+
+fn emit_runtime_hygiene_measure(
+    project_root: &Path,
+    decision: &interface::TmuxDecision,
+    session_name: &str,
+    tmux_available: bool,
+    tmux_version_ok: bool,
+    inside_tmux: bool,
+) {
+    let cwd = std::env::current_dir().ok();
+    let cwd_matches_project_root = cwd.as_deref() == Some(project_root);
+    let ssh_session = std::env::var_os("SSH_CONNECTION").is_some();
+
+    let (tmux_decision, off_reason) = match decision {
+        interface::TmuxDecision::Auto => ("auto", None),
+        interface::TmuxDecision::Off(reason) => ("off", Some(format!("{:?}", reason))),
+    };
+
+    let (set_clipboard_on, copy_command_set, allow_passthrough_on) =
+        probe_tmux_clipboard_settings(session_name, tmux_available);
+
+    let metrics = json!({
+        "tmux_decision": tmux_decision,
+        "off_reason": off_reason,
+        "cwd_matches_project_root": cwd_matches_project_root,
+        "ssh_session": ssh_session,
+        "inside_tmux": inside_tmux,
+        "tmux_available": tmux_available,
+        "tmux_version_ok": tmux_version_ok,
+        "set_clipboard_on": set_clipboard_on,
+        "copy_command_set": copy_command_set,
+        "allow_passthrough_on": allow_passthrough_on,
+    });
+
+    patina::measure::emit_or_warn("evolve", "session", "runtime-hygiene", &metrics);
+}
+
+fn probe_tmux_clipboard_settings(
+    session_name: &str,
+    tmux_available: bool,
+) -> (Option<bool>, Option<bool>, Option<bool>) {
+    if !tmux_available {
+        return (None, None, None);
+    }
+
+    let socket_name = format!("{}_sock", session_name);
+    let _ = Command::new("tmux")
+        .arg("-L")
+        .arg(&socket_name)
+        .arg("start-server")
+        .output();
+
+    let set_clipboard = tmux_show_option(&socket_name, "set-clipboard");
+    let copy_command = tmux_show_option(&socket_name, "copy-command");
+    let allow_passthrough = tmux_show_option(&socket_name, "allow-passthrough");
+
+    (
+        set_clipboard.map(|value| value == "on"),
+        copy_command.map(|value| !value.is_empty() && value != "''"),
+        allow_passthrough.map(|value| value == "on"),
+    )
+}
+
+fn tmux_show_option(socket_name: &str, option: &str) -> Option<String> {
+    let output = Command::new("tmux")
+        .arg("-L")
+        .arg(socket_name)
+        .args(["show", "-s", "-v", option])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
 }
 
 #[cfg(test)]
