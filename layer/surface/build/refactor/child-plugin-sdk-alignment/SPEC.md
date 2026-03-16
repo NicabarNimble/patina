@@ -1,10 +1,8 @@
 ---
 type: refactor
 id: child-plugin-sdk-alignment
-status: blocked
+status: complete
 created: 2026-03-13
-blocked_by:
-- ducklake-native-removal-and-verification
 related:
 - sdk/patina-sdk/src/lib.rs
 - src/plugin/internal/mod.rs
@@ -14,16 +12,16 @@ related:
 exit_criteria:
 - id: all-first-party-children-use-single-sdk-surface
   text: First-party children/plugins compile and run with patina-sdk surface only
-  checked: false
+  checked: true
 - id: no-removed-sdk-identifiers-in-active-code
   text: Active source/workflow files contain no removed split-SDK identifiers
-  checked: false
+  checked: true
 - id: grant-contracts-remain-typed-and-enforced
   text: Host grant enforcement and typed toy/connector contracts remain green under tests
-  checked: false
+  checked: true
 - id: ci-guards-stay-green
   text: check-single-sdk-surface and check-crate-names pass with updated set
-  checked: false
+  checked: true
 ---
 # refactor: align remaining children/plugins to single patina-sdk
 
