@@ -12,41 +12,43 @@ revised: 2026-03-08
 
 # connectors-own-tables-schemas-are-contracts
 
-Core owns routing, validation, and capability invocation; children own domain contracts, event semantics, materialization, and search/index contributions. Capabilities are destination-aware — the same child may materialize differently for project, lake, block, or transform consumer scopes. If changing a connector's domain model or adding a consumer scope requires editing core, the boundary is wrong.
+Schemas declare domain contracts (projections, indexes, display metadata). Core materializes generically from declarations. Connectors are source-boundary adapters (fetch only) — they never materialize. Each consumer scope has a technology-appropriate materializer: generic projection engine for project scope, lakehouse child for lake scope, transform child for future scopes. If changing a connector's domain model requires editing anything other than schema.toml, the boundary is wrong.
 
 ## Statement
 
-Core owns routing, validation, and capability invocation; children own domain contracts, event semantics, materialization, and search/index contributions. Capabilities are destination-aware across consumer scopes (project, lake, block, transform). Contracts are consumer-facing; capabilities are destination-aware. If changing a connector's domain model requires editing core, the boundary is wrong.
+Schemas declare domain contracts via `[[projections]]`, `[[indexes]]`, and `[[contracts]]` in schema.toml. Core owns routing, validation, and generic materialization from declarations. Connectors are source-boundary adapters that fetch and emit facts — they do not own materialization, search contribution, or storage. Each scope has a technology-appropriate materializer (project: generic SQL engine, lake: lakehouse child, block/transform: transform child). If changing a connector's domain model requires editing anything other than schema.toml, the boundary is wrong.
 
 ## Evidence
 
-- [[session-20260308-070818]]: Schema-driven projection revealed forge_issues/forge_prs shared tables can't support non-forge connectors (Slack, Google Workspace). Initial spec had core reading schema.toml and building tables — user identified this as too weak. Stronger boundary: children own materialization and search contributions as capabilities; Mother invokes generically. (weight: 0.9)
-- [[session-20260308-081423]]: Expanded scope beyond project-only projection. Consumer classes (project, lake, block, transform) are all first-class. Same source, different consumers, different write sides. Capability invocation must include destination context (scope + path). Contracts are consumer-facing; capabilities are destination-aware. Not every child supports all scopes — Mother matches and fails clearly. (weight: 0.85)
+- [[session-20260308-070818]]: Schema-driven projection revealed forge_issues/forge_prs shared tables can't support non-forge connectors (Slack, Google Workspace). Initial spec had core reading schema.toml and building tables — user identified this as too weak. (weight: 0.9)
+- [[session-20260308-081423]]: Expanded scope beyond project-only projection. Consumer classes (project, lake, block, transform) are all first-class. Same source, different consumers, different write sides. (weight: 0.85)
+- [[session-20260308-164629]]: Role-boundary alignment applied. Earlier revision had connectors gaining materialize/contribute-search modes — identified as role-smearing (same pattern as Mother writing Parquet inline). Corrected: connectors are source-boundary adapters (fetch only). Schemas declare projection contracts. Core materializes generically. Each scope has a technology-appropriate materializer: project=generic SQL engine, lake=lakehouse child. (weight: 0.9)
 
 ## Supports
 
-- [[patina-is-domain-agnostic-knowledge-system]] — domain agnosticism requires children to own their domain logic, not leak it into core
-- [[pipes-are-processes-not-wasm]] — children are independent processes that own their full domain lifecycle
-- [[mother-holds-connections-pipes-transform]] — Mother routes and invokes; children transform and materialize
-- [[pipe-protocol-is-transport-agnostic]] — the capability protocol (materialize, contribute-search) is transport-agnostic; same invocation interface regardless of scope or destination
+- [[patina-is-domain-agnostic-knowledge-system]] — domain agnosticism requires domain knowledge to live in schemas, not in core or child runtime code
+- [[pipes-are-processes-not-wasm]] — connectors are single-purpose fetch services; materialization is a separate concern handled by core infrastructure or dedicated children
+- [[mother-holds-connections-pipes-transform]] — Mother routes and governs; scope-appropriate materializers execute
+- [[connectors-never-materialize]] — connectors are source-boundary adapters; they never write to storage in any scope
 
 ## Attacks
 
-- Core-reads-schema-and-builds-tables — the intermediate approach where core generates DDL/projection from schema.toml declarations. Still makes core the hidden executor of connector domain logic. Core should invoke capabilities, not interpret schemas.
+- Child-owns-materialize — the intermediate approach where connectors gain materialize/contribute-search modes and write SQLite tables directly. Role-smearing: makes connectors both source-boundary AND storage-boundary. Same pattern as Mother writing Parquet inline. Corrected to schema-driven projection.
 - Shared tables (forge_issues/forge_prs) — the legacy approach where all connectors funnel into the same table structure. Works only when all sources share the same data shape.
 
 ## Attacked-By
 
-- Shared tables simplify search (one table to query for "all issues"). Counter: contract-driven search contribution solves this — children contribute FTS5 rows, core aggregates.
-- Children writing to patina.db creates coupling. Counter: database path passing is a minimal contract; children don't depend on core's schema.
+- Schema-driven projection puts materialization in core — isn't that "core owns domain logic"? Counter: core executes GENERIC projection from declarations. Domain knowledge is in schema.toml, authored by the connector developer. Core interprets declarations mechanically (CREATE TABLE, json_extract, INSERT). Same as how the lakehouse child writes Parquet generically without domain knowledge.
+- Schemas can't express complex materialization (joins, aggregations). Counter: complex materialization belongs to transform children (future scope), not to the schema-driven projection engine. The engine handles the 90% case; transform children handle the rest.
 
 ## Applied-In
 
-- [[spec-schema-driven-projection]] — foundation layer: schema_registry table, dynamic event type discovery (precursor to full capability model)
-- [[spec-connector-owns-tables]] — full spec: children own materialize + contribute-search capabilities
+- [[spec-schema-driven-projection]] — foundation layer: schema_registry table, dynamic event type discovery (precursor to contract registry)
+- [[spec-connector-owns-tables]] — schema-driven projection: `[[projections]]` and `[[contracts]]` in schema.toml drive generic materialization in core; connectors stay fetch-only
 
 ## Revision Log
 
 - 2026-03-08: Created — initial framing as "connector declares tables via schema.toml"
 - 2026-03-08: Revised — strengthened to "children own contracts and materializations; core invokes capabilities"
 - 2026-03-08: Revised — expanded to multi-consumer architecture: consumer classes (project, lake, block, transform), destination-aware capabilities, contracts are consumer-facing
+- 2026-03-08: Revised — role-boundary alignment: connectors are source-boundary adapters (fetch only), not materializers. Schemas declare projection contracts. Core materializes generically from declarations. Each scope has a technology-appropriate materializer.

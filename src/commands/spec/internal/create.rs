@@ -24,10 +24,12 @@ pub struct CreateResult {
 /// Body template for each spec type.
 fn body_template(spec_type: SpecType) -> &'static str {
     match spec_type {
-        SpecType::Feat => "## Problem\n\n## Solution\n\n## Exit Criteria\n\n## Non-Goals\n",
+        SpecType::Feat => {
+            "## Problem\n\n## Goal\n\n## Status\n\n## Non-Goals\n\n## Target Shape\n\n## Solution\n\n## Implementation Order\n\n## Resolved Decisions\n\n## Verification\n\n## Exit Criteria\n\n## Build Readiness\n"
+        }
         SpecType::Fix => "## Problem\n\n## Root Cause\n\n## Fix\n\n## Exit Criteria\n",
         SpecType::Refactor => {
-            "## Current State\n\n## Target State\n\n## Steps\n\n## Exit Criteria\n"
+            "## Problem\n\n## Goal\n\n## Status\n\n## Non-Goals\n\n## Current State\n\n## Target State\n\n## Solution\n\n## Implementation Order\n\n## Resolved Decisions\n\n## Verification\n\n## Exit Criteria\n\n## Build Readiness\n"
         }
         SpecType::Explore => "## Question\n\n## Findings\n\n## Conclusions\n",
     }
@@ -41,18 +43,17 @@ fn needs_design_doc(spec_type: SpecType) -> bool {
 /// DESIGN.md template content.
 fn design_template(title: &str) -> String {
     format!(
-        "# Design: {}\n\n## Approach\n\n## Commits\n1. `commit message` — what and why\n\n## Key Files\n- `path/to/file.rs` — role\n\n## Open Questions\n",
+        "# Design: {}\n\n## Why This Design\n\n## Build Target\n\n## Resolved Decisions\n\n## Commits\n1. `commit message` — what and why\n\n## Direct Code Targets\n- `path/to/file.rs:line` — exact change location\n\n## Verification Plan\n\n## Build Readiness\n\n## Open Questions\n",
         title
     )
 }
 
 /// Detect active session ID from .patina/local/active-session.md frontmatter.
 fn active_session_id() -> Option<String> {
-    let content = std::fs::read_to_string(".patina/local/active-session.md").ok()?;
-    let content = content.strip_prefix("---")?;
-    let end = content.find("\n---")?;
-    let frontmatter: serde_yaml::Value = serde_yaml::from_str(&content[..end]).ok()?;
-    frontmatter.get("id")?.as_str().map(|s| s.to_string())
+    let project_root = patina::session::SessionManager::find_project_root().ok()?;
+    patina::session::current_session_file_id(&project_root)
+        .ok()
+        .flatten()
 }
 
 /// Validate kebab-case identifier: ^[a-z][a-z0-9-]*$
@@ -254,9 +255,13 @@ mod tests {
     fn test_design_template_has_sections() {
         let content = design_template("My Feature");
         assert!(content.starts_with("# Design: My Feature"));
-        assert!(content.contains("## Approach"));
+        assert!(content.contains("## Why This Design"));
+        assert!(content.contains("## Build Target"));
+        assert!(content.contains("## Resolved Decisions"));
         assert!(content.contains("## Commits"));
-        assert!(content.contains("## Key Files"));
+        assert!(content.contains("## Direct Code Targets"));
+        assert!(content.contains("## Verification Plan"));
+        assert!(content.contains("## Build Readiness"));
         assert!(content.contains("## Open Questions"));
     }
 

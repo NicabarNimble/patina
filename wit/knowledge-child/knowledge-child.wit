@@ -1,0 +1,32 @@
+package patina:knowledge-child@0.1.0;
+
+world knowledge-child {
+    import patina:host/log@0.1.0;
+    import patina:host/measure@0.1.0;
+    import patina:host/query@0.1.0;
+    import patina:host/http@0.1.0;
+    import patina:host/ingress@0.1.0;
+    import patina:host/connector@0.1.0;
+    import patina:host/emit@0.1.0;
+    import patina:host/state@0.1.0;
+    import patina:host/checkpoint@0.1.0;
+    import patina:host/lake@0.1.0;
+    import patina:host/events@0.1.0;
+    import patina:host/task@0.1.0;
+    import patina:host/graph@0.1.0;
+    import patina:host/belief@0.1.0;
+    import patina:host/types@0.1.0;
+
+    use patina:host/types@0.1.0.{child-health};
+    use patina:host/events@0.1.0.{pending-event};
+    use patina:host/task@0.1.0.{task-intent};
+
+    export init: func();
+    export name: func() -> string;
+    export on-load: func() -> result<_, string>;
+    export on-unload: func();
+    export health: func() -> child-health;
+    export handle: func(action: string, payload: string) -> result<string, string>;
+    export drain: func(limit: u32) -> result<list<pending-event>, string>;
+    export tick: func() -> list<task-intent>;
+}

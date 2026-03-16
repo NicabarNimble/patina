@@ -252,6 +252,9 @@ impl<'a> GitHubClient<'a> {
     // ========================================================================
 
     /// Fetch PRs and emit them as github.pr facts.
+    ///
+    /// GitHub's pulls endpoint doesn't support `since`, so we sort by
+    /// `updated desc` and stop when we see an item older than `since`.
     pub fn fetch_and_emit_prs(
         &self,
         limit: usize,
@@ -262,13 +265,14 @@ impl<'a> GitHubClient<'a> {
         let mut emitted = 0;
         let mut latest_updated_at: Option<String> = None;
         let mut page = 1;
+        let mut hit_since_cutoff = false;
 
         loop {
-            if fetched >= limit {
+            if fetched >= limit || hit_since_cutoff {
                 break;
             }
 
-            let url = self.prs_url(page, since);
+            let url = self.prs_url(page);
             let response = self.get(&url, io)?;
             let items: Vec<GhApiPullRequest> =
                 serde_json::from_str(&response.body).map_err(|e| PipeError::Fatal {
@@ -284,6 +288,15 @@ impl<'a> GitHubClient<'a> {
             for item in &items {
                 if fetched >= limit {
                     break;
+                }
+
+                // Client-side since filter: results are sorted by updated desc,
+                // so once we see an older item, all remaining are older too.
+                if let Some(cutoff) = since {
+                    if item.updated_at.as_str() <= cutoff {
+                        hit_since_cutoff = true;
+                        break;
+                    }
                 }
 
                 // Track latest updated_at for cursor
@@ -348,9 +361,7 @@ impl<'a> GitHubClient<'a> {
         })
     }
 
-    fn prs_url(&self, page: usize, _since: Option<&str>) -> String {
-        // GitHub's pulls endpoint doesn't have a `since` parameter,
-        // so we sort by updated desc and stop early when needed.
+    fn prs_url(&self, page: usize) -> String {
         format!(
             "{}/pulls?state=all&per_page={}&page={}&sort=updated&direction=desc",
             self.api_base(),
@@ -432,7 +443,7 @@ fn pr_to_event_json(
         .join("\n");
 
     let approvals = reviews.iter().filter(|r| r.state == "APPROVED").count() as i32;
-    let linked_issues: Vec<i64> = Vec::new();
+    let linked_issues = extract_linked_issues(item.body.as_deref().unwrap_or(""));
 
     serde_json::json!({
         "number": item.number,
@@ -450,6 +461,48 @@ fn pr_to_event_json(
         "comments_text": comments_text,
         "approvals": approvals,
     })
+}
+
+/// Extract issue numbers from PR body text.
+///
+/// Looks for GitHub closing keywords followed by `#N`:
+/// fixes, closes, resolves (and their conjugated forms).
+fn extract_linked_issues(body: &str) -> Vec<i64> {
+    const KEYWORDS: &[&str] = &[
+        "fix ",
+        "fixes ",
+        "fixed ",
+        "close ",
+        "closes ",
+        "closed ",
+        "resolve ",
+        "resolves ",
+        "resolved ",
+    ];
+    let lower = body.to_lowercase();
+    let mut issues = Vec::new();
+
+    for keyword in KEYWORDS {
+        let mut search_from = 0;
+        while let Some(pos) = lower[search_from..].find(keyword) {
+            let after = search_from + pos + keyword.len();
+            if let Some(rest) = lower.get(after..) {
+                let rest = rest.trim_start();
+                if let Some(rest) = rest.strip_prefix('#') {
+                    let num_str: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+                    if let Ok(n) = num_str.parse::<i64>() {
+                        if !issues.contains(&n) {
+                            issues.push(n);
+                        }
+                    }
+                }
+            }
+            search_from = after;
+        }
+    }
+
+    issues.sort();
+    issues
 }
 
 /// Track the latest updated_at timestamp for cursor.
@@ -474,5 +527,47 @@ fn truncate(s: &str, max: usize) -> &str {
         s
     } else {
         s.get(..max).unwrap_or(s)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_linked_issues_fixes() {
+        assert_eq!(extract_linked_issues("Fixes #42"), vec![42]);
+        assert_eq!(extract_linked_issues("fixes #1 and fixes #2"), vec![1, 2]);
+        assert_eq!(extract_linked_issues("Fixed #10"), vec![10]);
+    }
+
+    #[test]
+    fn test_extract_linked_issues_closes() {
+        assert_eq!(extract_linked_issues("Closes #7"), vec![7]);
+        assert_eq!(extract_linked_issues("close #3"), vec![3]);
+    }
+
+    #[test]
+    fn test_extract_linked_issues_resolves() {
+        assert_eq!(extract_linked_issues("Resolves #99"), vec![99]);
+    }
+
+    #[test]
+    fn test_extract_linked_issues_dedup() {
+        assert_eq!(extract_linked_issues("fixes #5, closes #5"), vec![5]);
+    }
+
+    #[test]
+    fn test_extract_linked_issues_none() {
+        assert_eq!(extract_linked_issues("no issues here"), Vec::<i64>::new());
+        assert_eq!(extract_linked_issues("see #123"), Vec::<i64>::new());
+    }
+
+    #[test]
+    fn test_extract_linked_issues_sorted() {
+        assert_eq!(
+            extract_linked_issues("fixes #30, fixes #10, fixes #20"),
+            vec![10, 20, 30]
+        );
     }
 }

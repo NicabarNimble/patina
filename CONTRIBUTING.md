@@ -67,6 +67,39 @@ If you're not comfortable with this visibility, you can contribute without sessi
 ./resources/git/pre-push-checks.sh
 ```
 
+## Crate Naming Policy
+
+Use crate names that make ownership and intent obvious at a glance.
+
+### Canonical Prefixes
+
+- `patina-ai` - main app crate and internal runtime/app family prefix.
+- `patina-sdk` - public SDK umbrella and SDK family prefix.
+
+### Rules for New Workspace Crates
+
+- New app/runtime/internal crates should use `patina-ai-*`.
+- New public SDK crates should use `patina-sdk-*` (or remain under
+  `patina-sdk` when a split is unnecessary).
+- Avoid introducing new unprefixed crate names for workspace members.
+
+### Grandfathered Names
+
+Existing crates with older naming patterns are allowed for compatibility.
+This policy is forward-looking: new crates follow canonical prefixes, while
+legacy names migrate only when there is clear value.
+
+### Enforcement
+
+CI validates workspace crate names with:
+
+```bash
+bash resources/scripts/check-crate-names.sh
+```
+
+If you add a crate and the check fails, rename it to match policy and update the
+relevant spec migration matrix.
+
 ## How to Contribute
 
 ### 1. Find or Create an Issue

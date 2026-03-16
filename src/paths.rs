@@ -18,6 +18,7 @@
 //! ├── config.toml              # Global config
 //! ├── registry.yaml            # Project/repo registry
 //! ├── adapters/                # LLM adapter templates
+//! ├── connections/             # Connection records (TOML)
 //! ├── personas/default/events/ # Source (valuable)
 //! ├── run/                     # Runtime (socket, pid, token)
 //! │   ├── serve.sock           # Unix domain socket
@@ -50,6 +51,10 @@ use std::path::{Path, PathBuf};
 
 /// User's patina home directory: `~/.patina/`
 pub fn patina_home() -> PathBuf {
+    if let Some(override_path) = std::env::var_os("PATINA_HOME") {
+        return PathBuf::from(override_path);
+    }
+
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".patina")
@@ -222,6 +227,51 @@ pub mod user_layer {
     }
 }
 
+/// Lake paths (DuckLake storage)
+pub mod lakes {
+    use super::*;
+
+    /// Lakes directory: `~/.patina/lakes/`
+    pub fn lakes_dir() -> PathBuf {
+        patina_home().join("lakes")
+    }
+
+    /// Resolve a lake path by name.
+    ///
+    /// Returns the lake directory path if it exists and has a lake.toml.
+    pub fn resolve_lake_path(name: &str) -> Result<PathBuf, String> {
+        let lake_dir = lakes_dir().join(name);
+        let lake_toml = lake_dir.join("lake.toml");
+
+        if !lake_toml.exists() {
+            return Err(format!(
+                "lake '{}' not found (expected {} to exist)\n  \
+                 Run: patina lake create {}",
+                name,
+                lake_toml.display(),
+                name
+            ));
+        }
+
+        Ok(lake_dir)
+    }
+}
+
+/// Connection record paths (user-level, global scope in v1)
+pub mod connections {
+    use super::*;
+
+    /// Connection configs directory: `~/.patina/connections/`
+    pub fn connections_dir() -> PathBuf {
+        patina_home().join("connections")
+    }
+
+    /// Individual connection config: `~/.patina/connections/{name}.toml`
+    pub fn connection_path(name: &str) -> PathBuf {
+        connections_dir().join(format!("{}.toml", name))
+    }
+}
+
 /// Mother paths (cross-project graph and federation)
 pub mod mother {
     use super::*;
@@ -234,6 +284,11 @@ pub mod mother {
     /// Relationship graph: `~/.patina/mother/graph.db`
     pub fn graph_db() -> PathBuf {
         data_dir().join("graph.db")
+    }
+
+    /// Knowledge-child runtime state: `~/.patina/mother/runtime.db`
+    pub fn runtime_db() -> PathBuf {
+        data_dir().join("runtime.db")
     }
 }
 
@@ -351,10 +406,38 @@ pub mod project {
 mod tests {
     use super::*;
 
+    fn with_temp_patina_home<T>(f: impl FnOnce(PathBuf) -> T) -> T {
+        let _guard = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp = tempfile::TempDir::new().unwrap();
+        let expected_home = temp.path().join("patina-home");
+        std::fs::create_dir_all(&expected_home).unwrap();
+        let old = std::env::var_os("PATINA_HOME");
+        unsafe {
+            std::env::set_var("PATINA_HOME", &expected_home);
+        }
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(expected_home)));
+        match old {
+            Some(value) => unsafe {
+                std::env::set_var("PATINA_HOME", value);
+            },
+            None => unsafe {
+                std::env::remove_var("PATINA_HOME");
+            },
+        }
+        match result {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
+    }
+
     #[test]
     fn test_patina_home() {
-        let home = patina_home();
-        assert!(home.ends_with(".patina"));
+        with_temp_patina_home(|expected_home| {
+            let home = patina_home();
+            assert_eq!(home, expected_home);
+        });
     }
 
     #[test]
@@ -405,17 +488,19 @@ mod tests {
 
     #[test]
     fn test_serve_paths() {
-        let run = serve::run_dir();
-        assert!(run.to_string_lossy().ends_with(".patina/run"));
+        with_temp_patina_home(|expected_home| {
+            let run = serve::run_dir();
+            assert_eq!(run, expected_home.join("run"));
 
-        let sock = serve::socket_path();
-        assert!(sock.to_string_lossy().ends_with("run/serve.sock"));
+            let sock = serve::socket_path();
+            assert_eq!(sock, expected_home.join("run/serve.sock"));
 
-        let token = serve::token_path();
-        assert!(token.to_string_lossy().ends_with("run/serve.token"));
+            let token = serve::token_path();
+            assert_eq!(token, expected_home.join("run/serve.token"));
 
-        let pid = serve::pid_path();
-        assert!(pid.to_string_lossy().ends_with("run/mother.pid"));
+            let pid = serve::pid_path();
+            assert_eq!(pid, expected_home.join("run/mother.pid"));
+        });
     }
 
     #[test]
@@ -423,6 +508,19 @@ mod tests {
         let beliefs = user_layer::beliefs_dir();
         assert!(beliefs.to_string_lossy().contains("layer/surface/beliefs"));
         assert!(beliefs.starts_with(patina_home()));
+    }
+
+    #[test]
+    fn test_connections_paths() {
+        with_temp_patina_home(|expected_home| {
+            let dir = connections::connections_dir();
+            assert_eq!(dir, expected_home.join("connections"));
+            assert!(dir.starts_with(patina_home()));
+
+            let path = connections::connection_path("github");
+            assert_eq!(path, expected_home.join("connections/github.toml"));
+            assert!(path.starts_with(connections::connections_dir()));
+        });
     }
 
     #[test]

@@ -1,17 +1,13 @@
 {
-  "patina": "0.1.0",
+  "patina": "0.43.2",
   "components": {
-    "gemini-adapter": {
-      "version": "0.1.0",
-      "description": "Gemini AI context file generation"
-    },
     "claude-adapter": {
       "version": "0.7.0",
       "description": "Claude AI session management and context generation"
     },
-    "docker": {
+    "gemini-adapter": {
       "version": "0.1.0",
-      "description": "Docker containerization templates and integration"
+      "description": "Gemini AI context file generation"
     }
   }
 }

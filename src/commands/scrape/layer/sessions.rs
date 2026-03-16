@@ -17,16 +17,37 @@ use crate::commands::scrape::database;
 /// Minimal struct — only the fields the scraper needs. serde skips unknown
 /// fields by default, so `status`, `start_timestamp`, etc. are ignored.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct SessionYaml {
+    runtime_id: Option<String>,
     title: Option<String>,
     created: Option<String>,
+    updated: Option<String>,
     status: Option<String>,
+    interface: Option<String>,
+    persona: Option<String>,
+    participants: Option<Vec<SessionParticipantYaml>>,
+    interfaces: Option<Vec<String>>,
+    parent_session: Option<String>,
+    handoff_from: Option<String>,
+    handoff_to: Option<Vec<String>>,
     git: Option<SessionGitYaml>,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct SessionGitYaml {
+    project_uid: Option<String>,
     branch: Option<String>,
+    end_tag: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct SessionParticipantYaml {
+    id: Option<String>,
+    role: Option<String>,
+    interface: Option<String>,
 }
 
 /// Parsed session from markdown file
@@ -695,5 +716,49 @@ git:
         assert_eq!(session.commits_made, 4);
         assert_eq!(session.patterns_modified, 3);
         assert_eq!(session.beliefs_captured, 0);
+    }
+
+    #[test]
+    fn test_parse_session_file_extended_yaml_format() {
+        let content = r#"---
+type: session
+id: '20260311-104500-ABCD'
+runtime_id: 123e4567-e89b-12d3-a456-426614174000
+title: OpenCode operator session
+status: active
+llm: opencode
+interface: opencode
+created: '2026-03-11T14:45:00Z'
+updated: '2026-03-11T14:50:00Z'
+persona: architect
+participants:
+  - id: opencode-123
+    role: interface
+    interface: opencode
+interfaces:
+  - opencode
+handoff_to:
+  - 20260311-110000-EFGH
+start_timestamp: 1762891500000
+git:
+  project_uid: proj1234
+  branch: patina
+  starting_commit: 9c61c5e2
+  start_tag: session-20260311-104500-ABCD-opencode-start
+---
+
+## Goals
+- [ ] OpenCode operator session
+"#;
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("20260311-104500-ABCD.md");
+        std::fs::write(&file_path, content).unwrap();
+
+        let session = parse_session_file(&file_path).unwrap();
+        assert_eq!(session.id, "20260311-104500-ABCD");
+        assert_eq!(session.title, "OpenCode operator session");
+        assert_eq!(session.status, Some("active".to_string()));
+        assert_eq!(session.branch, Some("patina".to_string()));
+        assert_eq!(session.goals.len(), 1);
     }
 }

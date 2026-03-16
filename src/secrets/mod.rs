@@ -567,9 +567,34 @@ mod tests {
 
     #[test]
     fn test_registry_path() {
-        let path = paths::secrets::registry_path();
-        assert!(path.to_string_lossy().ends_with("secrets.toml"));
-        assert!(path.to_string_lossy().contains(".patina"));
+        let _guard = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp = tempfile::TempDir::new().unwrap();
+        let patina_home = temp.path().join("patina-home");
+        std::fs::create_dir_all(&patina_home).unwrap();
+        let old = std::env::var_os("PATINA_HOME");
+        unsafe {
+            std::env::set_var("PATINA_HOME", &patina_home);
+        }
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let path = paths::secrets::registry_path();
+            assert_eq!(path, patina_home.join("secrets.toml"));
+        }));
+
+        match old {
+            Some(value) => unsafe {
+                std::env::set_var("PATINA_HOME", value);
+            },
+            None => unsafe {
+                std::env::remove_var("PATINA_HOME");
+            },
+        }
+
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
     }
 
     #[test]

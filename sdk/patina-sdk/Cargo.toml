@@ -1,0 +1,26 @@
+[package]
+name = "patina-sdk"
+version = "0.21.0"
+edition = "2021"
+license = "MIT"
+description = "SDK for building Patina WASM plugins — task, command, pipeline, and mother-child worlds"
+repository = "https://github.com/NicabarNimble/patina"
+keywords = ["patina", "wasm", "plugin", "component-model"]
+categories = ["development-tools", "wasm"]
+
+# Ensure WIT files and license ship with the published crate
+include = ["src/**", "wit/**", "Cargo.toml", "README.md", "LICENSE*"]
+
+[features]
+default = []
+task = []
+command = []
+mother-child = []
+knowledge-child = ["dep:serde", "dep:serde_json"]
+pipeline = ["dep:serde", "dep:serde_json"]
+
+[dependencies]
+wit-bindgen = "0.41"
+patina-pipe-types = { path = "../../crates/patina-pipe-types" }
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }

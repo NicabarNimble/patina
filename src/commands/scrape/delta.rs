@@ -365,7 +365,7 @@ mod tests {
     #[test]
     fn test_beliefs_affected_when_code_changes() {
         // When code changes, beliefs are affected (regrounding needed)
-        let files = vec![ChangedFile {
+        let files = [ChangedFile {
             path: "src/main.rs".to_string(),
             extension: Some("rs".to_string()),
         }];

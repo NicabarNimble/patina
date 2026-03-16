@@ -1,7 +1,9 @@
 pub mod adapter;
+pub mod ai;
 pub mod assay;
 pub mod belief;
 pub mod bench;
+pub mod connect;
 pub mod context;
 #[cfg(feature = "bundled-doctor")]
 pub mod doctor;
@@ -9,6 +11,8 @@ pub mod eval;
 pub mod events;
 pub mod hook;
 pub mod init;
+pub mod interface;
+pub mod lake;
 pub mod launch;
 pub mod measure;
 pub mod model;

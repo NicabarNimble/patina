@@ -2,7 +2,7 @@
 name = "github"
 version = "1.0.0"
 package = "patina:schema/github@1.0.0"
-description = "GitHub issues and pull requests (via github-connector)"
+description = "GitHub issues and pull requests (native connector)"
 
 # Fact types produced by this schema.
 # Each maps a logical name to an event type and WIT record.
@@ -11,16 +11,16 @@ description = "GitHub issues and pull requests (via github-connector)"
 name = "issue"
 event_type = "github.issue"
 record = "issue"
+identity_fields = ["number"]
 
 [[facts]]
 name = "pull-request"
 event_type = "github.pr"
 record = "pull-request"
+identity_fields = ["number"]
 
 # Embedding configuration.
-# offset_slot indexes into embeddings::offsets (slot 5 = FORGE_ID_OFFSET).
-# Shares slot 5 with forge — both are code-hosting-platform events,
-# and seq is unique across eventlog so no key collisions.
+# offset_slot indexes into embeddings::offsets (slot 5).
 # corpus_query is the SQL used by oxidize to build the embedding corpus.
 
 [embedding]
@@ -36,14 +36,66 @@ WHERE event_type LIKE 'github.%'
 
 # Index configuration per fact type.
 # Defines FTS5 fields and materialized view tables.
-# Shares tables with forge — both project into forge_issues/forge_prs.
 
 [[indexes]]
 fact = "issue"
 fts_fields = ["title", "body"]
-table = "forge_issues"
+table = "github_issues"
 
 [[indexes]]
 fact = "pull-request"
-fts_fields = ["title", "body", "comments"]
-table = "forge_prs"
+fts_fields = ["title", "body", "comments_text"]
+table = "github_prs"
+
+# Projection declarations — table DDL, column mappings, primary keys.
+# Used by the generic projection engine (connector-owns-tables spec).
+
+[[projections]]
+fact = "issue"
+table = "github_issues"
+primary_key = "number"
+columns = [
+    { name = "number", type = "INTEGER", json_path = "$.number" },
+    { name = "title", type = "TEXT", json_path = "$.title" },
+    { name = "body", type = "TEXT", json_path = "$.body" },
+    { name = "state", type = "TEXT", json_path = "$.state" },
+    { name = "labels", type = "TEXT", json_path = "$.labels" },
+    { name = "author", type = "TEXT", json_path = "$.author" },
+    { name = "updated_at", type = "TEXT", json_path = "$.updated_at" },
+    { name = "url", type = "TEXT", json_path = "$.url" },
+]
+
+[[projections]]
+fact = "pull-request"
+table = "github_prs"
+primary_key = "number"
+columns = [
+    { name = "number", type = "INTEGER", json_path = "$.number" },
+    { name = "title", type = "TEXT", json_path = "$.title" },
+    { name = "body", type = "TEXT", json_path = "$.body" },
+    { name = "state", type = "TEXT", json_path = "$.state" },
+    { name = "labels", type = "TEXT", json_path = "$.labels" },
+    { name = "author", type = "TEXT", json_path = "$.author" },
+    { name = "merged_at", type = "TEXT", json_path = "$.merged_at" },
+    { name = "url", type = "TEXT", json_path = "$.url" },
+    { name = "comments_text", type = "TEXT", json_path = "$.comments_text" },
+    { name = "linked_issues", type = "TEXT", json_path = "$.linked_issues" },
+    { name = "approvals", type = "INTEGER", json_path = "$.approvals" },
+]
+
+# Contract declarations — consumer-facing metadata per fact type.
+
+[[contracts]]
+name = "issues"
+event_type = "github.issue"
+display_kind = "Issue"
+
+[[contracts]]
+name = "pull-requests"
+event_type = "github.pr"
+display_kind = "PR"
+
+# Lake-scope metadata.
+
+[lake]
+path_template = "{owner}/{repo}"

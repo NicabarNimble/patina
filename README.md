@@ -2,309 +2,247 @@
 
 > Context orchestration for AI-assisted development
 
-Patina accumulates development wisdom like the protective layer that forms on metal—your patterns, decisions, and insights build up over time and transfer between projects.
+Patina is a local-first Rust CLI that turns a repository into a reusable knowledge system for humans and AI tools. It scrapes code, git history, layer artifacts, and optional external sources into a local store, builds semantic indices, and exposes commands for retrieval, structure queries, workflow tracking, and cross-project knowledge.
 
-## What is Patina?
+## What Patina Does
 
-Patina solves the fundamental problem of AI-assisted development: constantly re-teaching AI assistants about your project's context, patterns, and constraints.
+- Builds project memory from code, commits, specs, sessions, and beliefs
+- Provides semantic search with `patina scry` and structural queries with `patina assay`
+- Captures project rules and decisions through `patina context`, specs, and epistemic beliefs
+- Supports cross-project knowledge via external repos, persona data, and the Mother daemon
+- Extends the system with adapters, schemas, and WASM plugins
 
-**Core idea**: Your development knowledge compounds. Session insights become beliefs, beliefs ground retrieval, retrieval enables smarter AI assistance.
-
-## Features (v0.17.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Semantic Search** | Vector search over code, commits, beliefs, and patterns via `scry` |
-| **Structural Queries** | Module inventory, call graph, imports, co-change analysis via `assay` |
-| **Epistemic Beliefs** | Capture project decisions with evidence, grounding, and attack/support relationships |
-| **WASM Plugins** | Extend Patina with WebAssembly component model plugins |
-| **Mother Daemon** | Cross-project knowledge, hot model caching, graph routing |
-| **MCP Integration** | Model Context Protocol server for LLM tool integration |
-| **Cross-Project Knowledge** | Query external repos and persona knowledge across projects |
-| **Spec-Driven Development** | Lifecycle management for specs (draft → ready → active → complete) |
-| **Session Tracking** | Git-integrated development sessions with tagging and classification |
-| **Secrets Management** | Age encryption with Touch ID, multi-recipient vaults |
-| **LLM Adapters** | Claude, Gemini, and OpenCode integration |
-| **YOLO Devcontainers** | AI-ready development environments |
+Patina is designed around a simple idea: project knowledge should compound instead of being re-explained every session.
 
 ## Quick Start
 
 ```bash
-# Install
+# Install the CLI
 cargo install --path .
 
-# Initialize project
+# First-run setup
+patina setup grammars
+
+# Initialize a project
 patina init .
 
-# Add an LLM adapter
+# Allow an AI adapter in this repo
 patina adapter add claude
 
-# Build knowledge database (code + git + sessions)
+# Build the local knowledge base
 patina scrape
-
-# Build embedding projections
 patina oxidize
 
-# Search your codebase
-patina scry "error handling patterns"        # Semantic search
-patina scry --file src/main.rs               # Temporal: co-changing files
-patina scry --belief measure-first           # Belief grounding: find related code
+# Query it
+patina scry "error handling patterns"
+patina assay search "plugin engine"
+patina context --topic "testing"
+```
 
-# Structural queries
-patina assay                                 # Module inventory
-patina assay search "plugin engine"          # FTS5 text search
-patina assay cochange src/main.rs            # Co-change analysis
+Once configured, running bare `patina` launches the default adapter.
 
-# Get project patterns and beliefs
-patina context                               # Core + surface patterns
-patina context --topic "error handling"      # Focused on a topic
+## Core Workflow
 
-# Query external repos
-patina repo dojoengine/dojo                  # Clone + index
-patina scry "spawn" --repo dojo              # Search it
+```bash
+# Refresh knowledge after changes
+patina scrape
+patina oxidize
 
-# Check project health
+# Semantic retrieval
+patina scry "release automation"
+patina scry --file src/main.rs
+patina scry --belief git-as-memory
+patina scry recent --days 7
+
+# Structural and factual retrieval
+patina assay
+patina assay imports src/main.rs
+patina assay callers find_project_root
+patina assay cochange src/commands/spec/mod.rs
+
+# Project guidance for AI work
+patina context
+patina belief audit
+```
+
+## Command Guide
+
+### Retrieval and analysis
+
+```bash
+patina scry "query"                 # Semantic search over code, beliefs, patterns, commits
+patina scry --all-repos "query"     # Search current project + registered repos
+patina scry --detail <query-id>      # Fetch full content for a previous result
+patina assay                         # Module inventory
+patina assay search "term"          # Ranked factual search via FTS5
+patina assay belief <belief-id>      # Ground a belief against code and facts
+patina context --topic "architecture"
+patina report                        # Generate project state report
+patina measure --full                # Health view from measurement data
+patina eval --combined               # Evaluate retrieval pipeline quality
+patina bench retrieval               # Benchmark retrieval quality
+```
+
+### Knowledge pipeline and storage
+
+```bash
+patina scrape                        # Delta-driven scrape of git, code, layer, beliefs
+patina scrape code                   # Re-extract code facts
+patina scrape git                    # Re-extract commit and co-change data
+patina scrape layer                  # Re-extract patterns, sessions, and specs
+patina oxidize                       # Build embeddings and projections
+patina rebuild                       # Rebuild local derived state from tracked sources
+patina events export                 # Export runtime events to JSONL replica
+patina events import layer/events.jsonl
+```
+
+### Project workflow
+
+```bash
+patina session start "feature name"
+patina session update
+patina session note "important insight"
+patina session end
+
+patina spec create feature-name
+patina spec ready
+patina spec promote feature-name
+patina spec complete feature-name
+patina spec next
+
+patina version                       # Show current version and ready specs
+patina version hotfix                # Patch bump without spec ceremony
+patina upgrade --check               # Check for newer CLI release
+```
+
+### Cross-project knowledge and services
+
+```bash
+patina repo add owner/repo
+patina repo list
+patina repo update owner-repo
+
+patina persona note "prefers explicit errors"
+patina persona query "error handling"
+
+patina connect github                # Connect GitHub via OAuth device flow
+patina connect status
+
+patina mother start
+patina mother search "belief query"
+patina mother sources
+
+patina model list
+patina model add e5-base-v2
+```
+
+### Setup, extension, and safety
+
+```bash
+patina adapter list
+patina adapter add opencode
+patina adapter mcp
+
+patina plugin list
+patina plugin init my-plugin
+patina schema new my-schema
+patina schema build
+
+patina secrets add API_KEY
+patina secrets run -- ./script.sh
+patina secrets audit
+
 patina doctor
-```
-
-## Commands
-
-### Knowledge Pipeline
-```bash
-patina scrape                       # Run all scrapers (code + git + sessions)
-patina scrape code                  # Extract AST, call graph, symbols
-patina scrape git                   # Extract commits, file co-changes
-patina scrape sessions              # Extract session observations
-
-patina oxidize                      # Build vector embeddings from scraped data
-patina rebuild                      # Rebuild .patina/ from git-tracked sources
-```
-
-Supported languages: Rust, TypeScript, JavaScript, Python, Go, C, C++, Solidity, Cairo
-
-### Search & Retrieval
-
-**Semantic search (scry)** — vector similarity over beliefs, patterns, commits, and code:
-```bash
-patina scry "error handling"                       # Semantic search
-patina scry --file src/auth.rs                     # Temporal: what files co-change?
-patina scry --belief eventlog-is-truth             # Belief grounding
-patina scry --repo dojo "spawn"                    # Query external repo
-patina scry --include-issues "bounty"              # Include GitHub issues
-patina scry orient src/commands/                   # Structural orientation
-patina scry recent --days 7                        # Recent changes
-```
-
-**Structural queries (assay)** — exact queries over code structure:
-```bash
-patina assay                                       # Module inventory
-patina assay imports src/main.rs                   # What does main.rs import?
-patina assay callers "find_project_root"            # Who calls this function?
-patina assay cochange src/plugin/mod.rs            # Files that co-change
-patina assay search "embedding model"              # FTS5 ranked text search
-patina assay belief eventlog-is-truth              # Evidence for a belief
-patina assay derive                                # Compute structural signals
-```
-
-**Context** — patterns and conventions for AI assistants:
-```bash
-patina context                                     # Core + surface patterns + beliefs
-patina context --topic "testing"                   # Focused retrieval
-```
-
-### Epistemic Beliefs
-```bash
-patina belief audit                 # Show all beliefs with use/truth metrics
-patina scry --belief <id>           # Ground a belief against code
-patina assay belief <id>            # Find evidence for a belief
-```
-
-### Cross-Project Knowledge
-```bash
-patina repo dojoengine/dojo              # Clone + scrape to ~/.patina/repos/
-patina repo add <url> --with-issues      # Also fetch GitHub issues
-patina repo list                         # Show registered repos
-patina repo update dojo                  # Git pull + rescrape
-patina repo remove dojo                  # Remove repo
-
-patina persona note "prefers explicit error handling"  # Capture user knowledge
-patina persona query "error handling"                  # Search persona knowledge
-```
-
-### Mother Daemon
-```bash
-patina mother start                      # Start the daemon
-patina mother status                     # Show daemon status
-patina mother graph                      # Graph operations
-```
-
-### WASM Plugins
-```bash
-patina plugin list                       # List installed plugins
-```
-
-Plugins use the WebAssembly Component Model (WIT interfaces). Patina ships with `patina-doctor` as a WASM plugin with a compiled fallback.
-
-### Session Management
-```bash
-patina session start "feature name"      # Start session with git tagging
-patina session update                    # Record progress with git metrics
-patina session note "important insight"  # Add timestamped note
-patina session end                       # Archive, classify, distill
-```
-
-Within Claude, use slash commands: `/session-start`, `/session-update`, `/session-note`, `/session-end`
-
-### Spec Lifecycle
-```bash
-patina spec list                         # List all specs
-patina spec ready                        # Show unblocked specs ready to work
-patina spec blocked                      # Show blocked specs
-patina spec status <name> active         # Update status (draft → ready → active → complete)
-patina spec archive <name>               # Archive completed spec
-```
-
-### Versioning & Release
-```bash
-patina version                           # Show current version + ready specs
-patina version --components              # Show component versions
-patina version hotfix                    # Emergency patch bump
-patina spec status <name> complete       # Completing a spec triggers release
-```
-
-### Secrets
-```bash
-patina secrets add API_KEY               # Add secret to vault
-patina secrets run -- ./my-script.sh     # Inject secrets into environment
-patina secrets check                     # Scan staged files for exposed secrets
-patina secrets audit                     # Scan all tracked files
-```
-
-### Project Setup
-```bash
-patina init .                      # Initialize project
-patina adapter add claude          # Add LLM adapter
-patina doctor                      # Check project health
-patina upgrade                     # Check for new CLI versions
-patina model list                  # List available embedding models
-```
-
-### Development Environment
-```bash
-patina yolo                         # Generate AI-ready devcontainer
-patina yolo --with foundry,cairo    # Add specific tools
-```
-
-### Measurement
-```bash
-patina eval                         # Evaluate retrieval quality
-patina bench                        # Benchmark with ground truth
-patina report                       # Generate project state report
+patina setup grammars
+patina yolo
 ```
 
 ## Architecture
 
+```text
+Sources                         Storage / indices                  Query surface
+-------                         -----------------                  -------------
+git history                 ->  .patina/local/data/patina.db   ->  scry
+code + grammar plugins      ->  .patina/local/data/events.db   ->  assay
+layer/ (specs, sessions,    ->  .patina/local/data/embeddings  ->  context
+beliefs, patterns)                                              ->  belief / report / measure
+external repos + sources
 ```
+
+Core ideas:
+
+- `scry` is the semantic retrieval layer
+- `assay` is the factual and structural retrieval layer
+- `context` surfaces project rules, conventions, and beliefs for AI assistants
+- `rebuild` restores derived state from tracked project artifacts
+- Mother provides long-lived cross-project services, caching, and routing
+
+## Repository Layout
+
+```text
 patina/
-├── src/                        # Rust source (~61k lines, 195 files)
-│   ├── commands/               # CLI commands (27 total)
-│   │   ├── scrape/             # Code, git, sessions, GitHub extraction
-│   │   ├── scry/               # Semantic vector search
-│   │   ├── assay/              # Structural queries (imports, callers, co-change)
-│   │   ├── oxidize/            # Embedding projection training
-│   │   ├── mother/             # Daemon (microserver, registry, graph)
-│   │   ├── session/            # Git-integrated session management
-│   │   ├── repo/               # Cross-project knowledge
-│   │   ├── spec/               # Spec lifecycle management
-│   │   ├── version/            # Versioning and release
-│   │   ├── belief/             # Epistemic belief audit
-│   │   ├── persona/            # Cross-project user knowledge
-│   │   └── ...                 # init, doctor, secrets, yolo, eval, bench, etc.
-│   ├── plugin/                 # WASM plugin engine (wasmtime)
-│   ├── mother/                 # Daemon core (graph, children)
-│   ├── retrieval/              # Oracle abstraction, RRF fusion
-│   ├── mcp/                    # MCP protocol, JSON-RPC server
-│   ├── embeddings/             # ONNX E5-base-v2, USearch HNSW
-│   ├── release/                # Release strategy and version bumping
-│   ├── secrets/                # Age encryption, Keychain integration
-│   ├── adapters/               # LLM adapters (Claude, Gemini, OpenCode)
-│   └── ...                     # db, forge, git, models, scanner, workspace
-├── grammars/                   # Grammar WASM plugins (9 languages)
-├── plugins/                    # Workspace plugin crates (sdk, doctor, models, repos)
-├── layer/                      # Pattern storage (Git as memory)
-│   ├── core/                   # Eternal principles + core beliefs
-│   ├── surface/                # Active specs, architecture docs
-│   │   ├── epistemic/beliefs/  # 103 epistemic beliefs
-│   │   └── build/              # Specs and roadmap
-│   ├── dust/                   # Archived patterns
-│   └── sessions/               # 657 session archives
-├── .patina/
-│   ├── data/
-│   │   ├── patina.db           # Unified eventlog + materialized views
-│   │   └── embeddings/e5-base-v2/projections/
-│   │       ├── semantic.*      # Trained MLP weights + HNSW index
-│   │       ├── temporal.*
-│   │       └── dependency.*
-│   └── oxidize.yaml            # Projection training recipe
-└── ~/.patina/
-    ├── repos/                  # External repos (cross-project knowledge)
-    ├── layer/                  # User-level beliefs and persona
-    └── registry.yaml           # Repo registry
+├── src/                      # Rust CLI, retrieval, daemon, adapters, storage
+├── grammars/                 # Grammar plugins used by the pipeline
+├── plugins/                  # WASM plugin crates and SDK
+├── crates/                   # Shared internal crates
+├── children/                 # Mother child components
+├── layer/                    # Git-tracked project memory
+│   ├── core/                 # Stable principles and patterns
+│   ├── surface/              # Active specs, beliefs, reports, architecture docs
+│   ├── sessions/             # Session archives
+│   └── dust/                 # Archived material
+└── .patina/
+    ├── config.toml           # Project config
+    ├── uid                   # Project identity
+    ├── oxidize.yaml          # Embedding recipe
+    ├── versions.json         # Version manifest
+    └── local/
+        ├── data/
+        │   ├── patina.db     # Rebuildable project database
+        │   ├── events.db     # Runtime event store
+        │   └── embeddings/   # Vector indices and projections
+        └── backups/
+
+~/.patina/
+├── config.toml               # Global config
+├── registry.yaml             # Project and repo registry
+├── adapters/                 # Adapter templates
+├── cache/repos/              # Cloned reference repos
+├── pipeline/                 # Installed grammar plugins
+├── personas/                 # Cross-project persona events
+└── run/                      # Mother runtime files
 ```
-
-### Data Flow
-
-```
-Sources                    Scrape              Oxidize              Query
-───────                    ──────              ───────              ─────
-.git/commits          →    patina.db     →    Training pairs   →   scry (semantic)
-src/**/* (AST)        →    ├── eventlog  →    E5 embedding     →   assay (structural)
-layer/sessions/*.md   →    ├── call_graph →   MLP projection   →   context (patterns)
-layer/**/beliefs/*.md →    ├── co_changes→    USearch HNSW     →   belief audit
-GitHub issues         →    └── code_fts       (.usearch files)
-```
-
-### Embedding Model
-
-Patina uses **E5-base-v2** (768-dim) with trained MLP projections per dimension.
-
-| Dimension | Training Signal | Query Interface |
-|-----------|-----------------|-----------------|
-| Semantic | Same session = related | `scry "query"` (text → concepts) |
-| Temporal | Same commit = related | `scry --file src/foo.rs` (file → co-changers) |
-| Dependency | Caller/callee = related | `assay callers/callees` (call graph) |
-
-**Architecture:** E5-base-v2 (768-dim) → trained MLP (768→1024→256) → USearch HNSW index per dimension.
 
 ## Design Principles
 
-- **Pure Rust**: No Python subprocess dependencies (ONNX Runtime via `ort` crate)
-- **Local-first**: SQLite + USearch, no cloud services required
-- **LLM-agnostic**: Adapter pattern for Claude, Gemini, OpenCode
-- **Git as memory**: Sessions and beliefs committed to repo, vectors rebuildable from source
-- **Spec-driven**: Features start as specs, go through lifecycle, trigger releases on completion
+- Pure Rust runtime; no Python subprocess dependency chain
+- Local-first storage and rebuildable derived state
+- Git as memory for durable project knowledge
+- Adapter-based AI integration
+- Spec-driven workflow for larger changes
+- Extensible via schemas, plugins, and grammar pipelines
 
 ## Requirements
 
-- Rust (edition 2021, tested on 1.90+)
+- Rust toolchain
 - Git
-- Docker (optional, for `patina yolo` devcontainer generation)
-- `gh` CLI (optional, for `--with-issues` GitHub integration)
+- Docker optional for `patina yolo`
+- `gh` optional for GitHub-related flows
 
 ## Development
 
+Use the live-install workflow when testing changes:
+
 ```bash
-# Build and install
-cargo build --release
-cargo install --path .
+cargo build --release && cargo install --path . && patina --help
+```
 
-# Run tests
-cargo test --workspace
+Before pushing:
 
-# Pre-push checks (fmt + clippy + tests)
+```bash
 ./resources/git/pre-push-checks.sh
 ```
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT License - see `LICENSE`.

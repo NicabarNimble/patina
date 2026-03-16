@@ -41,26 +41,21 @@ pub fn extract_code_metadata_v2(
     let mut db = Database::open(db_path)?;
     db.init_schema()?;
 
-    // Project forge events from events.db into patina.db materialized views.
-    // This picks up events from both scrape and plugin sources.
-    match crate::commands::scrape::events::project_from_events(db.connection()) {
+    // Project events from events.db into schema-declared read model tables.
+    // Generic engine reads [[projections]] from installed schemas — no hardcoded DDL.
+    match crate::commands::scrape::projection::project_from_schemas(db.connection()) {
         Ok(stats) => {
-            if stats.issues_projected > 0 || stats.prs_projected > 0 {
+            if stats.rows_projected > 0 {
                 println!(
-                    "  Projected {} issues, {} PRs from events.db",
-                    stats.issues_projected, stats.prs_projected
+                    "  Projected {} rows into {} tables from events.db",
+                    stats.rows_projected, stats.tables_created
                 );
             }
         }
         Err(e) => {
-            eprintln!("  Warning: forge projection failed: {}", e);
-            // Fall back to just creating tables
-            crate::commands::scrape::events::create_materialized_views(db.connection())?;
+            eprintln!("  Warning: schema-driven projection failed: {}", e);
         }
     }
-
-    // Open events.db for forge event writes (runtime events go to events.db)
-    let events_conn = patina::eventlog::open_events_db()?;
 
     // Find all supported language files
     let mut all_files: Vec<(PathBuf, Language)> = Vec::new();
@@ -104,9 +99,6 @@ pub fn extract_code_metadata_v2(
     let mut files_with_errors = 0;
     let mut _files_processed = 0;
     let mut files_skipped_mtime = 0;
-    let mut forge_issues_inserted = 0;
-    let mut forge_prs_inserted = 0;
-    let mut forge_skipped = 0;
     let mut walked_paths: HashSet<String> = HashSet::new();
 
     // Process each file and collect data
@@ -175,47 +167,10 @@ pub fn extract_code_metadata_v2(
                         all_members.extend(extracted.members);
                         _files_processed += 1;
                     }
-                    ExtractedPayload::Issue(issue) => {
-                        let conn = db.connection();
-                        match crate::commands::scrape::events::insert_issues(
-                            conn,
-                            &events_conn,
-                            &[issue],
-                        ) {
-                            Ok(stats) => {
-                                forge_issues_inserted += stats.inserted;
-                                forge_skipped += stats.skipped;
-                                _files_processed += 1;
-                            }
-                            Err(e) => {
-                                eprintln!(
-                                    "  [pipeline] forge issue insert failed for {}: {}",
-                                    relative_path, e
-                                );
-                                files_with_errors += 1;
-                            }
-                        }
-                    }
-                    ExtractedPayload::PullRequest(pr) => {
-                        let conn = db.connection();
-                        match crate::commands::scrape::events::insert_prs(conn, &events_conn, &[pr])
-                        {
-                            Ok(stats) => {
-                                forge_prs_inserted += stats.inserted;
-                                forge_skipped += stats.skipped;
-                                _files_processed += 1;
-                            }
-                            Err(e) => {
-                                eprintln!(
-                                    "  [pipeline] forge PR insert failed for {}: {}",
-                                    relative_path, e
-                                );
-                                files_with_errors += 1;
-                            }
-                        }
-                    }
                     _ => {
-                        // #[non_exhaustive] catch-all for future variants
+                        // #[non_exhaustive] catch-all for future variants.
+                        // Connector-specific facts (issues, PRs) are emitted via
+                        // the broker routing path, not the pipeline protocol.
                         eprintln!(
                             "  [pipeline] unknown payload kind from {} — skipping",
                             relative_path
@@ -256,20 +211,6 @@ pub fn extract_code_metadata_v2(
         "  ✅ Inserted: {} symbols, {} functions, {} types, {} imports, {} call edges, {} constants, {} members",
         symbols_count, functions_count, types_count, imports_count, edges_count, constants_count, members_count
     );
-
-    if forge_issues_inserted > 0 || forge_prs_inserted > 0 {
-        if forge_skipped > 0 {
-            println!(
-                "  📊 Forge via pipeline: {} issues, {} PRs ({} unchanged)",
-                forge_issues_inserted, forge_prs_inserted, forge_skipped
-            );
-        } else {
-            println!(
-                "  📊 Forge via pipeline: {} issues, {} PRs",
-                forge_issues_inserted, forge_prs_inserted
-            );
-        }
-    }
 
     if files_with_errors > 0 {
         println!(

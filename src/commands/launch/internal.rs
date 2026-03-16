@@ -5,40 +5,25 @@
 use anyhow::{bail, Context, Result};
 use std::env;
 use std::fs;
-use std::io::{self, IsTerminal, Read as _, Write};
+use std::io::{self, Read as _, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
-use patina::adapters::launch as adapters;
 use patina::git;
+use patina::interface::runtime::launch as interfaces;
 use patina::paths;
 use patina::project;
-use patina::workspace;
 
 use super::LaunchOptions;
 
 /// Main launch entry point
 pub fn launch(options: LaunchOptions) -> Result<()> {
-    // Step 1: Ensure workspace exists (first-run setup)
-    if workspace::is_first_run() {
-        println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        println!(" Welcome to Patina!");
-        println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        workspace::setup()?;
-        println!();
-    }
-
-    // Step 2: Determine project path
     let project_path = resolve_project_path(options.path.as_deref())?;
-
-    // Step 3: Handle explicit vs implicit adapter (per spec-adapter-selection.md)
     let explicit_adapter: Option<String> = options.adapter.clone();
-
-    // If explicit adapter specified, validate it's installed NOW (fail fast)
     if let Some(ref name) = explicit_adapter {
-        let adapter_info = adapters::get(name)?;
+        let adapter_info = interfaces::get(name)?;
         if !adapter_info.detected {
             bail!(
                 "Adapter '{}' ({}) is not installed.\n\
@@ -49,12 +34,6 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         }
     }
 
-    // Step 4: Check/start mother
-    if options.auto_start_mother {
-        ensure_mother_running()?;
-    }
-
-    // Step 5: Check if this is a patina project
     let patina_dir = project_path.join(".patina");
     let adapter_name: String;
 
@@ -78,7 +57,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
             );
         }
     } else {
-        // Existing project - resolve adapter name
+        // Existing project - resolve interface name
         // Priority: explicit flag > project default > global default
         let project_config = project::load_with_migration(&project_path)?;
         adapter_name = explicit_adapter.unwrap_or_else(|| {
@@ -86,16 +65,16 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
             if !project_config.adapters.default.is_empty() {
                 project_config.adapters.default.clone()
             } else {
-                adapters::default_name().unwrap_or_else(|_| "claude".to_string())
+                interfaces::default_interface_name().unwrap_or_else(|_| "claude".to_string())
             }
         });
 
-        // Validate adapter is installed
-        let adapter_info = adapters::get(&adapter_name)?;
+        // Validate interface is installed
+        let adapter_info = interfaces::get(&adapter_name)?;
         if !adapter_info.detected {
             bail!(
-                "Adapter '{}' ({}) is not installed.\n\
-                 Install it and try again, or use a different adapter.",
+                "Interface '{}' ({}) is not installed.\n\
+                 Install it and try again, or use a different interface.",
                 adapter_name,
                 adapter_info.display
             );
@@ -108,113 +87,19 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         );
     }
 
-    // Step 6.5: Branch safety - ensure we're on patina branch
-    match ensure_on_patina_branch()? {
-        BranchAction::AlreadyOnPatina => {
-            // Good, already there
-        }
-        BranchAction::Switched { .. } | BranchAction::StashedAndSwitched { .. } => {
-            // Successfully switched, messages already printed
-        }
-        BranchAction::Rebased { .. } => {
-            // Successfully rebased, messages already printed
-        }
-        BranchAction::RebaseConflicts => {
-            // Cannot continue with conflicts
-            bail!("Please resolve rebase conflicts before launching.");
-        }
-        BranchAction::NotGitRepo => {
-            // Not a git repo but has .patina/ - unusual but allow
-            println!("⚠️  Not a git repository (patina branch model disabled)");
-        }
-        BranchAction::NoPatinaExists => {
-            // Has .patina/ but no patina branch - legacy project or manual setup
-            // Allow but warn
-            println!("⚠️  No 'patina' branch found (working on current branch)");
-        }
-    }
-
-    // Step 7: Check if adapter is in allowed list
-    let project_config = project::load_with_migration(&project_path)?;
-    if !project_config.adapters.allowed.contains(&adapter_name) {
-        bail!(
-            "Adapter '{}' is not in allowed adapters for this project.\n\
-             Allowed: {:?}\n\n\
-             To add it, run: patina adapter add {}",
-            adapter_name,
-            project_config.adapters.allowed,
-            adapter_name
-        );
-    }
-
-    // Step 7.5: Silent MCP auto-configuration (self-healing)
-    // If MCP isn't configured, silently fix it. Errors are ignored - if it fails,
-    // user will notice when MCP tools don't work, but we don't block launch.
-    if !adapters::is_mcp_configured(&adapter_name).unwrap_or(true) {
-        let _ = adapters::configure_mcp(&adapter_name);
-    }
-
-    // Step 8: Ensure bootstrap file exists
-    let bootstrap_file = match adapter_name.as_str() {
-        "claude" => "CLAUDE.md",
-        "gemini" => "GEMINI.md",
-        "opencode" => "OPENCODE.md",
-        _ => "CLAUDE.md",
-    };
-    let bootstrap_path = project_path.join(bootstrap_file);
-    if !bootstrap_path.exists() {
-        println!("  ✓ Generating {} bootstrap", bootstrap_file);
-        adapters::generate_bootstrap(&adapter_name, &project_path)?;
-    }
-
-    // Step 9: Resolve tmux decision and launch adapter
-    let env_disabled = std::env::var("PATINA_TMUX")
-        .map(|v| v == "0")
-        .unwrap_or(false);
-    let is_tty = std::io::stdout().is_terminal();
-    let inside_tmux = std::env::var_os("TMUX").is_some();
-    let tmux_in_path = which::which("tmux").is_ok();
-
-    let (tmux_version_ok, detected_version) = if tmux_in_path {
-        super::check_tmux_version()
-    } else {
-        (false, String::new())
-    };
-
-    let decision = super::resolve_tmux_decision(
-        options.no_tmux,
-        env_disabled,
-        is_tty,
-        inside_tmux,
-        tmux_in_path,
-        tmux_version_ok,
-    );
-
-    // Emit warnings for discoverable reasons
-    match &decision {
-        super::TmuxDecision::Off(super::OffReason::NotInPath) => {
-            eprintln!(
-                "Warning: tmux not found — launching {} directly",
-                adapter_name
-            );
-        }
-        super::TmuxDecision::Off(super::OffReason::TmuxTooOld) => {
-            eprintln!(
-                "Warning: tmux {} too old (need ≥ 1.9) — launching {} directly",
-                detected_version, adapter_name
-            );
-        }
-        _ => {}
-    }
-
-    let session_name = super::derive_session_name(&project_path);
-    launch_adapter_cli(&adapter_name, &project_path, &decision, &session_name)?;
-
-    Ok(())
+    crate::commands::ai::surface::launch(crate::commands::ai::surface::AiLaunchRequest {
+        interface_name: adapter_name,
+        title: None,
+        requested_session: None,
+        persona: None,
+        path: Some(project_path.display().to_string()),
+        no_tmux: options.no_tmux,
+        set_default: false,
+    })
 }
 
 /// Resolve project path from options or current directory
-fn resolve_project_path(path_opt: Option<&str>) -> Result<PathBuf> {
+pub(crate) fn resolve_project_path(path_opt: Option<&str>) -> Result<PathBuf> {
     let path = match path_opt {
         Some(p) => PathBuf::from(shellexpand::tilde(p).as_ref()),
         None => env::current_dir().context("Failed to get current directory")?,
@@ -252,7 +137,7 @@ pub fn check_mother_health() -> bool {
 }
 
 /// Ensure mother is running, start if needed
-fn ensure_mother_running() -> Result<()> {
+pub(crate) fn ensure_mother_running() -> Result<()> {
     if check_mother_health() {
         println!("  ✓ Mother running");
         return Ok(());
@@ -292,11 +177,11 @@ pub fn start_mother_daemon() -> Result<()> {
 ///
 /// Returns:
 /// - Ok(None) - user declined to init
-/// - Ok(Some(adapter_name)) - user accepted, project initialized with this adapter
+/// - Ok(Some(interface_name)) - user accepted, project initialized with this interface
 ///
-/// If `explicit_adapter` is Some, uses that adapter without prompting for selection.
-/// If None, detects available adapters and prompts user to choose.
-fn prompt_are_you_lost(
+/// If `explicit_adapter` is Some, uses that interface without prompting for selection.
+/// If None, detects available interfaces and prompts user to choose.
+pub(crate) fn prompt_are_you_lost(
     project_path: &Path,
     explicit_adapter: Option<&str>,
 ) -> Result<Option<String>> {
@@ -342,22 +227,22 @@ fn prompt_are_you_lost(
         return Ok(None);
     }
 
-    // User wants to init - determine which adapter to use
+    // User wants to init - determine which interface to use
     let adapter_name = if let Some(explicit) = explicit_adapter {
-        // Flow A: explicit adapter from --adapter flag
+        // Flow A: explicit interface from --interface flag
         explicit.to_string()
     } else {
-        // Flow B: detect available adapters and let user choose
-        let all_adapters = adapters::list()?;
+        // Flow B: detect available interfaces and let user choose
+        let all_adapters = interfaces::list()?;
         let available: Vec<_> = all_adapters.into_iter().filter(|a| a.detected).collect();
 
         // Get global default as preference
-        let preference = adapters::default_name().ok();
+        let preference = interfaces::default_interface_name().ok();
 
-        adapters::select_adapter(&available, preference.as_deref())?
+        interfaces::select_interface(&available, preference.as_deref())?
     };
 
-    // Initialize the project with selected adapter
+    // Initialize the project with selected interface
     println!();
     if initialize_project(project_path, &adapter_name)? {
         Ok(Some(adapter_name))
@@ -399,7 +284,7 @@ pub enum BranchAction {
 
 /// Ensure we're on patina branch using "Do and Inform" model
 /// Returns the action taken so caller can display appropriate message
-fn ensure_on_patina_branch() -> Result<BranchAction> {
+pub(crate) fn ensure_on_patina_branch() -> Result<BranchAction> {
     // Check if this is a git repo
     if !git::is_git_repo()? {
         return Ok(BranchAction::NotGitRepo);
@@ -503,38 +388,32 @@ fn initialize_project(project_path: &Path, adapter_name: &str) -> Result<bool> {
         return Ok(false);
     }
 
-    // Step 2: Add the adapter
+    // Step 2: Prepare the Patina AI surface and establish the selected default
     let adapter_result =
-        crate::commands::adapter::execute(Some(crate::commands::adapter::AdapterCommands::Add {
-            name: adapter_name.to_string(),
-            no_commit: false, // Allow auto-commit during launch init
-        }));
+        crate::commands::ai::surface::setup(crate::commands::ai::surface::AiSetupRequest {
+            interface: Some(adapter_name.to_string()),
+            path: Some(project_path.display().to_string()),
+            force: false,
+        });
 
     if let Err(e) = adapter_result {
         env::set_current_dir(original_dir)?;
-        eprintln!("\n❌ Failed to add adapter: {}", e);
-        eprintln!(
-            "   Run 'patina adapter add {}' to add it manually",
-            adapter_name
-        );
+        eprintln!("\n❌ Failed to prepare Patina AI setup: {}", e);
+        eprintln!("   Run 'patina ai setup' to retry manually");
         return Ok(false);
     }
-
-    // Step 3: Set as project default (so `patina` uses this adapter next time)
-    let mut config = project::load_with_migration(project_path)?;
-    config.adapters.default = adapter_name.to_string();
-    project::save(project_path, &config)?;
 
     // Restore original directory
     env::set_current_dir(original_dir)?;
 
     println!(
-        "\n✓ Initialized as patina project with {} adapter",
+        "\n✓ Initialized as patina project with {} as the default AI interface",
         adapter_name
     );
     Ok(true) // Continue to launch
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Try to get the Claude OAuth token from the global secrets vault.
 ///
 /// Checks conflict guards first (ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN),
@@ -563,102 +442,14 @@ fn try_get_claude_token() -> Option<String> {
     }
 }
 
-/// Launch the adapter CLI, optionally wrapped in tmux
-fn launch_adapter_cli(
-    adapter_name: &str,
-    project_path: &Path,
-    decision: &super::TmuxDecision,
-    session_name: &str,
-) -> Result<()> {
-    // Inject Claude auth token if available (adapter-gated)
-    // All warnings print HERE — before exec/tmux takes over stderr.
-    let claude_token = if adapter_name == "claude" {
-        try_get_claude_token()
-    } else {
-        None
-    };
-
-    // Use exec to replace current process (Unix-style)
-    // On Windows, we'd spawn and wait instead
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-
-        match decision {
-            super::TmuxDecision::Auto => {
-                eprintln!(
-                    "Launching {} in tmux session: {}",
-                    adapter_name, session_name
-                );
-                eprintln!("  Reconnect: tmux attach -t {}", session_name);
-                io::stderr().flush().ok();
-
-                let mut cmd = Command::new("tmux");
-                cmd.args(["new-session", "-A", "-D", "-s", session_name, "-c"]);
-                cmd.arg(project_path.as_os_str()); // non-UTF-8 safe
-                cmd.arg(adapter_name);
-                cmd.current_dir(project_path);
-                if let Some(ref token) = claude_token {
-                    cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
-                }
-                io::stderr().flush().ok();
-
-                let err = cmd.exec();
-                // exec only returns on error — fall back to direct launch
-                eprintln!(
-                    "Warning: failed to exec tmux ({}) — launching {} directly (no session created)",
-                    err, adapter_name
-                );
-                io::stderr().flush().ok();
-                // fall through to direct exec below
-            }
-            super::TmuxDecision::Off(_) => {
-                println!("\nLaunching {}...\n", adapter_name);
-            }
-        }
-
-        // Direct exec (Off path, or Auto fallback after tmux exec failure)
-        let mut cmd = Command::new(adapter_name);
-        cmd.current_dir(project_path);
-        if let Some(ref token) = claude_token {
-            cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
-        }
-        io::stderr().flush().ok();
-
-        let err = cmd.exec();
-        // exec only returns on error
-        bail!("Failed to exec {}: {}", adapter_name, err);
-    }
-
-    #[cfg(not(unix))]
-    {
-        // tmux not available on non-Unix — always direct launch
-        println!("\nLaunching {}...\n", adapter_name);
-        let mut cmd = Command::new(adapter_name);
-        cmd.current_dir(project_path);
-        if let Some(ref token) = claude_token {
-            cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
-        }
-
-        let status = cmd
-            .status()
-            .with_context(|| format!("Failed to run {}", adapter_name))?;
-
-        if !status.success() {
-            bail!("{} exited with status: {}", adapter_name, status);
-        }
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
+    use std::fs;
+    use std::process::Command;
+    use tempfile::TempDir;
 
     // Serialize env-var tests to avoid races (env is process-global)
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
     #[test]
     fn test_resolve_current_dir() {
         let path = resolve_project_path(None);
@@ -679,7 +470,9 @@ mod tests {
 
     #[test]
     fn test_claude_token_blocked_by_anthropic_api_key() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = patina::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         // Save and set
         let prev = env::var("ANTHROPIC_API_KEY").ok();
         env::set_var("ANTHROPIC_API_KEY", "sk-ant-test");
@@ -706,7 +499,9 @@ mod tests {
 
     #[test]
     fn test_claude_token_blocked_by_existing_oauth_token() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = patina::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         // Save and set
         let prev_api = env::var("ANTHROPIC_API_KEY").ok();
         env::remove_var("ANTHROPIC_API_KEY");
@@ -732,7 +527,9 @@ mod tests {
 
     #[test]
     fn test_claude_token_clean_env_attempts_vault() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = patina::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         // Save and clear both
         let prev_api = env::var("ANTHROPIC_API_KEY").ok();
         let prev_oauth = env::var("CLAUDE_CODE_OAUTH_TOKEN").ok();
@@ -756,5 +553,91 @@ mod tests {
             Some(v) => env::set_var("CLAUDE_CODE_OAUTH_TOKEN", v),
             None => env::remove_var("CLAUDE_CODE_OAUTH_TOKEN"),
         }
+    }
+
+    #[test]
+    fn initialize_project_prepares_unified_ai_surface_and_default() {
+        let _lock = patina::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp = TempDir::new().unwrap();
+
+        let status = Command::new("git")
+            .args(["init"])
+            .current_dir(temp.path())
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        let status = Command::new("git")
+            .args(["config", "user.email", "patina@example.com"])
+            .current_dir(temp.path())
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        let status = Command::new("git")
+            .args(["config", "user.name", "Patina Tests"])
+            .current_dir(temp.path())
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        let old_dir = env::current_dir().ok();
+        let old_patina_home = env::var_os("PATINA_HOME");
+        let patina_home = temp.path().join("patina-home");
+        fs::create_dir_all(&patina_home).unwrap();
+
+        unsafe {
+            env::set_var("PATINA_HOME", &patina_home);
+        }
+        env::set_current_dir(temp.path()).unwrap();
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            initialize_project(temp.path(), "gemini")
+        }));
+
+        if let Some(path) = old_dir {
+            let _ = env::set_current_dir(path);
+        }
+        match old_patina_home {
+            Some(value) => unsafe {
+                env::set_var("PATINA_HOME", value);
+            },
+            None => unsafe {
+                env::remove_var("PATINA_HOME");
+            },
+        }
+
+        let result = match result {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        };
+        assert!(result.unwrap());
+
+        let config = project::load_with_migration(temp.path()).unwrap();
+        assert_eq!(config.adapters.default, "gemini");
+        assert!(config.adapters.allowed.iter().any(|name| name == "claude"));
+        assert!(config
+            .adapters
+            .allowed
+            .iter()
+            .any(|name| name == "opencode"));
+        assert!(config.adapters.allowed.iter().any(|name| name == "gemini"));
+        assert!(temp.path().join("AGENTS.md").exists());
+        assert!(temp.path().join("CLAUDE.md").exists());
+        assert!(temp.path().join("GEMINI.md").exists());
+        assert!(temp
+            .path()
+            .join(".claude/commands/session-start.md")
+            .exists());
+        assert!(temp
+            .path()
+            .join(".opencode/commands/session-start.md")
+            .exists());
+        assert!(temp
+            .path()
+            .join(".gemini/commands/session-start.toml")
+            .exists());
     }
 }

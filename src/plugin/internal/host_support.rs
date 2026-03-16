@@ -105,7 +105,7 @@ pub(super) fn check_adapter_version(
     let root = project_root
         .as_ref()
         .ok_or_else(|| "no project root".to_string())?;
-    let adapter = crate::adapters::get_adapter(adapter_name);
+    let adapter = crate::interface::runtime::get_interface_provider(adapter_name);
     adapter
         .check_for_updates(root)
         .map(|opt| opt.map(|(current, _)| current))
@@ -151,7 +151,7 @@ pub(super) fn sanitize_query_params(params: &str, scope: &QueryScope) -> String 
 /// Defense in depth: kinds are validated at load time (check_capabilities)
 /// AND at call time (grants.query_kinds check below). Query scope is
 /// enforced at call time — all_repos requires AllRepos scope.
-pub(super) fn query(
+pub(crate) fn query(
     plugin_name: &str,
     grants: &GrantedCapabilities,
     query_fn: &mut Option<QueryDispatchFn>,
@@ -196,63 +196,20 @@ pub(super) fn query(
 
 /// Build an HTTP client with cross-domain redirect rejection.
 ///
-/// Shared by mother-child (instantiate_child) and task (run_task) engines.
-/// If a response redirects to a different host, the request is stopped
-/// (prevents allowlist bypass via open redirectors).
+/// Delegates to `patina_pipe::http_proxy::build_http_client()`.
 pub(crate) fn build_http_client() -> anyhow::Result<reqwest::blocking::Client> {
-    reqwest::blocking::Client::builder()
-        .user_agent(format!("patina/{}", env!("CARGO_PKG_VERSION")))
-        .redirect(reqwest::redirect::Policy::custom(|attempt| {
-            if attempt.url().host_str() != attempt.previous().last().and_then(|u| u.host_str()) {
-                attempt.stop()
-            } else {
-                attempt.follow()
-            }
-        }))
-        .build()
-        .map_err(|e| anyhow::anyhow!("build HTTP client: {}", e))
+    patina_pipe::http_proxy::build_http_client()
 }
 
 /// Validate and parse an HTTP URL for domain-allowlisted access.
 ///
-/// Returns the extracted domain on success. Enforces:
-/// - HTTPS only (no plaintext HTTP)
-/// - No IP addresses (IPv4 or IPv6)
-/// - No localhost
-///
-/// Pure function — testable independently of wasmtime.
+/// Delegates to `patina_pipe::http_proxy::validate_http_url()`.
 pub(crate) fn validate_http_url(url: &str) -> Result<String, String> {
-    let parsed = reqwest::Url::parse(url).map_err(|e| format!("invalid URL: {}", e))?;
-
-    // HTTPS only
-    if parsed.scheme() != "https" {
-        return Err(format!("only HTTPS allowed, got '{}'", parsed.scheme()));
-    }
-
-    let host = parsed
-        .host_str()
-        .ok_or_else(|| "no host in URL".to_string())?;
-
-    // No localhost
-    if host == "localhost" {
-        return Err("localhost not allowed".to_string());
-    }
-
-    // No IP addresses (IPv4 or IPv6)
-    // host_str() returns brackets for IPv6 (e.g., "[::1]") — strip them
-    let bare_host = host
-        .strip_prefix('[')
-        .and_then(|h| h.strip_suffix(']'))
-        .unwrap_or(host);
-    if bare_host.parse::<std::net::IpAddr>().is_ok() {
-        return Err("IP addresses not allowed".to_string());
-    }
-
-    Ok(bare_host.to_string())
+    patina_pipe::http_proxy::validate_http_url(url)
 }
 
 /// Result of an HTTP operation — plain types for cross-world portability.
-pub(super) struct HttpResult {
+pub(crate) struct HttpResult {
     pub status: u16,
     pub body: String,
 }
@@ -360,24 +317,18 @@ pub(crate) fn inject_credential(
 }
 
 /// Scan response body for leaked credential values, replacing with [REDACTED].
+///
+/// Delegates to `patina_pipe::http_proxy::leak_check()`.
 pub(crate) fn leak_check(body: &str, secret_name: &str, secret_value: &str) -> String {
-    if body.contains(secret_value) {
-        eprintln!(
-            "[host] credential leak detected in response: secret '{}' found in body, redacting",
-            secret_name
-        );
-        body.replace(secret_value, "[REDACTED]")
-    } else {
-        body.to_string()
-    }
+    patina_pipe::http_proxy::leak_check(body, secret_name, secret_value)
 }
 
 // =========================================================================
 // Measure host support
 // =========================================================================
 
-/// Valid protocol verbs for measurement events.
-const VALID_VERBS: &[&str] = &["capture", "index", "search", "believe", "evolve"];
+// Single source of truth — shared vocabulary from patina-pipe.
+use patina_pipe::measure::{REGISTERED_TOOLS, VALID_VERBS};
 
 /// Record a measurement event from a plugin.
 ///
@@ -397,6 +348,14 @@ pub(super) fn record_measurement(
         return Err(format!(
             "invalid verb '{}': must be one of {:?}",
             verb, VALID_VERBS
+        ));
+    }
+
+    // Validate tool
+    if !REGISTERED_TOOLS.contains(&tool) {
+        return Err(format!(
+            "invalid tool '{}': must be one of {:?}",
+            tool, REGISTERED_TOOLS
         ));
     }
 
@@ -488,7 +447,7 @@ pub(super) fn validate_emit(
 ///
 /// Validates via cached schema facts (zero disk I/O), writes plugin data
 /// directly to events.db. Provenance is carried by source_id ("plugin:<name>"),
-/// schema by event_type (e.g., "forge.issue"). No wrapper — data shape matches
+/// schema by event_type (e.g., "github.issue"). No wrapper — data shape matches
 /// what downstream consumers expect.
 ///
 /// data-architecture-v3 will add explicit provenance/schema columns; until then
@@ -516,7 +475,7 @@ pub(super) fn emit_fact(
 
     // Write plugin data directly — no wrapper envelope.
     // Provenance: 'external' — plugin-emitted facts are external evidence.
-    // Schema: event_type = "<schema>.<fact>" (e.g., "forge.issue")
+    // Schema: event_type = "<schema>.<fact>" (e.g., "github.issue")
     conn.execute(
         "INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data, provenance)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -540,7 +499,7 @@ pub(super) fn emit_fact(
 /// Defense in depth: domains are validated at load time (check_capabilities)
 /// AND at call time (grants.http_domains check). URLs are sanitized by
 /// validate_http_url. Cross-domain redirects rejected by client policy.
-pub(super) fn http_post(
+pub(crate) fn http_post(
     http_client: &reqwest::blocking::Client,
     grants: &GrantedCapabilities,
     plugin_name: &str,
@@ -591,7 +550,7 @@ pub(super) fn http_post(
 }
 
 /// Domain-allowlisted HTTP GET.
-pub(super) fn http_get(
+pub(crate) fn http_get(
     http_client: &reqwest::blocking::Client,
     grants: &GrantedCapabilities,
     plugin_name: &str,

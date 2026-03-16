@@ -25,17 +25,29 @@
 //! let related = graph.get_related("patina", &[EdgeType::Uses, EdgeType::TestsWith])?;
 //! ```
 
-mod child;
-mod graph;
+pub mod broker;
+pub(crate) mod checkpoint;
+pub(crate) mod events;
 mod internal;
+pub(crate) mod state;
+pub(crate) mod tasks;
+mod toys;
 
 use anyhow::Result;
 
 // Child trait exports
-pub use child::{ChildHealth, ChildRequest, ChildResponse, MotherChild, MotherHost, Toy};
+pub use crate::child::runtime::{
+    ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, MotherChild, MotherHost,
+    PendingEvent, TaskIntent, TaskIntentKind, Toy,
+};
+pub use state::{
+    KnowledgeRuntimeStore, MotherSessionParticipant, MotherSessionRecord, MotherSessionStatus,
+    QueuedTask, RunStatus, TaskStatus,
+};
+pub use toys::{GrantedIngressSource, GrantedToys};
 
 // Graph exports
-pub use graph::{
+pub use crate::beliefs::{
     BeliefEntry, BeliefStatus, Edge, EdgeType, EdgeUsageStats, Graph, Node, NodeType, WeightChange,
     WeightLearningReport, DEFAULT_ALPHA, MIN_SAMPLES, WEIGHT_MAX, WEIGHT_MIN,
 };

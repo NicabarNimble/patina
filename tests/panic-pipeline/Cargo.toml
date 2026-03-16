@@ -10,4 +10,4 @@ description = "Pipeline plugin that deliberately panics — conformance test for
 crate-type = ["cdylib"]
 
 [dependencies]
-patina-sdk = { path = "../../plugins/sdk", features = ["pipeline"] }
+patina-sdk = { path = "../../sdk/patina-sdk", features = ["pipeline"] }

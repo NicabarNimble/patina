@@ -7,6 +7,8 @@ mod commands;
 mod mcp;
 mod preflight;
 mod retrieval;
+#[cfg(test)]
+mod test_support;
 
 // ============================================================================
 // Typed CLI enums (Phase 0d: type safety for string args)
@@ -60,9 +62,9 @@ impl Llm {
 #[derive(Parser)]
 #[command(author, version = env!("CARGO_PKG_VERSION"), about = "Context management for AI-assisted development", long_about = None)]
 struct Cli {
-    /// Adapter to launch (claude, gemini, codex). Default: from config.
-    #[arg(long = "adapter", global = true)]
-    adapter: Option<String>,
+    /// AI interface to launch (claude, gemini, opencode). Default: from config.
+    #[arg(long = "interface", alias = "adapter", global = true)]
+    interface: Option<String>,
 
     /// Disable tmux session wrapping (launch adapter directly)
     #[arg(long = "no-tmux", global = true)]
@@ -74,7 +76,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize a new project (skeleton only - use 'patina adapter add' for LLM support)
+    /// Initialize a new project skeleton, then prepare Patina AI with `patina ai setup`
     Init {
         /// Project name or "." for current directory
         name: String,
@@ -302,22 +304,35 @@ enum Commands {
         command: Option<RepoCommands>,
 
         /// Repository URL (shorthand for 'patina repo add <url>')
-        #[arg(conflicts_with = "command")]
         url: Option<String>,
 
         /// Enable contribution mode (create fork for PRs)
         #[arg(long, requires = "url")]
         contrib: bool,
-
-        /// Also fetch and index GitHub issues
-        #[arg(long, requires = "url")]
-        with_issues: bool,
     },
 
     /// Manage embedding models in mother cache
     Model {
         #[command(subcommand)]
         command: Option<commands::model::ModelCommands>,
+    },
+
+    /// Manage external service connections (OAuth, tokens, credentials)
+    ///
+    /// Create, list, and manage connections to external services like GitHub.
+    /// Connections store credentials in the vault and are consumed by the broker.
+    Connect {
+        #[command(subcommand)]
+        command: Option<commands::connect::ConnectCommands>,
+    },
+
+    /// Manage DuckLake data lakes
+    ///
+    /// Create and list data lakes. Lakes are DuckDB + DuckLake storage
+    /// backed by autonomous child processes.
+    Lake {
+        #[command(subcommand)]
+        command: Option<commands::lake::LakeCommands>,
     },
 
     /// The Patina daemon — cross-project knowledge, caching, and routing
@@ -421,6 +436,18 @@ enum Commands {
     Session {
         #[command(subcommand)]
         command: commands::session::SessionCommands,
+    },
+
+    /// Patina AI interface surface over Mother-backed sessions
+    Ai {
+        #[command(subcommand)]
+        command: Option<commands::ai::AiCommands>,
+    },
+
+    /// Compatibility shims for project-local interface projection surfaces
+    Interface {
+        #[command(subcommand)]
+        command: commands::interface::InterfaceCommands,
     },
 
     /// Git hook handlers (post-commit, post-merge)
@@ -882,9 +909,9 @@ enum DevCommands {
         dry_run: bool,
     },
 
-    /// Sync adapter templates from resources
+    /// Sync interface templates from resources
     SyncAdapters {
-        /// Specific adapter to sync (claude, gemini, etc)
+        /// Specific interface to sync (claude, gemini, opencode)
         adapter: Option<String>,
 
         /// Dry run - show what would change
@@ -1107,7 +1134,7 @@ fn main() -> Result<()> {
         None => {
             let options = commands::launch::LaunchOptions {
                 path: None,
-                adapter: cli.adapter,
+                adapter: cli.interface,
                 auto_start_mother: true,
                 auto_init: true,
                 no_tmux: cli.no_tmux,
@@ -1393,6 +1420,18 @@ fn main() -> Result<()> {
                             ..Default::default()
                         },
                         schemas: std::collections::HashMap::new(),
+                        state_enabled: false,
+                        checkpoint_streams: vec![],
+                        lake_names: vec![],
+                        ingress_sources: std::collections::HashMap::new(),
+                        subscribed_streams: vec![],
+                        task_intent_names: vec![],
+                        task_intents: vec![],
+                        graph_read: false,
+                        graph_write_actions: vec![],
+                        belief_read: false,
+                        belief_write_actions: vec![],
+                        toys: patina::mother::GrantedToys::default(),
                     }
                 };
                 let engine = patina::plugin::CommandEngine::new()?;
@@ -1573,6 +1612,61 @@ fn main() -> Result<()> {
                             std::process::exit(exit_code);
                         }
                     }
+                    patina::plugin::PluginWorld::KnowledgeChild => {
+                        let action = args.first().map(|s| s.as_str()).unwrap_or("health");
+                        let payload_str = args.get(1).map(|s| s.as_str()).unwrap_or("{}");
+
+                        let engine = patina::plugin::KnowledgeChildEngine::new()?;
+                        let component = engine.load_component(&wasm_bytes)?;
+                        let query_fn = make_query_dispatch(&manifest);
+                        let mut child =
+                            engine.instantiate_child(&component, &manifest, query_fn)?;
+
+                        use patina::mother::MotherHost;
+                        struct CliHost;
+                        impl MotherHost for CliHost {
+                            fn log(&self, child: &str, message: &str) {
+                                eprintln!("[{}] {}", child, message);
+                            }
+                        }
+                        child.on_load(&CliHost)?;
+
+                        if action == "health" {
+                            let health = child.health();
+                            println!("{:?}", health);
+                        } else if action == "tick" {
+                            println!("{}", serde_json::to_string_pretty(&child.tick())?);
+                        } else if action == "drain" {
+                            let limit = payload_str.parse::<u32>().unwrap_or(64);
+                            match child.drain(limit) {
+                                Ok(events) => {
+                                    println!("{}", serde_json::to_string_pretty(&events)?)
+                                }
+                                Err(e) => {
+                                    eprintln!("error: {}", e);
+                                    std::process::exit(1);
+                                }
+                            }
+                        } else {
+                            let request = patina::mother::ChildRequest {
+                                action: action.to_string(),
+                                payload: serde_json::from_str(payload_str)
+                                    .unwrap_or(serde_json::Value::String(payload_str.to_string())),
+                            };
+                            match child.handle(&request) {
+                                Ok(response) => {
+                                    println!(
+                                        "{}",
+                                        serde_json::to_string_pretty(&response.payload)?
+                                    );
+                                }
+                                Err(e) => {
+                                    eprintln!("error: {}", e);
+                                    std::process::exit(1);
+                                }
+                            }
+                        }
+                    }
                     patina::plugin::PluginWorld::MotherChild => {
                         // mother-child: args = [action, payload_json]
                         let action = args.first().map(|s| s.as_str()).unwrap_or("health");
@@ -1619,7 +1713,7 @@ fn main() -> Result<()> {
                     }
                     other => {
                         anyhow::bail!(
-                            "plugin '{}' has world '{}' — only 'task', 'command', and 'mother-child' are supported by `plugin run`",
+                            "plugin '{}' has world '{}' — only 'task', 'command', 'mother-child', and 'knowledge-child' are supported by `plugin run`",
                             name, other
                         );
                     }
@@ -1630,9 +1724,10 @@ fn main() -> Result<()> {
             command,
             url,
             contrib,
-            with_issues,
-        }) => commands::repo::execute_cli(command, url, contrib, with_issues)?,
+        }) => commands::repo::execute_cli(command, url, contrib)?,
         Some(Commands::Model { command }) => commands::model::execute_cli(command)?,
+        Some(Commands::Connect { command }) => commands::connect::execute_cli(command)?,
+        Some(Commands::Lake { command }) => commands::lake::execute_cli(command)?,
         Some(Commands::Mother { command }) => {
             commands::mother::execute_cli(command, mcp::run_mcp_server)?
         }
@@ -1662,6 +1757,12 @@ fn main() -> Result<()> {
         }
         Some(Commands::Session { command }) => {
             commands::session::execute(command)?;
+        }
+        Some(Commands::Ai { command }) => {
+            commands::ai::execute(command)?;
+        }
+        Some(Commands::Interface { command }) => {
+            commands::interface::execute(command)?;
         }
         Some(Commands::Hook { command }) => {
             commands::hook::execute(command)?;
@@ -1721,8 +1822,8 @@ fn main() -> Result<()> {
             } => {
                 commands::spec::list(status, target, json)?;
             }
-            commands::spec::SpecCommands::Promote { id, json } => {
-                commands::spec::promote(&id, json)?;
+            commands::spec::SpecCommands::Promote { id, force, json } => {
+                commands::spec::promote(&id, force, json)?;
             }
             commands::spec::SpecCommands::Complete {
                 id,
@@ -1757,8 +1858,17 @@ fn main() -> Result<()> {
             } => {
                 commands::spec::split(&id, new_id.as_deref(), description.as_deref(), json)?;
             }
-            commands::spec::SpecCommands::Show { id, json } => {
-                commands::spec::show(&id, json)?;
+            commands::spec::SpecCommands::Show { id, handoff, json } => {
+                commands::spec::show(&id, handoff, json)?;
+            }
+            commands::spec::SpecCommands::Prompt { id, json } => {
+                commands::spec::prompt(&id, json)?;
+            }
+            commands::spec::SpecCommands::Handoff { id, json } => {
+                commands::spec::handoff(&id, json)?;
+            }
+            commands::spec::SpecCommands::Packet { id, json } => {
+                commands::spec::packet(&id, json)?;
             }
             commands::spec::SpecCommands::Set {
                 id,
@@ -1804,6 +1914,17 @@ fn main() -> Result<()> {
             } => {
                 commands::schema::generate(types, migrations, embeddings, schema.as_deref())?;
             }
+            commands::schema::SchemaCommands::Check => {
+                commands::schema::check()?;
+            }
+            commands::schema::SchemaCommands::Build {
+                name,
+                types,
+                migrations,
+                embeddings,
+            } => {
+                commands::schema::build(&name, types, migrations, embeddings)?;
+            }
         },
         Some(Commands::Serve { host, port, mcp }) => {
             // Deprecated: delegate to mother start with warning
@@ -1811,7 +1932,11 @@ fn main() -> Result<()> {
             if mcp {
                 mcp::run_mcp_server()?;
             } else {
-                let options = commands::mother::DaemonOptions { host, port };
+                let options = commands::mother::DaemonOptions {
+                    host,
+                    port,
+                    legacy_migration: false,
+                };
                 commands::mother::daemon::run_server(options)?;
             }
         }

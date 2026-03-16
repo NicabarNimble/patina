@@ -71,6 +71,10 @@ pub enum MotherCommands {
         /// Run as MCP server (JSON-RPC over stdio) instead of HTTP
         #[arg(long)]
         mcp: bool,
+
+        /// Enable legacy `mother-child` migration loading and heartbeat.
+        #[arg(long)]
+        legacy_migration: bool,
     },
 
     /// Stop the mother daemon (not yet implemented)
@@ -100,11 +104,12 @@ pub enum MotherCommands {
         limit: usize,
     },
 
-    /// Run a source — fetch, validate, and route facts to events.db
+    /// Run a source — fetch, validate, and route facts to destination
     ///
     /// Spawns the child for the named source, fetches facts, validates
-    /// against the child manifest, and writes to the project's events.db
-    /// with content-hash dedup and transactional cursor management.
+    /// against the child manifest, and routes to the configured destination
+    /// (project events.db or lake) with content-hash dedup and transactional
+    /// cursor management. Auth is resolved via the connect subsystem.
     Run {
         /// Source name (as defined in .patina/sources.toml)
         name: String,
@@ -112,6 +117,20 @@ pub enum MotherCommands {
         /// Bypass OS sandbox (for debugging only)
         #[arg(long)]
         no_sandbox: bool,
+    },
+
+    /// Legacy parity command (retired after native DuckLake removal)
+    Parity {
+        /// Source name (as defined in .patina/sources.toml)
+        name: String,
+
+        /// Bypass OS sandbox (for debugging only)
+        #[arg(long)]
+        no_sandbox: bool,
+
+        /// Optional fresh lake name for clean parity baseline
+        #[arg(long)]
+        fresh_lake: Option<String>,
     },
 
     /// Show configured sources with status
@@ -259,11 +278,20 @@ pub fn execute_cli(
             println!("Run 'patina mother --help' for details.");
             Ok(())
         }
-        Some(MotherCommands::Start { host, port, mcp }) => {
+        Some(MotherCommands::Start {
+            host,
+            port,
+            mcp,
+            legacy_migration,
+        }) => {
             if mcp {
                 run_mcp()
             } else {
-                let options = DaemonOptions { host, port };
+                let options = DaemonOptions {
+                    host,
+                    port,
+                    legacy_migration,
+                };
                 daemon::run_server(options)
             }
         }
@@ -272,6 +300,11 @@ pub fn execute_cli(
         Some(MotherCommands::Graph(graph_cmd)) => execute_graph(graph_cmd),
         Some(MotherCommands::Search { query, limit }) => graph::search_beliefs_cli(&query, limit),
         Some(MotherCommands::Run { name, no_sandbox }) => run_source_cli(&name, no_sandbox),
+        Some(MotherCommands::Parity {
+            name,
+            no_sandbox,
+            fresh_lake,
+        }) => run_source_parity_cli(&name, no_sandbox, fresh_lake.as_deref()),
         Some(MotherCommands::Sources { prune }) => show_sources_cli(prune),
     }
 }
@@ -305,10 +338,10 @@ fn run_source_cli(name: &str, no_sandbox: bool) -> Result<()> {
     let project_root = std::env::current_dir()?;
 
     // Find the source in this project's sources.toml
-    let source = patina::broker::sources::find_source(&project_root, name)?
+    let source = patina::mother::broker::sources::find_source(&project_root, name)?
         .with_context(|| format!("source '{}' not found in .patina/sources.toml", name))?;
 
-    let result = patina::broker::run_source(&source, &project_root, no_sandbox)?;
+    let result = patina::mother::broker::run_source(&source, &project_root, no_sandbox)?;
 
     println!(
         "{}: {} facts written, {} dedup skipped{}",
@@ -325,6 +358,13 @@ fn run_source_cli(name: &str, no_sandbox: bool) -> Result<()> {
     Ok(())
 }
 
+fn run_source_parity_cli(name: &str, no_sandbox: bool, fresh_lake: Option<&str>) -> Result<()> {
+    let _ = (name, no_sandbox, fresh_lake);
+    bail!(
+        "legacy DuckLake runtime identity has been removed; `patina mother parity` is retired for this branch"
+    )
+}
+
 /// Show configured sources with status
 fn show_sources_cli(prune: bool) -> Result<()> {
     let project_root = std::env::current_dir()?;
@@ -334,7 +374,7 @@ fn show_sources_cli(prune: bool) -> Result<()> {
         return Ok(());
     }
 
-    let statuses = patina::broker::status(&project_root)?;
+    let statuses = patina::mother::broker::status(&project_root)?;
 
     if statuses.is_empty() {
         println!("No sources configured. Add sources to .patina/sources.toml");
@@ -357,7 +397,7 @@ fn show_sources_cli(prune: bool) -> Result<()> {
 
 /// Remove orphaned cursors (cursors with no matching source in sources.toml)
 fn prune_orphaned_cursors(project_root: &Path) -> Result<()> {
-    let project_sources = patina::broker::sources::load_project_sources(project_root)?;
+    let project_sources = patina::mother::broker::sources::load_project_sources(project_root)?;
     let source_names: std::collections::HashSet<String> = project_sources
         .map(|ps| ps.sources.iter().map(|s| s.name.clone()).collect())
         .unwrap_or_default();
@@ -679,6 +719,7 @@ mod tests {
             host: None,
             port: 50051,
             mcp: false,
+            legacy_migration: false,
         };
         assert!(matches!(start, MotherCommands::Start { .. }));
 

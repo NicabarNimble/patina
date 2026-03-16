@@ -13,12 +13,13 @@
 //! patina launch ~/project    # Different project, default adapter
 //! ```
 
-mod internal;
+pub(crate) mod internal;
 
 use anyhow::Result;
 use std::fmt;
 use std::path::Path;
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Why tmux wrapping was disabled
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OffReason {
@@ -36,6 +37,7 @@ pub enum OffReason {
     TmuxTooOld,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Whether to wrap the adapter launch in tmux
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TmuxDecision {
@@ -45,6 +47,7 @@ pub enum TmuxDecision {
     Off(OffReason),
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Resolve tmux decision from environmental inputs.
 ///
 /// Pure function — all 6 inputs are bools, checked in priority order.
@@ -78,49 +81,6 @@ pub fn resolve_tmux_decision(
     TmuxDecision::Auto
 }
 
-/// Check tmux version by running `tmux -V`.
-///
-/// Returns (version_ok, version_string).
-/// - Success, parseable: "tmux X.Y" → require ≥ 1.9
-/// - Success, unparseable: assume ok (don't block on novel formats)
-/// - Failure (I/O error, non-zero exit): assume too old (conservative)
-pub fn check_tmux_version() -> (bool, String) {
-    use std::process::Command;
-
-    let output = match Command::new("tmux").arg("-V").output() {
-        Ok(o) if o.status.success() => o,
-        _ => return (false, "unknown (tmux -V failed)".to_string()),
-    };
-
-    let version_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if version_str.is_empty() {
-        return (false, "unknown (tmux -V failed)".to_string());
-    }
-
-    // Parse "tmux X.Y" or "tmux X.Ya" (e.g., "tmux 1.8a", "tmux 3.4")
-    let stripped = version_str.strip_prefix("tmux ").unwrap_or(&version_str);
-
-    // Extract major.minor from start of version string
-    let mut parts = stripped.split('.');
-    let major = parts.next().and_then(|s| s.parse::<u32>().ok());
-    let minor = parts.next().and_then(|s| {
-        // Strip trailing non-digit chars like "8a" → "8"
-        let digits: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
-        digits.parse::<u32>().ok()
-    });
-
-    match (major, minor) {
-        (Some(maj), Some(min)) => {
-            let ok = (maj, min) >= (1, 9);
-            (ok, format!("{}.{}", maj, min))
-        }
-        _ => {
-            // Unparseable — assume ok (don't block on novel version strings)
-            (true, "unknown".to_string())
-        }
-    }
-}
-
 /// FNV-1a 32-bit hash
 fn fnv1a_32(bytes: &[u8]) -> u32 {
     let mut hash: u32 = 2_166_136_261; // FNV offset basis
@@ -131,6 +91,7 @@ fn fnv1a_32(bytes: &[u8]) -> u32 {
     hash
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Derive a deterministic tmux session name from a project path.
 ///
 /// Format: `patina_<slug>_<hash>` where:
@@ -180,6 +141,7 @@ pub struct LaunchOptions {
     /// Adapter to use (default: from config)
     pub adapter: Option<String>,
     /// Start mother in background if not running
+    #[allow(dead_code)]
     pub auto_start_mother: bool,
     /// Initialize project if needed (prompt user)
     pub auto_init: bool,

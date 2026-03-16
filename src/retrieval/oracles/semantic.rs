@@ -136,7 +136,7 @@ impl SemanticOracle {
 
         // Dynamic dimensions: projection output_dim when projected, raw E5 dim when not
         let dimensions = match &projection {
-            Some(proj) => proj.w2.len(),  // output_dim = number of rows in W2
+            Some(proj) => proj.output_dim(),
             None => embedder.dimension(), // raw E5 dim (768 for e5-base-v2)
         };
 

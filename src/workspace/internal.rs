@@ -21,9 +21,10 @@ use crate::paths;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GlobalConfig {
     pub workspace: WorkspaceConfig,
+    #[serde(rename = "interface", alias = "adapter")]
     pub adapter: AdapterConfig,
     pub serve: ServeConfig,
-    #[serde(default)]
+    #[serde(default, rename = "interfaces", alias = "adapters")]
     pub adapters: AdaptersConfig,
 }
 
@@ -138,7 +139,7 @@ pub fn setup() -> Result<SetupResult> {
 
     // Extract embedded templates to ~/.patina/adapters/
     println!("  ✓ Installing adapter templates...");
-    crate::adapters::templates::install_all(&adapters)?;
+    crate::interface::runtime::templates::install_all(&adapters)?;
     println!("  ✓ Installed adapters: claude, gemini, codex");
 
     // Detect installed adapters
@@ -239,12 +240,12 @@ pub fn ensure_workspace() -> Result<()> {
             fs::create_dir_all(adapters.join(adapter))?;
         }
         // Install templates if adapters directory was just created
-        crate::adapters::templates::install_all(&adapters)?;
+        crate::interface::runtime::templates::install_all(&adapters)?;
     } else {
         // Check if templates need to be installed
         let claude_templates = adapters.join("claude").join("templates");
         if !claude_templates.exists() {
-            crate::adapters::templates::install_all(&adapters)?;
+            crate::interface::runtime::templates::install_all(&adapters)?;
         }
     }
 
@@ -345,7 +346,7 @@ mod tests {
         let config = GlobalConfig::default();
         let toml_str = toml::to_string_pretty(&config).unwrap();
         assert!(toml_str.contains("[workspace]"));
-        assert!(toml_str.contains("[adapter]"));
+        assert!(toml_str.contains("[interface]"));
         assert!(toml_str.contains("[serve]"));
     }
 }

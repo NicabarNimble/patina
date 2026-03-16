@@ -47,6 +47,7 @@ interface types {
         command: string,
         args: list<string>,
     }
+
 }
 
 /// Read-only access to project layer data.
@@ -172,4 +173,138 @@ interface measure {
         mode: string,
         metrics-json: string,
     ) -> result<_, string>;
+}
+
+/// Plugin-owned opaque key/value state persisted by Mother.
+interface state {
+    get: func(key: string) -> option<string>;
+    put: func(key: string, value-json: string) -> result<_, string>;
+    delete: func(key: string) -> result<_, string>;
+    list-prefix: func(prefix: string) -> list<string>;
+}
+
+/// Stream checkpoints persisted by Mother.
+interface checkpoint {
+    load: func(stream-name: string) -> option<string>;
+    save: func(stream-name: string, checkpoint-json: string) -> result<_, string>;
+}
+
+/// Granted ingress sources for child fetch workflows.
+interface ingress {
+    record granted-source {
+        name: string,
+        endpoint: string,
+    }
+
+    list-granted-sources: func() -> list<granted-source>;
+    fetch: func(source-name: string) -> result<string, string>;
+}
+
+/// Host-mediated lake and storage operations.
+interface lake {
+    record granted-lake {
+        name: string,
+        path: string,
+    }
+
+    list-granted-lakes: func() -> result<list<granted-lake>, string>;
+    ensure-lake: func(name: string) -> result<string, string>;
+    load-cursor: func(lake: string, source: string, data-type: string) -> option<string>;
+    save-cursor: func(
+        lake: string,
+        source: string,
+        data-type: string,
+        cursor: option<string>,
+        written: u64,
+        status: string,
+        last-error: option<string>,
+    ) -> result<_, string>;
+    ensure-table: func(lake: string, table: string) -> result<_, string>;
+    append-json-batch: func(
+        lake: string,
+        table: string,
+        source: string,
+        rows-json: list<string>,
+    ) -> result<u64, string>;
+    query-json: func(lake: string, sql: string) -> result<string, string>;
+}
+
+/// Connector binding and sync operations.
+interface connector {
+    record repo-binding {
+        binding-id: string,
+        connection: string,
+        owner: string,
+        repo: string,
+        types: list<string>,
+    }
+
+    record sync-result {
+        binding-id: string,
+        data-type: string,
+        cursor: option<string>,
+        rows-json: list<string>,
+    }
+
+    list-bindings: func() -> result<list<repo-binding>, string>;
+    upsert-binding: func(binding: repo-binding) -> result<repo-binding, string>;
+    remove-binding: func(binding-id: string) -> result<_, string>;
+    sync-binding: func(
+        binding-id: string,
+        data-type: string,
+        since: option<string>,
+    ) -> result<sync-result, string>;
+}
+
+/// Mother-managed event streams.
+interface events {
+    record pending-event {
+        stream-name: string,
+        offset: u64,
+        event-type: string,
+        payload-json: string,
+        occurred-at: string,
+    }
+
+    pull: func(
+        stream-name: string,
+        after-offset: option<u64>,
+        limit: u32,
+    ) -> result<list<pending-event>, string>;
+    ack-through: func(stream-name: string, offset: u64) -> result<_, string>;
+    list-streams: func() -> list<string>;
+}
+
+/// Typed task intent submission.
+interface task {
+    enum task-intent-kind {
+        fetch-source,
+        run-query,
+        emit-facts,
+        materialize-index,
+        verify-belief,
+        sync-graph,
+        refresh-credential,
+        native-job,
+    }
+
+    record task-intent {
+        kind: task-intent-kind,
+        payload-json: string,
+        dedupe-key: option<string>,
+    }
+
+    enqueue: func(intent: task-intent) -> result<string, string>;
+}
+
+/// Capability-gated graph queries and mutations.
+interface graph {
+    query: func(kind: string, params-json: string) -> result<string, string>;
+    mutate: func(action: string, payload-json: string) -> result<_, string>;
+}
+
+/// Capability-gated belief queries and mutations.
+interface belief {
+    query: func(kind: string, params-json: string) -> result<string, string>;
+    mutate: func(action: string, payload-json: string) -> result<_, string>;
 }

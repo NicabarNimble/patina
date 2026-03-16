@@ -122,6 +122,11 @@ fn substitute(template: &str, name: &str) -> String {
 /// Get the template set for a given world.
 fn world_templates(world: &PluginWorld) -> (&'static str, &'static str, &'static str) {
     match world {
+        PluginWorld::KnowledgeChild => (
+            templates::mother_child::CARGO_TOML,
+            templates::mother_child::PLUGIN_TOML,
+            templates::mother_child::LIB_RS,
+        ),
         PluginWorld::MotherChild => (
             templates::mother_child::CARGO_TOML,
             templates::mother_child::PLUGIN_TOML,
@@ -256,6 +261,7 @@ mod tests {
     fn test_scaffold_all_worlds() {
         let tmp = tempfile::tempdir().unwrap();
         for (world, expected_macro) in [
+            (PluginWorld::KnowledgeChild, "register_plugin!"),
             (PluginWorld::MotherChild, "register_plugin!"),
             (PluginWorld::Command, "register_command!"),
             (PluginWorld::Task, "register_task!"),

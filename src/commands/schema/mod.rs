@@ -10,8 +10,10 @@
 
 mod internal;
 
-// Re-export schema metadata types for use by other subsystems (projection, oxidize)
-pub(crate) use internal::SchemaMetadata;
+// Re-export schema metadata types for use by other subsystems (projection, oxidize).
+// Consumers don't exist yet (contracts-before-consumers) — suppress until Seam 3.
+#[allow(unused_imports)]
+pub(crate) use internal::{ColumnDef, ContractDef, LakeConfig, ProjectionDef, SchemaMetadata};
 
 /// Load all installed schemas from `.patina/schemas/*/schema.toml`.
 pub(crate) fn load_all_installed() -> anyhow::Result<Vec<SchemaMetadata>> {
@@ -80,6 +82,27 @@ pub enum SchemaCommands {
         #[arg(long)]
         schema: Option<String>,
     },
+
+    /// Check schema consistency: canonical parses, installed matches, manifests agree
+    Check,
+
+    /// Build a schema: validate and install, with optional code generation
+    Build {
+        /// Schema name (looks up wit/schema/<name>/)
+        name: String,
+
+        /// Also generate Rust types
+        #[arg(long)]
+        types: bool,
+
+        /// Also generate SQLite migration DDL
+        #[arg(long)]
+        migrations: bool,
+
+        /// Also generate embedding config
+        #[arg(long)]
+        embeddings: bool,
+    },
 }
 
 /// Install a schema package from a local path to .patina/schemas/<name>/
@@ -125,6 +148,16 @@ pub fn validate_fact(
     data: &serde_json::Value,
 ) -> anyhow::Result<()> {
     internal::validate_fact(schema_name, fact_name, data)
+}
+
+/// Check schema consistency (CI gate)
+pub fn check() -> anyhow::Result<()> {
+    internal::check_schemas()
+}
+
+/// Build a schema: validate → install, with optional generate
+pub fn build(name: &str, types: bool, migrations: bool, embeddings: bool) -> anyhow::Result<()> {
+    internal::build_schema(name, types, migrations, embeddings)
 }
 
 /// Generate code from installed schemas

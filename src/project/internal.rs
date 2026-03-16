@@ -21,7 +21,7 @@ pub struct ProjectConfig {
     /// Deprecated: dev environment config (kept for backwards compat on load)
     #[serde(default, skip_serializing)]
     pub dev: DevSection,
-    #[serde(default)]
+    #[serde(default, rename = "interfaces", alias = "adapters")]
     pub adapters: AdaptersSection,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub upstream: Option<UpstreamSection>,
@@ -619,7 +619,7 @@ mod tests {
         assert!(toml_str.contains("[project]"));
         // Note: [dev] is deprecated and skipped on serialization
         assert!(!toml_str.contains("[dev]"));
-        assert!(toml_str.contains("[adapters]"));
+        assert!(toml_str.contains("[interfaces]"));
         assert!(toml_str.contains("[embeddings]"));
     }
 

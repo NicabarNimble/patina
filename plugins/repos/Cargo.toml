@@ -8,5 +8,5 @@ description = "Reference repository freshness monitoring plugin for Mother daemo
 crate-type = ["cdylib"]
 
 [dependencies]
-patina-sdk = { path = "../sdk", features = ["mother-child"] }
+patina-sdk = { path = "../../sdk/patina-sdk", features = ["mother-child"] }
 serde_json = "1.0"

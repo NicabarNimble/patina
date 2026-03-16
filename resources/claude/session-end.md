@@ -5,26 +5,20 @@ End the current Patina session with Git work classification:
    - This captures activity since the last update
    - Ensure all artifact references use `[[wikilinks]]` (beliefs, sessions, commits, specs)
 
-2. Then archive the session:
-   `patina session end`
+2. Launch an Agent (subagent) to archive the session. The agent should:
+   - Run: `.claude/bin/session-end.sh`
+     If multiple active sessions exist, use `.claude/bin/session-end.sh --session <id>`.
+     To include a final outcome sentence: `.claude/bin/session-end.sh --note "what we accomplished"`.
+   - Parse the returned JSON and extract all fields
+   - Return to the main context: work classification, session tags, artifact path, and end tag
 
-   This will:
-   - Check for uncommitted changes (warns but doesn't block)
-   - Classify work type based on commits (Exploration/Experiment/Feature)
-   - Archive session to layer/sessions/<ID>.md
-   - Update last-session.md pointer
-   - Clean up active-session.md
-   - Tag the session end point for preservation
-
-3. The command will show:
-   - Work classification and session metrics
-   - Session tags: session-[timestamp]-start..session-[timestamp]-end
-   - Specs unblocked by this session's work (if any)
-   - Next spec recommendation for the following session
+3. Using the agent's result, confirm the archive:
+   - Work classification: Exploration / Experiment / Feature based on commit patterns
+   - Session tags: `session-[timestamp]-[interface]-start..session-[timestamp]-[interface]-end`
 
 4. After archiving, you can:
-   - View session work: `git log session-[timestamp]-start..session-[timestamp]-end`
-   - Cherry-pick commits: `git cherry-pick session-[timestamp]-start..session-[timestamp]-end`
+   - View session work: `git log session-[timestamp]-[interface]-start..session-[timestamp]-[interface]-end`
+   - Cherry-pick commits: `git cherry-pick session-[timestamp]-[interface]-start..session-[timestamp]-[interface]-end`
    - Continue on current branch or switch as needed
 
 5. **Linking convention** — before archiving, verify the activity log uses `[[wikilinks]]` for all artifact references:
@@ -32,4 +26,4 @@ End the current Patina session with Git work classification:
    - Specs: `[[spec-id]]` or relative path links, Source files: backtick paths
    - Unlinked plain-text mentions are invisible to `patina scrape` and the knowledge graph.
 
-Note: All sessions are preserved via tags as searchable memory - failed experiments prevent future mistakes.
+All sessions are preserved via tags as searchable memory — failed experiments prevent future mistakes.

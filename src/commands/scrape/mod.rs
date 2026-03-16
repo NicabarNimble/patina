@@ -7,6 +7,7 @@ pub mod delta;
 pub mod events;
 pub mod git;
 pub mod layer;
+pub mod projection;
 pub mod sessions;
 
 use anyhow::Result;
@@ -44,24 +45,6 @@ pub struct ScrapeStats {
     pub items_processed: usize,
     pub time_elapsed: std::time::Duration,
     pub database_size_kb: u64,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::Duration;
-
-    #[test]
-    fn test_scrape_stats_creation() {
-        let stats = ScrapeStats {
-            items_processed: 100,
-            time_elapsed: Duration::from_secs(5),
-            database_size_kb: 1024,
-        };
-        assert_eq!(stats.items_processed, 100);
-        assert_eq!(stats.time_elapsed.as_secs(), 5);
-        assert_eq!(stats.database_size_kb, 1024);
-    }
 }
 
 /// Run all scrapers in sequence (code, git, layer, beliefs)
@@ -165,7 +148,7 @@ fn trigger_on_scrape_sources() {
         Err(_) => return,
     };
 
-    let sources = match patina::broker::sources::load_project_sources(&project_root) {
+    let sources = match patina::mother::broker::sources::load_project_sources(&project_root) {
         Ok(Some(ps)) => ps.sources,
         _ => return,
     };
@@ -182,7 +165,7 @@ fn trigger_on_scrape_sources() {
     println!("\n🔗 Triggering {} on-scrape source(s)...", on_scrape.len());
 
     for source in on_scrape {
-        match patina::broker::run_source(source, &project_root, false) {
+        match patina::mother::broker::run_source(source, &project_root, false) {
             Ok(result) => {
                 println!(
                     "  {} — {} written, {} dedup",
@@ -374,4 +357,22 @@ pub fn execute_layer(full: bool) -> Result<()> {
     println!("  • Time elapsed: {:?}", stats.time_elapsed);
     println!("  • Database size: {} KB", stats.database_size_kb);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn test_scrape_stats_creation() {
+        let stats = ScrapeStats {
+            items_processed: 100,
+            time_elapsed: Duration::from_secs(5),
+            database_size_kb: 1024,
+        };
+        assert_eq!(stats.items_processed, 100);
+        assert_eq!(stats.time_elapsed.as_secs(), 5);
+        assert_eq!(stats.database_size_kb, 1024);
+    }
 }

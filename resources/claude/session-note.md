@@ -1,8 +1,8 @@
 Add a human note to the current Patina session with Git context:
 
-1. Run the session note command with your insight:
-   - Execute: `patina session note "$ARGUMENTS"`
-   - Example: `patina session note "discovered dual session architecture is key"`
+1. Run the bundled session note wrapper with your insight:
+   - Execute: `.claude/bin/session-note.sh "$ARGUMENTS"`
+   - Example: `.claude/bin/session-note.sh "discovered dual session architecture is key"`
 
 2. The command will add Git context [branch@sha] to the note
 
@@ -18,4 +18,4 @@ Add a human note to the current Patina session with Git context:
    - Enable future queries like "when did we solve X?"
    - Build knowledge graph through Git history
 
-Note: These notes are prioritized during session-end distillation and become searchable through Git.
+Note: These notes are written to the durable live session artifact and are prioritized during session-end distillation.

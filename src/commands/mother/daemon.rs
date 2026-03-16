@@ -117,27 +117,38 @@ impl patina::mother::MotherHost for DaemonHost {
 /// Heartbeat interval in seconds
 const HEARTBEAT_INTERVAL_SECS: u64 = 60;
 
-/// Spawn the heartbeat thread — ticks all children periodically.
-/// Toys returned by children are spawned as child processes.
-/// Tracks in-flight toys to prevent duplicate spawning.
-fn spawn_heartbeat(state: Arc<ServerState>) {
+/// Spawn the heartbeat thread.
+///
+/// Default Mother runtime only advances knowledge children. Legacy shell-toy
+/// children remain behind the explicit migration mode so the normal daemon
+/// path does not teach two runtime stories at once.
+fn spawn_heartbeat(state: Arc<ServerState>, legacy_migration: bool) {
     let in_flight: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+    let runtime = patina::mother::KnowledgeRuntimeStore::default();
 
     std::thread::Builder::new()
         .name("mother-heartbeat".to_string())
         .spawn(move || loop {
             std::thread::sleep(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
-            let toys = state.registry.tick_all();
-            for toy in toys {
-                let mut flight = in_flight.lock().unwrap_or_else(|e| e.into_inner());
-                if flight.contains(&toy.name) {
-                    eprintln!("[mother:toy] skipping '{}' (already in flight)", toy.name);
-                    continue;
-                }
-                flight.insert(toy.name.clone());
-                drop(flight); // release lock before spawning thread
+            if let Err(error) = state
+                .registry
+                .run_knowledge_cycles(&runtime, "mother-heartbeat")
+            {
+                eprintln!("[mother] knowledge-child heartbeat failed: {}", error);
+            }
+            if legacy_migration {
+                let toys = state.registry.tick_legacy_all();
+                for toy in toys {
+                    let mut flight = in_flight.lock().unwrap_or_else(|e| e.into_inner());
+                    if flight.contains(&toy.name) {
+                        eprintln!("[mother:toy] skipping '{}' (already in flight)", toy.name);
+                        continue;
+                    }
+                    flight.insert(toy.name.clone());
+                    drop(flight);
 
-                spawn_toy_tracked(toy, Arc::clone(&in_flight));
+                    spawn_toy_tracked(toy, Arc::clone(&in_flight));
+                }
             }
         })
         .expect("failed to spawn heartbeat thread");
@@ -531,6 +542,7 @@ fn handle_connection(stream: &mut (impl Read + Write), state: &ServerState, requ
 pub struct DaemonOptions {
     pub host: Option<String>,
     pub port: u16,
+    pub legacy_migration: bool,
 }
 
 impl Default for DaemonOptions {
@@ -538,6 +550,7 @@ impl Default for DaemonOptions {
         Self {
             host: None,
             port: 50051,
+            legacy_migration: false,
         }
     }
 }
@@ -546,6 +559,7 @@ impl Default for DaemonOptions {
 pub fn run_server(options: DaemonOptions) -> Result<()> {
     // Build and load child registry
     let mut registry = ChildRegistry::new();
+    let runtime = patina::mother::KnowledgeRuntimeStore::default();
 
     // Compiled-in children (always available)
     registry
@@ -553,62 +567,47 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         .expect("failed to register secrets child");
 
     // WASM children (discovered from ~/.patina/children/)
-    match patina::plugin::PluginEngine::new() {
-        Ok(plugin_engine) => {
-            let children_dir = patina::paths::plugin::children_dir();
-            if children_dir.exists() {
-                if let Ok(entries) = std::fs::read_dir(&children_dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.extension().and_then(|e| e.to_str()) == Some("wasm") {
-                            let manifest_path = path.with_extension("toml");
-                            match load_wasm_child(&plugin_engine, &path, &manifest_path) {
-                                Ok(child) => {
-                                    let name = child.name().to_string();
-                                    match registry.register(child) {
-                                        Ok(()) => {
-                                            eprintln!("[mother] loaded WASM child: {}", name);
-                                        }
-                                        Err(e) => {
-                                            eprintln!(
-                                                "[mother] skipping {}: {}",
-                                                path.display(),
-                                                e
-                                            );
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("[mother] failed to load {}: {}", path.display(), e);
-                                }
+    let children_dir = patina::paths::plugin::children_dir();
+    if children_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&children_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("wasm") {
+                    let manifest_path = path.with_extension("toml");
+                    match load_wasm_child(&path, &manifest_path) {
+                        Ok(loaded) => match register_loaded_child(
+                            &mut registry,
+                            &runtime,
+                            loaded,
+                            options.legacy_migration,
+                        ) {
+                            Ok(Some(message)) => eprintln!("[mother] {}", message),
+                            Ok(None) => {}
+                            Err(error) => {
+                                eprintln!("[mother] skipping {}: {}", path.display(), error)
                             }
-                        }
-                    }
-                }
-                // Detect orphaned .toml manifests (no matching .wasm)
-                if let Ok(entries) = std::fs::read_dir(&children_dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.extension().and_then(|e| e.to_str()) == Some("toml")
-                            && !path.with_extension("wasm").exists()
-                        {
-                            eprintln!("[mother] orphaned manifest (no .wasm): {}", path.display());
+                        },
+                        Err(e) => {
+                            eprintln!("[mother] failed to load {}: {}", path.display(), e);
                         }
                     }
                 }
             }
         }
-        Err(e) => {
-            eprintln!(
-                "[mother] plugin engine init failed: {} (WASM children disabled)",
-                e
-            );
+        if let Ok(entries) = std::fs::read_dir(&children_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("toml")
+                    && !path.with_extension("wasm").exists()
+                {
+                    eprintln!("[mother] orphaned manifest (no .wasm): {}", path.display());
+                }
+            }
         }
     }
 
     let daemon_host = DaemonHost;
     registry.load_all(&daemon_host)?;
-    let child_count = registry.len();
 
     // TCP opt-in path (--host flag) — requires bearer token
     if let Some(ref host) = options.host {
@@ -637,11 +636,20 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
 
         let listener = TcpListener::bind(&addr)?;
         println!("🚀 Mother daemon starting...");
-        println!("   Children: {} loaded", child_count);
+        println!(
+            "   Knowledge children: {} loaded",
+            state.registry.knowledge_len()
+        );
+        if options.legacy_migration {
+            println!(
+                "   Legacy migration children: {} loaded",
+                state.registry.legacy_len()
+            );
+        }
         println!("   Listening on http://{}", addr);
         println!("   Press Ctrl+C to stop\n");
 
-        spawn_heartbeat(Arc::clone(&state));
+        spawn_heartbeat(Arc::clone(&state), options.legacy_migration);
         accept_loop_tcp(listener, state);
     }
 
@@ -658,7 +666,16 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
 
     println!("🚀 Mother daemon starting...");
     println!("   PID: {}", std::process::id());
-    println!("   Children: {} loaded", child_count);
+    println!(
+        "   Knowledge children: {} loaded",
+        state.registry.knowledge_len()
+    );
+    if options.legacy_migration {
+        println!(
+            "   Legacy migration children: {} loaded",
+            state.registry.legacy_len()
+        );
+    }
     println!("   Listening on {}", socket_path.display());
     println!(
         "   Test: curl -s --unix-socket {} http://localhost/health",
@@ -667,7 +684,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     println!("   No TCP listener (use --host/--port for network access)");
     println!("   Press Ctrl+C to stop\n");
 
-    spawn_heartbeat(Arc::clone(&state));
+    spawn_heartbeat(Arc::clone(&state), options.legacy_migration);
     accept_loop_uds(listener, state);
 }
 
@@ -703,16 +720,79 @@ fn accept_loop_uds(listener: std::os::unix::net::UnixListener, state: Arc<Server
     std::process::exit(0);
 }
 
+enum LoadedWasmChild {
+    Legacy {
+        child: Box<dyn patina::mother::MotherChild>,
+        name: String,
+    },
+    Knowledge {
+        child: Box<dyn patina::mother::KnowledgeChild>,
+        name: String,
+        subscribed_streams: Vec<String>,
+    },
+}
+
+fn register_loaded_child(
+    registry: &mut ChildRegistry,
+    runtime: &patina::mother::KnowledgeRuntimeStore,
+    loaded: LoadedWasmChild,
+    legacy_migration: bool,
+) -> Result<Option<String>> {
+    match loaded {
+        LoadedWasmChild::Legacy { child, name } => {
+            if legacy_migration {
+                registry.register_legacy(child)?;
+                Ok(Some(format!("loaded legacy migration child: {}", name)))
+            } else {
+                Ok(Some(format!(
+                    "skipping legacy child {} (use --legacy-migration to load mother-child plugins)",
+                    name
+                )))
+            }
+        }
+        LoadedWasmChild::Knowledge {
+            child,
+            name,
+            subscribed_streams,
+        } => {
+            runtime.ensure_subscriptions(&name, &subscribed_streams)?;
+            registry.register_knowledge(child)?;
+            Ok(Some(format!("loaded knowledge WASM child: {}", name)))
+        }
+    }
+}
+
 /// Load a WASM child from a .wasm file + plugin.toml manifest.
 fn load_wasm_child(
-    engine: &patina::plugin::PluginEngine,
     wasm_path: &std::path::Path,
     manifest_path: &std::path::Path,
-) -> Result<Box<dyn patina::mother::MotherChild>> {
-    let manifest = patina::plugin::PluginEngine::load_manifest(manifest_path)?;
+) -> Result<LoadedWasmChild> {
+    let manifest = patina::plugin::PluginManifest::from_path(manifest_path)?;
     let wasm_bytes = std::fs::read(wasm_path)?;
-    let component = engine.load_component(&wasm_bytes)?;
-    engine.instantiate_child(&component, &manifest, None)
+    match manifest.world {
+        patina::plugin::PluginWorld::KnowledgeChild => {
+            let engine = patina::plugin::KnowledgeChildEngine::new()?;
+            let component = engine.load_component(&wasm_bytes)?;
+            let child = engine.instantiate_child(&component, &manifest, None)?;
+            let name = child.name().to_string();
+            Ok(LoadedWasmChild::Knowledge {
+                child,
+                name,
+                subscribed_streams: manifest.subscribed_streams.clone(),
+            })
+        }
+        patina::plugin::PluginWorld::MotherChild => {
+            let engine = patina::plugin::PluginEngine::new()?;
+            let component = engine.load_component(&wasm_bytes)?;
+            let child = engine.instantiate_child(&component, &manifest, None)?;
+            let name = child.name().to_string();
+            Ok(LoadedWasmChild::Legacy { child, name })
+        }
+        other => anyhow::bail!(
+            "child manifest world '{}' is not loadable by the daemon child loader",
+            other
+        ),
+    }
 }
 
 /// Write PID file for daemon lifecycle management
@@ -756,4 +836,105 @@ extern "C" fn sigint_handler(_: libc::c_int) {
     cleanup_pid_file();
     super::cleanup_socket();
     std::process::exit(0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use patina::mother::{
+        ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, MotherChild, MotherHost,
+    };
+
+    struct StubLegacy;
+
+    impl MotherChild for StubLegacy {
+        fn name(&self) -> &str {
+            "legacy"
+        }
+
+        fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
+            Ok(())
+        }
+
+        fn health(&self) -> ChildHealth {
+            ChildHealth::Healthy
+        }
+
+        fn handle(&self, _request: &ChildRequest) -> Result<ChildResponse> {
+            Ok(ChildResponse {
+                payload: serde_json::Value::Null,
+            })
+        }
+    }
+
+    struct StubKnowledge;
+
+    impl KnowledgeChild for StubKnowledge {
+        fn name(&self) -> &str {
+            "knowledge"
+        }
+
+        fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
+            Ok(())
+        }
+
+        fn health(&self) -> ChildHealth {
+            ChildHealth::Healthy
+        }
+
+        fn handle(&self, _request: &ChildRequest) -> Result<ChildResponse> {
+            Ok(ChildResponse {
+                payload: serde_json::Value::Null,
+            })
+        }
+    }
+
+    #[test]
+    fn daemon_options_default_keeps_legacy_quarantined() {
+        let options = DaemonOptions::default();
+        assert!(!options.legacy_migration);
+    }
+
+    #[test]
+    fn register_loaded_child_skips_legacy_without_migration_mode() {
+        let mut registry = ChildRegistry::new();
+        let runtime = patina::mother::KnowledgeRuntimeStore::default();
+
+        let message = register_loaded_child(
+            &mut registry,
+            &runtime,
+            LoadedWasmChild::Legacy {
+                child: Box::new(StubLegacy),
+                name: "legacy".into(),
+            },
+            false,
+        )
+        .unwrap()
+        .unwrap();
+
+        assert!(message.contains("skipping legacy child legacy"));
+        assert_eq!(registry.legacy_len(), 0);
+        assert_eq!(registry.knowledge_len(), 0);
+    }
+
+    #[test]
+    fn register_loaded_child_loads_knowledge_by_default() {
+        let mut registry = ChildRegistry::new();
+        let runtime = patina::mother::KnowledgeRuntimeStore::default();
+
+        register_loaded_child(
+            &mut registry,
+            &runtime,
+            LoadedWasmChild::Knowledge {
+                child: Box::new(StubKnowledge),
+                name: "knowledge".into(),
+                subscribed_streams: vec!["belief.changed".into()],
+            },
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(registry.knowledge_len(), 1);
+        assert_eq!(registry.legacy_len(), 0);
+    }
 }

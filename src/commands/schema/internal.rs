@@ -25,6 +25,11 @@ pub(crate) struct SchemaMetadata {
     pub embedding: Option<EmbeddingConfig>,
     #[serde(default)]
     pub indexes: Vec<IndexConfig>,
+    #[serde(default)]
+    pub projections: Vec<ProjectionDef>,
+    #[serde(default)]
+    pub contracts: Vec<ContractDef>,
+    pub lake: Option<LakeConfig>,
 }
 
 /// The [schema] section — identity and description.
@@ -43,6 +48,8 @@ pub(crate) struct FactDef {
     pub name: String,
     pub event_type: String,
     pub record: String,
+    #[serde(default)]
+    pub identity_fields: Vec<String>,
 }
 
 /// The [embedding] section — offset slot and corpus query.
@@ -58,6 +65,40 @@ pub(crate) struct IndexConfig {
     pub fact: String,
     pub fts_fields: Vec<String>,
     pub table: String,
+}
+
+/// A [[projections]] entry — table DDL, column mappings, primary key for a fact type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ProjectionDef {
+    pub fact: String,
+    pub table: String,
+    pub primary_key: String,
+    #[serde(default)]
+    pub columns: Vec<ColumnDef>,
+}
+
+/// A column within a [[projections]] entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ColumnDef {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub col_type: String,
+    pub json_path: String,
+}
+
+/// A [[contracts]] entry — consumer-facing metadata for a fact type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ContractDef {
+    pub name: String,
+    pub event_type: String,
+    pub display_kind: String,
+}
+
+/// The [lake] section — lake-scope metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct LakeConfig {
+    #[serde(default)]
+    pub path_template: Option<String>,
 }
 
 // =========================================================================
@@ -202,6 +243,166 @@ pub fn install_schema(source_path: &str) -> Result<()> {
     Ok(())
 }
 
+/// Check schema consistency: canonical parses, installs cleanly, matches
+/// installed copy, and connector manifests agree on package versions.
+pub fn check_schemas() -> Result<()> {
+    let root = find_project_root()?;
+    let canonical_dir = root.join("wit/schema");
+    if !canonical_dir.exists() {
+        println!("No canonical schemas in wit/schema/");
+        return Ok(());
+    }
+
+    let mut ok = true;
+
+    for entry in std::fs::read_dir(&canonical_dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let source = entry.path();
+
+        println!("  Checking wit/schema/{}/...", name);
+
+        // 1. Validate: canonical schema parses cleanly
+        let metadata = match validate_package(&source) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("  ERROR: wit/schema/{} fails validation: {}", name, e);
+                ok = false;
+                continue;
+            }
+        };
+
+        // 2. Install to temp dir, diff against canonical (proves installability)
+        let tmp_base =
+            std::env::temp_dir().join(format!("patina-schema-check-{}", std::process::id()));
+        let tmp_target = tmp_base.join(&name);
+        std::fs::create_dir_all(&tmp_target)?;
+        // Copy files (same as install_schema does)
+        for src_entry in std::fs::read_dir(&source)? {
+            let src_entry = src_entry?;
+            if src_entry.file_type()?.is_file() {
+                std::fs::copy(src_entry.path(), tmp_target.join(src_entry.file_name()))?;
+            }
+        }
+        let install_matches = dirs_match(&source, &tmp_target)?;
+        // Clean up temp dir
+        let _ = std::fs::remove_dir_all(&tmp_base);
+        if !install_matches {
+            eprintln!(
+                "  ERROR: wit/schema/{} install produces different output",
+                name
+            );
+            ok = false;
+        }
+
+        // 3. If installed copy exists in project, diff against canonical
+        let installed = paths::project::schemas_dir(&root).join(&name);
+        if installed.exists() && !dirs_match(&source, &installed)? {
+            eprintln!(
+                "  ERROR: installed schema '{}' differs from canonical",
+                name
+            );
+            eprintln!("  Fix: patina schema install wit/schema/{}", name);
+            ok = false;
+        }
+
+        // 4. Check connector manifest package versions
+        let canonical_pkg = &metadata.schema.package;
+        let children_dir = root.join("children");
+        if children_dir.exists() {
+            for child_entry in std::fs::read_dir(&children_dir)?.flatten() {
+                let child_toml = child_entry.path().join("child.toml");
+                if !child_toml.exists() {
+                    continue;
+                }
+                let content = std::fs::read_to_string(&child_toml)?;
+                let manifest: patina_pipe_types::manifest::ChildManifest = toml::from_str(&content)
+                    .with_context(|| format!("parsing {}", child_toml.display()))?;
+                if let Some(schema_ref) = manifest.schemas.get(&name) {
+                    if schema_ref.package != *canonical_pkg {
+                        eprintln!(
+                            "  ERROR: {} declares package '{}' but canonical is '{}'",
+                            child_toml.display(),
+                            schema_ref.package,
+                            canonical_pkg
+                        );
+                        ok = false;
+                    }
+                }
+            }
+        }
+    }
+
+    if ok {
+        println!("  ✓ Schema consistency OK");
+        Ok(())
+    } else {
+        bail!("Schema consistency check failed")
+    }
+}
+
+/// Compare two directories recursively — all files must have identical content.
+fn dirs_match(a: &Path, b: &Path) -> Result<bool> {
+    let mut a_files: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut b_files: Vec<(String, Vec<u8>)> = Vec::new();
+
+    for entry in std::fs::read_dir(a)? {
+        let entry = entry?;
+        if entry.file_type()?.is_file() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let content = std::fs::read(entry.path())?;
+            a_files.push((name, content));
+        }
+    }
+    for entry in std::fs::read_dir(b)? {
+        let entry = entry?;
+        if entry.file_type()?.is_file() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let content = std::fs::read(entry.path())?;
+            b_files.push((name, content));
+        }
+    }
+
+    a_files.sort_by(|x, y| x.0.cmp(&y.0));
+    b_files.sort_by(|x, y| x.0.cmp(&y.0));
+
+    Ok(a_files == b_files)
+}
+
+/// Build a schema: validate → install, with optional code generation.
+pub fn build_schema(name: &str, types: bool, migrations: bool, embeddings: bool) -> Result<()> {
+    let root = find_project_root()?;
+    let source = root.join("wit/schema").join(name);
+
+    if !source.exists() {
+        bail!("canonical schema not found: wit/schema/{}/", name);
+    }
+
+    // 1. Validate
+    println!("Validating wit/schema/{}/...", name);
+    let metadata = validate_package(&source)?;
+    println!(
+        "  ✓ {} v{} — {} facts",
+        metadata.schema.name,
+        metadata.schema.version,
+        metadata.facts.len()
+    );
+
+    // 2. Install
+    install_schema(&source.to_string_lossy())?;
+
+    // 3. Generate (if requested)
+    if types || migrations || embeddings {
+        generate(types, migrations, embeddings, Some(name))?;
+    }
+
+    println!("\nSchema '{}' built", name);
+    Ok(())
+}
+
 /// List installed schemas.
 pub fn list_schemas(json: bool) -> Result<()> {
     let root = find_project_root()?;
@@ -336,10 +537,20 @@ pub fn show_schema(name: &str, json: bool) -> Result<()> {
 
     println!("\nFacts:");
     for fact in &metadata.facts {
-        println!(
-            "  {} → event_type: {}, record: {}",
-            fact.name, fact.event_type, fact.record
-        );
+        if fact.identity_fields.is_empty() {
+            println!(
+                "  {} → event_type: {}, record: {}",
+                fact.name, fact.event_type, fact.record
+            );
+        } else {
+            println!(
+                "  {} → event_type: {}, record: {}, identity: [{}]",
+                fact.name,
+                fact.event_type,
+                fact.record,
+                fact.identity_fields.join(", ")
+            );
+        }
     }
 
     if let Some(ref emb) = metadata.embedding {
@@ -357,6 +568,39 @@ pub fn show_schema(name: &str, json: bool) -> Result<()> {
                 idx.table,
                 idx.fts_fields.join(", ")
             );
+        }
+    }
+
+    if !metadata.projections.is_empty() {
+        println!("\nProjections:");
+        for proj in &metadata.projections {
+            println!(
+                "  {} → table: {}, pk: {}, columns: {}",
+                proj.fact,
+                proj.table,
+                proj.primary_key,
+                proj.columns.len()
+            );
+            for col in &proj.columns {
+                println!("    {} {} ← {}", col.name, col.col_type, col.json_path);
+            }
+        }
+    }
+
+    if !metadata.contracts.is_empty() {
+        println!("\nContracts:");
+        for contract in &metadata.contracts {
+            println!(
+                "  {} → event_type: {}, display: {}",
+                contract.name, contract.event_type, contract.display_kind
+            );
+        }
+    }
+
+    if let Some(ref lake) = metadata.lake {
+        println!("\nLake:");
+        if let Some(ref tmpl) = lake.path_template {
+            println!("  path_template: {}", tmpl);
         }
     }
 
@@ -1242,8 +1486,63 @@ package = "patina:schema/empty@1.0.0"
         assert_eq!(meta.facts[0].event_type, "github.issue");
         assert_eq!(meta.facts[1].event_type, "github.pr");
         assert!(meta.embedding.is_some());
-        assert_eq!(meta.embedding.unwrap().offset_slot, 5);
+        assert_eq!(meta.embedding.as_ref().unwrap().offset_slot, 5);
         assert_eq!(meta.indexes.len(), 2);
+
+        // identity_fields — no longer silently ignored
+        assert_eq!(meta.facts[0].identity_fields, vec!["number"]);
+        assert_eq!(meta.facts[1].identity_fields, vec!["number"]);
+
+        // projections
+        assert_eq!(meta.projections.len(), 2);
+        assert_eq!(meta.projections[0].fact, "issue");
+        assert_eq!(meta.projections[0].table, "github_issues");
+        assert_eq!(meta.projections[0].primary_key, "number");
+        assert_eq!(meta.projections[0].columns.len(), 8);
+        assert_eq!(meta.projections[0].columns[0].name, "number");
+        assert_eq!(meta.projections[0].columns[0].col_type, "INTEGER");
+        assert_eq!(meta.projections[0].columns[0].json_path, "$.number");
+        assert_eq!(meta.projections[1].fact, "pull-request");
+        assert_eq!(meta.projections[1].table, "github_prs");
+        assert_eq!(meta.projections[1].columns.len(), 11);
+
+        // PR projection must include comments_text
+        let pr_col_names: Vec<&str> = meta.projections[1]
+            .columns
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        assert!(
+            pr_col_names.contains(&"comments_text"),
+            "PR projection missing comments_text column"
+        );
+
+        // PR FTS index must use comments_text (not comments)
+        let pr_index = meta
+            .indexes
+            .iter()
+            .find(|i| i.fact == "pull-request")
+            .unwrap();
+        assert!(
+            pr_index.fts_fields.contains(&"comments_text".to_string()),
+            "PR FTS index should use comments_text, not comments"
+        );
+
+        // contracts
+        assert_eq!(meta.contracts.len(), 2);
+        assert_eq!(meta.contracts[0].name, "issues");
+        assert_eq!(meta.contracts[0].event_type, "github.issue");
+        assert_eq!(meta.contracts[0].display_kind, "Issue");
+        assert_eq!(meta.contracts[1].name, "pull-requests");
+        assert_eq!(meta.contracts[1].event_type, "github.pr");
+        assert_eq!(meta.contracts[1].display_kind, "PR");
+
+        // lake
+        assert!(meta.lake.is_some());
+        assert_eq!(
+            meta.lake.as_ref().unwrap().path_template.as_deref(),
+            Some("{owner}/{repo}")
+        );
     }
 
     // =====================================================================
@@ -1458,5 +1757,289 @@ interface types {
         // Check that valid data has required fields
         let obj = valid.as_object().unwrap();
         assert!(obj.contains_key("title"));
+    }
+
+    // =====================================================================
+    // Contract model expansion tests (connector-owns-tables)
+    // =====================================================================
+
+    #[test]
+    fn parse_identity_fields() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("schema.toml"),
+            r#"
+[schema]
+name = "test"
+version = "1.0.0"
+package = "patina:schema/test@1.0.0"
+
+[[facts]]
+name = "item"
+event_type = "test.item"
+record = "item"
+identity_fields = ["id", "source"]
+"#,
+        )
+        .unwrap();
+        let meta = parse_schema_toml(dir.path()).unwrap();
+        assert_eq!(meta.facts[0].identity_fields, vec!["id", "source"]);
+    }
+
+    #[test]
+    fn parse_identity_fields_absent_defaults_empty() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("schema.toml"),
+            r#"
+[schema]
+name = "test"
+version = "1.0.0"
+package = "patina:schema/test@1.0.0"
+
+[[facts]]
+name = "item"
+event_type = "test.item"
+record = "item"
+"#,
+        )
+        .unwrap();
+        let meta = parse_schema_toml(dir.path()).unwrap();
+        assert!(meta.facts[0].identity_fields.is_empty());
+    }
+
+    #[test]
+    fn parse_projections() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("schema.toml"),
+            r#"
+[schema]
+name = "test"
+version = "1.0.0"
+package = "patina:schema/test@1.0.0"
+
+[[facts]]
+name = "msg"
+event_type = "test.msg"
+record = "msg"
+
+[[projections]]
+fact = "msg"
+table = "test_messages"
+primary_key = "id"
+columns = [
+    { name = "id", type = "INTEGER", json_path = "$.id" },
+    { name = "text", type = "TEXT", json_path = "$.text" },
+]
+"#,
+        )
+        .unwrap();
+        let meta = parse_schema_toml(dir.path()).unwrap();
+        assert_eq!(meta.projections.len(), 1);
+        assert_eq!(meta.projections[0].fact, "msg");
+        assert_eq!(meta.projections[0].table, "test_messages");
+        assert_eq!(meta.projections[0].primary_key, "id");
+        assert_eq!(meta.projections[0].columns.len(), 2);
+        assert_eq!(meta.projections[0].columns[0].name, "id");
+        assert_eq!(meta.projections[0].columns[0].col_type, "INTEGER");
+        assert_eq!(meta.projections[0].columns[0].json_path, "$.id");
+        assert_eq!(meta.projections[0].columns[1].name, "text");
+        assert_eq!(meta.projections[0].columns[1].col_type, "TEXT");
+        assert_eq!(meta.projections[0].columns[1].json_path, "$.text");
+    }
+
+    #[test]
+    fn parse_contracts() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("schema.toml"),
+            r#"
+[schema]
+name = "test"
+version = "1.0.0"
+package = "patina:schema/test@1.0.0"
+
+[[facts]]
+name = "msg"
+event_type = "test.msg"
+record = "msg"
+
+[[contracts]]
+name = "messages"
+event_type = "test.msg"
+display_kind = "Message"
+"#,
+        )
+        .unwrap();
+        let meta = parse_schema_toml(dir.path()).unwrap();
+        assert_eq!(meta.contracts.len(), 1);
+        assert_eq!(meta.contracts[0].name, "messages");
+        assert_eq!(meta.contracts[0].event_type, "test.msg");
+        assert_eq!(meta.contracts[0].display_kind, "Message");
+    }
+
+    #[test]
+    fn parse_lake_config() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("schema.toml"),
+            r#"
+[schema]
+name = "test"
+version = "1.0.0"
+package = "patina:schema/test@1.0.0"
+
+[[facts]]
+name = "item"
+event_type = "test.item"
+record = "item"
+
+[lake]
+path_template = "{org}/{repo}"
+"#,
+        )
+        .unwrap();
+        let meta = parse_schema_toml(dir.path()).unwrap();
+        assert!(meta.lake.is_some());
+        assert_eq!(
+            meta.lake.as_ref().unwrap().path_template.as_deref(),
+            Some("{org}/{repo}")
+        );
+    }
+
+    #[test]
+    fn parse_lake_absent_defaults_none() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("schema.toml"),
+            r#"
+[schema]
+name = "test"
+version = "1.0.0"
+package = "patina:schema/test@1.0.0"
+
+[[facts]]
+name = "item"
+event_type = "test.item"
+record = "item"
+"#,
+        )
+        .unwrap();
+        let meta = parse_schema_toml(dir.path()).unwrap();
+        assert!(meta.lake.is_none());
+    }
+
+    #[test]
+    fn parse_projections_absent_defaults_empty() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("schema.toml"),
+            r#"
+[schema]
+name = "test"
+version = "1.0.0"
+package = "patina:schema/test@1.0.0"
+
+[[facts]]
+name = "item"
+event_type = "test.item"
+record = "item"
+"#,
+        )
+        .unwrap();
+        let meta = parse_schema_toml(dir.path()).unwrap();
+        assert!(meta.projections.is_empty());
+        assert!(meta.contracts.is_empty());
+    }
+
+    #[test]
+    fn roundtrip_full_schema() {
+        let dir = TempDir::new().unwrap();
+        let original_toml = r#"[schema]
+name = "roundtrip"
+version = "2.0.0"
+package = "patina:schema/roundtrip@2.0.0"
+description = "Round-trip test"
+
+[[facts]]
+name = "event"
+event_type = "roundtrip.event"
+record = "event"
+identity_fields = ["id", "ts"]
+
+[[indexes]]
+fact = "event"
+fts_fields = ["title"]
+table = "roundtrip_events"
+
+[[projections]]
+fact = "event"
+table = "roundtrip_events"
+primary_key = "id"
+columns = [{ name = "id", type = "INTEGER", json_path = "$.id" }, { name = "title", type = "TEXT", json_path = "$.title" }]
+
+[[contracts]]
+name = "events"
+event_type = "roundtrip.event"
+display_kind = "Event"
+
+[lake]
+path_template = "{source}"
+"#;
+        fs::write(dir.path().join("schema.toml"), original_toml).unwrap();
+        let meta = parse_schema_toml(dir.path()).unwrap();
+
+        // Serialize back to TOML
+        let serialized = toml::to_string(&meta).unwrap();
+
+        // Parse the serialized TOML
+        let reparsed: SchemaMetadata = toml::from_str(&serialized).unwrap();
+
+        // Verify structural identity
+        assert_eq!(reparsed.schema.name, meta.schema.name);
+        assert_eq!(reparsed.schema.version, meta.schema.version);
+        assert_eq!(reparsed.facts.len(), meta.facts.len());
+        assert_eq!(
+            reparsed.facts[0].identity_fields,
+            meta.facts[0].identity_fields
+        );
+        assert_eq!(reparsed.projections.len(), meta.projections.len());
+        assert_eq!(reparsed.projections[0].fact, meta.projections[0].fact);
+        assert_eq!(reparsed.projections[0].table, meta.projections[0].table);
+        assert_eq!(
+            reparsed.projections[0].primary_key,
+            meta.projections[0].primary_key
+        );
+        assert_eq!(
+            reparsed.projections[0].columns.len(),
+            meta.projections[0].columns.len()
+        );
+        assert_eq!(
+            reparsed.projections[0].columns[0].col_type,
+            meta.projections[0].columns[0].col_type
+        );
+        assert_eq!(reparsed.contracts.len(), meta.contracts.len());
+        assert_eq!(
+            reparsed.contracts[0].display_kind,
+            meta.contracts[0].display_kind
+        );
+        assert_eq!(
+            reparsed.lake.as_ref().unwrap().path_template,
+            meta.lake.as_ref().unwrap().path_template
+        );
+    }
+
+    /// Verify the canonical github schema (wit/schema/github/) is the single
+    /// source of truth. There should be no connector-local schema.toml.
+    #[test]
+    fn no_connector_local_schema() {
+        let connector_schema =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("children/github-connector/schema.toml");
+        assert!(
+            !connector_schema.exists(),
+            "children/github-connector/schema.toml should not exist — \
+             wit/schema/github/schema.toml is the canonical source"
+        );
     }
 }

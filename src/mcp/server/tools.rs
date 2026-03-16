@@ -1,6 +1,6 @@
 //! MCP tool schema definitions
 //!
-//! All 21 tool schemas live here. handle_list_tools() returns them
+//! Tool schemas live here. handle_list_tools() returns them
 //! as the tools/list response.
 
 use super::super::protocol::{Request, Response};
@@ -370,6 +370,48 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
                     }
                 },
                 {
+                    "name": "spec.prompt",
+                    "description": "Generate a build-ready prompt packet projected from SPEC + DESIGN for a given spec.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Spec ID to generate prompt for"
+                            }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
+                    "name": "spec.handoff",
+                    "description": "Generate a continuation handoff packet for next-agent execution from spec state.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Spec ID to generate handoff for"
+                            }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
+                    "name": "spec.packet",
+                    "description": "Generate combined prompt + handoff packet payload for orchestration.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Spec ID to generate packet bundle for"
+                            }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                {
                     "name": "spec.check",
                     "description": "Check exit criteria status for a spec. Returns pass/fail with details on which criteria are checked/unchecked. Specs without exit_criteria pass by default.",
                     "inputSchema": {
@@ -488,4 +530,49 @@ pub(super) fn handle_list_tools(req: &Request) -> Response {
             ]
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mcp::protocol::Request;
+
+    #[test]
+    fn tools_list_includes_spec_operator_slice_but_not_session_lifecycle() {
+        let req = Request {
+            jsonrpc: "2.0".to_string(),
+            id: Some(serde_json::json!(1)),
+            method: "tools/list".to_string(),
+            params: serde_json::json!({}),
+        };
+
+        let response = handle_list_tools(&req);
+        let result = response.result.unwrap();
+        let tools = result["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|tool| tool["name"].as_str())
+            .collect::<Vec<_>>();
+
+        for expected in [
+            "spec.list",
+            "spec.next",
+            "spec.show",
+            "spec.prompt",
+            "spec.handoff",
+            "spec.packet",
+            "spec.check",
+        ] {
+            assert!(tools.contains(&expected), "missing {}", expected);
+        }
+        for forbidden in [
+            "session.start",
+            "session.update",
+            "session.end",
+            "session.list",
+        ] {
+            assert!(!tools.contains(&forbidden), "unexpected {}", forbidden);
+        }
+    }
 }

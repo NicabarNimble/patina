@@ -5,6 +5,7 @@
 mod archive;
 mod create;
 mod mutations;
+mod packets;
 mod queries;
 mod queue;
 mod split;
@@ -21,6 +22,9 @@ pub(crate) use queries::{
     check_spec_value, get_all_specs, get_blocked_specs, get_ready_specs, history_spec_value,
     show_spec_value, ListFilters,
 };
+
+// Packet projection query functions re-exported pub(crate) for MCP
+pub(crate) use packets::{handoff_spec_value, packet_spec_value, prompt_spec_value};
 
 // Queue functions re-exported pub(crate) by parent for session/MCP
 pub(crate) use queue::{load_dep_counts, next_spec_value, spec_age_days_from_list};
@@ -43,6 +47,7 @@ pub(super) use create::create_spec;
 pub(super) use mutations::{
     abandon_spec, block_spec, complete_spec, pause_spec, promote_spec, resume_spec, set_spec,
 };
+pub(super) use packets::{handoff_spec, packet_spec, prompt_spec};
 pub(super) use queries::{
     check_spec, history_spec, show_blocked_specs, show_ready_specs, show_spec, show_spec_list,
 };

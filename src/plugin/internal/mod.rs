@@ -7,8 +7,11 @@ use anyhow::Result;
 use wasmtime::component::Component;
 use wasmtime::{Config, Engine};
 
+use crate::mother::GrantedIngressSource;
+
 mod command;
 pub(crate) mod host_support;
+mod knowledge_child;
 mod mother_child;
 mod pipeline;
 mod task;
@@ -17,6 +20,7 @@ mod task;
 mod tests;
 
 pub use command::{CommandEngine, QueryDispatchFn};
+pub use knowledge_child::KnowledgeChildEngine;
 pub use mother_child::PluginEngine;
 pub use pipeline::PipelineEngine;
 pub use task::TaskEngine;
@@ -28,6 +32,7 @@ pub use task::TaskEngine;
 /// Known plugin worlds — parsed from manifest, enforced at load time.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PluginWorld {
+    KnowledgeChild,
     MotherChild,
     Command,
     Task,
@@ -39,6 +44,7 @@ impl std::str::FromStr for PluginWorld {
 
     fn from_str(s: &str) -> Result<Self> {
         match s {
+            "knowledge-child" => Ok(Self::KnowledgeChild),
             "mother-child" => Ok(Self::MotherChild),
             "command" => Ok(Self::Command),
             "task" => Ok(Self::Task),
@@ -52,6 +58,13 @@ impl PluginWorld {
     /// Capabilities this world is allowed to declare.
     pub fn allowed_capabilities(&self) -> &[&str] {
         match self {
+            Self::KnowledgeChild => &[
+                "host_log",
+                "host_query",
+                "host_http",
+                "host_measure",
+                "host_emit",
+            ],
             Self::MotherChild => &[
                 "host_log",
                 "host_layer",
@@ -77,6 +90,7 @@ impl PluginWorld {
 impl std::fmt::Display for PluginWorld {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::KnowledgeChild => write!(f, "knowledge-child"),
             Self::MotherChild => write!(f, "mother-child"),
             Self::Command => write!(f, "command"),
             Self::Task => write!(f, "task"),
@@ -117,10 +131,18 @@ impl PluginRole {
     /// Used for validation warnings — not enforcement.
     pub fn expected_worlds(&self) -> &[PluginWorld] {
         match self {
-            Self::Connector => &[PluginWorld::MotherChild, PluginWorld::Task],
+            Self::Connector => &[
+                PluginWorld::KnowledgeChild,
+                PluginWorld::MotherChild,
+                PluginWorld::Task,
+            ],
             Self::Grammar => &[PluginWorld::Pipeline],
             Self::Extension => &[PluginWorld::Command, PluginWorld::Task],
-            Self::App => &[PluginWorld::MotherChild, PluginWorld::Task],
+            Self::App => &[
+                PluginWorld::KnowledgeChild,
+                PluginWorld::MotherChild,
+                PluginWorld::Task,
+            ],
         }
     }
 }
@@ -201,6 +223,18 @@ pub struct PluginManifest {
     /// Schema packages this plugin references (from [schemas.<name>].package).
     /// Maps schema name → package string (e.g., "forge" → "patina:schema/forge@1.0.0").
     pub schemas: std::collections::HashMap<String, String>,
+    pub state_enabled: bool,
+    pub checkpoint_streams: Vec<String>,
+    pub lake_names: Vec<String>,
+    pub ingress_sources: std::collections::HashMap<String, GrantedIngressSource>,
+    pub subscribed_streams: Vec<String>,
+    pub task_intent_names: Vec<String>,
+    pub task_intents: Vec<crate::mother::TaskIntentKind>,
+    pub graph_read: bool,
+    pub graph_write_actions: Vec<String>,
+    pub belief_read: bool,
+    pub belief_write_actions: Vec<String>,
+    pub toys: crate::mother::GrantedToys,
 }
 
 // =========================================================================
@@ -235,6 +269,16 @@ pub struct GrantedCapabilities {
     /// inner key = fact-type name, value = event_type string.
     /// Zero disk reads at emit time — all validation from this cache.
     pub schema_facts: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+    pub state_enabled: bool,
+    pub checkpoint_streams: std::collections::HashSet<String>,
+    pub lake_names: std::collections::HashSet<String>,
+    pub subscribed_streams: std::collections::HashSet<String>,
+    pub task_intents: std::collections::HashSet<crate::mother::TaskIntentKind>,
+    pub graph_read: bool,
+    pub graph_write_actions: std::collections::HashSet<String>,
+    pub belief_read: bool,
+    pub belief_write_actions: std::collections::HashSet<String>,
+    pub toys: crate::mother::GrantedToys,
 }
 
 /// What the plugin provides to the system.
@@ -429,6 +473,144 @@ impl PluginManifest {
             })
             .unwrap_or_default();
 
+        let toys_table = table.get("toys").and_then(|v| v.as_table());
+        let state_enabled = cap_table
+            .and_then(|cap| cap.get("state"))
+            .and_then(|v| v.as_table())
+            .and_then(|t| t.get("enabled"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let checkpoint_streams = cap_table
+            .and_then(|cap| cap.get("checkpoint"))
+            .and_then(|v| v.as_table())
+            .and_then(|t| t.get("streams"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(ToString::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let lake_names = toys_table
+            .and_then(|toys| toys.get("lake"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(ToString::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let ingress_sources = toys_table
+            .and_then(|toys| toys.get("ingress"))
+            .and_then(|v| v.as_table())
+            .map(|ingress| {
+                ingress
+                    .iter()
+                    .filter_map(|(name, value)| {
+                        let table = value.as_table()?;
+                        let endpoint = table.get("endpoint")?.as_str()?.to_string();
+                        Some((
+                            name.clone(),
+                            GrantedIngressSource {
+                                name: name.clone(),
+                                endpoint,
+                            },
+                        ))
+                    })
+                    .collect::<std::collections::HashMap<_, _>>()
+            })
+            .unwrap_or_default();
+        let subscribed_streams = cap_table
+            .and_then(|cap| cap.get("events"))
+            .and_then(|v| v.as_table())
+            .and_then(|t| t.get("subscribe"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(ToString::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let task_intent_names = cap_table
+            .and_then(|cap| cap.get("tasks"))
+            .and_then(|v| v.as_table())
+            .and_then(|t| t.get("intents"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(ToString::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let task_intents = task_intent_names
+            .iter()
+            .filter_map(|v| crate::mother::TaskIntentKind::parse(v))
+            .collect::<Vec<_>>();
+        let graph_read = cap_table
+            .and_then(|cap| cap.get("graph"))
+            .and_then(|v| v.as_table())
+            .and_then(|t| t.get("read"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let graph_write_actions = cap_table
+            .and_then(|cap| cap.get("graph"))
+            .and_then(|v| v.as_table())
+            .and_then(|t| t.get("write"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(ToString::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let belief_read = cap_table
+            .and_then(|cap| cap.get("belief"))
+            .and_then(|v| v.as_table())
+            .and_then(|t| t.get("read"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let belief_write_actions = cap_table
+            .and_then(|cap| cap.get("belief"))
+            .and_then(|v| v.as_table())
+            .and_then(|t| t.get("write"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(ToString::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let toys = crate::mother::GrantedToys {
+            fetch: toys_table
+                .and_then(|t| t.get("fetch"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+            lake_names: lake_names.iter().cloned().collect(),
+            ingress_sources: ingress_sources.clone(),
+            connector: toys_table
+                .and_then(|t| t.get("connector"))
+                .and_then(|v| v.as_table())
+                .and_then(|t| t.get("enabled"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+            query: toys_table
+                .and_then(|t| t.get("query"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+            measure: toys_table
+                .and_then(|t| t.get("measure"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+            graph: toys_table
+                .and_then(|t| t.get("graph"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+            belief: toys_table
+                .and_then(|t| t.get("belief"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+        };
+
         Ok(Self {
             name,
             version,
@@ -448,6 +630,18 @@ impl PluginManifest {
                 languages,
             },
             schemas,
+            state_enabled,
+            checkpoint_streams,
+            lake_names,
+            ingress_sources,
+            subscribed_streams,
+            task_intent_names,
+            task_intents,
+            graph_read,
+            graph_write_actions,
+            belief_read,
+            belief_write_actions,
+            toys,
         })
     }
 
@@ -465,6 +659,12 @@ impl PluginManifest {
     pub fn granted_capabilities(&self) -> GrantedCapabilities {
         let query_kinds = self.host_query_kinds.iter().cloned().collect();
         let http_domains = self.host_http_domains.iter().cloned().collect();
+        let mut http_domains: std::collections::HashSet<String> = http_domains;
+        for source in self.ingress_sources.values() {
+            if let Ok(domain) = self::host_support::validate_http_url(&source.endpoint) {
+                http_domains.insert(domain);
+            }
+        }
         let credential_mappings = self.host_secrets.clone();
 
         // Parse query_scope from capabilities table if present.
@@ -483,6 +683,16 @@ impl PluginManifest {
             credential_mappings,
             host_emit,
             schema_facts,
+            state_enabled: self.state_enabled,
+            checkpoint_streams: self.checkpoint_streams.iter().cloned().collect(),
+            lake_names: self.lake_names.iter().cloned().collect(),
+            subscribed_streams: self.subscribed_streams.iter().cloned().collect(),
+            task_intents: self.task_intents.iter().copied().collect(),
+            graph_read: self.graph_read,
+            graph_write_actions: self.graph_write_actions.iter().cloned().collect(),
+            belief_read: self.belief_read,
+            belief_write_actions: self.belief_write_actions.iter().cloned().collect(),
+            toys: self.toys.clone(),
         }
     }
 

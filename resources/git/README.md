@@ -47,3 +47,26 @@ cat .patina/local/hook.log
 # Check if hook events are being recorded
 patina measure --full
 ```
+
+## Optional Smell Scan
+
+Use the senior-smell scan when you want feedback on architecture/performance
+issues that clippy usually misses:
+
+```bash
+bash resources/git/senior-smell-checks.sh
+```
+
+This is report-only by default. To make it fail on findings:
+
+```bash
+bash resources/git/senior-smell-checks.sh --strict
+```
+
+Current checks look for:
+- runtime regex compilation in scraper hot paths
+- whole-file reads in ingestion/listing paths
+- `Vec<Vec<f32>>` in numeric code
+- UTF-8-unsafe byte slicing in truncation helpers
+- avoidable cloning/materialization in benchmark/eval paths
+- repeated lowercasing in search/routing code

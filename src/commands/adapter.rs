@@ -1,15 +1,15 @@
-//! Adapter command - Manage AI adapter configurations
+//! Adapter command - compatibility shim for AI interface configuration
 //!
-//! Adapters are integrations with AI tools (Claude Code, Gemini CLI, etc.) that
+//! Interfaces are integrations with AI tools (Claude Code, Gemini CLI, etc.) that
 //! interact with a patina project. This command manages:
-//! - Global adapter availability (detected from system)
-//! - Project-level allowed adapters (configured per-project)
+//! - Global interface availability (detected from system)
+//! - Project-level allowed interfaces (configured per-project)
 //!
 //! # Example
 //!
 //! ```no_run
 //! # fn main() -> anyhow::Result<()> {
-//! // List available and allowed adapters
+//! // List available and allowed interfaces
 //! // patina adapter list
 //!
 //! // Set global default
@@ -18,28 +18,29 @@
 //! // Set project default
 //! // patina adapter default gemini --project
 //!
-//! // Add adapter to project
-//! // patina adapter add gemini
+//! // Add interface to project
+//! // patina adapter add gemini  # compatibility shim for `patina ai setup`
 //!
-//! // Remove adapter from project (with backup)
+//! // Remove interface from project (with backup)
 //! // patina adapter remove claude
 //! # Ok(())
 //! # }
 //! ```
 
 use anyhow::Result;
-use patina::adapters::launch as adapters;
+use patina::interface;
+use patina::interface::runtime::launch as interfaces;
 use patina::project;
 
-/// Adapter subcommands (re-exported for main.rs)
+/// Interface subcommands (compatibility re-export for main.rs)
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum AdapterCommands {
-    /// List available adapters (global) and allowed adapters (project)
+    /// List available interfaces (global) and allowed interfaces (project)
     List,
 
-    /// Set default adapter (global or project with --project)
+    /// Set default interface (global or project with --project)
     Default {
-        /// Adapter name (claude, gemini, codex)
+        /// Interface name (claude, gemini, opencode)
         name: String,
 
         /// Set default for current project (not global)
@@ -47,15 +48,15 @@ pub enum AdapterCommands {
         project: bool,
     },
 
-    /// Check adapter installation status
+    /// Check interface installation status
     Check {
-        /// Adapter name (optional, checks all if not specified)
+        /// Interface name (optional, checks all if not specified)
         name: Option<String>,
     },
 
-    /// Add an adapter to project's allowed list
+    /// Add an interface to project's allowed list
     Add {
-        /// Adapter name (claude, gemini, codex)
+        /// Interface name (claude, gemini, opencode)
         name: String,
 
         /// Skip automatic git commit
@@ -63,9 +64,9 @@ pub enum AdapterCommands {
         no_commit: bool,
     },
 
-    /// Remove an adapter from project's allowed list
+    /// Remove an interface from project's allowed list
     Remove {
-        /// Adapter name (claude, gemini, codex)
+        /// Interface name (claude, gemini, opencode)
         name: String,
 
         /// Don't backup files before removing
@@ -77,9 +78,9 @@ pub enum AdapterCommands {
         no_commit: bool,
     },
 
-    /// Refresh adapter files (backup, update templates, restore sessions)
+    /// Refresh interface files (backup, update templates, restore sessions)
     Refresh {
-        /// Adapter name (claude, gemini, codex)
+        /// Interface name (claude, gemini, opencode)
         name: String,
 
         /// Skip automatic git commit
@@ -87,12 +88,12 @@ pub enum AdapterCommands {
         no_commit: bool,
     },
 
-    /// Health check all configured adapters
+    /// Health check all configured interfaces
     Doctor,
 
-    /// Configure MCP server for an adapter
+    /// Configure MCP server for an interface
     Mcp {
-        /// Adapter name (claude)
+        /// Interface name (claude)
         name: String,
 
         /// Remove MCP configuration instead of adding
@@ -101,7 +102,7 @@ pub enum AdapterCommands {
     },
 }
 
-/// Execute the adapter command (main entry point from CLI)
+/// Execute the interface compatibility command (main entry point from CLI)
 pub fn execute(command: Option<AdapterCommands>) -> Result<()> {
     match command {
         None | Some(AdapterCommands::List) => list(),
@@ -119,11 +120,11 @@ pub fn execute(command: Option<AdapterCommands>) -> Result<()> {
     }
 }
 
-/// List available adapters (global) and allowed adapters (project)
+/// List available interfaces (global) and allowed interfaces (project)
 fn list() -> Result<()> {
-    // Show global adapters
-    let adapter_list = adapters::list()?;
-    println!("📱 Available AI Adapters (Global)\n");
+    // Show global interfaces
+    let adapter_list = interfaces::list()?;
+    println!("📱 Available AI Interfaces (Global)\n");
     println!("{:<12} {:<15} {:<10} VERSION", "NAME", "DISPLAY", "STATUS");
     println!("{}", "─".repeat(50));
     for adapter in adapter_list {
@@ -139,14 +140,14 @@ fn list() -> Result<()> {
         );
     }
 
-    let default = adapters::default_name()?;
+    let default = interfaces::default_interface_name()?;
     println!("\nGlobal default: {}", default);
 
-    // Show project adapters if in a patina project
+    // Show project interfaces if in a patina project
     let cwd = std::env::current_dir()?;
     if project::is_patina_project(&cwd) {
         let config = project::load_with_migration(&cwd)?;
-        println!("\n📁 Project Allowed Adapters\n");
+        println!("\n📁 Project Allowed Interfaces\n");
         println!("Allowed: {:?}", config.adapters.allowed);
         println!("Project default: {}", config.adapters.default);
     }
@@ -154,7 +155,7 @@ fn list() -> Result<()> {
     Ok(())
 }
 
-/// Set default adapter (global or project-level)
+/// Set default interface (global or project-level)
 fn set_default(name: &str, is_project: bool) -> Result<()> {
     if is_project {
         // Set project default
@@ -165,26 +166,25 @@ fn set_default(name: &str, is_project: bool) -> Result<()> {
         let mut config = project::load_with_migration(&cwd)?;
         if !config.adapters.allowed.contains(&name.to_string()) {
             anyhow::bail!(
-                "Adapter '{}' is not in allowed list. Add it first: patina adapter add {}",
+                "Interface '{}' is not in allowed list. Prepare the Patina AI surface first with: patina ai setup",
                 name,
-                name
             );
         }
         config.adapters.default = name.to_string();
         project::save(&cwd, &config)?;
-        println!("✓ Project default adapter set to: {}", name);
+        println!("✓ Project default interface set to: {}", name);
     } else {
         // Set global default
-        adapters::set_default(name)?;
-        println!("✓ Global default adapter set to: {}", name);
+        interfaces::set_default_interface(name)?;
+        println!("✓ Global default interface set to: {}", name);
     }
     Ok(())
 }
 
-/// Check adapter installation status
+/// Check interface installation status
 fn check(name: Option<&str>) -> Result<()> {
     if let Some(n) = name {
-        let adapter = adapters::get(n)?;
+        let adapter = interfaces::get(n)?;
         if adapter.detected {
             println!("✓ {} is installed", adapter.display);
             if let Some(v) = adapter.version {
@@ -195,7 +195,7 @@ fn check(name: Option<&str>) -> Result<()> {
         }
     } else {
         // Check all
-        for adapter in adapters::list()? {
+        for adapter in interfaces::list()? {
             let status = if adapter.detected { "✓" } else { "✗" };
             println!("{} {}", status, adapter.display);
         }
@@ -203,14 +203,51 @@ fn check(name: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// Add an adapter to project's allowed list
+/// Add an interface to project's allowed list
 fn add(name: &str, no_commit: bool) -> Result<()> {
-    // Verify adapter exists
-    let _ = adapters::get(name)?;
+    // Verify interface exists
+    let _ = interfaces::get(name)?;
 
     let cwd = std::env::current_dir()?;
     if !project::is_patina_project(&cwd) {
         anyhow::bail!("Not a patina project. Run `patina init .` first.");
+    }
+
+    if interface::is_supported_ai_interface(name) {
+        let config = project::load_with_migration(&cwd)?;
+        let default_interface = if config.adapters.default.is_empty() {
+            Some(name)
+        } else {
+            None
+        };
+
+        println!("  Compatibility shim: deploying the Patina AI bundles...");
+        interface::ensure_ai_surface(interface::AiSurfaceRequest {
+            project_root: &cwd,
+            force: false,
+            default_interface,
+        })?;
+        println!("  ✓ Deployed Patina AI bundles");
+
+        if !no_commit {
+            println!("\n📦 Committing interface setup...");
+            let mut files_to_add = Vec::new();
+            collect_ai_surface_paths(&cwd, &mut files_to_add);
+            if cwd.join(".patina/config.toml").exists() {
+                files_to_add.push(".patina/config.toml".to_string());
+            }
+
+            let refs: Vec<&str> = files_to_add.iter().map(|s| s.as_str()).collect();
+            patina::git::add_paths(&refs)?;
+            if patina::git::has_staged_changes()? {
+                patina::git::commit(&format!("chore: prepare patina ai surface via {}", name))?;
+                println!("✓ Committed interface files");
+            } else {
+                println!("  ℹ No trackable changes to commit");
+            }
+        }
+
+        return Ok(());
     }
 
     let mut config = project::load_with_migration(&cwd)?;
@@ -218,61 +255,55 @@ fn add(name: &str, no_commit: bool) -> Result<()> {
 
     if !already_allowed {
         config.adapters.allowed.push(name.to_string());
-        // Set as default if this is the first adapter
         if config.adapters.default.is_empty() {
             config.adapters.default = name.to_string();
         }
         project::save(&cwd, &config)?;
-        println!("✓ Added '{}' to allowed adapters", name);
+        println!("✓ Added '{}' to allowed interfaces", name);
         println!("  Allowed: {:?}", config.adapters.allowed);
     } else {
-        println!("Adapter '{}' is already in allowed list.", name);
+        println!("Interface '{}' is already in allowed list.", name);
     }
 
-    // Create adapter files if they don't exist
     let adapter_dir = cwd.join(format!(".{}", name));
     let bootstrap_file = get_bootstrap_filename(name);
     let bootstrap_path = cwd.join(&bootstrap_file);
     let created_files = !adapter_dir.exists() || !bootstrap_path.exists();
 
-    if !adapter_dir.exists() {
-        println!("  Creating .{}/ directory...", name);
-        patina::adapters::templates::copy_to_project(name, &cwd)?;
-        println!("  ✓ Created adapter files");
-    }
+    {
+        if !adapter_dir.exists() {
+            println!("  Creating .{}/ directory...", name);
+            patina::interface::runtime::templates::copy_to_project(name, &cwd)?;
+            println!("  ✓ Created interface files");
+        }
 
-    // Create bootstrap file (CLAUDE.md, GEMINI.md, etc.) if it doesn't exist
-    if !bootstrap_path.exists() {
-        println!("  Creating {}...", bootstrap_file);
-        adapters::generate_bootstrap(name, &cwd)?;
-        println!("  ✓ Created {}", bootstrap_file);
+        // Create bootstrap file (CLAUDE.md, GEMINI.md, etc.) if it doesn't exist
+        if !bootstrap_path.exists() {
+            println!("  Creating {}...", bootstrap_file);
+            interfaces::generate_bootstrap(name, &cwd, false)?;
+            println!("  ✓ Created {}", bootstrap_file);
+        }
     }
 
     // Commit if files were created and not in no_commit mode
     if created_files && !no_commit {
-        println!("\n📦 Committing adapter setup...");
-        let adapter_dir = format!(".{}", name);
+        println!("\n📦 Committing interface setup...");
         let mut files_to_add = Vec::new();
-        if cwd.join(&adapter_dir).exists() {
-            files_to_add.push(adapter_dir);
-        }
-        if cwd.join(&bootstrap_file).exists() {
-            files_to_add.push(bootstrap_file.clone());
-        }
+        collect_adapter_surface_paths(&cwd, name, &mut files_to_add);
         if cwd.join(".patina/config.toml").exists() {
             files_to_add.push(".patina/config.toml".to_string());
         }
 
         let refs: Vec<&str> = files_to_add.iter().map(|s| s.as_str()).collect();
         patina::git::add_paths(&refs)?;
-        patina::git::commit(&format!("chore: add {} adapter", name))?;
-        println!("✓ Committed adapter files");
+        patina::git::commit(&format!("chore: add {} interface", name))?;
+        println!("✓ Committed interface files");
     }
 
     Ok(())
 }
 
-/// Remove an adapter from project's allowed list
+/// Remove an interface from project's allowed list
 fn remove(name: &str, no_backup: bool, _no_commit: bool) -> Result<()> {
     let cwd = std::env::current_dir()?;
     if !project::is_patina_project(&cwd) {
@@ -281,7 +312,7 @@ fn remove(name: &str, no_backup: bool, _no_commit: bool) -> Result<()> {
 
     let mut config = project::load_with_migration(&cwd)?;
     if !config.adapters.allowed.contains(&name.to_string()) {
-        println!("Adapter '{}' is not in allowed list.", name);
+        println!("Interface '{}' is not in allowed list.", name);
         return Ok(());
     }
 
@@ -303,7 +334,7 @@ fn remove(name: &str, no_backup: bool, _no_commit: bool) -> Result<()> {
 
     project::save(&cwd, &config)?;
 
-    println!("✓ Removed '{}' from allowed adapters", name);
+    println!("✓ Removed '{}' from allowed interfaces", name);
     println!("  Allowed: {:?}", config.adapters.allowed);
     println!(
         "\n💡 To also remove files: rm -rf .{}/ {}",
@@ -317,21 +348,57 @@ fn remove(name: &str, no_backup: bool, _no_commit: bool) -> Result<()> {
     Ok(())
 }
 
-/// Get the bootstrap filename for an adapter (CLAUDE.md, GEMINI.md, etc.)
+/// Get the bootstrap filename for an interface (CLAUDE.md, GEMINI.md, etc.)
 fn get_bootstrap_filename(name: &str) -> String {
     match name {
         "claude" => "CLAUDE.md".to_string(),
         "gemini" => "GEMINI.md".to_string(),
         "codex" => "AGENTS.md".to_string(),
-        "opencode" => "OPENCODE.md".to_string(),
+        "opencode" => "AGENTS.md".to_string(),
         _ => format!("{}.md", name.to_uppercase()),
     }
 }
 
-/// Refresh adapter files - backup, update templates, restore sessions
+fn collect_adapter_surface_paths(
+    project_root: &std::path::Path,
+    name: &str,
+    out: &mut Vec<String>,
+) {
+    let adapter_dir = format!(".{}", name);
+    if project_root.join(&adapter_dir).exists() {
+        out.push(adapter_dir);
+    }
+
+    let bootstrap_file = get_bootstrap_filename(name);
+    if project_root.join(&bootstrap_file).exists() {
+        out.push(bootstrap_file);
+    }
+
+    if interface::is_supported_ai_interface(name)
+        && project_root.join("AGENTS.md").exists()
+        && !out.iter().any(|path| path == "AGENTS.md")
+    {
+        out.push("AGENTS.md".to_string());
+    }
+
+    if matches!(name, "gemini" | "opencode")
+        && project_root.join("AGENTS.md").exists()
+        && !out.iter().any(|path| path == "AGENTS.md")
+    {
+        out.push("AGENTS.md".to_string());
+    }
+}
+
+fn collect_ai_surface_paths(project_root: &std::path::Path, out: &mut Vec<String>) {
+    for interface_name in interface::supported_ai_interfaces() {
+        collect_adapter_surface_paths(project_root, interface_name, out);
+    }
+}
+
+/// Refresh interface files - backup, update templates, restore sessions
 fn refresh(name: &str, no_commit: bool) -> Result<()> {
-    // Verify adapter exists
-    let _ = adapters::get(name)?;
+    // Verify interface exists
+    let _ = interfaces::get(name)?;
 
     let cwd = std::env::current_dir()?;
     if !project::is_patina_project(&cwd) {
@@ -341,23 +408,48 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
     let config = project::load_with_migration(&cwd)?;
     if !config.adapters.allowed.contains(&name.to_string()) {
         anyhow::bail!(
-            "Adapter '{}' is not in allowed list. Add it first: patina adapter add {}",
+            "Interface '{}' is not in allowed list. Deploy the Patina AI bundles first with: patina ai setup",
             name,
-            name
         );
     }
 
-    println!("🔄 Refreshing {} adapter...\n", name);
+    println!("🔄 Refreshing {} bundle projection...\n", name);
+
+    if interface::is_supported_ai_interface(name) {
+        interface::ensure_ai_surface(interface::AiSurfaceRequest {
+            project_root: &cwd,
+            force: false,
+            default_interface: None,
+        })?;
+
+        if !no_commit {
+            println!("\n📦 Committing refresh...");
+            let mut files_to_add = Vec::new();
+            collect_ai_surface_paths(&cwd, &mut files_to_add);
+            let refs: Vec<&str> = files_to_add.iter().map(|s| s.as_str()).collect();
+            patina::git::add_paths(&refs)?;
+
+            if patina::git::has_staged_changes()? {
+                patina::git::commit(&format!("chore: refresh patina ai surface via {}", name))?;
+                println!("  ✓ Committed interface refresh");
+            } else {
+                println!("  ℹ No trackable changes to commit (interface dir may be gitignored)");
+            }
+        }
+
+        println!("\n✨ Patina AI bundles refreshed successfully!");
+        return Ok(());
+    }
 
     // Step 1: Backup existing files (including session files)
     println!("📦 Backing up existing files...");
     backup_adapter_files(&cwd, name)?;
 
-    // Step 2: Preserve user files before removing adapter directory
+    // Step 2: Preserve user files before removing interface directory
     let adapter_dir = cwd.join(format!(".{}", name));
     let preserved_files = preserve_user_files(&adapter_dir)?;
 
-    // Step 3: Remove old adapter directory
+    // Step 3: Remove old interface directory
     if adapter_dir.exists() {
         std::fs::remove_dir_all(&adapter_dir)?;
         println!("  ✓ Removed old .{}/ directory", name);
@@ -365,13 +457,13 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
 
     // Step 4: Copy fresh templates
     println!("\n📋 Copying fresh templates...");
-    patina::adapters::templates::copy_to_project(name, &cwd)?;
-    println!("  ✓ Copied fresh adapter files");
+    patina::interface::runtime::templates::copy_to_project(name, &cwd)?;
+    println!("  ✓ Copied fresh interface files");
 
     // Create/refresh bootstrap file (CLAUDE.md, GEMINI.md, etc.)
     let bootstrap_file = get_bootstrap_filename(name);
     println!("  Generating {}...", bootstrap_file);
-    adapters::generate_bootstrap(name, &cwd)?;
+    interfaces::generate_bootstrap(name, &cwd, false)?;
     println!("  ✓ Created {}", bootstrap_file);
 
     // Step 5: Restore preserved user files
@@ -386,28 +478,22 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
     // Step 6: Commit if not in no_commit mode
     if !no_commit {
         println!("\n📦 Committing refresh...");
-        let adapter_dir_name = format!(".{}", name);
         let mut files_to_add = Vec::new();
-        if cwd.join(&adapter_dir_name).exists() {
-            files_to_add.push(adapter_dir_name);
-        }
-        if cwd.join(&bootstrap_file).exists() {
-            files_to_add.push(bootstrap_file);
-        }
+        collect_adapter_surface_paths(&cwd, name, &mut files_to_add);
 
         let refs: Vec<&str> = files_to_add.iter().map(|s| s.as_str()).collect();
         patina::git::add_paths(&refs)?;
 
         // Only commit if there are staged changes (paths may have been gitignored)
         if patina::git::has_staged_changes()? {
-            patina::git::commit(&format!("chore: refresh {} adapter", name))?;
-            println!("  ✓ Committed adapter refresh");
+            patina::git::commit(&format!("chore: refresh {} interface", name))?;
+            println!("  ✓ Committed interface refresh");
         } else {
-            println!("  ℹ No trackable changes to commit (adapter dir may be gitignored)");
+            println!("  ℹ No trackable changes to commit (interface dir may be gitignored)");
         }
     }
 
-    println!("\n✨ {} adapter refreshed successfully!", name);
+    println!("\n✨ {} interface refreshed successfully!", name);
     Ok(())
 }
 
@@ -427,7 +513,7 @@ const USER_ROOT_FILES: &[&str] = &["settings.local.json"];
 /// Template-managed skill directories (not user-created)
 const TEMPLATE_SKILLS: &[&str] = &["epistemic-beliefs"];
 
-/// Preserve user files from adapter directory (context, custom commands, custom skills)
+/// Preserve user files from interface directory (context, custom commands, custom skills)
 fn preserve_user_files(adapter_dir: &std::path::Path) -> Result<Vec<(String, Vec<u8>)>> {
     let mut preserved = Vec::new();
 
@@ -518,7 +604,7 @@ fn preserve_directory_recursive(
     Ok(())
 }
 
-/// Restore preserved user files to adapter directory
+/// Restore preserved user files to interface directory
 fn restore_user_files(adapter_dir: &std::path::Path, files: &[(String, Vec<u8>)]) -> Result<()> {
     for (relative_path, content) in files {
         let full_path = adapter_dir.join(relative_path);
@@ -530,7 +616,7 @@ fn restore_user_files(adapter_dir: &std::path::Path, files: &[(String, Vec<u8>)]
     Ok(())
 }
 
-/// Health check all configured adapters
+/// Health check all configured interfaces
 fn doctor() -> Result<()> {
     let cwd = std::env::current_dir()?;
     if !project::is_patina_project(&cwd) {
@@ -539,21 +625,21 @@ fn doctor() -> Result<()> {
 
     let config = project::load_with_migration(&cwd)?;
 
-    println!("🩺 Adapter Health Check\n");
+    println!("🩺 Interface Health Check\n");
 
     if config.adapters.allowed.is_empty() {
-        println!("⚠️  No adapters configured.");
-        println!("   Run: patina adapter add <claude|gemini|opencode>");
+        println!("⚠️  No interfaces configured.");
+        println!("   Run: patina ai setup");
         return Ok(());
     }
 
     let mut all_healthy = true;
 
     for adapter_name in &config.adapters.allowed {
-        println!("📱 {} adapter:", adapter_name);
+        println!("📱 {} interface:", adapter_name);
 
-        // Check 1: Adapter CLI installed on system
-        let adapter_info = adapters::get(adapter_name);
+        // Check 1: Interface CLI installed on system
+        let adapter_info = interfaces::get(adapter_name);
         match adapter_info {
             Ok(a) if a.detected => {
                 println!("  ✓ CLI installed: {}", a.version.unwrap_or_default());
@@ -563,18 +649,18 @@ fn doctor() -> Result<()> {
                 all_healthy = false;
             }
             Err(_) => {
-                println!("  ✗ Unknown adapter type");
+                println!("  ✗ Unknown interface type");
                 all_healthy = false;
             }
         }
 
-        // Check 2: Adapter directory exists
+        // Check 2: Interface directory exists
         let adapter_dir = cwd.join(format!(".{}", adapter_name));
         if adapter_dir.exists() {
             println!("  ✓ .{}/ directory exists", adapter_name);
         } else {
             println!("  ✗ .{}/ directory missing", adapter_name);
-            println!("    Fix: patina adapter refresh {}", adapter_name);
+            println!("    Fix: patina ai refresh {}", adapter_name);
             all_healthy = false;
         }
 
@@ -585,7 +671,7 @@ fn doctor() -> Result<()> {
             println!("  ✓ {} exists", bootstrap_file);
         } else {
             println!("  ✗ {} missing", bootstrap_file);
-            println!("    Fix: patina adapter refresh {}", adapter_name);
+            println!("    Fix: patina ai refresh {}", adapter_name);
             all_healthy = false;
         }
 
@@ -608,7 +694,7 @@ fn doctor() -> Result<()> {
 
     // Summary
     if all_healthy {
-        println!("✅ All adapters healthy!");
+        println!("✅ All interfaces healthy!");
     } else {
         println!("⚠️  Some issues found. See above for fixes.");
     }
@@ -630,7 +716,7 @@ fn check_mcp_configured() -> Result<bool> {
     }
 }
 
-/// Backup adapter-specific files before removal or refresh
+/// Backup interface-specific files before removal or refresh
 fn backup_adapter_files(project_root: &std::path::Path, name: &str) -> Result<()> {
     let bootstrap_file = get_bootstrap_filename(name);
     let file_path = project_root.join(&bootstrap_file);
@@ -642,14 +728,14 @@ fn backup_adapter_files(project_root: &std::path::Path, name: &str) -> Result<()
         );
     }
 
-    // Backup adapter directory (.claude/, .gemini/, etc.) to .patina/local/backups/
+    // Backup interface directory (.claude/, .gemini/, etc.) to .patina/local/backups/
     let adapter_dir = project_root.join(format!(".{}", name));
     if adapter_dir.exists() {
         let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
         let backup_dir = project::backups_dir(project_root).join(format!("{}-{}", name, timestamp));
         std::fs::create_dir_all(&backup_dir)?;
 
-        // Copy adapter directory contents
+        // Copy interface directory contents
         copy_dir_recursive(&adapter_dir, &backup_dir)?;
         println!("  ✓ Backed up .{}/ to {}", name, backup_dir.display());
     }
@@ -680,7 +766,7 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
     Ok(())
 }
 
-/// Configure MCP server for an adapter
+/// Configure MCP server for an interface
 fn configure_mcp(name: &str, remove: bool) -> Result<()> {
     use std::process::Command;
 
@@ -733,7 +819,7 @@ fn configure_mcp(name: &str, remove: bool) -> Result<()> {
             anyhow::bail!("Gemini MCP configuration not yet supported");
         }
         _ => {
-            anyhow::bail!("Unknown adapter: {}. Supported: claude", name);
+            anyhow::bail!("Unknown interface: {}. Supported: claude", name);
         }
     }
 

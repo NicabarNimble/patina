@@ -1,28 +1,26 @@
-Start a new Patina development session with Git branch creation:
+Start a new Patina development session with Git tagging:
 
-1. Execute the session start command:
-   `patina session start "$ARGUMENTS"`
+1. Launch an Agent (subagent) to initialize the session and gather context. The agent should:
+   - Run: `.claude/bin/session-start.sh "$ARGUMENTS"`
+   - Parse the returned JSON and extract all fields
+   - If `last_session_path` exists in the JSON, read that file, follow the session artifact reference inside it, and read the full previous session artifact
+   - Return to the main context: all JSON fields (`session_id`, `artifact_path`, `start_tag`, `last_session_path`) and the full text of the previous session artifact if it exists
 
-2. Read `.patina/local/last-session.md` if it exists. This file contains a reference to the full session file in `layer/sessions/`. You MUST read the full session file referenced there (e.g., if it says "See: layer/sessions/20250904-102821.md", read that file) to understand what actually happened. Then fill in the "Previous Session Context" section with a substantive 2-3 sentence summary of what was actually accomplished, key fixes/changes made, and any open items. Don't write generic fluff - include specific accomplishments.
+2. Read the session artifact at the returned `artifact_path` in `layer/sessions/`.
 
-3. Read the newly created `.patina/local/active-session.md` file
+3. If the agent returned previous session content, fill in the "Previous Session Context" section with a substantive 2-3 sentence summary. Don't write generic fluff — include specific accomplishments, key fixes, and open items.
 
-4. Note the session context printed to stdout:
-   - Branch handling and session tag
-   - Spec landscape: active, paused, blocked, and draft specs
-   - Recommended next spec to work on
-   - Previous session reference and beliefs
-
-5. If we've been discussing work already in this conversation:
+4. If we've been discussing work already in this conversation:
    - Update the Goals section with specific tasks we've identified
    - Add context about why this session was started
    - Note any decisions or constraints we've discussed
 
-6. Ask the user: "Would you like me to create todos for '$ARGUMENTS'?"
+5. Ask the user: "Would you like me to create todos for '$ARGUMENTS'?"
 
-7. Remind the user about session workflow:
+6. Remind the user about session workflow:
    - Use `/session-update` periodically to capture progress
    - Use `/session-note` for important insights
-   - End with `/session-end` to archive, distill learnings, and handle branch cleanup
+   - Use `/session-end` to archive, classify work, and tag the session range
+   - Use `spec.next`, `spec.show`, and `spec.check` when spec workflow is relevant
 
-The session is now tracking both code changes and Git history.
+The session is now tracking code changes and Git history. Mother owns the session lifecycle.

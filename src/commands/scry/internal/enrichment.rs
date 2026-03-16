@@ -42,7 +42,7 @@ pub fn enrich_results(
 
                 // Check content type based on ID range (order matters: highest offset first)
                 if key >= FORGE_ID_OFFSET {
-                    // Forge event (issue or PR) — look up in eventlog
+                    // Connector event (issue or PR) — look up in eventlog
                     let event_seq = key - FORGE_ID_OFFSET;
                     let result = conn.query_row(
                         "SELECT event_type, source_id, timestamp,
@@ -59,11 +59,7 @@ pub fn enrich_results(
                                 row.get::<_, Option<String>>(3)?.unwrap_or_default();
                             let body: String = row.get::<_, Option<String>>(4)?.unwrap_or_default();
 
-                            let kind = if event_type.ends_with(".pr") {
-                                "PR"
-                            } else {
-                                "Issue"
-                            };
+                            let kind = display_kind_for_event_type(&event_type);
                             let preview: String = body.chars().take(200).collect();
                             let content = if preview.is_empty() {
                                 format!("{} #{}: {}", kind, source_id, title)
@@ -389,6 +385,27 @@ pub fn enrich_results(
     });
 
     Ok(enriched)
+}
+
+/// Resolve display kind from event_type using installed schema contracts.
+///
+/// Falls back to the raw event_type string if no contract declares it.
+fn display_kind_for_event_type(event_type: &str) -> String {
+    if let Ok(schemas) = crate::commands::schema::load_all_installed() {
+        for schema in &schemas {
+            for contract in &schema.contracts {
+                if contract.event_type == event_type {
+                    return contract.display_kind.clone();
+                }
+            }
+        }
+    }
+    // Fallback: use the fact name portion of event_type (e.g., "issue" from "github.issue")
+    event_type
+        .rsplit('.')
+        .next()
+        .unwrap_or(event_type)
+        .to_string()
 }
 
 /// Truncate content for display

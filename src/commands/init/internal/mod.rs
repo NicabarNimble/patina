@@ -63,7 +63,7 @@ pub fn execute_init(name: String, force: bool, local: bool, no_commit: bool) -> 
     // Devcontainer generation is handled by 'patina yolo', not init
 
     // Check for nested project
-    if name != "." && Path::new(".patina").exists() {
+    if name != "." && Path::new(".patina").exists() && !force {
         println!("⚠️  You're already in a Patina project!");
         println!(
             "   Running 'patina init {}' would create: {}",
@@ -131,14 +131,14 @@ pub fn execute_init(name: String, force: bool, local: bool, no_commit: bool) -> 
         println!("  ✓ Created project UID: {}", uid);
     }
 
-    // Create project configuration (without LLM - use 'adapter add' for that)
+    // Create project configuration before the Patina AI surface is prepared
     create_project_config(&project_path, &name, &environment)?;
 
     // Handle version manifest
     handle_version_manifest(&project_path, is_reinit, json_output)?;
 
-    // Note: LLM adapter initialization moved to 'patina adapter add'
-    // Init only creates skeleton - run 'patina adapter add <claude|gemini|opencode>' for LLM support
+    // Init only creates the project skeleton. Prepare the Patina AI surface
+    // afterwards with `patina ai setup` or launch directly via `patina ai <interface>`.
     // Devcontainer generation moved to 'patina yolo'
 
     // Copy core patterns
@@ -147,7 +147,7 @@ pub fn execute_init(name: String, force: bool, local: bool, no_commit: bool) -> 
         println!("  ✓ Copied core patterns from Patina");
     }
 
-    // Create initial session record (without LLM - added via 'adapter add')
+    // Create initial session record for the project bootstrap
     create_init_session(&layer_path, &project_name)?;
 
     // Initialize navigation index
@@ -194,7 +194,8 @@ pub fn execute_init(name: String, force: bool, local: bool, no_commit: bool) -> 
     suggest_missing_tools(&environment)?;
 
     println!("\n✨ Project '{name}' initialized successfully!");
-    println!("  Add an adapter: patina adapter add <claude|gemini|opencode>");
+    println!("  Prepare Patina AI once: patina ai setup");
+    println!("  Launch an interface: patina ai <claude|opencode|gemini>");
 
     Ok(())
 }
@@ -241,7 +242,7 @@ fn setup_project_path(name: &str) -> Result<PathBuf> {
 fn create_init_session(layer_path: &Path, name: &str) -> Result<()> {
     let session_filename = format!("{}-init.md", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
     let session_content = format!(
-        "# {} Initialization\n\nInitialized on: {}\n\nNote: Run 'patina adapter add <name>' to add LLM support.\n",
+        "# {} Initialization\n\nInitialized on: {}\n\nNote: Run 'patina ai setup' or 'patina ai <interface>' to prepare the Patina AI surface.\n",
         name,
         chrono::Utc::now().to_rfc3339(),
     );

@@ -13,7 +13,7 @@
 pub(crate) mod internal;
 pub mod scaffold;
 pub use internal::{
-    CommandEngine, CredentialMapping, GrantedCapabilities, InjectionLocation, PipelineEngine,
-    PluginEngine, PluginManifest, PluginProvides, PluginRole, PluginWorld, QueryDispatchFn,
-    QueryScope, TaskEngine,
+    CommandEngine, CredentialMapping, GrantedCapabilities, InjectionLocation, KnowledgeChildEngine,
+    PipelineEngine, PluginEngine, PluginManifest, PluginProvides, PluginRole, PluginWorld,
+    QueryDispatchFn, QueryScope, TaskEngine,
 };

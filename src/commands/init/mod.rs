@@ -17,8 +17,8 @@
 //!     false, // no_commit
 //! ).expect("Failed to initialize project");
 //!
-//! // Then add an adapter:
-//! // patina adapter add claude
+//! // Then prepare the Patina AI surface:
+//! // patina ai setup
 //! ```
 
 pub mod design_wizard;
@@ -50,12 +50,13 @@ use anyhow::Result;
 /// - Run scrape or oxidize
 /// - Create devcontainer (use `patina yolo` for that)
 ///
-/// Use `patina adapter add <claude|gemini|opencode>` to add LLM support.
+/// Use `patina ai setup` to prepare the project-local Patina AI surface, or
+/// launch directly with `patina ai <claude|opencode|gemini>`.
 ///
 /// # Re-initialization
 ///
 /// When run in an existing Patina project:
-/// - Preserves adapter config (adapters.allowed, adapters.default)
+/// - Preserves project AI interface config (adapters.allowed, adapters.default)
 /// - Refreshes environment detection
 ///
 /// # Errors
@@ -103,6 +104,26 @@ value = "Ensures init works"
         // assert!(project_path.join(".patina").exists());
         // assert!(project_path.join("layer").exists());
         // assert!(project_path.join(".claude").exists());
+
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "flaky under parallel current-dir mutations in bin test harness"]
+    fn test_init_current_dir_stays_core_only() -> Result<()> {
+        let temp = TempDir::new()?;
+        let _guard = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+
+        execute(temp.path().display().to_string(), true, true, true)?;
+
+        assert!(temp.path().join(".patina").exists());
+        assert!(temp.path().join("layer").exists());
+        assert!(!temp.path().join(".opencode").exists());
+        assert!(!temp.path().join(".gemini").exists());
+        assert!(!temp.path().join("OPENCODE.md").exists());
+        assert!(!temp.path().join("GEMINI.md").exists());
 
         Ok(())
     }

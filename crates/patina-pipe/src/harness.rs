@@ -1,7 +1,9 @@
-//! Mother-side test harness for spawning and communicating with native children.
+//! Mother-side infrastructure for spawning and communicating with native children.
 //!
-//! Provides `spawn_child()` and `ChildConnection` for integration testing.
-//! Not production lifecycle management — that's mother-broker scope.
+//! `ChildConnection` is production substrate — used by the broker to manage
+//! connector toys and by children that spawn their own sub-children.
+//! Provides `spawn_child()`, `spawn_with_http()`, and request/response
+//! communication over stdio JSON-RPC.
 
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -32,6 +34,24 @@ pub struct ChildConnection {
 }
 
 impl ChildConnection {
+    /// Spawn a child process with an HTTP handler for pipe/http requests.
+    ///
+    /// Production constructor — use this when the child needs proxied HTTP
+    /// access (e.g., connector toys with domain-allowlisted API calls).
+    pub fn spawn_with_http(
+        binary_path: &str,
+        handler: HttpHandler,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        spawn_child_with_handler(binary_path, Some(handler))
+    }
+
+    /// Spawn a child process without HTTP support.
+    ///
+    /// Any pipe/http requests from the child will be rejected with an error.
+    pub fn spawn(binary_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        spawn_child_with_handler(binary_path, None)
+    }
+
     /// Send a JSON-RPC request and read all output lines until the response
     /// (line with matching `id`) arrives. Returns (notifications, response).
     ///

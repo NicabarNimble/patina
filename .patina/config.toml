@@ -3,19 +3,20 @@ name = "patina"
 created = "2025-12-05T16:52:27.714136+00:00"
 branch = "patina"
 
+[adapters]
+allowed = [
+    "claude",
+    "opencode",
+    "gemini",
+]
+default = "claude"
+
 [upstream]
 repo = "NicabarNimble/patina"
 branch = "main"
 remote = "origin"
 include_patina = true
 include_adapters = true
-
-[dev]
-type = "docker"
-
-[adapters]
-allowed = ["claude"]
-default = "claude"
 
 [embeddings]
 model = "e5-base-v2"
@@ -33,17 +34,21 @@ fetch_multiplier = 2
 os = "macos"
 arch = "aarch64"
 detected_tools = [
-    "cargo-fmt",
     "brew",
-    "cargo-clippy",
-    "gh",
-    "nvim",
-    "cargo",
-    "claude",
-    "vim",
+    "git",
     "go",
     "wasm-pack",
-    "git",
     "docker",
+    "vim",
+    "nvim",
+    "cargo-clippy",
     "jq",
+    "cargo-expand",
+    "gh",
+    "cargo",
+    "cargo-fmt",
+    "claude",
 ]
+
+[beliefs]
+stale_days = 90

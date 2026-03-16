@@ -1,10 +1,13 @@
-pub mod adapters;
-pub mod broker;
+pub mod beliefs;
+pub mod child;
+pub mod connect;
+pub mod core_tools;
 pub mod db;
 pub mod embeddings;
 pub mod environment;
 pub mod eventlog;
 pub mod git;
+pub mod interface;
 pub mod layer;
 pub mod measure;
 pub mod migration;
@@ -20,6 +23,9 @@ pub mod session;
 pub mod spec;
 pub mod version;
 pub mod workspace;
+
+pub mod test_support;
+pub mod toys;
 
 // Re-export commonly used types
 pub use environment::Environment;
