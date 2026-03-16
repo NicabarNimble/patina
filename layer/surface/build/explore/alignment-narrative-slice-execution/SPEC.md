@@ -1,84 +1,80 @@
 ---
 type: explore
 id: alignment-narrative-slice-execution
-status: draft
+status: active
 created: 2026-03-14
 sessions:
   origin: 20260313-155708-WKJS
-exit_criteria: []
+exit_criteria:
+  - id: protocol-fields-defined
+    text: Spec execution protocol defines required alignment fields and the slice contract sentence
+    checked: true
+  - id: split-and-scope-rules-defined
+    text: Protocol defines mandatory non-goals and explicit split trigger when a slice exceeds one behavior or boundary
+    checked: true
+  - id: verification-and-handoff-rules-defined
+    text: Protocol defines binary verification requirements and handoff packet expectations for continuity
+    checked: true
 ---
 # explore: Alignment Narrative for Slice Execution
 
-> Define how user vision, current code truth, and user preferences become a repeatable slice-by-slice execution contract.
+> Codify a compact, repeatable slice execution protocol so specs stay narrow, verifiable, and aligned with doctrine.
 
-## Question
+## Intent
 
-How should Patina treat "alignment narrative" as a first-class planning model,
-so user vision, current code truth, and user preferences reliably drive
-slice-by-slice implementation?
+This spec formalizes the execution style that already works best in Patina:
 
-What structure keeps agent execution narrow and verifiable without losing
-system-level intent?
+- spec broadly,
+- execute narrowly,
+- split when scope expands,
+- verify with binary commands.
 
-## Findings
+It is a workflow protocol spec, not a product feature lane.
 
-1. Alignment needs an explicit spine before any slice starts.
+## Protocol
 
-- Vision: the user-visible outcome and success condition.
-- Code truth: what the repo currently does (facts, not intent).
-- Preferences: user coding preferences (style, boundaries, dependency rules).
-- Constraints: hard limits (safety, performance, architecture boundaries).
+Every executable slice spec must include these alignment fields before coding:
 
-2. Dependency policy must be stated as a gate, not a suggestion.
+1. `vision` — user-visible outcome.
+2. `code_truth` — what the repository currently does (facts).
+3. `preferences` — user coding preferences and constraints.
+4. `constraints` — hard limits (safety/perf/architecture).
 
-- In-tree first: prefer existing dependencies and local patterns.
-- New dependency only with explicit gap evidence.
-- User preference can tighten policy further (for example: "no new deps").
+Every slice must include this contract sentence:
 
-3. Slices should be vertical and contract-shaped.
+"Given vision V, code truth T, preferences P, and constraints C, this slice
+changes X to achieve Y, verified by Z."
 
-- One user behavior or one integration boundary per slice.
-- Include UI/CLI behavior, logic, data movement, and tests where applicable.
-- Keep acceptance binary: pass/fail with concrete verification commands.
+## Required Rules
 
-4. The alignment narrative should be a repeatable sentence per slice.
+1. One slice = one behavior or one integration boundary.
+2. Every slice must declare explicit `non_goals`.
+3. Every slice must include binary verification commands.
+4. Dependency policy is a gate: in-tree first; new dependency requires explicit
+   gap evidence.
+5. If work expands beyond one behavior/boundary, split immediately with
+   `patina spec split <id>`.
+6. Handoffs must preserve the slice contract and verification status using
+   `patina spec handoff <id>` / `patina spec packet <id> --json`.
 
-Template:
-"Given vision V, current code truth T, and preferences P under constraints C,
-this slice changes X to achieve Y, verified by Z."
+## Doctrine Fit
 
-5. Patina command flow already supports this model with minimal extension.
+This protocol enforces doctrine during execution:
 
-- Discover and ground truth: `patina context`, `patina scry`, `patina assay`.
-- Create bounded contract: `patina spec create <type> <id>`.
-- Prepare execution packet: `patina spec prompt <id>`.
-- Run/review loop: implement, verify, update session notes.
-- Handoff/continuation: `patina spec handoff <id>` and `patina spec packet <id> --json`.
-- Scope correction when needed: `patina spec split <id>`.
+- Mother decides: scope, policy, and acceptance authority in specs.
+- Children act: implementation slices execute bounded behavior.
+- Toys constrain action surface: capability boundaries stay explicit and
+  testable.
 
-6. This model matches Patina's spec governance principle.
+## Command Mapping
 
-- Specs remain authority.
-- Sessions capture reasoning.
-- Execution stays within bounded scope and explicit exit criteria.
+- Ground truth: `patina context`, `patina scry`, `patina assay`
+- Define/adjust scope: `patina spec create`, `patina spec split`
+- Execution packet: `patina spec prompt`
+- Handoff/continuity: `patina spec handoff`, `patina spec packet --json`
+- Closure proof: `patina spec check <id> --json`
 
-## Conclusions
+## Outcome Target
 
-Patina should treat alignment as a two-level system:
-
-1. North-star alignment narrative (map):
-- vision,
-- code truth,
-- preferences,
-- constraints.
-
-2. Executable slice specs (route segments):
-- one bounded behavior,
-- explicit non-goals,
-- verification commands,
-- completion criteria.
-
-Operationally: spec broadly, execute narrowly, and re-anchor each new slice to
-the same alignment spine before coding starts.
-
-This keeps work dependable under agent execution while preserving user intent.
+Alignment narrative becomes a lightweight execution protocol for future slices
+after adoption evidence is recorded in active downstream specs/sessions.
