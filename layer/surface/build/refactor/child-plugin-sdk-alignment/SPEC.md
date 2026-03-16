@@ -7,8 +7,8 @@ related:
 - sdk/patina-sdk/src/lib.rs
 - src/plugin/internal/mod.rs
 - src/plugin/internal/knowledge_child.rs
-- children/ducklake-wasm/src/lib.rs
-- children/belief-verifier-wasm/src/lib.rs
+- children/ducklake/src/lib.rs
+- children/belief-verifier/src/lib.rs
 exit_criteria:
 - id: all-first-party-children-use-single-sdk-surface
   text: First-party children/plugins compile and run with patina-sdk surface only

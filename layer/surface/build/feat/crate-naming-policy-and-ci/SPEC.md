@@ -1,28 +1,26 @@
 ---
 type: feat
 id: crate-naming-policy-and-ci
-status: blocked
+status: complete
 created: 2026-03-13
 sessions:
   origin: 20260313-061738
-blocked_by:
-  - mother-child-toy-beliefs-layout
 exit_criteria:
   - id: naming-matrix-defined
     text: Spec contains an explicit current->target naming matrix for all workspace crates
     checked: true
   - id: full-conversion-implemented
     text: All workspace crates are renamed to target convention (except locked crates.io names patina-ai and patina-sdk)
-    checked: false
+    checked: true
   - id: docs-match-final-policy
     text: CONTRIBUTING.md and sdk/patina-sdk/README.md document final policy with no grandfather fallback
-    checked: false
+    checked: true
   - id: ci-strict-enforcement
     text: CI crate naming check enforces final convention with no legacy allowlist
-    checked: false
+    checked: true
   - id: sdk-policy
     text: sdk/patina-sdk/README.md explains patina-sdk family naming and relationship to patina-ai-* crates
-    checked: false
+    checked: true
 ---
 # feat: crate naming policy and CI enforcement
 
@@ -49,11 +47,10 @@ grandfather fallback. The only locked crate names are published crates.io names
 
 ## Status
 
-Blocked.
+Complete.
 
-Rationale: this spec is critical, but final crate naming must run after full
-folder/module boundary restructuring so the naming matrix targets the final
-architecture and avoids churn from intermediate paths.
+The naming matrix has been applied to active workspace crates and CI now
+enforces strict `patina-ai-*` / `patina-sdk-*` policy with no legacy allowlist.
 
 ## Non-Goals
 
@@ -79,24 +76,19 @@ Current -> target crate names:
 
 - `patina-ai` -> `patina-ai` (locked)
 - `patina-sdk` -> `patina-sdk` (locked)
-- `patina-pipe` -> `patina-ai-pipe`
-- `patina-pipe-types` -> `patina-ai-pipe-types`
-- `patina-child-sdk` -> `patina-ai-child-sdk`
-- `patina-toy-sdk` -> `patina-ai-toy-sdk`
-- `patina-plugin-models` -> `patina-ai-extension-models`
-- `patina-plugin-repos` -> `patina-ai-extension-repos`
-- `patina-doctor` -> `patina-ai-extension-doctor`
-- `patina-plugin-ducklake` -> `patina-ai-child-ducklake`
-- `patina-plugin-belief-verifier` -> `patina-ai-child-belief-verifier`
-- `github-connector` -> `patina-ai-child-github-connector`
-- `ducklake` -> `patina-ai-child-ducklake-native`
+- `patina-ai-pipe` -> `patina-ai-pipe`
+- `patina-ai-pipe-types` -> `patina-ai-pipe-types`
+- `patina-ai-extension-models` -> `patina-ai-extension-models`
+- `patina-ai-extension-repos` -> `patina-ai-extension-repos`
+- `patina-ai-extension-doctor` -> `patina-ai-extension-doctor`
+- `patina-ai-child-ducklake` -> `patina-ai-child-ducklake`
+- `patina-ai-child-belief-verifier` -> `patina-ai-child-belief-verifier`
+- `patina-ai-child-github-connector` -> `patina-ai-child-github-connector`
 
 Notes:
 
 - This spec migrates crate package names only. Directory layout moves are separate.
-- `ducklake` native child remains transitional and should be removed by cutover specs.
-- Naming matrix is provisional until boundary reorg is complete and crate
-  ownership surfaces are finalized.
+- Naming policy is now strict for active workspace members.
 
 ## Solution
 

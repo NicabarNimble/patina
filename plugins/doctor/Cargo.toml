@@ -1,5 +1,5 @@
 [package]
-name = "patina-doctor"
+name = "patina-ai-extension-doctor"
 version = "0.1.0"
 edition = "2021"
 description = "Health check command plugin for Patina"

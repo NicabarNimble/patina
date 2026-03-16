@@ -1784,16 +1784,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "github-connector"
-version = "0.1.0"
-dependencies = [
- "patina-pipe",
- "patina-pipe-types",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "glob"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3054,8 +3044,8 @@ dependencies = [
  "notify",
  "ort",
  "parking_lot",
- "patina-pipe",
- "patina-pipe-types",
+ "patina-ai-pipe",
+ "patina-ai-pipe-types",
  "rand 0.8.5",
  "rayon",
  "regex",
@@ -3087,7 +3077,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-doctor"
+name = "patina-ai-child-belief-verifier"
 version = "0.1.0"
 dependencies = [
  "patina-sdk",
@@ -3096,13 +3086,57 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-pipe"
+name = "patina-ai-child-ducklake"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "patina-ai-child-github-connector"
+version = "0.1.0"
+dependencies = [
+ "patina-ai-pipe",
+ "patina-ai-pipe-types",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "patina-ai-extension-doctor"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "patina-ai-extension-models"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk",
+ "serde_json",
+]
+
+[[package]]
+name = "patina-ai-extension-repos"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk",
+ "serde_json",
+]
+
+[[package]]
+name = "patina-ai-pipe"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "landlock",
  "libc",
- "patina-pipe-types",
+ "patina-ai-pipe-types",
  "reqwest",
  "serde",
  "serde_json",
@@ -3110,7 +3144,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-pipe-types"
+name = "patina-ai-pipe-types"
 version = "0.1.0"
 dependencies = [
  "blake3",
@@ -3120,44 +3154,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-plugin-belief-verifier"
-version = "0.1.0"
-dependencies = [
- "patina-sdk",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "patina-plugin-ducklake"
-version = "0.1.0"
-dependencies = [
- "patina-sdk",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "patina-plugin-models"
-version = "0.1.0"
-dependencies = [
- "patina-sdk",
- "serde_json",
-]
-
-[[package]]
-name = "patina-plugin-repos"
-version = "0.1.0"
-dependencies = [
- "patina-sdk",
- "serde_json",
-]
-
-[[package]]
 name = "patina-sdk"
 version = "0.21.0"
 dependencies = [
- "patina-pipe-types",
+ "patina-ai-pipe-types",
  "serde",
  "serde_json",
  "wit-bindgen 0.41.0",

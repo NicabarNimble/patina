@@ -1,12 +1,12 @@
 [package]
-name = "github-connector"
+name = "patina-ai-child-github-connector"
 version = "0.1.0"
 edition = "2021"
 description = "GitHub connector — native child on pipe architecture"
 
 [dependencies]
-patina-pipe = { path = "../../crates/patina-pipe" }
-patina-pipe-types = { path = "../../crates/patina-pipe-types" }
+patina-pipe = { package = "patina-ai-pipe", path = "../../crates/patina-pipe" }
+patina-pipe-types = { package = "patina-ai-pipe-types", path = "../../crates/patina-pipe-types" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 

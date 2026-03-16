@@ -294,7 +294,7 @@ fn knowledge_child_example_manifests_validate() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for path in [
         root.join("children/ducklake/plugin.toml"),
-        root.join("children/belief-verifier-wasm/plugin.toml"),
+        root.join("children/belief-verifier/plugin.toml"),
     ] {
         let manifest = PluginManifest::from_path(&path).unwrap();
         assert_eq!(manifest.world, PluginWorld::KnowledgeChild);
@@ -633,7 +633,7 @@ fn wasm_models_child_handle_roundtrip() {
     if !wasm_path.exists() {
         panic!(
             "test fixture missing: {}\n\
-             Build it with: cargo build --release -p patina-plugin-models --target wasm32-wasip2\n\
+             Build it with: cargo build --release -p patina-ai-extension-models --target wasm32-wasip2\n\
              Then: cp target/wasm32-wasip2/release/patina_plugin_models.wasm tests/fixtures/",
             wasm_path.display()
         );
@@ -816,7 +816,7 @@ fn wasm_repos_child_handle_roundtrip() {
         None => {
             panic!(
                 "test fixture missing: tests/fixtures/patina_plugin_repos.wasm\n\
-                 Build: cargo build --release -p patina-plugin-repos --target wasm32-wasip2\n\
+                 Build: cargo build --release -p patina-ai-extension-repos --target wasm32-wasip2\n\
                  Copy: cp target/wasm32-wasip2/release/patina_plugin_repos.wasm tests/fixtures/"
             );
         }
@@ -1202,7 +1202,7 @@ fn command_doctor_name() {
         None => {
             panic!(
                 "test fixture missing: tests/fixtures/patina_doctor.wasm\n\
-                 Build: cargo build --release -p patina-doctor --target wasm32-wasip2\n\
+                 Build: cargo build --release -p patina-ai-extension-doctor --target wasm32-wasip2\n\
                  Copy: cp target/wasm32-wasip2/release/patina_doctor.wasm tests/fixtures/"
             );
         }

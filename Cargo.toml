@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/patina-pipe-types", "crates/patina-pipe", "sdk/patina-sdk", "plugins/models", "plugins/repos", "plugins/doctor", "children/ducklake", "children/belief-verifier-wasm", "children/github-connector"]
+members = [".", "crates/patina-pipe-types", "crates/patina-pipe", "sdk/patina-sdk", "plugins/models", "plugins/repos", "plugins/doctor", "children/ducklake", "children/belief-verifier", "children/github-connector"]
 exclude = ["layer/dust"]
 resolver = "2"
 
@@ -105,8 +105,8 @@ wasmtime = { version = "=41", default-features = false, features = [
 wasmtime-wasi = { version = "=41", default-features = false, features = ["p2"] }
 
 # Pipe protocol — native child communication (broker uses harness + types)
-patina-pipe = { path = "crates/patina-pipe", features = ["http-proxy"] }
-patina-pipe-types = { path = "crates/patina-pipe-types" }
+patina-pipe = { package = "patina-ai-pipe", path = "crates/patina-pipe", features = ["http-proxy"] }
+patina-pipe-types = { package = "patina-ai-pipe-types", path = "crates/patina-pipe-types" }
 
 # Secrets v2 - age encryption and macOS Keychain
 age = { version = "0.11", features = ["armor"] }

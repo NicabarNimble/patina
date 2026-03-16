@@ -83,12 +83,6 @@ Use crate names that make ownership and intent obvious at a glance.
   `patina-sdk` when a split is unnecessary).
 - Avoid introducing new unprefixed crate names for workspace members.
 
-### Grandfathered Names
-
-Existing crates with older naming patterns are allowed for compatibility.
-This policy is forward-looking: new crates follow canonical prefixes, while
-legacy names migrate only when there is clear value.
-
 ### Enforcement
 
 CI validates workspace crate names with:

@@ -58,7 +58,7 @@ native-runtime removal decision from the prior spec.
 ### Verification
 
 - `cargo check --workspace`
-- `cargo build --target wasm32-wasip2 -p patina-plugin-ducklake`
+- `cargo build --target wasm32-wasip2 -p patina-ai-child-ducklake`
 - `bash resources/scripts/check-ducklake-parity.sh`
 - `rg "children/ducklake-wasm" src children sdk tests Cargo.toml` returns no matches
 - `patina spec check ducklake-child-path-name --json`

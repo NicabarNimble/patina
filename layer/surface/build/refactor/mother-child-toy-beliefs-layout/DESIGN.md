@@ -85,7 +85,7 @@ This design prioritizes:
 ### Phase F - Child project paths + legacy removal
 
 - `children/ducklake-wasm/**` -> `child/ducklake/**`
-- `children/belief-verifier-wasm/**` -> `child/belief-verifier/**`
+- `children/belief-verifier/**` -> `child/belief-verifier/**`
 - `children/github-connector/**` -> `child/github-connector/**`
 - remove `children/ducklake/**` native legacy path (and references) once parity criteria are met.
 - update all path references in runtime/tests/spec docs.
@@ -95,8 +95,8 @@ This design prioritizes:
 Run after each phase (not only at the end):
 
 - `cargo check --workspace`
-- `cargo build --target wasm32-wasip2 -p patina-plugin-ducklake`
-- `cargo build --target wasm32-wasip2 -p patina-plugin-belief-verifier`
+- `cargo build --target wasm32-wasip2 -p patina-ai-child-ducklake`
+- `cargo build --target wasm32-wasip2 -p patina-ai-child-belief-verifier`
 - `cargo test -q -p patina-ai -- src/plugin/internal/tests.rs`
 - `cargo test -q -p patina-ai -- src/commands/spec/internal/tests.rs`
 - `cargo test -q -p patina-ai -- src/commands/scrape/internal/tests.rs`

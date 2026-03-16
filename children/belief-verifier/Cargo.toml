@@ -1,5 +1,5 @@
 [package]
-name = "patina-plugin-belief-verifier"
+name = "patina-ai-child-belief-verifier"
 version = "0.1.0"
 edition = "2021"
 description = "Belief verification knowledge child for Mother"

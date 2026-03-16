@@ -76,7 +76,9 @@ Enable exactly one world feature per child crate.
 ## Naming Policy
 
 - `patina-ai` remains the app/runtime product crate.
+- Workspace runtime and extension crates use the `patina-ai-*` family.
 - `patina-sdk` is the single SDK crate for child+toy authoring.
+- Any split SDK crates must use `patina-sdk-*` and stay under the same doctrine.
 - Do not introduce parallel SDK crate surfaces.
 
 ## Migration (old SDK imports)

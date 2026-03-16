@@ -1,5 +1,5 @@
 [package]
-name = "patina-plugin-ducklake"
+name = "patina-ai-child-ducklake"
 version = "0.1.0"
 edition = "2021"
 description = "Canonical DuckLake knowledge child for Mother"
