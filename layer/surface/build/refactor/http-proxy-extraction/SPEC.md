@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: http-proxy-extraction
-status: ready
+status: active
 created: 2026-03-10
 sessions:
   origin: 20260310-074810
