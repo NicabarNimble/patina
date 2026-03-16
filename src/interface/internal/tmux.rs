@@ -39,9 +39,7 @@ pub fn resolve_tmux_decision(
     if !is_tty {
         return TmuxDecision::Off(OffReason::NoTty);
     }
-    if inside_tmux {
-        return TmuxDecision::Off(OffReason::InsideTmux);
-    }
+    let _ = inside_tmux;
     if !tmux_in_path {
         return TmuxDecision::Off(OffReason::NotInPath);
     }
@@ -164,6 +162,7 @@ pub fn launch_adapter_cli(
                 cmd.arg(project_root.as_os_str());
                 cmd.arg(adapter_name);
                 cmd.current_dir(&tmux_log_dir);
+                cmd.env_remove("TMUX");
                 for (key, value) in extra_env {
                     cmd.env(key, value);
                 }
@@ -229,6 +228,21 @@ pub fn launch_adapter_cli(
         }
         Ok(())
     }
+}
+
+pub fn tmux_session_alive(session_name: &str) -> bool {
+    if which::which("tmux").is_err() {
+        return false;
+    }
+
+    let tmux_socket = derive_tmux_socket_name(session_name);
+    Command::new("tmux")
+        .arg("-L")
+        .arg(tmux_socket)
+        .args(["has-session", "-t", session_name])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
 }
 
 fn derive_tmux_socket_name(session_name: &str) -> String {
@@ -339,5 +353,11 @@ mod tests {
 
         assert!(!legacy.ends_with("_opencode"));
         assert_ne!(legacy, ai);
+    }
+
+    #[test]
+    fn resolve_tmux_decision_keeps_tmux_enabled_when_inside_tmux() {
+        let decision = resolve_tmux_decision(false, false, true, true, true, true);
+        assert_eq!(decision, TmuxDecision::Auto);
     }
 }

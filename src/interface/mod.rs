@@ -26,7 +26,7 @@ pub use internal::surface::{
 };
 pub use internal::tmux::{
     check_tmux_version, derive_interface_session_name, derive_session_name, launch_adapter_cli,
-    resolve_tmux_decision, OffReason, TmuxDecision,
+    resolve_tmux_decision, tmux_session_alive, OffReason, TmuxDecision,
 };
 
 #[derive(Debug, Clone)]

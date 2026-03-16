@@ -43,6 +43,9 @@ pub enum AiSessionCommands {
         note: Option<String>,
 
         #[arg(long)]
+        commit: bool,
+
+        #[arg(long)]
         json: bool,
     },
 
@@ -134,6 +137,9 @@ pub enum AiCommands {
         note: Option<String>,
 
         #[arg(long)]
+        commit: bool,
+
+        #[arg(long)]
         json: bool,
     },
 
@@ -196,8 +202,9 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
         Some(AiCommands::End {
             session,
             note,
+            commit,
             json,
-        }) => internal::end(session, note, json),
+        }) => internal::end(session, note, commit, json),
         Some(AiCommands::Session { command }) => internal::session(command),
     }
 }
@@ -272,6 +279,23 @@ mod tests {
                 assert_eq!(content, "capture this");
                 assert_eq!(session.as_deref(), Some("runtime-123"));
             }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn end_commands_accept_commit_flag() {
+        let parsed = AiCli::try_parse_from(["patina", "end", "--commit"]).unwrap();
+        match parsed.command {
+            AiCommands::End { commit, .. } => assert!(commit),
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let parsed = AiCli::try_parse_from(["patina", "session", "end", "--commit"]).unwrap();
+        match parsed.command {
+            AiCommands::Session {
+                command: AiSessionCommands::End { commit, .. },
+            } => assert!(commit),
             other => panic!("unexpected command: {other:?}"),
         }
     }

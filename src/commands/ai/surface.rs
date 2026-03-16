@@ -1,10 +1,13 @@
 use anyhow::{bail, Result};
+use chrono::Utc;
+use std::fs;
 use std::io::IsTerminal;
 use std::path::Path;
 use std::process::Command;
 
 use patina::interface::{self, check_in, InterfaceCheckIn, LaunchPolicy};
 use patina::project;
+use patina::session::{self, ArchiveSessionRequest, InterfaceKind};
 use patina::workspace;
 use serde_json::json;
 
@@ -182,6 +185,8 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
 
     let (adapter, bootstrap) =
         crate::commands::interface::ensure_ready(&interface_name, &project_path, false)?;
+
+    reconcile_tmux_bound_sessions(&project_path, &interface_name)?;
 
     if request.set_default || config_result.default_interface.is_empty() {
         interface::set_project_default_interface(&project_path, &interface_name)?;
@@ -417,6 +422,115 @@ fn tmux_show_option(socket_name: &str, option: &str) -> Option<String> {
     }
 }
 
+fn reconcile_tmux_bound_sessions(project_root: &Path, adapter_name: &str) -> Result<()> {
+    if which::which("tmux").is_err() {
+        return Ok(());
+    }
+
+    let interface_kind = InterfaceKind::from_adapter_name(adapter_name);
+    if interface_kind == InterfaceKind::Unknown {
+        return Ok(());
+    }
+
+    let session_name = interface::derive_interface_session_name(project_root, adapter_name);
+    let mut adapter_sessions: Vec<_> = session::list_active_sessions(project_root)?
+        .into_iter()
+        .filter(|handle| {
+            handle.adapter_name == adapter_name && handle.interface_kind == interface_kind
+        })
+        .collect();
+
+    if adapter_sessions.is_empty() {
+        return Ok(());
+    }
+
+    if !interface::tmux_session_alive(&session_name) {
+        for handle in adapter_sessions {
+            archive_tmux_reconciled_session(
+                project_root,
+                &handle,
+                &session_name,
+                "tmux-lost",
+                "Archived automatically because the lane was not alive at launch.",
+            )?;
+        }
+        return Ok(());
+    }
+
+    let keep_runtime_id = session::load_current_interface_session(project_root, adapter_name)?
+        .map(|handle| handle.runtime_id)
+        .or_else(|| {
+            adapter_sessions
+                .iter()
+                .max_by(|a, b| a.updated_at.cmp(&b.updated_at))
+                .map(|handle| handle.runtime_id.clone())
+        });
+
+    let Some(keep_runtime_id) = keep_runtime_id else {
+        return Ok(());
+    };
+
+    for handle in adapter_sessions.drain(..) {
+        if handle.runtime_id == keep_runtime_id {
+            continue;
+        }
+        archive_tmux_reconciled_session(
+            project_root,
+            &handle,
+            &session_name,
+            "superseded",
+            &format!(
+                "Archived automatically because another live runtime owns lane `{}`.",
+                keep_runtime_id
+            ),
+        )?;
+    }
+
+    Ok(())
+}
+
+fn archive_tmux_reconciled_session(
+    project_root: &Path,
+    handle: &session::LiveSessionHandle,
+    session_name: &str,
+    reason_slug: &str,
+    reason_text: &str,
+) -> Result<()> {
+    let markdown = fs::read_to_string(&handle.artifact_path).unwrap_or_else(|_| {
+        format!(
+            "---\nid: {}\nruntime_id: {}\nstatus: active\n---\n\n## Outcome\n",
+            handle.file_id, handle.runtime_id
+        )
+    });
+    let archived_markdown = append_tmux_handoff(&markdown, session_name, reason_text);
+    let end_tag = format!(
+        "session-{}-{}-{}",
+        handle.file_id, handle.adapter_name, reason_slug
+    );
+    session::archive_session(
+        project_root,
+        ArchiveSessionRequest {
+            runtime_id: handle.runtime_id.clone(),
+            markdown: archived_markdown,
+            end_tag: Some(end_tag),
+        },
+    )?;
+    crate::commands::events::export_best_effort();
+    super::internal::stage_session_artifacts(project_root, &handle.artifact_path)?;
+    eprintln!(
+        "Archived stale {} session {} ({})",
+        handle.adapter_name, handle.file_id, reason_slug
+    );
+    Ok(())
+}
+
+fn append_tmux_handoff(markdown: &str, session_name: &str, reason_text: &str) -> String {
+    let ts = Utc::now().to_rfc3339();
+    format!(
+        "{markdown}\n\n## Handoff\n\n- {ts}: {reason_text}\n- Lane: `{session_name}`\n- In-memory interface context was lost with the lane/runtime.\n- Resume by starting a new lane and using this artifact as the handoff baseline.\n"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -509,5 +623,18 @@ mod tests {
         let config = project::load_with_migration(temp.path()).unwrap();
         assert_eq!(config.adapters.default, "claude");
         assert!(temp.path().join(".gemini/commands/spec.toml").exists());
+    }
+
+    #[test]
+    fn append_tmux_handoff_adds_handoff_section() {
+        let markdown = "# Session\n\n## Outcome\n\n- done";
+        let updated = append_tmux_handoff(
+            markdown,
+            "patina_repo_1234_claude",
+            "Archived automatically because the lane was not alive at launch.",
+        );
+        assert!(updated.contains("## Handoff"));
+        assert!(updated.contains("patina_repo_1234_claude"));
+        assert!(updated.contains("In-memory interface context was lost"));
     }
 }

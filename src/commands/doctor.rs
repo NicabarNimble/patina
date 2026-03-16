@@ -5,6 +5,7 @@ use patina::project;
 use patina::session::SessionManager;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use std::process::Command;
 
 /// Typed health status — the doctor check outcome.
 ///
@@ -50,6 +51,13 @@ struct DataIntegrity {
     events_db: EventsDbStatus,
     jsonl_replica: JsonlReplicaStatus,
     emission_coverage: EmissionCoverage,
+    session_durability: SessionDurability,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct SessionDurability {
+    uncommitted: bool,
+    dirty_paths: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -150,6 +158,8 @@ pub fn execute(json_output: bool) -> Result<i32> {
 
     // Check data integrity (events.db + JSONL replica)
     health_check.data_integrity = check_data_integrity(&mut health_check.recommendations);
+    health_check.data_integrity.session_durability =
+        check_session_durability(&mut health_check.recommendations);
 
     // Escalate status if data integrity has warnings
     let has_data_warnings = !health_check.data_integrity.events_db.warnings.is_empty()
@@ -159,6 +169,11 @@ pub fn execute(json_output: bool) -> Result<i32> {
             .warnings
             .is_empty();
     if has_data_warnings && health_check.status == HealthStatus::Healthy {
+        health_check.status = HealthStatus::Warning;
+    }
+    if health_check.data_integrity.session_durability.uncommitted
+        && health_check.status == HealthStatus::Healthy
+    {
         health_check.status = HealthStatus::Warning;
     }
     if !health_check.data_integrity.events_db.integrity_ok
@@ -371,6 +386,62 @@ fn check_data_integrity(recommendations: &mut Vec<String>) -> DataIntegrity {
     }
 
     integrity
+}
+
+fn check_session_durability(recommendations: &mut Vec<String>) -> SessionDurability {
+    if !patina::git::is_git_repo().unwrap_or(false) {
+        return SessionDurability::default();
+    }
+
+    let output = match Command::new("git")
+        .args([
+            "status",
+            "--porcelain",
+            "--",
+            "layer/sessions",
+            "layer/events.jsonl",
+        ])
+        .output()
+    {
+        Ok(output) if output.status.success() => output,
+        _ => return SessionDurability::default(),
+    };
+
+    let dirty_paths: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(parse_porcelain_path)
+        .collect();
+
+    if dirty_paths.is_empty() {
+        return SessionDurability {
+            uncommitted: false,
+            dirty_paths,
+        };
+    }
+
+    recommendations.push(
+        "Session artifacts are not fully committed. Run `git add layer/sessions layer/events.jsonl && git commit -m \"session: preserve artifacts\"` to preserve recoverability."
+            .to_string(),
+    );
+
+    SessionDurability {
+        uncommitted: true,
+        dirty_paths,
+    }
+}
+
+fn parse_porcelain_path(line: &str) -> Option<String> {
+    if line.len() < 4 {
+        return None;
+    }
+    let raw = line[3..].trim();
+    if raw.is_empty() {
+        return None;
+    }
+    if let Some((_, to)) = raw.split_once(" -> ") {
+        return Some(to.to_string());
+    }
+    Some(raw.to_string())
 }
 
 /// Non-schema event types that should have emitters wired in code.
@@ -591,6 +662,16 @@ fn display_health_check(
         println!("  ✓ JSONL replica: up to date (max seq {})", jsonl.max_seq);
     }
 
+    let session_durability = &health.data_integrity.session_durability;
+    if session_durability.uncommitted {
+        println!(
+            "  ⚠ Session durability: uncommitted artifacts ({})",
+            session_durability.dirty_paths.join(", ")
+        );
+    } else {
+        println!("  ✓ Session durability: committed artifact state");
+    }
+
     if !health.recommendations.is_empty() {
         println!("\nRecommendations:");
         for (i, rec) in health.recommendations.iter().enumerate() {
@@ -599,4 +680,25 @@ fn display_health_check(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_porcelain_path;
+
+    #[test]
+    fn parse_porcelain_path_handles_simple_entries() {
+        assert_eq!(
+            parse_porcelain_path(" M layer/sessions/20260316-abc.md").as_deref(),
+            Some("layer/sessions/20260316-abc.md")
+        );
+    }
+
+    #[test]
+    fn parse_porcelain_path_handles_rename_entries() {
+        assert_eq!(
+            parse_porcelain_path("R  old/path.md -> layer/sessions/new.md").as_deref(),
+            Some("layer/sessions/new.md")
+        );
+    }
 }
