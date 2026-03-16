@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: http-proxy-extraction
-status: draft
+status: ready
 created: 2026-03-10
 sessions:
   origin: 20260310-074810
@@ -15,20 +15,20 @@ beliefs:
 - initialize-is-capability-grant
 exit_criteria:
 - id: proxy-in-patina-pipe
-  text: "patina-pipe crate exports a production HTTP proxy handler behind an `http-proxy` feature flag: domain validation, credential injection, leak detection"
-  checked: false
+  text: 'patina-pipe crate exports a production HTTP proxy handler behind an `http-proxy` feature flag: domain validation, credential injection, leak detection'
+  checked: true
 - id: broker-consumes-shared
-  text: "broker/http.rs imports the proxy from patina-pipe instead of implementing its own; behavior unchanged"
-  checked: false
+  text: broker/http.rs imports the proxy from patina-pipe instead of implementing its own; behavior unchanged
+  checked: true
 - id: security-preserved
-  text: "All security properties preserved: HTTPS-only, domain allowlist, no IP/localhost, credential injection (Bearer/Header/InProcess), cross-domain redirect rejection, response leak detection"
-  checked: false
+  text: 'All security properties preserved: HTTPS-only, domain allowlist, no IP/localhost, credential injection (Bearer/Header/InProcess), cross-domain redirect rejection, response leak detection'
+  checked: true
 - id: harness-is-production
-  text: "ChildConnection in patina-pipe is acknowledged as production API, not test harness; spawn_with_http is a first-class method"
-  checked: false
+  text: ChildConnection in patina-pipe is acknowledged as production API, not test harness; spawn_with_http is a first-class method
+  checked: true
 - id: mapping-tests
-  text: "Exhaustive tests verify AuthPlan → HttpProxyConfig mapping covers all InjectionStrategy variants correctly"
-  checked: false
+  text: Exhaustive tests verify AuthPlan → HttpProxyConfig mapping covers all InjectionStrategy variants correctly
+  checked: true
 ---
 # refactor: Extract HTTP proxy to shared crate as toy capability
 
