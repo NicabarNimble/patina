@@ -6,9 +6,11 @@ End the current Patina session with Git work classification:
    - Ensure all artifact references use `[[wikilinks]]` (beliefs, sessions, commits, specs)
 
 2. Launch an Agent (subagent) to archive the session. The agent should:
-   - Run: `.claude/bin/session-end.sh`
-     If multiple active sessions exist, use `.claude/bin/session-end.sh --session <id>`.
-     To include a final outcome sentence: `.claude/bin/session-end.sh --note "what we accomplished"`.
+    - Run: `.claude/bin/session-end.sh`
+      This wrapper commits session artifacts by default.
+      If multiple active sessions exist, use `.claude/bin/session-end.sh --session <id>`.
+      To include a final outcome sentence: `.claude/bin/session-end.sh --note "what we accomplished"`.
+      If you need archive-only (no commit), run `patina ai session end --json` directly.
    - Parse the returned JSON and extract all fields
    - Return to the main context: work classification, session tags, artifact path, and end tag
 
