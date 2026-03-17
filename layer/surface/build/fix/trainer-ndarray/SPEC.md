@@ -1,21 +1,37 @@
 ---
 type: fix
 id: trainer-ndarray
-status: draft
+status: ready
 created: 2026-03-10
 sessions:
   origin: 20260309-182853
 related:
 - oxidize-parallelism
 exit_criteria:
-  - Projection weights stored as Array2<f32> not Vec<Vec<f32>>
-  - forward pass uses ndarray dot on contiguous arrays, not hand-rolled loops
-  - backprop uses ndarray ops for weight gradient accumulation
-  - save/load safetensors works with contiguous Array2 without unsafe pointer casts
-  - gradient computation uses pre-update weights (fix current trainer bug)
-  - repeated training on the same input produces identical losses and identical saved weights
-  - existing tests pass — cargo test
-  - DuckDB dependency projection trains measurably faster (add timing to measure)
+- id: projection-weights-stored-as-array2-f32-not-vec-vec-f32
+  text: Projection weights stored as Array2<f32> not Vec<Vec<f32>>
+  checked: false
+- id: forward-pass-uses-ndarray-dot-on-contiguous-arrays-not-hand-rolled-loops
+  text: forward pass uses ndarray dot on contiguous arrays, not hand-rolled loops
+  checked: false
+- id: backprop-uses-ndarray-ops-for-weight-gradient-accumulation
+  text: backprop uses ndarray ops for weight gradient accumulation
+  checked: false
+- id: save-load-safetensors-works-with-contiguous-array2-without-unsafe-pointer-casts
+  text: save/load safetensors works with contiguous Array2 without unsafe pointer casts
+  checked: false
+- id: gradient-computation-uses-pre-update-weights-fix-current-trainer-bug
+  text: gradient computation uses pre-update weights (fix current trainer bug)
+  checked: false
+- id: repeated-training-on-the-same-input-produces-identical-losses-and-identical-saved-weights
+  text: repeated training on the same input produces identical losses and identical saved weights
+  checked: false
+- id: existing-tests-pass-cargo-test
+  text: existing tests pass — cargo test
+  checked: false
+- id: duckdb-dependency-projection-trains-measurably-faster-add-timing-to-measure
+  text: DuckDB dependency projection trains measurably faster (add timing to measure)
+  checked: false
 ---
 # fix: MLP trainer: Vec of Vec to ndarray without breaking determinism
 
