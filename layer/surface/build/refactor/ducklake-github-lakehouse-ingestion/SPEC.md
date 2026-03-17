@@ -5,8 +5,6 @@ status: blocked
 created: 2026-03-12
 sessions:
   origin: 20260312-160150
-blocked_by:
-  - mother-child-toy-beliefs-layout
 related:
 - layer/surface/build/refactor/ducklake-knowledge-child-cutover/SPEC.md
 beliefs:
