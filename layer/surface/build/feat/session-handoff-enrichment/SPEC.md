@@ -5,6 +5,8 @@ status: draft
 created: 2026-03-17
 sessions:
   origin: 20260317-171514-193735000
+related:
+- ref_repo:badlogic/pi-mono  # source of handoff/compaction pattern — session.md, compaction.md, examples/extensions/handoff.ts
 exit_criteria:
 - id: parent-session-field-populated
   text: New session frontmatter always carries `parent_session` ID when a previous session exists on disk

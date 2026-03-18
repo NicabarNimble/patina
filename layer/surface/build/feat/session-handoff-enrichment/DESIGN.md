@@ -7,8 +7,11 @@ dies, a terminal closes, or a session ends without a manual handoff, the next
 instance reconstructs state from scratch — reading a blank `## Handoff` section
 and improvising from the git log.
 
-Pi-mono's handoff/compaction approach demonstrates that LLM-generated structured
-context transfer is the right primitive. Patina's philosophy is sharper: **handoff
+Pi-mono (`ref_repo:badlogic/pi-mono`) demonstrates that LLM-generated structured
+context transfer is the right primitive. Key reference files:
+- `packages/coding-agent/docs/session.md` — session format and parent linking
+- `packages/coding-agent/docs/compaction.md` — structured summary format
+- `packages/coding-agent/examples/extensions/handoff.ts` — explicit handoff implementation Patina's philosophy is sharper: **handoff
 + fresh context beats degraded context continuation**. This design wires that
 philosophy into `session end` and adds an explicit `session handoff <goal>` path.
 
