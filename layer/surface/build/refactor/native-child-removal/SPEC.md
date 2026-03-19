@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: native-child-removal
-status: ready
+status: active
 created: 2026-03-19
 sessions:
   origin: 20260319-081650-356341000
