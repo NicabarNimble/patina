@@ -284,7 +284,7 @@ fn connect_github(manual: bool, name: Option<String>) -> Result<()> {
         auth: patina::connect::AuthConfig {
             injection: provider.default_injection(),
             secret_ref: format!("{}-{}", provider.name(), conn_name),
-            child: provider.default_child().to_string(),
+            child: String::new(),
             allowed_domains: provider.allowed_domains(),
             refresh_capable: !manual,
             expires_at: result.expires_at,
@@ -300,7 +300,6 @@ fn connect_github(manual: bool, name: Option<String>) -> Result<()> {
         println!("  Account: {}", account);
     }
     println!("  Provider: {}", record.identity.provider);
-    println!("  Child: {}", record.auth.child);
 
     Ok(())
 }

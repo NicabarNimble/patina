@@ -309,27 +309,31 @@ pub fn check_schemas() -> Result<()> {
             ok = false;
         }
 
-        // 4. Check connector manifest package versions
+        // 4. Check plugin manifest schema declarations
         let canonical_pkg = &metadata.schema.package;
         let children_dir = root.join("children");
         if children_dir.exists() {
             for child_entry in std::fs::read_dir(&children_dir)?.flatten() {
-                let child_toml = child_entry.path().join("child.toml");
-                if !child_toml.exists() {
+                let plugin_toml = child_entry.path().join("plugin.toml");
+                if !plugin_toml.exists() {
                     continue;
                 }
-                let content = std::fs::read_to_string(&child_toml)?;
-                let manifest: patina_pipe_types::manifest::ChildManifest = toml::from_str(&content)
-                    .with_context(|| format!("parsing {}", child_toml.display()))?;
-                if let Some(schema_ref) = manifest.schemas.get(&name) {
-                    if schema_ref.package != *canonical_pkg {
-                        eprintln!(
-                            "  ERROR: {} declares package '{}' but canonical is '{}'",
-                            child_toml.display(),
-                            schema_ref.package,
-                            canonical_pkg
-                        );
-                        ok = false;
+                let content = std::fs::read_to_string(&plugin_toml)?;
+                let table: toml::Table = toml::from_str(&content)
+                    .with_context(|| format!("parsing {}", plugin_toml.display()))?;
+                if let Some(schemas) = table.get("schemas").and_then(|v| v.as_table()) {
+                    if let Some(schema_ref) = schemas.get(&name).and_then(|v| v.as_table()) {
+                        if let Some(pkg) = schema_ref.get("package").and_then(|v| v.as_str()) {
+                            if pkg != canonical_pkg.as_str() {
+                                eprintln!(
+                                    "  ERROR: {} declares package '{}' but canonical is '{}'",
+                                    plugin_toml.display(),
+                                    pkg,
+                                    canonical_pkg
+                                );
+                                ok = false;
+                            }
+                        }
                     }
                 }
             }

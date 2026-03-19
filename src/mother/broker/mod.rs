@@ -5,21 +5,22 @@
 //! shutdown) for native children via the pipe protocol.
 
 pub mod cursor;
-pub mod http;
-pub mod lifecycle;
-pub mod routing;
 pub mod sources;
-pub mod spawn;
-
-pub use self::spawn::resolve_child_binary;
 
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
 use self::cursor::get_cursor;
-use self::routing::WriteResult;
 use self::sources::{Destination, SourceEntry};
+
+/// Result of writing a batch of facts.
+#[derive(Debug, Clone)]
+pub struct WriteResult {
+    pub inserted: u64,
+    pub dedup_skipped: u64,
+    pub cursor: Option<String>,
+}
 
 /// Run a single source: resolve auth, spawn child, fetch facts, validate, route to destination.
 ///
@@ -373,12 +374,8 @@ pub fn status(project_root: &Path) -> Result<Vec<SourceStatus>> {
             )
             .ok();
 
-        // Count facts from this source — use connection's child name
-        let child_name = crate::connect::load(&source.connection)
-            .ok()
-            .map(|r| r.auth.child.clone())
-            .unwrap_or_else(|| source.name.clone());
-        let source_id = format!("child:{}", child_name);
+        // Count facts from this source
+        let source_id = format!("child:{}", source.name);
 
         let fact_count: i64 = events_conn
             .query_row(
@@ -521,7 +518,6 @@ mod tests {
             },
         };
         let auth_plan = AuthPlan {
-            child: "github-connector".to_string(),
             credential: None,
             allowed_domains: vec!["api.github.com".to_string()],
         };
@@ -557,7 +553,6 @@ mod tests {
             },
         };
         let auth_plan = AuthPlan {
-            child: "github-connector".to_string(),
             credential: Some(ResolvedCredential {
                 value: "token".to_string(),
                 injection: InjectionStrategy::Bearer,

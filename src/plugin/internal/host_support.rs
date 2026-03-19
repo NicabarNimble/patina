@@ -454,7 +454,7 @@ pub(super) fn validate_emit(
 /// source_id and event_type carry the signal.
 ///
 /// FROZEN LEGACY PATH — WASM facts bypass the broker routing engine.
-/// Native children route through broker::routing::validate_fact() which provides
+/// Knowledge children validate facts internally, which provides
 /// content-hash dedup, manifest schema validation, and transactional cursor writes.
 /// This direct-write path exists only for the forge WASM plugin. No new WASM children
 /// may use this path — all new children must be native and route through the broker.

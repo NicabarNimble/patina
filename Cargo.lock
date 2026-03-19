@@ -3095,16 +3095,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-ai-child-github-connector"
-version = "0.1.0"
-dependencies = [
- "patina-ai-pipe",
- "patina-ai-pipe-types",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "patina-ai-extension-doctor"
 version = "0.1.0"
 dependencies = [
