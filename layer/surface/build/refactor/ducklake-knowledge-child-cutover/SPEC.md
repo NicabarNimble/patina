@@ -11,8 +11,8 @@ related:
 - src/plugin/internal/knowledge_child.rs
 - src/toys/lake.rs
 - src/broker/mod.rs
-- children/ducklake-wasm/src/lib.rs
-- children/ducklake-wasm/plugin.toml
+- children/ducklake/src/lib.rs
+- children/ducklake/plugin.toml
 - crates/patina-child-sdk/src/lib.rs
 - wit/knowledge-child/deps/patina-host/host.wit
 - src/connect/internal/resolve.rs
@@ -23,7 +23,7 @@ related:
 - src/commands/connect.rs
 exit_criteria:
 - id: ducklake-has-single-knowledge-child-identity
-  text: DuckLake runs through one authoritative knowledge-child identity (`children/ducklake-wasm`) and the native child path (`children/ducklake`) is removed from runtime + workspace membership
+  text: DuckLake runs through one authoritative knowledge-child identity (`children/ducklake`) and the legacy native runtime path is removed from runtime + workspace membership
   checked: true
 - id: broker-to-knowledge-child-invocation-model-is-explicit
   text: The cutover defines and implements one explicit invocation model for `Destination::Lake` (enqueue + bounded wait via Mother runtime), with no ambiguous dual execution semantics
@@ -60,13 +60,21 @@ exit_criteria:
 
 > Finish DuckLake as the authoritative knowledge-child path with parity for GitHub issues/PR ingestion and OAuth vault auth.
 
+## Historical Note
+
+During execution, the knowledge-child path used `children/ducklake-wasm` and
+was later renamed to `children/ducklake` by
+`ducklake-child-path-name`. This spec is complete; references below describe the
+original cutover framing.
+
 ## Problem
 
-DuckLake currently exists in two runtime realities:
+DuckLake originally existed in two runtime realities:
 
-- `children/ducklake-wasm` is the doctrine-aligned knowledge-child app shape.
-- `children/ducklake` still carries the richer native ingestion path used by
-  broker lake routing.
+- `children/ducklake-wasm` was the doctrine-aligned knowledge-child app shape
+  at the time.
+- `children/ducklake` carried the richer native ingestion path used by broker
+  lake routing.
 
 This split creates architectural debt and user confusion:
 
@@ -115,8 +123,8 @@ is the execution-first slice for native removal safety and wasm-path validation.
 The following work is required before this spec can return to `complete`:
 
 1. **Single identity enforcement**
-   - Remove `children/ducklake` from workspace runtime path and cargo workspace members.
-   - Keep only `children/ducklake-wasm` as DuckLake app runtime identity.
+   - Remove legacy native runtime path from workspace/runtime members.
+   - Keep only the knowledge-child runtime identity (now `children/ducklake`).
 
 2. **Lake host parity proof**
    - Add integration tests that compare legacy/native expectations vs knowledge-child
@@ -143,7 +151,7 @@ The following work is required before this spec can return to `complete`:
 
 ## Current State
 
-- New DuckLake knowledge-child (`children/ducklake-wasm`) supports configured sources,
+- New DuckLake knowledge-child (`children/ducklake`) supports configured sources,
   lake writes, ingress fetch, and checkpoints.
 - Current ingress grant is narrow and static (example endpoint) and not a full
   repo-scoped connector model.
@@ -156,7 +164,7 @@ The following work is required before this spec can return to `complete`:
 ## Target State
 
 - DuckLake has one runtime identity: knowledge-child app in
-  `children/ducklake-wasm`.
+  `children/ducklake`.
 - User-selected repository bindings create grant-scoped DuckLake source entries
   and schedule sync through knowledge-child tasks.
 - Issues + pull requests ingest through granted connector/ingress capability
@@ -171,7 +179,7 @@ The following work is required before this spec can return to `complete`:
 
 ### 1. Define one canonical DuckLake runtime identity
 
-- Keep `children/ducklake-wasm` as authoritative DuckLake app identity.
+- Keep `children/ducklake` as authoritative DuckLake app identity.
 - Treat native DuckLake runtime as migration reference only until parity is met.
 - Remove parallel identity after cutover.
 
@@ -235,7 +243,7 @@ The following work is required before this spec can return to `complete`:
 4. Implement host runtime support for new interfaces and vault-auth path.
 5. Update `patina-toy-sdk` / `patina-child-sdk` to expose typed APIs.
 6. Build repo-binding command/API surface and grant provisioning flow.
-7. Upgrade `children/ducklake-wasm` source model for repo-scoped issues/prs ingestion.
+7. Upgrade DuckLake knowledge-child source model for repo-scoped issues/prs ingestion.
 8. Add cursor/checkpoint migration/compat path from native state.
 9. Cut broker `Destination::Lake` to knowledge-child route.
 10. Run parity + failure-path + migration suite.
@@ -272,7 +280,7 @@ The following work is required before this spec can return to `complete`:
 - Tail gate verification to close this spec:
   - `patina spec check ducklake-knowledge-child-cutover --json` reports 11/11 checked
   - parity/migration test suite command(s) added and green in CI
-  - `children/ducklake` no longer present as active runtime path
+  - no legacy native DuckLake runtime path remains present as active runtime path
 
 ## Exit Criteria
 

@@ -7,8 +7,10 @@ End the current Patina session with Git work classification:
 
 2. Archive the session with the bundled wrapper:
    `.opencode/bin/session-end.sh`
+   This wrapper commits session artifacts by default.
    If multiple active sessions exist, use `.opencode/bin/session-end.sh --session <id>`.
    To include a final outcome sentence: `.opencode/bin/session-end.sh --note "what we accomplished"`.
+   If you need archive-only (no commit), run `patina ai session end --json` directly.
 
 3. Read the returned JSON and confirm the archive artifact and end tag.
    - Work classification: Exploration / Experiment / Feature based on commit patterns
