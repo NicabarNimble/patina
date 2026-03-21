@@ -34,9 +34,11 @@ done
 
 for world_file in "$WORLDS_DIR"/*.wit; do
     base=$(basename "$world_file")
-    if [[ "$base" == "ducklake.wit" || "$base" == "belief-verifier.wit" ]]; then
-        continue
-    fi
+    case "$base" in
+        ducklake.wit|belief-verifier.wit|session-writer.wit)
+            continue
+            ;;
+    esac
 
     if [[ ! -f "$TOYS_DIR/$base" ]]; then
         echo "error: unexpected non-world WIT file in $WORLDS_DIR: $base"
