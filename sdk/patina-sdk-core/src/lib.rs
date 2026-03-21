@@ -2,6 +2,8 @@
 
 use std::cell::UnsafeCell;
 
+use serde::{Deserialize, Serialize};
+
 pub struct WasmCell<T>(pub UnsafeCell<T>);
 
 #[cfg(not(target_feature = "atomics"))]
@@ -23,7 +25,8 @@ pub struct ChildHealth {
     pub reason: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum TaskIntentKind {
     FetchSource,
     RunQuery,
@@ -35,14 +38,30 @@ pub enum TaskIntentKind {
     NativeJob,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl TaskIntentKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FetchSource => "fetch-source",
+            Self::RunQuery => "run-query",
+            Self::EmitFacts => "emit-facts",
+            Self::MaterializeIndex => "materialize-index",
+            Self::VerifyBelief => "verify-belief",
+            Self::SyncGraph => "sync-graph",
+            Self::RefreshCredential => "refresh-credential",
+            Self::NativeJob => "native-job",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskIntent {
     pub kind: TaskIntentKind,
     pub payload_json: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub dedupe_key: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PendingEvent {
     pub stream_name: String,
     pub offset: u64,

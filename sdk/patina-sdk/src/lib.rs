@@ -51,8 +51,11 @@ compile_error!(
 
 mod wasm_cell;
 
+#[cfg(feature = "knowledge-child")]
 pub use patina_sdk_agent as agent;
+#[cfg(feature = "knowledge-child")]
 pub use patina_sdk_core as core;
+#[cfg(feature = "knowledge-child")]
 pub use patina_sdk_data as data;
 
 // =========================================================================
