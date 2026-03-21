@@ -610,6 +610,181 @@ mod bindings {
         }
     }
 
+    impl patina::host::github::Host for HostState {
+        fn list_issues(
+            &mut self,
+            owner: String,
+            repo: String,
+            params: patina::host::github::ListParams,
+        ) -> Result<patina::host::github::Page, String> {
+            crate::toys::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
+            let page = crate::toys::github::list_issues(
+                &self.http_client,
+                &self.grants,
+                &self.plugin_name,
+                &owner,
+                &repo,
+                &crate::toys::github::ListParams {
+                    since: params.since,
+                    state: params.state,
+                    page: params.page,
+                    per_page: params.per_page,
+                },
+            )?;
+            Ok(patina::host::github::Page {
+                items: page.items,
+                has_next: page.has_next,
+                next_page: page.next_page,
+                rate_remaining: page.rate_remaining,
+            })
+        }
+
+        fn list_pulls(
+            &mut self,
+            owner: String,
+            repo: String,
+            params: patina::host::github::ListParams,
+        ) -> Result<patina::host::github::Page, String> {
+            crate::toys::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
+            let page = crate::toys::github::list_pulls(
+                &self.http_client,
+                &self.grants,
+                &self.plugin_name,
+                &owner,
+                &repo,
+                &crate::toys::github::ListParams {
+                    since: params.since,
+                    state: params.state,
+                    page: params.page,
+                    per_page: params.per_page,
+                },
+            )?;
+            Ok(patina::host::github::Page {
+                items: page.items,
+                has_next: page.has_next,
+                next_page: page.next_page,
+                rate_remaining: page.rate_remaining,
+            })
+        }
+
+        fn list_issue_comments(
+            &mut self,
+            owner: String,
+            repo: String,
+            issue_number: u32,
+        ) -> Result<patina::host::github::Page, String> {
+            crate::toys::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
+            let page = crate::toys::github::list_issue_comments(
+                &self.http_client,
+                &self.grants,
+                &self.plugin_name,
+                &owner,
+                &repo,
+                issue_number,
+            )?;
+            Ok(patina::host::github::Page {
+                items: page.items,
+                has_next: page.has_next,
+                next_page: page.next_page,
+                rate_remaining: page.rate_remaining,
+            })
+        }
+
+        fn list_issue_events(
+            &mut self,
+            owner: String,
+            repo: String,
+            issue_number: u32,
+        ) -> Result<patina::host::github::Page, String> {
+            crate::toys::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
+            let page = crate::toys::github::list_issue_events(
+                &self.http_client,
+                &self.grants,
+                &self.plugin_name,
+                &owner,
+                &repo,
+                issue_number,
+            )?;
+            Ok(patina::host::github::Page {
+                items: page.items,
+                has_next: page.has_next,
+                next_page: page.next_page,
+                rate_remaining: page.rate_remaining,
+            })
+        }
+
+        fn list_pull_comments(
+            &mut self,
+            owner: String,
+            repo: String,
+            pull_number: u32,
+        ) -> Result<patina::host::github::Page, String> {
+            crate::toys::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
+            let page = crate::toys::github::list_pull_comments(
+                &self.http_client,
+                &self.grants,
+                &self.plugin_name,
+                &owner,
+                &repo,
+                pull_number,
+            )?;
+            Ok(patina::host::github::Page {
+                items: page.items,
+                has_next: page.has_next,
+                next_page: page.next_page,
+                rate_remaining: page.rate_remaining,
+            })
+        }
+
+        fn list_reviews(
+            &mut self,
+            owner: String,
+            repo: String,
+            pull_number: u32,
+        ) -> Result<patina::host::github::Page, String> {
+            crate::toys::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
+            let page = crate::toys::github::list_reviews(
+                &self.http_client,
+                &self.grants,
+                &self.plugin_name,
+                &owner,
+                &repo,
+                pull_number,
+            )?;
+            Ok(patina::host::github::Page {
+                items: page.items,
+                has_next: page.has_next,
+                next_page: page.next_page,
+                rate_remaining: page.rate_remaining,
+            })
+        }
+
+        fn list_review_comments(
+            &mut self,
+            owner: String,
+            repo: String,
+            pull_number: u32,
+            review_id: u64,
+        ) -> Result<patina::host::github::Page, String> {
+            crate::toys::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
+            let page = crate::toys::github::list_review_comments(
+                &self.http_client,
+                &self.grants,
+                &self.plugin_name,
+                &owner,
+                &repo,
+                pull_number,
+                review_id,
+            )?;
+            Ok(patina::host::github::Page {
+                items: page.items,
+                has_next: page.has_next,
+                next_page: page.next_page,
+                rate_remaining: page.rate_remaining,
+            })
+        }
+    }
+
     impl patina::host::events::Host for HostState {
         fn pull(
             &mut self,
@@ -817,6 +992,14 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
+    fn link_github(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::github::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
     fn link_emit(linker: &mut Linker<HostState>) -> Result<()> {
         bindings::patina::host::emit::add_to_linker::<
             HostState,
@@ -912,6 +1095,7 @@ impl KnowledgeChildEngine {
         let wants_lake = !manifest.lake_names.is_empty();
         let wants_ingress = !manifest.ingress_sources.is_empty();
         let wants_connector = manifest.toys.connector;
+        let wants_github = manifest.toys.github;
         let wants_events = !manifest.subscribed_streams.is_empty();
         let wants_task = !manifest.task_intent_names.is_empty();
         let wants_graph =
@@ -937,6 +1121,9 @@ impl KnowledgeChildEngine {
         }
         if wants_connector {
             Self::link_connector(&mut linker)?;
+        }
+        if wants_github {
+            Self::link_github(&mut linker)?;
         }
         if wants_emit {
             Self::link_emit(&mut linker)?;

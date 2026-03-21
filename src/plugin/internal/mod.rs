@@ -370,6 +370,7 @@ impl PluginManifest {
                 ("query", "host_query"),
                 ("http", "host_http"),
                 ("emit", "host_emit"),
+                ("github", "host_http"),
             ] {
                 if needs_toys.iter().any(|entry| entry == toy)
                     && !capabilities.iter().any(|cap| cap == capability)
@@ -413,6 +414,15 @@ impl PluginManifest {
                     .collect()
             })
             .unwrap_or_default();
+        let mut host_http_domains: Vec<String> = host_http_domains;
+        if has_needs
+            && needs_toys.iter().any(|entry| entry == "github")
+            && !host_http_domains
+                .iter()
+                .any(|domain| domain == "api.github.com")
+        {
+            host_http_domains.push("api.github.com".to_string());
+        }
 
         // Parse [capabilities.host_secrets] — credential mappings per domain
         let host_secrets = cap_table
@@ -733,6 +743,14 @@ impl PluginManifest {
                     .and_then(|t| t.get("connector"))
                     .and_then(|v| v.as_table())
                     .and_then(|t| t.get("enabled"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            },
+            github: if has_needs {
+                needs_toys.iter().any(|toy| toy == "github")
+            } else {
+                toys_table
+                    .and_then(|t| t.get("github"))
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false)
             },

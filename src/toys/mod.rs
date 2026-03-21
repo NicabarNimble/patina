@@ -4,6 +4,7 @@
 
 pub mod catalog;
 pub mod connector;
+pub mod github;
 pub mod http;
 pub mod ingress;
 pub mod lake;

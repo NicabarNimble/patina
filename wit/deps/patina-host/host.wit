@@ -256,6 +256,78 @@ interface connector {
     ) -> result<sync-result, string>;
 }
 
+/// GitHub REST v3 listing surface for knowledge children.
+interface github {
+    record list-params {
+        since: option<string>,
+        state: option<string>,
+        page: option<u32>,
+        per-page: option<u32>,
+    }
+
+    record issue {
+        number: u32,
+        title: string,
+        state: string,
+        body: option<string>,
+        created-at: string,
+        updated-at: string,
+        raw-json: string,
+    }
+
+    record pull-request {
+        number: u32,
+        title: string,
+        state: string,
+        head: string,
+        base: string,
+        created-at: string,
+        updated-at: string,
+        raw-json: string,
+    }
+
+    record comment {
+        id: u64,
+        body: string,
+        user: string,
+        created-at: string,
+        updated-at: string,
+        raw-json: string,
+    }
+
+    record review {
+        id: u64,
+        state: string,
+        body: option<string>,
+        user: string,
+        submitted-at: option<string>,
+        raw-json: string,
+    }
+
+    record event {
+        id: u64,
+        event-type: string,
+        actor: string,
+        created-at: string,
+        raw-json: string,
+    }
+
+    record page {
+        items: string,
+        has-next: bool,
+        next-page: option<u32>,
+        rate-remaining: u32,
+    }
+
+    list-issues: func(owner: string, repo: string, params: list-params) -> result<page, string>;
+    list-pulls: func(owner: string, repo: string, params: list-params) -> result<page, string>;
+    list-issue-comments: func(owner: string, repo: string, issue-number: u32) -> result<page, string>;
+    list-issue-events: func(owner: string, repo: string, issue-number: u32) -> result<page, string>;
+    list-pull-comments: func(owner: string, repo: string, pull-number: u32) -> result<page, string>;
+    list-reviews: func(owner: string, repo: string, pull-number: u32) -> result<page, string>;
+    list-review-comments: func(owner: string, repo: string, pull-number: u32, review-id: u64) -> result<page, string>;
+}
+
 /// Mother-managed event streams.
 interface events {
     record pending-event {
