@@ -39,6 +39,24 @@ pub fn write_artifact(section: &str, content: &str) -> Result<(), String> {
 }
 
 pub fn create_tag(name: &str) -> Result<(), String> {
+    if let Ok(repo_dir) = std::env::var("PATINA_SESSION_TOY_GIT_DIR") {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo_dir)
+            .arg("tag")
+            .arg("-a")
+            .arg(name)
+            .arg("-m")
+            .arg(format!("Session toy tag: {}", name))
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(format!("git tag failed: {}", stderr));
+        }
+        return Ok(());
+    }
+
     crate::git::create_tag(name, &format!("Session toy tag: {}", name)).map_err(|e| e.to_string())
 }
 
@@ -58,4 +76,92 @@ fn active_artifact_path() -> Result<PathBuf, String> {
     std::env::var("PATINA_SESSION_ARTIFACT")
         .map(PathBuf::from)
         .map_err(|_| "PATINA_SESSION_ARTIFACT is not set".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn writes_artifact_sections() {
+        let temp = tempfile::tempdir().unwrap();
+        let artifact = temp.path().join("session.md");
+        unsafe {
+            std::env::set_var("PATINA_SESSION_ARTIFACT", &artifact);
+        }
+
+        write_artifact("note", "captured insight").unwrap();
+        write_handoff("a.rs\nb.rs", "handoff summary").unwrap();
+
+        let body = std::fs::read_to_string(&artifact).unwrap();
+        assert!(body.contains("## note"));
+        assert!(body.contains("captured insight"));
+        assert!(body.contains("## Handoff"));
+
+        unsafe {
+            std::env::remove_var("PATINA_SESSION_ARTIFACT");
+        }
+    }
+
+    #[test]
+    fn creates_real_git_tag_in_temp_repo() {
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path();
+
+        assert!(std::process::Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .arg("init")
+            .status()
+            .unwrap()
+            .success());
+        assert!(std::process::Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(["config", "user.email", "session-toy@test.local"])
+            .status()
+            .unwrap()
+            .success());
+        assert!(std::process::Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(["config", "user.name", "Session Toy"])
+            .status()
+            .unwrap()
+            .success());
+
+        let file = repo.join("README.md");
+        std::fs::write(&file, "hello\n").unwrap();
+        assert!(std::process::Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(["add", "README.md"])
+            .status()
+            .unwrap()
+            .success());
+        assert!(std::process::Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(["commit", "-m", "init"])
+            .status()
+            .unwrap()
+            .success());
+
+        unsafe {
+            std::env::set_var("PATINA_SESSION_TOY_GIT_DIR", repo);
+        }
+        create_tag("session-toy-test-tag").unwrap();
+        unsafe {
+            std::env::remove_var("PATINA_SESSION_TOY_GIT_DIR");
+        }
+
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .arg("tag")
+            .output()
+            .unwrap();
+        let tags = String::from_utf8_lossy(&output.stdout);
+        assert!(tags.contains("session-toy-test-tag"));
+    }
 }
