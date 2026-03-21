@@ -35,6 +35,22 @@ pub struct ConnectorSyncResult {
     pub rows_json: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GithubListParams {
+    pub since: Option<String>,
+    pub state: Option<String>,
+    pub page: Option<u32>,
+    pub per_page: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GithubPage {
+    pub items: String,
+    pub has_next: bool,
+    pub next_page: Option<u32>,
+    pub rate_remaining: u32,
+}
+
 pub trait MeasureBackend {
     fn record(verb: &str, tool: &str, mode: &str, metrics_json: &str) -> Result<(), String>;
 }
@@ -76,6 +92,30 @@ pub trait ConnectorBackend {
         data_type: &str,
         since: Option<&str>,
     ) -> Result<ConnectorSyncResult, String>;
+}
+
+pub trait GithubBackend {
+    fn list_issues(
+        owner: &str,
+        repo: &str,
+        params: &GithubListParams,
+    ) -> Result<GithubPage, String>;
+    fn list_pulls(owner: &str, repo: &str, params: &GithubListParams)
+        -> Result<GithubPage, String>;
+    fn list_issue_comments(
+        owner: &str,
+        repo: &str,
+        issue_number: u32,
+    ) -> Result<GithubPage, String>;
+    fn list_issue_events(owner: &str, repo: &str, issue_number: u32) -> Result<GithubPage, String>;
+    fn list_pull_comments(owner: &str, repo: &str, pull_number: u32) -> Result<GithubPage, String>;
+    fn list_reviews(owner: &str, repo: &str, pull_number: u32) -> Result<GithubPage, String>;
+    fn list_review_comments(
+        owner: &str,
+        repo: &str,
+        pull_number: u32,
+        review_id: u64,
+    ) -> Result<GithubPage, String>;
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -256,5 +296,80 @@ impl<B: ConnectorBackend> ConnectorCatalog<B> {
 
     pub fn remove(&self, binding_id: &str) -> Result<(), String> {
         B::remove_binding(binding_id)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct GithubToy<B>(std::marker::PhantomData<B>);
+
+impl<B> GithubToy<B> {
+    pub fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<B: GithubBackend> GithubToy<B> {
+    pub fn list_issues(
+        &self,
+        owner: &str,
+        repo: &str,
+        params: &GithubListParams,
+    ) -> Result<GithubPage, String> {
+        B::list_issues(owner, repo, params)
+    }
+
+    pub fn list_pulls(
+        &self,
+        owner: &str,
+        repo: &str,
+        params: &GithubListParams,
+    ) -> Result<GithubPage, String> {
+        B::list_pulls(owner, repo, params)
+    }
+
+    pub fn list_issue_comments(
+        &self,
+        owner: &str,
+        repo: &str,
+        issue_number: u32,
+    ) -> Result<GithubPage, String> {
+        B::list_issue_comments(owner, repo, issue_number)
+    }
+
+    pub fn list_issue_events(
+        &self,
+        owner: &str,
+        repo: &str,
+        issue_number: u32,
+    ) -> Result<GithubPage, String> {
+        B::list_issue_events(owner, repo, issue_number)
+    }
+
+    pub fn list_pull_comments(
+        &self,
+        owner: &str,
+        repo: &str,
+        pull_number: u32,
+    ) -> Result<GithubPage, String> {
+        B::list_pull_comments(owner, repo, pull_number)
+    }
+
+    pub fn list_reviews(
+        &self,
+        owner: &str,
+        repo: &str,
+        pull_number: u32,
+    ) -> Result<GithubPage, String> {
+        B::list_reviews(owner, repo, pull_number)
+    }
+
+    pub fn list_review_comments(
+        &self,
+        owner: &str,
+        repo: &str,
+        pull_number: u32,
+        review_id: u64,
+    ) -> Result<GithubPage, String> {
+        B::list_review_comments(owner, repo, pull_number, review_id)
     }
 }

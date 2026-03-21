@@ -47,12 +47,16 @@ pub mod granted {
     pub type Connectors = toys::ConnectorCatalog<GuestHost>;
     #[cfg(feature = "toy-connector")]
     pub type Connector = toys::ConnectorBinding<GuestHost>;
+    #[cfg(feature = "toy-github")]
+    pub type Github = toys::GithubToy<GuestHost>;
     #[cfg(feature = "toy-events")]
     pub type Events = toys::EventToy<GuestHost>;
     #[cfg(feature = "toy-graph")]
     pub type Graph = toys::GraphToy<GuestHost>;
     #[cfg(feature = "toy-belief")]
     pub type Belief = toys::BeliefToy<GuestHost>;
+    #[cfg(feature = "toy-session")]
+    pub type Session = toys::SessionToy<GuestHost>;
 
     pub trait Bundle {
         fn granted() -> Self;
@@ -132,6 +136,11 @@ pub mod granted {
         })
     }
 
+    #[cfg(feature = "toy-github")]
+    pub fn github() -> Github {
+        Github::new()
+    }
+
     #[cfg(feature = "toy-events")]
     pub fn events() -> Events {
         Events::new()
@@ -145,6 +154,11 @@ pub mod granted {
     #[cfg(feature = "toy-belief")]
     pub fn belief() -> Belief {
         Belief::new()
+    }
+
+    #[cfg(feature = "toy-session")]
+    pub fn session() -> Session {
+        Session::new()
     }
 }
 
@@ -188,8 +202,9 @@ pub mod host {
     use super::patina;
     use crate::toys::{
         BeliefBackend, CheckpointBackend, ConnectorBackend, EmitBackend, EventBackend,
-        FetchBackend, GraphBackend, IngressBackend, LakeBackend, LogBackend, MeasureBackend,
-        PendingEvent, QueryBackend, StateBackend, TaskBackend, TaskIntent, TaskIntentKind,
+        FetchBackend, GithubBackend, GraphBackend, IngressBackend, LakeBackend, LogBackend,
+        MeasureBackend, PendingEvent, QueryBackend, SessionBackend, StateBackend, TaskBackend,
+        TaskIntent, TaskIntentKind,
     };
 
     #[derive(Debug, Clone, Copy, Default)]
@@ -232,11 +247,17 @@ pub mod host {
         pub fn events() -> crate::toys::EventToy<Self> {
             crate::toys::EventToy::new()
         }
+        pub fn github() -> crate::toys::GithubToy<Self> {
+            crate::toys::GithubToy::new()
+        }
         pub fn graph() -> crate::toys::GraphToy<Self> {
             crate::toys::GraphToy::new()
         }
         pub fn belief() -> crate::toys::BeliefToy<Self> {
             crate::toys::BeliefToy::new()
+        }
+        pub fn session() -> crate::toys::SessionToy<Self> {
+            crate::toys::SessionToy::new()
         }
     }
 
@@ -418,6 +439,136 @@ pub mod host {
                     rows_json: result.rows_json,
                 }
             })
+        }
+    }
+
+    impl GithubBackend for GuestHost {
+        fn list_issues(
+            owner: &str,
+            repo: &str,
+            params: &crate::toys::GithubListParams,
+        ) -> Result<crate::toys::GithubPage, String> {
+            patina::host::github::list_issues(
+                owner,
+                repo,
+                &patina::host::github::ListParams {
+                    since: params.since.clone(),
+                    state: params.state.clone(),
+                    page: params.page,
+                    per_page: params.per_page,
+                },
+            )
+            .map(|page| crate::toys::GithubPage {
+                items: page.items,
+                has_next: page.has_next,
+                next_page: page.next_page,
+                rate_remaining: page.rate_remaining,
+            })
+        }
+
+        fn list_pulls(
+            owner: &str,
+            repo: &str,
+            params: &crate::toys::GithubListParams,
+        ) -> Result<crate::toys::GithubPage, String> {
+            patina::host::github::list_pulls(
+                owner,
+                repo,
+                &patina::host::github::ListParams {
+                    since: params.since.clone(),
+                    state: params.state.clone(),
+                    page: params.page,
+                    per_page: params.per_page,
+                },
+            )
+            .map(|page| crate::toys::GithubPage {
+                items: page.items,
+                has_next: page.has_next,
+                next_page: page.next_page,
+                rate_remaining: page.rate_remaining,
+            })
+        }
+
+        fn list_issue_comments(
+            owner: &str,
+            repo: &str,
+            issue_number: u32,
+        ) -> Result<crate::toys::GithubPage, String> {
+            patina::host::github::list_issue_comments(owner, repo, issue_number).map(|page| {
+                crate::toys::GithubPage {
+                    items: page.items,
+                    has_next: page.has_next,
+                    next_page: page.next_page,
+                    rate_remaining: page.rate_remaining,
+                }
+            })
+        }
+
+        fn list_issue_events(
+            owner: &str,
+            repo: &str,
+            issue_number: u32,
+        ) -> Result<crate::toys::GithubPage, String> {
+            patina::host::github::list_issue_events(owner, repo, issue_number).map(|page| {
+                crate::toys::GithubPage {
+                    items: page.items,
+                    has_next: page.has_next,
+                    next_page: page.next_page,
+                    rate_remaining: page.rate_remaining,
+                }
+            })
+        }
+
+        fn list_pull_comments(
+            owner: &str,
+            repo: &str,
+            pull_number: u32,
+        ) -> Result<crate::toys::GithubPage, String> {
+            patina::host::github::list_pull_comments(owner, repo, pull_number).map(|page| {
+                crate::toys::GithubPage {
+                    items: page.items,
+                    has_next: page.has_next,
+                    next_page: page.next_page,
+                    rate_remaining: page.rate_remaining,
+                }
+            })
+        }
+
+        fn list_reviews(
+            owner: &str,
+            repo: &str,
+            pull_number: u32,
+        ) -> Result<crate::toys::GithubPage, String> {
+            patina::host::github::list_reviews(owner, repo, pull_number).map(|page| {
+                crate::toys::GithubPage {
+                    items: page.items,
+                    has_next: page.has_next,
+                    next_page: page.next_page,
+                    rate_remaining: page.rate_remaining,
+                }
+            })
+        }
+
+        fn list_review_comments(
+            owner: &str,
+            repo: &str,
+            pull_number: u32,
+            review_id: u64,
+        ) -> Result<crate::toys::GithubPage, String> {
+            patina::host::github::list_review_comments(owner, repo, pull_number, review_id).map(
+                |page| crate::toys::GithubPage {
+                    items: page.items,
+                    has_next: page.has_next,
+                    next_page: page.next_page,
+                    rate_remaining: page.rate_remaining,
+                },
+            )
+        }
+    }
+
+    impl SessionBackend for GuestHost {
+        fn write(section: &str, content: &str) -> Result<(), String> {
+            patina::host::session::write_artifact(section, content)
         }
     }
 

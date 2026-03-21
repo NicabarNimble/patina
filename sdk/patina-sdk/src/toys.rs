@@ -1,13 +1,15 @@
 use serde::{Deserialize, Serialize};
 
 pub use patina_sdk_agent::{EmitBackend, EmitToy, QueryBackend, QueryToy};
+pub use patina_sdk_agent::{SessionBackend, SessionToy};
 pub use patina_sdk_core::{
     LogBackend, LogToy, PendingEvent, StateBackend, StateToy, TaskIntent, TaskIntentKind,
 };
 pub use patina_sdk_data::{
     CheckpointBackend, CheckpointToy, ConnectorBackend, ConnectorBinding, ConnectorCatalog,
-    ConnectorSyncResult, GrantedConnectorBinding, GrantedLake, LakeBackend, LakeCatalog,
-    LakeCursorRecord, LakeToy, MeasureBackend, MeasureToy,
+    ConnectorSyncResult, GithubBackend, GithubListParams, GithubPage, GithubToy,
+    GrantedConnectorBinding, GrantedLake, LakeBackend, LakeCatalog, LakeCursorRecord, LakeToy,
+    MeasureBackend, MeasureToy,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
