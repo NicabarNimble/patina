@@ -1,7 +1,7 @@
 ---
 type: feat
 id: spec-prompt-handoff
-status: draft
+status: abandoned
 created: 2026-03-12
 related:
 - src/commands/spec/mod.rs

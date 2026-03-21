@@ -4,7 +4,7 @@ id: mcp-is-discovery-cli-is-execution
 persona: architect
 facets: [architecture, mcp, cli, adapter-pattern]
 entrenchment: medium
-status: active
+status: defeated
 endorsed: true
 extracted: 2026-03-01
 revised: 2026-03-01
@@ -45,6 +45,13 @@ MCP's value is tool discovery (schema, parameters, descriptions) not parallel ex
 - `src/mcp/server/scry.rs` — counter-example: `handle_orient()`, `handle_recent()`, `handle_detail()`, `format_results()`, `log_mcp_query()` are parallel implementations that should be `_json()` functions in CLI internals
 - `src/mcp/server/assay.rs` — counter-example: Inventory, Imports, Importers, Functions, Callers, Callees, Derive query types have SQL duplicated from CLI; only Search, Cochange, Belief delegate to `_json()` functions
 
+## Defeat Rationale
+
+Defeated by [[agents-are-guests-mother-is-infrastructure]] (2026-03-21). The MCP-vs-CLI distinction this belief names doesn't exist in the new architectural model. Mother is the daemon that owns all query responsibility (scry, assay, measure, context). Both CLI and MCP are guest agents connecting to Mother — neither has a privileged "discovery" or "execution" role. The bifurcation problem this belief identified was real, but the solution is "Mother owns queries, all callers delegate" not "MCP discovers, CLI executes."
+
+The underlying principle — don't duplicate business logic across delivery channels — survives in [[agents-are-guests-mother-is-infrastructure]] and [[children-have-agency-toys-are-capabilities]]. Capabilities live in children with toys. All agents access the same children.
+
 ## Revision Log
 
 - 2026-03-01: Created — metrics computed by `patina scrape`
+- 2026-03-21: Defeated — superseded by [[agents-are-guests-mother-is-infrastructure]]; the MCP/CLI distinction dissolves when both are guest agents connecting to Mother
