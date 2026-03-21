@@ -380,3 +380,13 @@ interface belief {
     query: func(kind: string, params-json: string) -> result<string, string>;
     mutate: func(action: string, payload-json: string) -> result<_, string>;
 }
+
+/// Session artifact and lifecycle operations.
+interface session {
+    get-session-id: func() -> string;
+    get-previous-session: func() -> option<string>;
+    write-artifact: func(section: string, content: string) -> result<_, string>;
+    create-tag: func(name: string) -> result<_, string>;
+    set-status: func(status: string) -> result<_, string>;
+    write-handoff: func(modified-files: string, summary: string) -> result<_, string>;
+}
