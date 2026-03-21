@@ -1,0 +1,12 @@
+[package]
+name = "patina-sdk-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Core primitives for Patina knowledge children"
+repository = "https://github.com/NicabarNimble/patina"
+keywords = ["patina", "wasm", "knowledge-child"]
+categories = ["development-tools", "wasm"]
+
+[dependencies]
+wit-bindgen = "0.41"

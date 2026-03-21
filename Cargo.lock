@@ -3154,6 +3154,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "patina-sdk-agent"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk-core",
+]
+
+[[package]]
+name = "patina-sdk-core"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
+name = "patina-sdk-data"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "pbkdf2"
 version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
