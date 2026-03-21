@@ -17,7 +17,8 @@ pub use internal::bundle::{
     InterfaceBundle,
 };
 pub use internal::checkin::{
-    check_in, CheckInResult, InterfaceCapabilities, InterfaceCheckIn, LaunchPolicy,
+    check_in, session_writer_action, CheckInResult, InterfaceCapabilities, InterfaceCheckIn,
+    LaunchPolicy,
 };
 pub use internal::surface::{
     ensure_ai_project_config, ensure_ai_surface, prepare_ai_bundle, resolve_preferred_ai_interface,

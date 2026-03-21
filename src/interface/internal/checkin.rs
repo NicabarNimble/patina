@@ -110,10 +110,6 @@ pub fn check_in(request: &InterfaceCheckIn) -> Result<CheckInResult> {
 }
 
 fn spawn_session_writer(handle: &session::LiveSessionHandle) -> Result<()> {
-    let Some(child) = load_session_writer_knowledge_child()? else {
-        return Ok(());
-    };
-
     let payload = json!({
         "session_runtime_id": handle.runtime_id,
         "session_file_id": handle.file_id,
@@ -121,8 +117,20 @@ fn spawn_session_writer(handle: &session::LiveSessionHandle) -> Result<()> {
         "branch": handle.branch,
         "start_tag": handle.start_tag,
     });
+    let _ = session_writer_action(handle, "init-session", payload)?;
+    Ok(())
+}
+
+pub fn session_writer_action(
+    handle: &session::LiveSessionHandle,
+    action: &str,
+    payload: serde_json::Value,
+) -> Result<Option<serde_json::Value>> {
+    let Some(child) = load_session_writer_knowledge_child()? else {
+        return Ok(None);
+    };
     let response = child.handle(&crate::mother::ChildRequest {
-        action: "init-session".to_string(),
+        action: action.to_string(),
         payload,
     })?;
 
@@ -133,6 +141,7 @@ fn spawn_session_writer(handle: &session::LiveSessionHandle) -> Result<()> {
         &key,
         &json!({
             "child": child.name(),
+            "action": action,
             "response": response.payload,
             "artifact_path": handle.artifact_path,
         })
@@ -146,12 +155,13 @@ fn spawn_session_writer(handle: &session::LiveSessionHandle) -> Result<()> {
         &json!({
             "runtime_id": handle.runtime_id,
             "file_id": handle.file_id,
+            "action": action,
             "artifact_path": handle.artifact_path,
         })
         .to_string(),
     )?;
 
-    Ok(())
+    Ok(Some(response.payload))
 }
 
 fn load_session_writer_knowledge_child() -> Result<Option<Box<dyn crate::mother::KnowledgeChild>>> {

@@ -5,7 +5,7 @@ use std::io::IsTerminal;
 use std::path::Path;
 use std::process::Command;
 
-use patina::interface::{self, check_in, InterfaceCheckIn, LaunchPolicy};
+use patina::interface::{self, check_in, session_writer_action, InterfaceCheckIn, LaunchPolicy};
 use patina::project;
 use patina::session::{self, ArchiveSessionRequest, InterfaceKind};
 use patina::workspace;
@@ -503,9 +503,24 @@ fn archive_tmux_reconciled_session(
         )
     });
     let archived_markdown = append_tmux_handoff(&markdown, session_name, reason_text);
+    if reason_slug == "tmux-lost" {
+        let crash_payload = json!({
+            "reason": reason_text,
+            "lane": session_name,
+            "modified_files": patina::git::status_porcelain().unwrap_or_default(),
+            "summary": patina::git::diff_stat_summary().unwrap_or_default(),
+        });
+        let _ = session_writer_action(handle, "crash-handoff", crash_payload);
+    }
+
+    let resolved_reason = if reason_slug == "tmux-lost" {
+        "crashed"
+    } else {
+        reason_slug
+    };
     let end_tag = format!(
         "session-{}-{}-{}",
-        handle.file_id, handle.adapter_name, reason_slug
+        handle.file_id, handle.adapter_name, resolved_reason
     );
     session::archive_session(
         project_root,
