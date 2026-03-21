@@ -1,0 +1,19 @@
+package patina:host@0.1.0;
+
+interface events {
+    record pending-event {
+        stream-name: string,
+        offset: u64,
+        event-type: string,
+        payload-json: string,
+        occurred-at: string,
+    }
+
+    pull: func(
+        stream-name: string,
+        after-offset: option<u64>,
+        limit: u32,
+    ) -> result<list<pending-event>, string>;
+    ack-through: func(stream-name: string, offset: u64) -> result<_, string>;
+    list-streams: func() -> list<string>;
+}

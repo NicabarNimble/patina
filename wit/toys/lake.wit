@@ -1,0 +1,29 @@
+package patina:host@0.1.0;
+
+interface lake {
+    record granted-lake {
+        name: string,
+        path: string,
+    }
+
+    list-granted-lakes: func() -> result<list<granted-lake>, string>;
+    ensure-lake: func(name: string) -> result<string, string>;
+    load-cursor: func(lake: string, source: string, data-type: string) -> option<string>;
+    save-cursor: func(
+        lake: string,
+        source: string,
+        data-type: string,
+        cursor: option<string>,
+        written: u64,
+        status: string,
+        last-error: option<string>,
+    ) -> result<_, string>;
+    ensure-table: func(lake: string, table: string) -> result<_, string>;
+    append-json-batch: func(
+        lake: string,
+        table: string,
+        source: string,
+        rows-json: list<string>,
+    ) -> result<u64, string>;
+    query-json: func(lake: string, sql: string) -> result<string, string>;
+}

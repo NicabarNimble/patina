@@ -1,0 +1,11 @@
+package patina:host@0.1.0;
+
+interface http {
+    record http-response {
+        status: u16,
+        body: string,
+    }
+
+    http-post: func(url: string, body: string, content-type: string) -> result<http-response, string>;
+    http-get: func(url: string) -> result<http-response, string>;
+}

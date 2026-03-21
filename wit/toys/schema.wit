@@ -1,0 +1,7 @@
+package patina:host@0.1.0;
+
+interface schema {
+    list-schemas: func() -> list<string>;
+    get-schema: func(name: string) -> result<string, string>;
+    get-field-types: func(schema-name: string, fact-name: string) -> result<string, string>;
+}
