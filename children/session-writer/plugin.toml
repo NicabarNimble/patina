@@ -1,0 +1,13 @@
+[plugin]
+name = "patina-session-writer"
+version = "0.1.0"
+description = "Session lifecycle writer child"
+world = "knowledge-child"
+role = "app"
+patina_min = "0.41.0"
+
+[needs]
+toys = ["log", "state", "session"]
+
+[provides]
+child = "session-writer"

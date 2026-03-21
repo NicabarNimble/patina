@@ -3095,6 +3095,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "patina-ai-child-session-writer"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk",
+ "serde_json",
+]
+
+[[package]]
 name = "patina-ai-extension-doctor"
 version = "0.1.0"
 dependencies = [
