@@ -4,10 +4,10 @@ id: persona-is-a-patina-instance
 persona: architect
 facets: [architecture, identity, mother, federation, persona]
 entrenchment: medium
-status: active
+status: scoped
 endorsed: true
 extracted: 2026-03-02
-revised: 2026-03-02
+revised: 2026-03-21
 ---
 
 # persona-is-a-patina-instance
@@ -44,6 +44,11 @@ A persona is a full Patina instance — its own beliefs, plugins, projects, and 
 
 - Current state: all beliefs use `persona: architect` — the field is ready for reinterpretation as instance provenance without migration
 
+## Scope Rationale
+
+Scoped by [[session-20260320-212325-011658000]] (2026-03-21). The sovereignty principle survives — personas have their own beliefs, children, and projects, and they don't pollute each other. But "separate Patina instance" is wrong. A persona is a **cryptographic namespace within Mother**, not a separate Mother. Mother = machine node. Multiple personas live on one Mother, crypto-separated by keypair. A persona can span multiple Mothers (same key on multiple machines, synced via P2P). Projects link to personas via `.patina/persona` — they live on disk independently and declare which persona they belong to. The refined model: Mother is hardware, persona is identity, project is workspace.
+
 ## Revision Log
 
 - 2026-03-02: Created — metrics computed by `patina scrape`
+- 2026-03-21: Scoped — "separate instance" → "crypto namespace within Mother". Sovereignty survives, but persona is not a separate Mother. Mother = machine node, persona = keypair-scoped namespace.

@@ -7,16 +7,16 @@ entrenchment: medium
 status: active
 endorsed: true
 extracted: 2026-03-05
-revised: 2026-03-05
+revised: 2026-03-21
 ---
 
 # persona-keypair-is-node-identity
 
-The persona UID and keypair serve three roles — signing key for fact provenance, node identity for Iroh peer discovery, and UCAN issuer for capability token delegation — making persona-federation and pipe-architecture share the same identity primitive
+The persona keypair is persona identity — signing beliefs, issuing UCAN capability tokens, and proving authorship. It is NOT node/machine identity. Mother (the machine node) has its own identity for P2P peer discovery. Two levels: Mother-keypair identifies the machine, persona-keypair identifies the knowledge context. A persona keypair can exist on multiple Mothers (same persona, multiple machines). A Mother hosts multiple persona keypairs (multiple contexts, one machine).
 
 ## Statement
 
-The persona UID and keypair serve three roles — signing key for fact provenance, node identity for Iroh peer discovery, and UCAN issuer for capability token delegation — making persona-federation and pipe-architecture share the same identity primitive
+The persona keypair is persona identity — signing beliefs, issuing UCAN capability tokens, and proving authorship. It is NOT node/machine identity. Mother (the machine node) has its own identity for P2P peer discovery. Two levels: Mother-keypair identifies the machine, persona-keypair identifies the knowledge context. A persona keypair can exist on multiple Mothers (same persona, multiple machines). A Mother hosts multiple persona keypairs (multiple contexts, one machine).
 
 ## Evidence
 
@@ -44,3 +44,4 @@ The persona UID and keypair serve three roles — signing key for fact provenanc
 ## Revision Log
 
 - 2026-03-05: Created — metrics computed by `patina scrape`
+- 2026-03-21: Revised — separated persona identity from node identity. Persona keypair signs beliefs and issues UCANs. Mother keypair identifies the machine for P2P. Two levels, not one conflated key. Prompted by [[session-20260320-212325-011658000]] discussion of Mother = machine node, persona = crypto namespace.
