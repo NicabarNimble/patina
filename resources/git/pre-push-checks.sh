@@ -46,6 +46,16 @@ fi
 echo "   ✓ WIT files consistent across all crates"
 echo ""
 
+# Step 1c: WIT toy/world sync — canonical toy interfaces must mirror into worlds/
+echo "   Checking WIT toy/world sync..."
+if ! bash resources/scripts/check-wit-toys-sync.sh; then
+    echo ""
+    echo "❌ WIT toy/world sync check failed!"
+    exit 1
+fi
+echo "   ✓ WIT toy/world sync OK"
+echo ""
+
 # Step 2: WIT host.wit symlink enforcement
 # Per [[wit-deps-must-be-hard-links-verified]]: all world-level
 # deps/patina-host/host.wit must point back to the canonical file.
