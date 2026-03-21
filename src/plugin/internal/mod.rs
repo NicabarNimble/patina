@@ -754,6 +754,14 @@ impl PluginManifest {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false)
             },
+            session: if has_needs {
+                needs_toys.iter().any(|toy| toy == "session")
+            } else {
+                toys_table
+                    .and_then(|t| t.get("session"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            },
             query: if has_needs {
                 needs_toys.iter().any(|toy| toy == "query")
             } else {

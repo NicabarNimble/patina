@@ -13,6 +13,7 @@ pub struct GrantedToys {
     pub ingress_sources: HashMap<String, GrantedIngressSource>,
     pub connector: bool,
     pub github: bool,
+    pub session: bool,
     pub query: bool,
     pub measure: bool,
     pub graph: bool,

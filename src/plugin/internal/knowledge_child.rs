@@ -785,6 +785,36 @@ mod bindings {
         }
     }
 
+    impl patina::host::session::Host for HostState {
+        fn get_session_id(&mut self) -> String {
+            crate::toys::session::get_session_id()
+        }
+
+        fn get_previous_session(&mut self) -> Option<String> {
+            crate::toys::session::get_previous_session()
+        }
+
+        fn write_artifact(&mut self, section: String, content: String) -> Result<(), String> {
+            crate::toys::session::ensure_granted(self.grants.toys.session, &self.plugin_name)?;
+            crate::toys::session::write_artifact(&section, &content)
+        }
+
+        fn create_tag(&mut self, name: String) -> Result<(), String> {
+            crate::toys::session::ensure_granted(self.grants.toys.session, &self.plugin_name)?;
+            crate::toys::session::create_tag(&name)
+        }
+
+        fn set_status(&mut self, status: String) -> Result<(), String> {
+            crate::toys::session::ensure_granted(self.grants.toys.session, &self.plugin_name)?;
+            crate::toys::session::set_status(&status)
+        }
+
+        fn write_handoff(&mut self, modified_files: String, summary: String) -> Result<(), String> {
+            crate::toys::session::ensure_granted(self.grants.toys.session, &self.plugin_name)?;
+            crate::toys::session::write_handoff(&modified_files, &summary)
+        }
+    }
+
     impl patina::host::events::Host for HostState {
         fn pull(
             &mut self,
@@ -1072,6 +1102,14 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
+    fn link_session(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::session::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
     fn build_linker(manifest: &PluginManifest) -> Result<Linker<HostState>> {
         let mut linker = Linker::new(wasm_engine());
         Self::link_wasi(&mut linker)?;
@@ -1103,6 +1141,7 @@ impl KnowledgeChildEngine {
         let wants_belief = manifest.belief_read
             || !manifest.belief_write_actions.is_empty()
             || manifest.toys.belief;
+        let wants_session = manifest.toys.session;
 
         if wants_log {
             Self::link_log(&mut linker)?;
@@ -1148,6 +1187,9 @@ impl KnowledgeChildEngine {
         }
         if wants_belief {
             Self::link_belief(&mut linker)?;
+        }
+        if wants_session {
+            Self::link_session(&mut linker)?;
         }
 
         Ok(linker)

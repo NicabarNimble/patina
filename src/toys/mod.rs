@@ -9,5 +9,6 @@ pub mod http;
 pub mod ingress;
 pub mod lake;
 pub mod query;
+pub mod session;
 
 pub use crate::mother::{GrantedIngressSource, GrantedToys, Toy};

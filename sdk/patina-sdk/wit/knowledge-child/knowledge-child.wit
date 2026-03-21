@@ -17,6 +17,7 @@ world knowledge-child {
     import patina:host/graph@0.1.0;
     import patina:host/belief@0.1.0;
     import patina:host/types@0.1.0;
+    import patina:host/session@0.1.0;
 
     use patina:host/types@0.1.0.{child-health};
     use patina:host/events@0.1.0.{pending-event};
