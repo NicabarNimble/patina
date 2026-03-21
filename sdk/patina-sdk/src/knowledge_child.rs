@@ -567,8 +567,28 @@ pub mod host {
     }
 
     impl SessionBackend for GuestHost {
+        fn get_session_id() -> String {
+            patina::host::session::get_session_id()
+        }
+
+        fn get_previous_session() -> Option<String> {
+            patina::host::session::get_previous_session()
+        }
+
         fn write(section: &str, content: &str) -> Result<(), String> {
             patina::host::session::write_artifact(section, content)
+        }
+
+        fn create_tag(name: &str) -> Result<(), String> {
+            patina::host::session::create_tag(name)
+        }
+
+        fn set_status(status: &str) -> Result<(), String> {
+            patina::host::session::set_status(status)
+        }
+
+        fn write_handoff(modified_files: &str, summary: &str) -> Result<(), String> {
+            patina::host::session::write_handoff(modified_files, summary)
         }
     }
 

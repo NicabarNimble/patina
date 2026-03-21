@@ -54,14 +54,75 @@ impl KnowledgeChildPlugin for SessionWriterChild {
     }
 
     fn handle(&mut self, action: &str, payload: &str) -> Result<String, String> {
+        let value: serde_json::Value = if payload.trim().is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::from_str(payload)
+                .map_err(|e| format!("session-writer: invalid payload json: {}", e))?
+        };
+
         match action {
             "init-session" => {
-                let session_id = self
-                    .toys
-                    .session
-                    .write("runtime", payload)
-                    .map(|_| serde_json::json!({"status":"initialized"}).to_string())?;
-                Ok(session_id)
+                let session_id = self.toys.session.get_session_id();
+                let previous = self.toys.session.get_previous_session();
+                self.toys
+                    .state
+                    .put("session-id", &serde_json::json!(session_id).to_string())?;
+                if let Some(previous) = previous {
+                    self.toys
+                        .state
+                        .put("previous-session", &serde_json::json!(previous).to_string())?;
+                }
+                Ok(serde_json::json!({"status":"initialized"}).to_string())
+            }
+            "note" => {
+                let content = value
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(payload);
+                self.toys.session.write("note", content)?;
+                Ok(serde_json::json!({"status":"ok"}).to_string())
+            }
+            "update" => {
+                let content = value
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(payload);
+                self.toys.session.write("update", content)?;
+                Ok(serde_json::json!({"status":"ok"}).to_string())
+            }
+            "spec-link" => {
+                let content = value
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(payload);
+                self.toys.session.write("spec-link", content)?;
+                Ok(serde_json::json!({"status":"ok"}).to_string())
+            }
+            "close" => {
+                let status = value
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("closed");
+                self.toys.session.write("close", payload)?;
+                self.toys.session.set_status(status)?;
+                if let Some(tag) = value.get("tag").and_then(|v| v.as_str()) {
+                    self.toys.session.create_tag(tag)?;
+                }
+                Ok(serde_json::json!({"status":"ok"}).to_string())
+            }
+            "crash-handoff" => {
+                let modified_files = value
+                    .get("modified_files")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let summary = value
+                    .get("summary")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(payload);
+                self.toys.session.write("crash-handoff", payload)?;
+                self.toys.session.write_handoff(modified_files, summary)?;
+                Ok(serde_json::json!({"status":"ok"}).to_string())
             }
             other => Err(format!("session-writer: unknown action '{}'", other)),
         }
