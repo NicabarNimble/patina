@@ -6,25 +6,17 @@ world = "knowledge-child"
 role = "app"
 patina_min = "0.41.0"
 
-[capabilities]
-host_log = true
-host_measure = true
+[needs]
+toys = ["log", "state", "checkpoint", "lake", "connector", "measure", "task"]
 
-[capabilities.state]
-enabled = true
-
-[capabilities.checkpoint]
+[needs.scopes.checkpoint]
 streams = ["ducklake.sync"]
 
-[capabilities.tasks]
+[needs.scopes.lake]
+names = ["default"]
+
+[needs.scopes.task]
 intents = ["fetch-source"]
-
-[toys]
-lake = ["default"]
-measure = true
-
-[toys.connector]
-enabled = true
 
 [provides]
 child = "ducklake"

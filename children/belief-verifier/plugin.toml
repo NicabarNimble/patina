@@ -6,29 +6,21 @@ world = "knowledge-child"
 role = "app"
 patina_min = "0.41.0"
 
-[capabilities]
-host_log = true
-host_measure = true
+[needs]
+toys = ["log", "state", "checkpoint", "events", "belief", "measure", "task"]
 
-[capabilities.state]
-enabled = true
-
-[capabilities.checkpoint]
+[needs.scopes.checkpoint]
 streams = ["belief.changed"]
 
-[capabilities.events]
+[needs.scopes.events]
 subscribe = ["belief.changed"]
 
-[capabilities.tasks]
+[needs.scopes.task]
 intents = ["verify-belief"]
 
-[capabilities.belief]
+[needs.scopes.belief]
 read = true
 write = ["record-verification", "attach-evidence"]
-
-[toys]
-belief = true
-measure = true
 
 [provides]
 child = "belief-verifier"

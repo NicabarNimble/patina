@@ -364,11 +364,19 @@ impl PluginManifest {
                     .collect()
             })
             .unwrap_or_default();
-        if has_needs
-            && needs_toys.iter().any(|toy| toy == "emit")
-            && !capabilities.iter().any(|cap| cap == "host_emit")
-        {
-            capabilities.push("host_emit".to_string());
+        if has_needs {
+            for (toy, capability) in [
+                ("log", "host_log"),
+                ("query", "host_query"),
+                ("http", "host_http"),
+                ("emit", "host_emit"),
+            ] {
+                if needs_toys.iter().any(|entry| entry == toy)
+                    && !capabilities.iter().any(|cap| cap == capability)
+                {
+                    capabilities.push(capability.to_string());
+                }
+            }
         }
 
         // Parse [capabilities.toys].commands — allowed toy commands

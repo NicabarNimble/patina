@@ -760,7 +760,7 @@ mod bindings {
 use bindings::HostState;
 
 pub struct KnowledgeChildEngine {
-    linker: Linker<HostState>,
+    _unit: (),
 }
 
 impl KnowledgeChildEngine {
@@ -889,30 +889,85 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
-    fn link_all_interfaces(linker: &mut Linker<HostState>) -> Result<()> {
-        Self::link_log(linker)?;
-        Self::link_measure(linker)?;
-        Self::link_query(linker)?;
-        Self::link_http(linker)?;
-        Self::link_ingress(linker)?;
-        Self::link_connector(linker)?;
-        Self::link_emit(linker)?;
-        Self::link_state(linker)?;
-        Self::link_checkpoint(linker)?;
-        Self::link_lake(linker)?;
-        Self::link_events(linker)?;
-        Self::link_task(linker)?;
-        Self::link_graph(linker)?;
-        Self::link_belief(linker)?;
-        Self::link_types(linker)?;
-        Ok(())
+    fn build_linker(manifest: &PluginManifest) -> Result<Linker<HostState>> {
+        let mut linker = Linker::new(wasm_engine());
+        Self::link_wasi(&mut linker)?;
+        Self::link_types(&mut linker)?;
+
+        let wants_log = manifest.capabilities.iter().any(|cap| cap == "host_log");
+        let wants_measure = manifest
+            .capabilities
+            .iter()
+            .any(|cap| cap == "host_measure")
+            || manifest.toys.measure;
+        let wants_query = manifest.capabilities.iter().any(|cap| cap == "host_query")
+            || !manifest.host_query_kinds.is_empty()
+            || manifest.toys.query;
+        let wants_http = manifest.capabilities.iter().any(|cap| cap == "host_http")
+            || !manifest.host_http_domains.is_empty()
+            || !manifest.ingress_sources.is_empty();
+        let wants_emit = manifest.capabilities.iter().any(|cap| cap == "host_emit");
+        let wants_state = manifest.state_enabled;
+        let wants_checkpoint = !manifest.checkpoint_streams.is_empty();
+        let wants_lake = !manifest.lake_names.is_empty();
+        let wants_ingress = !manifest.ingress_sources.is_empty();
+        let wants_connector = manifest.toys.connector;
+        let wants_events = !manifest.subscribed_streams.is_empty();
+        let wants_task = !manifest.task_intent_names.is_empty();
+        let wants_graph =
+            manifest.graph_read || !manifest.graph_write_actions.is_empty() || manifest.toys.graph;
+        let wants_belief = manifest.belief_read
+            || !manifest.belief_write_actions.is_empty()
+            || manifest.toys.belief;
+
+        if wants_log {
+            Self::link_log(&mut linker)?;
+        }
+        if wants_measure {
+            Self::link_measure(&mut linker)?;
+        }
+        if wants_query {
+            Self::link_query(&mut linker)?;
+        }
+        if wants_http {
+            Self::link_http(&mut linker)?;
+        }
+        if wants_ingress {
+            Self::link_ingress(&mut linker)?;
+        }
+        if wants_connector {
+            Self::link_connector(&mut linker)?;
+        }
+        if wants_emit {
+            Self::link_emit(&mut linker)?;
+        }
+        if wants_state {
+            Self::link_state(&mut linker)?;
+        }
+        if wants_checkpoint {
+            Self::link_checkpoint(&mut linker)?;
+        }
+        if wants_lake {
+            Self::link_lake(&mut linker)?;
+        }
+        if wants_events {
+            Self::link_events(&mut linker)?;
+        }
+        if wants_task {
+            Self::link_task(&mut linker)?;
+        }
+        if wants_graph {
+            Self::link_graph(&mut linker)?;
+        }
+        if wants_belief {
+            Self::link_belief(&mut linker)?;
+        }
+
+        Ok(linker)
     }
 
     pub fn new() -> Result<Self> {
-        let mut linker = Linker::new(wasm_engine());
-        Self::link_wasi(&mut linker)?;
-        Self::link_all_interfaces(&mut linker)?;
-        Ok(Self { linker })
+        Ok(Self { _unit: () })
     }
 
     pub fn load_manifest(path: &Path) -> Result<PluginManifest> {
@@ -1063,6 +1118,8 @@ impl KnowledgeChildEngine {
     ) -> Result<Box<dyn KnowledgeChild>> {
         Self::check_capabilities(manifest)?;
 
+        let linker = Self::build_linker(manifest)?;
+
         let grants = manifest.granted_capabilities();
         let http_client = super::host_support::build_http_client()?;
         let wasi = wasmtime_wasi::WasiCtxBuilder::new().build();
@@ -1078,7 +1135,7 @@ impl KnowledgeChildEngine {
             runtime: crate::mother::KnowledgeRuntimeStore::default(),
         };
         let mut store = Store::new(wasm_engine(), host_state);
-        let instance = bindings::KnowledgeChild::instantiate(&mut store, component, &self.linker)?;
+        let instance = bindings::KnowledgeChild::instantiate(&mut store, component, &linker)?;
         instance.call_init(&mut store)?;
         let name = instance.call_name(&mut store)?;
         Ok(Box::new(WasmKnowledgeChild {
