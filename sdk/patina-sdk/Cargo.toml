@@ -22,7 +22,24 @@ knowledge-child = [
     "dep:patina-sdk-core",
     "dep:patina-sdk-data",
     "dep:patina-sdk-agent",
+    "toy-log",
+    "toy-state",
 ]
+toy-log = []
+toy-state = []
+toy-task = []
+toy-fetch = []
+toy-measure = ["patina-sdk-data/toy-measure"]
+toy-query = ["patina-sdk-agent/toy-query"]
+toy-emit = ["patina-sdk-agent/toy-emit"]
+toy-checkpoint = ["patina-sdk-data/toy-checkpoint"]
+toy-lake = ["patina-sdk-data/toy-lake"]
+toy-ingress = []
+toy-connector = ["patina-sdk-data/toy-connector"]
+toy-events = []
+toy-graph = []
+toy-belief = []
+toy-session = ["patina-sdk-agent/toy-session"]
 pipeline = ["dep:serde", "dep:serde_json"]
 
 [dependencies]

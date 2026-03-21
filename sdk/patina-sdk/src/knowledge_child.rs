@@ -21,79 +21,108 @@ pub mod granted {
     use super::host::GuestHost;
     use super::toys;
 
+    #[cfg(feature = "toy-log")]
     pub type Log = toys::LogToy<GuestHost>;
+    #[cfg(feature = "toy-measure")]
     pub type Measure = toys::MeasureToy<GuestHost>;
+    #[cfg(feature = "toy-query")]
     pub type Query = toys::QueryToy<GuestHost>;
+    #[cfg(feature = "toy-fetch")]
     pub type Fetch = toys::FetchToy<GuestHost>;
+    #[cfg(feature = "toy-emit")]
     pub type Emit = toys::EmitToy<GuestHost>;
+    #[cfg(feature = "toy-state")]
     pub type State = toys::StateToy<GuestHost>;
+    #[cfg(feature = "toy-checkpoint")]
     pub type Checkpoint = toys::CheckpointToy<GuestHost>;
+    #[cfg(feature = "toy-lake")]
     pub type Lakes = toys::LakeCatalog<GuestHost>;
+    #[cfg(feature = "toy-lake")]
     pub type Lake = toys::LakeToy<GuestHost>;
+    #[cfg(feature = "toy-ingress")]
     pub type IngressSources = toys::IngressCatalog<GuestHost>;
+    #[cfg(feature = "toy-ingress")]
     pub type Ingress = toys::IngressToy<GuestHost>;
+    #[cfg(feature = "toy-connector")]
     pub type Connectors = toys::ConnectorCatalog<GuestHost>;
+    #[cfg(feature = "toy-connector")]
     pub type Connector = toys::ConnectorBinding<GuestHost>;
+    #[cfg(feature = "toy-events")]
     pub type Events = toys::EventToy<GuestHost>;
+    #[cfg(feature = "toy-graph")]
     pub type Graph = toys::GraphToy<GuestHost>;
+    #[cfg(feature = "toy-belief")]
     pub type Belief = toys::BeliefToy<GuestHost>;
 
     pub trait Bundle {
         fn granted() -> Self;
     }
 
+    #[cfg(feature = "toy-log")]
     pub fn log() -> Log {
         Log::new()
     }
 
+    #[cfg(feature = "toy-measure")]
     pub fn measure() -> Measure {
         Measure::new()
     }
 
+    #[cfg(feature = "toy-query")]
     pub fn query() -> Query {
         Query::new()
     }
 
+    #[cfg(feature = "toy-fetch")]
     pub fn fetch() -> Fetch {
         Fetch::new()
     }
 
+    #[cfg(feature = "toy-emit")]
     pub fn emit() -> Emit {
         Emit::new()
     }
 
+    #[cfg(feature = "toy-state")]
     pub fn state() -> State {
         State::new()
     }
 
+    #[cfg(feature = "toy-checkpoint")]
     pub fn checkpoint() -> Checkpoint {
         Checkpoint::new()
     }
 
+    #[cfg(feature = "toy-lake")]
     pub fn lakes() -> Lakes {
         Lakes::new()
     }
 
+    #[cfg(feature = "toy-lake")]
     pub fn lake(name: &str) -> Lake {
         lakes()
             .require(name)
             .unwrap_or_else(|error| panic!("missing granted lake '{}': {}", name, error))
     }
 
+    #[cfg(feature = "toy-ingress")]
     pub fn ingress_sources() -> IngressSources {
         IngressSources::new()
     }
 
+    #[cfg(feature = "toy-ingress")]
     pub fn ingress(name: &str) -> Ingress {
         ingress_sources()
             .require(name)
             .unwrap_or_else(|error| panic!("missing granted ingress source '{}': {}", name, error))
     }
 
+    #[cfg(feature = "toy-connector")]
     pub fn connectors() -> Connectors {
         Connectors::new()
     }
 
+    #[cfg(feature = "toy-connector")]
     pub fn connector(binding_id: &str) -> Connector {
         connectors().require(binding_id).unwrap_or_else(|error| {
             panic!(
@@ -103,14 +132,17 @@ pub mod granted {
         })
     }
 
+    #[cfg(feature = "toy-events")]
     pub fn events() -> Events {
         Events::new()
     }
 
+    #[cfg(feature = "toy-graph")]
     pub fn graph() -> Graph {
         Graph::new()
     }
 
+    #[cfg(feature = "toy-belief")]
     pub fn belief() -> Belief {
         Belief::new()
     }
