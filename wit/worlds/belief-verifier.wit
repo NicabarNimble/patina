@@ -1,18 +1,18 @@
-package patina:worlds@0.1.0;
+package patina:host@0.1.0;
 
 world belief-verifier {
-    import patina:host/log@0.1.0;
-    import patina:host/measure@0.1.0;
-    import patina:host/state@0.1.0;
-    import patina:host/checkpoint@0.1.0;
-    import patina:host/events@0.1.0;
-    import patina:host/task@0.1.0;
-    import patina:host/belief@0.1.0;
-    import patina:host/types@0.1.0;
+    import log;
+    import measure;
+    import state;
+    import checkpoint;
+    import events;
+    import task;
+    import belief;
+    import types;
 
-    use patina:host/types@0.1.0.{child-health};
-    use patina:host/events@0.1.0.{pending-event};
-    use patina:host/task@0.1.0.{task-intent};
+    use types.{child-health};
+    use events.{pending-event};
+    use task.{task-intent};
 
     export init: func();
     export name: func() -> string;
