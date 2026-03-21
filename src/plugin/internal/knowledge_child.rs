@@ -764,13 +764,23 @@ pub struct KnowledgeChildEngine {
 }
 
 impl KnowledgeChildEngine {
-    pub fn new() -> Result<Self> {
-        let mut linker = Linker::new(wasm_engine());
-        wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
+    fn link_wasi(linker: &mut Linker<HostState>) -> Result<()> {
+        wasmtime_wasi::p2::add_to_linker_sync(linker)?;
+        Ok(())
+    }
+
+    fn link_knowledge_child_world(linker: &mut Linker<HostState>) -> Result<()> {
         bindings::KnowledgeChild::add_to_linker::<
             HostState,
             wasmtime::component::HasSelf<HostState>,
-        >(&mut linker, |s| s)?;
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    pub fn new() -> Result<Self> {
+        let mut linker = Linker::new(wasm_engine());
+        Self::link_wasi(&mut linker)?;
+        Self::link_knowledge_child_world(&mut linker)?;
         Ok(Self { linker })
     }
 
