@@ -769,18 +769,149 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
-    fn link_knowledge_child_world(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::KnowledgeChild::add_to_linker::<
+    fn link_log(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::log::add_to_linker::<
             HostState,
             wasmtime::component::HasSelf<HostState>,
         >(linker, |s| s)?;
         Ok(())
     }
 
+    fn link_measure(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::measure::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_query(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::query::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_http(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::http::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_ingress(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::ingress::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_connector(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::connector::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_emit(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::emit::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_state(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::state::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_checkpoint(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::checkpoint::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_lake(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::lake::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_events(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::events::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_task(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::task::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_graph(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::graph::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_belief(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::belief::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_types(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::types::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_all_interfaces(linker: &mut Linker<HostState>) -> Result<()> {
+        Self::link_log(linker)?;
+        Self::link_measure(linker)?;
+        Self::link_query(linker)?;
+        Self::link_http(linker)?;
+        Self::link_ingress(linker)?;
+        Self::link_connector(linker)?;
+        Self::link_emit(linker)?;
+        Self::link_state(linker)?;
+        Self::link_checkpoint(linker)?;
+        Self::link_lake(linker)?;
+        Self::link_events(linker)?;
+        Self::link_task(linker)?;
+        Self::link_graph(linker)?;
+        Self::link_belief(linker)?;
+        Self::link_types(linker)?;
+        Ok(())
+    }
+
     pub fn new() -> Result<Self> {
         let mut linker = Linker::new(wasm_engine());
         Self::link_wasi(&mut linker)?;
-        Self::link_knowledge_child_world(&mut linker)?;
+        Self::link_all_interfaces(&mut linker)?;
         Ok(Self { linker })
     }
 
