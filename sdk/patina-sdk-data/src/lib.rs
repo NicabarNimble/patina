@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub const TOY_WIT_DIR: &str = env!("PATINA_SDK_DATA_WIT_DIR");
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GrantedLake {
     pub name: String,

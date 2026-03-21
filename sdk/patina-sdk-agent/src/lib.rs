@@ -1,3 +1,5 @@
+pub const TOY_WIT_DIR: &str = env!("PATINA_SDK_AGENT_WIT_DIR");
+
 pub trait QueryBackend {
     fn query(kind: &str, params_json: &str) -> Result<String, String>;
 }

@@ -2,6 +2,7 @@
 name = "patina-sdk-data"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 license = "MIT"
 description = "Data toy primitives for Patina knowledge children"
 repository = "https://github.com/NicabarNimble/patina"

@@ -4,6 +4,8 @@ use std::cell::UnsafeCell;
 
 use serde::{Deserialize, Serialize};
 
+pub const TOY_WIT_DIR: &str = env!("PATINA_SDK_CORE_WIT_DIR");
+
 pub struct WasmCell<T>(pub UnsafeCell<T>);
 
 #[cfg(not(target_feature = "atomics"))]
