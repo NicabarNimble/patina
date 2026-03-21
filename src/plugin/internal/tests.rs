@@ -306,6 +306,61 @@ fn knowledge_child_example_manifests_validate() {
     }
 }
 
+fn ducklake_component_path() -> Option<std::path::PathBuf> {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for rel in [
+        "target/wasm32-wasip1/debug/patina_ai_child_ducklake.wasm",
+        "target/wasm32-wasip1/release/patina_ai_child_ducklake.wasm",
+    ] {
+        let path = root.join(rel);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+#[test]
+fn knowledge_child_linker_fails_when_lake_not_linked() {
+    let Some(wasm_path) = ducklake_component_path() else {
+        return;
+    };
+
+    let engine = KnowledgeChildEngine::new().unwrap();
+    let wasm_bytes = std::fs::read(&wasm_path).unwrap();
+    let component = engine.load_component(&wasm_bytes).unwrap();
+
+    let manifest_path =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/plugin.toml");
+    let mut manifest = PluginManifest::from_path(&manifest_path).unwrap();
+    manifest.lake_names.clear();
+    manifest.toys.lake_names.clear();
+
+    let result = engine.instantiate_child(&component, &manifest, None);
+    assert!(result.is_err(), "expected missing-lake linker failure");
+}
+
+#[test]
+fn knowledge_child_linker_succeeds_when_lake_declared() {
+    let Some(wasm_path) = ducklake_component_path() else {
+        return;
+    };
+
+    let engine = KnowledgeChildEngine::new().unwrap();
+    let wasm_bytes = std::fs::read(&wasm_path).unwrap();
+    let component = engine.load_component(&wasm_bytes).unwrap();
+
+    let manifest_path =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/plugin.toml");
+    let manifest = PluginManifest::from_path(&manifest_path).unwrap();
+
+    let result = engine.instantiate_child(&component, &manifest, None);
+    assert!(
+        result.is_ok(),
+        "expected granted-lake instantiation success"
+    );
+}
+
 #[test]
 fn knowledge_child_rejects_invalid_ingress_endpoint() {
     let f = write_temp_manifest(
