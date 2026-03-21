@@ -27,6 +27,7 @@ beliefs:
 - durability-lives-outside-interface-process
 - universal-artifact-interface-specific-enrichment
 - git-tags-must-be-real-or-not-claimed
+- beliefs-live-at-two-levels
 exit_criteria:
 - id: EC1
   text: Tiered SDK ships — patina-sdk-core, patina-sdk-data, patina-sdk-agent each build independently with feature-gated toys
@@ -104,7 +105,7 @@ Patina's current architecture grew organically from a CLI tool with MCP bolted o
 
 ## Goal
 
-Ship Patina pre-v1: Mother as standalone daemon, composable WASM children with per-child worlds, tiered SDK for external developers, DuckLake on the new model, agents connect directly, MCP retired. Enterprise DuckLake pipeline (watermarks, parquet, bronze/silver/gold) follows in Phase 11.
+Ship Patina pre-v1: the foundation for a local-first WASM P2P agentic knowledge system. Mother as standalone machine-node daemon, composable WASM children with per-child worlds, tiered SDK for external developers, DuckLake on the new model, agents connect directly with persona context, MCP retired. This architecture must support — without blocking — the post-v1 direction: persona crypto namespaces, Mother-to-Mother P2P federation, belief provenance signing, and ZK-provable computation from WASM execution traces.
 
 ## Status
 
@@ -115,7 +116,9 @@ Draft. All prior specs abandoned and subsumed. Phases 1-10 ship today. Phase 11 
 - Multi-provider connector abstraction (GitHub-specific)
 - S3 storage backend for DuckLake (follow-on)
 - Real-time / streaming ingestion (poll mode only)
-- Cross-machine Mother federation (local-first only)
+- Cross-machine Mother-to-Mother P2P federation (follow-on — architecture must not block it)
+- Persona implementation (crypto namespaces, keypairs, persona-scoped children — follow-on, architecture must not block it)
+- Belief signing and provenance (follow-on — requires persona keypairs)
 - Backward compatibility with pre-v1 child binaries
 - Enterprise DuckLake pipeline in this pass (Phase 11 follow-on)
 
@@ -180,7 +183,7 @@ patina/
 
 1. Create `patina-sdk-core` crate — `KnowledgeChildPlugin` trait, `handle`/`tick`/`drain`, `toy-log`, `toy-state`
 2. Create `patina-sdk-data` crate — `toy-lake`, `toy-checkpoint`, `toy-github`, `toy-measure` (feature-gated)
-3. Create `patina-sdk-agent` crate — `toy-session`, `toy-query` (feature-gated)
+3. Create `patina-sdk-agent` crate — `toy-query`, `toy-emit` (feature-gated), `toy-session` (stub only — filled in Phase 4)
 4. Refactor `patina-sdk` to re-export tiers
 5. Feature-gate the `granted` module — only enabled toys compile bindings
 6. Add per-toy features to child Cargo.tomls, verify both children compile
@@ -252,7 +255,7 @@ Migrate DuckLake to the composable model. Enterprise pipeline (watermarks, parqu
 ### Phase 9: MCP Retirement + Interface Decoupling (6 commits)
 
 48. Remove `src/mcp/` (2,228 LOC)
-49. Remove `src/interface/` runtime launch code (~3,500 LOC)
+49. Remove `src/interface/runtime/` launch code (~3,500 LOC) — keep `src/interface/internal/` temporarily for session check-in reuse
 50. Remove tmux infrastructure
 51. Remove `patina-pipe`, `patina-pipe-types` crates, and legacy `[capabilities]`/`[toys]` manifest parsing
 52. Remove native github-connector child
@@ -274,7 +277,7 @@ Migrate DuckLake to the composable model. Enterprise pipeline (watermarks, parqu
 
 ### Phase 11: DuckLake Enterprise Pipeline (follow-on, 12 commits)
 
-**Out-of-scope for this build pass.** Phase 11 is documented here for continuity but is NOT authorized for execution during Phases 1-10. It will be promoted to a separate spec or authorized as a follow-on pass after Phases 1-10 ship.
+**STOP. DO NOT BUILD.** Phase 11 is documented here for continuity only. Commits 65-76 are NOT authorized. A build agent MUST stop after commit 64 and report completion. Phase 11 requires separate authorization via `patina spec promote` or a new spec.
 
 65. Implement endpoint planner for 8 GitHub entity types
 66. Implement two-phase ingestion: list pagination → bounded fanout with adaptive backoff
@@ -321,7 +324,7 @@ Every line of code in this conversion must hold to Patina's core values and the 
 - **[[adapter-pattern]]** — Trait-based adapters, never concrete types in core logic. Toys are WIT interfaces, not concrete structs.
 - **[[patina-identity]]** — The binary is the pipeline, the layer is the product. If it's not protocol operation/tooling/infrastructure, it's a plugin.
 - **[[safety-boundaries]]** — Project-scoped only. Children are sandboxed. Toys are capability-gated.
-- **[[oxidized-knowledge]]** — Project knowledge is git-tracked. Persona knowledge is local.
+- **[[oxidized-knowledge]]** + **[[beliefs-live-at-two-levels]]** — Project beliefs live in `layer/` (git-tracked, travel with code). Persona beliefs live in Mother's state (crypto-scoped, span projects, sync via P2P). Different lifetimes, different storage, same signing key.
 - **[[session-capture]]** — Scripts handle mechanics, humans handle meaning. Session-writer embodies this.
 - **[[spec-driven-design]]** — This spec authorizes 64 commits (Phases 1-10). Phase 11 is a separate authorization. When the build agent encounters an edge case, stop and ask.
 
@@ -362,6 +365,17 @@ Every line of code in this conversion must hold to Patina's core values and the 
 13. **WIT world composition via `cargo-component`.** Each child's `Cargo.toml` points to its own world file in `wit/worlds/`. If `cargo-component` can't handle custom worlds, use WAC as build-time compositor. Decision locked at start of Phase 2.
 14. **Manifest schema is `[needs].toys` + `[needs.scopes]`.** Migrated from current `[capabilities]`/`[toys]` split. Old schema supported during migration, removed in Phase 9.
 15. **Crash detection via Unix socket EOF.** When agent's socket closes, Mother knows immediately. No heartbeat needed.
+
+### Architecture Must Not Block (post-v1 direction)
+
+These are NOT in scope, but every decision above must be compatible with:
+
+16. **Mother = machine node.** One Mother per machine. Personas are crypto namespaces within Mother, not separate instances. Per [[persona-is-a-patina-instance]] (scoped) and [[session-20260320-212325-011658000]].
+17. **Personas span Mothers.** Same persona keypair on multiple machines. Beliefs sync via P2P. Mother-to-Mother federation is machine-level, not persona-level.
+18. **Beliefs live at two levels.** Project beliefs in `layer/` (git-tracked). Persona beliefs in Mother state (crypto-scoped, P2P-synced). Per [[beliefs-live-at-two-levels]].
+19. **Agent connection carries persona context.** The `connect` handshake must support a `persona` field so Mother can scope children, toys, and beliefs to the active persona.
+20. **WASM determinism enables ZK proofs.** Per-child worlds, bounded execution, and measured I/O are the substrate for future STARK proof generation from WASM execution traces.
+21. **Tmux is agent-launcher, not architectural.** Session liveness is socket connection, not tmux lane. Agents without tmux have full sessions. Per [[tmux-lane-defines-active-session]] (scoped).
 
 ## Verification
 

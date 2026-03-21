@@ -4,9 +4,19 @@
 
 > **Scalpel, not shotgun.** One logical change per commit. Read before write. Move first, adapt second, add third. `cargo test` after every commit — with one documented exception: move+fix commit pairs (e.g., `git mv` then fix imports) where the first commit may break compile. The pair must be consecutive and the second commit must restore green. No drive-by refactors.
 
+### Build Agent Warnings
+
+1. **GitHub WIT uses `page.items` as JSON string** (no WIT generics). The child must parse items based on which function it called. Add typed wrapper functions in the child immediately — don't leave raw JSON parsing scattered. Per [[gjengset-lens-type-integrity]]: parse at boundary, type the interior.
+
+2. **Session backfill (commit 31) touches historical git state.** Run in dry-run mode first: scan and report which sessions need tags, which commits they'd be tagged at, and what the tag names would be. Print the report. Get confirmation before creating any tags. Never bulk-write git tags without a preview.
+
+3. **Protocol `persona` field is in the handshake but persona is not implemented.** In pre-v1, the field is accepted, logged, and ignored. Do NOT add persona-scoping logic to Mother, children, or beliefs. The field exists so the protocol doesn't need a version bump when persona work begins. Any build agent tempted to "just wire up persona scoping since the field is there" is doing unauthorized work.
+
 ## Why This Design
 
-Patina's architecture needs to match its beliefs. This design closes the gap in 11 phases. Phases 1-10 ship today (64 commits). Phase 11 is follow-on (12 commits). The ordering: SDK first (onramp), plumbing second (worlds, linker), capabilities third (toys), proof fourth (session-writer, ducklake), architecture fifth (Mother, CLI, MCP retirement), polish sixth (relationships, template).
+Patina's architecture needs to match its beliefs. Patina is a local-first WASM P2P agentic knowledge system — this pre-v1 builds the local foundation that the P2P and persona layers will extend. Mother = machine node. Personas = crypto namespaces (post-v1). Beliefs live at two levels: project (git) and persona (Mother state). WASM children provide the deterministic sandbox that enables trust, proof, and eventually ZK-verifiable computation.
+
+This design closes the gap in 11 phases. Phases 1-10 ship today (64 commits). Phase 11 is follow-on (12 commits). The ordering: SDK first (onramp), plumbing second (worlds, linker), capabilities third (toys), proof fourth (session-writer, ducklake), architecture fifth (Mother, CLI, MCP retirement), polish sixth (relationships, template).
 
 ---
 
@@ -24,7 +34,7 @@ Extract, don't rewrite. Split existing code into crates by concern, add feature 
 
 2. `sdk: scaffold patina-sdk-data crate` — Create `sdk/patina-sdk-data/Cargo.toml` and `src/lib.rs`. Move `LakeBackend`, `CheckpointBackend`, `MeasureBackend`, `ConnectorBackend`, `IngressBackend` traits + ZST wrappers. Feature-gated: `toy-lake`, `toy-checkpoint`, `toy-measure`, `toy-github` (stub), `toy-connector` (legacy). Dependencies: `patina-sdk-core`, `serde`, `serde_json`.
 
-3. `sdk: scaffold patina-sdk-agent crate` — Create `sdk/patina-sdk-agent/Cargo.toml` and `src/lib.rs`. Move `QueryBackend`, `EmitBackend` traits + ZST wrappers. Feature-gated: `toy-query`, `toy-session` (stub), `toy-emit`. Dependencies: `patina-sdk-core`.
+3. `sdk: scaffold patina-sdk-agent crate` — Create `sdk/patina-sdk-agent/Cargo.toml` and `src/lib.rs`. Move `QueryBackend`, `EmitBackend` traits + ZST wrappers. Feature-gated: `toy-query`, `toy-emit`. Also create empty `toy-session` feature stub (trait signature only, no implementation — Phase 4 fills it in). Dependencies: `patina-sdk-core`.
 
 4. `sdk: refactor patina-sdk as re-export umbrella` — Rewrite `sdk/patina-sdk/src/lib.rs` to re-export all three tiers. Existing children depend on `patina-sdk` unchanged. All tests pass.
 
@@ -86,6 +96,57 @@ Mother's shared linker links all 14 interfaces for every child. Per-child linkin
 
 Current `[capabilities]`/`[toys]` → new `[needs].toys` + `[needs.scopes]`. Migration order: commit 14 adds `[needs]` parsing alongside old schema (reads both, prefers `[needs]`). Commit 15 rewrites child `plugin.toml` files to the new `[needs]` schema. Old `[capabilities]`/`[toys]` parsing code removed in Phase 9 commit 52 (alongside pipe crate removal — both are legacy cleanup).
 
+**Concrete target schema — ducklake `plugin.toml`:**
+```toml
+[plugin]
+name = "patina-ducklake"
+version = "1.0.0"
+world = "ducklake"
+role = "app"
+
+[needs]
+toys = ["log", "state", "checkpoint", "lake", "github", "measure"]
+
+[needs.scopes.checkpoint]
+streams = ["ducklake.sync"]
+
+[needs.scopes.lake]
+names = ["default"]
+
+[needs.scopes.github]
+repos = ["anthropics/claude-code"]
+
+[provides]
+child = "ducklake"
+```
+
+**Concrete target schema — belief-verifier `plugin.toml`:**
+```toml
+[plugin]
+name = "patina-belief-verifier"
+version = "1.0.0"
+world = "belief-verifier"
+role = "app"
+
+[needs]
+toys = ["log", "state", "checkpoint", "events", "belief"]
+
+[needs.scopes.checkpoint]
+streams = ["belief.changed"]
+
+[needs.scopes.events]
+subscribe = ["belief.changed"]
+
+[needs.scopes.belief]
+read = true
+write = ["record-verification", "attach-evidence"]
+
+[provides]
+child = "belief-verifier"
+```
+
+**Parsing rule:** `[needs].toys` is a flat list the linker reads. `[needs.scopes.*]` is per-toy runtime configuration feeding into `GrantedToys`. Scopes are optional — omit to grant full access within the interface.
+
 ### Commits
 
 13. `host: split add_to_linker into per-interface functions` — Extract each `impl Host for HostState` block into `link_log()`, `link_state()`, `link_lake()`, etc. Shared linker calls all (no behavior change).
@@ -110,13 +171,44 @@ GitHub data access and session management don't exist as toys yet. Both need WIT
 
 ### Commits
 
-17. `wit: define patina:host/github@0.1.0` — Typed records for issue, PR, comment, review, event. Paginated list functions. `list-params`, `page<T>` with `rate-remaining`.
+17. `wit: define patina:host/github@0.1.0` — Create `wit/toys/github.wit`:
+```wit
+interface github {
+    record list-params { since: option<string>, state: option<string>, page: option<u32>, per-page: option<u32> }
+    record issue { number: u32, title: string, state: string, body: option<string>, created-at: string, updated-at: string, raw-json: string }
+    record pull-request { number: u32, title: string, state: string, head: string, base: string, created-at: string, updated-at: string, raw-json: string }
+    record comment { id: u64, body: string, user: string, created-at: string, updated-at: string, raw-json: string }
+    record review { id: u64, state: string, body: option<string>, user: string, submitted-at: option<string>, raw-json: string }
+    record event { id: u64, event-type: string, actor: string, created-at: string, raw-json: string }
+    record page { items: string, has-next: bool, next-page: option<u32>, rate-remaining: u32 }
 
-18. `host: implement github toy` — `src/toys/github.rs`. GitHub REST API, credential injection from `HostState`, rate-limit tracking, pagination. Absorb from native connector. Add `link_github()`.
+    list-issues: func(owner: string, repo: string, params: list-params) -> result<page, string>;
+    list-pulls: func(owner: string, repo: string, params: list-params) -> result<page, string>;
+    list-issue-comments: func(owner: string, repo: string, issue-number: u32) -> result<page, string>;
+    list-issue-events: func(owner: string, repo: string, issue-number: u32) -> result<page, string>;
+    list-pull-comments: func(owner: string, repo: string, pull-number: u32) -> result<page, string>;
+    list-reviews: func(owner: string, repo: string, pull-number: u32) -> result<page, string>;
+    list-review-comments: func(owner: string, repo: string, pull-number: u32, review-id: u64) -> result<page, string>;
+}
+```
+Note: `page.items` is JSON array string — WIT doesn't support generics, so child deserializes based on which function it called. `raw-json` on each record carries the full API response for bronze storage.
+
+18. `host: implement github toy` — Create `src/toys/github.rs`. Implement each WIT function against GitHub REST API v3. Credential injection via `HostState.grants` — read `GITHUB_TOKEN` from Mother's credential store, inject as `Authorization: Bearer` header. Rate-limit tracking: read `X-RateLimit-Remaining` header, populate `page.rate-remaining`. Pagination: follow `Link: <url>; rel="next"` headers. Build agent: read existing `children/ducklake/src/lib.rs` and `src/toys/connector.rs` for patterns to reuse — don't copy blindly, adapt to the WIT interface above. Add `link_github()` to per-child linker.
 
 19. `host: add github toy tests` — Record API responses to `tests/fixtures/github-api/` and test against fixtures (deterministic, no network). Tests cover pagination, rate-limit backoff, credential injection, all 8 entity types. Live API tests gated behind `#[ignore]` + `GITHUB_TOKEN` env var.
 
-20. `wit: define patina:host/session@0.1.0` — `write-artifact`, `create-tag`, `set-status`, `write-handoff`, `get-previous-session`, `get-session-id`.
+20. `wit: define patina:host/session@0.1.0` — Create `wit/toys/session.wit`:
+```wit
+interface session {
+    get-session-id: func() -> string;
+    get-previous-session: func() -> option<string>;
+    write-artifact: func(section: string, content: string) -> result<_, string>;
+    create-tag: func(name: string) -> result<_, string>;
+    set-status: func(status: string) -> result<_, string>;
+    write-handoff: func(modified-files: string, summary: string) -> result<_, string>;
+}
+```
+`write-artifact` takes a section name ("note", "update", "activity-log") and content to append. `write-handoff` takes git-diff modified files list and a structured handoff summary.
 
 21. `host: implement session toy` — `src/toys/session.rs`. Absorb from `src/session/internal/live.rs`. Scoped to `layer/sessions/`. Add `link_session()`.
 
@@ -196,8 +288,8 @@ Makes "agents are guests" real. Mother as standalone daemon on Unix socket.
 Agent connection protocol is JSON lines over Unix socket (`~/.patina/mother.sock`):
 
 ```
-→ {"v":1, "action":"connect", "payload":{"agent":"claude-code"}}
-← {"v":1, "result":{"session_id":"...", "children":["ducklake","session-writer"]}}
+→ {"v":1, "action":"connect", "payload":{"agent":"claude-code", "project":"/path/to/repo", "persona":"dev-bob"}}
+← {"v":1, "result":{"session_id":"...", "children":["ducklake","session-writer"], "tools":[...]}}
 
 → {"v":1, "action":"context", "payload":{"question":"what changed?"}}
 ← {"v":1, "result":{"response":"..."}}
@@ -209,6 +301,8 @@ Agent connection protocol is JSON lines over Unix socket (`~/.patina/mother.sock
 ```
 
 **Envelope rule:** Every message (request and response) carries `v` field. This is not negotiated — it's a fixed field on every line. V1 has no streaming, cancellation, or auth — single local user. If `v` is missing or unrecognized, Mother returns `{"v":1, "error":"unsupported protocol version"}`.
+
+**Connect handshake fields:** `agent` (who), `project` (which workspace), `persona` (which crypto namespace). In pre-v1, `persona` is optional and defaults to the project's `.patina/persona` value. The field exists in the protocol so post-v1 persona work doesn't require a protocol version bump.
 
 ### Commits
 
@@ -331,6 +425,8 @@ Completes the composable vision. Template + README deliver the external develope
 ---
 
 ## Phase 11: DuckLake Enterprise Pipeline (follow-on, 12 commits)
+
+**STOP. DO NOT BUILD.** Commits 65-76 are NOT authorized for this build pass. A build agent MUST stop after commit 64 and report completion. Phase 11 requires separate authorization.
 
 ### Why
 Enterprise data engineering on top of the proven composable model. This is polish, not architecture.
