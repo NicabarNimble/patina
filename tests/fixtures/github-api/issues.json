@@ -1,0 +1,10 @@
+[
+  {
+    "number": 101,
+    "title": "Fix parser edge case",
+    "state": "open",
+    "body": "Repro steps...",
+    "created_at": "2026-03-01T12:00:00Z",
+    "updated_at": "2026-03-02T09:30:00Z"
+  }
+]

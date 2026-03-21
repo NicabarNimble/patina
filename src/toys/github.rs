@@ -189,6 +189,30 @@ fn list_raw_path(
         ));
     }
 
+    let url = build_url(owner, repo, path, params)?;
+
+    let mut request = http_client
+        .get(url)
+        .header("User-Agent", "patina-toy-github")
+        .header("Accept", "application/vnd.github+json");
+
+    if let Some(token) = token_from_grants(grants) {
+        request = request.header("Authorization", format!("Bearer {}", token));
+    }
+
+    let response = request.send().map_err(|e| e.to_string())?;
+    let status = response.status().as_u16();
+    let headers = response.headers().clone();
+    let body = response.text().map_err(|e| e.to_string())?;
+    page_from_response(status, &headers, body)
+}
+
+fn build_url(
+    owner: &str,
+    repo: &str,
+    path: &str,
+    params: &ListParams,
+) -> Result<reqwest::Url, String> {
     let mut url = reqwest::Url::parse(&format!(
         "https://api.github.com/repos/{owner}/{repo}/{path}"
     ))
@@ -212,31 +236,25 @@ fn list_raw_path(
             q.append_pair("per_page", &per_page.to_string());
         }
     }
+    Ok(url)
+}
 
-    let mut request = http_client
-        .get(url)
-        .header("User-Agent", "patina-toy-github")
-        .header("Accept", "application/vnd.github+json");
-
-    if let Some(token) = token_from_grants(grants) {
-        request = request.header("Authorization", format!("Bearer {}", token));
-    }
-
-    let response = request.send().map_err(|e| e.to_string())?;
-    let status = response.status().as_u16();
+fn page_from_response(
+    status: u16,
+    headers: &reqwest::header::HeaderMap,
+    body: String,
+) -> Result<Page, String> {
     if status >= 400 {
         return Err(format!("github api request failed with status {}", status));
     }
 
-    let rate_remaining = response
-        .headers()
+    let rate_remaining = headers
         .get("x-ratelimit-remaining")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(0);
-    let (has_next, next_page) = parse_next_page(response.headers().get("link"));
+    let (has_next, next_page) = parse_next_page(headers.get("link"));
 
-    let body = response.text().map_err(|e| e.to_string())?;
     let parsed: serde_json::Value = serde_json::from_str(&body)
         .map_err(|e| format!("github response was not valid json: {}", e))?;
     if !parsed.is_array() {
@@ -295,4 +313,136 @@ fn parse_next_page(link_header: Option<&reqwest::header::HeaderValue>) -> (bool,
     }
 
     (false, None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plugin::internal::{GrantedCapabilities, QueryScope};
+
+    fn fixture(path: &str) -> String {
+        std::fs::read_to_string(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/github-api")
+                .join(path),
+        )
+        .unwrap()
+    }
+
+    fn grants() -> GrantedCapabilities {
+        let mut g = GrantedCapabilities {
+            query_kinds: Default::default(),
+            http_domains: Default::default(),
+            credential_mappings: Default::default(),
+            query_scope: QueryScope::CurrentProject,
+            host_emit: false,
+            schema_facts: Default::default(),
+            state_enabled: false,
+            checkpoint_streams: Default::default(),
+            lake_names: Default::default(),
+            subscribed_streams: Default::default(),
+            task_intents: Default::default(),
+            graph_read: false,
+            graph_write_actions: Default::default(),
+            belief_read: false,
+            belief_write_actions: Default::default(),
+            toys: Default::default(),
+        };
+        g.http_domains.insert("api.github.com".to_string());
+        g
+    }
+
+    #[test]
+    fn parses_next_page_from_link_header() {
+        let header = reqwest::header::HeaderValue::from_static(
+            "<https://api.github.com/repos/a/b/issues?page=3>; rel=\"next\", <https://api.github.com/repos/a/b/issues?page=8>; rel=\"last\"",
+        );
+        let (has_next, next_page) = parse_next_page(Some(&header));
+        assert!(has_next);
+        assert_eq!(next_page, Some(3));
+    }
+
+    #[test]
+    fn builds_github_url_with_params() {
+        let url = build_url(
+            "NicabarNimble",
+            "patina",
+            "issues",
+            &ListParams {
+                since: Some("2026-03-20T00:00:00Z".into()),
+                state: Some("all".into()),
+                page: Some(2),
+                per_page: Some(50),
+            },
+        )
+        .unwrap();
+        let text = url.to_string();
+        assert!(text.contains("since=2026-03-20T00%3A00%3A00Z"));
+        assert!(text.contains("state=all"));
+        assert!(text.contains("page=2"));
+        assert!(text.contains("per_page=50"));
+    }
+
+    #[test]
+    fn parses_all_fixture_arrays_into_pages() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            "x-ratelimit-remaining",
+            reqwest::header::HeaderValue::from_static("4999"),
+        );
+
+        for file in [
+            "issues.json",
+            "pulls.json",
+            "issue-comments.json",
+            "issue-events.json",
+            "pull-comments.json",
+            "reviews.json",
+            "review-comments.json",
+        ] {
+            let page = page_from_response(200, &headers, fixture(file)).unwrap();
+            let value: serde_json::Value = serde_json::from_str(&page.items).unwrap();
+            assert!(value.is_array(), "fixture {} should parse as array", file);
+            assert_eq!(page.rate_remaining, 4999);
+        }
+    }
+
+    #[test]
+    fn uses_env_token_when_no_credential_mapping_exists() {
+        let old = std::env::var("GITHUB_TOKEN").ok();
+        unsafe {
+            std::env::set_var("GITHUB_TOKEN", "ghp_fixture_token");
+        }
+        let token = token_from_grants(&grants());
+        match old {
+            Some(v) => unsafe { std::env::set_var("GITHUB_TOKEN", v) },
+            None => unsafe { std::env::remove_var("GITHUB_TOKEN") },
+        }
+        assert_eq!(token.as_deref(), Some("ghp_fixture_token"));
+    }
+
+    #[test]
+    #[ignore]
+    fn live_list_issues_when_token_present() {
+        if std::env::var("GITHUB_TOKEN").is_err() {
+            return;
+        }
+
+        let client = reqwest::blocking::Client::new();
+        let page = list_issues(
+            &client,
+            &grants(),
+            "test-plugin",
+            "rust-lang",
+            "rust",
+            &ListParams {
+                per_page: Some(1),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let parsed: serde_json::Value = serde_json::from_str(&page.items).unwrap();
+        assert!(parsed.is_array());
+    }
 }
