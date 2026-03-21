@@ -3148,6 +3148,9 @@ name = "patina-sdk"
 version = "0.21.0"
 dependencies = [
  "patina-ai-pipe-types",
+ "patina-sdk-agent",
+ "patina-sdk-core",
+ "patina-sdk-data",
  "serde",
  "serde_json",
  "wit-bindgen 0.41.0",
