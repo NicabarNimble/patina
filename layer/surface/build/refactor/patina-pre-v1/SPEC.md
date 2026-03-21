@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: patina-pre-v1
-status: draft
+status: active
 created: 2026-03-21
 sessions:
   origin: 20260320-212325-011658000
