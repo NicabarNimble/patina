@@ -233,12 +233,15 @@ Manifest bridge plan (explicit):
   - `7d1dca22` — refactor: scaffold child.toml manifests with child vocabulary
   - `1a53d91a` — refactor: prefer child manifests in runtime discovery paths
   - `9b29a89b` — refactor: remove legacy plugin manifest bridge
+  - `27b2b7cd` — test: align child manifest error expectations
+  - `00c9a3f3` — refactor: make child naming canonical in command and path surfaces
 - Commands run:
   - `cargo check -q`
   - `cargo build -q`
   - `rg "PluginManifest|PluginWorld|PluginEngine|PluginRole|PluginProvides" src/`
   - `test -d src/plugin && echo exists || echo missing`
   - `rg "plugin\.toml|\[plugin\]" src/child src/main.rs src/lib.rs src/commands/setup/grammars.rs sdk/patina-sdk/src`
+  - `cargo test -q`
   - `cargo test -q manifest_valid_minimal`
 - Observed key lines:
   - build/compile pass with existing warning debt
@@ -247,6 +250,7 @@ Manifest bridge plan (explicit):
   - no plugin-era type identifiers found in `src/`
   - no plugin-era manifest vocabulary found in runtime/SDK surfaces checked above
   - grammars and plugin assets migrated from `plugin.toml` to `child.toml` with `[child]` + `kind`
+  - full suite parity proof passed (`cargo test -q`: 397 passed, 0 failed, 2 ignored)
 
 Exit checklist:
 
