@@ -1,0 +1,131 @@
+use anyhow::{Context, Result};
+use serde::Deserialize;
+use std::io::{Read, Write};
+use std::os::unix::net::UnixStream;
+use std::path::Path;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChildHealthInfo {
+    pub name: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct HealthInfo {
+    pub version: String,
+    pub uptime_secs: u64,
+    #[serde(default)]
+    pub children: Vec<ChildHealthInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StatusReport {
+    pub running: bool,
+    pub pid: Option<i32>,
+    pub stale_pid_file: bool,
+    pub health: Option<HealthInfo>,
+    pub health_error: Option<String>,
+}
+
+pub fn probe_status(pid_path: &Path, socket_path: &Path) -> Result<StatusReport> {
+    let pid = if pid_path.exists() {
+        match std::fs::read_to_string(pid_path) {
+            Ok(s) => s.trim().parse::<i32>().ok(),
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    let running = pid
+        .map(|p| unsafe { libc::kill(p, 0) == 0 })
+        .unwrap_or(false);
+    if !running {
+        return Ok(StatusReport {
+            running: false,
+            pid,
+            stale_pid_file: pid.is_some(),
+            health: None,
+            health_error: None,
+        });
+    }
+
+    match query_health(socket_path) {
+        Ok(health) => Ok(StatusReport {
+            running: true,
+            pid,
+            stale_pid_file: false,
+            health: Some(health),
+            health_error: None,
+        }),
+        Err(error) => Ok(StatusReport {
+            running: true,
+            pid,
+            stale_pid_file: false,
+            health: None,
+            health_error: Some(error.to_string()),
+        }),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StopResult {
+    NotRunningNoPid,
+    NotRunningStalePid,
+    Stopped,
+    TimedOut,
+}
+
+pub fn stop_daemon(pid_path: &Path, socket_path: &Path) -> Result<StopResult> {
+    if !pid_path.exists() {
+        return Ok(StopResult::NotRunningNoPid);
+    }
+
+    let pid_str = std::fs::read_to_string(pid_path)
+        .with_context(|| format!("reading PID file {}", pid_path.display()))?;
+    let pid: i32 = pid_str
+        .trim()
+        .parse()
+        .with_context(|| format!("parsing PID from '{}'", pid_str.trim()))?;
+
+    let is_running = unsafe { libc::kill(pid, 0) == 0 };
+    if !is_running {
+        let _ = std::fs::remove_file(pid_path);
+        return Ok(StopResult::NotRunningStalePid);
+    }
+
+    let result = unsafe { libc::kill(pid, libc::SIGTERM) };
+    if result != 0 {
+        let err = std::io::Error::last_os_error();
+        anyhow::bail!("Failed to send SIGTERM to PID {}: {}", pid, err);
+    }
+
+    for _ in 0..50 {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let still_running = unsafe { libc::kill(pid, 0) == 0 };
+        if !still_running {
+            let _ = std::fs::remove_file(pid_path);
+            let _ = std::fs::remove_file(socket_path);
+            return Ok(StopResult::Stopped);
+        }
+    }
+
+    Ok(StopResult::TimedOut)
+}
+
+fn query_health(socket_path: &Path) -> Result<HealthInfo> {
+    let mut stream = UnixStream::connect(socket_path)
+        .with_context(|| format!("connecting to {}", socket_path.display()))?;
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(2)))?;
+
+    let request = "GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+    stream.write_all(request.as_bytes())?;
+
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response)?;
+    let response_str = String::from_utf8_lossy(&response);
+    let body_start = response_str.find("\r\n\r\n").map(|i| i + 4).unwrap_or(0);
+    let body = &response_str[body_start..];
+
+    serde_json::from_str(body).with_context(|| "parsing health response")
+}

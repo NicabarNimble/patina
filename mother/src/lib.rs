@@ -2,6 +2,7 @@ pub mod broker;
 pub mod checkpoint;
 pub mod daemon;
 pub mod events;
+pub mod lifecycle;
 pub mod microserver;
 pub mod protocol;
 pub mod registry;
