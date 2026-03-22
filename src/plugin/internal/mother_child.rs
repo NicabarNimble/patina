@@ -444,9 +444,6 @@ impl MotherChildEngine {
     }
 }
 
-/// Legacy alias kept during CV6 migration.
-pub type PluginEngine = MotherChildEngine;
-
 // =========================================================================
 // WasmChild adapter — wraps WASM instance as native MotherChild
 // =========================================================================

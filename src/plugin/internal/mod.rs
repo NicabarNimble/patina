@@ -22,9 +22,12 @@ mod tests;
 pub use command::{CommandEngine, QueryDispatchFn};
 pub use knowledge_child::KnowledgeChildEngine as ChildEngine;
 pub use knowledge_child::KnowledgeChildEngine;
-pub use mother_child::PluginEngine;
+pub use mother_child::MotherChildEngine;
 pub use pipeline::PipelineEngine;
 pub use task::TaskEngine;
+
+/// Legacy alias kept during CV6 migration.
+pub type PluginEngine = MotherChildEngine;
 
 // =========================================================================
 // Child kind enum — parsed from manifest, enforced at load time (F4)
@@ -254,7 +257,7 @@ pub enum QueryScope {
 
 /// Resolved capabilities for runtime gating.
 ///
-/// Built from PluginManifest at load time. Stored on host state
+/// Built from ChildManifest at load time. Stored on host state
 /// so call-time checks are a HashSet lookup, not manifest re-parsing.
 #[derive(Debug, Clone, Default)]
 pub struct GrantedCapabilities {

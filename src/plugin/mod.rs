@@ -1,7 +1,7 @@
-//! Plugin engine — shared wasmtime infrastructure for WASM plugins.
+//! Child engine bridge — shared wasmtime infrastructure for WASM runtimes.
 //!
 //! Four engines for four worlds:
-//! - `PluginEngine` — mother-child world (daemon resident children)
+//! - `MotherChildEngine` — mother-child world (daemon resident children)
 //! - `CommandEngine` — command world (one-shot CLI plugins, no daemon)
 //! - `TaskEngine` — task world (on-demand action plugins, CLI-invoked)
 //! - `PipelineEngine` — pipeline world (host-invoked pure compute, log-only)
@@ -20,6 +20,7 @@ pub use internal::{
 
 pub use internal::PluginEngine as MotherChildEngine;
 
+// Legacy plugin-era aliases kept during CV6 migration.
 pub type PluginEngine = MotherChildEngine;
 pub type PluginManifest = ChildManifest;
 pub type PluginRole = ChildRole;
