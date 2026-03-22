@@ -215,7 +215,7 @@ Manifest bridge plan (explicit):
 - ls crates/patina-pipe/ — should not exist
 - ls src/mcp/ — should not exist
 
-### Phase 2 Progress Report (2026-03-22, in-progress)
+### Phase 2 Verification Report (2026-03-22)
 
 - Commits:
   - `ba0b3848` — refactor: introduce child engine surface and migrate runtime callers
@@ -228,32 +228,33 @@ Manifest bridge plan (explicit):
   - `f4230706` — refactor: migrate internal engines to child manifest vocabulary
   - `60cc29c5` — refactor: tighten child-first bridge exports
   - `26affc95` — test: migrate internal plugin tests to child vocabulary
+  - `920be97b` — refactor: move runtime engine module from plugin to child
+  - `3abbac5a` — refactor: remove plugin engine alias from child internals
+  - `7d1dca22` — refactor: scaffold child.toml manifests with child vocabulary
+  - `1a53d91a` — refactor: prefer child manifests in runtime discovery paths
+  - `9b29a89b` — refactor: remove legacy plugin manifest bridge
 - Commands run:
   - `cargo check -q`
   - `cargo build -q`
-  - `rg "PluginManifest|PluginWorld|PluginEngine" src/`
-  - `ls src/plugin`
-  - `grep "^\[plugin\]" children/*/child.toml`
+  - `rg "PluginManifest|PluginWorld|PluginEngine|PluginRole|PluginProvides" src/`
+  - `test -d src/plugin && echo exists || echo missing`
+  - `rg "plugin\.toml|\[plugin\]" src/child src/main.rs src/lib.rs src/commands/setup/grammars.rs sdk/patina-sdk/src`
   - `cargo test -q manifest_valid_minimal`
 - Observed key lines:
   - build/compile pass with existing warning debt
-  - child-native engine surface exists at `src/child/engine.rs` and is used by runtime/CLI callsites
-  - plugin module now exports child vocabulary first and keeps plugin names as compatibility aliases
-  - first-party `children/*/child.toml` files now use `[child]` section while parser accepts legacy `[plugin]` as transitional bridge
-  - plugin internals now define `ChildKind`/`ChildRole` as canonical enums with plugin-era names kept as aliases
-  - plugin internals now define `ChildManifest`/`ChildProvides` as canonical structs with plugin-era aliases retained in bridge surface
-  - scaffold path now accepts child kind type directly (`ChildKind`) while preserving CLI behavior
-  - internal mother/knowledge/task/command/pipeline engine modules now consume child-native manifest/kind types
-  - internal test surface uses child-native type names while compatibility aliases remain bridge-only
-  - Phase 2 is not complete: plugin internals and scaffold still contain plugin-era naming; `src/plugin/` still exists intentionally during bridge window
+  - `src/plugin` directory removed (`missing`)
+  - runtime/CLI engine code lives under `src/child/` and uses `ChildManifest`/`ChildKind`/`ChildEngine`
+  - no plugin-era type identifiers found in `src/`
+  - no plugin-era manifest vocabulary found in runtime/SDK surfaces checked above
+  - grammars and plugin assets migrated from `plugin.toml` to `child.toml` with `[child]` + `kind`
 
 Exit checklist:
 
-- [ ] canonical child vocabulary is dominant in runtime code
-- [ ] legacy names only remain in intentional compatibility bridges
-- [ ] child manifests use `child.toml` + `kind`; transitional parser support for legacy keys is explicitly documented until bridge removal
-- [ ] 1:1 parity proof captured before bridge removal
-- [ ] temporary bridge removed after parity proof (unless user explicitly approves exception)
+- [x] canonical child vocabulary is dominant in runtime code
+- [x] legacy names only remain in intentional compatibility bridges
+- [x] child manifests use `child.toml` + `kind`; transitional parser support for legacy keys is explicitly documented until bridge removal
+- [x] 1:1 parity proof captured before bridge removal
+- [x] temporary bridge removed after parity proof (unless user explicitly approves exception)
 
 ## Phase 3: Consolidate Mother (CV1, CV2, CV7)
 

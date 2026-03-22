@@ -253,7 +253,7 @@ Evidence format rules for this table:
 | CV3 | verified-true | Runtime policy is explicitly documented in this spec and command-tested with `resources/scripts/check-core-verb-policy.sh --mode off --isolated` (covers `scrape`, `scry`, `assay`, `context`, `belief`, `measure`, `oxidize`). |
 | CV4 | verified-true | Command proof: `grep "try_daemon_|not yet implemented" src/commands/{context.rs,measure/mod.rs,spec/mod.rs,lake.rs,scry/internal/routing.rs}` => no matches (2026-03-22). |
 | CV5 | verified-false | Command proof: `cargo check` output contains `patina-ai (bin "patina") generated 40 warnings` (2026-03-22 baseline). |
-| CV6 | verified-partial | Both vocabularies still exist in runtime code: `src/plugin/mod.rs:1` and `src/child/mod.rs:1`. |
+| CV6 | verified-true | Runtime code is child-vocabulary canonical (`src/child/`); command proof: `rg "PluginManifest|PluginWorld|PluginEngine|PluginRole|PluginProvides" src/` => no matches; `test -d src/plugin && echo exists || echo missing` => `missing`; `rg "plugin\.toml|\[plugin\]" src/child src/main.rs src/lib.rs src/commands/setup/grammars.rs sdk/patina-sdk/src` => no matches. |
 | CV7 | verified-false | `patina mother status` shows loaded children `ducklake` and `secrets` only; `session-writer` is not loaded/visible in daemon status output (2026-03-22 baseline). |
 | CV8 | verified-false | Command proof: `test -e .patina/manifest.toml || echo missing` => `missing`; no project child-needs manifest contract is present in-tree (2026-03-22 baseline). |
 | CV9 | verified-false | Spec lifecycle remains core at `src/commands/spec/mod.rs:7` + `src/commands/spec/internal/mod.rs:1`; command proof: `test -e children/spec-manager/child.toml || echo missing` => `missing`. |
