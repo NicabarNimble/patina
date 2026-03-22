@@ -58,6 +58,23 @@ Enable exactly one world feature per crate:
 - `pipeline`
 - `mother-child` (legacy migration lane)
 
+## Child Relationships
+
+Children can declare mediated event relationships in `plugin.toml`:
+
+```toml
+[relationships]
+emits = ["data-ingested"]
+listens = ["data-ingested"]
+```
+
+Use this to describe child-to-child flow while keeping Mother as the routing authority.
+
+Example pattern:
+
+- `ducklake` emits `data-ingested` after sync
+- `session-writer` listens to `data-ingested` and appends activity notes
+
 ## License
 
 MIT
