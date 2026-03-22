@@ -59,12 +59,6 @@ pub use patina_sdk_core as core;
 pub use patina_sdk_data as data;
 
 // =========================================================================
-// Shared pipe protocol types — available to all worlds
-// =========================================================================
-
-pub use patina_pipe_types as pipe_types;
-
-// =========================================================================
 // Feature-gated world modules
 // =========================================================================
 

@@ -209,12 +209,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrayref"
-version = "0.3.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76a2e8124351fda1ef8aaaa3bbd7ebbcb486bbcd4225aca0aa0d84bb2db8fecb"
-
-[[package]]
 name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -494,20 +488,6 @@ dependencies = [
  "radium",
  "tap",
  "wyz",
-]
-
-[[package]]
-name = "blake3"
-version = "1.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2468ef7d57b3fb7e16b576e8377cdbde2320c60e1491e961d11da40fc4f02a2d"
-dependencies = [
- "arrayref",
- "arrayvec",
- "cc",
- "cfg-if",
- "constant_time_eq",
- "cpufeatures",
 ]
 
 [[package]]
@@ -871,12 +851,6 @@ dependencies = [
  "once_cell",
  "tiny-keccak",
 ]
-
-[[package]]
-name = "constant_time_eq"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
 name = "cookie-factory"
@@ -1397,26 +1371,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "enumflags2"
-version = "0.7.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1027f7680c853e056ebcec683615fb6fbbc07dbaa13b4d5d9442b146ded4ecef"
-dependencies = [
- "enumflags2_derive",
-]
-
-[[package]]
-name = "enumflags2_derive"
-version = "0.7.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67c78a4d8fdf9953a5c9d458f9efe940fd97a0cab0941c075a813ac594733827"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.116",
 ]
 
 [[package]]
@@ -2417,17 +2371,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "landlock"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49fefd6652c57d68aaa32544a4c0e642929725bdc1fd929367cdeb673ab81088"
-dependencies = [
- "enumflags2",
- "libc",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3055,8 +2998,6 @@ dependencies = [
  "notify",
  "ort",
  "parking_lot",
- "patina-ai-pipe",
- "patina-ai-pipe-types",
  "rand 0.8.5",
  "rayon",
  "regex",
@@ -3139,34 +3080,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-ai-pipe"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "landlock",
- "libc",
- "patina-ai-pipe-types",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "patina-ai-pipe-types"
-version = "0.1.0"
-dependencies = [
- "blake3",
- "serde",
- "serde_json",
- "toml 0.8.23",
-]
-
-[[package]]
 name = "patina-sdk"
 version = "0.21.0"
 dependencies = [
- "patina-ai-pipe-types",
  "patina-sdk-agent",
  "patina-sdk-core",
  "patina-sdk-data",

@@ -349,7 +349,6 @@ impl PluginManifest {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        let has_needs = needs_table.is_some();
         let needs_scopes = needs_table
             .and_then(|needs| needs.get("scopes"))
             .and_then(|v| v.as_table());
@@ -364,19 +363,18 @@ impl PluginManifest {
                     .collect()
             })
             .unwrap_or_default();
-        if has_needs {
-            for (toy, capability) in [
-                ("log", "host_log"),
-                ("query", "host_query"),
-                ("http", "host_http"),
-                ("emit", "host_emit"),
-                ("github", "host_http"),
-            ] {
-                if needs_toys.iter().any(|entry| entry == toy)
-                    && !capabilities.iter().any(|cap| cap == capability)
-                {
-                    capabilities.push(capability.to_string());
-                }
+        for (toy, capability) in [
+            ("log", "host_log"),
+            ("query", "host_query"),
+            ("http", "host_http"),
+            ("emit", "host_emit"),
+            ("measure", "host_measure"),
+            ("layer", "host_layer"),
+        ] {
+            if needs_toys.iter().any(|entry| entry == toy)
+                && !capabilities.iter().any(|cap| cap == capability)
+            {
+                capabilities.push(capability.to_string());
             }
         }
 
@@ -414,15 +412,7 @@ impl PluginManifest {
                     .collect()
             })
             .unwrap_or_default();
-        let mut host_http_domains: Vec<String> = host_http_domains;
-        if has_needs
-            && needs_toys.iter().any(|entry| entry == "github")
-            && !host_http_domains
-                .iter()
-                .any(|domain| domain == "api.github.com")
-        {
-            host_http_domains.push("api.github.com".to_string());
-        }
+        let host_http_domains: Vec<String> = host_http_domains;
 
         // Parse [capabilities.host_secrets] — credential mappings per domain
         let host_secrets = cap_table
@@ -512,67 +502,31 @@ impl PluginManifest {
             })
             .unwrap_or_default();
 
-        let toys_table = table.get("toys").and_then(|v| v.as_table());
-        let state_enabled = if has_needs {
-            needs_toys.iter().any(|toy| toy == "state")
-        } else {
-            cap_table
-                .and_then(|cap| cap.get("state"))
-                .and_then(|v| v.as_table())
-                .and_then(|t| t.get("enabled"))
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-        };
-        let checkpoint_streams = if has_needs {
-            needs_scopes
-                .and_then(|scopes| scopes.get("checkpoint"))
-                .and_then(|v| v.as_table())
-                .and_then(|t| t.get("streams"))
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(ToString::to_string))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
-        } else {
-            cap_table
-                .and_then(|cap| cap.get("checkpoint"))
-                .and_then(|v| v.as_table())
-                .and_then(|t| t.get("streams"))
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(ToString::to_string))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
-        };
-        let lake_names = if has_needs {
-            needs_scopes
-                .and_then(|scopes| scopes.get("lake"))
-                .and_then(|v| v.as_table())
-                .and_then(|t| t.get("names"))
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(ToString::to_string))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
-        } else {
-            toys_table
-                .and_then(|toys| toys.get("lake"))
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(ToString::to_string))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
-        };
-        let ingress_sources = toys_table
-            .and_then(|toys| toys.get("ingress"))
+        let state_enabled = needs_toys.iter().any(|toy| toy == "state");
+        let checkpoint_streams = needs_scopes
+            .and_then(|scopes| scopes.get("checkpoint"))
+            .and_then(|v| v.as_table())
+            .and_then(|t| t.get("streams"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(ToString::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let lake_names = needs_scopes
+            .and_then(|scopes| scopes.get("lake"))
+            .and_then(|v| v.as_table())
+            .and_then(|t| t.get("names"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(ToString::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let ingress_sources = needs_scopes
+            .and_then(|scopes| scopes.get("ingress"))
             .and_then(|v| v.as_table())
             .map(|ingress| {
                 ingress
@@ -591,209 +545,77 @@ impl PluginManifest {
                     .collect::<std::collections::HashMap<_, _>>()
             })
             .unwrap_or_default();
-        let subscribed_streams = if has_needs {
-            needs_scopes
-                .and_then(|scopes| scopes.get("events"))
-                .and_then(|v| v.as_table())
-                .and_then(|t| t.get("subscribe"))
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(ToString::to_string))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
-        } else {
-            cap_table
-                .and_then(|cap| cap.get("events"))
-                .and_then(|v| v.as_table())
-                .and_then(|t| t.get("subscribe"))
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(ToString::to_string))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
-        };
-        let task_intent_names = if has_needs {
-            needs_scopes
-                .and_then(|scopes| scopes.get("task"))
-                .and_then(|v| v.as_table())
-                .and_then(|t| t.get("intents"))
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(ToString::to_string))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
-        } else {
-            cap_table
-                .and_then(|cap| cap.get("tasks"))
-                .and_then(|v| v.as_table())
-                .and_then(|t| t.get("intents"))
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(ToString::to_string))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
-        };
+        let subscribed_streams = needs_scopes
+            .and_then(|scopes| scopes.get("events"))
+            .and_then(|v| v.as_table())
+            .and_then(|t| t.get("subscribe"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(ToString::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let task_intent_names = needs_scopes
+            .and_then(|scopes| scopes.get("task"))
+            .and_then(|v| v.as_table())
+            .and_then(|t| t.get("intents"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(ToString::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
         let task_intents = task_intent_names
             .iter()
             .filter_map(|v| crate::mother::TaskIntentKind::parse(v))
             .collect::<Vec<_>>();
-        let graph_read = if has_needs {
-            needs_scopes
-                .and_then(|scopes| scopes.get("graph"))
-                .and_then(|v| v.as_table())
-                .and_then(|t| t.get("read"))
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-        } else {
-            cap_table
-                .and_then(|cap| cap.get("graph"))
-                .and_then(|v| v.as_table())
-                .and_then(|t| t.get("read"))
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-        };
-        let graph_write_actions = if has_needs {
-            needs_scopes
-                .and_then(|scopes| scopes.get("graph"))
-                .and_then(|v| v.as_table())
-                .and_then(|t| t.get("write"))
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(ToString::to_string))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
-        } else {
-            cap_table
-                .and_then(|cap| cap.get("graph"))
-                .and_then(|v| v.as_table())
-                .and_then(|t| t.get("write"))
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(ToString::to_string))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
-        };
-        let belief_read = if has_needs {
-            needs_scopes
-                .and_then(|scopes| scopes.get("belief"))
-                .and_then(|v| v.as_table())
-                .and_then(|t| t.get("read"))
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-        } else {
-            cap_table
-                .and_then(|cap| cap.get("belief"))
-                .and_then(|v| v.as_table())
-                .and_then(|t| t.get("read"))
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-        };
-        let belief_write_actions = if has_needs {
-            needs_scopes
-                .and_then(|scopes| scopes.get("belief"))
-                .and_then(|v| v.as_table())
-                .and_then(|t| t.get("write"))
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(ToString::to_string))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
-        } else {
-            cap_table
-                .and_then(|cap| cap.get("belief"))
-                .and_then(|v| v.as_table())
-                .and_then(|t| t.get("write"))
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(ToString::to_string))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
-        };
+        let graph_read = needs_scopes
+            .and_then(|scopes| scopes.get("graph"))
+            .and_then(|v| v.as_table())
+            .and_then(|t| t.get("read"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let graph_write_actions = needs_scopes
+            .and_then(|scopes| scopes.get("graph"))
+            .and_then(|v| v.as_table())
+            .and_then(|t| t.get("write"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(ToString::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let belief_read = needs_scopes
+            .and_then(|scopes| scopes.get("belief"))
+            .and_then(|v| v.as_table())
+            .and_then(|t| t.get("read"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let belief_write_actions = needs_scopes
+            .and_then(|scopes| scopes.get("belief"))
+            .and_then(|v| v.as_table())
+            .and_then(|t| t.get("write"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(ToString::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
         let toys = crate::mother::GrantedToys {
-            fetch: if has_needs {
-                needs_toys.iter().any(|toy| toy == "fetch")
-            } else {
-                toys_table
-                    .and_then(|t| t.get("fetch"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-            },
+            fetch: needs_toys.iter().any(|toy| toy == "fetch"),
             lake_names: lake_names.iter().cloned().collect(),
             ingress_sources: ingress_sources.clone(),
-            connector: if has_needs {
-                needs_toys.iter().any(|toy| toy == "connector")
-            } else {
-                toys_table
-                    .and_then(|t| t.get("connector"))
-                    .and_then(|v| v.as_table())
-                    .and_then(|t| t.get("enabled"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-            },
-            github: if has_needs {
-                needs_toys.iter().any(|toy| toy == "github")
-            } else {
-                toys_table
-                    .and_then(|t| t.get("github"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-            },
-            session: if has_needs {
-                needs_toys.iter().any(|toy| toy == "session")
-            } else {
-                toys_table
-                    .and_then(|t| t.get("session"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-            },
-            query: if has_needs {
-                needs_toys.iter().any(|toy| toy == "query")
-            } else {
-                toys_table
-                    .and_then(|t| t.get("query"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-            },
-            measure: if has_needs {
-                needs_toys.iter().any(|toy| toy == "measure")
-            } else {
-                toys_table
-                    .and_then(|t| t.get("measure"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-            },
-            graph: if has_needs {
-                needs_toys.iter().any(|toy| toy == "graph")
-            } else {
-                toys_table
-                    .and_then(|t| t.get("graph"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-            },
-            belief: if has_needs {
-                needs_toys.iter().any(|toy| toy == "belief")
-            } else {
-                toys_table
-                    .and_then(|t| t.get("belief"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-            },
+            connector: needs_toys.iter().any(|toy| toy == "connector"),
+            github: needs_toys.iter().any(|toy| toy == "github"),
+            session: needs_toys.iter().any(|toy| toy == "session"),
+            query: needs_toys.iter().any(|toy| toy == "query"),
+            measure: needs_toys.iter().any(|toy| toy == "measure"),
+            graph: needs_toys.iter().any(|toy| toy == "graph"),
+            belief: needs_toys.iter().any(|toy| toy == "belief"),
         };
 
         Ok(Self {

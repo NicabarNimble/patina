@@ -191,39 +191,30 @@ fn manifest_parses_knowledge_child_capabilities_and_toys() {
 name = "ducklake"
 world = "knowledge-child"
 
-[capabilities]
-host_log = true
-host_measure = true
+[needs]
+toys = ["log", "state", "checkpoint", "events", "task", "graph", "belief", "fetch", "lake", "query", "measure", "github"]
 
-[capabilities.state]
-enabled = true
-
-[capabilities.checkpoint]
+[needs.scopes.checkpoint]
 streams = ["ducklake.sync"]
 
-[capabilities.events]
+[needs.scopes.events]
 subscribe = ["ducklake.sync", "belief.changed"]
 
-[capabilities.tasks]
+[needs.scopes.task]
 intents = ["fetch-source", "verify-belief"]
 
-[capabilities.graph]
+[needs.scopes.graph]
 read = true
 write = ["link", "tag"]
 
-[capabilities.belief]
+[needs.scopes.belief]
 read = true
 write = ["record-verification"]
 
-[toys]
-fetch = true
-lake = ["default", "archive"]
-query = true
-measure = true
-graph = true
-belief = true
+[needs.scopes.lake]
+names = ["default", "archive"]
 
-[toys.ingress.github]
+[needs.scopes.ingress.github]
 endpoint = "https://api.github.com/repos/openai/openai/issues"
 
 [provides]
@@ -269,10 +260,10 @@ fn knowledge_child_rejects_unknown_event_stream() {
 name = "bad-child"
 world = "knowledge-child"
 
-[capabilities]
-host_log = true
+[needs]
+toys = ["log", "events"]
 
-[capabilities.events]
+[needs.scopes.events]
 subscribe = ["unknown.stream"]
 
 [provides]
@@ -403,10 +394,10 @@ fn knowledge_child_rejects_invalid_ingress_endpoint() {
 name = "bad-ingress"
 world = "knowledge-child"
 
-[capabilities]
-host_log = true
+[needs]
+toys = ["log", "ingress"]
 
-[toys.ingress.bad]
+[needs.scopes.ingress.bad]
 endpoint = "http://localhost/internal"
 
 [provides]
@@ -429,7 +420,7 @@ fn ducklake_manifest_uses_granted_ingress_not_ambient_http() {
     let manifest = PluginManifest::from_path(&path).unwrap();
     assert!(manifest.host_http_domains.is_empty());
     assert!(!manifest.capabilities.contains(&"host_http".to_string()));
-    assert!(manifest.toys.connector);
+    assert!(manifest.toys.github);
 }
 
 #[test]
@@ -439,7 +430,7 @@ fn ducklake_manifest_runtime_grants_sdk_story_stays_connected() {
     let manifest = PluginManifest::from_path(&path).unwrap();
     let grants = manifest.granted_capabilities();
 
-    assert!(grants.toys.connector);
+    assert!(grants.toys.github);
     assert!(grants.toys.lake_names.contains("default"));
     assert!(!grants.toys.fetch);
     assert!(!grants.http_domains.contains("api.github.com"));

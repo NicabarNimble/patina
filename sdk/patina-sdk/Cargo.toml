@@ -45,7 +45,6 @@ pipeline = ["dep:serde", "dep:serde_json"]
 
 [dependencies]
 wit-bindgen = "0.41"
-patina-pipe-types = { package = "patina-ai-pipe-types", path = "../../crates/patina-pipe-types" }
 patina-sdk-core = { path = "../patina-sdk-core", optional = true }
 patina-sdk-data = { path = "../patina-sdk-data", optional = true }
 patina-sdk-agent = { path = "../patina-sdk-agent", optional = true }
