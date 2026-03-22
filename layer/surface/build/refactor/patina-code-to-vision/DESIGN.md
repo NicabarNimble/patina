@@ -335,6 +335,7 @@ Phase 3a/3b sequencing clarification:
   - `ab425dc8` — refactor: extract mother graph and scry dependency adapters
   - `ed8ab975` — refactor: add graph registry and session adapter traits
   - `80491bcc` — refactor: route child toy calls through toy-host adapter
+  - `7a0f1258` — refactor: move mother stop/status lifecycle logic into mother crate
 - Active blockers captured as adapter work (not direct moves):
   - graph orchestration dependencies (`beliefs`, registry/session wiring)
   - daemon query dependency (`retrieval::QueryEngine`)
