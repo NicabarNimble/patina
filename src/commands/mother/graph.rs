@@ -8,7 +8,7 @@ use std::path::Path;
 use patina::mother::{BeliefEntry, BeliefStatus, EdgeType, Graph, NodeType, MIN_SAMPLES};
 use patina::paths;
 
-use crate::commands::repo::internal::Registry;
+use super::adapters;
 
 /// Sync graph nodes from registry
 ///
@@ -17,14 +17,14 @@ use crate::commands::repo::internal::Registry;
 pub fn sync_from_registry() -> Result<()> {
     println!("🔄 Syncing graph from registry...\n");
 
-    let registry = Registry::load()?;
+    let registry = adapters::load_registry_snapshot()?;
     let graph = Graph::open()?;
 
     let mut projects_added = 0;
     let mut repos_added = 0;
 
     // Add current project if we're in one
-    if let Ok(project_root) = patina::session::SessionManager::find_project_root() {
+    if let Some(project_root) = adapters::find_current_project_root() {
         let project_name = project_root
             .file_name()
             .and_then(|n| n.to_str())
@@ -39,19 +39,19 @@ pub fn sync_from_registry() -> Result<()> {
     }
 
     // Add registered projects
-    for (name, entry) in &registry.projects {
+    for entry in &registry.projects {
         let path = Path::new(&entry.path);
-        graph.add_node(name, NodeType::Project, path, &entry.domains)?;
+        graph.add_node(&entry.name, NodeType::Project, path, &entry.domains)?;
         projects_added += 1;
-        println!("  + {} (project)", name);
+        println!("  + {} (project)", entry.name);
     }
 
     // Add repos
-    for (name, entry) in &registry.repos {
+    for entry in &registry.repos {
         let path = Path::new(&entry.path);
-        graph.add_node(name, NodeType::Reference, path, &entry.domains)?;
+        graph.add_node(&entry.name, NodeType::Reference, path, &entry.domains)?;
         repos_added += 1;
-        println!("  + {} (reference)", name);
+        println!("  + {} (reference)", entry.name);
     }
 
     // =========================================================================
@@ -67,7 +67,7 @@ pub fn sync_from_registry() -> Result<()> {
     let mut values_synced = 0;
 
     // Detect current project root for dedup guard
-    let current_project_root = patina::session::SessionManager::find_project_root().ok();
+    let current_project_root = adapters::find_current_project_root();
 
     // Collect beliefs from current project (auto-detected, may not be in registry)
     if let Some(ref project_root) = current_project_root {
@@ -105,7 +105,7 @@ pub fn sync_from_registry() -> Result<()> {
 
     // For each registered project, try to open patina.db and read beliefs
     // Dedup guard: skip registry entry if its path matches current project root
-    for (name, entry) in &registry.projects {
+    for entry in &registry.projects {
         let registry_path = Path::new(&entry.path);
         if let Some(ref project_root) = current_project_root {
             if registry_path == project_root.as_path() {
@@ -113,24 +113,24 @@ pub fn sync_from_registry() -> Result<()> {
             }
         }
         let db_path = registry_path.join(".patina/local/data/patina.db");
-        match collect_project_beliefs(name, &db_path) {
+        match collect_project_beliefs(&entry.name, &db_path) {
             Ok(entries) => {
                 let b = entries.iter().filter(|e| e.kind != "value").count();
                 let v = entries.iter().filter(|e| e.kind == "value").count();
                 beliefs_synced += b;
                 values_synced += v;
-                synced_sources.push(name.clone());
+                synced_sources.push(entry.name.clone());
                 if b + v > 0 {
                     if v > 0 {
-                        println!("  + {} beliefs + {} values from {}", b, v, name);
+                        println!("  + {} beliefs + {} values from {}", b, v, entry.name);
                     } else {
-                        println!("  + {} beliefs from {}", b, name);
+                        println!("  + {} beliefs from {}", b, entry.name);
                     }
                 }
                 knowledge.extend(entries);
             }
             Err(e) => {
-                eprintln!("  ⚠ {}: {}", name, e);
+                eprintln!("  ⚠ {}: {}", entry.name, e);
             }
         }
     }
@@ -193,7 +193,7 @@ pub fn sync_from_registry() -> Result<()> {
     }
 
     // Collect edges from registered projects (dedup guard: skip current project)
-    for (name, entry) in &registry.projects {
+    for entry in &registry.projects {
         let registry_path = Path::new(&entry.path);
         if let Some(ref project_root) = current_project_root {
             if registry_path == project_root.as_path() {
@@ -201,13 +201,13 @@ pub fn sync_from_registry() -> Result<()> {
             }
         }
         let db_path = registry_path.join(".patina/local/data/patina.db");
-        match collect_belief_edges(name, &db_path) {
+        match collect_belief_edges(&entry.name, &db_path) {
             Ok((s, a)) => {
                 let count = s.len() + a.len();
                 if count > 0 {
-                    println!("  + {} edges from {}", count, name);
+                    println!("  + {} edges from {}", count, entry.name);
                 }
-                edge_synced_sources.push(name.clone());
+                edge_synced_sources.push(entry.name.clone());
                 supports_edges.extend(s);
                 attacks_edges.extend(a);
             }

@@ -1,6 +1,55 @@
 use anyhow::Result;
+use std::path::PathBuf;
 
+use crate::commands::repo::internal::Registry;
 use crate::retrieval::{QueryEngine, QueryOptions};
+
+#[derive(Debug, Clone)]
+pub struct RegistryProject {
+    pub name: String,
+    pub path: String,
+    pub domains: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryRepo {
+    pub name: String,
+    pub path: String,
+    pub domains: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RegistrySnapshot {
+    pub projects: Vec<RegistryProject>,
+    pub repos: Vec<RegistryRepo>,
+}
+
+pub fn load_registry_snapshot() -> Result<RegistrySnapshot> {
+    let registry = Registry::load()?;
+    let projects = registry
+        .projects
+        .iter()
+        .map(|(name, entry)| RegistryProject {
+            name: name.clone(),
+            path: entry.path.clone(),
+            domains: entry.domains.clone(),
+        })
+        .collect();
+    let repos = registry
+        .repos
+        .iter()
+        .map(|(name, entry)| RegistryRepo {
+            name: name.clone(),
+            path: entry.path.clone(),
+            domains: entry.domains.clone(),
+        })
+        .collect();
+    Ok(RegistrySnapshot { projects, repos })
+}
+
+pub fn find_current_project_root() -> Option<PathBuf> {
+    patina::session::SessionManager::find_project_root().ok()
+}
 
 #[derive(Debug, Clone)]
 pub struct ScryHit {
