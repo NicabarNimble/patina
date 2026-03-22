@@ -215,6 +215,23 @@ Manifest bridge plan (explicit):
 - ls crates/patina-pipe/ — should not exist
 - ls src/mcp/ — should not exist
 
+### Phase 2 Progress Report (2026-03-22, in-progress)
+
+- Commits:
+  - `ba0b3848` — refactor: introduce child engine surface and migrate runtime callers
+  - `cf9d586e` — refactor: migrate CLI surfaces to child engine vocabulary
+  - `737878cc` — refactor: make plugin module a child-vocabulary bridge
+- Commands run:
+  - `cargo check -q`
+  - `cargo build -q`
+  - `rg "PluginManifest|PluginWorld|PluginEngine" src/`
+  - `ls src/plugin`
+- Observed key lines:
+  - build/compile pass with existing warning debt
+  - child-native engine surface exists at `src/child/engine.rs` and is used by runtime/CLI callsites
+  - plugin module now exports child vocabulary first and keeps plugin names as compatibility aliases
+  - Phase 2 is not complete: plugin internals and scaffold still contain plugin-era naming; `src/plugin/` still exists intentionally during bridge window
+
 Exit checklist:
 
 - [ ] canonical child vocabulary is dominant in runtime code
