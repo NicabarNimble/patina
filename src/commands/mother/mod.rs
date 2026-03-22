@@ -37,6 +37,7 @@
 //! # }
 //! ```
 
+pub(crate) mod adapters;
 pub(crate) mod daemon;
 pub(crate) mod graph;
 

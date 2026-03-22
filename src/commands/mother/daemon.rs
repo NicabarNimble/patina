@@ -21,9 +21,9 @@ use std::time::{Duration, Instant};
 
 use patina::mother::ChildRequest;
 
+use super::adapters::{RetrievalScryBackend, ScryBackend};
 use super::microserver;
 use super::registry::ChildRegistry;
-use crate::retrieval::{QueryEngine, QueryOptions};
 
 /// Maximum request body size (1 MB)
 const MAX_BODY_SIZE: usize = 1_048_576;
@@ -84,6 +84,7 @@ pub struct ServerState {
     version: String,
     token: String,
     pub(super) registry: ChildRegistry,
+    scry_backend: Arc<dyn ScryBackend>,
 }
 
 impl ServerState {
@@ -93,6 +94,7 @@ impl ServerState {
             version: env!("CARGO_PKG_VERSION").to_string(),
             token,
             registry,
+            scry_backend: Arc::new(RetrievalScryBackend),
         }
     }
 
@@ -353,24 +355,20 @@ fn handle_scry(request: &HttpRequest, state: &ServerState, require_auth: bool) -
 
     body.limit = body.limit.min(MAX_LIMIT);
 
-    let engine = QueryEngine::new();
-    let query_opts = QueryOptions {
-        repo: body.repo,
-        all_repos: body.all_repos,
-        ..Default::default()
-    };
-
-    match engine.query_with_options(&body.query, body.limit, &query_opts) {
+    match state
+        .scry_backend
+        .query(&body.query, body.limit, body.repo, body.all_repos)
+    {
         Ok(results) => {
             let json_results: Vec<ScryResultJson> = results
                 .into_iter()
                 .map(|r| ScryResultJson {
                     id: 0,
                     content: r.content,
-                    score: r.fused_score,
-                    event_type: r.sources.join("+"),
-                    source_id: r.doc_id,
-                    timestamp: r.metadata.timestamp.unwrap_or_default(),
+                    score: r.score,
+                    event_type: r.event_type,
+                    source_id: r.source_id,
+                    timestamp: r.timestamp,
                 })
                 .collect();
 
