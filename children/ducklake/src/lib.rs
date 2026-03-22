@@ -12,6 +12,7 @@ struct DuckLakeToys {
     checkpoint: granted::Checkpoint,
     lake: granted::Lake,
     github: granted::Github,
+    peer: granted::Peer,
 }
 
 impl GrantedBundle for DuckLakeToys {
@@ -23,6 +24,7 @@ impl GrantedBundle for DuckLakeToys {
             checkpoint: granted::checkpoint(),
             lake: granted::lake("default"),
             github: granted::github(),
+            peer: granted::peer(),
         }
     }
 }
@@ -142,6 +144,16 @@ impl DuckLakeChild {
             "lake",
             "sync",
             &serde_json::json!({"written": written_total}).to_string(),
+        )?;
+        self.toys.peer.emit_event(
+            "data-ingested",
+            &serde_json::json!({
+                "source_id": source_id,
+                "owner": config.owner,
+                "repo": config.repo,
+                "written": written_total,
+            })
+            .to_string(),
         )?;
         Ok(
             serde_json::json!({"status": "synced", "source_id": source_id, "written": written_total})

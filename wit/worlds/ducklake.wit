@@ -9,6 +9,7 @@ world ducklake {
     import connector;
     import task;
     import events;
+    import peer;
     import types;
 
     use types.{child-health};
