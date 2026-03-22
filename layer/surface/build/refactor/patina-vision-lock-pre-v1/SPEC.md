@@ -1,17 +1,10 @@
 ---
 type: refactor
 id: patina-vision-lock-pre-v1
-status: draft
+status: ready
 created: 2026-03-22
 sessions:
   origin: 20260321-162736-004031000
-beliefs:
-- patina-is-knowledge-protocol
-- agents-are-guests-mother-is-infrastructure
-- core-primitives-are-not-children
-- core-verbs-standalone-mother-additive
-- core-baseline-child-strategy-extensions
-blocked_by: []
 related:
 - layer/surface/epistemic/beliefs/patina-is-knowledge-protocol.md
 - layer/surface/epistemic/beliefs/agents-are-guests-mother-is-infrastructure.md
@@ -23,6 +16,12 @@ related:
 - src/mother/daemon_client.rs
 - src/commands/mother/daemon.rs
 - mother/src/daemon.rs
+beliefs:
+- patina-is-knowledge-protocol
+- agents-are-guests-mother-is-infrastructure
+- core-primitives-are-not-children
+- core-verbs-standalone-mother-additive
+- core-baseline-child-strategy-extensions
 exit_criteria:
 - id: VL1
   text: Architecture contract is explicit and frozen — Patina is protocol/product, Mother is local runtime infrastructure, children are strategy extensions (not protocol ownership)
