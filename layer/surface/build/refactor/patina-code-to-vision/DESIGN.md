@@ -337,6 +337,7 @@ Phase 3a/3b sequencing clarification:
   - `80491bcc` — refactor: route child toy calls through toy-host adapter
   - `7a0f1258` — refactor: move mother stop/status lifecycle logic into mother crate
   - `ecbf2695` — refactor: move mother socket lifecycle utilities into mother crate
+  - `5faebbc8` — refactor: relocate toy host modules under child runtime
 - Active blockers captured as adapter work (not direct moves):
   - graph orchestration dependencies (`beliefs`, registry/session wiring)
   - daemon query dependency (`retrieval::QueryEngine`)
