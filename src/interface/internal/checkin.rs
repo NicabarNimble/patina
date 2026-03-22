@@ -94,7 +94,10 @@ pub fn check_in(request: &InterfaceCheckIn) -> Result<CheckInResult> {
                 role: "interface".to_string(),
                 interface_kind: request.interface_kind,
                 adapter_name: Some(request.adapter_name.clone()),
-                display_name: Some(request.adapter_name.clone()),
+                display_name: std::env::var("USER")
+                    .ok()
+                    .or_else(|| std::env::var("LOGNAME").ok())
+                    .or_else(|| Some(request.adapter_name.clone())),
             }),
         },
     )?;
