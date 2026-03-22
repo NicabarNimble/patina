@@ -754,6 +754,7 @@ enum LoadedWasmChild {
         child: Box<dyn patina::mother::KnowledgeChild>,
         name: String,
         subscribed_streams: Vec<String>,
+        relationship_listens: Vec<String>,
     },
 }
 
@@ -779,12 +780,36 @@ fn register_loaded_child(
             child,
             name,
             subscribed_streams,
+            relationship_listens,
         } => {
-            runtime.ensure_subscriptions(&name, &subscribed_streams)?;
+            let mut routes: std::collections::HashSet<String> =
+                subscribed_streams.into_iter().collect();
+            routes.extend(relationship_listens);
+            let routing_table = routes.into_iter().collect::<Vec<_>>();
+            runtime.ensure_subscriptions(&name, &routing_table)?;
             registry.register_knowledge(child)?;
             Ok(Some(format!("loaded knowledge WASM child: {}", name)))
         }
     }
+}
+
+fn parse_relationship_listens(manifest_path: &std::path::Path) -> Result<Vec<String>> {
+    let content = std::fs::read_to_string(manifest_path)?;
+    let table: toml::Table = content.parse()?;
+
+    let listens = table
+        .get("relationships")
+        .and_then(|v| v.as_table())
+        .and_then(|t| t.get("listens"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(ToString::to_string))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    Ok(listens)
 }
 
 /// Load a WASM child from a .wasm file + plugin.toml manifest.
@@ -793,6 +818,7 @@ fn load_wasm_child(
     manifest_path: &std::path::Path,
 ) -> Result<LoadedWasmChild> {
     let manifest = patina::plugin::PluginManifest::from_path(manifest_path)?;
+    let relationship_listens = parse_relationship_listens(manifest_path)?;
     let wasm_bytes = std::fs::read(wasm_path)?;
     match manifest.world {
         patina::plugin::PluginWorld::KnowledgeChild => {
@@ -804,6 +830,7 @@ fn load_wasm_child(
                 child,
                 name,
                 subscribed_streams: manifest.subscribed_streams.clone(),
+                relationship_listens,
             })
         }
         patina::plugin::PluginWorld::MotherChild => {
@@ -954,6 +981,7 @@ mod tests {
                 child: Box::new(StubKnowledge),
                 name: "knowledge".into(),
                 subscribed_streams: vec!["belief.changed".into()],
+                relationship_listens: vec![],
             },
             false,
         )
@@ -961,5 +989,48 @@ mod tests {
 
         assert_eq!(registry.knowledge_len(), 1);
         assert_eq!(registry.legacy_len(), 0);
+    }
+
+    #[test]
+    fn parse_relationship_listens_from_manifest() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let manifest = temp.path().join("plugin.toml");
+        std::fs::write(
+            &manifest,
+            r#"
+[plugin]
+name = "child"
+world = "knowledge-child"
+
+[relationships]
+emits = ["x"]
+listens = ["data-ingested", "belief.changed"]
+"#,
+        )
+        .unwrap();
+
+        let listens = parse_relationship_listens(&manifest).unwrap();
+        assert_eq!(
+            listens,
+            vec!["data-ingested".to_string(), "belief.changed".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_relationship_listens_defaults_empty() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let manifest = temp.path().join("plugin.toml");
+        std::fs::write(
+            &manifest,
+            r#"
+[plugin]
+name = "child"
+world = "knowledge-child"
+"#,
+        )
+        .unwrap();
+
+        let listens = parse_relationship_listens(&manifest).unwrap();
+        assert!(listens.is_empty());
     }
 }
