@@ -381,6 +381,22 @@ Exit checklist:
 - [x] CLI `patina mother` start/stop/status paths are transport/lifecycle wrappers only
 - [x] graph/query/toy orchestration paths are switched to explicit adapter contracts with parity proof; any remaining non-moved orchestrators are explicitly listed as transitional ownership
 
+### Mother Seam Map (authoritative)
+
+| Module | Current Owner | Why It Stays Here | Boundary Type | Target Fate |
+|---|---|---|---|---|
+| `mother/src/*` runtime infrastructure | `mother` crate | Mother-owned daemon infrastructure | native ownership | canonical (retain) |
+| `src/mother/internal.rs` | `patina` crate | Client transport bridge (UDS/TCP) used by CLI/core paths | bridge client | keep as core-facing client seam |
+| `src/mother/broker/mod.rs` | `patina` crate | Orchestrates connect/auth + child runtime + eventlog flows | adapter-backed orchestrator | transitional; revisit in/after Phase 5 extraction pressure |
+| `src/commands/mother/graph.rs` | `patina` crate | Bridges Mother sync actions to core belief/registry/session domains | adapter-backed orchestrator | likely permanent seam unless shared domain crate extraction occurs |
+| `src/commands/mother/daemon.rs` (query path) | `patina` crate | Invokes core retrieval behavior for daemon-served scry via contract | adapter-backed orchestrator | likely permanent seam via dependency inversion |
+
+Rules:
+
+- Any seam not listed here is treated as architecture drift and must be either added with proof or removed.
+- Seam modules must remain thin and contract-driven; no hidden cross-module backdoors.
+- Seam fate changes require SPEC/DESIGN patch before implementation.
+
 ## Phase 4: New toys (CV10)
 
 1. `wit: define toy-layer-fs interface and host implementation` — wit/toys/layer-fs.wit: read-file, write-file, list-dir, delete-file, move-path, exists. Scoped to layer/ directory. Host impl in mother/src/toys/layer_fs.rs.
