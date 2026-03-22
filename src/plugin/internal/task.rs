@@ -8,8 +8,8 @@ use anyhow::Result;
 use wasmtime::component::{Component, Linker};
 use wasmtime::Store;
 
-use super::mother_child::PluginEngine;
-use super::{wasm_engine, GrantedCapabilities, PluginManifest};
+use super::mother_child::MotherChildEngine;
+use super::{wasm_engine, ChildManifest, GrantedCapabilities};
 use crate::mother::Toy;
 
 use super::command::QueryDispatchFn;
@@ -221,12 +221,12 @@ impl TaskEngine {
     pub fn run_task(
         &self,
         component: &Component,
-        manifest: &PluginManifest,
+        manifest: &ChildManifest,
         args: &[String],
         query_fn: Option<QueryDispatchFn>,
     ) -> Result<(i32, Vec<Toy>)> {
         // Check capabilities before execution
-        PluginEngine::check_capabilities(manifest)?;
+        MotherChildEngine::check_capabilities(manifest)?;
 
         // Build HTTP client with cross-domain redirect rejection (G5: shared builder).
         let http_client = super::host_support::build_http_client()?;

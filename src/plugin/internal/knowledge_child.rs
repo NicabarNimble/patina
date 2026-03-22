@@ -7,7 +7,7 @@ use anyhow::Result;
 use wasmtime::component::{Component, Linker};
 use wasmtime::Store;
 
-use super::{wasm_engine, GrantedCapabilities, PluginManifest, QueryDispatchFn};
+use super::{wasm_engine, ChildKind, ChildManifest, GrantedCapabilities, QueryDispatchFn};
 use crate::mother::{
     ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, MotherHost, PendingEvent, TaskIntent,
     TaskIntentKind,
@@ -1175,7 +1175,7 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
-    fn build_linker(manifest: &PluginManifest) -> Result<Linker<HostState>> {
+    fn build_linker(manifest: &ChildManifest) -> Result<Linker<HostState>> {
         let mut linker = Linker::new(wasm_engine());
         Self::link_wasi(&mut linker)?;
         Self::link_types(&mut linker)?;
@@ -1268,16 +1268,16 @@ impl KnowledgeChildEngine {
         Ok(Self { _unit: () })
     }
 
-    pub fn load_manifest(path: &Path) -> Result<PluginManifest> {
-        PluginManifest::from_path(path)
+    pub fn load_manifest(path: &Path) -> Result<ChildManifest> {
+        ChildManifest::from_path(path)
     }
 
     pub fn load_component(&self, wasm: &[u8]) -> Result<Component> {
-        PluginManifest::load_component(wasm)
+        ChildManifest::load_component(wasm)
     }
 
-    pub fn check_capabilities(manifest: &PluginManifest) -> Result<()> {
-        if manifest.world != super::PluginWorld::KnowledgeChild {
+    pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
+        if manifest.world != ChildKind::KnowledgeChild {
             anyhow::bail!(
                 "plugin '{}' has world '{}', expected 'knowledge-child'",
                 manifest.name,
@@ -1411,7 +1411,7 @@ impl KnowledgeChildEngine {
     pub fn instantiate_child(
         &self,
         component: &Component,
-        manifest: &PluginManifest,
+        manifest: &ChildManifest,
         query_fn: Option<QueryDispatchFn>,
     ) -> Result<Box<dyn KnowledgeChild>> {
         Self::check_capabilities(manifest)?;

@@ -1,4 +1,4 @@
-//! Mother-child world — bindgen, PluginEngine, WasmChild adapter.
+//! Mother-child world — bindgen, MotherChildEngine, WasmChild adapter.
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -7,7 +7,7 @@ use anyhow::Result;
 use wasmtime::component::{Component, Linker};
 use wasmtime::Store;
 
-use super::{wasm_engine, GrantedCapabilities, PluginManifest};
+use super::{wasm_engine, ChildManifest, GrantedCapabilities};
 use crate::mother::{ChildHealth, ChildRequest, ChildResponse, MotherHost, Toy};
 
 use super::command::QueryDispatchFn;
@@ -194,21 +194,21 @@ mod bindings {
 use bindings::HostState;
 
 // =========================================================================
-// PluginEngine
+// MotherChildEngine
 // =========================================================================
 
 /// Shared wasmtime infrastructure for loading and running WASM plugins.
-pub struct PluginEngine {
+pub struct MotherChildEngine {
     linker: Linker<HostState>,
 }
 
-impl PluginEngine {
-    /// Create a new PluginEngine with host functions registered.
+impl MotherChildEngine {
+    /// Create a new MotherChildEngine with host functions registered.
     ///
     /// Create once per process and reuse for all plugin loading. The
     /// underlying wasmtime::Engine is a process-wide singleton (OnceLock),
     /// but Linker setup (WASI + host functions) runs on each call.
-    /// In daemon mode, daemon.rs creates one PluginEngine and passes it
+    /// In daemon mode, daemon.rs creates one MotherChildEngine and passes it
     /// to load_wasm_child(). CLI command plugins (Phase 2) will need to
     /// decide whether to share the daemon's engine or create a fresh one.
     pub fn new() -> Result<Self> {
@@ -227,22 +227,22 @@ impl PluginEngine {
         Ok(Self { linker })
     }
 
-    /// Load and parse a plugin manifest from plugin.toml.
-    pub fn load_manifest(path: &Path) -> Result<PluginManifest> {
-        PluginManifest::from_path(path)
+    /// Load and parse a child manifest from `child.toml` (legacy supported).
+    pub fn load_manifest(path: &Path) -> Result<ChildManifest> {
+        ChildManifest::from_path(path)
     }
 
     /// Load a WASM component from bytes.
     pub fn load_component(&self, wasm: &[u8]) -> Result<Component> {
-        PluginManifest::load_component(wasm)
+        ChildManifest::load_component(wasm)
     }
 
-    /// Check that a plugin's requested capabilities are granted.
+    /// Check that a child's requested capabilities are granted.
     ///
     /// Phase 1: host_log, host_layer are always granted. All others denied.
     /// Phase 2: host_query validated — kinds must be known.
     /// Future: reads from ~/.patina/plugin-config/grants.toml.
-    pub fn check_capabilities(manifest: &PluginManifest) -> Result<()> {
+    pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
         // F4: Per-world capability enforcement — reject capabilities
         // that the manifest's world doesn't support.
         let allowed = manifest.world.allowed_capabilities();
@@ -262,7 +262,7 @@ impl PluginEngine {
             );
         }
 
-        // Capabilities granted when declared in plugin.toml.
+        // Capabilities granted when declared in child manifest.
         // host_http and host_query have additional validation (domain allowlist,
         // query kind check) that runs below and at call time via GrantedCapabilities.
         let auto_granted = [
@@ -397,12 +397,12 @@ impl PluginEngine {
     /// Returns Box<dyn MotherChild> for ChildRegistry compatibility.
     ///
     /// `query_fn`: Optional query dispatch provided by the binary crate.
-    /// Required if the plugin has host_query capabilities. The host impl
+    /// Required if the child has host_query capabilities. The host impl
     /// handles gating; this function handles actual engine dispatch.
     pub fn instantiate_child(
         &self,
         component: &Component,
-        manifest: &PluginManifest,
+        manifest: &ChildManifest,
         query_fn: Option<QueryDispatchFn>,
     ) -> Result<Box<dyn crate::mother::MotherChild>> {
         // Check capabilities before instantiation
@@ -443,6 +443,9 @@ impl PluginEngine {
         }))
     }
 }
+
+/// Legacy alias kept during CV6 migration.
+pub type PluginEngine = MotherChildEngine;
 
 // =========================================================================
 // WasmChild adapter — wraps WASM instance as native MotherChild

@@ -10,7 +10,7 @@ use anyhow::Result;
 use wasmtime::component::{Component, Linker};
 use wasmtime::{Engine, Store};
 
-use super::{wasm_engine, PluginManifest};
+use super::{wasm_engine, ChildKind, ChildManifest};
 
 // =========================================================================
 // Pipeline world — bindgen + host functions + PipelineEngine
@@ -155,7 +155,7 @@ impl PipelineEngine {
     pub fn handle(
         &self,
         component: &Component,
-        manifest: &PluginManifest,
+        manifest: &ChildManifest,
         request: &str,
     ) -> Result<String> {
         let wasi = wasmtime_wasi::WasiCtxBuilder::new()
@@ -202,10 +202,10 @@ impl PipelineEngine {
 
     /// Discover pipeline plugins from ~/.patina/pipeline/.
     ///
-    /// Scans for plugin.toml manifests, loads WASM components, and builds
+    /// Scans for pipeline manifests, loads WASM components, and builds
     /// a language→(component, manifest) map for dispatch.
-    pub fn discover(&self, pipeline_dir: &Path) -> HashMap<String, (Component, PluginManifest)> {
-        let mut plugins: HashMap<String, (Component, PluginManifest)> = HashMap::new();
+    pub fn discover(&self, pipeline_dir: &Path) -> HashMap<String, (Component, ChildManifest)> {
+        let mut plugins: HashMap<String, (Component, ChildManifest)> = HashMap::new();
 
         if !pipeline_dir.is_dir() {
             return plugins;
@@ -229,7 +229,7 @@ impl PipelineEngine {
                 continue;
             }
 
-            let manifest = match PluginManifest::from_path(&manifest_path) {
+            let manifest = match ChildManifest::from_path(&manifest_path) {
                 Ok(m) => m,
                 Err(e) => {
                     eprintln!(
@@ -241,7 +241,7 @@ impl PipelineEngine {
                 }
             };
 
-            if manifest.world != super::PluginWorld::Pipeline {
+            if manifest.world != ChildKind::Pipeline {
                 continue;
             }
 

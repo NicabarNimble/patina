@@ -100,9 +100,6 @@ impl std::fmt::Display for ChildKind {
     }
 }
 
-/// Legacy plugin-world alias kept during CV6 migration.
-pub type PluginWorld = ChildKind;
-
 // =========================================================================
 // Child role enum — parsed from manifest, describes purpose (F4)
 // =========================================================================
@@ -240,9 +237,6 @@ pub struct ChildManifest {
     pub belief_write_actions: Vec<String>,
     pub toys: crate::mother::GrantedToys,
 }
-
-/// Legacy plugin-manifest alias kept during CV6 migration.
-pub type PluginManifest = ChildManifest;
 
 // =========================================================================
 // Granted capabilities — resolved at load time, checked at call time
