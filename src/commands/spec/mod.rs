@@ -26,34 +26,6 @@ pub(crate) use internal::{
 use anyhow::Result;
 use patina::spec::SpecStatus;
 
-fn try_daemon_spec(
-    subcommand: &str,
-    id: Option<&str>,
-    status: Option<&str>,
-    target: Option<&str>,
-    json: bool,
-    handoff: bool,
-) -> Result<Option<String>> {
-    let client = patina::mother::DaemonClient::new();
-    client.ensure_running()?;
-    let result = client.request(
-        "spec",
-        serde_json::json!({
-            "subcommand": subcommand,
-            "id": id,
-            "status": status,
-            "target": target,
-            "json": json,
-            "handoff": handoff,
-        }),
-    )?;
-    let output = result
-        .get("output")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    Ok(output.filter(|o| !o.contains("not yet implemented")))
-}
-
 /// Spec CLI subcommands (used by main.rs via clap)
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum SpecCommands {
@@ -363,18 +335,6 @@ pub fn blocked(json: bool) -> Result<()> {
 
 /// List all specs with optional filters
 pub fn list(status: Option<String>, target: Option<String>, json: bool) -> Result<()> {
-    if let Ok(Some(output)) = try_daemon_spec(
-        "list",
-        None,
-        status.as_deref(),
-        target.as_deref(),
-        json,
-        false,
-    ) {
-        println!("{}", output);
-        return Ok(());
-    }
-
     // Parse status at CLI boundary — unknown values return validation error
     let parsed_status = status
         .as_deref()
@@ -429,10 +389,6 @@ pub fn set(id: &str, field: &str, value: &str, json: bool) -> Result<()> {
 
 /// Show full spec context (body, design, key files)
 pub fn show(id: &str, handoff: bool, json: bool) -> Result<()> {
-    if let Ok(Some(output)) = try_daemon_spec("show", Some(id), None, None, json, handoff) {
-        println!("{}", output);
-        return Ok(());
-    }
     internal::show_spec(id, handoff, json)
 }
 
@@ -453,10 +409,6 @@ pub fn packet(id: &str, json: bool) -> Result<()> {
 
 /// Check exit criteria status for a spec
 pub fn check(id: &str, json: bool) -> Result<()> {
-    if let Ok(Some(output)) = try_daemon_spec("check", Some(id), None, None, json, false) {
-        println!("{}", output);
-        return Ok(());
-    }
     internal::check_spec(id, json)
 }
 
@@ -467,10 +419,6 @@ pub fn history(id: &str, json: bool) -> Result<()> {
 
 /// Recommend the next spec to work on
 pub fn next(json: bool) -> Result<()> {
-    if let Ok(Some(output)) = try_daemon_spec("next", None, None, None, json, false) {
-        println!("{}", output);
-        return Ok(());
-    }
     internal::next_spec(json)
 }
 
