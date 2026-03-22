@@ -7,6 +7,9 @@ sessions:
   origin: 20260320-212325-011658000
 beliefs:
 - agents-are-guests-mother-is-infrastructure
+- patina-is-knowledge-protocol
+- core-primitives-are-not-children
+- core-baseline-child-strategy-extensions
 - children-have-agency-toys-are-capabilities
 - initialize-is-capability-grant
 - connector-toy-is-indivisible-authority
@@ -44,7 +47,7 @@ exit_criteria:
   text: Agent connection protocol — JSON lines over Unix socket, any agent can connect, no MCP required
   checked: true
 - id: EC10
-  text: CLI is thin client — patina commands delegate to Mother daemon, no embedded Mother logic
+  text: Core protocol verbs stay standalone-capable in CLI; Mother integration is additive orchestration/strategy extension, not a hard dependency for baseline local execution
   checked: false
 - id: EC11
   text: MCP retired — MCP server removed from main binary, replaced by agent connection protocol
@@ -96,7 +99,16 @@ Ship Patina pre-v1: the foundation for a local-first WASM P2P agentic knowledge 
 
 ## Status
 
-Active but blocked by `patina-zero-fallback-cutover` for final zero-fallback completion. Phases 1-10 implementation landed; remaining closure requires daemon-only cutover gates.
+Active and realigning after a documented category error discovered during build review. Phases 1-10 implementation landed, but completion now requires preserving protocol-first baseline behavior while integrating Mother as additive infrastructure.
+
+## Realignment Note (No History Rewrite)
+
+The previously drafted `patina-zero-fallback-cutover` follow-on spec was abandoned because it framed completion as daemon-only routing for migrated commands. That framing conflicted with Patina's protocol identity (`capture/index/search/believe/evolve`) and standalone CLI behavior that predates this refactor. This spec keeps historical work intact while correcting the layering contract:
+
+- Patina protocol verbs remain core and standalone-capable.
+- Mother remains the daemon/infrastructure layer that extends and orchestrates.
+- Children remain strategy extensions via toys/WIT contracts.
+- Build artifacts and commits are preserved; only interpretation and exit semantics are corrected.
 
 ## Non-Goals
 
@@ -338,6 +350,7 @@ Every line of code in this conversion must hold to Patina's core values and the 
 ## Resolved Decisions
 
 1. **Patina is infrastructure for agents, not an agent itself.** Mother manages children and toys. Agents are guests. The belief system is the core value.
+1a. **Patina protocol verbs are core, not daemon-gated services.** `scrape/scry/assay/context/belief/measure/oxidize` must keep a standalone baseline path in CLI. Mother can enhance these flows, but cannot become a hard dependency for baseline local execution.
 2. **Children have bounded agency.** Agency within the sandbox Mother grants. `handle()` mandatory, `tick()`/`drain()` optional.
 3. **Toys are composable WIT components, not permission flags.** Compile-time enforcement via per-child worlds.
 4. **Per-child WIT worlds.** Monolithic `knowledge-child` world is retired.
@@ -375,7 +388,7 @@ These are NOT in scope, but every decision above must be compatible with:
 | 5 | Session-writer handles notes, survives crash, creates real git tags, <150KB |
 | 6 | DuckLake fetches via toy-github, queryable via standalone DuckDB |
 | 7 | Mother starts as daemon, accepts connection, routes to child |
-| 8 | `patina context` works via CLI → Mother → child round-trip |
+| 8 | `patina context` baseline works standalone in CLI; when Mother is available, additive enhancement path works without replacing baseline semantics |
 | 9 | MCP and interface code deleted, all tests pass |
 | 10 | DuckLake emits event → Mother routes → session-writer captures; template builds in <5min |
 | 11 | Enterprise pipeline: watermarks, parquet, reconciliation, telemetry all pass |

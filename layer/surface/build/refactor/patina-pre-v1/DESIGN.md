@@ -281,9 +281,11 @@ Proves DuckLake works on the composable model. Enterprise pipeline (watermarks, 
 ## Phase 7: Mother Extraction (5 commits)
 
 ### Why
-Makes "agents are guests" real. Mother as standalone daemon on Unix socket.
+Makes "agents are guests" real. Mother as standalone daemon on Unix socket while preserving Patina protocol verbs as standalone-capable CLI operations.
 
 ### Protocol Contract
+
+The socket protocol is Mother's infrastructure contract (agent connection, child orchestration, mediated capabilities). It is not a requirement that all core protocol verbs become daemon-gated. Core verb baselines remain local-first; Mother can enhance/orchestrate when available.
 
 Agent connection protocol is JSON lines over Unix socket (`~/.patina/mother.sock`):
 
@@ -329,23 +331,24 @@ Agent connection protocol is JSON lines over Unix socket (`~/.patina/mother.sock
 ## Phase 8: CLI Thin Client (7 commits)
 
 ### Why
-CLI becomes one agent among many. No embedded Mother.
+CLI remains the canonical local protocol surface. Mother integration is additive orchestration/strategy extension, not hard dependency for baseline verb behavior.
 
 ### Commits
 
 41. `cli: add daemon client module` — Connects to socket, auto-starts daemon if needed.
 
-42. `cli: migrate patina context` → daemon call
-43. `cli: migrate patina measure` → daemon call
-44. `cli: migrate patina spec` → daemon call
-45. `cli: migrate patina lake` → daemon call
-46. `cli: migrate remaining commands` → daemon path
-47. `cli: remove embedded Mother code` — Binary drops wasmtime/duckdb deps. Size decreases.
+42. `cli: integrate patina context with optional Mother enhancement` — Preserve standalone baseline; use Mother path only for additive capabilities.
+43. `cli: integrate patina measure with optional Mother enhancement` — Preserve standalone baseline; merge Mother-provided enrichment when present.
+44. `cli: keep patina spec canonical local, add optional Mother hooks where appropriate` — No daemon gating of spec lifecycle baseline.
+45. `cli: integrate patina lake with validation-first local baseline and optional Mother orchestration` — Deterministic local checks stay local.
+46. `cli: realign remaining commands to baseline-first + additive Mother model` — Remove daemon-first gating for core protocol operations.
+47. `cli: remove duplicated embedded Mother runtime wiring while retaining protocol-local implementations` — eliminate redundant paths without deleting core local verb behavior.
 
 ### Verification
-- All commands work via daemon round-trip
-- Main binary size decreases
-- Daemon auto-starts if not running
+- Core protocol commands work with daemon stopped (standalone baseline)
+- Mother enhancement paths work when daemon is running
+- Child/agent infrastructure commands continue to use daemon contract
+- Main binary size and dependency surface remain within expected bounds after runtime cleanup
 - All tests pass
 
 ---
@@ -359,17 +362,18 @@ Remove the bridge. Agents bring themselves. ~6,700 LOC deleted.
 
 **PRE-DELETE checks (run before commit 48, all must pass):**
 ```bash
-# Daemon path works — everything routes through Mother, nothing depends on old paths
+# Mother path works for infrastructure operations; core protocol baseline still works locally
 patina mother status                              # running, children loaded
 patina mother status | grep ducklake              # loaded, healthy
 patina mother status | grep session-writer        # loaded, healthy
-patina context "what changed today?"              # response via daemon (not embedded Mother)
-patina measure                                    # output via daemon
-patina spec list                                  # patina-pre-v1 listed via daemon
+patina context "what changed today?"              # valid response with daemon stopped (baseline)
+patina context "what changed today?"              # valid response with daemon running (enhancement may apply)
+patina measure                                    # valid baseline output without daemon
+patina spec list                                  # valid baseline output without daemon
 cargo test                                        # all pass
 ```
 
-If any pre-delete check fails, the daemon path has a gap. Fix it BEFORE deleting the old path.
+If any pre-delete check fails, layering is broken (either baseline or enhancement path). Fix it BEFORE deleting old code.
 
 **POST-DELETE checks (run after commit 53, all must pass):**
 ```bash
