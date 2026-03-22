@@ -107,6 +107,7 @@ wasmtime-wasi = { version = "=41", default-features = false, features = ["p2"] }
 # Pipe protocol — native child communication (broker uses harness + types)
 patina-pipe = { package = "patina-ai-pipe", path = "crates/patina-pipe", features = ["http-proxy"] }
 patina-pipe-types = { package = "patina-ai-pipe-types", path = "crates/patina-pipe-types" }
+mother-crate = { package = "mother", path = "mother" }
 
 # Secrets v2 - age encryption and macOS Keychain
 age = { version = "0.11", features = ["armor"] }
