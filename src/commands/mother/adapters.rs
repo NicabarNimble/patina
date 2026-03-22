@@ -24,31 +24,49 @@ pub struct RegistrySnapshot {
     pub repos: Vec<RegistryRepo>,
 }
 
-pub fn load_registry_snapshot() -> Result<RegistrySnapshot> {
-    let registry = Registry::load()?;
-    let projects = registry
-        .projects
-        .iter()
-        .map(|(name, entry)| RegistryProject {
-            name: name.clone(),
-            path: entry.path.clone(),
-            domains: entry.domains.clone(),
-        })
-        .collect();
-    let repos = registry
-        .repos
-        .iter()
-        .map(|(name, entry)| RegistryRepo {
-            name: name.clone(),
-            path: entry.path.clone(),
-            domains: entry.domains.clone(),
-        })
-        .collect();
-    Ok(RegistrySnapshot { projects, repos })
+pub trait RegistryBackend: Send + Sync {
+    fn load_snapshot(&self) -> Result<RegistrySnapshot>;
 }
 
-pub fn find_current_project_root() -> Option<PathBuf> {
-    patina::session::SessionManager::find_project_root().ok()
+#[derive(Debug, Default)]
+pub struct RepoRegistryBackend;
+
+impl RegistryBackend for RepoRegistryBackend {
+    fn load_snapshot(&self) -> Result<RegistrySnapshot> {
+        let registry = Registry::load()?;
+        let projects = registry
+            .projects
+            .iter()
+            .map(|(name, entry)| RegistryProject {
+                name: name.clone(),
+                path: entry.path.clone(),
+                domains: entry.domains.clone(),
+            })
+            .collect();
+        let repos = registry
+            .repos
+            .iter()
+            .map(|(name, entry)| RegistryRepo {
+                name: name.clone(),
+                path: entry.path.clone(),
+                domains: entry.domains.clone(),
+            })
+            .collect();
+        Ok(RegistrySnapshot { projects, repos })
+    }
+}
+
+pub trait ProjectRootProvider: Send + Sync {
+    fn find_current_project_root(&self) -> Option<PathBuf>;
+}
+
+#[derive(Debug, Default)]
+pub struct SessionProjectRootProvider;
+
+impl ProjectRootProvider for SessionProjectRootProvider {
+    fn find_current_project_root(&self) -> Option<PathBuf> {
+        patina::session::SessionManager::find_project_root().ok()
+    }
 }
 
 #[derive(Debug, Clone)]

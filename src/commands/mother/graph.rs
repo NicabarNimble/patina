@@ -15,16 +15,25 @@ use super::adapters;
 /// Creates nodes for all projects and repos in ~/.patina/registry.yaml.
 /// Also adds the current project if we're in a patina project directory.
 pub fn sync_from_registry() -> Result<()> {
+    let registry_backend = adapters::RepoRegistryBackend;
+    let root_provider = adapters::SessionProjectRootProvider;
+    sync_from_registry_with(&registry_backend, &root_provider)
+}
+
+fn sync_from_registry_with(
+    registry_backend: &dyn adapters::RegistryBackend,
+    root_provider: &dyn adapters::ProjectRootProvider,
+) -> Result<()> {
     println!("🔄 Syncing graph from registry...\n");
 
-    let registry = adapters::load_registry_snapshot()?;
+    let registry = registry_backend.load_snapshot()?;
     let graph = Graph::open()?;
 
     let mut projects_added = 0;
     let mut repos_added = 0;
 
     // Add current project if we're in one
-    if let Some(project_root) = adapters::find_current_project_root() {
+    if let Some(project_root) = root_provider.find_current_project_root() {
         let project_name = project_root
             .file_name()
             .and_then(|n| n.to_str())
@@ -67,7 +76,7 @@ pub fn sync_from_registry() -> Result<()> {
     let mut values_synced = 0;
 
     // Detect current project root for dedup guard
-    let current_project_root = adapters::find_current_project_root();
+    let current_project_root = root_provider.find_current_project_root();
 
     // Collect beliefs from current project (auto-detected, may not be in registry)
     if let Some(ref project_root) = current_project_root {
