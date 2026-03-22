@@ -169,6 +169,30 @@ Exit checklist:
 - [ ] no `contains("not yet implemented")` placeholder-filter routing in targeted commands
 - [ ] no new warnings introduced by Phase 1 edits; remaining warnings logged and mapped to future phases
 
+### Phase 1 Verification Report (2026-03-22)
+
+- Commits:
+  - `f12dc81a` — core: remove extracted-daemon probe from context
+  - `d56c15ee` — core: remove extracted-daemon probes from measure/spec/lake
+  - `5dbd03d4` — core: remove extracted-daemon probe path from scry
+  - `e8e1077f` — core: remove unused daemon client module
+- Commands run:
+  - `cargo check -q`
+  - `grep "try_daemon_|not yet implemented" src/commands/{context.rs,measure/mod.rs,spec/mod.rs,lake.rs,scry/internal/routing.rs}`
+  - `resources/scripts/check-core-verb-policy.sh --mode off --isolated`
+  - `patina context --topic architecture --no-tmux`
+  - `patina measure --no-tmux`
+  - `patina spec next`
+  - `patina lake list`
+- Observed key lines:
+  - target `grep` returned no matches for `try_daemon_`/`not yet implemented` in targeted files
+  - deterministic Mother-off policy script passed all six core verbs
+  - `patina spec next` returned `RECOMMENDED: patina-code-to-vision`
+  - `cargo check -q` succeeded with existing warning debt (no new hard failures)
+- CVs affected:
+  - CV3, CV4 (probe/fallback removal on targeted core paths)
+  - CV5 (still unchecked; warning debt remains and is deferred per gate policy)
+
 ## Phase 2: Finish vocabulary (CV6)
 
 **Note:** src/child/ already exists (runtime re-exports from mother crate). src/plugin/ has the engine/manifest/linker code. This is a merge, not a rename.
