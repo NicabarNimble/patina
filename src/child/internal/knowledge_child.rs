@@ -199,7 +199,7 @@ mod bindings {
 
     impl patina::host::query::Host for HostState {
         fn query(&mut self, kind: String, params: String) -> Result<String, String> {
-            crate::toys::query::dispatch(
+            crate::child::toy_host::query::dispatch(
                 &self.plugin_name,
                 &self.grants,
                 &mut self.query_fn,
@@ -216,7 +216,7 @@ mod bindings {
             body: String,
             content_type: String,
         ) -> Result<patina::host::http::HttpResponse, String> {
-            let r = crate::toys::http::post(
+            let r = crate::child::toy_host::http::post(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
@@ -232,7 +232,7 @@ mod bindings {
 
         fn http_get(&mut self, url: String) -> Result<patina::host::http::HttpResponse, String> {
             let r =
-                crate::toys::http::get(&self.http_client, &self.grants, &self.plugin_name, &url)?;
+                crate::child::toy_host::http::get(&self.http_client, &self.grants, &self.plugin_name, &url)?;
             Ok(patina::host::http::HttpResponse {
                 status: r.status,
                 body: r.body,
@@ -350,7 +350,7 @@ mod bindings {
                     name, self.plugin_name
                 ));
             }
-            crate::toys::lake::ensure_lake(&name).map_err(|e| e.to_string())
+            crate::child::toy_host::lake::ensure_lake(&name).map_err(|e| e.to_string())
         }
 
         fn list_granted_lakes(&mut self) -> Result<Vec<patina::host::lake::GrantedLake>, String> {
@@ -359,7 +359,7 @@ mod bindings {
                 .iter()
                 .cloned()
                 .map(|name| {
-                    let path = crate::toys::lake::ensure_lake(&name).map_err(|e| e.to_string())?;
+                    let path = crate::child::toy_host::lake::ensure_lake(&name).map_err(|e| e.to_string())?;
                     Ok(patina::host::lake::GrantedLake { name, path })
                 })
                 .collect()
@@ -374,7 +374,7 @@ mod bindings {
             if !self.grants.lake_names.contains(&lake) {
                 return None;
             }
-            crate::toys::lake::load_cursor(&self.runtime, &lake, &source, &data_type)
+            crate::child::toy_host::lake::load_cursor(&self.runtime, &lake, &source, &data_type)
                 .ok()
                 .flatten()
         }
@@ -395,7 +395,7 @@ mod bindings {
                     lake, self.plugin_name
                 ));
             }
-            crate::toys::lake::save_cursor(
+            crate::child::toy_host::lake::save_cursor(
                 &self.runtime,
                 &crate::mother::state::LakeCursorUpdate {
                     lake_name: &lake,
@@ -417,7 +417,7 @@ mod bindings {
                     lake, self.plugin_name
                 ));
             }
-            crate::toys::lake::ensure_table(&lake, &table).map_err(|e| e.to_string())
+            crate::child::toy_host::lake::ensure_table(&lake, &table).map_err(|e| e.to_string())
         }
 
         fn append_json_batch(
@@ -433,7 +433,7 @@ mod bindings {
                     lake, self.plugin_name
                 ));
             }
-            crate::toys::lake::append_json_batch(&lake, &table, &source, &rows_json)
+            crate::child::toy_host::lake::append_json_batch(&lake, &table, &source, &rows_json)
                 .map_err(|e| e.to_string())
         }
 
@@ -444,20 +444,20 @@ mod bindings {
                     lake, self.plugin_name
                 ));
             }
-            crate::toys::lake::query_json(&lake, &sql).map_err(|e| e.to_string())
+            crate::child::toy_host::lake::query_json(&lake, &sql).map_err(|e| e.to_string())
         }
     }
 
     impl patina::host::ingress::Host for HostState {
         fn list_granted_sources(&mut self) -> Vec<patina::host::ingress::GrantedSource> {
-            crate::toys::ingress::list_granted_sources(&self.grants.toys)
+            crate::child::toy_host::ingress::list_granted_sources(&self.grants.toys)
                 .into_iter()
                 .map(|(name, endpoint)| patina::host::ingress::GrantedSource { name, endpoint })
                 .collect()
         }
 
         fn fetch(&mut self, source_name: String) -> Result<String, String> {
-            let endpoint = crate::toys::ingress::resolve_source_endpoint(
+            let endpoint = crate::child::toy_host::ingress::resolve_source_endpoint(
                 &self.grants.toys,
                 &self.plugin_name,
                 &source_name,
@@ -474,8 +474,8 @@ mod bindings {
 
     impl patina::host::connector::Host for HostState {
         fn list_bindings(&mut self) -> Result<Vec<patina::host::connector::RepoBinding>, String> {
-            crate::toys::connector::ensure_granted(self.grants.toys.connector, &self.plugin_name)?;
-            crate::toys::connector::list_bindings(&self.runtime, &self.plugin_name).map(|items| {
+            crate::child::toy_host::connector::ensure_granted(self.grants.toys.connector, &self.plugin_name)?;
+            crate::child::toy_host::connector::list_bindings(&self.runtime, &self.plugin_name).map(|items| {
                 items
                     .into_iter()
                     .map(|parsed| patina::host::connector::RepoBinding {
@@ -493,21 +493,21 @@ mod bindings {
             &mut self,
             binding: patina::host::connector::RepoBinding,
         ) -> Result<patina::host::connector::RepoBinding, String> {
-            crate::toys::connector::ensure_granted(self.grants.toys.connector, &self.plugin_name)?;
-            let record = crate::toys::connector::ConnectorBindingRecord {
+            crate::child::toy_host::connector::ensure_granted(self.grants.toys.connector, &self.plugin_name)?;
+            let record = crate::child::toy_host::connector::ConnectorBindingRecord {
                 binding_id: binding.binding_id.clone(),
                 connection: binding.connection.clone(),
                 owner: binding.owner.clone(),
                 repo: binding.repo.clone(),
                 types: binding.types.clone(),
             };
-            crate::toys::connector::upsert_binding(&self.runtime, &self.plugin_name, record)?;
+            crate::child::toy_host::connector::upsert_binding(&self.runtime, &self.plugin_name, record)?;
             Ok(binding)
         }
 
         fn remove_binding(&mut self, binding_id: String) -> Result<(), String> {
-            crate::toys::connector::ensure_granted(self.grants.toys.connector, &self.plugin_name)?;
-            crate::toys::connector::remove_binding(&self.runtime, &self.plugin_name, &binding_id)
+            crate::child::toy_host::connector::ensure_granted(self.grants.toys.connector, &self.plugin_name)?;
+            crate::child::toy_host::connector::remove_binding(&self.runtime, &self.plugin_name, &binding_id)
         }
 
         fn sync_binding(
@@ -516,21 +516,21 @@ mod bindings {
             data_type: String,
             since: Option<String>,
         ) -> Result<patina::host::connector::SyncResult, String> {
-            crate::toys::connector::ensure_granted(self.grants.toys.connector, &self.plugin_name)?;
+            crate::child::toy_host::connector::ensure_granted(self.grants.toys.connector, &self.plugin_name)?;
 
-            let binding = crate::toys::connector::load_binding(
+            let binding = crate::child::toy_host::connector::load_binding(
                 &self.runtime,
                 &self.plugin_name,
                 &binding_id,
             )?;
-            crate::toys::connector::ensure_type_enabled(&binding, &data_type)?;
+            crate::child::toy_host::connector::ensure_type_enabled(&binding, &data_type)?;
 
             let connection = crate::connect::load(&binding.connection)
                 .map_err(|e| format!("connection '{}': {}", binding.connection, e))?;
             let credential =
                 crate::connect::resolve_credential_for_domain(&connection, "api.github.com")?;
 
-            let endpoint = crate::toys::connector::endpoint_for(&binding, &data_type)?;
+            let endpoint = crate::child::toy_host::connector::endpoint_for(&binding, &data_type)?;
 
             let max_pages = env_usize("PATINA_GITHUB_MAX_PAGES", 500).clamp(1, 5_000) as u32;
             let max_parallel = env_usize("PATINA_GITHUB_MAX_PARALLEL", 4).clamp(1, 16);
@@ -617,14 +617,14 @@ mod bindings {
             repo: String,
             params: patina::host::github::ListParams,
         ) -> Result<patina::host::github::Page, String> {
-            crate::toys::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
-            let page = crate::toys::github::list_issues(
+            crate::child::toy_host::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
+            let page = crate::child::toy_host::github::list_issues(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
                 &owner,
                 &repo,
-                &crate::toys::github::ListParams {
+                &crate::child::toy_host::github::ListParams {
                     since: params.since,
                     state: params.state,
                     page: params.page,
@@ -645,14 +645,14 @@ mod bindings {
             repo: String,
             params: patina::host::github::ListParams,
         ) -> Result<patina::host::github::Page, String> {
-            crate::toys::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
-            let page = crate::toys::github::list_pulls(
+            crate::child::toy_host::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
+            let page = crate::child::toy_host::github::list_pulls(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
                 &owner,
                 &repo,
-                &crate::toys::github::ListParams {
+                &crate::child::toy_host::github::ListParams {
                     since: params.since,
                     state: params.state,
                     page: params.page,
@@ -673,8 +673,8 @@ mod bindings {
             repo: String,
             issue_number: u32,
         ) -> Result<patina::host::github::Page, String> {
-            crate::toys::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
-            let page = crate::toys::github::list_issue_comments(
+            crate::child::toy_host::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
+            let page = crate::child::toy_host::github::list_issue_comments(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
@@ -696,8 +696,8 @@ mod bindings {
             repo: String,
             issue_number: u32,
         ) -> Result<patina::host::github::Page, String> {
-            crate::toys::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
-            let page = crate::toys::github::list_issue_events(
+            crate::child::toy_host::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
+            let page = crate::child::toy_host::github::list_issue_events(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
@@ -719,8 +719,8 @@ mod bindings {
             repo: String,
             pull_number: u32,
         ) -> Result<patina::host::github::Page, String> {
-            crate::toys::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
-            let page = crate::toys::github::list_pull_comments(
+            crate::child::toy_host::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
+            let page = crate::child::toy_host::github::list_pull_comments(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
@@ -742,8 +742,8 @@ mod bindings {
             repo: String,
             pull_number: u32,
         ) -> Result<patina::host::github::Page, String> {
-            crate::toys::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
-            let page = crate::toys::github::list_reviews(
+            crate::child::toy_host::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
+            let page = crate::child::toy_host::github::list_reviews(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
@@ -766,8 +766,8 @@ mod bindings {
             pull_number: u32,
             review_id: u64,
         ) -> Result<patina::host::github::Page, String> {
-            crate::toys::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
-            let page = crate::toys::github::list_review_comments(
+            crate::child::toy_host::github::ensure_granted(self.grants.toys.github, &self.plugin_name)?;
+            let page = crate::child::toy_host::github::list_review_comments(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
@@ -787,44 +787,44 @@ mod bindings {
 
     impl patina::host::session::Host for HostState {
         fn get_session_id(&mut self) -> String {
-            crate::toys::session::get_session_id()
+            crate::child::toy_host::session::get_session_id()
         }
 
         fn get_previous_session(&mut self) -> Option<String> {
-            crate::toys::session::get_previous_session()
+            crate::child::toy_host::session::get_previous_session()
         }
 
         fn get_previous_session_runtime_id(&mut self) -> Option<String> {
-            crate::toys::session::get_previous_session_runtime_id()
+            crate::child::toy_host::session::get_previous_session_runtime_id()
         }
 
         fn get_previous_session_handoff(&mut self) -> Option<String> {
-            crate::toys::session::get_previous_session_handoff()
+            crate::child::toy_host::session::get_previous_session_handoff()
         }
 
         fn write_artifact(&mut self, section: String, content: String) -> Result<(), String> {
-            crate::toys::session::ensure_granted(self.grants.toys.session, &self.plugin_name)?;
-            crate::toys::session::write_artifact(&section, &content)
+            crate::child::toy_host::session::ensure_granted(self.grants.toys.session, &self.plugin_name)?;
+            crate::child::toy_host::session::write_artifact(&section, &content)
         }
 
         fn set_parent_session(&mut self, runtime_id: String) -> Result<(), String> {
-            crate::toys::session::ensure_granted(self.grants.toys.session, &self.plugin_name)?;
-            crate::toys::session::set_parent_session(&runtime_id)
+            crate::child::toy_host::session::ensure_granted(self.grants.toys.session, &self.plugin_name)?;
+            crate::child::toy_host::session::set_parent_session(&runtime_id)
         }
 
         fn create_tag(&mut self, name: String) -> Result<(), String> {
-            crate::toys::session::ensure_granted(self.grants.toys.session, &self.plugin_name)?;
-            crate::toys::session::create_tag(&name)
+            crate::child::toy_host::session::ensure_granted(self.grants.toys.session, &self.plugin_name)?;
+            crate::child::toy_host::session::create_tag(&name)
         }
 
         fn set_status(&mut self, status: String) -> Result<(), String> {
-            crate::toys::session::ensure_granted(self.grants.toys.session, &self.plugin_name)?;
-            crate::toys::session::set_status(&status)
+            crate::child::toy_host::session::ensure_granted(self.grants.toys.session, &self.plugin_name)?;
+            crate::child::toy_host::session::set_status(&status)
         }
 
         fn write_handoff(&mut self, modified_files: String, summary: String) -> Result<(), String> {
-            crate::toys::session::ensure_granted(self.grants.toys.session, &self.plugin_name)?;
-            crate::toys::session::write_handoff(&modified_files, &summary)
+            crate::child::toy_host::session::ensure_granted(self.grants.toys.session, &self.plugin_name)?;
+            crate::child::toy_host::session::write_handoff(&modified_files, &summary)
         }
     }
 

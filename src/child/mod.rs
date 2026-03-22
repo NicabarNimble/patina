@@ -5,3 +5,4 @@ pub(crate) mod host_support;
 pub(crate) mod internal;
 pub mod runtime;
 pub mod scaffold;
+pub(crate) mod toy_host;
