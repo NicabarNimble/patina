@@ -28,7 +28,7 @@ exit_criteria:
   text: "cargo check -q" produces zero warnings
   checked: false
 - id: CV6
-  text: src/plugin/ renamed to src/child/ — all types use child vocabulary (ChildManifest, ChildKind, ChildEngine)
+  text: Vocabulary migration completes with 1:1 parity and bridge removal — runtime code uses child vocabulary (`ChildManifest`, `ChildKind`, `ChildEngine`), `src/plugin/` is removed, and any temporary compatibility bridge is deleted only after parity proof (unless user explicitly approves exception)
   checked: false
 - id: CV7
   text: Mother startup guarantees bundled children (`measure-health`, `session-writer`) are loaded and visible in health/status output when daemon boots successfully

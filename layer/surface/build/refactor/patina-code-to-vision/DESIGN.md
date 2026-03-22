@@ -159,10 +159,19 @@ Exit checklist:
 
 - [ ] canonical child vocabulary is dominant in runtime code
 - [ ] legacy names only remain in intentional compatibility bridges
+- [ ] 1:1 parity proof captured before bridge removal
+- [ ] temporary bridge removed after parity proof (unless user explicitly approves exception)
 
 ## Phase 3: Consolidate Mother (CV1, CV2)
 
 This is the big one. Three tangled modules become one crate.
+
+Single-path ownership invariant (required at each step):
+
+- For each moved responsibility (state, events, broker, registry, daemon server, toy hosts), exactly one active runtime path owns behavior after each commit.
+- No dual active implementations are allowed beyond a short re-export handoff window in the same phase step.
+- Caller-switch + parity proof must happen before deleting the old path.
+- If parity fails, do not proceed to next responsibility slice.
 
 7. `mother: move state store into mother crate` — Move src/mother/state.rs → mother/src/state.rs. Re-export from src/mother/mod.rs temporarily.
 
