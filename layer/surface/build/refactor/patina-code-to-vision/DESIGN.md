@@ -81,6 +81,31 @@ For each phase completion, append:
 - Command: `cargo check`
 - Observed output: `patina-ai (bin "patina") generated 40 warnings`
 
+### Phase 0 Refresh Report (strict)
+
+- Date: 2026-03-22
+- Commands run:
+  - `grep try_daemon_ / contains("not yet implemented") in src/commands/*`
+  - `glob children/spec-manager/**`
+  - `glob wit/toys/layer-fs.wit`
+  - `glob wit/toys/git.wit`
+  - `grep rename/reopen in src/commands/spec/*`
+  - `grep spec coupling in src/commands/version/internal.rs`
+  - `glob src/commands/{doctor,lake,session}`
+  - `cargo check`
+- Observed key lines:
+  - extracted daemon probe/fallback paths still present in `context`, `measure`, `spec`, `lake`, `scry`
+  - `children/spec-manager/` not found
+  - `wit/toys/layer-fs.wit` and `wit/toys/git.wit` not found
+  - `rename`/`reopen` not present in spec command implementation
+  - version command still queries ready specs
+  - core `doctor`, `session`, and `lake` commands still present
+  - warning count remains 40
+- Outcome:
+  - CV truth map refreshed in SPEC.
+  - Ambiguous CV wording updated (CV3, CV4, CV7, CV11) before refactor phases.
+  - Phase 0 is complete; code refactor can start at Phase 1.
+
 ## Phase 1: Clean core paths (CV3, CV4, CV5)
 
 Entry checklist:

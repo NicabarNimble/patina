@@ -19,10 +19,10 @@ exit_criteria:
   text: CLI binary has zero Mother runtime code — it talks to Mother over Unix socket or runs core verbs standalone
   checked: false
 - id: CV3
-  text: Core verbs (scrape, scry, assay, context, belief, oxidize) have explicit behavior with Mother stopped (snapshot/degraded policy), with no pre-v1 daemon stub dance. Scry retains real cross-project Mother path where applicable.
+  text: Core verbs (scrape, scry, assay, context, belief, oxidize) have an explicit, command-by-command Mother-unavailable policy documented in this spec and verified by command tests (no implicit placeholder-filter fallback behavior)
   checked: false
 - id: CV4
-  text: Pre-v1 daemon stub routing removed from all command paths — no "not yet implemented" responses anywhere. Scry's mother::scry() HTTP path is preserved (cross-project search)
+  text: Pre-v1 extracted-daemon probe routing is removed from canonical core command paths (`context`, `measure`, `spec`, `lake`, `scry`) — no `try_daemon_*` probes or `contains("not yet implemented")` filtering in those paths
   checked: false
 - id: CV5
   text: "cargo check -q" produces zero warnings
@@ -31,7 +31,7 @@ exit_criteria:
   text: src/plugin/ renamed to src/child/ — all types use child vocabulary (ChildManifest, ChildKind, ChildEngine)
   checked: false
 - id: CV7
-  text: Mother ships with bundled children (measure-health, session-writer) that are always available when she runs
+  text: Mother startup guarantees bundled children (`measure-health`, `session-writer`) are loaded and visible in health/status output when daemon boots successfully
   checked: false
 - id: CV8
   text: Project manifest exists — a project declares what children it needs and Mother resolves them on connect
@@ -43,7 +43,7 @@ exit_criteria:
   text: toy-layer-fs and toy-git WIT interfaces exist with Mother host implementations
   checked: false
 - id: CV11
-  text: scrape strategies (code, git) are separable — code scraper can be a child while layer/beliefs scraping stays core
+  text: Scrape strategy boundary is explicit and enforceable — layer/beliefs remain core, and code/git strategies are independently pluggable (child or disabled strategy lane) without breaking core scrape
   checked: false
 - id: CV12
   text: "patina spec list" without Mother returns clear "spec-manager not available" error
@@ -230,7 +230,9 @@ Mother resolves **project children** on connect:
 - `cargo check` reports 40 warnings.
 - Scrape code path is already grammar-driven and multi-language-capable; extraction work must preserve grammar abstraction.
 
-### CV Truth Map (Phase 0 baseline)
+### CV Truth Map (Phase 0 refresh)
+
+Refreshed: 2026-03-22
 
 Status keys:
 
@@ -241,24 +243,24 @@ Status keys:
 
 | CV | Status | Evidence |
 |---|---|---|
-| CV1 | verified-false | Mother runtime split across `mother/src/*`, `src/mother/*`, and `src/commands/mother/*`. |
-| CV2 | verified-false | CLI still contains substantial Mother runtime command/server logic in `src/commands/mother/daemon.rs` and `src/commands/mother/mod.rs`. |
-| CV3 | verified-false | `try_daemon_*` probe/fallback paths present in `src/commands/context.rs`, `src/commands/measure/mod.rs`, `src/commands/spec/mod.rs`, `src/commands/lake.rs`, `src/commands/scry/internal/routing.rs`. |
-| CV4 | verified-false | Placeholder filter logic still used (`contains("not yet implemented")`) in those command paths. |
-| CV5 | verified-false | `cargo check` reports 40 warnings (2026-03-22 baseline). |
-| CV6 | verified-partial | Child vocabulary bridge exists, but `src/plugin/*` still exists alongside `src/child/*`. |
-| CV7 | verified-false | No bundled `measure-health` child found; always-available bundled behavior not proven. |
-| CV8 | verified-false | No project child-needs manifest + connect-time child resolution flow implemented. |
-| CV9 | verified-false | `src/commands/spec/internal/*` still core; no `children/spec-manager/`. |
-| CV10 | verified-false | No `wit/toys/layer-fs.wit` or `wit/toys/git.wit` host implementations found. |
-| CV11 | verified-partial | Scrape is strategy-structured and grammar-driven in-core, but code strategy is not childized. |
-| CV12 | verified-false | `patina spec list` still routed through core implementation, not child availability gate. |
-| CV13 | verified-false | `rename` and `reopen` not present as shipped spec subcommands. |
-| CV14 | verified-false | No required HITL confirmation gate for `spec complete` / `spec abandon`. |
-| CV15 | verified-false | `src/commands/doctor.rs` exists as core command surface. |
-| CV16 | verified-false | Version command still coupled to spec readiness logic (`src/commands/version/internal.rs`). |
-| CV17 | verified-false | `src/commands/session/*` still exists as core command surface. |
-| CV18 | verified-false | `src/commands/lake.rs` still core command surface. |
+| CV1 | verified-false | Runtime remains split (`mother/src/*.rs`, `src/mother/*.rs`, `src/commands/mother/*.rs`). |
+| CV2 | verified-false | CLI still contains Mother runtime command/server code (`src/commands/mother/daemon.rs`, `src/commands/mother/mod.rs`). |
+| CV3 | verified-false | Core command paths still include extracted-daemon probe routing and implicit placeholder fallback behavior. |
+| CV4 | verified-false | `try_daemon_*` + `contains("not yet implemented")` filtering still present in `context`, `measure`, `spec`, `lake`, `scry`. |
+| CV5 | verified-false | `cargo check` still reports 40 warnings (refresh run 2026-03-22). |
+| CV6 | verified-partial | Child vocabulary bridge exists (`child.toml` + `kind`), but `src/plugin/*` still coexists with `src/child/*`. |
+| CV7 | verified-false | `children/measure-health/` is absent; bundled-load guarantee for measure-health/session-writer is not implemented. |
+| CV8 | verified-false | No project child-needs manifest + connect-time resolution flow (only unrelated bootstrap `manifest.toml` snapshot path exists). |
+| CV9 | verified-false | Spec system remains in core (`src/commands/spec/internal/*`); `children/spec-manager/` absent. |
+| CV10 | verified-false | `wit/toys/layer-fs.wit` and `wit/toys/git.wit` absent; host impls absent. |
+| CV11 | verified-partial | Scrape is grammar-driven/strategy-structured in-core, but no code/git child-pluggable lane shipped yet. |
+| CV12 | verified-false | `patina spec list` remains core path; no "spec-manager not available" child gating path. |
+| CV13 | verified-false | No `rename` or `reopen` spec subcommands present in core spec CLI. |
+| CV14 | verified-false | No mandatory human confirmation gate on `spec complete` / `spec abandon`. |
+| CV15 | verified-false | Core doctor command exists (`src/commands/doctor.rs`). |
+| CV16 | verified-false | Version command still queries spec readiness (`src/commands/version/internal.rs`). |
+| CV17 | verified-false | Core session command module exists (`src/commands/session/*`). |
+| CV18 | verified-false | Core lake command exists (`src/commands/lake.rs`). |
 
 ## Target State
 
@@ -268,6 +270,22 @@ Status keys:
 - Core verbs follow explicit runtime policy when Mother is unavailable (snapshot/degraded vs hard-fail paths are defined per command)
 - No daemon stubs, no fallback dance, no "not yet implemented"
 - Zero warnings
+
+### Command Runtime Policy (locked for this spec)
+
+| Command surface | Mother unavailable policy | Notes |
+|---|---|---|
+| `scrape` | `snapshot/degraded` | Core layer+belief strategies must still run locally. |
+| `scry` | `snapshot/degraded` | Local search works; cross-project Mother path is additive when available. |
+| `assay` | `snapshot/degraded` | Structural local analysis remains available. |
+| `context` | `snapshot/degraded` | Local context synthesis remains available. |
+| `belief` | `snapshot/degraded` | Belief lifecycle remains core/local. |
+| `oxidize` | `snapshot/degraded` | Local index build remains available. |
+| `spec` (post-childization) | `mother-required` | Routes to `spec-manager` child. |
+| `lake` (post-childization) | `mother-required` | Routes to `lake-manager` child. |
+| `doctor` (post-childization) | `mother-required` | Routes to doctor child. |
+| `session` (post-childization) | `mother-required` | Session lifecycle owned by session-writer child. |
+| `measure` (post-childization) | `mother-required` | Routed through bundled `measure-health` child. |
 
 ## Implementation Order
 
