@@ -175,16 +175,22 @@ fn load_session_writer_knowledge_child() -> Result<Option<Box<dyn crate::mother:
         }
     }
 
-    candidates.push((
-        std::path::PathBuf::from("target/wasm32-wasip1/debug/patina_ai_child_session_writer.wasm"),
-        std::path::PathBuf::from("children/session-writer/plugin.toml"),
-    ));
-    candidates.push((
-        std::path::PathBuf::from(
-            "target/wasm32-wasip1/release/patina_ai_child_session_writer.wasm",
-        ),
-        std::path::PathBuf::from("children/session-writer/plugin.toml"),
-    ));
+    if let Some(manifest_path) = crate::plugin::PluginManifest::resolve_child_manifest_path(
+        std::path::Path::new("children/session-writer"),
+    ) {
+        candidates.push((
+            std::path::PathBuf::from(
+                "target/wasm32-wasip1/debug/patina_ai_child_session_writer.wasm",
+            ),
+            manifest_path.clone(),
+        ));
+        candidates.push((
+            std::path::PathBuf::from(
+                "target/wasm32-wasip1/release/patina_ai_child_session_writer.wasm",
+            ),
+            manifest_path,
+        ));
+    }
 
     for (wasm_path, manifest_path) in candidates {
         if !wasm_path.exists() || !manifest_path.exists() {

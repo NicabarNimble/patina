@@ -185,7 +185,7 @@ pub mod plugin {
     use super::*;
 
     /// WASM children directory: `~/.patina/children/`
-    /// Contains .wasm files + plugin.toml manifests for Mother daemon children.
+    /// Contains .wasm files + child manifests (`child.toml`; legacy `plugin.toml` supported) for Mother daemon children.
     pub fn children_dir() -> PathBuf {
         patina_home().join("children")
     }

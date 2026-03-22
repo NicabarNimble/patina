@@ -812,7 +812,7 @@ fn parse_relationship_listens(manifest_path: &std::path::Path) -> Result<Vec<Str
     Ok(listens)
 }
 
-/// Load a WASM child from a .wasm file + plugin.toml manifest.
+/// Load a WASM child from a .wasm file + child manifest.
 fn load_wasm_child(
     wasm_path: &std::path::Path,
     manifest_path: &std::path::Path,
@@ -994,7 +994,7 @@ mod tests {
     #[test]
     fn parse_relationship_listens_from_manifest() {
         let temp = tempfile::TempDir::new().unwrap();
-        let manifest = temp.path().join("plugin.toml");
+        let manifest = temp.path().join("child.toml");
         std::fs::write(
             &manifest,
             r#"
@@ -1019,7 +1019,7 @@ listens = ["data-ingested", "belief.changed"]
     #[test]
     fn parse_relationship_listens_defaults_empty() {
         let temp = tempfile::TempDir::new().unwrap();
-        let manifest = temp.path().join("plugin.toml");
+        let manifest = temp.path().join("child.toml");
         std::fs::write(
             &manifest,
             r#"

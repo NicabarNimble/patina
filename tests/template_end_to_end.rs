@@ -48,7 +48,7 @@ fn cargo_generate_template_builds_for_wasm() {
 
     let generated = sandbox.path().join("generated-child");
     assert!(generated.join("Cargo.toml").exists());
-    assert!(generated.join("plugin.toml").exists());
+    assert!(generated.join("child.toml").exists());
     assert!(generated.join("src/lib.rs").exists());
 
     let cargo_toml = generated.join("Cargo.toml");

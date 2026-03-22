@@ -28,8 +28,8 @@ Canonical child-first naming (`Child*`, `kind`, `child.toml`) with compatibility
 - `src/plugin/internal/mod.rs`
 - `src/plugin/internal/tests.rs`
 - `src/commands/mother/daemon.rs`
-- `children/*/plugin.toml` (bridge path)
-- `children/template/plugin.toml`
+- `children/*/child.toml` (canonical path)
+- `children/template/child.toml`
 - `AGENTS.md`
 - `layer/surface/build/refactor/patina-pre-v1/SPEC.md`
 
@@ -45,7 +45,7 @@ Canonical child-first naming (`Child*`, `kind`, `child.toml`) with compatibility
 Grep gates:
 
 - `grep -R "PluginManifest\|PluginWorld\|PluginRole" layer/surface/build/refactor -n` -> no new public-facing spec/docs usage from this spec.
-- `grep -R "world = \"knowledge-child\"" children/template -n` -> zero matches after scaffold migration.
+- `grep -R "world = \"knowledge-child\"" children/template/child.toml -n` -> zero matches after scaffold migration (`Cargo.toml` WIT world entries remain valid).
 - `grep -R "plugin.toml" children/template -n` -> zero canonical write references (compat-read references allowed in runtime loader code only).
 
 ## Build Readiness

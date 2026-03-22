@@ -93,9 +93,86 @@ fn manifest_missing_world() {
     let f = write_temp_manifest("[plugin]\nname = \"test\"\n");
     let err = PluginManifest::from_path(f.path()).unwrap_err();
     assert!(
-        err.to_string().contains("missing plugin.world"),
+        err.to_string().contains("missing plugin.kind"),
         "got: {}",
         err
+    );
+}
+
+#[test]
+fn manifest_accepts_kind_key() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "test-plugin"
+kind = "knowledge-child"
+
+[needs]
+toys = ["log"]
+
+[provides]
+child = "test"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert_eq!(m.world, PluginWorld::KnowledgeChild);
+}
+
+#[test]
+fn manifest_world_key_remains_read_compatible() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "test-plugin"
+world = "knowledge-child"
+
+[needs]
+toys = ["log"]
+
+[provides]
+child = "test"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert_eq!(m.world, PluginWorld::KnowledgeChild);
+}
+
+#[test]
+fn resolve_child_manifest_prefers_child_toml() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let dir = temp.path();
+    std::fs::write(
+        dir.join("plugin.toml"),
+        "[plugin]\nname='legacy'\nworld='task'\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("child.toml"),
+        "[plugin]\nname='canonical'\nkind='task'\n",
+    )
+    .unwrap();
+
+    let resolved = PluginManifest::resolve_child_manifest_path(dir).unwrap();
+    assert_eq!(
+        resolved.file_name().and_then(|n| n.to_str()),
+        Some("child.toml")
+    );
+}
+
+#[test]
+fn resolve_child_manifest_falls_back_to_plugin_toml() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let dir = temp.path();
+    std::fs::write(
+        dir.join("plugin.toml"),
+        "[plugin]\nname='legacy'\nworld='task'\n",
+    )
+    .unwrap();
+
+    let resolved = PluginManifest::resolve_child_manifest_path(dir).unwrap();
+    assert_eq!(
+        resolved.file_name().and_then(|n| n.to_str()),
+        Some("plugin.toml")
     );
 }
 
@@ -284,8 +361,8 @@ child = "bad-child"
 fn knowledge_child_example_manifests_validate() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for path in [
-        root.join("children/ducklake/plugin.toml"),
-        root.join("children/belief-verifier/plugin.toml"),
+        root.join("children/ducklake/child.toml"),
+        root.join("children/belief-verifier/child.toml"),
     ] {
         let manifest = PluginManifest::from_path(&path).unwrap();
         assert_eq!(manifest.world, PluginWorld::KnowledgeChild);
@@ -335,7 +412,7 @@ fn session_writer_component_instantiates_in_knowledge_child_engine() {
     let wasm_bytes = std::fs::read(&wasm_path).unwrap();
     let component = engine.load_component(&wasm_bytes).unwrap();
     let manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("children/session-writer/plugin.toml");
+        .join("children/session-writer/child.toml");
     let manifest = PluginManifest::from_path(&manifest_path).unwrap();
 
     let result = engine.instantiate_child(&component, &manifest, None);
@@ -356,7 +433,7 @@ fn knowledge_child_linker_fails_when_lake_not_linked() {
     let component = engine.load_component(&wasm_bytes).unwrap();
 
     let manifest_path =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/plugin.toml");
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/child.toml");
     let mut manifest = PluginManifest::from_path(&manifest_path).unwrap();
     manifest.lake_names.clear();
     manifest.toys.lake_names.clear();
@@ -376,7 +453,7 @@ fn knowledge_child_linker_succeeds_when_lake_declared() {
     let component = engine.load_component(&wasm_bytes).unwrap();
 
     let manifest_path =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/plugin.toml");
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/child.toml");
     let manifest = PluginManifest::from_path(&manifest_path).unwrap();
 
     let result = engine.instantiate_child(&component, &manifest, None);
@@ -416,7 +493,7 @@ child = "bad-ingress"
 #[test]
 fn ducklake_manifest_uses_granted_ingress_not_ambient_http() {
     let path =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/plugin.toml");
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/child.toml");
     let manifest = PluginManifest::from_path(&path).unwrap();
     assert!(manifest.host_http_domains.is_empty());
     assert!(!manifest.capabilities.contains(&"host_http".to_string()));
@@ -426,7 +503,7 @@ fn ducklake_manifest_uses_granted_ingress_not_ambient_http() {
 #[test]
 fn ducklake_manifest_runtime_grants_sdk_story_stays_connected() {
     let path =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/plugin.toml");
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/child.toml");
     let manifest = PluginManifest::from_path(&path).unwrap();
     let grants = manifest.granted_capabilities();
 

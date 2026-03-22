@@ -12,7 +12,7 @@ This file records concrete, reproducible evidence for remaining closure ECs.
   - `knowledge_child_linker_succeeds_when_lake_declared`
 
 Notes:
-- `plugin.toml` `world = "knowledge-child"` remains the runtime execution contract marker.
+- `child.toml` `kind = "knowledge-child"` is canonical runtime execution contract marker (`plugin.toml`/`world` read-compatible during migration).
 
 ## EC7 — DuckLake Queryability via DuckDB CLI
 

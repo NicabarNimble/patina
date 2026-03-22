@@ -1,0 +1,17 @@
+[plugin]
+name = "patina-session-writer"
+version = "0.1.0"
+description = "Session lifecycle writer child"
+kind = "knowledge-child"
+role = "app"
+patina_min = "0.41.0"
+
+[needs]
+toys = ["log", "state", "session", "peer"]
+
+[provides]
+child = "session-writer"
+
+[relationships]
+emits = []
+listens = ["data-ingested"]

@@ -301,10 +301,14 @@ fn load_ducklake_knowledge_child(
             }
         }
     }
-    candidates.push((
-        std::path::PathBuf::from("target/wasm32-wasip2/release/patina_plugin_ducklake.wasm"),
-        std::path::PathBuf::from("children/ducklake/plugin.toml"),
-    ));
+    if let Some(manifest_path) = crate::plugin::PluginManifest::resolve_child_manifest_path(
+        std::path::Path::new("children/ducklake"),
+    ) {
+        candidates.push((
+            std::path::PathBuf::from("target/wasm32-wasip2/release/patina_plugin_ducklake.wasm"),
+            manifest_path,
+        ));
+    }
 
     for (wasm_path, manifest_path) in candidates {
         if !wasm_path.exists() || !manifest_path.exists() {

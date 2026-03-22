@@ -10,27 +10,27 @@ related:
 - src/plugin/internal/mod.rs
 - src/plugin/internal/tests.rs
 - src/plugin/
-- children/*/plugin.toml
-- children/template/plugin.toml
+- children/*/child.toml
+- children/template/child.toml
 - AGENTS.md
 - layer/surface/epistemic/beliefs/core-primitives-are-not-children.md
 - layer/surface/epistemic/beliefs/core-baseline-child-strategy-extensions.md
 exit_criteria:
 - id: VC1
   text: Child-first naming exists in code (`ChildManifest`, `ChildKind`, `ChildEngine`) with compatibility aliases for legacy plugin names
-  checked: false
+  checked: true
 - id: VC2
   text: Manifest schema uses `kind` as canonical field; legacy `world` remains read-compatible during migration with explicit deprecation warning
-  checked: false
+  checked: true
 - id: VC3
   text: File naming supports `child.toml` as canonical while continuing to read `plugin.toml` during bridge period
-  checked: false
+  checked: true
 - id: VC4
   text: Specs/docs/agent guidance consistently use child/toy/kind vocabulary and explicitly reserve WIT `world` for WIT semantics
-  checked: false
+  checked: true
 - id: VC5
   text: Regression checks prove no behavior change in child loading/linking/runtime grants during rename bridge
-  checked: false
+  checked: true
 ---
 # refactor: refactor: Vocabulary alignment for child/toy architecture
 

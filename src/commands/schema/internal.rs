@@ -314,20 +314,23 @@ pub fn check_schemas() -> Result<()> {
         let children_dir = root.join("children");
         if children_dir.exists() {
             for child_entry in std::fs::read_dir(&children_dir)?.flatten() {
-                let plugin_toml = child_entry.path().join("plugin.toml");
-                if !plugin_toml.exists() {
+                let Some(manifest_path) =
+                    patina::plugin::PluginManifest::resolve_child_manifest_path(
+                        &child_entry.path(),
+                    )
+                else {
                     continue;
-                }
-                let content = std::fs::read_to_string(&plugin_toml)?;
+                };
+                let content = std::fs::read_to_string(&manifest_path)?;
                 let table: toml::Table = toml::from_str(&content)
-                    .with_context(|| format!("parsing {}", plugin_toml.display()))?;
+                    .with_context(|| format!("parsing {}", manifest_path.display()))?;
                 if let Some(schemas) = table.get("schemas").and_then(|v| v.as_table()) {
                     if let Some(schema_ref) = schemas.get(&name).and_then(|v| v.as_table()) {
                         if let Some(pkg) = schema_ref.get("package").and_then(|v| v.as_str()) {
                             if pkg != canonical_pkg.as_str() {
                                 eprintln!(
                                     "  ERROR: {} declares package '{}' but canonical is '{}'",
-                                    plugin_toml.display(),
+                                    manifest_path.display(),
                                     pkg,
                                     canonical_pkg
                                 );

@@ -2,9 +2,10 @@
 
 Project-specific notes:
 
-- Patina is daemon-first: agent workflows should route through `patina mother` and the Unix socket protocol, not MCP.
+- Patina protocol verbs remain standalone-capable in CLI; Mother is additive infrastructure (children/toys/agent orchestration), not a hard dependency for baseline local protocol execution.
 - Interface runtimes are decoupled: Claude/OpenCode/Gemini are external guests and should use their own session helper scripts.
 - Child capability schema is `[needs].toys` with optional `[needs.scopes]`; do not use legacy `[capabilities]`/`[toys]` manifests.
+- Vocabulary lock: use `child`/`kind` terminology for runtime manifests (`child.toml`, `child.kind`); reserve `world` for WIT component composition contexts.
 - WIT contracts live in `wit/toys/` and child composition lives in `wit/worlds/`.
 - SDK tiers are `sdk/patina-sdk-core`, `sdk/patina-sdk-data`, and `sdk/patina-sdk-agent` (with `sdk/patina-sdk` as umbrella re-export).
 

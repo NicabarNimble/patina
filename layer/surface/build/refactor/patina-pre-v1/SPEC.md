@@ -25,7 +25,7 @@ exit_criteria:
   text: Tiered SDK ships — patina-sdk-core, patina-sdk-data, patina-sdk-agent each build independently with feature-gated toys
   checked: true
 - id: EC2
-  text: Per-child WIT worlds — each runtime child declares its own composed world via Cargo component target (ducklake, belief-verifier, session-writer), importing only needed toy interfaces; `plugin.toml` `world` remains execution contract (`knowledge-child`)
+  text: Per-child WIT worlds — each runtime child declares its own composed world via Cargo component target (ducklake, belief-verifier, session-writer), importing only needed toy interfaces; child manifests use canonical `child.toml` + `kind` execution contract (`knowledge-child`) with legacy `plugin.toml`/`world` read-compatibility
   checked: false
 - id: EC3
   text: Per-child linker — Mother builds a linker per child from its manifest, linking only declared toy interfaces
@@ -267,7 +267,7 @@ Migrate DuckLake to the composable model. Enterprise pipeline (watermarks, parqu
 
 ### Phase 10: Child Relationships + Polish (11 commits)
 
-54. Extend `plugin.toml` manifest with `[relationships]` — `emits` and `listens`
+54. Extend child manifest (`plugin.toml` at phase time; now canonical `child.toml`) with `[relationships]` — `emits` and `listens`
 55. Mother reads relationship declarations, builds event routing table
 56. Define `patina:host/peer@0.1.0` for mediated child-to-child events
 57. Add `toy-peer` to SDK — `PeerBackend` trait in `patina-sdk-core`

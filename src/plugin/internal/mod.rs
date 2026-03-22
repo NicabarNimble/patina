@@ -20,6 +20,7 @@ mod task;
 mod tests;
 
 pub use command::{CommandEngine, QueryDispatchFn};
+pub use knowledge_child::KnowledgeChildEngine as ChildEngine;
 pub use knowledge_child::KnowledgeChildEngine;
 pub use mother_child::PluginEngine;
 pub use pipeline::PipelineEngine;
@@ -99,6 +100,9 @@ impl std::fmt::Display for PluginWorld {
     }
 }
 
+/// Canonical child-kind naming for runtime category selection.
+pub type ChildKind = PluginWorld;
+
 // =========================================================================
 // Plugin role enum — parsed from manifest, describes purpose (F4)
 // =========================================================================
@@ -158,6 +162,9 @@ impl std::fmt::Display for PluginRole {
     }
 }
 
+/// Canonical child-role naming for runtime purpose labels.
+pub type ChildRole = PluginRole;
+
 // =========================================================================
 // Engine singleton (OnceLock pattern from Zed)
 // =========================================================================
@@ -192,10 +199,10 @@ pub struct CredentialMapping {
 }
 
 // =========================================================================
-// Plugin manifest (plugin.toml)
+// Child manifest (child.toml; legacy plugin.toml supported)
 // =========================================================================
 
-/// Parsed plugin manifest from plugin.toml.
+/// Parsed child manifest from child.toml (legacy plugin.toml supported).
 #[derive(Debug, Clone)]
 pub struct PluginManifest {
     pub name: String,
@@ -236,6 +243,9 @@ pub struct PluginManifest {
     pub belief_write_actions: Vec<String>,
     pub toys: crate::mother::GrantedToys,
 }
+
+/// Canonical child-manifest naming for runtime child definitions.
+pub type ChildManifest = PluginManifest;
 
 // =========================================================================
 // Granted capabilities — resolved at load time, checked at call time
@@ -293,7 +303,7 @@ pub struct PluginProvides {
 }
 
 impl PluginManifest {
-    /// Parse a plugin manifest from a TOML file.
+    /// Parse a child manifest from a TOML file.
     pub fn from_path(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let table: toml::Table = content.parse()?;
@@ -321,11 +331,19 @@ impl PluginManifest {
             .unwrap_or("")
             .to_string();
 
-        let world_str = plugin
-            .get("world")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("missing plugin.world"))?;
+        let world_str = if let Some(kind) = plugin.get("kind").and_then(|v| v.as_str()) {
+            kind
+        } else if let Some(world) = plugin.get("world").and_then(|v| v.as_str()) {
+            eprintln!("deprecated manifest key 'world'; use 'kind'");
+            world
+        } else {
+            anyhow::bail!("missing plugin.kind");
+        };
         let world = world_str.parse::<PluginWorld>()?;
+
+        if path.file_name().and_then(|n| n.to_str()) == Some("plugin.toml") {
+            eprintln!("deprecated manifest filename 'plugin.toml'; use 'child.toml'");
+        }
 
         let role = plugin
             .get("role")
@@ -650,6 +668,23 @@ impl PluginManifest {
             belief_write_actions,
             toys,
         })
+    }
+
+    /// Resolve canonical child manifest path from a child directory.
+    ///
+    /// Canonical path is `child.toml`; legacy `plugin.toml` is read for
+    /// compatibility and emits a deprecation warning.
+    pub fn resolve_child_manifest_path(dir: &Path) -> Option<std::path::PathBuf> {
+        let child = dir.join("child.toml");
+        if child.exists() {
+            return Some(child);
+        }
+        let legacy = dir.join("plugin.toml");
+        if legacy.exists() {
+            eprintln!("deprecated manifest filename 'plugin.toml'; use 'child.toml'");
+            return Some(legacy);
+        }
+        None
     }
 
     /// Load a WASM component from bytes using the shared engine.
