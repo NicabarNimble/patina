@@ -994,8 +994,8 @@ enum PluginCommands {
 /// Returns None if the plugin has no host_query grants. Otherwise,
 /// returns a closure that dispatches to context/scry/assay engines.
 fn make_query_dispatch(
-    manifest: &patina::plugin::PluginManifest,
-) -> Option<patina::plugin::QueryDispatchFn> {
+    manifest: &patina::child::engine::ChildManifest,
+) -> Option<patina::child::engine::QueryDispatchFn> {
     if manifest.host_query_kinds.is_empty() {
         return None;
     }
@@ -1393,14 +1393,14 @@ fn main() -> Result<()> {
 
             let exit_code = if plugin_wasm.exists() {
                 let manifest = if plugin_toml.exists() {
-                    patina::plugin::PluginEngine::load_manifest(&plugin_toml)?
+                    patina::child::engine::MotherChildEngine::load_manifest(&plugin_toml)?
                 } else {
                     // Default manifest for plugins without .toml
-                    patina::plugin::PluginManifest {
+                    patina::child::engine::ChildManifest {
                         name: "patina-doctor".into(),
                         version: "0.0.0".into(),
                         description: String::new(),
-                        world: patina::plugin::PluginWorld::Command,
+                        world: patina::child::engine::ChildKind::Command,
                         role: None,
                         patina_min: "0.0.0".into(),
                         capabilities: vec!["host_log".into(), "host_layer".into()],
@@ -1408,7 +1408,7 @@ fn main() -> Result<()> {
                         host_query_kinds: vec![],
                         host_http_domains: vec![],
                         host_secrets: std::collections::HashMap::new(),
-                        provides: patina::plugin::PluginProvides {
+                        provides: patina::child::engine::ChildProvides {
                             child: None,
                             commands: vec!["doctor".into()],
                             ..Default::default()
@@ -1428,7 +1428,7 @@ fn main() -> Result<()> {
                         toys: patina::mother::GrantedToys::default(),
                     }
                 };
-                let engine = patina::plugin::CommandEngine::new()?;
+                let engine = patina::child::engine::CommandEngine::new()?;
                 let wasm_bytes = std::fs::read(&plugin_wasm)?;
                 let component = engine.load_component(&wasm_bytes)?;
                 let query_fn = make_query_dispatch(&manifest);
@@ -1459,7 +1459,7 @@ fn main() -> Result<()> {
                 build,
                 release,
             } => {
-                let world: patina::plugin::PluginWorld = world.parse()?;
+                let world: patina::child::engine::ChildKind = world.parse()?;
                 let cwd = std::env::current_dir()?;
                 let project_dir = patina::plugin::scaffold::scaffold(&cwd, &name, &world)?;
 
@@ -1540,7 +1540,7 @@ fn main() -> Result<()> {
                 }
 
                 let manifest = if toml_path.exists() {
-                    patina::plugin::PluginEngine::load_manifest(&toml_path)?
+                    patina::child::engine::MotherChildEngine::load_manifest(&toml_path)?
                 } else {
                     anyhow::bail!(
                         "plugin manifest not found at {}\nTask and command plugins require a plugin.toml",
@@ -1552,8 +1552,8 @@ fn main() -> Result<()> {
 
                 // Auto-detect world from manifest and dispatch
                 match &manifest.world {
-                    patina::plugin::PluginWorld::Task => {
-                        let engine = patina::plugin::TaskEngine::new()?;
+                    patina::child::engine::ChildKind::Task => {
+                        let engine = patina::child::engine::TaskEngine::new()?;
                         let component = engine.load_component(&wasm_bytes)?;
                         let query_fn = make_query_dispatch(&manifest);
                         let (exit_code, toys) =
@@ -1596,8 +1596,8 @@ fn main() -> Result<()> {
                             std::process::exit(exit_code);
                         }
                     }
-                    patina::plugin::PluginWorld::Command => {
-                        let engine = patina::plugin::CommandEngine::new()?;
+                    patina::child::engine::ChildKind::Command => {
+                        let engine = patina::child::engine::CommandEngine::new()?;
                         let component = engine.load_component(&wasm_bytes)?;
                         let query_fn = make_query_dispatch(&manifest);
                         let exit_code =
@@ -1606,11 +1606,11 @@ fn main() -> Result<()> {
                             std::process::exit(exit_code);
                         }
                     }
-                    patina::plugin::PluginWorld::KnowledgeChild => {
+                    patina::child::engine::ChildKind::KnowledgeChild => {
                         let action = args.first().map(|s| s.as_str()).unwrap_or("health");
                         let payload_str = args.get(1).map(|s| s.as_str()).unwrap_or("{}");
 
-                        let engine = patina::plugin::KnowledgeChildEngine::new()?;
+                        let engine = patina::child::engine::KnowledgeChildEngine::new()?;
                         let component = engine.load_component(&wasm_bytes)?;
                         let query_fn = make_query_dispatch(&manifest);
                         let mut child =
@@ -1661,12 +1661,12 @@ fn main() -> Result<()> {
                             }
                         }
                     }
-                    patina::plugin::PluginWorld::MotherChild => {
+                    patina::child::engine::ChildKind::MotherChild => {
                         // mother-child: args = [action, payload_json]
                         let action = args.first().map(|s| s.as_str()).unwrap_or("health");
                         let payload_str = args.get(1).map(|s| s.as_str()).unwrap_or("{}");
 
-                        let engine = patina::plugin::PluginEngine::new()?;
+                        let engine = patina::child::engine::MotherChildEngine::new()?;
                         let component = engine.load_component(&wasm_bytes)?;
                         let query_fn = make_query_dispatch(&manifest);
                         let mut child =

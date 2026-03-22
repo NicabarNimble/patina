@@ -11,7 +11,7 @@ use ignore::WalkBuilder;
 
 use crate::commands::scrape::code::extracted_data::ExtractedData;
 
-use patina::plugin::PipelineEngine;
+use patina::child::engine::PipelineEngine;
 
 /// Options for grammar benchmark
 pub struct GrammarBenchOptions {

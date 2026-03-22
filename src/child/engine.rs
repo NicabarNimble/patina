@@ -10,3 +10,4 @@ pub use crate::plugin::{
 };
 
 pub type MotherChildEngine = crate::plugin::PluginEngine;
+pub type ChildProvides = crate::plugin::PluginProvides;
