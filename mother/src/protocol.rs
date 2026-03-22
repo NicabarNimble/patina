@@ -27,3 +27,20 @@ impl Envelope {
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectPayload {
+    pub agent: String,
+    pub project: String,
+    pub persona: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextPayload {
+    pub question: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LakeSyncPayload {
+    pub lake: String,
+}
