@@ -18,6 +18,10 @@ Patina's architecture needs to match its beliefs. Patina is a local-first WASM P
 
 This design closes the gap in 11 phases. Phases 1-10 ship today (64 commits). Phase 11 is follow-on (12 commits). The ordering: SDK first (onramp), plumbing second (worlds, linker), capabilities third (toys), proof fourth (session-writer, ducklake), architecture fifth (Mother, CLI, MCP retirement), polish sixth (relationships, template).
 
+### Closure-Only Realignment Rule
+
+For remaining unchecked ECs (EC2, EC7, EC15), do closure work only: wiring verification, proof capture, and test hardening. Do not introduce new architecture or expand scope.
+
 ---
 
 ## Phase 1: SDK Restructure — The Map (6 commits)
@@ -84,6 +88,7 @@ The monolithic world imports all 14 interfaces for every child. Per-child worlds
 - Both children compile with per-child worlds
 - Release binary sizes decrease
 - All existing tests pass
+- Runtime child world proof must cite Cargo component targets (not `plugin.toml` execution world)
 
 ---
 
@@ -275,6 +280,7 @@ Proves DuckLake works on the composable model. Enterprise pipeline (watermarks, 
 - Basic ingestion works via toy-github
 - Queryable via standalone DuckDB
 - All tests pass
+- Record explicit DuckDB CLI command/output proof artifact under `layer/surface/build/refactor/patina-pre-v1/`
 
 ---
 
@@ -425,6 +431,7 @@ Completes the composable vision. Template + README deliver the external develope
 - Template builds and installs in <5 minutes
 - Binary sizes meet targets
 - All tests pass
+- If `cargo generate` is unavailable locally, use CI proof and link artifact path in spec evidence
 
 ---
 

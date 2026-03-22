@@ -23,7 +23,7 @@ exit_criteria:
   text: Tiered SDK ships — patina-sdk-core, patina-sdk-data, patina-sdk-agent each build independently with feature-gated toys
   checked: true
 - id: EC2
-  text: Per-child WIT worlds — each child declares its own world importing only needed toy interfaces, no monolithic knowledge-child world
+  text: Per-child WIT worlds — each runtime child declares its own composed world via Cargo component target (ducklake, belief-verifier, session-writer), importing only needed toy interfaces; `plugin.toml` `world` remains execution contract (`knowledge-child`)
   checked: false
 - id: EC3
   text: Per-child linker — Mother builds a linker per child from its manifest, linking only declared toy interfaces
@@ -38,7 +38,7 @@ exit_criteria:
   text: session-writer child — minimal WASM child (log + state + session toys), spawned at agent connection, handles artifact lifecycle and crash recovery
   checked: true
 - id: EC7
-  text: DuckLake on new model — composed world with toy-github replacing connector, basic fetch-and-store works, queryable via standalone DuckDB CLI
+  text: DuckLake on new model — composed world with toy-github replacing connector, basic fetch-and-store works, and resulting lake DB is queryable via standalone DuckDB CLI with recorded proof command/output
   checked: false
 - id: EC8
   text: Mother extracted — standalone daemon crate, accepts agent connections, manages children and toys, separate from CLI binary
@@ -62,7 +62,7 @@ exit_criteria:
   text: Git tag integrity — every session gets real start and end tags, no frontmatter-only claims, historical backfill complete
   checked: true
 - id: EC15
-  text: External developer onramp — cargo generate template, README, working example child that builds and installs in under 5 minutes
+  text: External developer onramp — cargo-generate template, README, and generated example child proven to build/install in under 5 minutes (local tool or CI evidence attached)
   checked: false
 ---
 # refactor: Patina Pre-v1 — Full Architecture Conversion
@@ -392,6 +392,23 @@ These are NOT in scope, but every decision above must be compatible with:
 | 9 | MCP and interface code deleted, all tests pass |
 | 10 | DuckLake emits event → Mother routes → session-writer captures; template builds in <5min |
 | 11 | Enterprise pipeline: watermarks, parquet, reconciliation, telemetry all pass |
+
+### Remaining EC Closure Checks (EC2 / EC7 / EC15)
+
+- **EC2 proof (world wiring):**
+  - Verify Cargo component world targets:
+    - `children/ducklake/Cargo.toml` -> `world = "ducklake"`
+    - `children/belief-verifier/Cargo.toml` -> `world = "belief-verifier"`
+    - `children/session-writer/Cargo.toml` -> `world = "session-writer"`
+  - Verify runtime linker enforcement remains manifest-driven (`[needs].toys`) via linker tests.
+
+- **EC7 proof (DuckDB CLI queryability):**
+  - Record one reproducible command and output proving standalone query against generated lake DB (example: `duckdb <path>/lake.duckdb "SELECT COUNT(*) FROM <table>"`).
+  - Attach evidence to `layer/surface/build/refactor/patina-pre-v1/SIZE-AUDIT.md` (or successor audit note).
+
+- **EC15 proof (external onramp):**
+  - Run template generation/build/install smoke with `cargo generate` (or CI equivalent when local tool unavailable).
+  - Record command transcript and elapsed time in a proof note under `layer/surface/build/refactor/patina-pre-v1/`.
 
 ## Exit Criteria
 
