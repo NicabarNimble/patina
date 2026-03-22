@@ -8,7 +8,7 @@ use serde_json::json;
 
 use crate::protocol::{
     ConnectPayload, ContextPayload, Envelope, LakeManagePayload, LakeSyncPayload, MeasurePayload,
-    SpecPayload, PROTOCOL_VERSION,
+    ScryPayload, SpecPayload, PROTOCOL_VERSION,
 };
 
 #[derive(Debug, Default, Clone)]
@@ -148,7 +148,7 @@ fn handle_action(
             Ok(json!({
                 "session_id": format!("{}-{}", connect.agent, std::process::id()),
                 "children": ["ducklake", "session-writer"],
-                "tools": ["context", "lake.sync", "lake", "measure", "spec"],
+                "tools": ["context", "lake.sync", "lake", "measure", "spec", "scry"],
             }))
         }
         "context" => {
@@ -205,6 +205,20 @@ fn handle_action(
                     lake.op,
                     lake.name.unwrap_or_else(|| "none".to_string())
                 )
+            }))
+        }
+        "scry" => {
+            let payload = payload.ok_or_else(|| "missing payload".to_string())?;
+            let scry: ScryPayload = serde_json::from_value(payload)
+                .map_err(|e| format!("invalid scry payload: {}", e))?;
+            Ok(json!({
+                "output": format!(
+                    "scry daemon path not yet implemented (query={}, repo={})",
+                    scry.query,
+                    scry.repo.unwrap_or_else(|| "none".to_string()),
+                ),
+                "results": [],
+                "count": 0,
             }))
         }
         other => Err(format!("unsupported action '{}'", other)),

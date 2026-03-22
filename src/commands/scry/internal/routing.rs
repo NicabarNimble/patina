@@ -41,8 +41,11 @@ pub fn execute_via_mother(query: Option<&str>, options: &ScryOptions) -> Result<
         min_score: options.min_score,
     };
 
-    // Execute query
-    let response = mother::scry(request)?;
+    // Execute query via extracted daemon first, then fallback
+    let response = match try_daemon_scry(&request) {
+        Ok(Some(response)) => response,
+        _ => mother::scry(request)?,
+    };
 
     if response.results.is_empty() {
         println!("No results found.");
@@ -72,6 +75,36 @@ pub fn execute_via_mother(query: Option<&str>, options: &ScryOptions) -> Result<
     println!("\n{}", "─".repeat(60));
 
     Ok(())
+}
+
+fn try_daemon_scry(request: &mother::ScryRequest) -> Result<Option<mother::ScryResponse>> {
+    let client = mother::DaemonClient::new();
+    client.ensure_running()?;
+    let result = client.request(
+        "scry",
+        serde_json::json!({
+            "query": request.query,
+            "dimension": request.dimension,
+            "repo": request.repo,
+            "all_repos": request.all_repos,
+            "include_issues": request.include_issues,
+            "include_persona": request.include_persona,
+            "limit": request.limit,
+            "min_score": request.min_score,
+        }),
+    )?;
+
+    if result
+        .get("output")
+        .and_then(|v| v.as_str())
+        .map(|s| s.contains("not yet implemented"))
+        .unwrap_or(false)
+    {
+        return Ok(None);
+    }
+
+    let response: mother::ScryResponse = serde_json::from_value(result)?;
+    Ok(Some(response))
 }
 
 /// Execute query using graph-based routing (sole cross-repo strategy)

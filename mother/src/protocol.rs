@@ -68,3 +68,15 @@ pub struct LakeManagePayload {
     pub op: String,
     pub name: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScryPayload {
+    pub query: String,
+    pub dimension: Option<String>,
+    pub repo: Option<String>,
+    pub all_repos: bool,
+    pub include_issues: bool,
+    pub include_persona: bool,
+    pub limit: usize,
+    pub min_score: f32,
+}
