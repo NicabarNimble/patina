@@ -98,7 +98,7 @@ Ship Patina pre-v1: the foundation for a local-first WASM P2P agentic knowledge 
 
 ## Status
 
-Draft. All prior specs abandoned and subsumed. Phases 1-10 ship today. Phase 11 is follow-on.
+Active but blocked by `patina-zero-fallback-cutover` for final zero-fallback completion. Phases 1-10 implementation landed; remaining closure requires daemon-only cutover gates.
 
 ## Non-Goals
 
