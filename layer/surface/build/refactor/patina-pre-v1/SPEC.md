@@ -3,21 +3,10 @@ type: refactor
 id: patina-pre-v1
 status: active
 created: 2026-03-21
+blocked_by:
+- patina-zero-fallback-cutover
 sessions:
   origin: 20260320-212325-011658000
-supersedes:
-- composable-toy-sdk
-- ducklake-enterprise
-- interface-session-model
-- session-handoff-enrichment
-- mother-maturation
-- measure-process-owned
-- grammar-markdown
-- runtime-hardening
-- scrape-simplification
-- spec-knowledge-evolution
-- spec-prompt-handoff
-- patina-v1
 beliefs:
 - agents-are-guests-mother-is-infrastructure
 - children-have-agency-toys-are-capabilities
