@@ -6,66 +6,66 @@ created: 2026-03-22
 sessions:
   origin: 20260321-164003-365905000
 beliefs:
-- core-primitives-are-not-children
-- core-verbs-standalone-mother-additive
-- core-baseline-child-strategy-extensions
-- agents-are-guests-mother-is-infrastructure
-- mother-is-the-daemon
+  - core-primitives-are-not-children
+  - core-verbs-standalone-mother-additive
+  - core-baseline-child-strategy-extensions
+  - agents-are-guests-mother-is-infrastructure
+  - mother-is-the-daemon
 exit_criteria:
-- id: CV1
-  text: Mother is a standalone daemon in the mother/ crate — all runtime logic (state, broker, registry, graph, events, tasks) lives there, not split across three locations
-  checked: false
-- id: CV2
-  text: CLI binary has zero Mother runtime code — it talks to Mother over Unix socket or runs core verbs standalone
-  checked: false
-- id: CV3
-  text: Core verbs (scrape, scry, assay, context, belief, oxidize) have an explicit, command-by-command Mother-unavailable policy documented in this spec and verified by command tests (no implicit placeholder-filter fallback behavior)
-  checked: false
-- id: CV4
-  text: Pre-v1 extracted-daemon probe routing is removed from canonical core command paths (`context`, `measure`, `spec`, `lake`, `scry`) — no `try_daemon_*` probes or `contains("not yet implemented")` filtering in those paths
-  checked: false
-- id: CV5
-  text: "cargo check -q" produces zero warnings
-  checked: false
-- id: CV6
-  text: Vocabulary migration completes with 1:1 parity and bridge removal — runtime code uses child vocabulary (`ChildManifest`, `ChildKind`, `ChildEngine`), `src/plugin/` is removed, and any temporary compatibility bridge is deleted only after parity proof (unless user explicitly approves exception)
-  checked: false
-- id: CV7
-  text: Mother startup guarantees bundled children (`measure-health`, `session-writer`) are loaded and visible in health/status output when daemon boots successfully
-  checked: false
-- id: CV8
-  text: Project manifest exists — a project declares what children it needs and Mother resolves them on connect
-  checked: false
-- id: CV9
-  text: spec-manager is a child — all spec operations route through Mother to this child, not through core CLI code
-  checked: false
-- id: CV10
-  text: toy-layer-fs and toy-git WIT interfaces exist with Mother host implementations
-  checked: false
-- id: CV11
-  text: Scrape strategy boundary is explicit and enforceable — layer/beliefs remain core, and non-core scrape strategy lanes are extraction-ready and independently pluggable without breaking current core scrape behavior. Child extraction happens only after 1:1 parity proof
-  checked: false
-- id: CV12
-  text: "patina spec list" without Mother returns clear "spec-manager not available" error
-  checked: false
-- id: CV13
-  text: spec lifecycle supports rename and reopen (in spec-manager child)
-  checked: false
-- id: CV14
-  text: spec complete and spec abandon require human confirmation
-  checked: false
-- id: CV15
-  text: doctor is a child, not core CLI
-  checked: false
-- id: CV16
-  text: version command decoupled from spec workflow — shows version without querying spec system
-  checked: false
-- id: CV17
-  text: session is not a core command — session artifacts are written by agents/children (session-writer), not by a core CLI verb
-  checked: false
-- id: CV18
-  text: lake is a child, not core CLI
-  checked: false
+  - id: CV1
+    text: Mother is a standalone daemon in the mother/ crate — all runtime logic (state, broker, registry, graph, events, tasks) lives there, not split across three locations
+    checked: false
+  - id: CV2
+    text: CLI binary has zero Mother runtime code — it talks to Mother over Unix socket or runs core verbs standalone
+    checked: false
+  - id: CV3
+    text: Core verbs (scrape, scry, assay, context, belief, measure, oxidize) have an explicit, command-by-command Mother-unavailable policy documented in this spec and verified by command tests (no implicit placeholder-filter fallback behavior)
+    checked: false
+  - id: CV4
+    text: Pre-v1 extracted-daemon probe routing is removed from canonical core command paths (`context`, `measure`, `spec`, `lake`, `scry`) — no `try_daemon_*` probes or `contains("not yet implemented")` filtering in those paths
+    checked: false
+  - id: CV5
+    text: '"cargo check -q" produces zero warnings'
+    checked: false
+  - id: CV6
+    text: Vocabulary migration completes with 1:1 parity and bridge removal — runtime code uses child vocabulary (`ChildManifest`, `ChildKind`, `ChildEngine`), `src/plugin/` is removed, and any temporary compatibility bridge is deleted only after parity proof (unless user explicitly approves exception)
+    checked: false
+  - id: CV7
+    text: Mother startup guarantees bundled runtime children are loaded and visible in health/status output when daemon boots successfully (`secrets` compiled-in + `session-writer` first-party WASM inventory)
+    checked: false
+  - id: CV8
+    text: Project manifest exists — a project declares what children it needs and Mother resolves them on connect
+    checked: false
+  - id: CV9
+    text: spec-manager is a child — all spec operations route through Mother to this child, not through core CLI code
+    checked: false
+  - id: CV10
+    text: toy-layer-fs and toy-git WIT interfaces exist with Mother host implementations
+    checked: false
+  - id: CV11
+    text: Scrape strategy boundary is explicit and enforceable — layer/beliefs remain core, and non-core scrape strategy lanes are extraction-ready and independently pluggable without breaking current core scrape behavior. Child extraction happens only after 1:1 parity proof
+    checked: false
+  - id: CV12
+    text: '"patina spec list" without Mother returns clear "spec-manager not available" error'
+    checked: false
+  - id: CV13
+    text: spec lifecycle supports rename and reopen (in spec-manager child)
+    checked: false
+  - id: CV14
+    text: spec complete and spec abandon require human confirmation
+    checked: false
+  - id: CV15
+    text: doctor is a child, not core CLI
+    checked: false
+  - id: CV16
+    text: version command decoupled from spec workflow — shows version without querying spec system
+    checked: false
+  - id: CV17
+    text: session is not a core command — session artifacts are written by agents/children (session-writer), not by a core CLI verb
+    checked: false
+  - id: CV18
+    text: lake is a child, not core CLI
+    checked: false
 ---
 # refactor: Make the codebase reflect the architecture vision
 
@@ -77,7 +77,7 @@ Patina has a clear architecture: Patina is the knowledge protocol (beliefs at th
 
 - Mother is three tangled modules across the binary, not one standalone daemon
 - Daemon stubs sit in front of working core verbs returning "not yet implemented"
-- Spec, lake, session, doctor, measure are woven into core as if they're fundamental
+- Spec, lake, session, and doctor are woven into core as if they're fundamental
 - Plugin vocabulary persists half-migrated (src/plugin/ and src/child/ coexist, plugins/ output dir at root)
 - 40 warnings remain from partially severed command paths (warning cleanup must be proof-driven)
 - src/toys/ has toy host implementations in the CLI binary — should be in mother/ crate
@@ -95,7 +95,7 @@ No assumption-only planning.
 ## Goal
 
 Make the code match the vision. When a new contributor reads the code, they see:
-- Core CLI: belief, scrape, scry, assay, context, oxidize — standalone, no daemon
+- Core CLI: belief, scrape, scry, assay, context, measure, oxidize — standalone, no daemon
 - Mother: standalone daemon, hosts children, grants toys, connects agents
 - Children: opt-in WASM extensions installed per-project
 
@@ -166,6 +166,7 @@ The knowledge system. Beliefs are the core product. Everything serves the belief
 - `patina assay` — structural analysis
 - `patina context` — guidance synthesis from beliefs + knowledge
 - `patina belief` — belief CRUD, audit, grounding
+- `patina measure` — core measurement and reporting
 
 **Core scrape strategies that stay built-in:**
 - layer/ scraping (patterns, sessions) — every Patina project has this
@@ -186,9 +187,9 @@ All Mother runtime logic lives in `mother/`:
 - Daemon server (Unix socket, JSON-lines protocol)
 - Task queue (enqueue, lease, complete, dead-letter)
 
-Mother ships with **bundled children** (always available when she runs):
-- `measure-health` — system health reporting across the 5 verb categories
-- `session-writer` — session artifact lifecycle, crash recovery
+Mother has two explicit bundled runtime-child loader modes (no hidden third mode):
+- Compiled-in native child registration (always available): `secrets`
+- First-party WASM inventory under `~/.patina/children/` (installed by Patina): `session-writer`
 
 Mother resolves **project children** on connect:
 - Project connects with a manifest of needs
@@ -218,7 +219,7 @@ Mother resolves **project children** on connect:
 - No persona crypto implementation (field stays in protocol)
 - No enterprise DuckLake pipeline
 - No belief loop redesign (belief command stays core, loop evolves later)
-- No new user-facing features
+- No net-new user-facing features outside migration parity and required safety UX for moved child surfaces (rename/reopen + human-confirmed complete/abandon)
 
 ## Current State (verified)
 
@@ -240,26 +241,31 @@ Status keys:
 - `verified-true` = criterion appears satisfied
 - `unverified` = explicit proof still needed
 
+Evidence format rules for this table:
+
+- Structure claims use `path:line` anchors.
+- Absence claims use explicit command evidence with observed key output.
+
 | CV | Status | Evidence |
 |---|---|---|
-| CV1 | verified-false | Runtime remains split (`mother/src/*.rs`, `src/mother/*.rs`, `src/commands/mother/*.rs`). |
-| CV2 | verified-false | CLI still contains Mother runtime command/server code (`src/commands/mother/daemon.rs`, `src/commands/mother/mod.rs`). |
-| CV3 | verified-false | Core command paths still include extracted-daemon probe routing and implicit placeholder fallback behavior. |
-| CV4 | verified-false | `try_daemon_*` + `contains("not yet implemented")` filtering still present in `context`, `measure`, `spec`, `lake`, `scry`. |
-| CV5 | verified-false | `cargo check` reports 40 warnings (2026-03-22 baseline). |
-| CV6 | verified-partial | Child vocabulary bridge exists (`child.toml` + `kind`), but `src/plugin/*` still coexists with `src/child/*`. |
-| CV7 | verified-false | `children/measure-health/` is absent; bundled-load guarantee for measure-health/session-writer is not implemented. |
-| CV8 | verified-false | No project child-needs manifest + connect-time resolution flow (only unrelated bootstrap `manifest.toml` snapshot path exists). |
-| CV9 | verified-false | Spec system remains in core (`src/commands/spec/internal/*`); `children/spec-manager/` absent. |
-| CV10 | verified-false | `wit/toys/layer-fs.wit` and `wit/toys/git.wit` absent; host impls absent. |
-| CV11 | verified-partial | Scrape is grammar-driven/strategy-structured in-core, but non-core strategy lanes are not yet child-pluggable via a finalized extraction seam. |
-| CV12 | verified-false | `patina spec list` remains core path; no "spec-manager not available" child gating path. |
-| CV13 | verified-false | No `rename` or `reopen` spec subcommands present in core spec CLI. |
-| CV14 | verified-false | No mandatory human confirmation gate on `spec complete` / `spec abandon`. |
-| CV15 | verified-false | Core doctor command exists (`src/commands/doctor.rs`). |
-| CV16 | verified-false | Version command still queries spec readiness (`src/commands/version/internal.rs`). |
-| CV17 | verified-false | Core session command module exists (`src/commands/session/*`). |
-| CV18 | verified-false | Core lake command exists (`src/commands/lake.rs`). |
+| CV1 | verified-false | Split runtime paths still present at `mother/src/lib.rs:1`, `src/mother/mod.rs:1`, and `src/commands/mother/mod.rs:1`. |
+| CV2 | verified-false | CLI still owns Mother runtime/server surfaces at `src/commands/mother/daemon.rs:1` and `src/commands/mother/mod.rs:1`. |
+| CV3 | verified-false | Extracted-daemon probe routing still active at `src/commands/context.rs:452`, `src/commands/measure/mod.rs:30`, `src/commands/spec/mod.rs:29`, `src/commands/lake.rs:9`, `src/commands/scry/internal/routing.rs:45`. |
+| CV4 | verified-false | Placeholder-filter fallback still active at `src/commands/context.rs:455`, `src/commands/measure/mod.rs:41`, `src/commands/spec/mod.rs:54`, `src/commands/lake.rs:23`, `src/commands/scry/internal/routing.rs:100`. |
+| CV5 | verified-false | Command proof: `cargo check` output contains `patina-ai (bin "patina") generated 40 warnings` (2026-03-22 baseline). |
+| CV6 | verified-partial | Both vocabularies still exist in runtime code: `src/plugin/mod.rs:1` and `src/child/mod.rs:1`. |
+| CV7 | verified-false | `patina mother status` shows loaded children `ducklake` and `secrets` only; `session-writer` is not loaded/visible in daemon status output (2026-03-22 baseline). |
+| CV8 | verified-false | Command proof: `test -e .patina/manifest.toml || echo missing` => `missing`; no project child-needs manifest contract is present in-tree (2026-03-22 baseline). |
+| CV9 | verified-false | Spec lifecycle remains core at `src/commands/spec/mod.rs:7` + `src/commands/spec/internal/mod.rs:1`; command proof: `test -e children/spec-manager/child.toml || echo missing` => `missing`. |
+| CV10 | verified-false | Command proof: `test -e wit/toys/layer-fs.wit || echo missing` => `missing`; `test -e wit/toys/git.wit || echo missing` => `missing`. |
+| CV11 | verified-partial | Scrape is in-core strategy-structured (`src/commands/scrape/mod.rs:1`, `src/commands/scrape/code/extract_v2.rs:1`), but child seam/final extraction contract is not yet implemented. |
+| CV12 | verified-false | Core `spec list` path remains local fallback in `src/commands/spec/mod.rs:365` and does not hard-fail on missing `spec-manager` child. |
+| CV13 | verified-false | Command proof: `grep "\\b(rename|reopen)\\b" src/commands/spec --include "*.rs"` => `No files found` (2026-03-22 baseline). |
+| CV14 | verified-false | Command proof: `grep "(complete|abandon).*confirm|confirm.*(complete|abandon)|--yes|Are you sure" src/commands/spec --include "*.rs"` => `No files found`. |
+| CV15 | verified-false | Core doctor command still exists at `src/commands/doctor.rs:1`. |
+| CV16 | verified-false | Version command still queries ready specs at `src/commands/version/internal.rs:70` and `src/commands/version/internal.rs:97`. |
+| CV17 | verified-false | Core session command remains at `src/commands/session/mod.rs:1` and `src/commands/session/internal.rs:1`. |
+| CV18 | verified-false | Core lake command remains at `src/commands/lake.rs:1`. |
 
 ## Target State
 
@@ -272,6 +278,9 @@ Status keys:
 
 ### Command Runtime Policy (locked for this spec)
 
+Baseline protocol execution means only core verbs (`scrape`, `scry`, `assay`, `context`, `belief`, `measure`, `oxidize`).
+Mother-required policy applies only to child-provided command surfaces after childization.
+
 | Command surface | Mother unavailable policy | Notes |
 |---|---|---|
 | `scrape` | `snapshot/degraded` | Core layer+belief strategies must still run locally. |
@@ -279,12 +288,12 @@ Status keys:
 | `assay` | `snapshot/degraded` | Structural local analysis remains available. |
 | `context` | `snapshot/degraded` | Local context synthesis remains available. |
 | `belief` | `snapshot/degraded` | Belief lifecycle remains core/local. |
+| `measure` | `snapshot/degraded` | Measure remains a core primitive; local metrics/reporting path remains available without Mother. |
 | `oxidize` | `snapshot/degraded` | Local index build remains available. |
 | `spec` (post-childization) | `mother-required` | Routes to `spec-manager` child. |
 | `lake` (post-childization) | `mother-required` | Routes to `lake-manager` child. |
 | `doctor` (post-childization) | `mother-required` | Routes to doctor child. |
 | `session` (post-childization) | `mother-required` | Session lifecycle owned by session-writer child. |
-| `measure` (post-childization) | `mother-required` | Routed through bundled `measure-health` child. |
 
 ## Implementation Order
 
@@ -323,7 +332,6 @@ Status keys:
 - doctor child
 - lake-manager child
 - session becomes session-writer child responsibility (remove core session command)
-- measure-health as bundled Mother child
 - Rewrite CLI commands as thin Mother→child routes
 
 ### Phase 6: Separable scrape strategies
@@ -353,9 +361,9 @@ Status keys:
 ## Resolved Decisions
 
 1. Patina core = belief system + knowledge verbs. Runtime policy is explicit: living mode with Mother, plus defined behavior when Mother is unavailable.
-2. Mother = standalone daemon. One crate, one process. Ships with bundled children.
+2. Mother = standalone daemon. One crate, one process. Bundled runtime-child loading uses explicit modes.
 3. Children = opt-in WASM extensions. Per-project, resolved by Mother.
-4. Spec is a child. Lake is a child. Doctor is a child. Session is a child. Measure is a bundled Mother child.
+4. Spec is a child. Lake is a child. Doctor is a child. Session is a child. Measure remains core.
 5. Core scrape strategies (layer, beliefs) stay built-in. Domain strategies (code, git) become children.
 6. Belief command stays core — the loop will evolve later but belief is the product.
 7. No daemon stubs. Command behavior with/without Mother follows explicit policy rather than implicit fallback filtering.
@@ -371,7 +379,7 @@ Status keys:
 - Commands obey explicit with/without-Mother policy and do not rely on placeholder-filter fallback flows
 - `patina spec list` requires Mother + spec-manager child
 - `patina lake list` requires Mother + lake-manager child
-- `patina measure` requires Mother + measure-health child
+- `patina measure` remains available without Mother (core behavior)
 - `cargo check -q` produces zero warnings
 - All tests pass
 

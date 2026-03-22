@@ -25,7 +25,7 @@ cargo generate --path children/template
 cargo build --target wasm32-wasip2
 ```
 
-3. Ensure `plugin.toml` uses `[needs].toys` and a `[provides]` child name.
+3. Ensure `child.toml` uses `[needs].toys` and a `[provides]` child name.
 
 4. Install the child artifact + manifest into Patina's children directory.
 
@@ -46,7 +46,7 @@ patina-sdk = { version = "0.21", features = ["knowledge-child", "toy-log"] }
 ```
 
 Add toys incrementally (`toy-state`, `toy-checkpoint`, `toy-lake`, `toy-github`, `toy-session`, etc.)
-as your `plugin.toml` grants expand.
+as your `child.toml` grants expand.
 
 ## World Features
 
@@ -60,7 +60,7 @@ Enable exactly one world feature per crate:
 
 ## Child Relationships
 
-Children can declare mediated event relationships in `plugin.toml`:
+Children can declare mediated event relationships in `child.toml`:
 
 ```toml
 [relationships]
