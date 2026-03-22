@@ -27,12 +27,12 @@ pub use pipeline::PipelineEngine;
 pub use task::TaskEngine;
 
 // =========================================================================
-// Plugin world enum — parsed from manifest, enforced at load time (F4)
+// Child kind enum — parsed from manifest, enforced at load time (F4)
 // =========================================================================
 
-/// Known plugin worlds — parsed from manifest, enforced at load time.
+/// Known child kinds — parsed from manifest, enforced at load time.
 #[derive(Debug, Clone, PartialEq)]
-pub enum PluginWorld {
+pub enum ChildKind {
     KnowledgeChild,
     MotherChild,
     Command,
@@ -40,7 +40,7 @@ pub enum PluginWorld {
     Pipeline,
 }
 
-impl std::str::FromStr for PluginWorld {
+impl std::str::FromStr for ChildKind {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self> {
@@ -50,12 +50,12 @@ impl std::str::FromStr for PluginWorld {
             "command" => Ok(Self::Command),
             "task" => Ok(Self::Task),
             "pipeline" => Ok(Self::Pipeline),
-            other => anyhow::bail!("unknown plugin world: '{}'", other),
+            other => anyhow::bail!("unknown child kind: '{}'", other),
         }
     }
 }
 
-impl PluginWorld {
+impl ChildKind {
     /// Capabilities this world is allowed to declare.
     pub fn allowed_capabilities(&self) -> &[&str] {
         match self {
@@ -88,7 +88,7 @@ impl PluginWorld {
     }
 }
 
-impl std::fmt::Display for PluginWorld {
+impl std::fmt::Display for ChildKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::KnowledgeChild => write!(f, "knowledge-child"),
@@ -100,23 +100,23 @@ impl std::fmt::Display for PluginWorld {
     }
 }
 
-/// Canonical child-kind naming for runtime category selection.
-pub type ChildKind = PluginWorld;
+/// Legacy plugin-world alias kept during CV6 migration.
+pub type PluginWorld = ChildKind;
 
 // =========================================================================
-// Plugin role enum — parsed from manifest, describes purpose (F4)
+// Child role enum — parsed from manifest, describes purpose (F4)
 // =========================================================================
 
-/// Known plugin roles — what the plugin is FOR (orthogonal to world).
+/// Known child roles — what the child is FOR (orthogonal to kind).
 #[derive(Debug, Clone, PartialEq)]
-pub enum PluginRole {
+pub enum ChildRole {
     Connector,
     Grammar,
     Extension,
     App,
 }
 
-impl std::str::FromStr for PluginRole {
+impl std::str::FromStr for ChildRole {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self> {
@@ -125,33 +125,33 @@ impl std::str::FromStr for PluginRole {
             "grammar" => Ok(Self::Grammar),
             "extension" => Ok(Self::Extension),
             "app" => Ok(Self::App),
-            other => anyhow::bail!("unknown plugin role: '{}'", other),
+            other => anyhow::bail!("unknown child role: '{}'", other),
         }
     }
 }
 
-impl PluginRole {
+impl ChildRole {
     /// Worlds where this role is typically used.
     /// Used for validation warnings — not enforcement.
-    pub fn expected_worlds(&self) -> &[PluginWorld] {
+    pub fn expected_worlds(&self) -> &[ChildKind] {
         match self {
             Self::Connector => &[
-                PluginWorld::KnowledgeChild,
-                PluginWorld::MotherChild,
-                PluginWorld::Task,
+                ChildKind::KnowledgeChild,
+                ChildKind::MotherChild,
+                ChildKind::Task,
             ],
-            Self::Grammar => &[PluginWorld::Pipeline],
-            Self::Extension => &[PluginWorld::Command, PluginWorld::Task],
+            Self::Grammar => &[ChildKind::Pipeline],
+            Self::Extension => &[ChildKind::Command, ChildKind::Task],
             Self::App => &[
-                PluginWorld::KnowledgeChild,
-                PluginWorld::MotherChild,
-                PluginWorld::Task,
+                ChildKind::KnowledgeChild,
+                ChildKind::MotherChild,
+                ChildKind::Task,
             ],
         }
     }
 }
 
-impl std::fmt::Display for PluginRole {
+impl std::fmt::Display for ChildRole {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Connector => write!(f, "connector"),
@@ -162,8 +162,8 @@ impl std::fmt::Display for PluginRole {
     }
 }
 
-/// Canonical child-role naming for runtime purpose labels.
-pub type ChildRole = PluginRole;
+/// Legacy plugin-role alias kept during CV6 migration.
+pub type PluginRole = ChildRole;
 
 // =========================================================================
 // Engine singleton (OnceLock pattern from Zed)
@@ -208,10 +208,10 @@ pub struct PluginManifest {
     pub name: String,
     pub version: String,
     pub description: String,
-    pub world: PluginWorld,
+    pub world: ChildKind,
     /// Plugin role — what the plugin is FOR (connector, grammar, extension, app).
     /// None for legacy plugins that haven't declared a role yet.
-    pub role: Option<PluginRole>,
+    pub role: Option<ChildRole>,
     pub patina_min: String,
     pub capabilities: Vec<String>,
     /// Toy commands this plugin is allowed to request (from [capabilities.toys].commands).
