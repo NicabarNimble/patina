@@ -222,11 +222,7 @@ impl PipelineEngine {
                 continue;
             }
 
-            let manifest_path = if path.join("child.toml").exists() {
-                path.join("child.toml")
-            } else {
-                path.join("plugin.toml")
-            };
+            let manifest_path = path.join("child.toml");
             let wasm_path = path.join("plugin.wasm");
 
             if !manifest_path.exists() || !wasm_path.exists() {

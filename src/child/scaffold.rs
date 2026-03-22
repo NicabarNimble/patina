@@ -19,7 +19,7 @@ mod templates {
         pub const CARGO_TOML: &str =
             include_str!("../../resources/templates/plugin/mother-child/Cargo.toml.tmpl");
         pub const MANIFEST_TOML: &str =
-            include_str!("../../resources/templates/plugin/mother-child/plugin.toml.tmpl");
+            include_str!("../../resources/templates/plugin/mother-child/child.toml.tmpl");
         pub const LIB_RS: &str =
             include_str!("../../resources/templates/plugin/mother-child/lib.rs.tmpl");
     }
@@ -27,7 +27,7 @@ mod templates {
         pub const CARGO_TOML: &str =
             include_str!("../../resources/templates/plugin/command/Cargo.toml.tmpl");
         pub const MANIFEST_TOML: &str =
-            include_str!("../../resources/templates/plugin/command/plugin.toml.tmpl");
+            include_str!("../../resources/templates/plugin/command/child.toml.tmpl");
         pub const LIB_RS: &str =
             include_str!("../../resources/templates/plugin/command/lib.rs.tmpl");
     }
@@ -35,14 +35,14 @@ mod templates {
         pub const CARGO_TOML: &str =
             include_str!("../../resources/templates/plugin/task/Cargo.toml.tmpl");
         pub const MANIFEST_TOML: &str =
-            include_str!("../../resources/templates/plugin/task/plugin.toml.tmpl");
+            include_str!("../../resources/templates/plugin/task/child.toml.tmpl");
         pub const LIB_RS: &str = include_str!("../../resources/templates/plugin/task/lib.rs.tmpl");
     }
     pub mod pipeline {
         pub const CARGO_TOML: &str =
             include_str!("../../resources/templates/plugin/pipeline/Cargo.toml.tmpl");
         pub const MANIFEST_TOML: &str =
-            include_str!("../../resources/templates/plugin/pipeline/plugin.toml.tmpl");
+            include_str!("../../resources/templates/plugin/pipeline/child.toml.tmpl");
         pub const LIB_RS: &str =
             include_str!("../../resources/templates/plugin/pipeline/lib.rs.tmpl");
     }

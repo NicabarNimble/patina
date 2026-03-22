@@ -43,9 +43,9 @@ fn write_temp_manifest(content: &str) -> tempfile::NamedTempFile {
 fn manifest_valid_minimal() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "test-plugin"
-world = "mother-child"
+kind = "mother-child"
 
 [capabilities]
 host_log = true
@@ -86,11 +86,11 @@ child = "test"
 fn manifest_valid_full() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "full-plugin"
 version = "1.2.3"
 description = "A full manifest"
-world = "mother-child"
+kind = "mother-child"
 patina_min = "0.17.0"
 
 [capabilities]
@@ -117,7 +117,7 @@ fn manifest_missing_plugin_section() {
     let f = write_temp_manifest("[other]\nfoo = 1\n");
     let err = ChildManifest::from_path(f.path()).unwrap_err();
     assert!(
-        err.to_string().contains("missing [plugin] section"),
+        err.to_string().contains("missing [child] section"),
         "got: {}",
         err
     );
@@ -125,7 +125,7 @@ fn manifest_missing_plugin_section() {
 
 #[test]
 fn manifest_missing_name() {
-    let f = write_temp_manifest("[plugin]\nworld = \"mother-child\"\n");
+    let f = write_temp_manifest("[child]\nkind = \"mother-child\"\n");
     let err = ChildManifest::from_path(f.path()).unwrap_err();
     assert!(
         err.to_string().contains("missing plugin.name"),
@@ -136,7 +136,7 @@ fn manifest_missing_name() {
 
 #[test]
 fn manifest_missing_world() {
-    let f = write_temp_manifest("[plugin]\nname = \"test\"\n");
+    let f = write_temp_manifest("[child]\nname = \"test\"\n");
     let err = ChildManifest::from_path(f.path()).unwrap_err();
     assert!(
         err.to_string().contains("missing plugin.kind"),
@@ -149,7 +149,7 @@ fn manifest_missing_world() {
 fn manifest_accepts_kind_key() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "test-plugin"
 kind = "knowledge-child"
 
@@ -168,9 +168,9 @@ child = "test"
 fn manifest_world_key_remains_read_compatible() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "test-plugin"
-world = "knowledge-child"
+kind = "knowledge-child"
 
 [needs]
 toys = ["log"]
@@ -188,13 +188,13 @@ fn resolve_child_manifest_prefers_child_toml() {
     let temp = tempfile::TempDir::new().unwrap();
     let dir = temp.path();
     std::fs::write(
-        dir.join("plugin.toml"),
-        "[plugin]\nname='legacy'\nworld='task'\n",
+        dir.join("child.toml"),
+        "[child]\nname='legacy'\nworld='task'\n",
     )
     .unwrap();
     std::fs::write(
         dir.join("child.toml"),
-        "[plugin]\nname='canonical'\nkind='task'\n",
+        "[child]\nname='canonical'\nkind='task'\n",
     )
     .unwrap();
 
@@ -210,15 +210,15 @@ fn resolve_child_manifest_falls_back_to_plugin_toml() {
     let temp = tempfile::TempDir::new().unwrap();
     let dir = temp.path();
     std::fs::write(
-        dir.join("plugin.toml"),
-        "[plugin]\nname='legacy'\nworld='task'\n",
+        dir.join("child.toml"),
+        "[child]\nname='legacy'\nworld='task'\n",
     )
     .unwrap();
 
     let resolved = ChildManifest::resolve_child_manifest_path(dir).unwrap();
     assert_eq!(
         resolved.file_name().and_then(|n| n.to_str()),
-        Some("plugin.toml")
+        Some("child.toml")
     );
 }
 
@@ -226,9 +226,9 @@ fn resolve_child_manifest_falls_back_to_plugin_toml() {
 fn manifest_parses_toy_commands() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "test-plugin"
-world = "mother-child"
+kind = "mother-child"
 
 [capabilities]
 host_log = true
@@ -248,9 +248,9 @@ child = "test"
 fn manifest_no_toy_commands_defaults_empty() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "test-plugin"
-world = "mother-child"
+kind = "mother-child"
 
 [capabilities]
 host_log = true
@@ -273,9 +273,9 @@ fn manifest_invalid_toml() {
 fn manifest_parses_schemas_section() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "grammar-github"
-world = "pipeline"
+kind = "pipeline"
 
 [provides]
 pipeline_ops = ["parse"]
@@ -297,9 +297,9 @@ package = "patina:schema/github@1.0.0"
 fn manifest_no_schemas_is_empty() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "test"
-world = "pipeline"
+kind = "pipeline"
 "#,
     );
     let m = ChildManifest::from_path(f.path()).unwrap();
@@ -310,9 +310,9 @@ world = "pipeline"
 fn manifest_parses_knowledge_child_capabilities_and_toys() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "ducklake"
-world = "knowledge-child"
+kind = "knowledge-child"
 
 [needs]
 toys = ["log", "state", "checkpoint", "events", "task", "graph", "belief", "fetch", "lake", "query", "measure", "github"]
@@ -379,9 +379,9 @@ child = "ducklake"
 fn knowledge_child_rejects_unknown_event_stream() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "bad-child"
-world = "knowledge-child"
+kind = "knowledge-child"
 
 [needs]
 toys = ["log", "events"]
@@ -590,9 +590,9 @@ fn ducklake_fixture_sync_writes_lake_queryable_by_duckdb_cli() {
 fn knowledge_child_rejects_invalid_ingress_endpoint() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "bad-ingress"
-world = "knowledge-child"
+kind = "knowledge-child"
 
 [needs]
 toys = ["log", "ingress"]
@@ -1629,9 +1629,9 @@ fn validate_http_url_rejects_invalid() {
 fn manifest_parses_http_domains() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "http-plugin"
-world = "mother-child"
+kind = "mother-child"
 
 [capabilities]
 host_log = true
@@ -1652,9 +1652,9 @@ child = "webhook"
 fn manifest_no_http_domains_defaults_empty() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "no-http"
-world = "mother-child"
+kind = "mother-child"
 
 [capabilities]
 host_log = true
@@ -2321,9 +2321,9 @@ fn count_layer_files_rejects_path_traversal() {
 fn manifest_rejects_unknown_world() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "bad-world"
-world = "oracle"
+kind = "oracle"
 
 [capabilities]
 host_log = true
@@ -2510,9 +2510,9 @@ fn wasm_trap_mother_child_panic_returns_error() {
 fn manifest_parses_host_secrets() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "cred-plugin"
-world = "mother-child"
+kind = "mother-child"
 
 [capabilities]
 host_log = true
@@ -2536,9 +2536,9 @@ child = "cred"
 fn manifest_no_host_secrets_defaults_empty() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "no-cred"
-world = "mother-child"
+kind = "mother-child"
 
 [capabilities]
 host_log = true
@@ -2556,9 +2556,9 @@ child = "test"
 fn manifest_host_secrets_skips_unknown_location() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "bad-loc"
-world = "mother-child"
+kind = "mother-child"
 
 [capabilities]
 host_log = true
@@ -3075,9 +3075,9 @@ fn emit_validate_pull_request_fact_type() {
 fn emit_capability_gating_host_emit_in_manifest() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "forge-connector"
-world = "mother-child"
+kind = "mother-child"
 
 [capabilities]
 host_log = true
@@ -3106,9 +3106,9 @@ package = "patina:schema/forge@1.0.0"
 fn emit_capability_gating_not_granted_without_declaration() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "simple-plugin"
-world = "mother-child"
+kind = "mother-child"
 
 [capabilities]
 host_log = true
@@ -3127,9 +3127,9 @@ child = "simple"
 fn emit_host_emit_denied_for_pipeline() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "bad-pipeline"
-world = "pipeline"
+kind = "pipeline"
 
 [capabilities]
 host_log = true
@@ -3152,9 +3152,9 @@ package = "patina:schema/forge@1.0.0"
 fn emit_host_emit_denied_for_command() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "bad-command"
-world = "command"
+kind = "command"
 
 [capabilities]
 host_log = true
@@ -3176,9 +3176,9 @@ package = "patina:schema/forge@1.0.0"
 fn emit_host_emit_requires_schemas() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "no-schema-connector"
-world = "mother-child"
+kind = "mother-child"
 
 [capabilities]
 host_log = true
@@ -3207,9 +3207,9 @@ child = "forge"
 fn emit_host_emit_allowed_for_mother_child() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "forge-connector"
-world = "mother-child"
+kind = "mother-child"
 
 [capabilities]
 host_log = true
@@ -3235,9 +3235,9 @@ package = "patina:schema/forge@1.0.0"
 fn emit_host_emit_allowed_for_task() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "fetch-task"
-world = "task"
+kind = "task"
 
 [capabilities]
 host_log = true
@@ -3312,9 +3312,9 @@ fn role_expected_worlds() {
 fn manifest_with_role_parses() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "test-connector"
-world = "mother-child"
+kind = "mother-child"
 role = "connector"
 
 [capabilities]
@@ -3332,9 +3332,9 @@ child = "test"
 fn manifest_without_role_is_none() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "legacy-plugin"
-world = "mother-child"
+kind = "mother-child"
 
 [capabilities]
 host_log = true
@@ -3351,9 +3351,9 @@ child = "legacy"
 fn manifest_unknown_role_errors() {
     let f = write_temp_manifest(
         r#"
-[plugin]
+[child]
 name = "bad-role"
-world = "mother-child"
+kind = "mother-child"
 role = "widget"
 
 [capabilities]

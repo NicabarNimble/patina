@@ -44,7 +44,7 @@ pub mod log {
 
 /// Measurement reporting — record metrics from plugin execution.
 ///
-/// Requires `host_measure = true` in plugin.toml capabilities.
+/// Requires `host_measure = true` in child.toml capabilities.
 /// The host validates verb, checks metrics are numeric JSON, and
 /// writes to eventlog with the plugin name as source.
 pub mod measure {
@@ -68,7 +68,7 @@ pub mod measure {
 ///
 /// The host controls domain enforcement, TLS, and credential injection.
 /// Plugin code calls these functions; the host validates URLs against
-/// the domain allowlist from `[capabilities].host_http` in plugin.toml.
+/// the domain allowlist from `[capabilities].host_http` in child.toml.
 pub mod fetch {
     pub use super::patina::host::http::HttpResponse;
 
@@ -85,7 +85,7 @@ pub mod fetch {
 
 /// Host emit — publish facts to the eventlog via schema-validated emission.
 ///
-/// Requires `host_emit = true` and a `[schemas.<name>]` entry in plugin.toml.
+/// Requires `host_emit = true` and a `[schemas.<name>]` entry in child.toml.
 /// The host validates the schema and fact type at load time (zero disk I/O
 /// at emit time). Facts are written with provenance="external".
 pub mod emit {

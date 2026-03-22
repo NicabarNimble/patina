@@ -193,10 +193,10 @@ pub struct CredentialMapping {
 }
 
 // =========================================================================
-// Child manifest (child.toml; legacy plugin.toml supported)
+// Child manifest (child.toml)
 // =========================================================================
 
-/// Parsed child manifest from child.toml (legacy plugin.toml supported).
+/// Parsed child manifest from child.toml.
 #[derive(Debug, Clone)]
 pub struct ChildManifest {
     pub name: String,
@@ -299,55 +299,42 @@ impl ChildManifest {
         let content = std::fs::read_to_string(path)?;
         let table: toml::Table = content.parse()?;
 
-        let (plugin, section_label) =
-            if let Some(child) = table.get("child").and_then(|v| v.as_table()) {
-                (child, "child")
-            } else if let Some(plugin) = table.get("plugin").and_then(|v| v.as_table()) {
-                eprintln!("deprecated manifest section '[plugin]'; use '[child]'");
-                (plugin, "plugin")
-            } else {
-                anyhow::bail!("missing [child] or [plugin] section");
-            };
+        let child = table
+            .get("child")
+            .and_then(|v| v.as_table())
+            .ok_or_else(|| anyhow::anyhow!("missing [child] section"))?;
 
-        let name = plugin
+        let name = child
             .get("name")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("missing {section_label}.name"))?
+            .ok_or_else(|| anyhow::anyhow!("missing child.name"))?
             .to_string();
 
-        let version = plugin
+        let version = child
             .get("version")
             .and_then(|v| v.as_str())
             .unwrap_or("0.0.0")
             .to_string();
 
-        let description = plugin
+        let description = child
             .get("description")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
 
-        let world_str = if let Some(kind) = plugin.get("kind").and_then(|v| v.as_str()) {
-            kind
-        } else if let Some(world) = plugin.get("world").and_then(|v| v.as_str()) {
-            eprintln!("deprecated manifest key 'world'; use 'kind'");
-            world
-        } else {
-            anyhow::bail!("missing {section_label}.kind");
-        };
+        let world_str = child
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("missing child.kind"))?;
         let world = world_str.parse::<ChildKind>()?;
 
-        if path.file_name().and_then(|n| n.to_str()) == Some("plugin.toml") {
-            eprintln!("deprecated manifest filename 'plugin.toml'; use 'child.toml'");
-        }
-
-        let role = plugin
+        let role = child
             .get("role")
             .and_then(|v| v.as_str())
             .map(|s| s.parse::<ChildRole>())
             .transpose()?;
 
-        let patina_min = plugin
+        let patina_min = child
             .get("patina_min")
             .and_then(|v| v.as_str())
             .unwrap_or("0.0.0")
@@ -667,18 +654,10 @@ impl ChildManifest {
     }
 
     /// Resolve canonical child manifest path from a child directory.
-    ///
-    /// Canonical path is `child.toml`; legacy `plugin.toml` is read for
-    /// compatibility and emits a deprecation warning.
     pub fn resolve_child_manifest_path(dir: &Path) -> Option<std::path::PathBuf> {
         let child = dir.join("child.toml");
         if child.exists() {
             return Some(child);
-        }
-        let legacy = dir.join("plugin.toml");
-        if legacy.exists() {
-            eprintln!("deprecated manifest filename 'plugin.toml'; use 'child.toml'");
-            return Some(legacy);
         }
         None
     }
