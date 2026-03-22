@@ -14,7 +14,13 @@ pub(crate) mod internal;
 pub mod scaffold;
 pub use internal::{
     ChildEngine, ChildKind, ChildManifest, ChildRole, CommandEngine, CredentialMapping,
-    GrantedCapabilities, InjectionLocation, KnowledgeChildEngine, PipelineEngine, PluginEngine,
-    PluginManifest, PluginProvides, PluginRole, PluginWorld, QueryDispatchFn, QueryScope,
-    TaskEngine,
+    GrantedCapabilities, InjectionLocation, KnowledgeChildEngine, PipelineEngine, PluginProvides,
+    QueryDispatchFn, QueryScope, TaskEngine,
 };
+
+pub use internal::PluginEngine as MotherChildEngine;
+
+pub type PluginEngine = MotherChildEngine;
+pub type PluginManifest = ChildManifest;
+pub type PluginRole = ChildRole;
+pub type PluginWorld = ChildKind;
