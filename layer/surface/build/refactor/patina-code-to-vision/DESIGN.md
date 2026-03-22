@@ -81,7 +81,7 @@ For each phase completion, append:
 - Command: `cargo check`
 - Observed output: `patina-ai (bin "patina") generated 40 warnings`
 
-### Phase 0 Refresh Report (strict)
+### Phase 0 Verification Report
 
 - Date: 2026-03-22
 - Commands run:
@@ -102,9 +102,8 @@ For each phase completion, append:
   - core `doctor`, `session`, and `lake` commands still present
   - warning count remains 40
 - Outcome:
-  - CV truth map refreshed in SPEC.
-  - Ambiguous CV wording updated (CV3, CV4, CV7, CV11) before refactor phases.
-  - Phase 0 is complete; code refactor can start at Phase 1.
+  - CV truth map updated in SPEC.
+  - Phase 0 complete; Phase 1 may begin.
 
 ## Phase 1: Clean core paths (CV3, CV4, CV5)
 

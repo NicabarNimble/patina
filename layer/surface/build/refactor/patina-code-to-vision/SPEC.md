@@ -43,7 +43,7 @@ exit_criteria:
   text: toy-layer-fs and toy-git WIT interfaces exist with Mother host implementations
   checked: false
 - id: CV11
-  text: Scrape strategy boundary is explicit and enforceable — layer/beliefs remain core, and non-core scrape strategy lanes are extraction-ready and independently pluggable without breaking current core scrape behavior. Child extraction happens only after 1:1 parity proof (or explicit user override)
+  text: Scrape strategy boundary is explicit and enforceable — layer/beliefs remain core, and non-core scrape strategy lanes are extraction-ready and independently pluggable without breaking current core scrape behavior. Child extraction happens only after 1:1 parity proof
   checked: false
 - id: CV12
   text: "patina spec list" without Mother returns clear "spec-manager not available" error
@@ -229,7 +229,7 @@ Mother resolves **project children** on connect:
 - `cargo check` reports 40 warnings.
 - Scrape code path is already grammar-driven and multi-language-capable; extraction work must preserve grammar abstraction.
 
-### CV Truth Map (Phase 0 refresh)
+### CV Truth Map (Phase 0 baseline)
 
 Refreshed: 2026-03-22
 
@@ -246,7 +246,7 @@ Status keys:
 | CV2 | verified-false | CLI still contains Mother runtime command/server code (`src/commands/mother/daemon.rs`, `src/commands/mother/mod.rs`). |
 | CV3 | verified-false | Core command paths still include extracted-daemon probe routing and implicit placeholder fallback behavior. |
 | CV4 | verified-false | `try_daemon_*` + `contains("not yet implemented")` filtering still present in `context`, `measure`, `spec`, `lake`, `scry`. |
-| CV5 | verified-false | `cargo check` still reports 40 warnings (refresh run 2026-03-22). |
+| CV5 | verified-false | `cargo check` reports 40 warnings (2026-03-22 baseline). |
 | CV6 | verified-partial | Child vocabulary bridge exists (`child.toml` + `kind`), but `src/plugin/*` still coexists with `src/child/*`. |
 | CV7 | verified-false | `children/measure-health/` is absent; bundled-load guarantee for measure-health/session-writer is not implemented. |
 | CV8 | verified-false | No project child-needs manifest + connect-time resolution flow (only unrelated bootstrap `manifest.toml` snapshot path exists). |
@@ -329,7 +329,7 @@ Status keys:
 ### Phase 6: Separable scrape strategies
 - Harden scrape strategy seam and preserve current behavior.
 - Make non-core scrape strategy lanes extraction-ready behind explicit interfaces.
-- Childize non-core scrape strategies only after 1:1 parity proof (or explicit user override).
+- Childize non-core scrape strategies only after 1:1 parity proof.
 - Scrape orchestrator can discover installed strategy children via Mother once parity gates are satisfied.
 - Phase completion does not require immediate childization of scrape strategy lanes; seam hardening + parity evidence is sufficient.
 
