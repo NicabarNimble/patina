@@ -55,18 +55,11 @@ fn lakes_dir() -> PathBuf {
 
 /// Create a new data lake.
 fn create(name: &str) -> Result<()> {
+    validate_lake_name(name)?;
+
     if let Ok(Some(output)) = try_daemon_lake("create", Some(name)) {
         println!("{}", output);
         return Ok(());
-    }
-
-    // Validate name — alphanumeric, hyphens, underscores only
-    if name.is_empty()
-        || !name
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-    {
-        bail!("lake name must be non-empty and contain only alphanumeric characters, hyphens, or underscores");
     }
 
     let lake_dir = lakes_dir().join(name);
@@ -82,6 +75,17 @@ fn create(name: &str) -> Result<()> {
     std::fs::write(lake_dir.join("lake.toml"), config)?;
 
     eprintln!("Lake \"{}\" created at {}", name, lake_dir.display());
+    Ok(())
+}
+
+fn validate_lake_name(name: &str) -> Result<()> {
+    if name.is_empty()
+        || !name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        bail!("lake name must be non-empty and contain only alphanumeric characters, hyphens, or underscores");
+    }
     Ok(())
 }
 
@@ -168,20 +172,12 @@ mod tests {
 
     #[test]
     fn valid_lake_name_characters() {
-        // Valid names should pass character validation
-        // (tested via the validation logic, not create() which writes to disk)
-        fn name_is_valid(name: &str) -> bool {
-            !name.is_empty()
-                && name
-                    .chars()
-                    .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-        }
-        assert!(name_is_valid("good-name"));
-        assert!(name_is_valid("my_lake"));
-        assert!(name_is_valid("lake123"));
-        assert!(!name_is_valid(""));
-        assert!(!name_is_valid("has spaces"));
-        assert!(!name_is_valid("has.dot"));
+        assert!(validate_lake_name("good-name").is_ok());
+        assert!(validate_lake_name("my_lake").is_ok());
+        assert!(validate_lake_name("lake123").is_ok());
+        assert!(validate_lake_name("").is_err());
+        assert!(validate_lake_name("has spaces").is_err());
+        assert!(validate_lake_name("has.dot").is_err());
     }
 
     #[test]
