@@ -25,9 +25,8 @@ One Mother daemon. Core verbs standalone in CLI. Children opt-in via WASM. Zero 
 ## Phase 0: Reality Audit (required)
 
 Before refactor commits, generate and maintain:
-
-- `CLAIM-LEDGER.md` (CV1-CV18 truth map)
-- `PHASE-REPORTS.md` (per-phase command outputs)
+- CV1-CV18 truth map embedded in SPEC.md
+- phase verification logs embedded in this DESIGN.md
 
 Also lock and record per-command runtime policy:
 
@@ -36,6 +35,27 @@ Also lock and record per-command runtime policy:
 - hard-fail behavior where required
 
 No phase starts until its prerequisite claims are marked `verified`.
+
+### Phase Verification Log Template
+
+For each phase completion, append:
+
+- Date:
+- Commits:
+- Commands run:
+  - `<command>`
+- Observed output (key lines):
+  - `<line>`
+- CVs affected:
+  - CVx, CVy
+- Truth-map updates:
+  - `<what changed in SPEC.md CV truth map>`
+
+### Phase 0 Baseline Report
+
+- Date: 2026-03-22
+- Command: `cargo check`
+- Observed output: `patina-ai (bin "patina") generated 40 warnings`
 
 ## Phase 1: Clean core paths (CV3, CV4, CV5)
 

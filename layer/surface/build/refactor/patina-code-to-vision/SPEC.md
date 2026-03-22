@@ -88,7 +88,7 @@ Every state claim in this spec must be backed by code evidence before implementa
 
 - `file:line` references for structure claims,
 - command output for behavior claims,
-- and update to `CLAIM-LEDGER.md` when evidence changes.
+- and updates to the CV truth map in this spec when evidence changes.
 
 No assumption-only planning.
 
@@ -176,6 +176,36 @@ Mother resolves **project children** on connect:
 - `cargo check` reports 40 warnings.
 - Scrape code path is already grammar-driven and multi-language-capable; extraction work must preserve grammar abstraction.
 
+### CV Truth Map (Phase 0 baseline)
+
+Status keys:
+
+- `verified-false` = code disproves criterion today
+- `verified-partial` = some pieces exist, criterion not yet satisfied
+- `verified-true` = criterion appears satisfied
+- `unverified` = explicit proof still needed
+
+| CV | Status | Evidence |
+|---|---|---|
+| CV1 | verified-false | Mother runtime split across `mother/src/*`, `src/mother/*`, and `src/commands/mother/*`. |
+| CV2 | verified-false | CLI still contains substantial Mother runtime command/server logic in `src/commands/mother/daemon.rs` and `src/commands/mother/mod.rs`. |
+| CV3 | verified-false | `try_daemon_*` probe/fallback paths present in `src/commands/context.rs`, `src/commands/measure/mod.rs`, `src/commands/spec/mod.rs`, `src/commands/lake.rs`, `src/commands/scry/internal/routing.rs`. |
+| CV4 | verified-false | Placeholder filter logic still used (`contains("not yet implemented")`) in those command paths. |
+| CV5 | verified-false | `cargo check` reports 40 warnings (2026-03-22 baseline). |
+| CV6 | verified-partial | Child vocabulary bridge exists, but `src/plugin/*` still exists alongside `src/child/*`. |
+| CV7 | verified-false | No bundled `measure-health` child found; always-available bundled behavior not proven. |
+| CV8 | verified-false | No project child-needs manifest + connect-time child resolution flow implemented. |
+| CV9 | verified-false | `src/commands/spec/internal/*` still core; no `children/spec-manager/`. |
+| CV10 | verified-false | No `wit/toys/layer-fs.wit` or `wit/toys/git.wit` host implementations found. |
+| CV11 | verified-partial | Scrape is strategy-structured and grammar-driven in-core, but code strategy is not childized. |
+| CV12 | verified-false | `patina spec list` still routed through core implementation, not child availability gate. |
+| CV13 | verified-false | `rename` and `reopen` not present as shipped spec subcommands. |
+| CV14 | verified-false | No required HITL confirmation gate for `spec complete` / `spec abandon`. |
+| CV15 | verified-false | `src/commands/doctor.rs` exists as core command surface. |
+| CV16 | verified-false | Version command still coupled to spec readiness logic (`src/commands/version/internal.rs`). |
+| CV17 | verified-false | `src/commands/session/*` still exists as core command surface. |
+| CV18 | verified-false | `src/commands/lake.rs` still core command surface. |
+
 ## Target State
 
 - Mother is one standalone crate with all runtime logic
@@ -188,10 +218,10 @@ Mother resolves **project children** on connect:
 ## Implementation Order
 
 ### Phase 0: Reality audit (required before Phase 1)
-- Build `CLAIM-LEDGER.md` mapping CV1-CV18 to `verified / unverified / incorrect` with evidence.
+- Validate and update the CV truth map in this spec with fresh evidence.
 - Amend any inaccurate CV text before code changes begin.
-- Keep ledger updated at each phase boundary.
-- Lock runtime policy per command (`mother-required living`, `snapshot read-only`, or `hard-fail`) and capture it in proof artifacts.
+- Keep the truth map updated at each phase boundary.
+- Lock runtime policy per command (`mother-required living`, `snapshot read-only`, or `hard-fail`) and capture it in DESIGN phase verification logs.
 
 ### Phase 1: Clean core paths
 - Remove NEW daemon stub routing (the pre-v1 JSON-lines stubs that return "not yet implemented") from core verb commands: context, measure, spec, lake
@@ -270,11 +300,6 @@ Mother resolves **project children** on connect:
 - `patina measure` requires Mother + measure-health child
 - `cargo check -q` produces zero warnings
 - All tests pass
-
-## Proof Artifacts
-
-- `CLAIM-LEDGER.md` — CV truth map with evidence links.
-- `PHASE-REPORTS.md` — per-phase command outputs and verification notes.
 
 ## Exit Criteria
 
