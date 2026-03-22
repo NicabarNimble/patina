@@ -1,0 +1,18 @@
+package patina:host@0.1.0;
+
+interface peer {
+    record peer-event {
+        stream-name: string,
+        offset: u64,
+        event-type: string,
+        payload-json: string,
+        occurred-at: string,
+    }
+
+    emit-event: func(event-type: string, payload-json: string) -> result<_, string>;
+    on-event: func(
+        stream-name: string,
+        after-offset: option<u64>,
+        limit: u32,
+    ) -> result<list<peer-event>, string>;
+}

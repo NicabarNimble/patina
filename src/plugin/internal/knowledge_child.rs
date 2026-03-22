@@ -872,6 +872,50 @@ mod bindings {
         }
     }
 
+    impl patina::host::peer::Host for HostState {
+        fn emit_event(&mut self, event_type: String, payload_json: String) -> Result<(), String> {
+            let conn =
+                crate::eventlog::open_events_db().map_err(|e| format!("open events.db: {}", e))?;
+            let timestamp = chrono::Utc::now().to_rfc3339();
+            let source_id = format!("plugin:{}", self.plugin_name);
+            conn.execute(
+                "INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data, provenance)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![
+                    &event_type,
+                    &timestamp,
+                    &source_id,
+                    Option::<&str>::None,
+                    &payload_json,
+                    "external"
+                ],
+            )
+            .map_err(|e| format!("insert peer event: {}", e))?;
+            Ok(())
+        }
+
+        fn on_event(
+            &mut self,
+            stream_name: String,
+            after_offset: Option<u64>,
+            limit: u32,
+        ) -> Result<Vec<patina::host::peer::PeerEvent>, String> {
+            let events = crate::mother::events::pull(&stream_name, after_offset, limit)
+                .map_err(|e| format!("peer on_event: {}", e))?;
+            Ok(events
+                .into_iter()
+                .map(|event| patina::host::peer::PeerEvent {
+                    stream_name: event.stream,
+                    offset: event.offset,
+                    event_type: event.event_type,
+                    payload_json: serde_json::to_string(&event.payload)
+                        .unwrap_or_else(|_| "null".into()),
+                    occurred_at: event.occurred_at,
+                })
+                .collect())
+        }
+    }
+
     impl patina::host::task::Host for HostState {
         fn enqueue(&mut self, intent: patina::host::task::TaskIntent) -> Result<String, String> {
             let kind = match intent.kind {
@@ -1083,6 +1127,14 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
+    fn link_peer(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::host::peer::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
     fn link_task(linker: &mut Linker<HostState>) -> Result<()> {
         bindings::patina::host::task::add_to_linker::<
             HostState,
@@ -1148,6 +1200,7 @@ impl KnowledgeChildEngine {
         let wants_connector = manifest.toys.connector;
         let wants_github = manifest.toys.github;
         let wants_events = !manifest.subscribed_streams.is_empty();
+        let wants_peer = wants_events;
         let wants_task = !manifest.task_intent_names.is_empty();
         let wants_graph =
             manifest.graph_read || !manifest.graph_write_actions.is_empty() || manifest.toys.graph;
@@ -1191,6 +1244,9 @@ impl KnowledgeChildEngine {
         }
         if wants_events {
             Self::link_events(&mut linker)?;
+        }
+        if wants_peer {
+            Self::link_peer(&mut linker)?;
         }
         if wants_task {
             Self::link_task(&mut linker)?;
