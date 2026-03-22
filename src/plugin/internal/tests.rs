@@ -36,7 +36,7 @@ fn write_temp_manifest(content: &str) -> tempfile::NamedTempFile {
 }
 
 // =====================================================================
-// PluginManifest::from_path
+// ChildManifest::from_path
 // =====================================================================
 
 #[test]
@@ -54,9 +54,9 @@ host_log = true
 child = "test"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     assert_eq!(m.name, "test-plugin");
-    assert_eq!(m.world, PluginWorld::MotherChild);
+    assert_eq!(m.world, ChildKind::MotherChild);
     assert_eq!(m.version, "0.0.0"); // default
     assert_eq!(m.capabilities, vec!["host_log"]);
     assert_eq!(m.provides.child.as_deref(), Some("test"));
@@ -77,9 +77,9 @@ toys = ["log"]
 child = "test"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     assert_eq!(m.name, "test-child");
-    assert_eq!(m.world, PluginWorld::KnowledgeChild);
+    assert_eq!(m.world, ChildKind::KnowledgeChild);
 }
 
 #[test]
@@ -102,7 +102,7 @@ child = "full"
 commands = ["cmd1", "cmd2"]
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     assert_eq!(m.name, "full-plugin");
     assert_eq!(m.version, "1.2.3");
     assert_eq!(m.description, "A full manifest");
@@ -115,7 +115,7 @@ commands = ["cmd1", "cmd2"]
 #[test]
 fn manifest_missing_plugin_section() {
     let f = write_temp_manifest("[other]\nfoo = 1\n");
-    let err = PluginManifest::from_path(f.path()).unwrap_err();
+    let err = ChildManifest::from_path(f.path()).unwrap_err();
     assert!(
         err.to_string().contains("missing [plugin] section"),
         "got: {}",
@@ -126,7 +126,7 @@ fn manifest_missing_plugin_section() {
 #[test]
 fn manifest_missing_name() {
     let f = write_temp_manifest("[plugin]\nworld = \"mother-child\"\n");
-    let err = PluginManifest::from_path(f.path()).unwrap_err();
+    let err = ChildManifest::from_path(f.path()).unwrap_err();
     assert!(
         err.to_string().contains("missing plugin.name"),
         "got: {}",
@@ -137,7 +137,7 @@ fn manifest_missing_name() {
 #[test]
 fn manifest_missing_world() {
     let f = write_temp_manifest("[plugin]\nname = \"test\"\n");
-    let err = PluginManifest::from_path(f.path()).unwrap_err();
+    let err = ChildManifest::from_path(f.path()).unwrap_err();
     assert!(
         err.to_string().contains("missing plugin.kind"),
         "got: {}",
@@ -160,8 +160,8 @@ toys = ["log"]
 child = "test"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
-    assert_eq!(m.world, PluginWorld::KnowledgeChild);
+    let m = ChildManifest::from_path(f.path()).unwrap();
+    assert_eq!(m.world, ChildKind::KnowledgeChild);
 }
 
 #[test]
@@ -179,8 +179,8 @@ toys = ["log"]
 child = "test"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
-    assert_eq!(m.world, PluginWorld::KnowledgeChild);
+    let m = ChildManifest::from_path(f.path()).unwrap();
+    assert_eq!(m.world, ChildKind::KnowledgeChild);
 }
 
 #[test]
@@ -198,7 +198,7 @@ fn resolve_child_manifest_prefers_child_toml() {
     )
     .unwrap();
 
-    let resolved = PluginManifest::resolve_child_manifest_path(dir).unwrap();
+    let resolved = ChildManifest::resolve_child_manifest_path(dir).unwrap();
     assert_eq!(
         resolved.file_name().and_then(|n| n.to_str()),
         Some("child.toml")
@@ -215,7 +215,7 @@ fn resolve_child_manifest_falls_back_to_plugin_toml() {
     )
     .unwrap();
 
-    let resolved = PluginManifest::resolve_child_manifest_path(dir).unwrap();
+    let resolved = ChildManifest::resolve_child_manifest_path(dir).unwrap();
     assert_eq!(
         resolved.file_name().and_then(|n| n.to_str()),
         Some("plugin.toml")
@@ -240,7 +240,7 @@ commands = ["git", "patina"]
 child = "test"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     assert_eq!(m.allowed_toy_commands, vec!["git", "patina"]);
 }
 
@@ -259,14 +259,14 @@ host_log = true
 child = "test"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     assert!(m.allowed_toy_commands.is_empty());
 }
 
 #[test]
 fn manifest_invalid_toml() {
     let f = write_temp_manifest("this is not valid toml {{{}}}");
-    assert!(PluginManifest::from_path(f.path()).is_err());
+    assert!(ChildManifest::from_path(f.path()).is_err());
 }
 
 #[test]
@@ -285,7 +285,7 @@ languages = ["github-issue", "github-pr"]
 package = "patina:schema/github@1.0.0"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     assert_eq!(m.schemas.len(), 1);
     assert_eq!(
         m.schemas.get("github").unwrap(),
@@ -302,7 +302,7 @@ name = "test"
 world = "pipeline"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     assert!(m.schemas.is_empty());
 }
 
@@ -344,8 +344,8 @@ endpoint = "https://api.github.com/repos/openai/openai/issues"
 child = "ducklake"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
-    assert_eq!(m.world, PluginWorld::KnowledgeChild);
+    let m = ChildManifest::from_path(f.path()).unwrap();
+    assert_eq!(m.world, ChildKind::KnowledgeChild);
     assert!(m.state_enabled);
     assert_eq!(m.checkpoint_streams, vec!["ducklake.sync"]);
     assert_eq!(
@@ -393,7 +393,7 @@ subscribe = ["unknown.stream"]
 child = "bad-child"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     let err = KnowledgeChildEngine::check_capabilities(&m).unwrap_err();
     assert!(
         err.to_string()
@@ -410,8 +410,8 @@ fn knowledge_child_example_manifests_validate() {
         root.join("children/ducklake/child.toml"),
         root.join("children/belief-verifier/child.toml"),
     ] {
-        let manifest = PluginManifest::from_path(&path).unwrap();
-        assert_eq!(manifest.world, PluginWorld::KnowledgeChild);
+        let manifest = ChildManifest::from_path(&path).unwrap();
+        assert_eq!(manifest.world, ChildKind::KnowledgeChild);
         assert!(
             KnowledgeChildEngine::check_capabilities(&manifest).is_ok(),
             "manifest failed validation: {}",
@@ -459,7 +459,7 @@ fn session_writer_component_instantiates_in_knowledge_child_engine() {
     let component = engine.load_component(&wasm_bytes).unwrap();
     let manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("children/session-writer/child.toml");
-    let manifest = PluginManifest::from_path(&manifest_path).unwrap();
+    let manifest = ChildManifest::from_path(&manifest_path).unwrap();
 
     let result = engine.instantiate_child(&component, &manifest, None);
     assert!(
@@ -480,7 +480,7 @@ fn knowledge_child_linker_fails_when_lake_not_linked() {
 
     let manifest_path =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/child.toml");
-    let mut manifest = PluginManifest::from_path(&manifest_path).unwrap();
+    let mut manifest = ChildManifest::from_path(&manifest_path).unwrap();
     manifest.lake_names.clear();
     manifest.toys.lake_names.clear();
 
@@ -500,7 +500,7 @@ fn knowledge_child_linker_succeeds_when_lake_declared() {
 
     let manifest_path =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/child.toml");
-    let manifest = PluginManifest::from_path(&manifest_path).unwrap();
+    let manifest = ChildManifest::from_path(&manifest_path).unwrap();
 
     let result = engine.instantiate_child(&component, &manifest, None);
     assert!(
@@ -522,7 +522,7 @@ fn ducklake_fixture_sync_writes_lake_queryable_by_duckdb_cli() {
 
         let manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("children/ducklake/child.toml");
-        let manifest = PluginManifest::from_path(&manifest_path).unwrap();
+        let manifest = ChildManifest::from_path(&manifest_path).unwrap();
         let child = engine
             .instantiate_child(&component, &manifest, None)
             .unwrap();
@@ -604,7 +604,7 @@ endpoint = "http://localhost/internal"
 child = "bad-ingress"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     let err = KnowledgeChildEngine::check_capabilities(&m).unwrap_err();
     assert!(
         err.to_string().contains("invalid ingress source 'bad'"),
@@ -617,7 +617,7 @@ child = "bad-ingress"
 fn ducklake_manifest_uses_granted_ingress_not_ambient_http() {
     let path =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/child.toml");
-    let manifest = PluginManifest::from_path(&path).unwrap();
+    let manifest = ChildManifest::from_path(&path).unwrap();
     assert!(manifest.host_http_domains.is_empty());
     assert!(!manifest.capabilities.contains(&"host_http".to_string()));
     assert!(manifest.toys.github);
@@ -627,7 +627,7 @@ fn ducklake_manifest_uses_granted_ingress_not_ambient_http() {
 fn ducklake_manifest_runtime_grants_sdk_story_stays_connected() {
     let path =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/child.toml");
-    let manifest = PluginManifest::from_path(&path).unwrap();
+    let manifest = ChildManifest::from_path(&path).unwrap();
     let grants = manifest.granted_capabilities();
 
     assert!(grants.toys.github);
@@ -642,11 +642,11 @@ fn ducklake_manifest_runtime_grants_sdk_story_stays_connected() {
 
 #[test]
 fn capabilities_all_granted() {
-    let m = PluginManifest {
+    let m = ChildManifest {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: PluginWorld::MotherChild,
+        world: ChildKind::MotherChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -654,7 +654,7 @@ fn capabilities_all_granted() {
         host_query_kinds: vec![],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: None,
             commands: vec![],
             ..Default::default()
@@ -678,11 +678,11 @@ fn capabilities_all_granted() {
 
 #[test]
 fn capabilities_empty() {
-    let m = PluginManifest {
+    let m = ChildManifest {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: PluginWorld::MotherChild,
+        world: ChildKind::MotherChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec![],
@@ -690,7 +690,7 @@ fn capabilities_empty() {
         host_query_kinds: vec![],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: None,
             commands: vec![],
             ..Default::default()
@@ -714,11 +714,11 @@ fn capabilities_empty() {
 
 #[test]
 fn capabilities_denied() {
-    let m = PluginManifest {
+    let m = ChildManifest {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: PluginWorld::MotherChild,
+        world: ChildKind::MotherChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into(), "filesystem".into(), "network".into()],
@@ -726,7 +726,7 @@ fn capabilities_denied() {
         host_query_kinds: vec![],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: None,
             commands: vec![],
             ..Default::default()
@@ -825,11 +825,11 @@ fn sanitize_handles_invalid_json() {
 
 #[test]
 fn check_capabilities_rejects_unknown_query_kinds() {
-    let m = PluginManifest {
+    let m = ChildManifest {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: PluginWorld::Command,
+        world: ChildKind::Command,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -837,7 +837,7 @@ fn check_capabilities_rejects_unknown_query_kinds() {
         host_query_kinds: vec!["scry".into(), "magic_oracle".into()],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: None,
             commands: vec![],
             ..Default::default()
@@ -866,11 +866,11 @@ fn check_capabilities_rejects_unknown_query_kinds() {
 
 #[test]
 fn check_capabilities_accepts_known_query_kinds() {
-    let m = PluginManifest {
+    let m = ChildManifest {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: PluginWorld::Command,
+        world: ChildKind::Command,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -878,7 +878,7 @@ fn check_capabilities_accepts_known_query_kinds() {
         host_query_kinds: vec!["scry".into(), "context".into(), "assay".into()],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: None,
             commands: vec![],
             ..Default::default()
@@ -926,11 +926,11 @@ fn wasm_models_child_handle_roundtrip() {
         .expect("load_component failed");
 
     // Use a manifest matching models plugin
-    let manifest = PluginManifest {
+    let manifest = ChildManifest {
         name: "patina-models".into(),
         version: "0.1.0".into(),
         description: "test".into(),
-        world: PluginWorld::MotherChild,
+        world: ChildKind::MotherChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -938,7 +938,7 @@ fn wasm_models_child_handle_roundtrip() {
         host_query_kinds: vec![],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: Some("models".into()),
             commands: vec![],
             ..Default::default()
@@ -993,11 +993,11 @@ fn wasm_models_child_health() {
     let engine = PluginEngine::new().unwrap();
     let wasm_bytes = std::fs::read(&wasm_path).unwrap();
     let component = engine.load_component(&wasm_bytes).unwrap();
-    let manifest = PluginManifest {
+    let manifest = ChildManifest {
         name: "patina-models".into(),
         version: "0.1.0".into(),
         description: "test".into(),
-        world: PluginWorld::MotherChild,
+        world: ChildKind::MotherChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -1005,7 +1005,7 @@ fn wasm_models_child_health() {
         host_query_kinds: vec![],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: Some("models".into()),
             commands: vec![],
             ..Default::default()
@@ -1049,11 +1049,11 @@ fn load_repos_child() -> Option<Box<dyn crate::mother::MotherChild>> {
     let engine = PluginEngine::new().unwrap();
     let wasm_bytes = std::fs::read(&wasm_path).unwrap();
     let component = engine.load_component(&wasm_bytes).unwrap();
-    let manifest = PluginManifest {
+    let manifest = ChildManifest {
         name: "patina-repos".into(),
         version: "0.1.0".into(),
         description: "test".into(),
-        world: PluginWorld::MotherChild,
+        world: ChildKind::MotherChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -1061,7 +1061,7 @@ fn load_repos_child() -> Option<Box<dyn crate::mother::MotherChild>> {
         host_query_kinds: vec![],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: Some("repos".into()),
             commands: vec![],
             ..Default::default()
@@ -1272,11 +1272,11 @@ fn wasm_repos_child_toy_capability_gating() {
     let component = engine.load_component(&wasm_bytes).unwrap();
 
     // Manifest only allows "patina", NOT "git"
-    let manifest = PluginManifest {
+    let manifest = ChildManifest {
         name: "patina-repos".into(),
         version: "0.1.0".into(),
         description: "test".into(),
-        world: PluginWorld::MotherChild,
+        world: ChildKind::MotherChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -1284,7 +1284,7 @@ fn wasm_repos_child_toy_capability_gating() {
         host_query_kinds: vec![],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: Some("repos".into()),
             commands: vec![],
             ..Default::default()
@@ -1369,11 +1369,11 @@ fn benchmark_plugin_performance() {
     let component_ms = t1.elapsed().as_secs_f64() * 1000.0;
 
     // 3. instantiate_child() total — Component + WasiCtx + Store + init + name
-    let manifest = PluginManifest {
+    let manifest = ChildManifest {
         name: "patina-models".into(),
         version: "0.1.0".into(),
         description: "bench".into(),
-        world: PluginWorld::MotherChild,
+        world: ChildKind::MotherChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -1381,7 +1381,7 @@ fn benchmark_plugin_performance() {
         host_query_kinds: vec![],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: Some("models".into()),
             commands: vec![],
             ..Default::default()
@@ -1511,12 +1511,12 @@ fn command_doctor_description() {
     );
 }
 
-fn load_doctor_manifest() -> PluginManifest {
-    PluginManifest {
+fn load_doctor_manifest() -> ChildManifest {
+    ChildManifest {
         name: "patina-doctor".into(),
         version: "0.1.0".into(),
         description: "test".into(),
-        world: PluginWorld::Command,
+        world: ChildKind::Command,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into(), "host_layer".into()],
@@ -1524,7 +1524,7 @@ fn load_doctor_manifest() -> PluginManifest {
         host_query_kinds: vec![],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: None,
             commands: vec!["doctor".into()],
             ..Default::default()
@@ -1641,7 +1641,7 @@ host_http = ["api.github.com", "hooks.slack.com"]
 child = "webhook"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     assert_eq!(
         m.host_http_domains,
         vec!["api.github.com", "hooks.slack.com"]
@@ -1663,7 +1663,7 @@ host_log = true
 child = "test"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     assert!(m.host_http_domains.is_empty());
 }
 
@@ -1673,11 +1673,11 @@ child = "test"
 
 #[test]
 fn check_capabilities_rejects_empty_http_domain() {
-    let m = PluginManifest {
+    let m = ChildManifest {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: PluginWorld::MotherChild,
+        world: ChildKind::MotherChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -1685,7 +1685,7 @@ fn check_capabilities_rejects_empty_http_domain() {
         host_query_kinds: vec![],
         host_http_domains: vec!["".into()],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: None,
             commands: vec![],
             ..Default::default()
@@ -1710,11 +1710,11 @@ fn check_capabilities_rejects_empty_http_domain() {
 
 #[test]
 fn check_capabilities_rejects_http_domain_with_path() {
-    let m = PluginManifest {
+    let m = ChildManifest {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: PluginWorld::MotherChild,
+        world: ChildKind::MotherChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -1722,7 +1722,7 @@ fn check_capabilities_rejects_http_domain_with_path() {
         host_query_kinds: vec![],
         host_http_domains: vec!["api.github.com/repos".into()],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: None,
             commands: vec![],
             ..Default::default()
@@ -1747,11 +1747,11 @@ fn check_capabilities_rejects_http_domain_with_path() {
 
 #[test]
 fn check_capabilities_accepts_valid_http_domains() {
-    let m = PluginManifest {
+    let m = ChildManifest {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: PluginWorld::MotherChild,
+        world: ChildKind::MotherChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -1759,7 +1759,7 @@ fn check_capabilities_accepts_valid_http_domains() {
         host_query_kinds: vec![],
         host_http_domains: vec!["api.github.com".into(), "hooks.slack.com".into()],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: None,
             commands: vec![],
             ..Default::default()
@@ -1787,11 +1787,11 @@ fn check_capabilities_accepts_valid_http_domains() {
 
 #[test]
 fn granted_capabilities_includes_http_domains() {
-    let m = PluginManifest {
+    let m = ChildManifest {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: PluginWorld::MotherChild,
+        world: ChildKind::MotherChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -1799,7 +1799,7 @@ fn granted_capabilities_includes_http_domains() {
         host_query_kinds: vec!["scry".into()],
         host_http_domains: vec!["api.github.com".into()],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: None,
             commands: vec![],
             ..Default::default()
@@ -1894,12 +1894,12 @@ fn load_hello_task_component() -> Option<(task::TaskEngine, wasmtime::component:
     Some((engine, component))
 }
 
-fn hello_task_manifest() -> PluginManifest {
-    PluginManifest {
+fn hello_task_manifest() -> ChildManifest {
+    ChildManifest {
         name: "hello-task".into(),
         version: "0.1.0".into(),
         description: "test".into(),
-        world: PluginWorld::Task,
+        world: ChildKind::Task,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into(), "host_layer".into()],
@@ -1907,7 +1907,7 @@ fn hello_task_manifest() -> PluginManifest {
         host_query_kinds: vec![],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: None,
             commands: vec![],
             ..Default::default()
@@ -2013,11 +2013,11 @@ fn task_hello_unapproved_toy_denied() {
     };
 
     // Manifest with NO allowed toy commands
-    let manifest = PluginManifest {
+    let manifest = ChildManifest {
         name: "hello-task".into(),
         version: "0.1.0".into(),
         description: "test".into(),
-        world: PluginWorld::Task,
+        world: ChildKind::Task,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into(), "host_layer".into()],
@@ -2025,7 +2025,7 @@ fn task_hello_unapproved_toy_denied() {
         host_query_kinds: vec![],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: None,
             commands: vec![],
             ..Default::default()
@@ -2076,12 +2076,12 @@ fn load_echo_pipeline_component(
     Some((engine, component))
 }
 
-fn echo_pipeline_manifest() -> PluginManifest {
-    PluginManifest {
+fn echo_pipeline_manifest() -> ChildManifest {
+    ChildManifest {
         name: "echo-pipeline".into(),
         version: "0.1.0".into(),
         description: "test".into(),
-        world: PluginWorld::Pipeline,
+        world: ChildKind::Pipeline,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -2089,7 +2089,7 @@ fn echo_pipeline_manifest() -> PluginManifest {
         host_query_kinds: vec![],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             pipeline_ops: vec!["echo".into()],
             ..Default::default()
         },
@@ -2222,11 +2222,11 @@ fn wasm_trap_pipeline_panic_returns_error() {
         None => return,
     };
 
-    let manifest = PluginManifest {
+    let manifest = ChildManifest {
         name: "panic-pipeline".into(),
         version: "0.1.0".into(),
         description: "deliberate panic".into(),
-        world: PluginWorld::Pipeline,
+        world: ChildKind::Pipeline,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -2234,7 +2234,7 @@ fn wasm_trap_pipeline_panic_returns_error() {
         host_query_kinds: vec![],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             pipeline_ops: vec!["echo".into()],
             ..Default::default()
         },
@@ -2332,7 +2332,7 @@ host_log = true
 child = "test"
 "#,
     );
-    let err = PluginManifest::from_path(f.path()).unwrap_err();
+    let err = ChildManifest::from_path(f.path()).unwrap_err();
     assert!(
         err.to_string().contains("unknown plugin world") && err.to_string().contains("oracle"),
         "expected 'unknown plugin world: oracle', got: {}",
@@ -2343,11 +2343,11 @@ child = "test"
 // F4: Pipeline manifest with host_query rejected at check_capabilities.
 #[test]
 fn check_capabilities_rejects_pipeline_with_query() {
-    let m = PluginManifest {
+    let m = ChildManifest {
         name: "bad-pipeline".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: PluginWorld::Pipeline,
+        world: ChildKind::Pipeline,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into(), "host_query".into()],
@@ -2355,7 +2355,7 @@ fn check_capabilities_rejects_pipeline_with_query() {
         host_query_kinds: vec!["scry".into()],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             pipeline_ops: vec!["echo".into()],
             ..Default::default()
         },
@@ -2385,11 +2385,11 @@ fn check_capabilities_rejects_pipeline_with_query() {
 // F4: Pipeline manifest with host_http also rejected (pipeline only allows host_log).
 #[test]
 fn check_capabilities_rejects_pipeline_with_http() {
-    let m = PluginManifest {
+    let m = ChildManifest {
         name: "bad-pipeline".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: PluginWorld::Pipeline,
+        world: ChildKind::Pipeline,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into(), "host_http".into()],
@@ -2397,7 +2397,7 @@ fn check_capabilities_rejects_pipeline_with_http() {
         host_query_kinds: vec![],
         host_http_domains: vec!["evil.com".into()],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             pipeline_ops: vec!["echo".into()],
             ..Default::default()
         },
@@ -2424,26 +2424,26 @@ fn check_capabilities_rejects_pipeline_with_http() {
     );
 }
 
-// F4: PluginWorld Display impl returns kebab-case strings.
+// F4: ChildKind Display impl returns kebab-case strings.
 #[test]
 fn plugin_world_display() {
-    assert_eq!(PluginWorld::MotherChild.to_string(), "mother-child");
-    assert_eq!(PluginWorld::Command.to_string(), "command");
-    assert_eq!(PluginWorld::Task.to_string(), "task");
-    assert_eq!(PluginWorld::Pipeline.to_string(), "pipeline");
+    assert_eq!(ChildKind::MotherChild.to_string(), "mother-child");
+    assert_eq!(ChildKind::Command.to_string(), "command");
+    assert_eq!(ChildKind::Task.to_string(), "task");
+    assert_eq!(ChildKind::Pipeline.to_string(), "pipeline");
 }
 
-// F4: PluginWorld round-trips through from_str and Display.
+// F4: ChildKind round-trips through from_str and Display.
 #[test]
 fn plugin_world_roundtrip() {
     for world in [
-        PluginWorld::MotherChild,
-        PluginWorld::Command,
-        PluginWorld::Task,
-        PluginWorld::Pipeline,
+        ChildKind::MotherChild,
+        ChildKind::Command,
+        ChildKind::Task,
+        ChildKind::Pipeline,
     ] {
         let s = world.to_string();
-        let parsed = s.parse::<PluginWorld>().unwrap();
+        let parsed = s.parse::<ChildKind>().unwrap();
         assert_eq!(parsed, world, "round-trip failed for {}", s);
     }
 }
@@ -2463,11 +2463,11 @@ fn wasm_trap_mother_child_panic_returns_error() {
     let engine = PluginEngine::new().unwrap();
     let wasm_bytes = std::fs::read(&wasm_path).unwrap();
     let component = engine.load_component(&wasm_bytes).unwrap();
-    let manifest = PluginManifest {
+    let manifest = ChildManifest {
         name: "wrong-world".into(),
         version: "0.1.0".into(),
         description: "world mismatch".into(),
-        world: PluginWorld::MotherChild,
+        world: ChildKind::MotherChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -2475,7 +2475,7 @@ fn wasm_trap_mother_child_panic_returns_error() {
         host_query_kinds: vec![],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: Some("wrong".into()),
             ..Default::default()
         },
@@ -2525,7 +2525,7 @@ host_http = ["api.github.com"]
 child = "cred"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     assert_eq!(m.host_secrets.len(), 1);
     let mapping = m.host_secrets.get("api.github.com").unwrap();
     assert_eq!(mapping.secret_name, "github-token");
@@ -2548,7 +2548,7 @@ host_http = ["api.github.com"]
 child = "test"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     assert!(m.host_secrets.is_empty());
 }
 
@@ -2571,7 +2571,7 @@ host_http = ["api.github.com"]
 child = "test"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     // Unknown location should be skipped with a warning
     assert!(m.host_secrets.is_empty());
 }
@@ -2590,11 +2590,11 @@ fn check_capabilities_rejects_host_secrets_domain_not_in_host_http() {
             location: InjectionLocation::Bearer,
         },
     );
-    let m = PluginManifest {
+    let m = ChildManifest {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: PluginWorld::MotherChild,
+        world: ChildKind::MotherChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -2602,7 +2602,7 @@ fn check_capabilities_rejects_host_secrets_domain_not_in_host_http() {
         host_query_kinds: vec![],
         host_http_domains: vec![], // no host_http — should fail
         host_secrets: secrets,
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: None,
             commands: vec![],
             ..Default::default()
@@ -2640,11 +2640,11 @@ fn check_capabilities_accepts_host_secrets_with_matching_host_http() {
             location: InjectionLocation::Bearer,
         },
     );
-    let m = PluginManifest {
+    let m = ChildManifest {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: PluginWorld::MotherChild,
+        world: ChildKind::MotherChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -2652,7 +2652,7 @@ fn check_capabilities_accepts_host_secrets_with_matching_host_http() {
         host_query_kinds: vec![],
         host_http_domains: vec!["api.github.com".into()],
         host_secrets: secrets,
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: None,
             commands: vec![],
             ..Default::default()
@@ -2688,11 +2688,11 @@ fn granted_capabilities_includes_credential_mappings() {
             location: InjectionLocation::Bearer,
         },
     );
-    let m = PluginManifest {
+    let m = ChildManifest {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: PluginWorld::MotherChild,
+        world: ChildKind::MotherChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -2700,7 +2700,7 @@ fn granted_capabilities_includes_credential_mappings() {
         host_query_kinds: vec![],
         host_http_domains: vec!["api.github.com".into()],
         host_secrets: secrets,
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: None,
             commands: vec![],
             ..Default::default()
@@ -3090,7 +3090,7 @@ child = "forge"
 package = "patina:schema/forge@1.0.0"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     assert!(m.capabilities.contains(&"host_emit".to_string()));
     assert!(m.schemas.contains_key("forge"));
 
@@ -3117,7 +3117,7 @@ host_log = true
 child = "simple"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     let grants = m.granted_capabilities();
     assert!(!grants.host_emit);
     assert!(grants.schema_facts.is_empty());
@@ -3139,7 +3139,7 @@ host_emit = true
 package = "patina:schema/forge@1.0.0"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     let result = PluginEngine::check_capabilities(&m);
     assert!(result.is_err(), "pipeline should not allow host_emit");
     assert!(
@@ -3167,7 +3167,7 @@ commands = ["test"]
 package = "patina:schema/forge@1.0.0"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     let result = PluginEngine::check_capabilities(&m);
     assert!(result.is_err(), "command should not allow host_emit");
 }
@@ -3188,7 +3188,7 @@ host_emit = true
 child = "forge"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     let result = PluginEngine::check_capabilities(&m);
     assert!(
         result.is_err(),
@@ -3222,7 +3222,7 @@ child = "forge"
 package = "patina:schema/forge@1.0.0"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     let result = PluginEngine::check_capabilities(&m);
     assert!(
         result.is_ok(),
@@ -3247,7 +3247,7 @@ host_emit = true
 package = "patina:schema/forge@1.0.0"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     let result = PluginEngine::check_capabilities(&m);
     assert!(
         result.is_ok(),
@@ -3257,58 +3257,58 @@ package = "patina:schema/forge@1.0.0"
 }
 
 // =====================================================================
-// PluginRole — parsing, display, expected_worlds
+// ChildRole — parsing, display, expected_worlds
 // =====================================================================
 
 #[test]
 fn role_from_str_all_variants() {
     assert_eq!(
-        "connector".parse::<PluginRole>().unwrap(),
-        PluginRole::Connector
+        "connector".parse::<ChildRole>().unwrap(),
+        ChildRole::Connector
     );
     assert_eq!(
-        "grammar".parse::<PluginRole>().unwrap(),
-        PluginRole::Grammar
+        "grammar".parse::<ChildRole>().unwrap(),
+        ChildRole::Grammar
     );
     assert_eq!(
-        "extension".parse::<PluginRole>().unwrap(),
-        PluginRole::Extension
+        "extension".parse::<ChildRole>().unwrap(),
+        ChildRole::Extension
     );
-    assert_eq!("app".parse::<PluginRole>().unwrap(), PluginRole::App);
+    assert_eq!("app".parse::<ChildRole>().unwrap(), ChildRole::App);
 }
 
 #[test]
 fn role_from_str_unknown_errors() {
-    assert!("widget".parse::<PluginRole>().is_err());
-    assert!("CONNECTOR".parse::<PluginRole>().is_err()); // case sensitive
+    assert!("widget".parse::<ChildRole>().is_err());
+    assert!("CONNECTOR".parse::<ChildRole>().is_err()); // case sensitive
 }
 
 #[test]
 fn role_display() {
-    assert_eq!(PluginRole::Connector.to_string(), "connector");
-    assert_eq!(PluginRole::Grammar.to_string(), "grammar");
-    assert_eq!(PluginRole::Extension.to_string(), "extension");
-    assert_eq!(PluginRole::App.to_string(), "app");
+    assert_eq!(ChildRole::Connector.to_string(), "connector");
+    assert_eq!(ChildRole::Grammar.to_string(), "grammar");
+    assert_eq!(ChildRole::Extension.to_string(), "extension");
+    assert_eq!(ChildRole::App.to_string(), "app");
 }
 
 #[test]
 fn role_expected_worlds() {
-    assert!(PluginRole::Connector
+    assert!(ChildRole::Connector
         .expected_worlds()
-        .contains(&PluginWorld::MotherChild));
-    assert!(PluginRole::Grammar
+        .contains(&ChildKind::MotherChild));
+    assert!(ChildRole::Grammar
         .expected_worlds()
-        .contains(&PluginWorld::Pipeline));
-    assert!(PluginRole::Extension
+        .contains(&ChildKind::Pipeline));
+    assert!(ChildRole::Extension
         .expected_worlds()
-        .contains(&PluginWorld::Command));
-    assert!(PluginRole::App
+        .contains(&ChildKind::Command));
+    assert!(ChildRole::App
         .expected_worlds()
-        .contains(&PluginWorld::MotherChild));
+        .contains(&ChildKind::MotherChild));
 }
 
 // =====================================================================
-// PluginManifest — role field parsing
+// ChildManifest — role field parsing
 // =====================================================================
 
 #[test]
@@ -3327,8 +3327,8 @@ host_log = true
 child = "test"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
-    assert_eq!(m.role, Some(PluginRole::Connector));
+    let m = ChildManifest::from_path(f.path()).unwrap();
+    assert_eq!(m.role, Some(ChildRole::Connector));
 }
 
 #[test]
@@ -3346,7 +3346,7 @@ host_log = true
 child = "legacy"
 "#,
     );
-    let m = PluginManifest::from_path(f.path()).unwrap();
+    let m = ChildManifest::from_path(f.path()).unwrap();
     assert_eq!(m.role, None);
 }
 
@@ -3366,7 +3366,7 @@ host_log = true
 child = "bad"
 "#,
     );
-    let result = PluginManifest::from_path(f.path());
+    let result = ChildManifest::from_path(f.path());
     assert!(result.is_err());
     assert!(result
         .unwrap_err()
@@ -3380,19 +3380,19 @@ child = "bad"
 
 #[test]
 fn role_world_valid_combo_passes() {
-    let m = PluginManifest {
+    let m = ChildManifest {
         name: "conn".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: PluginWorld::MotherChild,
-        role: Some(PluginRole::Connector),
+        world: ChildKind::MotherChild,
+        role: Some(ChildRole::Connector),
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: Some("conn".into()),
             commands: vec![],
             ..Default::default()
@@ -3418,19 +3418,19 @@ fn role_world_valid_combo_passes() {
 #[test]
 fn role_world_unusual_combo_still_passes() {
     // grammar + mother-child is unusual but should NOT block
-    let m = PluginManifest {
+    let m = ChildManifest {
         name: "weird-grammar".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: PluginWorld::MotherChild,
-        role: Some(PluginRole::Grammar),
+        world: ChildKind::MotherChild,
+        role: Some(ChildRole::Grammar),
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: Some("weird".into()),
             commands: vec![],
             ..Default::default()
@@ -3456,11 +3456,11 @@ fn role_world_unusual_combo_still_passes() {
 #[test]
 fn role_none_skips_validation() {
     // Legacy plugin with no role — should pass without warnings
-    let m = PluginManifest {
+    let m = ChildManifest {
         name: "legacy".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: PluginWorld::MotherChild,
+        world: ChildKind::MotherChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -3468,7 +3468,7 @@ fn role_none_skips_validation() {
         host_query_kinds: vec![],
         host_http_domains: vec![],
         host_secrets: std::collections::HashMap::new(),
-        provides: PluginProvides {
+        provides: ChildProvides {
             child: Some("legacy".into()),
             commands: vec![],
             ..Default::default()
