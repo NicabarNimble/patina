@@ -3,8 +3,6 @@ type: refactor
 id: patina-pre-v1
 status: active
 created: 2026-03-21
-blocked_by:
-- patina-zero-fallback-cutover
 sessions:
   origin: 20260320-212325-011658000
 beliefs:
