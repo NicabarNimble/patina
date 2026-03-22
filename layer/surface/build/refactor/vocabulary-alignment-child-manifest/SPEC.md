@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: vocabulary-alignment-child-manifest
-status: draft
+status: ready
 created: 2026-03-22
 sessions:
   origin: 20260321-162736-004031000
