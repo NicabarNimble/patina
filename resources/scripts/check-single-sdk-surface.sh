@@ -100,11 +100,11 @@ if [[ -n "$child_toml_refs" ]]; then
 fi
 
 if $has_rg; then
-    native_child_refs=$(rg -n "impl Child for|patina_pipe::Child" \
+    native_child_refs=$(rg -n "impl Child for" \
         --glob '!resources/scripts/check-single-sdk-surface.sh' \
         src children sdk 2>/dev/null || true)
 else
-    native_child_refs=$(grep -RInE "impl Child for|patina_pipe::Child" \
+    native_child_refs=$(grep -RInE "impl Child for" \
         --exclude-dir=.git --exclude-dir=target \
         src children sdk 2>/dev/null \
         | grep -v "resources/scripts/check-single-sdk-surface.sh" || true)

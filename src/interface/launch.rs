@@ -281,56 +281,10 @@ pub fn interface_mcp_available(name: &str) -> Result<bool> {
 
 /// Configure MCP for an interface (update its config file)
 pub fn configure_mcp(name: &str) -> Result<()> {
-    let info = get(name)?;
-
-    let mcp = info
-        .mcp
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Interface {} has no MCP configuration", name))?;
-
-    let config_path = PathBuf::from(shellexpand::tilde(&mcp.config_path).as_ref());
-
-    // Ensure parent directory exists
-    if let Some(parent) = config_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    // For now, just write template if no config exists
-    if !config_path.exists() {
-        if let Some(template) = &mcp.config_template {
-            fs::write(&config_path, template)?;
-        }
-    } else {
-        // Config exists - try to add patina server if not present
-        if !is_mcp_configured(name).unwrap_or(true) {
-            // Read existing config and try to merge
-            if let Ok(content) = fs::read_to_string(&config_path) {
-                if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&content) {
-                    // Add patina to mcpServers
-                    if let Some(obj) = json.as_object_mut() {
-                        let mcp_servers = obj
-                            .entry("mcpServers")
-                            .or_insert_with(|| serde_json::json!({}));
-                        if let Some(servers) = mcp_servers.as_object_mut() {
-                            servers.insert(
-                                "patina".to_string(),
-                                serde_json::json!({
-                                    "command": "patina",
-                                    "args": ["mother", "start", "--mcp"]
-                                }),
-                            );
-                            // Write back
-                            if let Ok(updated) = serde_json::to_string_pretty(&json) {
-                                let _ = fs::write(&config_path, updated);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
+    anyhow::bail!(
+        "MCP registration is retired in this runtime (interface: {}). Use daemon-first CLI flows: `patina mother start`, `patina context`, `patina scry`, `patina assay`.",
+        name
+    )
 }
 
 /// Detect CLI version for an interface
@@ -450,11 +404,7 @@ fn try_command(cmd: &str) -> Option<String> {
 /// Get MCP config for an interface
 fn get_mcp_config(interface: &InterfaceKind) -> Option<McpConfig> {
     match interface {
-        InterfaceKind::Claude => Some(McpConfig {
-            config_path: "~/.claude/settings.json".to_string(),
-            config_format: "json".to_string(),
-            config_template: Some(MCP_TEMPLATE.to_string()),
-        }),
+        InterfaceKind::Claude => None,
         InterfaceKind::Gemini => None,   // TBD
         InterfaceKind::OpenCode => None, // TBD
     }
@@ -643,15 +593,6 @@ fn vendor_shim_section(interface: &InterfaceKind) -> String {
         &[("{{display_name}}", interface.display().to_string())],
     )
 }
-
-const MCP_TEMPLATE: &str = r#"{
-  "mcpServers": {
-    "patina": {
-      "command": "patina",
-      "args": ["mother", "start", "--mcp"]
-    }
-  }
-}"#;
 
 #[cfg(test)]
 mod tests {

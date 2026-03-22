@@ -677,16 +677,10 @@ fn doctor() -> Result<()> {
 
         // Check 4: MCP configuration (Claude only)
         if adapter_name == "claude" {
-            match check_mcp_configured() {
-                Ok(true) => println!("  ✓ MCP server configured"),
-                Ok(false) => {
-                    println!("  ⚠ MCP server not configured (optional)");
-                    println!("    Setup: patina adapter mcp claude");
-                }
-                Err(_) => {
-                    println!("  ⚠ Could not check MCP status");
-                }
-            }
+            println!("  ℹ MCP integration retired for this runtime");
+            println!(
+                "    Use daemon-first CLI flows: patina mother start / patina context / patina scry"
+            );
         }
 
         println!();
@@ -700,20 +694,6 @@ fn doctor() -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Check if MCP is configured for Claude
-fn check_mcp_configured() -> Result<bool> {
-    use std::process::Command;
-
-    let output = Command::new("claude").args(["mcp", "list"]).output()?;
-
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        Ok(stdout.contains("patina"))
-    } else {
-        Ok(false)
-    }
 }
 
 /// Backup interface-specific files before removal or refresh
@@ -768,62 +748,12 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
 
 /// Configure MCP server for an interface
 fn configure_mcp(name: &str, remove: bool) -> Result<()> {
-    use std::process::Command;
-
-    match name {
-        "claude" => {
-            // Find patina binary path
-            let patina_path = std::env::current_exe()?;
-
-            if remove {
-                // Remove MCP configuration
-                println!("Removing patina MCP server from Claude Code...");
-                let status = Command::new("claude")
-                    .args(["mcp", "remove", "patina"])
-                    .status()?;
-
-                if status.success() {
-                    println!("✓ Removed patina MCP server");
-                } else {
-                    anyhow::bail!("Failed to remove MCP server. Is Claude Code installed?");
-                }
-            } else {
-                // Add MCP configuration
-                println!("Adding patina MCP server to Claude Code...");
-                let status = Command::new("claude")
-                    .args([
-                        "mcp",
-                        "add",
-                        "--transport",
-                        "stdio",
-                        "-s",
-                        "user",
-                        "patina",
-                        "--",
-                        patina_path.to_str().unwrap(),
-                        "serve",
-                        "--mcp",
-                    ])
-                    .status()?;
-
-                if status.success() {
-                    println!("✓ Added patina MCP server");
-                    println!("\n  Restart Claude Code to use scry and context tools.");
-                    println!("  Verify with: claude mcp list");
-                } else {
-                    anyhow::bail!("Failed to add MCP server. Is Claude Code installed?");
-                }
-            }
-        }
-        "gemini" => {
-            anyhow::bail!("Gemini MCP configuration not yet supported");
-        }
-        _ => {
-            anyhow::bail!("Unknown interface: {}. Supported: claude", name);
-        }
-    }
-
-    Ok(())
+    let action = if remove { "remove" } else { "add" };
+    anyhow::bail!(
+        "`patina adapter mcp {}` is retired for interface `{}`. Use daemon-first CLI flows instead: `patina mother start`, `patina context`, `patina scry`, `patina assay`.",
+        action,
+        name
+    )
 }
 
 #[cfg(test)]
