@@ -197,6 +197,28 @@ impl ChildRegistry {
         Err(anyhow::anyhow!("unknown child: {}", child_name))
     }
 
+    pub fn health(&self, child_name: &str) -> Result<ChildHealth> {
+        if let Some(child) = self
+            .knowledge_children
+            .iter()
+            .find(|child| child.read().unwrap_or_else(|e| e.into_inner()).name() == child_name)
+        {
+            let child = child.read().unwrap_or_else(|e| e.into_inner());
+            return Ok(child.health());
+        }
+
+        if let Some(child) = self
+            .legacy_children
+            .iter()
+            .find(|child| child.read().unwrap_or_else(|e| e.into_inner()).name() == child_name)
+        {
+            let child = child.read().unwrap_or_else(|e| e.into_inner());
+            return Ok(child.health());
+        }
+
+        Err(anyhow::anyhow!("unknown child: {}", child_name))
+    }
+
     pub fn legacy_len(&self) -> usize {
         self.legacy_children.len()
     }

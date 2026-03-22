@@ -477,6 +477,20 @@ fn handle_child_request(
     let child_name = parts[1];
     let action = parts[2];
 
+    if action == "health" {
+        return match state.registry.health(child_name) {
+            Ok(health) => {
+                let status = match health {
+                    patina::mother::ChildHealth::Healthy => "healthy",
+                    patina::mother::ChildHealth::Degraded(_) => "degraded",
+                    patina::mother::ChildHealth::Unhealthy(_) => "unhealthy",
+                };
+                HttpResponse::json(200, &serde_json::json!({"status": status}))
+            }
+            Err(e) => json_error(404, &format!("{}", e)),
+        };
+    }
+
     let payload = if request.body.is_empty() {
         serde_json::Value::Null
     } else {
