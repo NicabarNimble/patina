@@ -43,7 +43,7 @@ exit_criteria:
   text: toy-layer-fs and toy-git WIT interfaces exist with Mother host implementations
   checked: false
 - id: CV11
-  text: Scrape strategy boundary is explicit and enforceable — layer/beliefs remain core, and code/git lanes are extraction-ready and independently pluggable without breaking current core scrape behavior. Child extraction happens only after 1:1 parity proof (or explicit user override)
+  text: Scrape strategy boundary is explicit and enforceable — layer/beliefs remain core, and non-core scrape strategy lanes are extraction-ready and independently pluggable without breaking current core scrape behavior. Child extraction happens only after 1:1 parity proof (or explicit user override)
   checked: false
 - id: CV12
   text: "patina spec list" without Mother returns clear "spec-manager not available" error
@@ -202,9 +202,8 @@ Mother resolves **project children** on connect:
 - `spec-manager` — spec lifecycle (create, promote, complete, rename, reopen)
 - `doctor` — project diagnostics and health checks
 
-**Strategy children:**
-- `scrape-code` — code AST/imports/call-graphs via tree-sitter grammars
-- `scrape-git` — commit history, co-change, conventional commits
+**Strategy children (examples):**
+- scrape strategy children (domain/lane-specific)
 - `github-scraper` (ducklake) — GitHub issues/PRs/reviews into lake
 
 **Data children:**
@@ -253,7 +252,7 @@ Status keys:
 | CV8 | verified-false | No project child-needs manifest + connect-time resolution flow (only unrelated bootstrap `manifest.toml` snapshot path exists). |
 | CV9 | verified-false | Spec system remains in core (`src/commands/spec/internal/*`); `children/spec-manager/` absent. |
 | CV10 | verified-false | `wit/toys/layer-fs.wit` and `wit/toys/git.wit` absent; host impls absent. |
-| CV11 | verified-partial | Scrape is grammar-driven/strategy-structured in-core, but no code/git child-pluggable lane shipped yet. |
+| CV11 | verified-partial | Scrape is grammar-driven/strategy-structured in-core, but non-core strategy lanes are not yet child-pluggable via a finalized extraction seam. |
 | CV12 | verified-false | `patina spec list` remains core path; no "spec-manager not available" child gating path. |
 | CV13 | verified-false | No `rename` or `reopen` spec subcommands present in core spec CLI. |
 | CV14 | verified-false | No mandatory human confirmation gate on `spec complete` / `spec abandon`. |
@@ -329,10 +328,10 @@ Status keys:
 
 ### Phase 6: Separable scrape strategies
 - Harden scrape strategy seam and preserve current behavior.
-- Make code/git strategy lanes extraction-ready behind explicit interfaces.
-- Childize `scrape-code`/`scrape-git` only after 1:1 parity proof (or explicit user override).
+- Make non-core scrape strategy lanes extraction-ready behind explicit interfaces.
+- Childize non-core scrape strategies only after 1:1 parity proof (or explicit user override).
 - Scrape orchestrator can discover installed strategy children via Mother once parity gates are satisfied.
-- Phase completion does not require immediate childization of code/git lanes; seam hardening + parity evidence is sufficient.
+- Phase completion does not require immediate childization of scrape strategy lanes; seam hardening + parity evidence is sufficient.
 
 ### Phase 7: Project manifests
 - Define project manifest format (what children does this project need)
