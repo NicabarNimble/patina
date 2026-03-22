@@ -271,6 +271,19 @@ Single-path ownership invariant (required at each step):
 - Caller-switch + parity proof must happen before deleting the old path.
 - If parity fails, do not proceed to next responsibility slice.
 
+Dependency extraction rule (required):
+
+- If a move target depends on `patina`-crate internals (`beliefs`, `retrieval`, `session`, `repo`, `child::engine`, host toy internals), do not force-move the module directly.
+- First introduce explicit adapter contracts at the boundary, then move the orchestrator against those contracts.
+- Treat this as Phase 3 work, not scope creep into unrelated feature phases.
+
+Current blocked dependencies (2026-03-22 reality check):
+
+- `graph` orchestration depends on `crate::beliefs`, `crate::commands::repo::internal::Registry`, `patina::session::SessionManager`.
+- daemon query path depends on `crate::retrieval::QueryEngine`.
+- toy host implementations depend on child runtime capability surfaces and DuckDB-linked code paths.
+- CLI thinning and shell deletion remain gated on the above extractions.
+
 ### Phase 3 rollback protocol (required)
 
 - Each Phase 3 substep is a separate commit (no bundled multi-step commits).
@@ -295,12 +308,35 @@ Single-path ownership invariant (required at each step):
 
 8. `mother: delete src/mother/ and src/toys/ modules` — After all moves, delete the empty shells. CLI depends on mother crate for types only.
 
+Phase 3a/3b sequencing clarification:
+
+- 3a Structural relocation: state/events/tasks/checkpoint/broker/registry/microserver/secrets/daemon transport shell.
+- 3b Functional extraction: graph/query/toys move behind adapter contracts, then CLI-thin and shell deletion.
+- Mark 3a complete only when relocated code is canonical ownership; mark 3b complete only when adapter-backed parity proof passes.
+
 ### Verification
 - cargo build -p mother — succeeds, contains all runtime
 - cargo build -p patina-ai — succeeds, no Mother runtime code
 - cargo test -p mother — all tests pass
 - patina mother start — daemon starts from mother crate
 - patina mother status — bundled runtime children are visible (`secrets` compiled-in + `session-writer` from first-party WASM inventory)
+- For each adapter extraction slice: document interface, caller-switch proof, and parity result before deleting prior path.
+
+### Phase 3 Progress Report (2026-03-22, in-progress)
+
+- Structural relocation commits complete so far:
+  - `9c97cb73` — mother: move state store into mother crate
+  - `d456a7a6` — mother: move event streams and tasks into mother crate
+  - `6250ce07` — mother: move broker into mother crate
+  - `badc700e` — mother: move daemon server into mother crate
+- Active blockers captured as adapter work (not direct moves):
+  - graph orchestration dependencies (`beliefs`, registry/session wiring)
+  - daemon query dependency (`retrieval::QueryEngine`)
+  - toy host dependency wiring (child capability + DuckDB-linked surfaces)
+- Next required path:
+  - introduce adapter contracts per blocked dependency
+  - switch callers to contracts with parity proof
+  - only then delete shell modules and finalize CLI-thin state
 
 Exit checklist:
 
