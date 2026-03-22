@@ -10,6 +10,15 @@ The architecture is clear. The code isn't there yet. This is the mechanical plan
 
 One Mother daemon. Core verbs standalone in CLI. Children opt-in via WASM. Zero stubs, zero dead code, zero confusion about what lives where.
 
+## Agent Execution Rules (no drift)
+
+1. Execute phases sequentially. No parallel phase work.
+2. Before touching code, verify phase entry conditions and record them.
+3. After code changes, run phase proof commands and record key lines.
+4. Update SPEC CV truth map before declaring phase complete.
+5. Never check a CV without direct proof.
+6. If reality disagrees with design, patch SPEC/DESIGN first, then continue.
+
 ## Resolved Decisions
 
 1. Mother is one crate — merge the three tangled modules.
@@ -51,6 +60,18 @@ For each phase completion, append:
 - Truth-map updates:
   - `<what changed in SPEC.md CV truth map>`
 
+### Phase Entry/Exit Checklist Template
+
+- Entry:
+  - [ ] prerequisite CV statuses verified
+  - [ ] runtime policy impact reviewed
+  - [ ] target files listed
+- Exit:
+  - [ ] proof commands pass
+  - [ ] key output lines captured
+  - [ ] SPEC CV truth map updated
+  - [ ] no unresolved contradiction remains
+
 ### Phase 0 Baseline Report
 
 - Date: 2026-03-22
@@ -58,6 +79,11 @@ For each phase completion, append:
 - Observed output: `patina-ai (bin "patina") generated 40 warnings`
 
 ## Phase 1: Clean core paths (CV3, CV4, CV5)
+
+Entry checklist:
+
+- [ ] CV3/CV4/CV5 are `verified-false` in SPEC truth map.
+- [ ] daemon-probe callsites enumerated from current code.
 
 ### Scope rules
 
@@ -81,6 +107,12 @@ For each phase completion, append:
 - `patina scry` works with daemon stopped — local search works; cross-project still routes through Mother HTTP when available
 - All tests pass
 
+Exit checklist:
+
+- [ ] no `try_daemon_*` on canonical success paths for targeted commands
+- [ ] no `contains("not yet implemented")` placeholder-filter routing in targeted commands
+- [ ] warning count materially reduced toward CV5 target
+
 ## Phase 2: Finish vocabulary (CV6)
 
 **Note:** src/child/ already exists (runtime re-exports from mother crate). src/plugin/ has the engine/manifest/linker code. This is a merge, not a rename.
@@ -94,6 +126,11 @@ For each phase completion, append:
 - ls src/plugin/ — should not exist
 - ls crates/patina-pipe/ — should not exist
 - ls src/mcp/ — should not exist
+
+Exit checklist:
+
+- [ ] canonical child vocabulary is dominant in runtime code
+- [ ] legacy names only remain in intentional compatibility bridges
 
 ## Phase 3: Consolidate Mother (CV1, CV2)
 
@@ -120,6 +157,11 @@ This is the big one. Three tangled modules become one crate.
 - cargo build -p patina-ai — succeeds, no Mother runtime code
 - cargo test -p mother — all tests pass
 - patina mother start — daemon starts from mother crate
+
+Exit checklist:
+
+- [ ] runtime ownership map shows Mother logic centralized in `mother/`
+- [ ] CLI Mother commands are transport/client wrappers only
 
 ## Phase 4: New toys (CV10)
 
@@ -158,6 +200,12 @@ This is the big one. Three tangled modules become one crate.
 - patina doctor — works with Mother + doctor child
 - patina lake list — works with Mother + lake-manager
 - Core verbs still work without Mother
+
+Exit checklist:
+
+- [ ] core command removals match CV set
+- [ ] child replacements provide parity (or explicit policy-compliant failure)
+- [ ] spec lifecycle features `rename` + `reopen` + HITL are proven
 
 ## Phase 6: Separable scrape strategies (CV11)
 
@@ -247,3 +295,5 @@ This is the big one. Three tangled modules become one crate.
 ## Build Readiness
 
 Ready when promoted to active. Phases are sequential — complete each before starting the next. Any agent can execute from this spec + beliefs.
+
+This design is authoritative for execution order and proof quality. If an agent cannot produce proof for a claimed completion, the phase is not complete.

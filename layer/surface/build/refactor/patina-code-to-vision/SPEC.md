@@ -99,6 +99,51 @@ Make the code match the vision. When a new contributor reads the code, they see:
 - Mother: standalone daemon, hosts children, grants toys, connects agents
 - Children: opt-in WASM extensions installed per-project
 
+## Execution Contract (anti-drift)
+
+This spec is execution-constrained. Any agent implementing it must follow these rules:
+
+1. No silent scope changes.
+   - If a phase reveals missing prerequisite work, update SPEC/DESIGN first, then implement.
+   - Do not "just continue" with hidden assumptions.
+
+2. No deferral language in implementation commits.
+   - Forbidden closure phrases: "later", "future", "follow-on", "placeholder", "stub for now" for CV-scoped paths.
+   - If a CV requires behavior, ship behavior or mark CV false.
+
+3. Claim discipline is mandatory.
+   - Every state claim must have evidence (file:line or command output) in this spec's truth map/logs.
+   - Unverified claims must be labeled `unverified`.
+
+4. Criteria integrity.
+   - CV text cannot be weakened to fit current code.
+   - If wording is wrong, record amendment rationale under `Resolved Decisions` and preserve intent strength.
+
+5. One-phase-at-a-time gate.
+   - A phase starts only when prerequisite claims are verified.
+   - A phase ends only when phase verification commands pass and CV truth map is updated.
+
+6. No ghost completion.
+   - A CV may be checked only when proof is reproducible by another agent from SPEC+DESIGN alone.
+
+## Phase Gate Policy
+
+- Each phase must have:
+  - entry conditions (what must be true first),
+  - implementation commits,
+  - exit proofs (commands + expected key lines),
+  - CV truth-map updates.
+- If proofs fail, phase remains open; do not start next phase.
+
+## Runtime Policy Lock
+
+Per-command behavior with Mother unavailable must be explicit and stable during this spec:
+
+- `mother-required` (hard fail), or
+- `snapshot/degraded` (defined local behavior).
+
+No implicit fallback filtering on placeholder daemon responses is allowed as a final state.
+
 ## The Architecture (frozen)
 
 ### Patina Core (the protocol — snapshot-capable, living mode policy explicit)
@@ -222,6 +267,7 @@ Status keys:
 - Amend any inaccurate CV text before code changes begin.
 - Keep the truth map updated at each phase boundary.
 - Lock runtime policy per command (`mother-required living`, `snapshot read-only`, or `hard-fail`) and capture it in DESIGN phase verification logs.
+- Record explicit entry/exit checklist for each subsequent phase in DESIGN before implementation.
 
 ### Phase 1: Clean core paths
 - Remove NEW daemon stub routing (the pre-v1 JSON-lines stubs that return "not yet implemented") from core verb commands: context, measure, spec, lake
@@ -300,6 +346,12 @@ Status keys:
 - `patina measure` requires Mother + measure-health child
 - `cargo check -q` produces zero warnings
 - All tests pass
+
+Verification quality bar:
+
+- Every passed item above must include runnable command proof in DESIGN phase logs.
+- "It should" statements are not accepted evidence.
+- Any unresolved contradiction between code and spec keeps related CV unchecked.
 
 ## Exit Criteria
 
