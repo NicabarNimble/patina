@@ -43,7 +43,7 @@ exit_criteria:
   text: toy-layer-fs and toy-git WIT interfaces exist with Mother host implementations
   checked: false
 - id: CV11
-  text: Scrape strategy boundary is explicit and enforceable — layer/beliefs remain core, and code/git strategies are independently pluggable (child or disabled strategy lane) without breaking core scrape
+  text: Scrape strategy boundary is explicit and enforceable — layer/beliefs remain core, and code/git lanes are extraction-ready and independently pluggable without breaking current core scrape behavior. Child extraction happens only after 1:1 parity proof (or explicit user override)
   checked: false
 - id: CV12
   text: "patina spec list" without Mother returns clear "spec-manager not available" error
@@ -328,9 +328,10 @@ Status keys:
 - Rewrite CLI commands as thin Mother→child routes
 
 ### Phase 6: Separable scrape strategies
-- Make code scraper a child (scrape-code)
-- Make git scraper separable (stays built-in for now, but structured as a child could be)
-- Scrape orchestrator discovers installed strategy children via Mother
+- Harden scrape strategy seam and preserve current behavior.
+- Make code/git strategy lanes extraction-ready behind explicit interfaces.
+- Childize `scrape-code`/`scrape-git` only after 1:1 parity proof (or explicit user override).
+- Scrape orchestrator can discover installed strategy children via Mother once parity gates are satisfied.
 
 ### Phase 7: Project manifests
 - Define project manifest format (what children does this project need)

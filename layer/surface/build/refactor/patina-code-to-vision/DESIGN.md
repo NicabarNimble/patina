@@ -246,14 +246,16 @@ Exit checklist:
 
 ## Phase 6: Separable scrape strategies (CV11)
 
-1. `scrape: extract strategy registration interface` — Preserve current grammar abstraction.
-2. `child: make scrape-code a strategy child`
-3. `scrape: orchestrator discovers strategy children`
+1. `scrape: harden strategy registration interface` — Preserve current grammar abstraction and existing outputs.
+2. `scrape: make code/git lanes extraction-ready` — explicit seam, no behavior regression.
+3. `child: extract scrape strategies only after parity proof` — childization is gated, not assumed.
+4. `scrape: orchestrator discovers strategy children` — enabled once extracted lanes meet parity.
 
 ### Verification
-- patina scrape without Mother — scrapes layer + beliefs only
-- patina scrape with Mother + scrape-code — also scrapes code
-- patina scrape with Mother but no code child — scrapes layer + beliefs only (no error)
+- `patina scrape` baseline behavior matches pre-phase outputs (1:1 parity proof)
+- layer/belief scrape remains available without Mother
+- extraction-ready seams exist for code/git lanes without forcing immediate childization
+- if childization is executed in this phase, parity proof is attached before switching default lane ownership
 
 ## Phase 7: Project manifests (CV8)
 
