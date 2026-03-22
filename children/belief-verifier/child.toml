@@ -1,4 +1,4 @@
-[plugin]
+[child]
 name = "patina-belief-verifier"
 version = "0.1.0"
 description = "Belief verification knowledge child for Mother"

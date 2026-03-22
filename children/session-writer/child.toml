@@ -1,4 +1,4 @@
-[plugin]
+[child]
 name = "patina-session-writer"
 version = "0.1.0"
 description = "Session lifecycle writer child"

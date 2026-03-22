@@ -308,15 +308,20 @@ impl PluginManifest {
         let content = std::fs::read_to_string(path)?;
         let table: toml::Table = content.parse()?;
 
-        let plugin = table
-            .get("plugin")
-            .and_then(|v| v.as_table())
-            .ok_or_else(|| anyhow::anyhow!("missing [plugin] section"))?;
+        let (plugin, section_label) =
+            if let Some(child) = table.get("child").and_then(|v| v.as_table()) {
+                (child, "child")
+            } else if let Some(plugin) = table.get("plugin").and_then(|v| v.as_table()) {
+                eprintln!("deprecated manifest section '[plugin]'; use '[child]'");
+                (plugin, "plugin")
+            } else {
+                anyhow::bail!("missing [child] or [plugin] section");
+            };
 
         let name = plugin
             .get("name")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("missing plugin.name"))?
+            .ok_or_else(|| anyhow::anyhow!("missing {section_label}.name"))?
             .to_string();
 
         let version = plugin
@@ -337,7 +342,7 @@ impl PluginManifest {
             eprintln!("deprecated manifest key 'world'; use 'kind'");
             world
         } else {
-            anyhow::bail!("missing plugin.kind");
+            anyhow::bail!("missing {section_label}.kind");
         };
         let world = world_str.parse::<PluginWorld>()?;
 

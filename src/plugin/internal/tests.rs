@@ -63,6 +63,26 @@ child = "test"
 }
 
 #[test]
+fn manifest_accepts_child_section() {
+    let f = write_temp_manifest(
+        r#"
+[child]
+name = "test-child"
+kind = "knowledge-child"
+
+[needs]
+toys = ["log"]
+
+[provides]
+child = "test"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert_eq!(m.name, "test-child");
+    assert_eq!(m.world, PluginWorld::KnowledgeChild);
+}
+
+#[test]
 fn manifest_valid_full() {
     let f = write_temp_manifest(
         r#"
