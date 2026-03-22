@@ -223,6 +223,7 @@ Manifest bridge plan (explicit):
   - `737878cc` — refactor: make plugin module a child-vocabulary bridge
   - `4a73cd17` — refactor: accept [child] section and migrate child manifests
   - `754885c6` — refactor: canonicalize child kind and role types
+  - `c5b39516` — refactor: canonicalize child manifest and provides types
 - Commands run:
   - `cargo check -q`
   - `cargo build -q`
@@ -235,6 +236,7 @@ Manifest bridge plan (explicit):
   - plugin module now exports child vocabulary first and keeps plugin names as compatibility aliases
   - first-party `children/*/child.toml` files now use `[child]` section while parser accepts legacy `[plugin]` as transitional bridge
   - plugin internals now define `ChildKind`/`ChildRole` as canonical enums with plugin-era names kept as aliases
+  - plugin internals now define `ChildManifest`/`ChildProvides` as canonical structs with plugin-era aliases retained in bridge surface
   - Phase 2 is not complete: plugin internals and scaffold still contain plugin-era naming; `src/plugin/` still exists intentionally during bridge window
 
 Exit checklist:
