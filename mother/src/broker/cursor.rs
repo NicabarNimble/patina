@@ -25,7 +25,16 @@ mod tests {
     #[test]
     fn get_cursor_none_when_missing() {
         let dir = tempfile::tempdir().unwrap();
-        let conn = crate::eventlog::open_events_db_at(dir.path()).unwrap();
+        let db_path = dir.path().join("events.db");
+        let conn = Connection::open(&db_path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS broker_cursors (
+                source_name TEXT PRIMARY KEY,
+                cursor_value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );",
+        )
+        .unwrap();
         let cursor = get_cursor(&conn, "nonexistent").unwrap();
         assert!(cursor.is_none());
     }

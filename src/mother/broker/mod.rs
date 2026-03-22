@@ -4,8 +4,11 @@
 //! sources.toml declarations. Manages child lifecycle (spawn, fetch,
 //! shutdown) for native children via the pipe protocol.
 
-pub mod cursor;
-pub mod sources;
+// Data types and source parsing now live in the mother crate.
+// Re-export for existing callers.
+pub use mother_crate::broker::cursor;
+pub use mother_crate::broker::sources;
+pub use mother_crate::broker::{SourceStatus, WriteResult};
 
 use anyhow::{Context, Result};
 use std::path::Path;
@@ -13,14 +16,6 @@ use std::time::{Duration, Instant};
 
 use self::cursor::get_cursor;
 use self::sources::{Destination, SourceEntry};
-
-/// Result of writing a batch of facts.
-#[derive(Debug, Clone)]
-pub struct WriteResult {
-    pub inserted: u64,
-    pub dedup_skipped: u64,
-    pub cursor: Option<String>,
-}
 
 /// Run a single source: resolve auth, spawn child, fetch facts, validate, route to destination.
 ///
@@ -344,15 +339,6 @@ fn load_ducklake_knowledge_child(
         "ducklake knowledge-child component not found. Install one under {} or build children/ducklake for wasm32-wasip2",
         crate::paths::child::children_dir().display()
     )
-}
-
-/// Source status information for display.
-#[derive(Debug)]
-pub struct SourceStatus {
-    pub name: String,
-    pub last_run: Option<String>,
-    pub fact_count: i64,
-    pub status: String,
 }
 
 /// Get status for all sources in a project.

@@ -1,3 +1,4 @@
+pub mod broker;
 pub mod checkpoint;
 pub mod daemon;
 pub mod events;

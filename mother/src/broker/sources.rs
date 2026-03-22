@@ -124,8 +124,8 @@ pub fn find_source(project_root: &Path, source_name: &str) -> Result<Option<Sour
 }
 
 /// Scan all registered projects for sources.toml entries.
-pub fn scan_all_sources() -> Result<Vec<ProjectSources>> {
-    let registry_path = crate::paths::registry_path();
+pub fn scan_all_sources(registry_path: &Path) -> Result<Vec<ProjectSources>> {
+    let registry_path = registry_path.to_path_buf();
 
     if !registry_path.exists() {
         return Ok(vec![]);
