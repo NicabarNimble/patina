@@ -1,97 +1,62 @@
 # patina-sdk
 
-`patina-sdk` is the single SDK surface for Patina child authoring.
+`patina-sdk` is the authoring surface for Patina WASM children.
 
-Doctrine lock:
+## SDK Tiers
 
-- Mother owns authority, grants, continuity, and orchestration.
-- Children own workflow agency.
-- Toys are granted capability contracts.
+- `patina-sdk-core`: child trait + core toys (`log`, `state`, substrate types)
+- `patina-sdk-data`: data toys (`lake`, `checkpoint`, `measure`, `github`)
+- `patina-sdk-agent`: agent/session toys (`query`, `emit`, `session`)
+- `patina-sdk`: umbrella crate that re-exports tier APIs
 
-## Quick Start (knowledge-child)
+Use the umbrella crate unless you are building advanced tooling around the tiers directly.
 
-```toml
-[dependencies]
-patina-sdk = { version = "0.21", features = ["knowledge-child"] }
+## 5-Minute Onramp
+
+1. Generate a child from the template:
+
+```sh
+cargo generate --path children/template
 ```
 
-```rust
-use patina_sdk::granted::{self, Bundle as GrantedBundle};
-use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChildPlugin};
-use patina_sdk::register_knowledge_child;
-
-#[derive(Clone)]
-struct Toys {
-    log: granted::Log,
-}
-
-impl GrantedBundle for Toys {
-    fn granted() -> Self {
-        Self { log: granted::log() }
-    }
-}
-
-#[derive(Default)]
-struct MyChild {
-    toys: Option<Toys>,
-}
-
-impl KnowledgeChildPlugin for MyChild {
-    fn name(&self) -> String { "my-child".into() }
-    fn on_load(&mut self) -> Result<(), String> {
-        let toys = Toys::granted();
-        toys.log.info("loaded");
-        self.toys = Some(toys);
-        Ok(())
-    }
-    fn health(&self) -> ChildHealth {
-        ChildHealth { status: HealthStatus::Healthy, reason: None }
-    }
-    fn handle(&mut self, _action: &str, _payload: &str) -> Result<String, String> {
-        Ok("{}".into())
-    }
-}
-
-register_knowledge_child!(MyChild);
-```
-
-Build:
+2. Build the child (WASM):
 
 ```sh
 cargo build --target wasm32-wasip2
 ```
 
-## Feature Worlds
+3. Ensure `plugin.toml` uses `[needs].toys` and a `[provides]` child name.
 
-`patina-sdk` currently supports these feature worlds:
+4. Install the child artifact + manifest into Patina's children directory.
 
-- `knowledge-child` (recommended for Mother/Child/Toy path)
+5. Start Mother and verify the child loads:
+
+```sh
+patina mother start
+patina mother status
+```
+
+## Knowledge Child Baseline
+
+Use this feature set for a minimal child:
+
+```toml
+[dependencies]
+patina-sdk = { version = "0.21", features = ["knowledge-child", "toy-log"] }
+```
+
+Add toys incrementally (`toy-state`, `toy-checkpoint`, `toy-lake`, `toy-github`, `toy-session`, etc.)
+as your `plugin.toml` grants expand.
+
+## World Features
+
+Enable exactly one world feature per crate:
+
+- `knowledge-child` (default path)
 - `task`
 - `command`
 - `pipeline`
 - `mother-child` (legacy migration lane)
-
-Enable exactly one world feature per child crate.
-
-## Naming Policy
-
-- `patina-ai` remains the app/runtime product crate.
-- Workspace runtime and extension crates use the `patina-ai-*` family.
-- `patina-sdk` is the single SDK crate for child+toy authoring.
-- Any split SDK crates must use `patina-sdk-*` and stay under the same doctrine.
-- Do not introduce parallel SDK crate surfaces.
-
-## Migration (old SDK imports)
-
-If you previously used split SDK crates, migrate as follows:
-
-- `patina-child-sdk` -> `patina-sdk` with `features = ["knowledge-child"]`
-- `patina-toy-sdk::*` -> `patina-sdk::toys::*`
-- `patina_child_sdk::granted::*` -> `patina_sdk::granted::*`
-- `patina_child_sdk::substrate::*` -> `patina_sdk::substrate::*`
-- `patina_child_sdk::{register_knowledge_child, ...}` ->
-  `patina_sdk::{register_knowledge_child, ...}` with type imports from
-  `patina_sdk::knowledge_child::*`
 
 ## License
 
