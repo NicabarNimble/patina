@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
 
-use super::PluginWorld;
+use super::ChildKind;
 
 // =========================================================================
 // Embedded templates (compiled into the binary)
@@ -120,29 +120,29 @@ fn substitute(template: &str, name: &str) -> String {
 // =========================================================================
 
 /// Get the template set for a given world.
-fn world_templates(world: &PluginWorld) -> (&'static str, &'static str, &'static str) {
+fn world_templates(world: &ChildKind) -> (&'static str, &'static str, &'static str) {
     match world {
-        PluginWorld::KnowledgeChild => (
+        ChildKind::KnowledgeChild => (
             templates::mother_child::CARGO_TOML,
             templates::mother_child::PLUGIN_TOML,
             templates::mother_child::LIB_RS,
         ),
-        PluginWorld::MotherChild => (
+        ChildKind::MotherChild => (
             templates::mother_child::CARGO_TOML,
             templates::mother_child::PLUGIN_TOML,
             templates::mother_child::LIB_RS,
         ),
-        PluginWorld::Command => (
+        ChildKind::Command => (
             templates::command::CARGO_TOML,
             templates::command::PLUGIN_TOML,
             templates::command::LIB_RS,
         ),
-        PluginWorld::Task => (
+        ChildKind::Task => (
             templates::task::CARGO_TOML,
             templates::task::PLUGIN_TOML,
             templates::task::LIB_RS,
         ),
-        PluginWorld::Pipeline => (
+        ChildKind::Pipeline => (
             templates::pipeline::CARGO_TOML,
             templates::pipeline::PLUGIN_TOML,
             templates::pipeline::LIB_RS,
@@ -160,7 +160,7 @@ fn world_templates(world: &PluginWorld) -> (&'static str, &'static str, &'static
 /// Templates use `patina-sdk` version dep — no absolute paths.
 ///
 /// Returns the path to the created project directory.
-pub fn scaffold(parent: &Path, name: &str, world: &PluginWorld) -> Result<PathBuf> {
+pub fn scaffold(parent: &Path, name: &str, world: &ChildKind) -> Result<PathBuf> {
     validate_name(name)?;
 
     let project_dir = parent.join(name);
@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn test_scaffold_creates_files() {
         let tmp = tempfile::tempdir().unwrap();
-        let result = scaffold(tmp.path(), "test-plugin", &PluginWorld::Task);
+        let result = scaffold(tmp.path(), "test-plugin", &ChildKind::Task);
         assert!(result.is_ok());
 
         let project = result.unwrap();
@@ -252,7 +252,7 @@ mod tests {
     fn test_scaffold_rejects_existing_dir() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir(tmp.path().join("existing")).unwrap();
-        let result = scaffold(tmp.path(), "existing", &PluginWorld::Task);
+        let result = scaffold(tmp.path(), "existing", &ChildKind::Task);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already exists"));
     }
@@ -261,11 +261,11 @@ mod tests {
     fn test_scaffold_all_worlds() {
         let tmp = tempfile::tempdir().unwrap();
         for (world, expected_macro) in [
-            (PluginWorld::KnowledgeChild, "register_plugin!"),
-            (PluginWorld::MotherChild, "register_plugin!"),
-            (PluginWorld::Command, "register_command!"),
-            (PluginWorld::Task, "register_task!"),
-            (PluginWorld::Pipeline, "register_pipeline!"),
+            (ChildKind::KnowledgeChild, "register_plugin!"),
+            (ChildKind::MotherChild, "register_plugin!"),
+            (ChildKind::Command, "register_command!"),
+            (ChildKind::Task, "register_task!"),
+            (ChildKind::Pipeline, "register_pipeline!"),
         ] {
             let name = format!("test-{}", world);
             let project = scaffold(tmp.path(), &name, &world).unwrap();
