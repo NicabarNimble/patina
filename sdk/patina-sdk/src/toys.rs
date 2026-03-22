@@ -2,6 +2,10 @@ use serde::{Deserialize, Serialize};
 
 pub use patina_sdk_agent::{EmitBackend, EmitToy, QueryBackend, QueryToy};
 pub use patina_sdk_agent::{SessionBackend, SessionToy};
+#[cfg(feature = "toy-git")]
+pub use patina_sdk_core::{GitBackend, GitToy};
+#[cfg(feature = "toy-layer-fs")]
+pub use patina_sdk_core::{LayerFsBackend, LayerFsToy};
 pub use patina_sdk_core::{
     LogBackend, LogToy, PendingEvent, StateBackend, StateToy, TaskIntent, TaskIntentKind,
 };

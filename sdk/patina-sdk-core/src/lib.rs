@@ -96,6 +96,26 @@ pub trait StateBackend {
     fn list_prefix(prefix: &str) -> Vec<String>;
 }
 
+#[cfg(feature = "toy-layer-fs")]
+pub trait LayerFsBackend {
+    fn read_file(path: &str) -> Result<String, String>;
+    fn write_file(path: &str, contents: &str) -> Result<(), String>;
+    fn list_dir(path: &str) -> Result<Vec<String>, String>;
+    fn delete_file(path: &str) -> Result<(), String>;
+    fn move_path(from: &str, to: &str) -> Result<(), String>;
+    fn exists(path: &str) -> Result<bool, String>;
+}
+
+#[cfg(feature = "toy-git")]
+pub trait GitBackend {
+    fn create_tag(name: &str) -> Result<(), String>;
+    fn delete_tag(name: &str) -> Result<(), String>;
+    fn tag_exists(name: &str) -> Result<bool, String>;
+    fn commit(message: &str) -> Result<String, String>;
+    fn log_oneline(limit: u32) -> Result<Vec<String>, String>;
+    fn diff_stat() -> Result<String, String>;
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LogToy<B>(std::marker::PhantomData<B>);
 
@@ -147,6 +167,82 @@ impl<B: StateBackend> StateToy<B> {
 
     pub fn list_prefix(&self, prefix: &str) -> Vec<String> {
         B::list_prefix(prefix)
+    }
+}
+
+#[cfg(feature = "toy-layer-fs")]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LayerFsToy<B>(std::marker::PhantomData<B>);
+
+#[cfg(feature = "toy-layer-fs")]
+impl<B> LayerFsToy<B> {
+    pub fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+#[cfg(feature = "toy-layer-fs")]
+impl<B: LayerFsBackend> LayerFsToy<B> {
+    pub fn read_file(&self, path: &str) -> Result<String, String> {
+        B::read_file(path)
+    }
+
+    pub fn write_file(&self, path: &str, contents: &str) -> Result<(), String> {
+        B::write_file(path, contents)
+    }
+
+    pub fn list_dir(&self, path: &str) -> Result<Vec<String>, String> {
+        B::list_dir(path)
+    }
+
+    pub fn delete_file(&self, path: &str) -> Result<(), String> {
+        B::delete_file(path)
+    }
+
+    pub fn move_path(&self, from: &str, to: &str) -> Result<(), String> {
+        B::move_path(from, to)
+    }
+
+    pub fn exists(&self, path: &str) -> Result<bool, String> {
+        B::exists(path)
+    }
+}
+
+#[cfg(feature = "toy-git")]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct GitToy<B>(std::marker::PhantomData<B>);
+
+#[cfg(feature = "toy-git")]
+impl<B> GitToy<B> {
+    pub fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+#[cfg(feature = "toy-git")]
+impl<B: GitBackend> GitToy<B> {
+    pub fn create_tag(&self, name: &str) -> Result<(), String> {
+        B::create_tag(name)
+    }
+
+    pub fn delete_tag(&self, name: &str) -> Result<(), String> {
+        B::delete_tag(name)
+    }
+
+    pub fn tag_exists(&self, name: &str) -> Result<bool, String> {
+        B::tag_exists(name)
+    }
+
+    pub fn commit(&self, message: &str) -> Result<String, String> {
+        B::commit(message)
+    }
+
+    pub fn log_oneline(&self, limit: u32) -> Result<Vec<String>, String> {
+        B::log_oneline(limit)
+    }
+
+    pub fn diff_stat(&self) -> Result<String, String> {
+        B::diff_stat()
     }
 }
 

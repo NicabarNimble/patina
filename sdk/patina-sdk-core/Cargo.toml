@@ -12,6 +12,8 @@ categories = ["development-tools", "wasm"]
 [features]
 default = []
 toy-peer = []
+toy-layer-fs = []
+toy-git = []
 
 [dependencies]
 wit-bindgen = "0.41"

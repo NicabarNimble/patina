@@ -42,6 +42,8 @@ toy-peer = ["patina-sdk-core/toy-peer"]
 toy-graph = []
 toy-belief = []
 toy-session = ["patina-sdk-agent/toy-session"]
+toy-layer-fs = ["patina-sdk-core/toy-layer-fs"]
+toy-git = ["patina-sdk-core/toy-git"]
 pipeline = ["dep:serde", "dep:serde_json"]
 
 [dependencies]
