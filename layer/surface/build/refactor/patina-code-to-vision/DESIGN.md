@@ -227,12 +227,14 @@ Manifest bridge plan (explicit):
   - `bffb0ed6` — refactor: migrate scaffold world type to child kind
   - `f4230706` — refactor: migrate internal engines to child manifest vocabulary
   - `60cc29c5` — refactor: tighten child-first bridge exports
+  - `26affc95` — test: migrate internal plugin tests to child vocabulary
 - Commands run:
   - `cargo check -q`
   - `cargo build -q`
   - `rg "PluginManifest|PluginWorld|PluginEngine" src/`
   - `ls src/plugin`
   - `grep "^\[plugin\]" children/*/child.toml`
+  - `cargo test -q manifest_valid_minimal`
 - Observed key lines:
   - build/compile pass with existing warning debt
   - child-native engine surface exists at `src/child/engine.rs` and is used by runtime/CLI callsites
@@ -242,6 +244,7 @@ Manifest bridge plan (explicit):
   - plugin internals now define `ChildManifest`/`ChildProvides` as canonical structs with plugin-era aliases retained in bridge surface
   - scaffold path now accepts child kind type directly (`ChildKind`) while preserving CLI behavior
   - internal mother/knowledge/task/command/pipeline engine modules now consume child-native manifest/kind types
+  - internal test surface uses child-native type names while compatibility aliases remain bridge-only
   - Phase 2 is not complete: plugin internals and scaffold still contain plugin-era naming; `src/plugin/` still exists intentionally during bridge window
 
 Exit checklist:
