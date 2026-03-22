@@ -1,7 +1,10 @@
+pub mod checkpoint;
 pub mod daemon;
+pub mod events;
 pub mod protocol;
 pub mod runtime;
 pub mod state;
+pub mod tasks;
 pub mod toys;
 
 pub use runtime::{

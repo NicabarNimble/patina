@@ -1,3 +1,3 @@
 #![allow(unused_imports)]
 
-pub use mother_crate::state::KnowledgeRuntimeStore;
+pub use mother_crate::checkpoint::KnowledgeRuntimeStore;
