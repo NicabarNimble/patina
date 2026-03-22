@@ -44,3 +44,11 @@ pub struct ContextPayload {
 pub struct LakeSyncPayload {
     pub lake: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeasurePayload {
+    pub system: bool,
+    pub json: bool,
+    pub verb: Option<String>,
+    pub full: bool,
+}

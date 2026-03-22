@@ -27,5 +27,30 @@ pub struct MeasureOptions {
 
 /// Execute the measure command
 pub fn execute(options: MeasureOptions) -> Result<()> {
+    if let Ok(client) = try_daemon_client() {
+        if let Ok(result) = client.request(
+            "measure",
+            serde_json::json!({
+                "system": options.system,
+                "json": options.json,
+                "verb": options.verb,
+                "full": options.full,
+            }),
+        ) {
+            if let Some(output) = result.get("output").and_then(|v| v.as_str()) {
+                if !output.contains("not yet implemented") {
+                    println!("{}", output);
+                    return Ok(());
+                }
+            }
+        }
+    }
+
     internal::run(options)
+}
+
+fn try_daemon_client() -> Result<patina::mother::DaemonClient> {
+    let client = patina::mother::DaemonClient::new();
+    client.ensure_running()?;
+    Ok(client)
 }

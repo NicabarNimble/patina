@@ -7,7 +7,7 @@ use anyhow::Result;
 use serde_json::json;
 
 use crate::protocol::{
-    ConnectPayload, ContextPayload, Envelope, LakeSyncPayload, PROTOCOL_VERSION,
+    ConnectPayload, ContextPayload, Envelope, LakeSyncPayload, MeasurePayload, PROTOCOL_VERSION,
 };
 
 #[derive(Debug, Default, Clone)]
@@ -147,7 +147,7 @@ fn handle_action(
             Ok(json!({
                 "session_id": format!("{}-{}", connect.agent, std::process::id()),
                 "children": ["ducklake", "session-writer"],
-                "tools": ["context", "lake.sync"],
+                "tools": ["context", "lake.sync", "measure"],
             }))
         }
         "context" => {
@@ -163,6 +163,20 @@ fn handle_action(
             let lake_sync: LakeSyncPayload = serde_json::from_value(payload)
                 .map_err(|e| format!("invalid lake.sync payload: {}", e))?;
             Ok(json!({"lake": lake_sync.lake, "issues": 0, "prs": 0}))
+        }
+        "measure" => {
+            let payload = payload.ok_or_else(|| "missing payload".to_string())?;
+            let measure: MeasurePayload = serde_json::from_value(payload)
+                .map_err(|e| format!("invalid measure payload: {}", e))?;
+            Ok(json!({
+                "output": format!(
+                    "measure daemon path not yet implemented (system={}, json={}, full={}, verb={})",
+                    measure.system,
+                    measure.json,
+                    measure.full,
+                    measure.verb.unwrap_or_else(|| "none".to_string())
+                )
+            }))
         }
         other => Err(format!("unsupported action '{}'", other)),
     }
