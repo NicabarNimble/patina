@@ -27,7 +27,6 @@
 
 pub mod broker;
 pub(crate) mod checkpoint;
-pub(crate) mod events;
 mod internal;
 pub(crate) mod tasks;
 mod toys;

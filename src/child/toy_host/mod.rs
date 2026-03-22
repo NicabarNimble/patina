@@ -2,6 +2,7 @@
 
 pub mod catalog;
 pub mod connector;
+pub mod events;
 pub mod github;
 pub mod http;
 pub mod ingress;
