@@ -185,13 +185,13 @@ pub mod plugin {
     use super::*;
 
     /// WASM children directory: `~/.patina/children/`
-    /// Contains .wasm files + child manifests (`child.toml`; legacy `plugin.toml` supported) for Mother daemon children.
+    /// Contains .wasm files + child manifests (`child.toml`) for Mother daemon children.
     pub fn children_dir() -> PathBuf {
         patina_home().join("children")
     }
 
     /// CLI command plugins directory: `~/.patina/plugins/`
-    /// Contains .wasm files + plugin.toml manifests for CLI command plugins (Phase 2+).
+    /// Contains .wasm files + `.toml` child manifests for CLI command plugins (Phase 2+).
     pub fn plugins_dir() -> PathBuf {
         patina_home().join("plugins")
     }
@@ -203,7 +203,7 @@ pub mod plugin {
     }
 
     /// Pipeline grammar plugins directory: `~/.patina/pipeline/`
-    /// Contains grammar-{lang}/ subdirectories with plugin.wasm + plugin.toml.
+    /// Contains grammar-{lang}/ subdirectories with `plugin.wasm` + `child.toml`.
     pub fn pipeline_dir() -> PathBuf {
         patina_home().join("pipeline")
     }

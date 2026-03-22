@@ -1,8 +1,8 @@
-[plugin]
+[child]
 name = "grammar-solidity"
 version = "0.1.0"
 description = "Solidity language grammar extraction via tree-sitter (compiled to WASM via wasi-sdk)"
-world = "pipeline"
+kind = "pipeline"
 patina_min = "0.22.0"
 
 [provides]

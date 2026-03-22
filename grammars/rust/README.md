@@ -53,7 +53,7 @@ Produces `target/wasm32-wasip2/release/grammar_rust.wasm` (~1.4MB).
 ```bash
 mkdir -p ~/.patina/pipeline/grammar-rust
 cp target/wasm32-wasip2/release/grammar_rust.wasm ~/.patina/pipeline/grammar-rust/plugin.wasm
-cp plugin.toml ~/.patina/pipeline/grammar-rust/
+cp child.toml ~/.patina/pipeline/grammar-rust/
 ```
 
 ## Test
@@ -83,7 +83,7 @@ processor doesn't).
 - `src/lib.rs` — PipelinePlugin impl with full extraction logic ported from
   `src/commands/scrape/code/languages/rust.rs`
 - `grammars/rust/src/` — vendored tree-sitter-rust C source (parser.c, scanner.c)
-- `plugin.toml` — claims language "rs" for pipeline dispatch
+- `child.toml` — claims language "rs" for pipeline dispatch
 
 The plugin defines its own serialization types matching the host's JSON
 contract (per [[json-contract-over-shared-types]]), not shared Rust types.

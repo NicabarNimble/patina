@@ -1,8 +1,8 @@
-[plugin]
+[child]
 name = "patina-doctor"
 version = "0.1.0"
 description = "Check project health and environment"
-world = "command"
+kind = "command"
 role = "extension"
 patina_min = "0.17.0"
 

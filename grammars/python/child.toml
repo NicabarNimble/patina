@@ -1,8 +1,8 @@
-[plugin]
+[child]
 name = "grammar-python"
 version = "0.1.0"
 description = "Python language grammar extraction via tree-sitter (compiled to WASM via wasi-sdk)"
-world = "pipeline"
+kind = "pipeline"
 patina_min = "0.22.0"
 
 [provides]

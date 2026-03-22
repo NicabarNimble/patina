@@ -1,8 +1,8 @@
-[plugin]
+[child]
 name = "patina-models"
 version = "0.1.0"
 description = "Embedding model path resolution for Mother daemon"
-world = "mother-child"
+kind = "mother-child"
 role = "extension"
 patina_min = "0.17.0"
 
