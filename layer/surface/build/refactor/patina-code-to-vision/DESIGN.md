@@ -221,15 +221,18 @@ Manifest bridge plan (explicit):
   - `ba0b3848` — refactor: introduce child engine surface and migrate runtime callers
   - `cf9d586e` — refactor: migrate CLI surfaces to child engine vocabulary
   - `737878cc` — refactor: make plugin module a child-vocabulary bridge
+  - `4a73cd17` — refactor: accept [child] section and migrate child manifests
 - Commands run:
   - `cargo check -q`
   - `cargo build -q`
   - `rg "PluginManifest|PluginWorld|PluginEngine" src/`
   - `ls src/plugin`
+  - `grep "^\[plugin\]" children/*/child.toml`
 - Observed key lines:
   - build/compile pass with existing warning debt
   - child-native engine surface exists at `src/child/engine.rs` and is used by runtime/CLI callsites
   - plugin module now exports child vocabulary first and keeps plugin names as compatibility aliases
+  - first-party `children/*/child.toml` files now use `[child]` section while parser accepts legacy `[plugin]` as transitional bridge
   - Phase 2 is not complete: plugin internals and scaffold still contain plugin-era naming; `src/plugin/` still exists intentionally during bridge window
 
 Exit checklist:
