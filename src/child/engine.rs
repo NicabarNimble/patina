@@ -1,13 +1,10 @@
 //! Canonical child-engine surface.
-//!
-//! Runtime implementation still lives behind the plugin-era module during CV6
-//! migration; this module is the child-native entry point for callers.
 
-pub use crate::plugin::{
+pub use crate::child::internal::{
     ChildEngine, ChildKind, ChildManifest, ChildRole, CommandEngine, CredentialMapping,
     GrantedCapabilities, InjectionLocation, KnowledgeChildEngine, PipelineEngine, QueryDispatchFn,
     QueryScope, TaskEngine,
 };
 
-pub type MotherChildEngine = crate::plugin::PluginEngine;
-pub type ChildProvides = crate::plugin::PluginProvides;
+pub type MotherChildEngine = crate::child::internal::MotherChildEngine;
+pub type ChildProvides = crate::child::internal::ChildProvides;

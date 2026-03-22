@@ -3266,10 +3266,7 @@ fn role_from_str_all_variants() {
         "connector".parse::<ChildRole>().unwrap(),
         ChildRole::Connector
     );
-    assert_eq!(
-        "grammar".parse::<ChildRole>().unwrap(),
-        ChildRole::Grammar
-    );
+    assert_eq!("grammar".parse::<ChildRole>().unwrap(), ChildRole::Grammar);
     assert_eq!(
         "extension".parse::<ChildRole>().unwrap(),
         ChildRole::Extension

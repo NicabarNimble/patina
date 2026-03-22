@@ -1461,7 +1461,7 @@ fn main() -> Result<()> {
             } => {
                 let world: patina::child::engine::ChildKind = world.parse()?;
                 let cwd = std::env::current_dir()?;
-                let project_dir = patina::plugin::scaffold::scaffold(&cwd, &name, &world)?;
+                let project_dir = patina::child::scaffold::scaffold(&cwd, &name, &world)?;
 
                 let profile = if release { "release" } else { "debug" };
                 let artifact = project_dir
@@ -1543,7 +1543,7 @@ fn main() -> Result<()> {
                     patina::child::engine::MotherChildEngine::load_manifest(&toml_path)?
                 } else {
                     anyhow::bail!(
-                        "plugin manifest not found at {}\nTask and command plugins require a plugin.toml",
+                        "child manifest not found at {}\nTask and command plugins require a .toml manifest",
                         toml_path.display()
                     );
                 };

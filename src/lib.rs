@@ -14,7 +14,6 @@ pub mod migration;
 pub mod models;
 pub mod mother;
 pub mod paths;
-pub mod plugin;
 pub mod project;
 pub mod release;
 pub mod scanner;

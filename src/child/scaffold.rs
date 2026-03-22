@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
 
-use super::ChildKind;
+use super::engine::ChildKind;
 
 // =========================================================================
 // Embedded templates (compiled into the binary)
