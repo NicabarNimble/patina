@@ -257,7 +257,7 @@ Evidence format rules for this table:
 | CV7 | verified-false | `patina mother status` shows loaded children `ducklake` and `secrets` only; `session-writer` is not loaded/visible in daemon status output (2026-03-22 baseline). |
 | CV8 | verified-false | Command proof: `test -e .patina/manifest.toml || echo missing` => `missing`; no project child-needs manifest contract is present in-tree (2026-03-22 baseline). |
 | CV9 | verified-false | Spec lifecycle remains core at `src/commands/spec/mod.rs:7` + `src/commands/spec/internal/mod.rs:1`; command proof: `test -e children/spec-manager/child.toml || echo missing` => `missing`. |
-| CV10 | verified-false | Command proof: `test -e wit/toys/layer-fs.wit || echo missing` => `missing`; `test -e wit/toys/git.wit || echo missing` => `missing`. |
+| CV10 | verified-true | Command proof: `test -e wit/toys/layer-fs.wit && test -e wit/toys/git.wit` => success; host implementations exist at `mother/src/toys/layer_fs.rs:1` and `mother/src/toys/git.rs:1`; proof command `cargo test -q -p mother` passes. |
 | CV11 | verified-partial | Scrape is in-core strategy-structured (`src/commands/scrape/mod.rs:1`, `src/commands/scrape/code/extract_v2.rs:1`), but child seam/final extraction contract is not yet implemented. |
 | CV12 | verified-false | Core `spec list` path remains local fallback in `src/commands/spec/mod.rs:365` and does not hard-fail on missing `spec-manager` child. |
 | CV13 | verified-false | Command proof: `grep "\\b(rename|reopen)\\b" src/commands/spec --include "*.rs"` => `No files found` (2026-03-22 baseline). |

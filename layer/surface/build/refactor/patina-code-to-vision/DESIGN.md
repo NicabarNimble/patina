@@ -409,6 +409,21 @@ Rules:
 - WIT sync check passes
 - Mother host implementations have tests
 
+### Phase 4 Verification Report (2026-03-22)
+
+- Commits:
+  - `c9c04abf` — wit: add toy-layer-fs and toy-git interfaces
+  - `e960359a` — mother: add layer-fs and git host toy implementations
+  - `d232e2db` — sdk: add toy-layer-fs and toy-git tiered surfaces
+- Commands run:
+  - `test -e wit/toys/layer-fs.wit && test -e wit/toys/git.wit`
+  - `cargo test -q -p mother`
+  - `cargo test -q`
+- Observed key lines:
+  - `mother` crate tests pass including new toy-host tests (`toys::layer_fs::*`, `toys::git::*`)
+  - full workspace test suite passes after Phase 4 additions
+  - SDK surfaces now include feature-gated `toy-layer-fs` and `toy-git` backends/wrappers
+
 ## Phase 5: Move children out of core (CV9, CV12, CV13, CV14, CV15, CV17, CV18)
 
 Entry checklist (pre-Phase-5 WASM readiness gate):
