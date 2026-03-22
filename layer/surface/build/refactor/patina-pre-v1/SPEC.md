@@ -21,13 +21,13 @@ beliefs:
 exit_criteria:
 - id: EC1
   text: Tiered SDK ships — patina-sdk-core, patina-sdk-data, patina-sdk-agent each build independently with feature-gated toys
-  checked: false
+  checked: true
 - id: EC2
   text: Per-child WIT worlds — each child declares its own world importing only needed toy interfaces, no monolithic knowledge-child world
   checked: false
 - id: EC3
   text: Per-child linker — Mother builds a linker per child from its manifest, linking only declared toy interfaces
-  checked: false
+  checked: true
 - id: EC4
   text: toy-github WIT interface — Mother implements github issues/PRs/comments/reviews/events with pagination, rate-limit backoff, credential injection
   checked: true
@@ -36,19 +36,19 @@ exit_criteria:
   checked: true
 - id: EC6
   text: session-writer child — minimal WASM child (log + state + session toys), spawned at agent connection, handles artifact lifecycle and crash recovery
-  checked: false
+  checked: true
 - id: EC7
   text: DuckLake on new model — composed world with toy-github replacing connector, basic fetch-and-store works, queryable via standalone DuckDB CLI
   checked: false
 - id: EC8
   text: Mother extracted — standalone daemon crate, accepts agent connections, manages children and toys, separate from CLI binary
-  checked: false
+  checked: true
 - id: EC9
   text: Agent connection protocol — JSON lines over Unix socket, any agent can connect, no MCP required
   checked: true
 - id: EC10
   text: Core protocol verbs stay standalone-capable in CLI; Mother integration is additive orchestration/strategy extension, not a hard dependency for baseline local execution
-  checked: false
+  checked: true
 - id: EC11
   text: MCP retired — MCP server removed from main binary, replaced by agent connection protocol
   checked: true
