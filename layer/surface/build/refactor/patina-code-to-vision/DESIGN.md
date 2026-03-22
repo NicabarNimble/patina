@@ -345,6 +345,7 @@ Exit checklist:
 
 - [ ] runtime ownership map shows Mother logic centralized in `mother/`
 - [ ] CLI Mother commands are transport/client wrappers only
+- [ ] graph/query/toy orchestration paths are switched to explicit adapter contracts before any shell deletion
 
 ## Phase 4: New toys (CV10)
 

@@ -315,9 +315,9 @@ Mother-required policy applies only to child-provided command surfaces after chi
 - Rename Plugin types to Child types
 
 ### Phase 3: Consolidate Mother
-- Move src/mother/ runtime into mother/ crate (state, events, broker, tasks, graph)
-- Move src/commands/mother/ daemon into mother/ crate (server, registry, heartbeat)
-- Move src/toys/ host implementations into mother/ crate (these are Mother's toy implementations, not CLI code)
+- 3a (structural relocation): move src/mother/ runtime infrastructure into mother/ crate (state, events, broker, tasks, registry, transport shell)
+- 3b (functional extraction): for graph/query/toy host orchestration, extract adapter contracts first, then switch callers and ownership
+- Do not force-move orchestrators that still depend on patina-internal domains; patch through adapters before physical relocation
 - CLI `patina mother` becomes thin: start/stop/status over the socket
 - Mother is one crate, one process, one thing
 - Note: mother/src/daemon.rs already has real protocol routing (327 lines) — the actions return placeholder text but the infrastructure is solid. Phase 3 adds real runtime behind the existing routing.
