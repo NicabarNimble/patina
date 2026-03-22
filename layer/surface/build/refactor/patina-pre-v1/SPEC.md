@@ -40,10 +40,10 @@ exit_criteria:
   checked: false
 - id: EC4
   text: toy-github WIT interface — Mother implements github issues/PRs/comments/reviews/events with pagination, rate-limit backoff, credential injection
-  checked: false
+  checked: true
 - id: EC5
   text: toy-session WIT interface — Mother implements session artifact writes, git tag creation, crash recovery handoff
-  checked: false
+  checked: true
 - id: EC6
   text: session-writer child — minimal WASM child (log + state + session toys), spawned at agent connection, handles artifact lifecycle and crash recovery
   checked: false
@@ -55,13 +55,13 @@ exit_criteria:
   checked: false
 - id: EC9
   text: Agent connection protocol — JSON lines over Unix socket, any agent can connect, no MCP required
-  checked: false
+  checked: true
 - id: EC10
   text: CLI is thin client — patina commands delegate to Mother daemon, no embedded Mother logic
   checked: false
 - id: EC11
   text: MCP retired — MCP server removed from main binary, replaced by agent connection protocol
-  checked: false
+  checked: true
 - id: EC12
   text: Interface runtimes decoupled — Claude/OpenCode/Gemini launch code removed from main binary, agents bring themselves
   checked: false
@@ -70,7 +70,7 @@ exit_criteria:
   checked: false
 - id: EC14
   text: Git tag integrity — every session gets real start and end tags, no frontmatter-only claims, historical backfill complete
-  checked: false
+  checked: true
 - id: EC15
   text: External developer onramp — cargo generate template, README, working example child that builds and installs in under 5 minutes
   checked: false
