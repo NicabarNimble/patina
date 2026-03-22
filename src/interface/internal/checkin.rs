@@ -157,7 +157,7 @@ pub fn session_writer_action(
 }
 
 fn load_session_writer_knowledge_child() -> Result<Option<Box<dyn crate::mother::KnowledgeChild>>> {
-    let engine = crate::plugin::KnowledgeChildEngine::new()?;
+    let engine = crate::child::engine::KnowledgeChildEngine::new()?;
 
     let mut candidates: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
     let installed_dir = crate::paths::plugin::children_dir();
@@ -175,7 +175,7 @@ fn load_session_writer_knowledge_child() -> Result<Option<Box<dyn crate::mother:
         }
     }
 
-    if let Some(manifest_path) = crate::plugin::PluginManifest::resolve_child_manifest_path(
+    if let Some(manifest_path) = crate::child::engine::ChildManifest::resolve_child_manifest_path(
         std::path::Path::new("children/session-writer"),
     ) {
         candidates.push((
@@ -196,7 +196,7 @@ fn load_session_writer_knowledge_child() -> Result<Option<Box<dyn crate::mother:
         if !wasm_path.exists() || !manifest_path.exists() {
             continue;
         }
-        let manifest = match crate::plugin::PluginManifest::from_path(&manifest_path) {
+        let manifest = match crate::child::engine::ChildManifest::from_path(&manifest_path) {
             Ok(manifest) => manifest,
             Err(_) => continue,
         };

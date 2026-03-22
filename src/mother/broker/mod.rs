@@ -283,7 +283,7 @@ fn migrate_legacy_cursor(
 fn load_ducklake_knowledge_child(
     no_sandbox: bool,
 ) -> Result<Box<dyn crate::mother::KnowledgeChild>> {
-    let engine = crate::plugin::KnowledgeChildEngine::new()?;
+    let engine = crate::child::engine::KnowledgeChildEngine::new()?;
 
     let mut candidates: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
     let installed_dir = crate::paths::plugin::children_dir();
@@ -301,7 +301,7 @@ fn load_ducklake_knowledge_child(
             }
         }
     }
-    if let Some(manifest_path) = crate::plugin::PluginManifest::resolve_child_manifest_path(
+    if let Some(manifest_path) = crate::child::engine::ChildManifest::resolve_child_manifest_path(
         std::path::Path::new("children/ducklake"),
     ) {
         candidates.push((
@@ -314,7 +314,7 @@ fn load_ducklake_knowledge_child(
         if !wasm_path.exists() || !manifest_path.exists() {
             continue;
         }
-        let manifest = match crate::plugin::PluginManifest::from_path(&manifest_path) {
+        let manifest = match crate::child::engine::ChildManifest::from_path(&manifest_path) {
             Ok(manifest) => manifest,
             Err(error) => {
                 eprintln!(

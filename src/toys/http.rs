@@ -1,6 +1,6 @@
 //! HTTP toy host helpers.
 
-use crate::plugin::GrantedCapabilities;
+use crate::child::engine::GrantedCapabilities;
 
 #[derive(Debug, Clone)]
 pub struct HttpToyResponse {
@@ -16,7 +16,7 @@ pub fn post(
     body: &str,
     content_type: &str,
 ) -> Result<HttpToyResponse, String> {
-    let response = crate::plugin::internal::host_support::http_post(
+    let response = crate::child::host_support::http_post(
         http_client,
         grants,
         plugin_name,
@@ -36,8 +36,7 @@ pub fn get(
     plugin_name: &str,
     url: &str,
 ) -> Result<HttpToyResponse, String> {
-    let response =
-        crate::plugin::internal::host_support::http_get(http_client, grants, plugin_name, url)?;
+    let response = crate::child::host_support::http_get(http_client, grants, plugin_name, url)?;
     Ok(HttpToyResponse {
         status: response.status,
         body: response.body,

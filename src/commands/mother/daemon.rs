@@ -817,12 +817,12 @@ fn load_wasm_child(
     wasm_path: &std::path::Path,
     manifest_path: &std::path::Path,
 ) -> Result<LoadedWasmChild> {
-    let manifest = patina::plugin::PluginManifest::from_path(manifest_path)?;
+    let manifest = patina::child::engine::ChildManifest::from_path(manifest_path)?;
     let relationship_listens = parse_relationship_listens(manifest_path)?;
     let wasm_bytes = std::fs::read(wasm_path)?;
     match manifest.world {
-        patina::plugin::PluginWorld::KnowledgeChild => {
-            let engine = patina::plugin::KnowledgeChildEngine::new()?;
+        patina::child::engine::ChildKind::KnowledgeChild => {
+            let engine = patina::child::engine::KnowledgeChildEngine::new()?;
             let component = engine.load_component(&wasm_bytes)?;
             let child = engine.instantiate_child(&component, &manifest, None)?;
             let name = child.name().to_string();
@@ -833,8 +833,8 @@ fn load_wasm_child(
                 relationship_listens,
             })
         }
-        patina::plugin::PluginWorld::MotherChild => {
-            let engine = patina::plugin::PluginEngine::new()?;
+        patina::child::engine::ChildKind::MotherChild => {
+            let engine = patina::child::engine::MotherChildEngine::new()?;
             let component = engine.load_component(&wasm_bytes)?;
             let child = engine.instantiate_child(&component, &manifest, None)?;
             let name = child.name().to_string();

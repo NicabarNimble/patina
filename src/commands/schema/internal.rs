@@ -315,7 +315,7 @@ pub fn check_schemas() -> Result<()> {
         if children_dir.exists() {
             for child_entry in std::fs::read_dir(&children_dir)?.flatten() {
                 let Some(manifest_path) =
-                    patina::plugin::PluginManifest::resolve_child_manifest_path(
+                    patina::child::engine::ChildManifest::resolve_child_manifest_path(
                         &child_entry.path(),
                     )
                 else {

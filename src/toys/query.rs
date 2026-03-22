@@ -1,6 +1,6 @@
 //! Query toy host helpers.
 
-use crate::plugin::{GrantedCapabilities, QueryDispatchFn};
+use crate::child::engine::{GrantedCapabilities, QueryDispatchFn};
 
 pub fn dispatch(
     plugin_name: &str,
@@ -9,5 +9,5 @@ pub fn dispatch(
     kind: &str,
     params: &str,
 ) -> Result<String, String> {
-    crate::plugin::internal::host_support::query(plugin_name, grants, query_fn, kind, params)
+    crate::child::host_support::query(plugin_name, grants, query_fn, kind, params)
 }

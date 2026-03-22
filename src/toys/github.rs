@@ -1,4 +1,4 @@
-use crate::plugin::internal::GrantedCapabilities;
+use crate::child::engine::GrantedCapabilities;
 
 #[derive(Debug, Clone, Default)]
 pub struct ListParams {
@@ -318,7 +318,7 @@ fn parse_next_page(link_header: Option<&reqwest::header::HeaderValue>) -> (bool,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugin::internal::{GrantedCapabilities, QueryScope};
+    use crate::child::engine::{GrantedCapabilities, QueryScope};
 
     fn fixture(path: &str) -> String {
         std::fs::read_to_string(
