@@ -67,7 +67,7 @@ exit_criteria:
   checked: true
 - id: EC13
   text: Child relationships — Mother mediates event routing between children based on manifest emits/listens declarations
-  checked: false
+  checked: true
 - id: EC14
   text: Git tag integrity — every session gets real start and end tags, no frontmatter-only claims, historical backfill complete
   checked: true
