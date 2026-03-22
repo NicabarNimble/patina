@@ -449,7 +449,15 @@ pub fn extract_summary(content: &str) -> String {
 /// Execute CLI context command
 pub fn execute(topic: Option<&str>) -> Result<()> {
     let start = std::time::Instant::now();
-    let output = get_project_context(topic)?;
+    let output = if let Ok(client) = try_daemon_client() {
+        let question = topic.unwrap_or("project context");
+        match client.context(question) {
+            Ok(response) if !response.contains("not yet implemented") => response,
+            _ => get_project_context(topic)?,
+        }
+    } else {
+        get_project_context(topic)?
+    };
     println!("{}", output);
 
     // Emit usage event to events.db (best-effort)
@@ -475,4 +483,10 @@ pub fn execute(topic: Option<&str>) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn try_daemon_client() -> Result<patina::mother::DaemonClient> {
+    let client = patina::mother::DaemonClient::new();
+    client.ensure_running()?;
+    Ok(client)
 }
