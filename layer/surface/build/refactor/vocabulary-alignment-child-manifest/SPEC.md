@@ -67,6 +67,24 @@ Draft. `patina-pre-v1` is blocked on this terminology alignment to prevent furth
 - Child manifest filename is canonicalized to `child.toml` (with bridge compatibility for `plugin.toml`).
 - WIT `world` remains a WIT-specific concept only.
 
+### Canonical Mapping Lock
+
+- `PluginManifest` -> `ChildManifest`
+- `PluginWorld` -> `ChildKind`
+- `PluginRole` -> `ChildRole`
+- `KnowledgeChildEngine`/`PluginEngine` naming surface -> `ChildEngine` naming surface
+- `plugin.toml` -> `child.toml` (canonical)
+- manifest `world = "..."` -> `kind = "..."` (canonical)
+
+Allowed runtime kind values in this spec:
+
+- `knowledge-child`
+- `mother-child`
+- `task`
+- `pipeline`
+
+Legacy values/fields must map 1:1 to the same runtime behavior.
+
 ## Solution
 
 Do a bounded two-track migration:
@@ -75,6 +93,16 @@ Do a bounded two-track migration:
 2. Switch manifest/documentation surfaces to child/kind naming while preserving read compatibility for existing files/fields.
 
 This keeps runtime behavior unchanged while fixing architectural language at the source.
+
+### Bridge Policy (Locked)
+
+- **Read path:** support both legacy and canonical forms.
+  - field keys: read `kind` first, fallback to `world`
+  - manifest filenames: read `child.toml` first, fallback to `plugin.toml`
+- **Write/scaffold path:** emit canonical forms only (`kind`, `child.toml`).
+- **Deprecation behavior:** when fallback is used, emit warning:
+  - `deprecated manifest key 'world'; use 'kind'`
+  - `deprecated manifest filename 'plugin.toml'; use 'child.toml'`
 
 ## Implementation Order
 
@@ -89,12 +117,21 @@ This keeps runtime behavior unchanged while fixing architectural language at the
 - This is a terminology+contract alignment spec, not an architecture rewrite spec.
 - Compatibility bridge is required to avoid churn and preserve current runtime behavior.
 - WIT `world` remains valid only for WIT/component composition contexts.
+- This spec includes canonical filename migration (`child.toml`) and dual-read compatibility in the same pass (not deferred).
 
 ## Verification
 
 - `cargo test` passes for child loading/linking tests before and after rename bridge.
 - Child manifest parsing tests validate both old (`world`, `plugin.toml`) and new (`kind`, `child.toml`) forms during transition.
 - Grep checks confirm canonical docs/spec wording uses child/kind vocabulary and avoids ambiguous world usage outside WIT contexts.
+
+Required grep checks (bridge-safe):
+
+- Allowed (compatibility only): legacy `Plugin*` names may remain only in explicit `type` aliases or deprecation adapters.
+- Forbidden in new code/docs introduced by this spec:
+  - `PluginManifest`/`PluginWorld`/`PluginRole` in public-facing docs/spec text
+  - references claiming manifest `world` is canonical
+  - write paths that generate `plugin.toml`
 
 ## Exit Criteria
 

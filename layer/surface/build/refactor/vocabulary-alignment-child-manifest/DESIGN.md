@@ -13,11 +13,14 @@ Canonical child-first naming (`Child*`, `kind`, `child.toml`) with compatibility
 - Rename is mechanical + contract-level, not behavior-level.
 - Keep dual-read compatibility during migration.
 - WIT `world` naming remains untouched in component metadata (that is the correct WIT term).
+- Canonical runtime key is `kind`; legacy `world` is read-only compatibility.
+- Canonical manifest filename is `child.toml`; legacy `plugin.toml` is read-only compatibility.
+- This spec completes canonical file/key migration (no deferral to follow-on).
 
 ## Commits
 1. `rename: add child-first type aliases in runtime` — introduce `ChildManifest`/`ChildKind`/`ChildEngine` and keep `Plugin*` aliases to preserve compile/runtime behavior.
-2. `manifest: add kind field with world fallback` — parse `kind` canonically, read legacy `world`, emit deprecation warning for legacy field use.
-3. `manifest: support child.toml canonical path` — prefer `child.toml`, fallback to `plugin.toml` for compatibility.
+2. `manifest: add kind field with world fallback` — parse `kind` canonically, read legacy `world`, emit exact warning `deprecated manifest key 'world'; use 'kind'`.
+3. `manifest: support child.toml canonical path` — prefer `child.toml`, fallback to `plugin.toml`, emit exact warning `deprecated manifest filename 'plugin.toml'; use 'child.toml'` when fallback is used.
 4. `docs: migrate spec and guidance vocabulary` — update AGENTS/spec docs to reserve `world` for WIT contexts only.
 5. `test: add vocabulary bridge regression checks` — prove both legacy and canonical forms load/link/instantiate identically.
 
@@ -39,10 +42,16 @@ Canonical child-first naming (`Child*`, `kind`, `child.toml`) with compatibility
 - Run full `cargo test -q`.
 - Run grep checks for ambiguous vocabulary drift in specs/docs.
 
+Grep gates:
+
+- `grep -R "PluginManifest\|PluginWorld\|PluginRole" layer/surface/build/refactor -n` -> no new public-facing spec/docs usage from this spec.
+- `grep -R "world = \"knowledge-child\"" children/template -n` -> zero matches after scaffold migration.
+- `grep -R "plugin.toml" children/template -n` -> zero canonical write references (compat-read references allowed in runtime loader code only).
+
 ## Build Readiness
 
 Ready for execution as a bounded side quest blocker before pre-v1 final EC closure.
 
 ## Open Questions
 
-- Whether canonical manifest filename migration (`child.toml`) should be completed in this spec or deferred to a follow-on once field/type rename is stable.
+- None for execution. Remaining choices are implementation details inside the locked bridge policy.
