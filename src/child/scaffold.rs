@@ -18,7 +18,7 @@ mod templates {
     pub mod mother_child {
         pub const CARGO_TOML: &str =
             include_str!("../../resources/templates/plugin/mother-child/Cargo.toml.tmpl");
-        pub const PLUGIN_TOML: &str =
+        pub const MANIFEST_TOML: &str =
             include_str!("../../resources/templates/plugin/mother-child/plugin.toml.tmpl");
         pub const LIB_RS: &str =
             include_str!("../../resources/templates/plugin/mother-child/lib.rs.tmpl");
@@ -26,7 +26,7 @@ mod templates {
     pub mod command {
         pub const CARGO_TOML: &str =
             include_str!("../../resources/templates/plugin/command/Cargo.toml.tmpl");
-        pub const PLUGIN_TOML: &str =
+        pub const MANIFEST_TOML: &str =
             include_str!("../../resources/templates/plugin/command/plugin.toml.tmpl");
         pub const LIB_RS: &str =
             include_str!("../../resources/templates/plugin/command/lib.rs.tmpl");
@@ -34,14 +34,14 @@ mod templates {
     pub mod task {
         pub const CARGO_TOML: &str =
             include_str!("../../resources/templates/plugin/task/Cargo.toml.tmpl");
-        pub const PLUGIN_TOML: &str =
+        pub const MANIFEST_TOML: &str =
             include_str!("../../resources/templates/plugin/task/plugin.toml.tmpl");
         pub const LIB_RS: &str = include_str!("../../resources/templates/plugin/task/lib.rs.tmpl");
     }
     pub mod pipeline {
         pub const CARGO_TOML: &str =
             include_str!("../../resources/templates/plugin/pipeline/Cargo.toml.tmpl");
-        pub const PLUGIN_TOML: &str =
+        pub const MANIFEST_TOML: &str =
             include_str!("../../resources/templates/plugin/pipeline/plugin.toml.tmpl");
         pub const LIB_RS: &str =
             include_str!("../../resources/templates/plugin/pipeline/lib.rs.tmpl");
@@ -124,37 +124,37 @@ fn world_templates(world: &ChildKind) -> (&'static str, &'static str, &'static s
     match world {
         ChildKind::KnowledgeChild => (
             templates::mother_child::CARGO_TOML,
-            templates::mother_child::PLUGIN_TOML,
+            templates::mother_child::MANIFEST_TOML,
             templates::mother_child::LIB_RS,
         ),
         ChildKind::MotherChild => (
             templates::mother_child::CARGO_TOML,
-            templates::mother_child::PLUGIN_TOML,
+            templates::mother_child::MANIFEST_TOML,
             templates::mother_child::LIB_RS,
         ),
         ChildKind::Command => (
             templates::command::CARGO_TOML,
-            templates::command::PLUGIN_TOML,
+            templates::command::MANIFEST_TOML,
             templates::command::LIB_RS,
         ),
         ChildKind::Task => (
             templates::task::CARGO_TOML,
-            templates::task::PLUGIN_TOML,
+            templates::task::MANIFEST_TOML,
             templates::task::LIB_RS,
         ),
         ChildKind::Pipeline => (
             templates::pipeline::CARGO_TOML,
-            templates::pipeline::PLUGIN_TOML,
+            templates::pipeline::MANIFEST_TOML,
             templates::pipeline::LIB_RS,
         ),
     }
 }
 
-/// Scaffold a new plugin project.
+/// Scaffold a new child project.
 ///
 /// Creates `<name>/` in the given parent directory with:
 /// - `Cargo.toml` (cdylib, correct guest API dep)
-/// - `plugin.toml` (world, capabilities, provides)
+/// - `child.toml` (kind, capabilities, provides)
 /// - `src/lib.rs` (trait impl, register macro)
 ///
 /// Templates use `patina-sdk` version dep — no absolute paths.
@@ -171,12 +171,12 @@ pub fn scaffold(parent: &Path, name: &str, world: &ChildKind) -> Result<PathBuf>
     let src_dir = project_dir.join("src");
     std::fs::create_dir_all(&src_dir)?;
 
-    let (cargo_tmpl, plugin_tmpl, lib_tmpl) = world_templates(world);
+    let (cargo_tmpl, manifest_tmpl, lib_tmpl) = world_templates(world);
 
     std::fs::write(project_dir.join("Cargo.toml"), substitute(cargo_tmpl, name))?;
     std::fs::write(
-        project_dir.join("plugin.toml"),
-        substitute(plugin_tmpl, name),
+        project_dir.join("child.toml"),
+        substitute(manifest_tmpl, name),
     )?;
     std::fs::write(src_dir.join("lib.rs"), substitute(lib_tmpl, name))?;
 
@@ -236,7 +236,7 @@ mod tests {
 
         let project = result.unwrap();
         assert!(project.join("Cargo.toml").exists());
-        assert!(project.join("plugin.toml").exists());
+        assert!(project.join("child.toml").exists());
         assert!(project.join("src/lib.rs").exists());
 
         let cargo = std::fs::read_to_string(project.join("Cargo.toml")).unwrap();
