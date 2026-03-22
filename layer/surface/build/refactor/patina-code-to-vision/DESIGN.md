@@ -330,9 +330,11 @@ Phase 3a/3b sequencing clarification:
   - `6250ce07` — mother: move broker into mother crate
   - `badc700e` — mother: move daemon server into mother crate
 - Adapter extraction commits in progress:
+  - `1a860445` — spec: align phase 3 to adapter-first consolidation
   - `8b4daba0` — refactor: extract mother daemon scry backend adapter
   - `ab425dc8` — refactor: extract mother graph and scry dependency adapters
   - `ed8ab975` — refactor: add graph registry and session adapter traits
+  - `80491bcc` — refactor: route child toy calls through toy-host adapter
 - Active blockers captured as adapter work (not direct moves):
   - graph orchestration dependencies (`beliefs`, registry/session wiring)
   - daemon query dependency (`retrieval::QueryEngine`)
