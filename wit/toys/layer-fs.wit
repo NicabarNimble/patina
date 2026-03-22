@@ -1,0 +1,10 @@
+package patina:host@0.1.0;
+
+interface layer-fs {
+    read-file: func(path: string) -> result<string, string>;
+    write-file: func(path: string, contents: string) -> result<_, string>;
+    list-dir: func(path: string) -> result<list<string>, string>;
+    delete-file: func(path: string) -> result<_, string>;
+    move-path: func(from: string, to: string) -> result<_, string>;
+    exists: func(path: string) -> result<bool, string>;
+}
