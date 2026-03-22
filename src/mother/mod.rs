@@ -26,10 +26,7 @@
 //! ```
 
 pub mod broker;
-pub(crate) mod checkpoint;
 mod internal;
-pub(crate) mod tasks;
-mod toys;
 
 // Bridge module: state logic now lives in the mother crate.
 // Re-export so existing `crate::mother::state::*` paths continue to compile.
@@ -48,7 +45,7 @@ pub use mother_crate::state::{
     KnowledgeRuntimeStore, LakeCursorUpdate, MotherSessionParticipant, MotherSessionRecord,
     MotherSessionStatus, QueuedTask, RunStatus, TaskStatus,
 };
-pub use toys::{GrantedIngressSource, GrantedToys};
+pub use mother_crate::toys::{GrantedIngressSource, GrantedToys};
 
 // Graph exports
 pub use crate::beliefs::{
