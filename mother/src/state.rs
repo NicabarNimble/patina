@@ -3,7 +3,7 @@ use chrono::{Duration, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::path::PathBuf;
 
-use super::{TaskIntent, TaskIntentKind};
+use crate::{TaskIntent, TaskIntentKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskStatus {
@@ -135,7 +135,14 @@ pub struct MotherSessionParticipant {
 
 impl Default for KnowledgeRuntimeStore {
     fn default() -> Self {
-        Self::new(crate::paths::mother::runtime_db())
+        let home = std::env::var_os("PATINA_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                dirs::home_dir()
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join(".patina")
+            });
+        Self::new(home.join("mother").join("runtime.db"))
     }
 }
 

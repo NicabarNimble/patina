@@ -29,9 +29,14 @@ pub mod broker;
 pub(crate) mod checkpoint;
 pub(crate) mod events;
 mod internal;
-pub(crate) mod state;
 pub(crate) mod tasks;
 mod toys;
+
+// Bridge module: state logic now lives in the mother crate.
+// Re-export so existing `crate::mother::state::*` paths continue to compile.
+pub(crate) mod state {
+    pub use mother_crate::state::*;
+}
 
 use anyhow::Result;
 
@@ -40,9 +45,9 @@ pub use crate::child::runtime::{
     ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, MotherChild, MotherHost,
     PendingEvent, TaskIntent, TaskIntentKind, Toy,
 };
-pub use state::{
-    KnowledgeRuntimeStore, MotherSessionParticipant, MotherSessionRecord, MotherSessionStatus,
-    QueuedTask, RunStatus, TaskStatus,
+pub use mother_crate::state::{
+    KnowledgeRuntimeStore, LakeCursorUpdate, MotherSessionParticipant, MotherSessionRecord,
+    MotherSessionStatus, QueuedTask, RunStatus, TaskStatus,
 };
 pub use toys::{GrantedIngressSource, GrantedToys};
 
