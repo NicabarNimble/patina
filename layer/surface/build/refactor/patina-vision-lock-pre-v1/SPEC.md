@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: patina-vision-lock-pre-v1
-status: ready
+status: active
 created: 2026-03-22
 sessions:
   origin: 20260321-162736-004031000
