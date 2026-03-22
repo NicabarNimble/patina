@@ -6,6 +6,23 @@ use anyhow::{bail, Result};
 use patina::paths;
 use std::path::PathBuf;
 
+fn try_daemon_lake(op: &str, name: Option<&str>) -> Result<Option<String>> {
+    let client = patina::mother::DaemonClient::new();
+    client.ensure_running()?;
+    let result = client.request(
+        "lake",
+        serde_json::json!({
+            "op": op,
+            "name": name,
+        }),
+    )?;
+    let output = result
+        .get("output")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    Ok(output.filter(|o| !o.contains("not yet implemented")))
+}
+
 /// Lake CLI subcommands
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum LakeCommands {
@@ -38,6 +55,11 @@ fn lakes_dir() -> PathBuf {
 
 /// Create a new data lake.
 fn create(name: &str) -> Result<()> {
+    if let Ok(Some(output)) = try_daemon_lake("create", Some(name)) {
+        println!("{}", output);
+        return Ok(());
+    }
+
     // Validate name — alphanumeric, hyphens, underscores only
     if name.is_empty()
         || !name
@@ -65,6 +87,11 @@ fn create(name: &str) -> Result<()> {
 
 /// List all lakes.
 fn list() -> Result<()> {
+    if let Ok(Some(output)) = try_daemon_lake("list", None) {
+        println!("{}", output);
+        return Ok(());
+    }
+
     let dir = lakes_dir();
 
     if !dir.exists() {

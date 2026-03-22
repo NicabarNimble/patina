@@ -7,8 +7,8 @@ use anyhow::Result;
 use serde_json::json;
 
 use crate::protocol::{
-    ConnectPayload, ContextPayload, Envelope, LakeSyncPayload, MeasurePayload, SpecPayload,
-    PROTOCOL_VERSION,
+    ConnectPayload, ContextPayload, Envelope, LakeManagePayload, LakeSyncPayload, MeasurePayload,
+    SpecPayload, PROTOCOL_VERSION,
 };
 
 #[derive(Debug, Default, Clone)]
@@ -148,7 +148,7 @@ fn handle_action(
             Ok(json!({
                 "session_id": format!("{}-{}", connect.agent, std::process::id()),
                 "children": ["ducklake", "session-writer"],
-                "tools": ["context", "lake.sync", "measure", "spec"],
+                "tools": ["context", "lake.sync", "lake", "measure", "spec"],
             }))
         }
         "context" => {
@@ -192,6 +192,18 @@ fn handle_action(
                     spec.target.unwrap_or_else(|| "none".to_string()),
                     spec.json,
                     spec.handoff,
+                )
+            }))
+        }
+        "lake" => {
+            let payload = payload.ok_or_else(|| "missing payload".to_string())?;
+            let lake: LakeManagePayload = serde_json::from_value(payload)
+                .map_err(|e| format!("invalid lake payload: {}", e))?;
+            Ok(json!({
+                "output": format!(
+                    "lake daemon path not yet implemented (op={}, name={})",
+                    lake.op,
+                    lake.name.unwrap_or_else(|| "none".to_string())
                 )
             }))
         }

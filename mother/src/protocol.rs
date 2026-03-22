@@ -62,3 +62,9 @@ pub struct SpecPayload {
     pub json: bool,
     pub handoff: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LakeManagePayload {
+    pub op: String,
+    pub name: Option<String>,
+}
