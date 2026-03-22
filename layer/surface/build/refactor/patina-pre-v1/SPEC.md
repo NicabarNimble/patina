@@ -64,7 +64,7 @@ exit_criteria:
   checked: true
 - id: EC12
   text: Interface runtimes decoupled — Claude/OpenCode/Gemini launch code removed from main binary, agents bring themselves
-  checked: false
+  checked: true
 - id: EC13
   text: Child relationships — Mother mediates event routing between children based on manifest emits/listens declarations
   checked: false
