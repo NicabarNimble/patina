@@ -39,9 +39,11 @@
 
 pub(crate) mod daemon;
 pub(crate) mod graph;
-pub(crate) mod microserver;
-pub(crate) mod registry;
-pub(crate) mod secrets;
+
+// Moved to mother crate — re-export for daemon.rs
+pub(crate) use mother_crate::microserver;
+pub(crate) use mother_crate::registry;
+pub(crate) use mother_crate::secrets;
 
 use anyhow::{bail, Context, Result};
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};

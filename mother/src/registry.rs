@@ -7,7 +7,7 @@
 use anyhow::Result;
 use std::sync::{Arc, RwLock};
 
-use patina::mother::{
+use crate::{
     ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, KnowledgeRuntimeStore, MotherChild,
     MotherHost, RunStatus, Toy,
 };

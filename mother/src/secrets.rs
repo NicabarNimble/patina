@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;
 
-use patina::mother::{ChildHealth, ChildRequest, ChildResponse, MotherChild, MotherHost};
+use crate::{ChildHealth, ChildRequest, ChildResponse, MotherChild, MotherHost};
 
 /// Default TTL for cached secrets (10 minutes)
 const DEFAULT_TTL_SECS: u64 = 600;

@@ -2662,6 +2662,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "dirs 5.0.1",
+ "httparse",
  "rusqlite",
  "serde",
  "serde_json",
