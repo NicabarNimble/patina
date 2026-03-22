@@ -8,7 +8,7 @@ description = "Canonical DuckLake knowledge child for Mother"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-patina-sdk = { path = "../../sdk/patina-sdk", features = ["knowledge-child", "toy-log", "toy-state", "toy-task", "toy-measure", "toy-checkpoint", "toy-lake", "toy-connector"] }
+patina-sdk = { path = "../../sdk/patina-sdk", features = ["knowledge-child", "toy-log", "toy-state", "toy-task", "toy-measure", "toy-checkpoint", "toy-lake", "toy-github"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
