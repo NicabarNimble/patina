@@ -91,11 +91,10 @@ if [[ -f "children/ducklake/src/main.rs" ]]; then
     exit 1
 fi
 
-echo "Checking native child infrastructure is not reintroduced..."
+echo "Checking child manifests are present for children/..."
 child_toml_refs=$(find children/ -name 'child.toml' 2>/dev/null || true)
-if [[ -n "$child_toml_refs" ]]; then
-    echo "$child_toml_refs"
-    echo "error: child.toml found in children/ — use plugin.toml (native child model is retired)"
+if [[ -z "$child_toml_refs" ]]; then
+    echo "error: no child.toml files found under children/"
     exit 1
 fi
 

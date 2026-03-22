@@ -998,9 +998,9 @@ mod tests {
         std::fs::write(
             &manifest,
             r#"
-[plugin]
+[child]
 name = "child"
-world = "knowledge-child"
+kind = "knowledge-child"
 
 [relationships]
 emits = ["x"]
@@ -1023,9 +1023,9 @@ listens = ["data-ingested", "belief.changed"]
         std::fs::write(
             &manifest,
             r#"
-[plugin]
+[child]
 name = "child"
-world = "knowledge-child"
+kind = "knowledge-child"
 "#,
         )
         .unwrap();
