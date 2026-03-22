@@ -291,7 +291,7 @@ mod tests {
             auth: AuthConfig {
                 injection: InjectionStrategy::Bearer,
                 secret_ref: "github:default".into(),
-                child: "github-connector".into(),
+                child: "github".into(),
                 allowed_domains: vec!["api.github.com".into()],
                 refresh_capable: true,
                 expires_at: None,
@@ -318,7 +318,7 @@ mod tests {
             auth: AuthConfig {
                 injection: InjectionStrategy::Bearer,
                 secret_ref: "github-ci-token".into(),
-                child: "github-connector".into(),
+                child: "github".into(),
                 allowed_domains: vec!["api.github.com".into()],
                 refresh_capable: false,
                 expires_at: None,
@@ -436,7 +436,7 @@ updated_at = "2026-03-09T17:00:00Z"
 [auth]
 injection = { type = "bearer" }
 secret_ref = "github-token"
-child = "github-connector"
+child = "github"
 allowed_domains = ["api.github.com"]
 "#;
         let record: ConnectionRecord = toml::from_str(input).unwrap();

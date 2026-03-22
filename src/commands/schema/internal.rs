@@ -2035,14 +2035,14 @@ path_template = "{source}"
     }
 
     /// Verify the canonical github schema (wit/schema/github/) is the single
-    /// source of truth. There should be no connector-local schema.toml.
+    /// source of truth. There should be no native connector-local schema.toml.
     #[test]
     fn no_connector_local_schema() {
         let connector_schema =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("children/github-connector/schema.toml");
         assert!(
             !connector_schema.exists(),
-            "children/github-connector/schema.toml should not exist — \
+            "children/github-connector/schema.toml should not exist — native connector retired; \
              wit/schema/github/schema.toml is the canonical source"
         );
     }

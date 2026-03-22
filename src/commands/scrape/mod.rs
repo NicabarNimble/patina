@@ -234,9 +234,9 @@ pub fn execute_rebuild() -> Result<()> {
     let belief_stats = beliefs::run(false)?;
     println!("  • {} beliefs", belief_stats.items_processed);
 
-    // Forge data now comes from github-connector via broker.
+    // Forge data now comes from the github toy via broker.
     // Run `patina mother run github` to fetch issues/PRs.
-    println!("\n📝 [5/5] Forge data via github-connector (run `patina mother run github`)");
+    println!("\n📝 [5/5] Forge data via github toy (run `patina mother run github`)");
 
     // Report new size
     let new_size_kb = std::fs::metadata(&db_path)

@@ -249,7 +249,7 @@ mod tests {
             auth: AuthConfig {
                 injection: InjectionStrategy::Bearer,
                 secret_ref: format!("{}:default", name),
-                child: "github-connector".into(),
+                child: "github".into(),
                 allowed_domains: vec!["api.github.com".into()],
                 refresh_capable: true,
                 expires_at: None,
