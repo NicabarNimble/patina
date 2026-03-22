@@ -20,3 +20,7 @@ intents = ["fetch-source"]
 
 [provides]
 child = "ducklake"
+
+[relationships]
+emits = ["data-ingested"]
+listens = []

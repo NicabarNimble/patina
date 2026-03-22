@@ -24,3 +24,7 @@ write = ["record-verification", "attach-evidence"]
 
 [provides]
 child = "belief-verifier"
+
+[relationships]
+emits = []
+listens = []

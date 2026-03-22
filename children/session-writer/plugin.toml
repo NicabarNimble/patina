@@ -11,3 +11,7 @@ toys = ["log", "state", "session"]
 
 [provides]
 child = "session-writer"
+
+[relationships]
+emits = []
+listens = ["data-ingested"]
