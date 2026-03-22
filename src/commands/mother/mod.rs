@@ -47,7 +47,6 @@ pub(crate) use mother_crate::registry;
 pub(crate) use mother_crate::secrets;
 
 use anyhow::{bail, Context, Result};
-use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::path::Path;
 
 use patina::paths;
@@ -514,78 +513,6 @@ fn show_status() -> Result<()> {
     Ok(())
 }
 
-// === Socket management (shared with daemon) ===
-
-/// Ensure the runtime directory exists with correct permissions.
-///
-/// Creates `~/.patina/run/` with 0o700 if it doesn't exist.
-/// Refuses to start if the directory is world/group accessible.
-fn ensure_run_dir() -> Result<()> {
-    let run_dir = paths::serve::run_dir();
-
-    if !run_dir.exists() {
-        std::fs::create_dir_all(&run_dir)
-            .with_context(|| format!("creating runtime directory {}", run_dir.display()))?;
-        std::fs::set_permissions(&run_dir, std::fs::Permissions::from_mode(0o700))
-            .with_context(|| format!("setting permissions on {}", run_dir.display()))?;
-    } else {
-        let meta = std::fs::metadata(&run_dir)
-            .with_context(|| format!("reading metadata for {}", run_dir.display()))?;
-        let mode = meta.permissions().mode() & 0o777;
-        if mode & 0o077 != 0 {
-            bail!(
-                "Refusing to start: {} has permissions {:o} (group/world accessible).\n  \
-                 Fix with: chmod 700 {}",
-                run_dir.display(),
-                mode,
-                run_dir.display()
-            );
-        }
-    }
-
-    Ok(())
-}
-
-/// Remove a stale socket file safely.
-///
-/// Only unlinks if the path is a socket AND owned by the current user.
-/// Refuses to remove non-socket files or files owned by other users.
-fn cleanup_stale_socket(socket_path: &Path) -> Result<()> {
-    if !socket_path.exists() {
-        return Ok(());
-    }
-
-    let meta = std::fs::symlink_metadata(socket_path)
-        .with_context(|| format!("reading metadata for {}", socket_path.display()))?;
-
-    if !meta.file_type().is_socket() {
-        bail!(
-            "Refusing to start: {} exists but is not a socket.\n  \
-             Remove manually if safe: rm {}",
-            socket_path.display(),
-            socket_path.display()
-        );
-    }
-
-    use std::os::unix::fs::MetadataExt;
-    let file_uid = meta.uid();
-    let my_uid = unsafe { libc::getuid() };
-    if file_uid != my_uid {
-        bail!(
-            "Refusing to start: {} is owned by uid {} (you are {}).\n  \
-             This may indicate a security issue.",
-            socket_path.display(),
-            file_uid,
-            my_uid
-        );
-    }
-
-    std::fs::remove_file(socket_path)
-        .with_context(|| format!("removing stale socket {}", socket_path.display()))?;
-
-    Ok(())
-}
-
 /// Set up the Unix domain socket for serving.
 ///
 /// 1. Ensure ~/.patina/run/ exists with 0o700
@@ -593,28 +520,15 @@ fn cleanup_stale_socket(socket_path: &Path) -> Result<()> {
 /// 3. Bind UnixListener
 /// 4. Set socket to 0o600
 pub fn setup_unix_listener() -> Result<std::os::unix::net::UnixListener> {
-    use std::os::unix::net::UnixListener;
-
-    ensure_run_dir()?;
-
+    let run_dir = paths::serve::run_dir();
     let socket_path = paths::serve::socket_path();
-    cleanup_stale_socket(&socket_path)?;
-
-    let listener = UnixListener::bind(&socket_path)
-        .with_context(|| format!("binding socket {}", socket_path.display()))?;
-
-    std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o600))
-        .with_context(|| format!("setting permissions on {}", socket_path.display()))?;
-
-    Ok(listener)
+    mother_crate::socket::setup_unix_listener(&run_dir, &socket_path)
 }
 
 /// Remove the socket file on clean shutdown.
 pub fn cleanup_socket() {
     let socket_path = paths::serve::socket_path();
-    if socket_path.exists() {
-        let _ = std::fs::remove_file(&socket_path);
-    }
+    mother_crate::socket::cleanup_socket(&socket_path);
 }
 
 #[cfg(test)]

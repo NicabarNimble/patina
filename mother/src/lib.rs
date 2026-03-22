@@ -8,6 +8,7 @@ pub mod protocol;
 pub mod registry;
 pub mod runtime;
 pub mod secrets;
+pub mod socket;
 pub mod state;
 pub mod tasks;
 pub mod toys;
