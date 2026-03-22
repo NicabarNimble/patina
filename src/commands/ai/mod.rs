@@ -70,9 +70,6 @@ pub struct AiLaunchArgs {
     #[arg(long)]
     path: Option<String>,
 
-    #[arg(long)]
-    no_tmux: bool,
-
     #[arg(long, default_value_t = false)]
     default: bool,
 }
@@ -177,7 +174,6 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             requested_session: launch.session,
             persona: launch.persona,
             path: launch.path,
-            no_tmux: launch.no_tmux,
             set_default: launch.default,
         }),
         Some(AiCommands::OpenCode { launch }) => surface::launch(surface::AiLaunchRequest {
@@ -186,7 +182,6 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             requested_session: launch.session,
             persona: launch.persona,
             path: launch.path,
-            no_tmux: launch.no_tmux,
             set_default: launch.default,
         }),
         Some(AiCommands::Gemini { launch }) => surface::launch(surface::AiLaunchRequest {
@@ -195,7 +190,6 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             requested_session: launch.session,
             persona: launch.persona,
             path: launch.path,
-            no_tmux: launch.no_tmux,
             set_default: launch.default,
         }),
         Some(AiCommands::List { json }) => internal::list(json),

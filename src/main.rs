@@ -65,10 +65,6 @@ struct Cli {
     #[arg(long = "interface", alias = "adapter", global = true)]
     interface: Option<String>,
 
-    /// Disable tmux session wrapping (launch adapter directly)
-    #[arg(long = "no-tmux", global = true)]
-    no_tmux: bool,
-
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -1136,7 +1132,6 @@ fn main() -> Result<()> {
                 adapter: cli.interface,
                 auto_start_mother: true,
                 auto_init: true,
-                no_tmux: cli.no_tmux,
             };
             commands::launch::execute(options)?;
         }

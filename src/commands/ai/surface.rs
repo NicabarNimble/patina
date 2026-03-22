@@ -1,15 +1,8 @@
 use anyhow::{bail, Result};
-use chrono::Utc;
-use std::fs;
-use std::io::IsTerminal;
-use std::path::Path;
-use std::process::Command;
 
-use patina::interface::{self, check_in, session_writer_action, InterfaceCheckIn, LaunchPolicy};
+use patina::interface::{self, check_in, InterfaceCheckIn};
 use patina::project;
-use patina::session::{self, ArchiveSessionRequest, InterfaceKind};
 use patina::workspace;
-use serde_json::json;
 
 use crate::commands::launch::internal::{self as launch_internal, BranchAction};
 
@@ -34,7 +27,6 @@ pub struct AiLaunchRequest {
     pub requested_session: Option<String>,
     pub persona: Option<String>,
     pub path: Option<String>,
-    pub no_tmux: bool,
     pub set_default: bool,
 }
 
@@ -47,7 +39,6 @@ pub fn launch_default() -> Result<()> {
         requested_session: None,
         persona: None,
         path: None,
-        no_tmux: false,
         set_default: false,
     })
 }
@@ -135,7 +126,7 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         );
     }
 
-    let interface_info = patina::interface::runtime::launch::get(&interface_name)?;
+    let interface_info = patina::interface::launch::get(&interface_name)?;
     if !interface_info.detected {
         bail!(
             "Interface '{}' ({}) is not installed.",
@@ -186,8 +177,6 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
     let (adapter, bootstrap) =
         crate::commands::interface::ensure_ready(&interface_name, &project_path, false)?;
 
-    reconcile_tmux_bound_sessions(&project_path, &interface_name)?;
-
     if request.set_default || config_result.default_interface.is_empty() {
         interface::set_project_default_interface(&project_path, &interface_name)?;
     }
@@ -227,49 +216,6 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
     }
     println!("  Artifact: {}", checkin.artifact_path.display());
 
-    let env_disabled = std::env::var("PATINA_TMUX")
-        .map(|value| value == "0")
-        .unwrap_or(false);
-    let is_tty = std::io::stdout().is_terminal();
-    let inside_tmux = std::env::var_os("TMUX").is_some();
-    let tmux_in_path = which::which("tmux").is_ok();
-    let (tmux_version_ok, detected_version) = if tmux_in_path {
-        interface::check_tmux_version()
-    } else {
-        (false, String::new())
-    };
-    let decision = interface::resolve_tmux_decision(
-        request.no_tmux,
-        env_disabled,
-        is_tty,
-        inside_tmux,
-        tmux_in_path,
-        tmux_version_ok,
-    );
-
-    match &decision {
-        interface::TmuxDecision::Off(interface::OffReason::NotInPath) => {
-            eprintln!(
-                "Warning: tmux not found — launching {} directly",
-                adapter.display_name()
-            );
-        }
-        interface::TmuxDecision::Off(interface::OffReason::TmuxTooOld) => {
-            eprintln!(
-                "Warning: tmux {} too old (need ≥ 1.9) — launching {} directly",
-                detected_version,
-                adapter.display_name()
-            );
-        }
-        _ => {}
-    }
-
-    let session_name = match &checkin.launch_policy {
-        LaunchPolicy::TmuxPreferred { session_name } => session_name.clone(),
-        LaunchPolicy::Direct => {
-            interface::derive_interface_session_name(&project_path, &interface_name)
-        }
-    };
     let env = vec![
         (
             "PATINA_SESSION_RUNTIME_ID".to_string(),
@@ -286,19 +232,8 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         ),
     ];
 
-    emit_runtime_hygiene_measure(
-        &project_path,
-        &decision,
-        &session_name,
-        tmux_in_path,
-        tmux_version_ok,
-        inside_tmux,
-    );
-
     adapter.launch(interface::LaunchRequest {
         project_root: project_path,
-        tmux_decision: decision,
-        session_name,
         env,
     })
 }
@@ -338,212 +273,6 @@ fn record_ai_session_started(
         &payload.to_string(),
     )?;
     Ok(())
-}
-
-fn emit_runtime_hygiene_measure(
-    project_root: &Path,
-    decision: &interface::TmuxDecision,
-    session_name: &str,
-    tmux_available: bool,
-    tmux_version_ok: bool,
-    inside_tmux: bool,
-) {
-    let cwd = std::env::current_dir().ok();
-    let cwd_matches_project_root = cwd.as_deref() == Some(project_root);
-    let ssh_session = std::env::var_os("SSH_CONNECTION").is_some();
-
-    let (tmux_decision, off_reason) = match decision {
-        interface::TmuxDecision::Auto => ("auto", None),
-        interface::TmuxDecision::Off(reason) => ("off", Some(format!("{:?}", reason))),
-    };
-
-    let (set_clipboard_on, copy_command_set, allow_passthrough_on) =
-        probe_tmux_clipboard_settings(session_name, tmux_available);
-
-    let metrics = json!({
-        "tmux_decision": tmux_decision,
-        "off_reason": off_reason,
-        "cwd_matches_project_root": cwd_matches_project_root,
-        "ssh_session": ssh_session,
-        "inside_tmux": inside_tmux,
-        "tmux_available": tmux_available,
-        "tmux_version_ok": tmux_version_ok,
-        "set_clipboard_on": set_clipboard_on,
-        "copy_command_set": copy_command_set,
-        "allow_passthrough_on": allow_passthrough_on,
-    });
-
-    patina::measure::emit_or_warn("evolve", "session", "runtime-hygiene", &metrics);
-}
-
-fn probe_tmux_clipboard_settings(
-    session_name: &str,
-    tmux_available: bool,
-) -> (Option<bool>, Option<bool>, Option<bool>) {
-    if !tmux_available {
-        return (None, None, None);
-    }
-
-    let socket_name = format!("{}_sock", session_name);
-    let _ = Command::new("tmux")
-        .arg("-L")
-        .arg(&socket_name)
-        .arg("start-server")
-        .output();
-
-    let set_clipboard = tmux_show_option(&socket_name, "set-clipboard");
-    let copy_command = tmux_show_option(&socket_name, "copy-command");
-    let allow_passthrough = tmux_show_option(&socket_name, "allow-passthrough");
-
-    (
-        set_clipboard.map(|value| value == "on"),
-        copy_command.map(|value| !value.is_empty() && value != "''"),
-        allow_passthrough.map(|value| value == "on"),
-    )
-}
-
-fn tmux_show_option(socket_name: &str, option: &str) -> Option<String> {
-    let output = Command::new("tmux")
-        .arg("-L")
-        .arg(socket_name)
-        .args(["show", "-s", "-v", option])
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if value.is_empty() {
-        None
-    } else {
-        Some(value)
-    }
-}
-
-fn reconcile_tmux_bound_sessions(project_root: &Path, adapter_name: &str) -> Result<()> {
-    if which::which("tmux").is_err() {
-        return Ok(());
-    }
-
-    let interface_kind = InterfaceKind::from_adapter_name(adapter_name);
-    if interface_kind == InterfaceKind::Unknown {
-        return Ok(());
-    }
-
-    let session_name = interface::derive_interface_session_name(project_root, adapter_name);
-    let mut adapter_sessions: Vec<_> = session::list_active_sessions(project_root)?
-        .into_iter()
-        .filter(|handle| {
-            handle.adapter_name == adapter_name && handle.interface_kind == interface_kind
-        })
-        .collect();
-
-    if adapter_sessions.is_empty() {
-        return Ok(());
-    }
-
-    if !interface::tmux_session_alive(&session_name) {
-        for handle in adapter_sessions {
-            archive_tmux_reconciled_session(
-                project_root,
-                &handle,
-                &session_name,
-                "tmux-lost",
-                "Archived automatically because the lane was not alive at launch.",
-            )?;
-        }
-        return Ok(());
-    }
-
-    let keep_runtime_id = session::load_current_interface_session(project_root, adapter_name)?
-        .map(|handle| handle.runtime_id)
-        .or_else(|| {
-            adapter_sessions
-                .iter()
-                .max_by(|a, b| a.updated_at.cmp(&b.updated_at))
-                .map(|handle| handle.runtime_id.clone())
-        });
-
-    let Some(keep_runtime_id) = keep_runtime_id else {
-        return Ok(());
-    };
-
-    for handle in adapter_sessions.drain(..) {
-        if handle.runtime_id == keep_runtime_id {
-            continue;
-        }
-        archive_tmux_reconciled_session(
-            project_root,
-            &handle,
-            &session_name,
-            "superseded",
-            &format!(
-                "Archived automatically because another live runtime owns lane `{}`.",
-                keep_runtime_id
-            ),
-        )?;
-    }
-
-    Ok(())
-}
-
-fn archive_tmux_reconciled_session(
-    project_root: &Path,
-    handle: &session::LiveSessionHandle,
-    session_name: &str,
-    reason_slug: &str,
-    reason_text: &str,
-) -> Result<()> {
-    let markdown = fs::read_to_string(&handle.artifact_path).unwrap_or_else(|_| {
-        format!(
-            "---\nid: {}\nruntime_id: {}\nstatus: active\n---\n\n## Outcome\n",
-            handle.file_id, handle.runtime_id
-        )
-    });
-    let archived_markdown = append_tmux_handoff(&markdown, session_name, reason_text);
-    if reason_slug == "tmux-lost" {
-        let crash_payload = json!({
-            "reason": reason_text,
-            "lane": session_name,
-            "modified_files": patina::git::status_porcelain().unwrap_or_default(),
-            "summary": patina::git::diff_stat_summary().unwrap_or_default(),
-        });
-        let _ = session_writer_action(handle, "crash-handoff", crash_payload);
-    }
-
-    let resolved_reason = if reason_slug == "tmux-lost" {
-        "crashed"
-    } else {
-        reason_slug
-    };
-    let end_tag = format!(
-        "session-{}-{}-{}",
-        handle.file_id, handle.adapter_name, resolved_reason
-    );
-    session::archive_session(
-        project_root,
-        ArchiveSessionRequest {
-            runtime_id: handle.runtime_id.clone(),
-            markdown: archived_markdown,
-            end_tag: Some(end_tag),
-        },
-    )?;
-    crate::commands::events::export_best_effort();
-    super::internal::stage_session_artifacts(project_root, &handle.artifact_path)?;
-    eprintln!(
-        "Archived stale {} session {} ({})",
-        handle.adapter_name, handle.file_id, reason_slug
-    );
-    Ok(())
-}
-
-fn append_tmux_handoff(markdown: &str, session_name: &str, reason_text: &str) -> String {
-    let ts = Utc::now().to_rfc3339();
-    format!(
-        "{markdown}\n\n## Handoff\n\n- {ts}: {reason_text}\n- Lane: `{session_name}`\n- In-memory interface context was lost with the lane/runtime.\n- Resume by starting a new lane and using this artifact as the handoff baseline.\n"
-    )
 }
 
 #[cfg(test)]
@@ -638,18 +367,5 @@ mod tests {
         let config = project::load_with_migration(temp.path()).unwrap();
         assert_eq!(config.adapters.default, "claude");
         assert!(temp.path().join(".gemini/commands/spec.toml").exists());
-    }
-
-    #[test]
-    fn append_tmux_handoff_adds_handoff_section() {
-        let markdown = "# Session\n\n## Outcome\n\n- done";
-        let updated = append_tmux_handoff(
-            markdown,
-            "patina_repo_1234_claude",
-            "Archived automatically because the lane was not alive at launch.",
-        );
-        assert!(updated.contains("## Handoff"));
-        assert!(updated.contains("patina_repo_1234_claude"));
-        assert!(updated.contains("In-memory interface context was lost"));
     }
 }

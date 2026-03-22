@@ -29,7 +29,7 @@
 
 use anyhow::Result;
 use patina::interface;
-use patina::interface::runtime::launch as interfaces;
+use patina::interface::launch as interfaces;
 use patina::project;
 
 /// Interface subcommands (compatibility re-export for main.rs)

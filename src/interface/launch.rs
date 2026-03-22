@@ -7,7 +7,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use patina::interface::runtime::launch;
+//! use patina::interface::launch;
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // List available interfaces

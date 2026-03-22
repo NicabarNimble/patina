@@ -5,11 +5,8 @@ use std::path::PathBuf;
 use crate::project;
 use crate::session::{self, BeginSessionRequest, InterfaceKind, SessionParticipant};
 
-use super::tmux::derive_interface_session_name;
-
 #[derive(Debug, Clone)]
 pub struct InterfaceCapabilities {
-    pub tmux: bool,
     pub bootstrap: bool,
     pub durable_sessions: bool,
 }
@@ -17,7 +14,6 @@ pub struct InterfaceCapabilities {
 impl Default for InterfaceCapabilities {
     fn default() -> Self {
         Self {
-            tmux: true,
             bootstrap: true,
             durable_sessions: true,
         }
@@ -37,19 +33,12 @@ pub struct InterfaceCheckIn {
 }
 
 #[derive(Debug, Clone)]
-pub enum LaunchPolicy {
-    TmuxPreferred { session_name: String },
-    Direct,
-}
-
-#[derive(Debug, Clone)]
 pub struct CheckInResult {
     pub persona_uid: Option<String>,
     pub session_runtime_id: String,
     pub session_file_id: String,
     pub artifact_path: PathBuf,
     pub attached_existing: bool,
-    pub launch_policy: LaunchPolicy,
 }
 
 pub fn check_in(request: &InterfaceCheckIn) -> Result<CheckInResult> {
@@ -228,28 +217,16 @@ fn load_requested_session(
 }
 
 fn result_from_handle(
-    request: &InterfaceCheckIn,
+    _request: &InterfaceCheckIn,
     handle: session::LiveSessionHandle,
     attached_existing: bool,
 ) -> CheckInResult {
-    let launch_policy = if request.capabilities.tmux {
-        LaunchPolicy::TmuxPreferred {
-            session_name: derive_interface_session_name(
-                &request.project_root,
-                &request.adapter_name,
-            ),
-        }
-    } else {
-        LaunchPolicy::Direct
-    };
-
     CheckInResult {
         persona_uid: handle.persona_uid.clone(),
         session_runtime_id: handle.runtime_id,
         session_file_id: handle.file_id,
         artifact_path: handle.artifact_path,
         attached_existing,
-        launch_policy,
     }
 }
 

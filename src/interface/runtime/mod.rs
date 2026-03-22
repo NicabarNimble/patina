@@ -1,15 +1,11 @@
 pub mod claude;
 pub mod gemini;
-pub mod launch;
 pub mod opencode;
 pub mod templates;
 
 use crate::environment::Environment;
 use anyhow::Result;
 use std::path::Path;
-
-// Re-export launcher types for convenience
-pub use launch::{InterfaceInfo, InterfaceKind, McpConfig};
 
 /// Trait for AI interface-specific implementations
 pub trait InterfaceProvider {
