@@ -4,11 +4,11 @@
 //! Creates basic `.gemini/` structure with context file.
 
 use crate::environment::Environment;
-use crate::interface::runtime::InterfaceProvider;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 mod internal;
+use super::InterfaceProvider;
 
 // Export version for version management
 pub const GEMINI_ADAPTER_VERSION: &str = "0.1.0";

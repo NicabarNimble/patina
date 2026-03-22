@@ -26,6 +26,9 @@ pub use internal::surface::{
     set_project_default_interface, AiProjectConfigResult, AiSurfaceRequest, AiSurfaceResult,
     PreparedInterface,
 };
+pub use runtime::claude::CLAUDE_ADAPTER_VERSION;
+pub use runtime::gemini::GEMINI_ADAPTER_VERSION;
+pub use runtime::templates;
 
 #[derive(Debug, Clone)]
 pub struct AdapterDetection {

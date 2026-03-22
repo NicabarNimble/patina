@@ -99,16 +99,11 @@ pub(super) fn get_project_uid(project_root: &Option<PathBuf>) -> Option<String> 
 }
 
 pub(super) fn check_adapter_version(
-    project_root: &Option<PathBuf>,
+    _project_root: &Option<PathBuf>,
     adapter_name: &str,
 ) -> Result<Option<String>, String> {
-    let root = project_root
-        .as_ref()
-        .ok_or_else(|| "no project root".to_string())?;
-    let adapter = crate::interface::runtime::get_interface_provider(adapter_name);
-    adapter
-        .check_for_updates(root)
-        .map(|opt| opt.map(|(current, _)| current))
+    crate::interface::launch::get(adapter_name)
+        .map(|info| info.version)
         .map_err(|e| format!("adapter check: {}", e))
 }
 

@@ -3,8 +3,8 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
+use super::super::templates;
 use crate::environment::Environment;
-use crate::interface::runtime::templates;
 
 /// Initialize OpenCode project structure.
 ///

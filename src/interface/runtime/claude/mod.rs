@@ -7,11 +7,11 @@
 //! - Custom command definitions
 
 use crate::environment::Environment;
-use crate::interface::runtime::InterfaceProvider;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 mod internal;
+use super::InterfaceProvider;
 
 // Re-export version constant for version checking
 pub use internal::CLAUDE_ADAPTER_VERSION;
