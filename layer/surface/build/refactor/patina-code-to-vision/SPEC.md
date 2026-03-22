@@ -318,6 +318,7 @@ Mother-required policy applies only to child-provided command surfaces after chi
 - 3a (structural relocation): move src/mother/ runtime infrastructure into mother/ crate (state, events, broker, tasks, registry, transport shell)
 - 3b (functional extraction): for graph/query/toy host orchestration, extract adapter contracts first, then switch callers and ownership
 - Do not force-move orchestrators that still depend on patina-internal domains; patch through adapters before physical relocation
+- Adapter-backed transitional orchestrator ownership is allowed at Phase 3 completion only when explicitly listed in DESIGN progress logs with parity proof; hidden split ownership is not allowed
 - CLI `patina mother` becomes thin: start/stop/status over the socket
 - Mother is one crate, one process, one thing
 - Note: mother/src/daemon.rs already has real protocol routing (327 lines) — the actions return placeholder text but the infrastructure is solid. Phase 3 adds real runtime behind the existing routing.

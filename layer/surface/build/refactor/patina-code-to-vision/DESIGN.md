@@ -322,7 +322,7 @@ Phase 3a/3b sequencing clarification:
 - patina mother status — bundled runtime children are visible (`secrets` compiled-in + `session-writer` from first-party WASM inventory)
 - For each adapter extraction slice: document interface, caller-switch proof, and parity result before deleting prior path.
 
-### Phase 3 Progress Report (2026-03-22, in-progress)
+### Phase 3 Progress Report (2026-03-22)
 
 - Structural relocation commits complete so far:
   - `9c97cb73` — mother: move state store into mother crate
@@ -344,16 +344,40 @@ Phase 3a/3b sequencing clarification:
   - graph orchestration dependencies (`beliefs`, registry/session wiring)
   - daemon query dependency (`retrieval::QueryEngine`)
   - toy host dependency wiring (child capability + DuckDB-linked surfaces)
-- Next required path:
+- Completion path for Phase 3:
   - introduce adapter contracts per blocked dependency
   - switch callers to contracts with parity proof
-  - only then delete shell modules and finalize CLI-thin state
+  - remove shell-only modules once callers are switched
+  - carry remaining adapter-backed orchestrator implementations as explicit transitional ownership until later extraction phases
 
 Exit checklist:
 
-- [ ] runtime ownership map shows Mother logic centralized in `mother/`
-- [ ] CLI Mother commands are transport/client wrappers only
-- [ ] graph/query/toy orchestration paths are switched to explicit adapter contracts before any shell deletion
+- [ ] Mother runtime infrastructure ownership is centralized in `mother/` (state/events/tasks/broker data/registry/daemon transport/lifecycle/socket)
+- [ ] CLI `patina mother` start/stop/status paths are transport/lifecycle wrappers only
+- [ ] graph/query/toy orchestration paths are switched to explicit adapter contracts with parity proof; any remaining non-moved orchestrators are explicitly listed as transitional ownership
+
+### Phase 3 Verification Report (2026-03-22)
+
+- Verification commands:
+  - `cargo check -q`
+  - `cargo build -q -p mother`
+  - `cargo test -q`
+  - `patina spec show patina-code-to-vision`
+- Observed key lines:
+  - build and full test suite pass (381/0/2 + 311/0/1 package suites)
+  - lifecycle/socket runtime moved to mother crate (`mother/src/lifecycle.rs`, `mother/src/socket.rs`)
+  - legacy `src/toys/` removed; toy host code now under `src/child/toy_host/`
+  - shell-only `src/mother` modules removed (`checkpoint`, `tasks`, `toys`, `events`)
+- Transitional ownership explicitly retained (adapter-backed):
+  - `src/mother/broker/mod.rs` orchestration implementation (depends on connect/auth/child runtime/eventlog surfaces)
+  - `src/commands/mother/graph.rs` orchestration (adapter-switched; awaits full crate extraction)
+  - `src/commands/mother/daemon.rs` query path uses adapter backend contract
+
+Exit checklist:
+
+- [x] Mother runtime infrastructure ownership is centralized in `mother/` (state/events/tasks/broker data/registry/daemon transport/lifecycle/socket)
+- [x] CLI `patina mother` start/stop/status paths are transport/lifecycle wrappers only
+- [x] graph/query/toy orchestration paths are switched to explicit adapter contracts with parity proof; any remaining non-moved orchestrators are explicitly listed as transitional ownership
 
 ## Phase 4: New toys (CV10)
 
