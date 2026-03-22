@@ -557,6 +557,31 @@ impl Default for DaemonOptions {
 
 /// Run the mother daemon server
 pub fn run_server(options: DaemonOptions) -> Result<()> {
+    let extracted_mode = std::env::var("PATINA_MOTHER_EXTRACTED")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    if extracted_mode {
+        if options.host.is_some() {
+            anyhow::bail!(
+                "PATINA_MOTHER_EXTRACTED only supports Unix socket mode (omit --host/--port)"
+            );
+        }
+
+        let socket_path = patina::paths::serve::socket_path();
+        write_pid_file()?;
+        register_signal_handlers();
+
+        println!("🚀 Mother daemon starting (extracted mode)...");
+        println!("   PID: {}", std::process::id());
+        println!("   Listening on {}", socket_path.display());
+        println!("   Protocol: JSON-lines over Unix socket");
+        println!("   Press Ctrl+C to stop\n");
+
+        let state = mother_crate::daemon::DaemonState::default();
+        return mother_crate::daemon::listen_with_state(&socket_path, &state);
+    }
+
     // Build and load child registry
     let mut registry = ChildRegistry::new();
     let runtime = patina::mother::KnowledgeRuntimeStore::default();
