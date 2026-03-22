@@ -12,12 +12,15 @@ One Mother daemon. Core verbs standalone in CLI. Children opt-in via WASM. Zero 
 
 ## Agent Execution Rules (no drift)
 
+0. Anchor every phase in `layer/core/` values before changes:
+   - `spec-driven-design.md`, `dependable-rust.md`, `safety-boundaries.md`, `unix-philosophy.md`.
 1. Execute phases sequentially. No parallel phase work.
-2. Before touching code, verify phase entry conditions and record them.
+2. Before touching code, verify phase entry conditions and record them. Read code before write code.
 3. After code changes, run phase proof commands and record key lines.
 4. Update SPEC CV truth map before declaring phase complete.
 5. Never check a CV without direct proof.
 6. If reality disagrees with design, patch SPEC/DESIGN first, then continue.
+7. Git updates with scalpel, not shotgun (small, phase-bounded commits only).
 
 ## Resolved Decisions
 

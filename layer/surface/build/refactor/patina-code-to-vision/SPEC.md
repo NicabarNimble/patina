@@ -103,6 +103,13 @@ Make the code match the vision. When a new contributor reads the code, they see:
 
 This spec is execution-constrained. Any agent implementing it must follow these rules:
 
+Core-values anchor is mandatory at phase start:
+
+- `layer/core/spec-driven-design.md`
+- `layer/core/dependable-rust.md`
+- `layer/core/safety-boundaries.md`
+- `layer/core/unix-philosophy.md`
+
 1. No silent scope changes.
    - If a phase reveals missing prerequisite work, update SPEC/DESIGN first, then implement.
    - Do not "just continue" with hidden assumptions.
@@ -114,6 +121,7 @@ This spec is execution-constrained. Any agent implementing it must follow these 
 3. Claim discipline is mandatory.
    - Every state claim must have evidence (file:line or command output) in this spec's truth map/logs.
    - Unverified claims must be labeled `unverified`.
+   - Read code before write code.
 
 4. Criteria integrity.
    - CV text cannot be weakened to fit current code.
@@ -122,6 +130,7 @@ This spec is execution-constrained. Any agent implementing it must follow these 
 5. One-phase-at-a-time gate.
    - A phase starts only when prerequisite claims are verified.
    - A phase ends only when phase verification commands pass and CV truth map is updated.
+   - Git updates with scalpel, not shotgun: phase-scoped edits, no broad opportunistic rewrites.
 
 6. No ghost completion.
    - A CV may be checked only when proof is reproducible by another agent from SPEC+DESIGN alone.
