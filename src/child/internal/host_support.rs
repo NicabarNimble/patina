@@ -249,7 +249,7 @@ pub(crate) struct HttpResult {
 /// Returns true only if the file exists, the plugin is listed, and the
 /// secret is in the plugin's `secrets` array. Denies by default.
 pub(super) fn check_secret_grant(plugin_name: &str, secret_name: &str) -> bool {
-    let grants_path = crate::paths::plugin::secret_grants_path();
+    let grants_path = crate::paths::child::secret_grants_path();
     let content = match std::fs::read_to_string(&grants_path) {
         Ok(c) => c,
         Err(_) => {

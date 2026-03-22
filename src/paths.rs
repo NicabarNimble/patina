@@ -180,8 +180,8 @@ pub mod serve {
     }
 }
 
-/// Plugin paths (WASM children, command plugins, work dirs)
-pub mod plugin {
+/// Child runtime paths (WASM children, command children, work dirs)
+pub mod child {
     use super::*;
 
     /// WASM children directory: `~/.patina/children/`
@@ -215,6 +215,11 @@ pub mod plugin {
             .join("plugin-config")
             .join("secret-grants.toml")
     }
+}
+
+/// Legacy plugin-path alias maintained during vocabulary migration.
+pub mod plugin {
+    pub use super::child::{children_dir, pipeline_dir, plugins_dir, secret_grants_path, work_dir};
 }
 
 /// User-level layer paths (~/.patina/layer/)

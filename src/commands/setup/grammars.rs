@@ -229,7 +229,7 @@ fn find_source_root() -> Result<PathBuf> {
 
 /// Get the pipeline directory (~/.patina/pipeline/).
 fn pipeline_dir() -> Result<PathBuf> {
-    Ok(patina::paths::plugin::pipeline_dir())
+    Ok(patina::paths::child::pipeline_dir())
 }
 
 /// Format bytes as human-readable size.

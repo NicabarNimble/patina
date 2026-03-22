@@ -239,7 +239,7 @@ struct LoadedPipelinePlugin {
 fn discover_pipeline_plugins(
     extension_filter: Option<&HashSet<String>>,
 ) -> HashMap<String, LoadedPipelinePlugin> {
-    let pipeline_dir = paths::plugin::pipeline_dir();
+    let pipeline_dir = paths::child::pipeline_dir();
 
     if !pipeline_dir.is_dir() {
         return HashMap::new();

@@ -592,7 +592,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         .expect("failed to register secrets child");
 
     // WASM children (discovered from ~/.patina/children/)
-    let children_dir = patina::paths::plugin::children_dir();
+    let children_dir = patina::paths::child::children_dir();
     if children_dir.exists() {
         if let Ok(entries) = std::fs::read_dir(&children_dir) {
             for entry in entries.flatten() {

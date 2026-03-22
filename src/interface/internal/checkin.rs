@@ -160,7 +160,7 @@ fn load_session_writer_knowledge_child() -> Result<Option<Box<dyn crate::mother:
     let engine = crate::child::engine::KnowledgeChildEngine::new()?;
 
     let mut candidates: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
-    let installed_dir = crate::paths::plugin::children_dir();
+    let installed_dir = crate::paths::child::children_dir();
     if installed_dir.exists() {
         for entry in std::fs::read_dir(&installed_dir)? {
             let entry = entry?;

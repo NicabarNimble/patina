@@ -286,7 +286,7 @@ fn load_ducklake_knowledge_child(
     let engine = crate::child::engine::KnowledgeChildEngine::new()?;
 
     let mut candidates: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
-    let installed_dir = crate::paths::plugin::children_dir();
+    let installed_dir = crate::paths::child::children_dir();
     if installed_dir.exists() {
         for entry in std::fs::read_dir(&installed_dir).with_context(|| {
             format!("reading installed children dir {}", installed_dir.display())
@@ -342,7 +342,7 @@ fn load_ducklake_knowledge_child(
 
     anyhow::bail!(
         "ducklake knowledge-child component not found. Install one under {} or build children/ducklake for wasm32-wasip2",
-        crate::paths::plugin::children_dir().display()
+        crate::paths::child::children_dir().display()
     )
 }
 

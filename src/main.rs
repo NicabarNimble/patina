@@ -1388,8 +1388,8 @@ fn main() -> Result<()> {
             }
 
             // Try WASM plugin first
-            let plugin_wasm = patina::paths::plugin::plugins_dir().join("patina-doctor.wasm");
-            let plugin_toml = patina::paths::plugin::plugins_dir().join("patina-doctor.toml");
+            let plugin_wasm = patina::paths::child::plugins_dir().join("patina-doctor.wasm");
+            let plugin_toml = patina::paths::child::plugins_dir().join("patina-doctor.toml");
 
             let exit_code = if plugin_wasm.exists() {
                 let manifest = if plugin_toml.exists() {
@@ -1452,7 +1452,7 @@ fn main() -> Result<()> {
             }
         }
         Some(Commands::Plugin { command }) => match command {
-            PluginCommands::List => commands::plugin::execute_list()?,
+            PluginCommands::List => commands::child::execute_list()?,
             PluginCommands::Init {
                 name,
                 world,
@@ -1525,7 +1525,7 @@ fn main() -> Result<()> {
                 }
             }
             PluginCommands::Run { name, args } => {
-                let plugins_dir = patina::paths::plugin::plugins_dir();
+                let plugins_dir = patina::paths::child::plugins_dir();
                 let wasm_path = plugins_dir.join(format!("{}.wasm", name));
                 let toml_path = plugins_dir.join(format!("{}.toml", name));
 

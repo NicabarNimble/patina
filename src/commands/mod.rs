@@ -3,6 +3,7 @@ pub mod ai;
 pub mod assay;
 pub mod belief;
 pub mod bench;
+pub mod child;
 pub mod connect;
 pub mod context;
 #[cfg(feature = "bundled-doctor")]
