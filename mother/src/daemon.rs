@@ -1,6 +1,7 @@
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use serde_json::json;
@@ -9,7 +10,32 @@ use crate::protocol::{
     ConnectPayload, ContextPayload, Envelope, LakeSyncPayload, PROTOCOL_VERSION,
 };
 
+#[derive(Debug, Default, Clone)]
+pub struct DaemonState {
+    disconnected_sessions: Arc<Mutex<Vec<String>>>,
+}
+
+impl DaemonState {
+    pub fn record_disconnect(&self, session_id: &str) {
+        if let Ok(mut guard) = self.disconnected_sessions.lock() {
+            guard.push(session_id.to_string());
+        }
+    }
+
+    pub fn disconnected_sessions(&self) -> Vec<String> {
+        self.disconnected_sessions
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default()
+    }
+}
+
 pub fn listen(socket_path: &Path) -> Result<()> {
+    let state = DaemonState::default();
+    listen_with_state(socket_path, &state)
+}
+
+pub fn listen_with_state(socket_path: &Path, state: &DaemonState) -> Result<()> {
     if socket_path.exists() {
         std::fs::remove_file(socket_path)?;
     }
@@ -17,7 +43,7 @@ pub fn listen(socket_path: &Path) -> Result<()> {
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
-                let _ = handle_client(&mut stream);
+                let _ = handle_client(&mut stream, state);
             }
             Err(_) => continue,
         }
@@ -26,35 +52,52 @@ pub fn listen(socket_path: &Path) -> Result<()> {
 }
 
 pub fn serve_one(socket_path: &Path) -> Result<()> {
+    let state = DaemonState::default();
+    serve_one_with_state(socket_path, &state)
+}
+
+pub fn serve_one_with_state(socket_path: &Path, state: &DaemonState) -> Result<()> {
     if socket_path.exists() {
         std::fs::remove_file(socket_path)?;
     }
     let listener = UnixListener::bind(socket_path)?;
     if let Ok((mut stream, _)) = listener.accept() {
-        let _ = handle_client(&mut stream);
+        let _ = handle_client(&mut stream, state);
     }
     Ok(())
 }
 
-fn handle_client(stream: &mut UnixStream) -> Result<()> {
-    let mut line = String::new();
-    {
-        let mut reader = BufReader::new(stream.try_clone()?);
+fn handle_client(stream: &mut UnixStream, state: &DaemonState) -> Result<()> {
+    let mut reader = BufReader::new(stream.try_clone()?);
+    let mut active_session_id: Option<String> = None;
+
+    loop {
+        let mut line = String::new();
         if reader.read_line(&mut line)? == 0 {
+            if let Some(session_id) = active_session_id.as_deref() {
+                state.record_disconnect(session_id);
+            }
             return Ok(());
         }
+
+        let parsed: Result<Envelope, _> = serde_json::from_str(&line);
+        let response = match parsed {
+            Ok(request) if request.v == PROTOCOL_VERSION => {
+                let response = route_request(request);
+                if let Some(result) = response.result.as_ref() {
+                    if let Some(session_id) = result.get("session_id").and_then(|v| v.as_str()) {
+                        active_session_id = Some(session_id.to_string());
+                    }
+                }
+                response
+            }
+            _ => Envelope::unsupported_version(),
+        };
+
+        let serialized = serde_json::to_string(&response)?;
+        stream.write_all(serialized.as_bytes())?;
+        stream.write_all(b"\n")?;
     }
-
-    let parsed: Result<Envelope, _> = serde_json::from_str(&line);
-    let response = match parsed {
-        Ok(request) if request.v == PROTOCOL_VERSION => route_request(request),
-        _ => Envelope::unsupported_version(),
-    };
-
-    let serialized = serde_json::to_string(&response)?;
-    stream.write_all(serialized.as_bytes())?;
-    stream.write_all(b"\n")?;
-    Ok(())
 }
 
 fn route_request(request: Envelope) -> Envelope {
@@ -154,6 +197,7 @@ mod tests {
         let mut line = String::new();
         reader.read_line(&mut line).unwrap();
         assert!(line.contains("unsupported protocol version"));
+        drop(reader);
         handle.join().unwrap().unwrap();
     }
 
@@ -184,6 +228,42 @@ mod tests {
         assert!(line.contains("session_id"));
         assert!(line.contains("ducklake"));
         assert!(line.contains("session-writer"));
+        drop(reader);
         handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn daemon_records_disconnect_after_connect_eof() {
+        let tmp = tempfile::tempdir().unwrap();
+        let socket = tmp.path().join("mother.sock");
+        let state = DaemonState::default();
+        let state_for_thread = state.clone();
+
+        let socket_for_thread = socket.clone();
+        let handle =
+            thread::spawn(move || serve_one_with_state(&socket_for_thread, &state_for_thread));
+
+        for _ in 0..30 {
+            if socket.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+
+        let mut stream = UnixStream::connect(&socket).unwrap();
+        stream
+            .write_all(
+                b"{\"v\":1,\"action\":\"connect\",\"payload\":{\"agent\":\"opencode\",\"project\":\"/tmp/repo\",\"persona\":null}}\n",
+            )
+            .unwrap();
+        let mut reader = BufReader::new(stream);
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        drop(reader);
+
+        handle.join().unwrap().unwrap();
+        let disconnected = state.disconnected_sessions();
+        assert_eq!(disconnected.len(), 1);
+        assert!(disconnected[0].starts_with("opencode-"));
     }
 }
