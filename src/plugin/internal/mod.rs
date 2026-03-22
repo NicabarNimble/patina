@@ -162,9 +162,6 @@ impl std::fmt::Display for ChildRole {
     }
 }
 
-/// Legacy plugin-role alias kept during CV6 migration.
-pub type PluginRole = ChildRole;
-
 // =========================================================================
 // Engine singleton (OnceLock pattern from Zed)
 // =========================================================================
@@ -204,7 +201,7 @@ pub struct CredentialMapping {
 
 /// Parsed child manifest from child.toml (legacy plugin.toml supported).
 #[derive(Debug, Clone)]
-pub struct PluginManifest {
+pub struct ChildManifest {
     pub name: String,
     pub version: String,
     pub description: String,
@@ -226,7 +223,7 @@ pub struct PluginManifest {
     /// Credential mappings per domain (from [capabilities.host_secrets]).
     /// Maps domain → secret name + injection location.
     pub host_secrets: std::collections::HashMap<String, CredentialMapping>,
-    pub provides: PluginProvides,
+    pub provides: ChildProvides,
     /// Schema packages this plugin references (from [schemas.<name>].package).
     /// Maps schema name → package string (e.g., "forge" → "patina:schema/forge@1.0.0").
     pub schemas: std::collections::HashMap<String, String>,
@@ -244,8 +241,8 @@ pub struct PluginManifest {
     pub toys: crate::mother::GrantedToys,
 }
 
-/// Canonical child-manifest naming for runtime child definitions.
-pub type ChildManifest = PluginManifest;
+/// Legacy plugin-manifest alias kept during CV6 migration.
+pub type PluginManifest = ChildManifest;
 
 // =========================================================================
 // Granted capabilities — resolved at load time, checked at call time
@@ -291,9 +288,9 @@ pub struct GrantedCapabilities {
     pub toys: crate::mother::GrantedToys,
 }
 
-/// What the plugin provides to the system.
+/// What the child provides to the system.
 #[derive(Debug, Default, Clone)]
-pub struct PluginProvides {
+pub struct ChildProvides {
     pub child: Option<String>,
     pub commands: Vec<String>,
     /// Pipeline operations this plugin handles (e.g., ["parse", "chunk"]).
@@ -302,7 +299,7 @@ pub struct PluginProvides {
     pub languages: Vec<String>,
 }
 
-impl PluginManifest {
+impl ChildManifest {
     /// Parse a child manifest from a TOML file.
     pub fn from_path(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
@@ -344,7 +341,7 @@ impl PluginManifest {
         } else {
             anyhow::bail!("missing {section_label}.kind");
         };
-        let world = world_str.parse::<PluginWorld>()?;
+        let world = world_str.parse::<ChildKind>()?;
 
         if path.file_name().and_then(|n| n.to_str()) == Some("plugin.toml") {
             eprintln!("deprecated manifest filename 'plugin.toml'; use 'child.toml'");
@@ -353,7 +350,7 @@ impl PluginManifest {
         let role = plugin
             .get("role")
             .and_then(|v| v.as_str())
-            .map(|s| s.parse::<PluginRole>())
+            .map(|s| s.parse::<ChildRole>())
             .transpose()?;
 
         let patina_min = plugin
@@ -653,7 +650,7 @@ impl PluginManifest {
             host_query_kinds,
             host_http_domains,
             host_secrets,
-            provides: PluginProvides {
+            provides: ChildProvides {
                 child,
                 commands,
                 pipeline_ops,
