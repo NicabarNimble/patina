@@ -27,6 +27,7 @@
 
 pub mod broker;
 pub(crate) mod checkpoint;
+mod daemon_client;
 pub(crate) mod events;
 mod internal;
 pub(crate) mod state;
@@ -53,6 +54,7 @@ pub use crate::beliefs::{
 };
 
 // Client exports
+pub use daemon_client::DaemonClient;
 pub use internal::{Client, ScryRequest, ScryResponse, ScryResultJson};
 
 /// Default port for mother daemon
