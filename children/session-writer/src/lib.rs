@@ -7,6 +7,7 @@ struct SessionWriterToys {
     log: granted::Log,
     state: granted::State,
     session: granted::Session,
+    peer: granted::Peer,
 }
 
 impl GrantedBundle for SessionWriterToys {
@@ -15,6 +16,7 @@ impl GrantedBundle for SessionWriterToys {
             log: granted::log(),
             state: granted::state(),
             session: granted::session(),
+            peer: granted::peer(),
         }
     }
 }
@@ -136,8 +138,69 @@ impl KnowledgeChildPlugin for SessionWriterChild {
                 self.toys.session.write_handoff(modified_files, summary)?;
                 Ok(serde_json::json!({"status":"ok"}).to_string())
             }
+            "data-ingested" => {
+                let source_id = value
+                    .get("source_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown-source");
+                let written = value.get("written").and_then(|v| v.as_u64()).unwrap_or(0);
+                let owner = value.get("owner").and_then(|v| v.as_str()).unwrap_or("");
+                let repo = value.get("repo").and_then(|v| v.as_str()).unwrap_or("");
+                let summary = if owner.is_empty() || repo.is_empty() {
+                    format!("ducklake ingested {} rows from {}", written, source_id)
+                } else {
+                    format!(
+                        "ducklake ingested {} rows from {} ({}/{})",
+                        written, source_id, owner, repo
+                    )
+                };
+                self.toys.session.write("activity-log", &summary)?;
+                self.toys.state.put(
+                    "last-data-ingested",
+                    &serde_json::json!({
+                        "source_id": source_id,
+                        "owner": owner,
+                        "repo": repo,
+                        "written": written,
+                    })
+                    .to_string(),
+                )?;
+                Ok(serde_json::json!({"status":"ok"}).to_string())
+            }
             other => Err(format!("session-writer: unknown action '{}'", other)),
         }
+    }
+
+    fn tick(&mut self) -> Vec<patina_sdk::substrate::TaskIntent> {
+        let after_offset = self
+            .toys
+            .state
+            .get("peer-offset:data-ingested")
+            .and_then(|raw| serde_json::from_str::<u64>(&raw).ok());
+        let events = match self.toys.peer.on_event("data-ingested", after_offset, 32) {
+            Ok(events) => events,
+            Err(error) => {
+                self.toys
+                    .log
+                    .warn(&format!("session-writer peer poll failed: {}", error));
+                return vec![];
+            }
+        };
+
+        let mut last_offset = after_offset;
+        for event in events {
+            let _ = self.handle("data-ingested", &event.payload_json);
+            last_offset = Some(event.offset);
+        }
+
+        if let Some(offset) = last_offset {
+            let _ = self.toys.state.put(
+                "peer-offset:data-ingested",
+                &serde_json::json!(offset).to_string(),
+            );
+        }
+
+        vec![]
     }
 }
 

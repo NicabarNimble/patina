@@ -8,7 +8,7 @@ description = "Session artifact writer knowledge child for Mother"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-patina-sdk = { path = "../../sdk/patina-sdk", features = ["knowledge-child", "toy-log", "toy-state", "toy-session"] }
+patina-sdk = { path = "../../sdk/patina-sdk", features = ["knowledge-child", "toy-log", "toy-state", "toy-session", "toy-peer"] }
 serde_json = "1.0"
 
 [package.metadata.component]

@@ -4,6 +4,7 @@ world session-writer {
     import log;
     import state;
     import session;
+    import peer;
     import types;
 
     use types.{child-health};

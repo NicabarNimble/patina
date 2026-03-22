@@ -7,7 +7,7 @@ role = "app"
 patina_min = "0.41.0"
 
 [needs]
-toys = ["log", "state", "session"]
+toys = ["log", "state", "session", "peer"]
 
 [provides]
 child = "session-writer"
