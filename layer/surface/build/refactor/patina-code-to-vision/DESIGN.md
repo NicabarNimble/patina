@@ -224,6 +224,7 @@ Manifest bridge plan (explicit):
   - `4a73cd17` — refactor: accept [child] section and migrate child manifests
   - `754885c6` — refactor: canonicalize child kind and role types
   - `c5b39516` — refactor: canonicalize child manifest and provides types
+  - `bffb0ed6` — refactor: migrate scaffold world type to child kind
 - Commands run:
   - `cargo check -q`
   - `cargo build -q`
@@ -237,6 +238,7 @@ Manifest bridge plan (explicit):
   - first-party `children/*/child.toml` files now use `[child]` section while parser accepts legacy `[plugin]` as transitional bridge
   - plugin internals now define `ChildKind`/`ChildRole` as canonical enums with plugin-era names kept as aliases
   - plugin internals now define `ChildManifest`/`ChildProvides` as canonical structs with plugin-era aliases retained in bridge surface
+  - scaffold path now accepts child kind type directly (`ChildKind`) while preserving CLI behavior
   - Phase 2 is not complete: plugin internals and scaffold still contain plugin-era naming; `src/plugin/` still exists intentionally during bridge window
 
 Exit checklist:
