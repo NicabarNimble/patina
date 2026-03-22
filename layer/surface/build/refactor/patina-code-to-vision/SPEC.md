@@ -250,8 +250,8 @@ Evidence format rules for this table:
 |---|---|---|
 | CV1 | verified-false | Split runtime paths still present at `mother/src/lib.rs:1`, `src/mother/mod.rs:1`, and `src/commands/mother/mod.rs:1`. |
 | CV2 | verified-false | CLI still owns Mother runtime/server surfaces at `src/commands/mother/daemon.rs:1` and `src/commands/mother/mod.rs:1`. |
-| CV3 | verified-false | Extracted-daemon probe routing still active at `src/commands/context.rs:452`, `src/commands/measure/mod.rs:30`, `src/commands/spec/mod.rs:29`, `src/commands/lake.rs:9`, `src/commands/scry/internal/routing.rs:45`. |
-| CV4 | verified-false | Placeholder-filter fallback still active at `src/commands/context.rs:455`, `src/commands/measure/mod.rs:41`, `src/commands/spec/mod.rs:54`, `src/commands/lake.rs:23`, `src/commands/scry/internal/routing.rs:100`. |
+| CV3 | verified-true | Runtime policy is explicitly documented in this spec and command-tested with `resources/scripts/check-core-verb-policy.sh --mode off --isolated` (covers `scrape`, `scry`, `assay`, `context`, `belief`, `measure`, `oxidize`). |
+| CV4 | verified-true | Command proof: `grep "try_daemon_|not yet implemented" src/commands/{context.rs,measure/mod.rs,spec/mod.rs,lake.rs,scry/internal/routing.rs}` => no matches (2026-03-22). |
 | CV5 | verified-false | Command proof: `cargo check` output contains `patina-ai (bin "patina") generated 40 warnings` (2026-03-22 baseline). |
 | CV6 | verified-partial | Both vocabularies still exist in runtime code: `src/plugin/mod.rs:1` and `src/child/mod.rs:1`. |
 | CV7 | verified-false | `patina mother status` shows loaded children `ducklake` and `secrets` only; `session-writer` is not loaded/visible in daemon status output (2026-03-22 baseline). |
