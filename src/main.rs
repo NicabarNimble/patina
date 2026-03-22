@@ -4,7 +4,6 @@ use anyhow::Result;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 mod commands;
-mod mcp;
 mod preflight;
 mod retrieval;
 #[cfg(test)]
@@ -1728,9 +1727,7 @@ fn main() -> Result<()> {
         Some(Commands::Model { command }) => commands::model::execute_cli(command)?,
         Some(Commands::Connect { command }) => commands::connect::execute_cli(command)?,
         Some(Commands::Lake { command }) => commands::lake::execute_cli(command)?,
-        Some(Commands::Mother { command }) => {
-            commands::mother::execute_cli(command, mcp::run_mcp_server)?
-        }
+        Some(Commands::Mother { command }) => commands::mother::execute_cli(command)?,
         Some(Commands::Secrets { command, flags }) => {
             commands::secrets::execute_cli(command, flags)?
         }
@@ -1930,7 +1927,7 @@ fn main() -> Result<()> {
             // Deprecated: delegate to mother start with warning
             eprintln!("Warning: `patina serve` is deprecated, use `patina mother start` instead.");
             if mcp {
-                mcp::run_mcp_server()?;
+                anyhow::bail!("MCP server path has been retired; use `patina mother start`");
             } else {
                 let options = commands::mother::DaemonOptions {
                     host,

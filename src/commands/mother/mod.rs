@@ -262,10 +262,7 @@ pub enum QueryCommands {
 }
 
 /// Execute mother command from CLI
-pub fn execute_cli(
-    command: Option<MotherCommands>,
-    run_mcp: impl FnOnce() -> Result<()>,
-) -> Result<()> {
+pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
     match command {
         None => {
             // Bare `patina mother` — show status (or help for now)
@@ -285,7 +282,7 @@ pub fn execute_cli(
             legacy_migration,
         }) => {
             if mcp {
-                run_mcp()
+                bail!("MCP server path has been retired; start daemon without --mcp")
             } else {
                 let options = DaemonOptions {
                     host,
