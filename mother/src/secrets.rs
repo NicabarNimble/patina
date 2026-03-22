@@ -57,6 +57,7 @@ impl MotherChild for SecretsCacheChild {
             "get" => self.handle_get(),
             "cache" => self.handle_cache(&request.payload),
             "lock" => self.handle_lock(),
+            "health" => self.handle_health(),
             _ => bail!("secrets: unknown action '{}'", request.action),
         }
     }
@@ -104,6 +105,18 @@ impl SecretsCacheChild {
 
         Ok(ChildResponse {
             payload: serde_json::json!({"status": "locked"}),
+        })
+    }
+
+    fn handle_health(&self) -> Result<ChildResponse> {
+        let status = match self.health() {
+            ChildHealth::Healthy => "healthy",
+            ChildHealth::Degraded(_) => "degraded",
+            ChildHealth::Unhealthy(_) => "unhealthy",
+        };
+
+        Ok(ChildResponse {
+            payload: serde_json::json!({"status": status}),
         })
     }
 }
