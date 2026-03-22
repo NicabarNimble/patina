@@ -52,3 +52,13 @@ pub struct MeasurePayload {
     pub verb: Option<String>,
     pub full: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpecPayload {
+    pub subcommand: String,
+    pub id: Option<String>,
+    pub status: Option<String>,
+    pub target: Option<String>,
+    pub json: bool,
+    pub handoff: bool,
+}

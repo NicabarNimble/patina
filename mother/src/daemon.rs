@@ -7,7 +7,8 @@ use anyhow::Result;
 use serde_json::json;
 
 use crate::protocol::{
-    ConnectPayload, ContextPayload, Envelope, LakeSyncPayload, MeasurePayload, PROTOCOL_VERSION,
+    ConnectPayload, ContextPayload, Envelope, LakeSyncPayload, MeasurePayload, SpecPayload,
+    PROTOCOL_VERSION,
 };
 
 #[derive(Debug, Default, Clone)]
@@ -147,7 +148,7 @@ fn handle_action(
             Ok(json!({
                 "session_id": format!("{}-{}", connect.agent, std::process::id()),
                 "children": ["ducklake", "session-writer"],
-                "tools": ["context", "lake.sync", "measure"],
+                "tools": ["context", "lake.sync", "measure", "spec"],
             }))
         }
         "context" => {
@@ -175,6 +176,22 @@ fn handle_action(
                     measure.json,
                     measure.full,
                     measure.verb.unwrap_or_else(|| "none".to_string())
+                )
+            }))
+        }
+        "spec" => {
+            let payload = payload.ok_or_else(|| "missing payload".to_string())?;
+            let spec: SpecPayload = serde_json::from_value(payload)
+                .map_err(|e| format!("invalid spec payload: {}", e))?;
+            Ok(json!({
+                "output": format!(
+                    "spec daemon path not yet implemented (subcommand={}, id={}, status={}, target={}, json={}, handoff={})",
+                    spec.subcommand,
+                    spec.id.unwrap_or_else(|| "none".to_string()),
+                    spec.status.unwrap_or_else(|| "none".to_string()),
+                    spec.target.unwrap_or_else(|| "none".to_string()),
+                    spec.json,
+                    spec.handoff,
                 )
             }))
         }
