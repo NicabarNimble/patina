@@ -794,9 +794,22 @@ mod bindings {
             crate::toys::session::get_previous_session()
         }
 
+        fn get_previous_session_runtime_id(&mut self) -> Option<String> {
+            crate::toys::session::get_previous_session_runtime_id()
+        }
+
+        fn get_previous_session_handoff(&mut self) -> Option<String> {
+            crate::toys::session::get_previous_session_handoff()
+        }
+
         fn write_artifact(&mut self, section: String, content: String) -> Result<(), String> {
             crate::toys::session::ensure_granted(self.grants.toys.session, &self.plugin_name)?;
             crate::toys::session::write_artifact(&section, &content)
+        }
+
+        fn set_parent_session(&mut self, runtime_id: String) -> Result<(), String> {
+            crate::toys::session::ensure_granted(self.grants.toys.session, &self.plugin_name)?;
+            crate::toys::session::set_parent_session(&runtime_id)
         }
 
         fn create_tag(&mut self, name: String) -> Result<(), String> {

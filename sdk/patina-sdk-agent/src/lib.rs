@@ -11,7 +11,10 @@ pub trait EmitBackend {
 pub trait SessionBackend {
     fn get_session_id() -> String;
     fn get_previous_session() -> Option<String>;
+    fn get_previous_session_runtime_id() -> Option<String>;
+    fn get_previous_session_handoff() -> Option<String>;
     fn write(section: &str, content: &str) -> Result<(), String>;
+    fn set_parent_session(runtime_id: &str) -> Result<(), String>;
     fn create_tag(name: &str) -> Result<(), String>;
     fn set_status(status: &str) -> Result<(), String>;
     fn write_handoff(modified_files: &str, summary: &str) -> Result<(), String>;
@@ -65,8 +68,20 @@ impl<B: SessionBackend> SessionToy<B> {
         B::get_previous_session()
     }
 
+    pub fn get_previous_session_runtime_id(&self) -> Option<String> {
+        B::get_previous_session_runtime_id()
+    }
+
+    pub fn get_previous_session_handoff(&self) -> Option<String> {
+        B::get_previous_session_handoff()
+    }
+
     pub fn write(&self, section: &str, content: &str) -> Result<(), String> {
         B::write(section, content)
+    }
+
+    pub fn set_parent_session(&self, runtime_id: &str) -> Result<(), String> {
+        B::set_parent_session(runtime_id)
     }
 
     pub fn create_tag(&self, name: &str) -> Result<(), String> {

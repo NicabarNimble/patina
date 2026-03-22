@@ -575,8 +575,20 @@ pub mod host {
             patina::host::session::get_previous_session()
         }
 
+        fn get_previous_session_runtime_id() -> Option<String> {
+            patina::host::session::get_previous_session_runtime_id()
+        }
+
+        fn get_previous_session_handoff() -> Option<String> {
+            patina::host::session::get_previous_session_handoff()
+        }
+
         fn write(section: &str, content: &str) -> Result<(), String> {
             patina::host::session::write_artifact(section, content)
+        }
+
+        fn set_parent_session(runtime_id: &str) -> Result<(), String> {
+            patina::host::session::set_parent_session(runtime_id)
         }
 
         fn create_tag(name: &str) -> Result<(), String> {

@@ -65,6 +65,8 @@ impl KnowledgeChildPlugin for SessionWriterChild {
             "init-session" => {
                 let session_id = self.toys.session.get_session_id();
                 let previous = self.toys.session.get_previous_session();
+                let previous_runtime = self.toys.session.get_previous_session_runtime_id();
+                let previous_handoff = self.toys.session.get_previous_session_handoff();
                 self.toys
                     .state
                     .put("session-id", &serde_json::json!(session_id).to_string())?;
@@ -72,6 +74,16 @@ impl KnowledgeChildPlugin for SessionWriterChild {
                     self.toys
                         .state
                         .put("previous-session", &serde_json::json!(previous).to_string())?;
+                }
+                if let Some(runtime_id) = previous_runtime {
+                    self.toys.session.set_parent_session(&runtime_id)?;
+                    self.toys.state.put(
+                        "parent-session-runtime",
+                        &serde_json::json!(runtime_id).to_string(),
+                    )?;
+                }
+                if let Some(handoff) = previous_handoff {
+                    self.toys.session.write("parent-handoff", &handoff)?;
                 }
                 Ok(serde_json::json!({"status":"initialized"}).to_string())
             }
