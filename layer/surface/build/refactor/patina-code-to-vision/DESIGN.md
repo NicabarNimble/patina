@@ -329,6 +329,9 @@ Phase 3a/3b sequencing clarification:
   - `d456a7a6` — mother: move event streams and tasks into mother crate
   - `6250ce07` — mother: move broker into mother crate
   - `badc700e` — mother: move daemon server into mother crate
+- Adapter extraction commits in progress:
+  - `8b4daba0` — refactor: extract mother daemon scry backend adapter
+  - `ab425dc8` — refactor: extract mother graph and scry dependency adapters
 - Active blockers captured as adapter work (not direct moves):
   - graph orchestration dependencies (`beliefs`, registry/session wiring)
   - daemon query dependency (`retrieval::QueryEngine`)
