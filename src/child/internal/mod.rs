@@ -26,9 +26,6 @@ pub use mother_child::MotherChildEngine;
 pub use pipeline::PipelineEngine;
 pub use task::TaskEngine;
 
-/// Legacy alias kept during CV6 migration.
-pub type PluginEngine = MotherChildEngine;
-
 // =========================================================================
 // Child kind enum — parsed from manifest, enforced at load time (F4)
 // =========================================================================

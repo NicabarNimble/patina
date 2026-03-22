@@ -673,7 +673,7 @@ fn capabilities_all_granted() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
     };
-    assert!(PluginEngine::check_capabilities(&m).is_ok());
+    assert!(MotherChildEngine::check_capabilities(&m).is_ok());
 }
 
 #[test]
@@ -709,7 +709,7 @@ fn capabilities_empty() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
     };
-    assert!(PluginEngine::check_capabilities(&m).is_ok());
+    assert!(MotherChildEngine::check_capabilities(&m).is_ok());
 }
 
 #[test]
@@ -745,7 +745,7 @@ fn capabilities_denied() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
     };
-    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    let err = MotherChildEngine::check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
     assert!(msg.contains("filesystem"), "got: {}", msg);
     assert!(msg.contains("network"), "got: {}", msg);
@@ -856,7 +856,7 @@ fn check_capabilities_rejects_unknown_query_kinds() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
     };
-    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    let err = MotherChildEngine::check_capabilities(&m).unwrap_err();
     assert!(
         err.to_string().contains("magic_oracle"),
         "should reject unknown kind, got: {}",
@@ -897,7 +897,7 @@ fn check_capabilities_accepts_known_query_kinds() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
     };
-    assert!(PluginEngine::check_capabilities(&m).is_ok());
+    assert!(MotherChildEngine::check_capabilities(&m).is_ok());
 }
 
 // =====================================================================
@@ -919,7 +919,7 @@ fn wasm_models_child_handle_roundtrip() {
         );
     }
 
-    let engine = PluginEngine::new().expect("PluginEngine::new() failed");
+    let engine = MotherChildEngine::new().expect("MotherChildEngine::new() failed");
     let wasm_bytes = std::fs::read(&wasm_path).expect("failed to read .wasm fixture");
     let component = engine
         .load_component(&wasm_bytes)
@@ -990,7 +990,7 @@ fn wasm_models_child_health() {
         return; // Skip if fixture not available
     }
 
-    let engine = PluginEngine::new().unwrap();
+    let engine = MotherChildEngine::new().unwrap();
     let wasm_bytes = std::fs::read(&wasm_path).unwrap();
     let component = engine.load_component(&wasm_bytes).unwrap();
     let manifest = ChildManifest {
@@ -1046,7 +1046,7 @@ fn load_repos_child() -> Option<Box<dyn crate::mother::MotherChild>> {
         return None;
     }
 
-    let engine = PluginEngine::new().unwrap();
+    let engine = MotherChildEngine::new().unwrap();
     let wasm_bytes = std::fs::read(&wasm_path).unwrap();
     let component = engine.load_component(&wasm_bytes).unwrap();
     let manifest = ChildManifest {
@@ -1267,7 +1267,7 @@ fn wasm_repos_child_toy_capability_gating() {
         return; // Skip if fixture not available
     }
 
-    let engine = PluginEngine::new().unwrap();
+    let engine = MotherChildEngine::new().unwrap();
     let wasm_bytes = std::fs::read(&wasm_path).unwrap();
     let component = engine.load_component(&wasm_bytes).unwrap();
 
@@ -1339,7 +1339,7 @@ fn wasm_repos_child_toy_capability_gating() {
 // Benchmarks (C2) — Instant::now() instrumentation
 // =====================================================================
 
-/// Measure PluginEngine::new(), Component::new(), instantiate_child(),
+/// Measure MotherChildEngine::new(), Component::new(), instantiate_child(),
 /// and handle() round-trip. Run with `cargo test -- --nocapture benchmark`.
 #[test]
 fn benchmark_plugin_performance() {
@@ -1352,14 +1352,14 @@ fn benchmark_plugin_performance() {
     }
 
     // Warm up the process-wide engine singleton (OnceLock).
-    // Without this, the first PluginEngine::new() absorbs Engine::new()
+    // Without this, the first MotherChildEngine::new() absorbs Engine::new()
     // cold-start cost (~150ms cranelift JIT init), making the benchmark
     // flaky depending on test execution order.
-    let _ = PluginEngine::new();
+    let _ = MotherChildEngine::new();
 
-    // 1. PluginEngine::new() — spec threshold: <100ms
+    // 1. MotherChildEngine::new() — spec threshold: <100ms
     let t0 = Instant::now();
-    let engine = PluginEngine::new().unwrap();
+    let engine = MotherChildEngine::new().unwrap();
     let engine_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
     // 2. Component::new() — document compilation time
@@ -1424,7 +1424,7 @@ fn benchmark_plugin_performance() {
     eprintln!();
     eprintln!("=== Plugin System Benchmarks (C2) ===");
     eprintln!(
-        "  PluginEngine::new():     {:.2}ms (threshold: <100ms) {}",
+        "  MotherChildEngine::new():     {:.2}ms (threshold: <100ms) {}",
         engine_ms,
         if engine_ms < 100.0 { "PASS" } else { "FAIL" }
     );
@@ -1447,7 +1447,7 @@ fn benchmark_plugin_performance() {
     // Assert thresholds
     assert!(
         engine_ms < 100.0,
-        "PluginEngine::new() took {:.2}ms, threshold is 100ms",
+        "MotherChildEngine::new() took {:.2}ms, threshold is 100ms",
         engine_ms
     );
     assert!(
@@ -1704,7 +1704,7 @@ fn check_capabilities_rejects_empty_http_domain() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
     };
-    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    let err = MotherChildEngine::check_capabilities(&m).unwrap_err();
     assert!(err.to_string().contains("empty"), "got: {}", err);
 }
 
@@ -1741,7 +1741,7 @@ fn check_capabilities_rejects_http_domain_with_path() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
     };
-    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    let err = MotherChildEngine::check_capabilities(&m).unwrap_err();
     assert!(err.to_string().contains("path"), "got: {}", err);
 }
 
@@ -1778,7 +1778,7 @@ fn check_capabilities_accepts_valid_http_domains() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
     };
-    assert!(PluginEngine::check_capabilities(&m).is_ok());
+    assert!(MotherChildEngine::check_capabilities(&m).is_ok());
 }
 
 // =====================================================================
@@ -2373,7 +2373,7 @@ fn check_capabilities_rejects_pipeline_with_query() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
     };
-    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    let err = MotherChildEngine::check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
     assert!(
         msg.contains("host_query") && msg.contains("not allowed for this world"),
@@ -2415,7 +2415,7 @@ fn check_capabilities_rejects_pipeline_with_http() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
     };
-    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    let err = MotherChildEngine::check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
     assert!(
         msg.contains("host_http"),
@@ -2460,7 +2460,7 @@ fn wasm_trap_mother_child_panic_returns_error() {
         return;
     }
 
-    let engine = PluginEngine::new().unwrap();
+    let engine = MotherChildEngine::new().unwrap();
     let wasm_bytes = std::fs::read(&wasm_path).unwrap();
     let component = engine.load_component(&wasm_bytes).unwrap();
     let manifest = ChildManifest {
@@ -2621,7 +2621,7 @@ fn check_capabilities_rejects_host_secrets_domain_not_in_host_http() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
     };
-    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    let err = MotherChildEngine::check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
     assert!(
         msg.contains("api.github.com") && msg.contains("host_secrets") && msg.contains("host_http"),
@@ -2671,7 +2671,7 @@ fn check_capabilities_accepts_host_secrets_with_matching_host_http() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
     };
-    assert!(PluginEngine::check_capabilities(&m).is_ok());
+    assert!(MotherChildEngine::check_capabilities(&m).is_ok());
 }
 
 // =====================================================================
@@ -3140,7 +3140,7 @@ package = "patina:schema/forge@1.0.0"
 "#,
     );
     let m = ChildManifest::from_path(f.path()).unwrap();
-    let result = PluginEngine::check_capabilities(&m);
+    let result = MotherChildEngine::check_capabilities(&m);
     assert!(result.is_err(), "pipeline should not allow host_emit");
     assert!(
         result.unwrap_err().to_string().contains("not allowed"),
@@ -3168,7 +3168,7 @@ package = "patina:schema/forge@1.0.0"
 "#,
     );
     let m = ChildManifest::from_path(f.path()).unwrap();
-    let result = PluginEngine::check_capabilities(&m);
+    let result = MotherChildEngine::check_capabilities(&m);
     assert!(result.is_err(), "command should not allow host_emit");
 }
 
@@ -3189,7 +3189,7 @@ child = "forge"
 "#,
     );
     let m = ChildManifest::from_path(f.path()).unwrap();
-    let result = PluginEngine::check_capabilities(&m);
+    let result = MotherChildEngine::check_capabilities(&m);
     assert!(
         result.is_err(),
         "host_emit without schemas should be rejected"
@@ -3223,7 +3223,7 @@ package = "patina:schema/forge@1.0.0"
 "#,
     );
     let m = ChildManifest::from_path(f.path()).unwrap();
-    let result = PluginEngine::check_capabilities(&m);
+    let result = MotherChildEngine::check_capabilities(&m);
     assert!(
         result.is_ok(),
         "mother-child with host_emit + schemas should be allowed: {:?}",
@@ -3248,7 +3248,7 @@ package = "patina:schema/forge@1.0.0"
 "#,
     );
     let m = ChildManifest::from_path(f.path()).unwrap();
-    let result = PluginEngine::check_capabilities(&m);
+    let result = MotherChildEngine::check_capabilities(&m);
     assert!(
         result.is_ok(),
         "task with host_emit + schemas should be allowed: {:?}",
@@ -3409,7 +3409,7 @@ fn role_world_valid_combo_passes() {
         toys: crate::mother::GrantedToys::default(),
     };
     // connector + mother-child is valid — check_capabilities should pass
-    assert!(PluginEngine::check_capabilities(&m).is_ok());
+    assert!(MotherChildEngine::check_capabilities(&m).is_ok());
 }
 
 #[test]
@@ -3447,7 +3447,7 @@ fn role_world_unusual_combo_still_passes() {
         toys: crate::mother::GrantedToys::default(),
     };
     // Unusual combo warns but does NOT bail
-    assert!(PluginEngine::check_capabilities(&m).is_ok());
+    assert!(MotherChildEngine::check_capabilities(&m).is_ok());
 }
 
 #[test]
@@ -3484,5 +3484,5 @@ fn role_none_skips_validation() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
     };
-    assert!(PluginEngine::check_capabilities(&m).is_ok());
+    assert!(MotherChildEngine::check_capabilities(&m).is_ok());
 }
