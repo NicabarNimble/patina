@@ -128,7 +128,7 @@ fn manifest_missing_name() {
     let f = write_temp_manifest("[child]\nkind = \"mother-child\"\n");
     let err = ChildManifest::from_path(f.path()).unwrap_err();
     assert!(
-        err.to_string().contains("missing plugin.name"),
+        err.to_string().contains("missing child.name"),
         "got: {}",
         err
     );
@@ -139,7 +139,7 @@ fn manifest_missing_world() {
     let f = write_temp_manifest("[child]\nname = \"test\"\n");
     let err = ChildManifest::from_path(f.path()).unwrap_err();
     assert!(
-        err.to_string().contains("missing plugin.kind"),
+        err.to_string().contains("missing child.kind"),
         "got: {}",
         err
     );
@@ -2334,8 +2334,8 @@ child = "test"
     );
     let err = ChildManifest::from_path(f.path()).unwrap_err();
     assert!(
-        err.to_string().contains("unknown plugin world") && err.to_string().contains("oracle"),
-        "expected 'unknown plugin world: oracle', got: {}",
+        err.to_string().contains("unknown child kind") && err.to_string().contains("oracle"),
+        "expected 'unknown child kind: oracle', got: {}",
         err
     );
 }
@@ -3368,7 +3368,7 @@ child = "bad"
     assert!(result
         .unwrap_err()
         .to_string()
-        .contains("unknown plugin role"),);
+        .contains("unknown child role"),);
 }
 
 // =====================================================================
