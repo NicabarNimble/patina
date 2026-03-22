@@ -26,7 +26,7 @@ exit_criteria:
   checked: true
 - id: EC2
   text: Per-child WIT worlds — each runtime child declares its own composed world via Cargo component target (ducklake, belief-verifier, session-writer), importing only needed toy interfaces; child manifests use canonical `child.toml` + `kind` execution contract (`knowledge-child`) with legacy `plugin.toml`/`world` read-compatibility
-  checked: false
+  checked: true
 - id: EC3
   text: Per-child linker — Mother builds a linker per child from its manifest, linking only declared toy interfaces
   checked: true
@@ -41,7 +41,7 @@ exit_criteria:
   checked: true
 - id: EC7
   text: DuckLake on new model — composed world with toy-github replacing connector, basic fetch-and-store works, and resulting lake DB is queryable via standalone DuckDB CLI with recorded proof command/output
-  checked: false
+  checked: true
 - id: EC8
   text: Mother extracted — standalone daemon crate, accepts agent connections, manages children and toys, separate from CLI binary
   checked: true
@@ -65,7 +65,7 @@ exit_criteria:
   checked: true
 - id: EC15
   text: External developer onramp — cargo-generate template, README, and generated example child proven to build/install in under 5 minutes (local tool or CI evidence attached)
-  checked: false
+  checked: true
 ---
 # refactor: Patina Pre-v1 — Full Architecture Conversion
 

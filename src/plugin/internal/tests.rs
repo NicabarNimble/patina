@@ -2,6 +2,32 @@ use super::*;
 use crate::mother::TaskIntentKind;
 use std::io::Write;
 
+fn with_temp_patina_home<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
+    let _guard = crate::test_support::env_test_mutex()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let temp = tempfile::TempDir::new().unwrap();
+    let home = temp.path().join("patina-home");
+    std::fs::create_dir_all(&home).unwrap();
+    let old_home = std::env::var_os("PATINA_HOME");
+    unsafe {
+        std::env::set_var("PATINA_HOME", &home);
+    }
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&home)));
+    match old_home {
+        Some(value) => unsafe {
+            std::env::set_var("PATINA_HOME", value);
+        },
+        None => unsafe {
+            std::env::remove_var("PATINA_HOME");
+        },
+    }
+    match result {
+        Ok(value) => value,
+        Err(panic) => std::panic::resume_unwind(panic),
+    }
+}
+
 fn write_temp_manifest(content: &str) -> tempfile::NamedTempFile {
     let mut f = tempfile::NamedTempFile::new().unwrap();
     f.write_all(content.as_bytes()).unwrap();
@@ -461,6 +487,83 @@ fn knowledge_child_linker_succeeds_when_lake_declared() {
         result.is_ok(),
         "expected granted-lake instantiation success"
     );
+}
+
+#[test]
+fn ducklake_fixture_sync_writes_lake_queryable_by_duckdb_cli() {
+    let Some(wasm_path) = ducklake_component_path() else {
+        return;
+    };
+
+    with_temp_patina_home(|home| {
+        let engine = KnowledgeChildEngine::new().unwrap();
+        let wasm_bytes = std::fs::read(&wasm_path).unwrap();
+        let component = engine.load_component(&wasm_bytes).unwrap();
+
+        let manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("children/ducklake/child.toml");
+        let manifest = PluginManifest::from_path(&manifest_path).unwrap();
+        let child = engine
+            .instantiate_child(&component, &manifest, None)
+            .unwrap();
+
+        child
+            .handle(&crate::mother::ChildRequest {
+                action: "configure-source".into(),
+                payload: serde_json::json!({
+                    "source_id": "fixture-source",
+                    "table": "default",
+                    "owner": "not-used",
+                    "repo": "not-used",
+                    "data_types": ["issues"],
+                }),
+            })
+            .unwrap();
+
+        let response = child
+            .handle(&crate::mother::ChildRequest {
+                action: "fetch-source".into(),
+                payload: serde_json::json!({"source_id": "fixture-source"}),
+            })
+            .unwrap();
+
+        let written = response
+            .payload
+            .get("written")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        assert!(written > 0, "expected fixture sync to write rows");
+
+        let db_path = home.join("lakes/default/lake.duckdb");
+        assert!(
+            db_path.exists(),
+            "expected lake DB at {}",
+            db_path.display()
+        );
+
+        let output = std::process::Command::new("duckdb")
+            .args([
+                db_path.to_str().unwrap(),
+                "COPY (SELECT COUNT(*) AS c FROM default_issues) TO STDOUT (FORMAT CSV, HEADER FALSE);",
+            ])
+            .output()
+            .expect("run duckdb CLI query");
+        assert!(
+            output.status.success(),
+            "duckdb query failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let count = stdout
+            .trim()
+            .parse::<u64>()
+            .expect("duckdb count output as u64");
+        assert!(
+            count > 0,
+            "expected default_issues to be queryable and non-empty"
+        );
+    });
 }
 
 #[test]
