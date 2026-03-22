@@ -257,6 +257,10 @@ Exit checklist:
 - extraction-ready seams exist for code/git lanes without forcing immediate childization
 - if childization is executed in this phase, parity proof is attached before switching default lane ownership
 
+Exit condition note:
+
+- Phase 6 may close without childizing scrape-code/git if seam hardening and parity proofs are complete.
+
 ## Phase 7: Project manifests (CV8)
 
 28. `mother: define project manifest format` — What children does this project need? File at .patina/manifest.toml or similar.

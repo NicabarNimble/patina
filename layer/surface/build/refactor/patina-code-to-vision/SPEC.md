@@ -332,6 +332,7 @@ Status keys:
 - Make code/git strategy lanes extraction-ready behind explicit interfaces.
 - Childize `scrape-code`/`scrape-git` only after 1:1 parity proof (or explicit user override).
 - Scrape orchestrator can discover installed strategy children via Mother once parity gates are satisfied.
+- Phase completion does not require immediate childization of code/git lanes; seam hardening + parity evidence is sufficient.
 
 ### Phase 7: Project manifests
 - Define project manifest format (what children does this project need)
