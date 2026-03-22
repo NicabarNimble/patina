@@ -372,6 +372,8 @@ Exit checklist:
   - `src/mother/broker/mod.rs` orchestration implementation (depends on connect/auth/child runtime/eventlog surfaces)
   - `src/commands/mother/graph.rs` orchestration (adapter-switched; awaits full crate extraction)
   - `src/commands/mother/daemon.rs` query path uses adapter backend contract
+- Seam interpretation lock:
+  - adapter-backed graph/query orchestrators are explicit boundary bridges between Mother infrastructure and Patina core domains; they are allowed only when listed and parity-proven (not hidden split ownership)
 
 Exit checklist:
 

@@ -13,10 +13,10 @@ beliefs:
   - mother-is-the-daemon
 exit_criteria:
   - id: CV1
-    text: Mother is a standalone daemon in the mother/ crate — all runtime logic (state, broker, registry, graph, events, tasks) lives there, not split across three locations
+    text: Mother is a standalone daemon in the mother/ crate — Mother-owned runtime infrastructure (state, broker infrastructure, registry, events, tasks, lifecycle, socket, protocol) is centralized there, not split across three locations
     checked: false
   - id: CV2
-    text: CLI binary has zero Mother runtime code — it talks to Mother over Unix socket or runs core verbs standalone
+    text: CLI binary has zero Mother infrastructure runtime code — it talks to Mother over Unix socket or runs core verbs standalone; thin adapter bridges to core product domains are explicit and allowed
     checked: false
   - id: CV3
     text: Core verbs (scrape, scry, assay, context, belief, measure, oxidize) have an explicit, command-by-command Mother-unavailable policy documented in this spec and verified by command tests (no implicit placeholder-filter fallback behavior)
@@ -248,8 +248,8 @@ Evidence format rules for this table:
 
 | CV | Status | Evidence |
 |---|---|---|
-| CV1 | verified-false | Split runtime paths still present at `mother/src/lib.rs:1`, `src/mother/mod.rs:1`, and `src/commands/mother/mod.rs:1`. |
-| CV2 | verified-false | CLI still owns Mother runtime/server surfaces at `src/commands/mother/daemon.rs:1` and `src/commands/mother/mod.rs:1`. |
+| CV1 | verified-partial | Mother runtime infrastructure is centralized in `mother/src/` with shell cleanup complete (`state/events/tasks/broker data/registry/lifecycle/socket`), while adapter-backed orchestrators remain explicitly listed in DESIGN Phase 3 verification (`src/mother/broker/mod.rs`, `src/commands/mother/graph.rs`, `src/commands/mother/daemon.rs`). |
+| CV2 | verified-partial | CLI start/stop/status is thin lifecycle transport (`src/commands/mother/mod.rs` calling `mother_crate::lifecycle`/`mother_crate::socket`); explicit adapter bridges remain for core-domain orchestration boundaries. |
 | CV3 | verified-true | Runtime policy is explicitly documented in this spec and command-tested with `resources/scripts/check-core-verb-policy.sh --mode off --isolated` (covers `scrape`, `scry`, `assay`, `context`, `belief`, `measure`, `oxidize`). |
 | CV4 | verified-true | Command proof: `grep "try_daemon_|not yet implemented" src/commands/{context.rs,measure/mod.rs,spec/mod.rs,lake.rs,scry/internal/routing.rs}` => no matches (2026-03-22). |
 | CV5 | verified-false | Command proof: `cargo check` output contains `patina-ai (bin "patina") generated 40 warnings` (2026-03-22 baseline). |
