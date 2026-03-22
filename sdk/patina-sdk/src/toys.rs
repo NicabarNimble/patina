@@ -5,6 +5,8 @@ pub use patina_sdk_agent::{SessionBackend, SessionToy};
 pub use patina_sdk_core::{
     LogBackend, LogToy, PendingEvent, StateBackend, StateToy, TaskIntent, TaskIntentKind,
 };
+#[cfg(feature = "toy-peer")]
+pub use patina_sdk_core::{PeerBackend, PeerEvent, PeerToy};
 pub use patina_sdk_data::{
     CheckpointBackend, CheckpointToy, ConnectorBackend, ConnectorBinding, ConnectorCatalog,
     ConnectorSyncResult, GithubBackend, GithubListParams, GithubPage, GithubToy,

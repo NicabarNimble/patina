@@ -51,6 +51,8 @@ pub mod granted {
     pub type Github = toys::GithubToy<GuestHost>;
     #[cfg(feature = "toy-events")]
     pub type Events = toys::EventToy<GuestHost>;
+    #[cfg(feature = "toy-peer")]
+    pub type Peer = toys::PeerToy<GuestHost>;
     #[cfg(feature = "toy-graph")]
     pub type Graph = toys::GraphToy<GuestHost>;
     #[cfg(feature = "toy-belief")]
@@ -146,6 +148,11 @@ pub mod granted {
         Events::new()
     }
 
+    #[cfg(feature = "toy-peer")]
+    pub fn peer() -> Peer {
+        Peer::new()
+    }
+
     #[cfg(feature = "toy-graph")]
     pub fn graph() -> Graph {
         Graph::new()
@@ -206,6 +213,8 @@ pub mod host {
         MeasureBackend, PendingEvent, QueryBackend, SessionBackend, StateBackend, TaskBackend,
         TaskIntent, TaskIntentKind,
     };
+    #[cfg(feature = "toy-peer")]
+    use crate::toys::{PeerBackend, PeerEvent};
 
     #[derive(Debug, Clone, Copy, Default)]
     pub struct GuestHost;
@@ -246,6 +255,10 @@ pub mod host {
         }
         pub fn events() -> crate::toys::EventToy<Self> {
             crate::toys::EventToy::new()
+        }
+        #[cfg(feature = "toy-peer")]
+        pub fn peer() -> crate::toys::PeerToy<Self> {
+            crate::toys::PeerToy::new()
         }
         pub fn github() -> crate::toys::GithubToy<Self> {
             crate::toys::GithubToy::new()
@@ -628,6 +641,32 @@ pub mod host {
         }
         fn list_streams() -> Vec<String> {
             patina::host::events::list_streams()
+        }
+    }
+
+    #[cfg(feature = "toy-peer")]
+    impl PeerBackend for GuestHost {
+        fn emit_event(event_type: &str, payload_json: &str) -> Result<(), String> {
+            patina::host::peer::emit_event(event_type, payload_json)
+        }
+
+        fn on_event(
+            stream_name: &str,
+            after_offset: Option<u64>,
+            limit: u32,
+        ) -> Result<Vec<PeerEvent>, String> {
+            patina::host::peer::on_event(stream_name, after_offset, limit).map(|events| {
+                events
+                    .into_iter()
+                    .map(|event| PeerEvent {
+                        stream_name: event.stream_name,
+                        offset: event.offset,
+                        event_type: event.event_type,
+                        payload_json: event.payload_json,
+                        occurred_at: event.occurred_at,
+                    })
+                    .collect()
+            })
         }
     }
 

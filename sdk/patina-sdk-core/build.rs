@@ -14,6 +14,7 @@ fn main() {
         "types.wit",
         "task.wit",
         "events.wit",
+        "peer.wit",
     ];
 
     for file in files {

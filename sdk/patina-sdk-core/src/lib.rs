@@ -72,6 +72,16 @@ pub struct PendingEvent {
     pub occurred_at: String,
 }
 
+#[cfg(feature = "toy-peer")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PeerEvent {
+    pub stream_name: String,
+    pub offset: u64,
+    pub event_type: String,
+    pub payload_json: String,
+    pub occurred_at: String,
+}
+
 pub trait LogBackend {
     fn debug(message: &str);
     fn info(message: &str);
@@ -137,6 +147,43 @@ impl<B: StateBackend> StateToy<B> {
 
     pub fn list_prefix(&self, prefix: &str) -> Vec<String> {
         B::list_prefix(prefix)
+    }
+}
+
+#[cfg(feature = "toy-peer")]
+pub trait PeerBackend {
+    fn emit_event(event_type: &str, payload_json: &str) -> Result<(), String>;
+    fn on_event(
+        stream_name: &str,
+        after_offset: Option<u64>,
+        limit: u32,
+    ) -> Result<Vec<PeerEvent>, String>;
+}
+
+#[cfg(feature = "toy-peer")]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PeerToy<B>(std::marker::PhantomData<B>);
+
+#[cfg(feature = "toy-peer")]
+impl<B> PeerToy<B> {
+    pub fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+#[cfg(feature = "toy-peer")]
+impl<B: PeerBackend> PeerToy<B> {
+    pub fn emit_event(&self, event_type: &str, payload_json: &str) -> Result<(), String> {
+        B::emit_event(event_type, payload_json)
+    }
+
+    pub fn on_event(
+        &self,
+        stream_name: &str,
+        after_offset: Option<u64>,
+        limit: u32,
+    ) -> Result<Vec<PeerEvent>, String> {
+        B::on_event(stream_name, after_offset, limit)
     }
 }
 

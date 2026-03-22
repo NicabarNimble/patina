@@ -13,6 +13,7 @@ world knowledge-child {
     import patina:host/checkpoint@0.1.0;
     import patina:host/lake@0.1.0;
     import patina:host/events@0.1.0;
+    import patina:host/peer@0.1.0;
     import patina:host/task@0.1.0;
     import patina:host/graph@0.1.0;
     import patina:host/belief@0.1.0;
