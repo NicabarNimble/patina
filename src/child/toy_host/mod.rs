@@ -1,6 +1,4 @@
-//! Toy capability boundary surface.
-//!
-//! Phase-A facade for canonical toy ownership and discoverability.
+//! Toy capability boundary surface for child runtime.
 
 pub mod catalog;
 pub mod connector;

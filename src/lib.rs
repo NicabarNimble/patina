@@ -24,7 +24,6 @@ pub mod version;
 pub mod workspace;
 
 pub mod test_support;
-pub mod toys;
 
 // Re-export commonly used types
 pub use environment::Environment;
