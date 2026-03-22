@@ -1,8 +1,10 @@
 ---
 type: refactor
 id: patina-pre-v1
-status: active
+status: blocked
 created: 2026-03-21
+blocked_by:
+- vocabulary-alignment-child-manifest
 sessions:
   origin: 20260320-212325-011658000
 beliefs:
@@ -64,6 +66,9 @@ exit_criteria:
 - id: EC15
   text: External developer onramp — cargo-generate template, README, and generated example child proven to build/install in under 5 minutes (local tool or CI evidence attached)
   checked: false
+paused_at_tag: spec/patina-pre-v1-blocked-1
+blocked_reason: Terminology realignment (plugin/world -> child/kind) is required to prevent architectural drift before pre-v1 closure.
+blocked_date: 2026-03-22
 ---
 # refactor: Patina Pre-v1 — Full Architecture Conversion
 
