@@ -1,7 +1,7 @@
+use crate::secrets;
 use mother_crate::secrets_authority_api as secrets_api;
-use patina::secrets;
 
-pub(super) struct PatinaSecretsAuthorityBackend;
+pub struct PatinaSecretsAuthorityBackend;
 
 impl secrets_api::SecretsAuthorityBackend for PatinaSecretsAuthorityBackend {
     fn add_secret(

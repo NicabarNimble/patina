@@ -27,6 +27,8 @@
 
 pub mod broker;
 mod internal;
+#[doc(hidden)]
+pub mod secrets_backend;
 
 // Bridge module: state logic now lives in the mother crate.
 // Re-export so existing `crate::mother::state::*` paths continue to compile.

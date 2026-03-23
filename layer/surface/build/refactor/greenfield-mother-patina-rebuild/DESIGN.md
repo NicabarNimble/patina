@@ -254,7 +254,7 @@ M3c progress evidence (current session):
 - Removed practical effect of `PATINA_SECRETS_LEGACY_FALLBACK`; `patina secrets` now requires Mother authority for proxied operations regardless of fallback env setting.
 - Runtime verification: with Mother on, `patina secrets` succeeds; with Mother off, command hard-fails with explicit authority-unavailable error.
 - Moved secrets authority operation contract/parsing/response shaping into Mother crate module (`mother/src/secrets_authority_api.rs`), with Patina-side backend adapter wiring.
-- Isolated Patina-side backend adapter into dedicated module (`src/commands/mother/secrets_backend.rs`) so dispatch routing is cleanly separated from implementation wiring.
+- Isolated Patina-side backend adapter into dedicated Mother-facing module (`src/mother/secrets_backend.rs`) so dispatch routing is cleanly separated from implementation wiring.
 
 ## Seam Classification Table (GF1 enforcement)
 

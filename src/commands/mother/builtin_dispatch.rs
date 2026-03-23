@@ -114,6 +114,6 @@ pub(super) fn handle_builtin_child_request(
 fn handle_secrets_authority_dispatch(payload: serde_json::Value) -> HttpResponse {
     secrets_api::dispatch(
         payload,
-        &super::secrets_backend::PatinaSecretsAuthorityBackend,
+        &patina::mother::secrets_backend::PatinaSecretsAuthorityBackend,
     )
 }

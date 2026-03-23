@@ -42,7 +42,6 @@ pub(crate) mod builtin_dispatch;
 pub(crate) mod daemon;
 pub(crate) mod graph;
 pub(crate) mod loader;
-pub(crate) mod secrets_backend;
 
 // Moved to mother crate — re-export for daemon.rs
 pub(crate) use mother_crate::registry;
