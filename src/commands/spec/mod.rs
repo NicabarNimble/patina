@@ -7,9 +7,7 @@
 mod internal;
 
 // Data types and functions re-exported for session integration (Phase 5)
-pub(crate) use internal::{
-    get_all_specs, get_blocked_specs, load_dep_counts, spec_age_days_from_list, ListFilters,
-};
+pub(crate) use internal::{get_all_specs, get_blocked_specs, ListFilters};
 
 // Query data functions re-exported for MCP (Phase 6)
 pub(crate) use internal::{

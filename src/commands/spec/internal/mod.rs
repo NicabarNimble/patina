@@ -27,7 +27,7 @@ pub(crate) use queries::{
 pub(crate) use packets::{handoff_spec_value, packet_spec_value, prompt_spec_value};
 
 // Queue functions re-exported pub(crate) by parent for session/MCP
-pub(crate) use queue::{load_dep_counts, next_spec_value, spec_age_days_from_list};
+pub(crate) use queue::next_spec_value;
 
 // Mutation _value() functions re-exported pub(crate) by parent for MCP
 pub(crate) use mutations::{
