@@ -38,8 +38,10 @@
 //! ```
 
 pub(crate) mod adapters;
+pub(crate) mod builtin_dispatch;
 pub(crate) mod daemon;
 pub(crate) mod graph;
+pub(crate) mod loader;
 
 // Moved to mother crate — re-export for daemon.rs
 pub(crate) use mother_crate::registry;

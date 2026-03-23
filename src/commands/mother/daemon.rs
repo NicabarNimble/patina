@@ -22,7 +22,7 @@ use patina::mother::ChildRequest;
 use super::adapters::{RetrievalScryBackend, ScryBackend};
 use super::registry::ChildRegistry;
 use mother_crate::http_api::ApiRuntime;
-use mother_crate::http_daemon::{json_error, HttpRequest, HttpResponse, DEFAULT_MAX_BODY_SIZE};
+use mother_crate::http_daemon::{HttpRequest, DEFAULT_MAX_BODY_SIZE};
 use mother_crate::http_routes::Router;
 
 // === Server state ===
@@ -213,105 +213,12 @@ impl ApiRuntime for ServerState {
     }
 }
 
-fn handle_builtin_child_request(
-    child_name: &str,
-    action: &str,
-    body: &[u8],
-) -> Option<HttpResponse> {
-    match (child_name, action) {
-        ("spec-manager", "health") => Some(HttpResponse::json(
-            200,
-            &serde_json::json!({"status": "healthy"}),
-        )),
-        ("spec-manager", "dispatch") => {
-            let payload = if body.is_empty() {
-                serde_json::Value::Null
-            } else {
-                match serde_json::from_slice::<serde_json::Value>(body) {
-                    Ok(v) => v,
-                    Err(e) => return Some(json_error(400, &format!("Invalid JSON: {}", e))),
-                }
-            };
-            let command_value = payload
-                .get("command")
-                .cloned()
-                .unwrap_or(serde_json::Value::Null);
-            let command: crate::commands::spec::SpecCommands =
-                match serde_json::from_value(command_value) {
-                    Ok(command) => command,
-                    Err(e) => {
-                        return Some(json_error(
-                            400,
-                            &format!("Invalid spec-manager command payload: {}", e),
-                        ));
-                    }
-                };
-
-            match crate::commands::spec::execute_value(command) {
-                Ok(value) => Some(HttpResponse::json(200, &value)),
-                Err(e) => Some(json_error(400, &e.to_string())),
-            }
-        }
-        ("lake-manager", "health") => Some(HttpResponse::json(
-            200,
-            &serde_json::json!({"status": "healthy"}),
-        )),
-        ("lake-manager", "dispatch") => {
-            let payload = if body.is_empty() {
-                serde_json::Value::Null
-            } else {
-                match serde_json::from_slice::<serde_json::Value>(body) {
-                    Ok(v) => v,
-                    Err(e) => return Some(json_error(400, &format!("Invalid JSON: {}", e))),
-                }
-            };
-            let command_value = payload
-                .get("command")
-                .cloned()
-                .unwrap_or(serde_json::Value::Null);
-            let command: crate::commands::lake::LakeCommands =
-                match serde_json::from_value(command_value) {
-                    Ok(command) => command,
-                    Err(e) => {
-                        return Some(json_error(
-                            400,
-                            &format!("Invalid lake-manager command payload: {}", e),
-                        ));
-                    }
-                };
-
-            match crate::commands::lake::execute_value(command) {
-                Ok(value) => Some(HttpResponse::json(200, &value)),
-                Err(e) => Some(json_error(400, &e.to_string())),
-            }
-        }
-        ("doctor", "health") => Some(HttpResponse::json(
-            200,
-            &serde_json::json!({"status": "healthy"}),
-        )),
-        ("doctor", "run") => match crate::commands::doctor::execute_value() {
-            Ok(value) => {
-                let exit_code = value.get("exit_code").and_then(|v| v.as_i64()).unwrap_or(0);
-                Some(HttpResponse::json(
-                    200,
-                    &serde_json::json!({
-                        "child": "doctor",
-                        "text": "",
-                        "data": value,
-                        "exit_code": exit_code,
-                    }),
-                ))
-            }
-            Err(e) => Some(json_error(400, &e.to_string())),
-        },
-        _ => None,
-    }
-}
-
 fn build_router(state: Arc<ServerState>, require_auth: bool) -> Router {
     let token = state.token.clone();
-    let route_table =
-        mother_crate::http_api::build_route_table(state, Arc::new(handle_builtin_child_request));
+    let route_table = mother_crate::http_api::build_route_table(
+        state,
+        Arc::new(super::builtin_dispatch::handle_builtin_child_request),
+    );
     Router::new(require_auth, token, route_table)
 }
 
@@ -374,7 +281,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         &mut registry,
         &runtime,
         options.legacy_migration,
-        load_wasm_child,
+        super::loader::load_wasm_child,
     );
 
     let daemon_host = DaemonHost;
@@ -462,60 +369,6 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     let router = Arc::new(build_router(Arc::clone(&state), false));
     let handler = Arc::new(move |request: HttpRequest| router.route(&request));
     mother_crate::http_daemon::accept_loop_uds(listener, DEFAULT_MAX_BODY_SIZE, handler);
-}
-
-fn parse_relationship_listens(manifest_path: &std::path::Path) -> Result<Vec<String>> {
-    let content = std::fs::read_to_string(manifest_path)?;
-    let table: toml::Table = content.parse()?;
-
-    let listens = table
-        .get("relationships")
-        .and_then(|v| v.as_table())
-        .and_then(|t| t.get("listens"))
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(ToString::to_string))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-
-    Ok(listens)
-}
-
-/// Load a WASM child from a .wasm file + child manifest.
-fn load_wasm_child(
-    wasm_path: &std::path::Path,
-    manifest_path: &std::path::Path,
-) -> Result<mother_crate::daemon_bootstrap::LoadedChild> {
-    let manifest = patina::child::engine::ChildManifest::from_path(manifest_path)?;
-    let relationship_listens = parse_relationship_listens(manifest_path)?;
-    let wasm_bytes = std::fs::read(wasm_path)?;
-    match manifest.world {
-        patina::child::engine::ChildKind::KnowledgeChild => {
-            let engine = patina::child::engine::KnowledgeChildEngine::new()?;
-            let component = engine.load_component(&wasm_bytes)?;
-            let child = engine.instantiate_child(&component, &manifest, None)?;
-            let name = child.name().to_string();
-            Ok(mother_crate::daemon_bootstrap::LoadedChild::Knowledge {
-                child,
-                name,
-                subscribed_streams: manifest.subscribed_streams.clone(),
-                relationship_listens,
-            })
-        }
-        patina::child::engine::ChildKind::MotherChild => {
-            let engine = patina::child::engine::MotherChildEngine::new()?;
-            let component = engine.load_component(&wasm_bytes)?;
-            let child = engine.instantiate_child(&component, &manifest, None)?;
-            let name = child.name().to_string();
-            Ok(mother_crate::daemon_bootstrap::LoadedChild::Legacy { child, name })
-        }
-        other => anyhow::bail!(
-            "child manifest world '{}' is not loadable by the daemon child loader",
-            other
-        ),
-    }
 }
 
 #[cfg(test)]
@@ -617,48 +470,5 @@ mod tests {
 
         assert_eq!(registry.knowledge_len(), 1);
         assert_eq!(registry.legacy_len(), 0);
-    }
-
-    #[test]
-    fn parse_relationship_listens_from_manifest() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let manifest = temp.path().join("child.toml");
-        std::fs::write(
-            &manifest,
-            r#"
-[child]
-name = "child"
-kind = "knowledge-child"
-
-[relationships]
-emits = ["x"]
-listens = ["data-ingested", "belief.changed"]
-"#,
-        )
-        .unwrap();
-
-        let listens = parse_relationship_listens(&manifest).unwrap();
-        assert_eq!(
-            listens,
-            vec!["data-ingested".to_string(), "belief.changed".to_string()]
-        );
-    }
-
-    #[test]
-    fn parse_relationship_listens_defaults_empty() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let manifest = temp.path().join("child.toml");
-        std::fs::write(
-            &manifest,
-            r#"
-[child]
-name = "child"
-kind = "knowledge-child"
-"#,
-        )
-        .unwrap();
-
-        let listens = parse_relationship_listens(&manifest).unwrap();
-        assert!(listens.is_empty());
     }
 }
