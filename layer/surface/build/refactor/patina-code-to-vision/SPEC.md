@@ -267,6 +267,19 @@ Evidence format rules for this table:
 | CV17 | verified-true | Core CLI no longer exposes `session` verb (`src/main.rs` has no `Commands::Session`); session artifacts are handled by agent/session systems rather than a core user command. |
 | CV18 | verified-true | `patina lake` is a Mother child route (`lake-manager`) and fails clearly without Mother (`lake-manager unavailable via Mother ...`). |
 
+### Intentional Residual Seams (carry-forward)
+
+The remaining `verified-partial` criteria in this spec are intentional seams, not hidden drift.
+
+- CV1/CV2: adapter-backed orchestration seams are retained by design where extraction would force high-risk cross-domain reshaping with low product gain in this phase.
+- CV11: scrape is seam-hardened and structured, but final child extraction contract/parity gate is deferred to explicit greenfield-first planning.
+
+Completion policy for this spec:
+
+- Do not force closure by introducing refactors that violate the currently accepted seam strategy.
+- Keep partial status explicit with evidence.
+- Carry closure work into `greenfield-mother-patina-rebuild` migration slices.
+
 ## Target State
 
 - Mother is one standalone crate with all runtime logic

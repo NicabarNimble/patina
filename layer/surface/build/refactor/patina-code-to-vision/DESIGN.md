@@ -593,6 +593,20 @@ Progress (2026-03-22):
   - CV1/CV2 remain `verified-partial` pending final decision on adapter-backed seam ownership scope.
   - CV11 remains `verified-partial`; scrape seam is structured but final extraction contract/parity gate is still open.
 
+### Carry-forward Decision (2026-03-22)
+
+The remaining partial CVs are intentionally not force-closed in this refactor:
+
+- CV1/CV2: retained adapter-backed seams are accepted architecture boundaries for this migration phase.
+- CV11: scrape extraction contract is carried forward rather than rushed behind parity uncertainty.
+
+Execution lock:
+
+- No speculative seam-flattening refactors just to flip status labels.
+- Any full-closure work for CV1/CV2/CV11 must run through
+  `layer/surface/build/refactor/greenfield-mother-patina-rebuild/SPEC.md`
+  with explicit parity and rollback gates.
+
 ## Direct Code Targets
 
 ### Phase 1 — daemon routing + dead code
