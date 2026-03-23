@@ -12,69 +12,18 @@
 //! - Opt-in: TCP at --host/--port (bearer token required)
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::io::{Read, Write};
-use std::net::{Shutdown, TcpListener};
+use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use patina::mother::ChildRequest;
 
 use super::adapters::{RetrievalScryBackend, ScryBackend};
-use super::microserver;
 use super::registry::ChildRegistry;
-
-/// Maximum request body size (1 MB)
-const MAX_BODY_SIZE: usize = 1_048_576;
-
-/// Maximum results per query
-const MAX_LIMIT: usize = 1000;
-
-// === Transport-free request/response types ===
-
-/// HTTP request independent of transport
-struct HttpRequest {
-    method: String,
-    path: String,
-    headers: Vec<(String, String)>,
-    body: Vec<u8>,
-}
-
-/// HTTP response independent of transport
-struct HttpResponse {
-    status: u16,
-    headers: Vec<(String, String)>,
-    body: Vec<u8>,
-}
-
-impl HttpRequest {
-    /// Get header value by name (case-insensitive)
-    fn header(&self, name: &str) -> Option<&str> {
-        let name_lower = name.to_lowercase();
-        self.headers
-            .iter()
-            .find(|(k, _)| k.to_lowercase() == name_lower)
-            .map(|(_, v)| v.as_str())
-    }
-}
-
-impl HttpResponse {
-    /// Create a JSON response
-    fn json(status: u16, value: &impl Serialize) -> Self {
-        Self {
-            status,
-            headers: vec![("Content-Type".to_string(), "application/json".to_string())],
-            body: serde_json::to_vec(value).unwrap_or_default(),
-        }
-    }
-
-    /// Add a header
-    fn with_header(mut self, name: &str, value: &str) -> Self {
-        self.headers.push((name.to_string(), value.to_string()));
-        self
-    }
-}
+use mother_crate::http_api::ApiRuntime;
+use mother_crate::http_daemon::{json_error, HttpRequest, HttpResponse, DEFAULT_MAX_BODY_SIZE};
+use mother_crate::http_routes::Router;
 
 // === Server state ===
 
@@ -204,57 +153,6 @@ fn spawn_toy_tracked(toy: patina::mother::Toy, in_flight: Arc<Mutex<HashSet<Stri
     }
 }
 
-// === API types ===
-
-/// Health check response
-#[derive(Serialize)]
-struct HealthResponse {
-    status: String,
-    version: String,
-    uptime_secs: u64,
-    children: Vec<ChildHealthJson>,
-}
-
-/// Child health in JSON form (uses Display impl of ChildHealth)
-#[derive(Serialize)]
-struct ChildHealthJson {
-    name: String,
-    status: String,
-}
-
-/// Scry API request
-#[derive(Deserialize)]
-struct ScryRequest {
-    query: String,
-    repo: Option<String>,
-    #[serde(default)]
-    all_repos: bool,
-    #[serde(default = "default_limit")]
-    limit: usize,
-}
-
-fn default_limit() -> usize {
-    10
-}
-
-/// Scry API response
-#[derive(Serialize)]
-struct ScryResponse {
-    results: Vec<ScryResultJson>,
-    count: usize,
-}
-
-/// Single result in JSON format
-#[derive(Serialize)]
-struct ScryResultJson {
-    id: i64,
-    content: String,
-    score: f32,
-    event_type: String,
-    source_id: String,
-    timestamp: String,
-}
-
 // === Helpers ===
 
 /// Generate a random 32-byte hex token
@@ -264,254 +162,54 @@ fn generate_token() -> String {
         .collect()
 }
 
-/// Check bearer token authorization
-fn check_auth(request: &HttpRequest, token: &str) -> bool {
-    request
-        .header("Authorization")
-        .map(|h| h == format!("Bearer {}", token))
-        .unwrap_or(false)
-}
-
-/// Add security headers to response
-fn with_security_headers(response: HttpResponse) -> HttpResponse {
-    response
-        .with_header("X-Content-Type-Options", "nosniff")
-        .with_header("X-Frame-Options", "DENY")
-}
-
-/// Consistent JSON error response
-fn json_error(status: u16, message: &str) -> HttpResponse {
-    HttpResponse::json(status, &serde_json::json!({ "error": message }))
-}
-
 // === Transport-free handlers ===
 
-/// Route request to handler
-fn route_request(request: &HttpRequest, state: &ServerState, require_auth: bool) -> HttpResponse {
-    let response = match (request.method.as_str(), request.path.as_str()) {
-        ("GET", "/health") => handle_health(state),
-        ("GET", "/version") => handle_version(state),
-        ("POST", "/api/scry") => handle_scry(request, state, require_auth),
-        ("GET", "/secrets/cache") => handle_secrets_get(request, state, require_auth),
-        ("POST", "/secrets/cache") => handle_secrets_cache(request, state, require_auth),
-        ("POST", "/secrets/lock") => handle_secrets_lock(request, state, require_auth),
-        // Generic child routing: /child/{name}/{action}
-        _ if request.path.starts_with("/child/") => {
-            handle_child_request(request, state, require_auth)
-        }
-        _ => json_error(404, "Not found"),
-    };
-    with_security_headers(response)
-}
-
-/// Handle GET /health
-fn handle_health(state: &ServerState) -> HttpResponse {
-    let children: Vec<ChildHealthJson> = state
-        .registry
-        .health_all()
-        .into_iter()
-        .map(|(name, health)| ChildHealthJson {
-            name,
-            status: health.to_string(),
-        })
-        .collect();
-
-    HttpResponse::json(
-        200,
-        &HealthResponse {
-            status: "ok".to_string(),
-            version: state.version.clone(),
-            uptime_secs: state.uptime_secs(),
-            children,
-        },
-    )
-}
-
-/// Handle GET /version
-fn handle_version(state: &ServerState) -> HttpResponse {
-    HttpResponse::json(
-        200,
-        &serde_json::json!({
-            "version": state.version,
-            "name": "patina-mother"
-        }),
-    )
-}
-
-/// Handle POST /api/scry
-fn handle_scry(request: &HttpRequest, state: &ServerState, require_auth: bool) -> HttpResponse {
-    if require_auth && !check_auth(request, &state.token) {
-        return json_error(401, "Unauthorized");
+impl ApiRuntime for ServerState {
+    fn version(&self) -> String {
+        self.version.clone()
     }
 
-    if request.body.is_empty() {
-        return json_error(400, "Missing request body");
+    fn uptime_secs(&self) -> u64 {
+        self.uptime_secs()
     }
 
-    let mut body: ScryRequest = match serde_json::from_slice(&request.body) {
-        Ok(req) => req,
-        Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
-    };
-
-    body.limit = body.limit.min(MAX_LIMIT);
-
-    match state
-        .scry_backend
-        .query(&body.query, body.limit, body.repo, body.all_repos)
-    {
-        Ok(results) => {
-            let json_results: Vec<ScryResultJson> = results
-                .into_iter()
-                .map(|r| ScryResultJson {
-                    id: 0,
-                    content: r.content,
-                    score: r.score,
-                    event_type: r.event_type,
-                    source_id: r.source_id,
-                    timestamp: r.timestamp,
-                })
-                .collect();
-
-            let response = ScryResponse {
-                count: json_results.len(),
-                results: json_results,
-            };
-
-            HttpResponse::json(200, &response)
-        }
-        Err(e) => json_error(500, &format!("Scry failed: {}", e)),
-    }
-}
-
-// === Secrets cache handlers (delegate to secrets child) ===
-
-fn handle_secrets_get(
-    request: &HttpRequest,
-    state: &ServerState,
-    require_auth: bool,
-) -> HttpResponse {
-    if require_auth && !check_auth(request, &state.token) {
-        return json_error(401, "Unauthorized");
+    fn health_all(&self) -> Vec<(String, patina::mother::ChildHealth)> {
+        self.registry.health_all()
     }
 
-    let child_req = ChildRequest {
-        action: "get".into(),
-        payload: serde_json::Value::Null,
-    };
-
-    match state.registry.handle("secrets", &child_req) {
-        Ok(resp) => HttpResponse::json(200, &resp.payload),
-        Err(_) => json_error(404, "No cached secrets"),
-    }
-}
-
-fn handle_secrets_cache(
-    request: &HttpRequest,
-    state: &ServerState,
-    require_auth: bool,
-) -> HttpResponse {
-    if require_auth && !check_auth(request, &state.token) {
-        return json_error(401, "Unauthorized");
+    fn child_health(&self, child_name: &str) -> anyhow::Result<patina::mother::ChildHealth> {
+        self.registry.health(child_name)
     }
 
-    if request.body.is_empty() {
-        return json_error(400, "Missing request body");
+    fn child_handle(
+        &self,
+        child_name: &str,
+        action: String,
+        payload: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        let request = ChildRequest { action, payload };
+        Ok(self.registry.handle(child_name, &request)?.payload)
     }
 
-    let payload: serde_json::Value = match serde_json::from_slice(&request.body) {
-        Ok(v) => v,
-        Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
-    };
-
-    let child_req = ChildRequest {
-        action: "cache".into(),
-        payload,
-    };
-
-    match state.registry.handle("secrets", &child_req) {
-        Ok(resp) => HttpResponse::json(200, &resp.payload),
-        Err(e) => json_error(500, &format!("Cache failed: {}", e)),
-    }
-}
-
-fn handle_secrets_lock(
-    request: &HttpRequest,
-    state: &ServerState,
-    require_auth: bool,
-) -> HttpResponse {
-    if require_auth && !check_auth(request, &state.token) {
-        return json_error(401, "Unauthorized");
-    }
-
-    let child_req = ChildRequest {
-        action: "lock".into(),
-        payload: serde_json::Value::Null,
-    };
-
-    match state.registry.handle("secrets", &child_req) {
-        Ok(resp) => HttpResponse::json(200, &resp.payload),
-        Err(e) => json_error(500, &format!("Lock failed: {}", e)),
-    }
-}
-
-// === Generic child routing ===
-
-/// Handle /child/{name}/{action} — generic routing to any child.
-///
-/// GET requests pass null payload; POST requests parse body as JSON.
-/// Existing /secrets/* routes are legacy aliases for this mechanism.
-fn handle_child_request(
-    request: &HttpRequest,
-    state: &ServerState,
-    require_auth: bool,
-) -> HttpResponse {
-    if require_auth && !check_auth(request, &state.token) {
-        return json_error(401, "Unauthorized");
-    }
-
-    // Parse /child/{name}/{action}
-    let parts: Vec<&str> = request.path[1..].split('/').collect();
-    if parts.len() != 3 {
-        return json_error(400, "Expected /child/{name}/{action}");
-    }
-    let child_name = parts[1];
-    let action = parts[2];
-
-    if let Some(response) = handle_builtin_child_request(child_name, action, &request.body) {
-        return response;
-    }
-
-    if action == "health" {
-        return match state.registry.health(child_name) {
-            Ok(health) => {
-                let status = match health {
-                    patina::mother::ChildHealth::Healthy => "healthy",
-                    patina::mother::ChildHealth::Degraded(_) => "degraded",
-                    patina::mother::ChildHealth::Unhealthy(_) => "unhealthy",
-                };
-                HttpResponse::json(200, &serde_json::json!({ "status": status }))
-            }
-            Err(e) => json_error(404, &format!("{}", e)),
-        };
-    }
-
-    let payload = if request.body.is_empty() {
-        serde_json::Value::Null
-    } else {
-        match serde_json::from_slice(&request.body) {
-            Ok(v) => v,
-            Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
-        }
-    };
-
-    let child_req = ChildRequest {
-        action: action.to_string(),
-        payload,
-    };
-
-    match state.registry.handle(child_name, &child_req) {
-        Ok(resp) => HttpResponse::json(200, &resp.payload),
-        Err(e) => json_error(404, &format!("{}", e)),
+    fn scry_query(
+        &self,
+        query: &str,
+        limit: usize,
+        repo: Option<String>,
+        all_repos: bool,
+    ) -> anyhow::Result<Vec<mother_crate::http_api::ScryHit>> {
+        Ok(self
+            .scry_backend
+            .query(query, limit, repo, all_repos)?
+            .into_iter()
+            .map(|hit| mother_crate::http_api::ScryHit {
+                content: hit.content,
+                score: hit.score,
+                event_type: hit.event_type,
+                source_id: hit.source_id,
+                timestamp: hit.timestamp,
+            })
+            .collect())
     }
 }
 
@@ -610,43 +308,11 @@ fn handle_builtin_child_request(
     }
 }
 
-// === Transport: microserver accept loop ===
-
-fn from_micro(req: microserver::HttpRequest) -> HttpRequest {
-    HttpRequest {
-        method: req.method,
-        path: req.path,
-        headers: req.headers,
-        body: req.body,
-    }
-}
-
-fn to_micro(resp: HttpResponse) -> microserver::HttpResponse {
-    microserver::HttpResponse {
-        status: resp.status,
-        headers: resp.headers,
-        body: resp.body,
-    }
-}
-
-fn handle_connection(stream: &mut (impl Read + Write), state: &ServerState, require_auth: bool) {
-    let req = match microserver::read_request(stream) {
-        Some(Ok(req)) => from_micro(req),
-        Some(Err(msg)) => {
-            let resp = to_micro(with_security_headers(json_error(400, &msg)));
-            microserver::write_response(stream, &resp);
-            return;
-        }
-        None => return,
-    };
-
-    let resp = if req.body.len() > MAX_BODY_SIZE {
-        with_security_headers(json_error(413, "Request too large"))
-    } else {
-        route_request(&req, state, require_auth)
-    };
-
-    microserver::write_response(stream, &to_micro(resp));
+fn build_router(state: Arc<ServerState>, require_auth: bool) -> Router {
+    let token = state.token.clone();
+    let route_table =
+        mother_crate::http_api::build_route_table(state, Arc::new(handle_builtin_child_request));
+    Router::new(require_auth, token, route_table)
 }
 
 /// Options for starting the daemon
@@ -806,7 +472,9 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         println!("   Press Ctrl+C to stop\n");
 
         spawn_heartbeat(Arc::clone(&state), options.legacy_migration);
-        accept_loop_tcp(listener, state);
+        let router = Arc::new(build_router(Arc::clone(&state), true));
+        let handler = Arc::new(move |request: HttpRequest| router.route(&request));
+        mother_crate::http_daemon::accept_loop_tcp(listener, DEFAULT_MAX_BODY_SIZE, handler);
     }
 
     // Default: UDS path (no TCP, no token needed — file permissions are auth)
@@ -841,39 +509,9 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     println!("   Press Ctrl+C to stop\n");
 
     spawn_heartbeat(Arc::clone(&state), options.legacy_migration);
-    accept_loop_uds(listener, state);
-}
-
-fn accept_loop_tcp(listener: TcpListener, state: Arc<ServerState>) -> ! {
-    for stream in listener.incoming() {
-        match stream {
-            Ok(mut stream) => {
-                let state = Arc::clone(&state);
-                std::thread::spawn(move || {
-                    handle_connection(&mut stream, &state, true);
-                    let _ = stream.shutdown(Shutdown::Write);
-                });
-            }
-            Err(e) => eprintln!("TCP accept error: {}", e),
-        }
-    }
-    std::process::exit(0);
-}
-
-fn accept_loop_uds(listener: std::os::unix::net::UnixListener, state: Arc<ServerState>) -> ! {
-    for stream in listener.incoming() {
-        match stream {
-            Ok(mut stream) => {
-                let state = Arc::clone(&state);
-                std::thread::spawn(move || {
-                    handle_connection(&mut stream, &state, false);
-                    let _ = stream.shutdown(Shutdown::Write);
-                });
-            }
-            Err(e) => eprintln!("UDS accept error: {}", e),
-        }
-    }
-    std::process::exit(0);
+    let router = Arc::new(build_router(Arc::clone(&state), false));
+    let handler = Arc::new(move |request: HttpRequest| router.route(&request));
+    mother_crate::http_daemon::accept_loop_uds(listener, DEFAULT_MAX_BODY_SIZE, handler);
 }
 
 enum LoadedWasmChild {
