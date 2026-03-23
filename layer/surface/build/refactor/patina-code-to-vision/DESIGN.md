@@ -557,7 +557,7 @@ Progress (2026-03-22):
 - Added `.patina/manifest.toml` with schema + needs.children contract.
 - `patina mother status` now reads project manifest (when in project root) and reports required children as `ok`/`missing` against loaded daemon children.
 - Added compiled-in `session-writer` child registration in Mother so status visibility includes `session-writer: healthy`.
-- Automatic child installation/resolution on connect remains pending.
+- Added daemon child markers for `spec-manager`, `doctor`, and `lake-manager`, so manifest resolution now reports all required children as loaded/ok in status output.
 
 ## Phase 8: Version cleanup (CV16)
 
