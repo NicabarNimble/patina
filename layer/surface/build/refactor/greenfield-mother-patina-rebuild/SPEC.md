@@ -63,6 +63,21 @@ Produce an authoritative greenfield architecture spec for Patina + Mother that i
 - explicit about boundaries, ownership, and failure modes,
 - directly actionable as a migration target after current refactor completion.
 
+This effort is a finish-line extraction, not a reset. The intent is to carry the
+recent refactor across the boundary where Patina core and Mother runtime are cleanly
+separated, transitional hacks are retired through bounded slices, and ownership seams
+become durable contracts.
+
+Target state this spec must drive:
+
+- Patina remains protocol/product-first, with standalone-capable core verbs by policy.
+- Mother is a runtime daemon with explicit ownership and no accidental CLI coupling.
+- SDK surfaces are stable and explicit so third-party developers can build Mother/child/toy
+  implementations without internal patching.
+- Extension lanes are first-class: custom lakes, custom data blocks/apps, multi-Mother
+  topologies, and persona-driven workflows can evolve around Patina without violating
+  core contracts.
+
 This spec is greenfield in architecture intent, but it is evidence-bound in execution:
 every target boundary must map to current code truth and a bounded migration slice.
 
@@ -83,6 +98,9 @@ every target boundary must map to current code truth and a bounded migration sli
 - Capability and security model for toys and child grants.
 - Interface guest contract for Claude/OpenCode/Gemini.
 - Migration map from current architecture to target architecture.
+- SDK boundary model for third-party Mother/child/toy builders.
+- Architecture constraints for experimentation lanes (custom lakes, custom blocks/apps,
+  multi-Mother patterns, persona orchestration), with explicit contract boundaries.
 
 ### Out of scope
 
@@ -97,6 +115,8 @@ every target boundary must map to current code truth and a bounded migration sli
 4. How does Mother load bundled/runtime/project children deterministically?
 5. What is the minimal, enforceable toy grant and scope model?
 6. What proofs must pass before replacing current paths with greenfield equivalents?
+7. Which SDK contracts must be stable for external builders of Mother/child/toy surfaces?
+8. Which extension patterns are explicitly supported without core-internal modification?
 
 ## Deliverables
 
@@ -131,12 +151,36 @@ This matrix is the contract to preserve while redesigning internals.
 | Child-managed control verbs (`spec`, `lake`, `doctor`) | Route through Mother child dispatch | Hard-fail with explicit "child unavailable via Mother" contract | `mother-required` |
 | Session lifecycle helpers | Runtime/session metadata flows through Mother/session-writer contracts | Interface helper scripts still produce durable session artifacts | `runtime-owned-artifacts` |
 
+### GF2 Command Matrix (execution checklist)
+
+| Command surface | Policy class | Mother available expected behavior | Mother unavailable expected behavior | Evidence anchor |
+| --- | --- | --- | --- | --- |
+| `patina context` | `standalone-core` | Command remains usable; Mother integration is additive only | Command remains usable with standalone behavior | `src/commands/context.rs:1` |
+| `patina scry` | `standalone-core` | Mother-backed path may be used when available | Command remains usable with standalone behavior | `src/commands/scry.rs:1` |
+| `patina assay` | `standalone-core` | Mother-backed path may be used when available | Command remains usable with standalone behavior | `src/commands/assay.rs:1` |
+| `patina measure` | `standalone-core` | Mother-backed path may be used when available | Command remains usable with standalone behavior | `src/commands/measure.rs:1` |
+| `patina belief` | `standalone-core` | Command remains usable; Mother integration is additive only | Command remains usable with standalone behavior | `src/commands/belief.rs:1` |
+| `patina spec *` | `mother-required` | Routes to `spec-manager` child dispatch through Mother | Hard-fails with explicit Mother-required message | `src/commands/spec/mod.rs:375` |
+| `patina lake *` | `mother-required` | Routes to `lake-manager` child dispatch through Mother | Hard-fails with explicit Mother-required message | `src/commands/lake.rs:30` |
+| `patina doctor` | `mother-required` | Routes to `doctor` child dispatch through Mother | Hard-fails with explicit Mother-required message | `src/commands/doctor.rs:180` |
+| Interface session helpers | `runtime-owned-artifacts` | Session metadata and artifact linkage through Mother/session-writer contracts | Helper scripts still create durable session artifacts | `src/interface/internal/checkin.rs:44` |
+
+The matrix above is normative. Changes to policy class require explicit spec evidence and
+an updated migration ledger row.
+
 ## Canonical Data Ownership Model (greenfield target)
 
 - `events.db` and project projections are Patina product data stores.
 - Mother runtime state (child tasks, offsets, session runtime records, grants) is Mother-owned.
 - Session artifacts under `layer/sessions/` are durable user-facing records produced through session workflow contracts.
 - Child-private mutable state lives behind child manifests/capability boundaries; Mother stores only runtime-facing envelopes.
+
+### Data ownership edge cases (required clarifications)
+
+1. Mother unavailable mode must not corrupt or invalidate local product stores.
+2. Session artifact durability under `layer/sessions/` remains user-visible source of truth for session history.
+3. Runtime recovery after daemon restarts must preserve Mother-owned runtime records (sessions/tasks/grants) without mutating product event history.
+4. Ownership conflicts resolve by contract: product data stores (`events.db`, projections) are Patina-owned; runtime envelopes are Mother-owned.
 
 ## Migration Ledger Contract (required before active)
 
@@ -149,6 +193,21 @@ Every migration slice must include:
 5. Belief/core-value constraints that cannot be violated.
 
 No ownership-moving code starts until at least one concrete ledger row exists in DESIGN.
+
+Execution priority for current lane:
+
+1. M1 complete: CLI -> Mother daemon seam extraction (runtime internals moved; behavior preserved).
+2. M2 next (Option B): Mother runner/bootstrap API extraction to support `patina-mother` direction while keeping Patina as thin composition shell.
+3. M3 after M2: SDK contract stabilization (single `patina-sdk` public SDK stance retained).
+
+### Seam classification contract
+
+Every seam touched by this spec must be classified as one of:
+
+- `permanent contract`: intended long-term public/architectural boundary; no automatic removal target.
+- `migration scaffold`: temporary transition seam with explicit removal trigger and owner.
+
+No seam may remain unclassified when a corresponding migration slice is promoted.
 
 ## Verification
 

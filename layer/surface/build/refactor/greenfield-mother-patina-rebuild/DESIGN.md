@@ -16,6 +16,17 @@ Define the architecture we would implement if starting from empty source tree to
 - toys as least-privilege host capabilities,
 - interface runtimes as external guests.
 
+Execution intent for this phase: finish the extraction that recent refactor work began.
+This lane is about removing transitional coupling cleanly (with parity gates), not
+starting another broad rewrite cycle.
+
+Greenfield done-state for this design:
+
+- Patina and Mother are fully separated by explicit, durable contracts.
+- SDK surfaces are coherent for third-party builders of Mother/child/toy systems.
+- Extension patterns (custom lakes, custom data blocks/apps, multi-Mother topologies,
+  persona-centric workflows) are enabled through contracts, not internal forks.
+
 ## Design Principles
 
 1. Beliefs are the product; infrastructure serves belief loops.
@@ -24,6 +35,27 @@ Define the architecture we would implement if starting from empty source tree to
 4. Child seams are contracts, not convenience wrappers.
 5. Session artifacts are runtime-owned outputs, not ad-hoc CLI state.
 6. Verification evidence is required before ownership moves.
+7. Third-party buildability is a first-class architecture constraint.
+8. Experimentation lanes must compose around Patina without violating core contracts.
+
+## Crate Naming and Publish Policy
+
+This lane treats crate identity as architecture contract, not branding detail.
+
+- `patina-ai` remains the product-facing crate (CLI + core protocol ergonomics).
+- `patina-sdk` remains the single public SDK entrypoint for child/toy builders.
+- `patina-sdk-core`, `patina-sdk-data`, and `patina-sdk-agent` are tier crates that support
+  the SDK surface; they are not additional public SDK brands.
+- Mother runtime crate naming should align with Patina namespace when published externally;
+  preferred crates.io identity is `patina-mother` (not bare `mother`) for clarity.
+
+Publishing policy for Mother runtime:
+
+1. Keep Mother crate internal-only until runtime boundaries are stable and M1 seam extraction
+   parity is proven.
+2. Publish as `patina-mother` only when the external runtime contract is intentionally minimal,
+   documented, and covered by compatibility tests.
+3. Do not publish transitional/internal-only APIs that are expected to churn during migration.
 
 ## Work Plan
 
@@ -47,6 +79,7 @@ Required anchors:
 - Define ownership matrix for `core`, `mother`, `children`, `sdk`, `wit`.
 - Mark each boundary as `permanent contract` or `migration scaffold`.
 - Add explicit "current owner -> target owner" for each row.
+- Call out contract seams intended for external implementation (third-party Mother/child/toy builders).
 
 ### Slice B: Runtime policy matrix (GF2, GF5)
 
@@ -62,6 +95,7 @@ Required anchors:
 - Define child lifecycle: install, load, health, invoke, revoke.
 - Define toy grants/scopes and enforcement points.
 - Ensure schema language matches active child manifest contract (`[needs].toys`, `[needs.scopes]`).
+- Define minimum SDK guarantees required for custom lakes/data blocks/apps and persona orchestration.
 
 ### Slice D: Migration map and risk model (GF6, GF7)
 
@@ -73,9 +107,80 @@ Required anchors:
 
 | Slice | Current owner | Target owner | Parity gates | Rollback trigger | Rollback action | Blast radius |
 | --- | --- | --- | --- | --- | --- | --- |
-| Example: Mother daemon command seam | `src/commands/mother/daemon.rs` | `mother/src/*` | `cargo check -q`; targeted mother on/off probes; `cargo test -q` | Health/status/dispatch mismatch or command regression | Revert seam commit and restore prior routing path | `patina mother`, child dispatch surfaces |
+| M1: CLI -> Mother daemon seam extraction | `src/commands/mother/daemon.rs:670` | `mother/src/daemon.rs`, `mother/src/microserver.rs`, `mother/src/socket.rs`, `mother/src/lifecycle.rs` and supporting runtime modules | `cargo check -q`; `cargo test -q`; `patina mother start`; `curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/health`; probe `spec`/`lake`/`doctor` with Mother running and stopped to confirm `mother-required` failures still match contract | Any regression in daemon startup, `/health` response shape, child dispatch behavior, or Mother-required error contract | Revert M1 commits and restore routing/handler path to `src/commands/mother/daemon.rs`; re-run parity gates before retry | `patina mother*`; control-plane verbs (`spec`, `lake`, `doctor`); session-writer + child routing surfaces |
+| M2: Mother runner extraction + `patina-mother` Option B path | `src/commands/mother/daemon.rs:152` orchestration shell and env-gated extracted path (`PATINA_MOTHER_EXTRACTED`) | Mother-owned bootstrap/runner API (`mother/src/*`) consumed by Patina CLI as thin adapter; publishable direction for `patina-mother` runtime entrypoint | `cargo check -q`; `cargo test -q`; parity probes from M1 checklist; verify `patina mother start` behavior unchanged; verify no dependency inversion (`mother` must not depend on Patina command modules) | Any behavior drift in start/health/control-plane routing, or bootstrap API requiring Patina internals | Revert M2 runner commits and keep Patina composition shell as temporary adapter; preserve M1-owned runtime modules | daemon startup/orchestration surface; publish policy and runtime API boundary for `patina-mother` |
+| M3: SDK contract stabilization (not redesign) | Mixed SDK + legacy compatibility surfaces (`sdk/patina-sdk/src/lib.rs:1`, `sdk/patina-sdk/Cargo.toml:16`) and runtime contract touchpoints (`src/child/internal/tests.rs:317`, `mother/src/toys.rs:13`) | Tiered SDK as canonical external contract (`sdk/patina-sdk-core`, `sdk/patina-sdk-data`, `sdk/patina-sdk-agent`, `sdk/patina-sdk` umbrella) with legacy features treated as migration shims until removed by parity | `cargo check -q`; `cargo test -q`; verify manifest capability schema enforcement stays `[needs].toys` + `[needs.scopes]`; verify existing child loading/runtime behavior remains stable via Mother start + health + child dispatch probes; ensure docs/spec language uses child/kind vocabulary and matches shipped SDK surfaces | Any break in child authoring ergonomics, manifest compatibility, toy grant enforcement, or third-party builder path that currently works | Revert M3 commits affecting SDK public surface/docs; restore prior exported features and compatibility shims; reopen with narrower SDK slice | SDK crates; child authoring docs/templates; manifest parser contracts; toy grant/capability path |
 
-Populate with real rows during execution; do not leave example row as final content.
+Add one row per additional ownership-moving slice before promoting this spec to active.
+
+## M1 Acceptance Checklist (binary pass/fail)
+
+Run these checks for M1 seam extraction and record outputs in session/spec evidence.
+
+1. Build/test baseline
+   - `cargo check -q`
+   - `cargo test -q`
+2. Mother daemon availability
+   - `patina mother start`
+   - `curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/health`
+   - Expected: HTTP 200 JSON payload with stable health shape.
+3. Mother-required control-plane commands while daemon is running
+   - `patina spec next`
+   - `patina lake list`
+   - `patina doctor --json`
+   - Expected: commands succeed via Mother child dispatch.
+4. Mother-required failure contract while daemon is stopped
+   - `patina mother stop`
+   - Re-run `patina spec next`, `patina lake list`, `patina doctor --json`
+   - Expected: explicit Mother-required failure messaging; no silent fallback.
+5. Regression gate
+   - No output/contract drift outside known approved message text changes.
+
+M1 is complete only when all five checks pass and evidence is attached.
+
+M1 completion evidence (this session):
+
+- `9e264a1c` refactor: extract Mother HTTP daemon routing core
+- `ac2e8506` refactor: move daemon lifecycle helpers into mother crate
+- `7b2696a0` refactor: extract daemon child bootstrap composition
+- `e4f9a7ab` refactor: isolate daemon loader and builtin dispatch adapters
+- `79717da0` refactor: move daemon heartbeat runtime into mother crate
+
+## Seam Classification Table (GF1 enforcement)
+
+| Seam | Classification | Owner | Removal trigger |
+| --- | --- | --- | --- |
+| CLI command entrypoint -> Mother runtime invocation (`patina mother start`) | permanent contract | `src/commands/mother/mod.rs` + `mother/src/lifecycle.rs` | none |
+| CLI-owned daemon internals in `src/commands/mother/daemon.rs` | migration scaffold | M1 slice owner | remove when ownership parity is proven in Mother crate and M1 checklist passes |
+| Child capability manifest schema (`[needs].toys`, `[needs.scopes]`) | permanent contract | child manifest parser + SDK docs | none |
+| Legacy SDK world compatibility features | migration scaffold | M3 slice owner | remove only after M3 parity gates prove no active dependency |
+
+## SDK Stability Tiers (M3 enforcement)
+
+Use these tiers for all SDK-facing APIs and docs:
+
+- stable: default third-party target; semver-protected surface under `patina-sdk`.
+- experimental: opt-in surface with explicit instability warning and migration guidance.
+- internal: not documented as external contract; may change without SDK guarantees.
+
+Rules:
+
+1. `patina-sdk` remains the single public SDK brand.
+2. Tier crates (`patina-sdk-core`, `patina-sdk-data`, `patina-sdk-agent`) support the SDK and are not separate SDK brands.
+3. Any `stable` promotion must include compatibility tests and example consumer proof.
+
+## Publish Gate for `patina-mother`
+
+Mother runtime publication is optional and gated. Do not publish by default.
+
+Publish only when all are true:
+
+1. M1 seam extraction is complete with recorded parity evidence.
+2. M2 runner/bootstrap extraction is complete with no behavior drift from `patina mother start` contracts.
+3. Runtime API surface is intentionally minimal and documented.
+4. Compatibility tests cover core runtime contracts (daemon lifecycle, health, child dispatch, grants/session envelopes).
+5. No transitional migration scaffolds are exposed as public API.
+6. Versioning/ownership policy is documented in release notes and architecture docs.
 
 ## Direct Documentation Targets
 
