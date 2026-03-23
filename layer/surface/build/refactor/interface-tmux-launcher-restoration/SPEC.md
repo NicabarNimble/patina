@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: interface-tmux-launcher-restoration
-status: ready
+status: active
 created: 2026-03-23
 updated: 2026-03-23
 sessions:
@@ -15,28 +15,28 @@ beliefs:
 exit_criteria:
 - id: TL1
   text: Tmux launch support is restored for Claude/OpenCode/Gemini with explicit policy (`--tmux` and `--no-tmux`) and deterministic per-interface lane naming
-  checked: false
+  checked: true
 - id: TL2
   text: AI launch request/runtime contract carries tmux decision + lane identity without regressing current session check-in, environment injection, and bundle bootstrap behavior
-  checked: false
+  checked: true
 - id: TL3
   text: Launcher transport supports tmux attach/reuse (`tmux -L <socket> new-session -A -D`) with safe direct-launch fallback when tmux is unavailable or unsuitable
-  checked: false
+  checked: true
 - id: TL4
   text: Session liveness authority remains Mother/session runtime (socket/daemon truth), not tmux lane existence
-  checked: false
+  checked: true
 - id: TL5
   text: No reintroduction of historical tag-integrity bugs (`tmux-lost`/`superseded` frontmatter claims without matching real git tags)
-  checked: false
+  checked: true
 - id: TL6
   text: Interface bundle model is extended for launch policy metadata without blocking future bundle/tarball evolution
-  checked: false
+  checked: true
 - id: TL7
   text: Runtime policy/tooling/docs are aligned (no stale references to removed flags or contradictory launcher semantics)
-  checked: false
+  checked: true
 - id: TL8
   text: '`cargo check -q`, targeted AI/session tests, and launcher smoke probes pass for tmux and non-tmux paths'
-  checked: false
+  checked: true
 ---
 # refactor: restore tmux interface launch lanes safely
 
