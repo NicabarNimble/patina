@@ -706,6 +706,21 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
             mother_crate::session_writer::SessionWriterChild::new(),
         ))
         .expect("failed to register session-writer child");
+    registry
+        .register(Box::new(mother_crate::static_child::StaticChild::new(
+            "spec-manager",
+        )))
+        .expect("failed to register spec-manager child marker");
+    registry
+        .register(Box::new(mother_crate::static_child::StaticChild::new(
+            "doctor",
+        )))
+        .expect("failed to register doctor child marker");
+    registry
+        .register(Box::new(mother_crate::static_child::StaticChild::new(
+            "lake-manager",
+        )))
+        .expect("failed to register lake-manager child marker");
 
     // WASM children (discovered from ~/.patina/children/)
     let children_dir = patina::paths::child::children_dir();

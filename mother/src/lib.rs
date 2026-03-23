@@ -10,6 +10,7 @@ pub mod runtime;
 pub mod secrets;
 pub mod session_writer;
 pub mod socket;
+pub mod static_child;
 pub mod state;
 pub mod tasks;
 pub mod toys;
