@@ -234,6 +234,12 @@ M3 execution slices (sequenced):
 2. M3b: Flip default to Mother authority and verify behavior/security parity.
 3. M3c: Remove legacy Patina-owned secret authority implementation after parity and migration checks pass.
 
+M3a progress evidence (current session):
+
+- Added `secrets-authority` builtin dispatch route under Mother control-plane (`/child/secrets-authority/dispatch`).
+- Patina `secrets` command now attempts Mother authority dispatch first and falls back to legacy local path when Mother is unavailable.
+- Core-value anchor: preserve local-first reliability and least-surprise behavior during migration (scalpel rollout, no hard cutover in M3a).
+
 ## Seam Classification Table (GF1 enforcement)
 
 | Seam | Classification | Owner | Removal trigger |

@@ -4,7 +4,9 @@
 //! LLMs never see secret values.
 
 use anyhow::{bail, Result};
-use patina::{paths, scanner, secrets};
+use patina::{mother, paths, scanner, secrets};
+use serde::Deserialize;
+use serde_json::Value;
 use std::env;
 use std::io::{self, BufRead, Write};
 
@@ -105,7 +107,7 @@ pub struct SecretsFlags {
 pub fn execute_cli(command: Option<SecretsCommands>, flags: SecretsFlags) -> Result<()> {
     // Handle flags first
     if flags.lock {
-        return secrets::lock_session();
+        return lock_session();
     }
 
     if flags.export_key {
@@ -121,8 +123,7 @@ pub fn execute_cli(command: Option<SecretsCommands>, flags: SecretsFlags) -> Res
     }
 
     if let Some(name) = flags.remove {
-        let project_root = env::current_dir().ok();
-        return secrets::remove_secret(&name, flags.global, project_root.as_deref());
+        return remove_secret(&name, flags.global);
     }
 
     // Handle subcommands
@@ -130,6 +131,81 @@ pub fn execute_cli(command: Option<SecretsCommands>, flags: SecretsFlags) -> Res
         Some(cmd) => execute(cmd),
         None => status(), // Bare `patina secrets` shows status
     }
+}
+
+fn authority_client() -> mother::Client {
+    let address = mother::get_address().unwrap_or_else(|| "localhost:50051".to_string());
+    mother::Client::new(address)
+}
+
+fn current_project_root_str() -> Option<String> {
+    env::current_dir()
+        .ok()
+        .map(|path| path.display().to_string())
+}
+
+fn dispatch_secrets_authority(op: &str, mut payload: Value) -> Result<Option<Value>> {
+    let mut request = serde_json::Map::new();
+    request.insert("op".to_string(), Value::String(op.to_string()));
+
+    if let Some(root) = current_project_root_str() {
+        if let Some(map) = payload.as_object_mut() {
+            map.entry("project_root".to_string())
+                .or_insert(Value::String(root));
+        }
+    }
+    if let Some(map) = payload.as_object() {
+        for (k, v) in map {
+            request.insert(k.clone(), v.clone());
+        }
+    }
+
+    let client = authority_client();
+    let wrapped_payload = Value::Object(request);
+
+    match client.child_action("secrets-authority", "dispatch", &wrapped_payload) {
+        Ok(value) => Ok(Some(value)),
+        Err(error) if is_mother_unavailable_error(&error) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn is_mother_unavailable_error(error: &anyhow::Error) -> bool {
+    let message = error.to_string().to_lowercase();
+    message.contains("failed to connect")
+        || message.contains("failed to send child request")
+        || message.contains("connection refused")
+        || message.contains("connect error")
+        || message.contains("no such file")
+        || message.contains("timed out")
+        || message.contains("socket")
+}
+
+#[derive(Debug, Deserialize)]
+struct AuthorityAddResponse {
+    env_var: String,
+    created_vault: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct AuthorityStatusVault {
+    exists: bool,
+    secret_count: usize,
+    recipient_count: usize,
+    secret_names: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AuthorityStatusResponse {
+    identity_source: Option<String>,
+    recipient_key: Option<String>,
+    global: AuthorityStatusVault,
+    project: Option<AuthorityStatusVault>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AuthorityRecipientsResponse {
+    recipients: Vec<String>,
 }
 
 /// Execute secrets subcommand
@@ -153,6 +229,61 @@ pub fn execute(command: SecretsCommands) -> Result<()> {
 
 /// Show status: global and project vaults
 fn status() -> Result<()> {
+    if let Some(response) = dispatch_secrets_authority("status", serde_json::json!({}))? {
+        let status: AuthorityStatusResponse = serde_json::from_value(response)?;
+
+        println!("Identity:");
+        match status.identity_source {
+            Some(source) => {
+                println!("  ✓ Available via {}", source);
+                if let Some(key) = status.recipient_key {
+                    println!("  Public key: {}", key);
+                }
+            }
+            None => {
+                println!("  ✗ Not configured");
+                println!("    Run: patina secrets add <name> to create vault and identity");
+            }
+        }
+
+        println!();
+        println!("Global vault (~/.patina/):");
+        if status.global.exists {
+            println!(
+                "  ✓ {} secrets, {} recipients",
+                status.global.secret_count, status.global.recipient_count
+            );
+            if !status.global.secret_names.is_empty() {
+                println!("  Secrets: {}", status.global.secret_names.join(", "));
+            }
+        } else {
+            println!("  ✗ Not initialized");
+        }
+
+        if let Some(project) = status.project {
+            println!();
+            println!("Project vault (.patina/):");
+            if project.exists {
+                println!(
+                    "  ✓ {} secrets, {} recipients",
+                    project.secret_count, project.recipient_count
+                );
+                if !project.secret_names.is_empty() {
+                    println!("  Secrets: {}", project.secret_names.join(", "));
+                }
+            } else {
+                println!("  ✗ Not initialized");
+            }
+        }
+
+        println!();
+        println!("Commands:");
+        println!("  patina secrets add NAME [--stdin]     Add a secret");
+        println!("  patina secrets run -- CMD            Run with secrets");
+        println!("  patina secrets --lock                Clear session cache");
+        return Ok(());
+    }
+
     let project_root = env::current_dir().ok();
     let status = secrets::check_status(project_root.as_deref())?;
 
@@ -236,7 +367,23 @@ fn add(name: &str, env: Option<&str>, from_stdin: bool, global: bool) -> Result<
         bail!("Secret value cannot be empty");
     }
 
-    let result = secrets::add_secret(name, &secret_value, env, global, project_root.as_deref())?;
+    let result = if let Some(response) = dispatch_secrets_authority(
+        "add_secret",
+        serde_json::json!({
+            "name": name,
+            "value": secret_value,
+            "env": env,
+            "global": global,
+        }),
+    )? {
+        let parsed: AuthorityAddResponse = serde_json::from_value(response)?;
+        secrets::AddResult {
+            env_var: parsed.env_var,
+            created_vault: parsed.created_vault,
+        }
+    } else {
+        secrets::add_secret(name, &secret_value, env, global, project_root.as_deref())?
+    };
     if result.created_vault {
         println!("Vault created.");
     }
@@ -324,20 +471,38 @@ fn reset_identity(confirm: bool) -> Result<()> {
 
 /// Add a recipient to project vault
 fn add_recipient(key: &str) -> Result<()> {
+    if dispatch_secrets_authority("add_recipient", serde_json::json!({ "key": key }))?.is_some() {
+        println!("✓ Added recipient");
+        return Ok(());
+    }
+
     let project_root = env::current_dir()?;
     secrets::add_recipient(&project_root, key)
 }
 
 /// Remove a recipient from project vault
 fn remove_recipient(key: &str) -> Result<()> {
+    if dispatch_secrets_authority("remove_recipient", serde_json::json!({ "key": key }))?.is_some()
+    {
+        println!("✓ Removed recipient");
+        return Ok(());
+    }
+
     let project_root = env::current_dir()?;
     secrets::remove_recipient(&project_root, key)
 }
 
 /// List recipients for project vault
 fn list_recipients() -> Result<()> {
-    let project_root = env::current_dir()?;
-    let recipients = secrets::list_recipients(&project_root)?;
+    let recipients = if let Some(response) =
+        dispatch_secrets_authority("list_recipients", serde_json::json!({}))?
+    {
+        let parsed: AuthorityRecipientsResponse = serde_json::from_value(response)?;
+        parsed.recipients
+    } else {
+        let project_root = env::current_dir()?;
+        secrets::list_recipients(&project_root)?
+    };
 
     if recipients.is_empty() {
         println!("No recipients configured.");
@@ -350,6 +515,31 @@ fn list_recipients() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn lock_session() -> Result<()> {
+    if dispatch_secrets_authority("lock_session", serde_json::json!({}))?.is_some() {
+        return Ok(());
+    }
+    secrets::lock_session()
+}
+
+fn remove_secret(name: &str, global: bool) -> Result<()> {
+    if dispatch_secrets_authority(
+        "remove_secret",
+        serde_json::json!({
+            "name": name,
+            "global": global,
+        }),
+    )?
+    .is_some()
+    {
+        println!("✓ Removed {}", name);
+        return Ok(());
+    }
+
+    let project_root = env::current_dir().ok();
+    secrets::remove_secret(name, global, project_root.as_deref())
 }
 
 /// Guided setup for Claude Code authentication token.

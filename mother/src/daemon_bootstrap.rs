@@ -36,6 +36,11 @@ pub fn register_builtin_children(registry: &mut ChildRegistry) -> Result<()> {
             "lake-manager",
         )))
         .expect("failed to register lake-manager child marker");
+    registry
+        .register(Box::new(crate::static_child::StaticChild::new(
+            "secrets-authority",
+        )))
+        .expect("failed to register secrets-authority child marker");
     Ok(())
 }
 
