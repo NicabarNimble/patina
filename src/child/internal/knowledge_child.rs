@@ -926,8 +926,13 @@ mod bindings {
                     stream, self.plugin_name
                 ));
             }
-            crate::child::toy_host::events::ack_through(&self.runtime, &self.plugin_name, &stream, offset)
-                .map_err(|e| e.to_string())
+            crate::child::toy_host::events::ack_through(
+                &self.runtime,
+                &self.plugin_name,
+                &stream,
+                offset,
+            )
+            .map_err(|e| e.to_string())
         }
 
         fn list_streams(&mut self) -> Vec<String> {
