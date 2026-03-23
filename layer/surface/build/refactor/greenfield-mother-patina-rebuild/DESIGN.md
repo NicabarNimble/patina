@@ -142,6 +142,11 @@ Persona resolution precedence (normative):
 
 - explicit launch argument (`--persona`) -> project binding (`.patina/persona`) -> no persona scope.
 
+Typed bootstrap config rule (normative):
+
+- Mother startup mode MUST be represented with typed enums (transport/auth/lifecycle), not stringly/boolean combinations in CLI command code.
+- Patina `run_server` acts as argument translation into Mother bootstrap config; Mother executes startup orchestration from that config.
+
 ## M1 Acceptance Checklist (binary pass/fail)
 
 Run these checks for M1 seam extraction and record outputs in session/spec evidence.

@@ -569,18 +569,6 @@ fn load_project_manifest(project_root: &Path) -> Result<ProjectManifest> {
     Ok(manifest)
 }
 
-/// Set up the Unix domain socket for serving.
-///
-/// 1. Ensure ~/.patina/run/ exists with 0o700
-/// 2. Clean up stale socket (safe unlink)
-/// 3. Bind UnixListener
-/// 4. Set socket to 0o600
-pub fn setup_unix_listener() -> Result<std::os::unix::net::UnixListener> {
-    let run_dir = paths::serve::run_dir();
-    let socket_path = paths::serve::socket_path();
-    mother_crate::socket::setup_unix_listener(&run_dir, &socket_path)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

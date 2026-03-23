@@ -198,41 +198,43 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     if let Some(ref host) = options.host {
         let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
         let state = Arc::new(ServerState::new(token, registry));
-        let addr = format!("{}:{}", host, options.port);
-        let listener = std::net::TcpListener::bind(&addr)?;
         let router = Arc::new(build_router(Arc::clone(&state), true));
-        mother_crate::daemon_runner::run_tcp_server(mother_crate::daemon_runner::TcpServerLaunch {
-            listener,
-            host: host.clone(),
-            addr,
-            token_path: patina::paths::serve::token_path(),
-            token: state.token.clone(),
+        let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
+            transport: mother_crate::daemon_bootstrap_config::TransportMode::Tcp {
+                host: host.clone(),
+                port: options.port,
+                token_path: patina::paths::serve::token_path(),
+                token: state.token.clone(),
+            },
             legacy_migration: options.legacy_migration,
-            registry: Arc::clone(&state.registry),
-            router,
-        });
+        };
+        return mother_crate::daemon_bootstrap_config::start(
+            config,
+            mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
+                registry: Arc::clone(&state.registry),
+                router,
+            },
+        );
     }
 
     // Default: UDS path (no TCP, no token needed — file permissions are auth)
     let state = Arc::new(ServerState::new(String::new(), registry));
-    let listener = super::setup_unix_listener()?;
-    let socket_path = patina::paths::serve::socket_path();
-    let pid_path = patina::paths::serve::pid_path();
-
-    // Write PID file
-    mother_crate::daemon_lifecycle::write_pid_file(&pid_path)?;
-
-    // Register signal handlers for cleanup
-    mother_crate::daemon_lifecycle::register_signal_handlers(pid_path, socket_path.clone());
-
     let router = Arc::new(build_router(Arc::clone(&state), false));
-    mother_crate::daemon_runner::run_uds_server(mother_crate::daemon_runner::UdsServerLaunch {
-        listener,
-        socket_path,
+    let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
+        transport: mother_crate::daemon_bootstrap_config::TransportMode::Uds {
+            run_dir: patina::paths::serve::run_dir(),
+            socket_path: patina::paths::serve::socket_path(),
+            pid_path: patina::paths::serve::pid_path(),
+        },
         legacy_migration: options.legacy_migration,
-        registry: Arc::clone(&state.registry),
-        router,
-    });
+    };
+    mother_crate::daemon_bootstrap_config::start(
+        config,
+        mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
+            registry: Arc::clone(&state.registry),
+            router,
+        },
+    )
 }
 
 #[cfg(test)]
