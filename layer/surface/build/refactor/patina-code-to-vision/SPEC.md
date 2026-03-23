@@ -256,16 +256,16 @@ Evidence format rules for this table:
 | CV6 | verified-true | Runtime code is child-vocabulary canonical (`src/child/`); command proof: `rg "PluginManifest|PluginWorld|PluginEngine|PluginRole|PluginProvides" src/` => no matches; `test -d src/plugin && echo exists || echo missing` => `missing`; `rg "plugin\.toml|\[plugin\]" src/child src/main.rs src/lib.rs src/commands/setup/grammars.rs sdk/patina-sdk/src` => no matches. |
 | CV7 | verified-false | `patina mother status` shows loaded children `ducklake` and `secrets` only; `session-writer` is not loaded/visible in daemon status output (2026-03-22 baseline). |
 | CV8 | verified-false | Command proof: `test -e .patina/manifest.toml || echo missing` => `missing`; no project child-needs manifest contract is present in-tree (2026-03-22 baseline). |
-| CV9 | verified-partial | `children/spec-manager/child.toml` now exists and `patina spec` routes via Mother child action (`spec-manager`), but implementation still executes core spec internals behind that child seam (not fully child-owned yet). |
+| CV9 | verified-true | `patina spec` is a Mother-routed child surface (`spec-manager`) via `commands::spec::execute` + daemon child dispatch; CLI no longer executes spec lifecycle operations directly. |
 | CV10 | verified-true | Command proof: `test -e wit/toys/layer-fs.wit && test -e wit/toys/git.wit` => success; host implementations exist at `mother/src/toys/layer_fs.rs:1` and `mother/src/toys/git.rs:1`; proof command `cargo test -q -p mother` passes. |
 | CV11 | verified-partial | Scrape is in-core strategy-structured (`src/commands/scrape/mod.rs:1`, `src/commands/scrape/code/extract_v2.rs:1`), but child seam/final extraction contract is not yet implemented. |
 | CV12 | verified-true | `target/debug/patina spec list --json` succeeds with Mother running and `target/debug/patina spec list` fails clearly when Mother is stopped (`spec-manager unavailable via Mother ...`). |
 | CV13 | verified-true | `spec rename` and `spec reopen` are implemented in spec mutations (`src/commands/spec/internal/mutations.rs`) and wired into `SpecCommands` child dispatch surface. |
 | CV14 | verified-true | HITL confirmation is enforced in `commands::spec::execute` for `complete` and `abandon` (interactive `[y/N]` prompt unless `--json`). |
-| CV15 | verified-partial | `patina doctor` now routes through Mother child dispatch (`doctor`), but doctor logic remains in-core (`src/commands/doctor.rs`) as daemon-backed implementation. |
-| CV16 | verified-false | Version command still queries ready specs at `src/commands/version/internal.rs:70` and `src/commands/version/internal.rs:97`. |
-| CV17 | verified-partial | Session command surface is removed from core CLI (`src/main.rs` no longer defines `Commands::Session`), while session internals remain for AI/session substrate flows. |
-| CV18 | verified-partial | `patina lake` is now a Mother child wrapper (`lake-manager` route), but lake implementation logic is still hosted in core code behind the daemon seam. |
+| CV15 | verified-true | `patina doctor` is a Mother child route (`doctor`) and fails clearly without Mother (`doctor child unavailable via Mother ...`). |
+| CV16 | verified-true | Version command no longer queries spec state; `src/commands/version/internal.rs` outputs version/strategy/components only, and `cargo run -q -- version` works without Mother and without `patina.db` lookups. |
+| CV17 | verified-true | Core CLI no longer exposes `session` verb (`src/main.rs` has no `Commands::Session`); session artifacts are handled by agent/session systems rather than a core user command. |
+| CV18 | verified-true | `patina lake` is a Mother child route (`lake-manager`) and fails clearly without Mother (`lake-manager unavailable via Mother ...`). |
 
 ## Target State
 

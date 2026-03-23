@@ -463,6 +463,9 @@ Entry checklist (pre-Phase-5 WASM readiness gate):
   - `/child/secrets/health` returned `{"status":"healthy"}`
   - `spec list --json` succeeds with Mother running via `spec-manager` child route
   - `spec list` fails clearly when Mother is stopped: `spec-manager unavailable via Mother (start with patina mother start)`
+  - `lake list` fails clearly when Mother is stopped: `lake-manager unavailable via Mother (start with patina mother start)`
+  - `doctor --json` fails clearly when Mother is stopped: `doctor child unavailable via Mother (start with patina mother start)`
+  - `cargo run -q -- version` prints only `patina <version>` (no spec readiness query)
   - `lake list` and `doctor --json` execute via child routes (`lake-manager`, `doctor`) while Mother is running
   - full test suite still passes after child-route rewrites
 - Implementation slices landed:
@@ -498,9 +501,9 @@ Entry checklist (pre-Phase-5 WASM readiness gate):
 
 Exit checklist:
 
-- [ ] core command removals match CV set
-- [ ] child replacements provide parity (or explicit policy-compliant failure)
-- [ ] spec lifecycle features `rename` + `reopen` + HITL are proven
+- [x] core command removals match CV set
+- [x] child replacements provide parity (or explicit policy-compliant failure)
+- [x] spec lifecycle features `rename` + `reopen` + HITL are proven
 
 ## Phase 6: Separable scrape strategies (CV11)
 
