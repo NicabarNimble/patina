@@ -20,7 +20,6 @@ pub mod model;
 pub mod mother;
 pub mod oxidize;
 pub mod persona;
-pub mod plugin;
 pub mod rebuild;
 pub mod repo;
 pub mod report;

@@ -471,52 +471,6 @@ pub fn list_schemas(json: bool) -> Result<()> {
     Ok(())
 }
 
-/// List installed schemas as JSON value (for MCP).
-pub fn list_schemas_value() -> Result<serde_json::Value> {
-    let root = find_project_root()?;
-    let schemas_dir = paths::project::schemas_dir(&root);
-
-    if !schemas_dir.exists() {
-        return Ok(serde_json::json!([]));
-    }
-
-    let mut schemas = Vec::new();
-    for entry in std::fs::read_dir(&schemas_dir)? {
-        let entry = entry?;
-        if !entry.file_type()?.is_dir() {
-            continue;
-        }
-        match parse_schema_toml(&entry.path()) {
-            Ok(metadata) => schemas.push(metadata),
-            Err(_) => continue,
-        }
-    }
-
-    Ok(serde_json::json!(schemas
-        .iter()
-        .map(|s| serde_json::json!({
-            "name": s.schema.name,
-            "version": s.schema.version,
-            "package": s.schema.package,
-            "description": s.schema.description,
-            "facts": s.facts.iter().map(|f| &f.name).collect::<Vec<_>>(),
-        }))
-        .collect::<Vec<_>>()))
-}
-
-/// Show details of an installed schema as JSON value (for MCP).
-pub fn show_schema_value(name: &str) -> Result<serde_json::Value> {
-    let root = find_project_root()?;
-    let schema_dir = paths::project::schemas_dir(&root).join(name);
-
-    if !schema_dir.exists() {
-        bail!("schema '{}' is not installed", name);
-    }
-
-    let metadata = parse_schema_toml(&schema_dir)?;
-    Ok(serde_json::to_value(&metadata)?)
-}
-
 /// Show details of an installed schema.
 pub fn show_schema(name: &str, json: bool) -> Result<()> {
     let root = find_project_root()?;
