@@ -21,9 +21,9 @@ use std::time::{Duration, Instant};
 
 use patina::mother::ChildRequest;
 
+use super::adapters::{RetrievalScryBackend, ScryBackend};
 use super::microserver;
 use super::registry::ChildRegistry;
-use crate::retrieval::{QueryEngine, QueryOptions};
 
 /// Maximum request body size (1 MB)
 const MAX_BODY_SIZE: usize = 1_048_576;
@@ -84,6 +84,7 @@ pub struct ServerState {
     version: String,
     token: String,
     pub(super) registry: ChildRegistry,
+    scry_backend: Arc<dyn ScryBackend>,
 }
 
 impl ServerState {
@@ -93,6 +94,7 @@ impl ServerState {
             version: env!("CARGO_PKG_VERSION").to_string(),
             token,
             registry,
+            scry_backend: Arc::new(RetrievalScryBackend),
         }
     }
 
@@ -353,24 +355,20 @@ fn handle_scry(request: &HttpRequest, state: &ServerState, require_auth: bool) -
 
     body.limit = body.limit.min(MAX_LIMIT);
 
-    let engine = QueryEngine::new();
-    let query_opts = QueryOptions {
-        repo: body.repo,
-        all_repos: body.all_repos,
-        ..Default::default()
-    };
-
-    match engine.query_with_options(&body.query, body.limit, &query_opts) {
+    match state
+        .scry_backend
+        .query(&body.query, body.limit, body.repo, body.all_repos)
+    {
         Ok(results) => {
             let json_results: Vec<ScryResultJson> = results
                 .into_iter()
                 .map(|r| ScryResultJson {
                     id: 0,
                     content: r.content,
-                    score: r.fused_score,
-                    event_type: r.sources.join("+"),
-                    source_id: r.doc_id,
-                    timestamp: r.metadata.timestamp.unwrap_or_default(),
+                    score: r.score,
+                    event_type: r.event_type,
+                    source_id: r.source_id,
+                    timestamp: r.timestamp,
                 })
                 .collect();
 
@@ -479,6 +477,24 @@ fn handle_child_request(
     let child_name = parts[1];
     let action = parts[2];
 
+    if let Some(response) = handle_builtin_child_request(child_name, action, &request.body) {
+        return response;
+    }
+
+    if action == "health" {
+        return match state.registry.health(child_name) {
+            Ok(health) => {
+                let status = match health {
+                    patina::mother::ChildHealth::Healthy => "healthy",
+                    patina::mother::ChildHealth::Degraded(_) => "degraded",
+                    patina::mother::ChildHealth::Unhealthy(_) => "unhealthy",
+                };
+                HttpResponse::json(200, &serde_json::json!({"status": status}))
+            }
+            Err(e) => json_error(404, &format!("{}", e)),
+        };
+    }
+
     let payload = if request.body.is_empty() {
         serde_json::Value::Null
     } else {
@@ -496,6 +512,101 @@ fn handle_child_request(
     match state.registry.handle(child_name, &child_req) {
         Ok(resp) => HttpResponse::json(200, &resp.payload),
         Err(e) => json_error(404, &format!("{}", e)),
+    }
+}
+
+fn handle_builtin_child_request(
+    child_name: &str,
+    action: &str,
+    body: &[u8],
+) -> Option<HttpResponse> {
+    match (child_name, action) {
+        ("spec-manager", "health") => Some(HttpResponse::json(
+            200,
+            &serde_json::json!({"status": "healthy"}),
+        )),
+        ("spec-manager", "dispatch") => {
+            let payload = if body.is_empty() {
+                serde_json::Value::Null
+            } else {
+                match serde_json::from_slice::<serde_json::Value>(body) {
+                    Ok(v) => v,
+                    Err(e) => return Some(json_error(400, &format!("Invalid JSON: {}", e))),
+                }
+            };
+            let command_value = payload
+                .get("command")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            let command: crate::commands::spec::SpecCommands =
+                match serde_json::from_value(command_value) {
+                    Ok(command) => command,
+                    Err(e) => {
+                        return Some(json_error(
+                            400,
+                            &format!("Invalid spec-manager command payload: {}", e),
+                        ));
+                    }
+                };
+
+            match crate::commands::spec::execute_value(command) {
+                Ok(value) => Some(HttpResponse::json(200, &value)),
+                Err(e) => Some(json_error(400, &e.to_string())),
+            }
+        }
+        ("lake-manager", "health") => Some(HttpResponse::json(
+            200,
+            &serde_json::json!({"status": "healthy"}),
+        )),
+        ("lake-manager", "dispatch") => {
+            let payload = if body.is_empty() {
+                serde_json::Value::Null
+            } else {
+                match serde_json::from_slice::<serde_json::Value>(body) {
+                    Ok(v) => v,
+                    Err(e) => return Some(json_error(400, &format!("Invalid JSON: {}", e))),
+                }
+            };
+            let command_value = payload
+                .get("command")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            let command: crate::commands::lake::LakeCommands =
+                match serde_json::from_value(command_value) {
+                    Ok(command) => command,
+                    Err(e) => {
+                        return Some(json_error(
+                            400,
+                            &format!("Invalid lake-manager command payload: {}", e),
+                        ));
+                    }
+                };
+
+            match crate::commands::lake::execute_value(command) {
+                Ok(value) => Some(HttpResponse::json(200, &value)),
+                Err(e) => Some(json_error(400, &e.to_string())),
+            }
+        }
+        ("doctor", "health") => Some(HttpResponse::json(
+            200,
+            &serde_json::json!({"status": "healthy"}),
+        )),
+        ("doctor", "run") => match crate::commands::doctor::execute_value() {
+            Ok(value) => {
+                let exit_code = value.get("exit_code").and_then(|v| v.as_i64()).unwrap_or(0);
+                Some(HttpResponse::json(
+                    200,
+                    &serde_json::json!({
+                        "child": "doctor",
+                        "text": "",
+                        "data": value,
+                        "exit_code": exit_code,
+                    }),
+                ))
+            }
+            Err(e) => Some(json_error(400, &e.to_string())),
+        },
+        _ => None,
     }
 }
 
@@ -557,6 +668,31 @@ impl Default for DaemonOptions {
 
 /// Run the mother daemon server
 pub fn run_server(options: DaemonOptions) -> Result<()> {
+    let extracted_mode = std::env::var("PATINA_MOTHER_EXTRACTED")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    if extracted_mode {
+        if options.host.is_some() {
+            anyhow::bail!(
+                "PATINA_MOTHER_EXTRACTED only supports Unix socket mode (omit --host/--port)"
+            );
+        }
+
+        let socket_path = patina::paths::serve::socket_path();
+        write_pid_file()?;
+        register_signal_handlers();
+
+        println!("🚀 Mother daemon starting (extracted mode)...");
+        println!("   PID: {}", std::process::id());
+        println!("   Listening on {}", socket_path.display());
+        println!("   Protocol: JSON-lines over Unix socket");
+        println!("   Press Ctrl+C to stop\n");
+
+        let state = mother_crate::daemon::DaemonState::default();
+        return mother_crate::daemon::listen_with_state(&socket_path, &state);
+    }
+
     // Build and load child registry
     let mut registry = ChildRegistry::new();
     let runtime = patina::mother::KnowledgeRuntimeStore::default();
@@ -565,9 +701,29 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     registry
         .register(Box::new(super::secrets::SecretsCacheChild::new()))
         .expect("failed to register secrets child");
+    registry
+        .register(Box::new(
+            mother_crate::session_writer::SessionWriterChild::new(),
+        ))
+        .expect("failed to register session-writer child");
+    registry
+        .register(Box::new(mother_crate::static_child::StaticChild::new(
+            "spec-manager",
+        )))
+        .expect("failed to register spec-manager child marker");
+    registry
+        .register(Box::new(mother_crate::static_child::StaticChild::new(
+            "doctor",
+        )))
+        .expect("failed to register doctor child marker");
+    registry
+        .register(Box::new(mother_crate::static_child::StaticChild::new(
+            "lake-manager",
+        )))
+        .expect("failed to register lake-manager child marker");
 
     // WASM children (discovered from ~/.patina/children/)
-    let children_dir = patina::paths::plugin::children_dir();
+    let children_dir = patina::paths::child::children_dir();
     if children_dir.exists() {
         if let Ok(entries) = std::fs::read_dir(&children_dir) {
             for entry in entries.flatten() {
@@ -729,6 +885,7 @@ enum LoadedWasmChild {
         child: Box<dyn patina::mother::KnowledgeChild>,
         name: String,
         subscribed_streams: Vec<String>,
+        relationship_listens: Vec<String>,
     },
 }
 
@@ -754,24 +911,49 @@ fn register_loaded_child(
             child,
             name,
             subscribed_streams,
+            relationship_listens,
         } => {
-            runtime.ensure_subscriptions(&name, &subscribed_streams)?;
+            let mut routes: std::collections::HashSet<String> =
+                subscribed_streams.into_iter().collect();
+            routes.extend(relationship_listens);
+            let routing_table = routes.into_iter().collect::<Vec<_>>();
+            runtime.ensure_subscriptions(&name, &routing_table)?;
             registry.register_knowledge(child)?;
             Ok(Some(format!("loaded knowledge WASM child: {}", name)))
         }
     }
 }
 
-/// Load a WASM child from a .wasm file + plugin.toml manifest.
+fn parse_relationship_listens(manifest_path: &std::path::Path) -> Result<Vec<String>> {
+    let content = std::fs::read_to_string(manifest_path)?;
+    let table: toml::Table = content.parse()?;
+
+    let listens = table
+        .get("relationships")
+        .and_then(|v| v.as_table())
+        .and_then(|t| t.get("listens"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(ToString::to_string))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    Ok(listens)
+}
+
+/// Load a WASM child from a .wasm file + child manifest.
 fn load_wasm_child(
     wasm_path: &std::path::Path,
     manifest_path: &std::path::Path,
 ) -> Result<LoadedWasmChild> {
-    let manifest = patina::plugin::PluginManifest::from_path(manifest_path)?;
+    let manifest = patina::child::engine::ChildManifest::from_path(manifest_path)?;
+    let relationship_listens = parse_relationship_listens(manifest_path)?;
     let wasm_bytes = std::fs::read(wasm_path)?;
     match manifest.world {
-        patina::plugin::PluginWorld::KnowledgeChild => {
-            let engine = patina::plugin::KnowledgeChildEngine::new()?;
+        patina::child::engine::ChildKind::KnowledgeChild => {
+            let engine = patina::child::engine::KnowledgeChildEngine::new()?;
             let component = engine.load_component(&wasm_bytes)?;
             let child = engine.instantiate_child(&component, &manifest, None)?;
             let name = child.name().to_string();
@@ -779,10 +961,11 @@ fn load_wasm_child(
                 child,
                 name,
                 subscribed_streams: manifest.subscribed_streams.clone(),
+                relationship_listens,
             })
         }
-        patina::plugin::PluginWorld::MotherChild => {
-            let engine = patina::plugin::PluginEngine::new()?;
+        patina::child::engine::ChildKind::MotherChild => {
+            let engine = patina::child::engine::MotherChildEngine::new()?;
             let component = engine.load_component(&wasm_bytes)?;
             let child = engine.instantiate_child(&component, &manifest, None)?;
             let name = child.name().to_string();
@@ -929,6 +1112,7 @@ mod tests {
                 child: Box::new(StubKnowledge),
                 name: "knowledge".into(),
                 subscribed_streams: vec!["belief.changed".into()],
+                relationship_listens: vec![],
             },
             false,
         )
@@ -936,5 +1120,48 @@ mod tests {
 
         assert_eq!(registry.knowledge_len(), 1);
         assert_eq!(registry.legacy_len(), 0);
+    }
+
+    #[test]
+    fn parse_relationship_listens_from_manifest() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let manifest = temp.path().join("child.toml");
+        std::fs::write(
+            &manifest,
+            r#"
+[child]
+name = "child"
+kind = "knowledge-child"
+
+[relationships]
+emits = ["x"]
+listens = ["data-ingested", "belief.changed"]
+"#,
+        )
+        .unwrap();
+
+        let listens = parse_relationship_listens(&manifest).unwrap();
+        assert_eq!(
+            listens,
+            vec!["data-ingested".to_string(), "belief.changed".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_relationship_listens_defaults_empty() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let manifest = temp.path().join("child.toml");
+        std::fs::write(
+            &manifest,
+            r#"
+[child]
+name = "child"
+kind = "knowledge-child"
+"#,
+        )
+        .unwrap();
+
+        let listens = parse_relationship_listens(&manifest).unwrap();
+        assert!(listens.is_empty());
     }
 }

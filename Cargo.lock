@@ -209,12 +209,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrayref"
-version = "0.3.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76a2e8124351fda1ef8aaaa3bbd7ebbcb486bbcd4225aca0aa0d84bb2db8fecb"
-
-[[package]]
 name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -494,20 +488,6 @@ dependencies = [
  "radium",
  "tap",
  "wyz",
-]
-
-[[package]]
-name = "blake3"
-version = "1.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2468ef7d57b3fb7e16b576e8377cdbde2320c60e1491e961d11da40fc4f02a2d"
-dependencies = [
- "arrayref",
- "arrayvec",
- "cc",
- "cfg-if",
- "constant_time_eq",
- "cpufeatures",
 ]
 
 [[package]]
@@ -871,12 +851,6 @@ dependencies = [
  "once_cell",
  "tiny-keccak",
 ]
-
-[[package]]
-name = "constant_time_eq"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
 name = "cookie-factory"
@@ -1400,26 +1374,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "enumflags2"
-version = "0.7.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1027f7680c853e056ebcec683615fb6fbbc07dbaa13b4d5d9442b146ded4ecef"
-dependencies = [
- "enumflags2_derive",
-]
-
-[[package]]
-name = "enumflags2_derive"
-version = "0.7.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67c78a4d8fdf9953a5c9d458f9efe940fd97a0cab0941c075a813ac594733827"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.116",
-]
-
-[[package]]
 name = "env_home"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1781,16 +1735,6 @@ dependencies = [
  "fallible-iterator",
  "indexmap",
  "stable_deref_trait",
-]
-
-[[package]]
-name = "github-connector"
-version = "0.1.0"
-dependencies = [
- "patina-pipe",
- "patina-pipe-types",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -2427,17 +2371,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "landlock"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49fefd6652c57d68aaa32544a4c0e642929725bdc1fd929367cdeb673ab81088"
-dependencies = [
- "enumflags2",
- "libc",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2720,6 +2653,24 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.116",
+]
+
+[[package]]
+name = "mother"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "dirs 5.0.1",
+ "httparse",
+ "libc",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "toml 0.8.23",
+ "uuid",
 ]
 
 [[package]]
@@ -3030,7 +2981,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "patina-ai"
-version = "0.43.2"
+version = "0.43.8"
 dependencies = [
  "age",
  "anyhow",
@@ -3050,12 +3001,11 @@ dependencies = [
  "httparse",
  "ignore",
  "libc",
+ "mother",
  "ndarray",
  "notify",
  "ort",
  "parking_lot",
- "patina-pipe",
- "patina-pipe-types",
  "rand 0.8.5",
  "rayon",
  "regex",
@@ -3087,7 +3037,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-doctor"
+name = "patina-ai-child-belief-verifier"
 version = "0.1.0"
 dependencies = [
  "patina-sdk",
@@ -3096,31 +3046,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-pipe"
+name = "patina-ai-child-doctor"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "landlock",
- "libc",
- "patina-pipe-types",
- "reqwest",
- "serde",
+ "patina-sdk",
  "serde_json",
- "tempfile",
 ]
 
 [[package]]
-name = "patina-pipe-types"
-version = "0.1.0"
-dependencies = [
- "blake3",
- "serde",
- "serde_json",
- "toml 0.8.23",
-]
-
-[[package]]
-name = "patina-plugin-belief-verifier"
+name = "patina-ai-child-ducklake"
 version = "0.1.0"
 dependencies = [
  "patina-sdk",
@@ -3129,7 +3063,31 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-plugin-ducklake"
+name = "patina-ai-child-lake-manager"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk",
+ "serde_json",
+]
+
+[[package]]
+name = "patina-ai-child-session-writer"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk",
+ "serde_json",
+]
+
+[[package]]
+name = "patina-ai-child-spec-manager"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk",
+ "serde_json",
+]
+
+[[package]]
+name = "patina-ai-extension-doctor"
 version = "0.1.0"
 dependencies = [
  "patina-sdk",
@@ -3138,7 +3096,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-plugin-models"
+name = "patina-ai-extension-models"
 version = "0.1.0"
 dependencies = [
  "patina-sdk",
@@ -3146,7 +3104,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-plugin-repos"
+name = "patina-ai-extension-repos"
 version = "0.1.0"
 dependencies = [
  "patina-sdk",
@@ -3157,10 +3115,36 @@ dependencies = [
 name = "patina-sdk"
 version = "0.21.0"
 dependencies = [
- "patina-pipe-types",
+ "patina-sdk-agent",
+ "patina-sdk-core",
+ "patina-sdk-data",
  "serde",
  "serde_json",
  "wit-bindgen 0.41.0",
+]
+
+[[package]]
+name = "patina-sdk-agent"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk-core",
+]
+
+[[package]]
+name = "patina-sdk-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
+name = "patina-sdk-data"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

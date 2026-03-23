@@ -54,9 +54,6 @@ pub trait Provider {
     /// Default OAuth/API scopes for this provider.
     fn default_scopes(&self) -> Vec<String>;
 
-    /// Default child binary name for this provider.
-    fn default_child(&self) -> &str;
-
     /// Default injection strategy for this provider.
     fn default_injection(&self) -> InjectionStrategy;
 
@@ -103,7 +100,6 @@ mod tests {
     /// Mock provider for testing the trait interface.
     struct MockProvider {
         provider_name: &'static str,
-        child_name: &'static str,
         scopes: Vec<String>,
     }
 
@@ -140,10 +136,6 @@ mod tests {
             self.scopes.clone()
         }
 
-        fn default_child(&self) -> &str {
-            self.child_name
-        }
-
         fn default_injection(&self) -> InjectionStrategy {
             InjectionStrategy::Bearer
         }
@@ -157,7 +149,6 @@ mod tests {
     fn mock_provider_acquire_populates_result() {
         let provider = MockProvider {
             provider_name: "mock",
-            child_name: "mock-child",
             scopes: vec!["read".into(), "write".into()],
         };
 
@@ -173,7 +164,6 @@ mod tests {
     fn mock_provider_acquire_manual_uses_provided_token() {
         let provider = MockProvider {
             provider_name: "mock",
-            child_name: "mock-child",
             scopes: vec![],
         };
 
@@ -187,12 +177,10 @@ mod tests {
     fn mock_provider_defaults_populate_connection_fields() {
         let provider = MockProvider {
             provider_name: "custom",
-            child_name: "custom-connector",
             scopes: vec!["scope-a".into(), "scope-b".into()],
         };
 
         assert_eq!(provider.name(), "custom");
-        assert_eq!(provider.default_child(), "custom-connector");
         assert_eq!(provider.default_scopes(), vec!["scope-a", "scope-b"]);
         assert_eq!(provider.default_injection(), InjectionStrategy::Bearer);
         assert_eq!(provider.allowed_domains(), vec!["api.mock.com"]);
@@ -202,7 +190,6 @@ mod tests {
     fn mock_provider_probe_account_returns_identity() {
         let provider = MockProvider {
             provider_name: "mock",
-            child_name: "mock-child",
             scopes: vec![],
         };
 
@@ -215,7 +202,6 @@ mod tests {
         // Verify the trait can be used as a trait object (Box<dyn Provider>)
         let provider: Box<dyn Provider> = Box::new(MockProvider {
             provider_name: "mock",
-            child_name: "mock-child",
             scopes: vec![],
         });
         assert_eq!(provider.name(), "mock");

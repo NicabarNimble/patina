@@ -91,4 +91,59 @@ if [[ -f "children/ducklake/src/main.rs" ]]; then
     exit 1
 fi
 
+echo "Checking child manifests are present for children/..."
+child_toml_refs=$(find children/ -name 'child.toml' 2>/dev/null || true)
+if [[ -z "$child_toml_refs" ]]; then
+    echo "error: no child.toml files found under children/"
+    exit 1
+fi
+
+if $has_rg; then
+    native_child_refs=$(rg -n "impl Child for" \
+        --glob '!resources/scripts/check-single-sdk-surface.sh' \
+        src children sdk 2>/dev/null || true)
+else
+    native_child_refs=$(grep -RInE "impl Child for" \
+        --exclude-dir=.git --exclude-dir=target \
+        src children sdk 2>/dev/null \
+        | grep -v "resources/scripts/check-single-sdk-surface.sh" || true)
+fi
+if [[ -n "$native_child_refs" ]]; then
+    echo "$native_child_refs"
+    echo "error: native Child trait usage found — use patina-sdk worlds"
+    exit 1
+fi
+
+if $has_rg; then
+    child_type_refs=$(rg -n "ChildType" \
+        --glob '!resources/scripts/check-single-sdk-surface.sh' \
+        src children sdk 2>/dev/null || true)
+else
+    child_type_refs=$(grep -RInE "ChildType" \
+        --exclude-dir=.git --exclude-dir=target \
+        src children sdk 2>/dev/null \
+        | grep -v "resources/scripts/check-single-sdk-surface.sh" || true)
+fi
+if [[ -n "$child_type_refs" ]]; then
+    echo "$child_type_refs"
+    echo "error: ChildType references found in code — native child model is retired"
+    exit 1
+fi
+
+if $has_rg; then
+    resolve_binary_refs=$(rg -n "resolve_child_binary" \
+        --glob '!resources/scripts/check-single-sdk-surface.sh' \
+        src 2>/dev/null || true)
+else
+    resolve_binary_refs=$(grep -RInE "resolve_child_binary" \
+        --exclude-dir=.git --exclude-dir=target \
+        src 2>/dev/null \
+        | grep -v "resources/scripts/check-single-sdk-surface.sh" || true)
+fi
+if [[ -n "$resolve_binary_refs" ]]; then
+    echo "$resolve_binary_refs"
+    echo "error: resolve_child_binary still referenced — binary-existence validation is retired"
+    exit 1
+fi
+
 echo "ok: single SDK surface enforced"

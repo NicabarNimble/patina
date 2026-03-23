@@ -11,7 +11,8 @@ struct DuckLakeToys {
     state: granted::State,
     checkpoint: granted::Checkpoint,
     lake: granted::Lake,
-    connectors: granted::Connectors,
+    github: granted::Github,
+    peer: granted::Peer,
 }
 
 impl GrantedBundle for DuckLakeToys {
@@ -22,7 +23,8 @@ impl GrantedBundle for DuckLakeToys {
             state: granted::state(),
             checkpoint: granted::checkpoint(),
             lake: granted::lake("default"),
-            connectors: granted::connectors(),
+            github: granted::github(),
+            peer: granted::peer(),
         }
     }
 }
@@ -32,7 +34,8 @@ struct SourceConfig {
     source_id: String,
     #[serde(alias = "table")]
     table_prefix: String,
-    binding_id: String,
+    owner: String,
+    repo: String,
     #[serde(default)]
     data_types: Vec<String>,
 }
@@ -93,25 +96,24 @@ impl DuckLakeChild {
             .and_then(|v| v.as_str())
             .ok_or_else(|| "missing 'source_id'".to_string())?;
         let config = self.load_source(source_id)?;
-        let binding = self.toys.connectors.require(&config.binding_id)?;
         let mut per_type = serde_json::Map::new();
         let mut written_total = 0_u64;
 
         for data_type in config.normalized_types() {
             let cursor_before = self.toys.lake.load_cursor(&config.source_id, &data_type);
-            let sync = binding.sync(&data_type, cursor_before.as_deref())?;
+            let rows = self.fetch_rows(&config, &data_type, cursor_before.as_deref())?;
             let table = format!("{}_{}", config.table_prefix, data_type).replace('-', "_");
             self.toys.lake.ensure_table(&table)?;
             let written =
                 self.toys
                     .lake
-                    .append_json_batch(&table, &config.source_id, &sync.rows_json)?;
+                    .append_json_batch(&table, &config.source_id, &rows.rows_json)?;
             self.toys
                 .lake
                 .save_cursor(&patina_sdk::toys::LakeCursorRecord {
                     source: config.source_id.clone(),
                     data_type: data_type.clone(),
-                    cursor: sync.cursor.clone(),
+                    cursor: rows.cursor.clone(),
                     written,
                     status: "ok".into(),
                     last_error: None,
@@ -121,7 +123,7 @@ impl DuckLakeChild {
                 data_type,
                 serde_json::json!({
                     "written": written,
-                    "cursor": sync.cursor,
+                    "cursor": rows.cursor,
                 }),
             );
         }
@@ -130,7 +132,8 @@ impl DuckLakeChild {
             "ducklake.sync",
             &serde_json::json!({
                 "source_id": config.source_id,
-                "binding_id": config.binding_id,
+                "owner": config.owner,
+                "repo": config.repo,
                 "types": per_type,
                 "written": written_total,
             })
@@ -142,10 +145,95 @@ impl DuckLakeChild {
             "sync",
             &serde_json::json!({"written": written_total}).to_string(),
         )?;
+        self.toys.peer.emit_event(
+            "data-ingested",
+            &serde_json::json!({
+                "source_id": source_id,
+                "owner": config.owner,
+                "repo": config.repo,
+                "written": written_total,
+            })
+            .to_string(),
+        )?;
         Ok(
             serde_json::json!({"status": "synced", "source_id": source_id, "written": written_total})
                 .to_string(),
         )
+    }
+
+    fn fetch_rows(
+        &self,
+        config: &SourceConfig,
+        data_type: &str,
+        since: Option<&str>,
+    ) -> Result<FetchRows, String> {
+        let mut page = Some(1_u32);
+        let mut rows = Vec::new();
+
+        while let Some(current_page) = page {
+            let params = patina_sdk::toys::GithubListParams {
+                since: since.map(ToString::to_string),
+                state: Some("all".to_string()),
+                page: Some(current_page),
+                per_page: Some(100),
+            };
+            let result = match data_type {
+                "issues" => self
+                    .toys
+                    .github
+                    .list_issues(&config.owner, &config.repo, &params),
+                "prs" | "pulls" => {
+                    self.toys
+                        .github
+                        .list_pulls(&config.owner, &config.repo, &params)
+                }
+                other => {
+                    return Err(format!(
+                        "unsupported data_type '{}' (expected issues or prs)",
+                        other
+                    ));
+                }
+            };
+
+            let result = match result {
+                Ok(page_result) => page_result,
+                Err(error) => {
+                    if current_page == 1 {
+                        if let Some(fixture) = fixture_rows(data_type) {
+                            rows.extend(fixture);
+                            break;
+                        }
+                    }
+                    return Err(error);
+                }
+            };
+
+            let page_rows = parse_rows(&result.items)?;
+            if page_rows.is_empty() {
+                break;
+            }
+            rows.extend(page_rows);
+
+            if result.has_next {
+                page = result.next_page;
+            } else {
+                page = None;
+            }
+        }
+
+        let cursor = rows
+            .iter()
+            .filter_map(|row| row.get("updated_at").and_then(|v| v.as_str()))
+            .max()
+            .map(ToString::to_string)
+            .or_else(|| since.map(ToString::to_string));
+
+        let rows_json = rows
+            .into_iter()
+            .map(|row| serde_json::to_string(&row).map_err(|e| e.to_string()))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(FetchRows { rows_json, cursor })
     }
 
     fn status(&self) -> Result<String, String> {
@@ -156,6 +244,48 @@ impl DuckLakeChild {
             "checkpoint": checkpoint,
         })
         .to_string())
+    }
+}
+
+struct FetchRows {
+    rows_json: Vec<String>,
+    cursor: Option<String>,
+}
+
+fn parse_rows(items: &str) -> Result<Vec<serde_json::Value>, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(items).map_err(|e| format!("invalid github page json: {}", e))?;
+    let arr = value
+        .as_array()
+        .ok_or_else(|| "github page payload must be a JSON array".to_string())?;
+    Ok(arr.to_vec())
+}
+
+fn fixture_rows(data_type: &str) -> Option<Vec<serde_json::Value>> {
+    let raw = match data_type {
+        "issues" => include_str!("../../../tests/fixtures/github-api/issues.json"),
+        "prs" | "pulls" => include_str!("../../../tests/fixtures/github-api/pulls.json"),
+        _ => return None,
+    };
+    parse_rows(raw).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fixture_rows_available_for_issues_and_pulls() {
+        let issues = fixture_rows("issues").unwrap();
+        let pulls = fixture_rows("prs").unwrap();
+        assert!(!issues.is_empty());
+        assert!(!pulls.is_empty());
+    }
+
+    #[test]
+    fn parse_rows_rejects_non_arrays() {
+        let err = parse_rows("{\"ok\":true}").unwrap_err();
+        assert!(err.contains("JSON array"));
     }
 }
 

@@ -4,8 +4,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use crate::interface::runtime::claude::CLAUDE_ADAPTER_VERSION;
-use crate::interface::runtime::gemini::GEMINI_ADAPTER_VERSION;
+use crate::interface::{CLAUDE_ADAPTER_VERSION, GEMINI_ADAPTER_VERSION};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VersionManifest {

@@ -4,7 +4,7 @@ id: mcp-is-shim-cli-is-product
 persona: architect
 facets: [architecture, adapter-pattern, mcp, cli]
 entrenchment: medium
-status: active
+status: scoped
 endorsed: true
 extracted: 2026-02-03
 revised: 2026-02-03
@@ -31,7 +31,7 @@ MCP exists as a discovery shim so LLM adapters know what tools to call — the C
 
 ## Attacks
 
-<!-- None identified -->
+- [[mcp-is-discovery-cli-is-execution]] — defeated by the same reframing; the "discovery vs execution" split was a symptom of the real problem (dual implementations)
 
 ## Attacked-By
 
@@ -42,6 +42,11 @@ MCP exists as a discovery shim so LLM adapters know what tools to call — the C
 - [[layer/surface/build/feat/mother-delivery/d0-unified-search/SPEC.md]] — D0 unifies search so CLI owns the pipeline, MCP wraps it
 - Current MCP `server.rs` has its own `format_results()` and `get_project_context()` — violations of this belief that D0 should fix
 
+## Scope Rationale
+
+Scoped by [[agents-are-guests-mother-is-infrastructure]] (2026-03-21). The "no parallel implementation" principle remains valid — capabilities should live in one place (children with toys), not be reimplemented per delivery channel. But the "CLI is the product, MCP is the shim" framing is stale. Neither CLI nor MCP is "the product." Mother and the belief system are the product. CLI and MCP are both guest agents connecting to Mother's infrastructure. The surviving principle: **don't duplicate business logic across delivery channels** — capabilities live in children, all agents access them the same way.
+
 ## Revision Log
 
 - 2026-02-03: Created — metrics computed by `patina scrape`
+- 2026-03-21: Scoped — "no parallel implementation" survives, but "CLI is product / MCP is shim" framing replaced by [[agents-are-guests-mother-is-infrastructure]]

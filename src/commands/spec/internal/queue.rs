@@ -21,54 +21,6 @@ pub(crate) struct Recommendation {
     pub queue_position: Option<u32>,
 }
 
-/// Recommend the next spec to work on based on priority ranking.
-///
-/// Ranking: active > blocked-ready-to-resume > paused-with-age > impact > drafts
-pub fn next_spec(json: bool) -> Result<()> {
-    let recommendations = next_spec_value()?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&recommendations)?);
-        return Ok(());
-    }
-
-    if recommendations.is_empty() {
-        println!("No actionable specs found.");
-        return Ok(());
-    }
-
-    // Top recommendation
-    let top = &recommendations[0];
-    println!("RECOMMENDED: {}", top.id);
-    println!("  Status: {}", top.status);
-    println!("  Reason: {}", top.reason);
-    if top.impact > 0 {
-        println!("  Impact: blocks {} other spec(s)", top.impact);
-    }
-
-    // Show the rest as alternatives
-    if recommendations.len() > 1 {
-        println!("\nOther specs:");
-        for rec in &recommendations[1..] {
-            let queue_str = rec
-                .queue_position
-                .map(|p| format!("[#{}] ", p))
-                .unwrap_or_default();
-            let impact_str = if rec.impact > 0 {
-                format!(" (blocks {})", rec.impact)
-            } else {
-                String::new()
-            };
-            println!(
-                "  {}{:<28} {:<10} {}{}",
-                queue_str, rec.id, rec.status, rec.reason, impact_str
-            );
-        }
-    }
-
-    Ok(())
-}
-
 /// Recommend the next spec and return structured result (for MCP).
 pub fn next_spec_value() -> Result<Vec<Recommendation>> {
     let all_specs = get_all_specs(&ListFilters::default())?;

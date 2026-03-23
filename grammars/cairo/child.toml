@@ -1,0 +1,10 @@
+[child]
+name = "grammar-cairo"
+version = "0.1.0"
+description = "Cairo language grammar extraction via cairo-lang-parser"
+kind = "pipeline"
+patina_min = "0.22.0"
+
+[provides]
+pipeline_ops = ["parse"]
+languages = ["cairo"]

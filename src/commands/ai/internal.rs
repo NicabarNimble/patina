@@ -67,8 +67,9 @@ pub fn session(command: AiSessionCommands) -> Result<()> {
         AiSessionCommands::End {
             session,
             note,
+            commit,
             json,
-        } => end_session(session, note, json),
+        } => end_session(session, note, commit, json),
         AiSessionCommands::List { json } => list(json),
     }
 }
@@ -76,6 +77,7 @@ pub fn session(command: AiSessionCommands) -> Result<()> {
 pub fn end(
     session_selector: Option<String>,
     note: Option<String>,
+    auto_commit: bool,
     json_output: bool,
 ) -> Result<()> {
     let project_root = SessionManager::find_project_root()?;
@@ -113,6 +115,10 @@ pub fn end(
         },
     )?;
     record_ai_session_ended(&project_root, &handle, &end_tag)?;
+    crate::commands::events::export_best_effort();
+    stage_session_artifacts(&project_root, &handle.artifact_path)?;
+    let commit_message =
+        maybe_commit_session_artifacts(&handle.file_id, &handle.adapter_name, auto_commit)?;
 
     if json_output {
         println!(
@@ -130,6 +136,9 @@ pub fn end(
     println!("Archived AI session {}", handle.file_id);
     println!("  Artifact: {}", handle.artifact_path.display());
     println!("  Tag: {}", end_tag);
+    if let Some(commit_message) = commit_message {
+        println!("  Commit: {}", commit_message);
+    }
     Ok(())
 }
 
@@ -184,6 +193,7 @@ fn note_session(content: String, session_selector: Option<String>) -> Result<()>
 fn end_session(
     session_selector: Option<String>,
     note: Option<String>,
+    auto_commit: bool,
     json_output: bool,
 ) -> Result<()> {
     let project_root = SessionManager::find_project_root()?;
@@ -194,6 +204,10 @@ fn end_session(
     )?;
     let result =
         crate::commands::session::end_live_session_value(&project_root, &handle, note.as_deref())?;
+    let artifact_path = std::path::PathBuf::from(&result.artifact_path);
+    stage_session_artifacts(&project_root, &artifact_path)?;
+    let commit_message =
+        maybe_commit_session_artifacts(&result.session_id, &result.adapter, auto_commit)?;
 
     if json_output {
         println!("{}", serde_json::to_string_pretty(&result)?);
@@ -203,7 +217,44 @@ fn end_session(
     println!("Archived AI session {}", result.session_id);
     println!("  Artifact: {}", result.artifact_path);
     println!("  Tag: {}", result.end_tag);
+    if let Some(commit_message) = commit_message {
+        println!("  Commit: {}", commit_message);
+    }
     Ok(())
+}
+
+pub(crate) fn stage_session_artifacts(project_root: &Path, artifact_path: &Path) -> Result<()> {
+    if !git::is_git_repo().unwrap_or(false) {
+        return Ok(());
+    }
+
+    let artifact = artifact_path
+        .strip_prefix(project_root)
+        .unwrap_or(artifact_path)
+        .to_string_lossy()
+        .to_string();
+    let events_path = "layer/events.jsonl".to_string();
+
+    let paths = [artifact.as_str(), events_path.as_str()];
+    git::add_paths(&paths)
+}
+
+fn maybe_commit_session_artifacts(
+    session_id: &str,
+    adapter_name: &str,
+    enabled: bool,
+) -> Result<Option<String>> {
+    if !enabled || !git::is_git_repo().unwrap_or(false) {
+        return Ok(None);
+    }
+
+    if !git::has_staged_changes()? {
+        return Ok(None);
+    }
+
+    let message = format!("session: archive {} ({})", session_id, adapter_name);
+    git::commit(&message)?;
+    Ok(Some(message))
 }
 
 fn append_outcome_note(markdown: &str, note: &str) -> String {

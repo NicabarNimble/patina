@@ -4,7 +4,6 @@ use anyhow::Result;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 mod commands;
-mod mcp;
 mod preflight;
 mod retrieval;
 #[cfg(test)]
@@ -65,10 +64,6 @@ struct Cli {
     /// AI interface to launch (claude, gemini, opencode). Default: from config.
     #[arg(long = "interface", alias = "adapter", global = true)]
     interface: Option<String>,
-
-    /// Disable tmux session wrapping (launch adapter directly)
-    #[arg(long = "no-tmux", global = true)]
-    no_tmux: bool,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -430,12 +425,6 @@ enum Commands {
         /// Show full health report with freshness, diagnostics, and health summary
         #[arg(long)]
         full: bool,
-    },
-
-    /// Manage development sessions (start, update, note, end)
-    Session {
-        #[command(subcommand)]
-        command: commands::session::SessionCommands,
     },
 
     /// Patina AI interface surface over Mother-backed sessions
@@ -999,8 +988,8 @@ enum PluginCommands {
 /// Returns None if the plugin has no host_query grants. Otherwise,
 /// returns a closure that dispatches to context/scry/assay engines.
 fn make_query_dispatch(
-    manifest: &patina::plugin::PluginManifest,
-) -> Option<patina::plugin::QueryDispatchFn> {
+    manifest: &patina::child::engine::ChildManifest,
+) -> Option<patina::child::engine::QueryDispatchFn> {
     if manifest.host_query_kinds.is_empty() {
         return None;
     }
@@ -1137,7 +1126,6 @@ fn main() -> Result<()> {
                 adapter: cli.interface,
                 auto_start_mother: true,
                 auto_init: true,
-                no_tmux: cli.no_tmux,
             };
             commands::launch::execute(options)?;
         }
@@ -1388,86 +1376,19 @@ fn main() -> Result<()> {
             }
         },
         Some(Commands::Doctor { json }) => {
-            let mut args = Vec::new();
-            if json {
-                args.push("--json".to_string());
-            }
-
-            // Try WASM plugin first
-            let plugin_wasm = patina::paths::plugin::plugins_dir().join("patina-doctor.wasm");
-            let plugin_toml = patina::paths::plugin::plugins_dir().join("patina-doctor.toml");
-
-            let exit_code = if plugin_wasm.exists() {
-                let manifest = if plugin_toml.exists() {
-                    patina::plugin::PluginEngine::load_manifest(&plugin_toml)?
-                } else {
-                    // Default manifest for plugins without .toml
-                    patina::plugin::PluginManifest {
-                        name: "patina-doctor".into(),
-                        version: "0.0.0".into(),
-                        description: String::new(),
-                        world: patina::plugin::PluginWorld::Command,
-                        role: None,
-                        patina_min: "0.0.0".into(),
-                        capabilities: vec!["host_log".into(), "host_layer".into()],
-                        allowed_toy_commands: vec![],
-                        host_query_kinds: vec![],
-                        host_http_domains: vec![],
-                        host_secrets: std::collections::HashMap::new(),
-                        provides: patina::plugin::PluginProvides {
-                            child: None,
-                            commands: vec!["doctor".into()],
-                            ..Default::default()
-                        },
-                        schemas: std::collections::HashMap::new(),
-                        state_enabled: false,
-                        checkpoint_streams: vec![],
-                        lake_names: vec![],
-                        ingress_sources: std::collections::HashMap::new(),
-                        subscribed_streams: vec![],
-                        task_intent_names: vec![],
-                        task_intents: vec![],
-                        graph_read: false,
-                        graph_write_actions: vec![],
-                        belief_read: false,
-                        belief_write_actions: vec![],
-                        toys: patina::mother::GrantedToys::default(),
-                    }
-                };
-                let engine = patina::plugin::CommandEngine::new()?;
-                let wasm_bytes = std::fs::read(&plugin_wasm)?;
-                let component = engine.load_component(&wasm_bytes)?;
-                let query_fn = make_query_dispatch(&manifest);
-                engine.run_command(&component, &manifest, &args, query_fn)?
-            } else {
-                // Fall back to compiled-in doctor
-                #[cfg(feature = "bundled-doctor")]
-                {
-                    commands::doctor::execute(json)?
-                }
-                #[cfg(not(feature = "bundled-doctor"))]
-                {
-                    eprintln!("Doctor plugin not installed.");
-                    eprintln!("Install: cp patina_doctor.wasm {}", plugin_wasm.display());
-                    1
-                }
-            };
-
-            if exit_code != 0 {
-                std::process::exit(exit_code);
-            }
+            commands::doctor::execute_cli(json)?;
         }
         Some(Commands::Plugin { command }) => match command {
-            PluginCommands::List => commands::plugin::execute_list()?,
+            PluginCommands::List => commands::child::execute_list()?,
             PluginCommands::Init {
                 name,
                 world,
                 build,
                 release,
             } => {
-                let world: patina::plugin::PluginWorld = world.parse()?;
+                let world: patina::child::engine::ChildKind = world.parse()?;
                 let cwd = std::env::current_dir()?;
-                let project_dir = patina::plugin::scaffold::scaffold(&cwd, &name, &world)?;
+                let project_dir = patina::child::scaffold::scaffold(&cwd, &name, &world)?;
 
                 let profile = if release { "release" } else { "debug" };
                 let artifact = project_dir
@@ -1531,7 +1452,7 @@ fn main() -> Result<()> {
                 }
             }
             PluginCommands::Run { name, args } => {
-                let plugins_dir = patina::paths::plugin::plugins_dir();
+                let plugins_dir = patina::paths::child::plugins_dir();
                 let wasm_path = plugins_dir.join(format!("{}.wasm", name));
                 let toml_path = plugins_dir.join(format!("{}.toml", name));
 
@@ -1546,10 +1467,10 @@ fn main() -> Result<()> {
                 }
 
                 let manifest = if toml_path.exists() {
-                    patina::plugin::PluginEngine::load_manifest(&toml_path)?
+                    patina::child::engine::MotherChildEngine::load_manifest(&toml_path)?
                 } else {
                     anyhow::bail!(
-                        "plugin manifest not found at {}\nTask and command plugins require a plugin.toml",
+                        "child manifest not found at {}\nTask and command plugins require a .toml manifest",
                         toml_path.display()
                     );
                 };
@@ -1558,8 +1479,8 @@ fn main() -> Result<()> {
 
                 // Auto-detect world from manifest and dispatch
                 match &manifest.world {
-                    patina::plugin::PluginWorld::Task => {
-                        let engine = patina::plugin::TaskEngine::new()?;
+                    patina::child::engine::ChildKind::Task => {
+                        let engine = patina::child::engine::TaskEngine::new()?;
                         let component = engine.load_component(&wasm_bytes)?;
                         let query_fn = make_query_dispatch(&manifest);
                         let (exit_code, toys) =
@@ -1602,8 +1523,8 @@ fn main() -> Result<()> {
                             std::process::exit(exit_code);
                         }
                     }
-                    patina::plugin::PluginWorld::Command => {
-                        let engine = patina::plugin::CommandEngine::new()?;
+                    patina::child::engine::ChildKind::Command => {
+                        let engine = patina::child::engine::CommandEngine::new()?;
                         let component = engine.load_component(&wasm_bytes)?;
                         let query_fn = make_query_dispatch(&manifest);
                         let exit_code =
@@ -1612,11 +1533,11 @@ fn main() -> Result<()> {
                             std::process::exit(exit_code);
                         }
                     }
-                    patina::plugin::PluginWorld::KnowledgeChild => {
+                    patina::child::engine::ChildKind::KnowledgeChild => {
                         let action = args.first().map(|s| s.as_str()).unwrap_or("health");
                         let payload_str = args.get(1).map(|s| s.as_str()).unwrap_or("{}");
 
-                        let engine = patina::plugin::KnowledgeChildEngine::new()?;
+                        let engine = patina::child::engine::KnowledgeChildEngine::new()?;
                         let component = engine.load_component(&wasm_bytes)?;
                         let query_fn = make_query_dispatch(&manifest);
                         let mut child =
@@ -1667,12 +1588,12 @@ fn main() -> Result<()> {
                             }
                         }
                     }
-                    patina::plugin::PluginWorld::MotherChild => {
+                    patina::child::engine::ChildKind::MotherChild => {
                         // mother-child: args = [action, payload_json]
                         let action = args.first().map(|s| s.as_str()).unwrap_or("health");
                         let payload_str = args.get(1).map(|s| s.as_str()).unwrap_or("{}");
 
-                        let engine = patina::plugin::PluginEngine::new()?;
+                        let engine = patina::child::engine::MotherChildEngine::new()?;
                         let component = engine.load_component(&wasm_bytes)?;
                         let query_fn = make_query_dispatch(&manifest);
                         let mut child =
@@ -1728,9 +1649,7 @@ fn main() -> Result<()> {
         Some(Commands::Model { command }) => commands::model::execute_cli(command)?,
         Some(Commands::Connect { command }) => commands::connect::execute_cli(command)?,
         Some(Commands::Lake { command }) => commands::lake::execute_cli(command)?,
-        Some(Commands::Mother { command }) => {
-            commands::mother::execute_cli(command, mcp::run_mcp_server)?
-        }
+        Some(Commands::Mother { command }) => commands::mother::execute_cli(command)?,
         Some(Commands::Secrets { command, flags }) => {
             commands::secrets::execute_cli(command, flags)?
         }
@@ -1755,9 +1674,6 @@ fn main() -> Result<()> {
                 commands::version::execute(json, components)?;
             }
         }
-        Some(Commands::Session { command }) => {
-            commands::session::execute(command)?;
-        }
         Some(Commands::Ai { command }) => {
             commands::ai::execute(command)?;
         }
@@ -1776,118 +1692,9 @@ fn main() -> Result<()> {
                 commands::setup::execute_grammars(options)?;
             }
         },
-        Some(Commands::Spec { command }) => match command {
-            commands::spec::SpecCommands::Create {
-                r#type,
-                id,
-                title,
-                description,
-                blocked_by,
-                related,
-                json,
-            } => {
-                commands::spec::create(
-                    &r#type,
-                    &id,
-                    title.as_deref(),
-                    description.as_deref(),
-                    blocked_by,
-                    related,
-                    json,
-                )?;
-            }
-            commands::spec::SpecCommands::Archive { id, dry_run, stale } => {
-                if stale {
-                    commands::spec::archive_stale(dry_run)?;
-                } else if let Some(id) = id {
-                    commands::spec::archive(&id, dry_run)?;
-                } else {
-                    anyhow::bail!(
-                        "Spec ID required. Usage:\n  \
-                         patina spec archive <id>\n  \
-                         patina spec archive --stale"
-                    );
-                }
-            }
-            commands::spec::SpecCommands::Ready { json } => {
-                commands::spec::ready(json)?;
-            }
-            commands::spec::SpecCommands::Blocked { json } => {
-                commands::spec::blocked(json)?;
-            }
-            commands::spec::SpecCommands::List {
-                status,
-                target,
-                json,
-            } => {
-                commands::spec::list(status, target, json)?;
-            }
-            commands::spec::SpecCommands::Promote { id, force, json } => {
-                commands::spec::promote(&id, force, json)?;
-            }
-            commands::spec::SpecCommands::Complete {
-                id,
-                major,
-                force,
-                json,
-            } => {
-                commands::spec::complete(&id, major, force, json)?;
-            }
-            commands::spec::SpecCommands::Abandon { id, reason, json } => {
-                commands::spec::abandon(&id, reason.as_deref(), json)?;
-            }
-            commands::spec::SpecCommands::Pause { id, reason, json } => {
-                commands::spec::pause(&id, &reason, json)?;
-            }
-            commands::spec::SpecCommands::Resume { id, force, json } => {
-                commands::spec::resume(&id, force, json)?;
-            }
-            commands::spec::SpecCommands::Block {
-                id,
-                by,
-                reason,
-                json,
-            } => {
-                commands::spec::block(&id, &by, &reason, json)?;
-            }
-            commands::spec::SpecCommands::Split {
-                id,
-                new_id,
-                description,
-                json,
-            } => {
-                commands::spec::split(&id, new_id.as_deref(), description.as_deref(), json)?;
-            }
-            commands::spec::SpecCommands::Show { id, handoff, json } => {
-                commands::spec::show(&id, handoff, json)?;
-            }
-            commands::spec::SpecCommands::Prompt { id, json } => {
-                commands::spec::prompt(&id, json)?;
-            }
-            commands::spec::SpecCommands::Handoff { id, json } => {
-                commands::spec::handoff(&id, json)?;
-            }
-            commands::spec::SpecCommands::Packet { id, json } => {
-                commands::spec::packet(&id, json)?;
-            }
-            commands::spec::SpecCommands::Set {
-                id,
-                field,
-                value,
-                json,
-            } => {
-                commands::spec::set(&id, &field, &value, json)?;
-            }
-            commands::spec::SpecCommands::Next { json } => {
-                commands::spec::next(json)?;
-            }
-            commands::spec::SpecCommands::Check { id, json } => {
-                commands::spec::check(&id, json)?;
-            }
-            commands::spec::SpecCommands::History { id, json } => {
-                commands::spec::history(&id, json)?;
-            }
-        },
+        Some(Commands::Spec { command }) => {
+            commands::spec::execute(command)?;
+        }
         Some(Commands::Schema { command }) => match command {
             commands::schema::SchemaCommands::Install { path } => {
                 commands::schema::install(&path)?;
@@ -1930,7 +1737,7 @@ fn main() -> Result<()> {
             // Deprecated: delegate to mother start with warning
             eprintln!("Warning: `patina serve` is deprecated, use `patina mother start` instead.");
             if mcp {
-                mcp::run_mcp_server()?;
+                anyhow::bail!("MCP server path has been retired; use `patina mother start`");
             } else {
                 let options = commands::mother::DaemonOptions {
                     host,

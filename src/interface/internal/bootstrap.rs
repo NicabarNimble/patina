@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::interface::internal::bundle::{interface_bundle, InterfaceBundle, ManagedPathKind};
-use crate::interface::runtime::{launch, templates};
+use crate::interface::{launch, runtime::templates};
 use crate::project;
 
 const MANAGED_DIR_METADATA_FILE: &str = ".patina-managed.toml";

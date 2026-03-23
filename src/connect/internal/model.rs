@@ -90,7 +90,10 @@ pub struct AuthConfig {
     pub injection: InjectionStrategy,
     /// Vault secret name (e.g., "github:default").
     pub secret_ref: String,
-    /// Child binary to spawn (e.g., "github-connector").
+    /// Deprecated: formerly named the native child binary to spawn.
+    /// Retained for backwards compatibility with stored connection TOML files.
+    /// Ignored at runtime — connector capabilities are resolved via provider.
+    #[serde(default)]
     pub child: String,
     /// API domains this connection may access.
     #[serde(default)]
@@ -125,8 +128,6 @@ pub enum InjectionStrategy {
 /// no provider knowledge — just what the broker needs to run.
 #[derive(Debug, Clone)]
 pub struct AuthPlan {
-    /// Child binary to spawn.
-    pub child: String,
     /// Resolved credential + injection strategy. None if auth not required.
     pub credential: Option<ResolvedCredential>,
     /// API domains allowed for proxied HTTP.
@@ -189,8 +190,6 @@ pub enum ConnectError {
     },
     /// Vault decryption failed (identity unavailable, corrupted vault).
     VaultError { connection: String, detail: String },
-    /// Connection references unknown child binary.
-    ChildNotFound { connection: String, child: String },
     /// Connection is referenced by sources.toml entries.
     InUse {
         connection: String,
@@ -228,14 +227,6 @@ impl fmt::Display for ConnectError {
             }
             ConnectError::VaultError { connection, detail } => {
                 write!(f, "connection '{}': vault error: {}", connection, detail)
-            }
-            ConnectError::ChildNotFound { connection, child } => {
-                write!(
-                    f,
-                    "connection '{}': child binary '{}' not found \
-                     (is it installed in ~/.patina/children/?)",
-                    connection, child
-                )
             }
             ConnectError::InUse {
                 connection,
@@ -300,7 +291,7 @@ mod tests {
             auth: AuthConfig {
                 injection: InjectionStrategy::Bearer,
                 secret_ref: "github:default".into(),
-                child: "github-connector".into(),
+                child: "github".into(),
                 allowed_domains: vec!["api.github.com".into()],
                 refresh_capable: true,
                 expires_at: None,
@@ -327,7 +318,7 @@ mod tests {
             auth: AuthConfig {
                 injection: InjectionStrategy::Bearer,
                 secret_ref: "github-ci-token".into(),
-                child: "github-connector".into(),
+                child: "github".into(),
                 allowed_domains: vec!["api.github.com".into()],
                 refresh_capable: false,
                 expires_at: None,
@@ -445,7 +436,7 @@ updated_at = "2026-03-09T17:00:00Z"
 [auth]
 injection = { type = "bearer" }
 secret_ref = "github-token"
-child = "github-connector"
+child = "github"
 allowed_domains = ["api.github.com"]
 "#;
         let record: ConnectionRecord = toml::from_str(input).unwrap();

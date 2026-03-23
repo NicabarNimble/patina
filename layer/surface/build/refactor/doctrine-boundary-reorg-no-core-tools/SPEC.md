@@ -1,26 +1,24 @@
 ---
 type: refactor
 id: doctrine-boundary-reorg-no-core-tools
-status: blocked
+status: complete
 created: 2026-03-13
-blocked_by:
-- child-plugin-sdk-alignment
 related:
 - layer/surface/build/refactor/mother-child-toy-beliefs-layout/SPEC.md
 - src/lib.rs
 exit_criteria:
 - id: boundary-roots-added-with-compiling-shims
   text: beliefs/mother/child/toys boundary roots exist with compile-safe module shims
-  checked: false
+  checked: true
 - id: core-tools-and-scrape-layout-unchanged
   text: spec and scrape-code remain in current command surfaces for this phase
-  checked: false
+  checked: true
 - id: grammar-surfaces-unchanged
   text: grammar plugin locations and loading surfaces are not moved in this phase
-  checked: false
+  checked: true
 - id: boundary-drift-checks-added
   text: CI contains explicit checks to prevent regression of boundary roots and removed legacy runtime paths
-  checked: false
+  checked: true
 ---
 # refactor: doctrine folder reorg in small slices (exclude core-tools)
 

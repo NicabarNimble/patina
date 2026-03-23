@@ -1,0 +1,11 @@
+package patina:host@0.1.0;
+
+interface layer {
+    find-project-root: func() -> option<string>;
+    read-config: func() -> result<string, string>;
+    detect-environment: func() -> result<string, string>;
+    get-stored-tools: func() -> list<string>;
+    count-layer-files: func(subdir: string) -> u32;
+    get-project-uid: func() -> option<string>;
+    check-adapter-version: func(adapter-name: string) -> result<option<string>, string>;
+}

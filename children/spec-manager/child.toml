@@ -1,0 +1,17 @@
+[child]
+name = "patina-spec-manager"
+version = "0.1.0"
+description = "Spec lifecycle manager child"
+kind = "knowledge-child"
+role = "app"
+patina_min = "0.41.0"
+
+[needs]
+toys = ["log", "state", "layer-fs", "git"]
+
+[provides]
+child = "spec-manager"
+
+[relationships]
+emits = []
+listens = []

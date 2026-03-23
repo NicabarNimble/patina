@@ -12,7 +12,7 @@ use std::thread;
 use std::time::Duration;
 
 use patina::git;
-use patina::interface::runtime::launch as interfaces;
+use patina::interface::launch as interfaces;
 use patina::paths;
 use patina::project;
 
@@ -93,7 +93,6 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         requested_session: None,
         persona: None,
         path: Some(project_path.display().to_string()),
-        no_tmux: options.no_tmux,
         set_default: false,
     })
 }

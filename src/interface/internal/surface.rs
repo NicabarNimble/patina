@@ -6,7 +6,7 @@ use crate::interface::internal::bundle::{
     canonical_interface_name, canonicalize_required_interface, interface_bundle,
     interface_bundle_catalog,
 };
-use crate::interface::runtime::launch;
+use crate::interface::launch;
 use crate::interface::{self, BootstrapResult, ProjectionMode};
 use crate::project;
 

@@ -21,79 +21,114 @@ pub mod granted {
     use super::host::GuestHost;
     use super::toys;
 
+    #[cfg(feature = "toy-log")]
     pub type Log = toys::LogToy<GuestHost>;
+    #[cfg(feature = "toy-measure")]
     pub type Measure = toys::MeasureToy<GuestHost>;
+    #[cfg(feature = "toy-query")]
     pub type Query = toys::QueryToy<GuestHost>;
+    #[cfg(feature = "toy-fetch")]
     pub type Fetch = toys::FetchToy<GuestHost>;
+    #[cfg(feature = "toy-emit")]
     pub type Emit = toys::EmitToy<GuestHost>;
+    #[cfg(feature = "toy-state")]
     pub type State = toys::StateToy<GuestHost>;
+    #[cfg(feature = "toy-checkpoint")]
     pub type Checkpoint = toys::CheckpointToy<GuestHost>;
+    #[cfg(feature = "toy-lake")]
     pub type Lakes = toys::LakeCatalog<GuestHost>;
+    #[cfg(feature = "toy-lake")]
     pub type Lake = toys::LakeToy<GuestHost>;
+    #[cfg(feature = "toy-ingress")]
     pub type IngressSources = toys::IngressCatalog<GuestHost>;
+    #[cfg(feature = "toy-ingress")]
     pub type Ingress = toys::IngressToy<GuestHost>;
+    #[cfg(feature = "toy-connector")]
     pub type Connectors = toys::ConnectorCatalog<GuestHost>;
+    #[cfg(feature = "toy-connector")]
     pub type Connector = toys::ConnectorBinding<GuestHost>;
+    #[cfg(feature = "toy-github")]
+    pub type Github = toys::GithubToy<GuestHost>;
+    #[cfg(feature = "toy-events")]
     pub type Events = toys::EventToy<GuestHost>;
+    #[cfg(feature = "toy-peer")]
+    pub type Peer = toys::PeerToy<GuestHost>;
+    #[cfg(feature = "toy-graph")]
     pub type Graph = toys::GraphToy<GuestHost>;
+    #[cfg(feature = "toy-belief")]
     pub type Belief = toys::BeliefToy<GuestHost>;
+    #[cfg(feature = "toy-session")]
+    pub type Session = toys::SessionToy<GuestHost>;
 
     pub trait Bundle {
         fn granted() -> Self;
     }
 
+    #[cfg(feature = "toy-log")]
     pub fn log() -> Log {
         Log::new()
     }
 
+    #[cfg(feature = "toy-measure")]
     pub fn measure() -> Measure {
         Measure::new()
     }
 
+    #[cfg(feature = "toy-query")]
     pub fn query() -> Query {
         Query::new()
     }
 
+    #[cfg(feature = "toy-fetch")]
     pub fn fetch() -> Fetch {
         Fetch::new()
     }
 
+    #[cfg(feature = "toy-emit")]
     pub fn emit() -> Emit {
         Emit::new()
     }
 
+    #[cfg(feature = "toy-state")]
     pub fn state() -> State {
         State::new()
     }
 
+    #[cfg(feature = "toy-checkpoint")]
     pub fn checkpoint() -> Checkpoint {
         Checkpoint::new()
     }
 
+    #[cfg(feature = "toy-lake")]
     pub fn lakes() -> Lakes {
         Lakes::new()
     }
 
+    #[cfg(feature = "toy-lake")]
     pub fn lake(name: &str) -> Lake {
         lakes()
             .require(name)
             .unwrap_or_else(|error| panic!("missing granted lake '{}': {}", name, error))
     }
 
+    #[cfg(feature = "toy-ingress")]
     pub fn ingress_sources() -> IngressSources {
         IngressSources::new()
     }
 
+    #[cfg(feature = "toy-ingress")]
     pub fn ingress(name: &str) -> Ingress {
         ingress_sources()
             .require(name)
             .unwrap_or_else(|error| panic!("missing granted ingress source '{}': {}", name, error))
     }
 
+    #[cfg(feature = "toy-connector")]
     pub fn connectors() -> Connectors {
         Connectors::new()
     }
 
+    #[cfg(feature = "toy-connector")]
     pub fn connector(binding_id: &str) -> Connector {
         connectors().require(binding_id).unwrap_or_else(|error| {
             panic!(
@@ -103,16 +138,34 @@ pub mod granted {
         })
     }
 
+    #[cfg(feature = "toy-github")]
+    pub fn github() -> Github {
+        Github::new()
+    }
+
+    #[cfg(feature = "toy-events")]
     pub fn events() -> Events {
         Events::new()
     }
 
+    #[cfg(feature = "toy-peer")]
+    pub fn peer() -> Peer {
+        Peer::new()
+    }
+
+    #[cfg(feature = "toy-graph")]
     pub fn graph() -> Graph {
         Graph::new()
     }
 
+    #[cfg(feature = "toy-belief")]
     pub fn belief() -> Belief {
         Belief::new()
+    }
+
+    #[cfg(feature = "toy-session")]
+    pub fn session() -> Session {
+        Session::new()
     }
 }
 
@@ -156,9 +209,12 @@ pub mod host {
     use super::patina;
     use crate::toys::{
         BeliefBackend, CheckpointBackend, ConnectorBackend, EmitBackend, EventBackend,
-        FetchBackend, GraphBackend, IngressBackend, LakeBackend, LogBackend, MeasureBackend,
-        PendingEvent, QueryBackend, StateBackend, TaskBackend, TaskIntent, TaskIntentKind,
+        FetchBackend, GithubBackend, GraphBackend, IngressBackend, LakeBackend, LogBackend,
+        MeasureBackend, PendingEvent, QueryBackend, SessionBackend, StateBackend, TaskBackend,
+        TaskIntent, TaskIntentKind,
     };
+    #[cfg(feature = "toy-peer")]
+    use crate::toys::{PeerBackend, PeerEvent};
 
     #[derive(Debug, Clone, Copy, Default)]
     pub struct GuestHost;
@@ -200,11 +256,21 @@ pub mod host {
         pub fn events() -> crate::toys::EventToy<Self> {
             crate::toys::EventToy::new()
         }
+        #[cfg(feature = "toy-peer")]
+        pub fn peer() -> crate::toys::PeerToy<Self> {
+            crate::toys::PeerToy::new()
+        }
+        pub fn github() -> crate::toys::GithubToy<Self> {
+            crate::toys::GithubToy::new()
+        }
         pub fn graph() -> crate::toys::GraphToy<Self> {
             crate::toys::GraphToy::new()
         }
         pub fn belief() -> crate::toys::BeliefToy<Self> {
             crate::toys::BeliefToy::new()
+        }
+        pub fn session() -> crate::toys::SessionToy<Self> {
+            crate::toys::SessionToy::new()
         }
     }
 
@@ -389,6 +455,168 @@ pub mod host {
         }
     }
 
+    impl GithubBackend for GuestHost {
+        fn list_issues(
+            owner: &str,
+            repo: &str,
+            params: &crate::toys::GithubListParams,
+        ) -> Result<crate::toys::GithubPage, String> {
+            patina::host::github::list_issues(
+                owner,
+                repo,
+                &patina::host::github::ListParams {
+                    since: params.since.clone(),
+                    state: params.state.clone(),
+                    page: params.page,
+                    per_page: params.per_page,
+                },
+            )
+            .map(|page| crate::toys::GithubPage {
+                items: page.items,
+                has_next: page.has_next,
+                next_page: page.next_page,
+                rate_remaining: page.rate_remaining,
+            })
+        }
+
+        fn list_pulls(
+            owner: &str,
+            repo: &str,
+            params: &crate::toys::GithubListParams,
+        ) -> Result<crate::toys::GithubPage, String> {
+            patina::host::github::list_pulls(
+                owner,
+                repo,
+                &patina::host::github::ListParams {
+                    since: params.since.clone(),
+                    state: params.state.clone(),
+                    page: params.page,
+                    per_page: params.per_page,
+                },
+            )
+            .map(|page| crate::toys::GithubPage {
+                items: page.items,
+                has_next: page.has_next,
+                next_page: page.next_page,
+                rate_remaining: page.rate_remaining,
+            })
+        }
+
+        fn list_issue_comments(
+            owner: &str,
+            repo: &str,
+            issue_number: u32,
+        ) -> Result<crate::toys::GithubPage, String> {
+            patina::host::github::list_issue_comments(owner, repo, issue_number).map(|page| {
+                crate::toys::GithubPage {
+                    items: page.items,
+                    has_next: page.has_next,
+                    next_page: page.next_page,
+                    rate_remaining: page.rate_remaining,
+                }
+            })
+        }
+
+        fn list_issue_events(
+            owner: &str,
+            repo: &str,
+            issue_number: u32,
+        ) -> Result<crate::toys::GithubPage, String> {
+            patina::host::github::list_issue_events(owner, repo, issue_number).map(|page| {
+                crate::toys::GithubPage {
+                    items: page.items,
+                    has_next: page.has_next,
+                    next_page: page.next_page,
+                    rate_remaining: page.rate_remaining,
+                }
+            })
+        }
+
+        fn list_pull_comments(
+            owner: &str,
+            repo: &str,
+            pull_number: u32,
+        ) -> Result<crate::toys::GithubPage, String> {
+            patina::host::github::list_pull_comments(owner, repo, pull_number).map(|page| {
+                crate::toys::GithubPage {
+                    items: page.items,
+                    has_next: page.has_next,
+                    next_page: page.next_page,
+                    rate_remaining: page.rate_remaining,
+                }
+            })
+        }
+
+        fn list_reviews(
+            owner: &str,
+            repo: &str,
+            pull_number: u32,
+        ) -> Result<crate::toys::GithubPage, String> {
+            patina::host::github::list_reviews(owner, repo, pull_number).map(|page| {
+                crate::toys::GithubPage {
+                    items: page.items,
+                    has_next: page.has_next,
+                    next_page: page.next_page,
+                    rate_remaining: page.rate_remaining,
+                }
+            })
+        }
+
+        fn list_review_comments(
+            owner: &str,
+            repo: &str,
+            pull_number: u32,
+            review_id: u64,
+        ) -> Result<crate::toys::GithubPage, String> {
+            patina::host::github::list_review_comments(owner, repo, pull_number, review_id).map(
+                |page| crate::toys::GithubPage {
+                    items: page.items,
+                    has_next: page.has_next,
+                    next_page: page.next_page,
+                    rate_remaining: page.rate_remaining,
+                },
+            )
+        }
+    }
+
+    impl SessionBackend for GuestHost {
+        fn get_session_id() -> String {
+            patina::host::session::get_session_id()
+        }
+
+        fn get_previous_session() -> Option<String> {
+            patina::host::session::get_previous_session()
+        }
+
+        fn get_previous_session_runtime_id() -> Option<String> {
+            patina::host::session::get_previous_session_runtime_id()
+        }
+
+        fn get_previous_session_handoff() -> Option<String> {
+            patina::host::session::get_previous_session_handoff()
+        }
+
+        fn write(section: &str, content: &str) -> Result<(), String> {
+            patina::host::session::write_artifact(section, content)
+        }
+
+        fn set_parent_session(runtime_id: &str) -> Result<(), String> {
+            patina::host::session::set_parent_session(runtime_id)
+        }
+
+        fn create_tag(name: &str) -> Result<(), String> {
+            patina::host::session::create_tag(name)
+        }
+
+        fn set_status(status: &str) -> Result<(), String> {
+            patina::host::session::set_status(status)
+        }
+
+        fn write_handoff(modified_files: &str, summary: &str) -> Result<(), String> {
+            patina::host::session::write_handoff(modified_files, summary)
+        }
+    }
+
     impl EventBackend for GuestHost {
         fn pull(
             stream: &str,
@@ -413,6 +641,32 @@ pub mod host {
         }
         fn list_streams() -> Vec<String> {
             patina::host::events::list_streams()
+        }
+    }
+
+    #[cfg(feature = "toy-peer")]
+    impl PeerBackend for GuestHost {
+        fn emit_event(event_type: &str, payload_json: &str) -> Result<(), String> {
+            patina::host::peer::emit_event(event_type, payload_json)
+        }
+
+        fn on_event(
+            stream_name: &str,
+            after_offset: Option<u64>,
+            limit: u32,
+        ) -> Result<Vec<PeerEvent>, String> {
+            patina::host::peer::on_event(stream_name, after_offset, limit).map(|events| {
+                events
+                    .into_iter()
+                    .map(|event| PeerEvent {
+                        stream_name: event.stream_name,
+                        offset: event.offset,
+                        event_type: event.event_type,
+                        payload_json: event.payload_json,
+                        occurred_at: event.occurred_at,
+                    })
+                    .collect()
+            })
         }
     }
 

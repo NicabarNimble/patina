@@ -78,7 +78,7 @@ pub mod layer {
 
 /// Measurement reporting — record metrics from plugin execution.
 ///
-/// Requires `host_measure = true` in plugin.toml capabilities.
+/// Requires `host_measure = true` in child.toml capabilities.
 /// The host validates verb, checks metrics are numeric JSON, and
 /// writes to eventlog with the plugin name as source.
 pub mod measure {
@@ -100,7 +100,7 @@ pub mod measure {
 
 /// Capability-gated access to Patina's query engines.
 ///
-/// Requires `host_query = ["scry"]` (or "context", "assay") in plugin.toml.
+/// Requires `host_query = ["scry"]` (or "context", "assay") in child.toml.
 /// The host checks grants at both load time and call time (defense in depth).
 /// Params and results are JSON strings — parse on the guest side.
 pub mod query {

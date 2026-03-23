@@ -72,6 +72,15 @@ pub enum MutationDetail {
         action: String,
         value: String,
     },
+    Rename {
+        old_id: String,
+        new_id: String,
+        file: String,
+    },
+    Reopen {
+        file: String,
+        previous_status: String,
+    },
 }
 
 fn lint_ready_spec(loaded: &LoadedSpec) -> Result<()> {
@@ -256,26 +265,6 @@ pub(super) fn next_tag_number(id: &str, prefix: &str) -> Result<u32> {
     Ok(tags.len() as u32 + 1)
 }
 
-/// Promote a spec: draft → ready, or ready → active.
-/// When promoting to active, creates tag spec/<id>-start.
-pub fn promote_spec(id: &str, force: bool, json: bool) -> Result<()> {
-    let result = promote_spec_value(id, force)?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        println!("Promoted: {} → {}", id, result.new_status);
-        if let MutationDetail::Promote { ref file } = result.detail {
-            println!("  File: {}", file);
-        }
-        if result.new_status == "active" {
-            println!("  Tag: spec/{}-start", id);
-        }
-    }
-
-    Ok(())
-}
-
 /// Promote a spec and return structured result (for MCP).
 pub fn promote_spec_value(id: &str, force: bool) -> Result<MutationResult> {
     let loaded = load_spec(id)?;
@@ -331,34 +320,6 @@ fn apply_list_mutation(list: &mut Vec<String>, action: &str, value: &str) {
     } else {
         list.retain(|v| v != value);
     }
-}
-
-/// Set a metadata field on a spec.
-///
-/// Supported fields: beliefs, related, references (Vec — use +/- prefix),
-/// target (scalar — set directly, empty string clears).
-pub fn set_spec(id: &str, field: &str, value: &str, json: bool) -> Result<()> {
-    let result = set_spec_value(id, field, value)?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else if let MutationDetail::Set {
-        ref action,
-        ref value,
-        ref field,
-        ..
-    } = result.detail
-    {
-        match action.as_str() {
-            "added" => println!("Added '{}' to {} on {}", value, field, id),
-            "removed" => println!("Removed '{}' from {} on {}", value, field, id),
-            "set" => println!("Set {} to '{}' on {}", field, value, id),
-            "cleared" => println!("Cleared {} on {}", field, id),
-            _ => {}
-        }
-    }
-
-    Ok(())
 }
 
 /// Set a metadata field and return structured result (for MCP).
@@ -433,21 +394,6 @@ pub fn set_spec_value(id: &str, field: &str, value: &str) -> Result<MutationResu
             value: result_value,
         },
     })
-}
-
-/// Complete an active spec (release + archive + tag)
-pub fn complete_spec(id: &str, major: bool, force: bool, json: bool) -> Result<()> {
-    let result = complete_spec_value(id, major, force)?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else if let MutationDetail::Complete { ref file, .. } = result.detail {
-        println!("Completed: {} → complete", id);
-        println!("  Archived: spec/{}", id);
-        println!("  Recover: git show spec/{}:{}", id, file);
-    }
-
-    Ok(())
 }
 
 /// Complete an active spec and return structured result (for MCP).
@@ -538,24 +484,6 @@ pub fn complete_spec_value(id: &str, major: bool, force: bool) -> Result<Mutatio
     }
 }
 
-/// Abandon a spec (archive + tag, no release)
-pub fn abandon_spec(id: &str, reason: Option<&str>, json: bool) -> Result<()> {
-    let result = abandon_spec_value(id, reason)?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else if let MutationDetail::Abandon { ref file, .. } = result.detail {
-        println!("Abandoned: {}", id);
-        if let Some(r) = reason {
-            println!("  Reason: {}", r);
-        }
-        println!("  Archived: spec/{}", id);
-        println!("  Recover: git show spec/{}:{}", id, file);
-    }
-
-    Ok(())
-}
-
 /// Abandon a spec and return structured result (for MCP).
 pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<MutationResult> {
     // 1. Load spec and validate status
@@ -633,25 +561,6 @@ pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<MutationResu
             Err(e)
         }
     }
-}
-
-/// Pause an active spec with reason.
-///
-/// Enforces one-paused-spec rule, creates WIP commit if dirty,
-/// tags with spec/<id>-paused-<N>, rolls back YAML on failure.
-pub fn pause_spec(id: &str, reason: &str, json: bool) -> Result<()> {
-    let result = pause_spec_value(id, reason)?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else if let MutationDetail::Pause { ref tag, .. } = result.detail {
-        println!("Paused: {} → paused", id);
-        println!("  Reason: {}", reason);
-        println!("  Tag: {}", tag);
-        println!("  Resume: patina spec resume {}", id);
-    }
-
-    Ok(())
 }
 
 /// Pause an active spec and return structured result (for MCP).
@@ -734,69 +643,6 @@ pub fn pause_spec_value(id: &str, reason: &str) -> Result<MutationResult> {
             paused_date: today,
         },
     })
-}
-
-/// Resume a paused or blocked spec.
-///
-/// For blocked specs: checks all blockers are complete (or --force).
-/// Shows context diffs from paused_at_tag. Clears pause/block fields.
-pub fn resume_spec(id: &str, force: bool, json: bool) -> Result<()> {
-    let result = resume_spec_value(id, force)?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else if let MutationDetail::Resume {
-        ref tag,
-        ref paused_at_tag,
-        ..
-    } = result.detail
-    {
-        println!("Resumed: {} → active", id);
-        println!("  Tag: {}", tag);
-
-        if let Some(pause_tag) = paused_at_tag {
-            // What changed while away
-            // `git diff --stat` for display — no patina::git helper for range diffs
-            println!("\n--- Changes since pause ({}) ---", pause_tag);
-            let output = Command::new("git")
-                .args(["diff", "--stat", &format!("{}..HEAD", pause_tag)])
-                .output();
-            if let Ok(output) = output {
-                let diff = String::from_utf8_lossy(&output.stdout);
-                if diff.trim().is_empty() {
-                    println!("  (no changes)");
-                } else {
-                    for line in diff.lines() {
-                        println!("  {}", line);
-                    }
-                }
-            }
-
-            // What you accomplished before pausing
-            let start_tag = format!("spec/{}-start", id);
-            if patina::git::tag_exists(&start_tag).unwrap_or(false) {
-                println!(
-                    "\n--- Your work before pause ({}..{}) ---",
-                    start_tag, pause_tag
-                );
-                let output = Command::new("git")
-                    .args(["diff", "--stat", &format!("{}..{}", start_tag, pause_tag)])
-                    .output();
-                if let Ok(output) = output {
-                    let diff = String::from_utf8_lossy(&output.stdout);
-                    if diff.trim().is_empty() {
-                        println!("  (no changes)");
-                    } else {
-                        for line in diff.lines() {
-                            println!("  {}", line);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
 }
 
 /// Resume a paused or blocked spec and return structured result (for MCP).
@@ -891,28 +737,6 @@ pub fn resume_spec_value(id: &str, force: bool) -> Result<MutationResult> {
     })
 }
 
-/// Block an active spec on another spec.
-///
-/// Appends to blocked_by list, updates spec_deps, creates annotated tag.
-pub fn block_spec(id: &str, blocker: &str, reason: &str, json: bool) -> Result<()> {
-    let result = block_spec_value(id, blocker, reason)?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else if let MutationDetail::Block { ref tag, .. } = result.detail {
-        println!("Blocked: {} → blocked", id);
-        println!("  Blocked by: {}", blocker);
-        println!("  Reason: {}", reason);
-        println!("  Tag: {}", tag);
-        println!(
-            "  Unblock: patina spec resume {} (when {} is complete)",
-            id, blocker
-        );
-    }
-
-    Ok(())
-}
-
 /// Block an active spec and return structured result (for MCP).
 pub fn block_spec_value(id: &str, blocker: &str, reason: &str) -> Result<MutationResult> {
     // 1. Load spec and validate status
@@ -979,6 +803,124 @@ pub fn block_spec_value(id: &str, blocker: &str, reason: &str) -> Result<Mutatio
             tag: tag_name,
             blocker: blocker.to_string(),
             reason: reason.to_string(),
+        },
+    })
+}
+
+pub fn rename_spec_value(id: &str, new_id: &str) -> Result<MutationResult> {
+    if new_id.is_empty()
+        || !new_id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        anyhow::bail!("invalid new spec id '{}': use kebab-case", new_id);
+    }
+    if find_spec(new_id).is_ok() {
+        anyhow::bail!("spec '{}' already exists", new_id);
+    }
+
+    let loaded = load_spec(id)?;
+    let old_file = loaded.file_path.clone();
+    let old_dir = Path::new(&old_file)
+        .parent()
+        .context("spec has no parent directory")?
+        .to_path_buf();
+    let parent_dir = old_dir
+        .parent()
+        .context("spec directory has no parent")?
+        .to_path_buf();
+    let new_dir = parent_dir.join(new_id);
+    if new_dir.exists() {
+        anyhow::bail!("target directory already exists: {}", new_dir.display());
+    }
+
+    let mut frontmatter = loaded.frontmatter.clone();
+    frontmatter.id = new_id.to_string();
+    let content = serialize_spec_file(&frontmatter, &loaded.body)?;
+    std::fs::write(&old_file, content)?;
+
+    std::fs::rename(&old_dir, &new_dir).with_context(|| {
+        format!(
+            "failed to rename {} -> {}",
+            old_dir.display(),
+            new_dir.display()
+        )
+    })?;
+
+    let new_file = new_dir.join("SPEC.md");
+    let new_file_str = new_file.to_string_lossy().to_string();
+
+    let db_path = Path::new(DB_PATH);
+    if db_path.exists() {
+        let conn = Connection::open(db_path).context("Failed to open database")?;
+        conn.execute(
+            "UPDATE patterns SET id = ?1, file_path = ?2 WHERE id = ?3",
+            rusqlite::params![new_id, new_file_str, id],
+        )?;
+    }
+
+    let stage_output = Command::new("git")
+        .args([
+            "add",
+            "-A",
+            old_dir.to_string_lossy().as_ref(),
+            new_dir.to_string_lossy().as_ref(),
+        ])
+        .output()
+        .context("Failed to stage rename")?;
+    if !stage_output.status.success() {
+        anyhow::bail!(
+            "failed to stage rename: {}",
+            String::from_utf8_lossy(&stage_output.stderr)
+        );
+    }
+
+    let commit_msg = format!("spec: rename {} to {}", id, new_id);
+    if patina::git::has_staged_changes()? {
+        patina::git::commit(&commit_msg)?;
+    }
+
+    Ok(MutationResult {
+        command: "rename",
+        spec_id: new_id.to_string(),
+        new_status: frontmatter
+            .status
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "unknown".to_string()),
+        detail: MutationDetail::Rename {
+            old_id: id.to_string(),
+            new_id: new_id.to_string(),
+            file: new_file_str,
+        },
+    })
+}
+
+pub fn reopen_spec_value(id: &str) -> Result<MutationResult> {
+    let loaded = load_spec(id)?;
+    let status = loaded
+        .status
+        .ok_or_else(|| anyhow::anyhow!("Spec '{}' has no status", id))?;
+    if !status.is_terminal() {
+        anyhow::bail!(
+            "Cannot reopen '{}' — status is '{}', expected complete or abandoned",
+            id,
+            status
+        );
+    }
+
+    let out = mutate_spec(loaded, |fm| {
+        fm.status = Some(SpecStatus::Active);
+        Ok(())
+    })?;
+    git_stage_and_commit(&out.file_path, &format!("spec: reopen {}", id))?;
+
+    Ok(MutationResult {
+        command: "reopen",
+        spec_id: id.to_string(),
+        new_status: SpecStatus::Active.to_string(),
+        detail: MutationDetail::Reopen {
+            file: out.file_path,
+            previous_status: status.to_string(),
         },
     })
 }

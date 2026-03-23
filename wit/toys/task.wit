@@ -1,0 +1,22 @@
+package patina:host@0.1.0;
+
+interface task {
+    enum task-intent-kind {
+        fetch-source,
+        run-query,
+        emit-facts,
+        materialize-index,
+        verify-belief,
+        sync-graph,
+        refresh-credential,
+        native-job,
+    }
+
+    record task-intent {
+        kind: task-intent-kind,
+        payload-json: string,
+        dedupe-key: option<string>,
+    }
+
+    enqueue: func(intent: task-intent) -> result<string, string>;
+}

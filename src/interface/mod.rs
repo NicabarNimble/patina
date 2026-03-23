@@ -1,4 +1,5 @@
 mod internal;
+pub mod launch;
 pub mod runtime;
 
 use anyhow::{bail, Result};
@@ -17,17 +18,17 @@ pub use internal::bundle::{
     InterfaceBundle,
 };
 pub use internal::checkin::{
-    check_in, CheckInResult, InterfaceCapabilities, InterfaceCheckIn, LaunchPolicy,
+    check_in, session_writer_action, CheckInResult, InterfaceCapabilities, InterfaceCheckIn,
 };
+pub use internal::launcher::launch_adapter_cli;
 pub use internal::surface::{
     ensure_ai_project_config, ensure_ai_surface, prepare_ai_bundle, resolve_preferred_ai_interface,
     set_project_default_interface, AiProjectConfigResult, AiSurfaceRequest, AiSurfaceResult,
     PreparedInterface,
 };
-pub use internal::tmux::{
-    check_tmux_version, derive_interface_session_name, derive_session_name, launch_adapter_cli,
-    resolve_tmux_decision, OffReason, TmuxDecision,
-};
+pub use runtime::claude::CLAUDE_ADAPTER_VERSION;
+pub use runtime::gemini::GEMINI_ADAPTER_VERSION;
+pub use runtime::templates;
 
 #[derive(Debug, Clone)]
 pub struct AdapterDetection {
@@ -39,8 +40,6 @@ pub struct AdapterDetection {
 #[derive(Debug, Clone)]
 pub struct LaunchRequest {
     pub project_root: PathBuf,
-    pub tmux_decision: TmuxDecision,
-    pub session_name: String,
     pub env: Vec<(String, String)>,
 }
 
@@ -50,7 +49,7 @@ pub trait AiInterface {
     fn interface_kind(&self) -> InterfaceKind;
 
     fn detect(&self) -> Result<AdapterDetection> {
-        let info = crate::interface::runtime::launch::get(self.name())?;
+        let info = crate::interface::launch::get(self.name())?;
         Ok(AdapterDetection {
             detected: info.detected,
             display_name: info.display,
@@ -65,13 +64,7 @@ pub trait AiInterface {
     fn context_file(&self, project_root: &Path) -> PathBuf;
 
     fn launch(&self, request: LaunchRequest) -> Result<()> {
-        launch_adapter_cli(
-            self.name(),
-            &request.project_root,
-            &request.tmux_decision,
-            &request.session_name,
-            &request.env,
-        )
+        launch_adapter_cli(self.name(), &request.project_root, &request.env)
     }
 
     fn capabilities(&self) -> InterfaceCapabilities {

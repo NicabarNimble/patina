@@ -7,7 +7,7 @@ entrenchment: medium
 status: active
 endorsed: true
 extracted: 2026-03-04
-revised: 2026-03-04
+revised: 2026-03-21
 ---
 
 # mother-is-connection-and-continuity
@@ -47,3 +47,4 @@ Mother's function is connection and continuity. She federates Patina instances (
 ## Revision Log
 
 - 2026-03-04: Created — metrics computed by `patina scrape`
+- 2026-03-21: Clarified — Mother = machine node. She hosts multiple personas (crypto namespaces) and federates with other Mothers (machine-to-machine P2P). Personas span Mothers — same persona keypair on multiple machines, synced beliefs. Mother federates machines; personas are the knowledge contexts that live across machines.

@@ -4,21 +4,17 @@
 //! sources.toml declarations. Manages child lifecycle (spawn, fetch,
 //! shutdown) for native children via the pipe protocol.
 
-pub mod cursor;
-pub mod http;
-pub mod lifecycle;
-pub mod routing;
-pub mod sources;
-pub mod spawn;
-
-pub use self::spawn::resolve_child_binary;
+// Data types and source parsing now live in the mother crate.
+// Re-export for existing callers.
+pub use mother_crate::broker::cursor;
+pub use mother_crate::broker::sources;
+pub use mother_crate::broker::{SourceStatus, WriteResult};
 
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
 use self::cursor::get_cursor;
-use self::routing::WriteResult;
 use self::sources::{Destination, SourceEntry};
 
 /// Run a single source: resolve auth, spawn child, fetch facts, validate, route to destination.
@@ -282,10 +278,10 @@ fn migrate_legacy_cursor(
 fn load_ducklake_knowledge_child(
     no_sandbox: bool,
 ) -> Result<Box<dyn crate::mother::KnowledgeChild>> {
-    let engine = crate::plugin::KnowledgeChildEngine::new()?;
+    let engine = crate::child::engine::KnowledgeChildEngine::new()?;
 
     let mut candidates: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
-    let installed_dir = crate::paths::plugin::children_dir();
+    let installed_dir = crate::paths::child::children_dir();
     if installed_dir.exists() {
         for entry in std::fs::read_dir(&installed_dir).with_context(|| {
             format!("reading installed children dir {}", installed_dir.display())
@@ -300,16 +296,20 @@ fn load_ducklake_knowledge_child(
             }
         }
     }
-    candidates.push((
-        std::path::PathBuf::from("target/wasm32-wasip2/release/patina_plugin_ducklake.wasm"),
-        std::path::PathBuf::from("children/ducklake/plugin.toml"),
-    ));
+    if let Some(manifest_path) = crate::child::engine::ChildManifest::resolve_child_manifest_path(
+        std::path::Path::new("children/ducklake"),
+    ) {
+        candidates.push((
+            std::path::PathBuf::from("target/wasm32-wasip2/release/patina_plugin_ducklake.wasm"),
+            manifest_path,
+        ));
+    }
 
     for (wasm_path, manifest_path) in candidates {
         if !wasm_path.exists() || !manifest_path.exists() {
             continue;
         }
-        let manifest = match crate::plugin::PluginManifest::from_path(&manifest_path) {
+        let manifest = match crate::child::engine::ChildManifest::from_path(&manifest_path) {
             Ok(manifest) => manifest,
             Err(error) => {
                 eprintln!(
@@ -337,17 +337,8 @@ fn load_ducklake_knowledge_child(
 
     anyhow::bail!(
         "ducklake knowledge-child component not found. Install one under {} or build children/ducklake for wasm32-wasip2",
-        crate::paths::plugin::children_dir().display()
+        crate::paths::child::children_dir().display()
     )
-}
-
-/// Source status information for display.
-#[derive(Debug)]
-pub struct SourceStatus {
-    pub name: String,
-    pub last_run: Option<String>,
-    pub fact_count: i64,
-    pub status: String,
 }
 
 /// Get status for all sources in a project.
@@ -373,12 +364,8 @@ pub fn status(project_root: &Path) -> Result<Vec<SourceStatus>> {
             )
             .ok();
 
-        // Count facts from this source — use connection's child name
-        let child_name = crate::connect::load(&source.connection)
-            .ok()
-            .map(|r| r.auth.child.clone())
-            .unwrap_or_else(|| source.name.clone());
-        let source_id = format!("child:{}", child_name);
+        // Count facts from this source
+        let source_id = format!("child:{}", source.name);
 
         let fact_count: i64 = events_conn
             .query_row(
@@ -521,7 +508,6 @@ mod tests {
             },
         };
         let auth_plan = AuthPlan {
-            child: "github-connector".to_string(),
             credential: None,
             allowed_domains: vec!["api.github.com".to_string()],
         };
@@ -557,7 +543,6 @@ mod tests {
             },
         };
         let auth_plan = AuthPlan {
-            child: "github-connector".to_string(),
             credential: Some(ResolvedCredential {
                 value: "token".to_string(),
                 injection: InjectionStrategy::Bearer,

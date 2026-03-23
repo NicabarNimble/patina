@@ -21,36 +21,6 @@ pub struct SplitResult {
     pub status: &'static str,
 }
 
-/// Split a spec: complete original with release, create new draft for remaining work.
-///
-/// Flow: validate → tag → complete original → create new spec → commit
-pub fn split_spec(
-    id: &str,
-    new_id: Option<&str>,
-    description: Option<&str>,
-    json: bool,
-) -> Result<()> {
-    let result = split_spec_value(id, new_id, description)?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        println!("Split: {}", id);
-        println!("  Completed: {} → archived (spec/{})", id, id);
-        println!("  Version tag: {}", result.version_tag);
-        println!(
-            "  New draft: {} ({})",
-            result.new_spec_id, result.new_spec_path
-        );
-        println!(
-            "  Recover parent: git show {}:{}",
-            result.version_tag, result.original_file
-        );
-    }
-
-    Ok(())
-}
-
 /// Split a spec and return structured result (for MCP).
 pub fn split_spec_value(
     id: &str,

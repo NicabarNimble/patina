@@ -139,7 +139,7 @@ pub fn setup() -> Result<SetupResult> {
 
     // Extract embedded templates to ~/.patina/adapters/
     println!("  ✓ Installing adapter templates...");
-    crate::interface::runtime::templates::install_all(&adapters)?;
+    crate::interface::templates::install_all(&adapters)?;
     println!("  ✓ Installed adapters: claude, gemini, codex");
 
     // Detect installed adapters
@@ -240,12 +240,12 @@ pub fn ensure_workspace() -> Result<()> {
             fs::create_dir_all(adapters.join(adapter))?;
         }
         // Install templates if adapters directory was just created
-        crate::interface::runtime::templates::install_all(&adapters)?;
+        crate::interface::templates::install_all(&adapters)?;
     } else {
         // Check if templates need to be installed
         let claude_templates = adapters.join("claude").join("templates");
         if !claude_templates.exists() {
-            crate::interface::runtime::templates::install_all(&adapters)?;
+            crate::interface::templates::install_all(&adapters)?;
         }
     }
 

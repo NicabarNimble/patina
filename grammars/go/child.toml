@@ -1,0 +1,10 @@
+[child]
+name = "grammar-go"
+version = "0.1.0"
+description = "Go language grammar extraction via tree-sitter (compiled to WASM via wasi-sdk)"
+kind = "pipeline"
+patina_min = "0.22.0"
+
+[provides]
+pipeline_ops = ["parse"]
+languages = ["go"]

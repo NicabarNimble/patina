@@ -1,5 +1,5 @@
 [package]
-name = "patina-plugin-repos"
+name = "patina-ai-extension-repos"
 version = "0.1.0"
 edition = "2021"
 description = "Reference repository freshness monitoring plugin for Mother daemon"

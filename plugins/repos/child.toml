@@ -1,0 +1,16 @@
+[child]
+name = "patina-repos"
+version = "0.1.0"
+description = "Reference repository freshness monitoring for Mother daemon"
+kind = "mother-child"
+role = "extension"
+patina_min = "0.17.0"
+
+[capabilities]
+host_log = true
+
+[capabilities.toys]
+commands = ["git", "patina"]
+
+[provides]
+child = "repos"

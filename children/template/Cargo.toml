@@ -1,0 +1,19 @@
+[package]
+name = "{{ package_name }}"
+version = "0.1.0"
+edition = "2021"
+description = "{{ description }}"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+patina-sdk = { path = "../../sdk/patina-sdk", features = ["knowledge-child", "toy-log"] }
+serde_json = "1.0"
+
+[package.metadata.component]
+package = "patina:{{ child_name }}"
+
+[package.metadata.component.target]
+path = "../../wit/worlds"
+world = "knowledge-child"

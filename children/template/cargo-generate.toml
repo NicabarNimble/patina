@@ -1,0 +1,17 @@
+[template]
+cargo_generate_version = ">=0.20.0"
+
+[placeholders.child_name]
+type = "string"
+prompt = "Child name (kebab-case)"
+default = "my-child"
+
+[placeholders.description]
+type = "string"
+prompt = "Child description"
+default = "Patina knowledge child"
+
+[placeholders.package_name]
+type = "string"
+prompt = "Rust package name"
+default = "patina-ai-child-my-child"

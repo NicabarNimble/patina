@@ -102,10 +102,6 @@ impl Provider for GitHubProvider {
         DEFAULT_SCOPES.iter().map(|s| s.to_string()).collect()
     }
 
-    fn default_child(&self) -> &str {
-        "github-connector"
-    }
-
     fn default_injection(&self) -> InjectionStrategy {
         InjectionStrategy::Bearer
     }
@@ -348,12 +344,6 @@ mod tests {
     }
 
     #[test]
-    fn github_provider_default_child() {
-        let provider = GitHubProvider;
-        assert_eq!(provider.default_child(), "github-connector");
-    }
-
-    #[test]
     fn github_provider_default_injection() {
         let provider = GitHubProvider;
         assert_eq!(provider.default_injection(), InjectionStrategy::Bearer);
@@ -363,17 +353,6 @@ mod tests {
     fn github_provider_allowed_domains() {
         let provider = GitHubProvider;
         assert_eq!(provider.allowed_domains(), vec!["api.github.com"]);
-    }
-
-    #[test]
-    fn github_provider_defaults_match_child_toml() {
-        // Verify our defaults match children/github-connector/child.toml:
-        //   [auth] required = true, provider = "github"
-        //   [domains] allowed = ["api.github.com"]
-        let provider = GitHubProvider;
-        assert_eq!(provider.name(), "github");
-        assert_eq!(provider.allowed_domains(), vec!["api.github.com"]);
-        assert_eq!(provider.default_child(), "github-connector");
     }
 
     #[test]

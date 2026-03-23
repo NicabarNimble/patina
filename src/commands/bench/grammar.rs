@@ -11,7 +11,7 @@ use ignore::WalkBuilder;
 
 use crate::commands::scrape::code::extracted_data::ExtractedData;
 
-use patina::plugin::PipelineEngine;
+use patina::child::engine::PipelineEngine;
 
 /// Options for grammar benchmark
 pub struct GrammarBenchOptions {
@@ -48,7 +48,7 @@ pub fn run(options: GrammarBenchOptions) -> Result<()> {
     let total_bytes: usize = file_contents.iter().map(|(_, c)| c.len()).sum();
 
     // === Discover plugin ===
-    let pipeline_dir = patina::paths::plugin::pipeline_dir();
+    let pipeline_dir = patina::paths::child::pipeline_dir();
 
     let discovery_start = Instant::now();
     let engine = PipelineEngine::new().context("Failed to create PipelineEngine")?;

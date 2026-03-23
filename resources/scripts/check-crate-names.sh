@@ -16,17 +16,6 @@ workspace_root=$(jq -r '.workspace_root' <<<"$metadata_json")
 
 failures=0
 
-is_legacy_exact() {
-    case "$1" in
-        patina-pipe|patina-pipe-types|patina-doctor|patina-plugin-models|patina-plugin-repos|patina-plugin-ducklake|patina-plugin-belief-verifier|github-connector)
-            return 0
-            ;;
-        *)
-            return 1
-            ;;
-    esac
-}
-
 is_allowed_name() {
     local name="$1"
     local rel_manifest="$2"
@@ -45,9 +34,6 @@ is_allowed_name() {
                 return 0
             fi
             if [[ "$name" == patina-sdk-* ]]; then
-                return 0
-            fi
-            if is_legacy_exact "$name"; then
                 return 0
             fi
             return 1
@@ -72,8 +58,7 @@ while IFS=$'\t' read -r name manifest_path; do
     echo "crate name policy violation:"
     echo "  crate:    $name"
     echo "  manifest: $rel_manifest"
-    echo "  expected: patina-ai-* (runtime/app/internal) or patina-sdk-* (public SDK),"
-    echo "            unless explicitly grandfathered"
+    echo "  expected: patina-ai-* (runtime/app/internal) or patina-sdk-* (public SDK)"
 done < <(jq -r '.packages[] | [.name, .manifest_path] | @tsv' <<<"$metadata_json")
 
 if [[ "$failures" -gt 0 ]]; then

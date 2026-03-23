@@ -14,7 +14,6 @@ pub mod migration;
 pub mod models;
 pub mod mother;
 pub mod paths;
-pub mod plugin;
 pub mod project;
 pub mod release;
 pub mod scanner;
@@ -25,7 +24,6 @@ pub mod version;
 pub mod workspace;
 
 pub mod test_support;
-pub mod toys;
 
 // Re-export commonly used types
 pub use environment::Environment;

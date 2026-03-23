@@ -180,18 +180,18 @@ pub mod serve {
     }
 }
 
-/// Plugin paths (WASM children, command plugins, work dirs)
-pub mod plugin {
+/// Child runtime paths (WASM children, command children, work dirs)
+pub mod child {
     use super::*;
 
     /// WASM children directory: `~/.patina/children/`
-    /// Contains .wasm files + plugin.toml manifests for Mother daemon children.
+    /// Contains .wasm files + child manifests (`child.toml`) for Mother daemon children.
     pub fn children_dir() -> PathBuf {
         patina_home().join("children")
     }
 
     /// CLI command plugins directory: `~/.patina/plugins/`
-    /// Contains .wasm files + plugin.toml manifests for CLI command plugins (Phase 2+).
+    /// Contains .wasm files + `.toml` child manifests for CLI command plugins (Phase 2+).
     pub fn plugins_dir() -> PathBuf {
         patina_home().join("plugins")
     }
@@ -203,7 +203,7 @@ pub mod plugin {
     }
 
     /// Pipeline grammar plugins directory: `~/.patina/pipeline/`
-    /// Contains grammar-{lang}/ subdirectories with plugin.wasm + plugin.toml.
+    /// Contains grammar-{lang}/ subdirectories with `plugin.wasm` + `child.toml`.
     pub fn pipeline_dir() -> PathBuf {
         patina_home().join("pipeline")
     }
@@ -215,6 +215,11 @@ pub mod plugin {
             .join("plugin-config")
             .join("secret-grants.toml")
     }
+}
+
+/// Legacy plugin-path alias maintained during vocabulary migration.
+pub mod plugin {
+    pub use super::child::{children_dir, pipeline_dir, plugins_dir, secret_grants_path, work_dir};
 }
 
 /// User-level layer paths (~/.patina/layer/)

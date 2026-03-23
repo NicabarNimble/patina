@@ -18,13 +18,13 @@ exit_criteria:
   text: Legacy native cursor/checkpoint state is migrated or honored by the knowledge-child path with tests proving no silent re-ingest or continuity loss
   checked: true
 - id: native-ducklake-runtime-removed
-  text: children/ducklake is removed from runtime and workspace membership
+  text: Legacy native DuckLake runtime implementation is removed from runtime and workspace membership; only the knowledge-child runtime path remains
   checked: true
 - id: knowledge-child-route-only
   text: Broker lake route only uses knowledge-child path with no native fallback path
   checked: true
 - id: no-legacy-ducklake-runtime-references
-  text: Runtime/workspace/test references to children/ducklake native path are removed (excluding archived history specs/sessions)
+  text: Runtime/workspace/test references to the legacy native DuckLake runtime path are removed (excluding archived history specs/sessions)
   checked: true
 - id: ci-blocks-native-reintroduction
   text: CI has a guard that fails if native children/ducklake runtime path is reintroduced
@@ -32,11 +32,19 @@ exit_criteria:
 ---
 # refactor: remove native ducklake runtime and harden wasm-only path
 
-> Remove `children/ducklake` safely, prove `children/ducklake-wasm` remains operational, and lock regressions with CI.
+> Remove the legacy native DuckLake runtime, keep the knowledge-child runtime path as the only truth, and lock regressions with CI.
+
+## Historical Note
+
+This lane executed before the follow-up path rename to `children/ducklake`.
+References to `children/ducklake-wasm` below reflect the original execution
+frame and now correspond to the canonical `children/ducklake` knowledge-child
+path.
 
 ## Problem
 
-DuckLake still has dual runtime identity (`children/ducklake-wasm` + `children/ducklake`), which keeps migration complexity and boundary drift alive.
+DuckLake had dual runtime identity during this migration lane, which kept
+migration complexity and boundary drift alive.
 
 ## Goal
 
@@ -44,7 +52,7 @@ Make knowledge-child DuckLake the only runtime path and verify behavior after na
 
 ## Non-Goals
 
-- Do not rename `children/ducklake-wasm` in this spec.
+- Do not rename the knowledge-child path in this spec.
 - Do not perform broad folder reorg in this spec.
 - Do not move spec/scrape/grammar surfaces in this spec.
 
@@ -55,4 +63,4 @@ Make knowledge-child DuckLake the only runtime path and verify behavior after na
 - `cargo test -q -p patina-ai migration_copies_legacy_cursor_into_per_type_lake_cursors`
 - `cargo test -q -p patina-ai migration_is_idempotent_and_does_not_overwrite_existing_cursor`
 - parity suite command for wasm path vs snapshot is defined and green in CI before native deletion commit lands
-- `rg "children/ducklake(/|\\b)" src children sdk tests Cargo.toml .github` (no active runtime references)
+- `rg "children/ducklake-wasm" src children sdk tests Cargo.toml .github` (no active runtime references)

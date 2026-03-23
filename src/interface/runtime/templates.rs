@@ -36,7 +36,7 @@ fn wrapper_note(adapter: &str) -> String {
 
 fn wrapper_end(adapter: &str) -> String {
     format!(
-        "#!/bin/bash\nexec env PATINA_AI_INTERFACE={adapter} patina ai session end --json \"$@\"\n"
+        "#!/bin/bash\nexec env PATINA_AI_INTERFACE={adapter} patina ai session end --json --commit \"$@\"\n"
     )
 }
 
@@ -453,6 +453,7 @@ mod tests {
         assert!(note.contains("patina ai session note"));
         assert!(end.contains("PATINA_AI_INTERFACE=claude"));
         assert!(end.contains("patina ai session end --json"));
+        assert!(end.contains("--commit"));
     }
 
     #[test]

@@ -37,17 +37,21 @@
 //! # }
 //! ```
 
+pub(crate) mod adapters;
 pub(crate) mod daemon;
 pub(crate) mod graph;
-pub(crate) mod microserver;
-pub(crate) mod registry;
-pub(crate) mod secrets;
+
+// Moved to mother crate — re-export for daemon.rs
+pub(crate) use mother_crate::microserver;
+pub(crate) use mother_crate::registry;
+pub(crate) use mother_crate::secrets;
 
 use anyhow::{bail, Context, Result};
-use std::os::unix::fs::{FileTypeExt, PermissionsExt};
+use serde::Deserialize;
 use std::path::Path;
 
 use patina::paths;
+use patina::session::SessionManager;
 
 // Re-export DaemonOptions for use in main.rs
 pub use daemon::DaemonOptions;
@@ -262,10 +266,7 @@ pub enum QueryCommands {
 }
 
 /// Execute mother command from CLI
-pub fn execute_cli(
-    command: Option<MotherCommands>,
-    run_mcp: impl FnOnce() -> Result<()>,
-) -> Result<()> {
+pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
     match command {
         None => {
             // Bare `patina mother` — show status (or help for now)
@@ -285,7 +286,7 @@ pub fn execute_cli(
             legacy_migration,
         }) => {
             if mcp {
-                run_mcp()
+                bail!("MCP server path has been retired; start daemon without --mcp")
             } else {
                 let options = DaemonOptions {
                     host,
@@ -451,58 +452,22 @@ fn prune_orphaned_cursors(project_root: &Path) -> Result<()> {
 /// Stop the mother daemon
 fn stop_daemon() -> Result<()> {
     let pid_path = paths::serve::pid_path();
-
-    // Check if PID file exists
-    if !pid_path.exists() {
-        println!("Mother daemon is not running (no PID file).");
-        return Ok(());
-    }
-
-    // Read PID
-    let pid_str = std::fs::read_to_string(&pid_path)
-        .with_context(|| format!("reading PID file {}", pid_path.display()))?;
-    let pid: i32 = pid_str
-        .trim()
-        .parse()
-        .with_context(|| format!("parsing PID from '{}'", pid_str.trim()))?;
-
-    // Check if process is running
-    let is_running = unsafe { libc::kill(pid, 0) == 0 };
-    if !is_running {
-        // Stale PID file — clean up
-        println!("Mother daemon is not running (stale PID file).");
-        let _ = std::fs::remove_file(&pid_path);
-        return Ok(());
-    }
-
-    println!("Stopping mother daemon (PID {})...", pid);
-
-    // Send SIGTERM
-    let result = unsafe { libc::kill(pid, libc::SIGTERM) };
-    if result != 0 {
-        let err = std::io::Error::last_os_error();
-        bail!("Failed to send SIGTERM to PID {}: {}", pid, err);
-    }
-
-    // Wait for process to exit (poll up to 5 seconds)
-    for i in 0..50 {
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        let still_running = unsafe { libc::kill(pid, 0) == 0 };
-        if !still_running {
+    let socket_path = paths::serve::socket_path();
+    match mother_crate::lifecycle::stop_daemon(&pid_path, &socket_path)? {
+        mother_crate::lifecycle::StopResult::NotRunningNoPid => {
+            println!("Mother daemon is not running (no PID file).");
+        }
+        mother_crate::lifecycle::StopResult::NotRunningStalePid => {
+            println!("Mother daemon is not running (stale PID file).");
+        }
+        mother_crate::lifecycle::StopResult::Stopped => {
             println!("Mother daemon stopped.");
-            // Clean up files if daemon didn't (shouldn't happen with proper signal handling)
-            let _ = std::fs::remove_file(&pid_path);
-            cleanup_socket();
-            return Ok(());
         }
-        if i == 25 {
-            println!("   Still waiting...");
+        mother_crate::lifecycle::StopResult::TimedOut => {
+            println!("Warning: daemon did not stop within 5 seconds.");
+            println!("   You may need to inspect and kill the daemon manually.");
         }
     }
-
-    // Process didn't exit in time
-    println!("Warning: daemon did not stop within 5 seconds.");
-    println!("   You may need to: kill -9 {}", pid);
     Ok(())
 }
 
@@ -511,49 +476,60 @@ fn show_status() -> Result<()> {
     let pid_path = paths::serve::pid_path();
     let socket_path = paths::serve::socket_path();
 
-    // Check PID file
-    let pid = if pid_path.exists() {
-        match std::fs::read_to_string(&pid_path) {
-            Ok(s) => s.trim().parse::<i32>().ok(),
-            Err(_) => None,
-        }
-    } else {
-        None
-    };
-
-    // Check if process is running
-    let is_running = pid
-        .map(|p| unsafe { libc::kill(p, 0) == 0 })
-        .unwrap_or(false);
-
-    if !is_running {
+    let status = mother_crate::lifecycle::probe_status(&pid_path, &socket_path)?;
+    if !status.running {
         println!("Mother daemon: stopped");
-        if pid.is_some() {
+        if status.stale_pid_file {
             println!("   (stale PID file exists — run `patina mother stop` to clean up)");
         }
         println!("\n   Tip: broker source status lives under `patina mother sources`.");
         return Ok(());
     }
 
-    let pid = pid.unwrap();
     println!("Mother daemon: running");
-    println!("   PID: {}", pid);
+    if let Some(pid) = status.pid {
+        println!("   PID: {}", pid);
+    }
     println!("   Socket: {}", socket_path.display());
 
-    // Try to get health info via UDS
-    match query_health() {
-        Ok(health) => {
+    match status.health {
+        Some(health) => {
             println!("   Version: {}", health.version);
             println!("   Uptime: {}s", health.uptime_secs);
+            let loaded_children: std::collections::HashSet<String> =
+                health.children.iter().map(|c| c.name.clone()).collect();
             if !health.children.is_empty() {
                 println!("   Children:");
-                for child in &health.children {
+                for child in health.children {
                     println!("     {}: {}", child.name, child.status);
                 }
             }
+
+            if let Ok(project_root) = SessionManager::find_project_root() {
+                match load_project_manifest(&project_root) {
+                    Ok(manifest) => {
+                        if !manifest.needs.children.is_empty() {
+                            println!("   Project child needs:");
+                            for child in &manifest.needs.children {
+                                let marker = if loaded_children.contains(child) {
+                                    "ok"
+                                } else {
+                                    "missing"
+                                };
+                                println!("     {}: {}", child, marker);
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        println!("   Project child manifest: {}", error);
+                    }
+                }
+            }
         }
-        Err(e) => {
-            println!("   Health check failed: {}", e);
+        None => {
+            if let Some(error) = status.health_error {
+                println!("   Health check failed: {}", error);
+            }
         }
     }
 
@@ -562,120 +538,35 @@ fn show_status() -> Result<()> {
     Ok(())
 }
 
-/// Health response from daemon
-#[derive(serde::Deserialize)]
-struct HealthInfo {
-    version: String,
-    uptime_secs: u64,
-    #[serde(default)]
-    children: Vec<ChildHealthInfo>,
+#[derive(Debug, Deserialize)]
+struct ProjectManifest {
+    project: ManifestProject,
+    needs: ManifestNeeds,
 }
 
-/// Child health from daemon response
-#[derive(serde::Deserialize)]
-struct ChildHealthInfo {
-    name: String,
-    status: String,
+#[derive(Debug, Deserialize)]
+struct ManifestProject {
+    schema: u32,
 }
 
-/// Query daemon health via UDS
-fn query_health() -> Result<HealthInfo> {
-    use std::io::{Read, Write};
-    use std::os::unix::net::UnixStream;
-
-    let socket_path = paths::serve::socket_path();
-    let mut stream = UnixStream::connect(&socket_path)
-        .with_context(|| format!("connecting to {}", socket_path.display()))?;
-
-    // Set timeout
-    stream.set_read_timeout(Some(std::time::Duration::from_secs(2)))?;
-
-    // Send HTTP request
-    let request = "GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
-    stream.write_all(request.as_bytes())?;
-
-    // Read response
-    let mut response = Vec::new();
-    stream.read_to_end(&mut response)?;
-
-    // Parse HTTP response (simple extraction)
-    let response_str = String::from_utf8_lossy(&response);
-    let body_start = response_str.find("\r\n\r\n").map(|i| i + 4).unwrap_or(0);
-    let body = &response_str[body_start..];
-
-    serde_json::from_str(body).with_context(|| "parsing health response")
+#[derive(Debug, Deserialize)]
+struct ManifestNeeds {
+    children: Vec<String>,
 }
 
-// === Socket management (shared with daemon) ===
-
-/// Ensure the runtime directory exists with correct permissions.
-///
-/// Creates `~/.patina/run/` with 0o700 if it doesn't exist.
-/// Refuses to start if the directory is world/group accessible.
-fn ensure_run_dir() -> Result<()> {
-    let run_dir = paths::serve::run_dir();
-
-    if !run_dir.exists() {
-        std::fs::create_dir_all(&run_dir)
-            .with_context(|| format!("creating runtime directory {}", run_dir.display()))?;
-        std::fs::set_permissions(&run_dir, std::fs::Permissions::from_mode(0o700))
-            .with_context(|| format!("setting permissions on {}", run_dir.display()))?;
-    } else {
-        let meta = std::fs::metadata(&run_dir)
-            .with_context(|| format!("reading metadata for {}", run_dir.display()))?;
-        let mode = meta.permissions().mode() & 0o777;
-        if mode & 0o077 != 0 {
-            bail!(
-                "Refusing to start: {} has permissions {:o} (group/world accessible).\n  \
-                 Fix with: chmod 700 {}",
-                run_dir.display(),
-                mode,
-                run_dir.display()
-            );
-        }
-    }
-
-    Ok(())
-}
-
-/// Remove a stale socket file safely.
-///
-/// Only unlinks if the path is a socket AND owned by the current user.
-/// Refuses to remove non-socket files or files owned by other users.
-fn cleanup_stale_socket(socket_path: &Path) -> Result<()> {
-    if !socket_path.exists() {
-        return Ok(());
-    }
-
-    let meta = std::fs::symlink_metadata(socket_path)
-        .with_context(|| format!("reading metadata for {}", socket_path.display()))?;
-
-    if !meta.file_type().is_socket() {
+fn load_project_manifest(project_root: &Path) -> Result<ProjectManifest> {
+    let manifest_path = project_root.join(".patina/manifest.toml");
+    let content = std::fs::read_to_string(&manifest_path)
+        .with_context(|| format!("missing {}", manifest_path.display()))?;
+    let manifest: ProjectManifest =
+        toml::from_str(&content).with_context(|| format!("invalid {}", manifest_path.display()))?;
+    if manifest.project.schema != 1 {
         bail!(
-            "Refusing to start: {} exists but is not a socket.\n  \
-             Remove manually if safe: rm {}",
-            socket_path.display(),
-            socket_path.display()
+            "unsupported .patina/manifest.toml schema {} (expected 1)",
+            manifest.project.schema
         );
     }
-
-    use std::os::unix::fs::MetadataExt;
-    let file_uid = meta.uid();
-    let my_uid = unsafe { libc::getuid() };
-    if file_uid != my_uid {
-        bail!(
-            "Refusing to start: {} is owned by uid {} (you are {}).\n  \
-             This may indicate a security issue.",
-            socket_path.display(),
-            file_uid,
-            my_uid
-        );
-    }
-
-    std::fs::remove_file(socket_path)
-        .with_context(|| format!("removing stale socket {}", socket_path.display()))?;
-
-    Ok(())
+    Ok(manifest)
 }
 
 /// Set up the Unix domain socket for serving.
@@ -685,28 +576,15 @@ fn cleanup_stale_socket(socket_path: &Path) -> Result<()> {
 /// 3. Bind UnixListener
 /// 4. Set socket to 0o600
 pub fn setup_unix_listener() -> Result<std::os::unix::net::UnixListener> {
-    use std::os::unix::net::UnixListener;
-
-    ensure_run_dir()?;
-
+    let run_dir = paths::serve::run_dir();
     let socket_path = paths::serve::socket_path();
-    cleanup_stale_socket(&socket_path)?;
-
-    let listener = UnixListener::bind(&socket_path)
-        .with_context(|| format!("binding socket {}", socket_path.display()))?;
-
-    std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o600))
-        .with_context(|| format!("setting permissions on {}", socket_path.display()))?;
-
-    Ok(listener)
+    mother_crate::socket::setup_unix_listener(&run_dir, &socket_path)
 }
 
 /// Remove the socket file on clean shutdown.
 pub fn cleanup_socket() {
     let socket_path = paths::serve::socket_path();
-    if socket_path.exists() {
-        let _ = std::fs::remove_file(&socket_path);
-    }
+    mother_crate::socket::cleanup_socket(&socket_path);
 }
 
 #[cfg(test)]

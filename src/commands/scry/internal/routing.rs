@@ -41,7 +41,6 @@ pub fn execute_via_mother(query: Option<&str>, options: &ScryOptions) -> Result<
         min_score: options.min_score,
     };
 
-    // Execute query
     let response = mother::scry(request)?;
 
     if response.results.is_empty() {

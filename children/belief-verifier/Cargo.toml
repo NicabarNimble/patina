@@ -1,0 +1,20 @@
+[package]
+name = "patina-ai-child-belief-verifier"
+version = "0.1.0"
+edition = "2021"
+description = "Belief verification knowledge child for Mother"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+patina-sdk = { path = "../../sdk/patina-sdk", features = ["knowledge-child", "toy-log", "toy-state", "toy-task", "toy-measure", "toy-checkpoint", "toy-events", "toy-belief"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[package.metadata.component]
+package = "patina:belief-verifier"
+
+[package.metadata.component.target]
+path = "../../wit/worlds"
+world = "belief-verifier"

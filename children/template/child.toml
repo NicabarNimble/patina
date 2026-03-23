@@ -1,0 +1,17 @@
+[child]
+name = "{{ package_name }}"
+version = "0.1.0"
+description = "{{ description }}"
+kind = "knowledge-child"
+role = "app"
+patina_min = "0.41.0"
+
+[needs]
+toys = ["log"]
+
+[provides]
+child = "{{ child_name }}"
+
+[relationships]
+emits = []
+listens = []

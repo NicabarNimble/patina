@@ -28,13 +28,6 @@ pub struct OrientEntry {
     pub commit_count: i64,
 }
 
-/// Full orient result with directory context
-#[derive(Debug, Serialize)]
-pub struct OrientOutput {
-    pub directory: String,
-    pub entries: Vec<OrientEntry>,
-}
-
 /// Query orient entries from database — shared between CLI and MCP
 fn orient_entries(conn: &Connection, dir_path: &str, limit: usize) -> Result<Vec<OrientEntry>> {
     // Check if module_signals table exists
@@ -109,16 +102,6 @@ fn orient_entries(conn: &Connection, dir_path: &str, limit: usize) -> Result<Vec
     Ok(results)
 }
 
-/// Query orient and return JSON string — called by MCP handler
-pub fn orient_json(conn: &Connection, dir_path: &str, limit: usize) -> Result<String> {
-    let entries = orient_entries(conn, dir_path, limit)?;
-    let result = OrientOutput {
-        directory: dir_path.to_string(),
-        entries,
-    };
-    Ok(serde_json::to_string_pretty(&result)?)
-}
-
 /// Execute orient subcommand - rank files by structural importance
 pub fn execute_orient(dir_path: &str, limit: usize) -> Result<()> {
     println!("🔮 Scry Orient - What's important in {}\n", dir_path);
@@ -180,14 +163,6 @@ pub struct RecentEntry {
     pub date: String,
     pub author: String,
     pub message_preview: String,
-}
-
-/// Full recent result with query context
-#[derive(Debug, Serialize)]
-pub struct RecentOutput {
-    pub query: Option<String>,
-    pub days: u32,
-    pub entries: Vec<RecentEntry>,
 }
 
 /// Query recent entries from database — shared between CLI and MCP
@@ -275,22 +250,6 @@ fn recent_entries(
     Ok(entries)
 }
 
-/// Query recent changes and return JSON string — called by MCP handler
-pub fn recent_json(
-    conn: &Connection,
-    query: Option<&str>,
-    days: u32,
-    limit: usize,
-) -> Result<String> {
-    let entries = recent_entries(conn, query, days, limit)?;
-    let result = RecentOutput {
-        query: query.map(|s| s.to_string()),
-        days,
-        entries,
-    };
-    Ok(serde_json::to_string_pretty(&result)?)
-}
-
 /// Execute recent subcommand - show recently changed files
 pub fn execute_recent(query: Option<&str>, days: u32, limit: usize) -> Result<()> {
     println!(
@@ -327,110 +286,6 @@ pub fn execute_recent(query: Option<&str>, days: u32, limit: usize) -> Result<()
 // ============================================================================
 // Scry Why - Explain single result
 // ============================================================================
-
-/// Why contribution entry
-#[derive(Debug, Serialize)]
-pub struct WhyContribution {
-    pub oracle: String,
-    pub rank: usize,
-    pub raw_score: f64,
-    pub score_type: String,
-}
-
-/// Why structural signals
-#[derive(Debug, Serialize)]
-pub struct WhySignals {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub importer_count: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub activity_level: Option<String>,
-}
-
-/// Why output
-#[derive(Debug, Serialize)]
-pub struct WhyOutput {
-    pub doc_id: String,
-    pub query: String,
-    pub found: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rank: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fused_score: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub contributions: Option<Vec<WhyContribution>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub structural_signals: Option<WhySignals>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub top_results: Option<Vec<String>>,
-}
-
-/// Query why and return JSON string — called by MCP handler
-pub fn why_json(engine: &QueryEngine, doc_id: &str, query: &str) -> Result<String> {
-    let options = QueryOptions::default();
-    let results = engine.query_with_options(query, 50, &options)?;
-
-    let matching = results
-        .iter()
-        .find(|r| r.doc_id == doc_id || r.doc_id.ends_with(doc_id) || doc_id.ends_with(&r.doc_id));
-
-    let output = match matching {
-        Some(result) => {
-            let rank = results
-                .iter()
-                .position(|r| r.doc_id == result.doc_id)
-                .unwrap_or(0)
-                + 1;
-
-            let contributions: Vec<WhyContribution> = result
-                .contributions
-                .iter()
-                .map(|(oracle_name, contrib)| WhyContribution {
-                    oracle: oracle_name.to_string(),
-                    rank: contrib.rank,
-                    raw_score: contrib.raw_score as f64,
-                    score_type: contrib.score_type.to_string(),
-                })
-                .collect();
-
-            let ann = &result.annotations;
-            let structural_signals = if ann.importer_count.is_some() || ann.activity_level.is_some()
-            {
-                Some(WhySignals {
-                    importer_count: ann.importer_count,
-                    activity_level: ann.activity_level.clone(),
-                })
-            } else {
-                None
-            };
-
-            WhyOutput {
-                doc_id: result.doc_id.clone(),
-                query: query.to_string(),
-                found: true,
-                rank: Some(rank),
-                fused_score: Some(result.fused_score as f64),
-                contributions: Some(contributions),
-                structural_signals,
-                top_results: None,
-            }
-        }
-        None => {
-            let top: Vec<String> = results.iter().take(5).map(|r| r.doc_id.clone()).collect();
-            WhyOutput {
-                doc_id: doc_id.to_string(),
-                query: query.to_string(),
-                found: false,
-                rank: None,
-                fused_score: None,
-                contributions: None,
-                structural_signals: None,
-                top_results: Some(top),
-            }
-        }
-    };
-
-    Ok(serde_json::to_string_pretty(&output)?)
-}
 
 /// Execute why subcommand - explain why a result was returned
 pub fn execute_why(doc_id: &str, query: &str) -> Result<()> {

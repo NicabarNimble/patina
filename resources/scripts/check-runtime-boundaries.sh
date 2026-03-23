@@ -12,7 +12,7 @@ required_dirs=(
     "src/beliefs"
     "src/mother"
     "src/child"
-    "src/toys"
+    "src/child/toy_host"
     "src/core_tools"
 )
 
@@ -25,12 +25,11 @@ for dir in "${required_dirs[@]}"; do
 done
 
 required_toy_modules=(
-    "src/toys/catalog.rs"
-    "src/toys/lake.rs"
-    "src/toys/ingress.rs"
-    "src/toys/connector.rs"
-    "src/toys/query.rs"
-    "src/toys/http.rs"
+    "src/child/toy_host/lake.rs"
+    "src/child/toy_host/ingress.rs"
+    "src/child/toy_host/connector.rs"
+    "src/child/toy_host/query.rs"
+    "src/child/toy_host/http.rs"
 )
 
 echo "Checking canonical toy module surfaces..."

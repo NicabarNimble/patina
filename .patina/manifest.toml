@@ -1,0 +1,5 @@
+[project]
+schema = 1
+
+[needs]
+children = ["spec-manager", "doctor", "lake-manager", "session-writer"]

@@ -5,6 +5,7 @@ use patina::project;
 use patina::session::SessionManager;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use std::process::Command;
 
 /// Typed health status — the doctor check outcome.
 ///
@@ -50,6 +51,13 @@ struct DataIntegrity {
     events_db: EventsDbStatus,
     jsonl_replica: JsonlReplicaStatus,
     emission_coverage: EmissionCoverage,
+    session_durability: SessionDurability,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct SessionDurability {
+    uncommitted: bool,
+    dirty_paths: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -99,45 +107,28 @@ struct ProjectStatus {
     sessions: usize,
 }
 
-pub fn execute(json_output: bool) -> Result<i32> {
-    // Find project root first
+pub(crate) fn execute_value() -> Result<serde_json::Value> {
     let project_root = SessionManager::find_project_root()
         .context("Not in a Patina project directory. Run 'patina init' first.")?;
 
-    let _non_interactive = json_output || std::env::var("PATINA_NONINTERACTIVE").is_ok();
-
-    if !json_output {
-        println!("🏥 Checking project health...");
-    }
-
-    // Load unified project config (with migration if needed)
     let config = project::load_with_migration(&project_root)?;
-
-    // Get current environment
     let current_env = Environment::detect()?;
-
-    // Get stored environment snapshot
     let stored_tools = config
         .environment
         .as_ref()
         .map(|e| e.detected_tools.clone())
         .unwrap_or_default();
 
-    // Compare environments
     let mut health_check = analyze_environment(&current_env, &stored_tools)?;
 
-    // Check project status - use adapters.default as the LLM
     let llm = &config.adapters.default;
     let adapter = patina::interface::runtime::get_interface_provider(llm);
     let adapter_version = adapter
         .check_for_updates(&project_root)?
         .map(|(current, _)| current);
 
-    // Count layer patterns
     let layer_path = project_root.join("layer");
     let pattern_count = count_patterns(&layer_path);
-
-    // Count sessions from canonical location (layer/sessions/)
     let sessions_path = project_root.join("layer").join("sessions");
     let session_count = count_sessions(&sessions_path);
 
@@ -148,10 +139,10 @@ pub fn execute(json_output: bool) -> Result<i32> {
         sessions: session_count,
     };
 
-    // Check data integrity (events.db + JSONL replica)
     health_check.data_integrity = check_data_integrity(&mut health_check.recommendations);
+    health_check.data_integrity.session_durability =
+        check_session_durability(&mut health_check.recommendations);
 
-    // Escalate status if data integrity has warnings
     let has_data_warnings = !health_check.data_integrity.events_db.warnings.is_empty()
         || !health_check
             .data_integrity
@@ -161,35 +152,74 @@ pub fn execute(json_output: bool) -> Result<i32> {
     if has_data_warnings && health_check.status == HealthStatus::Healthy {
         health_check.status = HealthStatus::Warning;
     }
+    if health_check.data_integrity.session_durability.uncommitted
+        && health_check.status == HealthStatus::Healthy
+    {
+        health_check.status = HealthStatus::Warning;
+    }
     if !health_check.data_integrity.events_db.integrity_ok
         && health_check.data_integrity.events_db.exists
     {
         health_check.status = HealthStatus::Critical;
     }
 
-    // Display results
-    if json_output {
-        println!("{}", serde_json::to_string_pretty(&health_check)?);
-    } else {
-        display_health_check(&health_check, &current_env, &project_root)?;
-
-        // Only provide recommendations, no auto-fixing
-        if !health_check.environment_changes.missing_tools.is_empty()
-            && !json_output
-            && !health_check.recommendations.is_empty()
-        {
-            println!("\n💡 Run 'patina init .' to refresh your environment snapshot");
-        }
-    }
-
-    // Determine exit code
     let exit_code = match health_check.status {
         HealthStatus::Healthy => 0,
         HealthStatus::Warning => 2,
         HealthStatus::Critical => 3,
     };
 
-    Ok(exit_code)
+    Ok(serde_json::json!({
+        "health": health_check,
+        "exit_code": exit_code,
+    }))
+}
+
+pub fn execute_cli(json_output: bool) -> Result<()> {
+    let payload = serde_json::json!({"json": json_output});
+    let client = patina::mother::Client::new("localhost:50051".to_string());
+    let response = client
+        .child_action("doctor", "run", &payload)
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "doctor child unavailable via Mother (start with `patina mother start`): {}",
+                e
+            )
+        })?;
+
+    if json_output {
+        if let Some(data) = response.get("data") {
+            println!("{}", serde_json::to_string_pretty(data)?);
+        } else {
+            println!("{}", serde_json::to_string_pretty(&response)?);
+        }
+        if let Some(code) = response.get("exit_code").and_then(|v| v.as_i64()) {
+            if code != 0 {
+                std::process::exit(code as i32);
+            }
+        }
+        return Ok(());
+    }
+
+    if let Some(text) = response.get("text").and_then(|v| v.as_str()) {
+        if !text.is_empty() {
+            println!("{}", text);
+        }
+    }
+    if let Some(data) = response.get("data") {
+        let status = data
+            .get("health")
+            .and_then(|h| h.get("status"))
+            .and_then(|s| s.as_str())
+            .unwrap_or("unknown");
+        println!("Doctor status: {}", status);
+    }
+    if let Some(code) = response.get("exit_code").and_then(|v| v.as_i64()) {
+        if code != 0 {
+            std::process::exit(code as i32);
+        }
+    }
+    Ok(())
 }
 
 fn analyze_environment(current: &Environment, stored_tools: &[String]) -> Result<HealthCheck> {
@@ -373,6 +403,62 @@ fn check_data_integrity(recommendations: &mut Vec<String>) -> DataIntegrity {
     integrity
 }
 
+fn check_session_durability(recommendations: &mut Vec<String>) -> SessionDurability {
+    if !patina::git::is_git_repo().unwrap_or(false) {
+        return SessionDurability::default();
+    }
+
+    let output = match Command::new("git")
+        .args([
+            "status",
+            "--porcelain",
+            "--",
+            "layer/sessions",
+            "layer/events.jsonl",
+        ])
+        .output()
+    {
+        Ok(output) if output.status.success() => output,
+        _ => return SessionDurability::default(),
+    };
+
+    let dirty_paths: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(parse_porcelain_path)
+        .collect();
+
+    if dirty_paths.is_empty() {
+        return SessionDurability {
+            uncommitted: false,
+            dirty_paths,
+        };
+    }
+
+    recommendations.push(
+        "Session artifacts are not fully committed. Run `git add layer/sessions layer/events.jsonl && git commit -m \"session: preserve artifacts\"` to preserve recoverability."
+            .to_string(),
+    );
+
+    SessionDurability {
+        uncommitted: true,
+        dirty_paths,
+    }
+}
+
+fn parse_porcelain_path(line: &str) -> Option<String> {
+    if line.len() < 4 {
+        return None;
+    }
+    let raw = line[3..].trim();
+    if raw.is_empty() {
+        return None;
+    }
+    if let Some((_, to)) = raw.split_once(" -> ") {
+        return Some(to.to_string());
+    }
+    Some(raw.to_string())
+}
+
 /// Non-schema event types that should have emitters wired in code.
 /// Schema-driven event types (github.issue, github.pr, etc.) are
 /// resolved at runtime from installed schemas.
@@ -500,103 +586,23 @@ fn count_sessions(sessions_path: &std::path::Path) -> usize {
     }
 }
 
-fn display_health_check(
-    health: &HealthCheck,
-    _env: &Environment,
-    project_root: &std::path::Path,
-) -> Result<()> {
-    println!("\nEnvironment Changes Since Init:");
+#[cfg(test)]
+mod tests {
+    use super::parse_porcelain_path;
 
-    // Display missing tools
-    for tool in &health.environment_changes.missing_tools {
-        let marker = if tool.required { "⚠️ " } else { "  " };
-        let old_version = tool.old_version.as_deref().unwrap_or("unknown");
-        let required_msg = if tool.required { " (required!)" } else { "" };
-        println!(
-            "  {marker} {}: {old_version} → NOT FOUND{required_msg}",
-            tool.name
+    #[test]
+    fn parse_porcelain_path_handles_simple_entries() {
+        assert_eq!(
+            parse_porcelain_path(" M layer/sessions/20260316-abc.md").as_deref(),
+            Some("layer/sessions/20260316-abc.md")
         );
     }
 
-    // Display new tools
-    for tool in &health.environment_changes.new_tools {
-        let version = tool.new_version.as_deref().unwrap_or("detected");
-        println!("  ✓ New tool: {} {version}", tool.name);
-    }
-
-    println!("\nProject Configuration:");
-    // Display UID
-    if let Some(uid) = project::get_uid(project_root) {
-        println!("  ✓ UID: {}", uid);
-    } else {
-        println!("  ⚠ UID: missing (will be created on next scrape)");
-    }
-    let adapter_version = health
-        .project_config
-        .adapter_version
-        .as_deref()
-        .unwrap_or("unknown");
-    println!(
-        "  ✓ LLM: {} (adapter {adapter_version})",
-        health.project_config.llm
-    );
-    println!(
-        "  ✓ Layer: {} patterns stored",
-        health.project_config.layer_patterns
-    );
-    println!("  ✓ Sessions: {} recorded", health.project_config.sessions);
-
-    // Data integrity section
-    println!("\nData Integrity:");
-    let db = &health.data_integrity.events_db;
-    if !db.exists {
-        println!("  ⚠ events.db: not found");
-    } else if !db.integrity_ok {
-        println!("  ⚠ events.db: INTEGRITY CHECK FAILED");
-    } else {
-        println!(
-            "  ✓ events.db: {} events, max seq {}, integrity ok",
-            db.event_count, db.max_seq
+    #[test]
+    fn parse_porcelain_path_handles_rename_entries() {
+        assert_eq!(
+            parse_porcelain_path("R  old/path.md -> layer/sessions/new.md").as_deref(),
+            Some("layer/sessions/new.md")
         );
     }
-
-    let ec = &health.data_integrity.emission_coverage;
-    if ec.types_checked > 0 {
-        let pct = ec.types_with_data * 100 / ec.types_checked;
-        if ec.types_empty.is_empty() {
-            println!(
-                "  ✓ Emission coverage: {}/{} types ({}%)",
-                ec.types_with_data, ec.types_checked, pct
-            );
-        } else {
-            println!(
-                "  ⚠ Emission coverage: {}/{} types ({}%) — missing: {}",
-                ec.types_with_data,
-                ec.types_checked,
-                pct,
-                ec.types_empty.join(", ")
-            );
-        }
-    }
-
-    let jsonl = &health.data_integrity.jsonl_replica;
-    if !jsonl.exists {
-        println!("  ⚠ JSONL replica: not found");
-    } else if jsonl.gap > 0 {
-        println!(
-            "  ⚠ JSONL replica: {} events behind (max seq {})",
-            jsonl.gap, jsonl.max_seq
-        );
-    } else {
-        println!("  ✓ JSONL replica: up to date (max seq {})", jsonl.max_seq);
-    }
-
-    if !health.recommendations.is_empty() {
-        println!("\nRecommendations:");
-        for (i, rec) in health.recommendations.iter().enumerate() {
-            println!("  {}. {rec}", i + 1);
-        }
-    }
-
-    Ok(())
 }

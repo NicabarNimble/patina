@@ -8,8 +8,66 @@
 
 use anyhow::Result;
 
-// Single source of truth for the verb vocabulary — defined in patina-pipe.
-pub use patina_pipe::measure::VALID_VERBS;
+/// Valid protocol verbs for measurement events.
+pub const VALID_VERBS: &[&str] = &["capture", "index", "search", "believe", "evolve"];
+
+/// Registered tools in the measure vocabulary.
+pub const REGISTERED_TOOLS: &[&str] = &[
+    "scrape", "oxidize", "eval", "belief", "session", "pipe", "hook", "bench", "doctor", "lake",
+];
+
+/// Canonical measure event envelope.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MeasureEvent {
+    pub schema_version: u32,
+    pub verb: String,
+    pub tool: String,
+    pub mode: String,
+    pub metrics: serde_json::Value,
+    pub timestamp: String,
+    pub source: String,
+}
+
+/// Validate a measure event.
+pub fn validate(event: &MeasureEvent) -> Result<(), String> {
+    if !VALID_VERBS.contains(&event.verb.as_str()) {
+        return Err(format!(
+            "invalid verb '{}': must be one of {:?}",
+            event.verb, VALID_VERBS
+        ));
+    }
+
+    if !REGISTERED_TOOLS.contains(&event.tool.as_str()) {
+        return Err(format!(
+            "invalid tool '{}': must be one of {:?}",
+            event.tool, REGISTERED_TOOLS
+        ));
+    }
+
+    if event.mode.is_empty() {
+        return Err("mode must not be empty".to_string());
+    }
+
+    if event.source.is_empty() {
+        return Err("source must not be empty".to_string());
+    }
+
+    if event.source != "core"
+        && !event.source.starts_with("plugin:")
+        && !event.source.starts_with("child:")
+    {
+        return Err(format!(
+            "invalid source '{}': must be 'core', 'plugin:<name>', or 'child:<name>'",
+            event.source
+        ));
+    }
+
+    if !event.metrics.is_object() {
+        return Err("metrics must be a JSON object".to_string());
+    }
+
+    Ok(())
+}
 
 /// Emit a measurement event to events.db.
 ///
@@ -28,7 +86,7 @@ pub fn emit(verb: &str, tool: &str, mode: &str, metrics: &serde_json::Value) -> 
     let timestamp = chrono::Utc::now().to_rfc3339();
 
     // Build and validate using the canonical envelope
-    let event = patina_pipe::measure::MeasureEvent {
+    let event = MeasureEvent {
         schema_version: 1,
         verb: verb.to_string(),
         tool: tool.to_string(),
@@ -37,8 +95,7 @@ pub fn emit(verb: &str, tool: &str, mode: &str, metrics: &serde_json::Value) -> 
         timestamp: timestamp.clone(),
         source: "core".to_string(),
     };
-    patina_pipe::measure::validate(&event)
-        .map_err(|e| anyhow::anyhow!("measure validation: {}", e))?;
+    validate(&event).map_err(|e| anyhow::anyhow!("measure validation: {}", e))?;
 
     let event_type = format!("measure.{}", verb);
     let source_id = format!("{}:{}", tool, mode);

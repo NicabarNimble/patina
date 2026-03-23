@@ -7,6 +7,7 @@
 use anyhow::{Context, Result};
 use reqwest::blocking::Client as HttpClient;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::io::{Read, Write};
 use std::time::Duration;
 
@@ -108,6 +109,38 @@ impl Client {
             .json::<ScryResponse>()
             .with_context(|| "Failed to parse scry response")
     }
+
+    pub fn child_action(&self, child: &str, action: &str, payload: &Value) -> Result<Value> {
+        let path = format!("/child/{}/{}", child, action);
+
+        if self.try_uds {
+            let body = serde_json::to_vec(payload)?;
+            if let Some((status, resp_body)) = uds_request("POST", &path, Some(&body)) {
+                if (200..300).contains(&status) {
+                    return serde_json::from_slice(&resp_body)
+                        .context("Failed to parse child response from UDS");
+                }
+                let msg = String::from_utf8_lossy(&resp_body).to_string();
+                anyhow::bail!("child request failed ({}): {}", status, msg);
+            }
+        }
+
+        let url = format!("{}{}", self.base_url, path);
+        let mut req = self.http.post(&url).json(payload);
+        if let Some(ref token) = self.token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let response = req
+            .send()
+            .with_context(|| format!("Failed to send child request to {}", self.base_url))?;
+
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!("child request failed ({}): {}", status, body);
+        }
+        serde_json::from_str(&body).with_context(|| "Failed to parse child response")
+    }
 }
 
 // === UDS client ===
@@ -131,34 +164,53 @@ fn uds_get(path: &str) -> Option<Vec<u8>> {
 
 /// Send a POST request with JSON body over UDS and return the response body.
 fn uds_post(path: &str, json_body: &[u8]) -> Option<Vec<u8>> {
+    uds_request("POST", path, Some(json_body)).and_then(|(status, body)| {
+        if (200..300).contains(&status) {
+            Some(body)
+        } else {
+            None
+        }
+    })
+}
+
+fn uds_request(method: &str, path: &str, json_body: Option<&[u8]>) -> Option<(u16, Vec<u8>)> {
     let sock_path = paths::serve::socket_path();
     let mut stream = std::os::unix::net::UnixStream::connect(&sock_path).ok()?;
     stream
         .set_read_timeout(Some(Duration::from_secs(30)))
         .ok()?;
 
-    let request = format!(
-        "POST {} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
-        path,
-        json_body.len()
-    );
-    stream.write_all(request.as_bytes()).ok()?;
-    stream.write_all(json_body).ok()?;
+    let body_len = json_body.map(|b| b.len()).unwrap_or(0);
+    let mut request = format!(
+        "{} {} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+        method, path, body_len
+    )
+    .into_bytes();
+    if let Some(body) = json_body {
+        request.extend_from_slice(body);
+    }
+    stream.write_all(&request).ok()?;
 
     let mut response_buf = Vec::new();
     stream.read_to_end(&mut response_buf).ok()?;
 
-    parse_http_body(&response_buf)
+    parse_http_status_body(&response_buf)
 }
 
 /// Extract HTTP response body (everything after \r\n\r\n) if status is 2xx.
 fn parse_http_body(response: &[u8]) -> Option<Vec<u8>> {
-    let status_end = response.iter().position(|&b| b == b'\r')?;
-    let first_line = std::str::from_utf8(&response[..status_end]).ok()?;
-    let status: u16 = first_line.split_whitespace().nth(1)?.parse().ok()?;
+    let (status, body) = parse_http_status_body(response)?;
     if !(200..300).contains(&status) {
         return None;
     }
+
+    Some(body)
+}
+
+fn parse_http_status_body(response: &[u8]) -> Option<(u16, Vec<u8>)> {
+    let status_end = response.iter().position(|&b| b == b'\r')?;
+    let first_line = std::str::from_utf8(&response[..status_end]).ok()?;
+    let status: u16 = first_line.split_whitespace().nth(1)?.parse().ok()?;
 
     let separator = b"\r\n\r\n";
     let body_start = response
@@ -166,7 +218,7 @@ fn parse_http_body(response: &[u8]) -> Option<Vec<u8>> {
         .position(|w| w == separator)
         .map(|p| p + 4)?;
 
-    Some(response[body_start..].to_vec())
+    Some((status, response[body_start..].to_vec()))
 }
 
 // === Token + localhost detection ===

@@ -1,0 +1,13 @@
+package patina:host@0.1.0;
+
+interface session {
+    get-session-id: func() -> string;
+    get-previous-session: func() -> option<string>;
+    get-previous-session-runtime-id: func() -> option<string>;
+    get-previous-session-handoff: func() -> option<string>;
+    write-artifact: func(section: string, content: string) -> result<_, string>;
+    set-parent-session: func(runtime-id: string) -> result<_, string>;
+    create-tag: func(name: string) -> result<_, string>;
+    set-status: func(status: string) -> result<_, string>;
+    write-handoff: func(modified-files: string, summary: string) -> result<_, string>;
+}

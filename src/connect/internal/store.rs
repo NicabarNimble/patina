@@ -178,8 +178,10 @@ pub(crate) fn remove(name: &str, force: bool) -> Result<(), ConnectError> {
 
 /// Check referential integrity: find sources.toml entries referencing this connection.
 fn check_references(name: &str) -> Result<Vec<String>, ConnectError> {
-    let all_sources = sources::scan_all_sources().map_err(|e| ConnectError::IoError {
-        detail: format!("scanning sources for references: {}", e),
+    let all_sources = sources::scan_all_sources(&crate::paths::registry_path()).map_err(|e| {
+        ConnectError::IoError {
+            detail: format!("scanning sources for references: {}", e),
+        }
     })?;
 
     let mut references = Vec::new();
@@ -249,7 +251,7 @@ mod tests {
             auth: AuthConfig {
                 injection: InjectionStrategy::Bearer,
                 secret_ref: format!("{}:default", name),
-                child: "github-connector".into(),
+                child: "github".into(),
                 allowed_domains: vec!["api.github.com".into()],
                 refresh_capable: true,
                 expires_at: None,

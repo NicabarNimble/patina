@@ -7,16 +7,16 @@ entrenchment: medium
 status: active
 endorsed: true
 extracted: 2026-03-10
-revised: 2026-03-10
+revised: 2026-03-21
 ---
 
 # children-have-agency-toys-are-capabilities
 
-Children are autonomous agents that make decisions and own workflow; toys are capabilities, resources, or tools that do work when asked. Mother grants toy approvals at init time; children use them independently. Classification is by agency, not by runtime.
+Children have bounded agency — they make decisions and own workflow within the sandbox Mother grants. Toys are composable WASM components (capabilities) that children play with. Mother grants toys at init time; children use them independently. Classification is by agency, not by runtime. Toys are the WIT interface IS the capability — compile-time enforcement, not runtime permission flags.
 
 ## Statement
 
-Children are autonomous agents that make decisions and own workflow; toys are capabilities, resources, or tools that do work when asked. Mother grants toy approvals at init time; children use them independently. Classification is by agency, not by runtime.
+Children have bounded agency — they make decisions and own workflow within the sandbox Mother grants. Toys are composable WASM components (capabilities) that children play with. Mother grants toys at init time; children use them independently. Classification is by agency, not by runtime. Toys are the WIT interface IS the capability — compile-time enforcement, not runtime permission flags.
 
 ## Evidence
 
@@ -27,6 +27,7 @@ Children are autonomous agents that make decisions and own workflow; toys are ca
 
 ## Supports
 
+- [[agents-are-guests-mother-is-infrastructure]] — children are the composable workers Mother manages; agents are guests
 - [[mother-holds-connections-pipes-transform]] — Mother orchestrates, children execute autonomously
 - [[telemetry-is-process-owned]] — each actor owns its own observability (agency over telemetry)
 - [[connectors-own-tables-schemas-are-contracts]] — connectors are tools with contracts, not decision-makers
@@ -49,3 +50,4 @@ Children are autonomous agents that make decisions and own workflow; toys are ca
 ## Revision Log
 
 - 2026-03-10: Created in [[session-20260310-094749]] — converged through brainstorm with audit agent. Four iterations: WASM-first → agency-not-runtime → approved-toys → capability-grant model.
+- 2026-03-21: Revised in [[session-20260320-212325-011658000]] — refined "autonomous" to "bounded agency" (agency within sandbox Mother grants). Reframed toys from permission flags to composable WASM components. Added: WIT interface IS the capability (compile-time enforcement). Linked to [[agents-are-guests-mother-is-infrastructure]].

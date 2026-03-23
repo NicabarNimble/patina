@@ -7,9 +7,7 @@
 mod internal;
 
 // Data types and functions re-exported for session integration (Phase 5)
-pub(crate) use internal::{
-    get_all_specs, get_blocked_specs, load_dep_counts, spec_age_days_from_list, ListFilters,
-};
+pub(crate) use internal::{get_all_specs, get_blocked_specs, ListFilters};
 
 // Query data functions re-exported for MCP (Phase 6)
 pub(crate) use internal::{
@@ -20,14 +18,16 @@ pub(crate) use internal::{
 // Mutation _value() functions re-exported for MCP (Phase 6)
 pub(crate) use internal::{
     abandon_spec_value, block_spec_value, complete_spec_value, create_spec_value, pause_spec_value,
-    promote_spec_value, resume_spec_value, set_spec_value, split_spec_value,
+    promote_spec_value, rename_spec_value, reopen_spec_value, resume_spec_value, set_spec_value,
+    split_spec_value,
 };
 
 use anyhow::Result;
 use patina::spec::SpecStatus;
+use serde_json::{json, Value};
 
 /// Spec CLI subcommands (used by main.rs via clap)
-#[derive(Debug, Clone, clap::Subcommand)]
+#[derive(Debug, Clone, clap::Subcommand, serde::Serialize, serde::Deserialize)]
 pub enum SpecCommands {
     /// Create a new spec draft
     Create {
@@ -275,6 +275,29 @@ pub enum SpecCommands {
         json: bool,
     },
 
+    /// Rename a spec id (moves spec directory)
+    Rename {
+        /// Current spec ID
+        id: String,
+
+        /// New spec ID
+        new_id: String,
+
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Reopen a completed or abandoned spec back to active
+    Reopen {
+        /// Spec ID to reopen
+        id: String,
+
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Set a metadata field on a spec
     Set {
         /// Spec ID
@@ -300,126 +323,225 @@ pub enum SpecCommands {
     },
 }
 
-/// Create a new spec draft
-pub fn create(
-    spec_type: &str,
-    id: &str,
-    title: Option<&str>,
-    description: Option<&str>,
-    blocked_by: Vec<String>,
-    related: Vec<String>,
-    json: bool,
-) -> Result<()> {
-    internal::create_spec(spec_type, id, title, description, blocked_by, related, json)
+impl SpecCommands {
+    fn wants_json(&self) -> bool {
+        match self {
+            Self::Create { json, .. }
+            | Self::Ready { json }
+            | Self::Blocked { json }
+            | Self::List { json, .. }
+            | Self::Promote { json, .. }
+            | Self::Complete { json, .. }
+            | Self::Abandon { json, .. }
+            | Self::Pause { json, .. }
+            | Self::Resume { json, .. }
+            | Self::Block { json, .. }
+            | Self::Split { json, .. }
+            | Self::Show { json, .. }
+            | Self::Prompt { json, .. }
+            | Self::Handoff { json, .. }
+            | Self::Packet { json, .. }
+            | Self::Check { json, .. }
+            | Self::History { json, .. }
+            | Self::Set { json, .. }
+            | Self::Next { json }
+            | Self::Rename { json, .. }
+            | Self::Reopen { json, .. } => *json,
+            Self::Archive { .. } => false,
+        }
+    }
 }
 
-/// Archive a completed spec: tag, remove, commit
-pub fn archive(id: &str, dry_run: bool) -> Result<()> {
-    internal::archive_spec(id, dry_run)
+pub fn execute(command: SpecCommands) -> Result<()> {
+    if !command.wants_json() {
+        match &command {
+            SpecCommands::Complete { id, .. } => {
+                if !confirm(&format!("Complete spec '{}' now?", id))? {
+                    println!("Aborted.");
+                    return Ok(());
+                }
+            }
+            SpecCommands::Abandon { id, .. } => {
+                if !confirm(&format!("Abandon spec '{}' now?", id))? {
+                    println!("Aborted.");
+                    return Ok(());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let payload = json!({"command": command});
+    let client = patina::mother::Client::new("localhost:50051".to_string());
+    let response = client
+        .child_action("spec-manager", "dispatch", &payload)
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "spec-manager unavailable via Mother (start with `patina mother start`): {}",
+                e
+            )
+        })?;
+
+    if let Some(text) = response.get("text").and_then(|v| v.as_str()) {
+        if !text.is_empty() {
+            println!("{}", text);
+        }
+    }
+
+    if let Some(data) = response.get("data") {
+        if response
+            .get("json")
+            .and_then(|v| v.as_bool())
+            .unwrap_or_else(|| command.wants_json())
+            || response.get("text").is_none()
+        {
+            println!("{}", serde_json::to_string_pretty(data)?);
+        }
+    }
+
+    Ok(())
 }
 
-/// Archive all completed/abandoned specs still in tree
-pub fn archive_stale(dry_run: bool) -> Result<()> {
-    internal::archive_stale_specs(dry_run)
-}
-
-/// Show specs ready to work on
-pub fn ready(json: bool) -> Result<()> {
-    internal::show_ready_specs(json)
-}
-
-/// Show specs blocked by incomplete dependencies
-pub fn blocked(json: bool) -> Result<()> {
-    internal::show_blocked_specs(json)
-}
-
-/// List all specs with optional filters
-pub fn list(status: Option<String>, target: Option<String>, json: bool) -> Result<()> {
-    // Parse status at CLI boundary — unknown values return validation error
-    let parsed_status = status
-        .as_deref()
-        .map(|s| s.parse::<SpecStatus>())
-        .transpose()?;
-    let filters = internal::ListFilters {
-        status: parsed_status,
-        target,
+pub(crate) fn execute_value(command: SpecCommands) -> Result<Value> {
+    let json_mode = command.wants_json();
+    let (text, data) = match command {
+        SpecCommands::Create {
+            r#type,
+            id,
+            title,
+            description,
+            blocked_by,
+            related,
+            ..
+        } => (
+            Some(format!("Created spec '{}'", id)),
+            serde_json::to_value(create_spec_value(
+                &r#type,
+                &id,
+                title.as_deref(),
+                description.as_deref(),
+                blocked_by,
+                related,
+            )?)
+            .ok(),
+        ),
+        SpecCommands::Archive { id, dry_run, stale } => {
+            if stale {
+                internal::archive_stale_specs(dry_run)?;
+                (
+                    Some("Archived stale specs".to_string()),
+                    Some(json!({"stale": true, "dry_run": dry_run})),
+                )
+            } else if let Some(id) = id {
+                internal::archive_spec(&id, dry_run)?;
+                (
+                    Some(format!("Archived spec '{}'", id)),
+                    Some(json!({"id": id, "dry_run": dry_run})),
+                )
+            } else {
+                anyhow::bail!("Spec ID required. Use `patina spec archive <id>` or --stale");
+            }
+        }
+        SpecCommands::Ready { .. } => (None, serde_json::to_value(get_ready_specs()?).ok()),
+        SpecCommands::Blocked { .. } => (None, serde_json::to_value(get_blocked_specs()?).ok()),
+        SpecCommands::List { status, target, .. } => {
+            let parsed_status = status
+                .as_deref()
+                .map(|s| s.parse::<SpecStatus>())
+                .transpose()?;
+            let filters = ListFilters {
+                status: parsed_status,
+                target,
+            };
+            (None, serde_json::to_value(get_all_specs(&filters)?).ok())
+        }
+        SpecCommands::Promote { id, force, .. } => (
+            None,
+            serde_json::to_value(promote_spec_value(&id, force)?).ok(),
+        ),
+        SpecCommands::Complete {
+            id, major, force, ..
+        } => (
+            None,
+            serde_json::to_value(complete_spec_value(&id, major, force)?).ok(),
+        ),
+        SpecCommands::Abandon { id, reason, .. } => (
+            None,
+            serde_json::to_value(abandon_spec_value(&id, reason.as_deref())?).ok(),
+        ),
+        SpecCommands::Pause { id, reason, .. } => (
+            None,
+            serde_json::to_value(pause_spec_value(&id, &reason)?).ok(),
+        ),
+        SpecCommands::Resume { id, force, .. } => (
+            None,
+            serde_json::to_value(resume_spec_value(&id, force)?).ok(),
+        ),
+        SpecCommands::Block { id, by, reason, .. } => (
+            None,
+            serde_json::to_value(block_spec_value(&id, &by, &reason)?).ok(),
+        ),
+        SpecCommands::Split {
+            id,
+            new_id,
+            description,
+            ..
+        } => (
+            None,
+            serde_json::to_value(split_spec_value(
+                &id,
+                new_id.as_deref(),
+                description.as_deref(),
+            )?)
+            .ok(),
+        ),
+        SpecCommands::Show { id, .. } => (None, serde_json::to_value(show_spec_value(&id)?).ok()),
+        SpecCommands::Prompt { id, .. } => {
+            (None, serde_json::to_value(prompt_spec_value(&id)?).ok())
+        }
+        SpecCommands::Handoff { id, .. } => {
+            (None, serde_json::to_value(handoff_spec_value(&id)?).ok())
+        }
+        SpecCommands::Packet { id, .. } => {
+            (None, serde_json::to_value(packet_spec_value(&id)?).ok())
+        }
+        SpecCommands::Set {
+            id, field, value, ..
+        } => (
+            None,
+            serde_json::to_value(set_spec_value(&id, &field, &value)?).ok(),
+        ),
+        SpecCommands::Next { .. } => (None, serde_json::to_value(next_spec_value()?).ok()),
+        SpecCommands::Check { id, .. } => (None, serde_json::to_value(check_spec_value(&id)?).ok()),
+        SpecCommands::History { id, .. } => {
+            (None, serde_json::to_value(history_spec_value(&id)?).ok())
+        }
+        SpecCommands::Rename { id, new_id, .. } => (
+            None,
+            serde_json::to_value(rename_spec_value(&id, &new_id)?).ok(),
+        ),
+        SpecCommands::Reopen { id, .. } => {
+            (None, serde_json::to_value(reopen_spec_value(&id)?).ok())
+        }
     };
-    internal::show_spec_list(&filters, json)
+
+    Ok(json!({
+        "child": "spec-manager",
+        "json": json_mode,
+        "text": text,
+        "data": data.unwrap_or(serde_json::Value::Null)
+    }))
 }
 
-/// Promote a spec: draft → ready, ready → active
-pub fn promote(id: &str, force: bool, json: bool) -> Result<()> {
-    internal::promote_spec(id, force, json)
-}
+fn confirm(prompt: &str) -> Result<bool> {
+    use std::io::{stdin, stdout, Write};
 
-/// Complete an active spec (release + archive)
-pub fn complete(id: &str, major: bool, force: bool, json: bool) -> Result<()> {
-    internal::complete_spec(id, major, force, json)
-}
-
-/// Abandon a spec (archive, no release)
-pub fn abandon(id: &str, reason: Option<&str>, json: bool) -> Result<()> {
-    internal::abandon_spec(id, reason, json)
-}
-
-/// Pause an active spec with reason
-pub fn pause(id: &str, reason: &str, json: bool) -> Result<()> {
-    internal::pause_spec(id, reason, json)
-}
-
-/// Resume a paused or blocked spec
-pub fn resume(id: &str, force: bool, json: bool) -> Result<()> {
-    internal::resume_spec(id, force, json)
-}
-
-/// Block an active spec on another spec
-pub fn block(id: &str, by: &str, reason: &str, json: bool) -> Result<()> {
-    internal::block_spec(id, by, reason, json)
-}
-
-/// Split a spec: ship done work, draft remainder as new spec
-pub fn split(id: &str, new_id: Option<&str>, description: Option<&str>, json: bool) -> Result<()> {
-    internal::split_spec(id, new_id, description, json)
-}
-
-/// Set a metadata field on a spec
-pub fn set(id: &str, field: &str, value: &str, json: bool) -> Result<()> {
-    internal::set_spec(id, field, value, json)
-}
-
-/// Show full spec context (body, design, key files)
-pub fn show(id: &str, handoff: bool, json: bool) -> Result<()> {
-    internal::show_spec(id, handoff, json)
-}
-
-/// Generate build-ready execution prompt packet
-pub fn prompt(id: &str, json: bool) -> Result<()> {
-    internal::prompt_spec(id, json)
-}
-
-/// Generate handoff packet for next agent
-pub fn handoff(id: &str, json: bool) -> Result<()> {
-    internal::handoff_spec(id, json)
-}
-
-/// Generate combined prompt + handoff packet
-pub fn packet(id: &str, json: bool) -> Result<()> {
-    internal::packet_spec(id, json)
-}
-
-/// Check exit criteria status for a spec
-pub fn check(id: &str, json: bool) -> Result<()> {
-    internal::check_spec(id, json)
-}
-
-/// Show lifecycle history from git tags
-pub fn history(id: &str, json: bool) -> Result<()> {
-    internal::history_spec(id, json)
-}
-
-/// Recommend the next spec to work on
-pub fn next(json: bool) -> Result<()> {
-    internal::next_spec(json)
+    print!("{} [y/N] ", prompt);
+    stdout().flush()?;
+    let mut input = String::new();
+    stdin().read_line(&mut input)?;
+    let trimmed = input.trim();
+    Ok(trimmed.eq_ignore_ascii_case("y") || trimmed.eq_ignore_ascii_case("yes"))
 }
 
 #[cfg(test)]

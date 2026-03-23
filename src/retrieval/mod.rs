@@ -16,11 +16,11 @@ mod engine;
 mod fusion;
 mod oracle;
 mod oracles;
-pub mod snippet;
+#[cfg(test)]
+mod snippet;
 
 pub use engine::{QueryEngine, QueryOptions, RetrievalConfig};
 pub use fusion::FusedResult;
-pub use snippet::snippet;
 
 // Re-export types for MCP JSON serialization and annotations
 #[allow(unused_imports)]

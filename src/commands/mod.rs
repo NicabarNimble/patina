@@ -3,6 +3,7 @@ pub mod ai;
 pub mod assay;
 pub mod belief;
 pub mod bench;
+pub mod child;
 pub mod connect;
 pub mod context;
 #[cfg(feature = "bundled-doctor")]
@@ -19,7 +20,6 @@ pub mod model;
 pub mod mother;
 pub mod oxidize;
 pub mod persona;
-pub mod plugin;
 pub mod rebuild;
 pub mod repo;
 pub mod report;

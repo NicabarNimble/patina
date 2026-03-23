@@ -309,27 +309,34 @@ pub fn check_schemas() -> Result<()> {
             ok = false;
         }
 
-        // 4. Check connector manifest package versions
+        // 4. Check plugin manifest schema declarations
         let canonical_pkg = &metadata.schema.package;
         let children_dir = root.join("children");
         if children_dir.exists() {
             for child_entry in std::fs::read_dir(&children_dir)?.flatten() {
-                let child_toml = child_entry.path().join("child.toml");
-                if !child_toml.exists() {
+                let Some(manifest_path) =
+                    patina::child::engine::ChildManifest::resolve_child_manifest_path(
+                        &child_entry.path(),
+                    )
+                else {
                     continue;
-                }
-                let content = std::fs::read_to_string(&child_toml)?;
-                let manifest: patina_pipe_types::manifest::ChildManifest = toml::from_str(&content)
-                    .with_context(|| format!("parsing {}", child_toml.display()))?;
-                if let Some(schema_ref) = manifest.schemas.get(&name) {
-                    if schema_ref.package != *canonical_pkg {
-                        eprintln!(
-                            "  ERROR: {} declares package '{}' but canonical is '{}'",
-                            child_toml.display(),
-                            schema_ref.package,
-                            canonical_pkg
-                        );
-                        ok = false;
+                };
+                let content = std::fs::read_to_string(&manifest_path)?;
+                let table: toml::Table = toml::from_str(&content)
+                    .with_context(|| format!("parsing {}", manifest_path.display()))?;
+                if let Some(schemas) = table.get("schemas").and_then(|v| v.as_table()) {
+                    if let Some(schema_ref) = schemas.get(&name).and_then(|v| v.as_table()) {
+                        if let Some(pkg) = schema_ref.get("package").and_then(|v| v.as_str()) {
+                            if pkg != canonical_pkg.as_str() {
+                                eprintln!(
+                                    "  ERROR: {} declares package '{}' but canonical is '{}'",
+                                    manifest_path.display(),
+                                    pkg,
+                                    canonical_pkg
+                                );
+                                ok = false;
+                            }
+                        }
                     }
                 }
             }
@@ -462,52 +469,6 @@ pub fn list_schemas(json: bool) -> Result<()> {
     }
 
     Ok(())
-}
-
-/// List installed schemas as JSON value (for MCP).
-pub fn list_schemas_value() -> Result<serde_json::Value> {
-    let root = find_project_root()?;
-    let schemas_dir = paths::project::schemas_dir(&root);
-
-    if !schemas_dir.exists() {
-        return Ok(serde_json::json!([]));
-    }
-
-    let mut schemas = Vec::new();
-    for entry in std::fs::read_dir(&schemas_dir)? {
-        let entry = entry?;
-        if !entry.file_type()?.is_dir() {
-            continue;
-        }
-        match parse_schema_toml(&entry.path()) {
-            Ok(metadata) => schemas.push(metadata),
-            Err(_) => continue,
-        }
-    }
-
-    Ok(serde_json::json!(schemas
-        .iter()
-        .map(|s| serde_json::json!({
-            "name": s.schema.name,
-            "version": s.schema.version,
-            "package": s.schema.package,
-            "description": s.schema.description,
-            "facts": s.facts.iter().map(|f| &f.name).collect::<Vec<_>>(),
-        }))
-        .collect::<Vec<_>>()))
-}
-
-/// Show details of an installed schema as JSON value (for MCP).
-pub fn show_schema_value(name: &str) -> Result<serde_json::Value> {
-    let root = find_project_root()?;
-    let schema_dir = paths::project::schemas_dir(&root).join(name);
-
-    if !schema_dir.exists() {
-        bail!("schema '{}' is not installed", name);
-    }
-
-    let metadata = parse_schema_toml(&schema_dir)?;
-    Ok(serde_json::to_value(&metadata)?)
 }
 
 /// Show details of an installed schema.
@@ -2031,14 +1992,14 @@ path_template = "{source}"
     }
 
     /// Verify the canonical github schema (wit/schema/github/) is the single
-    /// source of truth. There should be no connector-local schema.toml.
+    /// source of truth. There should be no native connector-local schema.toml.
     #[test]
     fn no_connector_local_schema() {
         let connector_schema =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("children/github-connector/schema.toml");
         assert!(
             !connector_schema.exists(),
-            "children/github-connector/schema.toml should not exist — \
+            "children/github-connector/schema.toml should not exist — native connector retired; \
              wit/schema/github/schema.toml is the canonical source"
         );
     }

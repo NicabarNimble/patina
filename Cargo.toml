@@ -1,11 +1,11 @@
 [workspace]
-members = [".", "crates/patina-pipe-types", "crates/patina-pipe", "sdk/patina-sdk", "plugins/models", "plugins/repos", "plugins/doctor", "children/ducklake", "children/belief-verifier-wasm", "children/github-connector"]
+members = [".", "mother", "sdk/patina-sdk", "sdk/patina-sdk-core", "sdk/patina-sdk-data", "sdk/patina-sdk-agent", "plugins/models", "plugins/repos", "plugins/doctor", "children/ducklake", "children/belief-verifier", "children/session-writer", "children/spec-manager", "children/doctor", "children/lake-manager"]
 exclude = ["layer/dust"]
 resolver = "2"
 
 [package]
 name = "patina-ai"
-version = "0.43.2"
+version = "0.43.8"
 edition = "2021"
 license = "MIT"
 description = "Context orchestration for AI development - captures and evolves patterns over time"
@@ -104,9 +104,7 @@ wasmtime = { version = "=41", default-features = false, features = [
 # even for pure-computation code. p2 feature = WASIp2 component model.
 wasmtime-wasi = { version = "=41", default-features = false, features = ["p2"] }
 
-# Pipe protocol — native child communication (broker uses harness + types)
-patina-pipe = { path = "crates/patina-pipe", features = ["http-proxy"] }
-patina-pipe-types = { path = "crates/patina-pipe-types" }
+mother-crate = { package = "mother", path = "mother" }
 
 # Secrets v2 - age encryption and macOS Keychain
 age = { version = "0.11", features = ["armor"] }

@@ -51,11 +51,12 @@ compile_error!(
 
 mod wasm_cell;
 
-// =========================================================================
-// Shared pipe protocol types — available to all worlds
-// =========================================================================
-
-pub use patina_pipe_types as pipe_types;
+#[cfg(feature = "knowledge-child")]
+pub use patina_sdk_agent as agent;
+#[cfg(feature = "knowledge-child")]
+pub use patina_sdk_core as core;
+#[cfg(feature = "knowledge-child")]
+pub use patina_sdk_data as data;
 
 // =========================================================================
 // Feature-gated world modules

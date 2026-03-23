@@ -7,7 +7,7 @@ use patina::paths;
 use std::path::PathBuf;
 
 /// Lake CLI subcommands
-#[derive(Debug, Clone, clap::Subcommand)]
+#[derive(Debug, Clone, clap::Subcommand, serde::Serialize, serde::Deserialize)]
 pub enum LakeCommands {
     /// Create a new data lake
     ///
@@ -25,9 +25,79 @@ pub enum LakeCommands {
 
 /// Execute lake CLI subcommand.
 pub fn execute_cli(command: Option<LakeCommands>) -> Result<()> {
+    let effective = command.unwrap_or(LakeCommands::List);
+    let payload = serde_json::json!({"command": effective});
+    let client = patina::mother::Client::new("localhost:50051".to_string());
+    let response = client
+        .child_action("lake-manager", "dispatch", &payload)
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "lake-manager unavailable via Mother (start with `patina mother start`): {}",
+                e
+            )
+        })?;
+
+    if let Some(text) = response.get("text").and_then(|v| v.as_str()) {
+        if !text.is_empty() {
+            println!("{}", text);
+        }
+    }
+    if let Some(data) = response.get("data") {
+        if response.get("text").is_none() {
+            println!("{}", serde_json::to_string_pretty(data)?);
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn execute_value(command: LakeCommands) -> Result<serde_json::Value> {
     match command {
-        None | Some(LakeCommands::List) => list(),
-        Some(LakeCommands::Create { name }) => create(&name),
+        LakeCommands::Create { name } => {
+            create(&name)?;
+            Ok(serde_json::json!({
+                "child": "lake-manager",
+                "text": format!("Lake '{}' created", name),
+                "data": {"name": name}
+            }))
+        }
+        LakeCommands::List => {
+            let dir = lakes_dir();
+            let mut lakes = Vec::new();
+            if dir.exists() {
+                let mut entries: Vec<_> = std::fs::read_dir(&dir)?
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.path().join("lake.toml").exists())
+                    .collect();
+                entries.sort_by_key(|e| e.file_name());
+                for entry in entries {
+                    let lake_toml = entry.path().join("lake.toml");
+                    let content = std::fs::read_to_string(&lake_toml).unwrap_or_default();
+                    let name = content
+                        .lines()
+                        .find(|l| l.starts_with("name"))
+                        .and_then(|l| l.split('=').nth(1))
+                        .map(|v| v.trim().trim_matches('"'))
+                        .unwrap_or("?")
+                        .to_string();
+                    let created = content
+                        .lines()
+                        .find(|l| l.starts_with("created_at"))
+                        .and_then(|l| l.split('=').nth(1))
+                        .map(|v| v.trim().trim_matches('"'))
+                        .unwrap_or("?")
+                        .to_string();
+                    lakes.push(serde_json::json!({
+                        "name": name,
+                        "created_at": created,
+                        "path": entry.path().display().to_string()
+                    }));
+                }
+            }
+            Ok(serde_json::json!({
+                "child": "lake-manager",
+                "data": {"lakes": lakes}
+            }))
+        }
     }
 }
 
@@ -38,14 +108,7 @@ fn lakes_dir() -> PathBuf {
 
 /// Create a new data lake.
 fn create(name: &str) -> Result<()> {
-    // Validate name — alphanumeric, hyphens, underscores only
-    if name.is_empty()
-        || !name
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-    {
-        bail!("lake name must be non-empty and contain only alphanumeric characters, hyphens, or underscores");
-    }
+    validate_lake_name(name)?;
 
     let lake_dir = lakes_dir().join(name);
 
@@ -63,50 +126,14 @@ fn create(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// List all lakes.
-fn list() -> Result<()> {
-    let dir = lakes_dir();
-
-    if !dir.exists() {
-        eprintln!("No lakes found ({})", dir.display());
-        return Ok(());
+fn validate_lake_name(name: &str) -> Result<()> {
+    if name.is_empty()
+        || !name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        bail!("lake name must be non-empty and contain only alphanumeric characters, hyphens, or underscores");
     }
-
-    let mut found = false;
-    let mut entries: Vec<_> = std::fs::read_dir(&dir)?
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().join("lake.toml").exists())
-        .collect();
-    entries.sort_by_key(|e| e.file_name());
-
-    for entry in entries {
-        let lake_toml = entry.path().join("lake.toml");
-        let content = std::fs::read_to_string(&lake_toml).unwrap_or_default();
-
-        // Parse name from TOML
-        let name = content
-            .lines()
-            .find(|l| l.starts_with("name"))
-            .and_then(|l| l.split('=').nth(1))
-            .map(|v| v.trim().trim_matches('"'))
-            .unwrap_or("?");
-
-        let created = content
-            .lines()
-            .find(|l| l.starts_with("created_at"))
-            .and_then(|l| l.split('=').nth(1))
-            .map(|v| v.trim().trim_matches('"'))
-            .unwrap_or("?");
-
-        println!("  {} (created: {})", name, created);
-        println!("    {}", entry.path().display());
-        found = true;
-    }
-
-    if !found {
-        eprintln!("No lakes found");
-    }
-
     Ok(())
 }
 
@@ -141,20 +168,12 @@ mod tests {
 
     #[test]
     fn valid_lake_name_characters() {
-        // Valid names should pass character validation
-        // (tested via the validation logic, not create() which writes to disk)
-        fn name_is_valid(name: &str) -> bool {
-            !name.is_empty()
-                && name
-                    .chars()
-                    .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-        }
-        assert!(name_is_valid("good-name"));
-        assert!(name_is_valid("my_lake"));
-        assert!(name_is_valid("lake123"));
-        assert!(!name_is_valid(""));
-        assert!(!name_is_valid("has spaces"));
-        assert!(!name_is_valid("has.dot"));
+        assert!(validate_lake_name("good-name").is_ok());
+        assert!(validate_lake_name("my_lake").is_ok());
+        assert!(validate_lake_name("lake123").is_ok());
+        assert!(validate_lake_name("").is_err());
+        assert!(validate_lake_name("has spaces").is_err());
+        assert!(validate_lake_name("has.dot").is_err());
     }
 
     #[test]

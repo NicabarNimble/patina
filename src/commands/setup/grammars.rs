@@ -63,7 +63,7 @@ pub fn install(options: GrammarOptions) -> Result<()> {
     for name in &grammars {
         let target_dir = pipeline_dir.join(format!("grammar-{}", name));
         let target_wasm = target_dir.join("plugin.wasm");
-        let target_toml = target_dir.join("plugin.toml");
+        let target_toml = target_dir.join("child.toml");
 
         // Check if already installed
         if target_wasm.exists() && target_toml.exists() && !options.force {
@@ -74,7 +74,7 @@ pub fn install(options: GrammarOptions) -> Result<()> {
 
         // Find source artifacts
         let grammar_dir = source_root.join(format!("grammars/{}", name));
-        let source_toml = grammar_dir.join("plugin.toml");
+        let source_toml = grammar_dir.join("child.toml");
         let wasm_name = format!("grammar_{}.wasm", name);
         let source_wasm = grammar_dir
             .join("target")
@@ -145,7 +145,7 @@ fn print_list(grammars: &[&str], pipeline_dir: &Path, source_root: &Path) {
     for name in grammars {
         let target_dir = pipeline_dir.join(format!("grammar-{}", name));
         let installed =
-            target_dir.join("plugin.wasm").exists() && target_dir.join("plugin.toml").exists();
+            target_dir.join("plugin.wasm").exists() && target_dir.join("child.toml").exists();
 
         let grammar_dir = source_root.join(format!("grammars/{}", name));
         let wasm_name = format!("grammar_{}.wasm", name);
@@ -198,7 +198,7 @@ fn find_source_root() -> Result<PathBuf> {
             ];
             for candidate in &candidates {
                 let resolved = candidate.canonicalize().unwrap_or(candidate.clone());
-                if resolved.join("grammars/rust").join("plugin.toml").exists() {
+                if resolved.join("grammars/rust").join("child.toml").exists() {
                     return Ok(resolved);
                 }
             }
@@ -207,21 +207,21 @@ fn find_source_root() -> Result<PathBuf> {
 
     // Fall back to current working directory
     let cwd = std::env::current_dir()?;
-    if cwd.join("grammars/rust").join("plugin.toml").exists() {
+    if cwd.join("grammars/rust").join("child.toml").exists() {
         return Ok(cwd);
     }
 
     // Walk up from cwd
     let mut dir = cwd.as_path();
     while let Some(parent) = dir.parent() {
-        if parent.join("grammars/rust").join("plugin.toml").exists() {
+        if parent.join("grammars/rust").join("child.toml").exists() {
             return Ok(parent.to_path_buf());
         }
         dir = parent;
     }
 
     bail!(
-        "Cannot find grammar build artifacts (grammars/*/plugin.toml).\n\
+        "Cannot find grammar build artifacts (grammars/*/child.toml).\n\
          Run this command from the patina repo root, or ensure grammars/\n\
          directories exist alongside the patina binary."
     )
@@ -229,7 +229,7 @@ fn find_source_root() -> Result<PathBuf> {
 
 /// Get the pipeline directory (~/.patina/pipeline/).
 fn pipeline_dir() -> Result<PathBuf> {
-    Ok(patina::paths::plugin::pipeline_dir())
+    Ok(patina::paths::child::pipeline_dir())
 }
 
 /// Format bytes as human-readable size.

@@ -21,8 +21,8 @@ use super::extracted_data::{ExtractedData, ExtractedPayload};
 use super::languages::Language;
 use super::types::FilePath;
 
+use patina::child::engine::{ChildKind, ChildManifest, PipelineEngine};
 use patina::paths;
-use patina::plugin::{PipelineEngine, PluginManifest, PluginWorld};
 
 /// Process all source files and extract metadata using safe database operations.
 ///
@@ -226,7 +226,7 @@ pub fn extract_code_metadata_v2(
 struct LoadedPipelinePlugin {
     engine: PipelineEngine,
     component: wasmtime::component::Component,
-    manifest: PluginManifest,
+    manifest: ChildManifest,
 }
 
 /// Discover pipeline plugins from ~/.patina/pipeline/.
@@ -239,7 +239,7 @@ struct LoadedPipelinePlugin {
 fn discover_pipeline_plugins(
     extension_filter: Option<&HashSet<String>>,
 ) -> HashMap<String, LoadedPipelinePlugin> {
-    let pipeline_dir = paths::plugin::pipeline_dir();
+    let pipeline_dir = paths::child::pipeline_dir();
 
     if !pipeline_dir.is_dir() {
         return HashMap::new();
@@ -317,7 +317,7 @@ fn discover_pipeline_plugins_lazy(
             continue;
         }
 
-        let manifest_path = path.join("plugin.toml");
+        let manifest_path = path.join("child.toml");
         let wasm_path = path.join("plugin.wasm");
 
         if !manifest_path.exists() || !wasm_path.exists() {
@@ -325,7 +325,7 @@ fn discover_pipeline_plugins_lazy(
         }
 
         // Read manifest (cheap — TOML parse only)
-        let manifest = match PluginManifest::from_path(&manifest_path) {
+        let manifest = match ChildManifest::from_path(&manifest_path) {
             Ok(m) => m,
             Err(e) => {
                 eprintln!(
@@ -339,7 +339,7 @@ fn discover_pipeline_plugins_lazy(
         manifests_read += 1;
 
         // Skip non-pipeline plugins
-        if manifest.world != PluginWorld::Pipeline {
+        if manifest.world != ChildKind::Pipeline {
             continue;
         }
 

@@ -1,0 +1,19 @@
+[package]
+name = "patina-sdk-agent"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+license = "MIT"
+description = "Agent toy primitives for Patina knowledge children"
+repository = "https://github.com/NicabarNimble/patina"
+keywords = ["patina", "wasm", "knowledge-child"]
+categories = ["development-tools", "wasm"]
+
+[features]
+default = []
+toy-query = []
+toy-emit = []
+toy-session = []
+
+[dependencies]
+patina-sdk-core = { path = "../patina-sdk-core" }
