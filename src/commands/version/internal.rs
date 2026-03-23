@@ -4,7 +4,6 @@
 //! All version bump logic lives in patina::release.
 
 use anyhow::Result;
-use rusqlite::Connection;
 use serde_json::json;
 use std::fs;
 use std::path::Path;
@@ -66,13 +65,6 @@ fn output_json(components: bool) -> Result<()> {
         "strategy": format!("{:?}", ReleaseStrategy::from_project(Path::new("."))),
     });
 
-    // Show ready specs instead of milestones
-    if let Ok(ready) = get_ready_spec_ids() {
-        if !ready.is_empty() {
-            version_info["ready"] = json!(ready);
-        }
-    }
-
     if components {
         let components_info = get_component_versions()?;
         version_info["components"] = components_info;
@@ -91,17 +83,6 @@ fn output_human(components: bool) -> Result<()> {
         ReleaseStrategy::Cargo => {} // Default, no noise
         ReleaseStrategy::External => println!("  Strategy: external (advisory)"),
         ReleaseStrategy::None => println!("  Strategy: none (spec-only)"),
-    }
-
-    // Show ready specs instead of milestones
-    match get_ready_spec_ids() {
-        Ok(ready) if !ready.is_empty() => {
-            println!("Ready: {}", ready.join(", "));
-        }
-        Ok(_) => {} // No ready specs, no noise
-        Err(_) => {
-            eprintln!("  (no index - run 'patina scrape layer')");
-        }
     }
 
     if components {
@@ -138,42 +119,6 @@ fn output_human(components: bool) -> Result<()> {
     }
 
     Ok(())
-}
-
-// ============================================================================
-// Ready Spec Query
-// ============================================================================
-
-/// Get IDs of specs ready to work on (simple query for version show)
-fn get_ready_spec_ids() -> Result<Vec<String>> {
-    let db_path = Path::new(".patina/local/data/patina.db");
-    if !db_path.exists() {
-        anyhow::bail!("No index");
-    }
-
-    let conn = Connection::open(db_path)?;
-
-    let mut stmt = conn.prepare(
-        r#"
-        SELECT p.id
-        FROM patterns p
-        WHERE p.file_path LIKE 'layer/surface/build/%'
-          AND p.status IN ('ready', 'active')
-          AND NOT EXISTS (
-            SELECT 1 FROM spec_deps d
-            JOIN patterns blocker ON d.depends_on = blocker.id
-            WHERE d.spec_id = p.id
-              AND blocker.status NOT IN ('complete', 'done')
-          )
-        ORDER BY p.id
-        "#,
-    )?;
-
-    let ids: Vec<String> = stmt
-        .query_map([], |row| row.get::<_, String>(0))?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(ids)
 }
 
 // ============================================================================

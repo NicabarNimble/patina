@@ -17,7 +17,7 @@
 //! ```no_run
 //! use patina::commands::version;
 //!
-//! // Show current version + ready specs
+//! // Show current version
 //! version::show(false, false).expect("Failed to show version");
 //!
 //! // Emergency patch (Cargo strategy only)
@@ -31,7 +31,7 @@ use anyhow::Result;
 /// Version CLI subcommands (used by main.rs via clap)
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum VersionCommands {
-    /// Show current version and ready specs (default)
+    /// Show current version (default)
     Show {
         /// Output as JSON
         #[arg(short, long)]
@@ -67,7 +67,7 @@ pub fn execute_subcommand(command: VersionCommands) -> Result<()> {
 
 /// Show current version information
 ///
-/// Displays the current version from Cargo.toml along with ready specs.
+/// Displays the current version from Cargo.toml.
 /// With `--components`, also shows git info and external tool versions.
 pub fn show(json: bool, components: bool) -> Result<()> {
     internal::show_version(json, components)
