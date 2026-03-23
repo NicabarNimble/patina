@@ -43,7 +43,7 @@ pub use crate::child::runtime::{
 };
 pub use mother_crate::state::{
     KnowledgeRuntimeStore, LakeCursorUpdate, MotherSessionParticipant, MotherSessionRecord,
-    MotherSessionStatus, QueuedTask, RunStatus, TaskStatus,
+    MotherSessionStatus, PersonaUid, ProjectUid, QueuedTask, RunStatus, TaskStatus,
 };
 pub use mother_crate::toys::{GrantedIngressSource, GrantedToys};
 

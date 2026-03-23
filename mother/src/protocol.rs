@@ -3,6 +3,26 @@ use serde_json::Value;
 
 pub const PROTOCOL_VERSION: u32 = 1;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(transparent)]
+pub struct ProjectUid(pub String);
+
+impl ProjectUid {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(transparent)]
+pub struct PersonaUid(pub String);
+
+impl PersonaUid {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Envelope {
     pub v: u32,
@@ -33,7 +53,7 @@ pub struct ConnectPayload {
     /// Caller identity (interface/runtime host).
     pub agent: String,
     /// Stable project identity from `.patina/uid`.
-    pub project_uid: String,
+    pub project_uid: ProjectUid,
     /// Interface runtime kind (`opencode`, `claude`, `gemini`, ...).
     pub interface_kind: String,
     /// Optional human/debug path. Not authoritative for identity.
@@ -43,7 +63,7 @@ pub struct ConnectPayload {
     ///
     /// Pre-v1 this is an opaque UID/string. Future phases will bind this to
     /// cryptographic persona identity and capability verification.
-    pub persona: Option<String>,
+    pub persona: Option<PersonaUid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

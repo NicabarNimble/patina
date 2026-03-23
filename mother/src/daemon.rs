@@ -143,7 +143,7 @@ fn handle_action(
             // Mother share explicit scope (project + persona + interface).
             // Crypto persona verification and multi-Mother federation identity
             // checks land in later networking/security slices.
-            if let Some(persona) = connect.persona.as_deref() {
+            if let Some(persona) = connect.persona.as_ref().map(|p| p.as_str()) {
                 eprintln!(
                     "[mother] connect persona accepted (ignored pre-v1): {}",
                     persona
@@ -152,9 +152,9 @@ fn handle_action(
             Ok(json!({
                 "session_id": format!("{}-{}", connect.agent, std::process::id()),
                 "mother_node_id": "local-node-pre-v1",
-                "project_uid": connect.project_uid,
+                "project_uid": connect.project_uid.as_str(),
                 "interface_kind": connect.interface_kind,
-                "accepted_persona_uid": connect.persona,
+                "accepted_persona_uid": connect.persona.as_ref().map(|p| p.as_str()),
                 "children": ["ducklake", "session-writer"],
                 "tools": ["context", "lake.sync", "lake", "measure", "spec", "scry"],
             }))

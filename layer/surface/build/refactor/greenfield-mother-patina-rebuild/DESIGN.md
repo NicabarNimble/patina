@@ -148,6 +148,10 @@ Typed bootstrap config rule (normative):
 - Patina `run_server` acts as argument translation into Mother bootstrap config; Mother executes startup orchestration from that config.
 - Both default HTTP daemon mode and extracted JSON-lines mode must route through the same typed bootstrap surface (variant-selected execution), not separate ad-hoc startup branches.
 
+Typed identity boundary rule (normative):
+
+- Handshake/session scope identifiers (`project_uid`, `persona_uid`) should use typed wrappers/newtypes at boundary APIs so attach/lookup calls cannot accidentally swap or drop scope semantics.
+
 ## M1 Acceptance Checklist (binary pass/fail)
 
 Run these checks for M1 seam extraction and record outputs in session/spec evidence.

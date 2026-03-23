@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::git;
 use crate::mother::{
     KnowledgeRuntimeStore, MotherSessionParticipant, MotherSessionRecord, MotherSessionStatus,
+    PersonaUid, ProjectUid,
 };
 use crate::project;
 use crate::session::{
@@ -191,9 +192,10 @@ pub fn archive_session(
 
 pub fn list_active_sessions(project_root: &Path) -> Result<Vec<LiveSessionHandle>> {
     let store = KnowledgeRuntimeStore::default();
-    let Some(project_uid) = project::get_uid(project_root) else {
+    let Some(project_uid_raw) = project::get_uid(project_root) else {
         return Ok(Vec::new());
     };
+    let project_uid = ProjectUid::new(project_uid_raw)?;
     let records = store.list_active_mother_sessions(&project_uid)?;
     Ok(records
         .into_iter()
@@ -215,14 +217,19 @@ pub fn find_active_interface_session(
     persona_uid: Option<&str>,
 ) -> Result<Option<LiveSessionHandle>> {
     let store = KnowledgeRuntimeStore::default();
-    let Some(project_uid) = project::get_uid(project_root) else {
+    let Some(project_uid_raw) = project::get_uid(project_root) else {
         return Ok(None);
+    };
+    let project_uid = ProjectUid::new(project_uid_raw)?;
+    let persona_uid = match persona_uid {
+        Some(value) => Some(PersonaUid::new(value.to_string())?),
+        None => None,
     };
     let Some(record) = store.find_active_mother_session_for_interface(
         &project_uid,
         adapter_name,
         interface_kind.as_str(),
-        persona_uid,
+        persona_uid.as_ref(),
     )?
     else {
         return Ok(None);
