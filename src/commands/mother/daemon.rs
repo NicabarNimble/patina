@@ -701,6 +701,11 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     registry
         .register(Box::new(super::secrets::SecretsCacheChild::new()))
         .expect("failed to register secrets child");
+    registry
+        .register(Box::new(
+            mother_crate::session_writer::SessionWriterChild::new(),
+        ))
+        .expect("failed to register session-writer child");
 
     // WASM children (discovered from ~/.patina/children/)
     let children_dir = patina::paths::child::children_dir();
