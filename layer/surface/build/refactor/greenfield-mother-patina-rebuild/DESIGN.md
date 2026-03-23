@@ -248,6 +248,12 @@ M3b progress evidence (current session):
 - Temporary rollback switch added: `PATINA_SECRETS_LEGACY_FALLBACK=1` re-enables local fallback path during stabilization.
 - Runtime verification: with Mother on, `patina secrets` succeeds; with Mother off, command hard-fails by default; rollback switch restores fallback success.
 
+M3c progress evidence (current session):
+
+- Removed legacy local fallback path from proxied `patina secrets` authority operations.
+- Removed practical effect of `PATINA_SECRETS_LEGACY_FALLBACK`; `patina secrets` now requires Mother authority for proxied operations regardless of fallback env setting.
+- Runtime verification: with Mother on, `patina secrets` succeeds; with Mother off, command hard-fails with explicit authority-unavailable error.
+
 ## Seam Classification Table (GF1 enforcement)
 
 | Seam | Classification | Owner | Removal trigger |
