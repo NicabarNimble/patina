@@ -185,12 +185,14 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         interface::set_project_default_interface(&project_path, &interface_name)?;
     }
 
+    let resolved_persona_uid = resolve_persona_uid(request.persona.as_deref(), &project_path);
+
     let checkin = check_in(&InterfaceCheckIn {
         interface_kind: adapter.interface_kind(),
         adapter_name: interface_name.clone(),
         project_root: project_path.clone(),
         project_uid: project::get_uid(&project_path),
-        requested_persona: request.persona,
+        requested_persona: resolved_persona_uid.clone(),
         requested_session: request.requested_session,
         title: request.title,
         capabilities: adapter.capabilities(),
@@ -220,7 +222,7 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
     }
     println!("  Artifact: {}", checkin.artifact_path.display());
 
-    let env = vec![
+    let mut env = vec![
         (
             "PATINA_SESSION_RUNTIME_ID".to_string(),
             checkin.session_runtime_id.clone(),
@@ -235,6 +237,9 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
             checkin.artifact_path.display().to_string(),
         ),
     ];
+    if let Some(persona_uid) = checkin.persona_uid.as_ref() {
+        env.push(("PATINA_PERSONA_UID".to_string(), persona_uid.clone()));
+    }
 
     let bundle = interface::interface_bundle(&interface_name)?;
 
@@ -282,6 +287,7 @@ fn record_ai_session_started(
     let payload = serde_json::json!({
         "session_id": checkin.session_file_id,
         "runtime_id": checkin.session_runtime_id,
+        "persona_uid": checkin.persona_uid,
         "adapter": interface_name,
         "artifact": checkin.artifact_path,
         "attached_existing": false,
@@ -295,6 +301,14 @@ fn record_ai_session_started(
         &payload.to_string(),
     )?;
     Ok(())
+}
+
+fn resolve_persona_uid(explicit: Option<&str>, project_root: &std::path::Path) -> Option<String> {
+    explicit
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| project::get_persona(project_root))
 }
 
 #[cfg(test)]
@@ -389,5 +403,25 @@ mod tests {
         let config = project::load_with_migration(temp.path()).unwrap();
         assert_eq!(config.adapters.default, "claude");
         assert!(temp.path().join(".gemini/commands/spec.toml").exists());
+    }
+
+    #[test]
+    fn resolve_persona_uid_prefers_explicit_over_project_binding() {
+        let temp = setup_project();
+        let persona_path = project::persona_path(temp.path());
+        fs::write(&persona_path, "persona-project\n").unwrap();
+
+        let resolved = resolve_persona_uid(Some("persona-cli"), temp.path());
+        assert_eq!(resolved.as_deref(), Some("persona-cli"));
+    }
+
+    #[test]
+    fn resolve_persona_uid_falls_back_to_project_binding() {
+        let temp = setup_project();
+        let persona_path = project::persona_path(temp.path());
+        fs::write(&persona_path, "persona-project\n").unwrap();
+
+        let resolved = resolve_persona_uid(None, temp.path());
+        assert_eq!(resolved.as_deref(), Some("persona-project"));
     }
 }

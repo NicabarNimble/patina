@@ -342,6 +342,26 @@ pub fn uid_path(project_path: &Path) -> PathBuf {
     patina_dir(project_path).join("uid")
 }
 
+/// Get the persona binding file path for a project
+pub fn persona_path(project_path: &Path) -> PathBuf {
+    patina_dir(project_path).join("persona")
+}
+
+/// Get the project persona binding (returns None if not set)
+pub fn get_persona(project_path: &Path) -> Option<String> {
+    let path = persona_path(project_path);
+    if !path.exists() {
+        return None;
+    }
+    let value = fs::read_to_string(path).ok()?;
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
 /// Create a unique project identifier if it doesn't exist
 /// Returns the UID (8 hex characters, created once, never modified)
 pub fn create_uid_if_missing(project_path: &Path) -> Result<String> {

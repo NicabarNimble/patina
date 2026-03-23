@@ -138,6 +138,10 @@ Session attach rule (normative):
 - Reuse/attach decisions MUST be scoped at minimum by `(project_uid, adapter_name, interface_kind, persona_uid)`.
 - If `persona_uid` is provided, mismatched persona sessions MUST NOT be auto-attached.
 
+Persona resolution precedence (normative):
+
+- explicit launch argument (`--persona`) -> project binding (`.patina/persona`) -> no persona scope.
+
 ## M1 Acceptance Checklist (binary pass/fail)
 
 Run these checks for M1 seam extraction and record outputs in session/spec evidence.

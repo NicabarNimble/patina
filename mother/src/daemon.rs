@@ -147,6 +147,10 @@ fn handle_action(
             }
             Ok(json!({
                 "session_id": format!("{}-{}", connect.agent, std::process::id()),
+                "mother_node_id": "local-node-pre-v1",
+                "project_uid": connect.project_uid,
+                "interface_kind": connect.interface_kind,
+                "accepted_persona_uid": connect.persona,
                 "children": ["ducklake", "session-writer"],
                 "tools": ["context", "lake.sync", "lake", "measure", "spec", "scry"],
             }))
@@ -277,13 +281,15 @@ mod tests {
         let mut stream = UnixStream::connect(&socket).unwrap();
         stream
             .write_all(
-                b"{\"v\":1,\"action\":\"connect\",\"payload\":{\"agent\":\"opencode\",\"project\":\"/tmp/repo\",\"persona\":\"dev-bob\"}}\n",
+                b"{\"v\":1,\"action\":\"connect\",\"payload\":{\"agent\":\"opencode\",\"project_uid\":\"proj-1234\",\"interface_kind\":\"opencode\",\"project_root\":\"/tmp/repo\",\"persona\":\"dev-bob\"}}\n",
             )
             .unwrap();
         let mut reader = BufReader::new(stream);
         let mut line = String::new();
         reader.read_line(&mut line).unwrap();
         assert!(line.contains("session_id"));
+        assert!(line.contains("mother_node_id"));
+        assert!(line.contains("accepted_persona_uid"));
         assert!(line.contains("ducklake"));
         assert!(line.contains("session-writer"));
         drop(reader);
@@ -311,7 +317,7 @@ mod tests {
         let mut stream = UnixStream::connect(&socket).unwrap();
         stream
             .write_all(
-                b"{\"v\":1,\"action\":\"connect\",\"payload\":{\"agent\":\"opencode\",\"project\":\"/tmp/repo\",\"persona\":null}}\n",
+                b"{\"v\":1,\"action\":\"connect\",\"payload\":{\"agent\":\"opencode\",\"project_uid\":\"proj-1234\",\"interface_kind\":\"opencode\",\"project_root\":\"/tmp/repo\",\"persona\":null}}\n",
             )
             .unwrap();
         let mut reader = BufReader::new(stream);

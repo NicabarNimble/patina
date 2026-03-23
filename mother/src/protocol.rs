@@ -31,7 +31,10 @@ impl Envelope {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectPayload {
     pub agent: String,
-    pub project: String,
+    pub project_uid: String,
+    pub interface_kind: String,
+    #[serde(default, alias = "project")]
+    pub project_root: Option<String>,
     pub persona: Option<String>,
 }
 

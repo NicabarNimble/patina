@@ -49,6 +49,15 @@ pub fn check_in(request: &InterfaceCheckIn) -> Result<CheckInResult> {
 
     if let Some(selector) = &request.requested_session {
         if let Some(handle) = load_requested_session(&request.project_root, selector)? {
+            if !persona_matches(
+                request.requested_persona.as_deref(),
+                handle.persona_uid.as_deref(),
+            ) {
+                anyhow::bail!(
+                    "Requested session '{}' persona does not match requested persona scope",
+                    selector
+                );
+            }
             return Ok(result_from_handle(request, handle, true));
         }
     }
@@ -528,6 +537,53 @@ mod tests {
             assert_eq!(result.session_runtime_id, persona_one.runtime_id);
             assert_eq!(result.session_file_id, persona_one.file_id);
             assert_eq!(result.persona_uid.as_deref(), Some("persona-1"));
+        });
+    }
+
+    #[test]
+    fn check_in_rejects_requested_session_when_persona_scope_mismatches() {
+        let temp = tempfile::TempDir::new().unwrap();
+        with_temp_patina_home(&temp, || {
+            let project_uid = project::create_uid_if_missing(temp.path()).unwrap();
+            let store = KnowledgeRuntimeStore::default();
+
+            let record = MotherSessionRecord {
+                runtime_id: "runtime-none-persona".to_string(),
+                project_uid,
+                file_id: "20260312-100000-AAAA".to_string(),
+                title: "OpenCode none persona".to_string(),
+                persona_uid: None,
+                status: MotherSessionStatus::Active,
+                interface_kind: "opencode".to_string(),
+                adapter_name: "opencode".to_string(),
+                branch: Some("patina".to_string()),
+                start_tag: Some("session-20260312-100000-AAAA-opencode-start".to_string()),
+                end_tag: None,
+                parent_runtime_id: None,
+                handoff_from_runtime_id: None,
+                created_at: "2026-03-12T10:00:00Z".to_string(),
+                updated_at: "2026-03-12T10:00:00Z".to_string(),
+            };
+            store.create_mother_session(&record, &[]).unwrap();
+            let artifact_path = session::durable_session_path(temp.path(), &record.file_id);
+            fs::create_dir_all(artifact_path.parent().unwrap()).unwrap();
+            fs::write(&artifact_path, format!("session {}", record.file_id)).unwrap();
+
+            let error = check_in(&InterfaceCheckIn {
+                interface_kind: InterfaceKind::OpenCode,
+                adapter_name: "opencode".to_string(),
+                project_root: temp.path().to_path_buf(),
+                project_uid: None,
+                requested_persona: Some("persona-1".to_string()),
+                requested_session: Some(record.runtime_id.clone()),
+                title: None,
+                capabilities: InterfaceCapabilities::default(),
+            })
+            .unwrap_err();
+
+            assert!(error
+                .to_string()
+                .contains("persona does not match requested persona scope"));
         });
     }
 }
