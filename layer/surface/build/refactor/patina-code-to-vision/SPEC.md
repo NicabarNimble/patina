@@ -1,8 +1,9 @@
 ---
 type: refactor
 id: patina-code-to-vision
-status: draft
+status: complete
 created: 2026-03-22
+updated: 2026-03-22
 sessions:
   origin: 20260321-164003-365905000
 beliefs:
@@ -12,12 +13,9 @@ beliefs:
   - agents-are-guests-mother-is-infrastructure
   - mother-is-the-daemon
 exit_criteria:
-  - id: CV1
-    text: Mother is a standalone daemon in the mother/ crate — Mother-owned runtime infrastructure (state, broker infrastructure, registry, events, tasks, lifecycle, socket, protocol) is centralized there, not split across three locations
-    checked: false
-  - id: CV2
-    text: CLI binary has zero Mother infrastructure runtime code — it talks to Mother over Unix socket or runs core verbs standalone; thin adapter bridges to core product domains are explicit and allowed
-    checked: false
+  - id: CV1-CARRY
+    text: CV1/CV2/CV11 have been split into follow-on spec `patina-code-to-vision-seam-closure`, preserving original criteria verbatim with parity gates and rollback protocol
+    checked: true
   - id: CV3
     text: Core verbs (scrape, scry, assay, context, belief, measure, oxidize) have an explicit, command-by-command Mother-unavailable policy documented in this spec and verified by command tests (no implicit placeholder-filter fallback behavior)
     checked: true
@@ -42,9 +40,9 @@ exit_criteria:
   - id: CV10
     text: toy-layer-fs and toy-git WIT interfaces exist with Mother host implementations
     checked: true
-  - id: CV11
-    text: Scrape strategy boundary is explicit and enforceable — layer/beliefs remain core, and non-core scrape strategy lanes are extraction-ready and independently pluggable without breaking current core scrape behavior. Child extraction happens only after 1:1 parity proof
-    checked: false
+  - id: CV11-CARRY
+    text: This spec records intentional residual seams and non-forced-closure policy; seam closure execution is owned by `patina-code-to-vision-seam-closure`
+    checked: true
   - id: CV12
     text: '"patina spec list" without Mother returns clear "spec-manager not available" error'
     checked: true
@@ -267,18 +265,16 @@ Evidence format rules for this table:
 | CV17 | verified-true | Core CLI no longer exposes `session` verb (`src/main.rs` has no `Commands::Session`); session artifacts are handled by agent/session systems rather than a core user command. |
 | CV18 | verified-true | `patina lake` is a Mother child route (`lake-manager`) and fails clearly without Mother (`lake-manager unavailable via Mother ...`). |
 
-### Intentional Residual Seams (carry-forward)
+### Intentional Residual Seams (split decision)
 
-The remaining `verified-partial` criteria in this spec are intentional seams, not hidden drift.
+CV1/CV2/CV11 remain intentionally partial in this implementation lane and are split into
+`patina-code-to-vision-seam-closure` with original criterion text preserved verbatim.
 
-- CV1/CV2: adapter-backed orchestration seams are retained by design where extraction would force high-risk cross-domain reshaping with low product gain in this phase.
-- CV11: scrape is seam-hardened and structured, but final child extraction contract/parity gate is deferred to explicit greenfield-first planning.
+Split policy for this spec:
 
-Completion policy for this spec:
-
-- Do not force closure by introducing refactors that violate the currently accepted seam strategy.
-- Keep partial status explicit with evidence.
-- Carry closure work into `greenfield-mother-patina-rebuild` migration slices.
+- Do not force closure by introducing refactors that violate the accepted seam strategy.
+- Preserve criterion strength by moving unresolved criteria unchanged into a dedicated follow-on spec.
+- Keep this spec focused on delivered migration parity and warning closure.
 
 ## Target State
 

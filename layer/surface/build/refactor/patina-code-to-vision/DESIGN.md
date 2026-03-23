@@ -603,9 +603,10 @@ The remaining partial CVs are intentionally not force-closed in this refactor:
 Execution lock:
 
 - No speculative seam-flattening refactors just to flip status labels.
-- Any full-closure work for CV1/CV2/CV11 must run through
-  `layer/surface/build/refactor/greenfield-mother-patina-rebuild/SPEC.md`
-  with explicit parity and rollback gates.
+- Full-closure work for CV1/CV2/CV11 runs through
+  `layer/surface/build/refactor/patina-code-to-vision-seam-closure/SPEC.md`
+  (with `greenfield-mother-patina-rebuild` as first-principles reference),
+  and must include explicit parity and rollback gates.
 
 ### Jon Gjengset Audit Pass (2026-03-22)
 
