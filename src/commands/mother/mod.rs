@@ -505,7 +505,7 @@ fn show_status() -> Result<()> {
                 }
             }
 
-            if let Some(project_root) = SessionManager::find_project_root().ok() {
+            if let Ok(project_root) = SessionManager::find_project_root() {
                 match load_project_manifest(&project_root) {
                     Ok(manifest) => {
                         if !manifest.needs.children.is_empty() {
