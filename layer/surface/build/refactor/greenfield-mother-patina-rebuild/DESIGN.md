@@ -297,7 +297,7 @@ M4 kickoff checklist (active):
 - [x] Define target ownership for broker orchestration (`src/mother/broker/mod.rs`) and plan relocation/adapter boundaries into Mother runtime.
 - [x] Consolidate Mother client resolution for control-plane commands (`spec`, `lake`, `doctor`, `secrets`) into one policy helper.
 - [x] Resolve path duplication risk (`src/paths.rs` vs `mother/src/secrets_paths.rs`) with a single-source contract or explicit anti-drift tests.
-- [ ] Record seam-by-seam parity/rollback evidence for M4 before any boundary deletions.
+- [x] Record seam-by-seam parity/rollback evidence for M4 before any boundary deletions.
 
 M4a execution slices:
 
@@ -408,6 +408,27 @@ M4b rollback trigger/action:
 
 - Trigger: any behavior drift in source run routing, auth fail-closed guarantees, cursor migration, or child task lifecycle semantics.
 - Action: revert current M4b slice commit(s), restore Patina-side broker runtime path, re-run parity gates before retry.
+
+M4 seam evidence summary:
+
+- M4a1/M4a2 authority routing evidence:
+  - Non-`src/secrets/*` direct secrets call sites migrated to Mother authority channel.
+  - Mother authority contract extended with `get_global_secret` for read-path parity.
+- M4a communication channel evidence:
+  - Canonical control-plane client/address resolution consolidated via `mother::control_plane_client()` and `mother::resolve_control_plane_address()`.
+  - Command surfaces (`spec`, `lake`, `doctor`, `secrets`) no longer hardcode `localhost:50051`.
+- M4a3 path contract evidence:
+  - Anti-drift tests added for shared rendezvous path semantics (`test_mother_paths_contract_user_level`, `test_mother_paths_contract_project_secrets`).
+- Validation evidence:
+  - `cargo check -q`
+  - `cargo test -q -p patina-ai resolve_control_plane_address`
+  - `cargo test -q -p patina-ai test_mother_paths_contract`
+  - `cargo test -q -p mother`
+
+M4 completion status:
+
+- Complete for the defined M4 boundary-cleanup scope (authority/comms/path alignment + broker ownership/rollback plan lock).
+- Next lane: execute M5 SDK contract stabilization.
 
 M5 preview note:
 

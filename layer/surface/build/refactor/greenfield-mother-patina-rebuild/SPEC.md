@@ -238,6 +238,14 @@ M4b planning notes (current session):
 - Greenfield ownership target locked: broker orchestration runtime moves to Mother; Patina keeps UX/adapters.
 - Scalpel relocation slices and parity/rollback gates recorded in DESIGN for M4b execution.
 
+M4 completion notes (current session):
+
+- Boundary cleanup scope completed:
+  - secrets authority bypass reduction (non-`src/secrets/*` call sites migrated),
+  - centralized Patina -> Mother control-plane channel policy,
+  - shared rendezvous path anti-drift contract tests.
+- Broker ownership boundary and relocation/rollback plan are explicitly locked in DESIGN for next execution lane.
+
 ### Seam classification contract
 
 Every seam touched by this spec must be classified as one of:
