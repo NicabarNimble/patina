@@ -438,7 +438,12 @@ fn populate_annotations(results: &mut [FusedResult]) {
     }
 
     for result in results.iter_mut() {
-        let file_path = extract_file_path(&result.doc_id);
+        let file_path = result
+            .metadata
+            .file_path
+            .as_deref()
+            .map(str::to_string)
+            .unwrap_or_else(|| extract_file_path(&result.doc_id));
         if file_path.is_empty() || file_path.starts_with("persona:") {
             continue;
         }
