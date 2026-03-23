@@ -111,7 +111,8 @@ Required anchors:
 | M2: Mother runner extraction + `patina-mother` Option B path | `src/commands/mother/daemon.rs:152` orchestration shell (including former extracted startup seam) | Mother-owned bootstrap/runner API (`mother/src/*`) consumed by Patina CLI as thin adapter; publishable direction for `patina-mother` runtime entrypoint | `cargo check -q`; `cargo test -q`; parity probes from M1 checklist; verify `patina mother start` behavior unchanged; verify no dependency inversion (`mother` must not depend on Patina command modules) | Any behavior drift in start/health/control-plane routing, or bootstrap API requiring Patina internals | Revert M2 runner commits and keep Patina composition shell as temporary adapter; preserve M1-owned runtime modules | daemon startup/orchestration surface; publish policy and runtime API boundary for `patina-mother` |
 | M3: Mother-owned secret authority migration | Secret authority currently anchored in Patina secrets implementation (`src/secrets/*`, `src/commands/secrets.rs`) plus Mother runtime cache child (`mother/src/secrets.rs`) | Mother owns secret authority control-plane; Patina `secrets` command remains UX client surface delegating to Mother APIs | `cargo check -q`; `cargo test -q`; `patina secrets` parity checks (`status`, `add`, `remove`, `list-recipients`, `lock`); verify no secret-value persistence regression and explicit Mother-required failure behavior | Any user-visible break in secret CRUD/recipient/identity flows, or security regression in authority handling | Revert M3 commits to prior Patina-owned authority path and keep Mother cache runtime behavior intact | `patina secrets*` UX, vault/recipient/identity control-plane, CI/headless credential workflows |
 | M3d: Greenfield-purity secrets internals relocation | Transitional adapter still sources implementation from Patina secrets internals (`src/mother/secrets_backend.rs` -> `crate::secrets::*`) | Secret implementation internals relocated to Mother-owned modules; adapter no longer depends on `crate::secrets` | `cargo check -q`; `cargo test -q`; `patina secrets` parity checks (`status`, `add`, `remove`, `list-recipients`, `lock`, `setup-claude`); verify Mother-on success and Mother-off explicit authority failure; verify vault paths/data remain unchanged | Any secret data loss risk, vault format drift, or behavior regressions in authority operations | Revert M3d commits; restore adapter-backed implementation path; re-run parity and data-integrity checks before retry | `mother` secrets internals, `patina secrets` UX, vault compatibility surface |
-| M4: SDK contract stabilization (not redesign) | Mixed SDK + legacy compatibility surfaces (`sdk/patina-sdk/src/lib.rs:1`, `sdk/patina-sdk/Cargo.toml:16`) and runtime contract touchpoints (`src/child/internal/tests.rs:317`, `mother/src/toys.rs:13`) | Tiered SDK as canonical external contract (`sdk/patina-sdk-core`, `sdk/patina-sdk-data`, `sdk/patina-sdk-agent`, `sdk/patina-sdk` umbrella) with legacy features treated as migration shims until removed by parity | `cargo check -q`; `cargo test -q`; verify manifest capability schema enforcement stays `[needs].toys` + `[needs.scopes]`; verify existing child loading/runtime behavior remains stable via Mother start + health + child dispatch probes; ensure docs/spec language uses child/kind vocabulary and matches shipped SDK surfaces | Any break in child authoring ergonomics, manifest compatibility, toy grant enforcement, or third-party builder path that currently works | Revert M4 commits affecting SDK public surface/docs; restore prior exported features and compatibility shims; reopen with narrower SDK slice | SDK crates; child authoring docs/templates; manifest parser contracts; toy grant/capability path |
+| M4: Post-M3 boundary cleanup (greenfield alignment) | Residual runtime/authority seams remain in Patina core (`src/secrets/*` direct callers, `src/mother/broker/mod.rs`, command-level Mother client duplication, path duplication risk) | Mother owns runtime/authority internals; Patina core keeps protocol UX and thin adapters only | `cargo check -q`; `cargo test -q`; verify `patina secrets` Mother-required behavior remains explicit; verify broker/control-plane behavior unchanged (`spec`, `lake`, `doctor`) with Mother on/off contract preserved | Any regression in secrets authority routing, broker execution behavior, or Mother-required command contracts | Revert M4 cleanup commits per seam cluster; restore prior adapter call path and re-run parity before retry | Patina core vs Mother ownership boundaries; secrets call sites; broker and control-plane adapter surfaces |
+| M5: SDK contract stabilization (not redesign) | Mixed SDK + legacy compatibility surfaces (`sdk/patina-sdk/src/lib.rs:1`, `sdk/patina-sdk/Cargo.toml:16`) and runtime contract touchpoints (`src/child/internal/tests.rs:317`, `mother/src/toys.rs:13`) | Tiered SDK as canonical external contract (`sdk/patina-sdk-core`, `sdk/patina-sdk-data`, `sdk/patina-sdk-agent`, `sdk/patina-sdk` umbrella) with legacy features treated as migration shims until removed by parity | `cargo check -q`; `cargo test -q`; verify manifest capability schema enforcement stays `[needs].toys` + `[needs.scopes]`; verify existing child loading/runtime behavior remains stable via Mother start + health + child dispatch probes; ensure docs/spec language uses child/kind vocabulary and matches shipped SDK surfaces | Any break in child authoring ergonomics, manifest compatibility, toy grant enforcement, or third-party builder path that currently works | Revert M5 commits affecting SDK public surface/docs; restore prior exported features and compatibility shims; reopen with narrower SDK slice | SDK crates; child authoring docs/templates; manifest parser contracts; toy grant/capability path |
 
 Add one row per additional ownership-moving slice before promoting this spec to active.
 
@@ -264,6 +265,154 @@ M3d progress evidence (current session):
 - Removed Patina-side backend adapter seam (`src/mother/secrets_backend.rs`); `secrets-authority` dispatch now binds directly to `mother_crate::secrets_authority_backend::MotherSecretsAuthorityBackend`.
 - Build verification: `cargo check -q` passes with new Mother-owned authority wiring.
 
+M3 final checklist pass (explicit):
+
+- [x] Authority contract ownership in Mother (`mother/src/secrets_authority_api.rs`) with Patina `secrets` as UX client only.
+- [x] Transitional backend adapter seam removed (`src/mother/secrets_backend.rs` deleted) and dispatch bound directly to Mother backend (`src/commands/mother/builtin_dispatch.rs`).
+- [x] Mother-owned internals landed (`mother/src/secrets_authority_backend/*`) with Mother-local path helpers (`mother/src/secrets_paths.rs`).
+- [x] Build/test gates pass after M3d cleanup:
+  - `cargo check -q`
+  - `cargo test -q -p mother`
+- [x] Mother-required failure contract verified for proxied secrets ops when Mother is unavailable:
+  - `patina secrets`
+  - `patina secrets list-recipients`
+  - `patina secrets --lock`
+- [x] Mother-on parity verified for non-destructive authority ops in isolated runtime home:
+  - `patina secrets`
+  - `patina secrets list-recipients`
+  - `patina secrets --lock`
+- [x] Path compatibility cleanup completed: encrypted identity path now honors `PATINA_HOME` in Mother backend (`f2ae7cbf`).
+
+M3 completion status:
+
+- Complete. M3a/M3b/M3c migration plus M3d purity closeout are satisfied with recorded evidence and verification gates.
+
+M4 activation note:
+
+- Next active lane is M4 (post-M3 boundary cleanup for greenfield ownership alignment).
+
+M4 kickoff checklist (active):
+
+- [x] Inventory residual Patina-core secret authority call sites and decide greenfield target per call path (Mother authority API vs explicit local-only policy).
+- [x] Define target ownership for broker orchestration (`src/mother/broker/mod.rs`) and plan relocation/adapter boundaries into Mother runtime.
+- [x] Consolidate Mother client resolution for control-plane commands (`spec`, `lake`, `doctor`, `secrets`) into one policy helper.
+- [x] Resolve path duplication risk (`src/paths.rs` vs `mother/src/secrets_paths.rs`) with a single-source contract or explicit anti-drift tests.
+- [ ] Record seam-by-seam parity/rollback evidence for M4 before any boundary deletions.
+
+M4a execution slices:
+
+1. M4a1: Inventory/classify residual Patina bypass call sites for Mother-owned secrets authority.
+2. M4a2: Migrate secret read/write call sites to canonical Patina -> Mother authority channel.
+3. M4a3: Add anti-drift coverage for shared rendezvous path semantics.
+4. M4a4: Retire dead Patina-side secret internals once bypass call sites are removed.
+
+M4a boundary rules (non-negotiable):
+
+1. Patina standalone rule
+   - `patina-ai` core belief/protocol workflows remain usable without Mother.
+   - Any command/verb that is Mother-required must be explicitly declared as control-plane policy.
+
+2. Authority routing rule
+   - Runtime authority operations (secrets authority, control-plane child dispatch, runtime state mutation) route through Mother APIs when Mother is enabled.
+   - Patina core must not maintain hidden direct-internals bypass paths for Mother-owned authority surfaces.
+
+3. UX vs authority separation rule
+   - Patina owns user-facing UX (`patina secrets`, prompts, output shaping).
+   - Mother owns authority implementation and policy enforcement for Mother-owned surfaces.
+
+4. Dependency direction rule
+   - Mother must not depend on Patina command modules or Patina-only runtime internals.
+   - Shared contracts must be explicit (typed API, protocol payloads, manifests), not implicit cross-crate reach-through.
+
+5. Communication channel rule
+   - Patina -> Mother communication policy is centralized (single client resolution/transport/auth behavior for Mother-required commands).
+   - Local UDS and TCP/token behavior must remain contract-consistent across commands.
+
+6. Path ownership rule
+   - Path logic is crate-local by default.
+   - Any path used as an interop rendezvous contract between Patina and Mother (e.g., `PATINA_HOME`, run socket/token, shared authority files) must have an explicit anti-drift contract (shared module or parity tests).
+
+7. Evidence-before-move rule
+   - Each boundary move in M4a requires parity gate evidence (`cargo check -q`, relevant tests, on/off Mother contract probes) and rollback notes before retiring old seams.
+
+M4a progress evidence (current session):
+
+- Centralized Patina -> Mother control-plane address/client resolution in `src/mother/mod.rs` (`resolve_control_plane_address`, `control_plane_client`).
+- Added explicit endpoint/env contract constants for control-plane comms:
+  - `PATINA_MOTHER` (primary),
+  - `PATINA_MOTHER_ADDR` (address alias),
+  - `PATINA_MOTHER_SOCKET` (UDS override),
+  - `PATINA_MOTHER_TOKEN_FILE` (token file override).
+- Updated Mother client internals to use centralized UDS/token path overrides (`src/mother/internal.rs`).
+- Replaced hardcoded command client construction in control-plane command surfaces (`spec`, `lake`, `doctor`, `secrets`) with canonical `mother::control_plane_client()`.
+- Added focused tests for control-plane address resolution precedence/defaults (`cargo test -q -p patina-ai resolve_control_plane_address`).
+- Build verification: `cargo check -q`.
+
+M4a1 inventory pass (current session):
+
+- Residual direct Patina secret authority call sites found outside `src/secrets/*`:
+  - `src/interface/internal/launcher.rs:244` (`get_global_secret("claude-oauth")`)
+  - `src/commands/launch/internal.rs:436` (`get_global_secret("claude-oauth")`)
+  - `src/connect/internal/store.rs:118` (`add_secret(...)`)
+  - `src/connect/internal/store.rs:169` (`remove_secret(...)`)
+  - `src/connect/internal/resolve.rs:30` (`get_global_secret(...)`)
+  - `src/child/toy_host/github.rs:274` (`get_global_secret(...)`)
+  - `src/child/internal/mother_child.rs:356` (`get_global_secret(...)`)
+  - `src/child/internal/host_support.rs:313` (`get_global_secret(...)`)
+- Classification decision (greenfield alignment): these are Mother-owned authority operations and should migrate to the canonical Patina -> Mother channel in M4a2.
+
+M4a2 migration pass (current session):
+
+- Extended Mother secrets authority contract with explicit global-read operation (`get_global_secret`) in `mother/src/secrets_authority_api.rs` and backend implementation wiring in `mother/src/secrets_authority_backend/mod.rs`.
+- Added canonical Patina-side authority helper `mother::get_global_secret(...)` in `src/mother/mod.rs`.
+- Migrated residual non-`src/secrets/*` call sites from direct `crate::secrets::*` usage to Mother authority channel:
+  - `src/interface/internal/launcher.rs`
+  - `src/commands/launch/internal.rs`
+  - `src/connect/internal/store.rs`
+  - `src/connect/internal/resolve.rs`
+  - `src/child/toy_host/github.rs`
+  - `src/child/internal/mother_child.rs`
+  - `src/child/internal/host_support.rs`
+- Residual `crate::secrets::*` usage is now confined to Patina secrets internals (`src/secrets/*`).
+- Build verification: `cargo check -q`.
+
+M4a3 anti-drift path contract pass (current session):
+
+- Added explicit cross-crate path contract tests in `src/paths.rs` comparing Patina and Mother path resolution for shared rendezvous semantics:
+  - user-level roots and runtime paths (`PATINA_HOME`, `run`, `serve.sock`, `serve.token`)
+  - secrets authority shared paths (`secrets.toml`, `vault.age`, `recipient.txt`, project secrets paths)
+- Verification: `cargo test -q -p patina-ai test_mother_paths_contract`.
+
+M4b broker greenfield target (agreed boundary):
+
+- Target ownership: broker orchestration runtime belongs to Mother crate; Patina retains CLI UX/adapters only.
+- Patina-side module `src/mother/broker/mod.rs` should collapse to a thin adapter over Mother broker APIs.
+- Mother broker orchestration must not depend on Patina command modules; runtime dependencies are injected through explicit interfaces.
+
+M4b broker relocation slices (scalpel plan):
+
+1. M4b1: Introduce Mother broker orchestration interfaces (typed traits/ports for connection resolution, child loading/execution, and legacy cursor reads) without behavior change.
+2. M4b2: Move pure orchestration loop (`run_source` flow and lake-route control logic) into Mother crate behind those interfaces.
+3. M4b3: Implement Patina adapter bindings for those interfaces (existing connect/child/eventlog capabilities), keep command UX stable.
+4. M4b4: Delete redundant Patina broker runtime logic after parity gates pass; keep compatibility wrappers only where contract-stable.
+
+M4b parity gates:
+
+- `cargo check -q`
+- `cargo test -q`
+- `patina mother sources`
+- `patina mother run <source>` (with valid source fixture)
+- Verify Mother on/off policy contracts unchanged for control-plane commands (`spec`, `lake`, `doctor`, `secrets`).
+
+M4b rollback trigger/action:
+
+- Trigger: any behavior drift in source run routing, auth fail-closed guarantees, cursor migration, or child task lifecycle semantics.
+- Action: revert current M4b slice commit(s), restore Patina-side broker runtime path, re-run parity gates before retry.
+
+M5 preview note:
+
+- SDK contract stabilization moves to M5 after M4 boundary cleanup is complete.
+
 ## Seam Classification Table (GF1 enforcement)
 
 | Seam | Classification | Owner | Removal trigger |
@@ -271,9 +420,9 @@ M3d progress evidence (current session):
 | CLI command entrypoint -> Mother runtime invocation (`patina mother start`) | permanent contract | `src/commands/mother/mod.rs` + `mother/src/lifecycle.rs` | none |
 | CLI-owned daemon internals in `src/commands/mother/daemon.rs` | migration scaffold | M1 slice owner | remove when ownership parity is proven in Mother crate and M1 checklist passes |
 | Child capability manifest schema (`[needs].toys`, `[needs.scopes]`) | permanent contract | child manifest parser + SDK docs | none |
-| Legacy SDK world compatibility features | migration scaffold | M4 slice owner | remove only after M4 parity gates prove no active dependency |
+| Legacy SDK world compatibility features | migration scaffold | M5 slice owner | remove only after M5 parity gates prove no active dependency |
 
-## SDK Stability Tiers (M4 enforcement)
+## SDK Stability Tiers (M5 enforcement)
 
 Use these tiers for all SDK-facing APIs and docs:
 

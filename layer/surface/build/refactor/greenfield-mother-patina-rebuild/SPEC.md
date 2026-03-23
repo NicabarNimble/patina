@@ -200,7 +200,43 @@ Execution priority for current lane:
 2. M2 next (Option B): Mother runner/bootstrap API extraction to support `patina-mother` direction while keeping Patina as thin composition shell.
 3. M3 after M2: secret authority migration to Mother control-plane while preserving `patina secrets` UX.
 4. M3d after M3: relocate remaining secret implementation internals from Patina into Mother-owned modules to close greenfield purity seam.
-5. M4 after M3d: SDK contract stabilization (single `patina-sdk` public SDK stance retained).
+5. M4 after M3d: post-M3 boundary cleanup (authority/comms/path ownership alignment) before SDK work.
+6. M5 after M4: SDK contract stabilization (single `patina-sdk` public SDK stance retained).
+
+M4 boundary cleanup focus (normative):
+
+- Remove residual Patina-core bypass paths for Mother-owned authority surfaces.
+- Centralize Patina -> Mother control-plane client/address/transport resolution.
+- Keep path logic crate-local by default, with explicit anti-drift contract for shared rendezvous paths.
+
+M4a execution slices (current active):
+
+1. M4a1: Inventory and classify residual Patina bypass call sites for Mother-owned secret authority.
+2. M4a2: Migrate secret read/write call sites to canonical Patina -> Mother authority channel.
+3. M4a3: Add/expand anti-drift contract tests for shared rendezvous path semantics (`PATINA_HOME`, run socket/token, shared authority files).
+4. M4a4: Retire dead Patina-side secret internals that are no longer policy-authoritative after migration.
+
+M4b execution slices (next in M4):
+
+1. M4b1: Define Mother-owned broker orchestration interfaces and adapter boundaries.
+2. M4b2: Relocate broker orchestration loop from Patina into Mother crate behind those interfaces.
+3. M4b3: Bind Patina runtime capabilities through explicit adapters; keep CLI UX unchanged.
+4. M4b4: Remove redundant Patina broker runtime logic after parity/rollback gates pass.
+
+M4a completion gate:
+
+- No remaining Mother-owned secrets authority operations in Patina core call `crate::secrets::*` directly outside intentionally scoped local-only utilities.
+
+M4a progress notes (current session):
+
+- M4a1 complete: residual non-`src/secrets/*` direct call sites were inventoried and classified as Mother-authority operations.
+- M4a2 started: Mother authority global-secret read operation was added and non-`src/secrets/*` call sites were migrated to Patina -> Mother authority helpers.
+- M4a3 started: explicit cross-crate anti-drift tests were added for shared rendezvous path semantics between Patina and Mother path modules.
+
+M4b planning notes (current session):
+
+- Greenfield ownership target locked: broker orchestration runtime moves to Mother; Patina keeps UX/adapters.
+- Scalpel relocation slices and parity/rollback gates recorded in DESIGN for M4b execution.
 
 ### Seam classification contract
 
