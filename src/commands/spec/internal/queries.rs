@@ -8,7 +8,6 @@ use std::path::Path;
 use patina::spec::{parse_spec_file, SpecFrontmatter, SpecStatus};
 
 use super::archive::load_spec;
-use super::queue::{load_dep_counts, spec_age_days_from_list};
 use super::DB_PATH;
 
 /// An unchecked exit criterion (for check results)
@@ -65,51 +64,6 @@ pub fn check_spec_value(id: &str) -> Result<CheckResult> {
     })
 }
 
-/// Display check results (human-readable or JSON)
-pub fn check_spec(id: &str, json: bool) -> Result<()> {
-    let result = check_spec_value(id)?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-        return Ok(());
-    }
-
-    if result.total == 0 {
-        println!("Exit criteria: none defined (pass by default)");
-        return Ok(());
-    }
-
-    println!(
-        "Exit criteria: {}/{} complete",
-        result.checked, result.total
-    );
-
-    // Reload to get full criteria list for display
-    let loaded = load_spec(id)?;
-    for c in &loaded.frontmatter.exit_criteria {
-        if c.checked {
-            println!("  \u{2713} {}", c.id);
-        } else {
-            println!("  \u{2717} {} \u{2014} {}", c.id, c.text);
-        }
-    }
-
-    if !result.passed {
-        let noun = if result.unchecked.len() == 1 {
-            "criterion"
-        } else {
-            "criteria"
-        };
-        println!(
-            "\nCannot complete: {} unchecked {}",
-            result.unchecked.len(),
-            noun
-        );
-    }
-
-    Ok(())
-}
-
 /// A spec ready to work on (status=ready/active, all blockers complete)
 #[derive(Debug, Clone, Serialize)]
 pub struct ReadySpec {
@@ -154,147 +108,6 @@ pub fn get_ready_specs() -> Result<Vec<ReadySpec>> {
     specs.sort_by(|a, b| a.target.cmp(&b.target).then(a.id.cmp(&b.id)));
 
     Ok(specs)
-}
-
-/// Display ready specs (human-readable or JSON)
-///
-/// Enhanced view: shows impact counts, paused specs with age, and
-/// blocked specs whose blockers completed (Phase 3 enhancements).
-pub fn show_ready_specs(json: bool) -> Result<()> {
-    let specs = get_ready_specs()?;
-
-    if json {
-        // JSON contract: ready/active only, no drafts
-        println!("{}", serde_json::to_string_pretty(&specs)?);
-        return Ok(());
-    }
-
-    // Load impact counts (how many specs each spec blocks)
-    let dep_counts = load_dep_counts();
-
-    // Get all spec groups from a single scan
-    let all_specs = get_all_specs(&ListFilters::default()).unwrap_or_default();
-    let drafts: Vec<_> = all_specs
-        .iter()
-        .filter(|s| s.status == Some(SpecStatus::Draft))
-        .collect();
-    let paused: Vec<_> = all_specs
-        .iter()
-        .filter(|s| s.status == Some(SpecStatus::Paused))
-        .collect();
-    let blocked_specs = get_blocked_specs().unwrap_or_default();
-    let unblocked: Vec<_> = blocked_specs
-        .iter()
-        .filter(|b| {
-            b.blocked_by.is_empty() || b.blocked_by.iter().all(|bl| bl.status.is_terminal())
-        })
-        .collect();
-
-    let mut printed_section = false;
-
-    if !specs.is_empty() {
-        // Group by status for display
-        let ready: Vec<_> = specs
-            .iter()
-            .filter(|s| s.status == SpecStatus::Ready)
-            .collect();
-        let active: Vec<_> = specs
-            .iter()
-            .filter(|s| s.status == SpecStatus::Active)
-            .collect();
-
-        if !ready.is_empty() {
-            println!("READY (can start now):");
-            for spec in &ready {
-                let target = spec.target.as_deref().unwrap_or("-");
-                let impact = dep_counts.get(&spec.id).copied().unwrap_or(0);
-                let impact_str = if impact > 0 {
-                    format!(" [blocks {}]", impact)
-                } else {
-                    String::new()
-                };
-                println!(
-                    "  {:<28} {:<10} {}{}",
-                    spec.id, target, spec.title, impact_str
-                );
-            }
-            printed_section = true;
-        }
-
-        if !active.is_empty() {
-            if printed_section {
-                println!();
-            }
-            println!("ACTIVE (in progress):");
-            for spec in &active {
-                let target = spec.target.as_deref().unwrap_or("-");
-                let impact = dep_counts.get(&spec.id).copied().unwrap_or(0);
-                let impact_str = if impact > 0 {
-                    format!(" [blocks {}]", impact)
-                } else {
-                    String::new()
-                };
-                println!(
-                    "  {:<28} {:<10} {}{}",
-                    spec.id, target, spec.title, impact_str
-                );
-            }
-            printed_section = true;
-        }
-    } else if drafts.is_empty() && paused.is_empty() && unblocked.is_empty() {
-        println!("No specs ready to work on.");
-        println!("\nHint: Specs need status 'ready' or 'active' with all blockers complete.");
-        return Ok(());
-    }
-
-    // UNBLOCKED section — blocked specs whose blockers are now complete
-    if !unblocked.is_empty() {
-        if printed_section {
-            println!();
-        }
-        println!("UNBLOCKED (blockers complete — resume with `patina spec resume <id>`):");
-        for spec in &unblocked {
-            let target = spec.target.as_deref().unwrap_or("-");
-            println!("  {:<28} {:<10} {}", spec.id, target, spec.title);
-        }
-        printed_section = true;
-    }
-
-    // PAUSED section — with age warnings
-    if !paused.is_empty() {
-        if printed_section {
-            println!();
-        }
-        println!("PAUSED (resolve before pausing another):");
-        for spec in &paused {
-            let target = spec.target.as_deref().unwrap_or("-");
-            let age = spec_age_days_from_list(spec);
-            let age_str = if age > 14 {
-                format!(" ({} days — overdue)", age)
-            } else if age > 0 {
-                format!(" ({} days)", age)
-            } else {
-                String::new()
-            };
-            println!("  {:<28} {:<10} {}{}", spec.id, target, spec.title, age_str);
-        }
-        printed_section = true;
-    }
-
-    // DRAFTS section
-    if !drafts.is_empty() {
-        if printed_section {
-            println!();
-        }
-        println!("DRAFTS (need promotion to ready):");
-        for spec in &drafts {
-            let target = spec.target.as_deref().unwrap_or("-");
-            let suffix = if spec.unscraped { " [unscraped]" } else { "" };
-            println!("  {:<28} {:<10} {}{}", spec.id, target, spec.title, suffix);
-        }
-    }
-
-    Ok(())
 }
 
 /// A blocker preventing a spec from being ready
@@ -379,41 +192,6 @@ pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
     specs.sort_by(|a, b| a.id.cmp(&b.id));
 
     Ok(specs)
-}
-
-/// Display blocked specs (human-readable or JSON)
-pub fn show_blocked_specs(json: bool) -> Result<()> {
-    let specs = get_blocked_specs()?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&specs)?);
-        return Ok(());
-    }
-
-    if specs.is_empty() {
-        println!("No blocked specs.");
-        return Ok(());
-    }
-
-    println!("BLOCKED:");
-    for spec in &specs {
-        let target = spec.target.as_deref().unwrap_or("-");
-        print!("  {:<28} {:<10}", spec.id, target);
-
-        // Print blockers
-        for (i, blocker) in spec.blocked_by.iter().enumerate() {
-            if i == 0 {
-                println!(" blocked by: {} ({})", blocker.id, blocker.status);
-            } else {
-                println!(
-                    "  {:<28} {:<10}             {} ({})",
-                    "", "", blocker.id, blocker.status
-                );
-            }
-        }
-    }
-
-    Ok(())
 }
 
 /// Spec info for list display
@@ -586,87 +364,6 @@ pub fn get_all_specs(filters: &ListFilters) -> Result<Vec<SpecInfo>> {
     Ok(specs)
 }
 
-/// Display spec list (human-readable or JSON)
-pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
-    let specs = get_all_specs(filters)?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&specs)?);
-        return Ok(());
-    }
-
-    if specs.is_empty() {
-        println!("No specs found.");
-        if filters.status.is_some() || filters.target.is_some() {
-            println!("  (with current filters)");
-        }
-        return Ok(());
-    }
-
-    // Header
-    println!("{:<28} {:<22} {:<10} TITLE", "ID", "STATUS", "TARGET");
-    println!("{:-<80}", "");
-
-    for spec in &specs {
-        let status_raw = spec
-            .status
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "-".to_string());
-        // Add age suffix for paused/blocked specs
-        let age_suffix = if spec.status == Some(SpecStatus::Paused)
-            || spec.status == Some(SpecStatus::Blocked)
-        {
-            let age = spec_age_days_from_list(spec);
-            if age > 0 {
-                format!(" ({}d)", age)
-            } else {
-                String::new()
-            }
-        } else {
-            String::new()
-        };
-        let status_display = if spec.unscraped {
-            format!("{} [unscraped]", status_raw)
-        } else {
-            format!("{}{}", status_raw, age_suffix)
-        };
-        let target = spec.target.as_deref().unwrap_or("-");
-        println!(
-            "{:<28} {:<22} {:<10} {}",
-            spec.id, status_display, target, spec.title
-        );
-    }
-
-    println!("\n{} spec(s)", specs.len());
-
-    // Warn about completed/abandoned specs still in tree
-    let stale_count = specs
-        .iter()
-        .filter(|s| s.status.is_some_and(|st| st.is_terminal()))
-        .count();
-    if stale_count > 0 {
-        let noun = if stale_count == 1 { "spec" } else { "specs" };
-        eprintln!(
-            "\n\u{26a0} {} completed/abandoned {} still in tree \u{2014} run `patina spec archive --stale` to archive",
-            stale_count, noun
-        );
-    }
-
-    // One-paused-spec constraint status
-    let paused_count = specs
-        .iter()
-        .filter(|s| s.status == Some(SpecStatus::Paused))
-        .count();
-    if paused_count > 0 {
-        let paused_spec = specs.iter().find(|s| s.status == Some(SpecStatus::Paused));
-        if let Some(spec) = paused_spec {
-            eprintln!("\nPaused: {} — resolve before pausing another", spec.id);
-        }
-    }
-
-    Ok(())
-}
-
 /// Spec context — heading outlines + file paths for targeted reading
 #[derive(Debug, Clone, Serialize)]
 pub struct ShowResult {
@@ -802,105 +499,6 @@ pub fn show_spec_value(id: &str) -> Result<ShowResult> {
         path: spec_path,
         design_path: design_path.map(|p| p.to_string_lossy().to_string()),
     })
-}
-
-/// Display spec context — outline mode (same as MCP)
-///
-/// Shows frontmatter, heading outlines, key files, and file paths.
-/// Use `cat` or a Read tool on the printed path for full content.
-pub fn show_spec(id: &str, handoff: bool, json: bool) -> Result<()> {
-    let result = show_spec_value(id)?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-        return Ok(());
-    }
-
-    // Human-readable output
-    let status = result.frontmatter.status.map_or("unknown", |s| s.as_str());
-    println!("{} [{}]", result.id, status);
-    println!();
-
-    if handoff {
-        if !result.resolved_decisions.is_empty() {
-            println!("Resolved decisions:");
-            for item in &result.resolved_decisions {
-                println!("  {}", item);
-            }
-            println!();
-        }
-        if !result.implementation_order.is_empty() {
-            println!("Implementation order:");
-            for item in &result.implementation_order {
-                println!("  {}", item);
-            }
-            println!();
-        }
-        if !result.direct_code_targets.is_empty() {
-            println!("Direct code targets:");
-            for item in &result.direct_code_targets {
-                println!("  {}", item);
-            }
-            println!();
-        }
-        if !result.verification_points.is_empty() {
-            println!("Verification:");
-            for item in &result.verification_points {
-                println!("  {}", item);
-            }
-            println!();
-        }
-        if !result.open_questions.is_empty() {
-            println!("Open questions:");
-            for item in &result.open_questions {
-                println!("  {}", item);
-            }
-            println!();
-        }
-        println!("Spec: {}", result.path);
-        if let Some(dp) = &result.design_path {
-            println!("Design: {}", dp);
-        }
-        return Ok(());
-    }
-
-    // Exit criteria
-    let criteria = &result.frontmatter.exit_criteria;
-    if !criteria.is_empty() {
-        let checked = criteria.iter().filter(|c| c.checked).count();
-        println!("Exit criteria: {}/{}", checked, criteria.len());
-        for c in criteria {
-            let mark = if c.checked { "x" } else { " " };
-            println!("  [{}] {}", mark, c.text);
-        }
-        println!();
-    }
-
-    // Outline
-    for heading in &result.outline {
-        println!("{}", heading);
-    }
-
-    if let Some(design_outline) = &result.design_outline {
-        println!();
-        for heading in design_outline {
-            println!("{}", heading);
-        }
-    }
-
-    if !result.files.is_empty() {
-        println!("\nKey files:");
-        for f in &result.files {
-            println!("  {}", f);
-        }
-    }
-
-    println!("\nSpec: {}", result.path);
-    if let Some(dp) = &result.design_path {
-        println!("Design: {}", dp);
-    }
-
-    Ok(())
 }
 
 /// Extract file paths from the ## Key Files section.
@@ -1078,41 +676,6 @@ pub fn history_spec_value(id: &str) -> Result<HistoryResult> {
         events,
         total_days,
     })
-}
-
-/// Display spec history (human-readable or JSON)
-pub fn history_spec(id: &str, json: bool) -> Result<()> {
-    let result = history_spec_value(id)?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-        return Ok(());
-    }
-
-    if result.events.is_empty() {
-        println!("History: {}\n", id);
-        println!("  (no lifecycle tags found)");
-        return Ok(());
-    }
-
-    println!("History: {}\n", id);
-    for event in &result.events {
-        let days_str = match event.days_in_state {
-            Some(0) => "  [<1d]".to_string(),
-            Some(d) => format!("  [{}d]", d),
-            None => String::new(),
-        };
-        println!(
-            "  {}  {:<10} {}{}",
-            event.date, event.state, event.message, days_str
-        );
-    }
-
-    if let Some(total) = result.total_days {
-        println!("\n  Total: {}d", total);
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
