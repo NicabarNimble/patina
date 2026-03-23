@@ -2659,18 +2659,30 @@ dependencies = [
 name = "mother"
 version = "0.1.0"
 dependencies = [
+ "age",
  "anyhow",
+ "atty",
+ "chacha20poly1305",
  "chrono",
+ "console",
+ "core-foundation",
  "dirs 5.0.1",
+ "hkdf",
  "httparse",
  "libc",
+ "rand 0.8.5",
+ "reqwest",
  "rusqlite",
+ "security-framework",
+ "security-framework-sys",
  "serde",
  "serde_json",
  "serde_yaml",
+ "sha2",
  "tempfile",
  "toml 0.8.23",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]

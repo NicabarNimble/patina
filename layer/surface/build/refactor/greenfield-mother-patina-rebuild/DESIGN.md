@@ -255,8 +255,14 @@ M3c progress evidence (current session):
 - Removed legacy local fallback path from proxied `patina secrets` authority operations.
 - Removed practical effect of `PATINA_SECRETS_LEGACY_FALLBACK`; `patina secrets` now requires Mother authority for proxied operations regardless of fallback env setting.
 - Runtime verification: with Mother on, `patina secrets` succeeds; with Mother off, command hard-fails with explicit authority-unavailable error.
-- Moved secrets authority operation contract/parsing/response shaping into Mother crate module (`mother/src/secrets_authority_api.rs`), with Patina-side backend adapter wiring.
-- Isolated Patina-side backend adapter into dedicated Mother-facing module (`src/mother/secrets_backend.rs`) so dispatch routing is cleanly separated from implementation wiring.
+- Moved secrets authority operation contract/parsing/response shaping into Mother crate module (`mother/src/secrets_authority_api.rs`) and routed dispatch via a Mother-owned backend implementation.
+
+M3d progress evidence (current session):
+
+- Added Mother-owned secrets internals module surface (`mother/src/secrets_authority_backend/`) covering identity, encrypted-file/keychain storage, recipients/registry, vault IO, and session-cache interactions.
+- Added Mother-owned secrets/serve path helpers (`mother/src/secrets_paths.rs`) so authority internals no longer depend on Patina `crate::paths`.
+- Removed Patina-side backend adapter seam (`src/mother/secrets_backend.rs`); `secrets-authority` dispatch now binds directly to `mother_crate::secrets_authority_backend::MotherSecretsAuthorityBackend`.
+- Build verification: `cargo check -q` passes with new Mother-owned authority wiring.
 
 ## Seam Classification Table (GF1 enforcement)
 
