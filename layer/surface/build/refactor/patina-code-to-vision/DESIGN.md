@@ -574,6 +574,25 @@ Progress (2026-03-22):
 4. Child commands fail gracefully without Mother.
 5. Project connect resolves children.
 
+### Phase 9 Progress Report (2026-03-22)
+
+- Commits:
+  - `c5182490` — refactor: remove unused scry json helper surfaces
+  - `f5bd0e49` — refactor: remove unused assay json helper paths
+  - `02800fb3` — refactor: remove unused plugin shim and schema value wrappers
+  - `dba3c648` — refactor: drop unused toy catalog and snippet export
+  - `92cee02f` — refactor: remove legacy session compatibility command paths
+- Commands run:
+  - `cargo check -q && echo "cargo check -q: ok"`
+  - `cargo test -q`
+- Observed key lines:
+  - `cargo check -q: ok` (no warning output)
+  - workspace tests pass (`381 passed, 0 failed, 2 ignored`; `309 passed, 0 failed, 1 ignored`; remaining package suites pass)
+- CV truth-map effect:
+  - CV5 warning gate is now satisfiable and updated to `verified-true` in SPEC.
+  - CV1/CV2 remain `verified-partial` pending final decision on adapter-backed seam ownership scope.
+  - CV11 remains `verified-partial`; scrape seam is structured but final extraction contract/parity gate is still open.
+
 ## Direct Code Targets
 
 ### Phase 1 — daemon routing + dead code

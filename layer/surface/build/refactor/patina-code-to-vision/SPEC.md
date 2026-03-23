@@ -79,7 +79,7 @@ Patina has a clear architecture: Patina is the knowledge protocol (beliefs at th
 - Daemon stubs sit in front of working core verbs returning "not yet implemented"
 - Spec, lake, session, and doctor are woven into core as if they're fundamental
 - Plugin vocabulary persists half-migrated (src/plugin/ and src/child/ coexist, plugins/ output dir at root)
-- 40 warnings remain from partially severed command paths (warning cleanup must be proof-driven)
+- warning debt from partially severed command paths had to be closed with proof-driven cleanup
 - src/toys/ has toy host implementations in the CLI binary — should be in mother/ crate
 
 ### Claim Discipline (required)
@@ -227,12 +227,12 @@ Mother resolves **project children** on connect:
 - Core verb commands still run extracted daemon-first probes (`try_daemon_*`) with fallback filtering on placeholder responses.
 - `spec`, `lake`, `doctor`, `session`, and `measure` remain core CLI command surfaces.
 - Vocabulary bridge is partial: canonical child manifests are in place, but `src/plugin/` and `src/child/` coexist.
-- `cargo check` reports 40 warnings.
+- `cargo check -q` now runs warning-free; CV truth map/evidence must stay in sync with current command proof.
 - Scrape code path is already grammar-driven and multi-language-capable; extraction work must preserve grammar abstraction.
 
 ### CV Truth Map (Phase 0 baseline)
 
-Refreshed: 2026-03-22
+Refreshed: 2026-03-22 (post warning-debt cleanup)
 
 Status keys:
 
@@ -252,7 +252,7 @@ Evidence format rules for this table:
 | CV2 | verified-partial | CLI start/stop/status is thin lifecycle transport (`src/commands/mother/mod.rs` calling `mother_crate::lifecycle`/`mother_crate::socket`); explicit adapter bridges remain for core-domain orchestration boundaries. |
 | CV3 | verified-true | Runtime policy is explicitly documented in this spec and command-tested with `resources/scripts/check-core-verb-policy.sh --mode off --isolated` (covers `scrape`, `scry`, `assay`, `context`, `belief`, `measure`, `oxidize`). |
 | CV4 | verified-true | Command proof: `grep "try_daemon_|not yet implemented" src/commands/{context.rs,measure/mod.rs,spec/mod.rs,lake.rs,scry/internal/routing.rs}` => no matches (2026-03-22). |
-| CV5 | verified-false | Command proof: `cargo check` output contains `patina-ai (bin "patina") generated 40 warnings` (2026-03-22 baseline). |
+| CV5 | verified-true | Command proof: `cargo check -q && echo "cargo check -q: ok"` prints `cargo check -q: ok` with no warning output (2026-03-22). |
 | CV6 | verified-true | Runtime code is child-vocabulary canonical (`src/child/`); command proof: `rg "PluginManifest|PluginWorld|PluginEngine|PluginRole|PluginProvides" src/` => no matches; `test -d src/plugin && echo exists || echo missing` => `missing`; `rg "plugin\.toml|\[plugin\]" src/child src/main.rs src/lib.rs src/commands/setup/grammars.rs sdk/patina-sdk/src` => no matches. |
 | CV7 | verified-true | `cargo run -q -- mother status` now shows `session-writer: healthy` under loaded daemon children and marks project need `session-writer: ok`. |
 | CV8 | verified-true | Project manifest contract exists at `.patina/manifest.toml` (`schema = 1`, `[needs].children = [...]`) and `cargo run -q -- mother status` now resolves/report all required children (`spec-manager`, `doctor`, `lake-manager`, `session-writer`) as loaded/ok. |
