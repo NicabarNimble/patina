@@ -25,8 +25,6 @@ pub use internal::subcommands::{
     execute_copy, execute_feedback, execute_open, execute_orient, execute_recent, execute_why,
 };
 
-// Re-export search functions for external use
-pub use internal::search::scry_belief as scry_belief_fn;
 pub use internal::search::{scry, scry_text};
 
 /// Result from a scry query
@@ -182,72 +180,6 @@ pub fn execute_detail(query_id: &str, rank: usize) -> Result<()> {
     println!("\n{}", "─".repeat(60));
     println!("Query ID: {}", query_id);
     Ok(())
-}
-
-/// Return detail view as JSON string — called by MCP handler
-pub fn detail_json(query_id: &str, rank: usize) -> Result<String> {
-    use internal::logging::get_query_results;
-    use rusqlite::Connection;
-    use serde::Serialize;
-
-    #[derive(Serialize)]
-    struct DetailOutput {
-        doc_id: String,
-        rank: usize,
-        score: f64,
-        event_type: String,
-        content: String,
-        query_id: String,
-    }
-
-    let results = get_query_results(query_id)?;
-    if rank == 0 || rank > results.len() {
-        anyhow::bail!(
-            "Invalid rank {}. Query {} had {} results.",
-            rank,
-            query_id,
-            results.len()
-        );
-    }
-
-    let (doc_id, score) = &results[rank - 1];
-
-    // Fetch full content from patina.db eventlog
-    let lookup_id = if let Some(stripped) = doc_id.strip_prefix("belief:") {
-        stripped
-    } else {
-        doc_id.as_str()
-    };
-    let conn = Connection::open(patina::eventlog::PATINA_DB)?;
-    let row: Option<(String, String)> = conn
-        .query_row(
-            "SELECT event_type, data FROM eventlog WHERE source_id = ? ORDER BY seq DESC LIMIT 1",
-            [lookup_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .ok();
-
-    let (event_type, content) = match row {
-        Some((et, data)) => {
-            let formatted = format_detail(&et, &data);
-            (et, formatted)
-        }
-        None => (
-            String::new(),
-            format!("(No content found in eventlog for doc_id: {})", doc_id),
-        ),
-    };
-
-    let output = DetailOutput {
-        doc_id: doc_id.clone(),
-        rank,
-        score: *score as f64,
-        event_type,
-        content,
-        query_id: query_id.to_string(),
-    };
-
-    Ok(serde_json::to_string_pretty(&output)?)
 }
 
 /// Format full detail content from eventlog data — shared between CLI and MCP
