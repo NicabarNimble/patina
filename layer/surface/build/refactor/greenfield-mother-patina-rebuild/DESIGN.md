@@ -217,6 +217,21 @@ M3 functional target:
 
 - Move secret authority ownership to Mother control-plane while preserving `patina secrets` as the user-facing client UX.
 
+M3 contract-first invariants:
+
+- Secret scope model is explicit and enforced: `project` -> `persona` -> `machine` resolution order.
+- Secret authority API is OS-agnostic by contract (backend-specific implementations may vary).
+- `patina secrets` remains UX/client surface; authority implementation lives behind Mother control-plane APIs.
+- Secret records carrying OAuth credentials must retain provider metadata (`provider`, `account_id`, granted scope set, expiry/refresh hints) for safe lookup/reuse.
+- Scope/persona mismatch is deny-by-default; no implicit cross-persona fallback.
+- Platform policy for this lane: macOS + Linux supported, Windows unsupported by design.
+
+M3 execution slices (sequenced):
+
+1. M3a: Introduce Mother secret authority API + Patina command proxy path (legacy Patina authority kept as rollback shim).
+2. M3b: Flip default to Mother authority and verify behavior/security parity.
+3. M3c: Remove legacy Patina-owned secret authority implementation after parity and migration checks pass.
+
 ## Seam Classification Table (GF1 enforcement)
 
 | Seam | Classification | Owner | Removal trigger |
