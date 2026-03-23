@@ -69,34 +69,6 @@ fn is_valid_id(id: &str) -> bool {
     chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
-/// Create a new spec draft — scaffold directory, write frontmatter, commit.
-pub fn create_spec(
-    type_str: &str,
-    id: &str,
-    title: Option<&str>,
-    description: Option<&str>,
-    blocked_by: Vec<String>,
-    related: Vec<String>,
-    json: bool,
-) -> Result<()> {
-    let result = create_spec_value(type_str, id, title, description, blocked_by, related)?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        println!("Created: {}", result.path);
-        println!("  Type:    {}", result.spec_type);
-        println!("  Status:  {}", result.status);
-        if let Some(ref session) = result.session_origin {
-            println!("  Session: {}", session);
-        }
-        println!();
-        println!("Edit: $EDITOR {}", result.path);
-    }
-
-    Ok(())
-}
-
 /// Create a new spec draft and return structured result (for MCP).
 pub fn create_spec_value(
     type_str: &str,
