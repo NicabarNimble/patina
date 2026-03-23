@@ -16,6 +16,7 @@ pub mod protocol;
 pub mod registry;
 pub mod runtime;
 pub mod secrets;
+pub mod secrets_authority_api;
 pub mod session_writer;
 pub mod socket;
 pub mod state;

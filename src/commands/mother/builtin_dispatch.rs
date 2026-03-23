@@ -1,4 +1,5 @@
 use mother_crate::http_daemon::{json_error, HttpResponse};
+use mother_crate::secrets_authority_api as secrets_api;
 use patina::secrets;
 
 pub(super) fn handle_builtin_child_request(
@@ -112,192 +113,104 @@ pub(super) fn handle_builtin_child_request(
 }
 
 fn handle_secrets_authority_dispatch(payload: serde_json::Value) -> HttpResponse {
-    let op = payload
-        .get("op")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
+    secrets_api::dispatch(payload, &PatinaSecretsAuthorityBackend)
+}
 
-    let project_root = payload
-        .get("project_root")
-        .and_then(|v| v.as_str())
-        .map(std::path::PathBuf::from);
+struct PatinaSecretsAuthorityBackend;
 
-    match op {
-        "add_secret" => {
-            let name = match payload.get("name").and_then(|v| v.as_str()) {
-                Some(value) => value,
-                None => return json_error(400, "Missing 'name' for add_secret"),
-            };
-            let value = match payload.get("value").and_then(|v| v.as_str()) {
-                Some(value) => value,
-                None => return json_error(400, "Missing 'value' for add_secret"),
-            };
-            let env_name = payload.get("env").and_then(|v| v.as_str());
-            let global = payload
-                .get("global")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+impl secrets_api::SecretsAuthorityBackend for PatinaSecretsAuthorityBackend {
+    fn add_secret(
+        &self,
+        input: secrets_api::AddSecretInput,
+    ) -> anyhow::Result<secrets_api::AddSecretResult> {
+        let result = secrets::add_secret(
+            &input.name,
+            &input.value,
+            input.env_name.as_deref(),
+            input.global,
+            input.project_root.as_deref(),
+        )?;
+        Ok(secrets_api::AddSecretResult {
+            env_var: result.env_var,
+            created_vault: result.created_vault,
+        })
+    }
 
-            match secrets::add_secret(name, value, env_name, global, project_root.as_deref()) {
-                Ok(result) => HttpResponse::json(
-                    200,
-                    &serde_json::json!({
-                        "status": "ok",
-                        "env_var": result.env_var,
-                        "created_vault": result.created_vault,
-                    }),
-                ),
-                Err(error) => json_error(400, &error.to_string()),
-            }
+    fn remove_secret(&self, input: secrets_api::RemoveSecretInput) -> anyhow::Result<()> {
+        secrets::remove_secret(&input.name, input.global, input.project_root.as_deref())
+    }
+
+    fn add_recipient(&self, input: secrets_api::RecipientInput) -> anyhow::Result<()> {
+        secrets::add_recipient(&input.project_root, &input.key)
+    }
+
+    fn remove_recipient(&self, input: secrets_api::RecipientInput) -> anyhow::Result<()> {
+        secrets::remove_recipient(&input.project_root, &input.key)
+    }
+
+    fn list_recipients(&self, project_root: std::path::PathBuf) -> anyhow::Result<Vec<String>> {
+        secrets::list_recipients(&project_root)
+    }
+
+    fn status(
+        &self,
+        project_root: Option<std::path::PathBuf>,
+    ) -> anyhow::Result<secrets_api::StatusResponse> {
+        let status = secrets::check_status(project_root.as_deref())?;
+        Ok(secrets_api::StatusResponse {
+            identity_source: status.identity_source.map(|s| s.to_string()),
+            recipient_key: status.recipient_key,
+            global: secrets_api::StatusVault {
+                exists: status.global.exists,
+                secret_count: status.global.secret_count,
+                recipient_count: status.global.recipient_count,
+                secret_names: status.global.secret_names,
+            },
+            project: status.project.map(|p| secrets_api::StatusVault {
+                exists: p.exists,
+                secret_count: p.secret_count,
+                recipient_count: p.recipient_count,
+                secret_names: p.secret_names,
+            }),
+        })
+    }
+
+    fn lock_session(&self) -> anyhow::Result<()> {
+        secrets::lock_session()
+    }
+
+    fn export_identity(&self) -> anyhow::Result<String> {
+        Ok(secrets::export_identity()?.to_string())
+    }
+
+    fn import_identity(&self, identity: String) -> anyhow::Result<String> {
+        secrets::import_identity(&identity)
+    }
+
+    fn reset_identity(&self) -> anyhow::Result<()> {
+        secrets::reset_identity()
+    }
+
+    fn setup_claude_token(
+        &self,
+        token: String,
+        project_root: Option<std::path::PathBuf>,
+    ) -> anyhow::Result<secrets_api::SetupClaudeTokenResult> {
+        let replacing = matches!(secrets::get_global_secret("claude-oauth"), Ok(Some(_)));
+        let result = secrets::add_secret(
+            "claude-oauth",
+            &token,
+            Some("CLAUDE_CODE_OAUTH_TOKEN"),
+            true,
+            project_root.as_deref(),
+        )?;
+        if let Ok(key) = secrets::export_identity() {
+            let _ = secrets::import_identity(&key);
         }
-        "remove_secret" => {
-            let name = match payload.get("name").and_then(|v| v.as_str()) {
-                Some(value) => value,
-                None => return json_error(400, "Missing 'name' for remove_secret"),
-            };
-            let global = payload
-                .get("global")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-
-            match secrets::remove_secret(name, global, project_root.as_deref()) {
-                Ok(()) => HttpResponse::json(200, &serde_json::json!({"status": "ok"})),
-                Err(error) => json_error(400, &error.to_string()),
-            }
-        }
-        "add_recipient" => {
-            let key = match payload.get("key").and_then(|v| v.as_str()) {
-                Some(value) => value,
-                None => return json_error(400, "Missing 'key' for add_recipient"),
-            };
-            let Some(project_root) = project_root.as_deref() else {
-                return json_error(400, "Missing 'project_root' for add_recipient");
-            };
-
-            match secrets::add_recipient(project_root, key) {
-                Ok(()) => HttpResponse::json(200, &serde_json::json!({"status": "ok"})),
-                Err(error) => json_error(400, &error.to_string()),
-            }
-        }
-        "remove_recipient" => {
-            let key = match payload.get("key").and_then(|v| v.as_str()) {
-                Some(value) => value,
-                None => return json_error(400, "Missing 'key' for remove_recipient"),
-            };
-            let Some(project_root) = project_root.as_deref() else {
-                return json_error(400, "Missing 'project_root' for remove_recipient");
-            };
-
-            match secrets::remove_recipient(project_root, key) {
-                Ok(()) => HttpResponse::json(200, &serde_json::json!({"status": "ok"})),
-                Err(error) => json_error(400, &error.to_string()),
-            }
-        }
-        "list_recipients" => {
-            let Some(project_root) = project_root.as_deref() else {
-                return json_error(400, "Missing 'project_root' for list_recipients");
-            };
-
-            match secrets::list_recipients(project_root) {
-                Ok(recipients) => HttpResponse::json(
-                    200,
-                    &serde_json::json!({
-                        "status": "ok",
-                        "recipients": recipients,
-                    }),
-                ),
-                Err(error) => json_error(400, &error.to_string()),
-            }
-        }
-        "status" => match secrets::check_status(project_root.as_deref()) {
-            Ok(status) => HttpResponse::json(
-                200,
-                &serde_json::json!({
-                    "status": "ok",
-                    "identity_source": status.identity_source.map(|s| s.to_string()),
-                    "recipient_key": status.recipient_key,
-                    "global": {
-                        "exists": status.global.exists,
-                        "secret_count": status.global.secret_count,
-                        "recipient_count": status.global.recipient_count,
-                        "secret_names": status.global.secret_names,
-                    },
-                    "project": status.project.map(|p| serde_json::json!({
-                        "exists": p.exists,
-                        "secret_count": p.secret_count,
-                        "recipient_count": p.recipient_count,
-                        "secret_names": p.secret_names,
-                    })),
-                }),
-            ),
-            Err(error) => json_error(400, &error.to_string()),
-        },
-        "lock_session" => match secrets::lock_session() {
-            Ok(()) => HttpResponse::json(200, &serde_json::json!({"status": "ok"})),
-            Err(error) => json_error(400, &error.to_string()),
-        },
-        "export_identity" => match secrets::export_identity() {
-            Ok(identity) => HttpResponse::json(
-                200,
-                &serde_json::json!({
-                    "status": "ok",
-                    "identity": identity.to_string(),
-                }),
-            ),
-            Err(error) => json_error(400, &error.to_string()),
-        },
-        "import_identity" => {
-            let identity = match payload.get("identity").and_then(|v| v.as_str()) {
-                Some(value) => value,
-                None => return json_error(400, "Missing 'identity' for import_identity"),
-            };
-
-            match secrets::import_identity(identity) {
-                Ok(recipient) => HttpResponse::json(
-                    200,
-                    &serde_json::json!({
-                        "status": "ok",
-                        "recipient": recipient,
-                    }),
-                ),
-                Err(error) => json_error(400, &error.to_string()),
-            }
-        }
-        "reset_identity" => match secrets::reset_identity() {
-            Ok(()) => HttpResponse::json(200, &serde_json::json!({"status": "ok"})),
-            Err(error) => json_error(400, &error.to_string()),
-        },
-        "setup_claude_token" => {
-            let token = match payload.get("token").and_then(|v| v.as_str()) {
-                Some(value) => value,
-                None => return json_error(400, "Missing 'token' for setup_claude_token"),
-            };
-
-            let replacing = matches!(secrets::get_global_secret("claude-oauth"), Ok(Some(_)));
-            match secrets::add_secret(
-                "claude-oauth",
-                token,
-                Some("CLAUDE_CODE_OAUTH_TOKEN"),
-                true,
-                project_root.as_deref(),
-            ) {
-                Ok(result) => {
-                    if let Ok(key) = secrets::export_identity() {
-                        let _ = secrets::import_identity(&key);
-                    }
-                    HttpResponse::json(
-                        200,
-                        &serde_json::json!({
-                            "status": "ok",
-                            "replacing": replacing,
-                            "created_vault": result.created_vault,
-                            "env_var": result.env_var,
-                        }),
-                    )
-                }
-                Err(error) => json_error(400, &error.to_string()),
-            }
-        }
-        _ => json_error(400, "Unknown secrets-authority operation"),
+        Ok(secrets_api::SetupClaudeTokenResult {
+            replacing,
+            created_vault: result.created_vault,
+            env_var: result.env_var,
+        })
     }
 }
