@@ -85,25 +85,18 @@ struct SessionGit {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum SessionSurfaceMode {
-    CompatibilityCli,
     NativeInterface { interface_kind: InterfaceKind },
 }
 
 impl SessionSurfaceMode {
-    fn compatibility_projection(self) -> bool {
-        matches!(self, Self::CompatibilityCli)
-    }
-
     fn interface_kind(self) -> InterfaceKind {
         match self {
-            Self::CompatibilityCli => InterfaceKind::LegacyCli,
             Self::NativeInterface { interface_kind } => interface_kind,
         }
     }
 
     fn participant_role(self) -> &'static str {
         match self {
-            Self::CompatibilityCli => "operator",
             Self::NativeInterface { .. } => "interface",
         }
     }
@@ -117,14 +110,6 @@ pub(crate) struct SessionStartRequest {
 }
 
 impl SessionStartRequest {
-    pub(crate) fn compatibility_cli(title: &str, adapter: Option<&str>) -> Self {
-        Self {
-            title: title.to_string(),
-            adapter: adapter.unwrap_or_default().to_string(),
-            mode: SessionSurfaceMode::CompatibilityCli,
-        }
-    }
-
     pub(crate) fn native(title: &str, adapter: &str) -> Self {
         Self {
             title: title.to_string(),
@@ -430,8 +415,6 @@ pub(crate) fn start_session_value(
         (!request.adapter.is_empty()).then_some(request.adapter.as_str()),
         project_root,
     )?;
-    let session_path = project_root.join(ACTIVE_SESSION_PATH);
-    let last_update_path = project_root.join(LAST_UPDATE_PATH);
     let dev_branch = dev_branch_name(project_root);
     let mode = request.mode;
 
@@ -445,22 +428,6 @@ pub(crate) fn start_session_value(
             "Native session mode requires a native interface adapter, got '{}'",
             adapter
         );
-    }
-
-    if mode.compatibility_projection() && session_path.exists() {
-        let content = fs::read_to_string(&session_path).unwrap_or_default();
-        let line_count = content.lines().count();
-        if line_count > 10 {
-            if let Ok(old_id) = read_session_id(&session_path) {
-                let archive_path = project_root
-                    .join(SESSIONS_DIR)
-                    .join(format!("{}.md", old_id));
-                fs::create_dir_all(project_root.join(SESSIONS_DIR))?;
-                let archived = content.replacen("status: active", "status: archived", 1);
-                fs::write(&archive_path, archived)?;
-            }
-        }
-        fs::remove_file(&session_path)?;
     }
 
     let branch = git::current_branch().unwrap_or_else(|_| "none".to_string());
@@ -503,12 +470,6 @@ pub(crate) fn start_session_value(
         },
     )?;
 
-    if mode.compatibility_projection() {
-        fs::create_dir_all(session_path.parent().unwrap())?;
-        fs::write(&session_path, &start.document)?;
-        fs::write(&last_update_path, now.format("%H:%M").to_string())?;
-    }
-
     let conn = patina::eventlog::open_events_db_at(project_root)?;
     let timestamp = now.to_rfc3339();
     let data = json!({
@@ -520,11 +481,7 @@ pub(crate) fn start_session_value(
         "starting_commit": start.handle.starting_commit,
         "tag": start.handle.start_tag,
     });
-    let source_path = if mode.compatibility_projection() {
-        ACTIVE_SESSION_PATH.to_string()
-    } else {
-        start.handle.artifact_path.display().to_string()
-    };
+    let source_path = start.handle.artifact_path.display().to_string();
     patina::eventlog::insert_event(
         &conn,
         "session.started",
@@ -545,9 +502,7 @@ pub(crate) fn start_session_value(
         starting_commit: start.handle.starting_commit.clone(),
         start_tag: start.handle.start_tag.clone(),
         artifact_path: start.handle.artifact_path.display().to_string(),
-        active_session_path: mode
-            .compatibility_projection()
-            .then(|| session_path.display().to_string()),
+        active_session_path: None,
         last_session_path: project_root.join(LAST_SESSION_PATH).display().to_string(),
     })
 }
@@ -2468,39 +2423,6 @@ git:
         assert_eq!(json["commits_this_session"].as_u64(), Some(2));
         assert!(json["recent_commits"].is_array());
         assert!(json["session_changed_files"].is_array());
-    }
-
-    #[test]
-    fn session_start_mode_keeps_native_and_compatibility_semantics_separate() {
-        let temp = setup_project();
-
-        let native = in_project(temp.path(), || {
-            start_session_value(
-                temp.path(),
-                SessionStartRequest::native("Native session", "opencode"),
-            )
-            .unwrap()
-        });
-
-        assert_eq!(native.interface, "opencode");
-        assert!(native.active_session_path.is_none());
-        assert!(!temp.path().join(ACTIVE_SESSION_PATH).exists());
-        let native_document = fs::read_to_string(&native.artifact_path).unwrap();
-        assert!(native_document.contains("interface: opencode"));
-
-        let compatibility = in_project(temp.path(), || {
-            start_session_value(
-                temp.path(),
-                SessionStartRequest::compatibility_cli("Compatibility session", Some("opencode")),
-            )
-            .unwrap()
-        });
-
-        assert_eq!(compatibility.interface, "legacy-cli");
-        assert!(compatibility.active_session_path.is_some());
-        assert!(temp.path().join(ACTIVE_SESSION_PATH).exists());
-        let compatibility_document = fs::read_to_string(&compatibility.artifact_path).unwrap();
-        assert!(compatibility_document.contains("interface: legacy-cli"));
     }
 
     #[test]
