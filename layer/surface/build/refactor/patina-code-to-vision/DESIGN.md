@@ -552,6 +552,12 @@ children = ["spec-manager", "doctor", "lake-manager", "session-writer"]
 - Project connects, Mother reads manifest, reports status
 - Missing children identified clearly
 
+Progress (2026-03-22):
+
+- Added `.patina/manifest.toml` with schema + needs.children contract.
+- `patina mother status` now reads project manifest (when in project root) and reports required children as `ok`/`missing` against loaded daemon children.
+- Automatic child installation/resolution on connect remains pending.
+
 ## Phase 8: Version cleanup (CV16)
 
 1. `cli: decouple version from spec system` — patina version shows version. Period. No spec status query.
