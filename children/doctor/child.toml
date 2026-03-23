@@ -1,0 +1,17 @@
+[child]
+name = "patina-doctor"
+version = "0.1.0"
+description = "Doctor child"
+kind = "knowledge-child"
+role = "app"
+patina_min = "0.41.0"
+
+[needs]
+toys = ["log", "state"]
+
+[provides]
+child = "doctor"
+
+[relationships]
+emits = []
+listens = []

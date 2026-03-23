@@ -3046,6 +3046,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "patina-ai-child-doctor"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk",
+ "serde_json",
+]
+
+[[package]]
 name = "patina-ai-child-ducklake"
 version = "0.1.0"
 dependencies = [
@@ -3055,7 +3063,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "patina-ai-child-lake-manager"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk",
+ "serde_json",
+]
+
+[[package]]
 name = "patina-ai-child-session-writer"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk",
+ "serde_json",
+]
+
+[[package]]
+name = "patina-ai-child-spec-manager"
 version = "0.1.0"
 dependencies = [
  "patina-sdk",
