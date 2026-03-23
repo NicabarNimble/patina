@@ -151,6 +151,7 @@ Typed bootstrap config rule (normative):
 Typed identity boundary rule (normative):
 
 - Handshake/session scope identifiers (`project_uid`, `persona_uid`) should use typed wrappers/newtypes at boundary APIs so attach/lookup calls cannot accidentally swap or drop scope semantics.
+- Interface scope (`interface_kind`) should also use a typed wrapper at handshake/session-lookup boundaries.
 
 ## M1 Acceptance Checklist (binary pass/fail)
 

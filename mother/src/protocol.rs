@@ -23,6 +23,16 @@ impl PersonaUid {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(transparent)]
+pub struct InterfaceKindId(pub String);
+
+impl InterfaceKindId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Envelope {
     pub v: u32,
@@ -55,7 +65,7 @@ pub struct ConnectPayload {
     /// Stable project identity from `.patina/uid`.
     pub project_uid: ProjectUid,
     /// Interface runtime kind (`opencode`, `claude`, `gemini`, ...).
-    pub interface_kind: String,
+    pub interface_kind: InterfaceKindId,
     /// Optional human/debug path. Not authoritative for identity.
     #[serde(default, alias = "project")]
     pub project_root: Option<String>,

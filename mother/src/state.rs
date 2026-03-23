@@ -130,6 +130,23 @@ impl PersonaUid {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct InterfaceKindId(String);
+
+impl InterfaceKindId {
+    pub fn new(value: impl Into<String>) -> Result<Self> {
+        let value = value.into();
+        if value.trim().is_empty() {
+            anyhow::bail!("interface_kind must not be empty");
+        }
+        Ok(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct MotherSessionRecord {
     pub runtime_id: String,
@@ -929,7 +946,7 @@ impl KnowledgeRuntimeStore {
         &self,
         project_uid: &ProjectUid,
         adapter_name: &str,
-        interface_kind: &str,
+        interface_kind: &InterfaceKindId,
         persona_uid: Option<&PersonaUid>,
     ) -> Result<Option<MotherSessionRecord>> {
         let conn = self.open()?;
@@ -950,7 +967,7 @@ impl KnowledgeRuntimeStore {
             params![
                 project_uid.as_str(),
                 adapter_name,
-                interface_kind,
+                interface_kind.as_str(),
                 persona_uid.map(PersonaUid::as_str)
             ],
             map_mother_session_row,
@@ -1184,19 +1201,26 @@ mod tests {
         store.create_mother_session(&second, &[]).unwrap();
 
         let project_uid = ProjectUid::new("proj-1234").unwrap();
+        let opencode_kind = InterfaceKindId::new("opencode").unwrap();
+        let gemini_kind = InterfaceKindId::new("gemini").unwrap();
         let active = store.list_active_mother_sessions(&project_uid).unwrap();
         assert_eq!(active.len(), 2);
         let persona_uid = PersonaUid::new("persona-1").unwrap();
         let missing_persona_uid = PersonaUid::new("persona-missing").unwrap();
         assert!(store
-            .find_active_mother_session_for_interface(&project_uid, "opencode", "opencode", None,)
+            .find_active_mother_session_for_interface(
+                &project_uid,
+                "opencode",
+                &opencode_kind,
+                None,
+            )
             .unwrap()
             .is_some());
         assert!(store
             .find_active_mother_session_for_interface(
                 &project_uid,
                 "gemini",
-                "gemini",
+                &gemini_kind,
                 Some(&persona_uid),
             )
             .unwrap()
@@ -1205,7 +1229,7 @@ mod tests {
             .find_active_mother_session_for_interface(
                 &project_uid,
                 "gemini",
-                "gemini",
+                &gemini_kind,
                 Some(&missing_persona_uid),
             )
             .unwrap()
