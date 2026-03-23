@@ -1,6 +1,7 @@
 pub mod broker;
 pub mod checkpoint;
 pub mod daemon;
+pub mod daemon_lifecycle;
 pub mod events;
 pub mod http_api;
 pub mod http_daemon;

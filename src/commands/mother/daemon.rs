@@ -346,8 +346,9 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         }
 
         let socket_path = patina::paths::serve::socket_path();
-        write_pid_file()?;
-        register_signal_handlers();
+        let pid_path = patina::paths::serve::pid_path();
+        mother_crate::daemon_lifecycle::write_pid_file(&pid_path)?;
+        mother_crate::daemon_lifecycle::register_signal_handlers(pid_path, socket_path.clone());
 
         println!("🚀 Mother daemon starting (extracted mode)...");
         println!("   PID: {}", std::process::id());
@@ -481,12 +482,13 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     let state = Arc::new(ServerState::new(String::new(), registry));
     let listener = super::setup_unix_listener()?;
     let socket_path = patina::paths::serve::socket_path();
+    let pid_path = patina::paths::serve::pid_path();
 
     // Write PID file
-    write_pid_file()?;
+    mother_crate::daemon_lifecycle::write_pid_file(&pid_path)?;
 
     // Register signal handlers for cleanup
-    register_signal_handlers();
+    mother_crate::daemon_lifecycle::register_signal_handlers(pid_path, socket_path.clone());
 
     println!("🚀 Mother daemon starting...");
     println!("   PID: {}", std::process::id());
@@ -614,49 +616,6 @@ fn load_wasm_child(
             other
         ),
     }
-}
-
-/// Write PID file for daemon lifecycle management
-fn write_pid_file() -> Result<()> {
-    use anyhow::Context;
-    use std::os::unix::fs::PermissionsExt;
-
-    let pid_path = patina::paths::serve::pid_path();
-    let pid = std::process::id();
-
-    std::fs::write(&pid_path, pid.to_string())
-        .with_context(|| format!("writing PID file {}", pid_path.display()))?;
-
-    std::fs::set_permissions(&pid_path, std::fs::Permissions::from_mode(0o600))
-        .with_context(|| format!("setting permissions on {}", pid_path.display()))?;
-
-    Ok(())
-}
-
-/// Clean up PID file on shutdown
-fn cleanup_pid_file() {
-    let pid_path = patina::paths::serve::pid_path();
-    let _ = std::fs::remove_file(&pid_path);
-}
-
-/// Register signal handlers for graceful shutdown
-fn register_signal_handlers() {
-    unsafe {
-        libc::signal(
-            libc::SIGINT,
-            sigint_handler as *const () as libc::sighandler_t,
-        );
-        libc::signal(
-            libc::SIGTERM,
-            sigint_handler as *const () as libc::sighandler_t,
-        );
-    }
-}
-
-extern "C" fn sigint_handler(_: libc::c_int) {
-    cleanup_pid_file();
-    super::cleanup_socket();
-    std::process::exit(0);
 }
 
 #[cfg(test)]

@@ -580,12 +580,6 @@ pub fn setup_unix_listener() -> Result<std::os::unix::net::UnixListener> {
     mother_crate::socket::setup_unix_listener(&run_dir, &socket_path)
 }
 
-/// Remove the socket file on clean shutdown.
-pub fn cleanup_socket() {
-    let socket_path = paths::serve::socket_path();
-    mother_crate::socket::cleanup_socket(&socket_path);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
