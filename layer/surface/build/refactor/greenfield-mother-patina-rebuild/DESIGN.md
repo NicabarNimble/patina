@@ -153,6 +153,16 @@ Typed identity boundary rule (normative):
 - Handshake/session scope identifiers (`project_uid`, `persona_uid`) should use typed wrappers/newtypes at boundary APIs so attach/lookup calls cannot accidentally swap or drop scope semantics.
 - Interface scope (`interface_kind`) should also use a typed wrapper at handshake/session-lookup boundaries.
 
+`PATINA_MOTHER_EXTRACTED` policy (normative):
+
+- Keep as a temporary compatibility switch during M2 stabilization only.
+- Mark as deprecated migration/debug-only path; do not add new product features behind it.
+- Hard removal trigger (no exceptions): remove the env switch in the first post-M2 cleanup slice once all are true:
+  1. Typed bootstrap parity gates pass for at least one full stabilization cycle,
+  2. no active scripts/docs/tests require setting `PATINA_MOTHER_EXTRACTED`,
+  3. default startup path and extracted startup path are behaviorally equivalent for control-plane contracts.
+- Drift protection: if trigger conditions are met, switch removal is mandatory and cannot be deferred without a recorded blocking defect.
+
 ## M1 Acceptance Checklist (binary pass/fail)
 
 Run these checks for M1 seam extraction and record outputs in session/spec evidence.

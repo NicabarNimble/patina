@@ -153,6 +153,9 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         .unwrap_or(false);
 
     if extracted_mode {
+        eprintln!(
+            "[mother] PATINA_MOTHER_EXTRACTED is deprecated and migration-only; remove after M2 stabilization cleanup"
+        );
         if options.host.is_some() {
             anyhow::bail!(
                 "PATINA_MOTHER_EXTRACTED only supports Unix socket mode (omit --host/--port)"
