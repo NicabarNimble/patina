@@ -113,6 +113,31 @@ Required anchors:
 
 Add one row per additional ownership-moving slice before promoting this spec to active.
 
+## M2a Handshake Contract (project + persona)
+
+M2 starts by locking the Patina -> Mother handshake for single-node now and multi-Mother later.
+
+Required request fields:
+
+- `agent` (interface/runtime caller identity)
+- `interface_kind` (opencode/claude/gemini/legacy-cli)
+- `project_uid` (resolved from `.patina/uid`)
+- `persona_uid` (resolved from request/project binding; optional during transition)
+- `requested_session` (optional explicit attach target)
+
+Required response fields:
+
+- `mother_node_id` (placeholder allowed pre-networking; must become stable with iroh)
+- `accepted_persona_uid` (echo/resolve result)
+- `session_runtime_id`
+- `session_file_id`
+- `policy_flags` (e.g. `mother-required` surfaces)
+
+Session attach rule (normative):
+
+- Reuse/attach decisions MUST be scoped at minimum by `(project_uid, adapter_name, interface_kind, persona_uid)`.
+- If `persona_uid` is provided, mismatched persona sessions MUST NOT be auto-attached.
+
 ## M1 Acceptance Checklist (binary pass/fail)
 
 Run these checks for M1 seam extraction and record outputs in session/spec evidence.

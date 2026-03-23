@@ -896,6 +896,7 @@ impl KnowledgeRuntimeStore {
         project_uid: &str,
         adapter_name: &str,
         interface_kind: &str,
+        persona_uid: Option<&str>,
     ) -> Result<Option<MotherSessionRecord>> {
         let conn = self.open()?;
         conn.query_row(
@@ -908,10 +909,11 @@ impl KnowledgeRuntimeStore {
               AND status = 'active'
               AND adapter_name = ?2
               AND interface_kind = ?3
+              AND ((?4 IS NULL AND persona_uid IS NULL) OR persona_uid = ?4)
             ORDER BY updated_at DESC, created_at DESC
             LIMIT 1
             "#,
-            params![project_uid, adapter_name, interface_kind],
+            params![project_uid, adapter_name, interface_kind, persona_uid],
             map_mother_session_row,
         )
         .optional()
@@ -1145,9 +1147,27 @@ mod tests {
         let active = store.list_active_mother_sessions("proj-1234").unwrap();
         assert_eq!(active.len(), 2);
         assert!(store
-            .find_active_mother_session_for_interface("proj-1234", "opencode", "opencode")
+            .find_active_mother_session_for_interface("proj-1234", "opencode", "opencode", None,)
             .unwrap()
             .is_some());
+        assert!(store
+            .find_active_mother_session_for_interface(
+                "proj-1234",
+                "gemini",
+                "gemini",
+                Some("persona-1"),
+            )
+            .unwrap()
+            .is_some());
+        assert!(store
+            .find_active_mother_session_for_interface(
+                "proj-1234",
+                "gemini",
+                "gemini",
+                Some("persona-missing"),
+            )
+            .unwrap()
+            .is_none());
 
         store
             .finish_mother_session(

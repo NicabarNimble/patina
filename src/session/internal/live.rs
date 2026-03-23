@@ -212,6 +212,7 @@ pub fn find_active_interface_session(
     project_root: &Path,
     adapter_name: &str,
     interface_kind: InterfaceKind,
+    persona_uid: Option<&str>,
 ) -> Result<Option<LiveSessionHandle>> {
     let store = KnowledgeRuntimeStore::default();
     let Some(project_uid) = project::get_uid(project_root) else {
@@ -221,6 +222,7 @@ pub fn find_active_interface_session(
         &project_uid,
         adapter_name,
         interface_kind.as_str(),
+        persona_uid,
     )?
     else {
         return Ok(None);
