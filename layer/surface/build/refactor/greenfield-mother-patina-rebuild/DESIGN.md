@@ -222,6 +222,8 @@ M3 contract-first invariants:
 - Secret scope model is explicit and enforced: `project` -> `persona` -> `machine` resolution order.
 - Secret authority API is OS-agnostic by contract (backend-specific implementations may vary).
 - `patina secrets` remains UX/client surface; authority implementation lives behind Mother control-plane APIs.
+- Identity retrieval/storage default should be cross-platform (`encrypted_file` path works on macOS + Linux) so M3 does not create divergent platform authority logic.
+- macOS Keychain remains an optional backend/integration path (and future Swift-native backend target), but not a required separate authority mode.
 - Secret records carrying OAuth credentials must retain provider metadata (`provider`, `account_id`, granted scope set, expiry/refresh hints) for safe lookup/reuse.
 - Scope/persona mismatch is deny-by-default; no implicit cross-persona fallback.
 - Platform policy for this lane: macOS + Linux supported, Windows unsupported by design.
