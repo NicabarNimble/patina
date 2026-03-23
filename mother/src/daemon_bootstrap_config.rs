@@ -111,3 +111,92 @@ pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> 
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    #[test]
+    fn tcp_http_rejects_json_lines_runtime_mode() {
+        let config = DaemonBootstrapConfig {
+            transport: TransportMode::TcpHttp {
+                host: "127.0.0.1".to_string(),
+                port: 50051,
+                token_path: std::path::PathBuf::from("/tmp/patina-token"),
+                token: "test-token".to_string(),
+            },
+            legacy_migration: false,
+        };
+        let runtime = DaemonBootstrapRuntime {
+            mode: RuntimeMode::JsonLines {
+                state: crate::daemon::DaemonState::default(),
+            },
+        };
+
+        let error = start(config, runtime).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("TcpHttp transport requires HttpApi runtime mode"));
+    }
+
+    #[test]
+    fn uds_json_lines_rejects_http_api_runtime_mode() {
+        let config = DaemonBootstrapConfig {
+            transport: TransportMode::UdsJsonLines {
+                socket_path: std::path::PathBuf::from("/tmp/patina.sock"),
+                pid_path: std::path::PathBuf::from("/tmp/patina.pid"),
+            },
+            legacy_migration: false,
+        };
+        let runtime = DaemonBootstrapRuntime {
+            mode: RuntimeMode::HttpApi {
+                registry: Arc::new(crate::registry::ChildRegistry::new()),
+                router: Arc::new(crate::http_routes::Router::new(
+                    false,
+                    String::new(),
+                    crate::http_routes::RouteTable {
+                        get_health: Arc::new(|_| {
+                            crate::http_daemon::HttpResponse::json(
+                                200,
+                                &serde_json::json!({"ok": true}),
+                            )
+                        }),
+                        get_version: Arc::new(|_| {
+                            crate::http_daemon::HttpResponse::json(
+                                200,
+                                &serde_json::json!({"version": "test"}),
+                            )
+                        }),
+                        post_scry: Arc::new(|_| {
+                            crate::http_daemon::HttpResponse::json(
+                                200,
+                                &serde_json::json!({"results": []}),
+                            )
+                        }),
+                        get_secrets_cache: Arc::new(|_| {
+                            crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                        }),
+                        post_secrets_cache: Arc::new(|_| {
+                            crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                        }),
+                        post_secrets_lock: Arc::new(|_| {
+                            crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                        }),
+                        child_request: Arc::new(|_| {
+                            crate::http_daemon::HttpResponse::json(
+                                404,
+                                &serde_json::json!({"error": "no child"}),
+                            )
+                        }),
+                    },
+                )),
+            },
+        };
+
+        let error = start(config, runtime).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("UdsJsonLines transport requires JsonLines runtime mode"));
+    }
+}

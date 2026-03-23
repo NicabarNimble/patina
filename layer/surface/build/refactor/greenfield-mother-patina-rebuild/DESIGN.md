@@ -196,6 +196,21 @@ M1 completion evidence (this session):
 - `e4f9a7ab` refactor: isolate daemon loader and builtin dispatch adapters
 - `79717da0` refactor: move daemon heartbeat runtime into mother crate
 
+M2 completion evidence (this session, Option B path in progress):
+
+- `875761f7` refactor: add mother daemon runner launch API
+- `d88dd143` refactor: add typed mother bootstrap config orchestration
+- `cd6f3279` refactor: unify daemon startup modes under typed bootstrap
+- `593a4b21` refactor: add typed project and persona scope identifiers
+- `a1baf11a` refactor: type interface scope at handshake and session boundaries
+- `29e856b4` feat: define persona-scoped handshake inputs and attach rules
+- `3f280577` refactor: scope interface session attach by persona context
+- `bc069b13` docs: enforce extracted-mode deprecation and removal trigger
+
+M2 parity evidence status:
+
+- Repeated parity probes across these slices preserved control-plane behavior (`spec`, `lake`, `doctor`) with Mother on/off.
+
 ## Seam Classification Table (GF1 enforcement)
 
 | Seam | Classification | Owner | Removal trigger |
