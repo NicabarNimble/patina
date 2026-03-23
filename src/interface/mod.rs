@@ -15,12 +15,12 @@ pub use internal::bootstrap::{
 };
 pub use internal::bundle::{
     interface_bundle, interface_bundle_catalog, is_supported_ai_interface, supported_ai_interfaces,
-    InterfaceBundle,
+    BundleTmuxPolicy, InterfaceBundle,
 };
 pub use internal::checkin::{
     check_in, session_writer_action, CheckInResult, InterfaceCapabilities, InterfaceCheckIn,
 };
-pub use internal::launcher::launch_adapter_cli;
+pub use internal::launcher::{derive_interface_session_name, launch_adapter_cli};
 pub use internal::surface::{
     ensure_ai_project_config, ensure_ai_surface, prepare_ai_bundle, resolve_preferred_ai_interface,
     set_project_default_interface, AiProjectConfigResult, AiSurfaceRequest, AiSurfaceResult,
@@ -41,6 +41,15 @@ pub struct AdapterDetection {
 pub struct LaunchRequest {
     pub project_root: PathBuf,
     pub env: Vec<(String, String)>,
+    pub tmux_mode: TmuxLaunchMode,
+    pub tmux_session_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TmuxLaunchMode {
+    Auto,
+    Force,
+    Off,
 }
 
 pub trait AiInterface {
@@ -64,7 +73,13 @@ pub trait AiInterface {
     fn context_file(&self, project_root: &Path) -> PathBuf;
 
     fn launch(&self, request: LaunchRequest) -> Result<()> {
-        launch_adapter_cli(self.name(), &request.project_root, &request.env)
+        launch_adapter_cli(
+            self.name(),
+            &request.project_root,
+            request.tmux_mode,
+            request.tmux_session_name.as_deref(),
+            &request.env,
+        )
     }
 
     fn capabilities(&self) -> InterfaceCapabilities {

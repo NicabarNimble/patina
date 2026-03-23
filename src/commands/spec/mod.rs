@@ -371,7 +371,7 @@ pub fn execute(command: SpecCommands) -> Result<()> {
         }
     }
 
-    let payload = json!({"command": command});
+    let payload = json!({ "command": command });
     let client = patina::mother::Client::new("localhost:50051".to_string());
     let response = client
         .child_action("spec-manager", "dispatch", &payload)

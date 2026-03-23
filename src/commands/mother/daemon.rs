@@ -281,7 +281,7 @@ fn with_security_headers(response: HttpResponse) -> HttpResponse {
 
 /// Consistent JSON error response
 fn json_error(status: u16, message: &str) -> HttpResponse {
-    HttpResponse::json(status, &serde_json::json!({"error": message}))
+    HttpResponse::json(status, &serde_json::json!({ "error": message }))
 }
 
 // === Transport-free handlers ===
@@ -489,7 +489,7 @@ fn handle_child_request(
                     patina::mother::ChildHealth::Degraded(_) => "degraded",
                     patina::mother::ChildHealth::Unhealthy(_) => "unhealthy",
                 };
-                HttpResponse::json(200, &serde_json::json!({"status": status}))
+                HttpResponse::json(200, &serde_json::json!({ "status": status }))
             }
             Err(e) => json_error(404, &format!("{}", e)),
         };

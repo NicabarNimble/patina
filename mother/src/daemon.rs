@@ -200,11 +200,12 @@ fn handle_action(
             let lake: LakeManagePayload = serde_json::from_value(payload)
                 .map_err(|e| format!("invalid lake payload: {}", e))?;
             Ok(json!({
-                "output": format!(
-                    "lake daemon path not yet implemented (op={}, name={})",
-                    lake.op,
-                    lake.name.unwrap_or_else(|| "none".to_string())
-                )
+                "output":
+                    format!(
+                        "lake daemon path not yet implemented (op={}, name={})",
+                        lake.op,
+                        lake.name.unwrap_or_else(|| "none".to_string())
+                    )
             }))
         }
         "scry" => {

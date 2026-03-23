@@ -28,6 +28,8 @@ pub struct AiLaunchRequest {
     pub persona: Option<String>,
     pub path: Option<String>,
     pub set_default: bool,
+    pub tmux: bool,
+    pub no_tmux: bool,
 }
 
 pub fn launch_default() -> Result<()> {
@@ -40,6 +42,8 @@ pub fn launch_default() -> Result<()> {
         persona: None,
         path: None,
         set_default: false,
+        tmux: false,
+        no_tmux: false,
     })
 }
 
@@ -232,9 +236,27 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         ),
     ];
 
+    let bundle = interface::interface_bundle(&interface_name)?;
+
+    let tmux_mode = if request.no_tmux {
+        interface::TmuxLaunchMode::Off
+    } else if request.tmux {
+        interface::TmuxLaunchMode::Force
+    } else {
+        match bundle.tmux_policy {
+            interface::BundleTmuxPolicy::Auto => interface::TmuxLaunchMode::Auto,
+        }
+    };
+    let tmux_session_name = Some(interface::derive_interface_session_name(
+        &project_path,
+        &interface_name,
+    ));
+
     adapter.launch(interface::LaunchRequest {
         project_root: project_path,
         env,
+        tmux_mode,
+        tmux_session_name,
     })
 }
 

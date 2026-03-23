@@ -18,7 +18,13 @@ pub struct InterfaceBundle {
     pub display_name: &'static str,
     pub vendor_bootstrap: Option<&'static str>,
     pub managed_paths: &'static [ManagedPathSpec],
+    pub tmux_policy: BundleTmuxPolicy,
     pub version: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BundleTmuxPolicy {
+    Auto,
 }
 
 const OPENCODE_MANAGED_PATHS: &[ManagedPathSpec] = &[
@@ -68,6 +74,7 @@ const INTERFACE_BUNDLES: &[InterfaceBundle] = &[
         display_name: "Claude Code",
         vendor_bootstrap: Some("CLAUDE.md"),
         managed_paths: CLAUDE_MANAGED_PATHS,
+        tmux_policy: BundleTmuxPolicy::Auto,
         version: env!("CARGO_PKG_VERSION"),
     },
     InterfaceBundle {
@@ -75,6 +82,7 @@ const INTERFACE_BUNDLES: &[InterfaceBundle] = &[
         display_name: "OpenCode",
         vendor_bootstrap: None,
         managed_paths: OPENCODE_MANAGED_PATHS,
+        tmux_policy: BundleTmuxPolicy::Auto,
         version: env!("CARGO_PKG_VERSION"),
     },
     InterfaceBundle {
@@ -82,6 +90,7 @@ const INTERFACE_BUNDLES: &[InterfaceBundle] = &[
         display_name: "Gemini CLI",
         vendor_bootstrap: Some("GEMINI.md"),
         managed_paths: GEMINI_MANAGED_PATHS,
+        tmux_policy: BundleTmuxPolicy::Auto,
         version: env!("CARGO_PKG_VERSION"),
     },
 ];

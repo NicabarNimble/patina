@@ -94,6 +94,8 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         persona: None,
         path: Some(project_path.display().to_string()),
         set_default: false,
+        tmux: false,
+        no_tmux: false,
     })
 }
 

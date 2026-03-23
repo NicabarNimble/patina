@@ -1,4 +1,4 @@
 adapter = "opencode"
 bundle = "opencode"
-version = "0.43.2"
+version = "0.43.8"
 managed_by = "patina ai refresh"

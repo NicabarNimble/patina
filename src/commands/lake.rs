@@ -26,7 +26,7 @@ pub enum LakeCommands {
 /// Execute lake CLI subcommand.
 pub fn execute_cli(command: Option<LakeCommands>) -> Result<()> {
     let effective = command.unwrap_or(LakeCommands::List);
-    let payload = serde_json::json!({"command": effective});
+    let payload = serde_json::json!({ "command": effective });
     let client = patina::mother::Client::new("localhost:50051".to_string());
     let response = client
         .child_action("lake-manager", "dispatch", &payload)

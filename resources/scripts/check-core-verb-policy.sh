@@ -135,17 +135,17 @@ run_phase() {
     local phase="$1"
 
     # Deterministic fixture-style smoke commands rooted in this repository.
-    run_one "$phase" "scrape" "patina scrape layer --no-tmux"
+    run_one "$phase" "scrape" "patina scrape layer"
     if [[ "$phase" == "mother-off" ]]; then
-        run_one "$phase" "assay-derive (setup)" "patina assay derive --no-tmux"
-        run_one "$phase" "scry" "patina scry orient . --no-tmux"
+        run_one "$phase" "assay-derive (setup)" "patina assay derive"
+        run_one "$phase" "scry" "patina scry orient ."
     else
-    run_one "$phase" "scry" "patina scry architecture --limit 1 --no-tmux"
+    run_one "$phase" "scry" "patina scry architecture --limit 1"
     fi
-    run_one "$phase" "assay" "patina assay inventory --limit 1 --no-tmux"
-    run_one "$phase" "context" "patina context --topic architecture --no-tmux"
-    run_one "$phase" "belief" "patina belief audit --no-tmux"
-    run_one "$phase" "measure" "patina measure --no-tmux"
+    run_one "$phase" "assay" "patina assay inventory --limit 1"
+    run_one "$phase" "context" "patina context --topic architecture"
+    run_one "$phase" "belief" "patina belief audit"
+    run_one "$phase" "measure" "patina measure"
 
     # Oxidize currently has no dedicated dry-run; use command-surface smoke.
     run_one "$phase" "oxidize" "patina oxidize --help"
