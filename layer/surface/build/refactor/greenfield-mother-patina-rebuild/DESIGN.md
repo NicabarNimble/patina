@@ -108,7 +108,7 @@ Required anchors:
 | Slice | Current owner | Target owner | Parity gates | Rollback trigger | Rollback action | Blast radius |
 | --- | --- | --- | --- | --- | --- | --- |
 | M1: CLI -> Mother daemon seam extraction | `src/commands/mother/daemon.rs:670` | `mother/src/daemon.rs`, `mother/src/microserver.rs`, `mother/src/socket.rs`, `mother/src/lifecycle.rs` and supporting runtime modules | `cargo check -q`; `cargo test -q`; `patina mother start`; `curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/health`; probe `spec`/`lake`/`doctor` with Mother running and stopped to confirm `mother-required` failures still match contract | Any regression in daemon startup, `/health` response shape, child dispatch behavior, or Mother-required error contract | Revert M1 commits and restore routing/handler path to `src/commands/mother/daemon.rs`; re-run parity gates before retry | `patina mother*`; control-plane verbs (`spec`, `lake`, `doctor`); session-writer + child routing surfaces |
-| M2: Mother runner extraction + `patina-mother` Option B path | `src/commands/mother/daemon.rs:152` orchestration shell and env-gated extracted path (`PATINA_MOTHER_EXTRACTED`) | Mother-owned bootstrap/runner API (`mother/src/*`) consumed by Patina CLI as thin adapter; publishable direction for `patina-mother` runtime entrypoint | `cargo check -q`; `cargo test -q`; parity probes from M1 checklist; verify `patina mother start` behavior unchanged; verify no dependency inversion (`mother` must not depend on Patina command modules) | Any behavior drift in start/health/control-plane routing, or bootstrap API requiring Patina internals | Revert M2 runner commits and keep Patina composition shell as temporary adapter; preserve M1-owned runtime modules | daemon startup/orchestration surface; publish policy and runtime API boundary for `patina-mother` |
+| M2: Mother runner extraction + `patina-mother` Option B path | `src/commands/mother/daemon.rs:152` orchestration shell (including former extracted startup seam) | Mother-owned bootstrap/runner API (`mother/src/*`) consumed by Patina CLI as thin adapter; publishable direction for `patina-mother` runtime entrypoint | `cargo check -q`; `cargo test -q`; parity probes from M1 checklist; verify `patina mother start` behavior unchanged; verify no dependency inversion (`mother` must not depend on Patina command modules) | Any behavior drift in start/health/control-plane routing, or bootstrap API requiring Patina internals | Revert M2 runner commits and keep Patina composition shell as temporary adapter; preserve M1-owned runtime modules | daemon startup/orchestration surface; publish policy and runtime API boundary for `patina-mother` |
 | M3: SDK contract stabilization (not redesign) | Mixed SDK + legacy compatibility surfaces (`sdk/patina-sdk/src/lib.rs:1`, `sdk/patina-sdk/Cargo.toml:16`) and runtime contract touchpoints (`src/child/internal/tests.rs:317`, `mother/src/toys.rs:13`) | Tiered SDK as canonical external contract (`sdk/patina-sdk-core`, `sdk/patina-sdk-data`, `sdk/patina-sdk-agent`, `sdk/patina-sdk` umbrella) with legacy features treated as migration shims until removed by parity | `cargo check -q`; `cargo test -q`; verify manifest capability schema enforcement stays `[needs].toys` + `[needs.scopes]`; verify existing child loading/runtime behavior remains stable via Mother start + health + child dispatch probes; ensure docs/spec language uses child/kind vocabulary and matches shipped SDK surfaces | Any break in child authoring ergonomics, manifest compatibility, toy grant enforcement, or third-party builder path that currently works | Revert M3 commits affecting SDK public surface/docs; restore prior exported features and compatibility shims; reopen with narrower SDK slice | SDK crates; child authoring docs/templates; manifest parser contracts; toy grant/capability path |
 
 Add one row per additional ownership-moving slice before promoting this spec to active.
@@ -153,15 +153,11 @@ Typed identity boundary rule (normative):
 - Handshake/session scope identifiers (`project_uid`, `persona_uid`) should use typed wrappers/newtypes at boundary APIs so attach/lookup calls cannot accidentally swap or drop scope semantics.
 - Interface scope (`interface_kind`) should also use a typed wrapper at handshake/session-lookup boundaries.
 
-`PATINA_MOTHER_EXTRACTED` policy (normative):
+`PATINA_MOTHER_EXTRACTED` cleanup outcome:
 
-- Keep as a temporary compatibility switch during M2 stabilization only.
-- Mark as deprecated migration/debug-only path; do not add new product features behind it.
-- Hard removal trigger (no exceptions): remove the env switch in the first post-M2 cleanup slice once all are true:
-  1. Typed bootstrap parity gates pass for at least one full stabilization cycle,
-  2. no active scripts/docs/tests require setting `PATINA_MOTHER_EXTRACTED`,
-  3. default startup path and extracted startup path are behaviorally equivalent for control-plane contracts.
-- Drift protection: if trigger conditions are met, switch removal is mandatory and cannot be deferred without a recorded blocking defect.
+- Post-M2 cleanup trigger passed and the env switch was removed.
+- Startup now uses typed bootstrap transport variants only; no env-gated extracted branch remains.
+- Drift protection intent preserved: migration switches must be removed once trigger conditions are met, unless a recorded blocking defect exists.
 
 ## M1 Acceptance Checklist (binary pass/fail)
 
@@ -196,7 +192,7 @@ M1 completion evidence (this session):
 - `e4f9a7ab` refactor: isolate daemon loader and builtin dispatch adapters
 - `79717da0` refactor: move daemon heartbeat runtime into mother crate
 
-M2 completion evidence (this session, Option B path in progress):
+M2 completion evidence (this session, Option B path):
 
 - `875761f7` refactor: add mother daemon runner launch API
 - `d88dd143` refactor: add typed mother bootstrap config orchestration
@@ -206,10 +202,15 @@ M2 completion evidence (this session, Option B path in progress):
 - `29e856b4` feat: define persona-scoped handshake inputs and attach rules
 - `3f280577` refactor: scope interface session attach by persona context
 - `bc069b13` docs: enforce extracted-mode deprecation and removal trigger
+- `post-M2 cleanup`: removed `PATINA_MOTHER_EXTRACTED` env switch and converged startup to typed transport variants only
 
 M2 parity evidence status:
 
 - Repeated parity probes across these slices preserved control-plane behavior (`spec`, `lake`, `doctor`) with Mother on/off.
+
+M2 functional status:
+
+- Complete (runner/bootstrap extraction, typed boundary scoping, and post-M2 extracted-switch cleanup achieved).
 
 ## Seam Classification Table (GF1 enforcement)
 

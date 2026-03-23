@@ -148,37 +148,6 @@ impl Default for DaemonOptions {
 
 /// Run the mother daemon server
 pub fn run_server(options: DaemonOptions) -> Result<()> {
-    let extracted_mode = std::env::var("PATINA_MOTHER_EXTRACTED")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-
-    if extracted_mode {
-        eprintln!(
-            "[mother] PATINA_MOTHER_EXTRACTED is deprecated and migration-only; remove after M2 stabilization cleanup"
-        );
-        if options.host.is_some() {
-            anyhow::bail!(
-                "PATINA_MOTHER_EXTRACTED only supports Unix socket mode (omit --host/--port)"
-            );
-        }
-
-        let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
-            transport: mother_crate::daemon_bootstrap_config::TransportMode::UdsJsonLines {
-                socket_path: patina::paths::serve::socket_path(),
-                pid_path: patina::paths::serve::pid_path(),
-            },
-            legacy_migration: false,
-        };
-        return mother_crate::daemon_bootstrap_config::start(
-            config,
-            mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
-                mode: mother_crate::daemon_bootstrap_config::RuntimeMode::JsonLines {
-                    state: mother_crate::daemon::DaemonState::default(),
-                },
-            },
-        );
-    }
-
     // Build and load child registry
     let mut registry = ChildRegistry::new();
     let runtime = patina::mother::KnowledgeRuntimeStore::default();
@@ -216,10 +185,8 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         return mother_crate::daemon_bootstrap_config::start(
             config,
             mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
-                mode: mother_crate::daemon_bootstrap_config::RuntimeMode::HttpApi {
-                    registry: Arc::clone(&state.registry),
-                    router,
-                },
+                registry: Arc::clone(&state.registry),
+                router,
             },
         );
     }
@@ -238,10 +205,8 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     mother_crate::daemon_bootstrap_config::start(
         config,
         mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
-            mode: mother_crate::daemon_bootstrap_config::RuntimeMode::HttpApi {
-                registry: Arc::clone(&state.registry),
-                router,
-            },
+            registry: Arc::clone(&state.registry),
+            router,
         },
     )
 }
