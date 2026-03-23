@@ -26,6 +26,12 @@ pub struct SecretsCacheChild {
     cache: Mutex<Option<CacheEntry>>,
 }
 
+impl Default for SecretsCacheChild {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SecretsCacheChild {
     pub fn new() -> Self {
         Self {

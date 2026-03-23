@@ -8,6 +8,12 @@ use crate::{ChildHealth, ChildRequest, ChildResponse, MotherChild, MotherHost};
 /// session-writer operations are fully routed through child action handlers.
 pub struct SessionWriterChild;
 
+impl Default for SessionWriterChild {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SessionWriterChild {
     pub fn new() -> Self {
         Self

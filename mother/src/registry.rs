@@ -18,6 +18,12 @@ pub struct ChildRegistry {
     legacy_children: Vec<Arc<RwLock<Box<dyn MotherChild>>>>,
 }
 
+impl Default for ChildRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ChildRegistry {
     pub fn new() -> Self {
         Self {
