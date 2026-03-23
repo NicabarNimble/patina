@@ -236,6 +236,68 @@ fn handle_secrets_authority_dispatch(payload: serde_json::Value) -> HttpResponse
             Ok(()) => HttpResponse::json(200, &serde_json::json!({"status": "ok"})),
             Err(error) => json_error(400, &error.to_string()),
         },
+        "export_identity" => match secrets::export_identity() {
+            Ok(identity) => HttpResponse::json(
+                200,
+                &serde_json::json!({
+                    "status": "ok",
+                    "identity": identity.to_string(),
+                }),
+            ),
+            Err(error) => json_error(400, &error.to_string()),
+        },
+        "import_identity" => {
+            let identity = match payload.get("identity").and_then(|v| v.as_str()) {
+                Some(value) => value,
+                None => return json_error(400, "Missing 'identity' for import_identity"),
+            };
+
+            match secrets::import_identity(identity) {
+                Ok(recipient) => HttpResponse::json(
+                    200,
+                    &serde_json::json!({
+                        "status": "ok",
+                        "recipient": recipient,
+                    }),
+                ),
+                Err(error) => json_error(400, &error.to_string()),
+            }
+        }
+        "reset_identity" => match secrets::reset_identity() {
+            Ok(()) => HttpResponse::json(200, &serde_json::json!({"status": "ok"})),
+            Err(error) => json_error(400, &error.to_string()),
+        },
+        "setup_claude_token" => {
+            let token = match payload.get("token").and_then(|v| v.as_str()) {
+                Some(value) => value,
+                None => return json_error(400, "Missing 'token' for setup_claude_token"),
+            };
+
+            let replacing = matches!(secrets::get_global_secret("claude-oauth"), Ok(Some(_)));
+            match secrets::add_secret(
+                "claude-oauth",
+                token,
+                Some("CLAUDE_CODE_OAUTH_TOKEN"),
+                true,
+                project_root.as_deref(),
+            ) {
+                Ok(result) => {
+                    if let Ok(key) = secrets::export_identity() {
+                        let _ = secrets::import_identity(&key);
+                    }
+                    HttpResponse::json(
+                        200,
+                        &serde_json::json!({
+                            "status": "ok",
+                            "replacing": replacing,
+                            "created_vault": result.created_vault,
+                            "env_var": result.env_var,
+                        }),
+                    )
+                }
+                Err(error) => json_error(400, &error.to_string()),
+            }
+        }
         _ => json_error(400, "Unknown secrets-authority operation"),
     }
 }

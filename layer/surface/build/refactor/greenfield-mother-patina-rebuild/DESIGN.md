@@ -238,6 +238,8 @@ M3a progress evidence (current session):
 
 - Added `secrets-authority` builtin dispatch route under Mother control-plane (`/child/secrets-authority/dispatch`).
 - Patina `secrets` command now attempts Mother authority dispatch first and falls back to legacy local path when Mother is unavailable.
+- Proxied authority operations now include status/CRUD/recipient management/session lock plus identity export/import/reset and Claude token setup.
+- Added focused regression checks for authority payload construction and Mother-unavailable fallback detection.
 - Core-value anchor: preserve local-first reliability and least-surprise behavior during migration (scalpel rollout, no hard cutover in M3a).
 
 ## Seam Classification Table (GF1 enforcement)

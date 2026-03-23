@@ -144,24 +144,29 @@ fn current_project_root_str() -> Option<String> {
         .map(|path| path.display().to_string())
 }
 
-fn dispatch_secrets_authority(op: &str, mut payload: Value) -> Result<Option<Value>> {
+fn build_authority_payload(op: &str, mut payload: Value, project_root: Option<String>) -> Value {
     let mut request = serde_json::Map::new();
     request.insert("op".to_string(), Value::String(op.to_string()));
 
-    if let Some(root) = current_project_root_str() {
+    if let Some(root) = project_root {
         if let Some(map) = payload.as_object_mut() {
             map.entry("project_root".to_string())
                 .or_insert(Value::String(root));
         }
     }
+
     if let Some(map) = payload.as_object() {
         for (k, v) in map {
             request.insert(k.clone(), v.clone());
         }
     }
 
+    Value::Object(request)
+}
+
+fn dispatch_secrets_authority(op: &str, payload: Value) -> Result<Option<Value>> {
     let client = authority_client();
-    let wrapped_payload = Value::Object(request);
+    let wrapped_payload = build_authority_payload(op, payload, current_project_root_str());
 
     match client.child_action("secrets-authority", "dispatch", &wrapped_payload) {
         Ok(value) => Ok(Some(value)),
@@ -206,6 +211,21 @@ struct AuthorityStatusResponse {
 #[derive(Debug, Deserialize)]
 struct AuthorityRecipientsResponse {
     recipients: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AuthorityExportIdentityResponse {
+    identity: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AuthorityImportIdentityResponse {
+    recipient: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AuthoritySetupClaudeResponse {
+    replacing: bool,
 }
 
 /// Execute secrets subcommand
@@ -417,7 +437,14 @@ fn export_key(confirm: bool, to_stdout: bool) -> Result<()> {
         return Ok(());
     }
 
-    let identity = secrets::export_identity()?; // Zeroizing<String> — zeroed on drop
+    let identity = if let Some(response) =
+        dispatch_secrets_authority("export_identity", serde_json::json!({}))?
+    {
+        let parsed: AuthorityExportIdentityResponse = serde_json::from_value(response)?;
+        zeroize::Zeroizing::new(parsed.identity)
+    } else {
+        secrets::export_identity()? // Zeroizing<String> — zeroed on drop
+    };
 
     if to_stdout {
         println!("{}", &*identity);
@@ -447,7 +474,15 @@ fn import_key() -> Result<()> {
     let mut line = String::new();
     stdin.lock().read_line(&mut line)?;
 
-    let recipient = secrets::import_identity(line.trim())?;
+    let recipient = if let Some(response) = dispatch_secrets_authority(
+        "import_identity",
+        serde_json::json!({ "identity": line.trim() }),
+    )? {
+        let parsed: AuthorityImportIdentityResponse = serde_json::from_value(response)?;
+        parsed.recipient
+    } else {
+        secrets::import_identity(line.trim())?
+    };
     println!("✓ Stored in macOS Keychain (Touch ID protected)");
     println!("  Public key: {}", recipient);
 
@@ -463,7 +498,9 @@ fn reset_identity(confirm: bool) -> Result<()> {
         return Ok(());
     }
 
-    secrets::reset_identity()?;
+    if dispatch_secrets_authority("reset_identity", serde_json::json!({}))?.is_none() {
+        secrets::reset_identity()?;
+    }
     println!("✓ Identity removed from Keychain");
 
     Ok(())
@@ -579,19 +616,27 @@ fn setup_claude() -> Result<()> {
         }
     }
 
-    let _result = secrets::add_secret(
-        "claude-oauth",
-        &token,
-        Some("CLAUDE_CODE_OAUTH_TOKEN"),
-        true,
-        project_root.as_deref(),
-    )?;
+    let replacing = if let Some(response) =
+        dispatch_secrets_authority("setup_claude_token", serde_json::json!({ "token": token }))?
+    {
+        let parsed: AuthoritySetupClaudeResponse = serde_json::from_value(response)?;
+        parsed.replacing
+    } else {
+        let _result = secrets::add_secret(
+            "claude-oauth",
+            &token,
+            Some("CLAUDE_CODE_OAUTH_TOKEN"),
+            true,
+            project_root.as_deref(),
+        )?;
 
-    // Migrate the identity to AlwaysThisDeviceOnly so SSH sessions can read it.
-    // Re-stores the existing key with the correct Keychain access policy.
-    if let Ok(key) = secrets::export_identity() {
-        let _ = secrets::import_identity(&key);
-    }
+        // Migrate the identity to AlwaysThisDeviceOnly so SSH sessions can read it.
+        // Re-stores the existing key with the correct Keychain access policy.
+        if let Ok(key) = secrets::export_identity() {
+            let _ = secrets::import_identity(&key);
+        }
+        replacing
+    };
 
     if replacing {
         println!("Token updated.");
@@ -654,5 +699,31 @@ mod tests {
     #[test]
     fn test_secrets_command_parse() {
         let _ = execute;
+    }
+
+    #[test]
+    fn authority_payload_contains_op_and_project_root() {
+        let payload = build_authority_payload(
+            "status",
+            serde_json::json!({}),
+            Some("/tmp/project".to_string()),
+        );
+        assert_eq!(payload.get("op").and_then(|v| v.as_str()), Some("status"));
+        assert_eq!(
+            payload.get("project_root").and_then(|v| v.as_str()),
+            Some("/tmp/project")
+        );
+    }
+
+    #[test]
+    fn mother_unavailable_error_detection_matches_connection_failures() {
+        let error = anyhow::anyhow!("Failed to send child request to http://localhost:50051");
+        assert!(is_mother_unavailable_error(&error));
+
+        let error = anyhow::anyhow!("Connection refused (os error 61)");
+        assert!(is_mother_unavailable_error(&error));
+
+        let error = anyhow::anyhow!("Invalid JSON payload");
+        assert!(!is_mother_unavailable_error(&error));
     }
 }
