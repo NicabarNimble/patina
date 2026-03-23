@@ -43,7 +43,6 @@ pub(crate) mod graph;
 
 // Moved to mother crate — re-export for daemon.rs
 pub(crate) use mother_crate::registry;
-pub(crate) use mother_crate::secrets;
 
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
