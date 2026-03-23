@@ -137,53 +137,6 @@ fn validate_lake_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// List all lakes.
-fn list() -> Result<()> {
-    let dir = lakes_dir();
-
-    if !dir.exists() {
-        eprintln!("No lakes found ({})", dir.display());
-        return Ok(());
-    }
-
-    let mut found = false;
-    let mut entries: Vec<_> = std::fs::read_dir(&dir)?
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().join("lake.toml").exists())
-        .collect();
-    entries.sort_by_key(|e| e.file_name());
-
-    for entry in entries {
-        let lake_toml = entry.path().join("lake.toml");
-        let content = std::fs::read_to_string(&lake_toml).unwrap_or_default();
-
-        // Parse name from TOML
-        let name = content
-            .lines()
-            .find(|l| l.starts_with("name"))
-            .and_then(|l| l.split('=').nth(1))
-            .map(|v| v.trim().trim_matches('"'))
-            .unwrap_or("?");
-
-        let created = content
-            .lines()
-            .find(|l| l.starts_with("created_at"))
-            .and_then(|l| l.split('=').nth(1))
-            .map(|v| v.trim().trim_matches('"'))
-            .unwrap_or("?");
-
-        println!("  {} (created: {})", name, created);
-        println!("    {}", entry.path().display());
-        found = true;
-    }
-
-    if !found {
-        eprintln!("No lakes found");
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
