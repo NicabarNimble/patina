@@ -8,6 +8,8 @@ use rand::RngCore;
 use sha2::Sha256;
 use std::path::PathBuf;
 
+use crate::secrets_paths as paths;
+
 const MAGIC: &[u8] = b"PATINA";
 const VERSION: u8 = 0x01;
 const SALT_LEN: usize = 32;
@@ -23,10 +25,7 @@ fn debug_log(msg: &str) {
 }
 
 fn identity_enc_path() -> PathBuf {
-    dirs::home_dir()
-        .expect("Cannot determine home directory")
-        .join(".patina")
-        .join("identity.enc")
+    paths::patina_home().join("identity.enc")
 }
 
 pub fn store_identity(identity: &str) -> Result<()> {
