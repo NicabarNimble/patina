@@ -109,7 +109,8 @@ Required anchors:
 | --- | --- | --- | --- | --- | --- | --- |
 | M1: CLI -> Mother daemon seam extraction | `src/commands/mother/daemon.rs:670` | `mother/src/daemon.rs`, `mother/src/microserver.rs`, `mother/src/socket.rs`, `mother/src/lifecycle.rs` and supporting runtime modules | `cargo check -q`; `cargo test -q`; `patina mother start`; `curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/health`; probe `spec`/`lake`/`doctor` with Mother running and stopped to confirm `mother-required` failures still match contract | Any regression in daemon startup, `/health` response shape, child dispatch behavior, or Mother-required error contract | Revert M1 commits and restore routing/handler path to `src/commands/mother/daemon.rs`; re-run parity gates before retry | `patina mother*`; control-plane verbs (`spec`, `lake`, `doctor`); session-writer + child routing surfaces |
 | M2: Mother runner extraction + `patina-mother` Option B path | `src/commands/mother/daemon.rs:152` orchestration shell (including former extracted startup seam) | Mother-owned bootstrap/runner API (`mother/src/*`) consumed by Patina CLI as thin adapter; publishable direction for `patina-mother` runtime entrypoint | `cargo check -q`; `cargo test -q`; parity probes from M1 checklist; verify `patina mother start` behavior unchanged; verify no dependency inversion (`mother` must not depend on Patina command modules) | Any behavior drift in start/health/control-plane routing, or bootstrap API requiring Patina internals | Revert M2 runner commits and keep Patina composition shell as temporary adapter; preserve M1-owned runtime modules | daemon startup/orchestration surface; publish policy and runtime API boundary for `patina-mother` |
-| M3: SDK contract stabilization (not redesign) | Mixed SDK + legacy compatibility surfaces (`sdk/patina-sdk/src/lib.rs:1`, `sdk/patina-sdk/Cargo.toml:16`) and runtime contract touchpoints (`src/child/internal/tests.rs:317`, `mother/src/toys.rs:13`) | Tiered SDK as canonical external contract (`sdk/patina-sdk-core`, `sdk/patina-sdk-data`, `sdk/patina-sdk-agent`, `sdk/patina-sdk` umbrella) with legacy features treated as migration shims until removed by parity | `cargo check -q`; `cargo test -q`; verify manifest capability schema enforcement stays `[needs].toys` + `[needs.scopes]`; verify existing child loading/runtime behavior remains stable via Mother start + health + child dispatch probes; ensure docs/spec language uses child/kind vocabulary and matches shipped SDK surfaces | Any break in child authoring ergonomics, manifest compatibility, toy grant enforcement, or third-party builder path that currently works | Revert M3 commits affecting SDK public surface/docs; restore prior exported features and compatibility shims; reopen with narrower SDK slice | SDK crates; child authoring docs/templates; manifest parser contracts; toy grant/capability path |
+| M3: Mother-owned secret authority migration | Secret authority currently anchored in Patina secrets implementation (`src/secrets/*`, `src/commands/secrets.rs`) plus Mother runtime cache child (`mother/src/secrets.rs`) | Mother owns secret authority control-plane; Patina `secrets` command remains UX client surface delegating to Mother APIs | `cargo check -q`; `cargo test -q`; `patina secrets` parity checks (`status`, `add`, `remove`, `list-recipients`, `lock`); verify no secret-value persistence regression and explicit Mother-required failure behavior | Any user-visible break in secret CRUD/recipient/identity flows, or security regression in authority handling | Revert M3 commits to prior Patina-owned authority path and keep Mother cache runtime behavior intact | `patina secrets*` UX, vault/recipient/identity control-plane, CI/headless credential workflows |
+| M4: SDK contract stabilization (not redesign) | Mixed SDK + legacy compatibility surfaces (`sdk/patina-sdk/src/lib.rs:1`, `sdk/patina-sdk/Cargo.toml:16`) and runtime contract touchpoints (`src/child/internal/tests.rs:317`, `mother/src/toys.rs:13`) | Tiered SDK as canonical external contract (`sdk/patina-sdk-core`, `sdk/patina-sdk-data`, `sdk/patina-sdk-agent`, `sdk/patina-sdk` umbrella) with legacy features treated as migration shims until removed by parity | `cargo check -q`; `cargo test -q`; verify manifest capability schema enforcement stays `[needs].toys` + `[needs.scopes]`; verify existing child loading/runtime behavior remains stable via Mother start + health + child dispatch probes; ensure docs/spec language uses child/kind vocabulary and matches shipped SDK surfaces | Any break in child authoring ergonomics, manifest compatibility, toy grant enforcement, or third-party builder path that currently works | Revert M4 commits affecting SDK public surface/docs; restore prior exported features and compatibility shims; reopen with narrower SDK slice | SDK crates; child authoring docs/templates; manifest parser contracts; toy grant/capability path |
 
 Add one row per additional ownership-moving slice before promoting this spec to active.
 
@@ -212,6 +213,10 @@ M2 functional status:
 
 - Complete (runner/bootstrap extraction, typed boundary scoping, and post-M2 extracted-switch cleanup achieved).
 
+M3 functional target:
+
+- Move secret authority ownership to Mother control-plane while preserving `patina secrets` as the user-facing client UX.
+
 ## Seam Classification Table (GF1 enforcement)
 
 | Seam | Classification | Owner | Removal trigger |
@@ -219,9 +224,9 @@ M2 functional status:
 | CLI command entrypoint -> Mother runtime invocation (`patina mother start`) | permanent contract | `src/commands/mother/mod.rs` + `mother/src/lifecycle.rs` | none |
 | CLI-owned daemon internals in `src/commands/mother/daemon.rs` | migration scaffold | M1 slice owner | remove when ownership parity is proven in Mother crate and M1 checklist passes |
 | Child capability manifest schema (`[needs].toys`, `[needs.scopes]`) | permanent contract | child manifest parser + SDK docs | none |
-| Legacy SDK world compatibility features | migration scaffold | M3 slice owner | remove only after M3 parity gates prove no active dependency |
+| Legacy SDK world compatibility features | migration scaffold | M4 slice owner | remove only after M4 parity gates prove no active dependency |
 
-## SDK Stability Tiers (M3 enforcement)
+## SDK Stability Tiers (M4 enforcement)
 
 Use these tiers for all SDK-facing APIs and docs:
 
