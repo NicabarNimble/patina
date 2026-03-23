@@ -607,6 +607,23 @@ Execution lock:
   `layer/surface/build/refactor/greenfield-mother-patina-rebuild/SPEC.md`
   with explicit parity and rollback gates.
 
+### Jon Gjengset Audit Pass (2026-03-22)
+
+Dependable-Rust enforcement checks run before spec closeout:
+
+- Commands run:
+  - `rg "pub\\s+mod\\s+internal\\b" src --glob "*.rs"`
+  - `rg "pub\\s+fn\\s+\\w+\\([^\\)]*internal::" src --glob "*.rs"`
+  - `rg "pub\\s+\\w+\\s*:\\s*internal::|->\\s*&?internal::|->\\s*internal::" src --glob "*.rs"`
+  - `cargo check -q`
+- Observed key lines:
+  - one remaining `pub mod internal` match at `src/commands/scry/mod.rs:10`
+  - no matches for internal type leakage in public signatures
+  - `cargo check -q` passes
+- Interpretation:
+  - `scry` remains an explicit transitional exception because other crate-internal modules depend on `scry::internal::{search,enrichment,logging}` surfaces today.
+  - Exception is accepted for this spec; closure target is tracked under greenfield migration planning.
+
 ## Direct Code Targets
 
 ### Phase 1 — daemon routing + dead code

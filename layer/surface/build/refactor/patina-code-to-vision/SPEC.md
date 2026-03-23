@@ -20,52 +20,52 @@ exit_criteria:
     checked: false
   - id: CV3
     text: Core verbs (scrape, scry, assay, context, belief, measure, oxidize) have an explicit, command-by-command Mother-unavailable policy documented in this spec and verified by command tests (no implicit placeholder-filter fallback behavior)
-    checked: false
+    checked: true
   - id: CV4
     text: Pre-v1 extracted-daemon probe routing is removed from canonical core command paths (`context`, `measure`, `spec`, `lake`, `scry`) — no `try_daemon_*` probes or `contains("not yet implemented")` filtering in those paths
-    checked: false
+    checked: true
   - id: CV5
     text: '"cargo check -q" produces zero warnings'
-    checked: false
+    checked: true
   - id: CV6
     text: Vocabulary migration completes with 1:1 parity and bridge removal — runtime code uses child vocabulary (`ChildManifest`, `ChildKind`, `ChildEngine`), `src/plugin/` is removed, and any temporary compatibility bridge is deleted only after parity proof (unless user explicitly approves exception)
-    checked: false
+    checked: true
   - id: CV7
     text: Mother startup guarantees bundled runtime children are loaded and visible in health/status output when daemon boots successfully (`secrets` compiled-in + `session-writer` first-party WASM inventory)
-    checked: false
+    checked: true
   - id: CV8
     text: Project manifest exists — a project declares what children it needs and Mother resolves them on connect
-    checked: false
+    checked: true
   - id: CV9
     text: spec-manager is a child — all spec operations route through Mother to this child, not through core CLI code
-    checked: false
+    checked: true
   - id: CV10
     text: toy-layer-fs and toy-git WIT interfaces exist with Mother host implementations
-    checked: false
+    checked: true
   - id: CV11
     text: Scrape strategy boundary is explicit and enforceable — layer/beliefs remain core, and non-core scrape strategy lanes are extraction-ready and independently pluggable without breaking current core scrape behavior. Child extraction happens only after 1:1 parity proof
     checked: false
   - id: CV12
     text: '"patina spec list" without Mother returns clear "spec-manager not available" error'
-    checked: false
+    checked: true
   - id: CV13
     text: spec lifecycle supports rename and reopen (in spec-manager child)
-    checked: false
+    checked: true
   - id: CV14
     text: spec complete and spec abandon require human confirmation
-    checked: false
+    checked: true
   - id: CV15
     text: doctor is a child, not core CLI
-    checked: false
+    checked: true
   - id: CV16
     text: version command decoupled from spec workflow — shows version without querying spec system
-    checked: false
+    checked: true
   - id: CV17
     text: session is not a core command — session artifacts are written by agents/children (session-writer), not by a core CLI verb
-    checked: false
+    checked: true
   - id: CV18
     text: lake is a child, not core CLI
-    checked: false
+    checked: true
 ---
 # refactor: Make the codebase reflect the architecture vision
 
