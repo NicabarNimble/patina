@@ -139,6 +139,10 @@ fn handle_action(
             let payload = payload.ok_or_else(|| "missing payload".to_string())?;
             let connect: ConnectPayload = serde_json::from_value(payload)
                 .map_err(|e| format!("invalid connect payload: {}", e))?;
+            // Transitional handshake: fields are validated/echoed so Patina and
+            // Mother share explicit scope (project + persona + interface).
+            // Crypto persona verification and multi-Mother federation identity
+            // checks land in later networking/security slices.
             if let Some(persona) = connect.persona.as_deref() {
                 eprintln!(
                     "[mother] connect persona accepted (ignored pre-v1): {}",

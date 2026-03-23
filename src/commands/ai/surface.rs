@@ -304,6 +304,10 @@ fn record_ai_session_started(
 }
 
 fn resolve_persona_uid(explicit: Option<&str>, project_root: &std::path::Path) -> Option<String> {
+    // Launch-time persona scope precedence:
+    // 1) explicit CLI flag, 2) project binding `.patina/persona`, 3) none.
+    // Cryptographic persona binding is a later phase; this function only
+    // resolves the current namespace selector used by check-in/session scoping.
     explicit
         .map(str::trim)
         .filter(|value| !value.is_empty())

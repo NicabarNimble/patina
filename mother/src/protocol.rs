@@ -30,11 +30,19 @@ impl Envelope {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectPayload {
+    /// Caller identity (interface/runtime host).
     pub agent: String,
+    /// Stable project identity from `.patina/uid`.
     pub project_uid: String,
+    /// Interface runtime kind (`opencode`, `claude`, `gemini`, ...).
     pub interface_kind: String,
+    /// Optional human/debug path. Not authoritative for identity.
     #[serde(default, alias = "project")]
     pub project_root: Option<String>,
+    /// Persona namespace selector.
+    ///
+    /// Pre-v1 this is an opaque UID/string. Future phases will bind this to
+    /// cryptographic persona identity and capability verification.
     pub persona: Option<String>,
 }
 
