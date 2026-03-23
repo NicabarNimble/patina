@@ -159,19 +159,21 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
             );
         }
 
-        let socket_path = patina::paths::serve::socket_path();
-        let pid_path = patina::paths::serve::pid_path();
-        mother_crate::daemon_lifecycle::write_pid_file(&pid_path)?;
-        mother_crate::daemon_lifecycle::register_signal_handlers(pid_path, socket_path.clone());
-
-        println!("🚀 Mother daemon starting (extracted mode)...");
-        println!("   PID: {}", std::process::id());
-        println!("   Listening on {}", socket_path.display());
-        println!("   Protocol: JSON-lines over Unix socket");
-        println!("   Press Ctrl+C to stop\n");
-
-        let state = mother_crate::daemon::DaemonState::default();
-        return mother_crate::daemon::listen_with_state(&socket_path, &state);
+        let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
+            transport: mother_crate::daemon_bootstrap_config::TransportMode::UdsJsonLines {
+                socket_path: patina::paths::serve::socket_path(),
+                pid_path: patina::paths::serve::pid_path(),
+            },
+            legacy_migration: false,
+        };
+        return mother_crate::daemon_bootstrap_config::start(
+            config,
+            mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
+                mode: mother_crate::daemon_bootstrap_config::RuntimeMode::JsonLines {
+                    state: mother_crate::daemon::DaemonState::default(),
+                },
+            },
+        );
     }
 
     // Build and load child registry
@@ -200,7 +202,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         let state = Arc::new(ServerState::new(token, registry));
         let router = Arc::new(build_router(Arc::clone(&state), true));
         let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
-            transport: mother_crate::daemon_bootstrap_config::TransportMode::Tcp {
+            transport: mother_crate::daemon_bootstrap_config::TransportMode::TcpHttp {
                 host: host.clone(),
                 port: options.port,
                 token_path: patina::paths::serve::token_path(),
@@ -211,8 +213,10 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         return mother_crate::daemon_bootstrap_config::start(
             config,
             mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
-                registry: Arc::clone(&state.registry),
-                router,
+                mode: mother_crate::daemon_bootstrap_config::RuntimeMode::HttpApi {
+                    registry: Arc::clone(&state.registry),
+                    router,
+                },
             },
         );
     }
@@ -221,7 +225,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     let state = Arc::new(ServerState::new(String::new(), registry));
     let router = Arc::new(build_router(Arc::clone(&state), false));
     let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
-        transport: mother_crate::daemon_bootstrap_config::TransportMode::Uds {
+        transport: mother_crate::daemon_bootstrap_config::TransportMode::UdsHttp {
             run_dir: patina::paths::serve::run_dir(),
             socket_path: patina::paths::serve::socket_path(),
             pid_path: patina::paths::serve::pid_path(),
@@ -231,8 +235,10 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     mother_crate::daemon_bootstrap_config::start(
         config,
         mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
-            registry: Arc::clone(&state.registry),
-            router,
+            mode: mother_crate::daemon_bootstrap_config::RuntimeMode::HttpApi {
+                registry: Arc::clone(&state.registry),
+                router,
+            },
         },
     )
 }

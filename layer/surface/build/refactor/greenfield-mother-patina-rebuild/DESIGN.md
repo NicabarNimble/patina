@@ -146,6 +146,7 @@ Typed bootstrap config rule (normative):
 
 - Mother startup mode MUST be represented with typed enums (transport/auth/lifecycle), not stringly/boolean combinations in CLI command code.
 - Patina `run_server` acts as argument translation into Mother bootstrap config; Mother executes startup orchestration from that config.
+- Both default HTTP daemon mode and extracted JSON-lines mode must route through the same typed bootstrap surface (variant-selected execution), not separate ad-hoc startup branches.
 
 ## M1 Acceptance Checklist (binary pass/fail)
 

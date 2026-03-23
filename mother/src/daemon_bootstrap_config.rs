@@ -8,16 +8,20 @@ use crate::registry::ChildRegistry;
 
 #[derive(Debug, Clone)]
 pub enum TransportMode {
-    Uds {
+    UdsHttp {
         run_dir: PathBuf,
         socket_path: PathBuf,
         pid_path: PathBuf,
     },
-    Tcp {
+    TcpHttp {
         host: String,
         port: u16,
         token_path: PathBuf,
         token: String,
+    },
+    UdsJsonLines {
+        socket_path: PathBuf,
+        pid_path: PathBuf,
     },
 }
 
@@ -28,18 +32,30 @@ pub struct DaemonBootstrapConfig {
 }
 
 pub struct DaemonBootstrapRuntime {
-    pub registry: Arc<ChildRegistry>,
-    pub router: Arc<Router>,
+    pub mode: RuntimeMode,
+}
+
+pub enum RuntimeMode {
+    HttpApi {
+        registry: Arc<ChildRegistry>,
+        router: Arc<Router>,
+    },
+    JsonLines {
+        state: crate::daemon::DaemonState,
+    },
 }
 
 pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> Result<()> {
     match config.transport {
-        TransportMode::Tcp {
+        TransportMode::TcpHttp {
             host,
             port,
             token_path,
             token,
         } => {
+            let RuntimeMode::HttpApi { registry, router } = runtime.mode else {
+                anyhow::bail!("TcpHttp transport requires HttpApi runtime mode");
+            };
             let addr = format!("{}:{}", host, port);
             let listener = std::net::TcpListener::bind(&addr)?;
             run_tcp_server(TcpServerLaunch {
@@ -49,15 +65,18 @@ pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> 
                 token_path,
                 token,
                 legacy_migration: config.legacy_migration,
-                registry: runtime.registry,
-                router: runtime.router,
+                registry,
+                router,
             });
         }
-        TransportMode::Uds {
+        TransportMode::UdsHttp {
             run_dir,
             socket_path,
             pid_path,
         } => {
+            let RuntimeMode::HttpApi { registry, router } = runtime.mode else {
+                anyhow::bail!("UdsHttp transport requires HttpApi runtime mode");
+            };
             crate::daemon_lifecycle::write_pid_file(&pid_path)?;
             crate::daemon_lifecycle::register_signal_handlers(pid_path, socket_path.clone());
             let listener = crate::socket::setup_unix_listener(&run_dir, &socket_path)?;
@@ -65,9 +84,30 @@ pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> 
                 listener,
                 socket_path,
                 legacy_migration: config.legacy_migration,
-                registry: runtime.registry,
-                router: runtime.router,
+                registry,
+                router,
             });
         }
+        TransportMode::UdsJsonLines {
+            socket_path,
+            pid_path,
+        } => {
+            let RuntimeMode::JsonLines { state } = runtime.mode else {
+                anyhow::bail!("UdsJsonLines transport requires JsonLines runtime mode");
+            };
+
+            crate::daemon_lifecycle::write_pid_file(&pid_path)?;
+            crate::daemon_lifecycle::register_signal_handlers(pid_path, socket_path.clone());
+
+            println!("🚀 Mother daemon starting (extracted mode)...");
+            println!("   PID: {}", std::process::id());
+            println!("   Listening on {}", socket_path.display());
+            println!("   Protocol: JSON-lines over Unix socket");
+            println!("   Press Ctrl+C to stop\n");
+
+            crate::daemon::listen_with_state(&socket_path, &state)?;
+        }
     }
+
+    Ok(())
 }
