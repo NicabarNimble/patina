@@ -218,7 +218,9 @@ echo ""
 # Step 11: Broker integration test — catches cross-crate wire format drift
 # Requires: test-child installed at ~/.patina/children/test-child/
 echo "📦 [11/13] Broker integration test..."
-if [ -x "$HOME/.patina/children/test-child/test-child" ] && [ -f ".patina/sources.toml" ]; then
+if cargo metadata --no-deps --format-version=1 2>/dev/null | grep -q '"name":"patina-pipe"' \
+   && [ -x "$HOME/.patina/children/test-child/test-child" ] \
+   && [ -f ".patina/sources.toml" ]; then
     # Clean slate: remove previous test data so dedup doesn't mask failures
     if [ -f ".patina/local/data/events.db" ]; then
         sqlite3 .patina/local/data/events.db "DELETE FROM eventlog WHERE source_id = 'child:test-child'" 2>/dev/null || true
