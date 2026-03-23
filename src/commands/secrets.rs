@@ -134,8 +134,7 @@ pub fn execute_cli(command: Option<SecretsCommands>, flags: SecretsFlags) -> Res
 }
 
 fn authority_client() -> mother::Client {
-    let address = mother::get_address().unwrap_or_else(|| "localhost:50051".to_string());
-    mother::Client::new(address)
+    mother::control_plane_client()
 }
 
 fn current_project_root_str() -> Option<String> {

@@ -56,6 +56,7 @@ pub struct SetupClaudeTokenResult {
 }
 
 pub trait SecretsAuthorityBackend {
+    fn get_global_secret(&self, name: String) -> Result<Option<String>>;
     fn add_secret(&self, input: AddSecretInput) -> Result<AddSecretResult>;
     fn remove_secret(&self, input: RemoveSecretInput) -> Result<()>;
     fn add_recipient(&self, input: RecipientInput) -> Result<()>;
@@ -85,6 +86,23 @@ pub fn dispatch(payload: Value, backend: &dyn SecretsAuthorityBackend) -> HttpRe
         .map(PathBuf::from);
 
     match op {
+        "get_global_secret" => {
+            let name = match payload.get("name").and_then(|v| v.as_str()) {
+                Some(value) => value.to_string(),
+                None => return json_error(400, "Missing 'name' for get_global_secret"),
+            };
+
+            match backend.get_global_secret(name) {
+                Ok(value) => HttpResponse::json(
+                    200,
+                    &serde_json::json!({
+                        "status": "ok",
+                        "value": value,
+                    }),
+                ),
+                Err(error) => json_error(400, &error.to_string()),
+            }
+        }
         "add_secret" => {
             let name = match payload.get("name").and_then(|v| v.as_str()) {
                 Some(value) => value.to_string(),

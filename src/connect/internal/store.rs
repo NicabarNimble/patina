@@ -115,19 +115,23 @@ pub(crate) fn create(record: &ConnectionRecord, credential: &str) -> Result<(), 
     })?;
 
     // Store credential in global vault
-    crate::secrets::add_secret(
-        &record.auth.secret_ref,
-        credential,
-        None, // no env var mapping needed
-        true, // global vault
-        None, // no project root
-    )
-    .map_err(|e| ConnectError::IoError {
-        detail: format!(
-            "storing credential '{}' in vault: {}",
-            record.auth.secret_ref, e
-        ),
-    })?;
+    crate::mother::control_plane_client()
+        .child_action(
+            "secrets-authority",
+            "dispatch",
+            &serde_json::json!({
+                "op": "add_secret",
+                "name": record.auth.secret_ref,
+                "value": credential,
+                "global": true,
+            }),
+        )
+        .map_err(|e| ConnectError::IoError {
+            detail: format!(
+                "storing credential '{}' in vault via Mother authority: {}",
+                record.auth.secret_ref, e
+            ),
+        })?;
 
     Ok(())
 }
@@ -166,7 +170,15 @@ pub(crate) fn remove(name: &str, force: bool) -> Result<(), ConnectError> {
     })?;
 
     // Remove credential from vault (best-effort — vault may not exist)
-    if let Err(e) = crate::secrets::remove_secret(&record.auth.secret_ref, true, None) {
+    if let Err(e) = crate::mother::control_plane_client().child_action(
+        "secrets-authority",
+        "dispatch",
+        &serde_json::json!({
+            "op": "remove_secret",
+            "name": record.auth.secret_ref,
+            "global": true,
+        }),
+    ) {
         eprintln!(
             "[connect] warning: could not remove vault entry '{}': {}",
             record.auth.secret_ref, e

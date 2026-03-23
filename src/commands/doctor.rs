@@ -177,7 +177,7 @@ pub(crate) fn execute_value() -> Result<serde_json::Value> {
 
 pub fn execute_cli(json_output: bool) -> Result<()> {
     let payload = serde_json::json!({ "json": json_output });
-    let client = patina::mother::Client::new("localhost:50051".to_string());
+    let client = patina::mother::control_plane_client();
     let response = client
         .child_action("doctor", "run", &payload)
         .map_err(|e| {

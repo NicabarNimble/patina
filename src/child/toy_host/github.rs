@@ -271,7 +271,7 @@ fn page_from_response(
 
 fn token_from_grants(grants: &GrantedCapabilities) -> Option<String> {
     if let Some(mapping) = grants.credential_mappings.get("api.github.com") {
-        if let Ok(Some(secret)) = crate::secrets::get_global_secret(&mapping.secret_name) {
+        if let Ok(Some(secret)) = crate::mother::get_global_secret(&mapping.secret_name) {
             if !secret.trim().is_empty() {
                 return Some(secret);
             }

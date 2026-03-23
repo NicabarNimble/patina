@@ -242,6 +242,10 @@ pub fn get_global_secret(name: &str) -> Result<Option<String>> {
 pub struct MotherSecretsAuthorityBackend;
 
 impl api::SecretsAuthorityBackend for MotherSecretsAuthorityBackend {
+    fn get_global_secret(&self, name: String) -> anyhow::Result<Option<String>> {
+        get_global_secret(&name)
+    }
+
     fn add_secret(&self, input: api::AddSecretInput) -> anyhow::Result<api::AddSecretResult> {
         let result = add_secret(
             &input.name,

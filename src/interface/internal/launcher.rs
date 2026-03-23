@@ -241,7 +241,7 @@ fn try_get_claude_token() -> Option<String> {
         eprintln!("patina: CLAUDE_CODE_OAUTH_TOKEN already set - skipping vault token injection");
         return None;
     }
-    match crate::secrets::get_global_secret("claude-oauth") {
+    match crate::mother::get_global_secret("claude-oauth") {
         Ok(Some(token)) => Some(token),
         Ok(None) => None,
         Err(error) => {

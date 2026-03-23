@@ -9,6 +9,7 @@ use reqwest::blocking::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::paths;
@@ -149,7 +150,7 @@ impl Client {
 
 /// Send a GET request over UDS and return the response body.
 fn uds_get(path: &str) -> Option<Vec<u8>> {
-    let sock_path = paths::serve::socket_path();
+    let sock_path = mother_socket_path();
     let mut stream = std::os::unix::net::UnixStream::connect(&sock_path).ok()?;
     stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
 
@@ -174,7 +175,7 @@ fn uds_post(path: &str, json_body: &[u8]) -> Option<Vec<u8>> {
 }
 
 fn uds_request(method: &str, path: &str, json_body: Option<&[u8]>) -> Option<(u16, Vec<u8>)> {
-    let sock_path = paths::serve::socket_path();
+    let sock_path = mother_socket_path();
     let mut stream = std::os::unix::net::UnixStream::connect(&sock_path).ok()?;
     stream
         .set_read_timeout(Some(Duration::from_secs(30)))
@@ -231,7 +232,7 @@ fn is_localhost(url: &str) -> bool {
 /// Read bearer token from file or env (same resolution as session.rs).
 fn serve_token() -> Option<String> {
     // Try token file first
-    let token_path = paths::serve::token_path();
+    let token_path = mother_token_path();
     if let Ok(token) = std::fs::read_to_string(&token_path) {
         let token = token.trim().to_string();
         if !token.is_empty() {
@@ -240,6 +241,18 @@ fn serve_token() -> Option<String> {
     }
     // Fall back to env var
     std::env::var("PATINA_SERVE_TOKEN").ok()
+}
+
+fn mother_socket_path() -> PathBuf {
+    std::env::var_os(super::ENV_MOTHER_SOCKET)
+        .map(PathBuf::from)
+        .unwrap_or_else(paths::serve::socket_path)
+}
+
+fn mother_token_path() -> PathBuf {
+    std::env::var_os(super::ENV_MOTHER_TOKEN_FILE)
+        .map(PathBuf::from)
+        .unwrap_or_else(paths::serve::token_path)
 }
 
 /// Health check response

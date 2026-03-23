@@ -433,7 +433,7 @@ fn try_get_claude_token() -> Option<String> {
     }
 
     // Attempt vault lookup — catch all errors
-    match patina::secrets::get_global_secret("claude-oauth") {
+    match patina::mother::get_global_secret("claude-oauth") {
         Ok(Some(token)) => Some(token),
         Ok(None) => None,
         Err(e) => {
