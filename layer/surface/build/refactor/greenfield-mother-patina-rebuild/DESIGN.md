@@ -242,6 +242,12 @@ M3a progress evidence (current session):
 - Added focused regression checks for authority payload construction and Mother-unavailable fallback detection.
 - Core-value anchor: preserve local-first reliability and least-surprise behavior during migration (scalpel rollout, no hard cutover in M3a).
 
+M3b progress evidence (current session):
+
+- Default behavior now requires Mother authority for proxied `patina secrets` operations.
+- Temporary rollback switch added: `PATINA_SECRETS_LEGACY_FALLBACK=1` re-enables local fallback path during stabilization.
+- Runtime verification: with Mother on, `patina secrets` succeeds; with Mother off, command hard-fails by default; rollback switch restores fallback success.
+
 ## Seam Classification Table (GF1 enforcement)
 
 | Seam | Classification | Owner | Removal trigger |

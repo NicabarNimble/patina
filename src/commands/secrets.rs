@@ -170,9 +170,24 @@ fn dispatch_secrets_authority(op: &str, payload: Value) -> Result<Option<Value>>
 
     match client.child_action("secrets-authority", "dispatch", &wrapped_payload) {
         Ok(value) => Ok(Some(value)),
-        Err(error) if is_mother_unavailable_error(&error) => Ok(None),
+        Err(error) if is_mother_unavailable_error(&error) => {
+            if legacy_secrets_fallback_enabled() {
+                Ok(None)
+            } else {
+                bail!(
+                    "Mother secrets authority unavailable for '{}'. Start `patina mother start` or set PATINA_SECRETS_LEGACY_FALLBACK=1 temporarily.",
+                    op
+                );
+            }
+        }
         Err(error) => Err(error),
     }
+}
+
+fn legacy_secrets_fallback_enabled() -> bool {
+    std::env::var("PATINA_SECRETS_LEGACY_FALLBACK")
+        .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
 }
 
 fn is_mother_unavailable_error(error: &anyhow::Error) -> bool {
@@ -725,5 +740,22 @@ mod tests {
 
         let error = anyhow::anyhow!("Invalid JSON payload");
         assert!(!is_mother_unavailable_error(&error));
+    }
+
+    #[test]
+    fn legacy_fallback_flag_parsing() {
+        std::env::remove_var("PATINA_SECRETS_LEGACY_FALLBACK");
+        assert!(!legacy_secrets_fallback_enabled());
+
+        std::env::set_var("PATINA_SECRETS_LEGACY_FALLBACK", "1");
+        assert!(legacy_secrets_fallback_enabled());
+
+        std::env::set_var("PATINA_SECRETS_LEGACY_FALLBACK", "true");
+        assert!(legacy_secrets_fallback_enabled());
+
+        std::env::set_var("PATINA_SECRETS_LEGACY_FALLBACK", "0");
+        assert!(!legacy_secrets_fallback_enabled());
+
+        std::env::remove_var("PATINA_SECRETS_LEGACY_FALLBACK");
     }
 }
