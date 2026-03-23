@@ -199,7 +199,8 @@ Execution priority for current lane:
 1. M1 complete: CLI -> Mother daemon seam extraction (runtime internals moved; behavior preserved).
 2. M2 next (Option B): Mother runner/bootstrap API extraction to support `patina-mother` direction while keeping Patina as thin composition shell.
 3. M3 after M2: secret authority migration to Mother control-plane while preserving `patina secrets` UX.
-4. M4 after M3: SDK contract stabilization (single `patina-sdk` public SDK stance retained).
+4. M3d after M3: relocate remaining secret implementation internals from Patina into Mother-owned modules to close greenfield purity seam.
+5. M4 after M3d: SDK contract stabilization (single `patina-sdk` public SDK stance retained).
 
 ### Seam classification contract
 
