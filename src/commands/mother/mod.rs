@@ -47,9 +47,11 @@ pub(crate) use mother_crate::registry;
 pub(crate) use mother_crate::secrets;
 
 use anyhow::{bail, Context, Result};
+use serde::Deserialize;
 use std::path::Path;
 
 use patina::paths;
+use patina::session::SessionManager;
 
 // Re-export DaemonOptions for use in main.rs
 pub use daemon::DaemonOptions;
@@ -494,10 +496,33 @@ fn show_status() -> Result<()> {
         Some(health) => {
             println!("   Version: {}", health.version);
             println!("   Uptime: {}s", health.uptime_secs);
+            let loaded_children: std::collections::HashSet<String> =
+                health.children.iter().map(|c| c.name.clone()).collect();
             if !health.children.is_empty() {
                 println!("   Children:");
                 for child in health.children {
                     println!("     {}: {}", child.name, child.status);
+                }
+            }
+
+            if let Some(project_root) = SessionManager::find_project_root().ok() {
+                match load_project_manifest(&project_root) {
+                    Ok(manifest) => {
+                        if !manifest.needs.children.is_empty() {
+                            println!("   Project child needs:");
+                            for child in &manifest.needs.children {
+                                let marker = if loaded_children.contains(child) {
+                                    "ok"
+                                } else {
+                                    "missing"
+                                };
+                                println!("     {}: {}", child, marker);
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        println!("   Project child manifest: {}", error);
+                    }
                 }
             }
         }
@@ -511,6 +536,37 @@ fn show_status() -> Result<()> {
     println!("\n   Tip: broker source status lives under `patina mother sources`.");
 
     Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct ProjectManifest {
+    project: ManifestProject,
+    needs: ManifestNeeds,
+}
+
+#[derive(Debug, Deserialize)]
+struct ManifestProject {
+    schema: u32,
+}
+
+#[derive(Debug, Deserialize)]
+struct ManifestNeeds {
+    children: Vec<String>,
+}
+
+fn load_project_manifest(project_root: &Path) -> Result<ProjectManifest> {
+    let manifest_path = project_root.join(".patina/manifest.toml");
+    let content = std::fs::read_to_string(&manifest_path)
+        .with_context(|| format!("missing {}", manifest_path.display()))?;
+    let manifest: ProjectManifest =
+        toml::from_str(&content).with_context(|| format!("invalid {}", manifest_path.display()))?;
+    if manifest.project.schema != 1 {
+        bail!(
+            "unsupported .patina/manifest.toml schema {} (expected 1)",
+            manifest.project.schema
+        );
+    }
+    Ok(manifest)
 }
 
 /// Set up the Unix domain socket for serving.
