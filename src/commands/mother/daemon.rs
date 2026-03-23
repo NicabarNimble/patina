@@ -12,7 +12,6 @@
 //! - Opt-in: TCP at --host/--port (bearer token required)
 
 use anyhow::Result;
-use std::net::TcpListener;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -21,7 +20,6 @@ use patina::mother::ChildRequest;
 use super::adapters::{RetrievalScryBackend, ScryBackend};
 use super::registry::ChildRegistry;
 use mother_crate::http_api::ApiRuntime;
-use mother_crate::http_daemon::{HttpRequest, DEFAULT_MAX_BODY_SIZE};
 use mother_crate::http_routes::Router;
 
 // === Server state ===
@@ -201,48 +199,18 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
         let state = Arc::new(ServerState::new(token, registry));
         let addr = format!("{}:{}", host, options.port);
-
-        if host != "127.0.0.1" && host != "localhost" {
-            eprintln!(
-                "WARNING: Binding to {} exposes the server to the network.",
-                host
-            );
-            eprintln!(
-                "  The server has no encryption (HTTP only). Use a reverse proxy for production."
-            );
-        }
-
-        let token_path = patina::paths::serve::token_path();
-        std::fs::write(&token_path, state.token.as_bytes())?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&token_path, std::fs::Permissions::from_mode(0o600))?;
-        }
-        eprintln!("Auth token written to {}", token_path.display());
-
-        let listener = TcpListener::bind(&addr)?;
-        println!("🚀 Mother daemon starting...");
-        println!(
-            "   Knowledge children: {} loaded",
-            state.registry.knowledge_len()
-        );
-        if options.legacy_migration {
-            println!(
-                "   Legacy migration children: {} loaded",
-                state.registry.legacy_len()
-            );
-        }
-        println!("   Listening on http://{}", addr);
-        println!("   Press Ctrl+C to stop\n");
-
-        mother_crate::daemon_heartbeat::spawn_heartbeat(
-            Arc::clone(&state.registry),
-            options.legacy_migration,
-        );
+        let listener = std::net::TcpListener::bind(&addr)?;
         let router = Arc::new(build_router(Arc::clone(&state), true));
-        let handler = Arc::new(move |request: HttpRequest| router.route(&request));
-        mother_crate::http_daemon::accept_loop_tcp(listener, DEFAULT_MAX_BODY_SIZE, handler);
+        mother_crate::daemon_runner::run_tcp_server(mother_crate::daemon_runner::TcpServerLaunch {
+            listener,
+            host: host.clone(),
+            addr,
+            token_path: patina::paths::serve::token_path(),
+            token: state.token.clone(),
+            legacy_migration: options.legacy_migration,
+            registry: Arc::clone(&state.registry),
+            router,
+        });
     }
 
     // Default: UDS path (no TCP, no token needed — file permissions are auth)
@@ -257,33 +225,14 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     // Register signal handlers for cleanup
     mother_crate::daemon_lifecycle::register_signal_handlers(pid_path, socket_path.clone());
 
-    println!("🚀 Mother daemon starting...");
-    println!("   PID: {}", std::process::id());
-    println!(
-        "   Knowledge children: {} loaded",
-        state.registry.knowledge_len()
-    );
-    if options.legacy_migration {
-        println!(
-            "   Legacy migration children: {} loaded",
-            state.registry.legacy_len()
-        );
-    }
-    println!("   Listening on {}", socket_path.display());
-    println!(
-        "   Test: curl -s --unix-socket {} http://localhost/health",
-        socket_path.display()
-    );
-    println!("   No TCP listener (use --host/--port for network access)");
-    println!("   Press Ctrl+C to stop\n");
-
-    mother_crate::daemon_heartbeat::spawn_heartbeat(
-        Arc::clone(&state.registry),
-        options.legacy_migration,
-    );
     let router = Arc::new(build_router(Arc::clone(&state), false));
-    let handler = Arc::new(move |request: HttpRequest| router.route(&request));
-    mother_crate::http_daemon::accept_loop_uds(listener, DEFAULT_MAX_BODY_SIZE, handler);
+    mother_crate::daemon_runner::run_uds_server(mother_crate::daemon_runner::UdsServerLaunch {
+        listener,
+        socket_path,
+        legacy_migration: options.legacy_migration,
+        registry: Arc::clone(&state.registry),
+        router,
+    });
 }
 
 #[cfg(test)]
