@@ -32,7 +32,7 @@ pub(crate) use queue::{load_dep_counts, next_spec_value, spec_age_days_from_list
 // Mutation _value() functions re-exported pub(crate) by parent for MCP
 pub(crate) use mutations::{
     abandon_spec_value, block_spec_value, complete_spec_value, pause_spec_value,
-    promote_spec_value, resume_spec_value, set_spec_value,
+    promote_spec_value, rename_spec_value, reopen_spec_value, resume_spec_value, set_spec_value,
 };
 
 // Create _value() function re-exported pub(crate) by parent for MCP
@@ -45,7 +45,8 @@ pub(crate) use split::split_spec_value;
 pub(super) use archive::{archive_spec, archive_stale_specs};
 pub(super) use create::create_spec;
 pub(super) use mutations::{
-    abandon_spec, block_spec, complete_spec, pause_spec, promote_spec, resume_spec, set_spec,
+    abandon_spec, block_spec, complete_spec, pause_spec, promote_spec, rename_spec, reopen_spec,
+    resume_spec, set_spec,
 };
 pub(super) use packets::{handoff_spec, packet_spec, prompt_spec};
 pub(super) use queries::{

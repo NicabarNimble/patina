@@ -72,6 +72,15 @@ pub enum MutationDetail {
         action: String,
         value: String,
     },
+    Rename {
+        old_id: String,
+        new_id: String,
+        file: String,
+    },
+    Reopen {
+        file: String,
+        previous_status: String,
+    },
 }
 
 fn lint_ready_spec(loaded: &LoadedSpec) -> Result<()> {
@@ -979,6 +988,153 @@ pub fn block_spec_value(id: &str, blocker: &str, reason: &str) -> Result<Mutatio
             tag: tag_name,
             blocker: blocker.to_string(),
             reason: reason.to_string(),
+        },
+    })
+}
+
+pub fn rename_spec(id: &str, new_id: &str, json: bool) -> Result<()> {
+    let result = rename_spec_value(id, new_id)?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else if let MutationDetail::Rename {
+        ref old_id,
+        ref new_id,
+        ..
+    } = result.detail
+    {
+        println!("Renamed: {} -> {}", old_id, new_id);
+    }
+    Ok(())
+}
+
+pub fn rename_spec_value(id: &str, new_id: &str) -> Result<MutationResult> {
+    if new_id.is_empty()
+        || !new_id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        anyhow::bail!("invalid new spec id '{}': use kebab-case", new_id);
+    }
+    if find_spec(new_id).is_ok() {
+        anyhow::bail!("spec '{}' already exists", new_id);
+    }
+
+    let loaded = load_spec(id)?;
+    let old_file = loaded.file_path.clone();
+    let old_dir = Path::new(&old_file)
+        .parent()
+        .context("spec has no parent directory")?
+        .to_path_buf();
+    let parent_dir = old_dir
+        .parent()
+        .context("spec directory has no parent")?
+        .to_path_buf();
+    let new_dir = parent_dir.join(new_id);
+    if new_dir.exists() {
+        anyhow::bail!("target directory already exists: {}", new_dir.display());
+    }
+
+    let mut frontmatter = loaded.frontmatter.clone();
+    frontmatter.id = new_id.to_string();
+    let content = serialize_spec_file(&frontmatter, &loaded.body)?;
+    std::fs::write(&old_file, content)?;
+
+    std::fs::rename(&old_dir, &new_dir).with_context(|| {
+        format!(
+            "failed to rename {} -> {}",
+            old_dir.display(),
+            new_dir.display()
+        )
+    })?;
+
+    let new_file = new_dir.join("SPEC.md");
+    let new_file_str = new_file.to_string_lossy().to_string();
+
+    let db_path = Path::new(DB_PATH);
+    if db_path.exists() {
+        let conn = Connection::open(db_path).context("Failed to open database")?;
+        conn.execute(
+            "UPDATE patterns SET id = ?1, file_path = ?2 WHERE id = ?3",
+            rusqlite::params![new_id, new_file_str, id],
+        )?;
+    }
+
+    let stage_output = Command::new("git")
+        .args([
+            "add",
+            "-A",
+            old_dir.to_string_lossy().as_ref(),
+            new_dir.to_string_lossy().as_ref(),
+        ])
+        .output()
+        .context("Failed to stage rename")?;
+    if !stage_output.status.success() {
+        anyhow::bail!(
+            "failed to stage rename: {}",
+            String::from_utf8_lossy(&stage_output.stderr)
+        );
+    }
+
+    let commit_msg = format!("spec: rename {} to {}", id, new_id);
+    if patina::git::has_staged_changes()? {
+        patina::git::commit(&commit_msg)?;
+    }
+
+    Ok(MutationResult {
+        command: "rename",
+        spec_id: new_id.to_string(),
+        new_status: frontmatter
+            .status
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "unknown".to_string()),
+        detail: MutationDetail::Rename {
+            old_id: id.to_string(),
+            new_id: new_id.to_string(),
+            file: new_file_str,
+        },
+    })
+}
+
+pub fn reopen_spec(id: &str, json: bool) -> Result<()> {
+    let result = reopen_spec_value(id)?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else if let MutationDetail::Reopen {
+        ref previous_status,
+        ..
+    } = result.detail
+    {
+        println!("Reopened: {} ({} -> active)", id, previous_status);
+    }
+    Ok(())
+}
+
+pub fn reopen_spec_value(id: &str) -> Result<MutationResult> {
+    let loaded = load_spec(id)?;
+    let status = loaded
+        .status
+        .ok_or_else(|| anyhow::anyhow!("Spec '{}' has no status", id))?;
+    if !status.is_terminal() {
+        anyhow::bail!(
+            "Cannot reopen '{}' — status is '{}', expected complete or abandoned",
+            id,
+            status
+        );
+    }
+
+    let out = mutate_spec(loaded, |fm| {
+        fm.status = Some(SpecStatus::Active);
+        Ok(())
+    })?;
+    git_stage_and_commit(&out.file_path, &format!("spec: reopen {}", id))?;
+
+    Ok(MutationResult {
+        command: "reopen",
+        spec_id: id.to_string(),
+        new_status: SpecStatus::Active.to_string(),
+        detail: MutationDetail::Reopen {
+            file: out.file_path,
+            previous_status: status.to_string(),
         },
     })
 }

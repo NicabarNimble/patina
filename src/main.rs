@@ -427,12 +427,6 @@ enum Commands {
         full: bool,
     },
 
-    /// Manage development sessions (start, update, note, end)
-    Session {
-        #[command(subcommand)]
-        command: commands::session::SessionCommands,
-    },
-
     /// Patina AI interface surface over Mother-backed sessions
     Ai {
         #[command(subcommand)]
@@ -1382,74 +1376,7 @@ fn main() -> Result<()> {
             }
         },
         Some(Commands::Doctor { json }) => {
-            let mut args = Vec::new();
-            if json {
-                args.push("--json".to_string());
-            }
-
-            // Try WASM plugin first
-            let plugin_wasm = patina::paths::child::plugins_dir().join("patina-doctor.wasm");
-            let plugin_toml = patina::paths::child::plugins_dir().join("patina-doctor.toml");
-
-            let exit_code = if plugin_wasm.exists() {
-                let manifest = if plugin_toml.exists() {
-                    patina::child::engine::MotherChildEngine::load_manifest(&plugin_toml)?
-                } else {
-                    // Default manifest for plugins without .toml
-                    patina::child::engine::ChildManifest {
-                        name: "patina-doctor".into(),
-                        version: "0.0.0".into(),
-                        description: String::new(),
-                        world: patina::child::engine::ChildKind::Command,
-                        role: None,
-                        patina_min: "0.0.0".into(),
-                        capabilities: vec!["host_log".into(), "host_layer".into()],
-                        allowed_toy_commands: vec![],
-                        host_query_kinds: vec![],
-                        host_http_domains: vec![],
-                        host_secrets: std::collections::HashMap::new(),
-                        provides: patina::child::engine::ChildProvides {
-                            child: None,
-                            commands: vec!["doctor".into()],
-                            ..Default::default()
-                        },
-                        schemas: std::collections::HashMap::new(),
-                        state_enabled: false,
-                        checkpoint_streams: vec![],
-                        lake_names: vec![],
-                        ingress_sources: std::collections::HashMap::new(),
-                        subscribed_streams: vec![],
-                        task_intent_names: vec![],
-                        task_intents: vec![],
-                        graph_read: false,
-                        graph_write_actions: vec![],
-                        belief_read: false,
-                        belief_write_actions: vec![],
-                        toys: patina::mother::GrantedToys::default(),
-                    }
-                };
-                let engine = patina::child::engine::CommandEngine::new()?;
-                let wasm_bytes = std::fs::read(&plugin_wasm)?;
-                let component = engine.load_component(&wasm_bytes)?;
-                let query_fn = make_query_dispatch(&manifest);
-                engine.run_command(&component, &manifest, &args, query_fn)?
-            } else {
-                // Fall back to compiled-in doctor
-                #[cfg(feature = "bundled-doctor")]
-                {
-                    commands::doctor::execute(json)?
-                }
-                #[cfg(not(feature = "bundled-doctor"))]
-                {
-                    eprintln!("Doctor plugin not installed.");
-                    eprintln!("Install: cp patina_doctor.wasm {}", plugin_wasm.display());
-                    1
-                }
-            };
-
-            if exit_code != 0 {
-                std::process::exit(exit_code);
-            }
+            commands::doctor::execute_cli(json)?;
         }
         Some(Commands::Plugin { command }) => match command {
             PluginCommands::List => commands::child::execute_list()?,
@@ -1747,9 +1674,6 @@ fn main() -> Result<()> {
                 commands::version::execute(json, components)?;
             }
         }
-        Some(Commands::Session { command }) => {
-            commands::session::execute(command)?;
-        }
         Some(Commands::Ai { command }) => {
             commands::ai::execute(command)?;
         }
@@ -1768,118 +1692,9 @@ fn main() -> Result<()> {
                 commands::setup::execute_grammars(options)?;
             }
         },
-        Some(Commands::Spec { command }) => match command {
-            commands::spec::SpecCommands::Create {
-                r#type,
-                id,
-                title,
-                description,
-                blocked_by,
-                related,
-                json,
-            } => {
-                commands::spec::create(
-                    &r#type,
-                    &id,
-                    title.as_deref(),
-                    description.as_deref(),
-                    blocked_by,
-                    related,
-                    json,
-                )?;
-            }
-            commands::spec::SpecCommands::Archive { id, dry_run, stale } => {
-                if stale {
-                    commands::spec::archive_stale(dry_run)?;
-                } else if let Some(id) = id {
-                    commands::spec::archive(&id, dry_run)?;
-                } else {
-                    anyhow::bail!(
-                        "Spec ID required. Usage:\n  \
-                         patina spec archive <id>\n  \
-                         patina spec archive --stale"
-                    );
-                }
-            }
-            commands::spec::SpecCommands::Ready { json } => {
-                commands::spec::ready(json)?;
-            }
-            commands::spec::SpecCommands::Blocked { json } => {
-                commands::spec::blocked(json)?;
-            }
-            commands::spec::SpecCommands::List {
-                status,
-                target,
-                json,
-            } => {
-                commands::spec::list(status, target, json)?;
-            }
-            commands::spec::SpecCommands::Promote { id, force, json } => {
-                commands::spec::promote(&id, force, json)?;
-            }
-            commands::spec::SpecCommands::Complete {
-                id,
-                major,
-                force,
-                json,
-            } => {
-                commands::spec::complete(&id, major, force, json)?;
-            }
-            commands::spec::SpecCommands::Abandon { id, reason, json } => {
-                commands::spec::abandon(&id, reason.as_deref(), json)?;
-            }
-            commands::spec::SpecCommands::Pause { id, reason, json } => {
-                commands::spec::pause(&id, &reason, json)?;
-            }
-            commands::spec::SpecCommands::Resume { id, force, json } => {
-                commands::spec::resume(&id, force, json)?;
-            }
-            commands::spec::SpecCommands::Block {
-                id,
-                by,
-                reason,
-                json,
-            } => {
-                commands::spec::block(&id, &by, &reason, json)?;
-            }
-            commands::spec::SpecCommands::Split {
-                id,
-                new_id,
-                description,
-                json,
-            } => {
-                commands::spec::split(&id, new_id.as_deref(), description.as_deref(), json)?;
-            }
-            commands::spec::SpecCommands::Show { id, handoff, json } => {
-                commands::spec::show(&id, handoff, json)?;
-            }
-            commands::spec::SpecCommands::Prompt { id, json } => {
-                commands::spec::prompt(&id, json)?;
-            }
-            commands::spec::SpecCommands::Handoff { id, json } => {
-                commands::spec::handoff(&id, json)?;
-            }
-            commands::spec::SpecCommands::Packet { id, json } => {
-                commands::spec::packet(&id, json)?;
-            }
-            commands::spec::SpecCommands::Set {
-                id,
-                field,
-                value,
-                json,
-            } => {
-                commands::spec::set(&id, &field, &value, json)?;
-            }
-            commands::spec::SpecCommands::Next { json } => {
-                commands::spec::next(json)?;
-            }
-            commands::spec::SpecCommands::Check { id, json } => {
-                commands::spec::check(&id, json)?;
-            }
-            commands::spec::SpecCommands::History { id, json } => {
-                commands::spec::history(&id, json)?;
-            }
-        },
+        Some(Commands::Spec { command }) => {
+            commands::spec::execute(command)?;
+        }
         Some(Commands::Schema { command }) => match command {
             commands::schema::SchemaCommands::Install { path } => {
                 commands::schema::install(&path)?;

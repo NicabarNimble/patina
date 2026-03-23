@@ -207,6 +207,121 @@ pub fn execute(json_output: bool) -> Result<i32> {
     Ok(exit_code)
 }
 
+pub(crate) fn execute_value() -> Result<serde_json::Value> {
+    let project_root = SessionManager::find_project_root()
+        .context("Not in a Patina project directory. Run 'patina init' first.")?;
+
+    let config = project::load_with_migration(&project_root)?;
+    let current_env = Environment::detect()?;
+    let stored_tools = config
+        .environment
+        .as_ref()
+        .map(|e| e.detected_tools.clone())
+        .unwrap_or_default();
+
+    let mut health_check = analyze_environment(&current_env, &stored_tools)?;
+
+    let llm = &config.adapters.default;
+    let adapter = patina::interface::runtime::get_interface_provider(llm);
+    let adapter_version = adapter
+        .check_for_updates(&project_root)?
+        .map(|(current, _)| current);
+
+    let layer_path = project_root.join("layer");
+    let pattern_count = count_patterns(&layer_path);
+    let sessions_path = project_root.join("layer").join("sessions");
+    let session_count = count_sessions(&sessions_path);
+
+    health_check.project_config = ProjectStatus {
+        llm: llm.to_string(),
+        adapter_version,
+        layer_patterns: pattern_count,
+        sessions: session_count,
+    };
+
+    health_check.data_integrity = check_data_integrity(&mut health_check.recommendations);
+    health_check.data_integrity.session_durability =
+        check_session_durability(&mut health_check.recommendations);
+
+    let has_data_warnings = !health_check.data_integrity.events_db.warnings.is_empty()
+        || !health_check
+            .data_integrity
+            .jsonl_replica
+            .warnings
+            .is_empty();
+    if has_data_warnings && health_check.status == HealthStatus::Healthy {
+        health_check.status = HealthStatus::Warning;
+    }
+    if health_check.data_integrity.session_durability.uncommitted
+        && health_check.status == HealthStatus::Healthy
+    {
+        health_check.status = HealthStatus::Warning;
+    }
+    if !health_check.data_integrity.events_db.integrity_ok
+        && health_check.data_integrity.events_db.exists
+    {
+        health_check.status = HealthStatus::Critical;
+    }
+
+    let exit_code = match health_check.status {
+        HealthStatus::Healthy => 0,
+        HealthStatus::Warning => 2,
+        HealthStatus::Critical => 3,
+    };
+
+    Ok(serde_json::json!({
+        "health": health_check,
+        "exit_code": exit_code,
+    }))
+}
+
+pub fn execute_cli(json_output: bool) -> Result<()> {
+    let payload = serde_json::json!({"json": json_output});
+    let client = patina::mother::Client::new("localhost:50051".to_string());
+    let response = client
+        .child_action("doctor", "run", &payload)
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "doctor child unavailable via Mother (start with `patina mother start`): {}",
+                e
+            )
+        })?;
+
+    if json_output {
+        if let Some(data) = response.get("data") {
+            println!("{}", serde_json::to_string_pretty(data)?);
+        } else {
+            println!("{}", serde_json::to_string_pretty(&response)?);
+        }
+        if let Some(code) = response.get("exit_code").and_then(|v| v.as_i64()) {
+            if code != 0 {
+                std::process::exit(code as i32);
+            }
+        }
+        return Ok(());
+    }
+
+    if let Some(text) = response.get("text").and_then(|v| v.as_str()) {
+        if !text.is_empty() {
+            println!("{}", text);
+        }
+    }
+    if let Some(data) = response.get("data") {
+        let status = data
+            .get("health")
+            .and_then(|h| h.get("status"))
+            .and_then(|s| s.as_str())
+            .unwrap_or("unknown");
+        println!("Doctor status: {}", status);
+    }
+    if let Some(code) = response.get("exit_code").and_then(|v| v.as_i64()) {
+        if code != 0 {
+            std::process::exit(code as i32);
+        }
+    }
+    Ok(())
+}
+
 fn analyze_environment(current: &Environment, stored_tools: &[String]) -> Result<HealthCheck> {
     let mut missing_tools = Vec::new();
     let mut new_tools = Vec::new();

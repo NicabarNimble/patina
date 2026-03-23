@@ -477,6 +477,10 @@ fn handle_child_request(
     let child_name = parts[1];
     let action = parts[2];
 
+    if let Some(response) = handle_builtin_child_request(child_name, action, &request.body) {
+        return response;
+    }
+
     if action == "health" {
         return match state.registry.health(child_name) {
             Ok(health) => {
@@ -508,6 +512,101 @@ fn handle_child_request(
     match state.registry.handle(child_name, &child_req) {
         Ok(resp) => HttpResponse::json(200, &resp.payload),
         Err(e) => json_error(404, &format!("{}", e)),
+    }
+}
+
+fn handle_builtin_child_request(
+    child_name: &str,
+    action: &str,
+    body: &[u8],
+) -> Option<HttpResponse> {
+    match (child_name, action) {
+        ("spec-manager", "health") => Some(HttpResponse::json(
+            200,
+            &serde_json::json!({"status": "healthy"}),
+        )),
+        ("spec-manager", "dispatch") => {
+            let payload = if body.is_empty() {
+                serde_json::Value::Null
+            } else {
+                match serde_json::from_slice::<serde_json::Value>(body) {
+                    Ok(v) => v,
+                    Err(e) => return Some(json_error(400, &format!("Invalid JSON: {}", e))),
+                }
+            };
+            let command_value = payload
+                .get("command")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            let command: crate::commands::spec::SpecCommands =
+                match serde_json::from_value(command_value) {
+                    Ok(command) => command,
+                    Err(e) => {
+                        return Some(json_error(
+                            400,
+                            &format!("Invalid spec-manager command payload: {}", e),
+                        ));
+                    }
+                };
+
+            match crate::commands::spec::execute_value(command) {
+                Ok(value) => Some(HttpResponse::json(200, &value)),
+                Err(e) => Some(json_error(400, &e.to_string())),
+            }
+        }
+        ("lake-manager", "health") => Some(HttpResponse::json(
+            200,
+            &serde_json::json!({"status": "healthy"}),
+        )),
+        ("lake-manager", "dispatch") => {
+            let payload = if body.is_empty() {
+                serde_json::Value::Null
+            } else {
+                match serde_json::from_slice::<serde_json::Value>(body) {
+                    Ok(v) => v,
+                    Err(e) => return Some(json_error(400, &format!("Invalid JSON: {}", e))),
+                }
+            };
+            let command_value = payload
+                .get("command")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            let command: crate::commands::lake::LakeCommands =
+                match serde_json::from_value(command_value) {
+                    Ok(command) => command,
+                    Err(e) => {
+                        return Some(json_error(
+                            400,
+                            &format!("Invalid lake-manager command payload: {}", e),
+                        ));
+                    }
+                };
+
+            match crate::commands::lake::execute_value(command) {
+                Ok(value) => Some(HttpResponse::json(200, &value)),
+                Err(e) => Some(json_error(400, &e.to_string())),
+            }
+        }
+        ("doctor", "health") => Some(HttpResponse::json(
+            200,
+            &serde_json::json!({"status": "healthy"}),
+        )),
+        ("doctor", "run") => match crate::commands::doctor::execute_value() {
+            Ok(value) => {
+                let exit_code = value.get("exit_code").and_then(|v| v.as_i64()).unwrap_or(0);
+                Some(HttpResponse::json(
+                    200,
+                    &serde_json::json!({
+                        "child": "doctor",
+                        "text": "",
+                        "data": value,
+                        "exit_code": exit_code,
+                    }),
+                ))
+            }
+            Err(e) => Some(json_error(400, &e.to_string())),
+        },
+        _ => None,
     }
 }
 

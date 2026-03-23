@@ -256,16 +256,16 @@ Evidence format rules for this table:
 | CV6 | verified-true | Runtime code is child-vocabulary canonical (`src/child/`); command proof: `rg "PluginManifest|PluginWorld|PluginEngine|PluginRole|PluginProvides" src/` => no matches; `test -d src/plugin && echo exists || echo missing` => `missing`; `rg "plugin\.toml|\[plugin\]" src/child src/main.rs src/lib.rs src/commands/setup/grammars.rs sdk/patina-sdk/src` => no matches. |
 | CV7 | verified-false | `patina mother status` shows loaded children `ducklake` and `secrets` only; `session-writer` is not loaded/visible in daemon status output (2026-03-22 baseline). |
 | CV8 | verified-false | Command proof: `test -e .patina/manifest.toml || echo missing` => `missing`; no project child-needs manifest contract is present in-tree (2026-03-22 baseline). |
-| CV9 | verified-false | Spec lifecycle remains core at `src/commands/spec/mod.rs:7` + `src/commands/spec/internal/mod.rs:1`; command proof: `test -e children/spec-manager/child.toml || echo missing` => `missing`. |
+| CV9 | verified-partial | `children/spec-manager/child.toml` now exists and `patina spec` routes via Mother child action (`spec-manager`), but implementation still executes core spec internals behind that child seam (not fully child-owned yet). |
 | CV10 | verified-true | Command proof: `test -e wit/toys/layer-fs.wit && test -e wit/toys/git.wit` => success; host implementations exist at `mother/src/toys/layer_fs.rs:1` and `mother/src/toys/git.rs:1`; proof command `cargo test -q -p mother` passes. |
 | CV11 | verified-partial | Scrape is in-core strategy-structured (`src/commands/scrape/mod.rs:1`, `src/commands/scrape/code/extract_v2.rs:1`), but child seam/final extraction contract is not yet implemented. |
-| CV12 | verified-false | Core `spec list` path remains local fallback in `src/commands/spec/mod.rs:365` and does not hard-fail on missing `spec-manager` child. |
-| CV13 | verified-false | Command proof: `grep "\\b(rename|reopen)\\b" src/commands/spec --include "*.rs"` => `No files found` (2026-03-22 baseline). |
-| CV14 | verified-false | Command proof: `grep "(complete|abandon).*confirm|confirm.*(complete|abandon)|--yes|Are you sure" src/commands/spec --include "*.rs"` => `No files found`. |
-| CV15 | verified-false | Core doctor command still exists at `src/commands/doctor.rs:1`. |
+| CV12 | verified-true | `target/debug/patina spec list --json` succeeds with Mother running and `target/debug/patina spec list` fails clearly when Mother is stopped (`spec-manager unavailable via Mother ...`). |
+| CV13 | verified-true | `spec rename` and `spec reopen` are implemented in spec mutations (`src/commands/spec/internal/mutations.rs`) and wired into `SpecCommands` child dispatch surface. |
+| CV14 | verified-true | HITL confirmation is enforced in `commands::spec::execute` for `complete` and `abandon` (interactive `[y/N]` prompt unless `--json`). |
+| CV15 | verified-partial | `patina doctor` now routes through Mother child dispatch (`doctor`), but doctor logic remains in-core (`src/commands/doctor.rs`) as daemon-backed implementation. |
 | CV16 | verified-false | Version command still queries ready specs at `src/commands/version/internal.rs:70` and `src/commands/version/internal.rs:97`. |
-| CV17 | verified-false | Core session command remains at `src/commands/session/mod.rs:1` and `src/commands/session/internal.rs:1`. |
-| CV18 | verified-false | Core lake command remains at `src/commands/lake.rs:1`. |
+| CV17 | verified-partial | Session command surface is removed from core CLI (`src/main.rs` no longer defines `Commands::Session`), while session internals remain for AI/session substrate flows. |
+| CV18 | verified-partial | `patina lake` is now a Mother child wrapper (`lake-manager` route), but lake implementation logic is still hosted in core code behind the daemon seam. |
 
 ## Target State
 

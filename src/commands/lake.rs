@@ -7,7 +7,7 @@ use patina::paths;
 use std::path::PathBuf;
 
 /// Lake CLI subcommands
-#[derive(Debug, Clone, clap::Subcommand)]
+#[derive(Debug, Clone, clap::Subcommand, serde::Serialize, serde::Deserialize)]
 pub enum LakeCommands {
     /// Create a new data lake
     ///
@@ -25,9 +25,79 @@ pub enum LakeCommands {
 
 /// Execute lake CLI subcommand.
 pub fn execute_cli(command: Option<LakeCommands>) -> Result<()> {
+    let effective = command.unwrap_or(LakeCommands::List);
+    let payload = serde_json::json!({"command": effective});
+    let client = patina::mother::Client::new("localhost:50051".to_string());
+    let response = client
+        .child_action("lake-manager", "dispatch", &payload)
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "lake-manager unavailable via Mother (start with `patina mother start`): {}",
+                e
+            )
+        })?;
+
+    if let Some(text) = response.get("text").and_then(|v| v.as_str()) {
+        if !text.is_empty() {
+            println!("{}", text);
+        }
+    }
+    if let Some(data) = response.get("data") {
+        if response.get("text").is_none() {
+            println!("{}", serde_json::to_string_pretty(data)?);
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn execute_value(command: LakeCommands) -> Result<serde_json::Value> {
     match command {
-        None | Some(LakeCommands::List) => list(),
-        Some(LakeCommands::Create { name }) => create(&name),
+        LakeCommands::Create { name } => {
+            create(&name)?;
+            Ok(serde_json::json!({
+                "child": "lake-manager",
+                "text": format!("Lake '{}' created", name),
+                "data": {"name": name}
+            }))
+        }
+        LakeCommands::List => {
+            let dir = lakes_dir();
+            let mut lakes = Vec::new();
+            if dir.exists() {
+                let mut entries: Vec<_> = std::fs::read_dir(&dir)?
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.path().join("lake.toml").exists())
+                    .collect();
+                entries.sort_by_key(|e| e.file_name());
+                for entry in entries {
+                    let lake_toml = entry.path().join("lake.toml");
+                    let content = std::fs::read_to_string(&lake_toml).unwrap_or_default();
+                    let name = content
+                        .lines()
+                        .find(|l| l.starts_with("name"))
+                        .and_then(|l| l.split('=').nth(1))
+                        .map(|v| v.trim().trim_matches('"'))
+                        .unwrap_or("?")
+                        .to_string();
+                    let created = content
+                        .lines()
+                        .find(|l| l.starts_with("created_at"))
+                        .and_then(|l| l.split('=').nth(1))
+                        .map(|v| v.trim().trim_matches('"'))
+                        .unwrap_or("?")
+                        .to_string();
+                    lakes.push(serde_json::json!({
+                        "name": name,
+                        "created_at": created,
+                        "path": entry.path().display().to_string()
+                    }));
+                }
+            }
+            Ok(serde_json::json!({
+                "child": "lake-manager",
+                "data": {"lakes": lakes}
+            }))
+        }
     }
 }
 

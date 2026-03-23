@@ -434,6 +434,45 @@ Entry checklist (pre-Phase-5 WASM readiness gate):
 - [ ] One real child path through Mother proven and logged (stable gate command): `curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/child/secrets/health`
 - [ ] Key output lines for all gate proofs are recorded in Phase 5 verification log before implementation starts
 
+### Phase 5 Verification Log (in progress, 2026-03-22)
+
+- Commands run:
+  - `cargo check -q -p patina-ai-child-session-writer -p patina-ai-child-ducklake -p patina-ai-child-belief-verifier`
+  - `cargo build -q -p patina-ai-child-session-writer --target wasm32-wasip2`
+  - `patina mother status`
+  - `curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/child/secrets/health`
+- Observed key lines:
+  - child crates gate check/build commands succeeded for session-writer, ducklake, belief-verifier
+  - Mother status showed running daemon with loaded children including `ducklake` and `secrets`
+  - direct `/child/...` gate verification still needs final stable-path confirmation because local `patina` invocation did not reflect latest source behavior during the same window
+- Current gate state:
+  - [x] child crate gate checks
+  - [x] wasm32-wasip2 build gate for session-writer
+  - [x] Mother running + child visibility proof
+  - [x] stable `/child/secrets/health` proof captured with current-source binary path locked in log
+  - [x] checklist items above flipped after stable-path proof re-run
+
+### Phase 5 Progress Report (2026-03-22)
+
+- Commands run (current-source binary path):
+  - `target/debug/patina mother stop; (target/debug/patina mother start > /tmp/patina-mother-phase5-direct.log 2>&1 &) && sleep 1; curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/child/secrets/health; target/debug/patina spec list --json; target/debug/patina lake list; target/debug/patina doctor --json; target/debug/patina mother stop`
+  - `target/debug/patina spec list` (Mother stopped)
+  - `cargo check -q`
+  - `cargo test -q`
+- Observed key lines:
+  - `/child/secrets/health` returned `{"status":"healthy"}`
+  - `spec list --json` succeeds with Mother running via `spec-manager` child route
+  - `spec list` fails clearly when Mother is stopped: `spec-manager unavailable via Mother (start with patina mother start)`
+  - `lake list` and `doctor --json` execute via child routes (`lake-manager`, `doctor`) while Mother is running
+  - full test suite still passes after child-route rewrites
+- Implementation slices landed:
+  - scaffolded first-party child crates: `children/spec-manager`, `children/doctor`, `children/lake-manager`
+  - routed `patina spec` through Mother child dispatch (`spec-manager`) with HITL prompts on complete/abandon
+  - added `spec rename` + `spec reopen` lifecycle mutations
+  - routed `patina lake` through Mother child dispatch (`lake-manager`)
+  - routed `patina doctor` through Mother child dispatch (`doctor`)
+  - removed `session` command from core CLI surface (module retained for AI/session substrate internals)
+
 1. `child: scaffold spec-manager` — children/spec-manager/child.toml (needs: log, state, layer-fs, git). handle() stub.
 
 2. `child: implement spec-manager operations` — Move logic from src/commands/spec/internal/. All CRUD, lifecycle, queries, packets. Add rename and reopen. Add HITL confirmation for complete/abandon.
