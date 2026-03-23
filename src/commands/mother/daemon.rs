@@ -12,10 +12,9 @@
 //! - Opt-in: TCP at --host/--port (bearer token required)
 
 use anyhow::Result;
-use std::collections::HashSet;
 use std::net::TcpListener;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Instant;
 
 use patina::mother::ChildRequest;
 
@@ -32,7 +31,7 @@ pub struct ServerState {
     start_time: Instant,
     version: String,
     token: String,
-    pub(super) registry: ChildRegistry,
+    pub(super) registry: Arc<ChildRegistry>,
     scry_backend: Arc<dyn ScryBackend>,
 }
 
@@ -42,7 +41,7 @@ impl ServerState {
             start_time: Instant::now(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             token,
-            registry,
+            registry: Arc::new(registry),
             scry_backend: Arc::new(RetrievalScryBackend),
         }
     }
@@ -60,96 +59,6 @@ struct DaemonHost;
 impl patina::mother::MotherHost for DaemonHost {
     fn log(&self, child: &str, message: &str) {
         eprintln!("[mother:{}] {}", child, message);
-    }
-}
-
-// === Heartbeat ===
-
-/// Heartbeat interval in seconds
-const HEARTBEAT_INTERVAL_SECS: u64 = 60;
-
-/// Spawn the heartbeat thread.
-///
-/// Default Mother runtime only advances knowledge children. Legacy shell-toy
-/// children remain behind the explicit migration mode so the normal daemon
-/// path does not teach two runtime stories at once.
-fn spawn_heartbeat(state: Arc<ServerState>, legacy_migration: bool) {
-    let in_flight: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
-    let runtime = patina::mother::KnowledgeRuntimeStore::default();
-
-    std::thread::Builder::new()
-        .name("mother-heartbeat".to_string())
-        .spawn(move || loop {
-            std::thread::sleep(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
-            if let Err(error) = state
-                .registry
-                .run_knowledge_cycles(&runtime, "mother-heartbeat")
-            {
-                eprintln!("[mother] knowledge-child heartbeat failed: {}", error);
-            }
-            if legacy_migration {
-                let toys = state.registry.tick_legacy_all();
-                for toy in toys {
-                    let mut flight = in_flight.lock().unwrap_or_else(|e| e.into_inner());
-                    if flight.contains(&toy.name) {
-                        eprintln!("[mother:toy] skipping '{}' (already in flight)", toy.name);
-                        continue;
-                    }
-                    flight.insert(toy.name.clone());
-                    drop(flight);
-
-                    spawn_toy_tracked(toy, Arc::clone(&in_flight));
-                }
-            }
-        })
-        .expect("failed to spawn heartbeat thread");
-}
-
-/// Spawn a toy as a child process in a background thread with in-flight tracking.
-///
-/// The child decides *what* to run. Mother handles *how*.
-/// Each toy runs in its own thread so the heartbeat loop isn't blocked.
-/// On completion (success or failure), the toy name is removed from the
-/// in-flight set so it's eligible for retry on the next heartbeat.
-fn spawn_toy_tracked(toy: patina::mother::Toy, in_flight: Arc<Mutex<HashSet<String>>>) {
-    let toy_name = toy.name.clone();
-    let in_flight_thread = Arc::clone(&in_flight);
-
-    match std::thread::Builder::new()
-        .name(format!("toy-{}", toy.name))
-        .spawn(move || {
-            eprintln!(
-                "[mother:toy] spawning '{}': {} {:?}",
-                toy.name, toy.command, toy.args
-            );
-            match std::process::Command::new(&toy.command)
-                .args(&toy.args)
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::piped())
-                .status()
-            {
-                Ok(status) if status.success() => {
-                    eprintln!("[mother:toy] '{}' completed successfully", toy.name);
-                }
-                Ok(status) => {
-                    eprintln!("[mother:toy] '{}' failed with {}", toy.name, status);
-                }
-                Err(e) => {
-                    eprintln!("[mother:toy] '{}' failed to spawn: {}", toy.name, e);
-                }
-            }
-            // Remove from in-flight set when done (success or failure)
-            let mut flight = in_flight_thread.lock().unwrap_or_else(|e| e.into_inner());
-            flight.remove(&toy.name);
-        }) {
-        Ok(_) => {} // thread owns cleanup via in_flight
-        Err(e) => {
-            // Thread failed to spawn — remove from in-flight so it's
-            // eligible for retry on next heartbeat. Don't leave stuck.
-            eprintln!("[mother:toy] thread spawn failed for '{}': {}", toy_name, e);
-            let mut flight = in_flight.lock().unwrap_or_else(|e| e.into_inner());
-            flight.remove(&toy_name);
-        }
     }
 }
 
@@ -327,7 +236,10 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         println!("   Listening on http://{}", addr);
         println!("   Press Ctrl+C to stop\n");
 
-        spawn_heartbeat(Arc::clone(&state), options.legacy_migration);
+        mother_crate::daemon_heartbeat::spawn_heartbeat(
+            Arc::clone(&state.registry),
+            options.legacy_migration,
+        );
         let router = Arc::new(build_router(Arc::clone(&state), true));
         let handler = Arc::new(move |request: HttpRequest| router.route(&request));
         mother_crate::http_daemon::accept_loop_tcp(listener, DEFAULT_MAX_BODY_SIZE, handler);
@@ -365,7 +277,10 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     println!("   No TCP listener (use --host/--port for network access)");
     println!("   Press Ctrl+C to stop\n");
 
-    spawn_heartbeat(Arc::clone(&state), options.legacy_migration);
+    mother_crate::daemon_heartbeat::spawn_heartbeat(
+        Arc::clone(&state.registry),
+        options.legacy_migration,
+    );
     let router = Arc::new(build_router(Arc::clone(&state), false));
     let handler = Arc::new(move |request: HttpRequest| router.route(&request));
     mother_crate::http_daemon::accept_loop_uds(listener, DEFAULT_MAX_BODY_SIZE, handler);
