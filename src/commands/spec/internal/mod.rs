@@ -41,16 +41,5 @@ pub(crate) use create::create_spec_value;
 // Split _value() function re-exported pub(crate) by parent for MCP
 pub(crate) use split::split_spec_value;
 
-// Functions called only from spec/mod.rs function bodies — pub(super) suffices
+// Functions called from spec/mod.rs execute path
 pub(super) use archive::{archive_spec, archive_stale_specs};
-pub(super) use create::create_spec;
-pub(super) use mutations::{
-    abandon_spec, block_spec, complete_spec, pause_spec, promote_spec, rename_spec, reopen_spec,
-    resume_spec, set_spec,
-};
-pub(super) use packets::{handoff_spec, packet_spec, prompt_spec};
-pub(super) use queries::{
-    check_spec, history_spec, show_blocked_specs, show_ready_specs, show_spec, show_spec_list,
-};
-pub(super) use queue::next_spec;
-pub(super) use split::split_spec;

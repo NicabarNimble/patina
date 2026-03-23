@@ -429,13 +429,13 @@ pub(crate) fn execute_value(command: SpecCommands) -> Result<Value> {
         ),
         SpecCommands::Archive { id, dry_run, stale } => {
             if stale {
-                archive_stale(dry_run)?;
+                internal::archive_stale_specs(dry_run)?;
                 (
                     Some("Archived stale specs".to_string()),
                     Some(json!({"stale": true, "dry_run": dry_run})),
                 )
             } else if let Some(id) = id {
-                archive(&id, dry_run)?;
+                internal::archive_spec(&id, dry_run)?;
                 (
                     Some(format!("Archived spec '{}'", id)),
                     Some(json!({"id": id, "dry_run": dry_run})),
@@ -544,136 +544,6 @@ fn confirm(prompt: &str) -> Result<bool> {
     stdin().read_line(&mut input)?;
     let trimmed = input.trim();
     Ok(trimmed.eq_ignore_ascii_case("y") || trimmed.eq_ignore_ascii_case("yes"))
-}
-
-/// Create a new spec draft
-pub fn create(
-    spec_type: &str,
-    id: &str,
-    title: Option<&str>,
-    description: Option<&str>,
-    blocked_by: Vec<String>,
-    related: Vec<String>,
-    json: bool,
-) -> Result<()> {
-    internal::create_spec(spec_type, id, title, description, blocked_by, related, json)
-}
-
-/// Archive a completed spec: tag, remove, commit
-pub fn archive(id: &str, dry_run: bool) -> Result<()> {
-    internal::archive_spec(id, dry_run)
-}
-
-/// Archive all completed/abandoned specs still in tree
-pub fn archive_stale(dry_run: bool) -> Result<()> {
-    internal::archive_stale_specs(dry_run)
-}
-
-/// Show specs ready to work on
-pub fn ready(json: bool) -> Result<()> {
-    internal::show_ready_specs(json)
-}
-
-/// Show specs blocked by incomplete dependencies
-pub fn blocked(json: bool) -> Result<()> {
-    internal::show_blocked_specs(json)
-}
-
-/// List all specs with optional filters
-pub fn list(status: Option<String>, target: Option<String>, json: bool) -> Result<()> {
-    // Parse status at CLI boundary — unknown values return validation error
-    let parsed_status = status
-        .as_deref()
-        .map(|s| s.parse::<SpecStatus>())
-        .transpose()?;
-    let filters = internal::ListFilters {
-        status: parsed_status,
-        target,
-    };
-    internal::show_spec_list(&filters, json)
-}
-
-/// Promote a spec: draft → ready, ready → active
-pub fn promote(id: &str, force: bool, json: bool) -> Result<()> {
-    internal::promote_spec(id, force, json)
-}
-
-/// Complete an active spec (release + archive)
-pub fn complete(id: &str, major: bool, force: bool, json: bool) -> Result<()> {
-    internal::complete_spec(id, major, force, json)
-}
-
-/// Abandon a spec (archive, no release)
-pub fn abandon(id: &str, reason: Option<&str>, json: bool) -> Result<()> {
-    internal::abandon_spec(id, reason, json)
-}
-
-/// Pause an active spec with reason
-pub fn pause(id: &str, reason: &str, json: bool) -> Result<()> {
-    internal::pause_spec(id, reason, json)
-}
-
-/// Resume a paused or blocked spec
-pub fn resume(id: &str, force: bool, json: bool) -> Result<()> {
-    internal::resume_spec(id, force, json)
-}
-
-/// Block an active spec on another spec
-pub fn block(id: &str, by: &str, reason: &str, json: bool) -> Result<()> {
-    internal::block_spec(id, by, reason, json)
-}
-
-/// Split a spec: ship done work, draft remainder as new spec
-pub fn split(id: &str, new_id: Option<&str>, description: Option<&str>, json: bool) -> Result<()> {
-    internal::split_spec(id, new_id, description, json)
-}
-
-/// Set a metadata field on a spec
-pub fn set(id: &str, field: &str, value: &str, json: bool) -> Result<()> {
-    internal::set_spec(id, field, value, json)
-}
-
-/// Show full spec context (body, design, key files)
-pub fn show(id: &str, handoff: bool, json: bool) -> Result<()> {
-    internal::show_spec(id, handoff, json)
-}
-
-/// Generate build-ready execution prompt packet
-pub fn prompt(id: &str, json: bool) -> Result<()> {
-    internal::prompt_spec(id, json)
-}
-
-/// Generate handoff packet for next agent
-pub fn handoff(id: &str, json: bool) -> Result<()> {
-    internal::handoff_spec(id, json)
-}
-
-/// Generate combined prompt + handoff packet
-pub fn packet(id: &str, json: bool) -> Result<()> {
-    internal::packet_spec(id, json)
-}
-
-/// Check exit criteria status for a spec
-pub fn check(id: &str, json: bool) -> Result<()> {
-    internal::check_spec(id, json)
-}
-
-/// Show lifecycle history from git tags
-pub fn history(id: &str, json: bool) -> Result<()> {
-    internal::history_spec(id, json)
-}
-
-pub fn rename(id: &str, new_id: &str, json: bool) -> Result<()> {
-    internal::rename_spec(id, new_id, json)
-}
-
-pub fn reopen(id: &str, json: bool) -> Result<()> {
-    internal::reopen_spec(id, json)
-}
-
-/// Recommend the next spec to work on
-pub fn next(json: bool) -> Result<()> {
-    internal::next_spec(json)
 }
 
 #[cfg(test)]
