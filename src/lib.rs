@@ -11,6 +11,7 @@ pub mod environment;
 pub mod eventlog;
 pub mod git;
 pub mod interface;
+pub mod lake;
 pub mod layer;
 pub mod measure;
 pub mod migration;

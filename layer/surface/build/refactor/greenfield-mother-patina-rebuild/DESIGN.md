@@ -514,7 +514,7 @@ M6 execution checklist (active):
 - [x] M6c: replace ad-hoc builtin dispatch payloads with typed `patina-protocol` enums/contracts. (GF9)
 - [x] M6d: remove `#[path]` shim and relocate shared spec execution contracts to core-owned modules. (GF10)
 - [x] M6e: core-ify doctor as host-native service with explicit runtime ports. (GF8, GF11)
-- [ ] M6f: core-ify spec execution and remove transitional runtime shims. (GF10, GF11)
+- [x] M6f: core-ify spec execution and remove transitional runtime shims. (GF10, GF11)
 - [ ] M6g: wire CLI and Mother as pure adapters and retire `CliBuiltinExecutor` transitional pattern. (GF11)
 - [ ] M6h: add workspace dependency-direction enforcement gate. (GF12)
 - [ ] M6i: run full parity matrix and update GF8-GF12 evidence. (GF8-GF12)
@@ -620,6 +620,27 @@ M6e progress evidence (current session):
 - Validation evidence:
   - `cargo test -p patina-core`
   - `cargo check -p patina-ai -p mother`
+
+M6f progress evidence (current session):
+
+- Removed transitional Mother runtime shim modules:
+  - deleted `src/mother/spec_runtime.rs`
+  - deleted `src/mother/lake_runtime.rs`
+- Re-homed shim responsibilities behind explicit library surfaces:
+  - added `src/lake.rs` with runtime adapter for lake dispatch (`LakeCommand`, `execute_value`, `validate_name`)
+  - exported from `src/lib.rs` as `pub mod lake`
+  - added `patina::spec` bridge exports (`SpecCommands`, `execute_command_value`) in `src/spec.rs`
+- Updated builtin dispatch adapter to call explicit `patina::spec` / `patina::lake` APIs directly:
+  - `src/commands/mother/builtin_dispatch.rs`
+- Updated command-side lake adapter/tests to use `patina::lake` surfaces:
+  - `src/commands/lake.rs`
+- Removed Mother module exports for deleted shim modules:
+  - `src/mother/mod.rs`
+- Validation evidence:
+  - `cargo check -p patina-ai -p mother`
+  - `cargo test -p patina-core`
+  - `cargo test -p patina-ai commands::lake::tests::invalid_lake_names`
+  - `cargo test -p patina-ai commands::spec::tests::parse_create_minimal`
 
 ## Seam Classification Table (GF1 enforcement)
 

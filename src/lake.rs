@@ -44,12 +44,12 @@ pub fn execute_value(command: LakeCommand) -> Result<serde_json::Value> {
     }
 }
 
-fn lakes_dir() -> PathBuf {
-    paths::lakes::lakes_dir()
+pub fn validate_name(name: &str) -> Result<()> {
+    patina_core::lake::validate_lake_name(name).map_err(|err| anyhow::anyhow!(err.to_string()))
 }
 
-pub fn validate_lake_name(name: &str) -> Result<()> {
-    patina_core::lake::validate_lake_name(name).map_err(|err| anyhow::anyhow!(err.to_string()))
+fn lakes_dir() -> PathBuf {
+    paths::lakes::lakes_dir()
 }
 
 struct FsLakeRepository {

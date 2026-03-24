@@ -63,10 +63,10 @@ pub fn execute_cli(command: Option<LakeCommands>) -> Result<()> {
 #[allow(dead_code)]
 pub(crate) fn execute_value(command: LakeCommands) -> Result<serde_json::Value> {
     let runtime_command = match command {
-        LakeCommands::Create { name } => patina::mother::lake_runtime::LakeCommand::Create { name },
-        LakeCommands::List => patina::mother::lake_runtime::LakeCommand::List,
+        LakeCommands::Create { name } => patina::lake::LakeCommand::Create { name },
+        LakeCommands::List => patina::lake::LakeCommand::List,
     };
-    patina::mother::lake_runtime::execute_value(runtime_command)
+    patina::lake::execute_value(runtime_command)
 }
 
 #[cfg(test)]
@@ -92,17 +92,17 @@ mod tests {
 
     #[test]
     fn invalid_lake_names() {
-        assert!(patina::mother::lake_runtime::validate_lake_name("").is_err());
-        assert!(patina::mother::lake_runtime::validate_lake_name("has spaces").is_err());
-        assert!(patina::mother::lake_runtime::validate_lake_name("has/slash").is_err());
-        assert!(patina::mother::lake_runtime::validate_lake_name("has.dot").is_err());
+        assert!(patina::lake::validate_name("").is_err());
+        assert!(patina::lake::validate_name("has spaces").is_err());
+        assert!(patina::lake::validate_name("has/slash").is_err());
+        assert!(patina::lake::validate_name("has.dot").is_err());
     }
 
     #[test]
     fn valid_lake_name_characters() {
-        assert!(patina::mother::lake_runtime::validate_lake_name("good-name").is_ok());
-        assert!(patina::mother::lake_runtime::validate_lake_name("my_lake").is_ok());
-        assert!(patina::mother::lake_runtime::validate_lake_name("lake123").is_ok());
+        assert!(patina::lake::validate_name("good-name").is_ok());
+        assert!(patina::lake::validate_name("my_lake").is_ok());
+        assert!(patina::lake::validate_name("lake123").is_ok());
     }
 
     #[test]

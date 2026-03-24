@@ -20,6 +20,13 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+pub use crate::commands::spec::SpecCommands;
+
+pub fn execute_command_value(command: SpecCommands) -> Result<Value> {
+    crate::commands::spec::execute_value(command)
+}
 
 // ============================================================================
 // Spec Frontmatter Types

@@ -20,17 +20,15 @@ struct CliBuiltinExecutor;
 
 impl BuiltinChildExecutor for CliBuiltinExecutor {
     fn spec_dispatch(&self, request: SpecDispatchRequest) -> anyhow::Result<serde_json::Value> {
-        let command: patina::mother::spec_runtime::SpecCommands =
-            serde_json::from_value(request.command)
-                .map_err(|e| anyhow::anyhow!("Invalid spec-manager command payload: {}", e))?;
-        patina::mother::spec_runtime::execute_value(command)
+        let command: patina::spec::SpecCommands = serde_json::from_value(request.command)
+            .map_err(|e| anyhow::anyhow!("Invalid spec-manager command payload: {}", e))?;
+        patina::spec::execute_command_value(command)
     }
 
     fn lake_dispatch(&self, request: LakeDispatchRequest) -> anyhow::Result<serde_json::Value> {
-        let command: patina::mother::lake_runtime::LakeCommand =
-            serde_json::from_value(request.command)
-                .map_err(|e| anyhow::anyhow!("Invalid lake-manager command payload: {}", e))?;
-        patina::mother::lake_runtime::execute_value(command)
+        let command: patina::lake::LakeCommand = serde_json::from_value(request.command)
+            .map_err(|e| anyhow::anyhow!("Invalid lake-manager command payload: {}", e))?;
+        patina::lake::execute_value(command)
     }
 
     fn doctor_run(&self) -> anyhow::Result<DoctorRunResult> {
