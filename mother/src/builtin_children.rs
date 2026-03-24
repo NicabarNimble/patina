@@ -18,9 +18,7 @@ pub fn handle_builtin_child_request(
     executor: &dyn BuiltinChildExecutor,
     secrets_backend: &dyn secrets_authority_api::SecretsAuthorityBackend,
 ) -> Option<HttpResponse> {
-    if BuiltinChild::from_route(child_name).is_none() {
-        return None;
-    }
+    BuiltinChild::from_route(child_name)?;
 
     let request = match BuiltinChildRequest::from_http_parts(child_name, action, body) {
         Ok(request) => request,
