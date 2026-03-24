@@ -428,14 +428,14 @@ M4 seam evidence summary:
 M4 status (truth update):
 
 - M4a is complete (authority/comms/path alignment).
-- M4b is active and not complete: broker/command execution authority is still largely CLI-owned.
-- Next sequencing: execute M4b runtime authority relocation slices before declaring full greenfield runtime ownership.
+- M4b is complete for currently defined scope: builtin dispatch ownership, protocol debt retirement, and Mother schema-aligned helpers are in place.
+- Next sequencing: continue M5 SDK stabilization/removal-gate work.
 
 M4b execution checklist (active):
 
 - [x] Move builtin child routing envelope logic out of CLI-only module into Mother-owned module boundary (`mother/src/builtin_children.rs`).
 - [x] Keep behavior parity by binding a CLI executor adapter while relocation is in-progress (`src/commands/mother/builtin_dispatch.rs`).
-- [ ] Relocate `spec-manager` execution behind Mother-owned interfaces (remove CLI command-module ownership for this dispatch path).
+- [x] Relocate `spec-manager` execution behind Mother-owned interfaces (remove CLI command-module ownership for this dispatch path).
 - [x] Relocate `lake-manager` execution behind Mother-owned interfaces (dispatch no longer depends on `crate::commands::lake::*`).
 - [x] Relocate `doctor` execution behind Mother-owned interfaces (dispatch no longer depends on `crate::commands::doctor::*`).
 - [x] Resolve legacy protocol/runtime debt: either retire or fully implement `mother/src/daemon.rs` legacy socket protocol path.
@@ -466,6 +466,16 @@ M4b execution evidence (lake/doctor ownership slice):
   - `cargo check -q`
   - `cargo test -q -p mother`
   - `cargo test -q -p patina-ai scaffold::tests::test_scaffold`
+
+M4b execution evidence (spec ownership slice):
+
+- Added shared spec runtime dispatch module under Patina Mother surface:
+  - `src/mother/spec_runtime.rs`
+- Updated Mother builtin executor adapter to resolve spec dispatch through `patina::mother::spec_runtime` instead of direct `crate::commands::spec::*` references.
+- Dispatch decoupling result: builtin dispatch no longer references CLI command modules for spec/lake/doctor execution paths.
+- Verification evidence:
+  - `cargo check -q`
+  - `cargo test -q -p mother`
 
 M5 preview note:
 

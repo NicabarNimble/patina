@@ -263,7 +263,7 @@ M4b progress notes (current session):
   - events stream reader now targets Mother mutation/session tables and no longer depends on a non-existent `eventlog` table.
 - Retired legacy JSON-line socket protocol from Mother public runtime exports (`mother/src/lib.rs` no longer exports `daemon`/`protocol`), locking HTTP/UDS as active Mother runtime surface.
 - Relocated `lake-manager` and `doctor` execution paths out of CLI command-module ownership into Patina library runtime modules consumed by Mother builtin executor adapter.
-- `spec-manager` execution relocation remains pending.
+- Relocated `spec-manager` dispatch path behind Patina Mother runtime module (`src/mother/spec_runtime.rs`), removing direct CLI command-module references from builtin dispatch.
 
 M5a progress notes (current session):
 
