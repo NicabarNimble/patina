@@ -38,6 +38,21 @@ exit_criteria:
   - id: GF7
     text: "Risk register and verification plan exist for proving architectural parity before any destructive migration"
     checked: true
+  - id: GF8
+    text: "patina-core crate exists as transport/runtime-neutral domain layer with at least one migrated capability and no adapter or infrastructure logic"
+    checked: false
+  - id: GF9
+    text: "patina-protocol crate exists with typed, versioned request/response contracts replacing ad-hoc JSON dispatch payloads on Mother control-plane boundary"
+    checked: false
+  - id: GF10
+    text: "No #[path] shims or cross-crate source inclusion hacks remain; all shared execution contracts are owned by core or protocol modules with explicit public APIs"
+    checked: false
+  - id: GF11
+    text: "CLI and Mother are adapters over core/protocol; builtin dispatch routes through typed protocol to core-owned use-cases, not CLI command modules or Patina runtime shims"
+    checked: false
+  - id: GF12
+    text: "Dependency direction is enforced: core depends on nothing, protocol depends only on core, and CLI/Mother depend on core+protocol; validated by workspace dependency checks"
+    checked: false
 ---
 # refactor: Greenfield Mother + Patina Rebuild
 
@@ -81,6 +96,14 @@ Target state this spec must drive:
 
 This spec is greenfield in architecture intent, but it is evidence-bound in execution:
 every target boundary must map to current code truth and a bounded migration slice.
+
+Architecture realization targets (GF8-GF12):
+
+- Domain use-cases live in `patina-core` with no transport/runtime/adapter dependencies.
+- Control-plane dispatch speaks typed `patina-protocol` contracts, not ad-hoc JSON payloads.
+- CLI and Mother are thin adapter shells over core+protocol; neither owns domain logic.
+- Dependency direction is compile-time enforced: core -> nothing, protocol -> core, adapters -> core+protocol.
+- No cross-crate source inclusion hacks (`#[path]`) or reach-through imports remain.
 
 ## Non-Goals
 
@@ -229,14 +252,17 @@ M5 execution slices (SDK stabilization):
 
 - See dedicated spec: `layer/surface/build/refactor/sdk-contract-stabilization/SPEC.md`.
 
-M6 execution slices (core/protocol architecture lock):
+M6 execution slices (core/protocol architecture lock; mapped to GF8-GF12):
 
-1. M6a: Define crate-boundary contract (`patina-cli`, `patina-mother`, `patina-core`, `patina-protocol`, `patina-sdk`) and dependency direction rules.
-2. M6b: Introduce `patina-protocol` typed/versioned contracts for Patina<->Mother and host<->child control-plane operations.
-3. M6c: Introduce `patina-core` transport-neutral use-case layer for first migrated capability (`lake`) with no adapter logic.
-4. M6d: Remove spec `#[path]` shim by relocating shared spec execution contracts into core/protocol-owned modules.
-5. M6e: Core-ify doctor execution as host-native domain service (not WASM), with explicit ports for runtime adapters.
-6. M6f: Retire transitional adapters/shims once parity gates pass and crate-boundary rules are enforced.
+1. M6a: Workspace crate scaffolding — create `patina-core` and `patina-protocol`, define dependency direction rules. (GF8, GF9, GF12)
+2. M6b: Migrate `lake` use-case into `patina-core` as first transport-neutral service. (GF8)
+3. M6c: Introduce typed dispatch contracts in `patina-protocol` for builtin child operations (`spec`, `lake`, `doctor`, `secrets`). Replace ad-hoc JSON payloads. (GF9)
+4. M6d: Remove spec `#[path]` shim by relocating shared spec execution contracts into core-owned modules. (GF10)
+5. M6e: Core-ify doctor as host-native domain service with explicit ports (`Environment`, `EventStore`, `ProjectRepo`) where boundary effects cross runtime seams. (GF8, GF11)
+6. M6f: Core-ify spec execution and remove transitional runtime shims (`src/mother/spec_runtime.rs`, `src/mother/lake_runtime.rs`). (GF10, GF11)
+7. M6g: Wire CLI and Mother as pure adapters over core+protocol and retire `CliBuiltinExecutor` transitional pattern. (GF11)
+8. M6h: Add dependency direction enforcement check in workspace CI (or equivalent scripted gate). (GF12)
+9. M6i: Run parity verification across command matrix and workspace crates; update GF8-GF12 evidence. (GF8-GF12)
 
 M4a completion gate:
 
@@ -265,7 +291,7 @@ M4b progress notes (current session):
 
 - Introduced Mother-owned builtin child routing boundary module (`mother/src/builtin_children.rs`).
 - Converted CLI builtin dispatch into a thin adapter over Mother-defined executor traits (`src/commands/mother/builtin_dispatch.rs`).
-- Execution ownership for `spec-manager`/`lake-manager`/`doctor` remains CLI-backed for now via adapter; relocation slice is not complete.
+- Initial adapter phase left `spec-manager`/`lake-manager`/`doctor` execution CLI-backed; subsequent M4b slices relocated those dispatch paths behind Mother-runtime modules and removed direct CLI command-module references from builtin dispatch.
 - Aligned Mother runtime helper reads with Mother-owned schema:
   - broker cursor reader now targets `mother_lake_cursors`.
   - events stream reader now targets Mother mutation/session tables and no longer depends on a non-existent `eventlog` table.
@@ -283,6 +309,11 @@ M6 architecture intent lock (current session):
 - `patina-protocol` is explicit, typed, and versioned; no ad-hoc stringly payloads for control-plane contracts.
 - `patina-cli` and `patina-mother` are thin adapters over core/protocol contracts.
 - Child/toy runtime contracts remain SDK-first and host-verified; transport upgrades (including iroh lanes) must be adapter-only changes.
+
+M6 realization status:
+
+- GF8-GF12 are active realization gates for code-level architecture convergence.
+- M6 is not complete until GF8-GF12 are evidenced and checked.
 
 M5 vocabulary progress notes (current session):
 
@@ -317,7 +348,17 @@ No seam may remain unclassified when a corresponding migration slice is promoted
 | GF6 | Pass | Migration ledger rows for M1, M2, M3, M3d, M4, M5 with parity gates/rollback actions in `DESIGN.md` | Completed seam commits + recorded parity commands across M1-M4 evidence sections |
 | GF7 | Pass | Verification plan and risk register in both docs (`## Verification Plan`, `## Risks and Controls`) with seam-by-seam rollback notes for M3/M4 | `cargo check -q`; targeted test suites (`-p mother`, path/control-plane tests); runtime Mother on/off probes; `cargo run -q -- spec check greenfield-mother-patina-rebuild --json` => `passed=true, checked=7/7` |
 
+GF8-GF12 realization pass status:
+
+- Pending by design; these gates require M6 code-level crate/protocol convergence and dependency-direction enforcement evidence.
+
 ## Build Readiness
 
 Ready when promoted to active.
 Execution starts only after review against current refactor truth map and beliefs.
+
+Additional readiness requirements for realization phase:
+
+- [ ] GF8-GF12 have concrete sections, evidence links, and mapped M6 slices.
+- [ ] DESIGN includes an explicit M6 migration ledger row with parity and rollback gates.
+- [ ] Dependency direction enforcement mechanism is defined and executable.

@@ -113,6 +113,7 @@ Required anchors:
 | M3d: Greenfield-purity secrets internals relocation | Transitional adapter still sources implementation from Patina secrets internals (`src/mother/secrets_backend.rs` -> `crate::secrets::*`) | Secret implementation internals relocated to Mother-owned modules; adapter no longer depends on `crate::secrets` | `cargo check -q`; `cargo test -q`; `patina secrets` parity checks (`status`, `add`, `remove`, `list-recipients`, `lock`, `setup-claude`); verify Mother-on success and Mother-off explicit authority failure; verify vault paths/data remain unchanged | Any secret data loss risk, vault format drift, or behavior regressions in authority operations | Revert M3d commits; restore adapter-backed implementation path; re-run parity and data-integrity checks before retry | `mother` secrets internals, `patina secrets` UX, vault compatibility surface |
 | M4: Post-M3 boundary cleanup (greenfield alignment) | Residual runtime/authority seams remain in Patina core (`src/secrets/*` direct callers, `src/mother/broker/mod.rs`, command-level Mother client duplication, path duplication risk) | Mother owns runtime/authority internals; Patina core keeps protocol UX and thin adapters only | `cargo check -q`; `cargo test -q`; verify `patina secrets` Mother-required behavior remains explicit; verify broker/control-plane behavior unchanged (`spec`, `lake`, `doctor`) with Mother on/off contract preserved | Any regression in secrets authority routing, broker execution behavior, or Mother-required command contracts | Revert M4 cleanup commits per seam cluster; restore prior adapter call path and re-run parity before retry | Patina core vs Mother ownership boundaries; secrets call sites; broker and control-plane adapter surfaces |
 | M5: SDK contract stabilization (not redesign) | Mixed SDK + legacy compatibility surfaces (`sdk/patina-sdk/src/lib.rs:1`, `sdk/patina-sdk/Cargo.toml:16`) and runtime contract touchpoints (`src/child/internal/tests.rs:317`, `mother/src/toys.rs:13`) | Tiered SDK as canonical external contract (`sdk/patina-sdk-core`, `sdk/patina-sdk-data`, `sdk/patina-sdk-agent`, `sdk/patina-sdk` umbrella) with legacy features treated as migration shims until removed by parity | `cargo check -q`; `cargo test -q`; verify manifest capability schema enforcement stays `[needs].toys` + `[needs.scopes]`; verify existing child loading/runtime behavior remains stable via Mother start + health + child dispatch probes; ensure docs/spec language uses child/kind vocabulary and matches shipped SDK surfaces | Any break in child authoring ergonomics, manifest compatibility, toy grant enforcement, or third-party builder path that currently works | Revert M5 commits affecting SDK public surface/docs; restore prior exported features and compatibility shims; reopen with narrower SDK slice | SDK crates; child authoring docs/templates; manifest parser contracts; toy grant/capability path |
+| M6: Crate architecture lock (core + protocol extraction) | Domain logic in `src/mother/*_runtime.rs` + ad-hoc JSON dispatch in `mother/src/builtin_children.rs` + `#[path]` shim in `src/mother/spec_runtime.rs` | `patina-core` owns domain use-cases; `patina-protocol` owns typed dispatch contracts; CLI and Mother are thin adapters | `cargo check -q`; `cargo test -q`; `cargo test -q -p patina-core`; `cargo test -q -p patina-protocol`; Mother on/off probes for `spec`/`lake`/`doctor`; dependency-direction check; `cargo run -q -- spec check greenfield-mother-patina-rebuild --json` | Dependency inversion between core and adapters, protocol breakage across command matrix, or external SDK contract regression | Revert M6 slice commits; restore prior adapter boundaries; re-run parity matrix | Builtin dispatch surfaces; workspace dependency graph; SDK contract compatibility |
 
 Add one row per additional ownership-moving slice before promoting this spec to active.
 
@@ -508,13 +509,15 @@ M6 boundary principles (non-negotiable):
 
 M6 execution checklist (active):
 
-- [ ] Define and document dependency direction rules in workspace manifests and architecture docs.
-- [ ] Introduce `patina-protocol` crate with typed contracts for builtin child dispatch operations.
-- [ ] Introduce `patina-core` crate and migrate `lake` use-case as first transport-neutral service.
-- [ ] Remove spec `#[path]` shim by moving shared spec execution contracts to core/protocol modules.
-- [ ] Core-ify doctor as host-native service (not WASM child), with explicit runtime ports where needed.
-- [ ] Replace ad-hoc JSON dispatch payloads with typed protocol enums on Mother dispatch boundary.
-- [ ] Retire transitional adapters after parity gates and update seam classifications.
+- [ ] M6a: create `patina-core` + `patina-protocol` and dependency direction rules. (GF8, GF9, GF12)
+- [ ] M6b: migrate `lake` use-case into `patina-core` as first transport-neutral service. (GF8)
+- [ ] M6c: replace ad-hoc builtin dispatch payloads with typed `patina-protocol` enums/contracts. (GF9)
+- [ ] M6d: remove `#[path]` shim and relocate shared spec execution contracts to core-owned modules. (GF10)
+- [ ] M6e: core-ify doctor as host-native service with explicit runtime ports. (GF8, GF11)
+- [ ] M6f: core-ify spec execution and remove transitional runtime shims. (GF10, GF11)
+- [ ] M6g: wire CLI and Mother as pure adapters and retire `CliBuiltinExecutor` transitional pattern. (GF11)
+- [ ] M6h: add workspace dependency-direction enforcement gate. (GF12)
+- [ ] M6i: run full parity matrix and update GF8-GF12 evidence. (GF8-GF12)
 
 M6 parity gates:
 
@@ -599,10 +602,13 @@ Publish only when all are true:
 ## Build Readiness
 
 - [x] GF1-GF7 have concrete sections and evidence links.
+- [ ] GF8-GF12 have concrete sections, evidence links, and mapped M6 execution slices.
 - [x] Slice 0 evidence anchors are captured and contradictions are explicit.
 - [x] Runtime policy matrix is command-level, not principle-only.
 - [x] Migration ledger has at least one real row per ownership-moving lane.
+- [x] M6 migration ledger row exists with parity gates and rollback actions.
 - [x] Migration map has executable parity gates.
+- [ ] Dependency direction enforcement mechanism is defined and executable.
 - [x] No contradictions with active refactor truth map remain unresolved.
 
 GF1-GF7 focused evidence anchors (current session):
@@ -621,3 +627,7 @@ GF1-GF7 focused evidence anchors (current session):
   - `cargo test -q -p patina-ai test_mother_paths_contract`
   - `cargo run -q -- spec check greenfield-mother-patina-rebuild --json` -> `{"passed":true,"checked":7,"total":7}`
   - Mother on/off behavior probes recorded under M1/M3/M4 evidence notes.
+
+GF8-GF12 realization anchors (active):
+
+- Tracked via M6 execution checklist and M6 migration ledger row; criteria remain unchecked until code-level crate/protocol convergence is landed and evidenced.
