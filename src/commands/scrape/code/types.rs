@@ -7,6 +7,7 @@ use std::fmt;
 // SYMBOL KINDS
 // ============================================================================
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[allow(dead_code)]
 pub enum SymbolKind {
     Function,
     Struct,
@@ -22,6 +23,7 @@ pub enum SymbolKind {
     Unknown,
 }
 
+#[allow(dead_code)]
 impl SymbolKind {
     /// Convert to string for database storage
     pub fn as_str(&self) -> &'static str {
@@ -99,6 +101,7 @@ pub struct CallGraphEntry {
     pub line_number: i32,
 }
 
+#[allow(dead_code)]
 impl CallGraphEntry {
     pub fn new(
         caller: String,
@@ -122,8 +125,10 @@ impl CallGraphEntry {
 // ============================================================================
 /// Type-safe wrapper for file paths
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub struct FilePath<'a>(pub &'a str);
 
+#[allow(dead_code)]
 impl<'a> FilePath<'a> {
     /// Create a new FilePath
     pub fn new(path: &'a str) -> Self {

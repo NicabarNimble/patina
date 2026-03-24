@@ -65,6 +65,7 @@ pub struct ExtractedData {
     pub members: Vec<MemberFact>,
 }
 
+#[allow(dead_code)]
 impl ExtractedData {
     /// Create a new empty container
     pub fn new() -> Self {
