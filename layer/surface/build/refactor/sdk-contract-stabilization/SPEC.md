@@ -1,42 +1,42 @@
 ---
 type: refactor
 id: sdk-contract-stabilization
-status: draft
+status: ready
 created: 2026-03-24
 sessions:
   origin: 20260323-092255-893791000
 related:
-  - layer/surface/build/refactor/greenfield-mother-patina-rebuild/SPEC.md
-  - layer/surface/build/refactor/greenfield-mother-patina-rebuild/DESIGN.md
-  - sdk/patina-sdk/src/lib.rs
-  - sdk/patina-sdk/README.md
-  - sdk/patina-sdk/Cargo.toml
-  - sdk/patina-sdk-core/src/lib.rs
-  - sdk/patina-sdk-data/src/lib.rs
-  - sdk/patina-sdk-agent/src/lib.rs
+- layer/surface/build/refactor/greenfield-mother-patina-rebuild/SPEC.md
+- layer/surface/build/refactor/greenfield-mother-patina-rebuild/DESIGN.md
+- sdk/patina-sdk/src/lib.rs
+- sdk/patina-sdk/README.md
+- sdk/patina-sdk/Cargo.toml
+- sdk/patina-sdk-core/src/lib.rs
+- sdk/patina-sdk-data/src/lib.rs
+- sdk/patina-sdk-agent/src/lib.rs
 beliefs:
-  - children-have-agency-toys-are-capabilities
-  - core-verbs-standalone-mother-additive
-  - agents-are-guests-mother-is-infrastructure
+- children-have-agency-toys-are-capabilities
+- core-verbs-standalone-mother-additive
+- agents-are-guests-mother-is-infrastructure
 exit_criteria:
-  - id: SDK1
-    text: "SDK surfaces are classified as stable/experimental/internal with explicit rationale and docs alignment"
-    checked: false
-  - id: SDK2
-    text: "Legacy compatibility worlds are marked as migration shims with explicit removal gates"
-    checked: false
-  - id: SDK3
-    text: "Manifest vocabulary in SDK docs/examples uses child-native contract ([needs].toys + optional [needs.scopes])"
-    checked: false
-  - id: SDK4
-    text: "Child-first API vocabulary is canonical while legacy aliases remain compatibility-only"
-    checked: false
-  - id: SDK5
-    text: "Compatibility matrix for all supported world/feature lanes compiles and remains evidence-backed"
-    checked: false
-  - id: SDK6
-    text: "Protocol/core extraction readiness for third-party builders is documented with rollback-safe migration slices"
-    checked: false
+- id: SDK1
+  text: SDK surfaces are classified as stable/experimental/internal with explicit rationale and docs alignment
+  checked: true
+- id: SDK2
+  text: Legacy compatibility worlds are marked as migration shims with explicit removal gates
+  checked: true
+- id: SDK3
+  text: Manifest vocabulary in SDK docs/examples uses child-native contract ([needs].toys + optional [needs.scopes])
+  checked: true
+- id: SDK4
+  text: Child-first API vocabulary is canonical while legacy aliases remain compatibility-only
+  checked: true
+- id: SDK5
+  text: Compatibility matrix for all supported world/feature lanes compiles and remains evidence-backed
+  checked: true
+- id: SDK6
+  text: Protocol/core extraction readiness for third-party builders is documented with rollback-safe migration slices
+  checked: true
 ---
 # refactor: refactor: SDK Contract Stabilization
 
@@ -63,7 +63,7 @@ This lane defines and verifies:
 ## Status
 
 - Split from `greenfield-mother-patina-rebuild` M5 scope.
-- Initial groundwork already landed in code and docs; this spec now becomes the canonical continuation lane.
+- Stabilization evidence is now linked and criteria are checkable via SDK matrix + scaffold parity gates.
 
 ## Non-Goals
 
