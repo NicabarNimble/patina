@@ -251,7 +251,7 @@ fn migrate_legacy_cursor(
 ) -> Result<()> {
     let conn = crate::eventlog::open_events_db_at(project_root)
         .with_context(|| format!("opening events.db for {}", project_root.display()))?;
-    let legacy_cursor = cursor::get_cursor(&conn, source_name).unwrap_or(None);
+    let legacy_cursor = read_legacy_broker_cursor(&conn, source_name)?;
     let Some(cursor) = legacy_cursor else {
         return Ok(());
     };
@@ -273,6 +273,28 @@ fn migrate_legacy_cursor(
         }
     }
     Ok(())
+}
+
+fn read_legacy_broker_cursor(
+    conn: &rusqlite::Connection,
+    source_name: &str,
+) -> Result<Option<String>> {
+    let result = conn.query_row(
+        "SELECT cursor_value FROM broker_cursors WHERE source_name = ?1",
+        [source_name],
+        |row| row.get::<_, String>(0),
+    );
+
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(rusqlite::Error::SqliteFailure(error, _))
+            if error.code == rusqlite::ErrorCode::Unknown && error.extended_code == 1 =>
+        {
+            Ok(None)
+        }
+        Err(error) => Err(error.into()),
+    }
 }
 
 fn load_ducklake_knowledge_child(
