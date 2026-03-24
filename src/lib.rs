@@ -2,6 +2,7 @@ extern crate self as patina;
 
 pub mod beliefs;
 pub mod child;
+pub mod commands;
 pub mod connect;
 pub mod core_tools;
 pub mod db;
@@ -18,6 +19,7 @@ pub mod mother;
 pub mod paths;
 pub mod project;
 pub mod release;
+pub mod retrieval;
 pub mod scanner;
 pub mod secrets;
 pub mod session;
