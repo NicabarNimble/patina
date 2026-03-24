@@ -434,6 +434,33 @@ M5 preview note:
 
 - SDK contract stabilization moves to M5 after M4 boundary cleanup is complete.
 
+M5 kickoff checklist (active):
+
+- [x] Inventory current SDK exports and classify each as `stable` / `experimental` / `internal`.
+- [ ] Identify and mark legacy compatibility shims in `sdk/patina-sdk` that remain migration scaffolds.
+- [ ] Verify manifest schema contract remains `[needs].toys` with optional `[needs.scopes]` across SDK docs/examples.
+- [ ] Add/confirm compatibility tests for core SDK contract paths used by third-party child builders.
+- [ ] Record M5 slice evidence and rollback boundaries before any shim removal.
+
+M5a SDK inventory and classification (current session):
+
+| Surface | Classification | Evidence anchor | Rationale |
+| --- | --- | --- | --- |
+| `patina-sdk` umbrella crate brand | `stable` | `sdk/patina-sdk/README.md`, `sdk/patina-sdk/src/lib.rs` | Explicitly documented as default authoring surface; aligns with single SDK brand policy. |
+| `knowledge-child` world in `patina-sdk` | `stable` | `sdk/patina-sdk/src/lib.rs`, `sdk/patina-sdk/src/knowledge_child.rs`, children Cargo usage | Current default path for first-party children and greenfield contract direction. |
+| Tier crates (`patina-sdk-core`, `patina-sdk-data`, `patina-sdk-agent`) | `stable` (as tier support) | `sdk/patina-sdk/README.md`, tier crate `src/lib.rs` files | Intended canonical tier support for umbrella SDK; not separate public brands. |
+| Knowledge-child toy features used by current children (`toy-log`, `toy-state`, `toy-session`, `toy-lake`, `toy-checkpoint`, `toy-measure`, `toy-github`, `toy-connector`, `toy-peer`, `toy-events`, `toy-belief`, `toy-task`) | `stable` (subject to M5c compatibility tests) | `children/*/Cargo.toml`, `sdk/patina-sdk/src/toys.rs`, tier libs | Active first-party dependency surface and part of child capability model. |
+| `pipeline` world | `experimental` | `sdk/patina-sdk/src/lib.rs`, `sdk/patina-sdk/src/pipeline.rs` | Useful extension lane but not yet proven via broad compatibility matrix in this lane. |
+| `task` world | `internal` (migration scaffold) | `sdk/patina-sdk/src/lib.rs`, `sdk/patina-sdk/src/task.rs` | Legacy compatibility world not used by current first-party children; keep until shim removal criteria pass. |
+| `command` world | `internal` (migration scaffold) | `sdk/patina-sdk/src/lib.rs`, `sdk/patina-sdk/src/command.rs` | Legacy compatibility world; not part of target knowledge-child-first contract. |
+| `mother-child` world | `internal` (migration scaffold) | `sdk/patina-sdk/src/lib.rs`, `sdk/patina-sdk/README.md` (explicit legacy lane note) | Explicitly marked legacy migration lane; retained only for transition compatibility. |
+
+M5a immediate outputs:
+
+- Stabilization target is now explicit: `patina-sdk` umbrella + knowledge-child/tier surfaces.
+- Shim candidates for M5b are explicit: `task`, `command`, `mother-child` worlds.
+- `pipeline` remains opt-in `experimental` pending compatibility proof.
+
 ## Seam Classification Table (GF1 enforcement)
 
 | Seam | Classification | Owner | Removal trigger |

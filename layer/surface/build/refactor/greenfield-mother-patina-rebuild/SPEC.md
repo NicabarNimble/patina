@@ -223,6 +223,13 @@ M4b execution slices (next in M4):
 3. M4b3: Bind Patina runtime capabilities through explicit adapters; keep CLI UX unchanged.
 4. M4b4: Remove redundant Patina broker runtime logic after parity/rollback gates pass.
 
+M5 execution slices (SDK stabilization):
+
+1. M5a: Inventory current SDK exports/features and classify each as `stable` / `experimental` / `internal`.
+2. M5b: Mark legacy compatibility shims (world features and migration-only surfaces) and define deprecation/removal order.
+3. M5c: Add compatibility tests/examples for all `stable` surfaces and enforce schema vocabulary contracts.
+4. M5d: Remove or gate legacy shims only after parity gates pass.
+
 M4a completion gate:
 
 - No remaining Mother-owned secrets authority operations in Patina core call `crate::secrets::*` directly outside intentionally scoped local-only utilities.
@@ -245,6 +252,11 @@ M4 completion notes (current session):
   - centralized Patina -> Mother control-plane channel policy,
   - shared rendezvous path anti-drift contract tests.
 - Broker ownership boundary and relocation/rollback plan are explicitly locked in DESIGN for next execution lane.
+
+M5a progress notes (current session):
+
+- Started SDK export inventory and first-pass classification across `patina-sdk`, `patina-sdk-core`, `patina-sdk-data`, and `patina-sdk-agent`.
+- Captured classification rationale and migration-shim candidates in DESIGN under SDK stabilization section.
 
 ### Seam classification contract
 
