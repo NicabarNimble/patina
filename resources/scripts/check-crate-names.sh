@@ -29,6 +29,14 @@ is_allowed_name() {
             [[ "$name" == "patina-sdk" ]]
             return
             ;;
+        crates/patina-core/Cargo.toml)
+            [[ "$name" == "patina-core" ]]
+            return
+            ;;
+        crates/patina-protocol/Cargo.toml)
+            [[ "$name" == "patina-protocol" ]]
+            return
+            ;;
         crates/*/Cargo.toml|plugins/*/Cargo.toml|children/*/Cargo.toml)
             if [[ "$name" == patina-ai-* ]]; then
                 return 0
