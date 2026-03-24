@@ -3122,6 +3122,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "patina-core"
+version = "0.1.0"
+
+[[package]]
+name = "patina-protocol"
+version = "0.1.0"
+
+[[package]]
 name = "patina-sdk"
 version = "0.21.0"
 dependencies = [

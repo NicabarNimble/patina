@@ -61,6 +61,9 @@ jobs:
     - name: Check single SDK surface
       run: bash resources/scripts/check-single-sdk-surface.sh
 
+    - name: Check core/protocol dependency direction
+      run: bash resources/scripts/check-core-protocol-deps.sh
+
     - name: Check runtime boundary drift
       run: bash resources/scripts/check-runtime-boundaries.sh
 
