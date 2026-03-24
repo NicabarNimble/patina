@@ -88,7 +88,7 @@ pub fn run(options: GrammarBenchOptions) -> Result<()> {
                 continue;
             }
         };
-        match call_engine.handle(component, manifest, &request) {
+        match call_engine.handle(component, &manifest.name, &request) {
             Ok(response) => {
                 if serde_json::from_str::<ExtractedData>(&response).is_ok() {
                     per_call_ok += 1;
@@ -105,7 +105,7 @@ pub fn run(options: GrammarBenchOptions) -> Result<()> {
     let shared_start = Instant::now();
     for (path, content) in &file_contents {
         let request = build_parse_envelope(content, "rs", path);
-        if let Ok(response) = shared_engine.handle(component, manifest, &request) {
+        if let Ok(response) = shared_engine.handle(component, &manifest.name, &request) {
             if serde_json::from_str::<ExtractedData>(&response).is_ok() {
                 shared_ok += 1;
             }

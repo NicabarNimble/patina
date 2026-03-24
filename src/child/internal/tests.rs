@@ -2136,7 +2136,7 @@ fn pipeline_echo_handle_roundtrip() {
     let manifest = echo_pipeline_manifest();
     let request = r#"{"op":"echo","version":"1","payload":{"key":"value","count":42}}"#;
     let response = engine
-        .handle(&component, &manifest, request)
+        .handle(&component, &manifest.name, request)
         .expect("handle failed");
 
     // Echo returns payload unchanged
@@ -2154,7 +2154,7 @@ fn pipeline_echo_unknown_op_error() {
 
     let manifest = echo_pipeline_manifest();
     let request = r#"{"op":"frobnicate","version":"1","payload":{}}"#;
-    let result = engine.handle(&component, &manifest, request);
+    let result = engine.handle(&component, &manifest.name, request);
 
     assert!(
         result.is_err(),
@@ -2178,7 +2178,7 @@ fn pipeline_echo_version_mismatch_error() {
 
     let manifest = echo_pipeline_manifest();
     let request = r#"{"op":"echo","version":"999","payload":{}}"#;
-    let result = engine.handle(&component, &manifest, request);
+    let result = engine.handle(&component, &manifest.name, request);
 
     assert!(
         result.is_err(),
@@ -2254,7 +2254,7 @@ fn wasm_trap_pipeline_panic_returns_error() {
     };
 
     let request = r#"{"op":"echo","version":"1","payload":{}}"#;
-    let result = engine.handle(&component, &manifest, request);
+    let result = engine.handle(&component, &manifest.name, request);
 
     // The guest panics — host MUST catch the trap and return Err
     assert!(

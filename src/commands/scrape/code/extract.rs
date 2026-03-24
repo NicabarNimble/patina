@@ -447,7 +447,7 @@ fn process_file_with_plugins(
         let request = build_parse_envelope(content, ext, file_path);
         match plugin
             .engine
-            .handle(&plugin.component, &plugin.manifest, &request)
+            .handle(&plugin.component, &plugin.manifest.name, &request)
         {
             Ok(response) => {
                 // 1. Try ExtractedPayload (has "kind" field)
