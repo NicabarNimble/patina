@@ -105,6 +105,7 @@ wasmtime = { version = "=41", default-features = false, features = [
 wasmtime-wasi = { version = "=41", default-features = false, features = ["p2"] }
 
 mother-crate = { package = "mother", path = "mother" }
+patina-core = { path = "crates/patina-core" }
 
 # Secrets v2 - age encryption and macOS Keychain
 age = { version = "0.11", features = ["armor"] }

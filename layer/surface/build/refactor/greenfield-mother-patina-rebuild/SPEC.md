@@ -321,6 +321,11 @@ M6a progress notes (current session):
 - Added executable dependency-direction enforcement script (`resources/scripts/check-core-protocol-deps.sh`) and wired it into CI (`.github/workflows/test.yml`).
 - M6a checklist item is complete; GF8-GF12 remain unchecked until subsequent slices land full protocol/core convergence.
 
+M6b progress notes (current session):
+
+- Started `lake` core migration by moving domain invariants/parsing/rendering helpers into `patina-core::lake`.
+- `src/mother/lake_runtime.rs` now consumes core-owned lake name validation and config/metadata helpers while keeping filesystem side effects in runtime adapter code.
+
 M5 vocabulary progress notes (current session):
 
 - Tracked in dedicated SDK spec/design (`sdk-contract-stabilization`).
@@ -365,6 +370,9 @@ Execution starts only after review against current refactor truth map and belief
 
 Additional readiness requirements for realization phase:
 
-- [ ] GF8-GF12 have concrete sections, evidence links, and mapped M6 slices.
-- [ ] DESIGN includes an explicit M6 migration ledger row with parity and rollback gates.
-- [ ] Dependency direction enforcement mechanism is defined and executable.
+- [x] GF8-GF12 have concrete sections, evidence links, and mapped M6 slices.
+- [x] DESIGN includes an explicit M6 migration ledger row with parity and rollback gates.
+- [x] Dependency direction enforcement mechanism is defined and executable.
+
+Readiness here means realization scaffolding is present; GF8-GF12 remain unchecked until
+corresponding M6 code slices are landed and parity evidence is recorded.

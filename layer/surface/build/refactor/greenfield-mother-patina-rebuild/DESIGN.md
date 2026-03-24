@@ -544,6 +544,17 @@ M6a progress evidence (current session):
 - Wired dependency-direction check into CI test pipeline:
   - `.github/workflows/test.yml` (`Check core/protocol dependency direction` step)
 
+M6b progress evidence (current session):
+
+- Added first core-owned lake domain module:
+  - `crates/patina-core/src/lake.rs`
+  - exported from `crates/patina-core/src/lib.rs`
+- Migrated lake name invariant to core:
+  - `src/mother/lake_runtime.rs::validate_lake_name` now delegates to `patina_core::lake::validate_lake_name`
+- Migrated lake config metadata parsing/rendering helpers to core and consumed from runtime adapter:
+  - `patina_core::lake::parse_lake_metadata`
+  - `patina_core::lake::render_lake_config`
+
 ## Seam Classification Table (GF1 enforcement)
 
 | Seam | Classification | Owner | Removal trigger |
@@ -613,7 +624,7 @@ Publish only when all are true:
 ## Build Readiness
 
 - [x] GF1-GF7 have concrete sections and evidence links.
-- [ ] GF8-GF12 have concrete sections, evidence links, and mapped M6 execution slices.
+- [x] GF8-GF12 have concrete sections, evidence links, and mapped M6 execution slices.
 - [x] Slice 0 evidence anchors are captured and contradictions are explicit.
 - [x] Runtime policy matrix is command-level, not principle-only.
 - [x] Migration ledger has at least one real row per ownership-moving lane.
@@ -621,6 +632,9 @@ Publish only when all are true:
 - [x] Migration map has executable parity gates.
 - [x] Dependency direction enforcement mechanism is defined and executable.
 - [x] No contradictions with active refactor truth map remain unresolved.
+
+Note: this checklist tracks documentation and execution scaffolding readiness, not realization
+completion. GF8-GF12 exit criteria remain unchecked until M6 implementation slices land.
 
 GF1-GF7 focused evidence anchors (current session):
 

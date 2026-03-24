@@ -30,23 +30,10 @@ pub fn execute_value(command: LakeCommand) -> Result<serde_json::Value> {
                 for entry in entries {
                     let lake_toml = entry.path().join("lake.toml");
                     let content = std::fs::read_to_string(&lake_toml).unwrap_or_default();
-                    let name = content
-                        .lines()
-                        .find(|l| l.starts_with("name"))
-                        .and_then(|l| l.split('=').nth(1))
-                        .map(|v| v.trim().trim_matches('"'))
-                        .unwrap_or("?")
-                        .to_string();
-                    let created = content
-                        .lines()
-                        .find(|l| l.starts_with("created_at"))
-                        .and_then(|l| l.split('=').nth(1))
-                        .map(|v| v.trim().trim_matches('"'))
-                        .unwrap_or("?")
-                        .to_string();
+                    let metadata = patina_core::lake::parse_lake_metadata(&content);
                     lakes.push(serde_json::json!({
-                        "name": name,
-                        "created_at": created,
+                        "name": metadata.name,
+                        "created_at": metadata.created_at,
                         "path": entry.path().display().to_string()
                     }));
                 }
@@ -75,7 +62,7 @@ fn create(name: &str) -> Result<()> {
     std::fs::create_dir_all(&lake_dir)?;
 
     let now = chrono::Utc::now().to_rfc3339();
-    let config = format!("name = \"{}\"\ncreated_at = \"{}\"", name, now);
+    let config = patina_core::lake::render_lake_config(name, &now);
     std::fs::write(lake_dir.join("lake.toml"), config)?;
 
     eprintln!("Lake \"{}\" created at {}", name, lake_dir.display());
@@ -83,12 +70,5 @@ fn create(name: &str) -> Result<()> {
 }
 
 pub fn validate_lake_name(name: &str) -> Result<()> {
-    if name.is_empty()
-        || !name
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-    {
-        bail!("lake name must be non-empty and contain only alphanumeric characters, hyphens, or underscores");
-    }
-    Ok(())
+    patina_core::lake::validate_lake_name(name).map_err(|err| anyhow::anyhow!(err.to_string()))
 }
