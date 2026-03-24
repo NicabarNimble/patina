@@ -515,7 +515,7 @@ M6 execution checklist (active):
 - [x] M6d: remove `#[path]` shim and relocate shared spec execution contracts to core-owned modules. (GF10)
 - [x] M6e: core-ify doctor as host-native service with explicit runtime ports. (GF8, GF11)
 - [x] M6f: core-ify spec execution and remove transitional runtime shims. (GF10, GF11)
-- [ ] M6g: wire CLI and Mother as pure adapters and retire `CliBuiltinExecutor` transitional pattern. (GF11)
+- [x] M6g: wire CLI and Mother as pure adapters and retire `CliBuiltinExecutor` transitional pattern. (GF11)
 - [ ] M6h: add workspace dependency-direction enforcement gate. (GF12)
 - [ ] M6i: run full parity matrix and update GF8-GF12 evidence. (GF8-GF12)
 
@@ -641,6 +641,20 @@ M6f progress evidence (current session):
   - `cargo test -p patina-core`
   - `cargo test -p patina-ai commands::lake::tests::invalid_lake_names`
   - `cargo test -p patina-ai commands::spec::tests::parse_create_minimal`
+
+M6g progress evidence (current session):
+
+- Retired the transitional `CliBuiltinExecutor` pattern from builtin dispatch adapter:
+  - removed `CliBuiltinExecutor` struct + trait impl from `src/commands/mother/builtin_dispatch.rs`
+- Replaced executor object indirection with explicit dispatch function wiring via `BuiltinDispatchRuntime` callback struct:
+  - `mother/src/builtin_children.rs`
+  - `src/commands/mother/builtin_dispatch.rs`
+- Kept CLI/Mother adapter seams thin and explicit:
+  - adapter now passes direct `spec_dispatch`, `lake_dispatch`, `doctor_run` function references
+  - no command-module shim objects are retained for builtin routing
+- Validation evidence:
+  - `cargo check -p patina-ai -p mother`
+  - `cargo test -p mother`
 
 ## Seam Classification Table (GF1 enforcement)
 
