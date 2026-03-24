@@ -39,8 +39,8 @@ pub(crate) mod state {
 
 use anyhow::Result;
 use patina_protocol::{
-    BuiltinChild, BuiltinChildAction, BuiltinChildRequest, SecretsAuthorityOperation,
-    SecretsDispatchRequest,
+    BuiltinChild, BuiltinChildAction, BuiltinChildRequest, BuiltinChildResult,
+    SecretsAuthorityOperation, SecretsDispatchRequest,
 };
 
 // Child trait exports
@@ -151,6 +151,13 @@ pub fn get_global_secret(name: &str) -> Result<Option<String>> {
             e
         )
     })?;
+    let response = match response.result {
+        BuiltinChildResult::Dispatch { payload } => payload,
+        other => anyhow::bail!(
+            "Unexpected typed response from secrets-authority: {:?}",
+            other
+        ),
+    };
 
     Ok(response
         .get("value")

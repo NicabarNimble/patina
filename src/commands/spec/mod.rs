@@ -25,7 +25,9 @@ pub(crate) use internal::{
 
 use anyhow::Result;
 use patina::spec::SpecStatus;
-use patina_protocol::{BuiltinChild, BuiltinChildAction, BuiltinChildRequest, SpecDispatchRequest};
+use patina_protocol::{
+    BuiltinChild, BuiltinChildAction, BuiltinChildRequest, BuiltinChildResult, SpecDispatchRequest,
+};
 use serde_json::{json, Value};
 
 /// Spec CLI subcommands (used by main.rs via clap)
@@ -386,6 +388,12 @@ pub fn execute(command: SpecCommands) -> Result<()> {
             e
         )
     })?;
+    let response = match response.result {
+        BuiltinChildResult::Dispatch { payload } => payload,
+        other => {
+            anyhow::bail!("Unexpected typed response from spec-manager: {:?}", other);
+        }
+    };
 
     if let Some(text) = response.get("text").and_then(|v| v.as_str()) {
         if !text.is_empty() {

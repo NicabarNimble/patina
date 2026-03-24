@@ -404,4 +404,106 @@ impl BuiltinChildResponse {
             }),
         }
     }
+
+    pub fn from_http_payload(
+        child: BuiltinChild,
+        action: &BuiltinChildAction,
+        payload: Value,
+    ) -> Result<Self, String> {
+        let result = match action {
+            BuiltinChildAction::Health => {
+                let status = payload
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                BuiltinChildResult::Health { status }
+            }
+            BuiltinChildAction::SpecDispatch(_)
+            | BuiltinChildAction::LakeDispatch(_)
+            | BuiltinChildAction::SecretsDispatch(_) => BuiltinChildResult::Dispatch { payload },
+            BuiltinChildAction::DoctorRun(_) => {
+                let data = payload.get("data").cloned().unwrap_or(Value::Null);
+                let exit_code = payload
+                    .get("exit_code")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                BuiltinChildResult::DoctorRun(DoctorRunResult { data, exit_code })
+            }
+        };
+
+        Ok(Self::new(child, result))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_http_roundtrip_for_spec_dispatch() {
+        let request = BuiltinChildRequest::new(
+            BuiltinChild::SpecManager,
+            BuiltinChildAction::SpecDispatch(SpecDispatchRequest {
+                command: serde_json::json!({"cmd":"show"}),
+            }),
+        );
+
+        let (child, action, payload) = request.to_http_parts();
+        assert_eq!(child, "spec-manager");
+        assert_eq!(action, "dispatch");
+
+        let parsed = BuiltinChildRequest::from_http_parts(
+            child,
+            action,
+            serde_json::to_string(&payload).unwrap().as_bytes(),
+        )
+        .unwrap();
+
+        assert_eq!(parsed.child, BuiltinChild::SpecManager);
+        match parsed.action {
+            BuiltinChildAction::SpecDispatch(dispatch) => {
+                assert_eq!(dispatch.command, serde_json::json!({"cmd":"show"}));
+            }
+            _ => panic!("expected spec dispatch"),
+        }
+    }
+
+    #[test]
+    fn secrets_operation_parses_and_roundtrips_payload() {
+        let payload = serde_json::json!({
+            "op": "add_secret",
+            "name": "gh-token",
+            "value": "abc",
+            "env": "GITHUB_TOKEN",
+            "global": true,
+            "project_root": "/tmp/project"
+        });
+
+        let operation = SecretsAuthorityOperation::from_payload(payload.clone()).unwrap();
+        assert_eq!(operation.into_payload(), payload);
+    }
+
+    #[test]
+    fn response_from_http_payload_for_doctor_run() {
+        let action = BuiltinChildAction::DoctorRun(DoctorRunRequest);
+        let payload = serde_json::json!({
+            "child": "doctor",
+            "text": "",
+            "data": {"health":{"status":"ok"}},
+            "exit_code": 2
+        });
+
+        let response =
+            BuiltinChildResponse::from_http_payload(BuiltinChild::Doctor, &action, payload)
+                .unwrap();
+
+        match response.result {
+            BuiltinChildResult::DoctorRun(result) => {
+                assert_eq!(result.exit_code, 2);
+                assert_eq!(result.data, serde_json::json!({"health":{"status":"ok"}}));
+            }
+            _ => panic!("expected doctor run result"),
+        }
+    }
 }

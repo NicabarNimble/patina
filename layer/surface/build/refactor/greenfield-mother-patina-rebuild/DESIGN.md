@@ -511,7 +511,7 @@ M6 execution checklist (active):
 
 - [x] M6a: create `patina-core` + `patina-protocol` and dependency direction rules. (GF8, GF9, GF12)
 - [x] M6b: migrate `lake` use-case into `patina-core` as first transport-neutral service. (GF8)
-- [ ] M6c: replace ad-hoc builtin dispatch payloads with typed `patina-protocol` enums/contracts. (GF9)
+- [x] M6c: replace ad-hoc builtin dispatch payloads with typed `patina-protocol` enums/contracts. (GF9)
 - [ ] M6d: remove `#[path]` shim and relocate shared spec execution contracts to core-owned modules. (GF10)
 - [ ] M6e: core-ify doctor as host-native service with explicit runtime ports. (GF8, GF11)
 - [ ] M6f: core-ify spec execution and remove transitional runtime shims. (GF10, GF11)
@@ -566,6 +566,31 @@ M6b progress evidence (current session):
   - `cargo test -p patina-core`
   - `cargo check -p mother -p patina-ai`
   - `cargo test -p patina-ai commands::lake::tests -- --nocapture`
+
+M6c progress evidence (current session):
+
+- Added typed, versioned builtin control-plane contracts in `patina-protocol`:
+  - `BuiltinChild`, `BuiltinChildAction`, `BuiltinChildRequest`
+  - `BuiltinChildResult`, `BuiltinChildResponse`
+  - typed `SecretsAuthorityOperation` union replacing stringly op payload assembly
+- Added explicit HTTP adapter conversion boundaries:
+  - `BuiltinChildRequest::from_http_parts` and `to_http_parts`
+  - `BuiltinChildResponse::from_http_payload` and `into_http_payload`
+- Migrated Mother builtin dispatch to typed request parsing and typed routing:
+  - `mother/src/builtin_children.rs`
+  - dispatch executor trait now accepts typed request structs for spec/lake and typed doctor result
+- Migrated CLI/adapter callsites from raw child-action payload assembly to typed requests via `child_action_typed`:
+  - `src/commands/spec/mod.rs`
+  - `src/commands/lake.rs`
+  - `src/commands/doctor.rs`
+  - `src/commands/secrets.rs`
+  - `src/mother/mod.rs`
+  - `src/connect/internal/store.rs`
+- Added protocol contract tests for request/response conversion and secrets operation roundtrip:
+  - `crates/patina-protocol/src/lib.rs` tests
+- Validation evidence:
+  - `cargo test -p patina-protocol`
+  - `cargo check -p mother -p patina-ai`
 
 ## Seam Classification Table (GF1 enforcement)
 

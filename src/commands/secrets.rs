@@ -6,8 +6,8 @@
 use anyhow::{bail, Result};
 use patina::{mother, paths, scanner, secrets};
 use patina_protocol::{
-    BuiltinChild, BuiltinChildAction, BuiltinChildRequest, SecretsAuthorityOperation,
-    SecretsDispatchRequest,
+    BuiltinChild, BuiltinChildAction, BuiltinChildRequest, BuiltinChildResult,
+    SecretsAuthorityOperation, SecretsDispatchRequest,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -178,7 +178,13 @@ fn dispatch_secrets_authority(op: &str, payload: Value) -> Result<Option<Value>>
     );
 
     match client.child_action_typed(&request) {
-        Ok(value) => Ok(Some(value)),
+        Ok(response) => match response.result {
+            BuiltinChildResult::Dispatch { payload } => Ok(Some(payload)),
+            other => Err(anyhow::anyhow!(
+                "Unexpected typed response from secrets-authority: {:?}",
+                other
+            )),
+        },
         Err(error) if is_mother_unavailable_error(&error) => bail!(
             "Mother secrets authority unavailable for '{}'. Start `patina mother start`.",
             op

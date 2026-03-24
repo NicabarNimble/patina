@@ -1,5 +1,7 @@
 use anyhow::Result;
-use patina_protocol::{BuiltinChild, BuiltinChildAction, BuiltinChildRequest, DoctorRunRequest};
+use patina_protocol::{
+    BuiltinChild, BuiltinChildAction, BuiltinChildRequest, BuiltinChildResult, DoctorRunRequest,
+};
 
 #[allow(dead_code)]
 pub(crate) fn execute_value() -> Result<serde_json::Value> {
@@ -18,38 +20,29 @@ pub fn execute_cli(json_output: bool) -> Result<()> {
             e
         )
     })?;
+    let result = match response.result {
+        BuiltinChildResult::DoctorRun(result) => result,
+        other => anyhow::bail!("Unexpected typed response from doctor: {:?}", other),
+    };
 
     if json_output {
-        if let Some(data) = response.get("data") {
-            println!("{}", serde_json::to_string_pretty(data)?);
-        } else {
-            println!("{}", serde_json::to_string_pretty(&response)?);
-        }
-        if let Some(code) = response.get("exit_code").and_then(|v| v.as_i64()) {
-            if code != 0 {
-                std::process::exit(code as i32);
-            }
+        println!("{}", serde_json::to_string_pretty(&result.data)?);
+        if result.exit_code != 0 {
+            std::process::exit(result.exit_code as i32);
         }
         return Ok(());
     }
 
-    if let Some(text) = response.get("text").and_then(|v| v.as_str()) {
-        if !text.is_empty() {
-            println!("{}", text);
-        }
-    }
-    if let Some(data) = response.get("data") {
-        let status = data
-            .get("health")
-            .and_then(|h| h.get("status"))
-            .and_then(|s| s.as_str())
-            .unwrap_or("unknown");
-        println!("Doctor status: {}", status);
-    }
-    if let Some(code) = response.get("exit_code").and_then(|v| v.as_i64()) {
-        if code != 0 {
-            std::process::exit(code as i32);
-        }
+    let status = result
+        .data
+        .get("health")
+        .and_then(|h| h.get("status"))
+        .and_then(|s| s.as_str())
+        .unwrap_or("unknown");
+    println!("Doctor status: {}", status);
+
+    if result.exit_code != 0 {
+        std::process::exit(result.exit_code as i32);
     }
     Ok(())
 }

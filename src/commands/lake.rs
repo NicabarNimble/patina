@@ -3,7 +3,9 @@
 //! Subcommands: create, list.
 
 use anyhow::Result;
-use patina_protocol::{BuiltinChild, BuiltinChildAction, BuiltinChildRequest, LakeDispatchRequest};
+use patina_protocol::{
+    BuiltinChild, BuiltinChildAction, BuiltinChildRequest, BuiltinChildResult, LakeDispatchRequest,
+};
 
 /// Lake CLI subcommands
 #[derive(Debug, Clone, clap::Subcommand, serde::Serialize, serde::Deserialize)]
@@ -38,6 +40,12 @@ pub fn execute_cli(command: Option<LakeCommands>) -> Result<()> {
             e
         )
     })?;
+    let response = match response.result {
+        BuiltinChildResult::Dispatch { payload } => payload,
+        other => {
+            anyhow::bail!("Unexpected typed response from lake-manager: {:?}", other);
+        }
+    };
 
     if let Some(text) = response.get("text").and_then(|v| v.as_str()) {
         if !text.is_empty() {

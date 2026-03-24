@@ -5,7 +5,7 @@
 //! - Remote mother: TCP with bearer token via reqwest
 
 use anyhow::{Context, Result};
-use patina_protocol::BuiltinChildRequest;
+use patina_protocol::{BuiltinChildRequest, BuiltinChildResponse};
 use reqwest::blocking::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -144,9 +144,14 @@ impl Client {
         serde_json::from_str(&body).with_context(|| "Failed to parse child response")
     }
 
-    pub fn child_action_typed(&self, request: &BuiltinChildRequest) -> Result<Value> {
+    pub fn child_action_typed(
+        &self,
+        request: &BuiltinChildRequest,
+    ) -> Result<BuiltinChildResponse> {
         let (child, action, payload) = request.to_http_parts();
-        self.child_action(child, action, &payload)
+        let http_payload = self.child_action(child, action, &payload)?;
+        BuiltinChildResponse::from_http_payload(request.child, &request.action, http_payload)
+            .map_err(|e| anyhow::anyhow!("Failed to decode typed child response: {}", e))
     }
 }
 
