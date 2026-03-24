@@ -31,12 +31,13 @@ impl BuiltinChildExecutor for CliBuiltinExecutor {
         &self,
         command_payload: serde_json::Value,
     ) -> anyhow::Result<serde_json::Value> {
-        let command: crate::commands::lake::LakeCommands = serde_json::from_value(command_payload)
-            .map_err(|e| anyhow::anyhow!("Invalid lake-manager command payload: {}", e))?;
-        crate::commands::lake::execute_value(command)
+        let command: patina::mother::lake_runtime::LakeCommand =
+            serde_json::from_value(command_payload)
+                .map_err(|e| anyhow::anyhow!("Invalid lake-manager command payload: {}", e))?;
+        patina::mother::lake_runtime::execute_value(command)
     }
 
     fn doctor_run(&self) -> anyhow::Result<serde_json::Value> {
-        crate::commands::doctor::execute_value()
+        patina::mother::doctor_runtime::execute_value()
     }
 }
