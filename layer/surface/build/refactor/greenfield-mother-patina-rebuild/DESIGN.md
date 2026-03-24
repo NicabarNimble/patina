@@ -481,84 +481,12 @@ M5 preview note:
 
 - SDK contract stabilization moves to M5 after M4 boundary cleanup is complete.
 
-M5 kickoff checklist (active):
+M5 scope split note:
 
-- [x] Inventory current SDK exports and classify each as `stable` / `experimental` / `internal`.
-- [x] Identify and mark legacy compatibility shims in `sdk/patina-sdk` that remain migration scaffolds.
-- [x] Verify manifest schema contract remains `[needs].toys` with optional `[needs.scopes]` across SDK docs/examples.
-- [x] Add/confirm compatibility tests for core SDK contract paths used by third-party child builders.
-- [x] Record M5 slice evidence and rollback boundaries before any shim removal.
-
-M5a SDK inventory and classification (current session):
-
-| Surface | Classification | Evidence anchor | Rationale |
-| --- | --- | --- | --- |
-| `patina-sdk` umbrella crate brand | `stable` | `sdk/patina-sdk/README.md`, `sdk/patina-sdk/src/lib.rs` | Explicitly documented as default authoring surface; aligns with single SDK brand policy. |
-| `knowledge-child` world in `patina-sdk` | `stable` | `sdk/patina-sdk/src/lib.rs`, `sdk/patina-sdk/src/knowledge_child.rs`, children Cargo usage | Current default path for first-party children and greenfield contract direction. |
-| Tier crates (`patina-sdk-core`, `patina-sdk-data`, `patina-sdk-agent`) | `stable` (as tier support) | `sdk/patina-sdk/README.md`, tier crate `src/lib.rs` files | Intended canonical tier support for umbrella SDK; not separate public brands. |
-| Knowledge-child toy features used by current children (`toy-log`, `toy-state`, `toy-session`, `toy-lake`, `toy-checkpoint`, `toy-measure`, `toy-github`, `toy-connector`, `toy-peer`, `toy-events`, `toy-belief`, `toy-task`) | `stable` (subject to M5c compatibility tests) | `children/*/Cargo.toml`, `sdk/patina-sdk/src/toys.rs`, tier libs | Active first-party dependency surface and part of child capability model. |
-| `pipeline` world | `experimental` | `sdk/patina-sdk/src/lib.rs`, `sdk/patina-sdk/src/pipeline.rs` | Useful extension lane but not yet proven via broad compatibility matrix in this lane. |
-| `task` world | `internal` (migration scaffold) | `sdk/patina-sdk/src/lib.rs`, `sdk/patina-sdk/src/task.rs` | Legacy compatibility world not used by current first-party children; keep until shim removal criteria pass. |
-| `command` world | `internal` (migration scaffold) | `sdk/patina-sdk/src/lib.rs`, `sdk/patina-sdk/src/command.rs` | Legacy compatibility world; not part of target knowledge-child-first contract. |
-| `mother-child` world | `internal` (migration scaffold) | `sdk/patina-sdk/src/lib.rs`, `sdk/patina-sdk/README.md` (explicit legacy lane note) | Explicitly marked legacy migration lane; retained only for transition compatibility. |
-
-M5a immediate outputs:
-
-- Stabilization target is now explicit: `patina-sdk` umbrella + knowledge-child/tier surfaces.
-- Shim candidates for M5b are explicit: `task`, `command`, `mother-child` worlds.
-- `pipeline` remains opt-in `experimental` pending compatibility proof.
-
-M5b shim-marking pass (current session):
-
-- Marked legacy compatibility world features as migration scaffolds directly in `sdk/patina-sdk/Cargo.toml` comments.
-- Updated `sdk/patina-sdk/src/lib.rs` module docs with explicit M5 classification policy.
-- Updated `sdk/patina-sdk/README.md` world-feature section to label `task`, `command`, and `mother-child` as compatibility/migration scaffolds and `pipeline` as experimental.
-
-M5c schema/compatibility pass (current session):
-
-- Updated umbrella SDK world docs to align grant language with active manifest contract (`[needs].toys` and optional `[needs.scopes]`) in:
-  - `sdk/patina-sdk/src/task.rs`
-  - `sdk/patina-sdk/src/command.rs`
-  - `sdk/patina-sdk/src/mother_child.rs`
-- Confirmed no remaining legacy `[capabilities]` guidance in SDK source docs.
-- Compatibility compile matrix executed for stabilization and shim worlds:
-  - `cargo check -q -p patina-sdk --features knowledge-child,toy-log,toy-state,toy-session,toy-lake,toy-checkpoint,toy-query,toy-emit,toy-measure,toy-github,toy-connector,toy-peer,toy-events,toy-belief,toy-task`
-  - `cargo check -q -p patina-sdk --features pipeline`
-  - `cargo check -q -p patina-sdk --features task`
-  - `cargo check -q -p patina-sdk --features command`
-  - `cargo check -q -p patina-sdk --features mother-child`
-
-M5 rollback boundaries (pre-removal lock):
-
-- Trigger: any break in first-party child buildability, feature-world compileability, or manifest-schema compatibility claims.
-- Action: revert the relevant M5 slice commit and restore previous SDK world/docs classification text; re-run compile matrix before reattempt.
-- Guardrail: no shim removal (`task`, `command`, `mother-child`) until explicit parity evidence includes first-party child build checks plus compatibility test confirmation.
-
-M5 status:
-
-- Stabilization groundwork complete (inventory, classification, shim marking, schema/doc alignment, compatibility compile checks, rollback boundary lock).
-- Shim-removal execution remains gated and out of this pass.
-
-M5 vocabulary-alignment pass (current session):
-
-- Introduced child-first SDK API names while preserving compatibility aliases:
-  - traits: `CommandChild`, `TaskChild`, `MotherChild`, `KnowledgeChild`, `PipelineChild`
-  - legacy aliases retained: `*Plugin`
-  - registration macros: `register_command_child!`, `register_task_child!`, `register_mother_child!`, `register_pipeline_child!`
-  - legacy aliases retained: `register_command!`, `register_task!`, `register_plugin!`, `register_pipeline!`
-- Updated first-party usage sites to child-first terminology:
-  - `children/*/src/lib.rs`
-  - `plugins/*/src/lib.rs`
-  - `tests/hello-task/src/lib.rs`
-- Updated scaffold templates and assertions to generate child-first macros/traits:
-  - `resources/templates/plugin/*/lib.rs.tmpl`
-  - `resources/templates/plugin/*/Cargo.toml.tmpl`
-  - `src/child/scaffold.rs`
-- Updated umbrella SDK crate docs/metadata wording from plugin -> child (`sdk/patina-sdk/src/lib.rs`, `sdk/patina-sdk/Cargo.toml`, `sdk/patina-sdk/src/wasm_cell.rs`).
-- Compatibility/verification evidence:
-  - `cargo check -q`
-  - `cargo test -q -p patina-ai scaffold::tests::test_scaffold`
-  - SDK feature-world compile matrix (knowledge-child/pipeline/task/command/mother-child).
+- SDK stabilization/removal work has been split into dedicated spec/design:
+  - `layer/surface/build/refactor/sdk-contract-stabilization/SPEC.md`
+  - `layer/surface/build/refactor/sdk-contract-stabilization/DESIGN.md`
+- This greenfield design keeps only architecture-level references to SDK boundaries; implementation detail and compatibility matrix evidence now live in the dedicated SDK lane.
 
 M6 architecture lock (active planning):
 

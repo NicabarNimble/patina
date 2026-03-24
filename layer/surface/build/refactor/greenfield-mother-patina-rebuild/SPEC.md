@@ -6,6 +6,7 @@ created: 2026-03-22
 related:
   - layer/surface/build/refactor/patina-code-to-vision/SPEC.md
   - layer/surface/build/refactor/patina-code-to-vision/DESIGN.md
+  - layer/surface/build/refactor/sdk-contract-stabilization/SPEC.md
   - layer/core/spec-driven-design.md
   - layer/core/dependable-rust.md
   - layer/core/safety-boundaries.md
@@ -201,7 +202,7 @@ Execution priority for current lane:
 3. M3 after M2: secret authority migration to Mother control-plane while preserving `patina secrets` UX.
 4. M3d after M3: relocate remaining secret implementation internals from Patina into Mother-owned modules to close greenfield purity seam.
 5. M4 after M3d: post-M3 boundary cleanup (authority/comms/path ownership alignment) before SDK work.
-6. M5 after M4: SDK contract stabilization (single `patina-sdk` public SDK stance retained).
+6. M5 after M4: SDK contract stabilization moved to dedicated spec `sdk-contract-stabilization`.
 7. M6 after M5 groundwork: Jon-style crate architecture lock (`patina-core` + `patina-protocol`) for external child builders and multi-Mother transport evolution.
 
 M4 boundary cleanup focus (normative):
@@ -226,10 +227,7 @@ M4b execution slices (next in M4):
 
 M5 execution slices (SDK stabilization):
 
-1. M5a: Inventory current SDK exports/features and classify each as `stable` / `experimental` / `internal`.
-2. M5b: Mark legacy compatibility shims (world features and migration-only surfaces) and define deprecation/removal order.
-3. M5c: Add compatibility tests/examples for all `stable` surfaces and enforce schema vocabulary contracts.
-4. M5d: Remove or gate legacy shims only after parity gates pass.
+- See dedicated spec: `layer/surface/build/refactor/sdk-contract-stabilization/SPEC.md`.
 
 M6 execution slices (core/protocol architecture lock):
 
@@ -275,24 +273,9 @@ M4b progress notes (current session):
 - Relocated `lake-manager` and `doctor` execution paths out of CLI command-module ownership into Patina library runtime modules consumed by Mother builtin executor adapter.
 - Relocated `spec-manager` dispatch path behind Patina Mother runtime module (`src/mother/spec_runtime.rs`), removing direct CLI command-module references from builtin dispatch.
 
-M5a progress notes (current session):
-
-- Started SDK export inventory and first-pass classification across `patina-sdk`, `patina-sdk-core`, `patina-sdk-data`, and `patina-sdk-agent`.
-- Captured classification rationale and migration-shim candidates in DESIGN under SDK stabilization section.
-
-M5b progress notes (current session):
-
-- Marked legacy world compatibility shims (`task`, `command`, `mother-child`) directly in SDK docs/feature declarations.
-- Marked `pipeline` as experimental and reiterated `knowledge-child` as stabilization target in umbrella SDK docs.
-
-M5c progress notes (current session):
-
-- Updated SDK source docs to align manifest grant terminology with `[needs].toys` and optional `[needs.scopes]`.
-- Confirmed compatibility via feature-world compile matrix across stabilization and shim worlds.
-
 M5 boundary status:
 
-- SDK stabilization groundwork is complete for this lane; compatibility shims remain present and explicitly marked until a later parity-backed removal slice.
+- SDK lane ownership has been split to dedicated spec `sdk-contract-stabilization` to keep this greenfield lane focused on Patina/Mother/Child/Toy architecture.
 
 M6 architecture intent lock (current session):
 
@@ -303,9 +286,7 @@ M6 architecture intent lock (current session):
 
 M5 vocabulary progress notes (current session):
 
-- Child-first vocabulary applied across SDK/public examples and first-party child/plugin usage while preserving compatibility aliases for legacy `*Plugin` names/macros.
-- Scaffold/template generation now emits child-first trait/macro usage.
-- Compatibility gates re-verified after vocabulary migration (workspace build, scaffold tests, SDK world feature compile matrix).
+- Tracked in dedicated SDK spec/design (`sdk-contract-stabilization`).
 
 ### Seam classification contract
 
