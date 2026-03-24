@@ -3,6 +3,7 @@
 //! Subcommands: create, list.
 
 use anyhow::Result;
+use patina_protocol::{BuiltinChild, BuiltinChildAction, BuiltinChildRequest, LakeDispatchRequest};
 
 /// Lake CLI subcommands
 #[derive(Debug, Clone, clap::Subcommand, serde::Serialize, serde::Deserialize)]
@@ -24,16 +25,19 @@ pub enum LakeCommands {
 /// Execute lake CLI subcommand.
 pub fn execute_cli(command: Option<LakeCommands>) -> Result<()> {
     let effective = command.unwrap_or(LakeCommands::List);
-    let payload = serde_json::json!({ "command": effective });
+    let protocol_request = BuiltinChildRequest::new(
+        BuiltinChild::LakeManager,
+        BuiltinChildAction::LakeDispatch(LakeDispatchRequest {
+            command: serde_json::to_value(effective)?,
+        }),
+    );
     let client = patina::mother::control_plane_client();
-    let response = client
-        .child_action("lake-manager", "dispatch", &payload)
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "lake-manager unavailable via Mother (start with `patina mother start`): {}",
-                e
-            )
-        })?;
+    let response = client.child_action_typed(&protocol_request).map_err(|e| {
+        anyhow::anyhow!(
+            "lake-manager unavailable via Mother (start with `patina mother start`): {}",
+            e
+        )
+    })?;
 
     if let Some(text) = response.get("text").and_then(|v| v.as_str()) {
         if !text.is_empty() {

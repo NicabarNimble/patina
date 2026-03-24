@@ -2668,6 +2668,7 @@ dependencies = [
  "hkdf",
  "httparse",
  "libc",
+ "patina-protocol",
  "rand 0.8.5",
  "reqwest",
  "rusqlite",
@@ -3128,6 +3129,10 @@ version = "0.1.0"
 [[package]]
 name = "patina-protocol"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "patina-sdk"

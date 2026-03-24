@@ -25,6 +25,7 @@ pub(crate) use internal::{
 
 use anyhow::Result;
 use patina::spec::SpecStatus;
+use patina_protocol::{BuiltinChild, BuiltinChildAction, BuiltinChildRequest, SpecDispatchRequest};
 use serde_json::{json, Value};
 
 /// Spec CLI subcommands (used by main.rs via clap)
@@ -372,16 +373,19 @@ pub fn execute(command: SpecCommands) -> Result<()> {
         }
     }
 
-    let payload = json!({ "command": command });
+    let protocol_request = BuiltinChildRequest::new(
+        BuiltinChild::SpecManager,
+        BuiltinChildAction::SpecDispatch(SpecDispatchRequest {
+            command: serde_json::to_value(command.clone())?,
+        }),
+    );
     let client = patina::mother::control_plane_client();
-    let response = client
-        .child_action("spec-manager", "dispatch", &payload)
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "spec-manager unavailable via Mother (start with `patina mother start`): {}",
-                e
-            )
-        })?;
+    let response = client.child_action_typed(&protocol_request).map_err(|e| {
+        anyhow::anyhow!(
+            "spec-manager unavailable via Mother (start with `patina mother start`): {}",
+            e
+        )
+    })?;
 
     if let Some(text) = response.get("text").and_then(|v| v.as_str()) {
         if !text.is_empty() {

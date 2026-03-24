@@ -1,4 +1,5 @@
 use anyhow::Result;
+use patina_protocol::{BuiltinChild, BuiltinChildAction, BuiltinChildRequest, DoctorRunRequest};
 
 #[allow(dead_code)]
 pub(crate) fn execute_value() -> Result<serde_json::Value> {
@@ -6,16 +7,17 @@ pub(crate) fn execute_value() -> Result<serde_json::Value> {
 }
 
 pub fn execute_cli(json_output: bool) -> Result<()> {
-    let payload = serde_json::json!({ "json": json_output });
+    let protocol_request = BuiltinChildRequest::new(
+        BuiltinChild::Doctor,
+        BuiltinChildAction::DoctorRun(DoctorRunRequest),
+    );
     let client = patina::mother::control_plane_client();
-    let response = client
-        .child_action("doctor", "run", &payload)
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "doctor child unavailable via Mother (start with `patina mother start`): {}",
-                e
-            )
-        })?;
+    let response = client.child_action_typed(&protocol_request).map_err(|e| {
+        anyhow::anyhow!(
+            "doctor child unavailable via Mother (start with `patina mother start`): {}",
+            e
+        )
+    })?;
 
     if json_output {
         if let Some(data) = response.get("data") {

@@ -10,6 +10,10 @@ use crate::connect::internal::model::{
 };
 use crate::mother::broker::sources;
 use crate::paths;
+use patina_protocol::{
+    BuiltinChild, BuiltinChildAction, BuiltinChildRequest, SecretsAuthorityOperation,
+    SecretsDispatchRequest,
+};
 use std::fs;
 
 /// Load a connection by name.
@@ -115,17 +119,20 @@ pub(crate) fn create(record: &ConnectionRecord, credential: &str) -> Result<(), 
     })?;
 
     // Store credential in global vault
+    let request = BuiltinChildRequest::new(
+        BuiltinChild::SecretsAuthority,
+        BuiltinChildAction::SecretsDispatch(SecretsDispatchRequest {
+            operation: SecretsAuthorityOperation::AddSecret {
+                name: record.auth.secret_ref.clone(),
+                value: credential.to_string(),
+                env: None,
+                global: true,
+                project_root: None,
+            },
+        }),
+    );
     crate::mother::control_plane_client()
-        .child_action(
-            "secrets-authority",
-            "dispatch",
-            &serde_json::json!({
-                "op": "add_secret",
-                "name": record.auth.secret_ref,
-                "value": credential,
-                "global": true,
-            }),
-        )
+        .child_action_typed(&request)
         .map_err(|e| ConnectError::IoError {
             detail: format!(
                 "storing credential '{}' in vault via Mother authority: {}",
@@ -170,15 +177,17 @@ pub(crate) fn remove(name: &str, force: bool) -> Result<(), ConnectError> {
     })?;
 
     // Remove credential from vault (best-effort — vault may not exist)
-    if let Err(e) = crate::mother::control_plane_client().child_action(
-        "secrets-authority",
-        "dispatch",
-        &serde_json::json!({
-            "op": "remove_secret",
-            "name": record.auth.secret_ref,
-            "global": true,
+    let request = BuiltinChildRequest::new(
+        BuiltinChild::SecretsAuthority,
+        BuiltinChildAction::SecretsDispatch(SecretsDispatchRequest {
+            operation: SecretsAuthorityOperation::RemoveSecret {
+                name: record.auth.secret_ref.clone(),
+                global: true,
+                project_root: None,
+            },
         }),
-    ) {
+    );
+    if let Err(e) = crate::mother::control_plane_client().child_action_typed(&request) {
         eprintln!(
             "[connect] warning: could not remove vault entry '{}': {}",
             record.auth.secret_ref, e

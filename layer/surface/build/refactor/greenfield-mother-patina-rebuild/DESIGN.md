@@ -510,7 +510,7 @@ M6 boundary principles (non-negotiable):
 M6 execution checklist (active):
 
 - [x] M6a: create `patina-core` + `patina-protocol` and dependency direction rules. (GF8, GF9, GF12)
-- [ ] M6b: migrate `lake` use-case into `patina-core` as first transport-neutral service. (GF8)
+- [x] M6b: migrate `lake` use-case into `patina-core` as first transport-neutral service. (GF8)
 - [ ] M6c: replace ad-hoc builtin dispatch payloads with typed `patina-protocol` enums/contracts. (GF9)
 - [ ] M6d: remove `#[path]` shim and relocate shared spec execution contracts to core-owned modules. (GF10)
 - [ ] M6e: core-ify doctor as host-native service with explicit runtime ports. (GF8, GF11)
@@ -554,6 +554,18 @@ M6b progress evidence (current session):
 - Migrated lake config metadata parsing/rendering helpers to core and consumed from runtime adapter:
   - `patina_core::lake::parse_lake_metadata`
   - `patina_core::lake::render_lake_config`
+- Added transport-neutral lake use-case ports and service contracts in core:
+  - `patina_core::lake::LakeRepository`
+  - `patina_core::lake::Clock`
+  - `patina_core::lake::create_lake`
+  - `patina_core::lake::list_lakes`
+- Reduced Mother lake runtime to adapter-thin orchestration over core service:
+  - `src/mother/lake_runtime.rs` now delegates create/list domain decisions to `patina-core`
+  - filesystem/time effects are provided via adapter ports (`FsLakeRepository`, `UtcClock`)
+- Validation evidence:
+  - `cargo test -p patina-core`
+  - `cargo check -p mother -p patina-ai`
+  - `cargo test -p patina-ai commands::lake::tests -- --nocapture`
 
 ## Seam Classification Table (GF1 enforcement)
 

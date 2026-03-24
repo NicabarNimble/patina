@@ -38,6 +38,10 @@ pub(crate) mod state {
 }
 
 use anyhow::Result;
+use patina_protocol::{
+    BuiltinChild, BuiltinChildAction, BuiltinChildRequest, SecretsAuthorityOperation,
+    SecretsDispatchRequest,
+};
 
 // Child trait exports
 pub use crate::child::runtime::{
@@ -133,15 +137,20 @@ pub fn scry(request: ScryRequest) -> Result<ScryResponse> {
 /// Read a global secret via Mother secrets authority.
 pub fn get_global_secret(name: &str) -> Result<Option<String>> {
     let client = control_plane_client();
-    let payload = serde_json::json!({ "op": "get_global_secret", "name": name });
-    let response = client
-        .child_action("secrets-authority", "dispatch", &payload)
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "secrets-authority unavailable via Mother (start with `patina mother start`): {}",
-                e
-            )
-        })?;
+    let request = BuiltinChildRequest::new(
+        BuiltinChild::SecretsAuthority,
+        BuiltinChildAction::SecretsDispatch(SecretsDispatchRequest {
+            operation: SecretsAuthorityOperation::GetGlobalSecret {
+                name: name.to_string(),
+            },
+        }),
+    );
+    let response = client.child_action_typed(&request).map_err(|e| {
+        anyhow::anyhow!(
+            "secrets-authority unavailable via Mother (start with `patina mother start`): {}",
+            e
+        )
+    })?;
 
     Ok(response
         .get("value")

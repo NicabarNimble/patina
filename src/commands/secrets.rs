@@ -5,6 +5,10 @@
 
 use anyhow::{bail, Result};
 use patina::{mother, paths, scanner, secrets};
+use patina_protocol::{
+    BuiltinChild, BuiltinChildAction, BuiltinChildRequest, SecretsAuthorityOperation,
+    SecretsDispatchRequest,
+};
 use serde::Deserialize;
 use serde_json::Value;
 use std::env;
@@ -166,8 +170,14 @@ fn build_authority_payload(op: &str, mut payload: Value, project_root: Option<St
 fn dispatch_secrets_authority(op: &str, payload: Value) -> Result<Option<Value>> {
     let client = authority_client();
     let wrapped_payload = build_authority_payload(op, payload, current_project_root_str());
+    let operation = SecretsAuthorityOperation::from_payload(wrapped_payload)
+        .map_err(|e| anyhow::anyhow!("Invalid secrets-authority request: {}", e))?;
+    let request = BuiltinChildRequest::new(
+        BuiltinChild::SecretsAuthority,
+        BuiltinChildAction::SecretsDispatch(SecretsDispatchRequest { operation }),
+    );
 
-    match client.child_action("secrets-authority", "dispatch", &wrapped_payload) {
+    match client.child_action_typed(&request) {
         Ok(value) => Ok(Some(value)),
         Err(error) if is_mother_unavailable_error(&error) => bail!(
             "Mother secrets authority unavailable for '{}'. Start `patina mother start`.",
