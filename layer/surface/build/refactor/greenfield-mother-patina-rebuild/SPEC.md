@@ -258,6 +258,20 @@ M5a progress notes (current session):
 - Started SDK export inventory and first-pass classification across `patina-sdk`, `patina-sdk-core`, `patina-sdk-data`, and `patina-sdk-agent`.
 - Captured classification rationale and migration-shim candidates in DESIGN under SDK stabilization section.
 
+M5b progress notes (current session):
+
+- Marked legacy world compatibility shims (`task`, `command`, `mother-child`) directly in SDK docs/feature declarations.
+- Marked `pipeline` as experimental and reiterated `knowledge-child` as stabilization target in umbrella SDK docs.
+
+M5c progress notes (current session):
+
+- Updated SDK source docs to align manifest grant terminology with `[needs].toys` and optional `[needs.scopes]`.
+- Confirmed compatibility via feature-world compile matrix across stabilization and shim worlds.
+
+M5 boundary status:
+
+- SDK stabilization groundwork is complete for this lane; compatibility shims remain present and explicitly marked until a later parity-backed removal slice.
+
 ### Seam classification contract
 
 Every seam touched by this spec must be classified as one of:
