@@ -247,11 +247,20 @@ M4b planning notes (current session):
 
 M4 completion notes (current session):
 
-- Boundary cleanup scope completed:
+- M4a boundary cleanup scope completed:
   - secrets authority bypass reduction (non-`src/secrets/*` call sites migrated),
   - centralized Patina -> Mother control-plane channel policy,
   - shared rendezvous path anti-drift contract tests.
-- Broker ownership boundary and relocation/rollback plan are explicitly locked in DESIGN for next execution lane.
+- M4b remains active: broker/command execution authority relocation is still in-progress.
+
+M4b progress notes (current session):
+
+- Introduced Mother-owned builtin child routing boundary module (`mother/src/builtin_children.rs`).
+- Converted CLI builtin dispatch into a thin adapter over Mother-defined executor traits (`src/commands/mother/builtin_dispatch.rs`).
+- Execution ownership for `spec-manager`/`lake-manager`/`doctor` remains CLI-backed for now via adapter; relocation slice is not complete.
+- Aligned Mother runtime helper reads with Mother-owned schema:
+  - broker cursor reader now targets `mother_lake_cursors`.
+  - events stream reader now targets Mother mutation/session tables and no longer depends on a non-existent `eventlog` table.
 
 M5a progress notes (current session):
 

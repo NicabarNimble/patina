@@ -425,10 +425,31 @@ M4 seam evidence summary:
   - `cargo test -q -p patina-ai test_mother_paths_contract`
   - `cargo test -q -p mother`
 
-M4 completion status:
+M4 status (truth update):
 
-- Complete for the defined M4 boundary-cleanup scope (authority/comms/path alignment + broker ownership/rollback plan lock).
-- Next lane: execute M5 SDK contract stabilization.
+- M4a is complete (authority/comms/path alignment).
+- M4b is active and not complete: broker/command execution authority is still largely CLI-owned.
+- Next sequencing: execute M4b runtime authority relocation slices before declaring full greenfield runtime ownership.
+
+M4b execution checklist (active):
+
+- [x] Move builtin child routing envelope logic out of CLI-only module into Mother-owned module boundary (`mother/src/builtin_children.rs`).
+- [x] Keep behavior parity by binding a CLI executor adapter while relocation is in-progress (`src/commands/mother/builtin_dispatch.rs`).
+- [ ] Relocate spec/lake/doctor execution implementations behind Mother-owned interfaces (remove CLI command-module ownership of these dispatch paths).
+- [ ] Resolve legacy protocol/runtime debt: either retire or fully implement `mother/src/daemon.rs` legacy socket protocol path.
+- [x] Align Mother events/cursor reads with Mother-owned schema (`mother/src/events.rs`, `mother/src/broker/cursor.rs`).
+
+M4b execution evidence (current session):
+
+- Added Mother-owned builtin dispatch boundary module: `mother/src/builtin_children.rs`.
+- `src/commands/mother/builtin_dispatch.rs` is now a thin executor adapter implementing Mother-defined trait (`BuiltinChildExecutor`) rather than owning route/HTTP shaping logic.
+- Secrets authority dispatch remains Mother-owned backend (`mother::secrets_authority_backend::MotherSecretsAuthorityBackend`) with no Patina secrets internals dependency.
+- Removed schema mismatch debt in Mother runtime helpers:
+  - `mother/src/broker/cursor.rs` now reads `mother_lake_cursors` (Mother-owned schema) instead of legacy `broker_cursors`.
+  - `mother/src/events.rs` now reads Mother-owned tables (`belief_mutation_log`, `graph_mutation_log`, `mother_sessions`) and no longer queries a non-existent `eventlog` table.
+- Verification evidence:
+  - `cargo check -q`
+  - `cargo test -q -p mother`
 
 M5 preview note:
 
