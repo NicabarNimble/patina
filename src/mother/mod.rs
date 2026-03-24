@@ -29,6 +29,7 @@ pub mod broker;
 pub mod doctor_runtime;
 mod internal;
 pub mod lake_runtime;
+pub mod spec_runtime;
 
 // Bridge module: state logic now lives in the mother crate.
 // Re-export so existing `crate::mother::state::*` paths continue to compile.

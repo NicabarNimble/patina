@@ -1,3 +1,5 @@
+extern crate self as patina;
+
 pub mod beliefs;
 pub mod child;
 pub mod connect;

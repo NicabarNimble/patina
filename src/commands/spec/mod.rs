@@ -4,6 +4,7 @@
 //! - Public interface (this file): clean API for spec operations
 //! - Internal implementation: all logic in internal/
 
+#[allow(dead_code)]
 mod internal;
 
 // Data types and functions re-exported for session integration (Phase 5)
@@ -402,6 +403,7 @@ pub fn execute(command: SpecCommands) -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub(crate) fn execute_value(command: SpecCommands) -> Result<Value> {
     let json_mode = command.wants_json();
     let (text, data) = match command {

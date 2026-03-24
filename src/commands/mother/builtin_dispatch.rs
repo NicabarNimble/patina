@@ -22,9 +22,10 @@ impl BuiltinChildExecutor for CliBuiltinExecutor {
         &self,
         command_payload: serde_json::Value,
     ) -> anyhow::Result<serde_json::Value> {
-        let command: crate::commands::spec::SpecCommands = serde_json::from_value(command_payload)
-            .map_err(|e| anyhow::anyhow!("Invalid spec-manager command payload: {}", e))?;
-        crate::commands::spec::execute_value(command)
+        let command: patina::mother::spec_runtime::SpecCommands =
+            serde_json::from_value(command_payload)
+                .map_err(|e| anyhow::anyhow!("Invalid spec-manager command payload: {}", e))?;
+        patina::mother::spec_runtime::execute_value(command)
     }
 
     fn lake_dispatch(
