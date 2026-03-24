@@ -436,7 +436,7 @@ M4b execution checklist (active):
 - [x] Move builtin child routing envelope logic out of CLI-only module into Mother-owned module boundary (`mother/src/builtin_children.rs`).
 - [x] Keep behavior parity by binding a CLI executor adapter while relocation is in-progress (`src/commands/mother/builtin_dispatch.rs`).
 - [ ] Relocate spec/lake/doctor execution implementations behind Mother-owned interfaces (remove CLI command-module ownership of these dispatch paths).
-- [ ] Resolve legacy protocol/runtime debt: either retire or fully implement `mother/src/daemon.rs` legacy socket protocol path.
+- [x] Resolve legacy protocol/runtime debt: either retire or fully implement `mother/src/daemon.rs` legacy socket protocol path.
 - [x] Align Mother events/cursor reads with Mother-owned schema (`mother/src/events.rs`, `mother/src/broker/cursor.rs`).
 
 M4b execution evidence (current session):
@@ -450,6 +450,7 @@ M4b execution evidence (current session):
 - Verification evidence:
   - `cargo check -q`
   - `cargo test -q -p mother`
+- Retired legacy socket protocol implementation from Mother public runtime surface by removing `daemon`/`protocol` module exports from `mother/src/lib.rs`; active runtime path is HTTP/UDS router stack.
 
 M5 preview note:
 
