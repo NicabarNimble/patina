@@ -152,12 +152,7 @@ impl PipelineEngine {
 
     /// Invoke a pipeline child with a request envelope.
     /// Returns the JSON response or error string.
-    pub fn handle(
-        &self,
-        component: &Component,
-        name: &str,
-        request: &str,
-    ) -> Result<String> {
+    pub fn handle(&self, component: &Component, name: &str, request: &str) -> Result<String> {
         let wasi = wasmtime_wasi::WasiCtxBuilder::new()
             .inherit_stderr()
             .build();

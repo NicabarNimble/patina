@@ -512,7 +512,12 @@ fn process_rust_embedded(file_path: &str, content: &[u8]) -> Result<ExtractedPay
 
     let component = match component {
         Ok(c) => c,
-        Err(e) => return Err(anyhow::anyhow!("embedded grammar-rust failed to load: {}", e)),
+        Err(e) => {
+            return Err(anyhow::anyhow!(
+                "embedded grammar-rust failed to load: {}",
+                e
+            ))
+        }
     };
 
     let engine = PipelineEngine::new()?;
