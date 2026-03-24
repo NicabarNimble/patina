@@ -512,8 +512,8 @@ M6 execution checklist (active):
 - [x] M6a: create `patina-core` + `patina-protocol` and dependency direction rules. (GF8, GF9, GF12)
 - [x] M6b: migrate `lake` use-case into `patina-core` as first transport-neutral service. (GF8)
 - [x] M6c: replace ad-hoc builtin dispatch payloads with typed `patina-protocol` enums/contracts. (GF9)
-- [ ] M6d: remove `#[path]` shim and relocate shared spec execution contracts to core-owned modules. (GF10)
-- [ ] M6e: core-ify doctor as host-native service with explicit runtime ports. (GF8, GF11)
+- [x] M6d: remove `#[path]` shim and relocate shared spec execution contracts to core-owned modules. (GF10)
+- [x] M6e: core-ify doctor as host-native service with explicit runtime ports. (GF8, GF11)
 - [ ] M6f: core-ify spec execution and remove transitional runtime shims. (GF10, GF11)
 - [ ] M6g: wire CLI and Mother as pure adapters and retire `CliBuiltinExecutor` transitional pattern. (GF11)
 - [ ] M6h: add workspace dependency-direction enforcement gate. (GF12)
@@ -591,6 +591,35 @@ M6c progress evidence (current session):
 - Validation evidence:
   - `cargo test -p patina-protocol`
   - `cargo check -p mother -p patina-ai`
+
+M6d progress evidence (current session):
+
+- Removed cross-file `#[path]` include shim from `src/mother/spec_runtime.rs`.
+- Routed spec runtime execution through explicit crate APIs:
+  - `crate::commands::spec::SpecCommands`
+  - `crate::commands::spec::execute_value`
+- Exposed required module surfaces in `src/lib.rs` (`pub mod commands`, `pub mod retrieval`) so the runtime path is crate-owned and explicit.
+- Verified no remaining `#[path = ...]` cross-crate/source-inclusion patterns under Rust sources.
+
+M6e progress evidence (current session):
+
+- Added host-native doctor domain service in `patina-core`:
+  - `crates/patina-core/src/doctor.rs`
+  - exported from `crates/patina-core/src/lib.rs`
+- Introduced explicit runtime effect ports:
+  - `EnvironmentPort`
+  - `ProjectRepoPort`
+  - `EventStorePort`
+- Moved doctor orchestration/state-evaluation logic into core service:
+  - `patina_core::doctor::run_doctor`
+  - typed domain outputs (`DoctorRunResult`, `HealthCheck`, `DataIntegrity`, `SessionDurability`)
+- Reduced `src/mother/doctor_runtime.rs` to adapter role with concrete port implementations:
+  - `FsEnvironmentPort`
+  - `FsProjectRepoPort`
+  - `FsEventStorePort`
+- Validation evidence:
+  - `cargo test -p patina-core`
+  - `cargo check -p patina-ai -p mother`
 
 ## Seam Classification Table (GF1 enforcement)
 

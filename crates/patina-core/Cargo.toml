@@ -6,3 +6,4 @@ license = "MIT"
 description = "Patina transport-neutral domain core"
 
 [dependencies]
+serde = { version = "1.0", features = ["derive"] }

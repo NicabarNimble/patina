@@ -3125,6 +3125,9 @@ dependencies = [
 [[package]]
 name = "patina-core"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "patina-protocol"
