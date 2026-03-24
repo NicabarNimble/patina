@@ -202,6 +202,7 @@ Execution priority for current lane:
 4. M3d after M3: relocate remaining secret implementation internals from Patina into Mother-owned modules to close greenfield purity seam.
 5. M4 after M3d: post-M3 boundary cleanup (authority/comms/path ownership alignment) before SDK work.
 6. M5 after M4: SDK contract stabilization (single `patina-sdk` public SDK stance retained).
+7. M6 after M5 groundwork: Jon-style crate architecture lock (`patina-core` + `patina-protocol`) for external child builders and multi-Mother transport evolution.
 
 M4 boundary cleanup focus (normative):
 
@@ -230,6 +231,15 @@ M5 execution slices (SDK stabilization):
 3. M5c: Add compatibility tests/examples for all `stable` surfaces and enforce schema vocabulary contracts.
 4. M5d: Remove or gate legacy shims only after parity gates pass.
 
+M6 execution slices (core/protocol architecture lock):
+
+1. M6a: Define crate-boundary contract (`patina-cli`, `patina-mother`, `patina-core`, `patina-protocol`, `patina-sdk`) and dependency direction rules.
+2. M6b: Introduce `patina-protocol` typed/versioned contracts for Patina<->Mother and host<->child control-plane operations.
+3. M6c: Introduce `patina-core` transport-neutral use-case layer for first migrated capability (`lake`) with no adapter logic.
+4. M6d: Remove spec `#[path]` shim by relocating shared spec execution contracts into core/protocol-owned modules.
+5. M6e: Core-ify doctor execution as host-native domain service (not WASM), with explicit ports for runtime adapters.
+6. M6f: Retire transitional adapters/shims once parity gates pass and crate-boundary rules are enforced.
+
 M4a completion gate:
 
 - No remaining Mother-owned secrets authority operations in Patina core call `crate::secrets::*` directly outside intentionally scoped local-only utilities.
@@ -251,7 +261,7 @@ M4 completion notes (current session):
   - secrets authority bypass reduction (non-`src/secrets/*` call sites migrated),
   - centralized Patina -> Mother control-plane channel policy,
   - shared rendezvous path anti-drift contract tests.
-- M4b remains active: broker/command execution authority relocation is still in-progress.
+- M4b scope is complete: builtin dispatch ownership, protocol debt retirement, and command execution decoupling for spec/lake/doctor are landed with parity evidence.
 
 M4b progress notes (current session):
 
@@ -283,6 +293,13 @@ M5c progress notes (current session):
 M5 boundary status:
 
 - SDK stabilization groundwork is complete for this lane; compatibility shims remain present and explicitly marked until a later parity-backed removal slice.
+
+M6 architecture intent lock (current session):
+
+- `patina-core` is transport/runtime neutral and contains domain use-cases + invariants.
+- `patina-protocol` is explicit, typed, and versioned; no ad-hoc stringly payloads for control-plane contracts.
+- `patina-cli` and `patina-mother` are thin adapters over core/protocol contracts.
+- Child/toy runtime contracts remain SDK-first and host-verified; transport upgrades (including iroh lanes) must be adapter-only changes.
 
 M5 vocabulary progress notes (current session):
 

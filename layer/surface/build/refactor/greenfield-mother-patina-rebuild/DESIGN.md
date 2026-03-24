@@ -560,6 +560,48 @@ M5 vocabulary-alignment pass (current session):
   - `cargo test -q -p patina-ai scaffold::tests::test_scaffold`
   - SDK feature-world compile matrix (knowledge-child/pipeline/task/command/mother-child).
 
+M6 architecture lock (active planning):
+
+- Objective: codify and execute Jon-style crate boundaries with compile-time guardrails:
+  - `patina-core` (domain/use-cases; transport/runtime neutral),
+  - `patina-protocol` (typed/versioned contracts),
+  - `patina-cli` (UX adapter),
+  - `patina-mother` (runtime/authority adapter),
+  - `patina-sdk` (child authoring surface).
+
+M6 boundary principles (non-negotiable):
+
+1. No adapter logic in core.
+2. No cross-crate reach-through hacks (`#[path]` inclusion patterns are migration debt only).
+3. Strong typed boundaries (`enum`, newtypes, explicit error surfaces) over string payloads.
+4. Trait ports only where boundary effects cross transport/runtime/infrastructure seams.
+5. Thin adapters: CLI parses/renders, Mother routes/persists, Core decides.
+6. Invariants encoded in types/contracts, not doc-only comments.
+
+M6 execution checklist (active):
+
+- [ ] Define and document dependency direction rules in workspace manifests and architecture docs.
+- [ ] Introduce `patina-protocol` crate with typed contracts for builtin child dispatch operations.
+- [ ] Introduce `patina-core` crate and migrate `lake` use-case as first transport-neutral service.
+- [ ] Remove spec `#[path]` shim by moving shared spec execution contracts to core/protocol modules.
+- [ ] Core-ify doctor as host-native service (not WASM child), with explicit runtime ports where needed.
+- [ ] Replace ad-hoc JSON dispatch payloads with typed protocol enums on Mother dispatch boundary.
+- [ ] Retire transitional adapters after parity gates and update seam classifications.
+
+M6 parity gates:
+
+- `cargo check -q`
+- `cargo test -q`
+- `cargo test -q -p mother`
+- `cargo test -q -p patina-ai`
+- Mother on/off probes for control-plane command matrix (`spec`, `lake`, `doctor`, `secrets`)
+- `cargo run -q -- spec check greenfield-mother-patina-rebuild --json`
+
+M6 rollback trigger/action:
+
+- Trigger: dependency inversion between adapters/core, protocol breakage across command matrix, or external-SDK-facing contract regression.
+- Action: revert current M6 slice commit(s), restore prior adapter boundary, re-run parity matrix, then retry with narrower scope.
+
 ## Seam Classification Table (GF1 enforcement)
 
 | Seam | Classification | Owner | Removal trigger |
