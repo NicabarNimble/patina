@@ -272,6 +272,12 @@ M5 boundary status:
 
 - SDK stabilization groundwork is complete for this lane; compatibility shims remain present and explicitly marked until a later parity-backed removal slice.
 
+M5 vocabulary progress notes (current session):
+
+- Child-first vocabulary applied across SDK/public examples and first-party child/plugin usage while preserving compatibility aliases for legacy `*Plugin` names/macros.
+- Scaffold/template generation now emits child-first trait/macro usage.
+- Compatibility gates re-verified after vocabulary migration (workspace build, scaffold tests, SDK world feature compile matrix).
+
 ### Seam classification contract
 
 Every seam touched by this spec must be classified as one of:

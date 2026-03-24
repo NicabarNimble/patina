@@ -492,6 +492,27 @@ M5 status:
 - Stabilization groundwork complete (inventory, classification, shim marking, schema/doc alignment, compatibility compile checks, rollback boundary lock).
 - Shim-removal execution remains gated and out of this pass.
 
+M5 vocabulary-alignment pass (current session):
+
+- Introduced child-first SDK API names while preserving compatibility aliases:
+  - traits: `CommandChild`, `TaskChild`, `MotherChild`, `KnowledgeChild`, `PipelineChild`
+  - legacy aliases retained: `*Plugin`
+  - registration macros: `register_command_child!`, `register_task_child!`, `register_mother_child!`, `register_pipeline_child!`
+  - legacy aliases retained: `register_command!`, `register_task!`, `register_plugin!`, `register_pipeline!`
+- Updated first-party usage sites to child-first terminology:
+  - `children/*/src/lib.rs`
+  - `plugins/*/src/lib.rs`
+  - `tests/hello-task/src/lib.rs`
+- Updated scaffold templates and assertions to generate child-first macros/traits:
+  - `resources/templates/plugin/*/lib.rs.tmpl`
+  - `resources/templates/plugin/*/Cargo.toml.tmpl`
+  - `src/child/scaffold.rs`
+- Updated umbrella SDK crate docs/metadata wording from plugin -> child (`sdk/patina-sdk/src/lib.rs`, `sdk/patina-sdk/Cargo.toml`, `sdk/patina-sdk/src/wasm_cell.rs`).
+- Compatibility/verification evidence:
+  - `cargo check -q`
+  - `cargo test -q -p patina-ai scaffold::tests::test_scaffold`
+  - SDK feature-world compile matrix (knowledge-child/pipeline/task/command/mother-child).
+
 ## Seam Classification Table (GF1 enforcement)
 
 | Seam | Classification | Owner | Removal trigger |
