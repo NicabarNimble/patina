@@ -502,9 +502,26 @@ Publish only when all are true:
 
 ## Build Readiness
 
-- [ ] GF1-GF7 have concrete sections and evidence links.
-- [ ] Slice 0 evidence anchors are captured and contradictions are explicit.
-- [ ] Runtime policy matrix is command-level, not principle-only.
-- [ ] Migration ledger has at least one real row per ownership-moving lane.
-- [ ] Migration map has executable parity gates.
-- [ ] No contradictions with active refactor truth map remain unresolved.
+- [x] GF1-GF7 have concrete sections and evidence links.
+- [x] Slice 0 evidence anchors are captured and contradictions are explicit.
+- [x] Runtime policy matrix is command-level, not principle-only.
+- [x] Migration ledger has at least one real row per ownership-moving lane.
+- [x] Migration map has executable parity gates.
+- [x] No contradictions with active refactor truth map remain unresolved.
+
+GF1-GF7 focused evidence anchors (current session):
+
+- GF1: architecture narrative + ownership/seam classifications are explicit across `SPEC.md` and this design (`## Work Plan`, seam table, migration ledger).
+- GF2: command-level runtime policy matrix is explicit in `SPEC.md` (`### GF2 Command Matrix`) and validated by M1/M3/M4 parity probes.
+- GF3: data ownership model (`events.db`, projections, session/runtime stores) is explicit in `SPEC.md` and aligned with Mother runtime state ownership.
+- GF4: child lifecycle/capability schema contract (`[needs].toys`, `[needs.scopes]`) is locked and reflected in migration constraints and ledger gates.
+- GF5: guest runtime contract (OpenCode/Claude/Gemini runtime truth, no MCP assumptions) is explicit in AGENTS policy and mirrored by spec runtime policy sections.
+- GF6: bounded migration slices with parity gates/rollback actions exist for M1, M2, M3, M3d, M4, and M5 in the authoritative ledger.
+- GF7: verification/risk controls are explicit and exercised via command evidence:
+  - `cargo check -q`
+  - `cargo test -q`
+  - `cargo test -q -p mother`
+  - `cargo test -q -p patina-ai resolve_control_plane_address`
+  - `cargo test -q -p patina-ai test_mother_paths_contract`
+  - `cargo run -q -- spec check greenfield-mother-patina-rebuild --json` -> `{"passed":true,"checked":7,"total":7}`
+  - Mother on/off behavior probes recorded under M1/M3/M4 evidence notes.

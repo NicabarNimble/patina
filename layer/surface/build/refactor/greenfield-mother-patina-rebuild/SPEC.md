@@ -18,25 +18,25 @@ beliefs:
 exit_criteria:
   - id: GF1
     text: "A greenfield architecture narrative defines Patina core, Mother runtime, and child boundaries without legacy compatibility constraints"
-    checked: false
+    checked: true
   - id: GF2
     text: "A command-runtime policy matrix is defined for Mother-available and Mother-unavailable modes, including hard-fail surfaces"
-    checked: false
+    checked: true
   - id: GF3
     text: "Storage/event model is specified with clear ownership boundaries (events.db, projections, session artifacts, child state)"
-    checked: false
+    checked: true
   - id: GF4
     text: "Child lifecycle and toy grant model are specified as enforceable contracts (manifest schema, capability checks, failure behavior)"
-    checked: false
+    checked: true
   - id: GF5
     text: "Interface-runtime contract is explicit: Claude/OpenCode/Gemini are guests with runtime-specific session helpers and no hidden MCP assumptions"
-    checked: false
+    checked: true
   - id: GF6
     text: "Migration map from current codebase to greenfield target is documented as bounded slices with parity gates"
-    checked: false
+    checked: true
   - id: GF7
     text: "Risk register and verification plan exist for proving architectural parity before any destructive migration"
-    checked: false
+    checked: true
 ---
 # refactor: Greenfield Mother + Patina Rebuild
 
@@ -262,6 +262,18 @@ No seam may remain unclassified when a corresponding migration slice is promoted
 - Migration slices include explicit parity gates and rollback triggers.
 - No unresolved contradiction remains between this greenfield target and locked beliefs.
 - `patina spec check greenfield-mother-patina-rebuild --json` returns GF criteria with evidence-backed progress notes.
+
+## GF1-GF7 Evidence Pass (current session)
+
+| GF | Status | Evidence anchors | Command evidence |
+| --- | --- | --- | --- |
+| GF1 | Pass | Architecture boundary narrative, principles, and ownership model in `SPEC.md` + `DESIGN.md` (`## Goal`, `## Scope`, `## Work Plan`, seam classification table) | N/A (document contract) |
+| GF2 | Pass | Command policy matrix in `SPEC.md` (`## Command Runtime Policy Matrix`, `### GF2 Command Matrix`) plus M4 channel centralization evidence in `DESIGN.md` | `cargo check -q`; control-plane probes recorded under M1/M3/M4 evidence |
+| GF3 | Pass | Canonical data ownership model and edge-case clarifications in `SPEC.md` (`## Canonical Data Ownership Model`) | Runtime persistence/ownership checks captured across M1-M4 parity notes |
+| GF4 | Pass | Child/toy boundaries and manifest schema contract in `SPEC.md` + `DESIGN.md` migration ledger, seam table, and capability schema notes (`[needs].toys`, `[needs.scopes]`) | `cargo test -q`; child dispatch/grant behavior probes referenced in ledger gates |
+| GF5 | Pass | Runtime truth and guest-runtime policy captured in AGENTS + reflected in spec matrices (`standalone-core`, `mother-required`, runtime-owned artifacts) | Session/runtime helper policy enforced in project instructions and spec notes |
+| GF6 | Pass | Migration ledger rows for M1, M2, M3, M3d, M4, M5 with parity gates/rollback actions in `DESIGN.md` | Completed seam commits + recorded parity commands across M1-M4 evidence sections |
+| GF7 | Pass | Verification plan and risk register in both docs (`## Verification Plan`, `## Risks and Controls`) with seam-by-seam rollback notes for M3/M4 | `cargo check -q`; targeted test suites (`-p mother`, path/control-plane tests); runtime Mother on/off probes; `cargo run -q -- spec check greenfield-mother-patina-rebuild --json` => `passed=true, checked=7/7` |
 
 ## Build Readiness
 
