@@ -18,14 +18,343 @@
 //! let new_content = serialize_spec_file(&frontmatter, &body)?;
 //! ```
 
+use crate::commands::spec::internal;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 
-pub use crate::commands::spec::SpecCommands;
+#[derive(Debug, Clone, clap::Subcommand, serde::Serialize, serde::Deserialize)]
+pub enum SpecCommands {
+    Create {
+        r#type: String,
+        id: String,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+        #[arg(long)]
+        blocked_by: Vec<String>,
+        #[arg(long)]
+        related: Vec<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    Archive {
+        id: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        stale: bool,
+    },
+    Ready {
+        #[arg(long)]
+        json: bool,
+    },
+    Blocked {
+        #[arg(long)]
+        json: bool,
+    },
+    List {
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long)]
+        target: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    Promote {
+        id: String,
+        #[arg(long)]
+        force: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    Complete {
+        id: String,
+        #[arg(long)]
+        major: bool,
+        #[arg(long)]
+        force: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    Abandon {
+        id: String,
+        #[arg(long)]
+        reason: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    Pause {
+        id: String,
+        #[arg(long)]
+        reason: String,
+        #[arg(long)]
+        json: bool,
+    },
+    Resume {
+        id: String,
+        #[arg(long)]
+        force: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    Block {
+        id: String,
+        #[arg(long)]
+        by: String,
+        #[arg(long)]
+        reason: String,
+        #[arg(long)]
+        json: bool,
+    },
+    Split {
+        id: String,
+        #[arg(long)]
+        new_id: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    Show {
+        id: String,
+        #[arg(long)]
+        handoff: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    Prompt {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    Handoff {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    Packet {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    Check {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    History {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    Rename {
+        id: String,
+        new_id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    Reopen {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    Set {
+        id: String,
+        field: String,
+        #[arg(allow_hyphen_values = true)]
+        value: String,
+        #[arg(long)]
+        json: bool,
+    },
+    Next {
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+impl SpecCommands {
+    pub fn wants_json(&self) -> bool {
+        match self {
+            Self::Create { json, .. }
+            | Self::Ready { json }
+            | Self::Blocked { json }
+            | Self::List { json, .. }
+            | Self::Promote { json, .. }
+            | Self::Complete { json, .. }
+            | Self::Abandon { json, .. }
+            | Self::Pause { json, .. }
+            | Self::Resume { json, .. }
+            | Self::Block { json, .. }
+            | Self::Split { json, .. }
+            | Self::Show { json, .. }
+            | Self::Prompt { json, .. }
+            | Self::Handoff { json, .. }
+            | Self::Packet { json, .. }
+            | Self::Check { json, .. }
+            | Self::History { json, .. }
+            | Self::Set { json, .. }
+            | Self::Next { json }
+            | Self::Rename { json, .. }
+            | Self::Reopen { json, .. } => *json,
+            Self::Archive { .. } => false,
+        }
+    }
+}
 
 pub fn execute_command_value(command: SpecCommands) -> Result<Value> {
-    crate::commands::spec::execute_value(command)
+    let json_mode = command.wants_json();
+    let (text, data) = match command {
+        SpecCommands::Create {
+            r#type,
+            id,
+            title,
+            description,
+            blocked_by,
+            related,
+            ..
+        } => (
+            Some(format!("Created spec '{}'", id)),
+            serde_json::to_value(internal::create_spec_value(
+                &r#type,
+                &id,
+                title.as_deref(),
+                description.as_deref(),
+                blocked_by,
+                related,
+            )?)
+            .ok(),
+        ),
+        SpecCommands::Archive { id, dry_run, stale } => {
+            if stale {
+                internal::archive_stale_specs(dry_run)?;
+                (
+                    Some("Archived stale specs".to_string()),
+                    Some(json!({"stale": true, "dry_run": dry_run})),
+                )
+            } else if let Some(id) = id {
+                internal::archive_spec(&id, dry_run)?;
+                (
+                    Some(format!("Archived spec '{}'", id)),
+                    Some(json!({"id": id, "dry_run": dry_run})),
+                )
+            } else {
+                anyhow::bail!("Spec ID required. Use `patina spec archive <id>` or --stale");
+            }
+        }
+        SpecCommands::Ready { .. } => (
+            None,
+            serde_json::to_value(internal::get_ready_specs()?).ok(),
+        ),
+        SpecCommands::Blocked { .. } => (
+            None,
+            serde_json::to_value(internal::get_blocked_specs()?).ok(),
+        ),
+        SpecCommands::List { status, target, .. } => {
+            let parsed_status = status
+                .as_deref()
+                .map(|s| s.parse::<SpecStatus>())
+                .transpose()?;
+            let filters = internal::ListFilters {
+                status: parsed_status,
+                target,
+            };
+            (
+                None,
+                serde_json::to_value(internal::get_all_specs(&filters)?).ok(),
+            )
+        }
+        SpecCommands::Promote { id, force, .. } => (
+            None,
+            serde_json::to_value(internal::promote_spec_value(&id, force)?).ok(),
+        ),
+        SpecCommands::Complete {
+            id, major, force, ..
+        } => (
+            None,
+            serde_json::to_value(internal::complete_spec_value(&id, major, force)?).ok(),
+        ),
+        SpecCommands::Abandon { id, reason, .. } => (
+            None,
+            serde_json::to_value(internal::abandon_spec_value(&id, reason.as_deref())?).ok(),
+        ),
+        SpecCommands::Pause { id, reason, .. } => (
+            None,
+            serde_json::to_value(internal::pause_spec_value(&id, &reason)?).ok(),
+        ),
+        SpecCommands::Resume { id, force, .. } => (
+            None,
+            serde_json::to_value(internal::resume_spec_value(&id, force)?).ok(),
+        ),
+        SpecCommands::Block { id, by, reason, .. } => (
+            None,
+            serde_json::to_value(internal::block_spec_value(&id, &by, &reason)?).ok(),
+        ),
+        SpecCommands::Split {
+            id,
+            new_id,
+            description,
+            ..
+        } => (
+            None,
+            serde_json::to_value(internal::split_spec_value(
+                &id,
+                new_id.as_deref(),
+                description.as_deref(),
+            )?)
+            .ok(),
+        ),
+        SpecCommands::Show { id, .. } => (
+            None,
+            serde_json::to_value(internal::show_spec_value(&id)?).ok(),
+        ),
+        SpecCommands::Prompt { id, .. } => (
+            None,
+            serde_json::to_value(internal::prompt_spec_value(&id)?).ok(),
+        ),
+        SpecCommands::Handoff { id, .. } => (
+            None,
+            serde_json::to_value(internal::handoff_spec_value(&id)?).ok(),
+        ),
+        SpecCommands::Packet { id, .. } => (
+            None,
+            serde_json::to_value(internal::packet_spec_value(&id)?).ok(),
+        ),
+        SpecCommands::Set {
+            id, field, value, ..
+        } => (
+            None,
+            serde_json::to_value(internal::set_spec_value(&id, &field, &value)?).ok(),
+        ),
+        SpecCommands::Next { .. } => (
+            None,
+            serde_json::to_value(internal::next_spec_value()?).ok(),
+        ),
+        SpecCommands::Check { id, .. } => (
+            None,
+            serde_json::to_value(internal::check_spec_value(&id)?).ok(),
+        ),
+        SpecCommands::History { id, .. } => (
+            None,
+            serde_json::to_value(internal::history_spec_value(&id)?).ok(),
+        ),
+        SpecCommands::Rename { id, new_id, .. } => (
+            None,
+            serde_json::to_value(internal::rename_spec_value(&id, &new_id)?).ok(),
+        ),
+        SpecCommands::Reopen { id, .. } => (
+            None,
+            serde_json::to_value(internal::reopen_spec_value(&id)?).ok(),
+        ),
+    };
+
+    Ok(json!({
+        "child": "spec-manager",
+        "json": json_mode,
+        "text": text,
+        "data": data.unwrap_or(serde_json::Value::Null)
+    }))
 }
 
 // ============================================================================

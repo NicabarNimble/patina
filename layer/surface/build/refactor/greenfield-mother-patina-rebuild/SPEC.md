@@ -49,7 +49,7 @@ exit_criteria:
   checked: true
 - id: GF11
   text: CLI and Mother are adapters over core/protocol; builtin dispatch routes through typed protocol to core-owned use-cases, not CLI command modules or Patina runtime shims
-  checked: false
+  checked: true
 - id: GF12
   text: 'Dependency direction is enforced: core depends on nothing, protocol depends only on core, and CLI/Mother depend on core+protocol; validated by workspace dependency checks'
   checked: true
@@ -81,8 +81,8 @@ Produce an authoritative greenfield architecture spec for Patina + Mother that i
 
 ## Status
 
-- Current state: M6 architecture lock is in progress through M6i evidence pass; M6a-M6i slices are executed.
-- Exit criteria status: GF1-GF10 and GF12 are checked; GF11 remains open pending final adapter boundary convergence for spec execution ownership.
+- Current state: M6 architecture lock is complete through M6i evidence pass; M6a-M6i slices are executed.
+- Exit criteria status: GF1-GF12 are checked with parity and dependency-gate evidence.
 - Lifecycle intent: keep this spec active while M6 slices continue, then close only after GF8-GF12 are verified.
 
 ## Solution

@@ -678,6 +678,10 @@ M6i parity evidence (current session):
   - on address: `10.10.10.209:55054` -> all commands succeed (`spec`, `lake`, `doctor --json`, `secrets --lock`)
 - Spec parity gate command executed:
   - `patina spec check greenfield-mother-patina-rebuild --json`
+- Final GF11 adapter convergence landed:
+  - `SpecCommands` and spec execution dispatch now live in `src/spec.rs` (`patina::spec`) rather than `src/commands/spec/mod.rs` ownership
+  - Mother builtin dispatch routes spec operations via `patina::spec::{SpecCommands, execute_command_value}`
+  - `src/commands/spec/mod.rs` now acts as CLI adapter shell over shared spec execution surface
 
 ## Seam Classification Table (GF1 enforcement)
 
