@@ -53,10 +53,12 @@ as your `child.toml` grants expand.
 Enable exactly one world feature per crate:
 
 - `knowledge-child` (default path)
-- `task`
-- `command`
-- `pipeline`
-- `mother-child` (legacy migration lane)
+- `pipeline` (experimental lane)
+- `task` (legacy compatibility scaffold)
+- `command` (legacy compatibility scaffold)
+- `mother-child` (legacy migration scaffold)
+
+M5 stabilization target in this repo is `knowledge-child` plus tier crates.
 
 ## Child Relationships
 

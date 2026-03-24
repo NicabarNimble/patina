@@ -18,6 +18,11 @@
 //! # Knowledge-child (Mother/Child/Toy doctrine)
 //! patina-sdk = { version = "0.21", features = ["knowledge-child"] }
 //! ```
+//!
+//! M5 classification policy:
+//! - Stabilization target: `knowledge-child` + tier crates.
+//! - Migration scaffolds: `task`, `command`, `mother-child`.
+//! - Experimental lane: `pipeline`.
 
 // =========================================================================
 // Compiler-enforced world exclusion — [[compiler-enforced-safety]]
