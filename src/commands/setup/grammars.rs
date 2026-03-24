@@ -62,7 +62,7 @@ pub fn install(options: GrammarOptions) -> Result<()> {
 
     for name in &grammars {
         let target_dir = pipeline_dir.join(format!("grammar-{}", name));
-        let target_wasm = target_dir.join("plugin.wasm");
+        let target_wasm = target_dir.join("child.wasm");
         let target_toml = target_dir.join("child.toml");
 
         // Check if already installed
@@ -145,7 +145,7 @@ fn print_list(grammars: &[&str], pipeline_dir: &Path, source_root: &Path) {
     for name in grammars {
         let target_dir = pipeline_dir.join(format!("grammar-{}", name));
         let installed =
-            target_dir.join("plugin.wasm").exists() && target_dir.join("child.toml").exists();
+            target_dir.join("child.wasm").exists() && target_dir.join("child.toml").exists();
 
         let grammar_dir = source_root.join(format!("grammars/{}", name));
         let wasm_name = format!("grammar_{}.wasm", name);
@@ -157,7 +157,7 @@ fn print_list(grammars: &[&str], pipeline_dir: &Path, source_root: &Path) {
 
         let (status, size, source) = if installed {
             let sz = target_dir
-                .join("plugin.wasm")
+                .join("child.wasm")
                 .metadata()
                 .map(|m| format_size(m.len()))
                 .unwrap_or_else(|_| "?".into());

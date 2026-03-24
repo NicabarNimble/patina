@@ -202,8 +202,8 @@ pub mod child {
         plugins_dir().join(name).join("work")
     }
 
-    /// Pipeline grammar plugins directory: `~/.patina/pipeline/`
-    /// Contains grammar-{lang}/ subdirectories with `plugin.wasm` + `child.toml`.
+    /// Pipeline grammar children directory: `~/.patina/pipeline/`
+    /// Contains grammar-{lang}/ subdirectories with `child.wasm` + `child.toml`.
     pub fn pipeline_dir() -> PathBuf {
         patina_home().join("pipeline")
     }
