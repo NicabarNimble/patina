@@ -1,5 +1,5 @@
 use patina_sdk::granted::{self, Bundle as GrantedBundle};
-use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChildPlugin};
+use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
 use patina_sdk::register_knowledge_child;
 use patina_sdk::substrate::{self, PendingEvent, TaskIntent, TaskIntentKind};
 
@@ -114,7 +114,7 @@ impl BeliefVerifierChild {
     }
 }
 
-impl KnowledgeChildPlugin for BeliefVerifierChild {
+impl KnowledgeChild for BeliefVerifierChild {
     fn name(&self) -> String {
         "belief-verifier".into()
     }

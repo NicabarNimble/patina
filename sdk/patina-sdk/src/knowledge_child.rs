@@ -177,7 +177,7 @@ pub mod substrate {
     }
 }
 
-pub trait KnowledgeChildPlugin {
+pub trait KnowledgeChild {
     fn name(&self) -> String;
 
     fn on_load(&mut self) -> Result<(), String> {
@@ -719,25 +719,30 @@ pub mod host {
     }
 }
 
-static PLUGIN: WasmCell<Option<Box<dyn KnowledgeChildPlugin>>> =
+static PLUGIN: WasmCell<Option<Box<dyn KnowledgeChild>>> =
     WasmCell(std::cell::UnsafeCell::new(None));
 
 #[doc(hidden)]
-pub fn __register_plugin(plugin: Box<dyn KnowledgeChildPlugin>) {
+pub fn __register_knowledge_child(child: Box<dyn KnowledgeChild>) {
     unsafe {
-        *PLUGIN.0.get() = Some(plugin);
+        *PLUGIN.0.get() = Some(child);
     }
+}
+
+#[doc(hidden)]
+pub fn __register_plugin(plugin: Box<dyn KnowledgeChild>) {
+    __register_knowledge_child(plugin);
 }
 
 #[cfg(target_arch = "wasm32")]
 mod __wasm {
     use super::*;
 
-    fn plugin() -> &'static mut dyn KnowledgeChildPlugin {
+    fn child() -> &'static mut dyn KnowledgeChild {
         unsafe {
             (*PLUGIN.0.get())
                 .as_deref_mut()
-                .expect("plugin not initialized — host must call init first")
+                .expect("child not initialized — host must call init first")
         }
     }
 
@@ -745,27 +750,27 @@ mod __wasm {
 
     impl Guest for Component {
         fn name() -> String {
-            plugin().name()
+            child().name()
         }
 
         fn on_load() -> Result<(), String> {
-            plugin().on_load()
+            child().on_load()
         }
 
         fn on_unload() {
-            plugin().on_unload()
+            child().on_unload()
         }
 
         fn health() -> ChildHealth {
-            plugin().health()
+            child().health()
         }
 
         fn handle(action: String, payload: String) -> Result<String, String> {
-            plugin().handle(&action, &payload)
+            child().handle(&action, &payload)
         }
 
         fn drain(limit: u32) -> Result<Vec<PendingEvent>, String> {
-            plugin().drain(limit).map(|events| {
+            child().drain(limit).map(|events| {
                 events
                     .into_iter()
                     .map(|event| patina::host::events::PendingEvent {
@@ -780,7 +785,7 @@ mod __wasm {
         }
 
         fn tick() -> Vec<patina::host::task::TaskIntent> {
-            plugin()
+            child()
                 .tick()
                 .into_iter()
                 .map(|intent| patina::host::task::TaskIntent {
@@ -825,7 +830,11 @@ macro_rules! register_knowledge_child {
     ($plugin_type:ty) => {
         #[export_name = "init"]
         extern "C" fn __patina_plugin_init() {
-            $crate::knowledge_child::__register_plugin(Box::new(<$plugin_type>::default()));
+            $crate::knowledge_child::__register_knowledge_child(
+                Box::new(<$plugin_type>::default()),
+            );
         }
     };
 }
+
+pub use KnowledgeChild as KnowledgeChildPlugin;

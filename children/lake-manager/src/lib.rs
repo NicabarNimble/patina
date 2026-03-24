@@ -1,11 +1,11 @@
 use patina_sdk::granted;
-use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChildPlugin};
+use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
 use patina_sdk::register_knowledge_child;
 
 #[derive(Default)]
 struct LakeManagerChild;
 
-impl KnowledgeChildPlugin for LakeManagerChild {
+impl KnowledgeChild for LakeManagerChild {
     fn name(&self) -> String {
         "lake-manager".into()
     }

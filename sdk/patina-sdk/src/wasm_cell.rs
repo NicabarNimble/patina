@@ -1,4 +1,4 @@
-//! Single-threaded mutable global for WASM plugin singletons.
+//! Single-threaded mutable global for WASM child singletons.
 //!
 //! WASM is single-threaded (wasm32-wasip2 has no threads).
 //! No concurrent access is possible. `WasmCell<T>` replaces `static mut`

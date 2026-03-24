@@ -1,15 +1,15 @@
-//! Guest-side API for Patina WASM pipeline plugins.
+//! Guest-side API for Patina WASM pipeline children.
 //!
-//! Pipeline plugins are host-invoked pure-compute plugins: grammar parsers,
+//! Pipeline children are host-invoked pure-compute children: grammar parsers,
 //! chunkers, tokenizers. Log is the only host import — no query, no layer,
 //! no HTTP, no toys. The simplest world.
 //!
-//! Provides the `PipelinePlugin` trait, `register_pipeline!` macro, and
+//! Provides the `PipelineChild` trait, `register_pipeline_child!` macro, and
 //! typed `PipelineOp` enum with envelope helpers.
 
 use crate::wasm_cell::WasmCell;
 
-// Version embedded in every plugin binary — host reads before instantiation.
+// Version embedded in every child binary — host reads before instantiation.
 #[cfg(target_arch = "wasm32")]
 #[used]
 #[link_section = ".patina_api_version"]
@@ -27,10 +27,10 @@ wit_bindgen::generate!({
 });
 
 // =========================================================================
-// Re-exports for plugin authors
+// Re-exports for child authors
 // =========================================================================
 
-/// Host logging — call from plugin code to log through the host.
+/// Host logging — call from child code to log through the host.
 pub mod log {
     pub use super::patina::host::log::LogLevel;
 
@@ -44,9 +44,9 @@ pub mod log {
 // Versioned envelope types
 // =========================================================================
 
-/// Pipeline operation types. Declares which operations a plugin handles.
+/// Pipeline operation types. Declares which operations a child handles.
 ///
-/// Maps to `[provides].pipeline_ops` in the plugin manifest.
+/// Maps to `[provides].pipeline_ops` in the child manifest.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PipelineOp {
@@ -120,21 +120,21 @@ pub fn build_tokenize_request(source: &str, language: &str) -> String {
     serde_json::to_string(&request).expect("serialize pipeline request")
 }
 
-/// Parse a request envelope from JSON (for use inside plugin handle()).
+/// Parse a request envelope from JSON (for use inside child handle()).
 pub fn parse_request(json: &str) -> Result<PipelineRequest, String> {
     serde_json::from_str(json).map_err(|e| format!("invalid pipeline request: {}", e))
 }
 
 // =========================================================================
-// Plugin trait
+// Child trait
 // =========================================================================
 
-/// Trait for pure-compute pipeline plugins.
+/// Trait for pure-compute pipeline children.
 ///
-/// Implement this trait and call `register_pipeline!` to create a WASM
-/// pipeline plugin. The plugin type must also implement `Default`.
-pub trait PipelinePlugin {
-    /// Plugin name — used for dispatch and logging.
+/// Implement this trait and call `register_pipeline_child!` to create a WASM
+/// pipeline child. The child type must also implement `Default`.
+pub trait PipelineChild {
+    /// Child name — used for dispatch and logging.
     fn name(&self) -> String;
 
     /// Handle a request envelope (JSON). Returns JSON response or error.
@@ -142,30 +142,35 @@ pub trait PipelinePlugin {
 }
 
 // =========================================================================
-// Plugin singleton
+// Child singleton
 // =========================================================================
 
-static PLUGIN: WasmCell<Option<Box<dyn PipelinePlugin>>> =
+static PLUGIN: WasmCell<Option<Box<dyn PipelineChild>>> =
     WasmCell(std::cell::UnsafeCell::new(None));
 
 #[doc(hidden)]
-pub fn __register_pipeline(plugin: Box<dyn PipelinePlugin>) {
+pub fn __register_pipeline_child(child: Box<dyn PipelineChild>) {
     // Safety: called once from init export, WASM is single-threaded
     unsafe {
-        *PLUGIN.0.get() = Some(plugin);
+        *PLUGIN.0.get() = Some(child);
     }
+}
+
+#[doc(hidden)]
+pub fn __register_pipeline(plugin: Box<dyn PipelineChild>) {
+    __register_pipeline_child(plugin);
 }
 
 #[cfg(target_arch = "wasm32")]
 mod __wasm {
     use super::*;
 
-    fn plugin() -> &'static mut dyn PipelinePlugin {
+    fn child() -> &'static mut dyn PipelineChild {
         // Safety: WASM is single-threaded, no concurrent access
         unsafe {
             (*PLUGIN.0.get())
                 .as_deref_mut()
-                .expect("pipeline plugin not initialized — host must call init first")
+                .expect("pipeline child not initialized — host must call init first")
         }
     }
 
@@ -173,11 +178,11 @@ mod __wasm {
 
     impl Guest for Component {
         fn name() -> String {
-            plugin().name()
+            child().name()
         }
 
         fn handle(request: String) -> Result<String, String> {
-            plugin().handle(&request)
+            child().handle(&request)
         }
     }
 
@@ -188,19 +193,19 @@ mod __wasm {
 // Registration macro
 // =========================================================================
 
-/// Register a type as a pipeline plugin.
+/// Register a type as a pipeline child.
 ///
 /// Generates the `init` WASM export that the host calls first.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use patina_sdk::{PipelinePlugin, register_pipeline};
+/// use patina_sdk::{PipelineChild, register_pipeline_child};
 ///
 /// #[derive(Default)]
 /// struct ZigParser;
 ///
-/// impl PipelinePlugin for ZigParser {
+/// impl PipelineChild for ZigParser {
 ///     fn name(&self) -> String { "zig-grammar".into() }
 ///     fn handle(&mut self, request: &str) -> Result<String, String> {
 ///         // Parse envelope, dispatch by op
@@ -208,14 +213,23 @@ mod __wasm {
 ///     }
 /// }
 ///
-/// register_pipeline!(ZigParser);
+/// register_pipeline_child!(ZigParser);
 /// ```
 #[macro_export]
-macro_rules! register_pipeline {
+macro_rules! register_pipeline_child {
     ($plugin_type:ty) => {
         #[export_name = "init"]
         extern "C" fn __patina_pipeline_init() {
-            $crate::pipeline::__register_pipeline(Box::new(<$plugin_type>::default()));
+            $crate::pipeline::__register_pipeline_child(Box::new(<$plugin_type>::default()));
         }
     };
 }
+
+#[macro_export]
+macro_rules! register_pipeline {
+    ($plugin_type:ty) => {
+        $crate::register_pipeline_child!($plugin_type);
+    };
+}
+
+pub use PipelineChild as PipelinePlugin;

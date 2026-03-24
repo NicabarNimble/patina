@@ -1,10 +1,10 @@
 use patina_sdk::pipeline::parse_request;
-use patina_sdk::{register_pipeline, PipelinePlugin};
+use patina_sdk::{register_pipeline_child, PipelineChild};
 
 #[derive(Default)]
 struct __NAME_STRUCT__;
 
-impl PipelinePlugin for __NAME_STRUCT__ {
+impl PipelineChild for __NAME_STRUCT__ {
     fn name(&self) -> String {
         "__NAME__".into()
     }
@@ -23,4 +23,4 @@ impl PipelinePlugin for __NAME_STRUCT__ {
     }
 }
 
-register_pipeline!(__NAME_STRUCT__);
+register_pipeline_child!(__NAME_STRUCT__);

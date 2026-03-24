@@ -1,13 +1,13 @@
-//! Guest-side API for Patina WASM task plugins.
+//! Guest-side API for Patina WASM task children.
 //!
-//! Task plugins are on-demand action plugins: analyze AND act, then exit.
+//! Task children are on-demand action children: analyze AND act, then exit.
 //! They have full host access (log, layer, query, HTTP) plus toy intents.
 //!
-//! Provides the `TaskPlugin` trait and `register_task!` macro.
+//! Provides the `TaskChild` trait and `register_task_child!` macro.
 
 use crate::wasm_cell::WasmCell;
 
-// Version embedded in every plugin binary — host reads before instantiation.
+// Version embedded in every child binary — host reads before instantiation.
 #[cfg(target_arch = "wasm32")]
 #[used]
 #[link_section = ".patina_api_version"]
@@ -25,10 +25,10 @@ wit_bindgen::generate!({
 });
 
 // =========================================================================
-// Re-exports for plugin authors
+// Re-exports for child authors
 // =========================================================================
 
-/// Host logging — call from plugin code to log through the host.
+/// Host logging — call from child code to log through the host.
 pub mod log {
     pub use super::patina::host::log::LogLevel;
 
@@ -38,12 +38,12 @@ pub mod log {
     }
 }
 
-/// Measurement reporting — record metrics from plugin execution.
+/// Measurement reporting — record metrics from child execution.
 ///
 /// Requires the relevant toy grant in `child.toml` via `[needs].toys`
 /// (and optional `[needs.scopes]` where applicable).
 /// The host validates verb, checks metrics are numeric JSON, and
-/// writes to eventlog with the plugin name as source.
+/// writes to eventlog with the child name as source.
 pub mod measure {
     /// Record a measurement event.
     ///
@@ -61,10 +61,10 @@ pub mod measure {
     }
 }
 
-/// Host HTTP — domain-allowlisted HTTP access for plugins.
+/// Host HTTP — domain-allowlisted HTTP access for children.
 ///
 /// The host controls domain enforcement, TLS, and credential injection.
-/// Plugin code calls these functions; the host validates URLs against
+/// Child code calls these functions; the host validates URLs against
 /// the domain allowlist from child manifest toy grants/scopes.
 pub mod fetch {
     pub use super::patina::host::http::HttpResponse;
@@ -136,14 +136,14 @@ pub mod query {
 }
 
 // =========================================================================
-// Plugin trait
+// Child trait
 // =========================================================================
 
-/// Trait for on-demand task plugins.
+/// Trait for on-demand task children.
 ///
-/// Implement this trait and call `register_task!` to create a WASM task plugin.
-/// The plugin type must also implement `Default`.
-pub trait TaskPlugin {
+/// Implement this trait and call `register_task_child!` to create a WASM task child.
+/// The child type must also implement `Default`.
+pub trait TaskChild {
     /// Task name — used for dispatch and logging.
     fn name(&self) -> String;
 
@@ -161,17 +161,22 @@ pub trait TaskPlugin {
 }
 
 // =========================================================================
-// Plugin singleton
+// Child singleton
 // =========================================================================
 
-static PLUGIN: WasmCell<Option<Box<dyn TaskPlugin>>> = WasmCell(std::cell::UnsafeCell::new(None));
+static PLUGIN: WasmCell<Option<Box<dyn TaskChild>>> = WasmCell(std::cell::UnsafeCell::new(None));
 
 #[doc(hidden)]
-pub fn __register_task(plugin: Box<dyn TaskPlugin>) {
+pub fn __register_task_child(child: Box<dyn TaskChild>) {
     // Safety: called once from init export, WASM is single-threaded
     unsafe {
-        *PLUGIN.0.get() = Some(plugin);
+        *PLUGIN.0.get() = Some(child);
     }
+}
+
+#[doc(hidden)]
+pub fn __register_task(plugin: Box<dyn TaskChild>) {
+    __register_task_child(plugin);
 }
 
 // Component bridge and export! — wasm32 only.
@@ -181,12 +186,12 @@ pub fn __register_task(plugin: Box<dyn TaskPlugin>) {
 mod __wasm {
     use super::*;
 
-    fn plugin() -> &'static mut dyn TaskPlugin {
+    fn child() -> &'static mut dyn TaskChild {
         // Safety: WASM is single-threaded, no concurrent access
         unsafe {
             (*PLUGIN.0.get())
                 .as_deref_mut()
-                .expect("task plugin not initialized — host must call init first")
+                .expect("task child not initialized — host must call init first")
         }
     }
 
@@ -194,19 +199,19 @@ mod __wasm {
 
     impl Guest for Component {
         fn name() -> String {
-            plugin().name()
+            child().name()
         }
 
         fn description() -> String {
-            plugin().description()
+            child().description()
         }
 
         fn run(args: Vec<String>) -> i32 {
-            plugin().run(&args)
+            child().run(&args)
         }
 
         fn toys() -> Vec<Toy> {
-            plugin().toys()
+            child().toys()
         }
     }
 
@@ -217,33 +222,42 @@ mod __wasm {
 // Registration macro
 // =========================================================================
 
-/// Register a type as a task plugin.
+/// Register a type as a task child.
 ///
 /// Generates the `init` WASM export that the host calls first.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use patina_sdk::{TaskPlugin, Toy, register_task};
+/// use patina_sdk::{TaskChild, Toy, register_task_child};
 ///
 /// #[derive(Default)]
 /// struct ReviewPlugin;
 ///
-/// impl TaskPlugin for ReviewPlugin {
+/// impl TaskChild for ReviewPlugin {
 ///     fn name(&self) -> String { "review-pr".into() }
 ///     fn description(&self) -> String { "Review pull requests".into() }
 ///     fn run(&mut self, args: &[String]) -> i32 { 0 }
 ///     fn toys(&self) -> Vec<Toy> { vec![] }
 /// }
 ///
-/// register_task!(ReviewPlugin);
+/// register_task_child!(ReviewPlugin);
 /// ```
 #[macro_export]
-macro_rules! register_task {
+macro_rules! register_task_child {
     ($plugin_type:ty) => {
         #[export_name = "init"]
         extern "C" fn __patina_task_init() {
-            $crate::task::__register_task(Box::new(<$plugin_type>::default()));
+            $crate::task::__register_task_child(Box::new(<$plugin_type>::default()));
         }
     };
 }
+
+#[macro_export]
+macro_rules! register_task {
+    ($plugin_type:ty) => {
+        $crate::register_task_child!($plugin_type);
+    };
+}
+
+pub use TaskChild as TaskPlugin;

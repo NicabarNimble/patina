@@ -3,9 +3,9 @@ name = "patina-sdk"
 version = "0.21.0"
 edition = "2021"
 license = "MIT"
-description = "SDK for building Patina WASM plugins — task, command, pipeline, and mother-child worlds"
+description = "SDK for building Patina WASM children — task, command, pipeline, and mother-child worlds"
 repository = "https://github.com/NicabarNimble/patina"
-keywords = ["patina", "wasm", "plugin", "component-model"]
+keywords = ["patina", "wasm", "child", "component-model"]
 categories = ["development-tools", "wasm"]
 
 # Ensure WIT files and license ship with the published crate
