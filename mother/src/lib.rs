@@ -1,4 +1,5 @@
 pub mod broker;
+pub mod builtin_children;
 pub mod checkpoint;
 pub mod daemon;
 pub mod daemon_bootstrap;
