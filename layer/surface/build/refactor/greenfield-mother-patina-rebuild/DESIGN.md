@@ -435,7 +435,9 @@ M4b execution checklist (active):
 
 - [x] Move builtin child routing envelope logic out of CLI-only module into Mother-owned module boundary (`mother/src/builtin_children.rs`).
 - [x] Keep behavior parity by binding a CLI executor adapter while relocation is in-progress (`src/commands/mother/builtin_dispatch.rs`).
-- [ ] Relocate spec/lake/doctor execution implementations behind Mother-owned interfaces (remove CLI command-module ownership of these dispatch paths).
+- [ ] Relocate `spec-manager` execution behind Mother-owned interfaces (remove CLI command-module ownership for this dispatch path).
+- [x] Relocate `lake-manager` execution behind Mother-owned interfaces (dispatch no longer depends on `crate::commands::lake::*`).
+- [x] Relocate `doctor` execution behind Mother-owned interfaces (dispatch no longer depends on `crate::commands::doctor::*`).
 - [x] Resolve legacy protocol/runtime debt: either retire or fully implement `mother/src/daemon.rs` legacy socket protocol path.
 - [x] Align Mother events/cursor reads with Mother-owned schema (`mother/src/events.rs`, `mother/src/broker/cursor.rs`).
 
@@ -451,6 +453,19 @@ M4b execution evidence (current session):
   - `cargo check -q`
   - `cargo test -q -p mother`
 - Retired legacy socket protocol implementation from Mother public runtime surface by removing `daemon`/`protocol` module exports from `mother/src/lib.rs`; active runtime path is HTTP/UDS router stack.
+
+M4b execution evidence (lake/doctor ownership slice):
+
+- Added Patina library runtime modules for builtin execution outside CLI command modules:
+  - `src/mother/lake_runtime.rs`
+  - `src/mother/doctor_runtime.rs`
+- Updated builtin executor adapter to call library runtime modules for lake/doctor dispatch paths:
+  - `src/commands/mother/builtin_dispatch.rs`
+- Reduced CLI command modules (`src/commands/lake.rs`, `src/commands/doctor.rs`) to wrappers/CLI entrypoints over runtime modules.
+- Verification evidence:
+  - `cargo check -q`
+  - `cargo test -q -p mother`
+  - `cargo test -q -p patina-ai scaffold::tests::test_scaffold`
 
 M5 preview note:
 
