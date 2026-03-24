@@ -8,16 +8,16 @@ sessions:
 exit_criteria:
 - id: wasm-extracts-symbols
   text: patina repo add on a Rust-heavy repo extracts >0 symbols via WASM pipeline
-  checked: false
+  checked: true
 - id: native-fallback-works
   text: Native Rust fallback parses files without ABI error when WASM grammars are absent
-  checked: false
+  checked: true
 - id: consistent-child-naming
   text: All discovery paths and installer use child.toml + child.wasm consistently
-  checked: false
+  checked: true
 - id: setup-grammars-deploys-correctly
   text: patina setup grammars --force deploys children that pipeline discovery loads
-  checked: false
+  checked: true
 ---
 # fix: Fix WASM grammar child discovery and native Rust fallback
 
