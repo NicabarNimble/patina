@@ -29,7 +29,7 @@ use patina::paths;
 /// When `extension_filter` is Some, only pipeline plugins claiming those extensions
 /// are compiled (lazy loading). This avoids ~2s of Cranelift JIT when only one
 /// language is affected. See [[scrape-diff-driven]] EC4.
-pub fn extract_code_metadata_v2(
+pub fn extract_code_metadata(
     db_path: &str,
     work_dir: &Path,
     force: bool,
@@ -239,6 +239,12 @@ struct LoadedPipelinePlugin {
 fn discover_pipeline_plugins(
     extension_filter: Option<&HashSet<String>>,
 ) -> HashMap<String, LoadedPipelinePlugin> {
+    // PATINA_NO_PIPELINE=1 disables WASM grammar children, forcing native fallback.
+    if std::env::var_os("PATINA_NO_PIPELINE").is_some() {
+        eprintln!("[pipeline] disabled via PATINA_NO_PIPELINE");
+        return HashMap::new();
+    }
+
     let pipeline_dir = paths::child::pipeline_dir();
 
     if !pipeline_dir.is_dir() {

@@ -75,7 +75,7 @@ pub fn run(options: GrammarBenchOptions) -> Result<()> {
     let engine_elapsed = engine_start.elapsed();
     let engine_cost_ms = engine_elapsed.as_secs_f64() * 1000.0 / engine_ok as f64;
 
-    // === Dispatch: full pipeline (engine per call, matches extract_v2 pattern) ===
+    // === Dispatch: full pipeline (engine per call, matches extract pattern) ===
     let mut per_call_ok = 0usize;
     let mut per_call_errors = 0usize;
     let per_call_start = Instant::now();
@@ -191,7 +191,7 @@ fn collect_rust_files(dir: &Path, limit: Option<usize>) -> Result<Vec<PathBuf>> 
     Ok(files)
 }
 
-/// Build a parse request envelope (same format as extract_v2.rs).
+/// Build a parse request envelope (same format as extract.rs).
 fn build_parse_envelope(content: &[u8], language: &str, path: &str) -> String {
     let source = String::from_utf8_lossy(content);
     serde_json::json!({
