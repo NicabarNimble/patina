@@ -23,6 +23,11 @@
 //! - Stabilization target: `knowledge-child` + tier crates.
 //! - Migration scaffolds: `task`, `command`, `mother-child`.
 //! - Experimental lane: `pipeline`.
+//!
+//! Removal-gate policy for shim lanes:
+//! - Shim worlds remain available until compatibility matrix + scaffold parity stay green.
+//! - Shim removal must be rollback-safe and explicitly spec-authorized.
+//! - Child-first names stay canonical; legacy aliases are compatibility-only.
 
 // =========================================================================
 // Compiler-enforced world exclusion — [[compiler-enforced-safety]]

@@ -60,6 +60,22 @@ Enable exactly one world feature per crate:
 
 M5 stabilization target in this repo is `knowledge-child` plus tier crates.
 
+## Stability Policy
+
+| Lane | Status | Policy |
+| --- | --- | --- |
+| `knowledge-child` | stable | canonical child authoring surface |
+| `pipeline` | experimental | opt-in, no stability promises yet |
+| `task` | migration shim | compatibility-only, removal-gated |
+| `command` | migration shim | compatibility-only, removal-gated |
+| `mother-child` | migration shim | compatibility-only, removal-gated |
+
+Shim removal gates:
+
+1. SDK compatibility matrix compiles cleanly across supported lanes.
+2. Scaffold output parity remains green for child-first naming and manifests.
+3. Removal is spec-authorized with rollback-safe migration slices.
+
 ## Child Relationships
 
 Children can declare mediated event relationships in `child.toml`:

@@ -73,6 +73,33 @@ SDK stabilization is now isolated from broad Mother/Patina boundary work so we c
 4. Spec criteria check:
    - `patina spec check sdk-contract-stabilization --json`
 
+## SDK1-SDK6 Evidence
+
+- SDK1 (stability classes + docs alignment):
+  - `sdk/patina-sdk/src/lib.rs` documents stable/experimental/shim lanes and gate policy.
+  - `sdk/patina-sdk/README.md` includes explicit stability table.
+  - `sdk/patina-sdk/Cargo.toml` description and feature comments align with the same policy.
+- SDK2 (shim worlds + removal gates):
+  - shim lanes are explicitly tagged as compatibility-only in `sdk/patina-sdk/README.md` and `sdk/patina-sdk/src/lib.rs`.
+  - removal gates are listed (matrix pass, scaffold parity, spec-authorized rollback-safe removal).
+- SDK3 (manifest vocabulary):
+  - SDK docs/examples consistently describe child-native manifest schema (`[needs].toys` + optional `[needs.scopes]`).
+  - Evidence anchors in `sdk/patina-sdk/src/task.rs`, `sdk/patina-sdk/src/command.rs`, `sdk/patina-sdk/src/mother_child.rs`, `sdk/patina-sdk/README.md`.
+- SDK4 (child-first canonical vocabulary):
+  - Canonical names are child-first (`KnowledgeChild`, `TaskChild`, `CommandChild`, `MotherChild`, `PipelineChild`).
+  - Compatibility aliases remain intentionally (`TaskPlugin`, `CommandPlugin`, `MotherChildPlugin`, `PipelinePlugin`, `KnowledgeChildPlugin`).
+- SDK5 (compatibility matrix):
+  - Executed and passing:
+    - `cargo check -q -p patina-sdk --features knowledge-child,toy-log,toy-state,toy-session,toy-lake,toy-checkpoint,toy-query,toy-emit,toy-measure,toy-github,toy-connector,toy-peer,toy-events,toy-belief,toy-task`
+    - `cargo check -q -p patina-sdk --features pipeline`
+    - `cargo check -q -p patina-sdk --features task`
+    - `cargo check -q -p patina-sdk --features command`
+    - `cargo check -q -p patina-sdk --features mother-child`
+    - `cargo test -q -p patina-ai scaffold::tests::test_scaffold`
+- SDK6 (protocol/core extraction readiness):
+  - Tiering and lane policy are now explicit for third-party builders (`core/data/agent` support + canonical `knowledge-child`).
+  - Shim-removal remains rollback-gated and decoupled from M6 runtime boundary work, preserving migration safety.
+
 ## Build Readiness
 
 - Ready to promote once SPEC frontmatter criteria are linked to evidence bullets in this document.
