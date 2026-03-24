@@ -76,9 +76,9 @@ serde_yaml = "0.9"
 walkdir = "2"
 ignore = "0.4"
 
-# Tree-sitter - AST parsing for Rust fallback processor
+# Tree-sitter - Rust fallback processor (to be replaced by embedded WASM grammar)
 tree-sitter = "0.24"
-tree-sitter-rust = "0.24.1"
+tree-sitter-rust = "0.24"
 
 # Structured logging (MCP server — file-based JSON)
 tracing = "0.1"
