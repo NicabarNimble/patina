@@ -76,9 +76,8 @@ serde_yaml = "0.9"
 walkdir = "2"
 ignore = "0.4"
 
-# Tree-sitter - Rust fallback processor (to be replaced by embedded WASM grammar)
-tree-sitter = "0.24"
-tree-sitter-rust = "0.24"
+# Tree-sitter removed — Rust fallback uses embedded WASM grammar via PipelineEngine.
+# See EMBEDDED_GRAMMAR_RUST in src/commands/scrape/code/extract.rs.
 
 # Structured logging (MCP server — file-based JSON)
 tracing = "0.1"
@@ -106,6 +105,7 @@ wasmtime-wasi = { version = "=41", default-features = false, features = ["p2"] }
 
 mother-crate = { package = "mother", path = "mother" }
 patina-core = { path = "crates/patina-core" }
+patina-protocol = { path = "crates/patina-protocol" }
 
 # Secrets v2 - age encryption and macOS Keychain
 age = { version = "0.11", features = ["armor"] }

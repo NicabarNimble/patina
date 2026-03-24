@@ -9,9 +9,8 @@ use std::path::Path;
 // ============================================================================
 // LANGUAGE MODULES
 // ============================================================================
-// Rust is the only compiled-in processor (fallback per [[graceful-extraction]]).
-// All other languages are handled by pipeline plugins in ~/.patina/pipeline/.
-pub mod rust;
+// All languages are handled by WASM pipeline children in ~/.patina/pipeline/.
+// Rust fallback uses an embedded WASM grammar (see extract.rs).
 
 // ============================================================================
 // LANGUAGE ENUM
