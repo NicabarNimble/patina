@@ -1,7 +1,7 @@
 ---
 type: fix
 id: fix-grammar-pipeline
-status: ready
+status: active
 created: 2026-03-24
 sessions:
   origin: 20260324-101606-299953000
