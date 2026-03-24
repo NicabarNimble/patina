@@ -2668,7 +2668,6 @@ dependencies = [
  "hkdf",
  "httparse",
  "libc",
- "patina-protocol",
  "rand 0.8.5",
  "reqwest",
  "rusqlite",
@@ -2992,7 +2991,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "patina-ai"
-version = "0.43.9"
+version = "0.43.10"
 dependencies = [
  "age",
  "anyhow",
@@ -3129,10 +3128,6 @@ version = "0.1.0"
 [[package]]
 name = "patina-protocol"
 version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "patina-sdk"
