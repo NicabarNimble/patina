@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: sdk-contract-stabilization
-status: ready
+status: active
 created: 2026-03-24
 sessions:
   origin: 20260323-092255-893791000
