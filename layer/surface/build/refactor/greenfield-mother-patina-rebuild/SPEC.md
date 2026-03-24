@@ -1,58 +1,58 @@
 ---
 type: refactor
 id: greenfield-mother-patina-rebuild
-status: draft
+status: ready
 created: 2026-03-22
 related:
-  - layer/surface/build/refactor/patina-code-to-vision/SPEC.md
-  - layer/surface/build/refactor/patina-code-to-vision/DESIGN.md
-  - layer/surface/build/refactor/sdk-contract-stabilization/SPEC.md
-  - layer/core/spec-driven-design.md
-  - layer/core/dependable-rust.md
-  - layer/core/safety-boundaries.md
-  - layer/core/unix-philosophy.md
+- layer/surface/build/refactor/patina-code-to-vision/SPEC.md
+- layer/surface/build/refactor/patina-code-to-vision/DESIGN.md
+- layer/surface/build/refactor/sdk-contract-stabilization/SPEC.md
+- layer/core/spec-driven-design.md
+- layer/core/dependable-rust.md
+- layer/core/safety-boundaries.md
+- layer/core/unix-philosophy.md
 beliefs:
-  - core-verbs-standalone-mother-additive
-  - agents-are-guests-mother-is-infrastructure
-  - mother-is-the-daemon
-  - core-primitives-are-not-children
+- core-verbs-standalone-mother-additive
+- agents-are-guests-mother-is-infrastructure
+- mother-is-the-daemon
+- core-primitives-are-not-children
 exit_criteria:
-  - id: GF1
-    text: "A greenfield architecture narrative defines Patina core, Mother runtime, and child boundaries without legacy compatibility constraints"
-    checked: true
-  - id: GF2
-    text: "A command-runtime policy matrix is defined for Mother-available and Mother-unavailable modes, including hard-fail surfaces"
-    checked: true
-  - id: GF3
-    text: "Storage/event model is specified with clear ownership boundaries (events.db, projections, session artifacts, child state)"
-    checked: true
-  - id: GF4
-    text: "Child lifecycle and toy grant model are specified as enforceable contracts (manifest schema, capability checks, failure behavior)"
-    checked: true
-  - id: GF5
-    text: "Interface-runtime contract is explicit: Claude/OpenCode/Gemini are guests with runtime-specific session helpers and no hidden MCP assumptions"
-    checked: true
-  - id: GF6
-    text: "Migration map from current codebase to greenfield target is documented as bounded slices with parity gates"
-    checked: true
-  - id: GF7
-    text: "Risk register and verification plan exist for proving architectural parity before any destructive migration"
-    checked: true
-  - id: GF8
-    text: "patina-core crate exists as transport/runtime-neutral domain layer with at least one migrated capability and no adapter or infrastructure logic"
-    checked: false
-  - id: GF9
-    text: "patina-protocol crate exists with typed, versioned request/response contracts replacing ad-hoc JSON dispatch payloads on Mother control-plane boundary"
-    checked: false
-  - id: GF10
-    text: "No #[path] shims or cross-crate source inclusion hacks remain; all shared execution contracts are owned by core or protocol modules with explicit public APIs"
-    checked: false
-  - id: GF11
-    text: "CLI and Mother are adapters over core/protocol; builtin dispatch routes through typed protocol to core-owned use-cases, not CLI command modules or Patina runtime shims"
-    checked: false
-  - id: GF12
-    text: "Dependency direction is enforced: core depends on nothing, protocol depends only on core, and CLI/Mother depend on core+protocol; validated by workspace dependency checks"
-    checked: false
+- id: GF1
+  text: A greenfield architecture narrative defines Patina core, Mother runtime, and child boundaries without legacy compatibility constraints
+  checked: true
+- id: GF2
+  text: A command-runtime policy matrix is defined for Mother-available and Mother-unavailable modes, including hard-fail surfaces
+  checked: true
+- id: GF3
+  text: Storage/event model is specified with clear ownership boundaries (events.db, projections, session artifacts, child state)
+  checked: true
+- id: GF4
+  text: Child lifecycle and toy grant model are specified as enforceable contracts (manifest schema, capability checks, failure behavior)
+  checked: true
+- id: GF5
+  text: 'Interface-runtime contract is explicit: Claude/OpenCode/Gemini are guests with runtime-specific session helpers and no hidden MCP assumptions'
+  checked: true
+- id: GF6
+  text: Migration map from current codebase to greenfield target is documented as bounded slices with parity gates
+  checked: true
+- id: GF7
+  text: Risk register and verification plan exist for proving architectural parity before any destructive migration
+  checked: true
+- id: GF8
+  text: patina-core crate exists as transport/runtime-neutral domain layer with at least one migrated capability and no adapter or infrastructure logic
+  checked: false
+- id: GF9
+  text: patina-protocol crate exists with typed, versioned request/response contracts replacing ad-hoc JSON dispatch payloads on Mother control-plane boundary
+  checked: false
+- id: GF10
+  text: 'No #[path] shims or cross-crate source inclusion hacks remain; all shared execution contracts are owned by core or protocol modules with explicit public APIs'
+  checked: false
+- id: GF11
+  text: CLI and Mother are adapters over core/protocol; builtin dispatch routes through typed protocol to core-owned use-cases, not CLI command modules or Patina runtime shims
+  checked: false
+- id: GF12
+  text: 'Dependency direction is enforced: core depends on nothing, protocol depends only on core, and CLI/Mother depend on core+protocol; validated by workspace dependency checks'
+  checked: false
 ---
 # refactor: Greenfield Mother + Patina Rebuild
 
@@ -78,6 +78,18 @@ Produce an authoritative greenfield architecture spec for Patina + Mother that i
 - grounded in current beliefs and core values,
 - explicit about boundaries, ownership, and failure modes,
 - directly actionable as a migration target after current refactor completion.
+
+## Status
+
+- Current state: M6 architecture lock is in progress; M6a is complete and M6b has started.
+- Exit criteria status: GF1-GF7 are checked, GF8-GF12 remain unchecked until M6 realization slices land with parity evidence.
+- Lifecycle intent: keep this spec active while M6 slices continue, then close only after GF8-GF12 are verified.
+
+## Solution
+
+- Use a bounded migration approach that preserves behavior while moving architecture toward the target boundary model.
+- Extract domain use-cases into `patina-core`, define typed control-plane contracts in `patina-protocol`, and keep CLI/Mother as thin adapters.
+- Enforce dependency direction and prove each slice with parity gates + rollback triggers before advancing.
 
 This effort is a finish-line extraction, not a reset. The intent is to carry the
 recent refactor across the boundary where Patina core and Mother runtime are cleanly
@@ -248,6 +260,13 @@ M4b execution slices (next in M4):
 3. M4b3: Bind Patina runtime capabilities through explicit adapters; keep CLI UX unchanged.
 4. M4b4: Remove redundant Patina broker runtime logic after parity/rollback gates pass.
 
+## Implementation Order
+
+1. Complete already-sequenced ownership lanes (M1-M5) without reopening closed boundaries.
+2. Execute M6 slices in order: M6a scaffolding, M6b lake migration, M6c typed protocol contracts, M6d-M6g seam removals and adapter hardening.
+3. Run M6h dependency-direction enforcement gate and M6i full parity verification.
+4. Update GF8-GF12 evidence and mark criteria checked only after command/runtime parity is proven.
+
 M5 execution slices (SDK stabilization):
 
 - See dedicated spec: `layer/surface/build/refactor/sdk-contract-stabilization/SPEC.md`.
@@ -314,6 +333,13 @@ M6 realization status:
 
 - GF8-GF12 are active realization gates for code-level architecture convergence.
 - M6 is not complete until GF8-GF12 are evidenced and checked.
+
+## Resolved Decisions
+
+- Patina protocol verbs remain standalone-capable in CLI; Mother is additive runtime infrastructure, not a hard dependency for baseline local protocol execution.
+- Child capability schema uses `[needs].toys` with optional `[needs.scopes]`; legacy capability schema terms are not reintroduced.
+- Vocabulary is locked to `child`/`kind` for runtime manifests and `world` only for WIT composition contexts.
+- M6 target boundary is fixed: `patina-core` for domain logic, `patina-protocol` for typed contracts, CLI/Mother as adapters.
 
 M6a progress notes (current session):
 
