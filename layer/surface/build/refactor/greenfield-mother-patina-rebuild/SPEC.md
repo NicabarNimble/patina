@@ -315,6 +315,12 @@ M6 realization status:
 - GF8-GF12 are active realization gates for code-level architecture convergence.
 - M6 is not complete until GF8-GF12 are evidenced and checked.
 
+M6a progress notes (current session):
+
+- Created workspace crates `crates/patina-core` and `crates/patina-protocol` as the M6 foundation.
+- Added executable dependency-direction enforcement script (`resources/scripts/check-core-protocol-deps.sh`) and wired it into CI (`.github/workflows/test.yml`).
+- M6a checklist item is complete; GF8-GF12 remain unchecked until subsequent slices land full protocol/core convergence.
+
 M5 vocabulary progress notes (current session):
 
 - Tracked in dedicated SDK spec/design (`sdk-contract-stabilization`).

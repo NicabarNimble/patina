@@ -509,7 +509,7 @@ M6 boundary principles (non-negotiable):
 
 M6 execution checklist (active):
 
-- [ ] M6a: create `patina-core` + `patina-protocol` and dependency direction rules. (GF8, GF9, GF12)
+- [x] M6a: create `patina-core` + `patina-protocol` and dependency direction rules. (GF8, GF9, GF12)
 - [ ] M6b: migrate `lake` use-case into `patina-core` as first transport-neutral service. (GF8)
 - [ ] M6c: replace ad-hoc builtin dispatch payloads with typed `patina-protocol` enums/contracts. (GF9)
 - [ ] M6d: remove `#[path]` shim and relocate shared spec execution contracts to core-owned modules. (GF10)
@@ -532,6 +532,17 @@ M6 rollback trigger/action:
 
 - Trigger: dependency inversion between adapters/core, protocol breakage across command matrix, or external-SDK-facing contract regression.
 - Action: revert current M6 slice commit(s), restore prior adapter boundary, re-run parity matrix, then retry with narrower scope.
+
+M6a progress evidence (current session):
+
+- Added workspace crates:
+  - `crates/patina-core`
+  - `crates/patina-protocol`
+- Added initial crate markers and package metadata (transport-neutral core + typed protocol version marker).
+- Added executable dependency-direction enforcement script:
+  - `resources/scripts/check-core-protocol-deps.sh`
+- Wired dependency-direction check into CI test pipeline:
+  - `.github/workflows/test.yml` (`Check core/protocol dependency direction` step)
 
 ## Seam Classification Table (GF1 enforcement)
 
@@ -608,7 +619,7 @@ Publish only when all are true:
 - [x] Migration ledger has at least one real row per ownership-moving lane.
 - [x] M6 migration ledger row exists with parity gates and rollback actions.
 - [x] Migration map has executable parity gates.
-- [ ] Dependency direction enforcement mechanism is defined and executable.
+- [x] Dependency direction enforcement mechanism is defined and executable.
 - [x] No contradictions with active refactor truth map remain unresolved.
 
 GF1-GF7 focused evidence anchors (current session):
