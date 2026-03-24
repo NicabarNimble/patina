@@ -1,7 +1,7 @@
 ---
 type: fix
 id: fix-grammar-pipeline
-status: active
+status: paused
 created: 2026-03-24
 sessions:
   origin: 20260324-101606-299953000
@@ -18,6 +18,9 @@ exit_criteria:
 - id: setup-grammars-deploys-correctly
   text: patina setup grammars --force deploys children that pipeline discovery loads
   checked: false
+paused_reason: Native Rust fallback redesign (embedded WASM) requires PipelineEngine::handle() refactor that overlaps with M6c typed dispatch contracts. WASM pipeline path is fully working. Pausing until M6 lands.
+paused_date: 2026-03-24
+paused_at_tag: spec/fix-grammar-pipeline-paused-1
 ---
 # fix: Fix WASM grammar child discovery and native Rust fallback
 
