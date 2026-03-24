@@ -516,8 +516,8 @@ M6 execution checklist (active):
 - [x] M6e: core-ify doctor as host-native service with explicit runtime ports. (GF8, GF11)
 - [x] M6f: core-ify spec execution and remove transitional runtime shims. (GF10, GF11)
 - [x] M6g: wire CLI and Mother as pure adapters and retire `CliBuiltinExecutor` transitional pattern. (GF11)
-- [ ] M6h: add workspace dependency-direction enforcement gate. (GF12)
-- [ ] M6i: run full parity matrix and update GF8-GF12 evidence. (GF8-GF12)
+- [x] M6h: add workspace dependency-direction enforcement gate. (GF12)
+- [x] M6i: run full parity matrix and update GF8-GF12 evidence. (GF8-GF12)
 
 M6 parity gates:
 
@@ -655,6 +655,29 @@ M6g progress evidence (current session):
 - Validation evidence:
   - `cargo check -p patina-ai -p mother`
   - `cargo test -p mother`
+
+M6h progress evidence (current session):
+
+- Enforced and verified dependency-direction gate at runtime:
+  - `resources/scripts/check-core-protocol-deps.sh`
+  - result: `ok: core/protocol dependency direction follows M6a policy`
+- Restored `patina-core` to zero dependencies so gate is semantically true (no serde dependency in core crate):
+  - `crates/patina-core/Cargo.toml`
+  - `src/mother/doctor_runtime.rs` now performs adapter-side JSON conversion for core doctor results
+- CI enforcement already wired in `.github/workflows/test.yml` (`Check core/protocol dependency direction`).
+
+M6i parity evidence (current session):
+
+- Workspace parity gates executed:
+  - `cargo check -q`
+  - `cargo test -q`
+  - `cargo test -q -p mother`
+  - `cargo test -q -p patina-ai`
+- Mother off/on command probes executed for control-plane matrix (`spec`, `lake`, `doctor`, `secrets`) using explicit TCP addresses to avoid UDS fallback ambiguity:
+  - off address: `10.10.10.209:59998` -> all commands fail with expected unavailable errors
+  - on address: `10.10.10.209:55054` -> all commands succeed (`spec`, `lake`, `doctor --json`, `secrets --lock`)
+- Spec parity gate command executed:
+  - `patina spec check greenfield-mother-patina-rebuild --json`
 
 ## Seam Classification Table (GF1 enforcement)
 

@@ -4,8 +4,8 @@ use crate::project;
 use crate::session::SessionManager;
 use anyhow::{Context, Result};
 use patina_core::doctor::{
-    DataIntegrity, EmissionCoverage, EnvironmentPort, EventStorePort, ProjectRepoPort,
-    ProjectSnapshot, SessionDurability, ToolSnapshot,
+    DataIntegrity, DoctorRunResult, EmissionCoverage, EnvironmentPort, EventStorePort,
+    HealthStatus, ProjectRepoPort, ProjectSnapshot, SessionDurability, ToolSnapshot,
 };
 use rusqlite::Connection;
 use std::fs;
@@ -25,7 +25,72 @@ pub fn execute_value() -> Result<serde_json::Value> {
         patina_core::doctor::run_doctor(&environment_port, &project_port, &event_store_port)
             .map_err(|err| anyhow::anyhow!(err.to_string()))?;
 
-    Ok(serde_json::to_value(result)?)
+    Ok(doctor_result_to_value(&result))
+}
+
+fn doctor_result_to_value(result: &DoctorRunResult) -> serde_json::Value {
+    let status = match result.health.status {
+        HealthStatus::Healthy => "healthy",
+        HealthStatus::Warning => "warning",
+        HealthStatus::Critical => "critical",
+    };
+    serde_json::json!({
+        "health": {
+            "status": status,
+            "environment_changes": {
+                "missing_tools": result.health.environment_changes.missing_tools.iter().map(|tool| serde_json::json!({
+                    "name": tool.name,
+                    "old_version": tool.old_version,
+                    "new_version": tool.new_version,
+                    "required": tool.required,
+                })).collect::<Vec<_>>(),
+                "new_tools": result.health.environment_changes.new_tools.iter().map(|tool| serde_json::json!({
+                    "name": tool.name,
+                    "old_version": tool.old_version,
+                    "new_version": tool.new_version,
+                    "required": tool.required,
+                })).collect::<Vec<_>>(),
+                "version_changes": result.health.environment_changes.version_changes.iter().map(|tool| serde_json::json!({
+                    "name": tool.name,
+                    "old_version": tool.old_version,
+                    "new_version": tool.new_version,
+                    "required": tool.required,
+                })).collect::<Vec<_>>(),
+            },
+            "project_config": {
+                "llm": result.health.project_config.llm,
+                "adapter_version": result.health.project_config.adapter_version,
+                "layer_patterns": result.health.project_config.layer_patterns,
+                "sessions": result.health.project_config.sessions,
+            },
+            "data_integrity": {
+                "events_db": {
+                    "exists": result.health.data_integrity.events_db.exists,
+                    "integrity_ok": result.health.data_integrity.events_db.integrity_ok,
+                    "event_count": result.health.data_integrity.events_db.event_count,
+                    "max_seq": result.health.data_integrity.events_db.max_seq,
+                    "warnings": result.health.data_integrity.events_db.warnings,
+                },
+                "jsonl_replica": {
+                    "exists": result.health.data_integrity.jsonl_replica.exists,
+                    "max_seq": result.health.data_integrity.jsonl_replica.max_seq,
+                    "gap": result.health.data_integrity.jsonl_replica.gap,
+                    "warnings": result.health.data_integrity.jsonl_replica.warnings,
+                },
+                "emission_coverage": {
+                    "types_checked": result.health.data_integrity.emission_coverage.types_checked,
+                    "types_with_data": result.health.data_integrity.emission_coverage.types_with_data,
+                    "types_empty": result.health.data_integrity.emission_coverage.types_empty,
+                },
+                "session_durability": {
+                    "uncommitted": result.health.data_integrity.session_durability.uncommitted,
+                    "dirty_paths": result.health.data_integrity.session_durability.dirty_paths,
+                },
+            },
+            "recommendations": result.health.recommendations,
+        },
+        "exit_code": result.exit_code,
+    })
 }
 
 struct FsEnvironmentPort;

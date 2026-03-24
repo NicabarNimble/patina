@@ -2,24 +2,21 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HealthStatus {
     Healthy,
     Warning,
     Critical,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolSnapshot {
     pub name: String,
     pub available: bool,
     pub version: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolChange {
     pub name: String,
     pub old_version: Option<String>,
@@ -27,14 +24,14 @@ pub struct ToolChange {
     pub required: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct EnvironmentChanges {
     pub missing_tools: Vec<ToolChange>,
     pub new_tools: Vec<ToolChange>,
     pub version_changes: Vec<ToolChange>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectStatus {
     pub llm: String,
     pub adapter_version: Option<String>,
@@ -42,20 +39,20 @@ pub struct ProjectStatus {
     pub sessions: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SessionDurability {
     pub uncommitted: bool,
     pub dirty_paths: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct EmissionCoverage {
     pub types_checked: usize,
     pub types_with_data: usize,
     pub types_empty: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct EventsDbStatus {
     pub exists: bool,
     pub integrity_ok: bool,
@@ -64,7 +61,7 @@ pub struct EventsDbStatus {
     pub warnings: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct JsonlReplicaStatus {
     pub exists: bool,
     pub max_seq: i64,
@@ -72,7 +69,7 @@ pub struct JsonlReplicaStatus {
     pub warnings: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DataIntegrity {
     pub events_db: EventsDbStatus,
     pub jsonl_replica: JsonlReplicaStatus,
@@ -80,7 +77,7 @@ pub struct DataIntegrity {
     pub session_durability: SessionDurability,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HealthCheck {
     pub status: HealthStatus,
     pub environment_changes: EnvironmentChanges,
@@ -89,7 +86,7 @@ pub struct HealthCheck {
     pub recommendations: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DoctorRunResult {
     pub health: HealthCheck,
     pub exit_code: i64,

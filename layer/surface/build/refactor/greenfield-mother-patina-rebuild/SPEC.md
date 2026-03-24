@@ -40,19 +40,19 @@ exit_criteria:
   checked: true
 - id: GF8
   text: patina-core crate exists as transport/runtime-neutral domain layer with at least one migrated capability and no adapter or infrastructure logic
-  checked: false
+  checked: true
 - id: GF9
   text: patina-protocol crate exists with typed, versioned request/response contracts replacing ad-hoc JSON dispatch payloads on Mother control-plane boundary
-  checked: false
+  checked: true
 - id: GF10
   text: 'No #[path] shims or cross-crate source inclusion hacks remain; all shared execution contracts are owned by core or protocol modules with explicit public APIs'
-  checked: false
+  checked: true
 - id: GF11
   text: CLI and Mother are adapters over core/protocol; builtin dispatch routes through typed protocol to core-owned use-cases, not CLI command modules or Patina runtime shims
   checked: false
 - id: GF12
   text: 'Dependency direction is enforced: core depends on nothing, protocol depends only on core, and CLI/Mother depend on core+protocol; validated by workspace dependency checks'
-  checked: false
+  checked: true
 ---
 # refactor: Greenfield Mother + Patina Rebuild
 
@@ -81,8 +81,8 @@ Produce an authoritative greenfield architecture spec for Patina + Mother that i
 
 ## Status
 
-- Current state: M6 architecture lock is in progress; M6a is complete and M6b has started.
-- Exit criteria status: GF1-GF7 are checked, GF8-GF12 remain unchecked until M6 realization slices land with parity evidence.
+- Current state: M6 architecture lock is in progress through M6i evidence pass; M6a-M6i slices are executed.
+- Exit criteria status: GF1-GF10 and GF12 are checked; GF11 remains open pending final adapter boundary convergence for spec execution ownership.
 - Lifecycle intent: keep this spec active while M6 slices continue, then close only after GF8-GF12 are verified.
 
 ## Solution
