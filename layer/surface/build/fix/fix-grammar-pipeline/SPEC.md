@@ -1,22 +1,22 @@
 ---
 type: fix
 id: fix-grammar-pipeline
-status: draft
+status: ready
 created: 2026-03-24
 sessions:
   origin: 20260324-101606-299953000
 exit_criteria:
 - id: wasm-extracts-symbols
-  text: "patina repo add on a Rust-heavy repo extracts >0 symbols via WASM pipeline"
+  text: patina repo add on a Rust-heavy repo extracts >0 symbols via WASM pipeline
   checked: false
 - id: native-fallback-works
-  text: "Native Rust fallback parses files without ABI error when WASM grammars are absent"
+  text: Native Rust fallback parses files without ABI error when WASM grammars are absent
   checked: false
 - id: consistent-child-naming
-  text: "All discovery paths and installer use child.toml + child.wasm consistently"
+  text: All discovery paths and installer use child.toml + child.wasm consistently
   checked: false
 - id: setup-grammars-deploys-correctly
-  text: "patina setup grammars --force deploys children that pipeline discovery loads"
+  text: patina setup grammars --force deploys children that pipeline discovery loads
   checked: false
 ---
 # fix: Fix WASM grammar child discovery and native Rust fallback
