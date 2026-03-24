@@ -318,7 +318,7 @@ fn discover_pipeline_plugins_lazy(
         }
 
         let manifest_path = path.join("child.toml");
-        let wasm_path = path.join("plugin.wasm");
+        let wasm_path = path.join("child.wasm");
 
         if !manifest_path.exists() || !wasm_path.exists() {
             continue;
