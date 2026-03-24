@@ -1,7 +1,6 @@
 pub mod broker;
 pub mod builtin_children;
 pub mod checkpoint;
-pub mod daemon;
 pub mod daemon_bootstrap;
 pub mod daemon_bootstrap_config;
 pub mod daemon_heartbeat;
@@ -13,7 +12,6 @@ pub mod http_daemon;
 pub mod http_routes;
 pub mod lifecycle;
 pub mod microserver;
-pub mod protocol;
 pub mod registry;
 pub mod runtime;
 pub mod secrets;
