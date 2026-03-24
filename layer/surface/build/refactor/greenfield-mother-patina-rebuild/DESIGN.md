@@ -621,6 +621,30 @@ Publish only when all are true:
 - Should child manifests adopt stricter version pinning in project manifests by default?
 - What minimum observability surface is required before enforcing child hard-fail policies?
 
+## Resolved Decisions
+
+- M6 architecture boundary is locked: `patina-core` owns domain/use-cases, `patina-protocol` owns typed contracts, and CLI/Mother stay adapter-thin.
+- Vocabulary lock is enforced in this lane: runtime manifests use `child`/`kind`; `world` is reserved for WIT composition contexts.
+- Dependency direction is an explicit gate for this lane (`core -> nothing`, `protocol -> core`, adapters -> `core+protocol`) and must pass before GF12 can be checked.
+
+## Commits
+
+- `274671d9` — spec: add M6 core/protocol crate architecture plan
+- `62365e43` — spec: add GF8-GF12 realization gates for M6 architecture
+- `ba695837` — refactor: scaffold core and protocol crates with dep-direction gate
+- `4554bff8` — spec: start M6a and map GF8-GF12 realization gates
+- `5ce8f608` — refactor: start M6b lake core extraction with spec alignment
+
+## Direct Code Targets
+
+- `crates/patina-core/src/lake.rs`
+- `crates/patina-protocol/src/lib.rs`
+- `src/mother/lake_runtime.rs`
+- `src/mother/spec_runtime.rs`
+- `mother/src/builtin_children.rs`
+- `resources/scripts/check-core-protocol-deps.sh`
+- `.github/workflows/test.yml`
+
 ## Build Readiness
 
 - [x] GF1-GF7 have concrete sections and evidence links.
