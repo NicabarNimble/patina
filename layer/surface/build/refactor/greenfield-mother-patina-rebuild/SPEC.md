@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: greenfield-mother-patina-rebuild
-status: ready
+status: active
 created: 2026-03-22
 related:
 - layer/surface/build/refactor/patina-code-to-vision/SPEC.md
