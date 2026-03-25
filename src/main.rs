@@ -114,10 +114,11 @@ enum Commands {
         json: bool,
     },
 
-    /// Manage WASM plugins
-    Plugin {
+    /// Manage WASM children
+    #[command(name = "child", visible_alias = "plugin")]
+    Child {
         #[command(subcommand)]
-        command: PluginCommands,
+        command: ChildCommands,
     },
 
     /// Manage project versioning (semver: MAJOR.MINOR.PATCH)
@@ -956,25 +957,25 @@ enum SetupCommands {
 }
 
 #[derive(Subcommand)]
-enum PluginCommands {
-    /// List installed plugins
+enum ChildCommands {
+    /// List installed command children
     List,
-    /// Run a plugin by name
+    /// Run a child by name
     Run {
-        /// Plugin name (matches <name>.wasm in plugins dir)
+        /// Child name (matches <name>.wasm in command-children dir)
         name: String,
-        /// Arguments passed to the plugin
+        /// Arguments passed to the child
         #[arg(last = true)]
         args: Vec<String>,
     },
-    /// Create a new plugin project from template
+    /// Create a new child project from template
     Init {
-        /// Plugin name (valid Rust crate name, e.g. "review-bot")
+        /// Child name (valid Rust crate name, e.g. "review-bot")
         name: String,
-        /// Plugin world: mother-child, command, task, pipeline
+        /// Child world: knowledge-child, command, task, pipeline
         #[arg(long)]
         world: String,
-        /// Build the plugin after scaffolding
+        /// Build the child after scaffolding
         #[arg(long)]
         build: bool,
         /// Build in release mode (requires --build)
@@ -983,9 +984,9 @@ enum PluginCommands {
     },
 }
 
-/// Build a query dispatch closure for command plugins.
+/// Build a query dispatch closure for command children.
 ///
-/// Returns None if the plugin has no host_query grants. Otherwise,
+/// Returns None if the child has no host_query grants. Otherwise,
 /// returns a closure that dispatches to context/scry/assay engines.
 fn make_query_dispatch(
     manifest: &patina::child::engine::ChildManifest,
@@ -1378,9 +1379,9 @@ fn main() -> Result<()> {
         Some(Commands::Doctor { json }) => {
             commands::doctor::execute_cli(json)?;
         }
-        Some(Commands::Plugin { command }) => match command {
-            PluginCommands::List => commands::child::execute_list()?,
-            PluginCommands::Init {
+        Some(Commands::Child { command }) => match command {
+            ChildCommands::List => commands::child::execute_list()?,
+            ChildCommands::Init {
                 name,
                 world,
                 build,
@@ -1395,7 +1396,7 @@ fn main() -> Result<()> {
                     .join(format!("target/wasm32-wasip2/{}", profile))
                     .join(format!("{}.wasm", name.replace('-', "_")));
 
-                println!("Created {} plugin: {}", world, project_dir.display());
+                println!("Created {} child: {}", world, project_dir.display());
                 println!();
                 println!("  cd {}", name);
                 if release {
@@ -1451,18 +1452,18 @@ fn main() -> Result<()> {
                     }
                 }
             }
-            PluginCommands::Run { name, args } => {
-                let plugins_dir = patina::paths::child::plugins_dir();
-                let wasm_path = plugins_dir.join(format!("{}.wasm", name));
-                let toml_path = plugins_dir.join(format!("{}.toml", name));
+            ChildCommands::Run { name, args } => {
+                let command_children_dir = patina::paths::child::command_children_dir();
+                let wasm_path = command_children_dir.join(format!("{}.wasm", name));
+                let toml_path = command_children_dir.join(format!("{}.toml", name));
 
                 if !wasm_path.exists() {
                     anyhow::bail!(
-                        "plugin '{}' not found at {}\nInstall: cp {}.wasm {}",
+                        "child '{}' not found at {}\nInstall: cp {}.wasm {}",
                         name,
                         wasm_path.display(),
                         name,
-                        plugins_dir.display()
+                        command_children_dir.display()
                     );
                 }
 
@@ -1470,7 +1471,7 @@ fn main() -> Result<()> {
                     patina::child::engine::ChildManifest::from_path(&toml_path)?
                 } else {
                     anyhow::bail!(
-                        "child manifest not found at {}\nTask and command plugins require a .toml manifest",
+                        "child manifest not found at {}\nTask and command children require a .toml manifest",
                         toml_path.display()
                     );
                 };
@@ -1590,7 +1591,7 @@ fn main() -> Result<()> {
                     }
                     other => {
                         anyhow::bail!(
-                            "plugin '{}' has world '{}' — only 'task', 'command', and 'knowledge-child' are supported by `plugin run`",
+                            "child '{}' has world '{}' — only 'task', 'command', and 'knowledge-child' are supported by `child run` (alias: `plugin run`)",
                             name, other
                         );
                     }

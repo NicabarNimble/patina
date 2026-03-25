@@ -190,16 +190,21 @@ pub mod child {
         patina_home().join("children")
     }
 
-    /// CLI command plugins directory: `~/.patina/plugins/`
-    /// Contains .wasm files + `.toml` child manifests for CLI command plugins (Phase 2+).
-    pub fn plugins_dir() -> PathBuf {
+    /// CLI command children directory (compat path): `~/.patina/plugins/`
+    /// Contains .wasm files + `.toml` child manifests for CLI command children.
+    pub fn command_children_dir() -> PathBuf {
         patina_home().join("plugins")
     }
 
-    /// Plugin work directory (WASI sandbox root): `~/.patina/plugins/{name}/work/`
-    /// Mapped to `/work/` in the plugin's virtual filesystem (Phase 2+ when WASI lands).
+    /// Command child work directory (WASI sandbox root): `~/.patina/plugins/{name}/work/`
+    /// Mapped to `/work/` in the child's virtual filesystem.
     pub fn work_dir(name: &str) -> PathBuf {
-        plugins_dir().join(name).join("work")
+        command_children_dir().join(name).join("work")
+    }
+
+    /// Legacy alias kept during vocabulary migration.
+    pub fn plugins_dir() -> PathBuf {
+        command_children_dir()
     }
 
     /// Pipeline grammar children directory: `~/.patina/pipeline/`
@@ -208,8 +213,8 @@ pub mod child {
         patina_home().join("pipeline")
     }
 
-    /// Secret grants file: `~/.patina/plugin-config/secret-grants.toml`
-    /// Maps plugin names to allowed secret names for credential injection.
+    /// Secret grants file (compat path): `~/.patina/plugin-config/secret-grants.toml`
+    /// Maps child names to allowed secret names for credential injection.
     pub fn secret_grants_path() -> PathBuf {
         patina_home()
             .join("plugin-config")
