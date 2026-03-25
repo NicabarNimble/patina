@@ -30,6 +30,7 @@ pub struct ServerState {
     version: String,
     token: String,
     pub(super) registry: Arc<ChildRegistry>,
+    services: mother_crate::services::MotherServices,
     scry_backend: Arc<dyn ScryBackend>,
 }
 
@@ -40,6 +41,7 @@ impl ServerState {
             version: env!("CARGO_PKG_VERSION").to_string(),
             token,
             registry: Arc::new(registry),
+            services: mother_crate::services::MotherServices::new(),
             scry_backend: Arc::new(RetrievalScryBackend),
         }
     }
@@ -117,6 +119,18 @@ impl ApiRuntime for ServerState {
                 timestamp: hit.timestamp,
             })
             .collect())
+    }
+
+    fn secrets_get(&self) -> anyhow::Result<serde_json::Value> {
+        self.services.secrets.get()
+    }
+
+    fn secrets_cache(&self, payload: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        self.services.secrets.cache(&payload)
+    }
+
+    fn secrets_lock(&self) -> anyhow::Result<serde_json::Value> {
+        Ok(self.services.secrets.lock())
     }
 }
 

@@ -36,6 +36,9 @@ pub trait ApiRuntime {
         repo: Option<String>,
         all_repos: bool,
     ) -> Result<Vec<ScryHit>>;
+    fn secrets_get(&self) -> Result<serde_json::Value>;
+    fn secrets_cache(&self, payload: serde_json::Value) -> Result<serde_json::Value>;
+    fn secrets_lock(&self) -> Result<serde_json::Value>;
 }
 
 #[derive(Serialize)]
@@ -151,7 +154,7 @@ pub fn handle_scry(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpRespo
 }
 
 pub fn handle_secrets_get(runtime: &dyn ApiRuntime) -> HttpResponse {
-    match runtime.child_handle("secrets", "get".into(), serde_json::Value::Null) {
+    match runtime.secrets_get() {
         Ok(payload) => HttpResponse::json(200, &payload),
         Err(_) => json_error(404, "No cached secrets"),
     }
@@ -167,14 +170,14 @@ pub fn handle_secrets_cache(request: &HttpRequest, runtime: &dyn ApiRuntime) -> 
         Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
     };
 
-    match runtime.child_handle("secrets", "cache".into(), payload) {
+    match runtime.secrets_cache(payload) {
         Ok(payload) => HttpResponse::json(200, &payload),
         Err(e) => json_error(500, &format!("Cache failed: {}", e)),
     }
 }
 
 pub fn handle_secrets_lock(runtime: &dyn ApiRuntime) -> HttpResponse {
-    match runtime.child_handle("secrets", "lock".into(), serde_json::Value::Null) {
+    match runtime.secrets_lock() {
         Ok(payload) => HttpResponse::json(200, &payload),
         Err(e) => json_error(500, &format!("Lock failed: {}", e)),
     }

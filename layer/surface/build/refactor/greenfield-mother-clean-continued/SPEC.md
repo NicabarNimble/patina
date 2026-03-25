@@ -92,6 +92,17 @@ Draw a clean, permanent line between Mother's internal services and the child re
 - One heartbeat path (knowledge child cycles only)
 - The codebase reflects the four-role architecture from our beliefs
 
+## Core Value Anchors
+
+This spec is anchored to `layer/core` values and must be executed in ways that preserve them:
+
+- `spec-driven-design`: no non-trivial scope outside this spec's gates.
+- `dependable-rust`: promote stable service interfaces, keep churn in internals.
+- `unix-philosophy`: one responsibility per subsystem (services vs registry vs transport).
+- `patina-identity`: Mother is infrastructure; children are knowledge workers.
+- `safety-boundaries`: no surprising side effects while deleting legacy paths.
+- `session-capture`: record gate proofs and decisions as session updates/notes.
+
 ## Status
 
 Draft. Architecture alignment confirmed in session 20260325-064204-876122000. This continues the greenfield Mother work from `greenfield-mother-patina-rebuild` (completed 2026-03-24, released as v0.43.11) and the toybox framework design from session 20260324-101606-299953000.
@@ -114,6 +125,8 @@ This spec is execution-constrained. Any agent implementing it must follow these 
 3. **Claim discipline** — every state claim backed by `file:line` or command output.
 4. **One-gate-at-a-time** — do not start GFC-G2 until GFC-G1 exit proofs pass.
 5. **Cargo check between gates** — `cargo build` must succeed after every gate.
+6. **Scalpel over shotgun** — change only gate-targeted files; avoid opportunistic rewrites.
+7. **Read before write/remove** — inspect current code paths and callsites before edits/deletions.
 
 ## Phase Gate Policy
 
