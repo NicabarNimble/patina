@@ -67,6 +67,5 @@ Completed. Legacy SDK MotherChild lane removed; models/repos retired from active
 
 ## Residual Historical Surface
 
-- `plugins/models/` and `plugins/repos/` remain in-repo as non-workspace historical directories.
-- Their source files may still contain `MotherChild` symbols until the planned physical directory removal slice lands.
-- This does not affect runtime/build surfaces because these crates are no longer workspace members.
+- Legacy plugin directories `plugins/models/` and `plugins/repos/` were physically removed after workspace retirement.
+- No active repository path still depends on SDK `MotherChild` compatibility APIs.

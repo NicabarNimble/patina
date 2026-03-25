@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: greenfield-mother-clean-continued
-status: draft
+status: complete
 created: 2026-03-25
 beliefs:
   - "[[four-roles-no-overlap]]"
@@ -17,40 +17,40 @@ sessions:
 exit_criteria:
   - id: GFC1
     text: MotherChild trait deleted from codebase — zero hits for `pub trait MotherChild`
-    checked: false
+    checked: true
   - id: GFC2
     text: StaticChild type deleted — zero hits for `StaticChild`
-    checked: false
+    checked: true
   - id: GFC3
     text: ChildRegistry holds single `children` vector (KnowledgeChild only), `legacy_children` gone
-    checked: false
+    checked: true
   - id: GFC4
     text: SecretsCacheChild (`mother/src/secrets.rs`) deleted — logic lives in `services/secrets.rs`
-    checked: false
+    checked: true
   - id: GFC5
     text: SessionWriterChild (`mother/src/session_writer.rs`) deleted
-    checked: false
+    checked: true
   - id: GFC6
     text: Legacy heartbeat branch removed — no `legacy_migration` in daemon_heartbeat.rs
-    checked: false
+    checked: true
   - id: GFC7
     text: daemon.rs protocol v1 handler deleted — Mother speaks HTTP only
-    checked: false
+    checked: true
   - id: GFC8
     text: MotherServices struct owns secrets, sessions, health — HTTP routes call it directly
-    checked: false
+    checked: true
   - id: GFC9
     text: builtin_dispatch.rs eliminated — logic absorbed into service-backed routes
-    checked: false
+    checked: true
   - id: GFC10
     text: "`cargo build` succeeds, `cargo test` passes"
-    checked: false
+    checked: true
   - id: GFC11
     text: "`patina mother start` launches, `curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/health` returns JSON with `status` and service/child health keys"
-    checked: false
+    checked: true
   - id: GFC12
     text: "`rg 'MotherChild|StaticChild|legacy_migration|legacy_children' --type rust mother/src src/commands/mother src/main.rs` returns zero hits"
-    checked: false
+    checked: true
 ---
 # refactor: Greenfield Mother — separate internal services from child registry
 
