@@ -1,13 +1,13 @@
 ---
 type: refactor
 id: plugin-vocabulary-retirement
-status: draft
+status: active
 created: 2026-03-25
 related:
   - src/main.rs
   - src/paths.rs
   - src/child/scaffold.rs
-  - resources/templates/plugin/
+  - resources/templates/child/
   - resources/grammar-defaults.toml
   - Cargo.toml
   - README.md
@@ -15,16 +15,16 @@ related:
 exit_criteria:
   - id: pvr1-policy-lock-committed
     text: Bucket policy table (A-H) is locked in this spec, including explicit no-physical-move scope for Bucket C and historical freeze for Bucket G
-    checked: false
+    checked: true
   - id: pvr2-reaudit-recorded
     text: INVENTORY.md is refreshed with current counts and representative files (no references to removed paths)
-    checked: false
+    checked: true
   - id: pvr3-gates-have-proofs
     text: PVR gate plan (G0-G7) is present with per-gate entry/exit proofs and deterministic verification commands
-    checked: false
+    checked: true
   - id: pvr4-guard-defined
     text: Anti-regression guard scope and command are specified for active surfaces, explicitly excluding historical/session archives
-    checked: false
+    checked: true
 ---
 # refactor: retire plugin vocabulary from active Patina surfaces
 
@@ -58,9 +58,9 @@ Counts from current audit (2026-03-25 refresh, post PVR-G3):
 
 Representative files:
 
-- `src/main.rs` (Plugin command surface and user messaging)
-- `src/paths.rs` (`plugins_dir`, `plugin-config`, legacy `paths::plugin` alias)
-- `src/child/scaffold.rs` (`patina plugin init` text and template paths)
+- `src/main.rs` (`child` command canonical, `plugin` alias retained)
+- `src/paths.rs` (`command_children_dir`, `plugin-config`, legacy `paths::plugin` alias)
+- `src/child/scaffold.rs` (child-first template paths)
 
 ### Bucket B - Grammar pipeline naming
 
@@ -92,8 +92,8 @@ Scope lock:
 
 Representative paths:
 
-- `resources/templates/plugin/*`
-- references to those templates in `src/child/scaffold.rs`
+- `resources/templates/child/*`
+- compatibility cleanup for legacy `resources/templates/plugin/*` directories
 
 ### Bucket E - Active user-facing docs and guidance
 
@@ -241,4 +241,4 @@ Recommended next operator behavior:
 
 ## Build Readiness
 
-Not execution-ready yet. Ready only after bucket-level policy decisions are explicitly approved and sequenced into low-risk slices.
+Execution in progress. Policy lock, re-audit, and anti-regression guard are in place; remaining work is bucketed implementation/cleanup (G4-G7) with selective doctrine edits.
