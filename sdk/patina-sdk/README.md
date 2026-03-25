@@ -76,6 +76,26 @@ Shim removal gates:
 2. Scaffold output parity remains green for child-first naming and manifests.
 3. Removal is spec-authorized with rollback-safe migration slices.
 
+## Toy Definition
+
+A toy is a controlled opening in the WASM sandbox wall.
+
+- Mother defines the opening; children do not invent new toys.
+- Grants are explicit via `child.toml` (`[needs].toys` + optional `[needs.scopes]`).
+- Scopes shape authority (domains, sources, names, resources); they do not create new toy kinds.
+- Domain logic belongs in children; toys provide boundary access only.
+
+Litmus test for adding/keeping a toy:
+
+- "Why can't the child do this itself from pure WASM compute?"
+- If the child can do it without host authority, it is an SDK/library concern, not a toy.
+
+Anti-goals:
+
+- Toys are not convenience wrappers for provider-specific product logic.
+- Toys are not a plugin-defined extension surface.
+- Toys are not a way to bypass scoped grants or host-side policy checks.
+
 ## Child Relationships
 
 Children can declare mediated event relationships in `child.toml`:

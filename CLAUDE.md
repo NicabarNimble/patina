@@ -5,6 +5,7 @@ Project-specific notes:
 - Patina is daemon-first; use `patina` CLI/daemon flows, not MCP.
 - `AGENTS.md` is canonical for architecture guidance (toys, SDK tiers, and manifest schema).
 - Use Claude session scripts under `.claude/bin/` for session artifact operations.
+- Do not add `Co-Authored-By: Claude` attribution to commits.
 
 <!-- PATINA:START -->
 ## Patina

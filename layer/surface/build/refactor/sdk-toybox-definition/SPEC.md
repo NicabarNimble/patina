@@ -7,21 +7,27 @@ sessions:
   origin: 20260324-101606-299953000
 related:
 - layer/surface/build/refactor/sdk-contract-stabilization/SPEC.md
+- layer/core/spec-driven-design.md
+- layer/core/dependable-rust.md
+- layer/core/safety-boundaries.md
 exit_criteria:
 - id: toy-definition-locked
-  text: Formal toy definition documented in SDK — a toy is a controlled opening in the WASM sandbox wall that Mother defines and grants
-  checked: false
+  text: Formal toy definition and litmus test are documented in SDK-facing docs and design, with explicit properties and boundaries
+  checked: true
 - id: host-resources-enumerated
-  text: Every host resource that requires a boundary opening is enumerated with justification
-  checked: false
+  text: Complete inventory maps every `wit/toys/*.wit` interface to host resource boundary, implementation status, and rationale
+  checked: true
 - id: toybox-consolidated
-  text: Overlapping toys consolidated — each opening maps to one host resource
-  checked: false
+  text: Overlap clusters are resolved with explicit keep/merge/defer decisions and justification for each cluster
+  checked: true
 - id: toybox-locked
-  text: Canonical toybox locked in SDK with explicit "why can't the child do this itself" for each toy
+  text: Canonical toybox table is locked with direction, host resource, scope knobs, tier, and "why can't the child do this itself" per toy
   checked: false
 - id: sdk-tiers-aligned
-  text: SDK tier crates (core/data/agent) updated to reflect consolidated toybox
+  text: SDK tier crates/docs align to the canonical toybox with no orphan toy abstractions
+  checked: false
+- id: migration-gates-defined
+  text: Any toy merge/removal path is defined as rollback-safe migration slices with parity gates and explicit non-goals
   checked: false
 ---
 # refactor: Define the toybox framework and enumerate Mother's canonical toy surface
@@ -44,9 +50,14 @@ This violates **dependable-rust** (leaking implementation details into public AP
 
 Lock the toybox. Define what a toy is, enumerate the canonical set, and close the surface.
 
+Execution order for this lane is explicit:
+
+1. Lock the canonical toybox contract in SDK/spec docs first.
+2. Then clean up existing toys through rollback-safe keep/merge/defer migration slices.
+
 ## Status
 
-Draft. Framework established through session 20260324-101606-299953000. Enumeration not yet performed.
+Draft. A1 inventory, A2 definition lock, and A3 cluster decisions are complete and evidenced in DESIGN/SDK docs. Canonical toybox lock (A4), tier alignment (A4/A5), and migration gates (A5) remain pending.
 
 ## Non-Goals
 
@@ -59,7 +70,7 @@ Draft. Framework established through session 20260324-101606-299953000. Enumerat
 
 ### 22 WIT files in wit/toys/
 
-8 with host implementations: connector, events, github, http, ingress, lake, query, session
+8 with direct child host adapter modules: connector, events, github, http, ingress, lake, query, session
 
 14 scaffolded only: belief, checkpoint, emit, git, graph, layer-fs, layer, log, measure, peer, schema, state, task, types
 
@@ -88,6 +99,7 @@ A **locked toybox** where:
 4. Domain-specific logic lives in children, not toys
 5. The SDK documents the complete toybox as the platform contract
 6. Adding a new toy requires the same rigor as adding a syscall to a kernel
+7. Any merge/removal path is staged with parity + rollback gates and does not silently break child manifests
 
 ## Solution
 
@@ -110,6 +122,12 @@ The litmus test: **"Why can't the child do this itself?"** If the answer is "it 
 
 List every resource on Mother's side of the wall that a child might need controlled access to. For each resource, determine how many openings are needed and why.
 
+Enumeration is deterministic and must include:
+- every `wit/toys/*.wit` file,
+- its current host adapter implementation status,
+- its owning SDK lane/tier,
+- and whether it is canonical, shim, or candidate for merge/defer.
+
 Known host resources:
 - Logging/telemetry pipeline
 - Child-local persistent store
@@ -131,6 +149,11 @@ Known host resources:
 
 For each host resource, determine if multiple current toys are really the same opening with different shapes. Apply the principle: one host resource, one toy, scopes for configuration.
 
+Consolidation outputs must be explicit per cluster:
+- `keep-separate` (with rationale),
+- `merge` (with migration sequence), or
+- `defer` (with blocker and revisit trigger).
+
 Key consolidation questions:
 - Is `github` a toy or a child using `http`?
 - Are `emit` and `measure` separate openings or shapes of `events`?
@@ -150,13 +173,17 @@ Write the canonical toybox into the SDK. Each toy entry includes:
 - Why the child can't do this itself
 - SDK tier (core/data/agent)
 - Scope parameters
+- Stability class (stable/experimental/shim)
+- Implementation status (implemented/scaffolded)
 
 ## Implementation Order
 
-1. Phase 1 — Write the formal toy definition into SDK docs
-2. Phase 2 — Enumerate host resources (audit Mother's capabilities)
-3. Phase 3 — Consolidation proposals (each as a scalpel decision)
-4. Phase 4 — Update WIT files, SDK tier crates, and lock
+1. A1: Inventory pass — build toy/resource/status matrix from `wit/toys`, host adapter modules, and SDK exports.
+2. A2: Definition lock — publish formal toy definition + litmus test + anti-goals in SDK docs.
+3. A3: Cluster decisions — resolve overlap clusters with keep/merge/defer decisions and rationale.
+4. A4: Canonical toybox lock — publish canonical table in SDK docs/design with scope knobs and tiers.
+5. A5: Migration gates — define rollback-safe merge/removal slices; no behavior changes without parity gates.
+6. A6: Cleanup execution — apply approved toy cleanups only after A1-A5 are complete and verified.
 
 ## Resolved Decisions
 
@@ -168,12 +195,21 @@ Write the canonical toybox into the SDK. Each toy entry includes:
 
 ## Verification
 
-- Every WIT file in wit/toys/ maps to exactly one entry in the canonical toybox
-- Every toybox entry has a "why can't the child do this itself" justification
-- No two toys open the same host resource without explicit rationale
-- SDK tier crates match the consolidated toybox
-- DuckLake child.toml still compiles and functions after consolidation
-- All first-party children's toy declarations remain valid
+- `patina spec check sdk-toybox-definition --json`
+- Inventory parity:
+  - every `wit/toys/*.wit` appears exactly once in canonical toybox table
+  - every canonical toy entry has resource + justification + tier + status fields
+- SDK compatibility safety gates remain green before any merge/removal execution:
+  - `cargo check -q -p patina-sdk --features knowledge-child,toy-log,toy-state,toy-session,toy-lake,toy-checkpoint,toy-query,toy-emit,toy-measure,toy-github,toy-connector,toy-peer,toy-events,toy-belief,toy-task`
+  - `cargo check -q -p patina-sdk --features pipeline`
+  - `cargo check -q -p patina-sdk --features task`
+  - `cargo check -q -p patina-sdk --features command`
+  - `cargo check -q -p patina-sdk --features mother-child`
+  - `cargo test -q -p patina-ai scaffold::tests::test_scaffold`
+- Before any toy merge/removal lands:
+  - first-party child manifests parse/validate,
+  - command/runtime parity checks for impacted toys are green,
+  - rollback steps are documented in DESIGN.
 
 ## Exit Criteria
 
@@ -181,4 +217,4 @@ See frontmatter.
 
 ## Build Readiness
 
-Framework established. Definition locked in conversation. Enumeration requires systematic audit of Mother's host resources — needs a focused session with codebase read-through.
+Ready for active execution once promoted. No merge/removal code changes should start until A1 inventory and A3 cluster decisions are documented in DESIGN.
