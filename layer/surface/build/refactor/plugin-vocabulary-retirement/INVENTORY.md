@@ -17,6 +17,12 @@ High-level counts (refreshed 2026-03-25, post PVR-G5):
 - `layer/surface/`: 658
 - `layer/sessions/`: 1109
 
+Tracking note:
+
+- `src/` raw substring count (`rg -n "plugin" src | wc -l`) is currently 353.
+- The larger raw count includes identifier-level names (`plugin_name`, `plugin_path`, etc.) and compatibility-critical tokens.
+- Gate evidence for this spec uses the word-boundary/canonical pattern unless an explicit identifier-rename slice is approved.
+
 ## 1) Runtime compatibility surface (code)
 
 Primary files:

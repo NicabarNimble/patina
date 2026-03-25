@@ -73,6 +73,11 @@ Representative files:
 - `resources/grammar-defaults.toml`
 - `resources/scripts/grammar-compare.sh`
 
+Policy clarification:
+
+- Bucket B is `compat keep`: pipeline-domain "plugin" terminology remains allowed where it names grammar processor semantics rather than child-runtime doctrine.
+- Residual pipeline wording in `src/child/internal/pipeline.rs` is therefore tracked as intentional compatibility, not G4 drift.
+
 ### Bucket C - Filesystem and workspace topology naming
 
 Representative files:
@@ -160,6 +165,11 @@ Required policy lock before execution:
 - Bucket F: choose exact scope of "living doctrine" edits vs historical freeze boundaries.
 
 Policy lock is now established in this spec under "Locked Bucket Policies (PVR-G0)".
+
+Identifier-level naming note:
+
+- This spec's gate checks target active surface wording and boundary patterns.
+- Broad identifier renames (`plugin_name`, `plugin_path`, type names) are out-of-scope unless explicitly approved as a separate low-risk slice.
 
 Recommended next operator behavior:
 
