@@ -46,9 +46,9 @@ Define and execute a controlled vocabulary retirement plan: keep required compat
 
 ## Inventory Buckets (grouped)
 
-Counts from current audit (2026-03-25 refresh, post PVR-G3):
+Counts from current audit (2026-03-25 refresh, post PVR-G5):
 
-- `src/`: 249 matches
+- `src/`: 155 matches
 - `resources/`: 33 matches
 - top-level active docs: 5 matches
 - `layer/surface/`: 658 matches
