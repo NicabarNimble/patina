@@ -1,4 +1,5 @@
 use anyhow::Result;
+use patina_protocol::{BuiltinChild, BuiltinChildAction, BuiltinChildRequest};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -6,8 +7,6 @@ use crate::http_daemon::{json_error, HttpRequest, HttpResponse};
 use crate::http_routes::RouteTable;
 
 const MAX_LIMIT: usize = 1000;
-
-pub type BuiltinChildHandler = dyn Fn(&str, &str, &[u8]) -> Option<HttpResponse> + Send + Sync;
 
 #[derive(Debug, Clone)]
 pub struct ScryHit {
@@ -39,6 +38,16 @@ pub trait ApiRuntime {
     fn secrets_get(&self) -> Result<serde_json::Value>;
     fn secrets_cache(&self, payload: serde_json::Value) -> Result<serde_json::Value>;
     fn secrets_lock(&self) -> Result<serde_json::Value>;
+    fn builtin_spec_dispatch(
+        &self,
+        request: patina_protocol::SpecDispatchRequest,
+    ) -> Result<serde_json::Value>;
+    fn builtin_lake_dispatch(
+        &self,
+        request: patina_protocol::LakeDispatchRequest,
+    ) -> Result<serde_json::Value>;
+    fn builtin_doctor_run(&self) -> Result<patina_protocol::DoctorRunResult>;
+    fn builtin_secrets_dispatch(&self, payload: serde_json::Value) -> HttpResponse;
 }
 
 #[derive(Serialize)]
@@ -183,11 +192,7 @@ pub fn handle_secrets_lock(runtime: &dyn ApiRuntime) -> HttpResponse {
     }
 }
 
-pub fn handle_child_request(
-    request: &HttpRequest,
-    runtime: &dyn ApiRuntime,
-    builtin_handler: &BuiltinChildHandler,
-) -> HttpResponse {
+pub fn handle_child_request(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
     let parts: Vec<&str> = request.path[1..].split('/').collect();
     if parts.len() != 3 {
         return json_error(400, "Expected /child/{name}/{action}");
@@ -195,8 +200,45 @@ pub fn handle_child_request(
     let child_name = parts[1];
     let action = parts[2];
 
-    if let Some(response) = builtin_handler(child_name, action, &request.body) {
-        return response;
+    if BuiltinChild::from_route(child_name).is_some() {
+        match BuiltinChildRequest::from_http_parts(child_name, action, &request.body) {
+            Ok(builtin) => {
+                return match builtin.action {
+                    BuiltinChildAction::Health => {
+                        HttpResponse::json(200, &serde_json::json!({ "status": "healthy" }))
+                    }
+                    BuiltinChildAction::SpecDispatch(dispatch) => {
+                        match runtime.builtin_spec_dispatch(dispatch) {
+                            Ok(payload) => HttpResponse::json(200, &payload),
+                            Err(e) => json_error(400, &e.to_string()),
+                        }
+                    }
+                    BuiltinChildAction::LakeDispatch(dispatch) => {
+                        match runtime.builtin_lake_dispatch(dispatch) {
+                            Ok(payload) => HttpResponse::json(200, &payload),
+                            Err(e) => json_error(400, &e.to_string()),
+                        }
+                    }
+                    BuiltinChildAction::DoctorRun(_) => match runtime.builtin_doctor_run() {
+                        Ok(result) => HttpResponse::json(
+                            200,
+                            &serde_json::json!({
+                                "child": "doctor",
+                                "text": "",
+                                "data": result.data,
+                                "exit_code": result.exit_code,
+                            }),
+                        ),
+                        Err(e) => json_error(400, &e.to_string()),
+                    },
+                    BuiltinChildAction::SecretsDispatch(dispatch) => {
+                        runtime.builtin_secrets_dispatch(dispatch.operation.into_payload())
+                    }
+                };
+            }
+            Err(message) if message.starts_with("Unsupported action") => {}
+            Err(message) => return json_error(400, &message),
+        }
     }
 
     if action == "health" {
@@ -228,10 +270,7 @@ pub fn handle_child_request(
     }
 }
 
-pub fn build_route_table(
-    runtime: Arc<dyn ApiRuntime + Send + Sync>,
-    builtin_handler: Arc<BuiltinChildHandler>,
-) -> RouteTable {
+pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTable {
     let health_runtime = Arc::clone(&runtime);
     let version_runtime = Arc::clone(&runtime);
     let scry_runtime = Arc::clone(&runtime);
@@ -249,8 +288,6 @@ pub fn build_route_table(
             handle_secrets_cache(request, &*secrets_cache_runtime)
         }),
         post_secrets_lock: Arc::new(move |_request| handle_secrets_lock(&*secrets_lock_runtime)),
-        child_request: Arc::new(move |request| {
-            handle_child_request(request, &*child_runtime, builtin_handler.as_ref())
-        }),
+        child_request: Arc::new(move |request| handle_child_request(request, &*child_runtime)),
     }
 }

@@ -136,14 +136,48 @@ impl ApiRuntime for ServerState {
     fn secrets_lock(&self) -> anyhow::Result<serde_json::Value> {
         Ok(self.services.secrets.lock())
     }
+
+    fn builtin_spec_dispatch(
+        &self,
+        request: patina_protocol::SpecDispatchRequest,
+    ) -> anyhow::Result<serde_json::Value> {
+        let command: patina::spec::SpecCommands = serde_json::from_value(request.command)
+            .map_err(|e| anyhow::anyhow!("Invalid spec-manager command payload: {}", e))?;
+        patina::spec::execute_command_value(command)
+    }
+
+    fn builtin_lake_dispatch(
+        &self,
+        request: patina_protocol::LakeDispatchRequest,
+    ) -> anyhow::Result<serde_json::Value> {
+        let command: patina::lake::LakeCommand = serde_json::from_value(request.command)
+            .map_err(|e| anyhow::anyhow!("Invalid lake-manager command payload: {}", e))?;
+        patina::lake::execute_value(command)
+    }
+
+    fn builtin_doctor_run(&self) -> anyhow::Result<patina_protocol::DoctorRunResult> {
+        let value = patina::mother::doctor_runtime::execute_value()?;
+        let exit_code = value.get("exit_code").and_then(|v| v.as_i64()).unwrap_or(0);
+        Ok(patina_protocol::DoctorRunResult {
+            data: value,
+            exit_code,
+        })
+    }
+
+    fn builtin_secrets_dispatch(
+        &self,
+        payload: serde_json::Value,
+    ) -> mother_crate::http_daemon::HttpResponse {
+        mother_crate::secrets_authority_api::dispatch(
+            payload,
+            &mother_crate::secrets_authority_backend::MotherSecretsAuthorityBackend,
+        )
+    }
 }
 
 fn build_router(state: Arc<ServerState>, require_auth: bool) -> Router {
     let token = state.token.clone();
-    let route_table = mother_crate::http_api::build_route_table(
-        state,
-        Arc::new(super::builtin_dispatch::handle_builtin_child_request),
-    );
+    let route_table = mother_crate::http_api::build_route_table(state);
     Router::new(require_auth, token, route_table)
 }
 
