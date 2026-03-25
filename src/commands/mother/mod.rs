@@ -38,7 +38,6 @@
 //! ```
 
 pub(crate) mod adapters;
-pub(crate) mod builtin_dispatch;
 pub(crate) mod daemon;
 pub(crate) mod graph;
 pub(crate) mod loader;

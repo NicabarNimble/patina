@@ -291,7 +291,7 @@ Status keys:
 | GFC6 | unverified | `legacy_migration` flag exists in `daemon_heartbeat.rs` and `daemon_bootstrap_config.rs` |
 | GFC7 | unverified | `daemon.rs` protocol v1 handler exists in `mother/src/daemon.rs` |
 | GFC8 | verified-true | `MotherServices` now exists in `mother/src/services/mod.rs` and daemon runtime routes `/secrets/*` and `/health` through service-backed methods |
-| GFC9 | verified-false | `builtin_dispatch.rs` file still exists, though built-in route logic is now handled in `mother/src/http_api.rs` + `src/commands/mother/daemon.rs` |
+| GFC9 | verified-true | `src/commands/mother/builtin_dispatch.rs` deleted; built-in route logic handled via `mother/src/http_api.rs` + `src/commands/mother/daemon.rs` |
 | GFC10 | unverified | Build/test not yet run against target state |
 | GFC11 | unverified | Daemon not yet tested against target state |
 | GFC12 | unverified | Grep not yet run against target state |
