@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: sdk-mother-child-retirement
-status: draft
+status: complete
 created: 2026-03-25
 related:
   - sdk/patina-sdk/src/mother_child.rs
@@ -12,16 +12,16 @@ related:
 exit_criteria:
   - id: SMCR1
     text: `sdk/patina-sdk/src/mother_child.rs` deleted and `MotherChild` no longer exported by `patina-sdk`
-    checked: false
+    checked: true
   - id: SMCR2
     text: `plugins/models/` and `plugins/repos/` are either retired or migrated off `register_mother_child!`
-    checked: false
+    checked: true
   - id: SMCR3
     text: Breaking SDK change is documented (release note + migration note)
-    checked: false
+    checked: true
   - id: SMCR4
     text: `cargo build` and `cargo test` pass after retirement changes
-    checked: false
+    checked: true
 ---
 # refactor: retire SDK mother-child compatibility lane
 
@@ -63,4 +63,4 @@ Fully retire the SDK-level `MotherChild` lane so the public extension API aligns
 
 ## Build Readiness
 
-Ready after decision lock on plugins/models and plugins/repos disposition (retire vs migrate).
+Completed. Legacy SDK MotherChild lane removed; models/repos retired from active workspace; build, tests, and daemon health smoke all pass.
