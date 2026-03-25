@@ -8,8 +8,11 @@
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use rusqlite::Connection;
+use std::collections::BTreeSet;
 use std::path::Path;
+use std::process::Command;
 use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
+use walkdir::WalkDir;
 
 use super::scrape::database;
 use super::scry::internal::enrichment::{enrich_results, SearchResults};
@@ -52,6 +55,27 @@ pub enum BeliefCommands {
         #[arg(long)]
         force: bool,
     },
+
+    /// Rename a belief ID and its file path
+    Rename {
+        /// Existing belief ID (kebab-case)
+        belief_id: String,
+
+        /// New belief ID (kebab-case)
+        new_id: String,
+
+        /// Rewrite belief wikilinks in layer/surface/epistemic/beliefs/
+        #[arg(long)]
+        rewrite_links: bool,
+
+        /// Show planned changes without writing files
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Skip git commit (still writes files)
+        #[arg(long)]
+        no_commit: bool,
+    },
 }
 
 pub fn execute(command: Option<BeliefCommands>) -> Result<()> {
@@ -74,7 +98,264 @@ pub fn execute(command: Option<BeliefCommands>) -> Result<()> {
             from,
             force,
         } => run_import(&belief_id, &from, force),
+        BeliefCommands::Rename {
+            belief_id,
+            new_id,
+            rewrite_links,
+            dry_run,
+            no_commit,
+        } => run_rename(&belief_id, &new_id, rewrite_links, dry_run, no_commit),
     }
+}
+
+fn run_rename(
+    belief_id: &str,
+    new_id: &str,
+    rewrite_links: bool,
+    dry_run: bool,
+    no_commit: bool,
+) -> Result<()> {
+    validate_belief_id(belief_id)?;
+    validate_belief_id(new_id)?;
+
+    if belief_id == new_id {
+        anyhow::bail!("new belief id must differ from current id");
+    }
+
+    let beliefs_dir = Path::new("layer/surface/epistemic/beliefs");
+    let old_path = beliefs_dir.join(format!("{}.md", belief_id));
+    let new_path = beliefs_dir.join(format!("{}.md", new_id));
+
+    if !old_path.exists() {
+        anyhow::bail!("belief '{}' not found at {}", belief_id, old_path.display());
+    }
+    if new_path.exists() {
+        anyhow::bail!(
+            "target belief '{}' already exists at {}",
+            new_id,
+            new_path.display()
+        );
+    }
+
+    let original = std::fs::read_to_string(&old_path)
+        .with_context(|| format!("reading {}", old_path.display()))?;
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let renamed = rewrite_belief_frontmatter_for_rename(&original, belief_id, new_id, &today)?;
+
+    let mut rewritten_links: Vec<String> = Vec::new();
+    if rewrite_links {
+        rewritten_links = collect_link_rewrite_targets(beliefs_dir, belief_id, new_id)?;
+    }
+
+    if dry_run {
+        println!("Dry run: belief rename");
+        println!("  {} -> {}", old_path.display(), new_path.display());
+        println!("  frontmatter: id '{}' -> '{}'", belief_id, new_id);
+        if rewrite_links {
+            println!("  rewrite-links: {} file(s)", rewritten_links.len());
+            for p in &rewritten_links {
+                println!("    {}", p);
+            }
+        }
+        if no_commit {
+            println!("  no-commit: enabled");
+        }
+        return Ok(());
+    }
+
+    std::fs::write(&old_path, renamed)
+        .with_context(|| format!("writing {}", old_path.display()))?;
+    std::fs::rename(&old_path, &new_path)
+        .with_context(|| format!("renaming {} -> {}", old_path.display(), new_path.display()))?;
+
+    if rewrite_links {
+        apply_link_rewrites(&rewritten_links, belief_id, new_id)?;
+    }
+
+    if !no_commit {
+        stage_and_commit_belief_rename(&old_path, &new_path, &rewritten_links, belief_id, new_id)?;
+    }
+
+    println!("Renamed belief '{}' -> '{}'", belief_id, new_id);
+    println!("  file: {}", new_path.display());
+    if rewrite_links {
+        println!("  rewritten links: {}", rewritten_links.len());
+    }
+    println!("Run `patina scrape` to refresh belief grounding/metrics.");
+
+    Ok(())
+}
+
+fn validate_belief_id(id: &str) -> Result<()> {
+    if id.is_empty()
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        anyhow::bail!("invalid belief id '{}': use kebab-case", id);
+    }
+    Ok(())
+}
+
+fn rewrite_belief_frontmatter_for_rename(
+    content: &str,
+    old_id: &str,
+    new_id: &str,
+    today: &str,
+) -> Result<String> {
+    if !content.starts_with("---") {
+        anyhow::bail!("belief is missing YAML frontmatter");
+    }
+
+    let mut sections = content.splitn(3, "---");
+    let prefix = sections.next().unwrap_or_default();
+    let frontmatter = sections
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("belief frontmatter missing opening delimiter"))?;
+    let body = sections
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("belief frontmatter missing closing delimiter"))?;
+
+    if !prefix.trim().is_empty() {
+        anyhow::bail!("belief frontmatter must start at file beginning");
+    }
+
+    let mut saw_id = false;
+    let mut saw_revised = false;
+    let mut out_frontmatter: Vec<String> = Vec::new();
+
+    for line in frontmatter.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if let Some(existing_id) = trimmed.strip_prefix("id:") {
+            let existing_id = existing_id.trim();
+            if existing_id != old_id {
+                anyhow::bail!(
+                    "belief frontmatter id mismatch: expected '{}', found '{}'",
+                    old_id,
+                    existing_id
+                );
+            }
+            out_frontmatter.push(format!("id: {}", new_id));
+            saw_id = true;
+            continue;
+        }
+
+        if trimmed.starts_with("revised:") {
+            out_frontmatter.push(format!("revised: {}", today));
+            saw_revised = true;
+            continue;
+        }
+
+        out_frontmatter.push(line.to_string());
+    }
+
+    if !saw_id {
+        anyhow::bail!("belief frontmatter is missing required id field");
+    }
+    if !saw_revised {
+        out_frontmatter.push(format!("revised: {}", today));
+    }
+
+    let mut output = String::new();
+    output.push_str("---\n");
+    for line in out_frontmatter {
+        output.push_str(&line);
+        output.push('\n');
+    }
+    output.push_str("---");
+    output.push_str(body);
+
+    let old_h1 = format!("\n# {}\n", old_id);
+    let new_h1 = format!("\n# {}\n", new_id);
+    if output.contains(&old_h1) {
+        output = output.replacen(&old_h1, &new_h1, 1);
+    }
+
+    Ok(output)
+}
+
+fn collect_link_rewrite_targets(
+    beliefs_dir: &Path,
+    old_id: &str,
+    new_id: &str,
+) -> Result<Vec<String>> {
+    let old_link = format!("[[{}]]", old_id);
+    let new_link = format!("[[{}]]", new_id);
+    let mut targets: BTreeSet<String> = BTreeSet::new();
+
+    for entry in WalkDir::new(beliefs_dir)
+        .into_iter()
+        .filter_map(std::result::Result::ok)
+    {
+        let p = entry.path();
+        if !p.is_file() || p.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
+
+        let content =
+            std::fs::read_to_string(p).with_context(|| format!("reading {}", p.display()))?;
+        if content.contains(&old_link) {
+            targets.insert(p.to_string_lossy().to_string());
+        }
+
+        // Guard against accidental no-op rewrite where old==new in content checks.
+        if old_link == new_link {
+            break;
+        }
+    }
+
+    Ok(targets.into_iter().collect())
+}
+
+fn apply_link_rewrites(paths: &[String], old_id: &str, new_id: &str) -> Result<()> {
+    let old_link = format!("[[{}]]", old_id);
+    let new_link = format!("[[{}]]", new_id);
+
+    for p in paths {
+        let content = std::fs::read_to_string(p).with_context(|| format!("reading {}", p))?;
+        let updated = content.replace(&old_link, &new_link);
+        if updated != content {
+            std::fs::write(p, updated).with_context(|| format!("writing {}", p))?;
+        }
+    }
+
+    Ok(())
+}
+
+fn stage_and_commit_belief_rename(
+    old_path: &Path,
+    new_path: &Path,
+    rewritten_links: &[String],
+    old_id: &str,
+    new_id: &str,
+) -> Result<()> {
+    let mut args = vec!["add".to_string(), "-A".to_string()];
+    args.push(old_path.to_string_lossy().to_string());
+    args.push(new_path.to_string_lossy().to_string());
+    for p in rewritten_links {
+        args.push(p.clone());
+    }
+
+    let output = Command::new("git")
+        .args(args)
+        .output()
+        .context("failed to stage belief rename")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "failed to stage belief rename: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    if patina::git::has_staged_changes()? {
+        patina::git::commit(&format!("belief: rename {} to {}", old_id, new_id))?;
+    }
+
+    Ok(())
 }
 
 /// Import a belief from another project
