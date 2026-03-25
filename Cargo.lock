@@ -3107,22 +3107,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-ai-extension-models"
-version = "0.1.0"
-dependencies = [
- "patina-sdk",
- "serde_json",
-]
-
-[[package]]
-name = "patina-ai-extension-repos"
-version = "0.1.0"
-dependencies = [
- "patina-sdk",
- "serde_json",
-]
-
-[[package]]
 name = "patina-core"
 version = "0.1.0"
 

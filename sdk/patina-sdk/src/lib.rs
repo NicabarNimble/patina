@@ -12,16 +12,13 @@
 //! # Pipeline child (pure compute, log only)
 //! patina-sdk = { version = "0.21", features = ["pipeline"] }
 //!
-//! # Mother-child (daemon-resident, full access)
-//! patina-sdk = { version = "0.21", features = ["mother-child"] }
-//!
 //! # Knowledge-child (Mother/Child/Toy doctrine)
 //! patina-sdk = { version = "0.21", features = ["knowledge-child"] }
 //! ```
 //!
 //! M5 classification policy:
 //! - Stabilization target: `knowledge-child` + tier crates.
-//! - Migration scaffolds: `task`, `command`, `mother-child`.
+//! - Migration scaffolds: `task`, `command`.
 //! - Experimental lane: `pipeline`.
 //!
 //! Removal-gate policy for shim lanes:
@@ -40,25 +37,21 @@
 // =========================================================================
 
 // Only enforce on wasm32 — workspace builds on native unify features across
-// consumers (doctor=command, models=mother-child) which is harmless on native
+// consumers (doctor=command) which is harmless on native
 // but would break a WASM binary with conflicting export symbols.
 #[cfg(all(
     target_arch = "wasm32",
     any(
         all(feature = "task", feature = "command"),
-        all(feature = "task", feature = "mother-child"),
         all(feature = "task", feature = "knowledge-child"),
         all(feature = "task", feature = "pipeline"),
-        all(feature = "command", feature = "mother-child"),
         all(feature = "command", feature = "knowledge-child"),
         all(feature = "command", feature = "pipeline"),
-        all(feature = "mother-child", feature = "knowledge-child"),
-        all(feature = "mother-child", feature = "pipeline"),
         all(feature = "knowledge-child", feature = "pipeline"),
     )
 ))]
 compile_error!(
-    "Enable exactly one patina-sdk world feature: task, command, mother-child, knowledge-child, or pipeline"
+    "Enable exactly one patina-sdk world feature: task, command, knowledge-child, or pipeline"
 );
 
 // =========================================================================
@@ -87,11 +80,6 @@ pub use task::{TaskChild, TaskPlugin, Toy};
 pub mod command;
 #[cfg(feature = "command")]
 pub use command::{CommandChild, CommandPlugin};
-
-#[cfg(feature = "mother-child")]
-pub mod mother_child;
-#[cfg(feature = "mother-child")]
-pub use mother_child::{ChildHealth, HealthStatus, MotherChild, MotherChildPlugin, Toy};
 
 #[cfg(feature = "knowledge-child")]
 pub mod knowledge_child;

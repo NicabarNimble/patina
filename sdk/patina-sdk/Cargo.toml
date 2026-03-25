@@ -3,7 +3,7 @@ name = "patina-sdk"
 version = "0.21.0"
 edition = "2021"
 license = "MIT"
-description = "SDK for building Patina WASM children (stable knowledge-child + compatibility shim lanes)"
+description = "SDK for building Patina WASM children (knowledge-child first)"
 repository = "https://github.com/NicabarNimble/patina"
 keywords = ["patina", "wasm", "child", "component-model"]
 categories = ["development-tools", "wasm"]
@@ -17,7 +17,6 @@ default = []
 # Preferred stabilization path is `knowledge-child`.
 task = []
 command = []
-mother-child = []
 # Canonical world for Mother/Child/Toy contract.
 knowledge-child = [
     "dep:serde",
