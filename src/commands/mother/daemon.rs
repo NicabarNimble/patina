@@ -35,13 +35,17 @@ pub struct ServerState {
 }
 
 impl ServerState {
-    fn new(token: String, registry: ChildRegistry) -> Self {
+    fn new(
+        token: String,
+        registry: ChildRegistry,
+        runtime_store: patina::mother::KnowledgeRuntimeStore,
+    ) -> Self {
         Self {
             start_time: Instant::now(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             token,
             registry: Arc::new(registry),
-            services: mother_crate::services::MotherServices::new(),
+            services: mother_crate::services::MotherServices::new(runtime_store),
             scry_backend: Arc::new(RetrievalScryBackend),
         }
     }
@@ -83,7 +87,7 @@ impl ApiRuntime for ServerState {
     }
 
     fn health_all(&self) -> Vec<(String, patina::mother::ChildHealth)> {
-        self.registry.health_all()
+        self.services.health.child_health_all(&self.registry)
     }
 
     fn child_health(&self, child_name: &str) -> anyhow::Result<patina::mother::ChildHealth> {
@@ -185,7 +189,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     // TCP opt-in path (--host flag) — requires bearer token
     if let Some(ref host) = options.host {
         let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
-        let state = Arc::new(ServerState::new(token, registry));
+        let state = Arc::new(ServerState::new(token, registry, runtime.clone()));
         let router = Arc::new(build_router(Arc::clone(&state), true));
         let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
             transport: mother_crate::daemon_bootstrap_config::TransportMode::TcpHttp {
@@ -206,7 +210,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     }
 
     // Default: UDS path (no TCP, no token needed — file permissions are auth)
-    let state = Arc::new(ServerState::new(String::new(), registry));
+    let state = Arc::new(ServerState::new(String::new(), registry, runtime));
     let router = Arc::new(build_router(Arc::clone(&state), false));
     let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
         transport: mother_crate::daemon_bootstrap_config::TransportMode::UdsHttp {

@@ -1,21 +1,23 @@
+pub mod health;
 pub mod secrets;
+pub mod sessions;
 
+use health::HealthService;
 use secrets::SecretsService;
+use sessions::SessionStateService;
 
 pub struct MotherServices {
+    pub health: HealthService,
     pub secrets: SecretsService,
-}
-
-impl Default for MotherServices {
-    fn default() -> Self {
-        Self::new()
-    }
+    pub sessions: SessionStateService,
 }
 
 impl MotherServices {
-    pub fn new() -> Self {
+    pub fn new(runtime_store: crate::KnowledgeRuntimeStore) -> Self {
         Self {
+            health: HealthService::new(),
             secrets: SecretsService::new(),
+            sessions: SessionStateService::new(runtime_store),
         }
     }
 }
