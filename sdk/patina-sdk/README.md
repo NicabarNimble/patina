@@ -96,6 +96,25 @@ Anti-goals:
 - Toys are not a plugin-defined extension surface.
 - Toys are not a way to bypass scoped grants or host-side policy checks.
 
+## Canonical Toybox (v1)
+
+Canonical lock fields are tracked in `sdk-toybox-definition` design (`direction`, `host boundary`, `scope knobs`, `tier`, rationale).
+
+Quick index by tier:
+
+- Core: `log`, `state`, `layer`, `layer-fs`, `git`, `peer`, `task`
+- Data: `lake`, `checkpoint`, `measure`, `github`, `connector`
+- Agent: `query`, `emit`, `session`, `events`, `ingress`, `http`, `belief`, `graph`
+- Boundary-deferred: `schema`
+- Support contract only: `types`
+
+Tier ownership note:
+
+- Canonical ownership sits in `patina-sdk-core` / `patina-sdk-data` / `patina-sdk-agent`.
+- `patina-sdk` may provide sdk-local wrapper toys for cross-tier ergonomics, but wrappers do not redefine toy authority boundaries.
+
+Treat this as finite platform surface. New toy proposals must pass the toy litmus test and spec-authorized migration policy.
+
 ## Child Relationships
 
 Children can declare mediated event relationships in `child.toml`:

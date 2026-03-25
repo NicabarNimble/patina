@@ -22,13 +22,13 @@ exit_criteria:
   checked: true
 - id: toybox-locked
   text: Canonical toybox table is locked with direction, host resource, scope knobs, tier, and "why can't the child do this itself" per toy
-  checked: false
+  checked: true
 - id: sdk-tiers-aligned
   text: SDK tier crates/docs align to the canonical toybox with no orphan toy abstractions
-  checked: false
+  checked: true
 - id: migration-gates-defined
   text: Any toy merge/removal path is defined as rollback-safe migration slices with parity gates and explicit non-goals
-  checked: false
+  checked: true
 ---
 # refactor: Define the toybox framework and enumerate Mother's canonical toy surface
 
@@ -57,7 +57,7 @@ Execution order for this lane is explicit:
 
 ## Status
 
-Draft. A1 inventory, A2 definition lock, and A3 cluster decisions are complete and evidenced in DESIGN/SDK docs. Canonical toybox lock (A4), tier alignment (A4/A5), and migration gates (A5) remain pending.
+Draft. A1-A5 are complete: inventory, definition lock, cluster decisions, canonical toybox lock, tier alignment, and rollback-safe migration gates are all evidenced in DESIGN/SDK docs.
 
 ## Non-Goals
 

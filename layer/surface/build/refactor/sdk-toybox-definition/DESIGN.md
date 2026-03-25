@@ -105,6 +105,105 @@ A3 outcome:
 
 - Every required overlap cluster now has an explicit `keep-separate` or `defer` decision with rationale.
 
+## A4 Canonical Toybox Lock (Completed)
+
+Canonical toybox table (v1) is now locked for this lane.
+
+| Toy | Direction | Host Resource Boundary | Scope Knobs | Tier | Why Child Cannot Do This Itself |
+| --- | --- | --- | --- | --- | --- |
+| `log` | out | structured host log sink | level/channel (host policy) | core | guest cannot write host-governed telemetry stream directly |
+| `state` | both | child-local durable state store | namespace/key prefixes | core | durable namespaced storage authority is host-owned |
+| `layer` | in | project layer read boundary | subdir/read filters | core (lane helper) | project config/filesystem reads require host mediation |
+| `layer-fs` | both | scoped filesystem access under layer root | path roots, mode constraints | core | path traversal protection and FS authority are host responsibilities |
+| `git` | both | git binary + repo mutation boundary | repo roots, op allowlist | core | invoking git and mutating repo state requires host process/fs authority |
+| `peer` | both | peer transport/session boundary | peer/channel identifiers | core | network session ownership and trust mediation are host-side |
+| `task` | out | task queue enqueue boundary | allowed intent kinds | core (sdk-local today) | scheduler/lease queue is a host runtime responsibility |
+| `lake` | both | warehouse + cursor boundary | lake/table names, cursor scopes | data | duckdb/lake files and cursor durability are host-owned resources |
+| `checkpoint` | both | checkpoint persistence boundary | stream/source identifiers | data | durable progress checkpoints require host storage control |
+| `measure` | out | metrics ingestion boundary | verb/tool/mode fields | data | attribution + storage of metrics/events are host policy concerns |
+| `github` | both | provider API mediation boundary | repo/org scope, credential mapping | data | credential injection/domain policy cannot be delegated to guest |
+| `connector` | both | connector binding/sync authority | connector names, binding IDs | data | binding catalogs and sync side effects are host-governed |
+| `query` | in | indexed query engine boundary | query kind (`scry/context/assay`) | agent | indexes + ACL policy live in host-managed stores |
+| `emit` | out | fact emission boundary | schema/fact-type scopes | agent | eventlog writes + schema validation are host-side authority |
+| `session` | both | session lifecycle/artifact boundary | session IDs, project root | agent | artifact writes and git tagging are host-owned transitions |
+| `events` | both | ordered stream consume/ack boundary | stream names, offset limits | agent (sdk-local today) | offset/ack integrity and ordering must be host-mediated |
+| `ingress` | in | source fetch/catalog boundary | granted source names/endpoints | agent (sdk-local today) | source grants/catalog policy are controlled on host side |
+| `http` | both | constrained network egress boundary | domain allowlist, credential mapping | agent (sdk-local today) | guest has no ambient host network or policy-safe credential path |
+| `belief` | both | epistemic query/mutate boundary | belief IDs, operation kinds | agent (sdk-local today) | belief graph integrity and provenance are host-owned |
+| `graph` | both | graph query/mutate boundary | graph operation scopes | agent (sdk-local today) | graph mutation/query policy and index ownership are host responsibilities |
+| `schema` | in | schema registry/contract boundary | schema names/packages | data/agent boundary (deferred) | schema contracts/projections are host-managed artifacts |
+| `types` | support | shared value contract surface | n/a | support | type interface is compile-time contract, not runtime host capability |
+
+A4 outcomes:
+
+- Canonical toybox entries now include required lock fields: direction, host boundary, scope knobs, tier, and rationale.
+- Deferred clusters remain explicitly marked in tier notes (`schema`, `layer/layer-fs`, persistence family overlap) without blocking canonical table lock.
+
+## Tier Alignment (Completed)
+
+Tier alignment rule for this lane:
+
+- `core` tier owns foundational runtime substrate toys.
+- `data` tier owns warehouse/checkpoint/connector/provider data toys.
+- `agent` tier owns query/emit/session semantic toys.
+- `patina-sdk` local wrappers are allowed only for cross-tier glue while canonical ownership remains explicit.
+
+Exception policy (wrapper allowance):
+
+1. Default rule: canonical toy ownership lives in a tier crate (`core`/`data`/`agent`).
+2. Allowed exception: `patina-sdk` may expose sdk-local wrappers for authoring ergonomics.
+3. Wrapper must stay thin: no domain logic, no independent policy, no hidden authority expansion.
+4. Wrapper must reference canonical owner in docs and canonical toybox table.
+5. Wrapper change/removal must pass compatibility matrix + scaffold parity gates.
+6. Wrapper with no canonical owner or no revisit trigger is drift and must be promoted, deferred with rationale, or removed via spec.
+
+Alignment snapshot:
+
+| Canonical Toy | Tier Ownership | Current Surface |
+| --- | --- | --- |
+| `log`, `state`, `layer-fs`, `git`, `peer` | core | `patina-sdk-core` (+ feature-gated where applicable) |
+| `lake`, `checkpoint`, `measure`, `github`, `connector` | data | `patina-sdk-data` |
+| `query`, `emit`, `session` | agent | `patina-sdk-agent` |
+| `events`, `ingress`, `http`, `task`, `belief`, `graph` | sdk-local wrapper over canonical tiers/boundaries | `sdk/patina-sdk/src/toys.rs` |
+| `layer` | world helper boundary | world modules (`knowledge_child`, `task`, `command`, `mother_child`) |
+| `schema` | deferred boundary decision | no canonical tier placement yet |
+| `types` | support interface | contract-only support surface |
+
+No orphan toy abstractions remain in the canonical table: each toy is mapped to tier ownership, sdk-local wrapper status, world helper status, or explicit deferred decision.
+
+## A5 Migration Gates (Completed)
+
+Toy merge/removal is now gated by rollback-safe slices.
+
+Mandatory pre-change gates (must pass before any merge/removal commit):
+
+1. `cargo check -q -p patina-sdk --features knowledge-child,toy-log,toy-state,toy-session,toy-lake,toy-checkpoint,toy-query,toy-emit,toy-measure,toy-github,toy-connector,toy-peer,toy-events,toy-belief,toy-task`
+2. `cargo check -q -p patina-sdk --features pipeline`
+3. `cargo check -q -p patina-sdk --features task`
+4. `cargo check -q -p patina-sdk --features command`
+5. `cargo check -q -p patina-sdk --features mother-child`
+6. `cargo test -q -p patina-ai scaffold::tests::test_scaffold`
+
+Validation evidence (this session): all six gates executed and passed.
+
+Required migration slice structure:
+
+1. `slice-prepare`: add compatibility aliases/adapters and docs updates (no behavior change).
+2. `slice-switch`: move callsites/manifests to target toy surface with dual-read/dual-write where needed.
+3. `slice-remove`: remove superseded toy surface only after parity and manifest validation pass.
+
+Rollback rules:
+
+- If parity or matrix fails, revert to prior compatible slice without deleting superseded toy interfaces.
+- Never combine prepare/switch/remove in one commit.
+- Keep one release overlap window for compatibility aliases when external child breakage risk exists.
+
+A5 non-goals (explicit):
+
+- no silent toy deletions,
+- no scope broadening during consolidation,
+- no behavior changes bundled with naming/vocabulary cleanup.
+
 ## Resolved Decisions
 
 1. Toys are platform-defined boundary openings owned by Mother; children do not define new toys.
