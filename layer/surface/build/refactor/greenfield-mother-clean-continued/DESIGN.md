@@ -127,6 +127,25 @@ rg "MotherChild|StaticChild|SecretsCacheChild|SessionWriterChild" --type rust  #
 
 ---
 
+### GFC-G4a: Retire mother-child runtime lane
+
+**Entry**: GFC-G3 exit proofs pass.
+
+**Commits**:
+1. `refactor(mother): retire mother-child loader path` — update daemon child loader to reject `kind = "mother-child"` with explicit migration guidance.
+
+**Direct code targets**:
+- `src/commands/mother/loader.rs` — remove `MotherChildEngine` instantiation path and return migration error for `ChildKind::MotherChild`
+
+**Exit proofs**:
+```bash
+cargo build 2>&1 | tail -5
+```
+
+**GFC truth map updates**: preparatory sub-gate; enables G4b deletion without daemon runtime regressions.
+
+---
+
 ### GFC-G5: Purge ChildRegistry legacy path
 
 **Entry**: GFC-G4 exit proofs pass.

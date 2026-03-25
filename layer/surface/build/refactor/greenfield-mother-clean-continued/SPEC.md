@@ -220,6 +220,20 @@ Mother (daemon process)
 - **Entry**: GFC-G3 exit proofs pass (nothing references deleted types through old paths)
 - **Exit proof**: `cargo build` succeeds, `rg "MotherChild|StaticChild|SecretsCacheChild|SessionWriterChild" --type rust` returns zero
 
+### GFC-G4a: Retire mother-child runtime lane
+
+- Retire the last known mother-child plugin lane (`patina-models` legacy artifact path)
+- Update daemon loader to reject manifests with `kind = "mother-child"` with explicit migration error
+- Keep this as a compatibility stop-gap until G4b removes `MotherChild` trait/types entirely
+- **Entry**: GFC-G3 exit proofs pass
+- **Exit proof**: `cargo build` succeeds, and daemon loader no longer instantiates `MotherChildEngine` for any `mother-child` manifest
+
+### GFC-G4b: Delete legacy child types
+
+- Execute the original GFC-G4 deletion package after G4a lane retirement is in place
+- **Entry**: GFC-G4a exit proofs pass
+- **Exit proof**: `cargo build` succeeds, `rg "MotherChild|StaticChild|SecretsCacheChild|SessionWriterChild" --type rust` returns zero
+
 ### GFC-G5: Purge ChildRegistry legacy path
 - Remove `legacy_children` vector from `ChildRegistry`
 - Remove `register_legacy()`, `tick_legacy_all()`
@@ -269,7 +283,7 @@ Status keys:
 
 | GFC | Status | Evidence |
 |-----|--------|----------|
-| GFC1 | unverified | `MotherChild` trait exists in `mother/src/runtime.rs` |
+| GFC1 | unverified | `MotherChild` trait exists in `mother/src/runtime.rs` (pending G4b) |
 | GFC2 | unverified | `StaticChild` exists in `mother/src/static_child.rs` |
 | GFC3 | unverified | `legacy_children` vector exists in `mother/src/registry.rs` |
 | GFC4 | unverified | `SecretsCacheChild` exists in `mother/src/secrets.rs` |

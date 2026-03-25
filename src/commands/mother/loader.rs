@@ -40,11 +40,10 @@ pub(super) fn load_wasm_child(
             })
         }
         patina::child::engine::ChildKind::MotherChild => {
-            let engine = patina::child::engine::MotherChildEngine::new()?;
-            let component = engine.load_component(&wasm_bytes)?;
-            let child = engine.instantiate_child(&component, &manifest, None)?;
-            let name = child.name().to_string();
-            Ok(mother_crate::daemon_bootstrap::LoadedChild::Legacy { child, name })
+            anyhow::bail!(
+                "child '{}' uses retired kind 'mother-child'; migrate to 'knowledge-child'",
+                manifest.name
+            )
         }
         other => anyhow::bail!(
             "child manifest world '{}' is not loadable by the daemon child loader",
