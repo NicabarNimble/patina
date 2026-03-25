@@ -1,6 +1,6 @@
-//! Plugin scaffolding — `patina plugin init <name> --world <world>`.
+//! Child scaffolding — `patina plugin init <name> --world <world>`.
 //!
-//! Generates a working plugin project from embedded templates.
+//! Generates a working child project from embedded templates.
 //! Templates are compiled into the binary via `include_str!` — no
 //! network, no cache, no sync. The binary is the single source of truth.
 
@@ -52,24 +52,24 @@ mod templates {
 // Name validation
 // =========================================================================
 
-/// Validate a plugin name as a valid Rust crate name.
+/// Validate a child name as a valid Rust crate name.
 ///
 /// Rules: non-empty, starts with letter or underscore, contains only
 /// alphanumeric, hyphens, or underscores. Matches Cargo's crate naming.
 pub fn validate_name(name: &str) -> Result<()> {
     if name.is_empty() {
-        bail!("plugin name cannot be empty");
+        bail!("child name cannot be empty");
     }
     let first = name.chars().next().unwrap();
     if !first.is_ascii_alphabetic() && first != '_' {
         bail!(
-            "plugin name must start with a letter or underscore, got '{}'",
+            "child name must start with a letter or underscore, got '{}'",
             first
         );
     }
     for ch in name.chars() {
         if !ch.is_ascii_alphanumeric() && ch != '-' && ch != '_' {
-            bail!("plugin name contains invalid character: '{}'", ch);
+            bail!("child name contains invalid character: '{}'", ch);
         }
     }
     Ok(())
@@ -245,7 +245,7 @@ mod tests {
         let lib = std::fs::read_to_string(project.join("src/lib.rs")).unwrap();
         assert!(cargo.contains("test-plugin"));
         assert!(lib.contains("TestPlugin"));
-        assert!(lib.contains("register_task!"));
+        assert!(lib.contains("register_task_child!"));
     }
 
     #[test]
@@ -261,11 +261,11 @@ mod tests {
     fn test_scaffold_all_worlds() {
         let tmp = tempfile::tempdir().unwrap();
         for (world, expected_macro) in [
-            (ChildKind::KnowledgeChild, "register_plugin!"),
-            (ChildKind::MotherChild, "register_plugin!"),
-            (ChildKind::Command, "register_command!"),
-            (ChildKind::Task, "register_task!"),
-            (ChildKind::Pipeline, "register_pipeline!"),
+            (ChildKind::KnowledgeChild, "register_mother_child!"),
+            (ChildKind::MotherChild, "register_mother_child!"),
+            (ChildKind::Command, "register_command_child!"),
+            (ChildKind::Task, "register_task_child!"),
+            (ChildKind::Pipeline, "register_pipeline_child!"),
         ] {
             let name = format!("test-{}", world);
             let project = scaffold(tmp.path(), &name, &world).unwrap();

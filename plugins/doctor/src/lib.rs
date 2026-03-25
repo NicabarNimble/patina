@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use patina_sdk::command::{layer, measure, query};
-use patina_sdk::{register_command, CommandPlugin};
+use patina_sdk::{register_command_child, CommandChild};
 
 /// Typed structs for doctor plugin.
 ///
@@ -74,7 +74,7 @@ mod types {
 #[derive(Default)]
 struct DoctorPlugin;
 
-impl CommandPlugin for DoctorPlugin {
+impl CommandChild for DoctorPlugin {
     fn name(&self) -> String {
         "doctor".into()
     }
@@ -377,4 +377,4 @@ fn extract_belief_count(context_text: &str) -> Option<u32> {
     None
 }
 
-register_command!(DoctorPlugin);
+register_command_child!(DoctorPlugin);

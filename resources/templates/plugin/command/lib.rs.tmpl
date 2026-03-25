@@ -1,15 +1,15 @@
-use patina_sdk::{register_command, CommandPlugin};
+use patina_sdk::{register_command_child, CommandChild};
 
 #[derive(Default)]
 struct __NAME_STRUCT__;
 
-impl CommandPlugin for __NAME_STRUCT__ {
+impl CommandChild for __NAME_STRUCT__ {
     fn name(&self) -> String {
         "__NAME__".into()
     }
 
     fn description(&self) -> String {
-        "A Patina command plugin".into()
+        "A Patina command child".into()
     }
 
     fn run(&mut self, _args: &[String]) -> i32 {
@@ -17,4 +17,4 @@ impl CommandPlugin for __NAME_STRUCT__ {
     }
 }
 
-register_command!(__NAME_STRUCT__);
+register_command_child!(__NAME_STRUCT__);

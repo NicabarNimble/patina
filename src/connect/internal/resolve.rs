@@ -27,7 +27,7 @@ pub(crate) fn resolve_auth(record: &ConnectionRecord) -> Result<AuthPlan, Connec
     }
 
     // 2. Decrypt credential from vault — FAIL CLOSED
-    let credential = match crate::secrets::get_global_secret(&record.auth.secret_ref) {
+    let credential = match crate::mother::get_global_secret(&record.auth.secret_ref) {
         Ok(Some(value)) => ResolvedCredential {
             value,
             injection: record.auth.injection.clone(),

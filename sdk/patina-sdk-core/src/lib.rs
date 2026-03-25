@@ -283,7 +283,7 @@ impl<B: PeerBackend> PeerToy<B> {
     }
 }
 
-pub trait KnowledgeChildPlugin {
+pub trait KnowledgeChild {
     fn name(&self) -> String;
 
     fn on_load(&mut self) -> Result<(), String> {
@@ -310,13 +310,18 @@ pub trait KnowledgeChildPlugin {
     }
 }
 
-static PLUGIN: WasmCell<Option<Box<dyn KnowledgeChildPlugin>>> = WasmCell(UnsafeCell::new(None));
+static PLUGIN: WasmCell<Option<Box<dyn KnowledgeChild>>> = WasmCell(UnsafeCell::new(None));
 
 #[doc(hidden)]
-pub fn __register_plugin(plugin: Box<dyn KnowledgeChildPlugin>) {
+pub fn __register_knowledge_child(child: Box<dyn KnowledgeChild>) {
     unsafe {
-        *PLUGIN.0.get() = Some(plugin);
+        *PLUGIN.0.get() = Some(child);
     }
+}
+
+#[doc(hidden)]
+pub fn __register_plugin(plugin: Box<dyn KnowledgeChild>) {
+    __register_knowledge_child(plugin);
 }
 
 #[macro_export]
@@ -328,3 +333,5 @@ macro_rules! register_knowledge_child {
         }
     };
 }
+
+pub use KnowledgeChild as KnowledgeChildPlugin;

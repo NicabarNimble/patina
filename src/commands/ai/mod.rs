@@ -72,6 +72,12 @@ pub struct AiLaunchArgs {
 
     #[arg(long, default_value_t = false)]
     default: bool,
+
+    #[arg(long, default_value_t = false, conflicts_with = "no_tmux")]
+    tmux: bool,
+
+    #[arg(long, default_value_t = false, conflicts_with = "tmux")]
+    no_tmux: bool,
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -175,6 +181,8 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             persona: launch.persona,
             path: launch.path,
             set_default: launch.default,
+            tmux: launch.tmux,
+            no_tmux: launch.no_tmux,
         }),
         Some(AiCommands::OpenCode { launch }) => surface::launch(surface::AiLaunchRequest {
             interface_name: "opencode".to_string(),
@@ -183,6 +191,8 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             persona: launch.persona,
             path: launch.path,
             set_default: launch.default,
+            tmux: launch.tmux,
+            no_tmux: launch.no_tmux,
         }),
         Some(AiCommands::Gemini { launch }) => surface::launch(surface::AiLaunchRequest {
             interface_name: "gemini".to_string(),
@@ -191,6 +201,8 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             persona: launch.persona,
             path: launch.path,
             set_default: launch.default,
+            tmux: launch.tmux,
+            no_tmux: launch.no_tmux,
         }),
         Some(AiCommands::List { json }) => internal::list(json),
         Some(AiCommands::End {
@@ -229,6 +241,31 @@ mod tests {
                 other => panic!("unexpected command: {other:?}"),
             }
         }
+    }
+
+    #[test]
+    fn launch_peer_commands_accept_tmux_flags() {
+        for args in [
+            ["patina", "claude", "--tmux"],
+            ["patina", "opencode", "--no-tmux"],
+            ["patina", "gemini", "--tmux"],
+        ] {
+            let parsed = AiCli::try_parse_from(args).unwrap();
+            match parsed.command {
+                AiCommands::Claude { launch }
+                | AiCommands::OpenCode { launch }
+                | AiCommands::Gemini { launch } => {
+                    assert!(launch.tmux || launch.no_tmux)
+                }
+                other => panic!("unexpected command: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn launch_peer_commands_reject_conflicting_tmux_flags() {
+        let parsed = AiCli::try_parse_from(["patina", "claude", "--tmux", "--no-tmux"]);
+        assert!(parsed.is_err());
     }
 
     #[test]

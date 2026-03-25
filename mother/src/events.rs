@@ -22,40 +22,79 @@ pub fn pull(
     limit: u32,
 ) -> Result<Vec<PendingEvent>> {
     let after = after_offset.unwrap_or(0) as i64;
-    let (predicate, maybe_arg) = match stream {
-        "belief.changed" => ("event_type LIKE 'belief.%'".to_string(), None),
-        "graph.changed" => ("event_type LIKE 'graph.%'".to_string(), None),
-        "fact.ingested" => ("provenance = 'external'".to_string(), None),
-        "session.completed" => ("event_type = ?3".to_string(), Some("session.ended")),
-        "repo.synced" => ("event_type = ?3".to_string(), Some("repo.synced")),
+    match stream {
+        "belief.changed" => pull_mutation_log(
+            conn,
+            stream,
+            "belief_mutation_log",
+            "belief.changed",
+            after,
+            limit,
+        ),
+        "graph.changed" => pull_mutation_log(
+            conn,
+            stream,
+            "graph_mutation_log",
+            "graph.changed",
+            after,
+            limit,
+        ),
+        "session.completed" => pull_sessions(conn, stream, after, limit),
+        "fact.ingested" | "repo.synced" => Ok(Vec::new()),
         _ => anyhow::bail!("unknown stream '{}'", stream),
-    };
+    }
+}
+
+fn pull_mutation_log(
+    conn: &Connection,
+    stream: &str,
+    table: &str,
+    event_type: &str,
+    after: i64,
+    limit: u32,
+) -> Result<Vec<PendingEvent>> {
     let sql = format!(
-        "SELECT seq, event_type, data, timestamp FROM eventlog WHERE seq > ?1 AND {} ORDER BY seq LIMIT ?2",
-        predicate
+        "SELECT seq, payload_json, created_at FROM {} WHERE seq > ?1 ORDER BY seq LIMIT ?2",
+        table
     );
     let mut stmt = conn.prepare(&sql)?;
-    if let Some(arg) = maybe_arg {
-        let rows = stmt.query_map(params![after, limit as i64, arg], |row| {
-            let payload_json: String = row.get(2)?;
-            Ok(PendingEvent {
-                stream: stream.to_string(),
-                offset: row.get::<_, i64>(0)? as u64,
-                event_type: row.get(1)?,
-                payload: serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null),
-                occurred_at: row.get(3)?,
-            })
-        })?;
-        return Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?);
-    }
     let rows = stmt.query_map(params![after, limit as i64], |row| {
-        let payload_json: String = row.get(2)?;
+        let payload_json: String = row.get(1)?;
         Ok(PendingEvent {
             stream: stream.to_string(),
             offset: row.get::<_, i64>(0)? as u64,
-            event_type: row.get(1)?,
+            event_type: event_type.to_string(),
             payload: serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null),
-            occurred_at: row.get(3)?,
+            occurred_at: row.get(2)?,
+        })
+    })?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
+fn pull_sessions(
+    conn: &Connection,
+    stream: &str,
+    after: i64,
+    limit: u32,
+) -> Result<Vec<PendingEvent>> {
+    let mut stmt = conn.prepare(
+        "SELECT rowid, runtime_id, project_uid, interface_kind, updated_at FROM mother_sessions WHERE rowid > ?1 AND status = 'ended' ORDER BY rowid LIMIT ?2",
+    )?;
+    let rows = stmt.query_map(params![after, limit as i64], |row| {
+        let runtime_id: String = row.get(1)?;
+        let project_uid: String = row.get(2)?;
+        let interface_kind: String = row.get(3)?;
+        let payload = serde_json::json!({
+            "runtime_id": runtime_id,
+            "project_uid": project_uid,
+            "interface_kind": interface_kind,
+        });
+        Ok(PendingEvent {
+            stream: stream.to_string(),
+            offset: row.get::<_, i64>(0)? as u64,
+            event_type: "session.completed".to_string(),
+            payload,
+            occurred_at: row.get(4)?,
         })
     })?;
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)

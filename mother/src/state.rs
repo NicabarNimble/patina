@@ -96,6 +96,57 @@ impl MotherSessionStatus {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ProjectUid(String);
+
+impl ProjectUid {
+    pub fn new(value: impl Into<String>) -> Result<Self> {
+        let value = value.into();
+        if value.trim().is_empty() {
+            anyhow::bail!("project_uid must not be empty");
+        }
+        Ok(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PersonaUid(String);
+
+impl PersonaUid {
+    pub fn new(value: impl Into<String>) -> Result<Self> {
+        let value = value.into();
+        if value.trim().is_empty() {
+            anyhow::bail!("persona_uid must not be empty");
+        }
+        Ok(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct InterfaceKindId(String);
+
+impl InterfaceKindId {
+    pub fn new(value: impl Into<String>) -> Result<Self> {
+        let value = value.into();
+        if value.trim().is_empty() {
+            anyhow::bail!("interface_kind must not be empty");
+        }
+        Ok(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct MotherSessionRecord {
     pub runtime_id: String,
@@ -872,7 +923,7 @@ impl KnowledgeRuntimeStore {
 
     pub fn list_active_mother_sessions(
         &self,
-        project_uid: &str,
+        project_uid: &ProjectUid,
     ) -> Result<Vec<MotherSessionRecord>> {
         let conn = self.open()?;
         let mut stmt = conn.prepare(
@@ -886,16 +937,17 @@ impl KnowledgeRuntimeStore {
             "#,
         )?;
         let rows = stmt
-            .query_map(params![project_uid], map_mother_session_row)?
+            .query_map(params![project_uid.as_str()], map_mother_session_row)?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
     }
 
     pub fn find_active_mother_session_for_interface(
         &self,
-        project_uid: &str,
+        project_uid: &ProjectUid,
         adapter_name: &str,
-        interface_kind: &str,
+        interface_kind: &InterfaceKindId,
+        persona_uid: Option<&PersonaUid>,
     ) -> Result<Option<MotherSessionRecord>> {
         let conn = self.open()?;
         conn.query_row(
@@ -908,10 +960,16 @@ impl KnowledgeRuntimeStore {
               AND status = 'active'
               AND adapter_name = ?2
               AND interface_kind = ?3
+              AND ((?4 IS NULL AND persona_uid IS NULL) OR persona_uid = ?4)
             ORDER BY updated_at DESC, created_at DESC
             LIMIT 1
             "#,
-            params![project_uid, adapter_name, interface_kind],
+            params![
+                project_uid.as_str(),
+                adapter_name,
+                interface_kind.as_str(),
+                persona_uid.map(PersonaUid::as_str)
+            ],
             map_mother_session_row,
         )
         .optional()
@@ -1142,12 +1200,40 @@ mod tests {
         store.create_mother_session(&first, &[]).unwrap();
         store.create_mother_session(&second, &[]).unwrap();
 
-        let active = store.list_active_mother_sessions("proj-1234").unwrap();
+        let project_uid = ProjectUid::new("proj-1234").unwrap();
+        let opencode_kind = InterfaceKindId::new("opencode").unwrap();
+        let gemini_kind = InterfaceKindId::new("gemini").unwrap();
+        let active = store.list_active_mother_sessions(&project_uid).unwrap();
         assert_eq!(active.len(), 2);
+        let persona_uid = PersonaUid::new("persona-1").unwrap();
+        let missing_persona_uid = PersonaUid::new("persona-missing").unwrap();
         assert!(store
-            .find_active_mother_session_for_interface("proj-1234", "opencode", "opencode")
+            .find_active_mother_session_for_interface(
+                &project_uid,
+                "opencode",
+                &opencode_kind,
+                None,
+            )
             .unwrap()
             .is_some());
+        assert!(store
+            .find_active_mother_session_for_interface(
+                &project_uid,
+                "gemini",
+                &gemini_kind,
+                Some(&persona_uid),
+            )
+            .unwrap()
+            .is_some());
+        assert!(store
+            .find_active_mother_session_for_interface(
+                &project_uid,
+                "gemini",
+                &gemini_kind,
+                Some(&missing_persona_uid),
+            )
+            .unwrap()
+            .is_none());
 
         store
             .finish_mother_session(

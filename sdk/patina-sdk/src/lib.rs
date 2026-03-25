@@ -1,23 +1,39 @@
-//! Patina SDK — build WASM plugins for the Patina ecosystem.
+//! Patina SDK — build WASM children for the Patina ecosystem.
 //!
-//! Enable one feature to select your plugin world:
+//! Enable one feature to select your child world:
 //!
 //! ```toml
-//! # Task plugin (actions + toys, full host access)
+//! # Task child (actions + toys, full host access)
 //! patina-sdk = { version = "0.21", features = ["task"] }
 //!
-//! # Command plugin (CLI subcommands, read-only)
+//! # Command child (CLI subcommands, read-only)
 //! patina-sdk = { version = "0.21", features = ["command"] }
 //!
-//! # Pipeline plugin (pure compute, log only)
+//! # Pipeline child (pure compute, log only)
 //! patina-sdk = { version = "0.21", features = ["pipeline"] }
 //!
-//! # Mother-child plugin (daemon-resident, full access)
+//! # Mother-child (daemon-resident, full access)
 //! patina-sdk = { version = "0.21", features = ["mother-child"] }
 //!
 //! # Knowledge-child (Mother/Child/Toy doctrine)
 //! patina-sdk = { version = "0.21", features = ["knowledge-child"] }
 //! ```
+//!
+//! M5 classification policy:
+//! - Stabilization target: `knowledge-child` + tier crates.
+//! - Migration scaffolds: `task`, `command`, `mother-child`.
+//! - Experimental lane: `pipeline`.
+//!
+//! Removal-gate policy for shim lanes:
+//! - Shim worlds remain available until compatibility matrix + scaffold parity stay green.
+//! - Shim removal must be rollback-safe and explicitly spec-authorized.
+//! - Child-first names stay canonical; legacy aliases are compatibility-only.
+//!
+//! Toy contract policy:
+//! - A toy is a Mother-defined boundary opening in the WASM sandbox wall.
+//! - Toys are granted by `child.toml` (`[needs].toys` + optional `[needs.scopes]`).
+//! - Scope config shapes authority; it does not create new toy kinds.
+//! - Litmus test: if a child can do it via pure compute, it is not a toy.
 
 // =========================================================================
 // Compiler-enforced world exclusion — [[compiler-enforced-safety]]
@@ -65,26 +81,26 @@ pub use patina_sdk_data as data;
 #[cfg(feature = "task")]
 pub mod task;
 #[cfg(feature = "task")]
-pub use task::{TaskPlugin, Toy};
+pub use task::{TaskChild, TaskPlugin, Toy};
 
 #[cfg(feature = "command")]
 pub mod command;
 #[cfg(feature = "command")]
-pub use command::CommandPlugin;
+pub use command::{CommandChild, CommandPlugin};
 
 #[cfg(feature = "mother-child")]
 pub mod mother_child;
 #[cfg(feature = "mother-child")]
-pub use mother_child::{ChildHealth, HealthStatus, MotherChildPlugin, Toy};
+pub use mother_child::{ChildHealth, HealthStatus, MotherChild, MotherChildPlugin, Toy};
 
 #[cfg(feature = "knowledge-child")]
 pub mod knowledge_child;
 #[cfg(feature = "knowledge-child")]
 pub mod toys;
 #[cfg(feature = "knowledge-child")]
-pub use knowledge_child::{granted, substrate};
+pub use knowledge_child::{granted, substrate, KnowledgeChild, KnowledgeChildPlugin};
 
 #[cfg(feature = "pipeline")]
 pub mod pipeline;
 #[cfg(feature = "pipeline")]
-pub use pipeline::{parse_request, PipelinePlugin};
+pub use pipeline::{parse_request, PipelineChild, PipelinePlugin};

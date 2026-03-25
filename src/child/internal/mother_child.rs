@@ -353,7 +353,7 @@ impl MotherChildEngine {
                 );
             }
             // Load-time vault probe: warn if secret missing, don't block load
-            match crate::secrets::get_global_secret(&mapping.secret_name) {
+            match crate::mother::get_global_secret(&mapping.secret_name) {
                 Ok(Some(_)) => {} // secret exists, all good
                 Ok(None) => {
                     eprintln!(

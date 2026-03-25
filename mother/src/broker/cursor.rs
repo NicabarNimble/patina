@@ -6,7 +6,7 @@ use rusqlite::Connection;
 /// Get the stored cursor for a source.
 pub fn get_cursor(conn: &Connection, source: &str) -> Result<Option<String>> {
     let result = conn.query_row(
-        "SELECT cursor_value FROM broker_cursors WHERE source_name = ?1",
+        "SELECT cursor_value FROM mother_lake_cursors WHERE source_name = ?1 ORDER BY updated_at DESC LIMIT 1",
         [source],
         |row| row.get(0),
     );
@@ -28,11 +28,17 @@ mod tests {
         let db_path = dir.path().join("events.db");
         let conn = Connection::open(&db_path).unwrap();
         conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS broker_cursors (
-                source_name TEXT PRIMARY KEY,
-                cursor_value TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );",
+            "CREATE TABLE IF NOT EXISTS mother_lake_cursors (
+                lake_name TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                data_type TEXT NOT NULL,
+                cursor_value TEXT,
+                records_written INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL,
+                last_error TEXT,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (lake_name, source_name, data_type)
+             );",
         )
         .unwrap();
         let cursor = get_cursor(&conn, "nonexistent").unwrap();

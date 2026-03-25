@@ -310,7 +310,7 @@ fn resolve_credential(
         return None;
     }
 
-    match crate::secrets::get_global_secret(&mapping.secret_name) {
+    match crate::mother::get_global_secret(&mapping.secret_name) {
         Ok(Some(value)) => Some((mapping.secret_name.clone(), value)),
         Ok(None) => {
             eprintln!(

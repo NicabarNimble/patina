@@ -38,13 +38,13 @@
 //! ```
 
 pub(crate) mod adapters;
+pub(crate) mod builtin_dispatch;
 pub(crate) mod daemon;
 pub(crate) mod graph;
+pub(crate) mod loader;
 
 // Moved to mother crate — re-export for daemon.rs
-pub(crate) use mother_crate::microserver;
 pub(crate) use mother_crate::registry;
-pub(crate) use mother_crate::secrets;
 
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
@@ -567,24 +567,6 @@ fn load_project_manifest(project_root: &Path) -> Result<ProjectManifest> {
         );
     }
     Ok(manifest)
-}
-
-/// Set up the Unix domain socket for serving.
-///
-/// 1. Ensure ~/.patina/run/ exists with 0o700
-/// 2. Clean up stale socket (safe unlink)
-/// 3. Bind UnixListener
-/// 4. Set socket to 0o600
-pub fn setup_unix_listener() -> Result<std::os::unix::net::UnixListener> {
-    let run_dir = paths::serve::run_dir();
-    let socket_path = paths::serve::socket_path();
-    mother_crate::socket::setup_unix_listener(&run_dir, &socket_path)
-}
-
-/// Remove the socket file on clean shutdown.
-pub fn cleanup_socket() {
-    let socket_path = paths::serve::socket_path();
-    mother_crate::socket::cleanup_socket(&socket_path);
 }
 
 #[cfg(test)]

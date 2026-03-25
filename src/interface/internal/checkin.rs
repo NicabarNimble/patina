@@ -49,6 +49,15 @@ pub fn check_in(request: &InterfaceCheckIn) -> Result<CheckInResult> {
 
     if let Some(selector) = &request.requested_session {
         if let Some(handle) = load_requested_session(&request.project_root, selector)? {
+            if !persona_matches(
+                request.requested_persona.as_deref(),
+                handle.persona_uid.as_deref(),
+            ) {
+                anyhow::bail!(
+                    "Requested session '{}' persona does not match requested persona scope",
+                    selector
+                );
+            }
             return Ok(result_from_handle(request, handle, true));
         }
     }
@@ -56,7 +65,12 @@ pub fn check_in(request: &InterfaceCheckIn) -> Result<CheckInResult> {
     if let Some(handle) =
         session::load_current_interface_session(&request.project_root, &request.adapter_name)?
     {
-        return Ok(result_from_handle(request, handle, true));
+        if persona_matches(
+            request.requested_persona.as_deref(),
+            handle.persona_uid.as_deref(),
+        ) {
+            return Ok(result_from_handle(request, handle, true));
+        }
     }
 
     let active_interface_sessions = active_interface_sessions(request)?;
@@ -244,8 +258,19 @@ fn active_interface_sessions(
         .filter(|handle| {
             handle.adapter_name == request.adapter_name
                 && handle.interface_kind == request.interface_kind
+                && persona_matches(
+                    request.requested_persona.as_deref(),
+                    handle.persona_uid.as_deref(),
+                )
         })
         .collect())
+}
+
+fn persona_matches(requested: Option<&str>, candidate: Option<&str>) -> bool {
+    match requested {
+        Some(expected) => candidate == Some(expected),
+        None => true,
+    }
 }
 
 fn select_reusable_session(
@@ -435,5 +460,130 @@ mod tests {
             Ok(value) => value,
             Err(panic) => std::panic::resume_unwind(panic),
         }
+    }
+
+    #[test]
+    fn check_in_persona_scope_ignores_pointer_mismatch_and_reattaches_matching_persona() {
+        let temp = tempfile::TempDir::new().unwrap();
+        with_temp_patina_home(&temp, || {
+            let project_uid = project::create_uid_if_missing(temp.path()).unwrap();
+            let store = KnowledgeRuntimeStore::default();
+
+            let none_persona = MotherSessionRecord {
+                runtime_id: "runtime-none-persona".to_string(),
+                project_uid: project_uid.clone(),
+                file_id: "20260312-100000-AAAA".to_string(),
+                title: "OpenCode none persona".to_string(),
+                persona_uid: None,
+                status: MotherSessionStatus::Active,
+                interface_kind: "opencode".to_string(),
+                adapter_name: "opencode".to_string(),
+                branch: Some("patina".to_string()),
+                start_tag: Some("session-20260312-100000-AAAA-opencode-start".to_string()),
+                end_tag: None,
+                parent_runtime_id: None,
+                handoff_from_runtime_id: None,
+                created_at: "2026-03-12T10:00:00Z".to_string(),
+                updated_at: "2026-03-12T10:00:00Z".to_string(),
+            };
+            let persona_one = MotherSessionRecord {
+                runtime_id: "runtime-persona-one".to_string(),
+                project_uid,
+                file_id: "20260312-100001-BBBB".to_string(),
+                title: "OpenCode persona one".to_string(),
+                persona_uid: Some("persona-1".to_string()),
+                status: MotherSessionStatus::Active,
+                interface_kind: "opencode".to_string(),
+                adapter_name: "opencode".to_string(),
+                branch: Some("patina".to_string()),
+                start_tag: Some("session-20260312-100001-BBBB-opencode-start".to_string()),
+                end_tag: None,
+                parent_runtime_id: None,
+                handoff_from_runtime_id: None,
+                created_at: "2026-03-12T10:00:01Z".to_string(),
+                updated_at: "2026-03-12T10:00:01Z".to_string(),
+            };
+
+            for record in [&none_persona, &persona_one] {
+                store.create_mother_session(record, &[]).unwrap();
+                let artifact_path = session::durable_session_path(temp.path(), &record.file_id);
+                fs::create_dir_all(artifact_path.parent().unwrap()).unwrap();
+                fs::write(&artifact_path, format!("session {}", record.file_id)).unwrap();
+            }
+
+            let pointer_path = temp
+                .path()
+                .join(".patina/local/interface-sessions/opencode.toml");
+            fs::create_dir_all(pointer_path.parent().unwrap()).unwrap();
+            fs::write(
+                &pointer_path,
+                "adapter = \"opencode\"\nruntime_id = \"runtime-none-persona\"\nfile_id = \"20260312-100000-AAAA\"\n",
+            )
+            .unwrap();
+
+            let result = check_in(&InterfaceCheckIn {
+                interface_kind: InterfaceKind::OpenCode,
+                adapter_name: "opencode".to_string(),
+                project_root: temp.path().to_path_buf(),
+                project_uid: None,
+                requested_persona: Some("persona-1".to_string()),
+                requested_session: None,
+                title: None,
+                capabilities: InterfaceCapabilities::default(),
+            })
+            .unwrap();
+
+            assert!(result.attached_existing);
+            assert_eq!(result.session_runtime_id, persona_one.runtime_id);
+            assert_eq!(result.session_file_id, persona_one.file_id);
+            assert_eq!(result.persona_uid.as_deref(), Some("persona-1"));
+        });
+    }
+
+    #[test]
+    fn check_in_rejects_requested_session_when_persona_scope_mismatches() {
+        let temp = tempfile::TempDir::new().unwrap();
+        with_temp_patina_home(&temp, || {
+            let project_uid = project::create_uid_if_missing(temp.path()).unwrap();
+            let store = KnowledgeRuntimeStore::default();
+
+            let record = MotherSessionRecord {
+                runtime_id: "runtime-none-persona".to_string(),
+                project_uid,
+                file_id: "20260312-100000-AAAA".to_string(),
+                title: "OpenCode none persona".to_string(),
+                persona_uid: None,
+                status: MotherSessionStatus::Active,
+                interface_kind: "opencode".to_string(),
+                adapter_name: "opencode".to_string(),
+                branch: Some("patina".to_string()),
+                start_tag: Some("session-20260312-100000-AAAA-opencode-start".to_string()),
+                end_tag: None,
+                parent_runtime_id: None,
+                handoff_from_runtime_id: None,
+                created_at: "2026-03-12T10:00:00Z".to_string(),
+                updated_at: "2026-03-12T10:00:00Z".to_string(),
+            };
+            store.create_mother_session(&record, &[]).unwrap();
+            let artifact_path = session::durable_session_path(temp.path(), &record.file_id);
+            fs::create_dir_all(artifact_path.parent().unwrap()).unwrap();
+            fs::write(&artifact_path, format!("session {}", record.file_id)).unwrap();
+
+            let error = check_in(&InterfaceCheckIn {
+                interface_kind: InterfaceKind::OpenCode,
+                adapter_name: "opencode".to_string(),
+                project_root: temp.path().to_path_buf(),
+                project_uid: None,
+                requested_persona: Some("persona-1".to_string()),
+                requested_session: Some(record.runtime_id.clone()),
+                title: None,
+                capabilities: InterfaceCapabilities::default(),
+            })
+            .unwrap_err();
+
+            assert!(error
+                .to_string()
+                .contains("persona does not match requested persona scope"));
+        });
     }
 }

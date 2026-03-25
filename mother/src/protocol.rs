@@ -3,6 +3,36 @@ use serde_json::Value;
 
 pub const PROTOCOL_VERSION: u32 = 1;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(transparent)]
+pub struct ProjectUid(pub String);
+
+impl ProjectUid {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(transparent)]
+pub struct PersonaUid(pub String);
+
+impl PersonaUid {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(transparent)]
+pub struct InterfaceKindId(pub String);
+
+impl InterfaceKindId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Envelope {
     pub v: u32,
@@ -30,9 +60,20 @@ impl Envelope {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectPayload {
+    /// Caller identity (interface/runtime host).
     pub agent: String,
-    pub project: String,
-    pub persona: Option<String>,
+    /// Stable project identity from `.patina/uid`.
+    pub project_uid: ProjectUid,
+    /// Interface runtime kind (`opencode`, `claude`, `gemini`, ...).
+    pub interface_kind: InterfaceKindId,
+    /// Optional human/debug path. Not authoritative for identity.
+    #[serde(default, alias = "project")]
+    pub project_root: Option<String>,
+    /// Persona namespace selector.
+    ///
+    /// Pre-v1 this is an opaque UID/string. Future phases will bind this to
+    /// cryptographic persona identity and capability verification.
+    pub persona: Option<PersonaUid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -122,7 +122,7 @@ impl SecretsCacheChild {
         };
 
         Ok(ChildResponse {
-            payload: serde_json::json!({"status": status}),
+            payload: serde_json::json!({ "status": status }),
         })
     }
 }

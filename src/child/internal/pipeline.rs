@@ -150,19 +150,14 @@ impl PipelineEngine {
         Ok(component)
     }
 
-    /// Invoke a pipeline plugin with a request envelope.
+    /// Invoke a pipeline child with a request envelope.
     /// Returns the JSON response or error string.
-    pub fn handle(
-        &self,
-        component: &Component,
-        manifest: &ChildManifest,
-        request: &str,
-    ) -> Result<String> {
+    pub fn handle(&self, component: &Component, name: &str, request: &str) -> Result<String> {
         let wasi = wasmtime_wasi::WasiCtxBuilder::new()
             .inherit_stderr()
             .build();
         let host_state = pipeline_bindings::PipelineHostState {
-            plugin_name: manifest.name.clone(),
+            plugin_name: name.to_string(),
             wasi,
             wasi_table: wasmtime::component::ResourceTable::new(),
         };
@@ -223,7 +218,7 @@ impl PipelineEngine {
             }
 
             let manifest_path = path.join("child.toml");
-            let wasm_path = path.join("plugin.wasm");
+            let wasm_path = path.join("child.wasm");
 
             if !manifest_path.exists() || !wasm_path.exists() {
                 continue;

@@ -10,7 +10,7 @@
 //! beliefs scraper — they have their own embedding pipeline.
 //!
 //! File collection uses `ignore::WalkBuilder` to respect .gitignore,
-//! matching the pattern in the code scraper (extract_v2.rs).
+//! matching the pattern in the code scraper (extract.rs).
 
 pub mod sessions;
 
@@ -428,7 +428,7 @@ fn insert_pattern(conn: &Connection, pattern: &ParsedPattern) -> Result<()> {
 
 /// Collect markdown files from a directory, respecting .gitignore.
 ///
-/// Uses `ignore::WalkBuilder` (same as code scraper in extract_v2.rs)
+/// Uses `ignore::WalkBuilder` (same as code scraper in extract.rs)
 /// to skip gitignored paths like `layer/dust/`.
 fn collect_md_files(dir: &Path, recursive: bool) -> Vec<std::path::PathBuf> {
     let mut files = Vec::new();

@@ -1,11 +1,11 @@
 use patina_sdk::granted;
-use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChildPlugin};
+use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
 use patina_sdk::register_knowledge_child;
 
 #[derive(Default)]
 struct Child;
 
-impl KnowledgeChildPlugin for Child {
+impl KnowledgeChild for Child {
     fn name(&self) -> String {
         "{{ child_name }}".into()
     }

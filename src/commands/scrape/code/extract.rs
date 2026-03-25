@@ -19,17 +19,22 @@ use ignore::WalkBuilder;
 use super::database::Database;
 use super::extracted_data::{ExtractedData, ExtractedPayload};
 use super::languages::Language;
-use super::types::FilePath;
 
 use patina::child::engine::{ChildKind, ChildManifest, PipelineEngine};
 use patina::paths;
+
+/// Embedded Rust grammar WASM binary for graceful-extraction fallback.
+/// Patina can always parse Rust even with zero grammar children installed.
+/// Binary checked into resources/grammars/ so CI has it without wasi-sdk.
+const EMBEDDED_GRAMMAR_RUST: &[u8] =
+    include_bytes!("../../../../resources/grammars/grammar-rust.wasm");
 
 /// Process all source files and extract metadata using safe database operations.
 ///
 /// When `extension_filter` is Some, only pipeline plugins claiming those extensions
 /// are compiled (lazy loading). This avoids ~2s of Cranelift JIT when only one
 /// language is affected. See [[scrape-diff-driven]] EC4.
-pub fn extract_code_metadata_v2(
+pub fn extract_code_metadata(
     db_path: &str,
     work_dir: &Path,
     force: bool,
@@ -239,6 +244,12 @@ struct LoadedPipelinePlugin {
 fn discover_pipeline_plugins(
     extension_filter: Option<&HashSet<String>>,
 ) -> HashMap<String, LoadedPipelinePlugin> {
+    // PATINA_NO_PIPELINE=1 disables WASM grammar children, forcing native fallback.
+    if std::env::var_os("PATINA_NO_PIPELINE").is_some() {
+        eprintln!("[pipeline] disabled via PATINA_NO_PIPELINE");
+        return HashMap::new();
+    }
+
     let pipeline_dir = paths::child::pipeline_dir();
 
     if !pipeline_dir.is_dir() {
@@ -318,7 +329,7 @@ fn discover_pipeline_plugins_lazy(
         }
 
         let manifest_path = path.join("child.toml");
-        let wasm_path = path.join("plugin.wasm");
+        let wasm_path = path.join("child.wasm");
 
         if !manifest_path.exists() || !wasm_path.exists() {
             continue;
@@ -441,7 +452,7 @@ fn process_file_with_plugins(
         let request = build_parse_envelope(content, ext, file_path);
         match plugin
             .engine
-            .handle(&plugin.component, &plugin.manifest, &request)
+            .handle(&plugin.component, &plugin.manifest.name, &request)
         {
             Ok(response) => {
                 // 1. Try ExtractedPayload (has "kind" field)
@@ -470,25 +481,55 @@ fn process_file_with_plugins(
         }
     }
 
-    // Built-in Rust fallback — other languages require pipeline plugins
-    process_file_by_language(file_path, content, language).map(ExtractedPayload::Code)
+    // Embedded Rust grammar fallback — same WASM pipeline, bundled binary.
+    // Per [[graceful-extraction]], Patina can always parse Rust even with zero plugins.
+    if language == Language::Rust {
+        return process_rust_embedded(file_path, content);
+    }
+
+    Err(anyhow::anyhow!(
+        "No pipeline plugin for {:?} — install with `patina setup grammars`",
+        language
+    ))
 }
 
-/// Compiled-in Rust fallback. All other languages dispatch via pipeline plugins.
-/// Per [[graceful-extraction]], patina must always parse Rust even with zero plugins.
-fn process_file_by_language(
-    file_path: &str,
-    content: &[u8],
-    language: Language,
-) -> Result<ExtractedData> {
-    match language {
-        Language::Rust => {
-            use super::languages::rust::RustProcessor;
-            RustProcessor::process_file(FilePath::from(file_path), content)
+/// Rust fallback via embedded WASM grammar. Same pipeline path as external
+/// grammar children, but the component bytes come from include_bytes! instead
+/// of ~/.patina/pipeline/. No tree-sitter native dependency needed.
+fn process_rust_embedded(file_path: &str, content: &[u8]) -> Result<ExtractedPayload> {
+    use std::sync::OnceLock;
+    use wasmtime::component::Component;
+
+    // Cache the compiled component — include_bytes is free but WASM compilation
+    // is ~120ms. OnceLock ensures we compile exactly once per process.
+    static EMBEDDED_COMPONENT: OnceLock<Result<Component, String>> = OnceLock::new();
+
+    let component = EMBEDDED_COMPONENT.get_or_init(|| {
+        let engine = PipelineEngine::new().map_err(|e| e.to_string())?;
+        engine
+            .load_component(EMBEDDED_GRAMMAR_RUST)
+            .map_err(|e| e.to_string())
+    });
+
+    let component = match component {
+        Ok(c) => c,
+        Err(e) => {
+            return Err(anyhow::anyhow!(
+                "embedded grammar-rust failed to load: {}",
+                e
+            ))
         }
-        _ => Err(anyhow::anyhow!(
-            "No pipeline plugin for {:?} — install with `patina plugin install`",
-            language
-        )),
+    };
+
+    let engine = PipelineEngine::new()?;
+    let request = build_parse_envelope(content, "rs", file_path);
+    let response = engine.handle(component, "grammar-rust-embedded", &request)?;
+
+    // Same deserialization as external plugins
+    if let Ok(payload) = serde_json::from_str::<ExtractedPayload>(&response) {
+        return Ok(payload);
     }
+    serde_json::from_str::<ExtractedData>(&response)
+        .map(ExtractedPayload::Code)
+        .map_err(|e| anyhow::anyhow!("embedded grammar-rust response parse failed: {}", e))
 }

@@ -28,7 +28,7 @@ use super::ScrapeConfig;
 // LANGUAGE MODULES
 // ============================================================================
 pub mod database;
-pub mod extract_v2;
+pub mod extract;
 pub mod extracted_data;
 pub mod languages;
 pub mod types;
@@ -74,7 +74,7 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
     }
 
     // Always use the new embedded SQLite implementation
-    let items_processed = extract_v2::extract_code_metadata_v2(
+    let items_processed = extract::extract_code_metadata(
         &config.db_path,
         &work_dir,
         config.force,

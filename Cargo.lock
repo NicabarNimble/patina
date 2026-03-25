@@ -2659,18 +2659,29 @@ dependencies = [
 name = "mother"
 version = "0.1.0"
 dependencies = [
+ "age",
  "anyhow",
+ "chacha20poly1305",
  "chrono",
+ "core-foundation",
  "dirs 5.0.1",
+ "hkdf",
  "httparse",
  "libc",
+ "patina-protocol",
+ "rand 0.8.5",
+ "reqwest",
  "rusqlite",
+ "security-framework",
+ "security-framework-sys",
  "serde",
  "serde_json",
  "serde_yaml",
+ "sha2",
  "tempfile",
  "toml 0.8.23",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]
@@ -2981,7 +2992,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "patina-ai"
-version = "0.43.8"
+version = "0.43.13"
 dependencies = [
  "age",
  "anyhow",
@@ -3006,6 +3017,8 @@ dependencies = [
  "notify",
  "ort",
  "parking_lot",
+ "patina-core",
+ "patina-protocol",
  "rand 0.8.5",
  "rayon",
  "regex",
@@ -3024,8 +3037,6 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
- "tree-sitter",
- "tree-sitter-rust",
  "usearch",
  "uuid",
  "walkdir",
@@ -3108,6 +3119,18 @@ name = "patina-ai-extension-repos"
 version = "0.1.0"
 dependencies = [
  "patina-sdk",
+ "serde_json",
+]
+
+[[package]]
+name = "patina-core"
+version = "0.1.0"
+
+[[package]]
+name = "patina-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
  "serde_json",
 ]
 
@@ -4194,12 +4217,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
-name = "streaming-iterator"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b2231b7c3057d5e4ad0156fb3dc807d900806020c5ffa3ee6ff2c8c76fb8520"
-
-[[package]]
 name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4700,35 +4717,6 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
-]
-
-[[package]]
-name = "tree-sitter"
-version = "0.24.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5387dffa7ffc7d2dae12b50c6f7aab8ff79d6210147c6613561fc3d474c6f75"
-dependencies = [
- "cc",
- "regex",
- "regex-syntax",
- "streaming-iterator",
- "tree-sitter-language",
-]
-
-[[package]]
-name = "tree-sitter-language"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
-
-[[package]]
-name = "tree-sitter-rust"
-version = "0.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b9b18034c684a2420722be8b2a91c9c44f2546b631c039edf575ccba8c61be1"
-dependencies = [
- "cc",
- "tree-sitter-language",
 ]
 
 [[package]]

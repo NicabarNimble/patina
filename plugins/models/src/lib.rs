@@ -8,12 +8,12 @@
 //! - "resolve_model" → returns expected model directory path
 //! - "model_status"  → returns tri-state status (cached/local/unknown)
 
-use patina_sdk::{register_plugin, ChildHealth, HealthStatus, MotherChildPlugin};
+use patina_sdk::{register_mother_child, ChildHealth, HealthStatus, MotherChild};
 
 #[derive(Default)]
 struct ModelsChild;
 
-impl MotherChildPlugin for ModelsChild {
+impl MotherChild for ModelsChild {
     fn name(&self) -> String {
         "models".into()
     }
@@ -82,4 +82,4 @@ impl ModelsChild {
     }
 }
 
-register_plugin!(ModelsChild);
+register_mother_child!(ModelsChild);

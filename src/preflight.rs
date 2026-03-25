@@ -1,11 +1,20 @@
 //! Preflight checks - ensure system is ready to run patina.
 
+use std::env;
 use std::process::Command;
 
 const STALE_THRESHOLD_MINUTES: u64 = 24 * 60; // 24 hours
+const PREFLIGHT_CLEANUP_ENV: &str = "PATINA_PREFLIGHT_CLEANUP";
 
-/// Ensure system is ready to run patina. Kills stale processes (>24h).
+/// Ensure system is ready to run patina.
+///
+/// Automatic stale-process cleanup is opt-in (`PATINA_PREFLIGHT_CLEANUP=1`) because
+/// long-lived daemon/tmux sessions are valid runtime state for Patina operators.
 pub fn ensure_clean_state() {
+    if !preflight_cleanup_enabled() {
+        return;
+    }
+
     for proc in find_stale_processes(STALE_THRESHOLD_MINUTES) {
         if Command::new("kill")
             .arg(proc.pid.to_string())
@@ -20,6 +29,17 @@ pub fn ensure_clean_state() {
             );
         }
     }
+}
+
+fn preflight_cleanup_enabled() -> bool {
+    matches!(
+        env::var(PREFLIGHT_CLEANUP_ENV)
+            .ok()
+            .as_deref()
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("1") | Some("true") | Some("yes")
+    )
 }
 
 struct StaleProcess {

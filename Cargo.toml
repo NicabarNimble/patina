@@ -1,11 +1,11 @@
 [workspace]
-members = [".", "mother", "sdk/patina-sdk", "sdk/patina-sdk-core", "sdk/patina-sdk-data", "sdk/patina-sdk-agent", "plugins/models", "plugins/repos", "plugins/doctor", "children/ducklake", "children/belief-verifier", "children/session-writer", "children/spec-manager", "children/doctor", "children/lake-manager"]
+members = [".", "mother", "sdk/patina-sdk", "sdk/patina-sdk-core", "sdk/patina-sdk-data", "sdk/patina-sdk-agent", "plugins/models", "plugins/repos", "plugins/doctor", "children/ducklake", "children/belief-verifier", "children/session-writer", "children/spec-manager", "children/doctor", "children/lake-manager", "crates/patina-core", "crates/patina-protocol"]
 exclude = ["layer/dust"]
 resolver = "2"
 
 [package]
 name = "patina-ai"
-version = "0.43.8"
+version = "0.43.13"
 edition = "2021"
 license = "MIT"
 description = "Context orchestration for AI development - captures and evolves patterns over time"
@@ -76,9 +76,8 @@ serde_yaml = "0.9"
 walkdir = "2"
 ignore = "0.4"
 
-# Tree-sitter - AST parsing for Rust fallback processor
-tree-sitter = "0.24"
-tree-sitter-rust = "0.24"
+# Tree-sitter removed — Rust fallback uses embedded WASM grammar via PipelineEngine.
+# See EMBEDDED_GRAMMAR_RUST in src/commands/scrape/code/extract.rs.
 
 # Structured logging (MCP server — file-based JSON)
 tracing = "0.1"
@@ -105,6 +104,8 @@ wasmtime = { version = "=41", default-features = false, features = [
 wasmtime-wasi = { version = "=41", default-features = false, features = ["p2"] }
 
 mother-crate = { package = "mother", path = "mother" }
+patina-core = { path = "crates/patina-core" }
+patina-protocol = { path = "crates/patina-protocol" }
 
 # Secrets v2 - age encryption and macOS Keychain
 age = { version = "0.11", features = ["armor"] }

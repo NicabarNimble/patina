@@ -1,13 +1,13 @@
-//! Guest-side API for Patina WASM command plugins.
+//! Guest-side API for Patina WASM command children.
 //!
-//! Command plugins add subcommands to the `patina` CLI.
+//! Command children add subcommands to the `patina` CLI.
 //! They run via CommandEngine directly — no Mother daemon needed.
 //!
-//! Provides the `CommandPlugin` trait and `register_command!` macro.
+//! Provides the `CommandChild` trait and `register_command_child!` macro.
 
 use crate::wasm_cell::WasmCell;
 
-// Version embedded in every plugin binary — host reads before instantiation.
+// Version embedded in every child binary — host reads before instantiation.
 #[cfg(target_arch = "wasm32")]
 #[used]
 #[link_section = ".patina_api_version"]
@@ -25,10 +25,10 @@ wit_bindgen::generate!({
 });
 
 // =========================================================================
-// Re-exports for plugin authors
+// Re-exports for child authors
 // =========================================================================
 
-/// Host logging — call from plugin code to log through the host.
+/// Host logging — call from child code to log through the host.
 pub mod log {
     pub use super::patina::host::log::LogLevel;
 
@@ -76,11 +76,12 @@ pub mod layer {
     }
 }
 
-/// Measurement reporting — record metrics from plugin execution.
+/// Measurement reporting — record metrics from child execution.
 ///
-/// Requires `host_measure = true` in child.toml capabilities.
+/// Requires the relevant toy grant in `child.toml` via `[needs].toys`
+/// (and optional `[needs.scopes]` where applicable).
 /// The host validates verb, checks metrics are numeric JSON, and
-/// writes to eventlog with the plugin name as source.
+/// writes to eventlog with the child name as source.
 pub mod measure {
     /// Record a measurement event.
     ///
@@ -100,7 +101,7 @@ pub mod measure {
 
 /// Capability-gated access to Patina's query engines.
 ///
-/// Requires `host_query = ["scry"]` (or "context", "assay") in child.toml.
+/// Requires a query-capable grant in `child.toml` (`[needs].toys` + optional scopes).
 /// The host checks grants at both load time and call time (defense in depth).
 /// Params and results are JSON strings — parse on the guest side.
 pub mod query {
@@ -110,7 +111,7 @@ pub mod query {
     /// `params` — JSON object with kind-specific parameters.
     ///
     /// Returns the query result as a string, or an error message.
-    /// The host will deny the call if the plugin's manifest doesn't
+    /// The host will deny the call if the child manifest doesn't
     /// grant the requested kind.
     pub fn query(kind: &str, params: &str) -> Result<String, String> {
         super::patina::host::query::query(kind, params)
@@ -118,14 +119,14 @@ pub mod query {
 }
 
 // =========================================================================
-// Plugin trait
+// Child trait
 // =========================================================================
 
-/// Trait for CLI command plugins.
+/// Trait for CLI command children.
 ///
-/// Implement this trait and call `register_command!` to create a WASM command plugin.
-/// The plugin type must also implement `Default`.
-pub trait CommandPlugin {
+/// Implement this trait and call `register_command_child!` to create a WASM command child.
+/// The child type must also implement `Default`.
+pub trait CommandChild {
     /// Command name — the subcommand added to `patina` CLI (e.g., "doctor").
     fn name(&self) -> String;
 
@@ -137,30 +138,34 @@ pub trait CommandPlugin {
 }
 
 // =========================================================================
-// Plugin singleton
+// Child singleton
 // =========================================================================
 
-static PLUGIN: WasmCell<Option<Box<dyn CommandPlugin>>> =
-    WasmCell(std::cell::UnsafeCell::new(None));
+static PLUGIN: WasmCell<Option<Box<dyn CommandChild>>> = WasmCell(std::cell::UnsafeCell::new(None));
 
 #[doc(hidden)]
-pub fn __register_command(plugin: Box<dyn CommandPlugin>) {
+pub fn __register_command_child(child: Box<dyn CommandChild>) {
     // Safety: called once from init export, WASM is single-threaded
     unsafe {
-        *PLUGIN.0.get() = Some(plugin);
+        *PLUGIN.0.get() = Some(child);
     }
+}
+
+#[doc(hidden)]
+pub fn __register_command(plugin: Box<dyn CommandChild>) {
+    __register_command_child(plugin);
 }
 
 #[cfg(target_arch = "wasm32")]
 mod __wasm {
     use super::*;
 
-    fn plugin() -> &'static mut dyn CommandPlugin {
+    fn child() -> &'static mut dyn CommandChild {
         // Safety: WASM is single-threaded, no concurrent access
         unsafe {
             (*PLUGIN.0.get())
                 .as_deref_mut()
-                .expect("command plugin not initialized — host must call init first")
+                .expect("command child not initialized — host must call init first")
         }
     }
 
@@ -168,15 +173,15 @@ mod __wasm {
 
     impl Guest for Component {
         fn name() -> String {
-            plugin().name()
+            child().name()
         }
 
         fn description() -> String {
-            plugin().description()
+            child().description()
         }
 
         fn run(args: Vec<String>) -> i32 {
-            plugin().run(&args)
+            child().run(&args)
         }
     }
 
@@ -187,32 +192,41 @@ mod __wasm {
 // Registration macro
 // =========================================================================
 
-/// Register a type as a command plugin.
+/// Register a type as a command child.
 ///
 /// Generates the `init` WASM export that the host calls first.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use patina_sdk::{CommandPlugin, register_command};
+/// use patina_sdk::{CommandChild, register_command_child};
 ///
 /// #[derive(Default)]
 /// struct DoctorPlugin;
 ///
-/// impl CommandPlugin for DoctorPlugin {
+/// impl CommandChild for DoctorPlugin {
 ///     fn name(&self) -> String { "doctor".into() }
 ///     fn description(&self) -> String { "Check project health".into() }
 ///     fn run(&mut self, args: &[String]) -> i32 { 0 }
 /// }
 ///
-/// register_command!(DoctorPlugin);
+/// register_command_child!(DoctorPlugin);
 /// ```
 #[macro_export]
-macro_rules! register_command {
+macro_rules! register_command_child {
     ($plugin_type:ty) => {
         #[export_name = "init"]
         extern "C" fn __patina_command_init() {
-            $crate::command::__register_command(Box::new(<$plugin_type>::default()));
+            $crate::command::__register_command_child(Box::new(<$plugin_type>::default()));
         }
     };
 }
+
+#[macro_export]
+macro_rules! register_command {
+    ($plugin_type:ty) => {
+        $crate::register_command_child!($plugin_type);
+    };
+}
+
+pub use CommandChild as CommandPlugin;

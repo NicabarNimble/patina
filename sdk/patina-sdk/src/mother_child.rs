@@ -1,13 +1,13 @@
-//! Guest-side API for Patina WASM mother-child plugins.
+//! Guest-side API for Patina WASM mother-child children.
 //!
-//! Mother-child plugins are daemon-resident: long-lived, heartbeat, toys.
+//! Mother-child children are daemon-resident: long-lived, heartbeat, toys.
 //! They run inside the Mother daemon and handle routed requests.
 //!
-//! Provides the `MotherChildPlugin` trait and `register_plugin!` macro.
+//! Provides the `MotherChild` trait and `register_mother_child!` macro.
 
 use crate::wasm_cell::WasmCell;
 
-// Version embedded in every plugin binary — host reads before instantiation.
+// Version embedded in every child binary — host reads before instantiation.
 #[cfg(target_arch = "wasm32")]
 #[used]
 #[link_section = ".patina_api_version"]
@@ -25,14 +25,14 @@ wit_bindgen::generate!({
 });
 
 // =========================================================================
-// Re-exports for plugin authors
+// Re-exports for child authors
 // =========================================================================
 
 // ChildHealth, Toy are generated at crate root by wit_bindgen (via world's use statement).
 // HealthStatus is generated under patina::host::types — re-export for ergonomic access.
 pub use patina::host::types::HealthStatus;
 
-/// Host logging — call from plugin code to log through the host.
+/// Host logging — call from child code to log through the host.
 pub mod log {
     pub use super::patina::host::log::LogLevel;
 
@@ -42,11 +42,12 @@ pub mod log {
     }
 }
 
-/// Measurement reporting — record metrics from plugin execution.
+/// Measurement reporting — record metrics from child execution.
 ///
-/// Requires `host_measure = true` in child.toml capabilities.
+/// Requires the relevant toy grant in `child.toml` via `[needs].toys`
+/// (and optional `[needs.scopes]` where applicable).
 /// The host validates verb, checks metrics are numeric JSON, and
-/// writes to eventlog with the plugin name as source.
+/// writes to eventlog with the child name as source.
 pub mod measure {
     /// Record a measurement event.
     ///
@@ -64,11 +65,11 @@ pub mod measure {
     }
 }
 
-/// Host HTTP — domain-allowlisted HTTP access for plugins.
+/// Host HTTP — domain-allowlisted HTTP access for children.
 ///
 /// The host controls domain enforcement, TLS, and credential injection.
-/// Plugin code calls these functions; the host validates URLs against
-/// the domain allowlist from `[capabilities].host_http` in child.toml.
+/// Child code calls these functions; the host validates URLs against
+/// the domain allowlist from child manifest toy grants/scopes.
 pub mod fetch {
     pub use super::patina::host::http::HttpResponse;
 
@@ -85,7 +86,8 @@ pub mod fetch {
 
 /// Host emit — publish facts to the eventlog via schema-validated emission.
 ///
-/// Requires `host_emit = true` and a `[schemas.<name>]` entry in child.toml.
+/// Requires the relevant toy grant in `child.toml` via `[needs].toys`
+/// (and optional `[needs.scopes]` where applicable), plus a `[schemas.<name>]` entry.
 /// The host validates the schema and fact type at load time (zero disk I/O
 /// at emit time). Facts are written with provenance="external".
 pub mod emit {
@@ -102,18 +104,18 @@ pub mod emit {
 }
 
 // =========================================================================
-// Plugin trait
+// Child trait
 // =========================================================================
 
-/// Trait for Mother daemon child plugins.
+/// Trait for Mother daemon children.
 ///
-/// Implement this trait and call `register_plugin!` to create a WASM plugin.
+/// Implement this trait and call `register_mother_child!` to create a WASM child.
 /// All methods except `name()` and `handle()` have default implementations.
 ///
-/// The plugin type must also implement `Default` — the `register_plugin!`
+/// The child type must also implement `Default` — the `register_mother_child!`
 /// macro uses it to create the instance. (Not a supertrait to keep dyn-compatible.)
-pub trait MotherChildPlugin {
-    /// Plugin identity — unique name used for request routing.
+pub trait MotherChild {
+    /// Child identity — unique name used for request routing.
     fn name(&self) -> String;
 
     /// Called when Mother loads this child.
@@ -142,30 +144,34 @@ pub trait MotherChildPlugin {
 }
 
 // =========================================================================
-// Plugin singleton
+// Child singleton
 // =========================================================================
 
-static PLUGIN: WasmCell<Option<Box<dyn MotherChildPlugin>>> =
-    WasmCell(std::cell::UnsafeCell::new(None));
+static PLUGIN: WasmCell<Option<Box<dyn MotherChild>>> = WasmCell(std::cell::UnsafeCell::new(None));
 
 #[doc(hidden)]
-pub fn __register_plugin(plugin: Box<dyn MotherChildPlugin>) {
+pub fn __register_mother_child(child: Box<dyn MotherChild>) {
     // Safety: called once from init export, WASM is single-threaded
     unsafe {
-        *PLUGIN.0.get() = Some(plugin);
+        *PLUGIN.0.get() = Some(child);
     }
+}
+
+#[doc(hidden)]
+pub fn __register_plugin(plugin: Box<dyn MotherChild>) {
+    __register_mother_child(plugin);
 }
 
 #[cfg(target_arch = "wasm32")]
 mod __wasm {
     use super::*;
 
-    fn plugin() -> &'static mut dyn MotherChildPlugin {
+    fn child() -> &'static mut dyn MotherChild {
         // Safety: WASM is single-threaded, no concurrent access
         unsafe {
             (*PLUGIN.0.get())
                 .as_deref_mut()
-                .expect("plugin not initialized — host must call init first")
+                .expect("child not initialized — host must call init first")
         }
     }
 
@@ -173,27 +179,27 @@ mod __wasm {
 
     impl Guest for Component {
         fn name() -> String {
-            plugin().name()
+            child().name()
         }
 
         fn on_load() -> Result<(), String> {
-            plugin().on_load()
+            child().on_load()
         }
 
         fn on_unload() {
-            plugin().on_unload()
+            child().on_unload()
         }
 
         fn health() -> ChildHealth {
-            plugin().health()
+            child().health()
         }
 
         fn handle(action: String, payload: String) -> Result<String, String> {
-            plugin().handle(&action, &payload)
+            child().handle(&action, &payload)
         }
 
         fn tick() -> Vec<Toy> {
-            plugin().tick()
+            child().tick()
         }
     }
 
@@ -204,36 +210,45 @@ mod __wasm {
 // Registration macro
 // =========================================================================
 
-/// Register a type as a Mother child plugin.
+/// Register a type as a Mother child.
 ///
 /// Generates the `init` WASM export that the host calls first.
-/// The host calls `init` -> plugin is created -> all subsequent exports work.
+/// The host calls `init` -> child is created -> all subsequent exports work.
 ///
-/// The plugin type must implement both `MotherChildPlugin` and `Default`.
+/// The child type must implement both `MotherChild` and `Default`.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use patina_sdk::{MotherChildPlugin, ChildHealth, HealthStatus, register_plugin};
+/// use patina_sdk::{MotherChild, ChildHealth, HealthStatus, register_mother_child};
 ///
 /// #[derive(Default)]
 /// struct MyPlugin;
 ///
-/// impl MotherChildPlugin for MyPlugin {
+/// impl MotherChild for MyPlugin {
 ///     fn name(&self) -> String { "my-plugin".into() }
 ///     fn handle(&mut self, action: &str, payload: &str) -> Result<String, String> {
 ///         Ok("{}".into())
 ///     }
 /// }
 ///
-/// register_plugin!(MyPlugin);
+/// register_mother_child!(MyPlugin);
 /// ```
 #[macro_export]
-macro_rules! register_plugin {
+macro_rules! register_mother_child {
     ($plugin_type:ty) => {
         #[export_name = "init"]
         extern "C" fn __patina_plugin_init() {
-            $crate::mother_child::__register_plugin(Box::new(<$plugin_type>::default()));
+            $crate::mother_child::__register_mother_child(Box::new(<$plugin_type>::default()));
         }
     };
 }
+
+#[macro_export]
+macro_rules! register_plugin {
+    ($plugin_type:ty) => {
+        $crate::register_mother_child!($plugin_type);
+    };
+}
+
+pub use MotherChild as MotherChildPlugin;

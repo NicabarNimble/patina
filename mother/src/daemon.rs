@@ -139,7 +139,11 @@ fn handle_action(
             let payload = payload.ok_or_else(|| "missing payload".to_string())?;
             let connect: ConnectPayload = serde_json::from_value(payload)
                 .map_err(|e| format!("invalid connect payload: {}", e))?;
-            if let Some(persona) = connect.persona.as_deref() {
+            // Transitional handshake: fields are validated/echoed so Patina and
+            // Mother share explicit scope (project + persona + interface).
+            // Crypto persona verification and multi-Mother federation identity
+            // checks land in later networking/security slices.
+            if let Some(persona) = connect.persona.as_ref().map(|p| p.as_str()) {
                 eprintln!(
                     "[mother] connect persona accepted (ignored pre-v1): {}",
                     persona
@@ -147,6 +151,10 @@ fn handle_action(
             }
             Ok(json!({
                 "session_id": format!("{}-{}", connect.agent, std::process::id()),
+                "mother_node_id": "local-node-pre-v1",
+                "project_uid": connect.project_uid.as_str(),
+                "interface_kind": connect.interface_kind.as_str(),
+                "accepted_persona_uid": connect.persona.as_ref().map(|p| p.as_str()),
                 "children": ["ducklake", "session-writer"],
                 "tools": ["context", "lake.sync", "lake", "measure", "spec", "scry"],
             }))
@@ -200,11 +208,12 @@ fn handle_action(
             let lake: LakeManagePayload = serde_json::from_value(payload)
                 .map_err(|e| format!("invalid lake payload: {}", e))?;
             Ok(json!({
-                "output": format!(
-                    "lake daemon path not yet implemented (op={}, name={})",
-                    lake.op,
-                    lake.name.unwrap_or_else(|| "none".to_string())
-                )
+                "output":
+                    format!(
+                        "lake daemon path not yet implemented (op={}, name={})",
+                        lake.op,
+                        lake.name.unwrap_or_else(|| "none".to_string())
+                    )
             }))
         }
         "scry" => {
@@ -276,13 +285,15 @@ mod tests {
         let mut stream = UnixStream::connect(&socket).unwrap();
         stream
             .write_all(
-                b"{\"v\":1,\"action\":\"connect\",\"payload\":{\"agent\":\"opencode\",\"project\":\"/tmp/repo\",\"persona\":\"dev-bob\"}}\n",
+                b"{\"v\":1,\"action\":\"connect\",\"payload\":{\"agent\":\"opencode\",\"project_uid\":\"proj-1234\",\"interface_kind\":\"opencode\",\"project_root\":\"/tmp/repo\",\"persona\":\"dev-bob\"}}\n",
             )
             .unwrap();
         let mut reader = BufReader::new(stream);
         let mut line = String::new();
         reader.read_line(&mut line).unwrap();
         assert!(line.contains("session_id"));
+        assert!(line.contains("mother_node_id"));
+        assert!(line.contains("accepted_persona_uid"));
         assert!(line.contains("ducklake"));
         assert!(line.contains("session-writer"));
         drop(reader);
@@ -310,7 +321,7 @@ mod tests {
         let mut stream = UnixStream::connect(&socket).unwrap();
         stream
             .write_all(
-                b"{\"v\":1,\"action\":\"connect\",\"payload\":{\"agent\":\"opencode\",\"project\":\"/tmp/repo\",\"persona\":null}}\n",
+                b"{\"v\":1,\"action\":\"connect\",\"payload\":{\"agent\":\"opencode\",\"project_uid\":\"proj-1234\",\"interface_kind\":\"opencode\",\"project_root\":\"/tmp/repo\",\"persona\":null}}\n",
             )
             .unwrap();
         let mut reader = BufReader::new(stream);

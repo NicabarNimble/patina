@@ -11,7 +11,7 @@ echo ""
 
 # Step 1: WIT consistency — guest crate wit/ must match canonical wit/
 # Two groups: mother-child crates need full wit/ tree, command crates need wit/command/
-echo "📦 [1/13] Checking WIT consistency..."
+echo "📦 [1/14] Checking WIT consistency..."
 wit_ok=true
 # Mother-child guest crates: full wit/ tree (mother-child + command + deps)
 for crate_dir in plugins/models plugins/repos; do
@@ -61,7 +61,7 @@ echo ""
 # deps/patina-host/host.wit must point back to the canonical file.
 # Stale copies cause silent build failures when new imports are added.
 # Pure shell — no python3 (per [[patina-identity]]: Rust-first, no Python).
-echo "📦 [2/13] Checking WIT host.wit symlinks..."
+echo "📦 [2/14] Checking WIT host.wit symlinks..."
 CANONICAL="wit/deps/patina-host/host.wit"
 wit_link_ok=true
 
@@ -140,7 +140,7 @@ echo "   ✓ All host.wit symlinks resolve to canonical"
 echo ""
 
 # Step 3: Crate naming policy (CI parity)
-echo "📦 [3/13] Checking crate naming policy..."
+echo "📦 [3/14] Checking crate naming policy..."
 if ! bash resources/scripts/check-crate-names.sh; then
     echo ""
     echo "❌ Crate naming policy check failed!"
@@ -148,8 +148,17 @@ if ! bash resources/scripts/check-crate-names.sh; then
 fi
 echo ""
 
-# Step 4: Single SDK surface (CI parity)
-echo "📦 [4/13] Checking single SDK surface..."
+# Step 4: Core/protocol dependency direction (CI parity)
+echo "📦 [4/14] Checking core/protocol dependency direction..."
+if ! bash resources/scripts/check-core-protocol-deps.sh; then
+    echo ""
+    echo "❌ Core/protocol dependency direction check failed!"
+    exit 1
+fi
+echo ""
+
+# Step 5: Single SDK surface (CI parity)
+echo "📦 [5/14] Checking single SDK surface..."
 if ! bash resources/scripts/check-single-sdk-surface.sh; then
     echo ""
     echo "❌ Single SDK surface check failed!"
@@ -157,8 +166,8 @@ if ! bash resources/scripts/check-single-sdk-surface.sh; then
 fi
 echo ""
 
-# Step 5: Runtime boundary drift (CI parity)
-echo "📦 [5/13] Checking runtime boundary drift..."
+# Step 6: Runtime boundary drift (CI parity)
+echo "📦 [6/14] Checking runtime boundary drift..."
 if ! bash resources/scripts/check-runtime-boundaries.sh; then
     echo ""
     echo "❌ Runtime boundary drift check failed!"
@@ -166,8 +175,8 @@ if ! bash resources/scripts/check-runtime-boundaries.sh; then
 fi
 echo ""
 
-# Step 6: Layer output contract (CI parity)
-echo "📦 [6/13] Checking layer output contract..."
+# Step 7: Layer output contract (CI parity)
+echo "📦 [7/14] Checking layer output contract..."
 if ! bash resources/scripts/check-layer-output-contract.sh; then
     echo ""
     echo "❌ Layer output contract check failed!"
@@ -175,8 +184,8 @@ if ! bash resources/scripts/check-layer-output-contract.sh; then
 fi
 echo ""
 
-# Step 7: DuckLake wasm parity (CI parity)
-echo "📦 [7/13] Checking DuckLake wasm parity..."
+# Step 8: DuckLake wasm parity (CI parity)
+echo "📦 [8/14] Checking DuckLake wasm parity..."
 if ! bash resources/scripts/check-ducklake-parity.sh; then
     echo ""
     echo "❌ DuckLake wasm parity check failed!"
@@ -184,8 +193,8 @@ if ! bash resources/scripts/check-ducklake-parity.sh; then
 fi
 echo ""
 
-# Step 8: Check formatting (CI uses --check, not --fix)
-echo "📦 [8/13] Checking Rust formatting..."
+# Step 9: Check formatting (CI uses --check, not --fix)
+echo "📦 [9/14] Checking Rust formatting..."
 if ! cargo fmt --all -- --check; then
     echo ""
     echo "❌ Formatting check failed!"
@@ -195,8 +204,8 @@ fi
 echo "   ✓ Formatting OK"
 echo ""
 
-# Step 9: Clippy with -D warnings (same as CI)
-echo "📦 [9/13] Running clippy (warnings = errors)..."
+# Step 10: Clippy with -D warnings (same as CI)
+echo "📦 [10/14] Running clippy (warnings = errors)..."
 if ! cargo clippy --workspace -- -D warnings; then
     echo ""
     echo "❌ Clippy failed! Fix warnings above."
@@ -205,8 +214,8 @@ fi
 echo "   ✓ Clippy OK"
 echo ""
 
-# Step 10: Run tests
-echo "📦 [10/13] Running tests..."
+# Step 11: Run tests
+echo "📦 [11/14] Running tests..."
 if ! cargo test --workspace; then
     echo ""
     echo "❌ Tests failed!"
@@ -215,9 +224,9 @@ fi
 echo "   ✓ Tests OK"
 echo ""
 
-# Step 11: Broker integration test — catches cross-crate wire format drift
+# Step 12: Broker integration test — catches cross-crate wire format drift
 # Requires: test-child installed at ~/.patina/children/test-child/
-echo "📦 [11/13] Broker integration test..."
+echo "📦 [12/14] Broker integration test..."
 if cargo metadata --no-deps --format-version=1 2>/dev/null | grep -q '"name":"patina-pipe"' \
    && [ -x "$HOME/.patina/children/test-child/test-child" ] \
    && [ -f ".patina/sources.toml" ]; then
@@ -250,8 +259,8 @@ else
 fi
 echo ""
 
-# Step 12: MCP thin handler invariants (post mcp-thin-handlers spec)
-echo "📦 [12/13] Checking MCP handler invariants..."
+# Step 13: MCP thin handler invariants (post mcp-thin-handlers spec)
+echo "📦 [13/14] Checking MCP handler invariants..."
 SQL_IN_MCP=$(rg -c 'SELECT|FROM .* WHERE|ORDER BY' src/mcp/server/scry.rs src/mcp/server/assay.rs 2>/dev/null | awk -F: '{sum+=$2} END {print sum+0}')
 if [ "$SQL_IN_MCP" -gt 0 ]; then
     echo "   ERROR: $SQL_IN_MCP SQL statements found in MCP handlers"
@@ -266,8 +275,8 @@ fi
 echo "   ✓ MCP handlers are thin ($MCP_LOC LOC, $SQL_IN_MCP SQL)"
 echo ""
 
-# Step 13: Schema consistency — canonical parses, installed matches, manifests agree
-echo "📦 [13/13] Checking schema consistency..."
+# Step 14: Schema consistency — canonical parses, installed matches, manifests agree
+echo "📦 [14/14] Checking schema consistency..."
 if ! cargo run --release --quiet -- schema check; then
     echo ""
     echo "❌ Schema consistency check failed!"

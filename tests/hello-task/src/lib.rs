@@ -3,12 +3,12 @@
 //! Returns exit code 0, one approved toy (echo "hello"),
 //! and one unapproved toy (rm -rf /) to verify filtering.
 
-use patina_sdk::{register_task, TaskPlugin, Toy};
+use patina_sdk::{register_task_child, TaskChild, Toy};
 
 #[derive(Default)]
 struct HelloTask;
 
-impl TaskPlugin for HelloTask {
+impl TaskChild for HelloTask {
     fn name(&self) -> String {
         "hello-task".into()
     }
@@ -39,4 +39,4 @@ impl TaskPlugin for HelloTask {
     }
 }
 
-register_task!(HelloTask);
+register_task_child!(HelloTask);

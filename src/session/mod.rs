@@ -118,8 +118,14 @@ pub fn find_active_interface_session(
     project_root: &Path,
     adapter_name: &str,
     interface_kind: InterfaceKind,
+    persona_uid: Option<&str>,
 ) -> Result<Option<LiveSessionHandle>> {
-    internal::live::find_active_interface_session(project_root, adapter_name, interface_kind)
+    internal::live::find_active_interface_session(
+        project_root,
+        adapter_name,
+        interface_kind,
+        persona_uid,
+    )
 }
 
 pub fn load_session(project_root: &Path, runtime_id: &str) -> Result<Option<LiveSessionHandle>> {

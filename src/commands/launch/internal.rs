@@ -3,6 +3,7 @@
 //! Handles the launch flow: workspace check → mother → project check → bootstrap → launch
 
 use anyhow::{bail, Context, Result};
+use serde_json::Value;
 use std::env;
 use std::fs;
 use std::io::{self, Read as _, Write};
@@ -94,6 +95,8 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         persona: None,
         path: Some(project_path.display().to_string()),
         set_default: false,
+        tmux: false,
+        no_tmux: false,
     })
 }
 
@@ -112,33 +115,73 @@ pub(crate) fn resolve_project_path(path_opt: Option<&str>) -> Result<PathBuf> {
 }
 
 /// Check if mother is running via UDS health endpoint
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn check_mother_health() -> bool {
+    mother_uptime_secs().is_some()
+}
+
+fn mother_uptime_secs() -> Option<u64> {
     let sock_path = paths::serve::socket_path();
     let mut stream = match std::os::unix::net::UnixStream::connect(&sock_path) {
         Ok(s) => s,
-        Err(_) => return false,
+        Err(_) => return None,
     };
     let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
 
     let request = "GET /health HTTP/1.1\r\nHost: localhost\r\n\r\n";
     if stream.write_all(request.as_bytes()).is_err() {
-        return false;
+        return None;
     }
 
     let mut buf = vec![0u8; 1024];
     match stream.read(&mut buf) {
         Ok(n) if n > 0 => {
-            let response = String::from_utf8_lossy(&buf[..n]);
-            response.contains("200")
+            let response = &buf[..n];
+            let body_start = response
+                .windows(4)
+                .position(|window| window == b"\r\n\r\n")?
+                + 4;
+            let body = &response[body_start..];
+            let payload: Value = serde_json::from_slice(body).ok()?;
+            payload.get("uptime_secs")?.as_u64()
         }
-        _ => false,
+        _ => None,
+    }
+}
+
+fn mother_pid() -> Option<u32> {
+    fs::read_to_string(paths::serve::pid_path())
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+}
+
+fn format_uptime_secs(total_secs: u64) -> String {
+    let days = total_secs / 86_400;
+    let hours = (total_secs % 86_400) / 3_600;
+    let minutes = (total_secs % 3_600) / 60;
+
+    if days > 0 {
+        format!("{}d{}h", days, hours)
+    } else if hours > 0 {
+        format!("{}h{}m", hours, minutes)
+    } else {
+        format!("{}m", minutes)
     }
 }
 
 /// Ensure mother is running, start if needed
 pub(crate) fn ensure_mother_running() -> Result<()> {
-    if check_mother_health() {
-        println!("  ✓ Mother running");
+    if let Some(uptime_secs) = mother_uptime_secs() {
+        let pid = mother_pid()
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        println!(
+            "  ✓ Mother running (PID {}, uptime {})",
+            pid,
+            format_uptime_secs(uptime_secs)
+        );
         return Ok(());
     }
 
@@ -148,8 +191,15 @@ pub(crate) fn ensure_mother_running() -> Result<()> {
     // Wait for it to come up
     for _ in 0..10 {
         thread::sleep(Duration::from_millis(500));
-        if check_mother_health() {
-            println!("  ✓ Mother started");
+        if let Some(uptime_secs) = mother_uptime_secs() {
+            let pid = mother_pid()
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            println!(
+                "  ✓ Mother started (PID {}, uptime {})",
+                pid,
+                format_uptime_secs(uptime_secs)
+            );
             return Ok(());
         }
     }
@@ -431,7 +481,7 @@ fn try_get_claude_token() -> Option<String> {
     }
 
     // Attempt vault lookup — catch all errors
-    match patina::secrets::get_global_secret("claude-oauth") {
+    match patina::mother::get_global_secret("claude-oauth") {
         Ok(Some(token)) => Some(token),
         Ok(None) => None,
         Err(e) => {

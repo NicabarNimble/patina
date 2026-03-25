@@ -202,8 +202,8 @@ pub mod child {
         plugins_dir().join(name).join("work")
     }
 
-    /// Pipeline grammar plugins directory: `~/.patina/pipeline/`
-    /// Contains grammar-{lang}/ subdirectories with `plugin.wasm` + `child.toml`.
+    /// Pipeline grammar children directory: `~/.patina/pipeline/`
+    /// Contains grammar-{lang}/ subdirectories with `child.wasm` + `child.toml`.
     pub fn pipeline_dir() -> PathBuf {
         patina_home().join("pipeline")
     }
@@ -410,6 +410,7 @@ pub mod project {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mother_crate::secrets_paths as mother_paths;
 
     fn with_temp_patina_home<T>(f: impl FnOnce(PathBuf) -> T) -> T {
         let _guard = crate::test_support::env_test_mutex()
@@ -506,6 +507,46 @@ mod tests {
             let pid = serve::pid_path();
             assert_eq!(pid, expected_home.join("run/mother.pid"));
         });
+    }
+
+    #[test]
+    fn test_mother_paths_contract_user_level() {
+        with_temp_patina_home(|expected_home| {
+            assert_eq!(patina_home(), expected_home);
+            assert_eq!(mother_paths::patina_home(), expected_home);
+
+            assert_eq!(serve::run_dir(), mother_paths::serve::run_dir());
+            assert_eq!(serve::socket_path(), mother_paths::serve::socket_path());
+            assert_eq!(serve::token_path(), mother_paths::serve::token_path());
+
+            assert_eq!(
+                secrets::registry_path(),
+                mother_paths::secrets::registry_path()
+            );
+            assert_eq!(secrets::vault_path(), mother_paths::secrets::vault_path());
+            assert_eq!(
+                secrets::recipient_path(),
+                mother_paths::secrets::recipient_path()
+            );
+        });
+    }
+
+    #[test]
+    fn test_mother_paths_contract_project_secrets() {
+        let root = Path::new("/tmp/test-project");
+
+        assert_eq!(
+            secrets::project_registry_path(root),
+            mother_paths::secrets::project_registry_path(root)
+        );
+        assert_eq!(
+            secrets::project_vault_path(root),
+            mother_paths::secrets::project_vault_path(root)
+        );
+        assert_eq!(
+            secrets::project_recipients_path(root),
+            mother_paths::secrets::project_recipients_path(root)
+        );
     }
 
     #[test]
