@@ -97,7 +97,7 @@ Litmus test for adding/keeping a toy:
 Anti-goals:
 
 - Toys are not convenience wrappers for provider-specific product logic.
-- Toys are not a plugin-defined extension surface.
+- Toys are not a child-defined extension surface.
 - Toys are not a way to bypass scoped grants or host-side policy checks.
 
 ## Canonical Toybox (v1)

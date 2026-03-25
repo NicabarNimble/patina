@@ -253,7 +253,7 @@ mod bindings {
         ) -> Result<u64, String> {
             if !self.grants.host_emit {
                 return Err(format!(
-                    "host_emit not granted for plugin '{}'",
+                    "host_emit not granted for child '{}'",
                     self.plugin_name
                 ));
             }
@@ -297,7 +297,7 @@ mod bindings {
         fn put(&mut self, key: String, value_json: String) -> Result<(), String> {
             if !self.grants.state_enabled {
                 return Err(format!(
-                    "state not granted for plugin '{}'",
+                    "state not granted for child '{}'",
                     self.plugin_name
                 ));
             }
@@ -309,7 +309,7 @@ mod bindings {
         fn delete(&mut self, key: String) -> Result<(), String> {
             if !self.grants.state_enabled {
                 return Err(format!(
-                    "state not granted for plugin '{}'",
+                    "state not granted for child '{}'",
                     self.plugin_name
                 ));
             }
@@ -336,7 +336,7 @@ mod bindings {
         fn save(&mut self, stream: String, checkpoint_json: String) -> Result<(), String> {
             if !self.grants.checkpoint_streams.contains(&stream) {
                 return Err(format!(
-                    "checkpoint stream '{}' not granted for plugin '{}'",
+                    "checkpoint stream '{}' not granted for child '{}'",
                     stream, self.plugin_name
                 ));
             }
@@ -900,7 +900,7 @@ mod bindings {
         ) -> Result<Vec<patina::host::events::PendingEvent>, String> {
             if !self.grants.subscribed_streams.contains(&stream) {
                 return Err(format!(
-                    "event stream '{}' not granted for plugin '{}'",
+                    "event stream '{}' not granted for child '{}'",
                     stream, self.plugin_name
                 ));
             }
@@ -922,7 +922,7 @@ mod bindings {
         fn ack_through(&mut self, stream: String, offset: u64) -> Result<(), String> {
             if !self.grants.subscribed_streams.contains(&stream) {
                 return Err(format!(
-                    "event stream '{}' not granted for plugin '{}'",
+                    "event stream '{}' not granted for child '{}'",
                     stream, self.plugin_name
                 ));
             }
@@ -1347,7 +1347,7 @@ impl KnowledgeChildEngine {
     pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
         if manifest.world != ChildKind::KnowledgeChild {
             anyhow::bail!(
-                "plugin '{}' has world '{}', expected 'knowledge-child'",
+                "child '{}' has world '{}', expected 'knowledge-child'",
                 manifest.name,
                 manifest.world
             );
@@ -1362,7 +1362,7 @@ impl KnowledgeChildEngine {
             .collect();
         if !world_denied.is_empty() {
             anyhow::bail!(
-                "plugin '{}' (world '{}') requests capabilities not allowed for this world: {}",
+                "child '{}' (world '{}') requests capabilities not allowed for this world: {}",
                 manifest.name,
                 manifest.world,
                 world_denied.join(", ")
@@ -1384,7 +1384,7 @@ impl KnowledgeChildEngine {
             .collect();
         if !denied.is_empty() {
             anyhow::bail!(
-                "plugin '{}' requests capabilities not granted: {}",
+                "child '{}' requests capabilities not granted: {}",
                 manifest.name,
                 denied.join(", ")
             );
@@ -1400,7 +1400,7 @@ impl KnowledgeChildEngine {
         for stream in &manifest.subscribed_streams {
             if !KNOWN_STREAMS.contains(&stream.as_str()) {
                 anyhow::bail!(
-                    "plugin '{}' requests unknown event stream '{}'",
+                    "child '{}' requests unknown event stream '{}'",
                     manifest.name,
                     stream
                 );
@@ -1409,7 +1409,7 @@ impl KnowledgeChildEngine {
         for source in manifest.ingress_sources.values() {
             super::host_support::validate_http_url(&source.endpoint).map_err(|error| {
                 anyhow::anyhow!(
-                    "plugin '{}' declares invalid ingress source '{}' endpoint '{}': {}",
+                    "child '{}' declares invalid ingress source '{}' endpoint '{}': {}",
                     manifest.name,
                     source.name,
                     source.endpoint,
@@ -1425,7 +1425,7 @@ impl KnowledgeChildEngine {
             .collect();
         if !unknown_intents.is_empty() {
             anyhow::bail!(
-                "plugin '{}' requests unknown task intents: {}",
+                "child '{}' requests unknown task intents: {}",
                 manifest.name,
                 unknown_intents.join(", ")
             );
@@ -1440,7 +1440,7 @@ impl KnowledgeChildEngine {
             .collect();
         if !unknown_graph.is_empty() {
             anyhow::bail!(
-                "plugin '{}' requests unknown graph write actions: {}",
+                "child '{}' requests unknown graph write actions: {}",
                 manifest.name,
                 unknown_graph.join(", ")
             );
@@ -1460,7 +1460,7 @@ impl KnowledgeChildEngine {
             .collect();
         if !unknown_belief.is_empty() {
             anyhow::bail!(
-                "plugin '{}' requests unknown belief write actions: {}",
+                "child '{}' requests unknown belief write actions: {}",
                 manifest.name,
                 unknown_belief.join(", ")
             );
@@ -1468,7 +1468,7 @@ impl KnowledgeChildEngine {
 
         if manifest.capabilities.contains(&"host_emit".to_string()) && manifest.schemas.is_empty() {
             anyhow::bail!(
-                "plugin '{}' declares host_emit but has no [schemas.*] entries",
+                "child '{}' declares host_emit but has no [schemas.*] entries",
                 manifest.name
             );
         }
@@ -1640,7 +1640,7 @@ impl KnowledgeChild for WasmKnowledgeChild {
                 })
                 .collect(),
             Err(e) => {
-                eprintln!("[plugin:{}] tick failed: {}", self.name, e);
+                eprintln!("[child:{}] tick failed: {}", self.name, e);
                 vec![]
             }
         }

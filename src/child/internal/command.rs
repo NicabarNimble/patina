@@ -17,12 +17,12 @@ pub type QueryDispatchFn = Box<dyn FnMut(&str, &str) -> Result<String, String> +
 // Command world — bindgen + host functions + CommandEngine
 // =========================================================================
 
-/// Bindgen for the command world (separate from mother-child).
-/// Each world needs its own host state because command plugins
+/// Bindgen for the command world (separate from knowledge-child).
+/// Each world needs its own host state because command children
 /// import patina:host/layer (project data access) while
-/// mother-child plugins do not.
+/// knowledge-child children do not.
 mod command_bindings {
-    /// Host state for command plugins — includes layer and query access.
+    /// Host state for command children — includes layer and query access.
     pub struct CommandHostState {
         pub plugin_name: String,
         pub wasi: wasmtime_wasi::WasiCtx,
@@ -32,7 +32,7 @@ mod command_bindings {
         /// Resolved capabilities for call-time gating.
         pub grants: super::GrantedCapabilities,
         /// Query dispatch — provided by binary crate, handles engine calls.
-        /// None for plugins without query grants (probe, etc).
+        /// None for children without query grants (probe, etc).
         pub query_fn: Option<super::QueryDispatchFn>,
     }
 
@@ -125,9 +125,9 @@ mod command_bindings {
     }
 }
 
-/// Command plugin engine — loads and runs command world WASM plugins.
+/// Command child engine — loads and runs command world WASM children.
 ///
-/// Separate from knowledge-child engine because command plugins use a different
+/// Separate from knowledge-child engine because command children use a different
 /// WIT world with different imports (patina:host/layer for project
 /// data access). CLI creates this for one-shot use without the daemon.
 pub struct CommandEngine {
@@ -135,7 +135,7 @@ pub struct CommandEngine {
 }
 
 impl CommandEngine {
-    /// Create a new CommandEngine for one-shot CLI plugin use.
+    /// Create a new CommandEngine for one-shot CLI child use.
     pub fn new() -> Result<Self> {
         let mut linker = Linker::new(wasm_engine());
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
@@ -151,13 +151,13 @@ impl CommandEngine {
         Component::new(wasm_engine(), wasm)
     }
 
-    /// Run a command plugin. Returns exit code.
+    /// Run a command child. Returns exit code.
     ///
     /// Checks capabilities from the manifest before execution — matches
     /// Shared manifest capability validation pattern.
     ///
     /// `query_fn`: Optional query dispatch provided by the binary crate.
-    /// Required if the plugin has host_query capabilities. The host impl
+    /// Required if the child has host_query capabilities. The host impl
     /// handles gating; this function handles actual engine dispatch.
     pub fn run_command(
         &self,
@@ -185,14 +185,14 @@ impl CommandEngine {
         let mut store = Store::new(wasm_engine(), host_state);
         let instance = command_bindings::Command::instantiate(&mut store, component, &self.linker)?;
 
-        // Initialize plugin
+        // Initialize child
         instance.call_init(&mut store)?;
 
         // Run with args
         instance.call_run(&mut store, args)
     }
 
-    /// Get the command name from a WASM plugin.
+    /// Get the command name from a WASM child.
     pub fn get_command_name(&self, component: &Component) -> Result<String> {
         let host_state = Self::probe_host_state();
         let mut store = Store::new(wasm_engine(), host_state);
@@ -201,7 +201,7 @@ impl CommandEngine {
         instance.call_name(&mut store)
     }
 
-    /// Get the command description from a WASM plugin.
+    /// Get the command description from a WASM child.
     pub fn get_command_description(&self, component: &Component) -> Result<String> {
         let host_state = Self::probe_host_state();
         let mut store = Store::new(wasm_engine(), host_state);
@@ -210,7 +210,7 @@ impl CommandEngine {
         instance.call_description(&mut store)
     }
 
-    /// Minimal host state for probing plugin metadata (name/description).
+    /// Minimal host state for probing child metadata (name/description).
     fn probe_host_state() -> command_bindings::CommandHostState {
         let wasi = wasmtime_wasi::WasiCtxBuilder::new().build();
         let project_root = crate::session::SessionManager::find_project_root().ok();

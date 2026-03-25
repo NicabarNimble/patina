@@ -141,7 +141,7 @@ pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
 
     if !world_denied.is_empty() {
         anyhow::bail!(
-            "plugin '{}' (world '{}') requests capabilities not allowed for this world: {}",
+            "child '{}' (world '{}') requests capabilities not allowed for this world: {}",
             manifest.name,
             manifest.world,
             world_denied.join(", ")
@@ -166,7 +166,7 @@ pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
 
     if !denied.is_empty() {
         anyhow::bail!(
-            "plugin '{}' requests capabilities not granted: {}",
+            "child '{}' requests capabilities not granted: {}",
             manifest.name,
             denied.join(", ")
         );
@@ -182,7 +182,7 @@ pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
 
     if !unknown.is_empty() {
         anyhow::bail!(
-            "plugin '{}' requests unknown query kinds: {}",
+            "child '{}' requests unknown query kinds: {}",
             manifest.name,
             unknown.join(", ")
         );
@@ -191,20 +191,20 @@ pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
     for domain in &manifest.host_http_domains {
         if domain.is_empty() {
             anyhow::bail!(
-                "plugin '{}' has empty HTTP domain in host_http",
+                "child '{}' has empty HTTP domain in host_http",
                 manifest.name
             );
         }
         if !domain.is_ascii() {
             anyhow::bail!(
-                "plugin '{}' has non-ASCII HTTP domain '{}' in host_http",
+                "child '{}' has non-ASCII HTTP domain '{}' in host_http",
                 manifest.name,
                 domain
             );
         }
         if domain.contains('/') {
             anyhow::bail!(
-                "plugin '{}' has path component in HTTP domain '{}' in host_http",
+                "child '{}' has path component in HTTP domain '{}' in host_http",
                 manifest.name,
                 domain
             );
@@ -213,7 +213,7 @@ pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
 
     if manifest.capabilities.contains(&"host_emit".to_string()) && manifest.schemas.is_empty() {
         anyhow::bail!(
-            "plugin '{}' declares host_emit but has no [schemas.*] entries",
+            "child '{}' declares host_emit but has no [schemas.*] entries",
             manifest.name
         );
     }
@@ -229,7 +229,7 @@ pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
         for stream in &manifest.subscribed_streams {
             if !KNOWN_STREAMS.contains(&stream.as_str()) {
                 anyhow::bail!(
-                    "plugin '{}' requests unknown event stream '{}'",
+                    "child '{}' requests unknown event stream '{}'",
                     manifest.name,
                     stream
                 );
@@ -239,7 +239,7 @@ pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
         for source in manifest.ingress_sources.values() {
             host_support::validate_http_url(&source.endpoint).map_err(|error| {
                 anyhow::anyhow!(
-                    "plugin '{}' declares invalid ingress source '{}' endpoint '{}': {}",
+                    "child '{}' declares invalid ingress source '{}' endpoint '{}': {}",
                     manifest.name,
                     source.name,
                     source.endpoint,
@@ -257,7 +257,7 @@ pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
     for (domain, mapping) in &manifest.host_secrets {
         if !http_set.contains(domain.as_str()) {
             anyhow::bail!(
-                "plugin '{}': domain '{}' in host_secrets but not in host_http",
+                "child '{}': domain '{}' in host_secrets but not in host_http",
                 manifest.name,
                 domain
             );
@@ -266,13 +266,13 @@ pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
             Ok(Some(_)) => {}
             Ok(None) => {
                 eprintln!(
-                    "[plugin:{}] warning: secret '{}' not found in vault (domain '{}')",
+                    "[child:{}] warning: secret '{}' not found in vault (domain '{}')",
                     manifest.name, mapping.secret_name, domain
                 );
             }
             Err(e) => {
                 eprintln!(
-                    "[plugin:{}] warning: could not probe secret '{}': {}",
+                    "[child:{}] warning: could not probe secret '{}': {}",
                     manifest.name, mapping.secret_name, e
                 );
             }
@@ -283,7 +283,7 @@ pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
         let expected_worlds = role.expected_worlds();
         if !expected_worlds.contains(&manifest.world) {
             eprintln!(
-                "[plugin:{}] warning: role '{}' is unusual for world '{}' (expected: {})",
+                "[child:{}] warning: role '{}' is unusual for world '{}' (expected: {})",
                 manifest.name,
                 role,
                 manifest.world,
@@ -354,25 +354,25 @@ pub struct ChildManifest {
     pub version: String,
     pub description: String,
     pub world: ChildKind,
-    /// Plugin role — what the plugin is FOR (connector, grammar, extension, app).
-    /// None for legacy plugins that haven't declared a role yet.
+    /// Child role — what the child is FOR (connector, grammar, extension, app).
+    /// None for legacy children that haven't declared a role yet.
     pub role: Option<ChildRole>,
     pub patina_min: String,
     pub capabilities: Vec<String>,
-    /// Toy commands this plugin is allowed to request (from [capabilities.toys].commands).
+    /// Toy commands this child is allowed to request (from [capabilities.toys].commands).
     /// Empty means no toys allowed.
     pub allowed_toy_commands: Vec<String>,
-    /// Query kinds this plugin is allowed to call (from [capabilities].host_query).
+    /// Query kinds this child is allowed to call (from [capabilities].host_query).
     /// E.g., ["scry", "context", "assay"]. Empty means no query access.
     pub host_query_kinds: Vec<String>,
-    /// HTTP domains this plugin is allowed to access (from [capabilities].host_http).
+    /// HTTP domains this child is allowed to access (from [capabilities].host_http).
     /// E.g., ["api.github.com", "hooks.slack.com"]. Empty means no HTTP access.
     pub host_http_domains: Vec<String>,
     /// Credential mappings per domain (from [capabilities.host_secrets]).
     /// Maps domain → secret name + injection location.
     pub host_secrets: std::collections::HashMap<String, CredentialMapping>,
     pub provides: ChildProvides,
-    /// Schema packages this plugin references (from [schemas.<name>].package).
+    /// Schema packages this child references (from [schemas.<name>].package).
     /// Maps schema name → package string (e.g., "forge" → "patina:schema/forge@1.0.0").
     pub schemas: std::collections::HashMap<String, String>,
     pub state_enabled: bool,
@@ -396,10 +396,10 @@ pub struct ChildManifest {
 /// Query scope controls cross-project access.
 #[derive(Debug, Clone, Default)]
 pub enum QueryScope {
-    /// Plugin can only query current project (default).
+    /// Child can only query current project (default).
     #[default]
     CurrentProject,
-    /// Plugin can query all registered repos.
+    /// Child can query all registered repos.
     AllRepos,
 }
 
@@ -415,7 +415,7 @@ pub struct GrantedCapabilities {
     /// Credential mappings: domain → secret name + injection location.
     /// Empty means no credential injection.
     pub credential_mappings: std::collections::HashMap<String, CredentialMapping>,
-    /// Whether plugin can emit facts to eventlog.
+    /// Whether child can emit facts to eventlog.
     pub host_emit: bool,
     /// Parsed schema facts cached at load time. Outer key = schema name,
     /// inner key = fact-type name, value = event_type string.
@@ -438,9 +438,9 @@ pub struct GrantedCapabilities {
 pub struct ChildProvides {
     pub child: Option<String>,
     pub commands: Vec<String>,
-    /// Pipeline operations this plugin handles (e.g., ["parse", "chunk"]).
+    /// Pipeline operations this child handles (e.g., ["parse", "chunk"]).
     pub pipeline_ops: Vec<String>,
-    /// Languages (file extensions) this pipeline plugin claims (e.g., ["zig", "nim"]).
+    /// Languages (file extensions) this pipeline child claims (e.g., ["zig", "nim"]).
     pub languages: Vec<String>,
 }
 

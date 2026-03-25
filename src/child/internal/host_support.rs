@@ -17,9 +17,9 @@ use super::{CredentialMapping, GrantedCapabilities, InjectionLocation, QueryScop
 // Log host support
 // =========================================================================
 
-/// Shared log implementation — formats and emits plugin log messages.
+/// Shared log implementation — formats and emits child log messages.
 pub(super) fn log(plugin_name: &str, level_str: &str, message: &str) {
-    eprintln!("[plugin:{}] {}: {}", plugin_name, level_str, message);
+    eprintln!("[child:{}] {}: {}", plugin_name, level_str, message);
 }
 
 // =========================================================================
@@ -112,8 +112,8 @@ pub(super) fn check_adapter_version(
 // =========================================================================
 
 /// Keys in query params that are host-controlled and must not be
-/// set by plugins. The lib strips these before dispatch when the
-/// plugin's scope doesn't grant them.
+/// set by children. The lib strips these before dispatch when the
+/// child's scope doesn't grant them.
 const SCOPE_RESERVED_KEYS: &[&str] = &["all_repos", "repo", "project_root", "db_path"];
 
 /// Sanitize query params by stripping scope-reserved keys.
@@ -156,7 +156,7 @@ pub(crate) fn query(
     // Call-time gating: kind must be in granted set
     if !grants.query_kinds.contains(kind) {
         return Err(format!(
-            "query kind '{}' not granted for plugin '{}'",
+            "query kind '{}' not granted for child '{}'",
             kind, plugin_name
         ));
     }
@@ -168,10 +168,10 @@ pub(crate) fn query(
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
         if all_repos && !matches!(grants.query_scope, QueryScope::AllRepos) {
-            return Err("all_repos not allowed: plugin query_scope is current_project".to_string());
+            return Err("all_repos not allowed: child query_scope is current_project".to_string());
         }
         if all_repos {
-            eprintln!("[plugin:{}] query: all_repos=true (audit)", plugin_name);
+            eprintln!("[child:{}] query: all_repos=true (audit)", plugin_name);
         }
     }
 
@@ -238,24 +238,24 @@ pub(crate) struct HttpResult {
     pub body: String,
 }
 
-/// Check if a plugin is granted access to a specific secret.
+/// Check if a child is granted access to a specific secret.
 ///
 /// Reads `~/.patina/plugin-config/secret-grants.toml`. Format:
 /// ```toml
-/// [my-plugin]
+/// [my-child]
 /// secrets = ["github-token"]
 /// ```
 ///
-/// Returns true only if the file exists, the plugin is listed, and the
-/// secret is in the plugin's `secrets` array. Denies by default.
+/// Returns true only if the file exists, the child is listed, and the
+/// secret is in the child's `secrets` array. Denies by default.
 pub(super) fn check_secret_grant(plugin_name: &str, secret_name: &str) -> bool {
     let grants_path = crate::paths::child::secret_grants_path();
     let content = match std::fs::read_to_string(&grants_path) {
         Ok(c) => c,
         Err(_) => {
             eprintln!(
-                "[plugin:{}] no secret-grants.toml — run 'patina plugin grant {} {}' to allow",
-                plugin_name, plugin_name, secret_name
+                "[child:{}] no secret-grants.toml — add '{}' under child '{}' to allow",
+                plugin_name, secret_name, plugin_name
             );
             return false;
         }
@@ -264,7 +264,7 @@ pub(super) fn check_secret_grant(plugin_name: &str, secret_name: &str) -> bool {
         Ok(t) => t,
         Err(e) => {
             eprintln!(
-                "[plugin:{}] failed to parse secret-grants.toml: {}",
+                "[child:{}] failed to parse secret-grants.toml: {}",
                 plugin_name, e
             );
             return false;
@@ -274,7 +274,7 @@ pub(super) fn check_secret_grant(plugin_name: &str, secret_name: &str) -> bool {
         Some(t) => t,
         None => {
             eprintln!(
-                "[plugin:{}] not listed in secret-grants.toml — run 'patina plugin grant {} {}' to allow",
+                "[child:{}] not listed in secret-grants.toml — add child '{}' with secret '{}' to allow",
                 plugin_name, plugin_name, secret_name
             );
             return false;
@@ -287,8 +287,8 @@ pub(super) fn check_secret_grant(plugin_name: &str, secret_name: &str) -> bool {
         .unwrap_or(false);
     if !allowed {
         eprintln!(
-            "[plugin:{}] secret '{}' not granted — run 'patina plugin grant {} {}' to allow",
-            plugin_name, secret_name, plugin_name, secret_name
+            "[child:{}] secret '{}' not granted — add it under child '{}' in secret-grants.toml",
+            plugin_name, secret_name, plugin_name
         );
     }
     allowed
@@ -314,14 +314,14 @@ fn resolve_credential(
         Ok(Some(value)) => Some((mapping.secret_name.clone(), value)),
         Ok(None) => {
             eprintln!(
-                "[plugin:{}] secret '{}' not found in vault, sending unauthenticated",
+                "[child:{}] secret '{}' not found in vault, sending unauthenticated",
                 plugin_name, mapping.secret_name
             );
             None
         }
         Err(e) => {
             eprintln!(
-                "[plugin:{}] failed to decrypt secret '{}': {}, sending unauthenticated",
+                "[child:{}] failed to decrypt secret '{}': {}, sending unauthenticated",
                 plugin_name, mapping.secret_name, e
             );
             None
@@ -360,10 +360,10 @@ pub(crate) fn leak_check(body: &str, secret_name: &str, secret_value: &str) -> S
 
 use crate::measure::{REGISTERED_TOOLS, VALID_VERBS};
 
-/// Record a measurement event from a plugin.
+/// Record a measurement event from a child.
 ///
 /// Validates verb, checks metrics are numeric JSON, writes to eventlog
-/// with source overridden to the plugin name (security: plugins can't
+/// with source overridden to the child name (security: children can't
 /// impersonate core).
 pub(super) fn record_measurement(
     _project_root: &Option<PathBuf>,
@@ -404,10 +404,10 @@ pub(super) fn record_measurement(
     }
 
     // Open events.db — measure.* events live in events.db, not patina.db.
-    // Core tools use eventlog::open_events_db(); plugins must use the same path.
+    // Core tools use eventlog::open_events_db(); children must use the same path.
     let conn = crate::eventlog::open_events_db().map_err(|e| format!("open events.db: {}", e))?;
 
-    // Build event data — source is always the plugin name
+    // Build event data — source is always the child name
     let event_data = serde_json::json!({
         "verb": verb,
         "tool": tool,
@@ -439,7 +439,7 @@ pub(super) fn record_measurement(
 
 /// Validate emit parameters and resolve the event_type from cached schema.
 ///
-/// Pure validation — no disk I/O. Schemas are parsed once at plugin load
+/// Pure validation — no disk I/O. Schemas are parsed once at child load
 /// time and cached on GrantedCapabilities.schema_facts.
 ///
 /// Checks:
@@ -456,7 +456,7 @@ pub(super) fn validate_emit(
     // 1. Schema must exist in cache (parsed at load time from manifest + disk)
     let facts = schema_facts.get(schema).ok_or_else(|| {
         format!(
-            "schema '{}' not available for plugin '{}' (not declared or not installed)",
+            "schema '{}' not available for child '{}' (not declared or not installed)",
             schema, plugin_name
         )
     })?;
@@ -475,7 +475,7 @@ pub(super) fn validate_emit(
 
 /// Emit a structured fact to the project eventlog.
 ///
-/// Validates via cached schema facts (zero disk I/O), writes plugin data
+/// Validates via cached schema facts (zero disk I/O), writes child data
 /// directly to events.db. Provenance is carried by source_id ("plugin:<name>"),
 /// schema by event_type (e.g., "github.issue"). No wrapper — data shape matches
 /// what downstream consumers expect.
@@ -486,7 +486,7 @@ pub(super) fn validate_emit(
 /// FROZEN LEGACY PATH — WASM facts bypass the broker routing engine.
 /// Knowledge children validate facts internally, which provides
 /// content-hash dedup, manifest schema validation, and transactional cursor writes.
-/// This direct-write path exists only for the forge WASM plugin. No new WASM children
+/// This direct-write path exists only for the forge WASM child. No new WASM children
 /// may use this path — all new children must be native and route through the broker.
 /// See DESIGN.md §5 (wasm-routing-resolved).
 pub(super) fn emit_fact(
@@ -503,8 +503,8 @@ pub(super) fn emit_fact(
     let timestamp = chrono::Utc::now().to_rfc3339();
     let source_id = format!("plugin:{}", plugin_name);
 
-    // Write plugin data directly — no wrapper envelope.
-    // Provenance: 'external' — plugin-emitted facts are external evidence.
+    // Write child data directly — no wrapper envelope.
+    // Provenance: 'external' — child-emitted facts are external evidence.
     // Schema: event_type = "<schema>.<fact>" (e.g., "github.issue")
     conn.execute(
         "INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data, provenance)
@@ -540,7 +540,7 @@ pub(crate) fn http_post(
     let domain = validate_http_url(url)?;
     if !grants.http_domains.contains(&domain) {
         return Err(format!(
-            "domain '{}' not in allowlist for plugin '{}'",
+            "domain '{}' not in allowlist for child '{}'",
             domain, plugin_name
         ));
     }
@@ -589,7 +589,7 @@ pub(crate) fn http_get(
     let domain = validate_http_url(url)?;
     if !grants.http_domains.contains(&domain) {
         return Err(format!(
-            "domain '{}' not in allowlist for plugin '{}'",
+            "domain '{}' not in allowlist for child '{}'",
             domain, plugin_name
         ));
     }

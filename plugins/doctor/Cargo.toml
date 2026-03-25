@@ -2,7 +2,7 @@
 name = "patina-ai-extension-doctor"
 version = "0.1.0"
 edition = "2021"
-description = "Health check command plugin for Patina"
+description = "Health check command child for Patina"
 
 [lib]
 crate-type = ["cdylib"]

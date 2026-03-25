@@ -1,6 +1,6 @@
 //! Task world — bindgen + host functions + TaskEngine.
 //!
-//! On-demand action plugins: analyze AND act, then exit.
+//! On-demand action children: analyze AND act, then exit.
 //! Structurally closest to command world (init, name, description, run)
 //! plus toys (from mother-child) and HTTP (from host-http).
 
@@ -17,10 +17,10 @@ use super::command::QueryDispatchFn;
 // Task world — bindgen + host functions + TaskEngine
 // =========================================================================
 
-/// Bindgen for the task world (separate from command and mother-child).
-/// Task plugins have ALL host capabilities: log, layer, query, types, http.
+/// Bindgen for the task world (separate from command and knowledge-child).
+/// Task children have ALL host capabilities: log, layer, query, types, http.
 mod task_bindings {
-    /// Host state for task plugins — union of command and HTTP fields.
+    /// Host state for task children — union of command and HTTP fields.
     pub struct TaskHostState {
         pub plugin_name: String,
         pub wasi: wasmtime_wasi::WasiCtx,
@@ -30,7 +30,7 @@ mod task_bindings {
         /// Resolved capabilities for call-time gating.
         pub grants: super::GrantedCapabilities,
         /// Query dispatch — provided by binary crate, handles engine calls.
-        /// None for plugins without query grants.
+        /// None for children without query grants.
         pub query_fn: Option<super::QueryDispatchFn>,
         /// Pre-configured HTTP client with cross-domain redirect rejection.
         pub http_client: reqwest::blocking::Client,
@@ -153,7 +153,7 @@ mod task_bindings {
         ) -> Result<u64, String> {
             if !self.grants.host_emit {
                 return Err(format!(
-                    "host_emit not granted for plugin '{}'",
+                    "host_emit not granted for child '{}'",
                     self.plugin_name
                 ));
             }
@@ -188,16 +188,16 @@ mod task_bindings {
     }
 }
 
-/// Task plugin engine — loads and runs task world WASM plugins.
+/// Task child engine — loads and runs task world WASM children.
 ///
-/// On-demand action plugins with full host access (log, layer, query,
+/// On-demand action children with full host access (log, layer, query,
 /// types, HTTP) plus toy intents. CLI creates this for one-shot use.
 pub struct TaskEngine {
     linker: Linker<task_bindings::TaskHostState>,
 }
 
 impl TaskEngine {
-    /// Create a new TaskEngine for one-shot CLI plugin use.
+    /// Create a new TaskEngine for one-shot CLI child use.
     pub fn new() -> Result<Self> {
         let mut linker = Linker::new(wasm_engine());
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
@@ -213,7 +213,7 @@ impl TaskEngine {
         Component::new(wasm_engine(), wasm)
     }
 
-    /// Run a task plugin. Returns exit code and filtered toy list.
+    /// Run a task child. Returns exit code and filtered toy list.
     ///
     /// Checks capabilities from the manifest before execution.
     /// After run(), calls toys() and filters through allowed_toy_commands.
@@ -248,7 +248,7 @@ impl TaskEngine {
         let mut store = Store::new(wasm_engine(), host_state);
         let instance = task_bindings::Task::instantiate(&mut store, component, &self.linker)?;
 
-        // Initialize plugin
+        // Initialize child
         instance.call_init(&mut store)?;
 
         // Run with args
@@ -268,7 +268,7 @@ impl TaskEngine {
                     Some(toy)
                 } else {
                     eprintln!(
-                        "[plugin:{}] toy '{}' denied: command '{}' not in allowed list {:?}",
+                        "[child:{}] toy '{}' denied: command '{}' not in allowed list {:?}",
                         manifest.name, toy.name, toy.command, manifest.allowed_toy_commands
                     );
                     None
@@ -279,7 +279,7 @@ impl TaskEngine {
         Ok((exit_code, filtered_toys))
     }
 
-    /// Get the task name from a WASM plugin.
+    /// Get the task name from a WASM child.
     pub fn get_task_name(&self, component: &Component) -> Result<String> {
         let host_state = Self::probe_host_state();
         let mut store = Store::new(wasm_engine(), host_state);
@@ -288,7 +288,7 @@ impl TaskEngine {
         instance.call_name(&mut store)
     }
 
-    /// Get the task description from a WASM plugin.
+    /// Get the task description from a WASM child.
     pub fn get_task_description(&self, component: &Component) -> Result<String> {
         let host_state = Self::probe_host_state();
         let mut store = Store::new(wasm_engine(), host_state);
@@ -297,7 +297,7 @@ impl TaskEngine {
         instance.call_description(&mut store)
     }
 
-    /// Minimal host state for probing plugin metadata (name/description).
+    /// Minimal host state for probing child metadata (name/description).
     fn probe_host_state() -> task_bindings::TaskHostState {
         let wasi = wasmtime_wasi::WasiCtxBuilder::new().build();
         let project_root = crate::session::SessionManager::find_project_root().ok();
