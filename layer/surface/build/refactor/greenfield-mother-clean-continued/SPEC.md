@@ -46,7 +46,7 @@ exit_criteria:
     text: "`cargo build` succeeds, `cargo test` passes"
     checked: false
   - id: GFC11
-    text: "`patina mother start` launches, `/health` returns OK"
+    text: "`patina mother start` launches, `curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/health` returns JSON with `status` and service/child health keys"
     checked: false
   - id: GFC12
     text: "`rg 'MotherChild|StaticChild|legacy_migration|legacy_children' --type rust` returns zero hits"
@@ -196,7 +196,7 @@ Mother (daemon process)
 - Absorb `builtin_dispatch.rs` pattern-matching logic into service-backed routes
 - Update `ServerState` to hold `MotherServices` + `ChildRegistry`
 - **Entry**: GFC-G2 exit proofs pass
-- **Exit proof**: `cargo build` succeeds, HTTP routes compile against services, `builtin_dispatch.rs` logic migrated
+- **Exit proof**: `cargo build` succeeds, HTTP routes compile against services, `builtin_dispatch.rs` logic migrated, and route parity checks pass for `/health`, `/child/spec-manager/*`, `/child/lake-manager/*`, and `/child/doctor/*`
 
 ### GFC-G4: Delete legacy child types
 - Delete `MotherChild` trait from `runtime.rs`
@@ -214,7 +214,7 @@ Mother (daemon process)
 - Remove `--legacy-migration` flag from `DaemonBootstrapConfig`
 - Remove legacy branch from `daemon_heartbeat.rs`
 - **Entry**: GFC-G4 exit proofs pass
-- **Exit proof**: `cargo build` succeeds, `rg "legacy_children|legacy_migration|tick_legacy" --type rust` returns zero
+- **Exit proof**: `cargo build` succeeds, `rg "legacy_children|legacy_migration|tick_legacy" --type rust` returns zero, and daemon smoke (`patina mother start` + `/health`) still passes
 
 ### GFC-G6: Delete daemon.rs protocol v1
 - Delete `mother/src/daemon.rs` (old Unix socket line-based protocol handler)
@@ -230,6 +230,22 @@ Mother (daemon process)
 - Run full test suite, fix any broken tests
 - **Entry**: GFC-G6 exit proofs pass
 - **Exit proof**: `cargo build && cargo test` pass, `patina mother start` launches, `/health` returns OK
+
+## Route Parity Checklist (GFC-G3)
+
+Before deleting legacy surfaces, prove HTTP parity for built-in child routes:
+
+- `/health` returns JSON object with `status` and health details
+- `/child/spec-manager/dispatch` accepts spec payload and returns JSON object (success/error shape preserved)
+- `/child/lake-manager/dispatch` accepts lake payload and returns JSON object (success/error shape preserved)
+- `/child/doctor/run` returns JSON object containing doctor run result fields
+
+Parity means response shape and status code class remain equivalent for representative valid and invalid payloads.
+
+## Edge Notes (validated)
+
+- Auth checks are enforced in HTTP routing layer (`mother/src/http_routes.rs`), not in CLI builtin dispatch glue.
+- `legacy_migration` wiring exists in Mother/CLI runtime code paths; removal must include bootstrap, heartbeat, and launch option plumbing.
 
 ### GFC truth map
 

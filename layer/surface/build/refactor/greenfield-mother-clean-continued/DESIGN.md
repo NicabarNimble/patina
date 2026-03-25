@@ -88,6 +88,13 @@ cargo build 2>&1 | tail -5    # expect: no errors
 **Exit proofs**:
 ```
 cargo build 2>&1 | tail -5    # expect: no errors
+patina mother start
+curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/health | jq .
+# parity checks (valid + invalid payloads):
+# /child/spec-manager/dispatch
+# /child/lake-manager/dispatch
+# /child/doctor/run
+patina mother stop
 ```
 
 **GFC truth map updates**: GFC8 → verified-true, GFC9 → verified-partial (logic migrated, file not yet deleted)
@@ -99,8 +106,9 @@ cargo build 2>&1 | tail -5    # expect: no errors
 **Entry**: GFC-G3 exit proofs pass. Nothing references deleted types through old paths.
 
 **Commits**:
-1. `refactor(mother): delete MotherChild trait and legacy child implementations` — Remove `MotherChild` from `runtime.rs`, delete `secrets.rs`, `session_writer.rs`, `static_child.rs`. Remove `Toy` struct. Evaluate `GrantedToys` — keep if referenced by `KnowledgeChild` init, delete if orphaned.
-2. `refactor(mother): remove dead module exports` — Clean `lib.rs`: remove `secrets`, `session_writer`, `static_child` modules.
+1. `refactor(mother): remove legacy type usage paths` — remove references/callers first, keep files compiling but unreachable.
+2. `refactor(mother): delete MotherChild trait and legacy child implementations` — Remove `MotherChild` from `runtime.rs`, delete `secrets.rs`, `session_writer.rs`, `static_child.rs`. Remove `Toy` struct. Evaluate `GrantedToys` — keep if referenced by `KnowledgeChild` init, delete if orphaned.
+3. `refactor(mother): remove dead module exports` — Clean `lib.rs`: remove `secrets`, `session_writer`, `static_child` modules.
 
 **Direct code targets**:
 - `mother/src/runtime.rs` — delete `pub trait MotherChild`, `pub struct Toy`
@@ -136,6 +144,9 @@ rg "MotherChild|StaticChild|SecretsCacheChild|SessionWriterChild" --type rust  #
 ```
 cargo build 2>&1 | tail -5
 rg "legacy_children|legacy_migration|tick_legacy" --type rust  # expect: zero hits
+patina mother start
+curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/health | jq .
+patina mother stop
 ```
 
 **GFC truth map updates**: GFC3 → verified-true, GFC6 → verified-true
@@ -213,3 +224,8 @@ Each gate is independently revertable via `git revert`. If a gate introduces com
 - **`toys.rs` scope**: The `Toy` struct (shell command spawning) dies with `MotherChild`. But `GrantedToys` (capability declarations for WASM children) may still be needed. Resolved during GFC-G4 based on grep evidence.
 - **Scry backend**: Currently wired through `ApiRuntime`. Should it become a `ScryService` in `MotherServices`? Likely yes but not blocking — follow-up spec.
 - **`mother/src/broker/`**: Already service-shaped. May be re-exported under `MotherServices` for consistency during GFC-G3 if natural, otherwise follow-up.
+
+## Edge Validation Notes
+
+- Auth/permission checks for HTTP are in `mother/src/http_routes.rs` (`check_auth` + 401 guards), not in `src/commands/mother/builtin_dispatch.rs`.
+- `legacy_migration` currently spans CLI/mother launch and heartbeat wiring; removal must cover all callsites, not just heartbeat internals.
