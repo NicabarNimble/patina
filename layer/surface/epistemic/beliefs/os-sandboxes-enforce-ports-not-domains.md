@@ -4,10 +4,10 @@ id: os-sandboxes-enforce-ports-not-domains
 persona: architect
 facets: [security, architecture, sandbox]
 entrenchment: medium
-status: active
+status: defeated
 endorsed: true
 extracted: 2026-03-07
-revised: 2026-03-07
+revised: 2026-03-25
 ---
 
 # os-sandboxes-enforce-ports-not-domains
@@ -23,6 +23,7 @@ OS sandboxes (macOS SBPL, Linux Landlock) operate on IP:port pairs, not hostname
 - [[session-20260307-092539]]: Fork-based sandbox tests revealed sandbox_init() SBPL and Landlock cannot filter by hostname. Port 443 allows any HTTPS host. Discovered by testing, not by reading docs. (weight: 1.0)
 - macOS SBPL `remote ip` filter matches `"host:port"` strings at the socket level — DNS resolution happens before `connect()`, so the sandbox only sees IP addresses (weight: 0.9)
 - Linux Landlock `AccessNet::ConnectTcp` restricts by port number via `NetPort` — no hostname concept in the Landlock API (weight: 0.9)
+- [[session-20260319-071818-503477000]]: Native child path retired as dead dual-system infrastructure; OS sandbox network constraints are no longer part of active child-runtime policy. (weight: 1.0)
 
 ## Supports
 
@@ -45,3 +46,4 @@ OS sandboxes (macOS SBPL, Linux Landlock) operate on IP:port pairs, not hostname
 ## Revision Log
 
 - 2026-03-07: Created — metrics computed by `patina scrape`
+- 2026-03-25: Defeated — native-child OS sandbox lane retired with native child removal.

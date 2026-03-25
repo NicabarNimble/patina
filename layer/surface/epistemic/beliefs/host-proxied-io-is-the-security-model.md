@@ -4,10 +4,10 @@ id: host-proxied-io-is-the-security-model
 persona: architect
 facets: [architecture, security, children, sandbox]
 entrenchment: medium
-status: active
+status: defeated
 endorsed: true
 extracted: 2026-03-05
-revised: 2026-03-06
+revised: 2026-03-25
 ---
 
 # host-proxied-io-is-the-security-model
@@ -22,6 +22,8 @@ Security is host-side for WASM children (host-proxied I/O — all calls go throu
 
 - [[session-20260305-224446]]: Traced current security through host_support.rs: all enforcement is host-side (validate_http_url, check_secret_grant, resolve_credential, leak_check). WASM just prevents bypass. OS sandbox does the same. Three-layer model: protocol enforcement (always) + capability manifest (always) + runtime sandbox (WASM or OS). (weight: 0.9)
 - [[session-20260306-123021]]: Architecture reframe established dual security model: WASM children get host-proxied I/O (existing), native children get OS sandbox (Chrome renderer pattern, ~2ms startup, ~0ns runtime overhead). Same constraints, different enforcement mechanism. (weight: 0.9)
+- [[session-20260319-071818-503477000]]: Native child runtime path was removed as dead dual-system code; dual security model is no longer the active architecture target. (weight: 1.0)
+- [[session-20260325-064204-876122000]]: Active architecture clarified as Mother internal services plus external WASM children; child security model is host-mediated WASM lane, not dual-runtime policy. (weight: 1.0)
 
 ## Supports
 
@@ -47,3 +49,4 @@ Security is host-side for WASM children (host-proxied I/O — all calls go throu
 
 - 2026-03-05: Created — host-proxied I/O as the security model
 - 2026-03-06: Revised — dual security model: host-proxied for WASM, OS sandbox for native. Same constraints, different enforcement.
+- 2026-03-25: Defeated — dual-runtime security framing retired with native child lane removal.

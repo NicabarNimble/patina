@@ -4,10 +4,10 @@ id: sandbox-profiles-are-parameterized
 persona: architect
 facets: [architecture, security, sandbox, children, role-boundary]
 entrenchment: medium
-status: active
+status: defeated
 endorsed: true
 extracted: 2026-03-08
-revised: 2026-03-08
+revised: 2026-03-25
 ---
 
 # sandbox-profiles-are-parameterized
@@ -22,6 +22,7 @@ Sandbox profiles are parameterized by child type — each child gets the minimum
 
 - [[session-20260308-184638]]: Resolved P1-a conflict — pipe-architecture §8.3 denied all filesystem for native children, but lakehouse child must write Parquet. Evaluated 3 options against 5-question role alignment test. Mother-mediated I/O failed Q5 (Mother executing data-plane). Scoped path allowlist passed all 5. Mother configures OS sandbox at spawn time from child.toml type + destination config. (weight: 0.9)
 - [[session-20260305-224446]]: Original exploration session traced security model to host-side code, designed OS sandbox model. The deny-all profile was correct for connectors but implicitly assumed all children are connectors. (weight: 0.7)
+- [[session-20260319-071818-503477000]]: Native child infrastructure was removed as dead code in `spec-native-child-removal`, invalidating parameterized native sandbox profiles as active child-runtime doctrine. (weight: 1.0)
 
 ## Supports
 
@@ -48,3 +49,4 @@ Sandbox profiles are parameterized by child type — each child gets the minimum
 ## Revision Log
 
 - 2026-03-08: Created — metrics computed by `patina scrape`
+- 2026-03-25: Defeated — native child sandbox profile strategy retired with native child lane removal.
