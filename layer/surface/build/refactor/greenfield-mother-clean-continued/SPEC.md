@@ -283,7 +283,7 @@ Status keys:
 
 | GFC | Status | Evidence |
 |-----|--------|----------|
-| GFC1 | unverified | `MotherChild` trait exists in `mother/src/runtime.rs` (pending G4b) |
+| GFC1 | verified-true | `MotherChild` trait removed from `mother/src/runtime.rs`; Mother runtime now exposes `KnowledgeChild` only |
 | GFC2 | verified-true | `mother/src/static_child.rs` deleted and no `StaticChild` hits remain in Mother/daemon sources |
 | GFC3 | verified-true | `mother/src/registry.rs` now uses a single `children` vector (`KnowledgeChild` only) with no legacy registry path |
 | GFC4 | verified-true | `mother/src/secrets.rs` deleted; secrets cache logic is now in `mother/src/services/secrets.rs` |
@@ -292,9 +292,9 @@ Status keys:
 | GFC7 | verified-true | `mother/src/daemon.rs` deleted; Mother transport path is HTTP-only (`http_daemon` + router stack) |
 | GFC8 | verified-true | `MotherServices` now exists in `mother/src/services/mod.rs` and daemon runtime routes `/secrets/*` and `/health` through service-backed methods |
 | GFC9 | verified-true | `src/commands/mother/builtin_dispatch.rs` deleted; built-in route logic handled via `mother/src/http_api.rs` + `src/commands/mother/daemon.rs` |
-| GFC10 | unverified | Build/test not yet run against target state |
-| GFC11 | unverified | Daemon not yet tested against target state |
-| GFC12 | unverified | Grep not yet run against target state |
+| GFC10 | verified-true | `cargo build -q` and `cargo test -q` pass after retirement and cleanup |
+| GFC11 | verified-true | `patina mother start` + `curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/health` returns healthy JSON and `patina mother stop` succeeds |
+| GFC12 | verified-false | `rg "MotherChild|StaticChild|legacy_migration|legacy_children" --type rust` still hits SDK/plugin compatibility code (`sdk/patina-sdk/src/mother_child.rs`, `plugins/{models,repos}/src/lib.rs`) despite Mother runtime cleanup |
 
 ## Resolved Decisions
 
