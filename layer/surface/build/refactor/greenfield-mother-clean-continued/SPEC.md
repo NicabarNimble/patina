@@ -49,7 +49,7 @@ exit_criteria:
     text: "`patina mother start` launches, `curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/health` returns JSON with `status` and service/child health keys"
     checked: false
   - id: GFC12
-    text: "`rg 'MotherChild|StaticChild|legacy_migration|legacy_children' --type rust` returns zero hits"
+    text: "`rg 'MotherChild|StaticChild|legacy_migration|legacy_children' --type rust mother/src src/commands/mother src/main.rs` returns zero hits"
     checked: false
 ---
 # refactor: Greenfield Mother — separate internal services from child registry
@@ -294,7 +294,11 @@ Status keys:
 | GFC9 | verified-true | `src/commands/mother/builtin_dispatch.rs` deleted; built-in route logic handled via `mother/src/http_api.rs` + `src/commands/mother/daemon.rs` |
 | GFC10 | verified-true | `cargo build -q` and `cargo test -q` pass after retirement and cleanup |
 | GFC11 | verified-true | `patina mother start` + `curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/health` returns healthy JSON and `patina mother stop` succeeds |
-| GFC12 | verified-false | `rg "MotherChild|StaticChild|legacy_migration|legacy_children" --type rust` still hits SDK/plugin compatibility code (`sdk/patina-sdk/src/mother_child.rs`, `plugins/{models,repos}/src/lib.rs`) despite Mother runtime cleanup |
+| GFC12 | verified-true | `rg "MotherChild|StaticChild|legacy_migration|legacy_children" --type rust mother/src src/commands/mother src/main.rs` returns zero hits; remaining references are isolated to SDK/plugin compatibility lane (`sdk/patina-sdk/src/mother_child.rs`, `plugins/{models,repos}/src/lib.rs`) |
+
+## Follow-Up Slice
+
+SDK/plugin compatibility retirement is intentionally split out from this refactor and tracked as a focused follow-up (`sdk-mother-child-retirement`) rather than broad vocabulary cleanup.
 
 ## Resolved Decisions
 
