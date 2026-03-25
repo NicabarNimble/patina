@@ -12,7 +12,6 @@ use crate::mother::GrantedIngressSource;
 mod command;
 pub(crate) mod host_support;
 mod knowledge_child;
-mod mother_child;
 mod pipeline;
 mod task;
 
@@ -22,7 +21,6 @@ mod tests;
 pub use command::{CommandEngine, QueryDispatchFn};
 pub use knowledge_child::KnowledgeChildEngine as ChildEngine;
 pub use knowledge_child::KnowledgeChildEngine;
-pub use mother_child::MotherChildEngine;
 pub use pipeline::PipelineEngine;
 pub use task::TaskEngine;
 
@@ -34,7 +32,6 @@ pub use task::TaskEngine;
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChildKind {
     KnowledgeChild,
-    MotherChild,
     Command,
     Task,
     Pipeline,
@@ -46,10 +43,12 @@ impl std::str::FromStr for ChildKind {
     fn from_str(s: &str) -> Result<Self> {
         match s {
             "knowledge-child" => Ok(Self::KnowledgeChild),
-            "mother-child" => Ok(Self::MotherChild),
             "command" => Ok(Self::Command),
             "task" => Ok(Self::Task),
             "pipeline" => Ok(Self::Pipeline),
+            "mother-child" => {
+                anyhow::bail!("child kind 'mother-child' is retired; migrate to 'knowledge-child'")
+            }
             other => anyhow::bail!("unknown child kind: '{}'", other),
         }
     }
@@ -61,14 +60,6 @@ impl ChildKind {
         match self {
             Self::KnowledgeChild => &[
                 "host_log",
-                "host_query",
-                "host_http",
-                "host_measure",
-                "host_emit",
-            ],
-            Self::MotherChild => &[
-                "host_log",
-                "host_layer",
                 "host_query",
                 "host_http",
                 "host_measure",
@@ -92,7 +83,6 @@ impl std::fmt::Display for ChildKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::KnowledgeChild => write!(f, "knowledge-child"),
-            Self::MotherChild => write!(f, "mother-child"),
             Self::Command => write!(f, "command"),
             Self::Task => write!(f, "task"),
             Self::Pipeline => write!(f, "pipeline"),
@@ -132,20 +122,181 @@ impl ChildRole {
     /// Used for validation warnings — not enforcement.
     pub fn expected_worlds(&self) -> &[ChildKind] {
         match self {
-            Self::Connector => &[
-                ChildKind::KnowledgeChild,
-                ChildKind::MotherChild,
-                ChildKind::Task,
-            ],
+            Self::Connector => &[ChildKind::KnowledgeChild, ChildKind::Task],
             Self::Grammar => &[ChildKind::Pipeline],
             Self::Extension => &[ChildKind::Command, ChildKind::Task],
-            Self::App => &[
-                ChildKind::KnowledgeChild,
-                ChildKind::MotherChild,
-                ChildKind::Task,
-            ],
+            Self::App => &[ChildKind::KnowledgeChild, ChildKind::Task],
         }
     }
+}
+
+pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
+    let allowed = manifest.world.allowed_capabilities();
+    let world_denied: Vec<&str> = manifest
+        .capabilities
+        .iter()
+        .filter(|cap| !allowed.contains(&cap.as_str()))
+        .map(|s| s.as_str())
+        .collect();
+
+    if !world_denied.is_empty() {
+        anyhow::bail!(
+            "plugin '{}' (world '{}') requests capabilities not allowed for this world: {}",
+            manifest.name,
+            manifest.world,
+            world_denied.join(", ")
+        );
+    }
+
+    let auto_granted = [
+        "host_log",
+        "host_layer",
+        "host_measure",
+        "host_emit",
+        "host_http",
+        "host_query",
+    ];
+
+    let denied: Vec<&str> = manifest
+        .capabilities
+        .iter()
+        .filter(|cap| !auto_granted.contains(&cap.as_str()))
+        .map(|s| s.as_str())
+        .collect();
+
+    if !denied.is_empty() {
+        anyhow::bail!(
+            "plugin '{}' requests capabilities not granted: {}",
+            manifest.name,
+            denied.join(", ")
+        );
+    }
+
+    const KNOWN_QUERY_KINDS: &[&str] = &["scry", "context", "assay"];
+    let unknown: Vec<&str> = manifest
+        .host_query_kinds
+        .iter()
+        .filter(|k| !KNOWN_QUERY_KINDS.contains(&k.as_str()))
+        .map(|s| s.as_str())
+        .collect();
+
+    if !unknown.is_empty() {
+        anyhow::bail!(
+            "plugin '{}' requests unknown query kinds: {}",
+            manifest.name,
+            unknown.join(", ")
+        );
+    }
+
+    for domain in &manifest.host_http_domains {
+        if domain.is_empty() {
+            anyhow::bail!(
+                "plugin '{}' has empty HTTP domain in host_http",
+                manifest.name
+            );
+        }
+        if !domain.is_ascii() {
+            anyhow::bail!(
+                "plugin '{}' has non-ASCII HTTP domain '{}' in host_http",
+                manifest.name,
+                domain
+            );
+        }
+        if domain.contains('/') {
+            anyhow::bail!(
+                "plugin '{}' has path component in HTTP domain '{}' in host_http",
+                manifest.name,
+                domain
+            );
+        }
+    }
+
+    if manifest.capabilities.contains(&"host_emit".to_string()) && manifest.schemas.is_empty() {
+        anyhow::bail!(
+            "plugin '{}' declares host_emit but has no [schemas.*] entries",
+            manifest.name
+        );
+    }
+
+    if manifest.world == ChildKind::KnowledgeChild {
+        const KNOWN_STREAMS: &[&str] = &[
+            "belief.changed",
+            "graph.changed",
+            "fact.ingested",
+            "session.completed",
+            "repo.synced",
+        ];
+        for stream in &manifest.subscribed_streams {
+            if !KNOWN_STREAMS.contains(&stream.as_str()) {
+                anyhow::bail!(
+                    "plugin '{}' requests unknown event stream '{}'",
+                    manifest.name,
+                    stream
+                );
+            }
+        }
+
+        for source in manifest.ingress_sources.values() {
+            host_support::validate_http_url(&source.endpoint).map_err(|error| {
+                anyhow::anyhow!(
+                    "plugin '{}' declares invalid ingress source '{}' endpoint '{}': {}",
+                    manifest.name,
+                    source.name,
+                    source.endpoint,
+                    error
+                )
+            })?;
+        }
+    }
+
+    let http_set: std::collections::HashSet<&str> = manifest
+        .host_http_domains
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
+    for (domain, mapping) in &manifest.host_secrets {
+        if !http_set.contains(domain.as_str()) {
+            anyhow::bail!(
+                "plugin '{}': domain '{}' in host_secrets but not in host_http",
+                manifest.name,
+                domain
+            );
+        }
+        match crate::mother::get_global_secret(&mapping.secret_name) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                eprintln!(
+                    "[plugin:{}] warning: secret '{}' not found in vault (domain '{}')",
+                    manifest.name, mapping.secret_name, domain
+                );
+            }
+            Err(e) => {
+                eprintln!(
+                    "[plugin:{}] warning: could not probe secret '{}': {}",
+                    manifest.name, mapping.secret_name, e
+                );
+            }
+        }
+    }
+
+    if let Some(ref role) = manifest.role {
+        let expected_worlds = role.expected_worlds();
+        if !expected_worlds.contains(&manifest.world) {
+            eprintln!(
+                "[plugin:{}] warning: role '{}' is unusual for world '{}' (expected: {})",
+                manifest.name,
+                role,
+                manifest.world,
+                expected_worlds
+                    .iter()
+                    .map(|w| w.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+    }
+
+    Ok(())
 }
 
 impl std::fmt::Display for ChildRole {

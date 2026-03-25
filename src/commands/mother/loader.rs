@@ -39,12 +39,6 @@ pub(super) fn load_wasm_child(
                 relationship_listens,
             })
         }
-        patina::child::engine::ChildKind::MotherChild => {
-            anyhow::bail!(
-                "child '{}' uses retired kind 'mother-child'; migrate to 'knowledge-child'",
-                manifest.name
-            )
-        }
         other => anyhow::bail!(
             "child manifest world '{}' is not loadable by the daemon child loader",
             other

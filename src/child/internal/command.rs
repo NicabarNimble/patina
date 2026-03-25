@@ -4,8 +4,7 @@ use anyhow::Result;
 use wasmtime::component::{Component, Linker};
 use wasmtime::Store;
 
-use super::mother_child::MotherChildEngine;
-use super::{wasm_engine, ChildManifest, GrantedCapabilities};
+use super::{check_capabilities, wasm_engine, ChildManifest, GrantedCapabilities};
 
 /// Query dispatch function type.
 ///
@@ -128,7 +127,7 @@ mod command_bindings {
 
 /// Command plugin engine — loads and runs command world WASM plugins.
 ///
-/// Separate from MotherChildEngine because command plugins use a different
+/// Separate from knowledge-child engine because command plugins use a different
 /// WIT world with different imports (patina:host/layer for project
 /// data access). CLI creates this for one-shot use without the daemon.
 pub struct CommandEngine {
@@ -155,7 +154,7 @@ impl CommandEngine {
     /// Run a command plugin. Returns exit code.
     ///
     /// Checks capabilities from the manifest before execution — matches
-    /// MotherChildEngine::instantiate_child() pattern.
+    /// Shared manifest capability validation pattern.
     ///
     /// `query_fn`: Optional query dispatch provided by the binary crate.
     /// Required if the plugin has host_query capabilities. The host impl
@@ -167,8 +166,7 @@ impl CommandEngine {
         args: &[String],
         query_fn: Option<QueryDispatchFn>,
     ) -> Result<i32> {
-        // Check capabilities before execution — matches MotherChildEngine pattern
-        MotherChildEngine::check_capabilities(manifest)?;
+        check_capabilities(manifest)?;
 
         let wasi = wasmtime_wasi::WasiCtxBuilder::new()
             .inherit_stdout()

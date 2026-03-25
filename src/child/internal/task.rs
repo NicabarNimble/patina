@@ -8,8 +8,7 @@ use anyhow::Result;
 use wasmtime::component::{Component, Linker};
 use wasmtime::Store;
 
-use super::mother_child::MotherChildEngine;
-use super::{wasm_engine, ChildManifest, GrantedCapabilities};
+use super::{check_capabilities, wasm_engine, ChildManifest, GrantedCapabilities};
 use crate::mother::Toy;
 
 use super::command::QueryDispatchFn;
@@ -226,7 +225,7 @@ impl TaskEngine {
         query_fn: Option<QueryDispatchFn>,
     ) -> Result<(i32, Vec<Toy>)> {
         // Check capabilities before execution
-        MotherChildEngine::check_capabilities(manifest)?;
+        check_capabilities(manifest)?;
 
         // Build HTTP client with cross-domain redirect rejection (G5: shared builder).
         let http_client = super::host_support::build_http_client()?;

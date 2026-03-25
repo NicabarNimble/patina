@@ -127,11 +127,6 @@ fn world_templates(world: &ChildKind) -> (&'static str, &'static str, &'static s
             templates::mother_child::MANIFEST_TOML,
             templates::mother_child::LIB_RS,
         ),
-        ChildKind::MotherChild => (
-            templates::mother_child::CARGO_TOML,
-            templates::mother_child::MANIFEST_TOML,
-            templates::mother_child::LIB_RS,
-        ),
         ChildKind::Command => (
             templates::command::CARGO_TOML,
             templates::command::MANIFEST_TOML,
@@ -262,7 +257,6 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         for (world, expected_macro) in [
             (ChildKind::KnowledgeChild, "register_mother_child!"),
-            (ChildKind::MotherChild, "register_mother_child!"),
             (ChildKind::Command, "register_command_child!"),
             (ChildKind::Task, "register_task_child!"),
             (ChildKind::Pipeline, "register_pipeline_child!"),

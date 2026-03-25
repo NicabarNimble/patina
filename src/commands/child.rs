@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use patina::child::engine::MotherChildEngine;
+use patina::child::engine::{check_capabilities, ChildManifest};
 use patina::paths;
 
 /// List installed command children by scanning ~/.patina/plugins/ for .wasm + .toml pairs.
@@ -41,9 +41,9 @@ pub fn execute_list() -> Result<()> {
         let toml_path = plugins_dir.join(format!("{}.toml", stem));
 
         if toml_path.exists() {
-            match MotherChildEngine::load_manifest(&toml_path) {
+            match ChildManifest::from_path(&toml_path) {
                 Ok(manifest) => {
-                    let status = match MotherChildEngine::check_capabilities(&manifest) {
+                    let status = match check_capabilities(&manifest) {
                         Ok(()) => "ready",
                         Err(_) => "denied",
                     };

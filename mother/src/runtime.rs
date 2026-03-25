@@ -22,17 +22,6 @@ pub trait KnowledgeChild: Send + Sync {
     }
 }
 
-pub trait MotherChild: Send + Sync {
-    fn name(&self) -> &str;
-    fn on_load(&mut self, host: &dyn MotherHost) -> Result<()>;
-    fn on_unload(&mut self) {}
-    fn health(&self) -> ChildHealth;
-    fn handle(&self, request: &ChildRequest) -> Result<ChildResponse>;
-    fn tick(&mut self) -> Vec<Toy> {
-        vec![]
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum ChildHealth {
     Healthy,
