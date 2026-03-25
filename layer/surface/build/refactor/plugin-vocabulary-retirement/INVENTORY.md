@@ -9,11 +9,11 @@ Match pattern used:
 - `plugins/`
 - `Plugin[A-Z]`
 
-High-level counts (refreshed 2026-03-25):
+High-level counts (refreshed 2026-03-25, post PVR-G3):
 
-- `src/`: 282
-- `resources/`: 27
-- top-level active docs: 7
+- `src/`: 249
+- `resources/`: 33
+- top-level active docs: 5
 - `layer/surface/`: 658
 - `layer/sessions/`: 1109
 

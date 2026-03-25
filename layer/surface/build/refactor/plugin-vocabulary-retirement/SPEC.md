@@ -46,11 +46,11 @@ Define and execute a controlled vocabulary retirement plan: keep required compat
 
 ## Inventory Buckets (grouped)
 
-Counts from current audit (2026-03-25 refresh):
+Counts from current audit (2026-03-25 refresh, post PVR-G3):
 
-- `src/`: 282 matches
-- `resources/`: 27 matches
-- top-level active docs: 7 matches
+- `src/`: 249 matches
+- `resources/`: 33 matches
+- top-level active docs: 5 matches
 - `layer/surface/`: 658 matches
 - `layer/sessions/`: 1109 matches
 
@@ -229,7 +229,7 @@ Recommended next operator behavior:
 - Entry: PVR-G6 complete.
 - Work: add deterministic guard command/script for active surfaces, excluding frozen history.
 - Exit proofs:
-  - Guard command passes on clean tree.
+  - `bash resources/scripts/check-plugin-vocab-guard.sh` passes on clean tree.
   - `cargo check --workspace && cargo test -q` succeeds.
 
 ## Final Verification Commands
@@ -237,7 +237,7 @@ Recommended next operator behavior:
 - `cargo check --workspace`
 - `cargo test -q`
 - targeted command checks (`patina --help`, canonical child command help + compatibility alias behavior)
-- deterministic vocabulary guard command for active surfaces (excluding `layer/sessions/` and historical archives)
+- `bash resources/scripts/check-plugin-vocab-guard.sh`
 
 ## Build Readiness
 

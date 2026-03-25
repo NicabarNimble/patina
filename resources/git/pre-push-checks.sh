@@ -9,20 +9,9 @@ set -e
 echo "🔍 Running pre-push checks..."
 echo ""
 
-# Step 1: WIT consistency — guest crate wit/ must match canonical wit/
-# Two groups: mother-child crates need full wit/ tree, command crates need wit/command/
+# Step 1: WIT consistency — SDK mirror must match canonical wit/
 echo "📦 [1/14] Checking WIT consistency..."
 wit_ok=true
-# Mother-child guest crates: full wit/ tree (mother-child + command + deps)
-for crate_dir in plugins/models plugins/repos; do
-    if [ -d "$crate_dir/wit" ]; then
-        if ! diff -r wit/ "$crate_dir/wit/" > /dev/null 2>&1; then
-            echo "   ERROR: $crate_dir/wit/ differs from canonical wit/"
-            echo "   Fix: cp -r wit/ $crate_dir/wit/"
-            wit_ok=false
-        fi
-    fi
-done
 # Step 1b: SDK WIT consistency — ensure published SDK ships current WIT
 # Compare world definitions AND their deps/patina-host/host.wit copies
 echo "   Checking SDK WIT consistency..."
