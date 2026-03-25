@@ -7,7 +7,7 @@ entrenchment: medium
 status: active
 endorsed: true
 extracted: 2026-03-07
-revised: 2026-03-07
+revised: 2026-03-25
 ---
 
 # connection-secrets-live-in-global-vault
@@ -24,7 +24,7 @@ Credentials referenced by ~/.patina/connections/ configs must be stored in the g
 
 ## Supports
 
-- [[host-proxied-io-is-the-security-model]] — Mother decrypts credentials from vault, children never access vault directly
+- [[four-roles-no-overlap]] — secret decryption is Mother infrastructure responsibility, not child runtime logic.
 
 ## Attacks
 

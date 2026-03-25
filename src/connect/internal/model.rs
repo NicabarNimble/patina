@@ -90,7 +90,7 @@ pub struct AuthConfig {
     pub injection: InjectionStrategy,
     /// Vault secret name (e.g., "github:default").
     pub secret_ref: String,
-    /// Deprecated: formerly named the native child binary to spawn.
+    /// Deprecated: legacy child launcher field.
     /// Retained for backwards compatibility with stored connection TOML files.
     /// Ignored at runtime — connector capabilities are resolved via provider.
     #[serde(default)]

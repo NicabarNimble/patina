@@ -4,10 +4,10 @@ id: pipe-protocol-is-transport-agnostic
 persona: architect
 facets: [architecture, pipes, protocol, mcp]
 entrenchment: medium
-status: active
+status: defeated
 endorsed: true
 extracted: 2026-03-05
-revised: 2026-03-05
+revised: 2026-03-25
 ---
 
 # pipe-protocol-is-transport-agnostic
@@ -21,6 +21,8 @@ The pipe protocol (config in, facts out) works over any transport — stdio for 
 ## Evidence
 
 - [[session-20260305-224446]]: [[session-20260305-224446]] - Analyzed why MCP has three transports (stdio, HTTP+SSE, Streamable HTTP): deployment topology. Mapped same reasoning to pipes: local (spawn+stdio), remote (VPS over HTTP), shared (multi-Mother). Protocol constant, transport variable (weight: 0.9)
+- [[session-20260319-071818-503477000]]: Native transport child lane was removed as dead dual-system infrastructure, collapsing active child runtime onto the WASM lane. (weight: 1.0)
+- [[session-20260325-064204-876122000]]: Architecture decisions lock Mother internal services plus external WASM children; pipe transport doctrine no longer represents active runtime truth. (weight: 1.0)
 
 ## Supports
 
@@ -44,3 +46,4 @@ The pipe protocol (config in, facts out) works over any transport — stdio for 
 ## Revision Log
 
 - 2026-03-05: Created — metrics computed by `patina scrape`
+- 2026-03-25: Defeated — pipe transport doctrine retired from active child runtime model.

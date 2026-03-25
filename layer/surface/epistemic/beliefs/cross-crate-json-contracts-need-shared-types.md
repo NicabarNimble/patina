@@ -7,7 +7,7 @@ entrenchment: medium
 status: active
 endorsed: true
 extracted: 2026-03-07
-revised: 2026-03-07
+revised: 2026-03-25
 ---
 
 # cross-crate-json-contracts-need-shared-types
@@ -24,8 +24,8 @@ When two crates exchange JSON over a wire protocol, serialization and deserializ
 
 ## Supports
 
-- [[host-proxied-io-is-the-security-model]] — shared types enforce that the broker and child agree on auth delivery format
-- [[pipes-are-processes-not-wasm]] — native children communicate via JSON-RPC over stdio; shared types prevent wire drift
+- [[specs-describe-current-code-not-aspirations]] — shared wire types keep contracts truthful across crate boundaries.
+- [[children-are-wasm-only]] — child-runtime contract drift is prevented by shared typed payloads instead of ad-hoc JSON maps.
 
 ## Attacks
 

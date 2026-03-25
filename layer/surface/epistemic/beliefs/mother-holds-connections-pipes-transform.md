@@ -4,10 +4,10 @@ id: mother-holds-connections-pipes-transform
 persona: architect
 facets: [architecture, children, streaming, mother, broker]
 entrenchment: medium
-status: active
+status: defeated
 endorsed: true
 extracted: 2026-03-05
-revised: 2026-03-06
+revised: 2026-03-25
 ---
 
 # mother-holds-connections-pipes-transform
@@ -22,6 +22,8 @@ Transport children hold external connections (WebSockets, webhooks), connector c
 
 - [[session-20260305-224446]]: Solved WebSocket/streaming problem: transport child holds connection, buffers messages, feeds to connector child via pipe protocol. Connector doesn't know about WebSocket — same interface for REST poll, WebSocket push, webhook receive, RSS. (weight: 0.9)
 - [[session-20260306-123021]]: Architecture reframe: Mother = broker (Netflix/Kafka pattern). Mother routes facts from sources to destinations. Transport children hold connections. Connector children transform. Mother orchestrates but doesn't do either. (weight: 0.9)
+- [[session-20260319-071818-503477000]]: Native child dual-system path (transport/connector child process lane) was removed as dead architecture during `spec-native-child-removal`. (weight: 1.0)
+- [[session-20260325-064204-876122000]]: Mother architecture was re-locked as internal services + external WASM children; old pipe transport-child taxonomy is not the active runtime model. (weight: 1.0)
 
 ## Supports
 
@@ -47,3 +49,4 @@ Transport children hold external connections (WebSockets, webhooks), connector c
 
 - 2026-03-05: Created — Mother holds connections, pipes transform
 - 2026-03-06: Revised — transport children hold connections, connector children transform, Mother orchestrates. Aligned with broker model.
+- 2026-03-25: Defeated — transport/connector pipe-child model retired after native child lane removal.
