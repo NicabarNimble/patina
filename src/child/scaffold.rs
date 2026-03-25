@@ -1,4 +1,4 @@
-//! Child scaffolding — `patina plugin init <name> --world <world>`.
+//! Child scaffolding — `patina child init <name> --world <world>`.
 //!
 //! Generates a working child project from embedded templates.
 //! Templates are compiled into the binary via `include_str!` — no
@@ -15,36 +15,36 @@ use super::engine::ChildKind;
 // =========================================================================
 
 mod templates {
-    pub mod mother_child {
+    pub mod knowledge_child {
         pub const CARGO_TOML: &str =
-            include_str!("../../resources/templates/plugin/mother-child/Cargo.toml.tmpl");
+            include_str!("../../resources/templates/child/knowledge-child/Cargo.toml.tmpl");
         pub const MANIFEST_TOML: &str =
-            include_str!("../../resources/templates/plugin/mother-child/child.toml.tmpl");
+            include_str!("../../resources/templates/child/knowledge-child/child.toml.tmpl");
         pub const LIB_RS: &str =
-            include_str!("../../resources/templates/plugin/mother-child/lib.rs.tmpl");
+            include_str!("../../resources/templates/child/knowledge-child/lib.rs.tmpl");
     }
     pub mod command {
         pub const CARGO_TOML: &str =
-            include_str!("../../resources/templates/plugin/command/Cargo.toml.tmpl");
+            include_str!("../../resources/templates/child/command/Cargo.toml.tmpl");
         pub const MANIFEST_TOML: &str =
-            include_str!("../../resources/templates/plugin/command/child.toml.tmpl");
+            include_str!("../../resources/templates/child/command/child.toml.tmpl");
         pub const LIB_RS: &str =
-            include_str!("../../resources/templates/plugin/command/lib.rs.tmpl");
+            include_str!("../../resources/templates/child/command/lib.rs.tmpl");
     }
     pub mod task {
         pub const CARGO_TOML: &str =
-            include_str!("../../resources/templates/plugin/task/Cargo.toml.tmpl");
+            include_str!("../../resources/templates/child/task/Cargo.toml.tmpl");
         pub const MANIFEST_TOML: &str =
-            include_str!("../../resources/templates/plugin/task/child.toml.tmpl");
-        pub const LIB_RS: &str = include_str!("../../resources/templates/plugin/task/lib.rs.tmpl");
+            include_str!("../../resources/templates/child/task/child.toml.tmpl");
+        pub const LIB_RS: &str = include_str!("../../resources/templates/child/task/lib.rs.tmpl");
     }
     pub mod pipeline {
         pub const CARGO_TOML: &str =
-            include_str!("../../resources/templates/plugin/pipeline/Cargo.toml.tmpl");
+            include_str!("../../resources/templates/child/pipeline/Cargo.toml.tmpl");
         pub const MANIFEST_TOML: &str =
-            include_str!("../../resources/templates/plugin/pipeline/child.toml.tmpl");
+            include_str!("../../resources/templates/child/pipeline/child.toml.tmpl");
         pub const LIB_RS: &str =
-            include_str!("../../resources/templates/plugin/pipeline/lib.rs.tmpl");
+            include_str!("../../resources/templates/child/pipeline/lib.rs.tmpl");
     }
 }
 
@@ -123,9 +123,9 @@ fn substitute(template: &str, name: &str) -> String {
 fn world_templates(world: &ChildKind) -> (&'static str, &'static str, &'static str) {
     match world {
         ChildKind::KnowledgeChild => (
-            templates::mother_child::CARGO_TOML,
-            templates::mother_child::MANIFEST_TOML,
-            templates::mother_child::LIB_RS,
+            templates::knowledge_child::CARGO_TOML,
+            templates::knowledge_child::MANIFEST_TOML,
+            templates::knowledge_child::LIB_RS,
         ),
         ChildKind::Command => (
             templates::command::CARGO_TOML,
@@ -256,7 +256,7 @@ mod tests {
     fn test_scaffold_all_worlds() {
         let tmp = tempfile::tempdir().unwrap();
         for (world, expected_macro) in [
-            (ChildKind::KnowledgeChild, "register_mother_child!"),
+            (ChildKind::KnowledgeChild, "register_knowledge_child!"),
             (ChildKind::Command, "register_command_child!"),
             (ChildKind::Task, "register_task_child!"),
             (ChildKind::Pipeline, "register_pipeline_child!"),
