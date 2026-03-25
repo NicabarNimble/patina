@@ -3,27 +3,56 @@ type: refactor
 id: greenfield-mother-clean-continued
 status: draft
 created: 2026-03-25
+beliefs:
+  - "[[four-roles-no-overlap]]"
+  - "[[children-have-agency-toys-are-capabilities]]"
+  - "[[core-verbs-standalone-mother-additive]]"
+  - "[[mother-is-connection-and-continuity]]"
+  - "[[mother-is-the-daemon]]"
+  - "[[agents-are-guests-mother-is-infrastructure]]"
+  - "[[initialize-is-capability-grant]]"
 sessions:
   origin: 20260325-064204-876122000
+  prior_art: greenfield-mother-patina-rebuild (v0.43.11, 2026-03-24)
 exit_criteria:
-  - MotherChild trait deleted from codebase
-  - StaticChild type deleted from codebase
-  - ChildRegistry holds only KnowledgeChild (WASM guests)
-  - legacy_children vector removed from ChildRegistry
-  - --legacy-migration flag removed from daemon startup
-  - Legacy heartbeat branch (toy subprocess spawning) removed
-  - daemon.rs (old protocol v1 socket handler) removed
-  - session_writer.rs (native placeholder child) removed
-  - secrets.rs (MotherChild version) removed
-  - MotherServices struct (or equivalent) owns secrets, sessions, health, broker, lakes, specs
-  - HTTP routes call MotherServices directly, not through child registry
-  - builtin_dispatch.rs eliminated — its logic absorbed into MotherServices routes
-  - All existing tests pass or are updated to reflect new structure
-  - patina mother start still works (UDS + TCP)
-  - patina ai claude still launches and creates sessions
-  - Secrets caching still works (authority backend preserved)
+  - id: GFC1
+    text: MotherChild trait deleted from codebase — zero hits for `pub trait MotherChild`
+    checked: false
+  - id: GFC2
+    text: StaticChild type deleted — zero hits for `StaticChild`
+    checked: false
+  - id: GFC3
+    text: ChildRegistry holds single `children` vector (KnowledgeChild only), `legacy_children` gone
+    checked: false
+  - id: GFC4
+    text: SecretsCacheChild (`mother/src/secrets.rs`) deleted — logic lives in `services/secrets.rs`
+    checked: false
+  - id: GFC5
+    text: SessionWriterChild (`mother/src/session_writer.rs`) deleted
+    checked: false
+  - id: GFC6
+    text: Legacy heartbeat branch removed — no `legacy_migration` in daemon_heartbeat.rs
+    checked: false
+  - id: GFC7
+    text: daemon.rs protocol v1 handler deleted — Mother speaks HTTP only
+    checked: false
+  - id: GFC8
+    text: MotherServices struct owns secrets, sessions, health — HTTP routes call it directly
+    checked: false
+  - id: GFC9
+    text: builtin_dispatch.rs eliminated — logic absorbed into service-backed routes
+    checked: false
+  - id: GFC10
+    text: "`cargo build` succeeds, `cargo test` passes"
+    checked: false
+  - id: GFC11
+    text: "`patina mother start` launches, `/health` returns OK"
+    checked: false
+  - id: GFC12
+    text: "`rg 'MotherChild|StaticChild|legacy_migration|legacy_children' --type rust` returns zero hits"
+    checked: false
 ---
-# refactor: Greenfield Mother: separate internal services from child registry
+# refactor: Greenfield Mother — separate internal services from child registry
 
 > Mother's code conflates internal services (secrets, sessions, health, specs, lakes) with the child abstraction. Native Rust structs masquerade as children via MotherChild trait and StaticChild markers, while the actual child registry should hold only WASM guests. This refactor draws a clean line: Mother owns internal services directly, ChildRegistry holds only KnowledgeChild WASM instances.
 
@@ -65,16 +94,36 @@ Draw a clean, permanent line between Mother's internal services and the child re
 
 ## Status
 
-Draft. Architecture alignment confirmed in session 20260325-064204-876122000. This continues the greenfield Mother work from the `mother-child-toy-beliefs-layout` refactor spec (March 13, 2026) and the toybox framework design from session 20260324-101606-299953000.
+Draft. Architecture alignment confirmed in session 20260325-064204-876122000. This continues the greenfield Mother work from `greenfield-mother-patina-rebuild` (completed 2026-03-24, released as v0.43.11) and the toybox framework design from session 20260324-101606-299953000.
 
 ## Non-Goals
 
-- Wiring actual WASM child loading (that's Phase 3 — unblocked by this work but not part of it)
+- Wiring actual WASM child loading (unblocked by this work but not part of it)
 - Changing the session artifact format or `patina ai` entry point (these already work)
-- Redesigning the secrets authority backend (it's solid, just needs to stop being a "child")
+- Redesigning the secrets authority backend (solid, just needs to stop being a "child")
 - Implementing the stubbed daemon actions (scry, context, measure, spec, lake)
 - Multi-Mother federation
-- Token management or context window aware sessions (separate concern)
+- Token management or context window aware sessions
+
+## Execution Contract
+
+This spec is execution-constrained. Any agent implementing it must follow these rules:
+
+1. **No silent scope changes** — if a gate reveals unexpected entanglement, pause and update the spec before proceeding.
+2. **No deferral language** — every commit either does the thing or explicitly explains why not.
+3. **Claim discipline** — every state claim backed by `file:line` or command output.
+4. **One-gate-at-a-time** — do not start GFC-G2 until GFC-G1 exit proofs pass.
+5. **Cargo check between gates** — `cargo build` must succeed after every gate.
+
+## Phase Gate Policy
+
+Each gate must have:
+- Entry conditions (what must be true before starting)
+- Implementation commits (scalpel, not shotgun)
+- Exit proofs (commands + expected output)
+- GFC truth-map updates
+
+If proofs fail, gate remains open. Do not start next gate.
 
 ## Current State
 
@@ -128,75 +177,90 @@ Mother (daemon process)
     └── Heartbeat: drain → tick → handle (no legacy branch)
 ```
 
-## Solution
+## Solution — Milestone Gates
 
-### Phase 1: Create MotherServices and migrate internal capabilities
+### GFC-G1: Introduce MotherServices with SecretsService
+- Create `mother/src/services/mod.rs` with `MotherServices` struct
+- Create `mother/src/services/secrets.rs` — migrate TTL cache logic from `SecretsCacheChild`
+- Wire secrets HTTP routes to call `SecretsService` directly
+- **Exit proof**: `cargo build` succeeds, secrets routes compile against new service
 
-Introduce a `MotherServices` struct in the mother crate that owns the internal capabilities. Move secrets caching from `SecretsCacheChild` into `SecretsService`. Move session state operations into `SessionStateService`. Wire HTTP routes to call services directly.
+### GFC-G2: Add SessionStateService and HealthService
+- Create `mother/src/services/sessions.rs` — wraps `mother_sessions` table ops from `state.rs`
+- Create `mother/src/services/health.rs` — aggregates Mother service health + child registry health
+- **Entry**: GFC-G1 exit proofs pass
+- **Exit proof**: `cargo build` succeeds, health and session types resolve
 
-### Phase 2: Purge legacy child abstractions
+### GFC-G3: Wire HTTP routes to MotherServices
+- Update `http_routes.rs` and `http_api.rs` to route `/health`, `/secrets/*` through `MotherServices`
+- Absorb `builtin_dispatch.rs` pattern-matching logic into service-backed routes
+- Update `ServerState` to hold `MotherServices` + `ChildRegistry`
+- **Entry**: GFC-G2 exit proofs pass
+- **Exit proof**: `cargo build` succeeds, HTTP routes compile against services, `builtin_dispatch.rs` logic migrated
 
-Delete `MotherChild` trait, `StaticChild`, `SecretsCacheChild`, `SessionWriterChild`. Remove `legacy_children` from `ChildRegistry`. Remove `--legacy-migration` flag and heartbeat legacy branch. Remove `daemon.rs` (old protocol v1 handler). Remove `builtin_dispatch.rs` (absorbed into service routes).
+### GFC-G4: Delete legacy child types
+- Delete `MotherChild` trait from `runtime.rs`
+- Delete `secrets.rs` (SecretsCacheChild)
+- Delete `session_writer.rs` (SessionWriterChild)
+- Delete `static_child.rs` (StaticChild)
+- Delete `Toy` struct from `runtime.rs` (keep `GrantedToys` in `toys.rs` if referenced by KnowledgeChild)
+- **Entry**: GFC-G3 exit proofs pass (nothing references deleted types through old paths)
+- **Exit proof**: `cargo build` succeeds, `rg "MotherChild|StaticChild|SecretsCacheChild|SessionWriterChild" --type rust` returns zero
 
-### Phase 3: Simplify registry and heartbeat
+### GFC-G5: Purge ChildRegistry legacy path
+- Remove `legacy_children` vector from `ChildRegistry`
+- Remove `register_legacy()`, `tick_legacy_all()`
+- Simplify to single `children: Vec<KnowledgeChild>`
+- Remove `--legacy-migration` flag from `DaemonBootstrapConfig`
+- Remove legacy branch from `daemon_heartbeat.rs`
+- **Entry**: GFC-G4 exit proofs pass
+- **Exit proof**: `cargo build` succeeds, `rg "legacy_children|legacy_migration|tick_legacy" --type rust` returns zero
 
-`ChildRegistry` becomes a single vector of `KnowledgeChild`. Heartbeat runs only `run_knowledge_cycles()`. `ApiRuntime` trait updated to reflect services + registry separation.
+### GFC-G6: Delete daemon.rs protocol v1
+- Delete `mother/src/daemon.rs` (old Unix socket line-based protocol handler)
+- Remove from `lib.rs` exports
+- Mother speaks HTTP only (over UDS or TCP)
+- **Entry**: GFC-G5 exit proofs pass
+- **Exit proof**: `cargo build` succeeds, no `DaemonState` references remain
 
-## Implementation Order
+### GFC-G7: Update bootstrap and verify
+- Update `daemon_bootstrap.rs` — create `MotherServices` instead of calling `register_builtin_children()`
+- Clean up `lib.rs` module exports (add `services`, remove dead modules)
+- Delete `builtin_dispatch.rs` from CLI
+- Run full test suite, fix any broken tests
+- **Entry**: GFC-G6 exit proofs pass
+- **Exit proof**: `cargo build && cargo test` pass, `patina mother start` launches, `/health` returns OK
 
-1. Create `MotherServices` struct with service modules
-2. Migrate secrets cache logic into `SecretsService` (preserve TTL behavior)
-3. Migrate session state ops into `SessionStateService`
-4. Wire HTTP routes to `MotherServices` for secrets, health, builtin dispatch
-5. Remove `builtin_dispatch.rs` — logic now lives in service-backed routes
-6. Delete `MotherChild` trait from `runtime.rs`
-7. Delete `SecretsCacheChild` (`secrets.rs`)
-8. Delete `SessionWriterChild` (`session_writer.rs`)
-9. Delete `StaticChild` (`static_child.rs`)
-10. Remove `legacy_children` from `ChildRegistry`, remove `register_legacy()`
-11. Remove `--legacy-migration` flag from `DaemonBootstrapConfig`
-12. Remove legacy heartbeat branch from `daemon_heartbeat.rs`
-13. Delete `daemon.rs` (old protocol v1 socket handler)
-14. Update `daemon_bootstrap.rs` to register only WASM children (no builtins)
-15. Update `ApiRuntime` trait to use `MotherServices` + `ChildRegistry`
-16. Update all tests
+### GFC truth map
+
+Status keys:
+- `unverified` — not yet checked
+- `verified-false` — code disproves criterion today
+- `verified-true` — criterion satisfied with evidence
+
+| GFC | Status | Evidence |
+|-----|--------|----------|
+| GFC1 | unverified | `MotherChild` trait exists in `mother/src/runtime.rs` |
+| GFC2 | unverified | `StaticChild` exists in `mother/src/static_child.rs` |
+| GFC3 | unverified | `legacy_children` vector exists in `mother/src/registry.rs` |
+| GFC4 | unverified | `SecretsCacheChild` exists in `mother/src/secrets.rs` |
+| GFC5 | unverified | `SessionWriterChild` exists in `mother/src/session_writer.rs` |
+| GFC6 | unverified | `legacy_migration` flag exists in `daemon_heartbeat.rs` and `daemon_bootstrap_config.rs` |
+| GFC7 | unverified | `daemon.rs` protocol v1 handler exists in `mother/src/daemon.rs` |
+| GFC8 | unverified | No `MotherServices` struct exists yet |
+| GFC9 | unverified | `builtin_dispatch.rs` exists in `src/commands/mother/` |
+| GFC10 | unverified | Build/test not yet run against target state |
+| GFC11 | unverified | Daemon not yet tested against target state |
+| GFC12 | unverified | Grep not yet run against target state |
 
 ## Resolved Decisions
 
-- **Mother has internal services + external children** (not "everything is a child"). Confirmed in session 20260325-064204-876122000. Aligns with `[[four-roles-no-overlap]]`, `[[children-have-agency-toys-are-capabilities]]`, and `[[core-verbs-standalone-mother-additive]]`.
-- **`KnowledgeChild` lifecycle stays** (drain → tick → handle). This is the right model for WASM guests. Only `MotherChild` (tick → Toys) goes away.
-- **HTTP is the single transport**. The old `daemon.rs` line-based protocol is dead code.
-- **Session dual-bookkeeping is correct** — artifacts in `layer/sessions/` (Patina knowledge) + state in `mother_sessions` (Mother state machine). The session-writer "child" in the middle adds nothing and is removed.
-
-## Verification
-
-- `cargo build` succeeds with no references to deleted types
-- `cargo test` passes (mother crate + integration tests)
-- `patina mother start` launches daemon, `/health` returns OK
-- `patina mother status` reports services + any loaded children
-- `patina ai claude` launches, creates session, session-start returns JSON
-- Secrets: cache/get/lock operations work through SecretsService
-- No regression in `patina mother run` (broker sources)
-
-## Exit Criteria
-
-- [ ] `MotherChild` trait deleted from codebase
-- [ ] `StaticChild` type deleted from codebase
-- [ ] `ChildRegistry` holds only `KnowledgeChild` (WASM guests)
-- [ ] `legacy_children` vector removed from `ChildRegistry`
-- [ ] `--legacy-migration` flag removed from daemon startup
-- [ ] Legacy heartbeat branch (toy subprocess spawning) removed
-- [ ] `daemon.rs` (old protocol v1 socket handler) removed
-- [ ] `session_writer.rs` (native placeholder child) removed
-- [ ] `secrets.rs` (MotherChild version) removed
-- [ ] `MotherServices` struct (or equivalent) owns secrets, sessions, health, broker, lakes, specs
-- [ ] HTTP routes call `MotherServices` directly, not through child registry
-- [ ] `builtin_dispatch.rs` eliminated — its logic absorbed into `MotherServices` routes
-- [ ] All existing tests pass or are updated to reflect new structure
-- [ ] `patina mother start` still works (UDS + TCP)
-- [ ] `patina ai claude` still launches and creates sessions
-- [ ] Secrets caching still works (authority backend preserved)
+1. **Mother has internal services + external children** (not "everything is a child"). Confirmed in session 20260325-064204-876122000. Aligns with `[[four-roles-no-overlap]]`, `[[children-have-agency-toys-are-capabilities]]`, and `[[core-verbs-standalone-mother-additive]]`.
+2. **`KnowledgeChild` lifecycle stays** (drain → tick → handle). This is the right model for WASM guests. Only `MotherChild` (tick → Toys) goes away.
+3. **HTTP is the single transport**. The old `daemon.rs` line-based protocol is dead code.
+4. **Session dual-bookkeeping is correct** — artifacts in `layer/sessions/` (Patina knowledge) + state in `mother_sessions` (Mother state machine). The session-writer "child" in the middle adds nothing and is removed.
+5. **`GrantedToys` survives if referenced** — the `Toy` struct (shell command) dies with `MotherChild`, but `GrantedToys` (WASM capability declarations) may still be needed by `KnowledgeChild` init. Evaluated during GFC-G4.
 
 ## Build Readiness
 
-Beliefs are aligned. Architecture is agreed. The code surfaces to change are well-understood. This is primarily deletion and reorganization — the capabilities already work, they just need to stop routing through the child registry. Ready for DESIGN.md and implementation.
+Beliefs aligned. Architecture agreed. Code surfaces mapped. Prior art: `greenfield-mother-patina-rebuild` completed in a single active session (Mar 24) with 12 gates. This spec has 7 gates, smaller scope — primarily deletion and promotion. Same-session executable.
