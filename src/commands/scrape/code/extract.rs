@@ -25,8 +25,9 @@ use patina::paths;
 
 /// Embedded Rust grammar WASM binary for graceful-extraction fallback.
 /// Patina can always parse Rust even with zero grammar children installed.
+/// Binary checked into resources/grammars/ so CI has it without wasi-sdk.
 const EMBEDDED_GRAMMAR_RUST: &[u8] =
-    include_bytes!("../../../../grammars/rust/target/wasm32-wasip2/release/grammar_rust.wasm");
+    include_bytes!("../../../../resources/grammars/grammar-rust.wasm");
 
 /// Process all source files and extract metadata using safe database operations.
 ///
