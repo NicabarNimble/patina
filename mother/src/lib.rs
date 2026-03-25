@@ -14,15 +14,12 @@ pub mod lifecycle;
 pub mod microserver;
 pub mod registry;
 pub mod runtime;
-pub mod secrets;
 pub mod secrets_authority_api;
 pub mod secrets_authority_backend;
 pub mod secrets_paths;
 pub mod services;
-pub mod session_writer;
 pub mod socket;
 pub mod state;
-pub mod static_child;
 pub mod tasks;
 pub mod toys;
 

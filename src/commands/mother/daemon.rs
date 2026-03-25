@@ -204,9 +204,6 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     let mut registry = ChildRegistry::new();
     let runtime = patina::mother::KnowledgeRuntimeStore::default();
 
-    // Compiled-in children (always available)
-    mother_crate::daemon_bootstrap::register_builtin_children(&mut registry)?;
-
     // WASM children (discovered from ~/.patina/children/)
     let children_dir = patina::paths::child::children_dir();
     mother_crate::daemon_bootstrap::load_children_from_dir(

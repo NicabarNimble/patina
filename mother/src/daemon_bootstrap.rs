@@ -16,34 +16,6 @@ pub enum LoadedChild {
     },
 }
 
-pub fn register_builtin_children(registry: &mut ChildRegistry) -> Result<()> {
-    registry
-        .register(Box::new(crate::secrets::SecretsCacheChild::new()))
-        .expect("failed to register secrets child");
-    registry
-        .register(Box::new(crate::session_writer::SessionWriterChild::new()))
-        .expect("failed to register session-writer child");
-    registry
-        .register(Box::new(crate::static_child::StaticChild::new(
-            "spec-manager",
-        )))
-        .expect("failed to register spec-manager child marker");
-    registry
-        .register(Box::new(crate::static_child::StaticChild::new("doctor")))
-        .expect("failed to register doctor child marker");
-    registry
-        .register(Box::new(crate::static_child::StaticChild::new(
-            "lake-manager",
-        )))
-        .expect("failed to register lake-manager child marker");
-    registry
-        .register(Box::new(crate::static_child::StaticChild::new(
-            "secrets-authority",
-        )))
-        .expect("failed to register secrets-authority child marker");
-    Ok(())
-}
-
 pub fn register_loaded_child(
     registry: &mut ChildRegistry,
     runtime: &KnowledgeRuntimeStore,

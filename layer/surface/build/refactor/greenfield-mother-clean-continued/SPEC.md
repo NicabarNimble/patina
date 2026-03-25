@@ -284,10 +284,10 @@ Status keys:
 | GFC | Status | Evidence |
 |-----|--------|----------|
 | GFC1 | unverified | `MotherChild` trait exists in `mother/src/runtime.rs` (pending G4b) |
-| GFC2 | unverified | `StaticChild` exists in `mother/src/static_child.rs` |
+| GFC2 | verified-true | `mother/src/static_child.rs` deleted and no `StaticChild` hits remain in Mother/daemon sources |
 | GFC3 | unverified | `legacy_children` vector exists in `mother/src/registry.rs` |
-| GFC4 | unverified | `SecretsCacheChild` exists in `mother/src/secrets.rs` |
-| GFC5 | unverified | `SessionWriterChild` exists in `mother/src/session_writer.rs` |
+| GFC4 | verified-true | `mother/src/secrets.rs` deleted; secrets cache logic is now in `mother/src/services/secrets.rs` |
+| GFC5 | verified-true | `mother/src/session_writer.rs` deleted and no `SessionWriterChild` hits remain in Mother/daemon sources |
 | GFC6 | unverified | `legacy_migration` flag exists in `daemon_heartbeat.rs` and `daemon_bootstrap_config.rs` |
 | GFC7 | unverified | `daemon.rs` protocol v1 handler exists in `mother/src/daemon.rs` |
 | GFC8 | verified-true | `MotherServices` now exists in `mother/src/services/mod.rs` and daemon runtime routes `/secrets/*` and `/health` through service-backed methods |
