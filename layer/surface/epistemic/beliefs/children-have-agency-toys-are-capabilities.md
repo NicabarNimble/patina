@@ -29,7 +29,7 @@ Children have bounded agency — they make decisions and own workflow within the
 ## Supports
 
 - [[agents-are-guests-mother-is-infrastructure]] — children are the composable workers Mother manages; agents are guests
-- [[children-are-wasm-only]] — child runtime lane is explicitly WASM-only in active doctrine
+- [[children-are-wasm]] — child runtime lane is explicitly WASM-only in active doctrine
 - [[telemetry-is-process-owned]] — each actor owns its own observability (agency over telemetry)
 - [[connectors-own-tables-schemas-are-contracts]] — connectors are tools with contracts, not decision-makers
 

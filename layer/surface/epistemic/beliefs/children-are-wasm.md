@@ -1,6 +1,6 @@
 ---
 type: belief
-id: children-are-wasm-only
+id: children-are-wasm
 persona: architect
 facets: [architecture, children, runtime, mother]
 entrenchment: medium
@@ -10,7 +10,7 @@ extracted: 2026-03-25
 revised: 2026-03-25
 ---
 
-# children-are-wasm-only
+# children-are-wasm
 
 Children are external WASM runtime units; native capabilities belong to Mother services and are not children.
 

@@ -25,7 +25,7 @@ When two crates exchange JSON over a wire protocol, serialization and deserializ
 ## Supports
 
 - [[specs-describe-current-code-not-aspirations]] — shared wire types keep contracts truthful across crate boundaries.
-- [[children-are-wasm-only]] — child-runtime contract drift is prevented by shared typed payloads instead of ad-hoc JSON maps.
+- [[children-are-wasm]] — child-runtime contract drift is prevented by shared typed payloads instead of ad-hoc JSON maps.
 
 ## Attacks
 
