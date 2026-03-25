@@ -185,7 +185,6 @@ fn build_router(state: Arc<ServerState>, require_auth: bool) -> Router {
 pub struct DaemonOptions {
     pub host: Option<String>,
     pub port: u16,
-    pub legacy_migration: bool,
 }
 
 impl Default for DaemonOptions {
@@ -193,7 +192,6 @@ impl Default for DaemonOptions {
         Self {
             host: None,
             port: 50051,
-            legacy_migration: false,
         }
     }
 }
@@ -210,7 +208,6 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         &children_dir,
         &mut registry,
         &runtime,
-        options.legacy_migration,
         super::loader::load_wasm_child,
     );
 
@@ -229,7 +226,6 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
                 token_path: patina::paths::serve::token_path(),
                 token: state.token.clone(),
             },
-            legacy_migration: options.legacy_migration,
         };
         return mother_crate::daemon_bootstrap_config::start(
             config,
@@ -249,7 +245,6 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
             socket_path: patina::paths::serve::socket_path(),
             pid_path: patina::paths::serve::pid_path(),
         },
-        legacy_migration: options.legacy_migration,
     };
     mother_crate::daemon_bootstrap_config::start(
         config,
@@ -263,31 +258,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use patina::mother::{
-        ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, MotherChild, MotherHost,
-    };
-
-    struct StubLegacy;
-
-    impl MotherChild for StubLegacy {
-        fn name(&self) -> &str {
-            "legacy"
-        }
-
-        fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
-            Ok(())
-        }
-
-        fn health(&self) -> ChildHealth {
-            ChildHealth::Healthy
-        }
-
-        fn handle(&self, _request: &ChildRequest) -> Result<ChildResponse> {
-            Ok(ChildResponse {
-                payload: serde_json::Value::Null,
-            })
-        }
-    }
+    use patina::mother::{ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, MotherHost};
 
     struct StubKnowledge;
 
@@ -312,31 +283,10 @@ mod tests {
     }
 
     #[test]
-    fn daemon_options_default_keeps_legacy_quarantined() {
+    fn daemon_options_default() {
         let options = DaemonOptions::default();
-        assert!(!options.legacy_migration);
-    }
-
-    #[test]
-    fn register_loaded_child_skips_legacy_without_migration_mode() {
-        let mut registry = ChildRegistry::new();
-        let runtime = patina::mother::KnowledgeRuntimeStore::default();
-
-        let message = mother_crate::daemon_bootstrap::register_loaded_child(
-            &mut registry,
-            &runtime,
-            mother_crate::daemon_bootstrap::LoadedChild::Legacy {
-                child: Box::new(StubLegacy),
-                name: "legacy".into(),
-            },
-            false,
-        )
-        .unwrap()
-        .unwrap();
-
-        assert!(message.contains("skipping legacy child legacy"));
-        assert_eq!(registry.legacy_len(), 0);
-        assert_eq!(registry.knowledge_len(), 0);
+        assert_eq!(options.port, 50051);
+        assert!(options.host.is_none());
     }
 
     #[test]
@@ -353,11 +303,9 @@ mod tests {
                 subscribed_streams: vec!["belief.changed".into()],
                 relationship_listens: vec![],
             },
-            false,
         )
         .unwrap();
 
         assert_eq!(registry.knowledge_len(), 1);
-        assert_eq!(registry.legacy_len(), 0);
     }
 }

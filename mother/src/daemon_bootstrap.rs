@@ -1,13 +1,9 @@
 use anyhow::Result;
 use std::path::Path;
 
-use crate::{registry::ChildRegistry, KnowledgeChild, KnowledgeRuntimeStore, MotherChild};
+use crate::{registry::ChildRegistry, KnowledgeChild, KnowledgeRuntimeStore};
 
 pub enum LoadedChild {
-    Legacy {
-        child: Box<dyn MotherChild>,
-        name: String,
-    },
     Knowledge {
         child: Box<dyn KnowledgeChild>,
         name: String,
@@ -20,20 +16,8 @@ pub fn register_loaded_child(
     registry: &mut ChildRegistry,
     runtime: &KnowledgeRuntimeStore,
     loaded: LoadedChild,
-    legacy_migration: bool,
 ) -> Result<Option<String>> {
     match loaded {
-        LoadedChild::Legacy { child, name } => {
-            if legacy_migration {
-                registry.register_legacy(child)?;
-                Ok(Some(format!("loaded legacy migration child: {}", name)))
-            } else {
-                Ok(Some(format!(
-                    "skipping legacy child {} (use --legacy-migration to load mother-child plugins)",
-                    name
-                )))
-            }
-        }
         LoadedChild::Knowledge {
             child,
             name,
@@ -55,7 +39,6 @@ pub fn load_children_from_dir<F>(
     children_dir: &Path,
     registry: &mut ChildRegistry,
     runtime: &KnowledgeRuntimeStore,
-    legacy_migration: bool,
     mut loader: F,
 ) where
     F: FnMut(&Path, &Path) -> Result<LoadedChild>,
@@ -70,15 +53,13 @@ pub fn load_children_from_dir<F>(
             if path.extension().and_then(|e| e.to_str()) == Some("wasm") {
                 let manifest_path = path.with_extension("toml");
                 match loader(&path, &manifest_path) {
-                    Ok(loaded) => {
-                        match register_loaded_child(registry, runtime, loaded, legacy_migration) {
-                            Ok(Some(message)) => eprintln!("[mother] {}", message),
-                            Ok(None) => {}
-                            Err(error) => {
-                                eprintln!("[mother] skipping {}: {}", path.display(), error)
-                            }
+                    Ok(loaded) => match register_loaded_child(registry, runtime, loaded) {
+                        Ok(Some(message)) => eprintln!("[mother] {}", message),
+                        Ok(None) => {}
+                        Err(error) => {
+                            eprintln!("[mother] skipping {}: {}", path.display(), error)
                         }
-                    }
+                    },
                     Err(error) => {
                         eprintln!("[mother] failed to load {}: {}", path.display(), error);
                     }

@@ -24,7 +24,6 @@ pub enum TransportMode {
 #[derive(Debug, Clone)]
 pub struct DaemonBootstrapConfig {
     pub transport: TransportMode,
-    pub legacy_migration: bool,
 }
 
 pub struct DaemonBootstrapRuntime {
@@ -49,7 +48,6 @@ pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> 
                 addr,
                 token_path,
                 token,
-                legacy_migration: config.legacy_migration,
                 registry: runtime.registry,
                 router: runtime.router,
             });
@@ -65,7 +63,6 @@ pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> 
             run_uds_server(UdsServerLaunch {
                 listener,
                 socket_path,
-                legacy_migration: config.legacy_migration,
                 registry: runtime.registry,
                 router: runtime.router,
             });
@@ -91,7 +88,6 @@ mod tests {
                 token_path: std::path::PathBuf::from("/tmp/patina-token"),
                 token: "test-token".to_string(),
             },
-            legacy_migration: false,
         };
         let runtime = DaemonBootstrapRuntime {
             registry: Arc::new(crate::registry::ChildRegistry::new()),
@@ -155,7 +151,6 @@ mod tests {
                 socket_path: run_dir.join("serve.sock"),
                 pid_path: run_dir.join("serve.pid"),
             },
-            legacy_migration: false,
         };
         let runtime = DaemonBootstrapRuntime {
             registry: Arc::new(crate::registry::ChildRegistry::new()),

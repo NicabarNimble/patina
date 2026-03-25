@@ -12,7 +12,6 @@ pub struct TcpServerLaunch {
     pub addr: String,
     pub token_path: PathBuf,
     pub token: String,
-    pub legacy_migration: bool,
     pub registry: Arc<ChildRegistry>,
     pub router: Arc<Router>,
 }
@@ -20,7 +19,6 @@ pub struct TcpServerLaunch {
 pub struct UdsServerLaunch {
     pub listener: std::os::unix::net::UnixListener,
     pub socket_path: PathBuf,
-    pub legacy_migration: bool,
     pub registry: Arc<ChildRegistry>,
     pub router: Arc<Router>,
 }
@@ -51,16 +49,10 @@ pub fn run_tcp_server(launch: TcpServerLaunch) -> ! {
         "   Knowledge children: {} loaded",
         launch.registry.knowledge_len()
     );
-    if launch.legacy_migration {
-        println!(
-            "   Legacy migration children: {} loaded",
-            launch.registry.legacy_len()
-        );
-    }
     println!("   Listening on http://{}", launch.addr);
     println!("   Press Ctrl+C to stop\n");
 
-    crate::daemon_heartbeat::spawn_heartbeat(Arc::clone(&launch.registry), launch.legacy_migration);
+    crate::daemon_heartbeat::spawn_heartbeat(Arc::clone(&launch.registry));
     let router = Arc::clone(&launch.router);
     let handler = Arc::new(move |request: HttpRequest| router.route(&request));
     http_daemon::accept_loop_tcp(launch.listener, DEFAULT_MAX_BODY_SIZE, handler)
@@ -73,12 +65,6 @@ pub fn run_uds_server(launch: UdsServerLaunch) -> ! {
         "   Knowledge children: {} loaded",
         launch.registry.knowledge_len()
     );
-    if launch.legacy_migration {
-        println!(
-            "   Legacy migration children: {} loaded",
-            launch.registry.legacy_len()
-        );
-    }
     println!("   Listening on {}", launch.socket_path.display());
     println!(
         "   Test: curl -s --unix-socket {} http://localhost/health",
@@ -87,7 +73,7 @@ pub fn run_uds_server(launch: UdsServerLaunch) -> ! {
     println!("   No TCP listener (use --host/--port for network access)");
     println!("   Press Ctrl+C to stop\n");
 
-    crate::daemon_heartbeat::spawn_heartbeat(Arc::clone(&launch.registry), launch.legacy_migration);
+    crate::daemon_heartbeat::spawn_heartbeat(Arc::clone(&launch.registry));
     let router = Arc::clone(&launch.router);
     let handler = Arc::new(move |request: HttpRequest| router.route(&request));
     http_daemon::accept_loop_uds(launch.listener, DEFAULT_MAX_BODY_SIZE, handler)

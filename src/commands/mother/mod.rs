@@ -74,10 +74,6 @@ pub enum MotherCommands {
         /// Run as MCP server (JSON-RPC over stdio) instead of HTTP
         #[arg(long)]
         mcp: bool,
-
-        /// Enable legacy `mother-child` migration loading and heartbeat.
-        #[arg(long)]
-        legacy_migration: bool,
     },
 
     /// Stop the mother daemon (not yet implemented)
@@ -278,20 +274,11 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             println!("Run 'patina mother --help' for details.");
             Ok(())
         }
-        Some(MotherCommands::Start {
-            host,
-            port,
-            mcp,
-            legacy_migration,
-        }) => {
+        Some(MotherCommands::Start { host, port, mcp }) => {
             if mcp {
                 bail!("MCP server path has been retired; start daemon without --mcp")
             } else {
-                let options = DaemonOptions {
-                    host,
-                    port,
-                    legacy_migration,
-                };
+                let options = DaemonOptions { host, port };
                 daemon::run_server(options)
             }
         }
@@ -578,7 +565,6 @@ mod tests {
             host: None,
             port: 50051,
             mcp: false,
-            legacy_migration: false,
         };
         assert!(matches!(start, MotherCommands::Start { .. }));
 

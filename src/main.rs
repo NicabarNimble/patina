@@ -1739,11 +1739,7 @@ fn main() -> Result<()> {
             if mcp {
                 anyhow::bail!("MCP server path has been retired; use `patina mother start`");
             } else {
-                let options = commands::mother::DaemonOptions {
-                    host,
-                    port,
-                    legacy_migration: false,
-                };
+                let options = commands::mother::DaemonOptions { host, port };
                 commands::mother::daemon::run_server(options)?;
             }
         }
