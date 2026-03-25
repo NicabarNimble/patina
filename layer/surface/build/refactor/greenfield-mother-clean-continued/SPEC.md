@@ -289,7 +289,7 @@ Status keys:
 | GFC4 | verified-true | `mother/src/secrets.rs` deleted; secrets cache logic is now in `mother/src/services/secrets.rs` |
 | GFC5 | verified-true | `mother/src/session_writer.rs` deleted and no `SessionWriterChild` hits remain in Mother/daemon sources |
 | GFC6 | verified-true | `legacy_migration` flag removed from daemon CLI/runtime/bootstrap/heartbeat paths; `rg "legacy_children|legacy_migration|tick_legacy" --type rust` returns zero |
-| GFC7 | unverified | `daemon.rs` protocol v1 handler exists in `mother/src/daemon.rs` |
+| GFC7 | verified-true | `mother/src/daemon.rs` deleted; Mother transport path is HTTP-only (`http_daemon` + router stack) |
 | GFC8 | verified-true | `MotherServices` now exists in `mother/src/services/mod.rs` and daemon runtime routes `/secrets/*` and `/health` through service-backed methods |
 | GFC9 | verified-true | `src/commands/mother/builtin_dispatch.rs` deleted; built-in route logic handled via `mother/src/http_api.rs` + `src/commands/mother/daemon.rs` |
 | GFC10 | unverified | Build/test not yet run against target state |
