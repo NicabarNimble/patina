@@ -233,6 +233,9 @@ Recommended next operator behavior:
 - Work: update only living/canonical doctrine/spec text under `layer/surface`; preserve completed/historical analysis and all session archives.
 - Exit proofs:
   - `rg -n "\bplugin(s)?\b" layer/surface/build/refactor/plugin-vocabulary-retirement` reflects policy-locked language and historical carve-outs.
+  - `rg -n "^status:\s*(active|draft)" layer/surface/build -g '*.md'` and
+    `rg -n "\bplugin(s)?\b|plugin\.toml|plugins/|Plugin[A-Z]" layer/surface/build -g '*.md'`
+    show residual plugin-era wording outside this spec is in `status: complete`/`abandoned` records and remains history-frozen.
 
 ### PVR-G7: Anti-regression guard + final verification
 
@@ -249,6 +252,13 @@ Recommended next operator behavior:
 - targeted command checks (`patina --help`, canonical child command help + compatibility alias behavior)
 - `bash resources/scripts/check-plugin-vocab-guard.sh`
 
+## Execution Snapshot (2026-03-25)
+
+- G0-G3 completed (policy lock, re-audit, template/scaffold migration, canonical child CLI surface with plugin alias).
+- G4-G5 completed at boundary wording level; compatibility-critical path/protocol identifiers remain intentionally deferred.
+- G6 completed as selective doctrine triage: living scope updated, historical `layer/surface` records preserved.
+- G7 completed with deterministic guard and full workspace verification.
+
 ## Build Readiness
 
-Execution in progress. Policy lock, re-audit, and anti-regression guard are in place; remaining work is bucketed implementation/cleanup (G4-G7) with selective doctrine edits.
+Execution complete for this spec's boundary-wording scope (G0-G7). Identifier-level renames are explicitly tracked as separate follow-up scope.
