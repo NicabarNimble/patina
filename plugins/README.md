@@ -10,5 +10,4 @@ If you are adding a new runtime component, place it under `children/` unless the
 
 Legacy note:
 
-- `plugins/models` and `plugins/repos` are retired from active workspace membership as part of SDK `mother-child` retirement.
-- Keep these directories as historical reference only unless a new spec reactivates them.
+- `plugins/models` and `plugins/repos` were retired and physically removed in the SDK `mother-child` retirement slice.
