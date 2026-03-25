@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: plugin-vocabulary-retirement
-status: active
+status: complete
 created: 2026-03-25
 related:
   - src/main.rs
