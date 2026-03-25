@@ -64,3 +64,9 @@ Fully retire the SDK-level `MotherChild` lane so the public extension API aligns
 ## Build Readiness
 
 Completed. Legacy SDK MotherChild lane removed; models/repos retired from active workspace; build, tests, and daemon health smoke all pass.
+
+## Residual Historical Surface
+
+- `plugins/models/` and `plugins/repos/` remain in-repo as non-workspace historical directories.
+- Their source files may still contain `MotherChild` symbols until the planned physical directory removal slice lands.
+- This does not affect runtime/build surfaces because these crates are no longer workspace members.
