@@ -17,7 +17,7 @@
 //! ```
 //!
 //! M5 classification policy:
-//! - Stabilization target: `knowledge-child` + tier crates.
+//! - Stabilization target: `knowledge-child`.
 //! - Migration scaffolds: `task`, `command`.
 //! - Experimental lane: `pipeline`.
 //!
@@ -60,13 +60,6 @@ compile_error!(
 
 mod wasm_cell;
 
-#[cfg(feature = "knowledge-child")]
-pub use patina_sdk_agent as agent;
-#[cfg(feature = "knowledge-child")]
-pub use patina_sdk_core as core;
-#[cfg(feature = "knowledge-child")]
-pub use patina_sdk_data as data;
-
 // =========================================================================
 // Feature-gated world modules
 // =========================================================================
@@ -82,9 +75,9 @@ pub mod command;
 pub use command::{CommandChild, CommandPlugin};
 
 #[cfg(feature = "knowledge-child")]
-pub mod knowledge_child;
-#[cfg(feature = "knowledge-child")]
 pub mod helpers;
+#[cfg(feature = "knowledge-child")]
+pub mod knowledge_child;
 #[cfg(feature = "knowledge-child")]
 pub mod toys;
 #[cfg(feature = "knowledge-child")]

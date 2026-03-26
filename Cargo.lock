@@ -3113,36 +3113,9 @@ dependencies = [
 name = "patina-sdk"
 version = "0.21.0"
 dependencies = [
- "patina-sdk-agent",
- "patina-sdk-core",
- "patina-sdk-data",
  "serde",
  "serde_json",
  "wit-bindgen 0.41.0",
-]
-
-[[package]]
-name = "patina-sdk-agent"
-version = "0.1.0"
-dependencies = [
- "patina-sdk-core",
-]
-
-[[package]]
-name = "patina-sdk-core"
-version = "0.1.0"
-dependencies = [
- "serde",
- "wit-bindgen 0.41.0",
-]
-
-[[package]]
-name = "patina-sdk-data"
-version = "0.1.0"
-dependencies = [
- "patina-sdk-core",
- "serde",
- "serde_json",
 ]
 
 [[package]]

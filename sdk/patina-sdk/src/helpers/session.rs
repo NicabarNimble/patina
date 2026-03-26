@@ -1,5 +1,5 @@
 use crate::toys::SessionBackend;
-use patina_sdk_agent::SessionToy;
+use crate::toys::SessionToy;
 
 pub fn checkpoint<B: SessionBackend>(
     section: &str,
