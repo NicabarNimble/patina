@@ -9,6 +9,10 @@ patina_min = "0.41.0"
 [needs]
 toys = ["log", "state", "checkpoint", "lake", "github", "measure", "task", "peer"]
 
+[needs.connections]
+github = { toy = "http" }
+default = { toy = "store" }
+
 [needs.scopes.checkpoint]
 streams = ["ducklake.sync"]
 
