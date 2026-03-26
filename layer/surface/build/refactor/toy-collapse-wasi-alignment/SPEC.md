@@ -21,6 +21,9 @@ related:
   - src/child/internal/
   - children/
 exit_criteria:
+  - id: tca0-protocol-lock
+    text: "Phase 0 protocol lock is complete before Phase 1 coding: connect/http interaction model, store routing model, scope model, and WASI fitness matrix are all frozen with explicit proofs."
+    checked: false
   - id: tca1-toy-count
     text: "10 toy WIT interfaces exist: 4 WASI standard (wasi:http, wasi:filesystem, wasi:logging, wasi:keyvalue), 1 Patina bridge (patina:connect), 5 Patina-specific (patina:store, patina:events, patina:task, patina:peer, patina:git). All old toy .wit files are deleted."
     checked: false
@@ -270,6 +273,18 @@ listens = ["sync-requested"]
 
 ## Solution
 
+### Phase 0: Protocol lock + feasibility gate (no implementation)
+
+Before any WIT/runtime/SDK code changes, freeze the protocol decisions that were raised in review.
+
+**Decisions that must be locked:**
+1. **`connect` + HTTP model**: secure path is `connect::request(...)`; raw `wasi:http` is an explicit opt-in escape hatch.
+2. **`store` routing model**: `store` operations are connection-handle based and host-routed; children never infer backend type from payload shape.
+3. **Scope model**: `[needs.connections]` is additive; existing `[needs.scopes]` remains and is merged into grants.
+4. **WASI fitness matrix**: each target WASI interface is validated against Wasmtime/tooling reality before adoption claims.
+
+**Exit proof:** protocol section updated and frozen in this spec + design doc, with command-backed feasibility notes for wasi:http / wasi:filesystem / wasi:keyvalue / wasi:logging status in current toolchain.
+
 ### Phase 1: Design the toy WIT interfaces
 
 Write the new `.wit` files:
@@ -290,7 +305,7 @@ Add adapter layer that maps old toy calls to new toy interfaces. Old children ke
 
 ### Phase 3: Connection-aware child.toml parsing
 
-Update `child.toml` schema to support `[needs.toys]` with named instances and `[needs.connections]` syntax. Mother's manifest parser resolves connections at load time. Old `child.toml` format still works via compat parsing.
+Update `child.toml` schema to support `[needs] toys = [...]` + `[needs.connections]` syntax. Existing `[needs.scopes]` semantics remain and coexist with connections. Mother's manifest parser resolves both into one grant model at load time. Old `child.toml` format still works via compat parsing.
 
 **Changes only:** manifest schema (additive, not breaking).
 **Does NOT change:** interface contracts, runtime dispatch, child business logic.
@@ -323,13 +338,13 @@ Each child migrated individually. Per-child sub-phases:
 3. Verify same behavior via golden fixture comparison
 4. Commit as one slice per child
 
-Migration order (simplest first):
+Migration order (risk-first after smoke test):
 1. `doctor` (stub, minimal toys)
-2. `belief-verifier` (store + events)
-3. `session-writer` (fs + events)
-4. `spec-manager` (fs + store)
-5. `lake-manager` (store + http)
-6. `ducklake` (http + store + events — most complex)
+2. `ducklake` (http + store + events — most complex, longest drift risk)
+3. `belief-verifier` (store + events)
+4. `session-writer` (fs + events)
+5. `spec-manager` (fs + store)
+6. `lake-manager` (store + http)
 
 **Changes only:** child business logic (one child per commit).
 **Does NOT change:** interface contracts, runtime dispatch, other children.
@@ -368,10 +383,11 @@ If two need to change, split the phase. This prevents the "just get green" casca
 ## Implementation Order
 
 ```
-Phase 1 (WIT design) ──────────────────────┐
+Phase 0 (protocol lock) ───────────────────┐
+Phase 1 (WIT design) ← depends on 0        │
 Phase 2 (compat adapters) ← depends on 1   │
-Phase 3 (child.toml) ← can parallel with 2 │
-Phase 4 (new toy host) ← depends on 1      │
+Phase 3 (child.toml) ← depends on 0,1      │
+Phase 4 (new toy host) ← depends on 0,1    │
 Phase 5 (SDK helpers) ← depends on 1       │
 Phase 6 (migrate children) ← depends on 2,4,5
 Phase 7 (SDK collapse) ← depends on 6
@@ -382,14 +398,15 @@ Phases 2-5 can overlap where dependencies allow. Phase 6 is the long middle — 
 
 ## Phase Entry/Exit Invariants
 
-Each phase has explicit entry conditions and exit proofs. **A phase cannot start until its listed entry condition passes.** Phases follow the dependency graph (not strictly sequential) — Phases 2-5 can overlap since they all depend on Phase 1 independently.
+Each phase has explicit entry conditions and exit proofs. **A phase cannot start until its listed entry condition passes.** Phases follow the dependency graph (not strictly sequential).
 
 | Phase | Entry Condition | Exit Proof |
 |-------|----------------|------------|
-| 1 | Spec is active | 10 new `.wit` files exist (4 WASI + 1 connect + 5 Patina), compile with wit-bindgen. Old WIT untouched. |
+| 0 | Spec is active | Protocol lock complete: connect/http interaction, store routing semantics, scope coexistence, and WASI fit matrix are documented and frozen. |
+| 1 | Phase 0 exit proof passes | 10 new `.wit` files exist (4 WASI + 1 connect + 5 Patina), compile with wit-bindgen. Old WIT untouched. |
 | 2 | Phase 1 exit proof passes | Compat adapters route old toy calls through new interfaces. Full test suite passes. Golden fixture comparison shows identical output for all existing children. |
-| 3 | Phase 1 exit proof passes | New `child.toml` syntax parses. Old `child.toml` syntax still parses via compat. `patina child list` shows correct toy grants for both formats. |
-| 4 | Phase 1 exit proof passes | New toy hosts handle basic calls from a test child built against new WIT. Old toy hosts still serve old children unchanged. `cargo test -q` passes. |
+| 3 | Phases 0 and 1 exit proofs pass | New `child.toml` syntax parses. Old `child.toml` syntax still parses via compat. `patina child list` shows correct toy grants for both formats. |
+| 4 | Phases 0 and 1 exit proofs pass | New toy hosts handle basic calls from a test child built against new WIT. Old toy hosts still serve old children unchanged. `cargo test -q` passes. |
 | 5 | Phase 1 exit proof passes | SDK helpers compile. Unit tests prove helpers produce same API calls as old domain toys. |
 | 6 | Phases 2, 4, 5 exit proofs all pass | Per-child: same input → same output via golden fixture. After all children: `rg` for retired toy imports across `children/*/src/` returns zero. |
 | 7 | Phase 6 exit proof passes | `cargo check --workspace`. `rg "patina-sdk-core\|patina-sdk-data\|patina-sdk-agent" children/` returns zero. Tier crates removed from workspace members. |
@@ -436,25 +453,25 @@ This is the definitive contract for how the connect bridge works with WASI toys.
 
 **`wasi:http/outgoing-handler`** takes an `outgoing-request` resource with scheme, authority, path-with-query, headers. There is no connection concept — the component specifies raw URLs.
 
-**`patina:connect`** sits alongside, not on top of, `wasi:http`:
+**`patina:connect`** defines the credential-safe path and owns connection context:
 
 ```
 Child code:
   1. connect::resolve("github") → opaque connection resource + base URL string
-  2. Construct wasi:http outgoing-request using base URL + child's path/query
-  3. Call wasi:http handle() with the request
+  2. Call connect::request(conn, method, path, headers, body)
+     (host composes URL from connection metadata + path)
 
 Mother's host:
-  4. Intercept handle() — check if an active patina:connect resource is associated
-  5. If yes: inject credential headers from connection's secret store entry
-  6. If no: execute raw wasi:http (no credential injection)
-  7. Enforce rate limits, log audit event
-  8. Return response to child
+  3. Resolve conn handle to endpoint, policy, and credential binding
+  4. Inject credential headers host-side (never into WASM memory)
+  5. Enforce allowlists/rate limits/audit policy
+  6. Execute transport via wasi:http host implementation
+  7. Return response to child
 ```
 
-**The mechanism**: Mother's `wasi:http` host implementation checks whether the request's authority matches an active `patina:connect` resource's base URL. If it does, Mother injects stored credentials. If it doesn't (raw wasi:http without connect), Mother applies the default policy.
+**Security rule:** credential injection is never based on URL prefix matching. Injection only occurs when a valid `connection` handle is provided. This avoids ambiguous overlap cases and keeps mediation explicit.
 
-**Default security policy: deny raw http unless explicitly granted.** A child that declares `toys = ["http", "connect"]` with connections can ONLY reach URLs that match its declared connections. Raw `wasi:http` to arbitrary URLs is blocked unless the child explicitly declares `http.raw = true` in its toybox request. This makes the secure path (connect) the default and the open path (raw http) the opt-in exception.
+**Default security policy: deny raw http unless explicitly granted.** A child that declares `toys = ["http", "connect"]` with connections can ONLY use `connect::request(...)` for declared bindings. Raw `wasi:http` to arbitrary URLs is blocked unless the child explicitly declares `http.raw = true` in its toybox request. This makes the secure path (connect) the default and the open path (raw http) the opt-in exception.
 
 ```toml
 # Default: connect-mediated http only (credentials managed by Mother, URL restricted)
@@ -462,14 +479,14 @@ Mother's host:
 toys = ["http", "connect"]
 [needs.connections]
 github = { toy = "http" }
-# Can ONLY reach api.github.com via connect. All other URLs blocked.
+# Can ONLY use the "github" connection via connect::request. Raw wasi:http blocked.
 
 # Explicit opt-in: raw http for public endpoints (no connect, no credential injection)
 [needs]
 toys = ["http"]
 [needs.http]
 raw = true
-# Can reach any URL. No credential injection. Audit-logged.
+# Can reach arbitrary URLs. No credential injection. Audit-logged.
 ```
 
 ```toml
@@ -485,12 +502,15 @@ toys = ["http"]
 # No connections section — raw wasi:http only
 ```
 
-**The same pattern extends to `patina:store`**: `connect::resolve("ducklake")` returns a handle. `store::query(connection, sql)` passes the handle. Mother resolves the backing database and credentials from the handle.
+**The same pattern extends to `patina:store`**: `connect::resolve("ducklake")` returns a handle. `store::query(conn, query)` and `store::mutate(conn, action, payload)` pass that handle. Mother routes to the correct backend (lake/belief/graph/query engine) from connection metadata, not from payload guessing.
 
 ## Resolved Decisions
 
 - **WASI adoption policy for Phase 1**: Per-interface decision matrix. `wasi:http` and `wasi:filesystem` are stable — adopt now. `wasi:logging` and `wasi:keyvalue` are proposed — start as `patina:log` and `patina:state` with a sunset condition: migrate to `wasi:*` when the WASI interface reaches Phase 4 (standardized) and Wasmtime ships stable support. SDK feature flags (`toy-log`, `toy-state`) don't change during migration.
-- **Default-deny raw http**: A child with `connect` + `http` can only reach URLs matching its declared connections. Raw `wasi:http` to arbitrary URLs requires explicit `http.raw = true` opt-in. Secure path is the default.
+- **Default-deny raw http**: A child with `connect` + `http` can only use declared connection handles via `connect::request(...)`. Raw `wasi:http` to arbitrary URLs requires explicit `http.raw = true` opt-in. Secure path is the default.
+- **No URL-prefix credential inference**: Host credential injection requires explicit `connection` resource usage (`connect::request` or handle-bearing store calls). Request URL matching alone is never sufficient.
+- **Store routing is host-owned infrastructure**: Store backend selection is resolved by connection metadata bound at grant time, not by child payload conventions.
+- **Connections and scopes coexist**: `[needs.connections]` declares named external bindings; `[needs.scopes]` continues to express stream/action/path limits. Both are merged into one grant object.
 - **git is the 10th toy** — `patina:git`. Git operations (tag, commit, log, diff) require host-level execution that WASM cannot do alone. Not domain logic, not an SDK helper. Kept as a standalone Patina-specific toy. This is a closed question.
 - **Toy litmus test**: "Why can't the child do this itself from pure WASM compute?" If it can, it's SDK/library, not a toy.
 - **Credentials never cross the WASM wall.** Children operate through `patina:connect` opaque resource handles. Mother injects credentials on the host side.
@@ -548,11 +568,12 @@ This is a large breaking change. It touches every layer between WIT and child co
 
 ### Mitigation
 
-The 7-phase execution order exists to make this survivable:
+The phased execution order exists to make this survivable:
 - Each phase leaves the workspace green (compiling and tests passing)
+- Phase 0 locks protocol decisions before coding
 - Phase 1 (WIT design) is pure design — nothing breaks until Phase 4 (new toy host)
 - Phase 6 (child migration) proceeds one child at a time
-- Phase 6 (SDK consolidation) can keep tier crates as thin re-exports during transition
+- Phase 7 (SDK consolidation) can keep tier crates as thin re-exports during transition
 - Old `child.toml` toy names could be supported during a migration window via compatibility parsing in Mother's manifest loader (open question: hard cut vs migration period)
 
 ## Security Model
@@ -698,7 +719,7 @@ grep 'patina-sdk-core\|patina-sdk-data\|patina-sdk-agent' Cargo.toml  # should b
 
 ## Build Readiness
 
-Phase 1 (WIT design) is ready to start. Requires deep review of WASI interface shapes for http, filesystem, keyvalue, logging before committing to Patina's versions.
+Phase 0 (protocol lock + WASI fit) is ready to start. Phase 1 (WIT design) should begin only after Phase 0 proofs are captured.
 
 ## Relationship to Other Specs
 

@@ -24,19 +24,19 @@ This design was not planned top-down. It emerged from a session that started wit
 
 **Comparing with Cloudflare Workers** — almost 1:1 mapping validated the entire architecture. Their bindings = our toybox. Their wrangler.toml = our child.toml. Their ~8 binding types = our collapsed 10 toys (4 WASI + 1 bridge + 5 Patina).
 
-**Comparing with WASI** — 4 of 8 collapsed toys map to existing/proposed WASI interfaces. Our 4 Patina-specific toys fill real ecosystem gaps. Alignment is free if we design cleanly.
+**Comparing with WASI** — 4 of 10 collapsed toys map to existing/proposed WASI interfaces. Our 5 Patina-specific toys plus `patina:connect` fill real ecosystem gaps. Alignment is free if we design cleanly.
 
 The long road through 5 greenfield specs, vocabulary retirement, layout consolidation, and SDK toybox definition was necessary to see the shape clearly. Each step removed noise. This spec is what the signal looks like.
 
 ## Build Target
 
-7 phases. The WIT interface design (Phase 1) is the critical decision point — everything else flows from it.
+Phase 0 + 8 execution phases. Phase 0 (protocol lock + feasibility) is the critical decision point — Phase 1 WIT design starts only after Phase 0 is frozen.
 
 ## Vocabulary
 
 | Term | Definition |
 |------|-----------|
-| **Toy** | A primitive capability Mother grants. A door in the WASM sandbox wall. ~8 of them. Defined as WIT interfaces. |
+| **Toy** | A primitive capability Mother grants. A door in the WASM sandbox wall. 10 in this spec (4 WASI + 1 bridge + 5 Patina-specific). Defined as WIT interfaces. |
 | **Toybox** | The sealed capability payload Mother assembles for a child at init. Contains granted toys + resolved connections. The capability contract. |
 | **Kind** | The child's runtime lifecycle shape: knowledge-child, command, pipeline, task. Determines how Mother manages the child. Not related to toys. |
 | **Connection** | A named binding in `child.toml`. The child says a name ("github"), Mother resolves it to toy + credential + endpoint + config. Like a Cloudflare Workers binding in `wrangler.toml`. |
@@ -66,21 +66,30 @@ interface connect {
     resource connection;
     resolve: func(name: string) -> result<connection, string>;
     base-url: func(conn: borrow<connection>) -> string;
+    request: func(
+        conn: borrow<connection>,
+        method: string,
+        path: string,
+        headers: list<tuple<string, string>>,
+        body: option<list<u8>>,
+    ) -> result<http-response, string>;
 }
 ```
 
-The `connection` resource is an opaque host-owned handle. The child holds a reference but cannot inspect its internals. When the child uses this handle with `wasi:http`, Mother's host sees the connection resource and injects credentials at dispatch time.
+The `connection` resource is an opaque host-owned handle. The child holds a reference but cannot inspect its internals. `connect::request(...)` is the credential-aware path: Mother resolves endpoint + policy + secret from the handle, injects credentials host-side, and executes transport through its `wasi:http` host implementation.
 
 **This is stronger than Cloudflare's model.** Cloudflare Workers see secret values as strings (`env.GITHUB_TOKEN`). A Worker constructs its own auth headers. A malicious Worker can exfiltrate the token.
 
 In Patina, the credential never enters WASM memory:
 1. Child calls `connect::resolve("github")` → gets opaque handle + base URL (not secret).
-2. Child calls `wasi:http` with the connection handle attached — no auth headers in the request.
+2. Child calls `connect::request(...)` with the handle — no auth headers in the request.
 3. Mother's host sees the handle, injects `Authorization: Bearer <pat>` host-side.
 4. Mother makes the HTTP call, returns response to child.
 5. The PAT never crossed the WASM wall.
 
 A compromised child can USE the connection (within granted scope) but cannot STEAL the credential.
+
+Raw `wasi:http` remains available only as an explicit opt-in capability (`http.raw = true`) and never participates in credential injection. URL-prefix matching is not an allowed credential strategy.
 
 **This shapes the toybox.** The toybox isn't just a list of toy names — it's a resolved set of connection handles with credentials, endpoints, and policy attached. Mother builds it at init from `child.toml`. The child receives opaque handles. The credentials live exclusively in Mother's secret store.
 
@@ -128,13 +137,12 @@ Child's own working memory. Absorbs `checkpoint` (which was just state with a st
 
 ```wit
 interface store {
-    query: func(connection: string, query: string) -> result<string, string>;
-    mutate: func(connection: string, action: string, payload: string) -> result<string, string>;
-    list-connections: func() -> list<string>;
+    query: func(connection: borrow<connect.connection>, query: string) -> result<string, string>;
+    mutate: func(connection: borrow<connect.connection>, action: string, payload: string) -> result<string, string>;
 }
 ```
 
-Absorbs: `lake`, `belief`, `graph`, `query`. The `connection` parameter distinguishes targets: "ducklake", "beliefs", "graph". Mother resolves each to its backing store (SQLite, DuckDB, whatever). The child knows how to query its domain; the toy just opens the door.
+Absorbs: `lake`, `belief`, `graph`, `query`. The connection handle distinguishes targets ("ducklake", "beliefs", "graph"). Mother resolves each handle to the backing store engine and policy. Backend routing is host infrastructure, not child payload convention.
 
 Design note: `query` and `payload` are strings (JSON). This keeps the WIT interface domain-agnostic. The child and SDK helpers handle serialization.
 
@@ -192,6 +200,9 @@ github = { toy = "http" }
 gitlab = { toy = "http" }
 ducklake = { toy = "store" }
 
+[needs.scopes.task]
+intents = ["fetch-source"]
+
 [provides]
 child = "ducklake"
 
@@ -210,9 +221,10 @@ Read this file and you know everything the child can do. The manifest is the sec
 3. Resolve connections:
    github → { toy: http, base_url: "https://api.github.com", auth: secrets/github-pat, rate_limit: 5000/hr }
    ducklake → { toy: store, backend: "duckdb", path: "~/.patina/lakes/ducklake.db", access: "read-write" }
-4. Build toybox: toys + resolved connections + limits
-5. Grant WIT imports matching toybox (WASM can only call what's granted)
-6. Mediate every call at runtime:
+4. Merge scopes + connections into a single grant object
+5. Build toybox: toys + resolved grants + limits
+6. Grant WIT imports matching toybox (WASM can only call what's granted)
+7. Mediate every call at runtime:
    - Check toybox grants
    - Inject credentials (host-side, never crosses WASM wall)
    - Enforce rate limits
@@ -337,7 +349,7 @@ This changes every layer between WIT definitions and child application code. Not
 
 **Untouched:** `patina-core`, `patina-protocol`, Mother services, CLI commands, belief system, layer, database, grammars, git history.
 
-**Risk profile:** High scope, low uncertainty. Every change has a clear before/after. The 7-phase plan ensures the workspace stays green between phases. The real risk is stamina across multiple sessions, not design ambiguity.
+**Risk profile:** High scope, low uncertainty. Every change has a clear before/after. The Phase 0 + 8-phase plan ensures the workspace stays green between phases. The real risk is stamina across multiple sessions, not design ambiguity.
 
 **Migration strategy for `child.toml`:** Open question — hard cut (old toy names fail immediately) vs. compatibility window (Mother parses old names with deprecation warnings). Hard cut is simpler and honest. Compat window is safer for any third-party children.
 
@@ -361,7 +373,7 @@ cargo run -q -- doctor --json
 
 ## Build Readiness
 
-Phase 1 (WIT design) is the critical gate. Requires studying WASI interface shapes before committing. Everything else flows from the WIT decisions.
+Phase 0 (protocol lock + WASI/tooling fit check) is the critical gate. Phase 1 (WIT design) begins only after Phase 0 is frozen.
 
 ## Open Questions
 
