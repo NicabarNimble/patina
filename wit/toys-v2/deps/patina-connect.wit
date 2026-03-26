@@ -15,6 +15,7 @@ interface connect {
     resource connection;
 
     resolve: func(name: string) -> result<connection, string>;
+    /// Informational only (debug/telemetry). Host auth and routing bind to conn handle.
     base-url: func(conn: borrow<connection>) -> string;
     request: func(
         conn: borrow<connection>,

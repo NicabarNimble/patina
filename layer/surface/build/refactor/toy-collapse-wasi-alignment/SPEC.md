@@ -232,6 +232,7 @@ The toys split into three layers, reflecting the design principle: embrace WASI 
 interface connect {
     resource connection;
     resolve: func(name: string) -> result<connection, string>;
+    // Informational only; not used for auth/routing decisions.
     base-url: func(conn: borrow<connection>) -> string;
     request: func(
         conn: borrow<connection>,
@@ -514,6 +515,8 @@ Mother's host:
 ```
 
 **Security rule:** credential injection is never based on URL prefix matching. Injection only occurs when a valid `connection` handle is provided. This avoids ambiguous overlap cases and keeps mediation explicit.
+
+`base-url` is informational (logging/debug UX) and not an authorization primitive. Mother's routing and credential checks bind to the `connection` resource handle, not caller-supplied URL strings.
 
 **Default security policy: deny raw http unless explicitly granted.** A child that declares `toys = ["http", "connect"]` with connections can ONLY use `connect::request(...)` for declared bindings. Raw `wasi:http` to arbitrary URLs is blocked unless the child explicitly declares `http.raw = true` in its toybox request. This makes the secure path (connect) the default and the open path (raw http) the opt-in exception.
 

@@ -93,6 +93,7 @@ This is the key innovation — the layer that makes WASI toys safe for a multi-t
 interface connect {
     resource connection;
     resolve: func(name: string) -> result<connection, string>;
+    // Informational only; not used for auth/routing decisions.
     base-url: func(conn: borrow<connection>) -> string;
     request: func(
         conn: borrow<connection>,
@@ -118,6 +119,8 @@ In Patina, the credential never enters WASM memory:
 A compromised child can USE the connection (within granted scope) but cannot STEAL the credential.
 
 Raw `wasi:http` remains available only as an explicit opt-in capability (`http.raw = true`) and never participates in credential injection. URL-prefix matching is not an allowed credential strategy.
+
+`base-url` exists for diagnostics/observability UX only. Authorization, backend routing, and credential injection are bound to the `connection` handle, never URL string matching.
 
 ### Layer 1 Interface Sketches (fs/log/state)
 
