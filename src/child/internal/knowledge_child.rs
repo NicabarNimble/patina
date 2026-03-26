@@ -834,59 +834,59 @@ mod bindings {
 
     impl patina::host::session::Host for HostState {
         fn get_session_id(&mut self) -> String {
-            crate::child::toy_host::session::get_session_id()
+            crate::child::toy_host::compat::session_get_session_id()
         }
 
         fn get_previous_session(&mut self) -> Option<String> {
-            crate::child::toy_host::session::get_previous_session()
+            crate::child::toy_host::compat::session_get_previous_session()
         }
 
         fn get_previous_session_runtime_id(&mut self) -> Option<String> {
-            crate::child::toy_host::session::get_previous_session_runtime_id()
+            crate::child::toy_host::compat::session_get_previous_session_runtime_id()
         }
 
         fn get_previous_session_handoff(&mut self) -> Option<String> {
-            crate::child::toy_host::session::get_previous_session_handoff()
+            crate::child::toy_host::compat::session_get_previous_session_handoff()
         }
 
         fn write_artifact(&mut self, section: String, content: String) -> Result<(), String> {
-            crate::child::toy_host::session::ensure_granted(
+            crate::child::toy_host::compat::session_ensure_granted(
                 self.grants.toys.session,
                 &self.plugin_name,
             )?;
-            crate::child::toy_host::session::write_artifact(&section, &content)
+            crate::child::toy_host::compat::session_write_artifact(&section, &content)
         }
 
         fn set_parent_session(&mut self, runtime_id: String) -> Result<(), String> {
-            crate::child::toy_host::session::ensure_granted(
+            crate::child::toy_host::compat::session_ensure_granted(
                 self.grants.toys.session,
                 &self.plugin_name,
             )?;
-            crate::child::toy_host::session::set_parent_session(&runtime_id)
+            crate::child::toy_host::compat::session_set_parent_session(&runtime_id)
         }
 
         fn create_tag(&mut self, name: String) -> Result<(), String> {
-            crate::child::toy_host::session::ensure_granted(
+            crate::child::toy_host::compat::session_ensure_granted(
                 self.grants.toys.session,
                 &self.plugin_name,
             )?;
-            crate::child::toy_host::session::create_tag(&name)
+            crate::child::toy_host::compat::session_create_tag(&name)
         }
 
         fn set_status(&mut self, status: String) -> Result<(), String> {
-            crate::child::toy_host::session::ensure_granted(
+            crate::child::toy_host::compat::session_ensure_granted(
                 self.grants.toys.session,
                 &self.plugin_name,
             )?;
-            crate::child::toy_host::session::set_status(&status)
+            crate::child::toy_host::compat::session_set_status(&status)
         }
 
         fn write_handoff(&mut self, modified_files: String, summary: String) -> Result<(), String> {
-            crate::child::toy_host::session::ensure_granted(
+            crate::child::toy_host::compat::session_ensure_granted(
                 self.grants.toys.session,
                 &self.plugin_name,
             )?;
-            crate::child::toy_host::session::write_handoff(&modified_files, &summary)
+            crate::child::toy_host::compat::session_write_handoff(&modified_files, &summary)
         }
     }
 

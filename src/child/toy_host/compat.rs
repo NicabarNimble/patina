@@ -146,3 +146,44 @@ pub fn github_list_review_comments(
         review_id,
     )
 }
+
+/// Legacy session toy dispatch routed through compatibility layer.
+pub fn session_ensure_granted(session_granted: bool, plugin_name: &str) -> Result<(), String> {
+    crate::child::toy_host::session::ensure_granted(session_granted, plugin_name)
+}
+
+pub fn session_get_session_id() -> String {
+    crate::child::toy_host::session::get_session_id()
+}
+
+pub fn session_get_previous_session() -> Option<String> {
+    crate::child::toy_host::session::get_previous_session()
+}
+
+pub fn session_get_previous_session_runtime_id() -> Option<String> {
+    crate::child::toy_host::session::get_previous_session_runtime_id()
+}
+
+pub fn session_get_previous_session_handoff() -> Option<String> {
+    crate::child::toy_host::session::get_previous_session_handoff()
+}
+
+pub fn session_write_artifact(section: &str, content: &str) -> Result<(), String> {
+    crate::child::toy_host::session::write_artifact(section, content)
+}
+
+pub fn session_set_parent_session(runtime_id: &str) -> Result<(), String> {
+    crate::child::toy_host::session::set_parent_session(runtime_id)
+}
+
+pub fn session_create_tag(name: &str) -> Result<(), String> {
+    crate::child::toy_host::session::create_tag(name)
+}
+
+pub fn session_set_status(status: &str) -> Result<(), String> {
+    crate::child::toy_host::session::set_status(status)
+}
+
+pub fn session_write_handoff(modified_files: &str, summary: &str) -> Result<(), String> {
+    crate::child::toy_host::session::write_handoff(modified_files, summary)
+}
