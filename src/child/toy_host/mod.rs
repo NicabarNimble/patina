@@ -9,3 +9,4 @@ pub mod ingress;
 pub mod lake;
 pub mod query;
 pub mod session;
+pub mod v2;
