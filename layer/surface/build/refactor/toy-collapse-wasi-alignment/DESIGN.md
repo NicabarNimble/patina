@@ -2,7 +2,7 @@
 
 ## Why This Design
 
-Patina independently arrived at capability-based security — the same architecture behind Cloudflare Workers, Deno permissions, WASI, and browser sandboxes. But we baked domain logic into our toy interfaces (github API shapes, DuckDB operations, session lifecycle), creating 22 toys where ~8 primitives suffice.
+Patina independently arrived at capability-based security — the same architecture behind Cloudflare Workers, Deno permissions, WASI, and browser sandboxes. But we baked domain logic into our toy interfaces (github API shapes, DuckDB operations, session lifecycle), creating 22 toys where 10 primitives (in 3 layers) suffice.
 
 The collapse aligns us with WASI standards where they exist, positions our Patina-specific interfaces (store, events, task) as potential WASI contributions, and simplifies everything downstream: fewer WIT files, one SDK crate, simpler toy host, cleaner security model.
 
@@ -22,7 +22,7 @@ This design was not planned top-down. It emerged from a session that started wit
 
 **Trying to add "scope" broke the vocabulary** — scope was carrying capability + credential + target as one concept. Separating them produced the **connection** model: named bindings that Mother resolves, like Cloudflare Workers' `wrangler.toml`.
 
-**Comparing with Cloudflare Workers** — almost 1:1 mapping validated the entire architecture. Their bindings = our toybox. Their wrangler.toml = our child.toml. Their ~8 binding types = our collapsed ~8 toys.
+**Comparing with Cloudflare Workers** — almost 1:1 mapping validated the entire architecture. Their bindings = our toybox. Their wrangler.toml = our child.toml. Their ~8 binding types = our collapsed 10 toys (4 WASI + 1 bridge + 5 Patina).
 
 **Comparing with WASI** — 4 of 8 collapsed toys map to existing/proposed WASI interfaces. Our 4 Patina-specific toys fill real ecosystem gaps. Alignment is free if we design cleanly.
 
@@ -263,9 +263,7 @@ Third-party child authors can use these helpers or write their own. The helpers 
 | `types` (0 funcs) | deleted | types absorbed where needed |
 | `git` (6 funcs) | `git` (kept) | stays — real host capability |
 
-Wait — that's 9 toys (including `git`). Decision needed: is `git` a toy or an SDK helper over `fs`?
-
-Git operations (create-tag, commit, log, diff) are host commands that WASM cannot execute alone. They require shelling out to git or using libgit2. This is a real host capability, not domain logic. **Keep git as the 9th toy**, or fold it into a general "exec" primitive. For now: keep it. 8 was aspirational; 9 with git is honest.
+**Decision (closed):** `git` is `patina:git`, the 10th toy (5th Patina-specific). Git operations (tag, commit, log, diff) require host-level execution that WASM cannot do alone. This is a real host capability, not domain logic or an SDK helper. Passes the toy litmus test: "Why can't the child do this itself from pure WASM compute?" — because it needs to shell out to `git` or use `libgit2`, which requires host access.
 
 ## SDK Crate Consolidation
 
@@ -317,7 +315,7 @@ sdk/patina-sdk/          — everything
 
 ## Direct Code Targets
 
-- `wit/toys/*.wit` — rewrite (22 files → 8-9 files)
+- `wit/toys/*.wit` — rewrite (22 files → 10 files)
 - `wit/worlds/*.wit` — regenerate from collapsed toys
 - `src/child/toy_host/*.rs` — rewrite host implementations
 - `src/child/internal/*.rs` — update engine to handle connections
@@ -333,7 +331,7 @@ sdk/patina-sdk/          — everything
 
 This changes every layer between WIT definitions and child application code. Nothing about the core platform (belief system, core verbs, database, CLI structure) is affected.
 
-**Full rewrite:** `wit/toys/` (22→8-9 files), `wit/worlds/` (regenerated), `src/child/toy_host/` (every host file), SDK crate structure (4→1 crate)
+**Full rewrite:** `wit/toys/` (22→10 files), `wit/worlds/` (regenerated), `src/child/toy_host/` (every host file), SDK crate structure (4→1 crate)
 
 **Must migrate:** Every in-tree child's source code and `child.toml`. Every test that exercises toy dispatch.
 
@@ -353,7 +351,7 @@ cargo test -q
 
 After all phases:
 ```bash
-ls wit/toys/*.wit | wc -l                    # 8 or 9
+ls wit/toys/*.wit | wc -l                    # 10
 rg "issue|pull-request|review|granted-lake|repo-binding" wit/toys/  # 0
 cargo check --workspace -q
 cargo test -q
@@ -367,7 +365,7 @@ Phase 1 (WIT design) is the critical gate. Requires studying WASI interface shap
 
 ## Open Questions
 
-- Is `git` toy #9, or does it collapse into a general `exec` primitive? Current lean: keep as standalone — git is a real host capability.
+- ~~Is `git` toy #9?~~ **Closed.** `patina:git` is the 10th toy. Real host capability, passes litmus test.
 - Should `store.query` use SQL strings or a generic query format? Current lean: strings (keep WIT domain-agnostic, let SDK helpers handle query construction).
 - How does connection resolution work for local dev vs production? Mother needs a connection registry (like Cloudflare's per-environment bindings).
 - Should the `http` toy support streaming responses? Not now — wait for WASI 0.3 async/streams.

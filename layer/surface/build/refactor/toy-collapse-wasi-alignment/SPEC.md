@@ -42,16 +42,16 @@ exit_criteria:
   - id: tca7-host-mediates-credentials
     text: "All credential injection happens via `patina:connect` resource handles on the host side of the WASM wall. No credential data appears in any toy WIT interface."
     checked: false
-  - id: tca7-children-migrated
+  - id: tca8-children-migrated
     text: "All in-tree children (ducklake, belief-verifier, spec-manager, session-writer, doctor, lake-manager) build and run using the collapsed toy set."
     checked: false
-  - id: tca8-builds-pass
+  - id: tca9-builds-pass
     text: "`cargo check --workspace`, `cargo test -q`, and all children compile and pass tests."
     checked: false
 ---
 # refactor: Collapse toys to primitives and align with WASI/Cloudflare binding model
 
-> Reduce 22 toys to 8 data-access primitives. Adopt WASI interface shapes where standards exist. Move domain logic from toys to children and SDK libraries. Align with Cloudflare Workers binding model for capability grants.
+> Reduce 22 toys to 10 (4 WASI standard + 1 Patina bridge + 5 Patina-specific). Adopt actual WASI interfaces for http/fs/log/state. Add `patina:connect` as credential-security bridge. Move domain logic from toys to children and SDK libraries. Align with Cloudflare Workers binding model for capability grants.
 
 ## Problem
 
@@ -113,7 +113,7 @@ Comparing with Cloudflare Workers revealed almost 1:1 mapping: our toybox = thei
 
 ## Goal
 
-8 toy primitives. 4 adopt WASI interface shapes. 4 are Patina-specific, designed to be clean enough to propose upstream. Domain logic moves to children and SDK helper libraries. The SDK simplifies from 4 crates to 1.
+10 toys in 3 layers: 4 adopt actual WASI interfaces (http, fs, log, state), 1 Patina bridge (`patina:connect` for credential-handle security), 5 Patina-specific (store, events, task, peer, git — designed clean enough to propose upstream). Domain logic moves from toys to children and SDK helper libraries. The SDK simplifies from 4 crates to 1.
 
 ## Non-Goals
 
@@ -299,7 +299,7 @@ Update `child.toml` schema to support `[needs.toys]` with named instances and `[
 
 ### Phase 4: New toy host implementations (alongside old)
 
-Implement host functions for the 8 new WIT interfaces. Connection-aware credential injection for `http` and `store`. Both old and new toy hosts exist simultaneously — old children use old hosts, new children use new hosts.
+Implement host functions for the 10 new WIT interfaces. Connection-aware credential injection for `http` and `store`. Both old and new toy hosts exist simultaneously — old children use old hosts, new children use new hosts.
 
 **Changes only:** runtime dispatch (adds new dispatch paths).
 **Does NOT change:** interface contracts (already defined in Phase 1), child business logic, old toy host behavior.
@@ -354,7 +354,7 @@ Delete old toy WIT files. Delete old toy host implementations. Delete compatibil
 **Changes only:** cleanup (removal of dead code).
 **Does NOT change:** any live behavior (everything already on new toys).
 
-**Parity gate:** `cargo check --workspace`, `cargo test -q`. `ls wit/toys/*.wit | wc -l` = 8 or 9. `rg` for any old toy function name in `src/child/toy_host/` returns zero.
+**Parity gate:** `cargo check --workspace`, `cargo test -q`. `ls wit/toys/*.wit | wc -l` = 10. `rg` for any old toy function name in `src/child/toy_host/` returns zero.
 
 ## Anti-Sprawl Rule
 
@@ -382,18 +382,18 @@ Phases 2-5 can overlap where dependencies allow. Phase 6 is the long middle — 
 
 ## Phase Entry/Exit Invariants
 
-Each phase has explicit entry conditions, exit proofs, and gate rules. **A phase cannot start until the previous phase's parity gate passes.**
+Each phase has explicit entry conditions and exit proofs. **A phase cannot start until its listed entry condition passes.** Phases follow the dependency graph (not strictly sequential) — Phases 2-5 can overlap since they all depend on Phase 1 independently.
 
 | Phase | Entry Condition | Exit Proof |
 |-------|----------------|------------|
-| 1 | Spec is active | 8-9 new `.wit` files exist, compile with wit-bindgen. Old WIT untouched. |
+| 1 | Spec is active | 10 new `.wit` files exist (4 WASI + 1 connect + 5 Patina), compile with wit-bindgen. Old WIT untouched. |
 | 2 | Phase 1 exit proof passes | Compat adapters route old toy calls through new interfaces. Full test suite passes. Golden fixture comparison shows identical output for all existing children. |
 | 3 | Phase 1 exit proof passes | New `child.toml` syntax parses. Old `child.toml` syntax still parses via compat. `patina child list` shows correct toy grants for both formats. |
 | 4 | Phase 1 exit proof passes | New toy hosts handle basic calls from a test child built against new WIT. Old toy hosts still serve old children unchanged. `cargo test -q` passes. |
 | 5 | Phase 1 exit proof passes | SDK helpers compile. Unit tests prove helpers produce same API calls as old domain toys. |
 | 6 | Phases 2, 4, 5 exit proofs all pass | Per-child: same input → same output via golden fixture. After all children: `rg` for retired toy imports across `children/*/src/` returns zero. |
 | 7 | Phase 6 exit proof passes | `cargo check --workspace`. `rg "patina-sdk-core\|patina-sdk-data\|patina-sdk-agent" children/` returns zero. Tier crates removed from workspace members. |
-| 8 | Phases 6 and 7 exit proofs pass | `ls wit/toys/*.wit \| wc -l` = 8 or 9. Zero old toy function names in `src/child/toy_host/`. `cargo check --workspace && cargo test -q`. |
+| 8 | Phases 6 and 7 exit proofs pass | `ls wit/toys/*.wit \| wc -l` = 10. Zero old toy function names in `src/child/toy_host/`. `cargo check --workspace && cargo test -q`. |
 
 ## Rollback Contract
 
@@ -430,10 +430,52 @@ This table is **immutable once Phase 2 starts.** If a mapping needs to change, a
 | `types` (0 funcs) | deleted | types absorbed into relevant toys | — |
 | `git` (6 funcs) | `git` (kept) | stays — real host capability | No |
 
+## Binding Mechanics: `patina:connect` + `wasi:http`
+
+This is the definitive contract for how the connect bridge works with WASI toys.
+
+**`wasi:http/outgoing-handler`** takes an `outgoing-request` resource with scheme, authority, path-with-query, headers. There is no connection concept — the component specifies raw URLs.
+
+**`patina:connect`** sits alongside, not on top of, `wasi:http`:
+
+```
+Child code:
+  1. connect::resolve("github") → opaque connection resource + base URL string
+  2. Construct wasi:http outgoing-request using base URL + child's path/query
+  3. Call wasi:http handle() with the request
+
+Mother's host:
+  4. Intercept handle() — check if an active patina:connect resource is associated
+  5. If yes: inject credential headers from connection's secret store entry
+  6. If no: execute raw wasi:http (no credential injection)
+  7. Enforce rate limits, log audit event
+  8. Return response to child
+```
+
+**The mechanism**: Mother's `wasi:http` host implementation checks whether the request's authority matches an active `patina:connect` resource's base URL. If it does, Mother injects stored credentials. If it doesn't (raw wasi:http without connect), Mother either blocks (if the child's toybox requires connect for http) or passes through (if raw http is granted).
+
+**This means**: A child can opt into `connect` for credential-secured access, or use raw `wasi:http` for public endpoints. The toybox controls which mode is allowed via `child.toml`:
+
+```toml
+# Child that uses connect (credentials managed by Mother):
+[needs]
+toys = ["http", "connect"]
+[needs.connections]
+github = { toy = "http" }
+
+# Child that uses raw http (public APIs only, no connect):
+[needs]
+toys = ["http"]
+# No connections section — raw wasi:http only
+```
+
+**The same pattern extends to `patina:store`**: `connect::resolve("ducklake")` returns a handle. `store::query(connection, sql)` passes the handle. Mother resolves the backing database and credentials from the handle.
+
 ## Resolved Decisions
 
+- **git is the 10th toy** — `patina:git`. Git operations (tag, commit, log, diff) require host-level execution that WASM cannot do alone. Not domain logic, not an SDK helper. Kept as a standalone Patina-specific toy. This is a closed question.
 - **Toy litmus test**: "Why can't the child do this itself from pure WASM compute?" If it can, it's SDK/library, not a toy.
-- **Credentials never cross the WASM wall.** Children operate through connection-name handles. Mother injects credentials on the host side.
+- **Credentials never cross the WASM wall.** Children operate through `patina:connect` opaque resource handles. Mother injects credentials on the host side.
 - **Connections are named bindings**, like Cloudflare Workers' `wrangler.toml` bindings. The child says "github." Mother knows what that means.
 - **Domain logic belongs in children and SDK helpers, not toys.** A `github::list_issues()` helper uses the `http` toy internally — it's library code, not a host interface.
 - **git stays as a toy** (borderline call). Git operations are real host capabilities that WASM can't do alone. If WASI eventually proposes `wasi:git`, we align then.
@@ -447,7 +489,7 @@ This is a large breaking change. It touches every layer between WIT and child co
 ### What breaks
 
 **WIT layer — full rewrite:**
-- 22 toy `.wit` files replaced by 8-9 new interface designs (not renames — new function signatures)
+- 22 toy `.wit` files replaced by 10 new interface designs (4 WASI + 1 connect + 5 Patina — not renames, new function signatures)
 - `wit/worlds/` — every composed world regenerated for collapsed toy set
 - All SDK `build.rs` files — different WIT sources to bind against
 
@@ -457,7 +499,7 @@ This is a large breaking change. It touches every layer between WIT and child co
 
 **SDK — full restructure:**
 - 3 tier crates (`patina-sdk-core`, `patina-sdk-data`, `patina-sdk-agent`) absorbed into `patina-sdk`. Every `use patina_sdk_core::*` and `use patina_sdk_data::*` import breaks.
-- All existing toy binding modules replaced with new bindings for 8-9 toys.
+- All existing toy binding modules replaced with new bindings for 10 toys.
 - New `helpers/` modules written for domain logic that moved out of toys (github, lake, session, connector).
 
 **Every in-tree child — must migrate:**
@@ -490,8 +532,8 @@ This is a large breaking change. It touches every layer between WIT and child co
 
 The 7-phase execution order exists to make this survivable:
 - Each phase leaves the workspace green (compiling and tests passing)
-- Phase 1 (WIT design) is pure design — nothing breaks until Phase 3 (host rewrite)
-- Phase 5 (child migration) can proceed one child at a time
+- Phase 1 (WIT design) is pure design — nothing breaks until Phase 4 (new toy host)
+- Phase 6 (child migration) proceeds one child at a time
 - Phase 6 (SDK consolidation) can keep tier crates as thin re-exports during transition
 - Old `child.toml` toy names could be supported during a migration window via compatibility parsing in Mother's manifest loader (open question: hard cut vs migration period)
 
@@ -562,7 +604,7 @@ The toybox model directly addresses several OWASP agent threat categories:
 
 ### What This Requires in the Toy Host
 
-The connection-aware toy host (Phase 3) must implement:
+The connection-aware toy host (Phase 4) must implement:
 1. **Credential injection** — resolve connection names to auth headers/tokens on every call
 2. **Audit logging** — emit structured events for every toy call (child, toy, connection, timestamp, result)
 3. **Rate limiting** — per-toy, per-connection, per-child
@@ -626,8 +668,8 @@ Connection, binding, scope, world, grant, capability — all absorbed into the f
 ```bash
 cargo check --workspace -q
 cargo test -q
-# Verify exactly 8 toy WIT files:
-ls wit/toys/*.wit | wc -l  # should be 8
+# Verify exactly 10 toy WIT files:
+ls wit/toys/*.wit | wc -l  # should be 10
 # Verify no domain-specific types in toy interfaces:
 rg "issue|pull-request|review|granted-lake|repo-binding" wit/toys/  # should be 0
 # Verify children build:
@@ -642,5 +684,5 @@ Phase 1 (WIT design) is ready to start. Requires deep review of WASI interface s
 
 ## Relationship to Other Specs
 
-- **`wit-contract-single-source`** — **abandoned**. Absorbed by this spec. When we write 8 new WIT files, we do them right from the start (single source, no copies). Archived at `66ab254f`.
+- **`wit-contract-single-source`** — **abandoned**. Absorbed by this spec. When we write 10 new WIT files, we do them right from the start (single source, no copies). Archived at `66ab254f`.
 - **`greenfield-crate-extraction`** — **blocked on this spec**. The engine crate's toy host shape depends on the collapsed toy interfaces. Blocker updated from `wit-contract-single-source` to `toy-collapse-wasi-alignment`.
