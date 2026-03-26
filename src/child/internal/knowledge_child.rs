@@ -467,13 +467,12 @@ mod bindings {
                 &self.plugin_name,
                 &source_name,
             )?;
-            super::super::host_support::http_get(
+            crate::child::toy_host::compat::ingress_fetch_via_http(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
                 &endpoint,
             )
-            .map(|result| result.body)
         }
     }
 
