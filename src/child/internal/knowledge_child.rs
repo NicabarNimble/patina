@@ -191,7 +191,7 @@ mod bindings {
                 patina::host::log::LogLevel::Warn => "WARN",
                 patina::host::log::LogLevel::Error => "ERROR",
             };
-            super::super::host_support::log(&self.plugin_name, level_str, &message);
+            crate::child::toy_host::v2::log_emit(&self.plugin_name, level_str, &message);
         }
     }
 
@@ -288,8 +288,7 @@ mod bindings {
 
     impl patina::host::state::Host for HostState {
         fn get(&mut self, key: String) -> Option<String> {
-            self.runtime
-                .get_state(&self.plugin_name, &key)
+            crate::child::toy_host::v2::state_get(&self.runtime, &self.plugin_name, &key)
                 .ok()
                 .flatten()
         }
@@ -301,9 +300,12 @@ mod bindings {
                     self.plugin_name
                 ));
             }
-            self.runtime
-                .put_state(&self.plugin_name, &key, &value_json)
-                .map_err(|e| e.to_string())
+            crate::child::toy_host::v2::state_set(
+                &self.runtime,
+                &self.plugin_name,
+                &key,
+                &value_json,
+            )
         }
 
         fn delete(&mut self, key: String) -> Result<(), String> {
@@ -313,14 +315,11 @@ mod bindings {
                     self.plugin_name
                 ));
             }
-            self.runtime
-                .delete_state(&self.plugin_name, &key)
-                .map_err(|e| e.to_string())
+            crate::child::toy_host::v2::state_delete(&self.runtime, &self.plugin_name, &key)
         }
 
         fn list_prefix(&mut self, prefix: String) -> Vec<String> {
-            self.runtime
-                .list_state_prefix(&self.plugin_name, &prefix)
+            crate::child::toy_host::v2::state_list_prefix(&self.runtime, &self.plugin_name, &prefix)
                 .unwrap_or_default()
         }
     }
@@ -910,15 +909,15 @@ mod bindings {
                     stream, self.plugin_name
                 ));
             }
-            let events = crate::child::toy_host::compat::events_pull(&stream, after_offset, limit)?;
+            let events =
+                crate::child::toy_host::v2::events_subscribe(&stream, after_offset, limit)?;
             Ok(events
                 .into_iter()
                 .map(|event| patina::host::events::PendingEvent {
-                    stream_name: event.stream,
+                    stream_name: event.stream_name,
                     offset: event.offset,
                     event_type: event.event_type,
-                    payload_json: serde_json::to_string(&event.payload)
-                        .unwrap_or_else(|_| "null".into()),
+                    payload_json: event.payload,
                     occurred_at: event.occurred_at,
                 })
                 .collect())
@@ -931,7 +930,7 @@ mod bindings {
                     stream, self.plugin_name
                 ));
             }
-            crate::child::toy_host::compat::events_ack_through(
+            crate::child::toy_host::v2::events_ack(
                 &self.runtime,
                 &self.plugin_name,
                 &stream,
@@ -940,7 +939,13 @@ mod bindings {
         }
 
         fn list_streams(&mut self) -> Vec<String> {
-            crate::child::toy_host::compat::events_list_streams()
+            vec![
+                "belief.changed".to_string(),
+                "graph.changed".to_string(),
+                "fact.ingested".to_string(),
+                "session.completed".to_string(),
+                "repo.synced".to_string(),
+            ]
         }
     }
 
@@ -992,49 +997,30 @@ mod bindings {
     impl patina::host::task::Host for HostState {
         fn enqueue(&mut self, intent: patina::host::task::TaskIntent) -> Result<String, String> {
             let kind = match intent.kind {
-                patina::host::task::TaskIntentKind::FetchSource => {
-                    crate::mother::TaskIntentKind::FetchSource
-                }
-                patina::host::task::TaskIntentKind::RunQuery => {
-                    crate::mother::TaskIntentKind::RunQuery
-                }
-                patina::host::task::TaskIntentKind::EmitFacts => {
-                    crate::mother::TaskIntentKind::EmitFacts
-                }
-                patina::host::task::TaskIntentKind::MaterializeIndex => {
-                    crate::mother::TaskIntentKind::MaterializeIndex
-                }
-                patina::host::task::TaskIntentKind::VerifyBelief => {
-                    crate::mother::TaskIntentKind::VerifyBelief
-                }
-                patina::host::task::TaskIntentKind::SyncGraph => {
-                    crate::mother::TaskIntentKind::SyncGraph
-                }
-                patina::host::task::TaskIntentKind::RefreshCredential => {
-                    crate::mother::TaskIntentKind::RefreshCredential
-                }
-                patina::host::task::TaskIntentKind::NativeJob => {
-                    crate::mother::TaskIntentKind::NativeJob
-                }
+                patina::host::task::TaskIntentKind::FetchSource => "fetch-source",
+                patina::host::task::TaskIntentKind::RunQuery => "run-query",
+                patina::host::task::TaskIntentKind::EmitFacts => "emit-facts",
+                patina::host::task::TaskIntentKind::MaterializeIndex => "materialize-index",
+                patina::host::task::TaskIntentKind::VerifyBelief => "verify-belief",
+                patina::host::task::TaskIntentKind::SyncGraph => "sync-graph",
+                patina::host::task::TaskIntentKind::RefreshCredential => "refresh-credential",
+                patina::host::task::TaskIntentKind::NativeJob => "native-job",
             };
-            if !self.grants.task_intents.contains(&kind) {
+            let resolved = crate::mother::TaskIntentKind::parse(kind)
+                .ok_or_else(|| format!("unknown task intent kind '{}'", kind))?;
+            if !self.grants.task_intents.contains(&resolved) {
                 return Err(format!(
                     "task intent '{}' not granted for '{}'",
-                    kind, self.plugin_name
+                    resolved, self.plugin_name
                 ));
             }
-            let payload = serde_json::from_str(&intent.payload_json)
-                .map_err(|e| format!("invalid task payload json: {}", e))?;
-            self.runtime
-                .enqueue_task(
-                    &self.plugin_name,
-                    &crate::mother::TaskIntent {
-                        kind,
-                        payload,
-                        dedupe_key: intent.dedupe_key,
-                    },
-                )
-                .map_err(|e| e.to_string())
+            crate::child::toy_host::v2::task_enqueue(
+                &self.runtime,
+                &self.plugin_name,
+                kind,
+                &intent.payload_json,
+                intent.dedupe_key,
+            )
         }
     }
 
