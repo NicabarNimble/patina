@@ -1,5 +1,0 @@
-package patina:host@0.1.0;
-
-interface query {
-    query: func(kind: string, params: string) -> result<string, string>;
-}

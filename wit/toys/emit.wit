@@ -1,5 +1,0 @@
-package patina:host@0.1.0;
-
-interface emit {
-    emit-fact: func(schema: string, fact-type: string, data: string) -> result<u64, string>;
-}
