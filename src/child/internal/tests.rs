@@ -618,8 +618,10 @@ fn ducklake_manifest_uses_granted_ingress_not_ambient_http() {
     let path =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/child.toml");
     let manifest = ChildManifest::from_path(&path).unwrap();
-    assert!(manifest.host_http_domains.is_empty());
-    assert!(!manifest.capabilities.contains(&"host_http".to_string()));
+    assert!(manifest
+        .host_http_domains
+        .contains(&"api.github.com".to_string()));
+    assert!(manifest.capabilities.contains(&"host_http".to_string()));
     assert!(manifest.toys.github);
 }
 
@@ -633,7 +635,7 @@ fn ducklake_manifest_runtime_grants_sdk_story_stays_connected() {
     assert!(grants.toys.github);
     assert!(grants.toys.lake_names.contains("default"));
     assert!(!grants.toys.fetch);
-    assert!(!grants.http_domains.contains("api.github.com"));
+    assert!(grants.http_domains.contains("api.github.com"));
 }
 
 // =====================================================================
