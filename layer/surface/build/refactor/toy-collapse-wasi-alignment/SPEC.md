@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: toy-collapse-wasi-alignment
-status: ready
+status: active
 created: 2026-03-26
 sessions:
   origin: 20260325-150227-161735000
