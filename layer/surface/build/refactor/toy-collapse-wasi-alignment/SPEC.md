@@ -320,12 +320,55 @@ Phase 8 (remove old) ← depends on 6,7
 
 Phases 2-5 can overlap where dependencies allow. Phase 6 is the long middle — one child at a time. Phase 8 is the cleanup that only happens after zero-use proof.
 
-## Rollback Strategy
+## Phase Entry/Exit Invariants
 
-At any phase, the workspace is green and the previous phase's behavior is intact:
-- **Before Phase 6:** Old children work on old toys. New children work on new toys. Both coexist.
-- **During Phase 6:** Each child migration is one commit. Revert one commit to undo one child.
-- **Phase 8 is irreversible** — only execute after all children are migrated and zero-use proof passes.
+Each phase has explicit entry conditions, exit proofs, and gate rules. **A phase cannot start until the previous phase's parity gate passes.**
+
+| Phase | Entry Condition | Exit Proof |
+|-------|----------------|------------|
+| 1 | Spec is active | 8-9 new `.wit` files exist, compile with wit-bindgen. Old WIT untouched. |
+| 2 | Phase 1 exit proof passes | Compat adapters route old toy calls through new interfaces. Full test suite passes. Golden fixture comparison shows identical output for all existing children. |
+| 3 | Phase 1 exit proof passes | New `child.toml` syntax parses. Old `child.toml` syntax still parses via compat. `patina child list` shows correct toy grants for both formats. |
+| 4 | Phase 1 exit proof passes | New toy hosts handle basic calls from a test child built against new WIT. Old toy hosts still serve old children unchanged. `cargo test -q` passes. |
+| 5 | Phase 1 exit proof passes | SDK helpers compile. Unit tests prove helpers produce same API calls as old domain toys. |
+| 6 | Phases 2, 4, 5 exit proofs all pass | Per-child: same input → same output via golden fixture. After all children: `rg` for retired toy imports across `children/*/src/` returns zero. |
+| 7 | Phase 6 exit proof passes | `cargo check --workspace`. `rg "patina-sdk-core\|patina-sdk-data\|patina-sdk-agent" children/` returns zero. Tier crates removed from workspace members. |
+| 8 | Phases 6 and 7 exit proofs pass | `ls wit/toys/*.wit \| wc -l` = 8 or 9. Zero old toy function names in `src/child/toy_host/`. `cargo check --workspace && cargo test -q`. |
+
+## Rollback Contract
+
+**If a parity gate fails in Phase N:**
+1. Revert to the previous phase's baseline commit.
+2. Do NOT carry forward partial artifacts from the failed phase.
+3. Diagnose the failure before re-attempting.
+4. If the failure reveals a design issue in Phase 1 (WIT contracts), the collapse map must be amended before any phase resumes.
+
+**At any point before Phase 8:** Old children work on old toys. New children work on new toys. Both coexist. The workspace is green. Any single phase can be reverted without affecting other phases.
+
+**Phase 8 is irreversible.** Only execute after zero-use proof passes for all old toys across all children, SDK, and host code.
+
+## Frozen Collapse Map
+
+This table is **immutable once Phase 2 starts.** If a mapping needs to change, amend this table in the spec first, then update the compat adapters. Do not change mappings ad-hoc during child migration.
+
+| Old Toy | New Primitive | SDK Helper Path | Connection-Aware |
+|---------|--------------|-----------------|-----------------|
+| `github` (7 funcs) | `http` | `sdk::helpers::github` | Yes — connection name resolves to github.com + PAT |
+| `connector` (4 funcs) | `http` | `sdk::helpers::connector` | Yes — connection name per binding |
+| `ingress` (2 funcs) | `http` | `sdk::helpers::ingress` | Yes — connection name per source |
+| `lake` (7 funcs) | `store` | `sdk::helpers::lake` | Yes — connection name per lake |
+| `belief` (2 funcs) | `store` | child code (trivial `store::query("beliefs", ...)`) | Yes — "beliefs" collection |
+| `graph` (2 funcs) | `store` | child code (trivial `store::query("graph", ...)`) | Yes — "graph" collection |
+| `query` (1 func) | `store` | child code (trivial) | Yes — collection param |
+| `emit` (1 func) | `events` | child code (`events::publish(...)`) | No |
+| `measure` (1 func) | `events` | child code (`events::publish("measure", ...)`) | No |
+| `checkpoint` (2 funcs) | `state` | child code (key-scoped `state::get/set`) | No |
+| `session` (8 funcs) | `fs` + `events` | `sdk::helpers::session` | No — Mother scopes fs paths |
+| `layer` (varies) | `fs` | child code | No — Mother scopes fs paths |
+| `layer-fs` (6 funcs) | `fs` | renamed, same semantics | No — Mother scopes fs paths |
+| `schema` (0 funcs) | deleted | types absorbed into relevant toys | — |
+| `types` (0 funcs) | deleted | types absorbed into relevant toys | — |
+| `git` (6 funcs) | `git` (kept) | stays — real host capability | No |
 
 ## Resolved Decisions
 
