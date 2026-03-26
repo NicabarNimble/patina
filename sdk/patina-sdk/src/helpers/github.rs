@@ -69,6 +69,15 @@ mod tests {
         CALLS.get_or_init(|| Mutex::new(Vec::new()))
     }
 
+    fn lock_calls() -> std::sync::MutexGuard<'static, Vec<GithubListParams>> {
+        calls().lock().unwrap_or_else(|error| error.into_inner())
+    }
+
+    fn test_mutex() -> &'static Mutex<()> {
+        static TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+        TEST_MUTEX.get_or_init(|| Mutex::new(()))
+    }
+
     struct MockGithub;
 
     impl GithubBackend for MockGithub {
@@ -77,7 +86,7 @@ mod tests {
             _repo: &str,
             params: &GithubListParams,
         ) -> Result<GithubPage, String> {
-            calls().lock().unwrap().push(params.clone());
+            lock_calls().push(params.clone());
             match params.page.unwrap_or(1) {
                 1 => Ok(GithubPage {
                     items: "page-1".to_string(),
@@ -99,7 +108,7 @@ mod tests {
             _repo: &str,
             params: &GithubListParams,
         ) -> Result<GithubPage, String> {
-            calls().lock().unwrap().push(params.clone());
+            lock_calls().push(params.clone());
             match params.page.unwrap_or(1) {
                 1 => Ok(GithubPage {
                     items: "page-1".to_string(),
@@ -160,7 +169,10 @@ mod tests {
 
     #[test]
     fn paginates_issues_with_expected_params() {
-        calls().lock().unwrap().clear();
+        let _guard = test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        lock_calls().clear();
         let pages = list_all_issues::<MockGithub>(
             "patina",
             "patina",
@@ -171,7 +183,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(pages, vec!["page-1".to_string(), "page-2".to_string()]);
-        let captured = calls().lock().unwrap().clone();
+        let captured = lock_calls().clone();
         assert_eq!(captured.len(), 2);
         assert_eq!(captured[0].page, Some(1));
         assert_eq!(captured[1].page, Some(2));
@@ -181,7 +193,10 @@ mod tests {
 
     #[test]
     fn paginates_pulls_with_expected_params() {
-        calls().lock().unwrap().clear();
+        let _guard = test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        lock_calls().clear();
         let pages = list_all_pulls::<MockGithub>(
             "patina",
             "patina",
@@ -192,7 +207,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(pages, vec!["page-1".to_string(), "page-2".to_string()]);
-        let captured = calls().lock().unwrap().clone();
+        let captured = lock_calls().clone();
         assert_eq!(captured.len(), 2);
         assert_eq!(captured[0].page, Some(1));
         assert_eq!(captured[1].page, Some(2));
