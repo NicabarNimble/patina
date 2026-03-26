@@ -84,6 +84,8 @@ pub use command::{CommandChild, CommandPlugin};
 #[cfg(feature = "knowledge-child")]
 pub mod knowledge_child;
 #[cfg(feature = "knowledge-child")]
+pub mod helpers;
+#[cfg(feature = "knowledge-child")]
 pub mod toys;
 #[cfg(feature = "knowledge-child")]
 pub use knowledge_child::{granted, substrate, KnowledgeChild, KnowledgeChildPlugin};
