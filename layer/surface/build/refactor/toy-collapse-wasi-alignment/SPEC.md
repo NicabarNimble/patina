@@ -343,6 +343,119 @@ Capability-based security, same pattern as Cloudflare Workers:
 6. **Manifest is auditable** — read `child.toml`, you know everything the child can do
 7. **Peer calls preserve boundaries** — calling another child via `peer` gives you that child's API, not its toybox
 
+## Agentic Security and Telemetry
+
+The toybox model isn't just a simplification — it's a security architecture for autonomous agents. Children are persistent data-moving agents, not stateless request handlers. The WASM sandbox + Mother mediation gives us properties most agent frameworks lack.
+
+### Identity and Trust
+
+- Each child has an identity: name, version, manifest hash.
+- Mother can verify a child's WASM binary hasn't been tampered with — hash the component at load time, compare to a known-good manifest.
+- The toybox is a signed capability grant: Mother can prove "I authorized this child to have these toys at this time."
+- For third-party children: Mother could require signed manifests before loading. Untrusted children get restricted toyboxes.
+
+### Credentials Never Cross the Wall
+
+The WASM boundary is a real isolation barrier, not a convention. A child physically cannot:
+- Access the filesystem (unless `fs` toy granted)
+- Make network calls (unless `http` toy granted)
+- Read environment variables or secrets
+- Access other children's memory
+- Call syscalls
+
+Credentials stay on Mother's side. When a child calls `http.request("github", ...)`, Mother injects the `Authorization` header host-side. The child never sees the PAT, never can exfiltrate it. If the child's WASM binary is compromised, the blast radius is limited to what's in its toybox.
+
+### Telemetry as a Property of Mediation
+
+Because Mother mediates every toy call, telemetry is automatic:
+- Every toy call is an observable event — Mother can log, meter, trace without the child's cooperation.
+- Mother can inject trace IDs into every call. When child A calls `peer` to child B, Mother propagates the trace context. Children don't manage their own tracing.
+- Audit is free: "child X used http to reach github.com 47 times, queried store 'beliefs' 12 times, published 3 events in this session."
+- This isn't a feature to build separately — it's a consequence of the architecture. There's no way to access anything without going through Mother's toy host.
+
+### Agent-to-Agent Trust (Peer Toy)
+
+The `peer` toy routes through Mother. Mother can enforce:
+- Which children can call which other children
+- Which actions are accessible (child A can call child B's `sync` but not `admin`)
+- Rate limits on peer calls
+- Mutual toybox compatibility requirements
+- Explicit relationship declarations in `child.toml` `[relationships]`
+
+A child calling another child via `peer` gets that child's API, not its toybox. This is capability delegation — same as Cloudflare Service Bindings.
+
+### OWASP Top 10 for AI Agents Alignment
+
+The toybox model directly addresses several OWASP agent threat categories:
+
+| OWASP Threat | How Toybox Addresses It |
+|---|---|
+| **Excessive agency** | Children can only do what the toybox grants. No ambient authority. |
+| **Insecure output** | Mother can inspect/filter every toy response before returning to the child. |
+| **Denial of service** | Mother can throttle/revoke toys mid-session. Rate limits per toy per child. |
+| **Overreliance** | The belief system has evidence and confidence levels, not blind assertions. |
+| **Supply chain** | Third-party children run in the same sandbox. Signed manifests before loading. Restricted toyboxes for untrusted sources. |
+
+### What This Requires in the Toy Host
+
+The connection-aware toy host (Phase 3) must implement:
+1. **Credential injection** — resolve connection names to auth headers/tokens on every call
+2. **Audit logging** — emit structured events for every toy call (child, toy, connection, timestamp, result)
+3. **Rate limiting** — per-toy, per-connection, per-child
+4. **Trace propagation** — inject/propagate trace context across toy and peer calls
+5. **Policy enforcement** — check toybox grants before dispatching any call
+
+These are not optional add-ons. They're the reason Mother mediates instead of passing through.
+
+## WASI and Cloudflare Alignment Lock
+
+### Where WASI vs Patina locks in
+
+In the WIT `package` declaration per toy file:
+
+| Toy | Package | Status |
+|-----|---------|--------|
+| http | Start as `patina:http`, migrate to `wasi:http` when ready | WASI stable |
+| fs | Start as `patina:fs`, migrate to `wasi:filesystem` when ready | WASI stable |
+| log | Start as `patina:log`, migrate to `wasi:logging` when stable | WASI proposed |
+| state | Start as `patina:state`, migrate to `wasi:keyvalue` when stable | WASI proposed |
+| store | `patina:store` — Patina-owned, candidate for future WASI proposal | No WASI equivalent |
+| events | `patina:events` — Patina-owned, candidate for future WASI proposal | No WASI equivalent |
+| task | `patina:task` — Patina-owned, candidate for future WASI proposal | No WASI equivalent |
+| peer | `patina:peer` — Patina-owned | No WASI equivalent |
+| git | `patina:git` — Patina-owned | No WASI equivalent |
+
+All toys start as `patina:*`. Migration to `wasi:*` packages happens per-toy when standards are stable enough. The SDK feature flags don't change — `toy-http` is `toy-http` regardless of the underlying WIT package.
+
+### Where Cloudflare shape locks in
+
+1. **`child.toml` schema** — manifest-as-security-boundary. Read it, know everything the child can do. Like `wrangler.toml`.
+2. **Mother's mediation contract** — credentials host-side, every call mediated, connections are opaque handles. Like the Workers runtime.
+3. **Peer calls** — child-to-child without crossing capability boundaries. Like Service Bindings.
+
+### Portability path
+
+If our toys align with WASI shapes:
+- A Patina child could theoretically run on Cloudflare's runtime (their bindings satisfy our toy imports: KV→state, D1→store, Queues→events, fetch→http)
+- A Cloudflare Worker could theoretically run under Mother (our toy host satisfies their WASI imports)
+- This is the component model's portability promise. We don't build for it explicitly — we just don't block it by keeping clean interfaces.
+
+## Locked Vocabulary
+
+Five terms. Everything else is absorbed or retired.
+
+| Term | What it means | Maps to (Cloudflare) | Maps to (WASI) |
+|------|--------------|---------------------|----------------|
+| **Toy** | Anything Mother provides to a child. Primitive capability, configured handle, resource. | Binding | Import |
+| **Toybox** | The sealed capability grant Mother assembles at init. The complete contract. | `env` object | Component's import set |
+| **Kind** | Child lifecycle shape. How Mother manages you. | Worker type | World |
+| **Child** | WASM worker with bounded agency. | Worker | Component |
+| **Mother** | Orchestrator. Builds toyboxes, mediates calls, holds credentials. | Workers Runtime | Host |
+
+`child.toml` = `wrangler.toml` = component manifest. The single source of truth for what a child can do.
+
+Connection, binding, scope, world, grant, capability — all absorbed into the five terms or retired from user-facing vocabulary.
+
 ## Verification
 
 ```bash
@@ -364,6 +477,5 @@ Phase 1 (WIT design) is ready to start. Requires deep review of WASI interface s
 
 ## Relationship to Other Specs
 
-- **`wit-contract-single-source`** — still valid but should execute AFTER this spec. No point eliminating copies of 22 toy files if we're about to collapse to 8.
-- **`greenfield-crate-extraction`** — still valid but should execute AFTER this spec. The engine crate's toy host is simpler with 8 interfaces than 22.
-- Both specs should be updated to reflect the collapsed toy set once this spec completes Phase 1 (WIT design).
+- **`wit-contract-single-source`** — **abandoned**. Absorbed by this spec. When we write 8 new WIT files, we do them right from the start (single source, no copies). Archived at `66ab254f`.
+- **`greenfield-crate-extraction`** — **blocked on this spec**. The engine crate's toy host shape depends on the collapsed toy interfaces. Blocker updated from `wit-contract-single-source` to `toy-collapse-wasi-alignment`.

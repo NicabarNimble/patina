@@ -4,7 +4,7 @@ id: greenfield-crate-extraction
 status: draft
 created: 2026-03-26
 blocked_by:
-  - wit-contract-single-source
+  - toy-collapse-wasi-alignment
 sessions:
   origin: 20260325-150227-161735000
 beliefs:
