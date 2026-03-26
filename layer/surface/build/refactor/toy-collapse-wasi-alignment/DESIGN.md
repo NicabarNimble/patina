@@ -119,6 +119,10 @@ A compromised child can USE the connection (within granted scope) but cannot STE
 
 Raw `wasi:http` remains available only as an explicit opt-in capability (`http.raw = true`) and never participates in credential injection. URL-prefix matching is not an allowed credential strategy.
 
+### Layer 1 Interface Sketches (fs/log/state)
+
+The following interfaces are Layer 1 primitives, even though they appear after the Layer 2 bridge section for readability of the credential model first.
+
 **This shapes the toybox.** The toybox isn't just a list of toy names — it's a resolved set of connection handles with credentials, endpoints, and policy attached. Mother builds it at init from `child.toml`. The child receives opaque handles. The credentials live exclusively in Mother's secret store.
 
 **fs** — File access within granted paths. Mirrors `wasi:filesystem`.
@@ -191,7 +195,7 @@ interface events {
 }
 ```
 
-Absorbs: `emit`, `measure`, `peer` (event emission). Measure becomes `events.publish("measure", "health-check", metrics_json)`. Emit becomes `events.publish("facts", "github-issues", data_json)`. The event type and stream name carry the domain semantics, not the toy interface.
+Absorbs: `emit`, `measure`, and the *event-emission/listening semantics* previously carried in the legacy `peer` toy. `measure` becomes `events.publish("measure", "health-check", metrics_json)`. `emit` becomes `events.publish("facts", "github-issues", data_json)`. The event type and stream name carry the domain semantics, not the toy interface.
 
 **task** — Deferred work scheduling. Candidate for future `wasi:task`.
 
@@ -266,15 +270,17 @@ Domain logic moves from toys to SDK library modules. These use toys internally.
 
 ```rust
 // sdk/src/helpers/github.rs
-// This is LIBRARY CODE, not a toy. It uses the http toy.
+// This is LIBRARY CODE, not a toy. It uses connect::request as the credential-safe path.
 pub fn list_issues(connection: &str, owner: &str, repo: &str) -> Result<Vec<Issue>, String> {
     let url = format!("/repos/{}/{}/issues", owner, repo);
-    let response = http::request(connection, &HttpRequest {
-        method: "GET".into(),
-        url,
-        headers: vec![("Accept".into(), "application/vnd.github.v3+json".into())],
-        body: None,
-    })?;
+    let conn = connect::resolve(connection)?;
+    let response = connect::request(
+        &conn,
+        "GET",
+        &url,
+        &[("Accept".into(), "application/vnd.github.v3+json".into())],
+        None,
+    )?;
     // Parse GitHub response — domain knowledge lives HERE, not in the toy
     serde_json::from_str(&response.body).map_err(|e| e.to_string())
 }
@@ -346,12 +352,12 @@ sdk/patina-sdk/          — everything
 
 | Child | Current Toys | Target Toys | Notes |
 |-------|-------------|-------------|-------|
-| ducklake | lake, connector, checkpoint, events, log, state | http, store, events, log, state | Uses `sdk::helpers::lake` + `sdk::helpers::connector` |
-| belief-verifier | belief, events, checkpoint, log, state | store, events, log, state | Uses `store` with connection "beliefs" |
-| spec-manager | layer-fs, belief, session | fs, store, events | Uses `sdk::helpers::session` |
-| session-writer | layer-fs, session, events | fs, events | Uses `sdk::helpers::session` |
-| doctor | (stub) | store, log | Minimal |
-| lake-manager | lake, connector | store, http | Uses `sdk::helpers::lake` |
+| ducklake | log, state, checkpoint, lake, github, measure, task, peer | connect, store, events, task, log, state | Uses `sdk::helpers::lake` + `sdk::helpers::github`; legacy peer event flow folds into `events` |
+| belief-verifier | log, state, checkpoint, events, belief, measure, task | store, events, task, log, state | Uses `store` with connection "beliefs" |
+| spec-manager | log, state, layer-fs, git | fs, git, log, state | Keeps git as a first-class toy |
+| session-writer | log, state, session, peer | fs, git, events, log, state | Session behaviors split across fs/git/events + SDK helpers |
+| doctor | log, state | log, state | Minimal |
+| lake-manager | log, state | log, state | Minimal today; expand only if feature scope changes |
 
 ## Direct Code Targets
 

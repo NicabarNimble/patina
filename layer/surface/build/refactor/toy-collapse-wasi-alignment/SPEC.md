@@ -110,7 +110,7 @@ Comparing with Cloudflare Workers revealed almost 1:1 mapping: our toybox = thei
 
 ### 8. WASI alignment is free if we collapse correctly
 
-4 of our collapsed toys map directly to existing or proposed WASI interfaces (http, filesystem, keyvalue, logging). Our 4 Patina-specific toys (store, events, task, peer) fill gaps the WASI ecosystem hasn't standardized yet. If we design them cleanly — domain-agnostic, with implementation experience — they're natural candidates for WASI proposals. We don't need to plan for that; just building good interfaces makes it possible.
+4 of our collapsed toys map to WASI interfaces (2 adopted now: http, filesystem; 2 shimmed with sunset: keyvalue, logging). Our 5 Patina-specific toys (store, events, task, peer, git), plus the `patina:connect` bridge, fill gaps the WASI ecosystem hasn't standardized yet. If we design them cleanly — domain-agnostic, with implementation experience — they're natural candidates for WASI proposals. We don't need to plan for that; just building good interfaces makes it possible.
 
 ### 9. The toybox concept unifies everything
 
@@ -172,9 +172,20 @@ Domain logic moves from toys to children and SDK helper libraries. The SDK simpl
 
 ### child.toml (current)
 
+Current in-tree child manifests (snapshot):
+
+| Child | Current toys (`child.toml`) |
+|-------|-------------------------------|
+| `ducklake` | `log`, `state`, `checkpoint`, `lake`, `github`, `measure`, `task`, `peer` |
+| `belief-verifier` | `log`, `state`, `checkpoint`, `events`, `belief`, `measure`, `task` |
+| `session-writer` | `log`, `state`, `session`, `peer` |
+| `spec-manager` | `log`, `state`, `layer-fs`, `git` |
+| `doctor` | `log`, `state` |
+| `lake-manager` | `log`, `state` |
+
 ```toml
 [needs]
-toys = ["log", "state", "lake", "connector", "checkpoint", "events"]
+toys = ["log", "state", "checkpoint", "lake", "github", "measure", "task", "peer"]
 ```
 
 No connection concept. Toy names bake in domain assumptions.
@@ -320,7 +331,8 @@ WASI fit matrix locked for implementation:
 ### Phase 1: Design the toy WIT interfaces
 
 Write the new `.wit` files:
-- For WASI toys (http, fs, log, state): adopt the standard `wasi:*` package interfaces.
+- For WASI toys (`http`, `fs`): adopt the standard `wasi:*` package interfaces directly.
+- For WASI-aligned shims (`log`, `state`): define `patina:*` interfaces that track `wasi:*` shapes and carry explicit sunset migration.
 - For the `patina:connect` bridge: design the connection resource type and resolution function.
 - For Patina-specific toys (store, events, task, peer, git): design clean, domain-agnostic interfaces.
 
@@ -372,11 +384,11 @@ Each child migrated individually. Per-child sub-phases:
 
 Migration order (risk-first after smoke test):
 1. `doctor` (stub, minimal toys)
-2. `ducklake` (http + store + events — most complex, longest drift risk)
-3. `belief-verifier` (store + events)
-4. `session-writer` (fs + events)
-5. `spec-manager` (fs + store)
-6. `lake-manager` (store + http)
+2. `ducklake` (connect + store + events + task — most complex, longest drift risk)
+3. `belief-verifier` (store + events + task)
+4. `session-writer` (fs + git + events)
+5. `spec-manager` (fs + git)
+6. `lake-manager` (minimal today: log + state)
 
 **Changes only:** child business logic (one child per commit).
 **Does NOT change:** interface contracts, runtime dispatch, other children.
@@ -549,7 +561,7 @@ toys = ["http"]
 - **Connections are named bindings**, like Cloudflare Workers' `wrangler.toml` bindings. The child says "github." Mother knows what that means.
 - **Domain logic belongs in children and SDK helpers, not toys.** A `github::list_issues()` helper uses the `http` toy internally — it's library code, not a host interface.
 - **git stays as a toy** (borderline call). Git operations are real host capabilities that WASM can't do alone. If WASI eventually proposes `wasi:git`, we align then.
-- **WASI alignment is shape-alignment, not adoption.** We design our interfaces to be close to WASI shapes so migration is easy, but we don't force-fit where Patina's needs differ.
+- **WASI alignment is mixed adoption + shape-alignment.** We adopt `wasi:http` and `wasi:filesystem` directly now; we shape-align `patina:log`/`patina:state` to `wasi:logging`/`wasi:keyvalue` until runtime stability is proven.
 - **The toybox is the sealed capability grant.** Mother assembles it from `child.toml`, resolves connections and credentials, and grants exactly what's declared. The manifest is the single source of truth for security review.
 
 ## Breaking Impact
@@ -573,14 +585,14 @@ This is a large breaking change. It touches every layer between WIT and child co
 - New `helpers/` modules written for domain logic that moved out of toys (github, lake, session, connector).
 
 **Every in-tree child — must migrate:**
-- `ducklake` — `lake::append_json_batch()` → `store::mutate("ducklake", ...)` or `sdk::helpers::lake::append()`
-- `belief-verifier` — `belief::query()` → `store::query("beliefs", ...)`
-- `spec-manager` — `session::write_artifact()` → `fs::write()` + `events::publish()` or `sdk::helpers::session`
-- Same for `session-writer`, `doctor`, `lake-manager`
+- `ducklake` — `lake::append_json_batch()` + `github::*` → `connect::resolve("github")` + `connect::request(...)` + `store::mutate(conn, ...)` (or `sdk::helpers::*` wrappers)
+- `belief-verifier` — `belief::query()` → `store::query(conn, ...)` with a resolved store connection handle
+- `spec-manager` — `layer-fs` + `git` stay primitive (`fs` + `git` targets); `session::*` behavior moves to SDK/child logic where needed
+- Same for `session-writer`, `doctor`, `lake-manager` (using each child's real current toy set from manifest snapshot above)
 
 **Every `child.toml` — manifest schema change:**
-- Old: `toys = ["lake", "connector", "checkpoint", "events"]`
-- New: `toys = ["http", "store", "events", "log"]` + `[needs.connections]` section
+- Old: child-specific legacy toy sets (for example ducklake uses `checkpoint`, `lake`, `github`, `measure`, `task`, `peer`)
+- New: child-specific collapsed sets + `[needs.connections]` section (for example ducklake target: `connect`, `store`, `events`, `task`, `log`, `state`)
 - Old toy names become invalid
 
 **Tests — widespread breakage:**
@@ -640,7 +652,7 @@ The WASM boundary is a real isolation barrier, not a convention. A child physica
 - Access other children's memory
 - Call syscalls
 
-Credentials stay on Mother's side. When a child calls `http.request("github", ...)`, Mother injects the `Authorization` header host-side. The child never sees the PAT, never can exfiltrate it. If the child's WASM binary is compromised, the blast radius is limited to what's in its toybox.
+Credentials stay on Mother's side. When a child calls `connect::request(...)` with a granted connection handle, Mother injects the `Authorization` header host-side. The child never sees the PAT, never can exfiltrate it. If the child's WASM binary is compromised, the blast radius is limited to what's in its toybox.
 
 ### Telemetry as a Property of Mediation
 
@@ -688,7 +700,7 @@ These are not optional add-ons. They're the reason Mother mediates instead of pa
 
 ### Where WASI vs Patina locks in
 
-In the WIT `package` declaration per toy file. **WASI toys are adopted directly — not Patina reimplementations.** `patina:connect` is the bridge that adds credential security on top.
+In the WIT `package` declaration per toy file. **`http` and `fs` are adopted directly from WASI; `log` and `state` are Patina shims aligned to WASI shapes with sunset migration.** `patina:connect` is the bridge that adds credential security on top.
 
 | Toy | Phase 1 Package | Target Package | Layer | Status |
 |-----|----------------|----------------|-------|--------|
