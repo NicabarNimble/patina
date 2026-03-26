@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: workspace-layout-consolidation
-status: ready
+status: active
 created: 2026-03-25
 sessions:
   origin: 20260325-150227-161735000
