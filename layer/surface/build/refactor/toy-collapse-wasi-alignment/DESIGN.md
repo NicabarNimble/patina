@@ -32,6 +32,24 @@ The long road through 5 greenfield specs, vocabulary retirement, layout consolid
 
 Phase 0 + 8 execution phases. Phase 0 (protocol lock + feasibility) is the critical decision point — Phase 1 WIT design starts only after Phase 0 is frozen.
 
+### Phase 0 lock status (2026-03-26)
+
+Phase 0 is now locked with these non-negotiable constraints:
+- Credential path is explicit: `connect::request(...)` handles credential-aware HTTP.
+- Raw `wasi:http` is opt-in (`http.raw = true`) and never gets credential injection.
+- Store routing is host infrastructure resolved from connection metadata.
+- `[needs.connections]` and `[needs.scopes]` are additive and merge into one grant object.
+- URL-prefix matching is not a credential strategy.
+
+Feasibility snapshot (command-backed):
+- `cargo check --workspace -q` passes.
+- `cargo tree -p patina-ai --depth 1` confirms Wasmtime 41 + WASIp2 baseline.
+- `cargo test -q -p patina-ai --lib` currently has one known failing baseline test (`session::tests::test_find_project_root_not_in_project`), unrelated to toy-collapse design.
+
+WASI adoption lock from Phase 0:
+- Adopt now: `wasi:http`, `wasi:filesystem`.
+- Stage behind Patina shims until proven in runtime workflow: `wasi:keyvalue` (`patina:state` initially), `wasi:logging` (`patina:log` initially).
+
 ## Vocabulary
 
 | Term | Definition |

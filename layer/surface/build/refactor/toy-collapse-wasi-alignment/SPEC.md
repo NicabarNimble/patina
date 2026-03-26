@@ -23,7 +23,7 @@ related:
 exit_criteria:
   - id: tca0-protocol-lock
     text: "Phase 0 protocol lock is complete before Phase 1 coding: connect/http interaction model, store routing model, scope model, and WASI fitness matrix are all frozen with explicit proofs."
-    checked: false
+    checked: true
   - id: tca1-toy-count
     text: "10 toy WIT interfaces exist: 4 WASI standard (wasi:http, wasi:filesystem, wasi:logging, wasi:keyvalue), 1 Patina bridge (patina:connect), 5 Patina-specific (patina:store, patina:events, patina:task, patina:peer, patina:git). All old toy .wit files are deleted."
     checked: false
@@ -284,6 +284,29 @@ Before any WIT/runtime/SDK code changes, freeze the protocol decisions that were
 4. **WASI fitness matrix**: each target WASI interface is validated against Wasmtime/tooling reality before adoption claims.
 
 **Exit proof:** protocol section updated and frozen in this spec + design doc, with command-backed feasibility notes for wasi:http / wasi:filesystem / wasi:keyvalue / wasi:logging status in current toolchain.
+
+#### Phase 0 execution notes (2026-03-26)
+
+Protocol lock decisions captured in this spec and `DESIGN.md`:
+- `connect::request(...)` is the credential-aware default path.
+- raw `wasi:http` is opt-in via `http.raw = true`.
+- no URL-prefix credential inference for secret injection.
+- store backend routing is host-owned via connection metadata.
+- `[needs.connections]` and `[needs.scopes]` coexist and merge into one grant model.
+
+Command-backed feasibility snapshot:
+- `cargo check --workspace -q` ✅ pass
+- `cargo tree -p patina-ai --depth 1` shows `wasmtime = 41.0.3` + `wasmtime-wasi = 41.0.3` (component model + WASIp2 baseline present)
+- `cargo test -q -p patina-ai --lib` ⚠️ 1 known failing baseline test: `session::tests::test_find_project_root_not_in_project`
+
+WASI fit matrix locked for implementation:
+
+| Interface | Phase 0 status | Build policy |
+|---|---|---|
+| `wasi:http` | Fit for adoption in Phase 1 | Adopt now; connect mediates credential path |
+| `wasi:filesystem` | Fit for adoption in Phase 1 | Adopt now; Mother path scope enforcement |
+| `wasi:keyvalue` | Not proven stable in current runtime workflow | Start as `patina:state`; migrate on stable/runtime proof |
+| `wasi:logging` | Not proven stable in current runtime workflow | Start as `patina:log`; migrate on stable/runtime proof |
 
 ### Phase 1: Design the toy WIT interfaces
 
@@ -719,7 +742,7 @@ grep 'patina-sdk-core\|patina-sdk-data\|patina-sdk-agent' Cargo.toml  # should b
 
 ## Build Readiness
 
-Phase 0 (protocol lock + WASI fit) is ready to start. Phase 1 (WIT design) should begin only after Phase 0 proofs are captured.
+Phase 0 is complete (protocol lock + feasibility snapshot captured). Phase 1 (WIT design) can begin.
 
 ## Relationship to Other Specs
 
