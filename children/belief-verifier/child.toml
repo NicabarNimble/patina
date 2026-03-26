@@ -7,7 +7,7 @@ role = "app"
 patina_min = "0.41.0"
 
 [needs]
-toys = ["log", "state", "checkpoint", "events", "belief", "measure", "task"]
+toys = ["log", "state", "store", "events", "task"]
 
 [needs.connections]
 beliefs = { toy = "store" }

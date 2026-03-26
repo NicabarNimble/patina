@@ -7,7 +7,7 @@ role = "app"
 patina_min = "0.41.0"
 
 [needs]
-toys = ["log", "state", "checkpoint", "lake", "github", "measure", "task", "peer"]
+toys = ["log", "state", "connect", "store", "events", "task"]
 
 [needs.connections]
 github = { toy = "http" }

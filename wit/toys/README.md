@@ -8,4 +8,4 @@ This directory is the add-only Phase 1 contract lane for toy collapse.
 Notes:
 
 - This lane intentionally does not modify legacy `wit/toys/` or `wit/worlds/` contracts.
-- Vendored WASI WIT deps live under `wit/toys-v2/deps/` so `wasm-tools component wit wit/toys-v2` validates the full package graph locally.
+- Vendored WASI WIT deps live under `wit/toys/deps/` so `wasm-tools component wit wit/toys` validates the full package graph locally.

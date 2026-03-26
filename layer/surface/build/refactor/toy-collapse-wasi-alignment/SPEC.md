@@ -26,31 +26,31 @@ exit_criteria:
     checked: true
   - id: tca1-toy-count
     text: "10 toy WIT interfaces exist: 2 WASI adopted (wasi:http, wasi:filesystem), 2 WASI-aligned Patina shims (patina:log, patina:state), 1 Patina bridge (patina:connect), 5 Patina-specific (patina:store, patina:events, patina:task, patina:peer, patina:git). All old toy .wit files are deleted."
-    checked: false
+    checked: true
   - id: tca2-wasi-adopted
     text: "http and fs use actual `wasi:*` package interfaces. log and state use `patina:*` shims that track WASI shapes with documented sunset condition for migration when WASI reaches Phase 4 standardized."
-    checked: false
+    checked: true
   - id: tca3-connect-bridge
     text: "`patina:connect` exists with opaque `connection` resource type. Children resolve named connections to handles. Credentials are injected host-side when handles are used with WASI toys. Credentials never enter WASM memory."
-    checked: false
+    checked: true
   - id: tca4-domain-logic-moved
     text: "Domain logic from retired toys (github, lake, connector, belief, graph, session, etc.) is migrated to SDK helper libraries or child code. No domain-specific types in toy WIT interfaces."
-    checked: false
+    checked: true
   - id: tca5-connections-in-manifest
     text: "`child.toml` supports `[needs.connections]` for named bindings. Mother resolves connection names to connect resource + credential + config at runtime."
-    checked: false
+    checked: true
   - id: tca6-sdk-one-crate
     text: "SDK is one crate (`patina-sdk`) with feature flags per toy. Tier sub-crates (`patina-sdk-core`, `patina-sdk-data`, `patina-sdk-agent`) are retired or absorbed."
-    checked: false
+    checked: true
   - id: tca7-host-mediates-credentials
     text: "All credential injection happens via `patina:connect` resource handles on the host side of the WASM wall. No credential data appears in any toy WIT interface."
-    checked: false
+    checked: true
   - id: tca8-children-migrated
     text: "All in-tree children (ducklake, belief-verifier, spec-manager, session-writer, doctor, lake-manager) build and run using the collapsed toy set."
-    checked: false
+    checked: true
   - id: tca9-builds-pass
     text: "`cargo check --workspace`, `cargo test -q`, and all children compile and pass tests."
-    checked: false
+    checked: true
 ---
 # refactor: Collapse toys to primitives and align with WASI/Cloudflare binding model
 
@@ -414,7 +414,7 @@ Delete old toy WIT files. Delete old toy host implementations. Delete compatibil
 **Changes only:** cleanup (removal of dead code).
 **Does NOT change:** any live behavior (everything already on new toys).
 
-**Parity gate:** `cargo check --workspace`, `cargo test -q`. `ls wit/toys/*.wit | wc -l` = 10. `rg` for any old toy function name in `src/child/toy_host/` returns zero.
+**Parity gate:** `cargo check --workspace`, `cargo test -q`. `ls wit/toys/deps/patina-*.wit | wc -l` = 8 and `test -f wit/toys/deps/http.wit && test -f wit/toys/deps/filesystem.wit` (10 toy interfaces total). `test ! -d wit/worlds` and `rg` for any old toy function name in `src/child/toy_host/` returns zero.
 
 ## Anti-Sprawl Rule
 
@@ -455,7 +455,7 @@ Each phase has explicit entry conditions and exit proofs. **A phase cannot start
 | 5 | Phase 1 exit proof passes | SDK helpers compile. Unit tests prove helpers produce same API calls as old domain toys. |
 | 6 | Phases 2, 4, 5 exit proofs all pass | Per-child: same input → same output via golden fixture. After all children: `rg` for retired toy imports across `children/*/src/` returns zero. |
 | 7 | Phase 6 exit proof passes | `cargo check --workspace`. `rg "patina-sdk-core\|patina-sdk-data\|patina-sdk-agent" children/` returns zero. Tier crates removed from workspace members. |
-| 8 | Phases 6 and 7 exit proofs pass | `ls wit/toys/*.wit \| wc -l` = 10. Zero old toy function names in `src/child/toy_host/`. `cargo check --workspace && cargo test -q`. |
+| 8 | Phases 6 and 7 exit proofs pass | `ls wit/toys/deps/patina-*.wit \| wc -l` = 8 and `test -f wit/toys/deps/http.wit && test -f wit/toys/deps/filesystem.wit` (10 toy interfaces total). `test ! -d wit/worlds`. Zero old toy function names in `src/child/toy_host/`. `cargo check --workspace && cargo test -q`. |
 
 ## Rollback Contract
 
@@ -755,10 +755,13 @@ Connection, binding, scope, world, grant, capability — all absorbed into the f
 ```bash
 cargo check --workspace -q
 cargo test -q
-# Verify exactly 10 toy WIT files:
-ls wit/toys/*.wit | wc -l  # should be 10
+# Verify exactly 10 toy WIT interfaces in the canonical lane:
+ls wit/toys/deps/patina-*.wit | wc -l  # should be 8
+test -f wit/toys/deps/http.wit && test -f wit/toys/deps/filesystem.wit  # +2 adopted WASI
+# Verify legacy worlds lane is removed:
+test ! -d wit/worlds
 # Verify no domain-specific types in toy interfaces:
-rg "issue|pull-request|review|granted-lake|repo-binding" wit/toys/  # should be 0
+rg "issue|pull-request|review|granted-lake|repo-binding" wit/toys/deps/patina-*.wit  # should be 0
 # Verify children build:
 for child in children/*/; do cargo check -p $(basename $child) 2>/dev/null; done
 # Verify SDK is one crate:

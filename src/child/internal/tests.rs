@@ -622,7 +622,7 @@ fn ducklake_manifest_uses_granted_ingress_not_ambient_http() {
         .host_http_domains
         .contains(&"api.github.com".to_string()));
     assert!(manifest.capabilities.contains(&"host_http".to_string()));
-    assert!(manifest.toys.github);
+    assert!(!manifest.toys.github);
 }
 
 #[test]
@@ -632,7 +632,7 @@ fn ducklake_manifest_runtime_grants_sdk_story_stays_connected() {
     let manifest = ChildManifest::from_path(&path).unwrap();
     let grants = manifest.granted_capabilities();
 
-    assert!(grants.toys.github);
+    assert!(!grants.toys.github);
     assert!(grants.toys.lake_names.contains("default"));
     assert!(!grants.toys.fetch);
     assert!(grants.http_domains.contains("api.github.com"));
