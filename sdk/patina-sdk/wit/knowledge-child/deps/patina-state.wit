@@ -1,0 +1,8 @@
+package patina:state@0.1.0;
+
+interface state {
+    get: func(key: string) -> option<string>;
+    set: func(key: string, value: string) -> result<_, string>;
+    delete: func(key: string) -> result<_, string>;
+    list-prefix: func(prefix: string) -> list<string>;
+}

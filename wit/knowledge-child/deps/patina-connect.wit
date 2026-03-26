@@ -1,0 +1,27 @@
+package patina:connect@0.1.0;
+
+interface connect {
+    record header {
+        name: string,
+        value: string,
+    }
+
+    record response {
+        status: u16,
+        headers: list<header>,
+        body: list<u8>,
+    }
+
+    resource connection;
+
+    resolve: func(name: string) -> result<connection, string>;
+    /// Informational only (debug/telemetry). Host auth and routing bind to conn handle.
+    base-url: func(conn: borrow<connection>) -> string;
+    request: func(
+        conn: borrow<connection>,
+        method: string,
+        path: string,
+        headers: list<header>,
+        body: option<list<u8>>,
+    ) -> result<response, string>;
+}

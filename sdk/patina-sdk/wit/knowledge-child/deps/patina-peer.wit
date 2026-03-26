@@ -1,0 +1,5 @@
+package patina:peer@0.1.0;
+
+interface peer {
+    call: func(child: string, action: string, payload: string) -> result<string, string>;
+}

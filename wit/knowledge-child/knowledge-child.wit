@@ -1,28 +1,59 @@
 package patina:knowledge-child@0.1.0;
 
-world knowledge-child {
-    import patina:host/log@0.1.0;
-    import patina:host/measure@0.1.0;
-    import patina:host/query@0.1.0;
-    import patina:host/http@0.1.0;
-    import patina:host/ingress@0.1.0;
-    import patina:host/connector@0.1.0;
-    import patina:host/github@0.1.0;
-    import patina:host/emit@0.1.0;
-    import patina:host/state@0.1.0;
-    import patina:host/checkpoint@0.1.0;
-    import patina:host/lake@0.1.0;
-    import patina:host/events@0.1.0;
-    import patina:host/peer@0.1.0;
-    import patina:host/task@0.1.0;
-    import patina:host/graph@0.1.0;
-    import patina:host/belief@0.1.0;
-    import patina:host/types@0.1.0;
-    import patina:host/session@0.1.0;
+interface runtime-types {
+    enum health-status {
+        healthy,
+        degraded,
+        unhealthy,
+    }
 
-    use patina:host/types@0.1.0.{child-health};
-    use patina:host/events@0.1.0.{pending-event};
-    use patina:host/task@0.1.0.{task-intent};
+    record child-health {
+        status: health-status,
+        reason: option<string>,
+    }
+
+    enum task-intent-kind {
+        fetch-source,
+        run-query,
+        emit-facts,
+        materialize-index,
+        verify-belief,
+        sync-graph,
+        refresh-credential,
+        native-job,
+    }
+
+    record task-intent {
+        kind: task-intent-kind,
+        payload-json: string,
+        dedupe-key: option<string>,
+    }
+
+    record pending-event {
+        stream-name: string,
+        offset: u64,
+        event-type: string,
+        payload-json: string,
+        occurred-at: string,
+    }
+}
+
+world knowledge-child {
+    import wasi:http/outgoing-handler@0.2.6;
+    import wasi:filesystem/types@0.2.6;
+    import patina:log/log@0.1.0;
+    import patina:state/state@0.1.0;
+    import patina:connect/connect@0.1.0;
+    import patina:store/store@0.1.0;
+    import patina:events/events@0.1.0;
+    import patina:task/task@0.1.0;
+    import patina:peer/peer@0.1.0;
+    import patina:git/git@0.1.0;
+    import runtime-types;
+
+    use runtime-types.{child-health};
+    use runtime-types.{pending-event};
+    use runtime-types.{task-intent};
 
     export init: func();
     export name: func() -> string;
