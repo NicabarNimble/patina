@@ -219,52 +219,113 @@ Write the 8 new `.wit` files. For WASI-aligned toys, study the WASI interface sh
 
 Key design principle: toys take a `connection` parameter (string handle) where they need to reach external resources. Mother resolves the handle to real infrastructure. The child never sees credentials.
 
-### Phase 2: Build connection-aware child.toml parsing
+### Phase 2: Compatibility adapters — old toys dispatch through new
 
-Update `child.toml` schema to support `[needs.connections]`. Update Mother's manifest parsing to resolve connections at child load time. This is the toybox assembly path.
+Add adapter layer that maps old toy calls to new toy interfaces. Old children keep working, but under the hood they're using the new contract. Both old and new WIT exist simultaneously.
 
-### Phase 3: Update toy host implementations
+**Changes only:** runtime dispatch behavior (adapter routing).
+**Does NOT change:** interface contracts (old WIT untouched), child business logic (children unchanged).
 
-Rewrite `src/child/toy_host/` to implement the 8 new interfaces. The toy host becomes connection-aware: it checks the toybox for connection grants and injects credentials on the host side.
+**Parity gate:** Run full test suite. Same inputs → same outputs for every existing child. Golden fixture comparison for key paths (doctor, sync, session).
 
-### Phase 4: Create SDK helper libraries
+### Phase 3: Connection-aware child.toml parsing
 
-Move domain logic from retired toys into SDK helper modules:
+Update `child.toml` schema to support `[needs.toys]` with named instances and `[needs.connections]` syntax. Mother's manifest parser resolves connections at load time. Old `child.toml` format still works via compat parsing.
 
-- `sdk::helpers::github` — constructs GitHub API requests using `http` toy
-- `sdk::helpers::lake` — constructs DuckDB operations using `store` toy
-- `sdk::helpers::session` — manages session artifacts using `fs` + events
-- etc.
+**Changes only:** manifest schema (additive, not breaking).
+**Does NOT change:** interface contracts, runtime dispatch, child business logic.
 
-These are library code, not toys. They use toys under the hood.
+**Parity gate:** All existing `child.toml` files parse without error. New connection syntax parses correctly for test fixtures. `patina child list` shows correct toy grants.
 
-### Phase 5: Migrate children
+### Phase 4: New toy host implementations (alongside old)
 
-Update all in-tree children to use collapsed toys + SDK helpers:
+Implement host functions for the 8 new WIT interfaces. Connection-aware credential injection for `http` and `store`. Both old and new toy hosts exist simultaneously — old children use old hosts, new children use new hosts.
 
-- `ducklake` → `http` + `store` + `events` (was: lake, connector, checkpoint, events)
-- `belief-verifier` → `store` + `events` (was: belief, events, checkpoint)
-- `spec-manager` → `fs` + `store` (was: layer-fs, belief, session)
-- `session-writer` → `fs` + `events` (was: layer-fs, session, events)
-- `doctor` → `store` + `log` (was: knowledge-child stub)
-- `lake-manager` → `store` + `http` (was: lake, connector)
+**Changes only:** runtime dispatch (adds new dispatch paths).
+**Does NOT change:** interface contracts (already defined in Phase 1), child business logic, old toy host behavior.
 
-### Phase 6: Collapse SDK crates
+**Parity gate:** A test child built against new WIT compiles, loads, and executes basic toy calls. Old children still work unchanged. `cargo test -q` passes.
 
-Absorb `patina-sdk-core`, `patina-sdk-data`, `patina-sdk-agent` into `patina-sdk`. One crate, feature flags per toy, helper modules for domain logic.
+### Phase 5: SDK helper libraries
 
-### Phase 7: Clean up
+Move domain logic from old toys into SDK helper modules (`sdk::helpers::github`, `sdk::helpers::lake`, `sdk::helpers::session`, etc.). These are library code using new toys internally.
 
-Delete retired toy WIT files. Delete retired toy host implementations. Update all documentation. Remove `wit/worlds/` mirror copies (addressed by `wit-contract-single-source` spec).
+**Changes only:** SDK library surface (additive).
+**Does NOT change:** interface contracts, runtime dispatch, child business logic (children haven't migrated yet).
+
+**Parity gate:** SDK compiles. Helper modules have unit tests proving they produce the same API calls as the old domain toys.
+
+### Phase 6: Migrate children — one at a time
+
+Each child migrated individually. Per-child sub-phases:
+1. Update `child.toml` to new toy syntax + connections
+2. Update child source to use new toy bindings + SDK helpers
+3. Verify same behavior via golden fixture comparison
+4. Commit as one slice per child
+
+Migration order (simplest first):
+1. `doctor` (stub, minimal toys)
+2. `belief-verifier` (store + events)
+3. `session-writer` (fs + events)
+4. `spec-manager` (fs + store)
+5. `lake-manager` (store + http)
+6. `ducklake` (http + store + events — most complex)
+
+**Changes only:** child business logic (one child per commit).
+**Does NOT change:** interface contracts, runtime dispatch, other children.
+
+**Parity gate per child:** Same input → same output. Old and new child can coexist during migration window. `cargo test -q` passes after each child.
+
+**Zero-use gate:** After all children migrate, `rg` for retired toy imports across all `children/*/src/`. Count must be zero.
+
+### Phase 7: Collapse SDK crates
+
+Absorb `patina-sdk-core`, `patina-sdk-data`, `patina-sdk-agent` into `patina-sdk`. Keep tier crates temporarily as thin re-exports. Remove from workspace after zero-import proof.
+
+**Changes only:** SDK crate structure.
+**Does NOT change:** interface contracts, runtime dispatch, child business logic (all already using new SDK).
+
+**Parity gate:** `cargo check --workspace`, all children compile. `rg "patina-sdk-core\|patina-sdk-data\|patina-sdk-agent" children/` returns zero.
+
+### Phase 8: Remove old toys
+
+Delete old toy WIT files. Delete old toy host implementations. Delete compatibility adapters from Phase 2. Delete old `child.toml` parsing compat. Delete `wit/worlds/` mirror copies. Update docs.
+
+**Changes only:** cleanup (removal of dead code).
+**Does NOT change:** any live behavior (everything already on new toys).
+
+**Parity gate:** `cargo check --workspace`, `cargo test -q`. `ls wit/toys/*.wit | wc -l` = 8 or 9. `rg` for any old toy function name in `src/child/toy_host/` returns zero.
+
+## Anti-Sprawl Rule
+
+**No phase can change more than one of:**
+- Interface contract (WIT definitions)
+- Runtime dispatch behavior (toy host, adapter routing)
+- Child business logic (child source code)
+
+If two need to change, split the phase. This prevents the "just get green" cascade where a small WIT tweak ripples into host patches → SDK patches → child patches → test patches → doc patches in a single unbounded commit.
 
 ## Implementation Order
 
-Phases 1-2 can proceed in parallel (WIT design + manifest parsing).
-Phase 3 depends on Phase 1 (toy host implements new WIT).
-Phase 4 depends on Phase 1 (helpers use new toy bindings).
-Phase 5 depends on Phases 3-4 (children use new host + helpers).
-Phase 6 depends on Phase 5 (SDK consolidation after children migrate).
-Phase 7 depends on Phase 6 (cleanup after everything works).
+```
+Phase 1 (WIT design) ──────────────────────┐
+Phase 2 (compat adapters) ← depends on 1   │
+Phase 3 (child.toml) ← can parallel with 2 │
+Phase 4 (new toy host) ← depends on 1      │
+Phase 5 (SDK helpers) ← depends on 1       │
+Phase 6 (migrate children) ← depends on 2,4,5
+Phase 7 (SDK collapse) ← depends on 6
+Phase 8 (remove old) ← depends on 6,7
+```
+
+Phases 2-5 can overlap where dependencies allow. Phase 6 is the long middle — one child at a time. Phase 8 is the cleanup that only happens after zero-use proof.
+
+## Rollback Strategy
+
+At any phase, the workspace is green and the previous phase's behavior is intact:
+- **Before Phase 6:** Old children work on old toys. New children work on new toys. Both coexist.
+- **During Phase 6:** Each child migration is one commit. Revert one commit to undo one child.
+- **Phase 8 is irreversible** — only execute after all children are migrated and zero-use proof passes.
 
 ## Resolved Decisions
 
