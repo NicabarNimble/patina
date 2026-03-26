@@ -105,7 +105,7 @@ Comparing with Cloudflare Workers revealed almost 1:1 mapping: our toybox = thei
 
 ### 8. WASI alignment is free if we collapse correctly
 
-4 of our 8 collapsed toys map directly to existing or proposed WASI interfaces (http, filesystem, keyvalue, logging). Our 4 Patina-specific toys (store, events, task, peer) fill gaps the WASI ecosystem hasn't standardized yet. If we design them cleanly — domain-agnostic, with implementation experience — they're natural candidates for WASI proposals. We don't need to plan for that; just building good interfaces makes it possible.
+4 of our collapsed toys map directly to existing or proposed WASI interfaces (http, filesystem, keyvalue, logging). Our 4 Patina-specific toys (store, events, task, peer) fill gaps the WASI ecosystem hasn't standardized yet. If we design them cleanly — domain-agnostic, with implementation experience — they're natural candidates for WASI proposals. We don't need to plan for that; just building good interfaces makes it possible.
 
 ### 9. The toybox concept unifies everything
 
@@ -452,9 +452,25 @@ Mother's host:
   8. Return response to child
 ```
 
-**The mechanism**: Mother's `wasi:http` host implementation checks whether the request's authority matches an active `patina:connect` resource's base URL. If it does, Mother injects stored credentials. If it doesn't (raw wasi:http without connect), Mother either blocks (if the child's toybox requires connect for http) or passes through (if raw http is granted).
+**The mechanism**: Mother's `wasi:http` host implementation checks whether the request's authority matches an active `patina:connect` resource's base URL. If it does, Mother injects stored credentials. If it doesn't (raw wasi:http without connect), Mother applies the default policy.
 
-**This means**: A child can opt into `connect` for credential-secured access, or use raw `wasi:http` for public endpoints. The toybox controls which mode is allowed via `child.toml`:
+**Default security policy: deny raw http unless explicitly granted.** A child that declares `toys = ["http", "connect"]` with connections can ONLY reach URLs that match its declared connections. Raw `wasi:http` to arbitrary URLs is blocked unless the child explicitly declares `http.raw = true` in its toybox request. This makes the secure path (connect) the default and the open path (raw http) the opt-in exception.
+
+```toml
+# Default: connect-mediated http only (credentials managed by Mother, URL restricted)
+[needs]
+toys = ["http", "connect"]
+[needs.connections]
+github = { toy = "http" }
+# Can ONLY reach api.github.com via connect. All other URLs blocked.
+
+# Explicit opt-in: raw http for public endpoints (no connect, no credential injection)
+[needs]
+toys = ["http"]
+[needs.http]
+raw = true
+# Can reach any URL. No credential injection. Audit-logged.
+```
 
 ```toml
 # Child that uses connect (credentials managed by Mother):
@@ -473,6 +489,8 @@ toys = ["http"]
 
 ## Resolved Decisions
 
+- **WASI adoption policy for Phase 1**: Per-interface decision matrix. `wasi:http` and `wasi:filesystem` are stable — adopt now. `wasi:logging` and `wasi:keyvalue` are proposed — start as `patina:log` and `patina:state` with a sunset condition: migrate to `wasi:*` when the WASI interface reaches Phase 4 (standardized) and Wasmtime ships stable support. SDK feature flags (`toy-log`, `toy-state`) don't change during migration.
+- **Default-deny raw http**: A child with `connect` + `http` can only reach URLs matching its declared connections. Raw `wasi:http` to arbitrary URLs requires explicit `http.raw = true` opt-in. Secure path is the default.
 - **git is the 10th toy** — `patina:git`. Git operations (tag, commit, log, diff) require host-level execution that WASM cannot do alone. Not domain logic, not an SDK helper. Kept as a standalone Patina-specific toy. This is a closed question.
 - **Toy litmus test**: "Why can't the child do this itself from pure WASM compute?" If it can, it's SDK/library, not a toy.
 - **Credentials never cross the WASM wall.** Children operate through `patina:connect` opaque resource handles. Mother injects credentials on the host side.
