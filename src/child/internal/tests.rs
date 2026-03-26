@@ -2390,6 +2390,86 @@ child = "cred"
 }
 
 #[test]
+fn manifest_parses_needs_connections_http_into_host_grants() {
+    with_temp_patina_home(|home| {
+        let connections_dir = home.join("connections");
+        std::fs::create_dir_all(&connections_dir).unwrap();
+        std::fs::write(
+            connections_dir.join("github.toml"),
+            r#"
+schema_version = 0
+
+[identity]
+name = "github"
+provider = "github"
+auth_method = "manual"
+created_at = "2026-03-26T00:00:00Z"
+updated_at = "2026-03-26T00:00:00Z"
+
+[auth]
+secret_ref = "github:default"
+allowed_domains = ["api.github.com"]
+refresh_capable = false
+
+[auth.injection]
+type = "bearer"
+"#,
+        )
+        .unwrap();
+
+        let f = write_temp_manifest(
+            r#"
+[child]
+name = "conn-http"
+kind = "knowledge-child"
+
+[needs]
+toys = ["connect"]
+
+[needs.connections]
+github = { toy = "http" }
+
+[provides]
+child = "conn-http"
+"#,
+        );
+
+        let m = ChildManifest::from_path(f.path()).unwrap();
+        assert!(m.capabilities.contains(&"host_http".to_string()));
+        assert!(m.host_http_domains.iter().any(|d| d == "api.github.com"));
+        let mapping = m.host_secrets.get("api.github.com").unwrap();
+        assert_eq!(mapping.secret_name, "github:default");
+        assert!(matches!(mapping.location, InjectionLocation::Bearer));
+    });
+}
+
+#[test]
+fn manifest_needs_connections_missing_connection_still_parses() {
+    with_temp_patina_home(|_| {
+        let f = write_temp_manifest(
+            r#"
+[child]
+name = "conn-missing"
+kind = "knowledge-child"
+
+[needs]
+toys = ["connect"]
+
+[needs.connections]
+does-not-exist = { toy = "http" }
+
+[provides]
+child = "conn-missing"
+"#,
+        );
+
+        let m = ChildManifest::from_path(f.path()).unwrap();
+        assert!(m.host_http_domains.is_empty());
+        assert!(m.host_secrets.is_empty());
+    });
+}
+
+#[test]
 fn manifest_no_host_secrets_defaults_empty() {
     let f = write_temp_manifest(
         r#"

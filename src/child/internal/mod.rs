@@ -504,6 +504,9 @@ impl ChildManifest {
         let needs_scopes = needs_table
             .and_then(|needs| needs.get("scopes"))
             .and_then(|v| v.as_table());
+        let needs_connections = needs_table
+            .and_then(|needs| needs.get("connections"))
+            .and_then(|v| v.as_table());
 
         // Parse capabilities
         let cap_table = table.get("capabilities").and_then(|v| v.as_table());
@@ -564,10 +567,10 @@ impl ChildManifest {
                     .collect()
             })
             .unwrap_or_default();
-        let host_http_domains: Vec<String> = host_http_domains;
+        let mut host_http_domains: Vec<String> = host_http_domains;
 
         // Parse [capabilities.host_secrets] — credential mappings per domain
-        let host_secrets = cap_table
+        let mut host_secrets: std::collections::HashMap<String, CredentialMapping> = cap_table
             .and_then(|cap| cap.get("host_secrets"))
             .and_then(|v| v.as_table())
             .map(|secrets_table| {
@@ -600,6 +603,69 @@ impl ChildManifest {
                     .collect()
             })
             .unwrap_or_default();
+
+        if let Some(connections) = needs_connections {
+            for (connection_name, value) in connections {
+                let Some(entry) = value.as_table() else {
+                    continue;
+                };
+                let Some(toy) = entry.get("toy").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+                match toy {
+                    "http" => {
+                        let record = match crate::connect::load(connection_name) {
+                            Ok(record) => record,
+                            Err(error) => {
+                                eprintln!(
+                                    "warning: could not resolve connection '{}' for [needs.connections]: {}",
+                                    connection_name, error
+                                );
+                                continue;
+                            }
+                        };
+                        if !capabilities.iter().any(|cap| cap == "host_http") {
+                            capabilities.push("host_http".to_string());
+                        }
+                        for domain in &record.auth.allowed_domains {
+                            if !host_http_domains.iter().any(|d| d == domain) {
+                                host_http_domains.push(domain.clone());
+                            }
+                            if host_secrets.contains_key(domain) {
+                                continue;
+                            }
+                            match &record.auth.injection {
+                                crate::connect::InjectionStrategy::Bearer => {
+                                    host_secrets.insert(
+                                        domain.clone(),
+                                        CredentialMapping {
+                                            secret_name: record.auth.secret_ref.clone(),
+                                            location: InjectionLocation::Bearer,
+                                        },
+                                    );
+                                }
+                                _ => {
+                                    eprintln!(
+                                        "warning: connection '{}' uses unsupported injection strategy for host_secrets; skipping derived mapping",
+                                        connection_name
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    "store" => {
+                        // Store connections are parsed for Phase 3 schema compatibility.
+                        // Runtime routing and policy mediation are introduced in later phases.
+                    }
+                    other => {
+                        eprintln!(
+                            "warning: unsupported [needs.connections] toy '{}' for connection '{}'; skipping",
+                            other, connection_name
+                        );
+                    }
+                }
+            }
+        }
 
         // Parse provides
         let provides_table = table.get("provides").and_then(|v| v.as_table());
