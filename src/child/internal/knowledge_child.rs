@@ -643,11 +643,11 @@ mod bindings {
             repo: String,
             params: patina::host::github::ListParams,
         ) -> Result<patina::host::github::Page, String> {
-            crate::child::toy_host::github::ensure_granted(
+            crate::child::toy_host::compat::github_ensure_granted(
                 self.grants.toys.github,
                 &self.plugin_name,
             )?;
-            let page = crate::child::toy_host::github::list_issues(
+            let page = crate::child::toy_host::compat::github_list_issues(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
@@ -674,11 +674,11 @@ mod bindings {
             repo: String,
             params: patina::host::github::ListParams,
         ) -> Result<patina::host::github::Page, String> {
-            crate::child::toy_host::github::ensure_granted(
+            crate::child::toy_host::compat::github_ensure_granted(
                 self.grants.toys.github,
                 &self.plugin_name,
             )?;
-            let page = crate::child::toy_host::github::list_pulls(
+            let page = crate::child::toy_host::compat::github_list_pulls(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
@@ -705,11 +705,11 @@ mod bindings {
             repo: String,
             issue_number: u32,
         ) -> Result<patina::host::github::Page, String> {
-            crate::child::toy_host::github::ensure_granted(
+            crate::child::toy_host::compat::github_ensure_granted(
                 self.grants.toys.github,
                 &self.plugin_name,
             )?;
-            let page = crate::child::toy_host::github::list_issue_comments(
+            let page = crate::child::toy_host::compat::github_list_issue_comments(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
@@ -731,11 +731,11 @@ mod bindings {
             repo: String,
             issue_number: u32,
         ) -> Result<patina::host::github::Page, String> {
-            crate::child::toy_host::github::ensure_granted(
+            crate::child::toy_host::compat::github_ensure_granted(
                 self.grants.toys.github,
                 &self.plugin_name,
             )?;
-            let page = crate::child::toy_host::github::list_issue_events(
+            let page = crate::child::toy_host::compat::github_list_issue_events(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
@@ -757,11 +757,11 @@ mod bindings {
             repo: String,
             pull_number: u32,
         ) -> Result<patina::host::github::Page, String> {
-            crate::child::toy_host::github::ensure_granted(
+            crate::child::toy_host::compat::github_ensure_granted(
                 self.grants.toys.github,
                 &self.plugin_name,
             )?;
-            let page = crate::child::toy_host::github::list_pull_comments(
+            let page = crate::child::toy_host::compat::github_list_pull_comments(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
@@ -783,11 +783,11 @@ mod bindings {
             repo: String,
             pull_number: u32,
         ) -> Result<patina::host::github::Page, String> {
-            crate::child::toy_host::github::ensure_granted(
+            crate::child::toy_host::compat::github_ensure_granted(
                 self.grants.toys.github,
                 &self.plugin_name,
             )?;
-            let page = crate::child::toy_host::github::list_reviews(
+            let page = crate::child::toy_host::compat::github_list_reviews(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
@@ -810,11 +810,11 @@ mod bindings {
             pull_number: u32,
             review_id: u64,
         ) -> Result<patina::host::github::Page, String> {
-            crate::child::toy_host::github::ensure_granted(
+            crate::child::toy_host::compat::github_ensure_granted(
                 self.grants.toys.github,
                 &self.plugin_name,
             )?;
-            let page = crate::child::toy_host::github::list_review_comments(
+            let page = crate::child::toy_host::compat::github_list_review_comments(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
