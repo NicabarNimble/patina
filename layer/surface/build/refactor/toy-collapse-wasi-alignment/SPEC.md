@@ -276,6 +276,61 @@ Phase 7 depends on Phase 6 (cleanup after everything works).
 - **WASI alignment is shape-alignment, not adoption.** We design our interfaces to be close to WASI shapes so migration is easy, but we don't force-fit where Patina's needs differ.
 - **The toybox is the sealed capability grant.** Mother assembles it from `child.toml`, resolves connections and credentials, and grants exactly what's declared. The manifest is the single source of truth for security review.
 
+## Breaking Impact
+
+This is a large breaking change. It touches every layer between WIT and child code. The risk is scope and stamina, not design uncertainty — each change has a clear before/after.
+
+### What breaks
+
+**WIT layer — full rewrite:**
+- 22 toy `.wit` files replaced by 8-9 new interface designs (not renames — new function signatures)
+- `wit/worlds/` — every composed world regenerated for collapsed toy set
+- All SDK `build.rs` files — different WIT sources to bind against
+
+**Toy host — full rewrite of dispatch:**
+- `src/child/toy_host/` — every file. Domain-specific hosts (github, lake, connector, belief, etc.) deleted. New hosts gain connection-aware credential injection and collection routing.
+- Mother's child loading path — must parse `[needs.connections]`, resolve connection names to toy + credential + endpoint, build the toybox with connection metadata.
+
+**SDK — full restructure:**
+- 3 tier crates (`patina-sdk-core`, `patina-sdk-data`, `patina-sdk-agent`) absorbed into `patina-sdk`. Every `use patina_sdk_core::*` and `use patina_sdk_data::*` import breaks.
+- All existing toy binding modules replaced with new bindings for 8-9 toys.
+- New `helpers/` modules written for domain logic that moved out of toys (github, lake, session, connector).
+
+**Every in-tree child — must migrate:**
+- `ducklake` — `lake::append_json_batch()` → `store::mutate("ducklake", ...)` or `sdk::helpers::lake::append()`
+- `belief-verifier` — `belief::query()` → `store::query("beliefs", ...)`
+- `spec-manager` — `session::write_artifact()` → `fs::write()` + `events::publish()` or `sdk::helpers::session`
+- Same for `session-writer`, `doctor`, `lake-manager`
+
+**Every `child.toml` — manifest schema change:**
+- Old: `toys = ["lake", "connector", "checkpoint", "events"]`
+- New: `toys = ["http", "store", "events", "log"]` + `[needs.connections]` section
+- Old toy names become invalid
+
+**Tests — widespread breakage:**
+- `src/child/internal/tests.rs` — tests that exercise toy dispatch
+- Integration tests that load children with old toy imports
+- SDK unit tests
+
+### What does NOT break
+
+- **Core verbs** (scrape, scry, assay, oxidize, context) — no toy dependencies
+- **`patina-core`, `patina-protocol`** — no toy dependencies
+- **Mother's service layer** (secrets, sessions, health) — internal, not toy-mediated
+- **CLI command structure** — commands don't call toys directly
+- **Belief system, layer, database** — core infrastructure untouched
+- **Git history, session archives** — frozen, never rewritten
+- **Grammars** — pipeline grammar crates have no toy dependencies
+
+### Mitigation
+
+The 7-phase execution order exists to make this survivable:
+- Each phase leaves the workspace green (compiling and tests passing)
+- Phase 1 (WIT design) is pure design — nothing breaks until Phase 3 (host rewrite)
+- Phase 5 (child migration) can proceed one child at a time
+- Phase 6 (SDK consolidation) can keep tier crates as thin re-exports during transition
+- Old `child.toml` toy names could be supported during a migration window via compatibility parsing in Mother's manifest loader (open question: hard cut vs migration period)
+
 ## Security Model
 
 Capability-based security, same pattern as Cloudflare Workers:

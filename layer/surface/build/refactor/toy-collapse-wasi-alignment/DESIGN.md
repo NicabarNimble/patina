@@ -312,6 +312,20 @@ sdk/patina-sdk/          — everything
 - `child.toml` schema — add `[needs.connections]`
 - `mother/src/` — update toybox assembly + credential injection
 
+## Breaking Impact Summary
+
+This changes every layer between WIT definitions and child application code. Nothing about the core platform (belief system, core verbs, database, CLI structure) is affected.
+
+**Full rewrite:** `wit/toys/` (22→8-9 files), `wit/worlds/` (regenerated), `src/child/toy_host/` (every host file), SDK crate structure (4→1 crate)
+
+**Must migrate:** Every in-tree child's source code and `child.toml`. Every test that exercises toy dispatch.
+
+**Untouched:** `patina-core`, `patina-protocol`, Mother services, CLI commands, belief system, layer, database, grammars, git history.
+
+**Risk profile:** High scope, low uncertainty. Every change has a clear before/after. The 7-phase plan ensures the workspace stays green between phases. The real risk is stamina across multiple sessions, not design ambiguity.
+
+**Migration strategy for `child.toml`:** Open question — hard cut (old toy names fail immediately) vs. compatibility window (Mother parses old names with deprecation warnings). Hard cut is simpler and honest. Compat window is safer for any third-party children.
+
 ## Verification Plan
 
 After each phase:
