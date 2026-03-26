@@ -1,6 +1,7 @@
 //! Phase 2 compatibility adapters for legacy toy dispatch.
 
 use crate::child::engine::GrantedCapabilities;
+use crate::child::engine::QueryDispatchFn;
 use crate::child::toy_host::connector::ConnectorBindingRecord;
 use crate::child::toy_host::github::{ListParams, Page};
 use crate::mother::state::LakeCursorUpdate;
@@ -16,6 +17,48 @@ pub fn ingress_fetch_via_http(
 ) -> Result<String, String> {
     crate::child::toy_host::http::get(http_client, grants, plugin_name, endpoint)
         .map(|response| response.body)
+}
+
+pub fn ingress_list_granted_sources(toys: &crate::mother::GrantedToys) -> Vec<(String, String)> {
+    crate::child::toy_host::ingress::list_granted_sources(toys)
+}
+
+pub fn ingress_resolve_source_endpoint(
+    toys: &crate::mother::GrantedToys,
+    plugin_name: &str,
+    source_name: &str,
+) -> Result<String, String> {
+    crate::child::toy_host::ingress::resolve_source_endpoint(toys, plugin_name, source_name)
+}
+
+pub fn query_dispatch(
+    plugin_name: &str,
+    grants: &GrantedCapabilities,
+    query_fn: &mut Option<QueryDispatchFn>,
+    kind: &str,
+    params: &str,
+) -> Result<String, String> {
+    crate::child::toy_host::query::dispatch(plugin_name, grants, query_fn, kind, params)
+}
+
+pub fn http_post(
+    http_client: &reqwest::blocking::Client,
+    grants: &GrantedCapabilities,
+    plugin_name: &str,
+    url: &str,
+    body: &str,
+    content_type: &str,
+) -> Result<crate::child::toy_host::http::HttpToyResponse, String> {
+    crate::child::toy_host::http::post(http_client, grants, plugin_name, url, body, content_type)
+}
+
+pub fn http_get(
+    http_client: &reqwest::blocking::Client,
+    grants: &GrantedCapabilities,
+    plugin_name: &str,
+    url: &str,
+) -> Result<crate::child::toy_host::http::HttpToyResponse, String> {
+    crate::child::toy_host::http::get(http_client, grants, plugin_name, url)
 }
 
 /// Legacy github toy dispatch routed through compatibility layer.

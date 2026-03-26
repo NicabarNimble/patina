@@ -199,7 +199,7 @@ mod bindings {
 
     impl patina::host::query::Host for HostState {
         fn query(&mut self, kind: String, params: String) -> Result<String, String> {
-            crate::child::toy_host::query::dispatch(
+            crate::child::toy_host::compat::query_dispatch(
                 &self.plugin_name,
                 &self.grants,
                 &mut self.query_fn,
@@ -216,7 +216,7 @@ mod bindings {
             body: String,
             content_type: String,
         ) -> Result<patina::host::http::HttpResponse, String> {
-            let r = crate::child::toy_host::http::post(
+            let r = crate::child::toy_host::compat::http_post(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
@@ -231,7 +231,7 @@ mod bindings {
         }
 
         fn http_get(&mut self, url: String) -> Result<patina::host::http::HttpResponse, String> {
-            let r = crate::child::toy_host::http::get(
+            let r = crate::child::toy_host::compat::http_get(
                 &self.http_client,
                 &self.grants,
                 &self.plugin_name,
@@ -459,14 +459,14 @@ mod bindings {
 
     impl patina::host::ingress::Host for HostState {
         fn list_granted_sources(&mut self) -> Vec<patina::host::ingress::GrantedSource> {
-            crate::child::toy_host::ingress::list_granted_sources(&self.grants.toys)
+            crate::child::toy_host::compat::ingress_list_granted_sources(&self.grants.toys)
                 .into_iter()
                 .map(|(name, endpoint)| patina::host::ingress::GrantedSource { name, endpoint })
                 .collect()
         }
 
         fn fetch(&mut self, source_name: String) -> Result<String, String> {
-            let endpoint = crate::child::toy_host::ingress::resolve_source_endpoint(
+            let endpoint = crate::child::toy_host::compat::ingress_resolve_source_endpoint(
                 &self.grants.toys,
                 &self.plugin_name,
                 &source_name,
