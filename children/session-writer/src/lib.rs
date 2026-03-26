@@ -1,4 +1,5 @@
 use patina_sdk::granted::{self, Bundle as GrantedBundle};
+use patina_sdk::helpers::session as session_helpers;
 use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
 use patina_sdk::register_knowledge_child;
 
@@ -118,8 +119,9 @@ impl KnowledgeChild for SessionWriterChild {
                     .get("status")
                     .and_then(|v| v.as_str())
                     .unwrap_or("closed");
-                self.toys.session.write("close", payload)?;
-                self.toys.session.set_status(status)?;
+                session_helpers::checkpoint::<patina_sdk::knowledge_child::host::GuestHost>(
+                    "close", payload, status,
+                )?;
                 if let Some(tag) = value.get("tag").and_then(|v| v.as_str()) {
                     self.toys.session.create_tag(tag)?;
                 }
@@ -135,7 +137,10 @@ impl KnowledgeChild for SessionWriterChild {
                     .and_then(|v| v.as_str())
                     .unwrap_or(payload);
                 self.toys.session.write("crash-handoff", payload)?;
-                self.toys.session.write_handoff(modified_files, summary)?;
+                session_helpers::handoff::<patina_sdk::knowledge_child::host::GuestHost>(
+                    modified_files,
+                    summary,
+                )?;
                 Ok(serde_json::json!({"status":"ok"}).to_string())
             }
             "data-ingested" => {
