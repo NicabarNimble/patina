@@ -9,6 +9,9 @@ patina_min = "0.41.0"
 [needs]
 toys = ["log", "state", "checkpoint", "events", "belief", "measure", "task"]
 
+[needs.connections]
+beliefs = { toy = "store" }
+
 [needs.scopes.checkpoint]
 streams = ["belief.changed"]
 
