@@ -183,7 +183,6 @@ Core ideas:
 patina/
 ├── src/                      # Rust CLI, retrieval, daemon, adapters, storage
 ├── grammars/                 # Grammar child sources used by scrape pipeline
-├── plugins/                  # Transitional child crates (compatibility surface)
 ├── crates/                   # Shared internal crates
 ├── children/                 # First-party child components
 ├── wit/                      # WIT contracts (toys/) and compositions (worlds/)

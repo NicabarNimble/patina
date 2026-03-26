@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Download a specific embedding model from the registry
-# Usage: ./scripts/download-model.sh <model-id>
-# Example: ./scripts/download-model.sh e5-base-v2
+# Usage: ./resources/scripts/download-model.sh <model-id>
+# Example: ./resources/scripts/download-model.sh e5-base-v2
 
 set -euo pipefail
 

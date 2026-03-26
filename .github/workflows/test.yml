@@ -42,7 +42,7 @@ jobs:
 
     - name: Get active model name
       id: active-model
-      run: echo "model=$(./scripts/get-active-model.sh)" >> $GITHUB_OUTPUT
+      run: echo "model=$(./resources/scripts/get-active-model.sh)" >> $GITHUB_OUTPUT
 
     - name: Cache embedding models
       id: cache-models-test
@@ -53,7 +53,7 @@ jobs:
 
     - name: Download active model
       if: steps.cache-models-test.outputs.cache-hit != 'true'
-      run: ./scripts/download-active-model.sh
+      run: ./resources/scripts/download-active-model.sh
 
     - name: Check crate naming policy
       run: bash resources/scripts/check-crate-names.sh
@@ -135,7 +135,7 @@ jobs:
 
     - name: Get active model name
       id: active-model
-      run: echo "model=$(./scripts/get-active-model.sh)" >> $GITHUB_OUTPUT
+      run: echo "model=$(./resources/scripts/get-active-model.sh)" >> $GITHUB_OUTPUT
 
     - name: Cache embedding models
       id: cache-models
@@ -146,7 +146,7 @@ jobs:
 
     - name: Download active model
       if: steps.cache-models.outputs.cache-hit != 'true'
-      run: ./scripts/download-active-model.sh
+      run: ./resources/scripts/download-active-model.sh
 
     - name: Build release
       run: cargo build --release

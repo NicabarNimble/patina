@@ -37,7 +37,7 @@ is_allowed_name() {
             [[ "$name" == "patina-protocol" ]]
             return
             ;;
-        crates/*/Cargo.toml|plugins/*/Cargo.toml|children/*/Cargo.toml)
+        crates/*/Cargo.toml|children/*/Cargo.toml)
             if [[ "$name" == patina-ai-* ]]; then
                 return 0
             fi

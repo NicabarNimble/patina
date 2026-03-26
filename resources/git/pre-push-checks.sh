@@ -81,12 +81,10 @@ else
     CANONICAL_REAL=$(resolve_real "$CANONICAL")
     # Check world-level deps AND SDK mirror deps — same canonical file
     COPIES=(
-        "wit/mother-child/deps/patina-host/host.wit"
         "wit/knowledge-child/deps/patina-host/host.wit"
         "wit/command/deps/patina-host/host.wit"
         "wit/task/deps/patina-host/host.wit"
         "wit/pipeline/deps/patina-host/host.wit"
-        "sdk/patina-sdk/wit/mother-child/deps/patina-host/host.wit"
         "sdk/patina-sdk/wit/knowledge-child/deps/patina-host/host.wit"
         "sdk/patina-sdk/wit/command/deps/patina-host/host.wit"
         "sdk/patina-sdk/wit/task/deps/patina-host/host.wit"

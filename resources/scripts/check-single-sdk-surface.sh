@@ -51,12 +51,12 @@ if $has_rg; then
     legacy_path_refs=$(rg -n "plugins/sdk|plugins/ducklake|plugins/belief-verifier" \
         --glob '!layer/**' \
         --glob '!resources/scripts/check-single-sdk-surface.sh' \
-        src sdk plugins children crates scripts resources .github Cargo.toml tests 2>/dev/null || true)
+        src sdk plugins children crates resources .github Cargo.toml tests 2>/dev/null || true)
 else
     legacy_path_refs=$(grep -RInE "plugins/sdk|plugins/ducklake|plugins/belief-verifier" \
         --exclude-dir=.git \
         --exclude-dir=target \
-        src sdk plugins children crates scripts resources .github Cargo.toml tests 2>/dev/null \
+        src sdk plugins children crates resources .github Cargo.toml tests 2>/dev/null \
         | grep -v "resources/scripts/check-single-sdk-surface.sh" || true)
 fi
 if [[ -n "$legacy_path_refs" ]]; then

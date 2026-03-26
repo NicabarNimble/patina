@@ -6,9 +6,9 @@
 # inside the container to avoid polluting macOS target/.
 #
 # Usage:
-#   ./scripts/test-linux.sh                    # run all tests
-#   ./scripts/test-linux.sh -p patina-pipe     # run tests for one crate
-#   ./scripts/test-linux.sh -- --test sandbox  # pass args to cargo test
+#   ./resources/scripts/test-linux.sh                    # run all tests
+#   ./resources/scripts/test-linux.sh -p patina-pipe     # run tests for one crate
+#   ./resources/scripts/test-linux.sh -- --test sandbox  # pass args to cargo test
 
 set -e
 

@@ -1339,7 +1339,7 @@ fn command_doctor_name() {
         None => {
             panic!(
                 "test fixture missing: tests/fixtures/patina_doctor.wasm\n\
-                 Build: cargo build --release -p patina-ai-extension-doctor --target wasm32-wasip2\n\
+                 Build: cargo build --release -p patina-ai-child-doctor --target wasm32-wasip2\n\
                  Copy: cp target/wasm32-wasip2/release/patina_doctor.wasm tests/fixtures/"
             );
         }

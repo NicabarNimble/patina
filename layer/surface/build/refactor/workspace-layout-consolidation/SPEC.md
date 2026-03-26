@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: workspace-layout-consolidation
-status: active
+status: complete
 created: 2026-03-25
 sessions:
   origin: 20260325-150227-161735000
@@ -15,19 +15,19 @@ related:
 exit_criteria:
 - id: wlc1-plugins-removed
   text: '`plugins/` directory deleted entirely — zero files on disk. `children/` is the sole home for in-tree WASM children.'
-  checked: false
+  checked: true
 - id: wlc2-workspace-clean
   text: Cargo.toml workspace members reference only `children/*`, `crates/*`, `sdk/*`, `mother` — no `plugins/*` entries.
-  checked: false
+  checked: true
 - id: wlc3-dead-wit-removed
   text: '`wit/mother-child/` deleted. All tooling/script references (`resources/git/pre-push-checks.sh` world loop, WIT mirror checks) updated or removed. No WIT world references a deleted runtime path.'
-  checked: false
+  checked: true
 - id: wlc4-scripts-unified
   text: One script location exists (`resources/scripts/` or `scripts/`, not both). All references updated.
-  checked: false
+  checked: true
 - id: wlc5-builds-pass
   text: '`cargo check --workspace`, `cargo test -q`, and `check-plugin-vocab-guard.sh` all pass.'
-  checked: false
+  checked: true
 ---
 # refactor: Consolidate workspace layout after architecture retirement
 
