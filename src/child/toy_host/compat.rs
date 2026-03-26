@@ -3,6 +3,7 @@
 use crate::child::engine::GrantedCapabilities;
 use crate::child::toy_host::connector::ConnectorBindingRecord;
 use crate::child::toy_host::github::{ListParams, Page};
+use crate::mother::state::LakeCursorUpdate;
 use crate::mother::KnowledgeRuntimeStore;
 
 /// Legacy ingress `fetch` routed through the HTTP toy helper.
@@ -238,4 +239,44 @@ pub fn connector_endpoint_for(
     data_type: &str,
 ) -> Result<String, String> {
     crate::child::toy_host::connector::endpoint_for(binding, data_type)
+}
+
+/// Legacy lake toy dispatch routed through compatibility layer.
+pub fn lake_ensure_lake(name: &str) -> Result<String, String> {
+    crate::child::toy_host::lake::ensure_lake(name).map_err(|e| e.to_string())
+}
+
+pub fn lake_load_cursor(
+    runtime: &KnowledgeRuntimeStore,
+    lake: &str,
+    source: &str,
+    data_type: &str,
+) -> Result<Option<String>, String> {
+    crate::child::toy_host::lake::load_cursor(runtime, lake, source, data_type)
+        .map_err(|e| e.to_string())
+}
+
+pub fn lake_save_cursor(
+    runtime: &KnowledgeRuntimeStore,
+    update: &LakeCursorUpdate<'_>,
+) -> Result<(), String> {
+    crate::child::toy_host::lake::save_cursor(runtime, update).map_err(|e| e.to_string())
+}
+
+pub fn lake_ensure_table(lake: &str, table: &str) -> Result<(), String> {
+    crate::child::toy_host::lake::ensure_table(lake, table).map_err(|e| e.to_string())
+}
+
+pub fn lake_append_json_batch(
+    lake: &str,
+    table: &str,
+    source: &str,
+    rows_json: &[String],
+) -> Result<u64, String> {
+    crate::child::toy_host::lake::append_json_batch(lake, table, source, rows_json)
+        .map_err(|e| e.to_string())
+}
+
+pub fn lake_query_json(lake: &str, sql: &str) -> Result<String, String> {
+    crate::child::toy_host::lake::query_json(lake, sql).map_err(|e| e.to_string())
 }

@@ -354,7 +354,7 @@ mod bindings {
                     name, self.plugin_name
                 ));
             }
-            crate::child::toy_host::lake::ensure_lake(&name).map_err(|e| e.to_string())
+            crate::child::toy_host::compat::lake_ensure_lake(&name)
         }
 
         fn list_granted_lakes(&mut self) -> Result<Vec<patina::host::lake::GrantedLake>, String> {
@@ -363,8 +363,7 @@ mod bindings {
                 .iter()
                 .cloned()
                 .map(|name| {
-                    let path = crate::child::toy_host::lake::ensure_lake(&name)
-                        .map_err(|e| e.to_string())?;
+                    let path = crate::child::toy_host::compat::lake_ensure_lake(&name)?;
                     Ok(patina::host::lake::GrantedLake { name, path })
                 })
                 .collect()
@@ -379,9 +378,14 @@ mod bindings {
             if !self.grants.lake_names.contains(&lake) {
                 return None;
             }
-            crate::child::toy_host::lake::load_cursor(&self.runtime, &lake, &source, &data_type)
-                .ok()
-                .flatten()
+            crate::child::toy_host::compat::lake_load_cursor(
+                &self.runtime,
+                &lake,
+                &source,
+                &data_type,
+            )
+            .ok()
+            .flatten()
         }
 
         fn save_cursor(
@@ -400,7 +404,7 @@ mod bindings {
                     lake, self.plugin_name
                 ));
             }
-            crate::child::toy_host::lake::save_cursor(
+            crate::child::toy_host::compat::lake_save_cursor(
                 &self.runtime,
                 &crate::mother::state::LakeCursorUpdate {
                     lake_name: &lake,
@@ -412,7 +416,6 @@ mod bindings {
                     last_error: last_error.as_deref(),
                 },
             )
-            .map_err(|e| e.to_string())
         }
 
         fn ensure_table(&mut self, lake: String, table: String) -> Result<(), String> {
@@ -422,7 +425,7 @@ mod bindings {
                     lake, self.plugin_name
                 ));
             }
-            crate::child::toy_host::lake::ensure_table(&lake, &table).map_err(|e| e.to_string())
+            crate::child::toy_host::compat::lake_ensure_table(&lake, &table)
         }
 
         fn append_json_batch(
@@ -438,8 +441,9 @@ mod bindings {
                     lake, self.plugin_name
                 ));
             }
-            crate::child::toy_host::lake::append_json_batch(&lake, &table, &source, &rows_json)
-                .map_err(|e| e.to_string())
+            crate::child::toy_host::compat::lake_append_json_batch(
+                &lake, &table, &source, &rows_json,
+            )
         }
 
         fn query_json(&mut self, lake: String, sql: String) -> Result<String, String> {
@@ -449,7 +453,7 @@ mod bindings {
                     lake, self.plugin_name
                 ));
             }
-            crate::child::toy_host::lake::query_json(&lake, &sql).map_err(|e| e.to_string())
+            crate::child::toy_host::compat::lake_query_json(&lake, &sql)
         }
     }
 
