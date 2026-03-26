@@ -1,9 +1,44 @@
-use patina_sdk::granted;
+use patina_sdk::granted::{self, Bundle as GrantedBundle};
 use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
 use patina_sdk::register_knowledge_child;
 
+#[derive(Debug, Clone)]
+struct DoctorToys {
+    log: granted::Log,
+    state: granted::State,
+}
+
+impl GrantedBundle for DoctorToys {
+    fn granted() -> Self {
+        Self {
+            log: granted::log(),
+            state: granted::state(),
+        }
+    }
+}
+
 #[derive(Default)]
-struct DoctorChild;
+struct DoctorChild {
+    toys: Option<DoctorToys>,
+}
+
+impl DoctorChild {
+    fn toys(&self) -> &DoctorToys {
+        self.toys.as_ref().expect("doctor toys not initialized")
+    }
+
+    fn toys_mut(&mut self) -> &mut DoctorToys {
+        self.toys.as_mut().expect("doctor toys not initialized")
+    }
+
+    fn run_count(&self) -> u64 {
+        self.toys()
+            .state
+            .get("doctor.run-count")
+            .and_then(|value| serde_json::from_str::<u64>(&value).ok())
+            .unwrap_or(0)
+    }
+}
 
 impl KnowledgeChild for DoctorChild {
     fn name(&self) -> String {
@@ -11,24 +46,33 @@ impl KnowledgeChild for DoctorChild {
     }
 
     fn on_load(&mut self) -> Result<(), String> {
-        granted::log().info("doctor loaded");
+        self.toys = Some(DoctorToys::granted());
+        self.toys().log.info("doctor loaded");
         Ok(())
     }
 
     fn health(&self) -> ChildHealth {
         ChildHealth {
             status: HealthStatus::Healthy,
-            reason: Some("stub".to_string()),
+            reason: Some(format!("run-count={}", self.run_count())),
         }
     }
 
     fn handle(&mut self, action: &str, _payload: &str) -> Result<String, String> {
         match action {
-            "run" => Ok(serde_json::json!({
-                "status": "stub",
-                "message": "doctor child scaffold installed; run action not implemented yet"
-            })
-            .to_string()),
+            "run" => {
+                let count = self.run_count() + 1;
+                self.toys_mut().state.put(
+                    "doctor.run-count",
+                    &serde_json::to_string(&count).map_err(|e| e.to_string())?,
+                )?;
+                Ok(serde_json::json!({
+                    "status": "ok",
+                    "message": "doctor run complete",
+                    "run_count": count
+                })
+                .to_string())
+            }
             other => Err(format!("doctor: unknown action '{}'", other)),
         }
     }
