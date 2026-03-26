@@ -8,6 +8,26 @@ The collapse aligns us with WASI standards where they exist, positions our Patin
 
 The Cloudflare Workers binding model validates the approach at scale: ~8 primitive binding types serve millions of Workers across every domain. Domain specificity belongs in the Worker (child), not the binding (toy).
 
+## Discovery Chain
+
+This design was not planned top-down. It emerged from a session that started with reviewing builder agent progress on plugin vocabulary retirement and ended here through a series of linked discoveries:
+
+**Layout review → crate boundaries → what is core?** Auditing the post-greenfield workspace layout forced the question of what a greenfield crate structure would look like. This surfaced that `src/` is a monolith, which led to asking what `patina-core` should actually contain.
+
+**What is core? → The belief system is the product.** Core verbs (scrape, scry, assay, oxidize, context) all serve the belief layer. Mother/children/toys are the extension surface. Children are data movers, not general-purpose compute.
+
+**Children are data movers → toys should be data primitives.** If children exist to move data through the platform, the toy set should be small and data-oriented: reach data sources, transform data, route it.
+
+**"A github toy is just http with different creds"** — the collapse insight. Most of the 22 toys are the same primitive capability with different domain knowledge. That domain knowledge belongs in children and SDK helpers.
+
+**Trying to add "scope" broke the vocabulary** — scope was carrying capability + credential + target as one concept. Separating them produced the **connection** model: named bindings that Mother resolves, like Cloudflare Workers' `wrangler.toml`.
+
+**Comparing with Cloudflare Workers** — almost 1:1 mapping validated the entire architecture. Their bindings = our toybox. Their wrangler.toml = our child.toml. Their ~8 binding types = our collapsed ~8 toys.
+
+**Comparing with WASI** — 4 of 8 collapsed toys map to existing/proposed WASI interfaces. Our 4 Patina-specific toys fill real ecosystem gaps. Alignment is free if we design cleanly.
+
+The long road through 5 greenfield specs, vocabulary retirement, layout consolidation, and SDK toybox definition was necessary to see the shape clearly. Each step removed noise. This spec is what the signal looks like.
+
 ## Build Target
 
 7 phases. The WIT interface design (Phase 1) is the critical decision point — everything else flows from it.

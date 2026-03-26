@@ -68,6 +68,46 @@ Cloudflare Workers validates this architecture: they run the world's largest edg
 
 WASI validates it independently: `wasi:http`, `wasi:filesystem`, `wasi:keyvalue`, `wasi:logging` are generic primitives. There is no `wasi:github`.
 
+## Session Discoveries (20260325-150227-161735000)
+
+This spec emerged from a chain of discoveries during a single session, not from a planned design exercise:
+
+### 1. Filesystem layout review surfaced the real architecture
+
+Reviewing the greenfield spec arc (5 specs, 4 days, ~2100 lines deleted) and auditing the post-consolidation workspace layout led to the question: "what would a greenfield layout look like?" Answering that forced us to think about crate boundaries, which forced us to think about what `patina-core` should actually contain.
+
+### 2. The belief system is the core of Patina
+
+The core verbs — scrape, scry, assay, oxidize, context — all serve the belief system. Mother/children/toys exist to **extend** the belief system's reach into any domain. But children aren't servants of the belief system — they're autonomous data movers and transformers with bounded agency. They operate within a platform whose core is the belief layer, and their work generates evidence that can flow into it.
+
+### 3. Children have a tighter scope than "anything WASM can do"
+
+In a world of 1000s of children, they're not general-purpose compute. They're **data movers** — ingesting, transforming, and routing data through the platform. This means the toy set should be small and data-oriented. Children don't need GPU compute or audio processing. They need to reach data sources, transform data, and put it somewhere.
+
+### 4. A github toy vs a google workspace toy are just http toys with different creds
+
+This was the breakthrough observation. The 22 toys aren't 22 primitive capabilities. Many are the same capability (HTTP, store, events) with different credentials or domain knowledge baked in. A `github` toy is just `http` + GitHub PAT + knowledge of the GitHub API. That domain knowledge belongs in the child or an SDK library, not in the host interface.
+
+### 5. "Scope" was trying to be three things at once
+
+When we tried to add scoping to the collapsed toys, "scope" was carrying too much: the capability (what you can do), the credential (how you authenticate), and the target (where you're reaching). Separating these led to the **connection** concept — a named binding that Mother resolves, like Cloudflare Workers' `wrangler.toml` bindings.
+
+### 6. Credentials should never cross the WASM wall
+
+The WASM sandbox gives us a real isolation boundary. If credentials stay on Mother's side, a child physically cannot exfiltrate them. Mother injects auth headers into HTTP requests, resolves store paths, manages secrets — the child operates through opaque handles. This is capability-based security, the same model as Cloudflare Workers, Deno, and browser sandboxes.
+
+### 7. We independently arrived at a proven architecture
+
+Comparing with Cloudflare Workers revealed almost 1:1 mapping: our toybox = their bindings, our child.toml = their wrangler.toml, our Mother = their Workers runtime, our connection handles = their opaque binding objects. The WASM component model's import/export mechanism is the same pattern formalized at the type-system level. We took the long road to understand the road, but the destination is well-proven.
+
+### 8. WASI alignment is free if we collapse correctly
+
+4 of our 8 collapsed toys map directly to existing or proposed WASI interfaces (http, filesystem, keyvalue, logging). Our 4 Patina-specific toys (store, events, task, peer) fill gaps the WASI ecosystem hasn't standardized yet. If we design them cleanly — domain-agnostic, with implementation experience — they're natural candidates for WASI proposals. We don't need to plan for that; just building good interfaces makes it possible.
+
+### 9. The toybox concept unifies everything
+
+"Toy" expands to mean anything Mother provides to a child — capabilities, connections, resources. "Toybox" is the complete sealed grant payload. `child.toml` `[needs]` is the request. Mother is the authority that turns requests into grants. This simplifies the mental model: read `child.toml`, you know everything the child can do. Like reading `wrangler.toml`.
+
 ## Goal
 
 8 toy primitives. 4 adopt WASI interface shapes. 4 are Patina-specific, designed to be clean enough to propose upstream. Domain logic moves to children and SDK helper libraries. The SDK simplifies from 4 crates to 1.
