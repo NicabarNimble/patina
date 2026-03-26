@@ -1,56 +1,56 @@
 ---
 type: refactor
 id: toy-collapse-wasi-alignment
-status: draft
+status: ready
 created: 2026-03-26
 sessions:
   origin: 20260325-150227-161735000
-beliefs:
-  - "[[children-have-agency-toys-are-capabilities]]"
-  - "[[four-roles-no-overlap]]"
-  - "[[children-are-wasm]]"
-  - "[[root-communicates-identity]]"
 related:
-  - wit/toys/
-  - wit/worlds/
-  - sdk/patina-sdk/
-  - sdk/patina-sdk-core/
-  - sdk/patina-sdk-data/
-  - sdk/patina-sdk-agent/
-  - src/child/toy_host/
-  - src/child/internal/
-  - children/
+- wit/toys/
+- wit/worlds/
+- sdk/patina-sdk/
+- sdk/patina-sdk-core/
+- sdk/patina-sdk-data/
+- sdk/patina-sdk-agent/
+- src/child/toy_host/
+- src/child/internal/
+- children/
+beliefs:
+- '[[children-have-agency-toys-are-capabilities]]'
+- '[[four-roles-no-overlap]]'
+- '[[children-are-wasm]]'
+- '[[root-communicates-identity]]'
 exit_criteria:
-  - id: tca0-protocol-lock
-    text: "Phase 0 protocol lock is complete before Phase 1 coding: connect/http interaction model, store routing model, scope model, and WASI fitness matrix are all frozen with explicit proofs."
-    checked: true
-  - id: tca1-toy-count
-    text: "10 toy WIT interfaces exist: 2 WASI adopted (wasi:http, wasi:filesystem), 2 WASI-aligned Patina shims (patina:log, patina:state), 1 Patina bridge (patina:connect), 5 Patina-specific (patina:store, patina:events, patina:task, patina:peer, patina:git). All old toy .wit files are deleted."
-    checked: true
-  - id: tca2-wasi-adopted
-    text: "http and fs use actual `wasi:*` package interfaces. log and state use `patina:*` shims that track WASI shapes with documented sunset condition for migration when WASI reaches Phase 4 standardized."
-    checked: true
-  - id: tca3-connect-bridge
-    text: "`patina:connect` exists with opaque `connection` resource type. Children resolve named connections to handles. Credentials are injected host-side when handles are used with WASI toys. Credentials never enter WASM memory."
-    checked: true
-  - id: tca4-domain-logic-moved
-    text: "Domain logic from retired toys (github, lake, connector, belief, graph, session, etc.) is migrated to SDK helper libraries or child code. No domain-specific types in toy WIT interfaces."
-    checked: true
-  - id: tca5-connections-in-manifest
-    text: "`child.toml` supports `[needs.connections]` for named bindings. Mother resolves connection names to connect resource + credential + config at runtime."
-    checked: true
-  - id: tca6-sdk-one-crate
-    text: "SDK is one crate (`patina-sdk`) with feature flags per toy. Tier sub-crates (`patina-sdk-core`, `patina-sdk-data`, `patina-sdk-agent`) are retired or absorbed."
-    checked: true
-  - id: tca7-host-mediates-credentials
-    text: "All credential injection happens via `patina:connect` resource handles on the host side of the WASM wall. No credential data appears in any toy WIT interface."
-    checked: true
-  - id: tca8-children-migrated
-    text: "All in-tree children (ducklake, belief-verifier, spec-manager, session-writer, doctor, lake-manager) build and run using the collapsed toy set."
-    checked: true
-  - id: tca9-builds-pass
-    text: "`cargo check --workspace`, `cargo test -q`, and all children compile and pass tests."
-    checked: true
+- id: tca0-protocol-lock
+  text: 'Phase 0 protocol lock is complete before Phase 1 coding: connect/http interaction model, store routing model, scope model, and WASI fitness matrix are all frozen with explicit proofs.'
+  checked: true
+- id: tca1-toy-count
+  text: '10 toy WIT interfaces exist: 2 WASI adopted (wasi:http, wasi:filesystem), 2 WASI-aligned Patina shims (patina:log, patina:state), 1 Patina bridge (patina:connect), 5 Patina-specific (patina:store, patina:events, patina:task, patina:peer, patina:git). All old toy .wit files are deleted.'
+  checked: true
+- id: tca2-wasi-adopted
+  text: http and fs use actual `wasi:*` package interfaces. log and state use `patina:*` shims that track WASI shapes with documented sunset condition for migration when WASI reaches Phase 4 standardized.
+  checked: true
+- id: tca3-connect-bridge
+  text: '`patina:connect` exists with opaque `connection` resource type. Children resolve named connections to handles. Credentials are injected host-side when handles are used with WASI toys. Credentials never enter WASM memory.'
+  checked: true
+- id: tca4-domain-logic-moved
+  text: Domain logic from retired toys (github, lake, connector, belief, graph, session, etc.) is migrated to SDK helper libraries or child code. No domain-specific types in toy WIT interfaces.
+  checked: true
+- id: tca5-connections-in-manifest
+  text: '`child.toml` supports `[needs.connections]` for named bindings. Mother resolves connection names to connect resource + credential + config at runtime.'
+  checked: true
+- id: tca6-sdk-one-crate
+  text: SDK is one crate (`patina-sdk`) with feature flags per toy. Tier sub-crates (`patina-sdk-core`, `patina-sdk-data`, `patina-sdk-agent`) are retired or absorbed.
+  checked: true
+- id: tca7-host-mediates-credentials
+  text: All credential injection happens via `patina:connect` resource handles on the host side of the WASM wall. No credential data appears in any toy WIT interface.
+  checked: true
+- id: tca8-children-migrated
+  text: All in-tree children (ducklake, belief-verifier, spec-manager, session-writer, doctor, lake-manager) build and run using the collapsed toy set.
+  checked: true
+- id: tca9-builds-pass
+  text: '`cargo check --workspace`, `cargo test -q`, and all children compile and pass tests.'
+  checked: true
 ---
 # refactor: Collapse toys to primitives and align with WASI/Cloudflare binding model
 
@@ -125,6 +125,15 @@ Collapse 22 toys to 10 primitives by embracing WASI where WASI exists and expand
 - **Align with Cloudflare's design model**: Manifest-declared bindings, capability grants, zero-access default, sealed toybox at init. Keeps the toy surface honest about what's primitive.
 
 Domain logic moves from toys to children and SDK helper libraries. The SDK simplifies from 4 crates to 1. The toybox — Mother's sealed capability grant assembled from `child.toml` — becomes the explicit architectural centerpiece: the security contract, the audit surface, the portability boundary.
+
+## Status
+
+Execution complete and verified.
+
+- Collapsed toy model is live with canonical contracts in `wit/toys/`.
+- Legacy toy/world WIT surfaces and compatibility host layers are removed.
+- In-tree children and SDK are migrated to collapsed toy semantics.
+- Exit criteria are fully checked and workspace gates are green.
 
 ## Non-Goals
 
