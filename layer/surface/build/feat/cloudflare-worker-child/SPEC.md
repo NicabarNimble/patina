@@ -63,6 +63,45 @@ This spec emerged from session `20260325-150227-161735000`, where we:
 3. Realized the component model's portability promise is testable: same WASM, different hosts
 4. Asked "how could we connect children to Workers?" and the answer was: a child IS a Worker if the interfaces align
 
+## Cloudflare Architecture Comparison
+
+Cloudflare Workers has ~8 binding types (KV, R2, D1, Queues, Service Bindings, Durable Objects, fetch, Secrets). Millions of Workers across every domain use combinations of these 8 primitives. The design is capability-based security through opaque handles:
+
+| Cloudflare Pattern | Patina Equivalent |
+|---|---|
+| `wrangler.toml` declares bindings | `child.toml` declares toys |
+| `env.MY_KV` — opaque handle, Worker never sees namespace ID | `http::request("github", ...)` — opaque handle, child never sees endpoint URL |
+| `env.GITHUB_TOKEN` — secret injected by runtime | Mother injects auth headers host-side |
+| Worker starts with zero access | Child starts with zero capabilities |
+| Read `wrangler.toml` = complete security audit | Read `child.toml` = complete security audit |
+
+### Where Patina's Security Model Is Stronger
+
+In Cloudflare's model, a Worker **sees the secret value**. `env.GITHUB_TOKEN` is a string the Worker reads and uses to construct auth headers. A malicious or buggy Worker can log, leak, or exfiltrate that token.
+
+In Patina's model, the child **never sees the credential**:
+
+```
+Child calls:    http::request("github", { method: "GET", url: "/repos", headers: [], body: None })
+                     ↓
+Mother resolves: "github" → https://api.github.com
+Mother injects:  Authorization: Bearer <pat>  (host-side, outside WASM)
+Mother executes: makes the HTTP call
+Mother returns:  response body to child (without auth headers)
+```
+
+The credential never enters WASM memory. The child can USE the connection (within its granted scope) but cannot STEAL the credential. Even a compromised child binary can only make authorized requests to granted endpoints — it has no token to exfiltrate.
+
+This is the strongest property of the toybox model: **connection-name handles, not credential strings.**
+
+### What This Means for the Portable Child
+
+The portable-fetcher child proves this works across runtimes:
+- On Patina: `http::request("api", ...)` → Mother injects credentials host-side
+- On Cloudflare: same WIT import → CF adapter reads `env.API_TOKEN` and injects it
+
+The child code is identical. The credential handling differs per runtime. The child never knows.
+
 ## The Portability Map
 
 The child can only use toys that have equivalents on both runtimes:

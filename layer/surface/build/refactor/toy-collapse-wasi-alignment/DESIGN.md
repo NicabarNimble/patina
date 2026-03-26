@@ -65,7 +65,21 @@ interface http {
 }
 ```
 
-The `connection` parameter is the key innovation over raw WASI. Mother resolves it: "github" → base URL + auth headers + rate limits. The child constructs the path and payload; Mother handles the infrastructure.
+The `connection` parameter is the key innovation over raw WASI and is **stronger than Cloudflare's model.**
+
+Cloudflare Workers see secret values as strings (`env.GITHUB_TOKEN`). A Worker constructs its own auth headers. A malicious Worker can exfiltrate the token.
+
+In Patina, the credential never enters WASM memory:
+1. Child calls `http::request("github", { url: "/repos", headers: [], ... })` — no auth header, no token.
+2. Mother resolves "github" → `https://api.github.com` + `Authorization: Bearer <pat>`.
+3. Mother injects the header host-side, makes the call, returns the response.
+4. The child gets data back. The PAT never crossed the WASM wall.
+
+A compromised child can USE the connection (within granted scope) but cannot STEAL the credential. This is the core security property of connection-name handles.
+
+The same pattern applies to `store`: the child says `store::query("ducklake", sql)`. Mother resolves "ducklake" to a database path and credentials. The child never knows the file path or has direct DB access.
+
+**This shapes the toybox.** The toybox isn't just a list of toy names — it's a resolved set of connection handles with credentials, endpoints, and policy attached. Mother builds it at init from `child.toml`. The child receives opaque handles. The credentials live exclusively in Mother's secret store.
 
 **fs** — File access within granted paths. Mirrors `wasi:filesystem`.
 
