@@ -12,7 +12,7 @@ Three deletions, one merge, one Cargo.toml edit. Low risk, high clarity gain.
 
 - `children/` is canonical (not `plugins/`).
 - `resources/scripts/` is the likely canonical script location (already has the guard scripts, grammar scripts, crate-name checks). `scripts/` needs audit to see what's there.
-- `wit/mother-child/` has no consumers after MotherChild trait deletion.
+- `wit/mother-child/` has no runtime consumers after MotherChild trait deletion; tooling references remain (`resources/git/pre-push-checks.sh:18,84,89`) and must be migrated in this spec.
 - `plugins/doctor` is NOT a duplicate of `children/doctor` — they are completely different implementations:
   - `plugins/doctor`: WASM command child, 380 lines, full health check logic. But **orphan code** — not in execution path. Users get native `doctor_runtime`.
   - `children/doctor`: WASM knowledge-child stub, 37 lines. Different WIT world, different SDK features.

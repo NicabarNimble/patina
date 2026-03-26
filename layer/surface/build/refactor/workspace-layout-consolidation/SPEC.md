@@ -20,7 +20,7 @@ exit_criteria:
     text: "Cargo.toml workspace members reference only `children/*`, `crates/*`, `sdk/*`, `mother` — no `plugins/*` entries."
     checked: false
   - id: wlc3-dead-wit-removed
-    text: "`wit/mother-child/` deleted. No WIT world references a deleted runtime path."
+    text: "`wit/mother-child/` deleted. All tooling/script references (`resources/git/pre-push-checks.sh` world loop, WIT mirror checks) updated or removed. No WIT world references a deleted runtime path."
     checked: false
   - id: wlc4-scripts-unified
     text: "One script location exists (`resources/scripts/` or `scripts/`, not both). All references updated."
@@ -127,4 +127,4 @@ ls wit/mother-child/ 2>&1  # should fail: No such file or directory
 
 ## Build Readiness
 
-Ready for execution after verifying `plugins/doctor` vs `children/doctor` redundancy. No blockers.
+Ready for execution. Doctor execution-path truth already verified (native `doctor_runtime` is what runs; `plugins/doctor` is orphan WASM). No blockers.
