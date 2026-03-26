@@ -910,8 +910,7 @@ mod bindings {
                     stream, self.plugin_name
                 ));
             }
-            let events = crate::child::toy_host::events::pull(&stream, after_offset, limit)
-                .map_err(|e| e.to_string())?;
+            let events = crate::child::toy_host::compat::events_pull(&stream, after_offset, limit)?;
             Ok(events
                 .into_iter()
                 .map(|event| patina::host::events::PendingEvent {
@@ -932,17 +931,16 @@ mod bindings {
                     stream, self.plugin_name
                 ));
             }
-            crate::child::toy_host::events::ack_through(
+            crate::child::toy_host::compat::events_ack_through(
                 &self.runtime,
                 &self.plugin_name,
                 &stream,
                 offset,
             )
-            .map_err(|e| e.to_string())
         }
 
         fn list_streams(&mut self) -> Vec<String> {
-            crate::child::toy_host::events::list_streams()
+            crate::child::toy_host::compat::events_list_streams()
         }
     }
 
@@ -974,8 +972,9 @@ mod bindings {
             after_offset: Option<u64>,
             limit: u32,
         ) -> Result<Vec<patina::host::peer::PeerEvent>, String> {
-            let events = crate::child::toy_host::events::pull(&stream_name, after_offset, limit)
-                .map_err(|e| format!("peer on_event: {}", e))?;
+            let events =
+                crate::child::toy_host::compat::events_pull(&stream_name, after_offset, limit)
+                    .map_err(|e| format!("peer on_event: {}", e))?;
             Ok(events
                 .into_iter()
                 .map(|event| patina::host::peer::PeerEvent {

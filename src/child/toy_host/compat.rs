@@ -5,6 +5,7 @@ use crate::child::toy_host::connector::ConnectorBindingRecord;
 use crate::child::toy_host::github::{ListParams, Page};
 use crate::mother::state::LakeCursorUpdate;
 use crate::mother::KnowledgeRuntimeStore;
+use mother_crate::PendingEvent;
 
 /// Legacy ingress `fetch` routed through the HTTP toy helper.
 pub fn ingress_fetch_via_http(
@@ -279,4 +280,27 @@ pub fn lake_append_json_batch(
 
 pub fn lake_query_json(lake: &str, sql: &str) -> Result<String, String> {
     crate::child::toy_host::lake::query_json(lake, sql).map_err(|e| e.to_string())
+}
+
+/// Legacy events toy dispatch routed through compatibility layer.
+pub fn events_pull(
+    stream: &str,
+    after_offset: Option<u64>,
+    limit: u32,
+) -> Result<Vec<PendingEvent>, String> {
+    crate::child::toy_host::events::pull(stream, after_offset, limit).map_err(|e| e.to_string())
+}
+
+pub fn events_ack_through(
+    runtime: &KnowledgeRuntimeStore,
+    plugin_name: &str,
+    stream: &str,
+    offset: u64,
+) -> Result<(), String> {
+    crate::child::toy_host::events::ack_through(runtime, plugin_name, stream, offset)
+        .map_err(|e| e.to_string())
+}
+
+pub fn events_list_streams() -> Vec<String> {
+    crate::child::toy_host::events::list_streams()
 }
