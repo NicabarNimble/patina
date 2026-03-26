@@ -14,7 +14,6 @@ use crate::mother::{
 };
 
 mod bindings {
-    use rayon::prelude::*;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     #[derive(Debug)]
@@ -183,20 +182,21 @@ mod bindings {
         world: "knowledge-child",
     });
 
-    impl patina::host::log::Host for HostState {
-        fn log(&mut self, level: patina::host::log::LogLevel, message: String) {
+    impl patina::log::log::Host for HostState {
+        fn log(&mut self, level: patina::log::log::Level, message: String) {
             let level_str = match level {
-                patina::host::log::LogLevel::Debug => "DEBUG",
-                patina::host::log::LogLevel::Info => "INFO",
-                patina::host::log::LogLevel::Warn => "WARN",
-                patina::host::log::LogLevel::Error => "ERROR",
+                patina::log::log::Level::Debug => "DEBUG",
+                patina::log::log::Level::Info => "INFO",
+                patina::log::log::Level::Warn => "WARN",
+                patina::log::log::Level::Error => "ERROR",
             };
             crate::child::toy_host::v2::log_emit(&self.plugin_name, level_str, &message);
         }
     }
 
-    impl patina::host::types::Host for HostState {}
+    impl patina::knowledge_child::runtime_types::Host for HostState {}
 
+    #[cfg(any())]
     impl patina::host::query::Host for HostState {
         fn query(&mut self, kind: String, params: String) -> Result<String, String> {
             crate::child::toy_host::compat::query_dispatch(
@@ -209,6 +209,7 @@ mod bindings {
         }
     }
 
+    #[cfg(any())]
     impl patina::host::http::Host for HostState {
         fn http_post(
             &mut self,
@@ -244,6 +245,7 @@ mod bindings {
         }
     }
 
+    #[cfg(any())]
     impl patina::host::emit::Host for HostState {
         fn emit_fact(
             &mut self,
@@ -267,6 +269,7 @@ mod bindings {
         }
     }
 
+    #[cfg(any())]
     impl patina::host::measure::Host for HostState {
         fn record_measurement(
             &mut self,
@@ -286,14 +289,14 @@ mod bindings {
         }
     }
 
-    impl patina::host::state::Host for HostState {
+    impl patina::state::state::Host for HostState {
         fn get(&mut self, key: String) -> Option<String> {
             crate::child::toy_host::v2::state_get(&self.runtime, &self.plugin_name, &key)
                 .ok()
                 .flatten()
         }
 
-        fn put(&mut self, key: String, value_json: String) -> Result<(), String> {
+        fn set(&mut self, key: String, value_json: String) -> Result<(), String> {
             if !self.grants.state_enabled {
                 return Err(format!(
                     "state not granted for child '{}'",
@@ -324,6 +327,234 @@ mod bindings {
         }
     }
 
+    impl patina::connect::connect::Host for HostState {
+        fn resolve(
+            &mut self,
+            name: String,
+        ) -> Result<wasmtime::component::Resource<patina::connect::connect::Connection>, String>
+        {
+            let conn = crate::child::toy_host::v2::connect_resolve(&name)?;
+            let rep = self.wasi_table.push(conn).map_err(|e| e.to_string())?;
+            Ok(wasmtime::component::Resource::new_own(rep.rep()))
+        }
+
+        fn base_url(
+            &mut self,
+            conn: wasmtime::component::Resource<patina::connect::connect::Connection>,
+        ) -> String {
+            let rep = wasmtime::component::Resource::<crate::child::toy_host::v2::ConnectionHandle>::new_borrow(conn.rep());
+            self.wasi_table
+                .get(&rep)
+                .map(crate::child::toy_host::v2::connect_base_url)
+                .unwrap_or_default()
+        }
+
+        fn request(
+            &mut self,
+            conn: wasmtime::component::Resource<patina::connect::connect::Connection>,
+            method: String,
+            path: String,
+            headers: Vec<patina::connect::connect::Header>,
+            body: Option<Vec<u8>>,
+        ) -> Result<patina::connect::connect::Response, String> {
+            let headers = headers
+                .into_iter()
+                .map(|h| crate::child::toy_host::v2::Header {
+                    name: h.name,
+                    value: h.value,
+                })
+                .collect::<Vec<_>>();
+            let rep = wasmtime::component::Resource::<crate::child::toy_host::v2::ConnectionHandle>::new_borrow(conn.rep());
+            let conn = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let response = crate::child::toy_host::v2::connect_request(
+                &self.http_client,
+                conn,
+                &method,
+                &path,
+                &headers,
+                body.as_deref(),
+            )?;
+            Ok(patina::connect::connect::Response {
+                status: response.status,
+                headers: response
+                    .headers
+                    .into_iter()
+                    .map(|h| patina::connect::connect::Header {
+                        name: h.name,
+                        value: h.value,
+                    })
+                    .collect(),
+                body: response.body,
+            })
+        }
+    }
+
+    impl patina::connect::connect::HostConnection for HostState {
+        fn drop(
+            &mut self,
+            rep: wasmtime::component::Resource<patina::connect::connect::Connection>,
+        ) -> wasmtime::Result<()> {
+            let rep = wasmtime::component::Resource::<crate::child::toy_host::v2::ConnectionHandle>::new_own(rep.rep());
+            Ok(self.wasi_table.delete(rep).map(|_| ())?)
+        }
+    }
+
+    impl patina::store::store::Host for HostState {
+        fn query(
+            &mut self,
+            conn: wasmtime::component::Resource<patina::connect::connect::Connection>,
+            query: String,
+        ) -> Result<String, String> {
+            let rep = wasmtime::component::Resource::<crate::child::toy_host::v2::ConnectionHandle>::new_borrow(conn.rep());
+            let conn = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            crate::child::toy_host::v2::store_query(conn, &query)
+        }
+
+        fn mutate(
+            &mut self,
+            conn: wasmtime::component::Resource<patina::connect::connect::Connection>,
+            action: String,
+            payload: String,
+        ) -> Result<String, String> {
+            let rep = wasmtime::component::Resource::<crate::child::toy_host::v2::ConnectionHandle>::new_borrow(conn.rep());
+            let conn = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            crate::child::toy_host::v2::store_mutate(conn, &action, &payload)
+        }
+    }
+
+    impl patina::events::events::Host for HostState {
+        fn publish(
+            &mut self,
+            stream_name: String,
+            event_type: String,
+            payload: String,
+        ) -> Result<u64, String> {
+            if !self.grants.host_emit {
+                return Err(format!(
+                    "host_emit not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
+            crate::child::toy_host::v2::events_publish(
+                &self.runtime,
+                &self.plugin_name,
+                &stream_name,
+                &event_type,
+                &payload,
+            )
+        }
+
+        fn subscribe(
+            &mut self,
+            stream_name: String,
+            after: Option<u64>,
+            limit: u32,
+        ) -> Result<Vec<patina::events::events::Event>, String> {
+            if !self.grants.subscribed_streams.contains(&stream_name) {
+                return Err(format!(
+                    "event stream '{}' not granted for child '{}'",
+                    stream_name, self.plugin_name
+                ));
+            }
+            crate::child::toy_host::v2::events_subscribe(&stream_name, after, limit).map(|events| {
+                events
+                    .into_iter()
+                    .map(|event| patina::events::events::Event {
+                        stream_name: event.stream_name,
+                        offset: event.offset,
+                        event_type: event.event_type,
+                        payload: event.payload,
+                        occurred_at: event.occurred_at,
+                    })
+                    .collect()
+            })
+        }
+
+        fn ack(&mut self, stream_name: String, offset: u64) -> Result<(), String> {
+            if !self.grants.subscribed_streams.contains(&stream_name) {
+                return Err(format!(
+                    "event stream '{}' not granted for child '{}'",
+                    stream_name, self.plugin_name
+                ));
+            }
+            crate::child::toy_host::v2::events_ack(
+                &self.runtime,
+                &self.plugin_name,
+                &stream_name,
+                offset,
+            )
+        }
+    }
+
+    impl patina::task::task::Host for HostState {
+        fn enqueue(
+            &mut self,
+            kind: String,
+            payload: String,
+            dedupe_key: Option<String>,
+        ) -> Result<String, String> {
+            let resolved = crate::mother::TaskIntentKind::parse(&kind)
+                .ok_or_else(|| format!("unknown task intent kind '{}'", kind))?;
+            if !self.grants.task_intents.contains(&resolved) {
+                return Err(format!(
+                    "task intent '{}' not granted for '{}'",
+                    resolved, self.plugin_name
+                ));
+            }
+            crate::child::toy_host::v2::task_enqueue(
+                &self.runtime,
+                &self.plugin_name,
+                &kind,
+                &payload,
+                dedupe_key,
+            )
+        }
+    }
+
+    impl patina::peer::peer::Host for HostState {
+        fn call(
+            &mut self,
+            child: String,
+            action: String,
+            payload: String,
+        ) -> Result<String, String> {
+            crate::child::toy_host::v2::peer_call(
+                &self.runtime,
+                &self.plugin_name,
+                &child,
+                &action,
+                &payload,
+            )
+        }
+    }
+
+    impl patina::git::git::Host for HostState {
+        fn create_tag(&mut self, name: String) -> Result<(), String> {
+            crate::child::toy_host::v2::git_create_tag(&name)
+        }
+
+        fn delete_tag(&mut self, name: String) -> Result<(), String> {
+            crate::child::toy_host::v2::git_delete_tag(&name)
+        }
+
+        fn tag_exists(&mut self, name: String) -> Result<bool, String> {
+            crate::child::toy_host::v2::git_tag_exists(&name)
+        }
+
+        fn commit(&mut self, message: String) -> Result<String, String> {
+            crate::child::toy_host::v2::git_commit(&message)
+        }
+
+        fn log_oneline(&mut self, limit: u32) -> Result<Vec<String>, String> {
+            crate::child::toy_host::v2::git_log_oneline(limit)
+        }
+
+        fn diff_stat(&mut self) -> Result<String, String> {
+            crate::child::toy_host::v2::git_diff_stat()
+        }
+    }
+
+    #[cfg(any())]
     impl patina::host::checkpoint::Host for HostState {
         fn load(&mut self, stream: String) -> Option<String> {
             self.runtime
@@ -345,6 +576,7 @@ mod bindings {
         }
     }
 
+    #[cfg(any())]
     impl patina::host::lake::Host for HostState {
         fn ensure_lake(&mut self, name: String) -> Result<String, String> {
             if !self.grants.lake_names.contains(&name) {
@@ -456,6 +688,7 @@ mod bindings {
         }
     }
 
+    #[cfg(any())]
     impl patina::host::ingress::Host for HostState {
         fn list_granted_sources(&mut self) -> Vec<patina::host::ingress::GrantedSource> {
             crate::child::toy_host::compat::ingress_list_granted_sources(&self.grants.toys)
@@ -479,6 +712,7 @@ mod bindings {
         }
     }
 
+    #[cfg(any())]
     impl patina::host::connector::Host for HostState {
         fn list_bindings(&mut self) -> Result<Vec<patina::host::connector::RepoBinding>, String> {
             crate::child::toy_host::compat::connector_ensure_granted(
@@ -642,6 +876,7 @@ mod bindings {
         }
     }
 
+    #[cfg(any())]
     impl patina::host::github::Host for HostState {
         fn list_issues(
             &mut self,
@@ -838,6 +1073,7 @@ mod bindings {
         }
     }
 
+    #[cfg(any())]
     impl patina::host::session::Host for HostState {
         fn get_session_id(&mut self) -> String {
             crate::child::toy_host::compat::session_get_session_id()
@@ -896,6 +1132,7 @@ mod bindings {
         }
     }
 
+    #[cfg(any())]
     impl patina::host::events::Host for HostState {
         fn pull(
             &mut self,
@@ -949,6 +1186,7 @@ mod bindings {
         }
     }
 
+    #[cfg(any())]
     impl patina::host::peer::Host for HostState {
         fn emit_event(&mut self, event_type: String, payload_json: String) -> Result<(), String> {
             let conn =
@@ -994,6 +1232,7 @@ mod bindings {
         }
     }
 
+    #[cfg(any())]
     impl patina::host::task::Host for HostState {
         fn enqueue(&mut self, intent: patina::host::task::TaskIntent) -> Result<String, String> {
             let kind = match intent.kind {
@@ -1024,6 +1263,7 @@ mod bindings {
         }
     }
 
+    #[cfg(any())]
     impl patina::host::graph::Host for HostState {
         fn query(&mut self, kind: String, params_json: String) -> Result<String, String> {
             if !self.grants.graph_read {
@@ -1049,6 +1289,7 @@ mod bindings {
         }
     }
 
+    #[cfg(any())]
     impl patina::host::belief::Host for HostState {
         fn query(&mut self, kind: String, params_json: String) -> Result<String, String> {
             if !self.grants.belief_read {
@@ -1091,13 +1332,14 @@ impl KnowledgeChildEngine {
     }
 
     fn link_log(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::log::add_to_linker::<
+        bindings::patina::log::log::add_to_linker::<
             HostState,
             wasmtime::component::HasSelf<HostState>,
         >(linker, |s| s)?;
         Ok(())
     }
 
+    #[cfg(any())]
     fn link_measure(linker: &mut Linker<HostState>) -> Result<()> {
         bindings::patina::host::measure::add_to_linker::<
             HostState,
@@ -1106,6 +1348,7 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
+    #[cfg(any())]
     fn link_query(linker: &mut Linker<HostState>) -> Result<()> {
         bindings::patina::host::query::add_to_linker::<
             HostState,
@@ -1114,6 +1357,7 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
+    #[cfg(any())]
     fn link_http(linker: &mut Linker<HostState>) -> Result<()> {
         bindings::patina::host::http::add_to_linker::<
             HostState,
@@ -1122,6 +1366,63 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
+    fn link_connect(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::connect::connect::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_store(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::store::store::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_events(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::events::events::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_task(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::task::task::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_state(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::state::state::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_peer(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::peer::peer::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    fn link_git(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::git::git::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        Ok(())
+    }
+
+    #[cfg(any())]
     fn link_ingress(linker: &mut Linker<HostState>) -> Result<()> {
         bindings::patina::host::ingress::add_to_linker::<
             HostState,
@@ -1130,6 +1431,7 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
+    #[cfg(any())]
     fn link_connector(linker: &mut Linker<HostState>) -> Result<()> {
         bindings::patina::host::connector::add_to_linker::<
             HostState,
@@ -1138,6 +1440,7 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
+    #[cfg(any())]
     fn link_github(linker: &mut Linker<HostState>) -> Result<()> {
         bindings::patina::host::github::add_to_linker::<
             HostState,
@@ -1146,6 +1449,7 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
+    #[cfg(any())]
     fn link_emit(linker: &mut Linker<HostState>) -> Result<()> {
         bindings::patina::host::emit::add_to_linker::<
             HostState,
@@ -1154,38 +1458,7 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
-    fn link_state(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::state::add_to_linker::<
-            HostState,
-            wasmtime::component::HasSelf<HostState>,
-        >(linker, |s| s)?;
-        Ok(())
-    }
-
-    fn link_checkpoint(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::checkpoint::add_to_linker::<
-            HostState,
-            wasmtime::component::HasSelf<HostState>,
-        >(linker, |s| s)?;
-        Ok(())
-    }
-
-    fn link_lake(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::lake::add_to_linker::<
-            HostState,
-            wasmtime::component::HasSelf<HostState>,
-        >(linker, |s| s)?;
-        Ok(())
-    }
-
-    fn link_events(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::events::add_to_linker::<
-            HostState,
-            wasmtime::component::HasSelf<HostState>,
-        >(linker, |s| s)?;
-        Ok(())
-    }
-
+    #[cfg(any())]
     fn link_peer(linker: &mut Linker<HostState>) -> Result<()> {
         bindings::patina::host::peer::add_to_linker::<
             HostState,
@@ -1194,6 +1467,7 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
+    #[cfg(any())]
     fn link_task(linker: &mut Linker<HostState>) -> Result<()> {
         bindings::patina::host::task::add_to_linker::<
             HostState,
@@ -1202,6 +1476,7 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
+    #[cfg(any())]
     fn link_graph(linker: &mut Linker<HostState>) -> Result<()> {
         bindings::patina::host::graph::add_to_linker::<
             HostState,
@@ -1210,6 +1485,7 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
+    #[cfg(any())]
     fn link_belief(linker: &mut Linker<HostState>) -> Result<()> {
         bindings::patina::host::belief::add_to_linker::<
             HostState,
@@ -1218,6 +1494,7 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
+    #[cfg(any())]
     fn link_types(linker: &mut Linker<HostState>) -> Result<()> {
         bindings::patina::host::types::add_to_linker::<
             HostState,
@@ -1226,6 +1503,7 @@ impl KnowledgeChildEngine {
         Ok(())
     }
 
+    #[cfg(any())]
     fn link_session(linker: &mut Linker<HostState>) -> Result<()> {
         bindings::patina::host::session::add_to_linker::<
             HostState,
@@ -1237,88 +1515,16 @@ impl KnowledgeChildEngine {
     fn build_linker(manifest: &ChildManifest) -> Result<Linker<HostState>> {
         let mut linker = Linker::new(wasm_engine());
         Self::link_wasi(&mut linker)?;
-        Self::link_types(&mut linker)?;
+        Self::link_log(&mut linker)?;
+        Self::link_state(&mut linker)?;
+        Self::link_connect(&mut linker)?;
+        Self::link_store(&mut linker)?;
+        Self::link_events(&mut linker)?;
+        Self::link_task(&mut linker)?;
+        Self::link_peer(&mut linker)?;
+        Self::link_git(&mut linker)?;
 
-        let wants_log = manifest.capabilities.iter().any(|cap| cap == "host_log");
-        let wants_measure = manifest
-            .capabilities
-            .iter()
-            .any(|cap| cap == "host_measure")
-            || manifest.toys.measure;
-        let wants_query = manifest.capabilities.iter().any(|cap| cap == "host_query")
-            || !manifest.host_query_kinds.is_empty()
-            || manifest.toys.query;
-        let wants_http = manifest.capabilities.iter().any(|cap| cap == "host_http")
-            || !manifest.host_http_domains.is_empty()
-            || !manifest.ingress_sources.is_empty();
-        let wants_emit = manifest.capabilities.iter().any(|cap| cap == "host_emit");
-        let wants_state = manifest.state_enabled;
-        let wants_checkpoint = !manifest.checkpoint_streams.is_empty();
-        let wants_lake = !manifest.lake_names.is_empty();
-        let wants_ingress = !manifest.ingress_sources.is_empty();
-        let wants_connector = manifest.toys.connector;
-        let wants_github = manifest.toys.github;
-        let wants_events = !manifest.subscribed_streams.is_empty();
-        let wants_peer = wants_events;
-        let wants_task = !manifest.task_intent_names.is_empty();
-        let wants_graph =
-            manifest.graph_read || !manifest.graph_write_actions.is_empty() || manifest.toys.graph;
-        let wants_belief = manifest.belief_read
-            || !manifest.belief_write_actions.is_empty()
-            || manifest.toys.belief;
-        let wants_session = manifest.toys.session;
-
-        if wants_log {
-            Self::link_log(&mut linker)?;
-        }
-        if wants_measure {
-            Self::link_measure(&mut linker)?;
-        }
-        if wants_query {
-            Self::link_query(&mut linker)?;
-        }
-        if wants_http {
-            Self::link_http(&mut linker)?;
-        }
-        if wants_ingress {
-            Self::link_ingress(&mut linker)?;
-        }
-        if wants_connector {
-            Self::link_connector(&mut linker)?;
-        }
-        if wants_github {
-            Self::link_github(&mut linker)?;
-        }
-        if wants_emit {
-            Self::link_emit(&mut linker)?;
-        }
-        if wants_state {
-            Self::link_state(&mut linker)?;
-        }
-        if wants_checkpoint {
-            Self::link_checkpoint(&mut linker)?;
-        }
-        if wants_lake {
-            Self::link_lake(&mut linker)?;
-        }
-        if wants_events {
-            Self::link_events(&mut linker)?;
-        }
-        if wants_peer {
-            Self::link_peer(&mut linker)?;
-        }
-        if wants_task {
-            Self::link_task(&mut linker)?;
-        }
-        if wants_graph {
-            Self::link_graph(&mut linker)?;
-        }
-        if wants_belief {
-            Self::link_belief(&mut linker)?;
-        }
-        if wants_session {
-            Self::link_session(&mut linker)?;
-        }
+        let _ = manifest;
 
         Ok(linker)
     }
@@ -1539,15 +1745,17 @@ impl KnowledgeChild for WasmKnowledgeChild {
             Ok(h) => {
                 let reason = h.reason.unwrap_or_default();
                 match h.status {
-                    bindings::patina::host::types::HealthStatus::Healthy => ChildHealth::Healthy,
-                    bindings::patina::host::types::HealthStatus::Degraded => {
+                    bindings::patina::knowledge_child::runtime_types::HealthStatus::Healthy => {
+                        ChildHealth::Healthy
+                    }
+                    bindings::patina::knowledge_child::runtime_types::HealthStatus::Degraded => {
                         ChildHealth::Degraded(if reason.is_empty() {
                             "degraded".into()
                         } else {
                             reason
                         })
                     }
-                    bindings::patina::host::types::HealthStatus::Unhealthy => {
+                    bindings::patina::knowledge_child::runtime_types::HealthStatus::Unhealthy => {
                         ChildHealth::Unhealthy(if reason.is_empty() {
                             "unhealthy".into()
                         } else {
@@ -1600,28 +1808,28 @@ impl KnowledgeChild for WasmKnowledgeChild {
                 .filter_map(|intent| {
                     Some(TaskIntent {
                         kind: match intent.kind {
-                            bindings::patina::host::task::TaskIntentKind::FetchSource => {
+                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::FetchSource => {
                                 crate::mother::TaskIntentKind::FetchSource
                             }
-                            bindings::patina::host::task::TaskIntentKind::RunQuery => {
+                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::RunQuery => {
                                 crate::mother::TaskIntentKind::RunQuery
                             }
-                            bindings::patina::host::task::TaskIntentKind::EmitFacts => {
+                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::EmitFacts => {
                                 crate::mother::TaskIntentKind::EmitFacts
                             }
-                            bindings::patina::host::task::TaskIntentKind::MaterializeIndex => {
+                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::MaterializeIndex => {
                                 crate::mother::TaskIntentKind::MaterializeIndex
                             }
-                            bindings::patina::host::task::TaskIntentKind::VerifyBelief => {
+                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::VerifyBelief => {
                                 crate::mother::TaskIntentKind::VerifyBelief
                             }
-                            bindings::patina::host::task::TaskIntentKind::SyncGraph => {
+                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::SyncGraph => {
                                 crate::mother::TaskIntentKind::SyncGraph
                             }
-                            bindings::patina::host::task::TaskIntentKind::RefreshCredential => {
+                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::RefreshCredential => {
                                 crate::mother::TaskIntentKind::RefreshCredential
                             }
-                            bindings::patina::host::task::TaskIntentKind::NativeJob => {
+                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::NativeJob => {
                                 crate::mother::TaskIntentKind::NativeJob
                             }
                         },
