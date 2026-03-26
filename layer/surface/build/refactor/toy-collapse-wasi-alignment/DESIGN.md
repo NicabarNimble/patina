@@ -28,9 +28,9 @@ This design was not planned top-down. It emerged from a session that started wit
 
 **Trying to add "scope" broke the vocabulary** — scope was carrying capability + credential + target as one concept. Separating them produced the **connection** model: named bindings that Mother resolves, like Cloudflare Workers' `wrangler.toml`.
 
-**Comparing with Cloudflare Workers** — almost 1:1 mapping validated the entire architecture. Their bindings = our toybox. Their wrangler.toml = our child.toml. Their ~8 binding types = our collapsed 10 toys (4 WASI + 1 bridge + 5 Patina).
+**Comparing with Cloudflare Workers** — almost 1:1 mapping validated the entire architecture. Their bindings = our toybox. Their wrangler.toml = our child.toml. Their ~8 binding types = our collapsed 10 toys (4 WASI-aligned: 2 adopted + 2 shimmed, plus 1 bridge + 5 Patina-specific).
 
-**Comparing with WASI** — 4 of 10 collapsed toys map to existing/proposed WASI interfaces. Our 5 Patina-specific toys plus `patina:connect` fill real ecosystem gaps. Alignment is free if we design cleanly.
+**Comparing with WASI** — 4 of 10 collapsed toys align to WASI interfaces, with 2 adopted now (`http`, `fs`) and 2 shimmed with sunset (`log`, `state`). Our 5 Patina-specific toys plus `patina:connect` fill real ecosystem gaps. Alignment is free if we design cleanly.
 
 The long road through 5 greenfield specs, vocabulary retirement, layout consolidation, and SDK toybox definition was necessary to see the shape clearly. Each step removed noise. This spec is what the signal looks like.
 

@@ -54,7 +54,7 @@ exit_criteria:
 ---
 # refactor: Collapse toys to primitives and align with WASI/Cloudflare binding model
 
-> Reduce 22 toys to 10 (4 WASI standard + 1 Patina bridge + 5 Patina-specific). Adopt actual WASI interfaces for http/fs/log/state. Add `patina:connect` as credential-security bridge. Move domain logic from toys to children and SDK libraries. Align with Cloudflare Workers binding model for capability grants.
+> Reduce 22 toys to 10 (4 WASI-aligned: 2 adopted + 2 shimmed with sunset, plus 1 Patina bridge + 5 Patina-specific). Adopt `wasi:http` and `wasi:filesystem` now; ship `patina:log` and `patina:state` as WASI-shaped shims until stable adoption. Add `patina:connect` as credential-security bridge. Move domain logic from toys to children and SDK libraries. Align with Cloudflare Workers binding model for capability grants.
 
 ## Problem
 
@@ -435,7 +435,7 @@ Each phase has explicit entry conditions and exit proofs. **A phase cannot start
 | Phase | Entry Condition | Exit Proof |
 |-------|----------------|------------|
 | 0 | Spec is active | Protocol lock complete: connect/http interaction, store routing semantics, scope coexistence, and WASI fit matrix are documented and frozen. |
-| 1 | Phase 0 exit proof passes | 10 new `.wit` files exist (4 WASI + 1 connect + 5 Patina), compile with wit-bindgen. Old WIT untouched. |
+| 1 | Phase 0 exit proof passes | 10 new `.wit` files exist (4 WASI-aligned: 2 `wasi:*` adopted + 2 `patina:*` WASI-shaped shims, plus 1 connect + 5 Patina-specific), compile with wit-bindgen. Old WIT untouched. |
 | 2 | Phase 1 exit proof passes | Compat adapters route old toy calls through new interfaces. Full test suite passes. Golden fixture comparison shows identical output for all existing children. |
 | 3 | Phases 0 and 1 exit proofs pass | New `child.toml` syntax parses. Old `child.toml` syntax still parses via compat. `patina child list` shows correct toy grants for both formats. |
 | 4 | Phases 0 and 1 exit proofs pass | New toy hosts handle basic calls from a test child built against new WIT. Old toy hosts still serve old children unchanged. `cargo test -q` passes. |
@@ -559,7 +559,7 @@ This is a large breaking change. It touches every layer between WIT and child co
 ### What breaks
 
 **WIT layer — full rewrite:**
-- 22 toy `.wit` files replaced by 10 new interface designs (4 WASI + 1 connect + 5 Patina — not renames, new function signatures)
+- 22 toy `.wit` files replaced by 10 new interface designs (4 WASI-aligned: 2 adopted + 2 shimmed with sunset, plus 1 connect + 5 Patina-specific — not renames, new function signatures)
 - `wit/worlds/` — every composed world regenerated for collapsed toy set
 - All SDK `build.rs` files — different WIT sources to bind against
 
