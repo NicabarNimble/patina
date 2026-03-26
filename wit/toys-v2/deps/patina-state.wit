@@ -1,4 +1,4 @@
-package patina:host-v2@0.1.0;
+package patina:state@0.1.0;
 
 interface state {
     get: func(key: string) -> option<string>;

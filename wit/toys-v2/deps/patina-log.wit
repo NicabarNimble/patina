@@ -1,4 +1,4 @@
-package patina:host-v2@0.1.0;
+package patina:log@0.1.0;
 
 interface log {
     enum level {

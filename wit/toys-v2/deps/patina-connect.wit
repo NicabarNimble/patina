@@ -1,4 +1,4 @@
-package patina:host-v2@0.1.0;
+package patina:connect@0.1.0;
 
 interface connect {
     record header {

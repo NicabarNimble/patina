@@ -3,7 +3,7 @@
 This directory is the add-only Phase 1 contract lane for toy collapse.
 
 - `wasi:http/outgoing-handler` and `wasi:filesystem/types` are imported directly in `toybox.wit` to lock explicit WASI adoption targets.
-- `patina:host-v2` owns the non-WASI interfaces (`connect`, `log`, `state`, `store`, `events`, `task`, `peer`, `git`).
+- Each Patina toy is modeled as its own package (`patina:connect`, `patina:store`, `patina:events`, `patina:task`, `patina:peer`, `patina:git`, `patina:log`, `patina:state`) to preserve proposal-ready identity.
 
 Notes:
 
