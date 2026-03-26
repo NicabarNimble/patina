@@ -1,33 +1,33 @@
 ---
 type: refactor
 id: workspace-layout-consolidation
-status: draft
+status: ready
 created: 2026-03-25
 sessions:
   origin: 20260325-150227-161735000
 related:
-  - Cargo.toml
-  - plugins/
-  - children/
-  - wit/mother-child/
-  - scripts/
-  - resources/scripts/
+- Cargo.toml
+- plugins/
+- children/
+- wit/mother-child/
+- scripts/
+- resources/scripts/
 exit_criteria:
-  - id: wlc1-plugins-removed
-    text: "`plugins/` directory deleted entirely — zero files on disk. `children/` is the sole home for in-tree WASM children."
-    checked: false
-  - id: wlc2-workspace-clean
-    text: "Cargo.toml workspace members reference only `children/*`, `crates/*`, `sdk/*`, `mother` — no `plugins/*` entries."
-    checked: false
-  - id: wlc3-dead-wit-removed
-    text: "`wit/mother-child/` deleted. All tooling/script references (`resources/git/pre-push-checks.sh` world loop, WIT mirror checks) updated or removed. No WIT world references a deleted runtime path."
-    checked: false
-  - id: wlc4-scripts-unified
-    text: "One script location exists (`resources/scripts/` or `scripts/`, not both). All references updated."
-    checked: false
-  - id: wlc5-builds-pass
-    text: "`cargo check --workspace`, `cargo test -q`, and `check-plugin-vocab-guard.sh` all pass."
-    checked: false
+- id: wlc1-plugins-removed
+  text: '`plugins/` directory deleted entirely — zero files on disk. `children/` is the sole home for in-tree WASM children.'
+  checked: false
+- id: wlc2-workspace-clean
+  text: Cargo.toml workspace members reference only `children/*`, `crates/*`, `sdk/*`, `mother` — no `plugins/*` entries.
+  checked: false
+- id: wlc3-dead-wit-removed
+  text: '`wit/mother-child/` deleted. All tooling/script references (`resources/git/pre-push-checks.sh` world loop, WIT mirror checks) updated or removed. No WIT world references a deleted runtime path.'
+  checked: false
+- id: wlc4-scripts-unified
+  text: One script location exists (`resources/scripts/` or `scripts/`, not both). All references updated.
+  checked: false
+- id: wlc5-builds-pass
+  text: '`cargo check --workspace`, `cargo test -q`, and `check-plugin-vocab-guard.sh` all pass.'
+  checked: false
 ---
 # refactor: Consolidate workspace layout after architecture retirement
 
@@ -46,6 +46,10 @@ This creates confusion about what's live vs. dead and where new work should go.
 ## Goal
 
 Make the workspace directory tree honest: every directory that exists should contain live, referenced code. Remove dead paths. Unify duplicates.
+
+## Status
+
+Draft. Truth audit complete for doctor execution path, orphan plugin directories, `wit/mother-child` tooling references, and script-location split. Ready to promote to active for execution.
 
 ## Non-Goals
 
@@ -94,7 +98,7 @@ Three independent deletions plus one merge:
 
 1. **Delete `plugins/` entirely.** `plugins/doctor` is an orphan WASM command child — real code but not in the execution path (users get native `doctor_runtime`). `children/doctor` is a separate knowledge-child stub, NOT a duplicate. Neither depends on `plugins/doctor`. Remove `plugins/doctor` from Cargo.toml workspace members. Delete the entire `plugins/` tree. Clean up stale references (e.g., `src/child/internal/tests.rs:1342` mentions `-p patina-ai-extension-doctor`).
 
-2. **Delete `wit/mother-child/`.** Verify nothing references it (no Cargo.toml deps, no imports). Delete.
+2. **Delete `wit/mother-child/`.** Verify no remaining references across runtime, Cargo/deps, imports, and tooling/scripts (including pre-push mirror checks), then delete.
 
 3. **Unify scripts.** Determine which location (`scripts/` or `resources/scripts/`) should be canonical. Move any unique scripts from the other. Delete the empty one. Update any references (Cargo.toml, CI, docs).
 
