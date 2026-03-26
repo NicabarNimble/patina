@@ -25,10 +25,10 @@ exit_criteria:
     text: "Phase 0 protocol lock is complete before Phase 1 coding: connect/http interaction model, store routing model, scope model, and WASI fitness matrix are all frozen with explicit proofs."
     checked: true
   - id: tca1-toy-count
-    text: "10 toy WIT interfaces exist: 4 WASI standard (wasi:http, wasi:filesystem, wasi:logging, wasi:keyvalue), 1 Patina bridge (patina:connect), 5 Patina-specific (patina:store, patina:events, patina:task, patina:peer, patina:git). All old toy .wit files are deleted."
+    text: "10 toy WIT interfaces exist: 2 WASI adopted (wasi:http, wasi:filesystem), 2 WASI-aligned Patina shims (patina:log, patina:state), 1 Patina bridge (patina:connect), 5 Patina-specific (patina:store, patina:events, patina:task, patina:peer, patina:git). All old toy .wit files are deleted."
     checked: false
   - id: tca2-wasi-adopted
-    text: "http, fs, log, state use actual `wasi:*` package interfaces — not Patina reimplementations of the same thing."
+    text: "http and fs use actual `wasi:*` package interfaces. log and state use `patina:*` shims that track WASI shapes with documented sunset condition for migration when WASI reaches Phase 4 standardized."
     checked: false
   - id: tca3-connect-bridge
     text: "`patina:connect` exists with opaque `connection` resource type. Children resolve named connections to handles. Credentials are injected host-side when handles are used with WASI toys. Credentials never enter WASM memory."
@@ -70,7 +70,9 @@ Patina has 22 toy WIT interfaces. Many are not true primitives — they're domai
 
 This violates the toy litmus test: "Why can't the child do this itself from pure WASM compute?" A child CAN construct GitHub API requests, format DuckDB SQL, and serialize belief queries — it just needs host-provided capabilities to reach the network, storage, and event bus. The domain knowledge belongs in the child, not the host.
 
-Cloudflare Workers validates this architecture: they run the world's largest edge compute platform with ~8 primitive binding types (KV, R2, D1, Queues, Service Bindings, Durable Objects, fetch, Secrets). There is no "GitHub binding" — you use `fetch()` with secrets.
+Beyond bloat, the 22 custom toys represent a missed opportunity: WASI already defines standard interfaces for HTTP, filesystem, key-value, and logging. We were reinventing these rather than adopting them. This prevents Patina from participating in the WASI ecosystem — children can't be portable, we can't benefit from ecosystem tooling, and our Patina-specific extensions (where they're genuinely needed) are harder to distinguish from unnecessary custom work.
+
+Cloudflare Workers validates this architecture: they run the world's largest edge compute platform with ~8 primitive binding types (KV, R2, D1, Queues, Service Bindings, Durable Objects, fetch, Secrets). There is no "GitHub binding" — you use `fetch()` with secrets. Their design model — manifest-declared bindings, capability grants, zero-access default, sealed binding set at init — is the same model Mother uses. Aligning with it keeps our toy surface honest.
 
 WASI validates it independently: `wasi:http`, `wasi:filesystem`, `wasi:keyvalue`, `wasi:logging` are generic primitives. There is no `wasi:github`.
 
@@ -116,7 +118,13 @@ Comparing with Cloudflare Workers revealed almost 1:1 mapping: our toybox = thei
 
 ## Goal
 
-10 toys in 3 layers: 4 adopt actual WASI interfaces (http, fs, log, state), 1 Patina bridge (`patina:connect` for credential-handle security), 5 Patina-specific (store, events, task, peer, git — designed clean enough to propose upstream). Domain logic moves from toys to children and SDK helper libraries. The SDK simplifies from 4 crates to 1.
+Collapse 22 toys to 10 primitives by embracing WASI where WASI exists and expanding where Patina's data-mover children need capabilities the ecosystem doesn't offer:
+
+- **Embrace WASI as-is**: Adopt `wasi:http` and `wasi:filesystem` directly. Build Patina shims for `wasi:keyvalue` and `wasi:logging` that track WASI shapes and migrate mechanically when stable.
+- **Expand with purpose**: `patina:connect` (credential-safe connection bridge), `patina:store`, `patina:events`, `patina:task`, `patina:peer`, `patina:git` — honest extensions born from real use, designed clean enough to propose upstream.
+- **Align with Cloudflare's design model**: Manifest-declared bindings, capability grants, zero-access default, sealed toybox at init. Keeps the toy surface honest about what's primitive.
+
+Domain logic moves from toys to children and SDK helper libraries. The SDK simplifies from 4 crates to 1. The toybox — Mother's sealed capability grant assembled from `child.toml` — becomes the explicit architectural centerpiece: the security contract, the audit surface, the portability boundary.
 
 ## Non-Goals
 
@@ -173,72 +181,73 @@ No connection concept. Toy names bake in domain assumptions.
 
 ## Target State
 
-### Toy Architecture: WASI plumbing + Patina bridge + Patina-specific
+### Toy Architecture: Embrace WASI + Patina bridge + Expand where needed
 
-The toys split into three layers:
+The toys split into three layers, reflecting the design principle: embrace WASI as WASI is, expand where Patina's system needs it.
 
-**WASI standard toys** — we adopt the standard interface as-is. Portable. Any WASI runtime can satisfy these.
+**WASI-aligned toys** — adopt existing WASI interfaces. Portable across any WASI runtime.
 
-| Toy | Package | Description |
-|-----|---------|-------------|
-| `http` | `wasi:http` | Standard outbound HTTP. Child constructs request, host executes. |
-| `fs` | `wasi:filesystem` | File access within granted paths. Mother scopes paths. |
-| `log` | `wasi:logging` | Structured logging output. |
-| `state` | `wasi:keyvalue` | Key-value persistence for child working memory. |
+| Toy | Package (Phase 1) | Target Package | Description |
+|-----|-------------------|----------------|-------------|
+| `http` | `wasi:http` | `wasi:http` | Adopt now. Standard outbound HTTP. Child constructs request, host executes. |
+| `fs` | `wasi:filesystem` | `wasi:filesystem` | Adopt now. File access within granted paths. Mother scopes paths. |
+| `log` | `patina:log` | `wasi:logging` | Shim with sunset. Tracks `wasi:logging` shape. Migrate when WASI Phase 4 + stable Wasmtime support. |
+| `state` | `patina:state` | `wasi:keyvalue` | Shim with sunset. Tracks `wasi:keyvalue` shape. Migrate when WASI Phase 4 + stable Wasmtime support. |
 
-**Patina bridge toy** — the one Patina-specific layer that makes WASI toys safe for a multi-tenant child platform.
-
-| Toy | Package | Description |
-|-----|---------|-------------|
-| `connect` | `patina:connect` | Named connection resolver. Returns opaque resource handle + non-secret metadata (base URL). Mother injects credentials when the handle is used with WASI toys. Credentials never enter WASM memory. |
-
-**Patina-specific toys** — fill gaps WASI doesn't cover yet. Designed to be proposable upstream.
+**Patina bridge toy** — the layer that makes WASI toys safe for a multi-tenant child platform.
 
 | Toy | Package | Description |
 |-----|---------|-------------|
-| `store` | `patina:store` | Structured data query/mutate. Connection-aware via `patina:connect`. |
+| `connect` | `patina:connect` | Named connection resolver with credential-safe request path. Returns opaque resource handle. `connect::request(...)` is the credential-aware HTTP path — Mother injects credentials host-side. Credentials never enter WASM memory. |
+
+**Patina-specific toys** — expand where WASI doesn't cover Patina's needs. Honest extensions born from real use, designed clean enough to propose upstream.
+
+| Toy | Package | Description |
+|-----|---------|-------------|
+| `store` | `patina:store` | Structured data query/mutate. Connection-handle-aware via `patina:connect`. Host routes to backend. |
 | `events` | `patina:events` | Pub/sub with offset tracking and ack. |
 | `task` | `patina:task` | Deferred work scheduling. |
-| `peer` | `patina:peer` | Child-to-child communication via Mother. |
+| `peer` | `patina:peer` | Child-to-child communication via Mother. Like Cloudflare Service Bindings. |
 | `git` | `patina:git` | Version control operations (real host capability). |
 
-**Total: 4 WASI + 1 bridge + 5 Patina-specific = 10 toys.**
+**Total: 4 WASI-aligned (2 adopted, 2 shimmed with sunset) + 1 bridge + 5 Patina-specific = 10 toys.**
 
 ### How `connect` bridges WASI toys to the toybox model
 
-`wasi:http` has no concept of named connections or credential injection. The component specifies raw URLs. `patina:connect` fills that gap:
+`wasi:http` has no concept of named connections or credential injection. The component specifies raw URLs. `patina:connect` fills that gap — it's the credential-safe path that makes WASI primitives usable in a multi-tenant child platform:
 
 ```wit
-// patina:connect — the bridge between named connections and WASI primitives
+// patina:connect — named connection resolver with credential-safe request path
 interface connect {
     resource connection;
     resolve: func(name: string) -> result<connection, string>;
     base-url: func(conn: borrow<connection>) -> string;
+    request: func(
+        conn: borrow<connection>,
+        method: string,
+        path: string,
+        headers: list<tuple<string, string>>,
+        body: option<list<u8>>,
+    ) -> result<http-response, string>;
 }
 ```
 
-The `connection` resource is an opaque host-owned handle. The child holds a reference but cannot inspect its internals (credentials, tokens, rate limits). When the child passes this handle alongside a `wasi:http` request, Mother's host sees the connection resource and injects credentials at dispatch time.
+The `connection` resource is an opaque host-owned handle. The child holds a reference but cannot inspect its internals (credentials, tokens, rate limits). `connect::request(...)` is the credential-aware path: Mother resolves endpoint + policy + secret from the handle, injects credentials host-side, and executes transport through its `wasi:http` host implementation.
 
 Child flow:
 ```rust
-// 1. Resolve named connection → opaque handle + base URL
+// 1. Resolve named connection → opaque handle
 let github = connect::resolve("github")?;
-let base = connect::base_url(&github);
 
-// 2. Make HTTP request with connection handle
-//    Mother sees the handle, injects Authorization header host-side
+// 2. Make credential-safe request via connect
+//    Mother injects Authorization header host-side
 //    Child never sees the PAT
-let response = http::handle(&github, &HttpRequest {
-    method: "GET",
-    url: format!("{}/repos/owner/name", base),
-    headers: vec![],  // NO auth header
-    body: None,
-})?;
+let response = connect::request(&github, "GET", "/repos/owner/name", &[], None)?;
 ```
 
-A child that wants raw `wasi:http` without connections can use it directly — it just constructs URLs itself with no credential injection. The `connect` toy is opt-in.
+Raw `wasi:http` is available only as an explicit opt-in (`http.raw = true` in `child.toml`) and never participates in credential injection. The secure path (`connect::request`) is the default; the open path (raw `wasi:http`) is the exception.
 
-The same pattern works for `patina:store`: the child resolves a connection ("ducklake"), gets an opaque handle, and uses it with store operations. Mother resolves the backing database and credentials.
+The same pattern works for `patina:store`: the child resolves a connection ("ducklake"), gets an opaque handle, and passes it to `store::query(conn, ...)` or `store::mutate(conn, ...)`. Mother routes to the correct backend from connection metadata.
 
 ### SDK Structure (1 crate)
 
@@ -681,18 +690,18 @@ These are not optional add-ons. They're the reason Mother mediates instead of pa
 
 In the WIT `package` declaration per toy file. **WASI toys are adopted directly — not Patina reimplementations.** `patina:connect` is the bridge that adds credential security on top.
 
-| Toy | Package | Layer | Status |
-|-----|---------|-------|--------|
-| http | `wasi:http` | WASI standard | Adopt directly |
-| fs | `wasi:filesystem` | WASI standard | Adopt directly |
-| log | `wasi:logging` | WASI standard | Adopt when stable (may start as `patina:log`) |
-| state | `wasi:keyvalue` | WASI standard | Adopt when stable (may start as `patina:state`) |
-| connect | `patina:connect` | Patina bridge | Our credential-security layer over WASI primitives |
-| store | `patina:store` | Patina-specific | Candidate for future `wasi:store` proposal |
-| events | `patina:events` | Patina-specific | Candidate for future `wasi:events` proposal |
-| task | `patina:task` | Patina-specific | Candidate for future `wasi:task` proposal |
-| peer | `patina:peer` | Patina-specific | No WASI equivalent |
-| git | `patina:git` | Patina-specific | No WASI equivalent |
+| Toy | Phase 1 Package | Target Package | Layer | Status |
+|-----|----------------|----------------|-------|--------|
+| http | `wasi:http` | `wasi:http` | WASI adopted | Embrace as-is |
+| fs | `wasi:filesystem` | `wasi:filesystem` | WASI adopted | Embrace as-is |
+| log | `patina:log` | `wasi:logging` | WASI shimmed | Patina shim tracking WASI shape; migrate when stable |
+| state | `patina:state` | `wasi:keyvalue` | WASI shimmed | Patina shim tracking WASI shape; migrate when stable |
+| connect | `patina:connect` | `patina:connect` | Patina bridge | Credential-security layer over WASI primitives |
+| store | `patina:store` | `patina:store` | Patina expansion | Expand where WASI has gaps; candidate for future proposal |
+| events | `patina:events` | `patina:events` | Patina expansion | Expand where WASI has gaps; candidate for future proposal |
+| task | `patina:task` | `patina:task` | Patina expansion | Expand where WASI has gaps; candidate for future proposal |
+| peer | `patina:peer` | `patina:peer` | Patina expansion | No WASI equivalent |
+| git | `patina:git` | `patina:git` | Patina expansion | No WASI equivalent |
 
 SDK feature flags don't change per package — `toy-http` is `toy-http` regardless of whether the WIT says `wasi:http` or `patina:http`.
 
@@ -702,12 +711,13 @@ SDK feature flags don't change per package — `toy-http` is `toy-http` regardle
 2. **Mother's mediation contract** — credentials host-side, every call mediated, connections are opaque handles. Like the Workers runtime.
 3. **Peer calls** — child-to-child without crossing capability boundaries. Like Service Bindings.
 
-### Portability path
+### Portability: enabled, not required
 
-If our toys align with WASI shapes:
-- A Patina child could theoretically run on Cloudflare's runtime (their bindings satisfy our toy imports: KV→state, D1→store, Queues→events, fetch→http)
-- A Cloudflare Worker could theoretically run under Mother (our toy host satisfies their WASI imports)
-- This is the component model's portability promise. We don't build for it explicitly — we just don't block it by keeping clean interfaces.
+Not all children should be portable. Most children will be Patina-native — using `store`, `events`, `task`, `peer`, `git`, toys that have no Cloudflare equivalent. That's the whole point of the Patina-specific toys.
+
+But because the primitive layer embraces WASI and the design model aligns with Cloudflare's binding approach, you *can* build a child that only uses the portable subset (`http`, `log`, `state`, `fs`) and that child *will* run as a Cloudflare Worker with an adapter layer. The architecture enables this capability without requiring it.
+
+The `cloudflare-worker-child` spec (blocked on this spec) will prove this: one WASM component, same code, running under both Mother and Cloudflare. If it works, the toy abstraction is correct and the portable/Patina-specific boundary is drawn in the right place. If it doesn't, we learn where the abstraction leaks.
 
 ## Locked Vocabulary
 
@@ -715,8 +725,8 @@ Five terms. Everything else is absorbed or retired.
 
 | Term | What it means | Maps to (Cloudflare) | Maps to (WASI) |
 |------|--------------|---------------------|----------------|
-| **Toy** | Anything Mother provides to a child. Primitive capability, configured handle, resource. | Binding | Import |
-| **Toybox** | The sealed capability grant Mother assembles at init. The complete contract. | `env` object | Component's import set |
+| **Toy** | A primitive capability Mother grants. A door in the WASM sandbox wall. 10 total: 4 WASI-aligned (2 adopted, 2 shimmed), 1 bridge, 5 Patina-specific. | Binding | Import |
+| **Toybox** | The sealed capability payload Mother assembles for a child at init. Not just a list of toy names — resolved connection handles with credentials, endpoints, scopes, rate limits, and policy attached. The toybox IS the security contract, the audit surface, and the portability boundary. | `env` object | Component's import set |
 | **Kind** | Child lifecycle shape. How Mother manages you. | Worker type | World |
 | **Child** | WASM worker with bounded agency. | Worker | Component |
 | **Mother** | Orchestrator. Builds toyboxes, mediates calls, holds credentials. | Workers Runtime | Host |
@@ -748,3 +758,4 @@ Phase 0 is complete (protocol lock + feasibility snapshot captured). Phase 1 (WI
 
 - **`wit-contract-single-source`** — **abandoned**. Absorbed by this spec. When we write 10 new WIT files, we do them right from the start (single source, no copies). Archived at `66ab254f`.
 - **`greenfield-crate-extraction`** — **blocked on this spec**. The engine crate's toy host shape depends on the collapsed toy interfaces. Blocker updated from `wit-contract-single-source` to `toy-collapse-wasi-alignment`.
+- **`cloudflare-worker-child`** — **blocked on this spec**. Proves the toy collapse drew the right lines: one WASM component, same code, running under both Mother and Cloudflare Workers. The portable subset (`http`, `log`, `state`, `fs`) only exists after collapse. This is the validation that the architecture enables portable children without requiring all children to be portable.

@@ -2,11 +2,17 @@
 
 ## Why This Design
 
-Patina independently arrived at capability-based security — the same architecture behind Cloudflare Workers, Deno permissions, WASI, and browser sandboxes. But we baked domain logic into our toy interfaces (github API shapes, DuckDB operations, session lifecycle), creating 22 toys where 10 primitives (in 3 layers) suffice.
+Patina independently arrived at capability-based security — the same architecture behind Cloudflare Workers, Deno permissions, WASI, and browser sandboxes. But we baked domain logic into our toy interfaces (github API shapes, DuckDB operations, session lifecycle), creating 22 toys where 10 primitives (in 3 layers) suffice. We were reinventing wheels — writing custom HTTP, filesystem, logging, and key-value interfaces when WASI already defines these as standard. And we were encoding domain knowledge into host infrastructure where it belongs in children and SDK libraries.
 
-The collapse aligns us with WASI standards where they exist, positions our Patina-specific interfaces (store, events, task) as potential WASI contributions, and simplifies everything downstream: fewer WIT files, one SDK crate, simpler toy host, cleaner security model.
+The collapse has three strategic goals:
 
-The Cloudflare Workers binding model validates the approach at scale: ~8 primitive binding types serve millions of Workers across every domain. Domain specificity belongs in the Worker (child), not the binding (toy).
+1. **Embrace WASI as WASI is.** Adopt existing WASI interfaces where they fit — don't reimplement `http` or `filesystem` when the ecosystem already has them. Where WASI interfaces aren't yet stable (`keyvalue`, `logging`), build Patina shims that track WASI shapes so migration is mechanical when stability arrives.
+
+2. **Expand where Patina's system needs it.** `patina:connect` (credential-safe connection resolution), `patina:store` (structured data with host-routed backends), `patina:events` (pub/sub with offset tracking), `patina:task` (deferred work scheduling), `patina:peer` (child-to-child communication), `patina:git` (version control operations) — these exist because real-world data-mover children need capabilities WASI doesn't offer. They're honest extensions born from implementation experience, not speculation. If they prove valuable, they're natural candidates for WASI proposals.
+
+3. **Align with Cloudflare's proven design model.** Cloudflare Workers validates the binding/capability-grant architecture at scale: ~8 primitive binding types serve millions of Workers across every domain. Their bindings = our toybox. Their `wrangler.toml` = our `child.toml`. Domain specificity belongs in the Worker (child), not the binding (toy). Aligning with their model keeps our toy surface honest about what's actually a primitive.
+
+This alignment also enables — but does not require — building children that run on both Mother and Cloudflare Workers. Most children will be Patina-native, using Patina-specific toys like `store`, `events`, and `git`. But children built against only the portable subset (`http`, `log`, `state`, `fs`) can run under any WASI-compatible runtime. The `cloudflare-worker-child` spec will prove this capability exists; it's not a universal requirement for all children.
 
 ## Discovery Chain
 
@@ -54,25 +60,29 @@ WASI adoption lock from Phase 0:
 
 | Term | Definition |
 |------|-----------|
-| **Toy** | A primitive capability Mother grants. A door in the WASM sandbox wall. 10 in this spec (4 WASI + 1 bridge + 5 Patina-specific). Defined as WIT interfaces. |
-| **Toybox** | The sealed capability payload Mother assembles for a child at init. Contains granted toys + resolved connections. The capability contract. |
+| **Toy** | A primitive capability Mother grants. A door in the WASM sandbox wall. 10 in this spec: 2 WASI adopted now (`http`, `fs`), 2 WASI-aligned Patina shims with sunset (`log`, `state` — migrate to `wasi:*` when stable), 1 Patina bridge (`connect`), 5 Patina-specific (`store`, `events`, `task`, `peer`, `git`). Defined as WIT interfaces. |
+| **Toybox** | The sealed capability payload Mother assembles for a child at init — the architectural centerpiece. Not just a list of toy names: resolved connection handles with credentials, endpoints, scopes, rate limits, and policy attached. Mother builds it from `child.toml`, the child receives opaque handles, and the credentials live exclusively in Mother's secret store. The toybox IS the security contract. |
 | **Kind** | The child's runtime lifecycle shape: knowledge-child, command, pipeline, task. Determines how Mother manages the child. Not related to toys. |
 | **Connection** | A named binding in `child.toml`. The child says a name ("github"), Mother resolves it to toy + credential + endpoint + config. Like a Cloudflare Workers binding in `wrangler.toml`. |
 | **World** | WIT implementation detail only. The composed set of imports/exports for wit-bindgen. Derived from kind + toybox. Child authors never use this word. |
 
 ## The 10 Toys (3 layers)
 
-### Layer 1: WASI Standard (adopt directly)
+### Layer 1: WASI-Aligned (embrace WASI as WASI is)
 
-**http** — `wasi:http/outgoing-handler`. Standard outbound HTTP. The component constructs requests with scheme, authority, path. The host executes. No connection concept at this layer.
+**Adopt now** (stable, proven in Wasmtime):
+
+**http** — `wasi:http/outgoing-handler`. Standard outbound HTTP. The component constructs requests with scheme, authority, path. The host executes. No connection concept at this layer — that's Layer 2's job.
 
 **fs** — `wasi:filesystem`. File access. Mother scopes paths — a child can only access directories it's granted.
 
-**log** — `wasi:logging`. Structured logging output. (Adopt when stable; may start as `patina:log`.)
+**Shim with sunset** (WASI interface exists but not yet stable in our runtime workflow — start as Patina shims that track the WASI shape, migrate mechanically when WASI reaches Phase 4 standardized + Wasmtime ships stable support):
 
-**state** — `wasi:keyvalue`. Key-value persistence. Child's working memory. (Adopt when stable; may start as `patina:state`.)
+**log** — `patina:log` initially, tracking `wasi:logging` shape. Structured logging output.
 
-These are portable. Any WASI runtime can satisfy them.
+**state** — `patina:state` initially, tracking `wasi:keyvalue` shape. Key-value persistence. Child's working memory.
+
+All four are designed for portability. Any WASI runtime can eventually satisfy them. The shims exist because we embrace WASI as-is rather than force-adopting interfaces that aren't ready.
 
 ### Layer 2: Patina Bridge (`patina:connect`)
 
