@@ -42,42 +42,45 @@ The long road through 5 greenfield specs, vocabulary retirement, layout consolid
 | **Connection** | A named binding in `child.toml`. The child says a name ("github"), Mother resolves it to toy + credential + endpoint + config. Like a Cloudflare Workers binding in `wrangler.toml`. |
 | **World** | WIT implementation detail only. The composed set of imports/exports for wit-bindgen. Derived from kind + toybox. Child authors never use this word. |
 
-## The 8 Toys
+## The 10 Toys (3 layers)
 
-### WASI-Aligned (adopt standard interface shapes)
+### Layer 1: WASI Standard (adopt directly)
 
-**http** — Outbound HTTP requests. Mirrors `wasi:http/outgoing-handler`.
+**http** — `wasi:http/outgoing-handler`. Standard outbound HTTP. The component constructs requests with scheme, authority, path. The host executes. No connection concept at this layer.
+
+**fs** — `wasi:filesystem`. File access. Mother scopes paths — a child can only access directories it's granted.
+
+**log** — `wasi:logging`. Structured logging output. (Adopt when stable; may start as `patina:log`.)
+
+**state** — `wasi:keyvalue`. Key-value persistence. Child's working memory. (Adopt when stable; may start as `patina:state`.)
+
+These are portable. Any WASI runtime can satisfy them.
+
+### Layer 2: Patina Bridge (`patina:connect`)
+
+This is the key innovation — the layer that makes WASI toys safe for a multi-tenant child platform.
 
 ```wit
-interface http {
-    record request {
-        method: string,
-        url: string,
-        headers: list<tuple<string, string>>,
-        body: option<string>,
-    }
-    record response {
-        status: u16,
-        headers: list<tuple<string, string>>,
-        body: string,
-    }
-    request: func(connection: string, req: request) -> result<response, string>;
+// patina:connect — named connection resolver with opaque credential handles
+interface connect {
+    resource connection;
+    resolve: func(name: string) -> result<connection, string>;
+    base-url: func(conn: borrow<connection>) -> string;
 }
 ```
 
-The `connection` parameter is the key innovation over raw WASI and is **stronger than Cloudflare's model.**
+The `connection` resource is an opaque host-owned handle. The child holds a reference but cannot inspect its internals. When the child uses this handle with `wasi:http`, Mother's host sees the connection resource and injects credentials at dispatch time.
 
-Cloudflare Workers see secret values as strings (`env.GITHUB_TOKEN`). A Worker constructs its own auth headers. A malicious Worker can exfiltrate the token.
+**This is stronger than Cloudflare's model.** Cloudflare Workers see secret values as strings (`env.GITHUB_TOKEN`). A Worker constructs its own auth headers. A malicious Worker can exfiltrate the token.
 
 In Patina, the credential never enters WASM memory:
-1. Child calls `http::request("github", { url: "/repos", headers: [], ... })` — no auth header, no token.
-2. Mother resolves "github" → `https://api.github.com` + `Authorization: Bearer <pat>`.
-3. Mother injects the header host-side, makes the call, returns the response.
-4. The child gets data back. The PAT never crossed the WASM wall.
+1. Child calls `connect::resolve("github")` → gets opaque handle + base URL (not secret).
+2. Child calls `wasi:http` with the connection handle attached — no auth headers in the request.
+3. Mother's host sees the handle, injects `Authorization: Bearer <pat>` host-side.
+4. Mother makes the HTTP call, returns response to child.
+5. The PAT never crossed the WASM wall.
 
-A compromised child can USE the connection (within granted scope) but cannot STEAL the credential. This is the core security property of connection-name handles.
-
-The same pattern applies to `store`: the child says `store::query("ducklake", sql)`. Mother resolves "ducklake" to a database path and credentials. The child never knows the file path or has direct DB access.
+A compromised child can USE the connection (within granted scope) but cannot STEAL the credential.
 
 **This shapes the toybox.** The toybox isn't just a list of toy names — it's a resolved set of connection handles with credentials, endpoints, and policy attached. Mother builds it at init from `child.toml`. The child receives opaque handles. The credentials live exclusively in Mother's secret store.
 
