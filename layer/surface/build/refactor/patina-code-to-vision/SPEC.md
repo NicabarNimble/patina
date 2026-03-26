@@ -41,7 +41,7 @@ exit_criteria:
     text: toy-layer-fs and toy-git WIT interfaces exist with Mother host implementations
     checked: true
   - id: CV11-CARRY
-    text: This spec records intentional residual seams and non-forced-closure policy; seam closure execution is owned by `patina-code-to-vision-seam-closure`
+    text: This spec records intentional residual seams and non-forced-closure policy; CV11 seam exploration is owned by `scrape-strategy-seam-exploration`
     checked: true
   - id: CV12
     text: '"patina spec list" without Mother returns clear "spec-manager not available" error'
@@ -267,8 +267,10 @@ Evidence format rules for this table:
 
 ### Intentional Residual Seams (split decision)
 
-CV1/CV2/CV11 remain intentionally partial in this implementation lane and are split into
+CV1/CV2 remain intentionally partial in this implementation lane and are split into
 `patina-code-to-vision-seam-closure` with original criterion text preserved verbatim.
+
+CV11 is split into `scrape-strategy-seam-exploration` as a dedicated seam/parity exploration lane.
 
 Split policy for this spec:
 
