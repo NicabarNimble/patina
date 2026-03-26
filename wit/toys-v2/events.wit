@@ -1,0 +1,15 @@
+package patina:host-v2@0.1.0;
+
+interface events {
+    record event {
+        stream-name: string,
+        offset: u64,
+        event-type: string,
+        payload: string,
+        occurred-at: string,
+    }
+
+    publish: func(stream-name: string, event-type: string, payload: string) -> result<u64, string>;
+    subscribe: func(stream-name: string, after: option<u64>, limit: u32) -> result<list<event>, string>;
+    ack: func(stream-name: string, offset: u64) -> result<_, string>;
+}

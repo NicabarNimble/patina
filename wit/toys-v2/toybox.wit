@@ -1,0 +1,14 @@
+package patina:host-v2@0.1.0;
+
+world toybox {
+    import wasi:http/outgoing-handler@0.2.6;
+    import wasi:filesystem/types@0.2.6;
+    import log;
+    import state;
+    import connect;
+    import store;
+    import events;
+    import task;
+    import peer;
+    import git;
+}
