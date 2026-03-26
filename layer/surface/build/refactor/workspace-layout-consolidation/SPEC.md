@@ -54,6 +54,7 @@ Make the workspace directory tree honest: every directory that exists should con
 - Do NOT restructure `layer/` — the knowledge layer has its own conventions.
 - Do NOT extract children to separate repos yet — that's a future effort. `children/` stays in-tree.
 - Do NOT rename identifiers (e.g., `plugin_name` → `child_name`) — that's deferred from PVR.
+- Do NOT unify doctor into a single WASM-canonical form — that's a separate feature spec. Doctor currently runs via native `doctor_runtime`, not WASM.
 
 ## Current State
 
@@ -61,7 +62,9 @@ Make the workspace directory tree honest: every directory that exists should con
 patina/
 ├── children/           # 7 active WASM children (canonical, in workspace)
 ├── plugins/            # 6 dirs: 1 workspace member, 3 husks, 2 dead
-│   ├── doctor/         # workspace member (duplicate of children/doctor)
+│   ├── doctor/         # workspace member — ORPHAN: real WASM command child (380 lines)
+│   │                   #   but NOT in execution path. Users get native doctor_runtime.
+│   │                   #   children/doctor is a separate knowledge-child stub.
 │   ├── belief-verifier/ # empty husk (just src/)
 │   ├── ducklake/       # empty husk (just src/)
 │   ├── models/         # dead (src/ + dangling wit symlink)
@@ -89,7 +92,7 @@ patina/
 
 Three independent deletions plus one merge:
 
-1. **Delete `plugins/` entirely.** Verify `plugins/doctor` is redundant with `children/doctor` (same crate, same source). Remove `plugins/doctor` from workspace members in Cargo.toml. Delete the directory tree.
+1. **Delete `plugins/` entirely.** `plugins/doctor` is an orphan WASM command child — real code but not in the execution path (users get native `doctor_runtime`). `children/doctor` is a separate knowledge-child stub, NOT a duplicate. Neither depends on `plugins/doctor`. Remove `plugins/doctor` from Cargo.toml workspace members. Delete the entire `plugins/` tree. Clean up stale references (e.g., `src/child/internal/tests.rs:1342` mentions `-p patina-ai-extension-doctor`).
 
 2. **Delete `wit/mother-child/`.** Verify nothing references it (no Cargo.toml deps, no imports). Delete.
 
@@ -109,7 +112,8 @@ Gate-free — these are independent deletions. Can be done in 1-3 commits. Sugge
 
 - `children/` is the canonical home for in-tree WASM children (established by vocabulary-alignment and PVR specs).
 - Children will eventually move to their own repos; `children/` makes that migration path obvious.
-- `plugins/doctor` as a workspace member must be verified redundant with `children/doctor` before deletion.
+- `plugins/doctor` is orphan code: real WASM command child logic (~380 lines) but never wired into the execution path. Users run native `doctor_runtime`. Safe to delete — recoverable from git history. Doctor WASM unification is a separate future spec.
+- `children/doctor` (knowledge-child stub) stays — it's a different child kind serving a different purpose.
 
 ## Verification
 

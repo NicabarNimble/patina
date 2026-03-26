@@ -13,10 +13,14 @@ Three deletions, one merge, one Cargo.toml edit. Low risk, high clarity gain.
 - `children/` is canonical (not `plugins/`).
 - `resources/scripts/` is the likely canonical script location (already has the guard scripts, grammar scripts, crate-name checks). `scripts/` needs audit to see what's there.
 - `wit/mother-child/` has no consumers after MotherChild trait deletion.
+- `plugins/doctor` is NOT a duplicate of `children/doctor` — they are completely different implementations:
+  - `plugins/doctor`: WASM command child, 380 lines, full health check logic. But **orphan code** — not in execution path. Users get native `doctor_runtime`.
+  - `children/doctor`: WASM knowledge-child stub, 37 lines. Different WIT world, different SDK features.
+  - Safe to delete `plugins/doctor` — recoverable from git. Doctor WASM unification (making doctor run as WASM instead of native) is a separate future spec.
 
 ## Commits
 
-1. `refactor(workspace): remove dead plugins/ directory` — Verify plugins/doctor redundancy with children/doctor. Remove `plugins/doctor` from Cargo.toml workspace members. Delete `plugins/` tree. Update `plugins/README.md` references if any remain elsewhere.
+1. `refactor(workspace): remove plugins/ directory` — Remove `plugins/doctor` from Cargo.toml workspace members. Delete entire `plugins/` tree. Clean stale references: `src/child/internal/tests.rs:1342` mentions `-p patina-ai-extension-doctor`. Check for any other refs to `patina-ai-extension-doctor` crate name or `plugins/` paths in docs.
 
 2. `refactor(wit): remove dead mother-child WIT world` — Delete `wit/mother-child/`. Verify no Cargo.toml or build.rs references.
 
@@ -29,18 +33,25 @@ Three deletions, one merge, one Cargo.toml edit. Low risk, high clarity gain.
 - `wit/mother-child/` — directory deletion
 - `scripts/` — contents audit, then merge or delete
 - `resources/scripts/` — possible destination for merged scripts
+- `src/child/internal/tests.rs:1342` — stale reference to `patina-ai-extension-doctor`
 - `README.md`, `AGENTS.md` — update any directory tree references
 
 ## Pre-Flight Check
 
-Before committing, verify `plugins/doctor` vs `children/doctor`:
+Doctor redundancy is RESOLVED — they are different implementations:
 ```bash
-diff -rq plugins/doctor/src children/doctor/src
-diff plugins/doctor/Cargo.toml children/doctor/Cargo.toml
-diff plugins/doctor/child.toml children/doctor/child.toml
+# Already verified:
+# plugins/doctor = command child (WASM, orphan, not executed)
+# children/doctor = knowledge-child stub (WASM, different world)
+# Native doctor_runtime = what users actually run
+# Conclusion: safe to delete plugins/doctor, no functionality lost
 ```
 
-If they differ, reconcile before deleting. If `children/doctor` is the superset, safe to delete `plugins/doctor`.
+Before committing, grep for stale references:
+```bash
+rg "patina-ai-extension-doctor" src/ tests/ resources/
+rg "plugins/doctor" . --glob '!plugins/**' --glob '!target/**' --glob '!layer/sessions/**'
+```
 
 ## Verification Plan
 
@@ -60,4 +71,3 @@ Ready to execute. No dependencies. No blockers. Can be done in a single session.
 ## Open Questions
 
 - Which script location wins: `scripts/` or `resources/scripts/`? Needs audit of `scripts/` contents.
-- Are there any external tools or CI that reference `plugins/` paths? (Likely not — the workspace already builds without them except `plugins/doctor`.)
