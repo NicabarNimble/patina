@@ -478,31 +478,33 @@ mod bindings {
 
     impl patina::host::connector::Host for HostState {
         fn list_bindings(&mut self) -> Result<Vec<patina::host::connector::RepoBinding>, String> {
-            crate::child::toy_host::connector::ensure_granted(
+            crate::child::toy_host::compat::connector_ensure_granted(
                 self.grants.toys.connector,
                 &self.plugin_name,
             )?;
-            crate::child::toy_host::connector::list_bindings(&self.runtime, &self.plugin_name).map(
-                |items| {
-                    items
-                        .into_iter()
-                        .map(|parsed| patina::host::connector::RepoBinding {
-                            binding_id: parsed.binding_id,
-                            connection: parsed.connection,
-                            owner: parsed.owner,
-                            repo: parsed.repo,
-                            types: parsed.types,
-                        })
-                        .collect()
-                },
+            crate::child::toy_host::compat::connector_list_bindings(
+                &self.runtime,
+                &self.plugin_name,
             )
+            .map(|items| {
+                items
+                    .into_iter()
+                    .map(|parsed| patina::host::connector::RepoBinding {
+                        binding_id: parsed.binding_id,
+                        connection: parsed.connection,
+                        owner: parsed.owner,
+                        repo: parsed.repo,
+                        types: parsed.types,
+                    })
+                    .collect()
+            })
         }
 
         fn upsert_binding(
             &mut self,
             binding: patina::host::connector::RepoBinding,
         ) -> Result<patina::host::connector::RepoBinding, String> {
-            crate::child::toy_host::connector::ensure_granted(
+            crate::child::toy_host::compat::connector_ensure_granted(
                 self.grants.toys.connector,
                 &self.plugin_name,
             )?;
@@ -513,7 +515,7 @@ mod bindings {
                 repo: binding.repo.clone(),
                 types: binding.types.clone(),
             };
-            crate::child::toy_host::connector::upsert_binding(
+            crate::child::toy_host::compat::connector_upsert_binding(
                 &self.runtime,
                 &self.plugin_name,
                 record,
@@ -522,11 +524,11 @@ mod bindings {
         }
 
         fn remove_binding(&mut self, binding_id: String) -> Result<(), String> {
-            crate::child::toy_host::connector::ensure_granted(
+            crate::child::toy_host::compat::connector_ensure_granted(
                 self.grants.toys.connector,
                 &self.plugin_name,
             )?;
-            crate::child::toy_host::connector::remove_binding(
+            crate::child::toy_host::compat::connector_remove_binding(
                 &self.runtime,
                 &self.plugin_name,
                 &binding_id,
@@ -539,24 +541,25 @@ mod bindings {
             data_type: String,
             since: Option<String>,
         ) -> Result<patina::host::connector::SyncResult, String> {
-            crate::child::toy_host::connector::ensure_granted(
+            crate::child::toy_host::compat::connector_ensure_granted(
                 self.grants.toys.connector,
                 &self.plugin_name,
             )?;
 
-            let binding = crate::child::toy_host::connector::load_binding(
+            let binding = crate::child::toy_host::compat::connector_load_binding(
                 &self.runtime,
                 &self.plugin_name,
                 &binding_id,
             )?;
-            crate::child::toy_host::connector::ensure_type_enabled(&binding, &data_type)?;
+            crate::child::toy_host::compat::connector_ensure_type_enabled(&binding, &data_type)?;
 
             let connection = crate::connect::load(&binding.connection)
                 .map_err(|e| format!("connection '{}': {}", binding.connection, e))?;
             let credential =
                 crate::connect::resolve_credential_for_domain(&connection, "api.github.com")?;
 
-            let endpoint = crate::child::toy_host::connector::endpoint_for(&binding, &data_type)?;
+            let endpoint =
+                crate::child::toy_host::compat::connector_endpoint_for(&binding, &data_type)?;
 
             let max_pages = env_usize("PATINA_GITHUB_MAX_PAGES", 500).clamp(1, 5_000) as u32;
             let max_parallel = env_usize("PATINA_GITHUB_MAX_PARALLEL", 4).clamp(1, 16);

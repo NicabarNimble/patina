@@ -1,7 +1,9 @@
 //! Phase 2 compatibility adapters for legacy toy dispatch.
 
 use crate::child::engine::GrantedCapabilities;
+use crate::child::toy_host::connector::ConnectorBindingRecord;
 use crate::child::toy_host::github::{ListParams, Page};
+use crate::mother::KnowledgeRuntimeStore;
 
 /// Legacy ingress `fetch` routed through the HTTP toy helper.
 pub fn ingress_fetch_via_http(
@@ -186,4 +188,54 @@ pub fn session_set_status(status: &str) -> Result<(), String> {
 
 pub fn session_write_handoff(modified_files: &str, summary: &str) -> Result<(), String> {
     crate::child::toy_host::session::write_handoff(modified_files, summary)
+}
+
+/// Legacy connector toy dispatch routed through compatibility layer.
+pub fn connector_ensure_granted(connector_granted: bool, plugin_name: &str) -> Result<(), String> {
+    crate::child::toy_host::connector::ensure_granted(connector_granted, plugin_name)
+}
+
+pub fn connector_list_bindings(
+    runtime: &KnowledgeRuntimeStore,
+    plugin_name: &str,
+) -> Result<Vec<ConnectorBindingRecord>, String> {
+    crate::child::toy_host::connector::list_bindings(runtime, plugin_name)
+}
+
+pub fn connector_upsert_binding(
+    runtime: &KnowledgeRuntimeStore,
+    plugin_name: &str,
+    binding: ConnectorBindingRecord,
+) -> Result<ConnectorBindingRecord, String> {
+    crate::child::toy_host::connector::upsert_binding(runtime, plugin_name, binding)
+}
+
+pub fn connector_remove_binding(
+    runtime: &KnowledgeRuntimeStore,
+    plugin_name: &str,
+    binding_id: &str,
+) -> Result<(), String> {
+    crate::child::toy_host::connector::remove_binding(runtime, plugin_name, binding_id)
+}
+
+pub fn connector_load_binding(
+    runtime: &KnowledgeRuntimeStore,
+    plugin_name: &str,
+    binding_id: &str,
+) -> Result<ConnectorBindingRecord, String> {
+    crate::child::toy_host::connector::load_binding(runtime, plugin_name, binding_id)
+}
+
+pub fn connector_ensure_type_enabled(
+    binding: &ConnectorBindingRecord,
+    data_type: &str,
+) -> Result<(), String> {
+    crate::child::toy_host::connector::ensure_type_enabled(binding, data_type)
+}
+
+pub fn connector_endpoint_for(
+    binding: &ConnectorBindingRecord,
+    data_type: &str,
+) -> Result<String, String> {
+    crate::child::toy_host::connector::endpoint_for(binding, data_type)
 }
