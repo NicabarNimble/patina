@@ -32,11 +32,11 @@ wit_bindgen::generate!({
 
 /// Host logging — call from child code to log through the host.
 pub mod log {
-    pub use super::patina::host::log::LogLevel;
+    pub use super::patina::log::log::Level;
 
     /// Log a message to the host's structured logging.
-    pub fn log(level: LogLevel, message: &str) {
-        super::patina::host::log::log(level, message);
+    pub fn log(level: Level, message: &str) {
+        super::patina::log::log::log(level, message);
     }
 }
 

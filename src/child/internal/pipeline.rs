@@ -39,14 +39,14 @@ mod pipeline_bindings {
         world: "pipeline",
     });
 
-    // patina:host/log — delegates to host_support
-    impl patina::host::log::Host for PipelineHostState {
-        fn log(&mut self, level: patina::host::log::LogLevel, message: String) {
+    // patina:log/log — delegates to host_support
+    impl patina::log::log::Host for PipelineHostState {
+        fn log(&mut self, level: patina::log::log::Level, message: String) {
             let level_str = match level {
-                patina::host::log::LogLevel::Debug => "DEBUG",
-                patina::host::log::LogLevel::Info => "INFO",
-                patina::host::log::LogLevel::Warn => "WARN",
-                patina::host::log::LogLevel::Error => "ERROR",
+                patina::log::log::Level::Debug => "DEBUG",
+                patina::log::log::Level::Info => "INFO",
+                patina::log::log::Level::Warn => "WARN",
+                patina::log::log::Level::Error => "ERROR",
             };
             super::super::host_support::log(&self.plugin_name, level_str, &message);
         }

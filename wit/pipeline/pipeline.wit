@@ -7,7 +7,7 @@ package patina:pipeline@0.1.0;
 /// Compile-time isolation per [[separate-worlds-for-isolation]].
 world pipeline {
     /// Import host logging (only capability)
-    import patina:host/log@0.1.0;
+    import patina:log/log@0.1.0;
 
     /// Initialize plugin (host calls first, before any other export)
     export init: func();
