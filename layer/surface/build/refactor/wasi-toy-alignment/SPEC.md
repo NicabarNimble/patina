@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: wasi-toy-alignment
-status: ready
+status: active
 created: 2026-03-27
 sessions:
   origin: 20260327-104954-066673000
