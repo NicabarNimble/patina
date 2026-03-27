@@ -244,7 +244,7 @@ mod bindings {
                 .into_iter()
                 .map(|h| crate::child::toy_host::v2::Header {
                     name: h.name,
-                    value: h.value,
+                    value: String::from_utf8_lossy(&h.value).into_owned(),
                 })
                 .collect::<Vec<_>>();
             let rep = wasmtime::component::Resource::<crate::child::toy_host::v2::ConnectionHandle>::new_borrow(conn.rep());
@@ -264,7 +264,7 @@ mod bindings {
                     .into_iter()
                     .map(|h| patina::connect::connect::Header {
                         name: h.name,
-                        value: h.value,
+                        value: h.value.into_bytes(),
                     })
                     .collect(),
                 body: response.body,

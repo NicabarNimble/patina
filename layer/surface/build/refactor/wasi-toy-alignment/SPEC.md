@@ -34,7 +34,7 @@ exit_criteria:
     checked: true
   - id: wta5-connect-aligned
     text: "`patina:connect` evaluated against already-imported `wasi:http/outgoing-handler`. Decision: merge, layer, or justify separate."
-    checked: false
+    checked: true
   - id: wta6-measure-aligned
     text: "`patina:measure` (not yet in WIT) evaluated against `wasi:observe` proposals. Decision: adopt standard, define delta, or defer."
     checked: false

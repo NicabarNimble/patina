@@ -1,13 +1,15 @@
 package patina:connect@0.1.0;
 
 interface connect {
+    use wasi:http/types@0.2.6.{field-key, field-value, status-code};
+
     record header {
-        name: string,
-        value: string,
+        name: field-key,
+        value: field-value,
     }
 
     record response {
-        status: u16,
+        status: status-code,
         headers: list<header>,
         body: list<u8>,
     }
