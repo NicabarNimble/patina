@@ -276,16 +276,32 @@ pub mod host {
 
     impl LogBackend for GuestHost {
         fn debug(message: &str) {
-            patina::log::log::log(patina::log::log::Level::Debug, message);
+            super::wasi::logging::logging::log(
+                super::wasi::logging::logging::Level::Debug,
+                "",
+                message,
+            );
         }
         fn info(message: &str) {
-            patina::log::log::log(patina::log::log::Level::Info, message);
+            super::wasi::logging::logging::log(
+                super::wasi::logging::logging::Level::Info,
+                "",
+                message,
+            );
         }
         fn warn(message: &str) {
-            patina::log::log::log(patina::log::log::Level::Warn, message);
+            super::wasi::logging::logging::log(
+                super::wasi::logging::logging::Level::Warn,
+                "",
+                message,
+            );
         }
         fn error(message: &str) {
-            patina::log::log::log(patina::log::log::Level::Error, message);
+            super::wasi::logging::logging::log(
+                super::wasi::logging::logging::Level::Error,
+                "",
+                message,
+            );
         }
     }
 

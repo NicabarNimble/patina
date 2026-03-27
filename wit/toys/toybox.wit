@@ -3,7 +3,7 @@ package patina:toybox@0.1.0;
 world toybox {
     import wasi:http/outgoing-handler@0.2.6;
     import wasi:filesystem/types@0.2.6;
-    import patina:log/log@0.1.0;
+    import wasi:logging/logging@0.1.0;
     import patina:state/state@0.1.0;
     import patina:connect/connect@0.1.0;
     import patina:store/store@0.1.0;

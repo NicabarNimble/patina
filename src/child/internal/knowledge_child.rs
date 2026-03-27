@@ -39,15 +39,22 @@ mod bindings {
         world: "knowledge-child",
     });
 
-    impl patina::log::log::Host for HostState {
-        fn log(&mut self, level: patina::log::log::Level, message: String) {
+    impl wasi::logging::logging::Host for HostState {
+        fn log(&mut self, level: wasi::logging::logging::Level, context: String, message: String) {
             let level_str = match level {
-                patina::log::log::Level::Debug => "DEBUG",
-                patina::log::log::Level::Info => "INFO",
-                patina::log::log::Level::Warn => "WARN",
-                patina::log::log::Level::Error => "ERROR",
+                wasi::logging::logging::Level::Trace => "TRACE",
+                wasi::logging::logging::Level::Debug => "DEBUG",
+                wasi::logging::logging::Level::Info => "INFO",
+                wasi::logging::logging::Level::Warn => "WARN",
+                wasi::logging::logging::Level::Error => "ERROR",
+                wasi::logging::logging::Level::Critical => "CRITICAL",
             };
-            crate::child::toy_host::v2::log_emit(&self.plugin_name, level_str, &message);
+            let source = if context.trim().is_empty() {
+                self.plugin_name.clone()
+            } else {
+                format!("{}:{}", self.plugin_name, context)
+            };
+            crate::child::toy_host::v2::log_emit(&source, level_str, &message);
         }
     }
 
@@ -332,7 +339,7 @@ impl KnowledgeChildEngine {
     }
 
     fn link_log(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::log::log::add_to_linker::<
+        bindings::wasi::logging::logging::add_to_linker::<
             HostState,
             wasmtime::component::HasSelf<HostState>,
         >(linker, |s| s)?;
