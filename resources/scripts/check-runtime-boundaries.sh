@@ -24,21 +24,25 @@ for dir in "${required_dirs[@]}"; do
     fi
 done
 
-required_toy_modules=(
-    "src/child/toy_host/lake.rs"
-    "src/child/toy_host/ingress.rs"
-    "src/child/toy_host/connector.rs"
-    "src/child/toy_host/query.rs"
-    "src/child/toy_host/http.rs"
-)
-
 echo "Checking canonical toy module surfaces..."
-for file in "${required_toy_modules[@]}"; do
-    if [[ ! -f "$file" ]]; then
-        echo "error: missing canonical toy module '$file'"
+toy_mod_file="src/child/toy_host/mod.rs"
+if [[ ! -f "$toy_mod_file" ]]; then
+    echo "error: missing toy host module root '$toy_mod_file'"
+    exit 1
+fi
+toy_modules=$(sed -nE 's/^pub mod ([a-zA-Z0-9_]+);$/\1/p' "$toy_mod_file")
+if [[ -z "$toy_modules" ]]; then
+    echo "error: no public toy modules declared in $toy_mod_file"
+    exit 1
+fi
+while IFS= read -r module; do
+    [[ -n "$module" ]] || continue
+    module_file="src/child/toy_host/${module}.rs"
+    if [[ ! -f "$module_file" ]]; then
+        echo "error: missing canonical toy module '$module_file'"
         exit 1
     fi
-done
+done <<< "$toy_modules"
 
 echo "Checking legacy runtime boundary paths are absent..."
 if [[ -f "src/mother/lake_host.rs" ]]; then
