@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-pub use mother_crate::events::{ack_through, list_streams};
+pub use mother_crate::events::ack_through;
 use mother_crate::PendingEvent;
 
 pub fn pull(stream: &str, after_offset: Option<u64>, limit: u32) -> Result<Vec<PendingEvent>> {

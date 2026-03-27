@@ -831,7 +831,7 @@ fn check_capabilities_rejects_unknown_query_kinds() {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: ChildKind::Command,
+        world: ChildKind::KnowledgeChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -872,7 +872,7 @@ fn check_capabilities_accepts_known_query_kinds() {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: ChildKind::Command,
+        world: ChildKind::KnowledgeChild,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -1317,116 +1317,6 @@ fn benchmark_plugin_performance() {
 }
 
 // =====================================================================
-// CommandEngine — doctor.wasm integration tests
-// =====================================================================
-
-fn load_doctor_component() -> Option<(CommandEngine, wasmtime::component::Component)> {
-    let wasm_path =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/patina_doctor.wasm");
-    if !wasm_path.exists() {
-        return None;
-    }
-    let engine = CommandEngine::new().expect("CommandEngine::new() failed");
-    let wasm_bytes = std::fs::read(&wasm_path).expect("failed to read doctor wasm");
-    let component = engine
-        .load_component(&wasm_bytes)
-        .expect("load_component failed");
-    Some((engine, component))
-}
-
-#[test]
-fn command_doctor_name() {
-    let (engine, component) = match load_doctor_component() {
-        Some(ec) => ec,
-        None => {
-            panic!(
-                "test fixture missing: tests/fixtures/patina_doctor.wasm\n\
-                 Build: cargo build --release -p patina-ai-child-doctor --target wasm32-wasip2\n\
-                 Copy: cp target/wasm32-wasip2/release/patina_doctor.wasm tests/fixtures/"
-            );
-        }
-    };
-
-    let name = engine
-        .get_command_name(&component)
-        .expect("get_command_name failed");
-    assert_eq!(name, "doctor");
-}
-
-#[test]
-fn command_doctor_description() {
-    let (engine, component) = match load_doctor_component() {
-        Some(ec) => ec,
-        None => return,
-    };
-
-    let desc = engine
-        .get_command_description(&component)
-        .expect("get_command_description failed");
-    assert!(
-        desc.contains("health"),
-        "expected description to mention 'health', got: {}",
-        desc
-    );
-}
-
-fn load_doctor_manifest() -> ChildManifest {
-    ChildManifest {
-        name: "patina-doctor".into(),
-        version: "0.1.0".into(),
-        description: "test".into(),
-        world: ChildKind::Command,
-        role: None,
-        patina_min: "0.0.0".into(),
-        capabilities: vec!["host_log".into(), "host_layer".into()],
-        allowed_toy_commands: vec![],
-        host_query_kinds: vec![],
-        host_http_domains: vec![],
-        host_secrets: std::collections::HashMap::new(),
-        provides: ChildProvides {
-            child: None,
-            commands: vec!["doctor".into()],
-            ..Default::default()
-        },
-        schemas: std::collections::HashMap::new(),
-        state_enabled: false,
-        checkpoint_streams: vec![],
-        lake_names: vec![],
-        ingress_sources: std::collections::HashMap::new(),
-        subscribed_streams: vec![],
-        task_intent_names: vec![],
-        task_intents: vec![],
-        graph_read: false,
-        graph_write_actions: vec![],
-        belief_read: false,
-        belief_write_actions: vec![],
-        toys: crate::mother::GrantedToys::default(),
-    }
-}
-
-#[test]
-fn command_doctor_run() {
-    let (engine, component) = match load_doctor_component() {
-        Some(ec) => ec,
-        None => return,
-    };
-
-    // Run with --json to avoid terminal output dependencies.
-    // Exit code depends on project state — just verify it doesn't panic.
-    let manifest = load_doctor_manifest();
-    let args = vec!["--json".to_string()];
-    let exit_code = engine
-        .run_command(&component, &manifest, &args, None)
-        .expect("run_command failed");
-    // doctor returns 0 (healthy), 1 (error), 2 (warning), or 3 (critical)
-    assert!(
-        [0, 1, 2, 3].contains(&exit_code),
-        "unexpected exit code: {}",
-        exit_code
-    );
-}
-
-// =====================================================================
 // validate_http_url — data-level URL sanitization
 // =====================================================================
 
@@ -1732,187 +1622,6 @@ fn conformance_http_rejects_localhost() {
         err.contains("localhost"),
         "localhost should be rejected: {}",
         err
-    );
-}
-
-// =====================================================================
-// TaskEngine — hello-task conformance tests
-// =====================================================================
-
-fn load_hello_task_component() -> Option<(task::TaskEngine, wasmtime::component::Component)> {
-    let wasm_path =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/hello_task.wasm");
-    if !wasm_path.exists() {
-        return None;
-    }
-    let engine = task::TaskEngine::new().expect("TaskEngine::new() failed");
-    let wasm_bytes = std::fs::read(&wasm_path).expect("failed to read hello-task wasm");
-    let component = engine
-        .load_component(&wasm_bytes)
-        .expect("load_component failed");
-    Some((engine, component))
-}
-
-fn hello_task_manifest() -> ChildManifest {
-    ChildManifest {
-        name: "hello-task".into(),
-        version: "0.1.0".into(),
-        description: "test".into(),
-        world: ChildKind::Task,
-        role: None,
-        patina_min: "0.0.0".into(),
-        capabilities: vec!["host_log".into(), "host_layer".into()],
-        allowed_toy_commands: vec!["echo".into()],
-        host_query_kinds: vec![],
-        host_http_domains: vec![],
-        host_secrets: std::collections::HashMap::new(),
-        provides: ChildProvides {
-            child: None,
-            commands: vec![],
-            ..Default::default()
-        },
-        schemas: std::collections::HashMap::new(),
-        state_enabled: false,
-        checkpoint_streams: vec![],
-        lake_names: vec![],
-        ingress_sources: std::collections::HashMap::new(),
-        subscribed_streams: vec![],
-        task_intent_names: vec![],
-        task_intents: vec![],
-        graph_read: false,
-        graph_write_actions: vec![],
-        belief_read: false,
-        belief_write_actions: vec![],
-        toys: crate::mother::GrantedToys::default(),
-    }
-}
-
-#[test]
-fn task_hello_name() {
-    let (engine, component) = match load_hello_task_component() {
-        Some(ec) => ec,
-        None => {
-            panic!(
-                "test fixture missing: tests/fixtures/hello_task.wasm\n\
-                 Build: cd tests/hello-task && cargo build --release --target wasm32-wasip2\n\
-                 Copy: cp tests/hello-task/target/wasm32-wasip2/release/hello_task.wasm tests/fixtures/"
-            );
-        }
-    };
-
-    let name = engine
-        .get_task_name(&component)
-        .expect("get_task_name failed");
-    assert_eq!(name, "hello-task");
-}
-
-#[test]
-fn task_hello_description() {
-    let (engine, component) = match load_hello_task_component() {
-        Some(ec) => ec,
-        None => return,
-    };
-
-    let desc = engine
-        .get_task_description(&component)
-        .expect("get_task_description failed");
-    assert!(
-        desc.contains("testing"),
-        "expected description to mention 'testing', got: {}",
-        desc
-    );
-}
-
-#[test]
-fn task_hello_run_exit_code() {
-    let (engine, component) = match load_hello_task_component() {
-        Some(ec) => ec,
-        None => return,
-    };
-
-    let manifest = hello_task_manifest();
-    let (exit_code, _toys) = engine
-        .run_task(&component, &manifest, &[], None)
-        .expect("run_task failed");
-    assert_eq!(exit_code, 0, "hello-task should return exit code 0");
-}
-
-#[test]
-fn task_hello_toys_filtered() {
-    let (engine, component) = match load_hello_task_component() {
-        Some(ec) => ec,
-        None => return,
-    };
-
-    let manifest = hello_task_manifest();
-    let (_exit_code, toys) = engine
-        .run_task(&component, &manifest, &[], None)
-        .expect("run_task failed");
-
-    // Should have exactly 1 toy (echo approved, rm filtered out)
-    assert_eq!(
-        toys.len(),
-        1,
-        "expected 1 approved toy (echo), got {}",
-        toys.len()
-    );
-
-    let toy = &toys[0];
-    assert_eq!(toy.name, "greet");
-    assert_eq!(toy.command, "echo");
-    assert_eq!(toy.args, vec!["hello"]);
-}
-
-/// Verify that unapproved toy commands are filtered out.
-#[test]
-fn task_hello_unapproved_toy_denied() {
-    let (engine, component) = match load_hello_task_component() {
-        Some(ec) => ec,
-        None => return,
-    };
-
-    // Manifest with NO allowed toy commands
-    let manifest = ChildManifest {
-        name: "hello-task".into(),
-        version: "0.1.0".into(),
-        description: "test".into(),
-        world: ChildKind::Task,
-        role: None,
-        patina_min: "0.0.0".into(),
-        capabilities: vec!["host_log".into(), "host_layer".into()],
-        allowed_toy_commands: vec![], // nothing allowed
-        host_query_kinds: vec![],
-        host_http_domains: vec![],
-        host_secrets: std::collections::HashMap::new(),
-        provides: ChildProvides {
-            child: None,
-            commands: vec![],
-            ..Default::default()
-        },
-        schemas: std::collections::HashMap::new(),
-        state_enabled: false,
-        checkpoint_streams: vec![],
-        lake_names: vec![],
-        ingress_sources: std::collections::HashMap::new(),
-        subscribed_streams: vec![],
-        task_intent_names: vec![],
-        task_intents: vec![],
-        graph_read: false,
-        graph_write_actions: vec![],
-        belief_read: false,
-        belief_write_actions: vec![],
-        toys: crate::mother::GrantedToys::default(),
-    };
-
-    let (_exit_code, toys) = engine
-        .run_task(&component, &manifest, &[], None)
-        .expect("run_task failed");
-
-    // All toys should be filtered out
-    assert!(
-        toys.is_empty(),
-        "expected no toys with empty allowed list, got {}",
-        toys.len()
     );
 }
 
@@ -2287,24 +1996,34 @@ fn check_capabilities_rejects_pipeline_with_http() {
 #[test]
 fn plugin_world_display() {
     assert_eq!(ChildKind::KnowledgeChild.to_string(), "knowledge-child");
-    assert_eq!(ChildKind::Command.to_string(), "command");
-    assert_eq!(ChildKind::Task.to_string(), "task");
     assert_eq!(ChildKind::Pipeline.to_string(), "pipeline");
 }
 
 // F4: ChildKind round-trips through from_str and Display.
 #[test]
 fn plugin_world_roundtrip() {
-    for world in [
-        ChildKind::KnowledgeChild,
-        ChildKind::Command,
-        ChildKind::Task,
-        ChildKind::Pipeline,
-    ] {
+    for world in [ChildKind::KnowledgeChild, ChildKind::Pipeline] {
         let s = world.to_string();
         let parsed = s.parse::<ChildKind>().unwrap();
         assert_eq!(parsed, world, "round-trip failed for {}", s);
     }
+}
+
+#[test]
+fn plugin_world_retires_command_and_task() {
+    let command = "command".parse::<ChildKind>().unwrap_err().to_string();
+    assert!(
+        command.contains("retired") && command.contains("knowledge-child"),
+        "unexpected command retirement error: {}",
+        command
+    );
+
+    let task = "task".parse::<ChildKind>().unwrap_err().to_string();
+    assert!(
+        task.contains("retired") && task.contains("knowledge-child"),
+        "unexpected task retirement error: {}",
+        task
+    );
 }
 
 /// WASM trap handling: guest panic in mother-child handle() returns Err, not crash.
@@ -3088,7 +2807,7 @@ package = "patina:schema/forge@1.0.0"
 }
 
 #[test]
-fn emit_host_emit_denied_for_command() {
+fn emit_host_emit_retires_command_kind() {
     let f = write_temp_manifest(
         r#"
 [child]
@@ -3106,9 +2825,12 @@ commands = ["test"]
 package = "patina:schema/forge@1.0.0"
 "#,
     );
-    let m = ChildManifest::from_path(f.path()).unwrap();
-    let result = check_capabilities(&m);
-    assert!(result.is_err(), "command should not allow host_emit");
+    let err = ChildManifest::from_path(f.path()).unwrap_err().to_string();
+    assert!(
+        err.contains("retired") && err.contains("knowledge-child"),
+        "command kind should return retired-kind guidance: {}",
+        err
+    );
 }
 
 #[test]
@@ -3171,7 +2893,7 @@ package = "patina:schema/forge@1.0.0"
 }
 
 #[test]
-fn emit_host_emit_allowed_for_task() {
+fn emit_host_emit_retires_task_kind() {
     let f = write_temp_manifest(
         r#"
 [child]
@@ -3186,12 +2908,11 @@ host_emit = true
 package = "patina:schema/forge@1.0.0"
 "#,
     );
-    let m = ChildManifest::from_path(f.path()).unwrap();
-    let result = check_capabilities(&m);
+    let err = ChildManifest::from_path(f.path()).unwrap_err().to_string();
     assert!(
-        result.is_ok(),
-        "task with host_emit + schemas should be allowed: {:?}",
-        result.unwrap_err()
+        err.contains("retired") && err.contains("knowledge-child"),
+        "task kind should return retired-kind guidance: {}",
+        err
     );
 }
 
@@ -3237,7 +2958,7 @@ fn role_expected_worlds() {
         .contains(&ChildKind::Pipeline));
     assert!(ChildRole::Extension
         .expected_worlds()
-        .contains(&ChildKind::Command));
+        .contains(&ChildKind::KnowledgeChild));
     assert!(ChildRole::App
         .expected_worlds()
         .contains(&ChildKind::KnowledgeChild));

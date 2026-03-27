@@ -8,10 +8,13 @@
 //! F1 fix: eliminates ~700 lines of duplicated host trait logic.
 //! F2 fix: path traversal protection in count_layer_files.
 
+#![allow(dead_code)]
+
 use std::path::PathBuf;
 
-use super::command::QueryDispatchFn;
-use super::{CredentialMapping, GrantedCapabilities, InjectionLocation, QueryScope};
+use super::{
+    CredentialMapping, GrantedCapabilities, InjectionLocation, QueryDispatchFn, QueryScope,
+};
 
 // =========================================================================
 // Log host support

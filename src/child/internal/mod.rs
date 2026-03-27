@@ -9,20 +9,22 @@ use wasmtime::{Config, Engine};
 
 use crate::mother::GrantedIngressSource;
 
-mod command;
 pub(crate) mod host_support;
 mod knowledge_child;
 mod pipeline;
-mod task;
 
 #[cfg(test)]
 mod tests;
 
-pub use command::{CommandEngine, QueryDispatchFn};
 pub use knowledge_child::KnowledgeChildEngine as ChildEngine;
 pub use knowledge_child::KnowledgeChildEngine;
 pub use pipeline::PipelineEngine;
-pub use task::TaskEngine;
+
+/// Query dispatch function type.
+///
+/// Provided by the binary crate at runtime since query engines
+/// (retrieval, commands) live in the binary, not the library.
+pub type QueryDispatchFn = Box<dyn FnMut(&str, &str) -> Result<String, String> + Send>;
 
 // =========================================================================
 // Child kind enum — parsed from manifest, enforced at load time (F4)
@@ -32,8 +34,6 @@ pub use task::TaskEngine;
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChildKind {
     KnowledgeChild,
-    Command,
-    Task,
     Pipeline,
 }
 
@@ -43,8 +43,12 @@ impl std::str::FromStr for ChildKind {
     fn from_str(s: &str) -> Result<Self> {
         match s {
             "knowledge-child" => Ok(Self::KnowledgeChild),
-            "command" => Ok(Self::Command),
-            "task" => Ok(Self::Task),
+            "command" => {
+                anyhow::bail!("child kind 'command' is retired; migrate to 'knowledge-child'")
+            }
+            "task" => {
+                anyhow::bail!("child kind 'task' is retired; migrate to 'knowledge-child'")
+            }
             "pipeline" => Ok(Self::Pipeline),
             "mother-child" => {
                 anyhow::bail!("child kind 'mother-child' is retired; migrate to 'knowledge-child'")
@@ -65,15 +69,6 @@ impl ChildKind {
                 "host_measure",
                 "host_emit",
             ],
-            Self::Command => &["host_log", "host_layer", "host_query", "host_measure"],
-            Self::Task => &[
-                "host_log",
-                "host_layer",
-                "host_query",
-                "host_http",
-                "host_measure",
-                "host_emit",
-            ],
             Self::Pipeline => &["host_log"],
         }
     }
@@ -83,8 +78,6 @@ impl std::fmt::Display for ChildKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::KnowledgeChild => write!(f, "knowledge-child"),
-            Self::Command => write!(f, "command"),
-            Self::Task => write!(f, "task"),
             Self::Pipeline => write!(f, "pipeline"),
         }
     }
@@ -122,10 +115,10 @@ impl ChildRole {
     /// Used for validation warnings — not enforcement.
     pub fn expected_worlds(&self) -> &[ChildKind] {
         match self {
-            Self::Connector => &[ChildKind::KnowledgeChild, ChildKind::Task],
+            Self::Connector => &[ChildKind::KnowledgeChild],
             Self::Grammar => &[ChildKind::Pipeline],
-            Self::Extension => &[ChildKind::Command, ChildKind::Task],
-            Self::App => &[ChildKind::KnowledgeChild, ChildKind::Task],
+            Self::Extension => &[ChildKind::KnowledgeChild],
+            Self::App => &[ChildKind::KnowledgeChild],
         }
     }
 }

@@ -958,7 +958,7 @@ enum SetupCommands {
 
 #[derive(Subcommand)]
 enum ChildCommands {
-    /// List installed command children
+    /// List installed children
     List,
     /// Run a child by name
     Run {
@@ -972,7 +972,7 @@ enum ChildCommands {
     Init {
         /// Child name (valid Rust crate name, e.g. "review-bot")
         name: String,
-        /// Child world: knowledge-child, command, task, pipeline
+        /// Child world: knowledge-child, pipeline
         #[arg(long)]
         world: String,
         /// Build the child after scaffolding
@@ -984,7 +984,7 @@ enum ChildCommands {
     },
 }
 
-/// Build a query dispatch closure for command children.
+/// Build a query dispatch closure for children with query grants.
 ///
 /// Returns None if the child has no host_query grants. Otherwise,
 /// returns a closure that dispatches to context/scry/assay engines.
@@ -1471,7 +1471,7 @@ fn main() -> Result<()> {
                     patina::child::engine::ChildManifest::from_path(&toml_path)?
                 } else {
                     anyhow::bail!(
-                        "child manifest not found at {}\nTask and command children require a .toml manifest",
+                        "child manifest not found at {}\nKnowledge-child and pipeline children require a .toml manifest",
                         toml_path.display()
                     );
                 };
@@ -1480,60 +1480,6 @@ fn main() -> Result<()> {
 
                 // Auto-detect world from manifest and dispatch
                 match &manifest.world {
-                    patina::child::engine::ChildKind::Task => {
-                        let engine = patina::child::engine::TaskEngine::new()?;
-                        let component = engine.load_component(&wasm_bytes)?;
-                        let query_fn = make_query_dispatch(&manifest);
-                        let (exit_code, toys) =
-                            engine.run_task(&component, &manifest, &args, query_fn)?;
-
-                        // Execute approved toys
-                        for toy in &toys {
-                            eprintln!(
-                                "[task:{}] executing toy '{}': {} {}",
-                                name,
-                                toy.name,
-                                toy.command,
-                                toy.args.join(" ")
-                            );
-                            let status = std::process::Command::new(&toy.command)
-                                .args(&toy.args)
-                                .status();
-                            match status {
-                                Ok(s) if s.success() => {
-                                    eprintln!("[task:{}] toy '{}' succeeded", name, toy.name);
-                                }
-                                Ok(s) => {
-                                    eprintln!(
-                                        "[task:{}] toy '{}' failed with exit code {}",
-                                        name,
-                                        toy.name,
-                                        s.code().unwrap_or(-1)
-                                    );
-                                }
-                                Err(e) => {
-                                    eprintln!(
-                                        "[task:{}] toy '{}' failed to execute: {}",
-                                        name, toy.name, e
-                                    );
-                                }
-                            }
-                        }
-
-                        if exit_code != 0 {
-                            std::process::exit(exit_code);
-                        }
-                    }
-                    patina::child::engine::ChildKind::Command => {
-                        let engine = patina::child::engine::CommandEngine::new()?;
-                        let component = engine.load_component(&wasm_bytes)?;
-                        let query_fn = make_query_dispatch(&manifest);
-                        let exit_code =
-                            engine.run_command(&component, &manifest, &args, query_fn)?;
-                        if exit_code != 0 {
-                            std::process::exit(exit_code);
-                        }
-                    }
                     patina::child::engine::ChildKind::KnowledgeChild => {
                         let action = args.first().map(|s| s.as_str()).unwrap_or("health");
                         let payload_str = args.get(1).map(|s| s.as_str()).unwrap_or("{}");
@@ -1589,11 +1535,12 @@ fn main() -> Result<()> {
                             }
                         }
                     }
-                    other => {
-                        anyhow::bail!(
-                            "child '{}' has world '{}' — only 'task', 'command', and 'knowledge-child' are supported by `child run` (alias: `plugin run`)",
-                            name, other
-                        );
+                    patina::child::engine::ChildKind::Pipeline => {
+                        let request = args.first().map(|s| s.as_str()).unwrap_or("{}");
+                        let engine = patina::child::engine::PipelineEngine::new()?;
+                        let component = engine.load_component(&wasm_bytes)?;
+                        let response = engine.handle(&component, &name, request)?;
+                        println!("{}", response);
                     }
                 }
             }

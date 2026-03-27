@@ -13,10 +13,6 @@ include = ["src/**", "wit/**", "Cargo.toml", "README.md", "LICENSE*"]
 
 [features]
 default = []
-# Legacy compatibility worlds (migration scaffolds).
-# Preferred stabilization path is `knowledge-child`.
-task = []
-command = []
 # Canonical world for Mother/Child/Toy contract.
 knowledge-child = [
     "dep:serde",
