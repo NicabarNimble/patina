@@ -1,55 +1,51 @@
 ---
 type: refactor
 id: wasi-toy-alignment
-status: draft
+status: ready
 created: 2026-03-27
 sessions:
   origin: 20260327-104954-066673000
-beliefs:
-  - "[[wasi-is-foundation-not-option]]"
-  - "[[children-have-agency-toys-are-capabilities]]"
-  - "[[observation-at-the-boundary]]"
-sequencing:
-  before:
-    - folder-text-to-parquet
-  note: "Children built after this spec import WASI standards directly. Building on a misaligned toy surface bakes debt into SDK reference examples."
 related:
-  - wit/toys/deps/
-  - wit/knowledge-child/knowledge-child.wit
-  - sdk/patina-sdk-core/
-  - sdk/patina-sdk-data/
-  - sdk/patina-sdk/
+- wit/toys/deps/
+- wit/knowledge-child/knowledge-child.wit
+- sdk/patina-sdk-core/
+- sdk/patina-sdk-data/
+- sdk/patina-sdk/
+beliefs:
+- '[[wasi-is-foundation-not-option]]'
+- '[[children-have-agency-toys-are-capabilities]]'
+- '[[observation-at-the-boundary]]'
 exit_criteria:
-  - id: wta1-log-aligned
-    text: "`patina:log` evaluated against `wasi:logging`. Decision: migrate, extend, or justify keeping custom."
-    checked: true
-  - id: wta2-state-aligned
-    text: "`patina:state` evaluated against `wasi:keyvalue`. Decision: migrate, extend, or justify keeping custom."
-    checked: true
-  - id: wta3-events-aligned
-    text: "`patina:events` evaluated against `wasi:messaging`. Decision: migrate, extend, or justify keeping custom."
-    checked: true
-  - id: wta4-store-aligned
-    text: "`patina:store` evaluated against `wasi:sql`. Decision: migrate, extend, or justify keeping custom."
-    checked: true
-  - id: wta5-connect-aligned
-    text: "`patina:connect` evaluated against already-imported `wasi:http/outgoing-handler`. Decision: merge, layer, or justify separate."
-    checked: true
-  - id: wta6-measure-aligned
-    text: "`patina:measure` (not yet in WIT) evaluated against `wasi:observe` proposals. Decision: adopt standard, define delta, or defer."
-    checked: true
-  - id: wta7-wit-updated
-    text: "All migration decisions implemented in `wit/toys/deps/` and `knowledge-child.wit`."
-    checked: true
-  - id: wta8-sdk-updated
-    text: "SDK crates updated — trait backends, build.rs WIT copies, and feature flags reflect new imports."
-    checked: true
-  - id: wta9-children-compile
-    text: "All existing children compile and pass tests against the updated toy surface."
-    checked: true
-  - id: wta10-shims-removed
-    text: "All compatibility shims in `sdk/patina-sdk-*/src/compat/` are removed. No child imports from compat modules."
-    checked: true
+- id: wta1-log-aligned
+  text: '`patina:log` evaluated against `wasi:logging`. Decision: migrate, extend, or justify keeping custom.'
+  checked: true
+- id: wta2-state-aligned
+  text: '`patina:state` evaluated against `wasi:keyvalue`. Decision: migrate, extend, or justify keeping custom.'
+  checked: true
+- id: wta3-events-aligned
+  text: '`patina:events` evaluated against `wasi:messaging`. Decision: migrate, extend, or justify keeping custom.'
+  checked: true
+- id: wta4-store-aligned
+  text: '`patina:store` evaluated against `wasi:sql`. Decision: migrate, extend, or justify keeping custom.'
+  checked: true
+- id: wta5-connect-aligned
+  text: '`patina:connect` evaluated against already-imported `wasi:http/outgoing-handler`. Decision: merge, layer, or justify separate.'
+  checked: true
+- id: wta6-measure-aligned
+  text: '`patina:measure` (not yet in WIT) evaluated against `wasi:observe` proposals. Decision: adopt standard, define delta, or defer.'
+  checked: true
+- id: wta7-wit-updated
+  text: All migration decisions implemented in `wit/toys/deps/` and `knowledge-child.wit`.
+  checked: true
+- id: wta8-sdk-updated
+  text: SDK crates updated — trait backends, build.rs WIT copies, and feature flags reflect new imports.
+  checked: true
+- id: wta9-children-compile
+  text: All existing children compile and pass tests against the updated toy surface.
+  checked: true
+- id: wta10-shims-removed
+  text: All compatibility shims in `sdk/patina-sdk-*/src/compat/` are removed. No child imports from compat modules.
+  checked: true
 ---
 # refactor: wasi-toy-alignment
 
@@ -62,6 +58,35 @@ Building `folder-text-to-parquet` (and all future children) on a misaligned toy 
 ## Goal
 
 Evaluate each overlapping toy against its WASI counterpart. For each: migrate to standard, extend the standard with a Patina delta, or document why the custom interface is justified. Update WIT, SDK, and existing children.
+
+## Status
+
+Completed implementation. All exit criteria in frontmatter are checked true.
+
+## Solution
+
+- Migrated overlapping toys to WASI where practical (`log` -> `wasi:logging`, `state` -> `wasi:keyvalue`, `store` -> `wasi:sql`).
+- Narrowed `patina:connect` to its true delta and aligned header/response types to WASI HTTP aliases.
+- Split events into standard publish plus Patina cursor delta (`wasi:messaging/producer` + `patina:events-stream`).
+- Introduced `patina:measure` as an explicit Patina delta with manifest-declared metric policy and deterministic enforcement.
+- Updated WIT world imports, runtime hosts, SDK surfaces, and tests to match the new contract.
+
+## Implementation Order
+
+1. `patina:log` -> `wasi:logging`
+2. `patina:state` -> `wasi:keyvalue`
+3. `patina:store` -> `wasi:sql`
+4. `patina:connect` HTTP type alignment
+5. `patina:events` split (`wasi:messaging` + `patina:events-stream`)
+6. `patina:measure` design and enforcement
+
+## Resolved Decisions
+
+- WASI is the default foundation for overlapping capability surfaces.
+- Patina keeps only irreducible deltas (`connect` authority, `events-stream` cursor semantics, `measure` guest metric vocabulary).
+- Database connection ownership moves to `wasi:sql`; `patina:connect` remains HTTP authority only.
+- Event publishing uses `wasi:messaging`; subscribe/ack semantics remain Patina-specific.
+- Measure data is manifest-governed with deterministic rejection for undeclared metric use.
 
 ## Execution Contract (anti-drift)
 
