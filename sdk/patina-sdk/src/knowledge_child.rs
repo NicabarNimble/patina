@@ -318,6 +318,63 @@ pub mod host {
         out
     }
 
+    fn sql_query_string(connection: &str, query: &str) -> Result<String, String> {
+        let conn = super::wasi::sql::readwrite::open(connection)?;
+        let stmt = super::wasi::sql::readwrite::prepare(query, &[])?;
+        let rows = super::wasi::sql::readwrite::query(&conn, &stmt)?;
+
+        if let Some(first_row) = rows.first() {
+            if let Some(super::wasi::sql::readwrite::DataType::Text(value)) =
+                first_row.values.first()
+            {
+                return Ok(value.clone());
+            }
+        }
+
+        let json_rows = rows
+            .into_iter()
+            .map(|row| {
+                serde_json::Value::Array(
+                    row.values
+                        .into_iter()
+                        .map(|value| match value {
+                            super::wasi::sql::readwrite::DataType::Int32(value) => {
+                                serde_json::json!(value)
+                            }
+                            super::wasi::sql::readwrite::DataType::Int64(value) => {
+                                serde_json::json!(value)
+                            }
+                            super::wasi::sql::readwrite::DataType::Float64(value) => {
+                                serde_json::json!(value)
+                            }
+                            super::wasi::sql::readwrite::DataType::Text(value) => {
+                                serde_json::json!(value)
+                            }
+                            super::wasi::sql::readwrite::DataType::Flag(value) => {
+                                serde_json::json!(value)
+                            }
+                            super::wasi::sql::readwrite::DataType::Binary(value) => {
+                                serde_json::json!(value)
+                            }
+                            super::wasi::sql::readwrite::DataType::Null => serde_json::Value::Null,
+                        })
+                        .collect(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        serde_json::to_string(&json_rows).map_err(|error| error.to_string())
+    }
+
+    fn sql_exec_action(connection: &str, action: &str, payload: &str) -> Result<u32, String> {
+        let conn = super::wasi::sql::readwrite::open(connection)?;
+        let stmt = super::wasi::sql::readwrite::prepare(
+            "__patina_mutate__",
+            &[action.to_string(), payload.to_string()],
+        )?;
+        super::wasi::sql::readwrite::exec(&conn, &stmt)
+    }
+
     impl LogBackend for GuestHost {
         fn debug(message: &str) {
             super::wasi::logging::logging::log(
@@ -366,8 +423,7 @@ pub mod host {
 
     impl QueryBackend for GuestHost {
         fn query(kind: &str, params_json: &str) -> Result<String, String> {
-            let conn = patina::connect::connect::resolve("default")?;
-            patina::store::store::query(&conn, &format!("{kind}:{params_json}"))
+            sql_query_string("default", &format!("{kind}:{params_json}"))
         }
     }
 
@@ -453,9 +509,8 @@ pub mod host {
             )
         }
         fn ensure_table(lake: &str, table: &str) -> Result<(), String> {
-            let conn = patina::connect::connect::resolve(lake)?;
             let payload = serde_json::json!({"table": table}).to_string();
-            let _ = patina::store::store::mutate(&conn, "ensure-table", &payload)?;
+            let _ = sql_exec_action(lake, "ensure-table", &payload)?;
             Ok(())
         }
         fn append_json_batch(
@@ -464,19 +519,17 @@ pub mod host {
             source: &str,
             rows_json: &[String],
         ) -> Result<u64, String> {
-            let conn = patina::connect::connect::resolve(lake)?;
             let payload = serde_json::json!({
                 "table": table,
                 "source": source,
                 "rows_json": rows_json,
             })
             .to_string();
-            let inserted = patina::store::store::mutate(&conn, "append-json-batch", &payload)?;
-            inserted.parse::<u64>().map_err(|e| e.to_string())
+            let inserted = sql_exec_action(lake, "append-json-batch", &payload)?;
+            Ok(inserted as u64)
         }
         fn query_json(lake: &str, sql: &str) -> Result<String, String> {
-            let conn = patina::connect::connect::resolve(lake)?;
-            patina::store::store::query(&conn, sql)
+            sql_query_string(lake, sql)
         }
     }
 
@@ -797,24 +850,20 @@ pub mod host {
 
     impl GraphBackend for GuestHost {
         fn query(kind: &str, params_json: &str) -> Result<String, String> {
-            let conn = patina::connect::connect::resolve("graph")?;
-            patina::store::store::query(&conn, &format!("{kind}:{params_json}"))
+            sql_query_string("graph", &format!("{kind}:{params_json}"))
         }
         fn mutate(action: &str, payload_json: &str) -> Result<(), String> {
-            let conn = patina::connect::connect::resolve("graph")?;
-            let _ = patina::store::store::mutate(&conn, action, payload_json)?;
+            let _ = sql_exec_action("graph", action, payload_json)?;
             Ok(())
         }
     }
 
     impl BeliefBackend for GuestHost {
         fn query(kind: &str, params_json: &str) -> Result<String, String> {
-            let conn = patina::connect::connect::resolve("beliefs")?;
-            patina::store::store::query(&conn, &format!("{kind}:{params_json}"))
+            sql_query_string("beliefs", &format!("{kind}:{params_json}"))
         }
         fn mutate(action: &str, payload_json: &str) -> Result<(), String> {
-            let conn = patina::connect::connect::resolve("beliefs")?;
-            let _ = patina::store::store::mutate(&conn, action, payload_json)?;
+            let _ = sql_exec_action("beliefs", action, payload_json)?;
             Ok(())
         }
     }

@@ -31,7 +31,7 @@ exit_criteria:
     checked: false
   - id: wta4-store-aligned
     text: "`patina:store` evaluated against `wasi:sql`. Decision: migrate, extend, or justify keeping custom."
-    checked: false
+    checked: true
   - id: wta5-connect-aligned
     text: "`patina:connect` evaluated against already-imported `wasi:http/outgoing-handler`. Decision: merge, layer, or justify separate."
     checked: false

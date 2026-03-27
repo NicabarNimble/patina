@@ -30,6 +30,18 @@ mod bindings {
         pub identifier: String,
     }
 
+    #[derive(Debug, Clone)]
+    pub struct SqlConnectionHandle {
+        pub name: String,
+        pub conn: crate::child::toy_host::v2::ConnectionHandle,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct SqlStatementHandle {
+        pub query: String,
+        pub params: Vec<String>,
+    }
+
     impl wasmtime_wasi::WasiView for HostState {
         fn ctx(&mut self) -> wasmtime_wasi::WasiCtxView<'_> {
             wasmtime_wasi::WasiCtxView {
@@ -270,26 +282,106 @@ mod bindings {
         }
     }
 
-    impl patina::store::store::Host for HostState {
-        fn query(
+    impl wasi::sql::readwrite::Host for HostState {
+        fn open(
             &mut self,
-            conn: wasmtime::component::Resource<patina::connect::connect::Connection>,
-            query: String,
-        ) -> Result<String, String> {
-            let rep = wasmtime::component::Resource::<crate::child::toy_host::v2::ConnectionHandle>::new_borrow(conn.rep());
-            let conn = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
-            crate::child::toy_host::v2::store_query(conn, &query)
+            name: String,
+        ) -> Result<wasmtime::component::Resource<wasi::sql::readwrite::Connection>, String>
+        {
+            let conn = crate::child::toy_host::v2::connect_resolve(&name)?;
+            let handle = SqlConnectionHandle { name, conn };
+            let rep = self.wasi_table.push(handle).map_err(|e| e.to_string())?;
+            Ok(wasmtime::component::Resource::new_own(rep.rep()))
         }
 
-        fn mutate(
+        fn prepare(
             &mut self,
-            conn: wasmtime::component::Resource<patina::connect::connect::Connection>,
-            action: String,
-            payload: String,
-        ) -> Result<String, String> {
-            let rep = wasmtime::component::Resource::<crate::child::toy_host::v2::ConnectionHandle>::new_borrow(conn.rep());
-            let conn = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
-            crate::child::toy_host::v2::store_mutate(conn, &action, &payload)
+            query: String,
+            params: Vec<String>,
+        ) -> Result<wasmtime::component::Resource<wasi::sql::readwrite::Statement>, String>
+        {
+            let stmt = SqlStatementHandle { query, params };
+            let rep = self.wasi_table.push(stmt).map_err(|e| e.to_string())?;
+            Ok(wasmtime::component::Resource::new_own(rep.rep()))
+        }
+
+        fn query(
+            &mut self,
+            c: wasmtime::component::Resource<wasi::sql::readwrite::Connection>,
+            s: wasmtime::component::Resource<wasi::sql::readwrite::Statement>,
+        ) -> Result<Vec<wasi::sql::readwrite::Row>, String> {
+            let c_rep = wasmtime::component::Resource::<SqlConnectionHandle>::new_borrow(c.rep());
+            let s_rep = wasmtime::component::Resource::<SqlStatementHandle>::new_borrow(s.rep());
+            let conn = self.wasi_table.get(&c_rep).map_err(|e| e.to_string())?;
+            let stmt = self.wasi_table.get(&s_rep).map_err(|e| e.to_string())?;
+
+            let result = crate::child::toy_host::v2::store_query(&conn.conn, &stmt.query)?;
+            Ok(vec![wasi::sql::readwrite::Row {
+                values: vec![wasi::sql::readwrite::DataType::Text(result)],
+            }])
+        }
+
+        fn exec(
+            &mut self,
+            c: wasmtime::component::Resource<wasi::sql::readwrite::Connection>,
+            s: wasmtime::component::Resource<wasi::sql::readwrite::Statement>,
+        ) -> Result<u32, String> {
+            let c_rep = wasmtime::component::Resource::<SqlConnectionHandle>::new_borrow(c.rep());
+            let s_rep = wasmtime::component::Resource::<SqlStatementHandle>::new_borrow(s.rep());
+            let conn = self.wasi_table.get(&c_rep).map_err(|e| e.to_string())?;
+            let stmt = self.wasi_table.get(&s_rep).map_err(|e| e.to_string())?;
+
+            if stmt.query == "__patina_mutate__" {
+                let action = stmt.params.first().cloned().unwrap_or_default();
+                let payload = stmt.params.get(1).cloned().unwrap_or_default();
+                let out = crate::child::toy_host::v2::store_mutate(&conn.conn, &action, &payload)?;
+                return out.parse::<u32>().map_err(|e| e.to_string());
+            }
+
+            let out = crate::child::toy_host::v2::store_query(&conn.conn, &stmt.query)?;
+            out.parse::<u32>().map_err(|e| e.to_string())
+        }
+    }
+
+    impl wasi::sql::readwrite::HostConnection for HostState {
+        fn drop(
+            &mut self,
+            rep: wasmtime::component::Resource<wasi::sql::readwrite::Connection>,
+        ) -> wasmtime::Result<()> {
+            let rep = wasmtime::component::Resource::<SqlConnectionHandle>::new_own(rep.rep());
+            Ok(self.wasi_table.delete(rep).map(|_| ())?)
+        }
+    }
+
+    impl wasi::sql::readwrite::HostStatement for HostState {
+        fn query(
+            &mut self,
+            rep: wasmtime::component::Resource<wasi::sql::readwrite::Statement>,
+        ) -> String {
+            let rep = wasmtime::component::Resource::<SqlStatementHandle>::new_borrow(rep.rep());
+            self.wasi_table
+                .get(&rep)
+                .map(|s| s.query.clone())
+                .unwrap_or_default()
+        }
+
+        fn params(
+            &mut self,
+            rep: wasmtime::component::Resource<wasi::sql::readwrite::Statement>,
+        ) -> Vec<String> {
+            let rep = wasmtime::component::Resource::<SqlStatementHandle>::new_borrow(rep.rep());
+            self.wasi_table
+                .get(&rep)
+                .map(|s| s.params.clone())
+                .unwrap_or_default()
+        }
+
+        fn drop(
+            &mut self,
+            rep: wasmtime::component::Resource<wasi::sql::readwrite::Statement>,
+        ) -> wasmtime::Result<()> {
+            let rep = wasmtime::component::Resource::<SqlStatementHandle>::new_own(rep.rep());
+            Ok(self.wasi_table.delete(rep).map(|_| ())?)
         }
     }
 
@@ -455,7 +547,7 @@ impl KnowledgeChildEngine {
     }
 
     fn link_store(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::store::store::add_to_linker::<
+        bindings::wasi::sql::readwrite::add_to_linker::<
             HostState,
             wasmtime::component::HasSelf<HostState>,
         >(linker, |s| s)?;
