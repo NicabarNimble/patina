@@ -29,7 +29,7 @@
 // but would break a WASM binary with conflicting export symbols.
 #[cfg(all(
     target_arch = "wasm32",
-    any(all(feature = "knowledge-child", feature = "pipeline"),)
+    all(feature = "knowledge-child", feature = "pipeline")
 ))]
 compile_error!("Enable exactly one patina-sdk world feature: knowledge-child or pipeline");
 
