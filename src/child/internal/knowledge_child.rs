@@ -14,6 +14,7 @@ use crate::mother::{
 };
 
 mod bindings {
+    #[allow(dead_code)]
     pub struct HostState {
         pub plugin_name: String,
         pub wasi: wasmtime_wasi::WasiCtx,
@@ -31,6 +32,7 @@ mod bindings {
     }
 
     #[derive(Debug, Clone)]
+    #[allow(dead_code)]
     pub struct SqlConnectionHandle {
         pub name: String,
         pub conn: crate::child::toy_host::v2::ConnectionHandle,

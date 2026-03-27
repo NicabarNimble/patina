@@ -48,6 +48,7 @@ pub fn ensure_lake(name: &str) -> Result<String> {
     Ok(path.to_string_lossy().to_string())
 }
 
+#[allow(dead_code)]
 pub fn load_cursor(
     store: &KnowledgeRuntimeStore,
     lake: &str,
@@ -57,6 +58,7 @@ pub fn load_cursor(
     store.load_lake_cursor(lake, source, data_type)
 }
 
+#[allow(dead_code)]
 pub fn save_cursor(
     store: &KnowledgeRuntimeStore,
     update: &crate::mother::state::LakeCursorUpdate<'_>,
@@ -64,6 +66,7 @@ pub fn save_cursor(
     store.save_lake_cursor(update)
 }
 
+#[allow(dead_code)]
 pub fn ensure_table(lake: &str, table: &str) -> Result<()> {
     let lake_path = ensure_lake(lake)?;
     let conn = open_lake_db(Path::new(&lake_path))?;
