@@ -246,6 +246,14 @@ impl<B: StateBackend> StateToy<B> {
     pub fn put(&self, key: &str, value_json: &str) -> Result<(), String> {
         B::put(key, value_json)
     }
+
+    pub fn get_string(&self, key: &str) -> Option<String> {
+        B::get(key)
+    }
+
+    pub fn set_string(&self, key: &str, value: &str) -> Result<(), String> {
+        B::put(key, value)
+    }
     pub fn delete(&self, key: &str) -> Result<(), String> {
         B::delete(key)
     }

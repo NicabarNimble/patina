@@ -25,7 +25,7 @@ exit_criteria:
     checked: true
   - id: wta2-state-aligned
     text: "`patina:state` evaluated against `wasi:keyvalue`. Decision: migrate, extend, or justify keeping custom."
-    checked: false
+    checked: true
   - id: wta3-events-aligned
     text: "`patina:events` evaluated against `wasi:messaging`. Decision: migrate, extend, or justify keeping custom."
     checked: false

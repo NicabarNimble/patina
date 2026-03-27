@@ -25,6 +25,11 @@ mod bindings {
         pub runtime: crate::mother::KnowledgeRuntimeStore,
     }
 
+    #[derive(Debug, Clone)]
+    pub struct StateBucketHandle {
+        pub identifier: String,
+    }
+
     impl wasmtime_wasi::WasiView for HostState {
         fn ctx(&mut self) -> wasmtime_wasi::WasiCtxView<'_> {
             wasmtime_wasi::WasiCtxView {
@@ -60,41 +65,136 @@ mod bindings {
 
     impl patina::knowledge_child::runtime_types::Host for HostState {}
 
-    impl patina::state::state::Host for HostState {
-        fn get(&mut self, key: String) -> Option<String> {
-            crate::child::toy_host::v2::state_get(&self.runtime, &self.plugin_name, &key)
-                .ok()
-                .flatten()
+    fn bucket_scoped_key(bucket: &str, key: &str) -> String {
+        if bucket == "default" {
+            key.to_string()
+        } else {
+            format!("{}:{}", bucket, key)
         }
+    }
 
-        fn set(&mut self, key: String, value_json: String) -> Result<(), String> {
+    fn bucket_prefix(bucket: &str) -> String {
+        if bucket == "default" {
+            String::new()
+        } else {
+            format!("{}:", bucket)
+        }
+    }
+
+    impl wasi::keyvalue::store::Host for HostState {
+        fn open(
+            &mut self,
+            identifier: String,
+        ) -> Result<wasmtime::component::Resource<wasi::keyvalue::store::Bucket>, String> {
             if !self.grants.state_enabled {
                 return Err(format!(
                     "state not granted for child '{}'",
                     self.plugin_name
                 ));
             }
-            crate::child::toy_host::v2::state_set(
-                &self.runtime,
-                &self.plugin_name,
-                &key,
-                &value_json,
+            let handle = StateBucketHandle { identifier };
+            let rep = self.wasi_table.push(handle).map_err(|e| e.to_string())?;
+            Ok(wasmtime::component::Resource::new_own(rep.rep()))
+        }
+    }
+
+    impl wasi::keyvalue::store::HostBucket for HostState {
+        fn get(
+            &mut self,
+            bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+            key: String,
+        ) -> Result<Option<Vec<u8>>, String> {
+            let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
+            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let scoped = bucket_scoped_key(&handle.identifier, &key);
+            let value =
+                crate::child::toy_host::v2::state_get(&self.runtime, &self.plugin_name, &scoped)?;
+            Ok(value.map(|v| v.into_bytes()))
+        }
+
+        fn set(
+            &mut self,
+            bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+            key: String,
+            value: Vec<u8>,
+        ) -> Result<(), String> {
+            let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
+            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let scoped = bucket_scoped_key(&handle.identifier, &key);
+            let value = String::from_utf8(value)
+                .map_err(|e| format!("state value for '{}' is not valid UTF-8: {}", key, e))?;
+            crate::child::toy_host::v2::state_set(&self.runtime, &self.plugin_name, &scoped, &value)
+        }
+
+        fn delete(
+            &mut self,
+            bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+            key: String,
+        ) -> Result<(), String> {
+            let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
+            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let scoped = bucket_scoped_key(&handle.identifier, &key);
+            crate::child::toy_host::v2::state_delete(&self.runtime, &self.plugin_name, &scoped)
+        }
+
+        fn exists(
+            &mut self,
+            bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+            key: String,
+        ) -> Result<bool, String> {
+            let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
+            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let scoped = bucket_scoped_key(&handle.identifier, &key);
+            Ok(
+                crate::child::toy_host::v2::state_get(&self.runtime, &self.plugin_name, &scoped)?
+                    .is_some(),
             )
         }
 
-        fn delete(&mut self, key: String) -> Result<(), String> {
-            if !self.grants.state_enabled {
-                return Err(format!(
-                    "state not granted for child '{}'",
-                    self.plugin_name
-                ));
+        fn list_keys(
+            &mut self,
+            bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+            cursor: Option<String>,
+        ) -> Result<wasi::keyvalue::store::KeyResponse, String> {
+            let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
+            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let prefix = bucket_prefix(&handle.identifier);
+            let mut keys = crate::child::toy_host::v2::state_list_prefix(
+                &self.runtime,
+                &self.plugin_name,
+                &prefix,
+            )
+            .unwrap_or_default();
+            if !prefix.is_empty() {
+                keys = keys
+                    .into_iter()
+                    .filter_map(|k| k.strip_prefix(&prefix).map(ToString::to_string))
+                    .collect();
             }
-            crate::child::toy_host::v2::state_delete(&self.runtime, &self.plugin_name, &key)
+            keys.sort();
+            let start = cursor
+                .as_deref()
+                .and_then(|c| c.parse::<usize>().ok())
+                .unwrap_or(0);
+            let page_size = 200usize;
+            let end = std::cmp::min(start + page_size, keys.len());
+            let next = if end < keys.len() {
+                Some(end.to_string())
+            } else {
+                None
+            };
+            Ok(wasi::keyvalue::store::KeyResponse {
+                keys: keys[start..end].to_vec(),
+                cursor: next,
+            })
         }
 
-        fn list_prefix(&mut self, prefix: String) -> Vec<String> {
-            crate::child::toy_host::v2::state_list_prefix(&self.runtime, &self.plugin_name, &prefix)
-                .unwrap_or_default()
+        fn drop(
+            &mut self,
+            rep: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+        ) -> wasmtime::Result<()> {
+            let rep = wasmtime::component::Resource::<StateBucketHandle>::new_own(rep.rep());
+            Ok(self.wasi_table.delete(rep).map(|_| ())?)
         }
     }
 
@@ -379,7 +479,7 @@ impl KnowledgeChildEngine {
     }
 
     fn link_state(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::state::state::add_to_linker::<
+        bindings::wasi::keyvalue::store::add_to_linker::<
             HostState,
             wasmtime::component::HasSelf<HostState>,
         >(linker, |s| s)?;

@@ -274,6 +274,50 @@ pub mod host {
         }
     }
 
+    fn state_bucket() -> Result<super::wasi::keyvalue::store::Bucket, String> {
+        super::wasi::keyvalue::store::open("default")
+    }
+
+    fn state_get_string(key: &str) -> Option<String> {
+        let bucket = state_bucket().ok()?;
+        match bucket.get(key) {
+            Ok(Some(bytes)) => String::from_utf8(bytes).ok(),
+            Ok(None) => None,
+            Err(_) => None,
+        }
+    }
+
+    fn state_set_string(key: &str, value: &str) -> Result<(), String> {
+        let bucket = state_bucket()?;
+        bucket.set(key, value.as_bytes())
+    }
+
+    fn state_delete_key(key: &str) -> Result<(), String> {
+        let bucket = state_bucket()?;
+        bucket.delete(key)
+    }
+
+    fn state_list_keys() -> Vec<String> {
+        let Ok(bucket) = state_bucket() else {
+            return Vec::new();
+        };
+        let mut cursor: Option<String> = None;
+        let mut out = Vec::new();
+
+        loop {
+            let Ok(response) = bucket.list_keys(cursor.as_deref()) else {
+                break;
+            };
+            out.extend(response.keys);
+            if response.cursor.is_none() {
+                break;
+            }
+            cursor = response.cursor;
+        }
+
+        out
+    }
+
     impl LogBackend for GuestHost {
         fn debug(message: &str) {
             super::wasi::logging::logging::log(
@@ -351,25 +395,28 @@ pub mod host {
 
     impl StateBackend for GuestHost {
         fn get(key: &str) -> Option<String> {
-            patina::state::state::get(key)
+            state_get_string(key)
         }
         fn put(key: &str, value_json: &str) -> Result<(), String> {
-            patina::state::state::set(key, value_json)
+            state_set_string(key, value_json)
         }
         fn delete(key: &str) -> Result<(), String> {
-            patina::state::state::delete(key)
+            state_delete_key(key)
         }
         fn list_prefix(prefix: &str) -> Vec<String> {
-            patina::state::state::list_prefix(prefix)
+            state_list_keys()
+                .into_iter()
+                .filter(|k| k.starts_with(prefix))
+                .collect()
         }
     }
 
     impl CheckpointBackend for GuestHost {
         fn load(stream: &str) -> Option<String> {
-            patina::state::state::get(&format!("checkpoint:{stream}"))
+            state_get_string(&format!("checkpoint:{stream}"))
         }
         fn save(stream: &str, checkpoint_json: &str) -> Result<(), String> {
-            patina::state::state::set(&format!("checkpoint:{stream}"), checkpoint_json)
+            state_set_string(&format!("checkpoint:{stream}"), checkpoint_json)
         }
     }
 
@@ -382,7 +429,7 @@ pub mod host {
         }
         fn load_cursor(lake: &str, source: &str, data_type: &str) -> Option<String> {
             let key = format!("lake-cursor:{lake}:{source}:{data_type}");
-            patina::state::state::get(&key)
+            state_get_string(&key)
         }
         fn save_cursor(
             lake: &str,
@@ -394,7 +441,7 @@ pub mod host {
             last_error: Option<&str>,
         ) -> Result<(), String> {
             let key = format!("lake-cursor:{lake}:{source}:{data_type}");
-            patina::state::state::set(
+            state_set_string(
                 &key,
                 &serde_json::json!({
                     "cursor": cursor,
@@ -626,27 +673,27 @@ pub mod host {
 
     impl SessionBackend for GuestHost {
         fn get_session_id() -> String {
-            patina::state::state::get("session-id").unwrap_or_else(|| "unknown".to_string())
+            state_get_string("session-id").unwrap_or_else(|| "unknown".to_string())
         }
 
         fn get_previous_session() -> Option<String> {
-            patina::state::state::get("previous-session")
+            state_get_string("previous-session")
         }
 
         fn get_previous_session_runtime_id() -> Option<String> {
-            patina::state::state::get("parent-session-runtime")
+            state_get_string("parent-session-runtime")
         }
 
         fn get_previous_session_handoff() -> Option<String> {
-            patina::state::state::get("parent-handoff")
+            state_get_string("parent-handoff")
         }
 
         fn write(section: &str, content: &str) -> Result<(), String> {
-            patina::state::state::set(&format!("session:{section}"), content)
+            state_set_string(&format!("session:{section}"), content)
         }
 
         fn set_parent_session(runtime_id: &str) -> Result<(), String> {
-            patina::state::state::set("parent-session-runtime", runtime_id)
+            state_set_string("parent-session-runtime", runtime_id)
         }
 
         fn create_tag(name: &str) -> Result<(), String> {
@@ -654,11 +701,11 @@ pub mod host {
         }
 
         fn set_status(status: &str) -> Result<(), String> {
-            patina::state::state::set("session-status", status)
+            state_set_string("session-status", status)
         }
 
         fn write_handoff(modified_files: &str, summary: &str) -> Result<(), String> {
-            patina::state::state::set(
+            state_set_string(
                 "session-handoff",
                 &serde_json::json!({"modified_files": modified_files, "summary": summary})
                     .to_string(),
