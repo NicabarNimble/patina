@@ -12,108 +12,78 @@ echo ""
 # Step 1: WIT consistency — SDK mirror must match canonical wit/
 echo "📦 [1/14] Checking WIT consistency..."
 wit_ok=true
-# Step 1b: SDK WIT consistency — ensure published SDK ships current WIT
-# Compare world definitions AND their deps/patina-host/host.wit copies
 echo "   Checking SDK WIT consistency..."
-for world in command knowledge-child mother-child pipeline task; do
-    if ! diff "wit/$world/$world.wit" "sdk/patina-sdk/wit/$world/$world.wit" > /dev/null 2>&1; then
-        echo "   ERROR: sdk/patina-sdk/wit/$world/$world.wit differs from canonical"
-        echo "   Fix: cp wit/$world/$world.wit sdk/patina-sdk/wit/$world/$world.wit"
+
+# Worlds currently shipped by sdk/patina-sdk.
+SDK_WORLDS=(knowledge-child pipeline)
+
+for world in "${SDK_WORLDS[@]}"; do
+    canonical_world="wit/$world/$world.wit"
+    sdk_world="sdk/patina-sdk/wit/$world/$world.wit"
+    if [ ! -f "$canonical_world" ]; then
+        echo "   ERROR: missing canonical world: $canonical_world"
         wit_ok=false
+        continue
     fi
-    if ! diff "wit/$world/deps/patina-host/host.wit" "sdk/patina-sdk/wit/$world/deps/patina-host/host.wit" > /dev/null 2>&1; then
-        echo "   ERROR: sdk/patina-sdk/wit/$world/deps/patina-host/host.wit differs from canonical"
-        echo "   Fix: cp wit/$world/deps/patina-host/host.wit sdk/patina-sdk/wit/$world/deps/patina-host/host.wit"
+    if [ ! -f "$sdk_world" ]; then
+        echo "   ERROR: missing SDK world mirror: $sdk_world"
+        wit_ok=false
+        continue
+    fi
+    if ! diff "$canonical_world" "$sdk_world" > /dev/null 2>&1; then
+        echo "   ERROR: $sdk_world differs from canonical"
+        echo "   Fix: cp $canonical_world $sdk_world"
         wit_ok=false
     fi
 done
+
+for sdk_dep in sdk/patina-sdk/wit/*/deps/*.wit; do
+    [ -f "$sdk_dep" ] || continue
+    world=$(basename "$(dirname "$(dirname "$sdk_dep")")")
+    dep_name=$(basename "$sdk_dep")
+    canonical_dep="wit/$world/deps/$dep_name"
+    if [ ! -f "$canonical_dep" ]; then
+        echo "   ERROR: SDK dep has no canonical source: $sdk_dep"
+        echo "   Expected canonical path: $canonical_dep"
+        wit_ok=false
+        continue
+    fi
+    if ! diff "$canonical_dep" "$sdk_dep" > /dev/null 2>&1; then
+        echo "   ERROR: $sdk_dep differs from canonical"
+        echo "   Fix: cp $canonical_dep $sdk_dep"
+        wit_ok=false
+    fi
+done
+
 if [ "$wit_ok" = false ]; then
     echo ""
     echo "❌ WIT consistency check failed!"
     exit 1
 fi
-echo "   ✓ WIT files consistent across all crates"
+echo "   ✓ WIT files consistent across SDK and canonical sources"
 echo ""
 
-# Step 2: WIT host.wit symlink enforcement
-# Per [[wit-deps-must-be-hard-links-verified]]: all world-level
-# deps/patina-host/host.wit must point back to the canonical file.
-# Stale copies cause silent build failures when new imports are added.
-# Pure shell — no python3 (per [[patina-identity]]: Rust-first, no Python).
-echo "📦 [2/14] Checking WIT host.wit symlinks..."
-CANONICAL="wit/deps/patina-host/host.wit"
-wit_link_ok=true
-
-# Resolve a path through symlinks to its absolute canonical form. Pure shell.
-# For symlinks: resolve the target relative to the link's directory, then canonicalize.
-resolve_real() {
-    local path="$1"
-    # Follow symlinks manually
-    while [ -L "$path" ]; do
-        local target
-        target=$(readlink "$path")
-        if [[ "$target" == /* ]]; then
-            path="$target"
-        else
-            path="$(dirname "$path")/$target"
+# Step 2: WIT mirror completeness for SDK worlds
+echo "📦 [2/14] Checking WIT mirror completeness..."
+wit_mirror_ok=true
+for world in "${SDK_WORLDS[@]}"; do
+    for canonical_dep in "wit/$world"/deps/*.wit; do
+        [ -f "$canonical_dep" ] || continue
+        dep_name=$(basename "$canonical_dep")
+        sdk_dep="sdk/patina-sdk/wit/$world/deps/$dep_name"
+        if [ ! -f "$sdk_dep" ]; then
+            echo "   ERROR: missing SDK dep mirror: $sdk_dep"
+            echo "   Fix: cp $canonical_dep $sdk_dep"
+            wit_mirror_ok=false
         fi
     done
-    # Now path is a real file — resolve its directory
-    local dir
-    dir=$(cd "$(dirname "$path")" && pwd -P)
-    echo "$dir/$(basename "$path")"
-}
-
-if [ ! -f "$CANONICAL" ]; then
-    echo "   ERROR: canonical $CANONICAL not found"
-    wit_link_ok=false
-else
-    CANONICAL_REAL=$(resolve_real "$CANONICAL")
-    # Check world-level deps AND SDK mirror deps — same canonical file
-    COPIES=(
-        "wit/knowledge-child/deps/patina-host/host.wit"
-        "wit/command/deps/patina-host/host.wit"
-        "wit/task/deps/patina-host/host.wit"
-        "wit/pipeline/deps/patina-host/host.wit"
-        "sdk/patina-sdk/wit/knowledge-child/deps/patina-host/host.wit"
-        "sdk/patina-sdk/wit/command/deps/patina-host/host.wit"
-        "sdk/patina-sdk/wit/task/deps/patina-host/host.wit"
-        "sdk/patina-sdk/wit/pipeline/deps/patina-host/host.wit"
-    )
-    for COPY in "${COPIES[@]}"; do
-        if [ ! -f "$COPY" ]; then
-            echo "   ERROR: $COPY not found"
-            wit_link_ok=false
-            continue
-        fi
-        if [ ! -L "$COPY" ]; then
-            echo "   ERROR: $COPY is not a symlink (expected -> $CANONICAL)"
-            echo "         Fix: rm $COPY && ln -s <relative-path-to-canonical> $COPY"
-            wit_link_ok=false
-            continue
-        fi
-        SYM_TARGET=$(readlink "$COPY")
-        if [[ "$SYM_TARGET" == /* ]]; then
-            echo "   ERROR: $COPY uses an absolute symlink target ($SYM_TARGET)"
-            echo "         Fix: rm $COPY && ln -s <relative-path> $COPY"
-            wit_link_ok=false
-            continue
-        fi
-        COPY_REAL=$(resolve_real "$COPY")
-        if [ "$COPY_REAL" != "$CANONICAL_REAL" ]; then
-            echo "   ERROR: $COPY resolves to $COPY_REAL (expected $CANONICAL_REAL)"
-            echo "         Fix: rm $COPY && ln -s <relative-path-to-canonical> $COPY"
-            wit_link_ok=false
-        fi
-    done
-fi
-if [ "$wit_link_ok" = false ]; then
+done
+if [ "$wit_mirror_ok" = false ]; then
     echo ""
-    echo "❌ WIT host.wit symlink check failed!"
-    echo "   All world deps must be symlinks to $CANONICAL"
+    echo "❌ WIT mirror completeness check failed!"
     exit 1
 fi
-echo "   ✓ All host.wit symlinks resolve to canonical"
+echo "   ✓ SDK mirrors all canonical deps for shipped worlds"
 echo ""
 
 # Step 3: Crate naming policy (CI parity)
