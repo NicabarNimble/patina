@@ -37,19 +37,19 @@ exit_criteria:
     checked: true
   - id: wta6-measure-aligned
     text: "`patina:measure` (not yet in WIT) evaluated against `wasi:observe` proposals. Decision: adopt standard, define delta, or defer."
-    checked: false
+    checked: true
   - id: wta7-wit-updated
     text: "All migration decisions implemented in `wit/toys/deps/` and `knowledge-child.wit`."
-    checked: false
+    checked: true
   - id: wta8-sdk-updated
     text: "SDK crates updated — trait backends, build.rs WIT copies, and feature flags reflect new imports."
-    checked: false
+    checked: true
   - id: wta9-children-compile
     text: "All existing children compile and pass tests against the updated toy surface."
-    checked: false
+    checked: true
   - id: wta10-shims-removed
     text: "All compatibility shims in `sdk/patina-sdk-*/src/compat/` are removed. No child imports from compat modules."
-    checked: false
+    checked: true
 ---
 # refactor: wasi-toy-alignment
 

@@ -662,6 +662,7 @@ fn capabilities_all_granted() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -698,6 +699,7 @@ fn capabilities_empty() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -734,6 +736,7 @@ fn capabilities_denied() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -845,6 +848,7 @@ fn check_capabilities_rejects_unknown_query_kinds() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -886,6 +890,7 @@ fn check_capabilities_accepts_known_query_kinds() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -941,6 +946,7 @@ fn wasm_models_child_handle_roundtrip() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1009,6 +1015,7 @@ fn wasm_models_child_health() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1066,6 +1073,7 @@ fn load_repos_child() -> Option<Box<dyn crate::mother::KnowledgeChild>> {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1245,6 +1253,7 @@ fn benchmark_plugin_performance() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1440,6 +1449,7 @@ fn check_capabilities_rejects_empty_http_domain() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1477,6 +1487,7 @@ fn check_capabilities_rejects_http_domain_with_path() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1514,6 +1525,7 @@ fn check_capabilities_accepts_valid_http_domains() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1554,6 +1566,7 @@ fn granted_capabilities_includes_http_domains() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1662,6 +1675,7 @@ fn echo_pipeline_manifest() -> ChildManifest {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1807,6 +1821,7 @@ fn wasm_trap_pipeline_panic_returns_error() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1928,6 +1943,7 @@ fn check_capabilities_rejects_pipeline_with_query() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1970,6 +1986,7 @@ fn check_capabilities_rejects_pipeline_with_http() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -2058,6 +2075,7 @@ fn wasm_trap_mother_child_panic_returns_error() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -2266,6 +2284,7 @@ fn check_capabilities_rejects_host_secrets_domain_not_in_host_http() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -2316,6 +2335,7 @@ fn check_capabilities_accepts_host_secrets_with_matching_host_http() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -2364,6 +2384,7 @@ fn granted_capabilities_includes_credential_mappings() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -2916,6 +2937,62 @@ package = "patina:schema/forge@1.0.0"
     );
 }
 
+#[test]
+fn measure_manifest_parses_declared_metrics() {
+    let f = write_temp_manifest(
+        r#"
+[child]
+name = "metrics-plugin"
+kind = "knowledge-child"
+
+[needs]
+toys = ["measure"]
+
+[needs.metrics.parse_accuracy]
+type = "gauge"
+labels = ["file_type"]
+
+[needs.metrics.records_ingested]
+type = "counter"
+labels = ["source"]
+"#,
+    );
+    let m = ChildManifest::from_path(f.path()).unwrap();
+    assert_eq!(
+        m.declared_metrics
+            .get("parse_accuracy")
+            .unwrap()
+            .metric_type,
+        DeclaredMetricType::Gauge
+    );
+    assert_eq!(
+        m.declared_metrics
+            .get("records_ingested")
+            .unwrap()
+            .metric_type,
+        DeclaredMetricType::Counter
+    );
+}
+
+#[test]
+fn measure_undeclared_metric_rejected() {
+    let declared = std::collections::HashMap::new();
+    let result = host_support::record_declared_metric(
+        "metrics-plugin",
+        &declared,
+        "undeclared_metric",
+        DeclaredMetricType::Gauge,
+        1.0,
+        &[],
+    );
+    let error = result.unwrap_err();
+    assert!(
+        error.starts_with("measure/undeclared-metric:"),
+        "expected deterministic undeclared metric error, got: {}",
+        error
+    );
+}
+
 // =====================================================================
 // ChildRole — parsing, display, expected_worlds
 // =====================================================================
@@ -3055,6 +3132,7 @@ fn role_world_valid_combo_passes() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -3093,6 +3171,7 @@ fn role_world_unusual_combo_still_passes() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -3131,6 +3210,7 @@ fn role_none_skips_validation() {
             ..Default::default()
         },
         schemas: std::collections::HashMap::new(),
+        declared_metrics: std::collections::HashMap::new(),
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],

@@ -480,6 +480,59 @@ mod bindings {
         }
     }
 
+    impl patina::measure::measure::Host for HostState {
+        fn emit(&mut self, metric: patina::measure::measure::Metric) -> Result<(), String> {
+            if !self.grants.toys.measure {
+                return Err(format!(
+                    "measure toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
+            crate::child::internal::host_support::record_declared_metric(
+                &self.plugin_name,
+                &self.grants.declared_metrics,
+                &metric.name,
+                crate::child::internal::DeclaredMetricType::Gauge,
+                metric.value,
+                &metric.labels,
+            )
+        }
+
+        fn gauge(&mut self, name: String, value: f64) -> Result<(), String> {
+            if !self.grants.toys.measure {
+                return Err(format!(
+                    "measure toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
+            crate::child::internal::host_support::record_declared_metric(
+                &self.plugin_name,
+                &self.grants.declared_metrics,
+                &name,
+                crate::child::internal::DeclaredMetricType::Gauge,
+                value,
+                &[],
+            )
+        }
+
+        fn counter(&mut self, name: String, delta: f64) -> Result<(), String> {
+            if !self.grants.toys.measure {
+                return Err(format!(
+                    "measure toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
+            crate::child::internal::host_support::record_declared_metric(
+                &self.plugin_name,
+                &self.grants.declared_metrics,
+                &name,
+                crate::child::internal::DeclaredMetricType::Counter,
+                delta,
+                &[],
+            )
+        }
+    }
+
     impl patina::task::task::Host for HostState {
         fn enqueue(
             &mut self,
@@ -591,6 +644,10 @@ impl KnowledgeChildEngine {
             wasmtime::component::HasSelf<HostState>,
         >(linker, |s| s)?;
         bindings::patina::events_stream::events_stream::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        bindings::patina::measure::measure::add_to_linker::<
             HostState,
             wasmtime::component::HasSelf<HostState>,
         >(linker, |s| s)?;

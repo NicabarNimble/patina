@@ -363,6 +363,90 @@ pub(crate) fn leak_check(body: &str, secret_name: &str, secret_value: &str) -> S
 
 use crate::measure::{REGISTERED_TOOLS, VALID_VERBS};
 
+pub(super) fn record_declared_metric(
+    plugin_name: &str,
+    declared_metrics: &std::collections::HashMap<String, super::DeclaredMetric>,
+    name: &str,
+    metric_type: super::DeclaredMetricType,
+    value: f64,
+    labels: &[(String, String)],
+) -> Result<(), String> {
+    let Some(policy) = declared_metrics.get(name) else {
+        return Err(format!(
+            "measure/undeclared-metric: '{}' is not declared in [needs.metrics]",
+            name
+        ));
+    };
+
+    if policy.metric_type != metric_type {
+        let expected = match policy.metric_type {
+            super::DeclaredMetricType::Gauge => "gauge",
+            super::DeclaredMetricType::Counter => "counter",
+        };
+        let got = match metric_type {
+            super::DeclaredMetricType::Gauge => "gauge",
+            super::DeclaredMetricType::Counter => "counter",
+        };
+        return Err(format!(
+            "measure/type-mismatch: metric '{}' declared as '{}' but got '{}'",
+            name, expected, got
+        ));
+    }
+
+    let allowed: std::collections::HashSet<&str> =
+        policy.labels.iter().map(String::as_str).collect();
+    let mut seen = std::collections::HashSet::new();
+    for (key, _) in labels {
+        if !allowed.contains(key.as_str()) {
+            return Err(format!(
+                "measure/undeclared-label: label '{}' not declared for metric '{}'",
+                key, name
+            ));
+        }
+        if !seen.insert(key.as_str()) {
+            return Err(format!(
+                "measure/duplicate-label: label '{}' repeated for metric '{}'",
+                key, name
+            ));
+        }
+    }
+
+    if labels.len() > 10 {
+        return Err(format!(
+            "measure/label-cap: metric '{}' exceeds max label keys (10)",
+            name
+        ));
+    }
+
+    let kind = match metric_type {
+        super::DeclaredMetricType::Gauge => "gauge",
+        super::DeclaredMetricType::Counter => "counter",
+    };
+
+    let conn = crate::eventlog::open_events_db().map_err(|e| format!("open events.db: {}", e))?;
+    let event_data = serde_json::json!({
+        "name": name,
+        "kind": kind,
+        "value": value,
+        "labels": labels,
+        "source": plugin_name,
+    });
+
+    let source_id = format!("plugin:{}:measure:{}", plugin_name, name);
+    let timestamp = chrono::Utc::now().to_rfc3339();
+    crate::eventlog::insert_event(
+        &conn,
+        "measure.metric",
+        &timestamp,
+        &source_id,
+        None,
+        &event_data.to_string(),
+    )
+    .map_err(|e| format!("insert declared metric event: {}", e))?;
+
+    Ok(())
+}
+
 /// Record a measurement event from a child.
 ///
 /// Validates verb, checks metrics are numeric JSON, writes to eventlog

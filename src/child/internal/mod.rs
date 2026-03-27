@@ -211,6 +211,18 @@ pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
         );
     }
 
+    if manifest.capabilities.contains(&"host_measure".to_string()) {
+        for (metric_name, metric) in &manifest.declared_metrics {
+            if metric.labels.len() > 10 {
+                anyhow::bail!(
+                    "child '{}' metric '{}' exceeds max label keys (10)",
+                    manifest.name,
+                    metric_name
+                );
+            }
+        }
+    }
+
     if manifest.world == ChildKind::KnowledgeChild {
         const KNOWN_STREAMS: &[&str] = &[
             "belief.changed",
@@ -336,6 +348,18 @@ pub struct CredentialMapping {
     pub location: InjectionLocation,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeclaredMetricType {
+    Gauge,
+    Counter,
+}
+
+#[derive(Debug, Clone)]
+pub struct DeclaredMetric {
+    pub metric_type: DeclaredMetricType,
+    pub labels: Vec<String>,
+}
+
 // =========================================================================
 // Child manifest (child.toml)
 // =========================================================================
@@ -368,6 +392,8 @@ pub struct ChildManifest {
     /// Schema packages this child references (from [schemas.<name>].package).
     /// Maps schema name → package string (e.g., "forge" → "patina:schema/forge@1.0.0").
     pub schemas: std::collections::HashMap<String, String>,
+    /// Metrics this child is allowed to emit (from [needs.metrics]).
+    pub declared_metrics: std::collections::HashMap<String, DeclaredMetric>,
     pub state_enabled: bool,
     pub checkpoint_streams: Vec<String>,
     pub lake_names: Vec<String>,
@@ -414,6 +440,8 @@ pub struct GrantedCapabilities {
     /// inner key = fact-type name, value = event_type string.
     /// Zero disk reads at emit time — all validation from this cache.
     pub schema_facts: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+    /// Declared metric policies from manifest [needs.metrics].
+    pub declared_metrics: std::collections::HashMap<String, DeclaredMetric>,
     pub state_enabled: bool,
     pub checkpoint_streams: std::collections::HashSet<String>,
     pub lake_names: std::collections::HashSet<String>,
@@ -713,6 +741,50 @@ impl ChildManifest {
             })
             .unwrap_or_default();
 
+        let declared_metrics = needs_table
+            .and_then(|needs| needs.get("metrics"))
+            .and_then(|v| v.as_table())
+            .map(|metrics_table| {
+                metrics_table
+                    .iter()
+                    .filter_map(|(name, value)| {
+                        let table = value.as_table()?;
+                        let metric_type = match table.get("type").and_then(|v| v.as_str()) {
+                            Some("gauge") => DeclaredMetricType::Gauge,
+                            Some("counter") => DeclaredMetricType::Counter,
+                            Some(other) => {
+                                eprintln!(
+                                    "warning: metric '{}' has unknown type '{}', skipping",
+                                    name, other
+                                );
+                                return None;
+                            }
+                            None => {
+                                eprintln!("warning: metric '{}' missing type, skipping", name);
+                                return None;
+                            }
+                        };
+                        let labels = table
+                            .get("labels")
+                            .and_then(|v| v.as_array())
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|v| v.as_str().map(ToString::to_string))
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default();
+                        Some((
+                            name.clone(),
+                            DeclaredMetric {
+                                metric_type,
+                                labels,
+                            },
+                        ))
+                    })
+                    .collect::<std::collections::HashMap<_, _>>()
+            })
+            .unwrap_or_default();
+
         let state_enabled = needs_toys.iter().any(|toy| toy == "state");
         let checkpoint_streams = needs_scopes
             .and_then(|scopes| scopes.get("checkpoint"))
@@ -848,6 +920,7 @@ impl ChildManifest {
                 languages,
             },
             schemas,
+            declared_metrics,
             state_enabled,
             checkpoint_streams,
             lake_names,
@@ -910,6 +983,7 @@ impl ChildManifest {
             credential_mappings,
             host_emit,
             schema_facts,
+            declared_metrics: self.declared_metrics.clone(),
             state_enabled: self.state_enabled,
             checkpoint_streams: self.checkpoint_streams.iter().cloned().collect(),
             lake_names: self.lake_names.iter().cloned().collect(),
