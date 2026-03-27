@@ -318,6 +318,21 @@ pub mod host {
         out
     }
 
+    fn messaging_publish(
+        stream_name: &str,
+        event_type: &str,
+        payload: &str,
+    ) -> Result<u64, String> {
+        let client = super::wasi::messaging::producer::connect(stream_name)?;
+        let message = super::wasi::messaging::types::Message {
+            topic: event_type.to_string(),
+            content_type: Some("application/json".to_string()),
+            data: payload.as_bytes().to_vec(),
+            metadata: Vec::new(),
+        };
+        super::wasi::messaging::producer::send(&client, &message)
+    }
+
     fn sql_query_string(connection: &str, query: &str) -> Result<String, String> {
         let conn = super::wasi::sql::readwrite::open(connection)?;
         let stmt = super::wasi::sql::readwrite::prepare(query, &[])?;
@@ -416,7 +431,7 @@ pub mod host {
                     .unwrap_or(serde_json::Value::String(metrics_json.to_string())),
             })
             .to_string();
-            let _ = patina::events::events::publish("measure", "measurement", &payload)?;
+            let _ = messaging_publish("measure", "measurement", &payload)?;
             Ok(())
         }
     }
@@ -445,7 +460,7 @@ pub mod host {
                     .unwrap_or(serde_json::Value::String(data.to_string())),
             })
             .to_string();
-            patina::events::events::publish("fact.ingested", fact_type, &payload)
+            messaging_publish("fact.ingested", fact_type, &payload)
         }
     }
 
@@ -772,21 +787,23 @@ pub mod host {
             after_offset: Option<u64>,
             limit: u32,
         ) -> Result<Vec<PendingEvent>, String> {
-            patina::events::events::subscribe(stream, after_offset, limit).map(|events| {
-                events
-                    .into_iter()
-                    .map(|event| PendingEvent {
-                        stream_name: event.stream_name,
-                        offset: event.offset,
-                        event_type: event.event_type,
-                        payload_json: event.payload,
-                        occurred_at: event.occurred_at,
-                    })
-                    .collect()
-            })
+            patina::events_stream::events_stream::subscribe(stream, after_offset, limit).map(
+                |events| {
+                    events
+                        .into_iter()
+                        .map(|event| PendingEvent {
+                            stream_name: event.stream_name,
+                            offset: event.offset,
+                            event_type: event.event_type,
+                            payload_json: event.payload,
+                            occurred_at: event.occurred_at,
+                        })
+                        .collect()
+                },
+            )
         }
         fn ack_through(stream: &str, offset: u64) -> Result<(), String> {
-            patina::events::events::ack(stream, offset)
+            patina::events_stream::events_stream::ack(stream, offset)
         }
         fn list_streams() -> Vec<String> {
             vec![
@@ -802,7 +819,7 @@ pub mod host {
     #[cfg(feature = "toy-peer")]
     impl PeerBackend for GuestHost {
         fn emit_event(event_type: &str, payload_json: &str) -> Result<(), String> {
-            let _ = patina::events::events::publish(event_type, event_type, payload_json)?;
+            let _ = messaging_publish(event_type, event_type, payload_json)?;
             Ok(())
         }
 
@@ -811,18 +828,20 @@ pub mod host {
             after_offset: Option<u64>,
             limit: u32,
         ) -> Result<Vec<PeerEvent>, String> {
-            patina::events::events::subscribe(stream_name, after_offset, limit).map(|events| {
-                events
-                    .into_iter()
-                    .map(|event| PeerEvent {
-                        stream_name: event.stream_name,
-                        offset: event.offset,
-                        event_type: event.event_type,
-                        payload_json: event.payload,
-                        occurred_at: event.occurred_at,
-                    })
-                    .collect()
-            })
+            patina::events_stream::events_stream::subscribe(stream_name, after_offset, limit).map(
+                |events| {
+                    events
+                        .into_iter()
+                        .map(|event| PeerEvent {
+                            stream_name: event.stream_name,
+                            offset: event.offset,
+                            event_type: event.event_type,
+                            payload_json: event.payload,
+                            occurred_at: event.occurred_at,
+                        })
+                        .collect()
+                },
+            )
         }
     }
 

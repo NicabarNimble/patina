@@ -28,7 +28,7 @@ exit_criteria:
     checked: true
   - id: wta3-events-aligned
     text: "`patina:events` evaluated against `wasi:messaging`. Decision: migrate, extend, or justify keeping custom."
-    checked: false
+    checked: true
   - id: wta4-store-aligned
     text: "`patina:store` evaluated against `wasi:sql`. Decision: migrate, extend, or justify keeping custom."
     checked: true

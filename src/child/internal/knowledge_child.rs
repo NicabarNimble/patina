@@ -42,6 +42,11 @@ mod bindings {
         pub params: Vec<String>,
     }
 
+    #[derive(Debug, Clone)]
+    pub struct MessagingClientHandle {
+        pub stream_name: String,
+    }
+
     impl wasmtime_wasi::WasiView for HostState {
         fn ctx(&mut self) -> wasmtime_wasi::WasiCtxView<'_> {
             wasmtime_wasi::WasiCtxView {
@@ -385,12 +390,21 @@ mod bindings {
         }
     }
 
-    impl patina::events::events::Host for HostState {
-        fn publish(
+    impl wasi::messaging::producer::Host for HostState {
+        fn connect(
             &mut self,
-            stream_name: String,
-            event_type: String,
-            payload: String,
+            name: String,
+        ) -> Result<wasmtime::component::Resource<wasi::messaging::producer::Client>, String>
+        {
+            let handle = MessagingClientHandle { stream_name: name };
+            let rep = self.wasi_table.push(handle).map_err(|e| e.to_string())?;
+            Ok(wasmtime::component::Resource::new_own(rep.rep()))
+        }
+
+        fn send(
+            &mut self,
+            client: wasmtime::component::Resource<wasi::messaging::producer::Client>,
+            message: wasi::messaging::types::Message,
         ) -> Result<u64, String> {
             if !self.grants.host_emit {
                 return Err(format!(
@@ -398,21 +412,38 @@ mod bindings {
                     self.plugin_name
                 ));
             }
+            let rep =
+                wasmtime::component::Resource::<MessagingClientHandle>::new_borrow(client.rep());
+            let client = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let event_type = message.topic;
+            let payload = String::from_utf8(message.data).map_err(|e| e.to_string())?;
             crate::child::toy_host::v2::events_publish(
                 &self.runtime,
                 &self.plugin_name,
-                &stream_name,
+                &client.stream_name,
                 &event_type,
                 &payload,
             )
         }
+    }
 
+    impl wasi::messaging::producer::HostClient for HostState {
+        fn drop(
+            &mut self,
+            rep: wasmtime::component::Resource<wasi::messaging::producer::Client>,
+        ) -> wasmtime::Result<()> {
+            let rep = wasmtime::component::Resource::<MessagingClientHandle>::new_own(rep.rep());
+            Ok(self.wasi_table.delete(rep).map(|_| ())?)
+        }
+    }
+
+    impl patina::events_stream::events_stream::Host for HostState {
         fn subscribe(
             &mut self,
             stream_name: String,
             after: Option<u64>,
             limit: u32,
-        ) -> Result<Vec<patina::events::events::Event>, String> {
+        ) -> Result<Vec<patina::events_stream::events_stream::Event>, String> {
             if !self.grants.subscribed_streams.contains(&stream_name) {
                 return Err(format!(
                     "event stream '{}' not granted for child '{}'",
@@ -422,7 +453,7 @@ mod bindings {
             crate::child::toy_host::v2::events_subscribe(&stream_name, after, limit).map(|events| {
                 events
                     .into_iter()
-                    .map(|event| patina::events::events::Event {
+                    .map(|event| patina::events_stream::events_stream::Event {
                         stream_name: event.stream_name,
                         offset: event.offset,
                         event_type: event.event_type,
@@ -555,7 +586,11 @@ impl KnowledgeChildEngine {
     }
 
     fn link_events(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::events::events::add_to_linker::<
+        bindings::wasi::messaging::producer::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        bindings::patina::events_stream::events_stream::add_to_linker::<
             HostState,
             wasmtime::component::HasSelf<HostState>,
         >(linker, |s| s)?;
