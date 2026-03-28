@@ -124,7 +124,7 @@ fn world_templates(world: &ChildKind) -> (&'static str, &'static str, &'static s
 ///
 /// Creates `<name>/` in the given parent directory with:
 /// - `Cargo.toml` (cdylib, correct guest API dep)
-/// - `child.toml` (kind, capabilities, provides)
+/// - `child.toml` (kind, needs, provides)
 /// - `src/lib.rs` (trait impl, register macro)
 ///
 /// Templates use `patina-sdk` version dep — no absolute paths.

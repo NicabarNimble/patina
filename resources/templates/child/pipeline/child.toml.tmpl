@@ -5,8 +5,8 @@ description = "Patina pipeline child"
 kind = "pipeline"
 patina_min = "0.21.0"
 
-[capabilities]
-host_log = true
+[needs]
+toys = ["log"]
 
 [provides]
 pipeline_ops = ["parse"]
