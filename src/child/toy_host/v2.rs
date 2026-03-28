@@ -20,7 +20,7 @@ pub struct Response {
 pub struct ConnectionHandle {
     pub name: String,
     pub base_url: String,
-    record: ConnectionRecord,
+    pub(crate) record: ConnectionRecord,
 }
 
 pub fn connect_resolve(name: &str) -> Result<ConnectionHandle, String> {
@@ -40,6 +40,33 @@ pub fn connect_resolve(name: &str) -> Result<ConnectionHandle, String> {
 
 pub fn connect_base_url(conn: &ConnectionHandle) -> String {
     conn.base_url.clone()
+}
+
+pub fn connect_matches_domain(conn: &ConnectionHandle, domain: &str) -> bool {
+    conn.record
+        .auth
+        .allowed_domains
+        .iter()
+        .any(|allowed| normalize_domain(allowed) == normalize_domain(domain))
+}
+
+pub fn connect_auth_header_for_domain(
+    conn: &ConnectionHandle,
+    domain: &str,
+) -> Result<Option<(String, String)>, String> {
+    let credential = crate::connect::resolve_credential_for_domain(&conn.record, domain)?;
+    Ok(match credential.injection {
+        InjectionStrategy::Bearer => Some((
+            "Authorization".to_string(),
+            format!("Bearer {}", credential.value),
+        )),
+        InjectionStrategy::Header { name } => Some((name, credential.value)),
+        InjectionStrategy::InProcess => None,
+    })
+}
+
+pub fn normalize_domain(domain: &str) -> String {
+    domain.trim().trim_end_matches('.').to_ascii_lowercase()
 }
 
 pub fn connect_request(

@@ -45,6 +45,7 @@ which = "7.0"
 
 # HTTP client (blocking only - no async)
 reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false }
+hyper = "1"
 
 # HTTP request parser (zero-copy, zero deps) — blocking microserver
 httparse = "1.10"
@@ -102,6 +103,7 @@ wasmtime = { version = "=41", default-features = false, features = [
 # WASI support — wasm32-wasip2 components always import basic WASI (stdio, env, clocks)
 # even for pure-computation code. p2 feature = WASIp2 component model.
 wasmtime-wasi = { version = "=41", default-features = false, features = ["p2"] }
+wasmtime-wasi-http = { version = "=41", default-features = false, features = ["default-send-request"] }
 
 mother-crate = { package = "mother", path = "mother" }
 patina-core = { path = "crates/patina-core" }

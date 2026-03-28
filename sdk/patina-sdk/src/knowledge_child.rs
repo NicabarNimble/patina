@@ -390,6 +390,79 @@ pub mod host {
         super::wasi::sql::readwrite::exec(&conn, &stmt)
     }
 
+    fn default_authority_for_source(source: &str) -> String {
+        match source {
+            "github" => "api.github.com".to_string(),
+            other => other.to_string(),
+        }
+    }
+
+    fn wasi_http_get_with_binding(
+        source: &str,
+        authority: &str,
+        path_with_query: &str,
+    ) -> Result<String, String> {
+        let _binding = patina::connect::connect::resolve(source)?;
+
+        let headers = super::wasi::http::types::Fields::new();
+        let request = super::wasi::http::types::OutgoingRequest::new(headers);
+        request
+            .set_method(&super::wasi::http::types::Method::Get)
+            .map_err(|_| "failed to set HTTP method".to_string())?;
+        request
+            .set_scheme(Some(&super::wasi::http::types::Scheme::Https))
+            .map_err(|_| "failed to set HTTP scheme".to_string())?;
+        request
+            .set_authority(Some(authority))
+            .map_err(|_| "failed to set HTTP authority".to_string())?;
+        request
+            .set_path_with_query(Some(path_with_query))
+            .map_err(|_| "failed to set HTTP path".to_string())?;
+
+        let body = request
+            .body()
+            .map_err(|_| "failed to open outgoing HTTP body".to_string())?;
+        let stream = body
+            .write()
+            .map_err(|_| "failed to open outgoing HTTP stream".to_string())?;
+        drop(stream);
+        super::wasi::http::types::OutgoingBody::finish(body, None)
+            .map_err(|error| format!("failed to finalize outgoing HTTP body: {:?}", error))?;
+
+        let future = super::wasi::http::outgoing_handler::handle(request, None)
+            .map_err(|error| format!("HTTP request failed to start: {:?}", error))?;
+        let pollable = future.subscribe();
+
+        let response = loop {
+            if let Some(result) = future.get() {
+                let result = result.map_err(|_| "response future already consumed".to_string())?;
+                break result.map_err(|error| format!("HTTP request failed: {:?}", error));
+            }
+            super::wasi::io::poll::poll(&[&pollable]);
+        }?;
+
+        let incoming_body = response
+            .consume()
+            .map_err(|_| "incoming response body already consumed".to_string())?;
+        let input_stream = incoming_body
+            .stream()
+            .map_err(|_| "failed to open incoming response stream".to_string())?;
+        let mut bytes = Vec::new();
+
+        loop {
+            let chunk = input_stream
+                .blocking_read(64 * 1024)
+                .map_err(|error| format!("failed to read HTTP response body: {:?}", error))?;
+            if chunk.is_empty() {
+                break;
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+
+        let _ = super::wasi::http::types::IncomingBody::finish(incoming_body);
+        String::from_utf8(bytes).map_err(|error| error.to_string())
+    }
+
     impl LogBackend for GuestHost {
         fn debug(message: &str) {
             super::wasi::logging::logging::log(
@@ -551,18 +624,17 @@ pub mod host {
     impl IngressBackend for GuestHost {
         fn list_granted_sources() -> Vec<crate::toys::GrantedIngressSource> {
             match patina::connect::connect::resolve("github") {
-                Ok(conn) => vec![crate::toys::GrantedIngressSource {
+                Ok(_) => vec![crate::toys::GrantedIngressSource {
                     name: "github".to_string(),
-                    endpoint: patina::connect::connect::base_url(&conn),
+                    endpoint: "https://api.github.com".to_string(),
                 }],
                 Err(_) => vec![],
             }
         }
 
         fn fetch(source: &str) -> Result<String, String> {
-            let conn = patina::connect::connect::resolve(source)?;
-            patina::connect::connect::request(&conn, "GET", "", &[], None)
-                .map(|response| String::from_utf8(response.body).unwrap_or_default())
+            let authority = default_authority_for_source(source);
+            wasi_http_get_with_binding(source, &authority, "/")
         }
     }
 
@@ -603,7 +675,6 @@ pub mod host {
             repo: &str,
             params: &crate::toys::GithubListParams,
         ) -> Result<crate::toys::GithubPage, String> {
-            let conn = patina::connect::connect::resolve("github")?;
             let mut path = format!(
                 "/repos/{owner}/{repo}/issues?state={}",
                 params.state.clone().unwrap_or_else(|| "open".to_string())
@@ -617,8 +688,7 @@ pub mod host {
             if let Some(per_page) = params.per_page {
                 path.push_str(&format!("&per_page={per_page}"));
             }
-            let page = patina::connect::connect::request(&conn, "GET", &path, &[], None)?;
-            let items = String::from_utf8(page.body).unwrap_or_default();
+            let items = wasi_http_get_with_binding("github", "api.github.com", &path)?;
             Ok(crate::toys::GithubPage {
                 items,
                 has_next: false,
@@ -632,7 +702,6 @@ pub mod host {
             repo: &str,
             params: &crate::toys::GithubListParams,
         ) -> Result<crate::toys::GithubPage, String> {
-            let conn = patina::connect::connect::resolve("github")?;
             let mut path = format!(
                 "/repos/{owner}/{repo}/pulls?state={}",
                 params.state.clone().unwrap_or_else(|| "open".to_string())
@@ -646,8 +715,7 @@ pub mod host {
             if let Some(per_page) = params.per_page {
                 path.push_str(&format!("&per_page={per_page}"));
             }
-            let page = patina::connect::connect::request(&conn, "GET", &path, &[], None)?;
-            let items = String::from_utf8(page.body).unwrap_or_default();
+            let items = wasi_http_get_with_binding("github", "api.github.com", &path)?;
             Ok(crate::toys::GithubPage {
                 items,
                 has_next: false,
@@ -661,11 +729,9 @@ pub mod host {
             repo: &str,
             issue_number: u32,
         ) -> Result<crate::toys::GithubPage, String> {
-            let conn = patina::connect::connect::resolve("github")?;
             let path = format!("/repos/{owner}/{repo}/issues/{issue_number}/comments");
-            let page = patina::connect::connect::request(&conn, "GET", &path, &[], None)?;
             Ok(crate::toys::GithubPage {
-                items: String::from_utf8(page.body).unwrap_or_default(),
+                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
                 has_next: false,
                 next_page: None,
                 rate_remaining: 0,
@@ -677,11 +743,9 @@ pub mod host {
             repo: &str,
             issue_number: u32,
         ) -> Result<crate::toys::GithubPage, String> {
-            let conn = patina::connect::connect::resolve("github")?;
             let path = format!("/repos/{owner}/{repo}/issues/{issue_number}/events");
-            let page = patina::connect::connect::request(&conn, "GET", &path, &[], None)?;
             Ok(crate::toys::GithubPage {
-                items: String::from_utf8(page.body).unwrap_or_default(),
+                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
                 has_next: false,
                 next_page: None,
                 rate_remaining: 0,
@@ -693,11 +757,9 @@ pub mod host {
             repo: &str,
             pull_number: u32,
         ) -> Result<crate::toys::GithubPage, String> {
-            let conn = patina::connect::connect::resolve("github")?;
             let path = format!("/repos/{owner}/{repo}/pulls/{pull_number}/comments");
-            let page = patina::connect::connect::request(&conn, "GET", &path, &[], None)?;
             Ok(crate::toys::GithubPage {
-                items: String::from_utf8(page.body).unwrap_or_default(),
+                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
                 has_next: false,
                 next_page: None,
                 rate_remaining: 0,
@@ -709,11 +771,9 @@ pub mod host {
             repo: &str,
             pull_number: u32,
         ) -> Result<crate::toys::GithubPage, String> {
-            let conn = patina::connect::connect::resolve("github")?;
             let path = format!("/repos/{owner}/{repo}/pulls/{pull_number}/reviews");
-            let page = patina::connect::connect::request(&conn, "GET", &path, &[], None)?;
             Ok(crate::toys::GithubPage {
-                items: String::from_utf8(page.body).unwrap_or_default(),
+                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
                 has_next: false,
                 next_page: None,
                 rate_remaining: 0,
@@ -726,12 +786,10 @@ pub mod host {
             pull_number: u32,
             review_id: u64,
         ) -> Result<crate::toys::GithubPage, String> {
-            let conn = patina::connect::connect::resolve("github")?;
             let path =
                 format!("/repos/{owner}/{repo}/pulls/{pull_number}/reviews/{review_id}/comments");
-            let page = patina::connect::connect::request(&conn, "GET", &path, &[], None)?;
             Ok(crate::toys::GithubPage {
-                items: String::from_utf8(page.body).unwrap_or_default(),
+                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
                 has_next: false,
                 next_page: None,
                 rate_remaining: 0,

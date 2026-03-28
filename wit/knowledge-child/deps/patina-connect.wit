@@ -1,29 +1,7 @@
-package patina:connect@0.1.0;
+package patina:connect@0.2.0;
 
 interface connect {
-    use wasi:http/types@0.2.6.{field-key, field-value, status-code};
+    resource binding;
 
-    record header {
-        name: field-key,
-        value: field-value,
-    }
-
-    record response {
-        status: status-code,
-        headers: list<header>,
-        body: list<u8>,
-    }
-
-    resource connection;
-
-    resolve: func(name: string) -> result<connection, string>;
-    /// Informational only (debug/telemetry). Host auth and routing bind to conn handle.
-    base-url: func(conn: borrow<connection>) -> string;
-    request: func(
-        conn: borrow<connection>,
-        method: string,
-        path: string,
-        headers: list<header>,
-        body: option<list<u8>>,
-    ) -> result<response, string>;
+    resolve: func(name: string) -> result<binding, string>;
 }

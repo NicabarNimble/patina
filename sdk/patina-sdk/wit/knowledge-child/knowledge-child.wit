@@ -40,10 +40,9 @@ interface runtime-types {
 
 world knowledge-child {
     import wasi:http/outgoing-handler@0.2.6;
-    import wasi:filesystem/types@0.2.6;
     import wasi:logging/logging@0.1.0;
     import wasi:keyvalue/store@0.2.0;
-    import patina:connect/connect@0.1.0;
+    import patina:connect/connect@0.2.0;
     import wasi:sql/readwrite@0.1.0;
     import wasi:messaging/producer@0.2.0;
     import patina:events-stream/events-stream@0.1.0;

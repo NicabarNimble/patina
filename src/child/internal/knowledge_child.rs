@@ -14,16 +14,20 @@ use crate::mother::{
 };
 
 mod bindings {
+    use std::collections::HashMap;
+
     #[allow(dead_code)]
     pub struct HostState {
         pub plugin_name: String,
         pub wasi: wasmtime_wasi::WasiCtx,
         pub wasi_table: wasmtime::component::ResourceTable,
+        pub http: wasmtime_wasi_http::WasiHttpCtx,
         pub project_root: Option<std::path::PathBuf>,
         pub grants: super::GrantedCapabilities,
         pub query_fn: Option<super::QueryDispatchFn>,
         pub http_client: reqwest::blocking::Client,
         pub runtime: crate::mother::KnowledgeRuntimeStore,
+        pub active_bindings: HashMap<u32, crate::child::toy_host::v2::ConnectionHandle>,
     }
 
     #[derive(Debug, Clone)]
@@ -55,6 +59,65 @@ mod bindings {
                 ctx: &mut self.wasi,
                 table: &mut self.wasi_table,
             }
+        }
+    }
+
+    impl wasmtime_wasi_http::WasiHttpView for HostState {
+        fn ctx(&mut self) -> &mut wasmtime_wasi_http::WasiHttpCtx {
+            &mut self.http
+        }
+
+        fn table(&mut self) -> &mut wasmtime::component::ResourceTable {
+            &mut self.wasi_table
+        }
+
+        fn send_request(
+            &mut self,
+            mut request: hyper::Request<wasmtime_wasi_http::body::HyperOutgoingBody>,
+            config: wasmtime_wasi_http::types::OutgoingRequestConfig,
+        ) -> wasmtime_wasi_http::HttpResult<wasmtime_wasi_http::types::HostFutureIncomingResponse>
+        {
+            let Some(host) = request.uri().host() else {
+                return Ok(wasmtime_wasi_http::types::default_send_request(
+                    request, config,
+                ));
+            };
+            let host = crate::child::toy_host::v2::normalize_domain(host);
+
+            let mut matched: Option<crate::child::toy_host::v2::ConnectionHandle> = None;
+            for binding in self.active_bindings.values() {
+                if crate::child::toy_host::v2::connect_matches_domain(binding, &host) {
+                    if matched.is_some() {
+                        return Err(
+                            wasmtime_wasi_http::bindings::http::types::ErrorCode::ConfigurationError
+                                .into(),
+                        );
+                    }
+                    matched = Some(binding.clone());
+                }
+            }
+
+            if let Some(binding) = matched {
+                if let Some((name, value)) =
+                    crate::child::toy_host::v2::connect_auth_header_for_domain(&binding, &host)
+                        .map_err(|error| {
+                            wasmtime_wasi_http::HttpError::trap(anyhow::anyhow!(error))
+                        })?
+                {
+                    request.headers_mut().insert(
+                        hyper::header::HeaderName::from_bytes(name.as_bytes()).map_err(|_| {
+                            wasmtime_wasi_http::bindings::http::types::ErrorCode::HttpRequestDenied
+                        })?,
+                        hyper::header::HeaderValue::from_str(&value).map_err(|_| {
+                            wasmtime_wasi_http::bindings::http::types::ErrorCode::HttpRequestDenied
+                        })?,
+                    );
+                }
+            }
+
+            Ok(wasmtime_wasi_http::types::default_send_request(
+                request, config,
+            ))
         }
     }
 
@@ -221,69 +284,26 @@ mod bindings {
         fn resolve(
             &mut self,
             name: String,
-        ) -> Result<wasmtime::component::Resource<patina::connect::connect::Connection>, String>
+        ) -> Result<wasmtime::component::Resource<patina::connect::connect::Binding>, String>
         {
-            let conn = crate::child::toy_host::v2::connect_resolve(&name)?;
-            let rep = self.wasi_table.push(conn).map_err(|e| e.to_string())?;
-            Ok(wasmtime::component::Resource::new_own(rep.rep()))
-        }
-
-        fn base_url(
-            &mut self,
-            conn: wasmtime::component::Resource<patina::connect::connect::Connection>,
-        ) -> String {
-            let rep = wasmtime::component::Resource::<crate::child::toy_host::v2::ConnectionHandle>::new_borrow(conn.rep());
-            self.wasi_table
+            let binding = crate::child::toy_host::v2::connect_resolve(&name)?;
+            let rep = self.wasi_table.push(binding).map_err(|e| e.to_string())?;
+            let binding = self
+                .wasi_table
                 .get(&rep)
-                .map(crate::child::toy_host::v2::connect_base_url)
-                .unwrap_or_default()
-        }
-
-        fn request(
-            &mut self,
-            conn: wasmtime::component::Resource<patina::connect::connect::Connection>,
-            method: String,
-            path: String,
-            headers: Vec<patina::connect::connect::Header>,
-            body: Option<Vec<u8>>,
-        ) -> Result<patina::connect::connect::Response, String> {
-            let headers = headers
-                .into_iter()
-                .map(|h| crate::child::toy_host::v2::Header {
-                    name: h.name,
-                    value: String::from_utf8_lossy(&h.value).into_owned(),
-                })
-                .collect::<Vec<_>>();
-            let rep = wasmtime::component::Resource::<crate::child::toy_host::v2::ConnectionHandle>::new_borrow(conn.rep());
-            let conn = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
-            let response = crate::child::toy_host::v2::connect_request(
-                &self.http_client,
-                conn,
-                &method,
-                &path,
-                &headers,
-                body.as_deref(),
-            )?;
-            Ok(patina::connect::connect::Response {
-                status: response.status,
-                headers: response
-                    .headers
-                    .into_iter()
-                    .map(|h| patina::connect::connect::Header {
-                        name: h.name,
-                        value: h.value.into_bytes(),
-                    })
-                    .collect(),
-                body: response.body,
-            })
+                .map_err(|e| e.to_string())?
+                .clone();
+            self.active_bindings.insert(rep.rep(), binding);
+            Ok(wasmtime::component::Resource::new_own(rep.rep()))
         }
     }
 
-    impl patina::connect::connect::HostConnection for HostState {
+    impl patina::connect::connect::HostBinding for HostState {
         fn drop(
             &mut self,
-            rep: wasmtime::component::Resource<patina::connect::connect::Connection>,
+            rep: wasmtime::component::Resource<patina::connect::connect::Binding>,
         ) -> wasmtime::Result<()> {
+            self.active_bindings.remove(&rep.rep());
             let rep = wasmtime::component::Resource::<crate::child::toy_host::v2::ConnectionHandle>::new_own(rep.rep());
             Ok(self.wasi_table.delete(rep).map(|_| ())?)
         }
@@ -613,6 +633,7 @@ pub struct KnowledgeChildEngine {
 impl KnowledgeChildEngine {
     fn link_wasi(linker: &mut Linker<HostState>) -> Result<()> {
         wasmtime_wasi::p2::add_to_linker_sync(linker)?;
+        wasmtime_wasi_http::add_only_http_to_linker_sync(linker)?;
         Ok(())
     }
 
@@ -867,11 +888,13 @@ impl KnowledgeChildEngine {
             plugin_name: manifest.name.clone(),
             wasi,
             wasi_table: wasmtime::component::ResourceTable::new(),
+            http: wasmtime_wasi_http::WasiHttpCtx::new(),
             project_root,
             grants,
             query_fn,
             http_client,
             runtime: crate::mother::KnowledgeRuntimeStore::default(),
+            active_bindings: std::collections::HashMap::new(),
         };
         let mut store = Store::new(wasm_engine(), host_state);
         let instance = bindings::KnowledgeChild::instantiate(&mut store, component, &linker)?;
