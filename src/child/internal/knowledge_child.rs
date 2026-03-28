@@ -428,9 +428,9 @@ mod bindings {
             client: wasmtime::component::Resource<wasi::messaging::producer::Client>,
             message: wasi::messaging::types::Message,
         ) -> Result<u64, String> {
-            if !self.grants.host_emit {
+            if !self.grants.toys.events {
                 return Err(format!(
-                    "host_emit not granted for child '{}'",
+                    "events toy not granted for child '{}'",
                     self.plugin_name
                 ));
             }
@@ -510,11 +510,17 @@ mod bindings {
                     self.plugin_name
                 ));
             }
+            let metric_type = self
+                .grants
+                .declared_metrics
+                .get(&metric.name)
+                .map(|declared| declared.metric_type.clone())
+                .unwrap_or(crate::child::internal::DeclaredMetricType::Gauge);
             crate::child::internal::host_support::record_declared_metric(
                 &self.plugin_name,
                 &self.grants.declared_metrics,
                 &metric.name,
-                crate::child::internal::DeclaredMetricType::Gauge,
+                metric_type,
                 metric.value,
                 &metric.labels,
             )
@@ -628,6 +634,12 @@ use bindings::HostState;
 
 pub struct KnowledgeChildEngine {
     _unit: (),
+}
+
+#[derive(Debug, Clone)]
+pub struct FilesystemPreopen {
+    pub host_path: std::path::PathBuf,
+    pub guest_path: String,
 }
 
 impl KnowledgeChildEngine {
@@ -876,13 +888,46 @@ impl KnowledgeChildEngine {
         manifest: &ChildManifest,
         query_fn: Option<QueryDispatchFn>,
     ) -> Result<Box<dyn KnowledgeChild>> {
+        self.instantiate_child_with_preopens(component, manifest, query_fn, &[])
+    }
+
+    pub fn instantiate_child_with_preopens(
+        &self,
+        component: &Component,
+        manifest: &ChildManifest,
+        query_fn: Option<QueryDispatchFn>,
+        test_preopens: &[FilesystemPreopen],
+    ) -> Result<Box<dyn KnowledgeChild>> {
         Self::check_capabilities(manifest)?;
 
         let linker = Self::build_linker(manifest)?;
 
         let grants = manifest.granted_capabilities();
         let http_client = super::host_support::build_http_client()?;
-        let wasi = wasmtime_wasi::WasiCtxBuilder::new().build();
+        let mut wasi_builder = wasmtime_wasi::WasiCtxBuilder::new();
+        for (idx, path) in manifest.filesystem_preopens.iter().enumerate() {
+            let host_path = std::path::PathBuf::from(path);
+            let guest_path = if idx == 0 {
+                "/input".to_string()
+            } else {
+                format!("/input-{}", idx)
+            };
+            wasi_builder.preopened_dir(
+                &host_path,
+                &guest_path,
+                wasmtime_wasi::DirPerms::READ,
+                wasmtime_wasi::FilePerms::READ,
+            )?;
+        }
+        for mount in test_preopens {
+            wasi_builder.preopened_dir(
+                &mount.host_path,
+                &mount.guest_path,
+                wasmtime_wasi::DirPerms::READ,
+                wasmtime_wasi::FilePerms::READ,
+            )?;
+        }
+        let wasi = wasi_builder.build();
         let project_root = crate::session::SessionManager::find_project_root().ok();
         let host_state = HostState {
             plugin_name: manifest.name.clone(),

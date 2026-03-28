@@ -394,6 +394,9 @@ pub struct ChildManifest {
     pub schemas: std::collections::HashMap<String, String>,
     /// Metrics this child is allowed to emit (from [needs.metrics]).
     pub declared_metrics: std::collections::HashMap<String, DeclaredMetric>,
+    /// Read-only host filesystem paths preopened for this child.
+    /// Configured from [needs.scopes.filesystem].
+    pub filesystem_preopens: Vec<String>,
     pub state_enabled: bool,
     pub checkpoint_streams: Vec<String>,
     pub lake_names: Vec<String>,
@@ -785,6 +788,31 @@ impl ChildManifest {
             })
             .unwrap_or_default();
 
+        let filesystem_preopens = needs_scopes
+            .and_then(|scopes| scopes.get("filesystem"))
+            .and_then(|v| v.as_table())
+            .map(|table| {
+                let mut paths = Vec::new();
+                if let Some(path) = table.get("path").and_then(|v| v.as_str()) {
+                    let trimmed = path.trim();
+                    if !trimmed.is_empty() {
+                        paths.push(trimmed.to_string());
+                    }
+                }
+                if let Some(extra) = table.get("paths").and_then(|v| v.as_array()) {
+                    for value in extra {
+                        if let Some(path) = value.as_str() {
+                            let trimmed = path.trim();
+                            if !trimmed.is_empty() {
+                                paths.push(trimmed.to_string());
+                            }
+                        }
+                    }
+                }
+                paths
+            })
+            .unwrap_or_default();
+
         let state_enabled = needs_toys.iter().any(|toy| toy == "state");
         let checkpoint_streams = needs_scopes
             .and_then(|scopes| scopes.get("checkpoint"))
@@ -890,6 +918,7 @@ impl ChildManifest {
             .unwrap_or_default();
         let toys = crate::mother::GrantedToys {
             fetch: needs_toys.iter().any(|toy| toy == "fetch"),
+            events: needs_toys.iter().any(|toy| toy == "events"),
             lake_names: lake_names.iter().cloned().collect(),
             ingress_sources: ingress_sources.clone(),
             connector: needs_toys.iter().any(|toy| toy == "connector"),
@@ -921,6 +950,7 @@ impl ChildManifest {
             },
             schemas,
             declared_metrics,
+            filesystem_preopens,
             state_enabled,
             checkpoint_streams,
             lake_names,

@@ -12,6 +12,7 @@ pub struct GrantedIngressSource {
 #[derive(Debug, Clone, Default)]
 pub struct GrantedToys {
     pub fetch: bool,
+    pub events: bool,
     pub lake_names: HashSet<String>,
     pub ingress_sources: HashMap<String, GrantedIngressSource>,
     pub connector: bool,
