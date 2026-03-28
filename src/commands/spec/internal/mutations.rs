@@ -195,11 +195,9 @@ fn extract_inline_code_tokens(line: &str) -> Vec<String> {
 
     for ch in line.chars() {
         if ch == '`' {
-            if inside {
-                if !current.is_empty() {
-                    tokens.push(current.clone());
-                    current.clear();
-                }
+            if inside && !current.is_empty() {
+                tokens.push(current.clone());
+                current.clear();
             }
             inside = !inside;
             continue;
@@ -386,7 +384,7 @@ fn enforce_freshness_preflight(loaded: &LoadedSpec) -> Result<()> {
         );
     }
 
-    if !chrono::DateTime::parse_from_rfc3339(freshness_raw).is_ok()
+    if chrono::DateTime::parse_from_rfc3339(freshness_raw).is_err()
         && chrono::NaiveDate::parse_from_str(freshness_raw, "%Y-%m-%d").is_err()
     {
         anyhow::bail!(
