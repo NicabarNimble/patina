@@ -15,6 +15,434 @@ use super::queries::{check_spec_value, get_all_specs, ListFilters};
 use super::queue::tag_exists;
 use super::DB_PATH;
 
+const FRESHNESS_MAX_GLOBAL_COMMITS: u64 = 200;
+const FRESHNESS_MAX_RELATED_COMMITS: u64 = 40;
+const FRESHNESS_MAX_CONTRACT_COMMITS: u64 = 20;
+
+const FRESHNESS_CONTRACT_PATHS: &[&str] = &[
+    "wit/",
+    "sdk/patina-sdk/",
+    "src/child/internal/mod.rs",
+    "mother/src/toys.rs",
+    "resources/templates/child/",
+    "children/template/child.toml",
+];
+
+struct CanonicalToyMapping {
+    manifest: &'static str,
+    runtime: &'static str,
+    aliases: &'static [&'static str],
+}
+
+const CANONICAL_TOY_MAPPINGS: &[CanonicalToyMapping] = &[
+    CanonicalToyMapping {
+        manifest: "log",
+        runtime: "host_log",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "state",
+        runtime: "state_enabled",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "layer",
+        runtime: "host_layer",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "layer-fs",
+        runtime: "layer_fs",
+        aliases: &["fs"],
+    },
+    CanonicalToyMapping {
+        manifest: "git",
+        runtime: "git_toy",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "peer",
+        runtime: "peer_toy",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "task",
+        runtime: "task_intents",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "lake",
+        runtime: "lake_names",
+        aliases: &["store"],
+    },
+    CanonicalToyMapping {
+        manifest: "checkpoint",
+        runtime: "checkpoint_streams",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "measure",
+        runtime: "host_measure",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "github",
+        runtime: "toys.github",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "connector",
+        runtime: "toys.connector",
+        aliases: &["connect"],
+    },
+    CanonicalToyMapping {
+        manifest: "query",
+        runtime: "host_query",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "emit",
+        runtime: "host_emit",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "session",
+        runtime: "toys.session",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "events",
+        runtime: "subscribed_streams",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "ingress",
+        runtime: "ingress_sources",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "http",
+        runtime: "host_http",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "belief",
+        runtime: "toys.belief",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "graph",
+        runtime: "toys.graph",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "fetch",
+        runtime: "toys.fetch",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "schema",
+        runtime: "schema_facts",
+        aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "types",
+        runtime: "support_contract",
+        aliases: &[],
+    },
+];
+
+fn normalize_toy_name(name: &str) -> Option<&'static str> {
+    for mapping in CANONICAL_TOY_MAPPINGS {
+        if mapping.manifest == name {
+            return Some(mapping.manifest);
+        }
+        if mapping.aliases.contains(&name) {
+            return Some(mapping.manifest);
+        }
+    }
+    None
+}
+
+fn canonical_toy_names() -> Vec<&'static str> {
+    let mut names: Vec<&'static str> = CANONICAL_TOY_MAPPINGS.iter().map(|m| m.manifest).collect();
+    names.sort_unstable();
+    names
+}
+
+fn canonical_toy_mapping_rows() -> Vec<String> {
+    CANONICAL_TOY_MAPPINGS
+        .iter()
+        .map(|mapping| {
+            if mapping.aliases.is_empty() {
+                format!("{} -> {}", mapping.manifest, mapping.runtime)
+            } else {
+                format!(
+                    "{} (aliases: {}) -> {}",
+                    mapping.manifest,
+                    mapping.aliases.join(", "),
+                    mapping.runtime
+                )
+            }
+        })
+        .collect()
+}
+
+fn extract_inline_code_tokens(line: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut inside = false;
+    let mut current = String::new();
+
+    for ch in line.chars() {
+        if ch == '`' {
+            if inside {
+                if !current.is_empty() {
+                    tokens.push(current.clone());
+                    current.clear();
+                }
+            }
+            inside = !inside;
+            continue;
+        }
+        if inside {
+            current.push(ch);
+        }
+    }
+
+    tokens
+}
+
+fn validate_recipe_toy_names(spec_id: &str, body: &str) -> Result<()> {
+    let has_recipe_surface = body.contains("## Objective Recipe Format")
+        || body.contains("required_toys_by_role")
+        || body.contains("Required toys by role");
+    if !has_recipe_surface {
+        return Ok(());
+    }
+
+    let mut in_toy_section = false;
+    let mut found_toys = Vec::new();
+    let mut unknown = Vec::new();
+
+    for line in body.lines() {
+        let trimmed = line.trim();
+
+        if trimmed.starts_with("## ") && !trimmed.contains("Required toys by role") {
+            in_toy_section = false;
+        }
+
+        if trimmed == "Required toys by role:" || trimmed == "### Required toys by role" {
+            in_toy_section = true;
+            continue;
+        }
+
+        if !in_toy_section {
+            continue;
+        }
+
+        for token in extract_inline_code_tokens(trimmed) {
+            if token.contains(' ') || token.contains('=') {
+                continue;
+            }
+            found_toys.push(token.clone());
+            if normalize_toy_name(&token).is_none() {
+                unknown.push(token);
+            }
+        }
+    }
+
+    if found_toys.is_empty() {
+        anyhow::bail!(
+            "Spec '{}' is not ready: objective recipe declares toy roles but no machine-parseable toy names were found. Use backtick toy tokens (for example `log`, `connector`, `lake`).",
+            spec_id
+        );
+    }
+
+    if !unknown.is_empty() {
+        let mut uniq = unknown;
+        uniq.sort();
+        uniq.dedup();
+        anyhow::bail!(
+            "Spec '{}' is not ready: objective recipe uses unknown toy names: {}.\nKnown manifest toy names: {}\nCanonical mapping: {}",
+            spec_id,
+            uniq.join(", "),
+            canonical_toy_names().join(", "),
+            canonical_toy_mapping_rows().join("; ")
+        );
+    }
+
+    Ok(())
+}
+
+fn git_commit_drift(validated_commit: &str) -> Result<u64> {
+    let output = Command::new("git")
+        .args([
+            "rev-list",
+            "--count",
+            &format!("{}..HEAD", validated_commit),
+        ])
+        .output()
+        .context("Failed to evaluate freshness commit drift")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "failed to compute commit drift from '{}': {}",
+            validated_commit,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let drift = text
+        .parse::<u64>()
+        .with_context(|| format!("unexpected git rev-list count output '{}'", text))?;
+    Ok(drift)
+}
+
+fn git_commit_drift_for_paths(validated_commit: &str, paths: &[String]) -> Result<u64> {
+    if paths.is_empty() {
+        return Ok(0);
+    }
+
+    let mut args = vec!["rev-list".to_string(), "--count".to_string()];
+    args.push(format!("{}..HEAD", validated_commit));
+    args.push("--".to_string());
+    args.extend(paths.iter().cloned());
+
+    let output = Command::new("git")
+        .args(args.iter().map(String::as_str))
+        .output()
+        .context("Failed to evaluate freshness path drift")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "failed to compute path drift from '{}': {}",
+            validated_commit,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let drift = text
+        .parse::<u64>()
+        .with_context(|| format!("unexpected git rev-list count output '{}'", text))?;
+    Ok(drift)
+}
+
+fn looks_like_repo_path(entry: &str) -> bool {
+    let v = entry.trim();
+    if v.is_empty() || v.starts_with("[[") || v.starts_with("http://") || v.starts_with("https://")
+    {
+        return false;
+    }
+    v.contains('/') || v.ends_with(".rs") || v.ends_with(".md") || v.ends_with(".toml")
+}
+
+fn collect_related_paths(loaded: &LoadedSpec) -> Vec<String> {
+    let mut paths = Vec::new();
+    for entry in loaded
+        .frontmatter
+        .related
+        .iter()
+        .chain(loaded.frontmatter.freshness_scope.iter())
+    {
+        let trimmed = entry.trim().trim_matches('`').to_string();
+        if looks_like_repo_path(&trimmed) {
+            paths.push(trimmed);
+        }
+    }
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+fn enforce_freshness_preflight(loaded: &LoadedSpec) -> Result<()> {
+    let fm = &loaded.frontmatter;
+    let id = &fm.id;
+
+    let commit = fm
+        .validated_against_commit
+        .as_deref()
+        .filter(|v| !v.trim().is_empty())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Cannot promote '{}' to active: missing frontmatter `validated_against_commit` for freshness gate.",
+                id
+            )
+        })?;
+
+    let freshness_raw = fm
+        .last_freshness_check
+        .as_deref()
+        .filter(|v| !v.trim().is_empty())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Cannot promote '{}' to active: missing frontmatter `last_freshness_check` for freshness gate.",
+                id
+            )
+        })?;
+
+    if fm.freshness_scope.is_empty() {
+        anyhow::bail!(
+            "Cannot promote '{}' to active: missing frontmatter `freshness_scope` entries for freshness gate.",
+            id
+        );
+    }
+
+    if !chrono::DateTime::parse_from_rfc3339(freshness_raw).is_ok()
+        && chrono::NaiveDate::parse_from_str(freshness_raw, "%Y-%m-%d").is_err()
+    {
+        anyhow::bail!(
+            "Cannot promote '{}' to active: invalid `last_freshness_check` '{}'. Expected RFC3339 or YYYY-MM-DD.",
+            id,
+            freshness_raw
+        );
+    }
+
+    let global_drift = git_commit_drift(commit)?;
+    if global_drift > FRESHNESS_MAX_GLOBAL_COMMITS {
+        anyhow::bail!(
+            "Cannot promote '{}' to active: global commit drift since validated commit is {} (limit {}). Re-run freshness pass and update frontmatter.",
+            id,
+            global_drift,
+            FRESHNESS_MAX_GLOBAL_COMMITS
+        );
+    }
+
+    let related_paths = collect_related_paths(loaded);
+    if related_paths.is_empty() {
+        anyhow::bail!(
+            "Cannot promote '{}' to active: no path-like entries found in related/freshness_scope for commit-velocity freshness checks.",
+            id
+        );
+    }
+
+    let related_drift = git_commit_drift_for_paths(commit, &related_paths)?;
+    if related_drift > FRESHNESS_MAX_RELATED_COMMITS {
+        anyhow::bail!(
+            "Cannot promote '{}' to active: related-path commit drift is {} (limit {}). Related paths: {}",
+            id,
+            related_drift,
+            FRESHNESS_MAX_RELATED_COMMITS,
+            related_paths.join(", ")
+        );
+    }
+
+    let contract_paths: Vec<String> = FRESHNESS_CONTRACT_PATHS
+        .iter()
+        .map(|p| p.to_string())
+        .collect();
+    let contract_drift = git_commit_drift_for_paths(commit, &contract_paths)?;
+    if contract_drift > FRESHNESS_MAX_CONTRACT_COMMITS {
+        anyhow::bail!(
+            "Cannot promote '{}' to active: contract-surface commit drift is {} (limit {}). Contract paths: {}",
+            id,
+            contract_drift,
+            FRESHNESS_MAX_CONTRACT_COMMITS,
+            contract_paths.join(", ")
+        );
+    }
+
+    Ok(())
+}
+
 /// Result of a spec mutation: pre/post frontmatter + file path.
 pub(super) struct MutationOutput {
     pub file_path: String,
@@ -179,6 +607,8 @@ fn lint_ready_spec(loaded: &LoadedSpec) -> Result<()> {
         );
     }
 
+    validate_recipe_toy_names(&loaded.frontmatter.id, &loaded.body)?;
+
     Ok(())
 }
 
@@ -271,6 +701,9 @@ pub fn promote_spec_value(id: &str, force: bool) -> Result<MutationResult> {
     if loaded.frontmatter.status == Some(SpecStatus::Draft) && !force {
         lint_ready_spec(&loaded)?;
     }
+    if loaded.frontmatter.status == Some(SpecStatus::Ready) && !force {
+        enforce_freshness_preflight(&loaded)?;
+    }
 
     let out = mutate_spec(loaded, |fm| match fm.status {
         Some(SpecStatus::Draft) => {
@@ -324,15 +757,21 @@ fn apply_list_mutation(list: &mut Vec<String>, action: &str, value: &str) {
 
 /// Set a metadata field and return structured result (for MCP).
 pub fn set_spec_value(id: &str, field: &str, value: &str) -> Result<MutationResult> {
-    const VEC_FIELDS: &[&str] = &["beliefs", "related", "references", "blocked_by"];
-    const SCALAR_FIELDS: &[&str] = &["target"];
+    const VEC_FIELDS: &[&str] = &[
+        "beliefs",
+        "related",
+        "references",
+        "blocked_by",
+        "freshness_scope",
+    ];
+    const SCALAR_FIELDS: &[&str] = &["target", "validated_against_commit", "last_freshness_check"];
 
     let is_vec = VEC_FIELDS.contains(&field);
     let is_scalar = SCALAR_FIELDS.contains(&field);
 
     if !is_vec && !is_scalar {
         anyhow::bail!(
-            "Cannot set field '{}'. Supported fields: beliefs, related, references, blocked_by, target",
+            "Cannot set field '{}'. Supported fields: beliefs, related, references, blocked_by, freshness_scope, target, validated_against_commit, last_freshness_check",
             field
         );
     }
@@ -362,8 +801,23 @@ pub fn set_spec_value(id: &str, field: &str, value: &str) -> Result<MutationResu
             "related" => apply_list_mutation(&mut fm.related, action, &clean_value),
             "references" => apply_list_mutation(&mut fm.references, action, &clean_value),
             "blocked_by" => apply_list_mutation(&mut fm.blocked_by, action, &clean_value),
+            "freshness_scope" => apply_list_mutation(&mut fm.freshness_scope, action, &clean_value),
             "target" => {
                 fm.target = if clean_value.is_empty() {
+                    None
+                } else {
+                    Some(clean_value)
+                };
+            }
+            "validated_against_commit" => {
+                fm.validated_against_commit = if clean_value.is_empty() {
+                    None
+                } else {
+                    Some(clean_value)
+                };
+            }
+            "last_freshness_check" => {
+                fm.last_freshness_check = if clean_value.is_empty() {
                     None
                 } else {
                     Some(clean_value)
