@@ -1,8 +1,0 @@
-package patina:store@0.1.0;
-
-interface store {
-    use patina:connect/connect@0.1.0.{connection};
-
-    query: func(conn: borrow<connection>, query: string) -> result<string, string>;
-    mutate: func(conn: borrow<connection>, action: string, payload: string) -> result<string, string>;
-}
