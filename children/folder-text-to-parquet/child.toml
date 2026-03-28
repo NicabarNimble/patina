@@ -1,0 +1,12 @@
+[child]
+name = "folder-text-to-parquet"
+kind = "knowledge-child"
+role = "app"
+
+[needs]
+toys = ["log", "state", "events", "measure"]
+
+[needs.metrics]
+files_discovered = { type = "counter", labels = ["source_folder"] }
+records_written = { type = "counter", labels = [] }
+write_latency_ms = { type = "gauge", labels = [] }

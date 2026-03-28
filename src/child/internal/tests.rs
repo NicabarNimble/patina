@@ -586,6 +586,338 @@ fn ducklake_fixture_sync_writes_lake_queryable_by_duckdb_cli() {
     });
 }
 
+fn folder_text_to_parquet_component_path() -> Option<std::path::PathBuf> {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for rel in [
+        "target/wasm32-wasip2/debug/patina_ai_child_folder_text_to_parquet.wasm",
+        "target/wasm32-wasip2/release/patina_ai_child_folder_text_to_parquet.wasm",
+        "target/wasm32-wasip1/debug/patina_ai_child_folder_text_to_parquet.wasm",
+        "target/wasm32-wasip1/release/patina_ai_child_folder_text_to_parquet.wasm",
+    ] {
+        let path = root.join(rel);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+#[test]
+fn folder_text_to_parquet_scan_contract_end_to_end() {
+    let Some(wasm_path) = folder_text_to_parquet_component_path() else {
+        return;
+    };
+
+    with_temp_patina_home(|_| {
+        let engine = KnowledgeChildEngine::new().unwrap();
+        let wasm_bytes = std::fs::read(&wasm_path).unwrap();
+        let component = engine.load_component(&wasm_bytes).unwrap();
+        let manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("children/folder-text-to-parquet/child.toml");
+        let manifest = ChildManifest::from_path(&manifest_path).unwrap();
+        let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/folder-text-to-parquet");
+        let child = engine
+            .instantiate_child_with_preopens(
+                &component,
+                &manifest,
+                None,
+                &[knowledge_child::FilesystemPreopen {
+                    host_path: fixture_dir.clone(),
+                    guest_path: "/input".to_string(),
+                }],
+            )
+            .unwrap();
+
+        let response = child
+            .handle(&crate::mother::ChildRequest {
+                action: "scan".into(),
+                payload: serde_json::json!({
+                    "folder_path": "/input",
+                }),
+            })
+            .unwrap();
+
+        let payload = response.payload;
+        assert_eq!(
+            payload.get("status").and_then(|v| v.as_str()),
+            Some("ok"),
+            "scan should complete successfully"
+        );
+        assert_eq!(
+            payload
+                .get("processed_records")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0),
+            4,
+            "expected four discovered files (.txt/.md except empty/hidden/wrong ext)"
+        );
+
+        let records = payload
+            .get("records")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(records.len(), 4, "scan result should return four records");
+
+        let mut by_name = std::collections::HashMap::new();
+        for record in &records {
+            let source_path = record
+                .get("source_path")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let name = std::path::Path::new(source_path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default()
+                .to_string();
+            by_name.insert(name, record.clone());
+        }
+
+        for required in [
+            "hello.txt",
+            "duplicate-of-hello.txt",
+            "notes.md",
+            "readme.txt",
+        ] {
+            assert!(
+                by_name.contains_key(required),
+                "missing expected record for {}",
+                required
+            );
+        }
+
+        let fixture_files = [
+            ("hello.txt", "text/plain", "utf-8", 3_u64, 1_u32),
+            (
+                "duplicate-of-hello.txt",
+                "text/plain",
+                "utf-8",
+                3_u64,
+                1_u32,
+            ),
+            ("notes.md", "text/markdown", "utf-8", 10_u64, 1_u32),
+            ("readme.txt", "text/plain", "utf-8", 22_u64, 1_u32),
+        ];
+
+        for (name, content_type, encoding, line_count, schema_version) in fixture_files {
+            let file_path = fixture_dir.join(name);
+            let bytes = std::fs::read(&file_path).unwrap();
+            let content = String::from_utf8(bytes.clone()).unwrap();
+            let source_hash = {
+                use sha2::{Digest, Sha256};
+                let mut hasher = Sha256::new();
+                hasher.update(&bytes);
+                format!("{:x}", hasher.finalize())
+            };
+            let content_hash = {
+                use sha2::{Digest, Sha256};
+                let mut hasher = Sha256::new();
+                hasher.update(content.as_bytes());
+                format!("{:x}", hasher.finalize())
+            };
+
+            let record = by_name.get(name).unwrap();
+            assert_eq!(
+                record.get("source_hash").and_then(|v| v.as_str()),
+                Some(source_hash.as_str()),
+                "source_hash should match for {}",
+                name
+            );
+            assert_eq!(
+                record.get("content_hash").and_then(|v| v.as_str()),
+                Some(content_hash.as_str()),
+                "content_hash should match for {}",
+                name
+            );
+            assert_eq!(
+                record.get("line_count").and_then(|v| v.as_u64()),
+                Some(line_count),
+                "line_count should match for {}",
+                name
+            );
+            assert_eq!(
+                record.get("source_size_bytes").and_then(|v| v.as_u64()),
+                Some(bytes.len() as u64),
+                "source_size_bytes should match for {}",
+                name
+            );
+            assert_eq!(
+                record.get("content_type").and_then(|v| v.as_str()),
+                Some(content_type),
+                "content_type should match for {}",
+                name
+            );
+            assert_eq!(
+                record.get("encoding").and_then(|v| v.as_str()),
+                Some(encoding),
+                "encoding should match for {}",
+                name
+            );
+            assert_eq!(
+                record.get("schema_version").and_then(|v| v.as_u64()),
+                Some(schema_version as u64),
+                "schema_version should match for {}",
+                name
+            );
+            assert_eq!(
+                record.get("content").and_then(|v| v.as_str()),
+                Some(content.as_str()),
+                "content should match for {}",
+                name
+            );
+
+            let source_modified_at = record
+                .get("source_modified_at")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            assert!(
+                chrono::DateTime::parse_from_rfc3339(source_modified_at).is_ok(),
+                "source_modified_at should be RFC3339 for {}",
+                name
+            );
+
+            let ingested_at = record
+                .get("ingested_at")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            assert!(
+                chrono::DateTime::parse_from_rfc3339(ingested_at).is_ok(),
+                "ingested_at should be RFC3339 for {}",
+                name
+            );
+
+            let record_id = record
+                .get("record_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            assert!(
+                uuid::Uuid::parse_str(record_id).is_ok(),
+                "record_id should be UUID for {}",
+                name
+            );
+
+            let batch_id = record
+                .get("batch_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            assert!(
+                !batch_id.is_empty(),
+                "batch_id should be non-empty for {}",
+                name
+            );
+        }
+
+        let state_keys = payload
+            .get("state_keys")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|v| v.as_str().map(ToString::to_string))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            state_keys.len(),
+            3,
+            "duplicate file should share source_hash key and produce three unique record:* keys"
+        );
+        for key in &state_keys {
+            assert!(
+                key.starts_with("record:"),
+                "state keys must use record:{{source_hash}} format"
+            );
+        }
+
+        let events = crate::child::toy_host::v2::events_subscribe("file.found", None, 64).unwrap();
+        assert!(
+            events.len() >= 4,
+            "expected at least four file.found events for discovered files"
+        );
+        let mut event_names = std::collections::HashSet::new();
+        for event in &events {
+            let payload: serde_json::Value = serde_json::from_str(&event.payload).unwrap();
+            let source_path = payload
+                .get("source_path")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let name = std::path::Path::new(source_path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default();
+            if matches!(
+                name,
+                "hello.txt" | "duplicate-of-hello.txt" | "notes.md" | "readme.txt"
+            ) {
+                event_names.insert(name.to_string());
+            }
+        }
+        assert_eq!(
+            event_names.len(),
+            4,
+            "expected events for each discovered fixture file"
+        );
+
+        let conn = crate::eventlog::open_events_db().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT data FROM eventlog WHERE event_type = 'measure.metric' ORDER BY seq")
+            .unwrap();
+        let metrics = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(
+            !metrics.is_empty(),
+            "expected measure.metric events to be emitted"
+        );
+
+        let mut names = std::collections::HashSet::new();
+        for metric_json in metrics {
+            let value: serde_json::Value = serde_json::from_str(&metric_json).unwrap();
+            if value.get("source").and_then(|v| v.as_str()) != Some("folder-text-to-parquet") {
+                continue;
+            }
+            if let Some(name) = value.get("name").and_then(|v| v.as_str()) {
+                names.insert(name.to_string());
+            }
+        }
+
+        for required in ["files_discovered", "records_written", "write_latency_ms"] {
+            assert!(
+                names.contains(required),
+                "missing expected metric {}",
+                required
+            );
+        }
+
+        let skipped_paths = payload
+            .get("skipped_files")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let mut skipped_names = std::collections::HashSet::new();
+        for skipped in skipped_paths {
+            let path = skipped
+                .get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if let Some(name) = std::path::Path::new(path)
+                .file_name()
+                .and_then(|n| n.to_str())
+            {
+                skipped_names.insert(name.to_string());
+            }
+        }
+        for expected in ["empty.txt", ".hidden", "image.png"] {
+            assert!(
+                skipped_names.contains(expected),
+                "expected skipped file {}",
+                expected
+            );
+        }
+    });
+}
+
 #[test]
 fn knowledge_child_rejects_invalid_ingress_endpoint() {
     let f = write_temp_manifest(
@@ -663,6 +995,7 @@ fn capabilities_all_granted() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -700,6 +1033,7 @@ fn capabilities_empty() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -737,6 +1071,7 @@ fn capabilities_denied() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -849,6 +1184,7 @@ fn check_capabilities_rejects_unknown_query_kinds() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -891,6 +1227,7 @@ fn check_capabilities_accepts_known_query_kinds() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -947,6 +1284,7 @@ fn wasm_models_child_handle_roundtrip() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1016,6 +1354,7 @@ fn wasm_models_child_health() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1074,6 +1413,7 @@ fn load_repos_child() -> Option<Box<dyn crate::mother::KnowledgeChild>> {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1254,6 +1594,7 @@ fn benchmark_plugin_performance() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1450,6 +1791,7 @@ fn check_capabilities_rejects_empty_http_domain() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1488,6 +1830,7 @@ fn check_capabilities_rejects_http_domain_with_path() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1526,6 +1869,7 @@ fn check_capabilities_accepts_valid_http_domains() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1567,6 +1911,7 @@ fn granted_capabilities_includes_http_domains() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1676,6 +2021,7 @@ fn echo_pipeline_manifest() -> ChildManifest {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1822,6 +2168,7 @@ fn wasm_trap_pipeline_panic_returns_error() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1944,6 +2291,7 @@ fn check_capabilities_rejects_pipeline_with_query() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -1987,6 +2335,7 @@ fn check_capabilities_rejects_pipeline_with_http() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -2076,6 +2425,7 @@ fn wasm_trap_mother_child_panic_returns_error() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -2285,6 +2635,7 @@ fn check_capabilities_rejects_host_secrets_domain_not_in_host_http() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -2336,6 +2687,7 @@ fn check_capabilities_accepts_host_secrets_with_matching_host_http() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -2385,6 +2737,7 @@ fn granted_capabilities_includes_credential_mappings() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -2975,6 +3328,25 @@ labels = ["source"]
 }
 
 #[test]
+fn manifest_parses_filesystem_scope_preopen_path() {
+    let f = write_temp_manifest(
+        r#"
+[child]
+name = "fs-plugin"
+kind = "knowledge-child"
+
+[needs]
+toys = ["log"]
+
+[needs.scopes.filesystem]
+path = "/tmp/input"
+"#,
+    );
+    let m = ChildManifest::from_path(f.path()).unwrap();
+    assert_eq!(m.filesystem_preopens, vec!["/tmp/input".to_string()]);
+}
+
+#[test]
 fn measure_undeclared_metric_rejected() {
     let declared = std::collections::HashMap::new();
     let result = host_support::record_declared_metric(
@@ -3133,6 +3505,7 @@ fn role_world_valid_combo_passes() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -3172,6 +3545,7 @@ fn role_world_unusual_combo_still_passes() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
@@ -3211,6 +3585,7 @@ fn role_none_skips_validation() {
         },
         schemas: std::collections::HashMap::new(),
         declared_metrics: std::collections::HashMap::new(),
+        filesystem_preopens: vec![],
         state_enabled: false,
         checkpoint_streams: vec![],
         lake_names: vec![],
