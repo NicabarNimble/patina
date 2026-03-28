@@ -360,6 +360,19 @@ pub struct DeclaredMetric {
     pub labels: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilesystemAccessMode {
+    ReadOnly,
+    ReadWrite,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilesystemPreopenConfig {
+    pub host_path: String,
+    pub guest_path: String,
+    pub mode: FilesystemAccessMode,
+}
+
 // =========================================================================
 // Child manifest (child.toml)
 // =========================================================================
@@ -394,9 +407,9 @@ pub struct ChildManifest {
     pub schemas: std::collections::HashMap<String, String>,
     /// Metrics this child is allowed to emit (from [needs.metrics]).
     pub declared_metrics: std::collections::HashMap<String, DeclaredMetric>,
-    /// Read-only host filesystem paths preopened for this child.
+    /// Host filesystem preopens for this child.
     /// Configured from [needs.scopes.filesystem].
-    pub filesystem_preopens: Vec<String>,
+    pub filesystem_preopens: Vec<FilesystemPreopenConfig>,
     pub state_enabled: bool,
     pub checkpoint_streams: Vec<String>,
     pub lake_names: Vec<String>,
@@ -792,24 +805,57 @@ impl ChildManifest {
             .and_then(|scopes| scopes.get("filesystem"))
             .and_then(|v| v.as_table())
             .map(|table| {
-                let mut paths = Vec::new();
+                let mut mounts = Vec::new();
                 if let Some(path) = table.get("path").and_then(|v| v.as_str()) {
                     let trimmed = path.trim();
                     if !trimmed.is_empty() {
-                        paths.push(trimmed.to_string());
+                        mounts.push(FilesystemPreopenConfig {
+                            host_path: trimmed.to_string(),
+                            guest_path: "/input".to_string(),
+                            mode: FilesystemAccessMode::ReadOnly,
+                        });
                     }
                 }
                 if let Some(extra) = table.get("paths").and_then(|v| v.as_array()) {
-                    for value in extra {
+                    for (idx, value) in extra.iter().enumerate() {
                         if let Some(path) = value.as_str() {
                             let trimmed = path.trim();
                             if !trimmed.is_empty() {
-                                paths.push(trimmed.to_string());
+                                mounts.push(FilesystemPreopenConfig {
+                                    host_path: trimmed.to_string(),
+                                    guest_path: format!("/input-{}", idx + 1),
+                                    mode: FilesystemAccessMode::ReadOnly,
+                                });
                             }
                         }
                     }
                 }
-                paths
+                for (scope_name, scope_value) in table {
+                    let Some(scope_table) = scope_value.as_table() else {
+                        continue;
+                    };
+                    let Some(path) = scope_table.get("path").and_then(|v| v.as_str()) else {
+                        continue;
+                    };
+                    let trimmed = path.trim();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    let mode = match scope_table
+                        .get("mode")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("read-only")
+                    {
+                        "read-write" => FilesystemAccessMode::ReadWrite,
+                        _ => FilesystemAccessMode::ReadOnly,
+                    };
+                    mounts.push(FilesystemPreopenConfig {
+                        host_path: trimmed.to_string(),
+                        guest_path: format!("/{}", scope_name),
+                        mode,
+                    });
+                }
+                mounts
             })
             .unwrap_or_default();
 

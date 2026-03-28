@@ -640,6 +640,7 @@ pub struct KnowledgeChildEngine {
 pub struct FilesystemPreopen {
     pub host_path: std::path::PathBuf,
     pub guest_path: String,
+    pub mode: crate::child::internal::FilesystemAccessMode,
 }
 
 impl KnowledgeChildEngine {
@@ -905,26 +906,36 @@ impl KnowledgeChildEngine {
         let grants = manifest.granted_capabilities();
         let http_client = super::host_support::build_http_client()?;
         let mut wasi_builder = wasmtime_wasi::WasiCtxBuilder::new();
-        for (idx, path) in manifest.filesystem_preopens.iter().enumerate() {
-            let host_path = std::path::PathBuf::from(path);
-            let guest_path = if idx == 0 {
-                "/input".to_string()
-            } else {
-                format!("/input-{}", idx)
+        for mount in &manifest.filesystem_preopens {
+            let host_path = std::path::PathBuf::from(&mount.host_path);
+            let (dir_perms, file_perms) = match mount.mode {
+                crate::child::internal::FilesystemAccessMode::ReadOnly => (
+                    wasmtime_wasi::DirPerms::READ,
+                    wasmtime_wasi::FilePerms::READ,
+                ),
+                crate::child::internal::FilesystemAccessMode::ReadWrite => (
+                    wasmtime_wasi::DirPerms::READ | wasmtime_wasi::DirPerms::MUTATE,
+                    wasmtime_wasi::FilePerms::READ | wasmtime_wasi::FilePerms::WRITE,
+                ),
             };
-            wasi_builder.preopened_dir(
-                &host_path,
-                &guest_path,
-                wasmtime_wasi::DirPerms::READ,
-                wasmtime_wasi::FilePerms::READ,
-            )?;
+            wasi_builder.preopened_dir(&host_path, &mount.guest_path, dir_perms, file_perms)?;
         }
         for mount in test_preopens {
+            let (dir_perms, file_perms) = match mount.mode {
+                crate::child::internal::FilesystemAccessMode::ReadOnly => (
+                    wasmtime_wasi::DirPerms::READ,
+                    wasmtime_wasi::FilePerms::READ,
+                ),
+                crate::child::internal::FilesystemAccessMode::ReadWrite => (
+                    wasmtime_wasi::DirPerms::READ | wasmtime_wasi::DirPerms::MUTATE,
+                    wasmtime_wasi::FilePerms::READ | wasmtime_wasi::FilePerms::WRITE,
+                ),
+            };
             wasi_builder.preopened_dir(
                 &mount.host_path,
                 &mount.guest_path,
-                wasmtime_wasi::DirPerms::READ,
-                wasmtime_wasi::FilePerms::READ,
+                dir_perms,
+                file_perms,
             )?;
         }
         let wasi = wasi_builder.build();

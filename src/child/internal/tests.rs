@@ -625,6 +625,7 @@ fn folder_text_to_parquet_scan_contract_end_to_end() {
                 &[knowledge_child::FilesystemPreopen {
                     host_path: fixture_dir.clone(),
                     guest_path: "/input".to_string(),
+                    mode: FilesystemAccessMode::ReadOnly,
                 }],
             )
             .unwrap();
@@ -3340,10 +3341,28 @@ toys = ["log"]
 
 [needs.scopes.filesystem]
 path = "/tmp/input"
+
+[needs.scopes.filesystem.output]
+path = "/tmp/output"
+mode = "read-write"
 "#,
     );
     let m = ChildManifest::from_path(f.path()).unwrap();
-    assert_eq!(m.filesystem_preopens, vec!["/tmp/input".to_string()]);
+    assert_eq!(
+        m.filesystem_preopens,
+        vec![
+            FilesystemPreopenConfig {
+                host_path: "/tmp/input".to_string(),
+                guest_path: "/input".to_string(),
+                mode: FilesystemAccessMode::ReadOnly,
+            },
+            FilesystemPreopenConfig {
+                host_path: "/tmp/output".to_string(),
+                guest_path: "/output".to_string(),
+                mode: FilesystemAccessMode::ReadWrite,
+            }
+        ]
+    );
 }
 
 #[test]
