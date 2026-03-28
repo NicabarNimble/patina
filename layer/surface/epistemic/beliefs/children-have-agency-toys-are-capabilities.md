@@ -7,7 +7,7 @@ entrenchment: medium
 status: active
 endorsed: true
 extracted: 2026-03-10
-revised: 2026-03-25
+revised: 2026-03-26
 ---
 
 # children-have-agency-toys-are-capabilities
@@ -31,7 +31,7 @@ Children have bounded agency — they make decisions and own workflow within the
 - [[agents-are-guests-mother-is-infrastructure]] — children are the composable workers Mother manages; agents are guests
 - [[children-are-wasm]] — child runtime lane is explicitly WASM-only in active doctrine
 - [[telemetry-is-process-owned]] — each actor owns its own observability (agency over telemetry)
-- [[connectors-own-tables-schemas-are-contracts]] — connectors are tools with contracts, not decision-makers
+- [[connectors-own-tables-schemas-are-contracts]] — connectors are source-boundary adapters with schema contracts, not decision-makers
 
 ## Attacks
 
@@ -39,17 +39,18 @@ Children have bounded agency — they make decisions and own workflow within the
 
 ## Attacked-By
 
-- Practical concern: if children spawn toy subprocesses, sandbox enforcement becomes the child's responsibility. Mother can't enforce sandbox on toys she didn't spawn. Mitigated by: design toy interfaces as capability boundaries, enforce at the interface level.
-- Practical concern: "approved toys" in initialize is a large trust surface. Mitigated by: treat initialize as security boundary, keep toy approvals explicit and coarse.
+- Practical concern: if children spawn toy subprocesses, sandbox enforcement becomes the child's responsibility. Mother can't enforce sandbox on toys she didn't spawn. Mitigated by: toy interfaces are WIT capability boundaries enforced at the host import level (compile-time + runtime).
+- Practical concern: toy grants in init are a trust surface. Mitigated by: `GrantedCapabilities` resolved from explicit `[needs].toys` in child.toml manifests; grants are coarse, typed, and fail-closed on mismatch.
 
 ## Applied-In
 
-- [[ducklake]] spec — first child that uses approved toys (connector, lake path, HTTP proxy, credentials)
-- [[http-proxy-extraction]] — HTTP proxy as an approved capability toy, not embedded in child
-- [[measure-process-owned]] — measure vocabulary as shared substrate, children own their telemetry
+- [[ducklake]] spec — first child using granted toys via `GrantedCapabilities` resolved from `[needs].toys` in `child.toml`
+- `src/child/internal/mod.rs` — `GrantedCapabilities` struct built at init time from manifest; capabilities are resolved once and checked at call-time via Host impl
+- [[toy-collapse-wasi-alignment]] — collapsed 22 toys to 10 primitives (connect, store, events, task, peer, git + WASI http, fs + shimmed log, state); init-time grant model survived and strengthened
 
 ## Revision Log
 
 - 2026-03-10: Created in [[session-20260310-094749]] — converged through brainstorm with audit agent. Four iterations: WASM-first → agency-not-runtime → approved-toys → capability-grant model.
 - 2026-03-21: Revised in [[session-20260320-212325-011658000]] — refined "autonomous" to "bounded agency" (agency within sandbox Mother grants). Reframed toys from permission flags to composable WASM components. Added: WIT interface IS the capability (compile-time enforcement). Linked to [[agents-are-guests-mother-is-infrastructure]].
 - 2026-03-25: Revised — retired runtime-orthogonal wording after native child lane removal; children remain WASM workers, toys remain granted capability surfaces.
+- 2026-03-26: Revised — updated Applied-In and Attacked-By to reflect post-toy-collapse reality (22→10 toys, `GrantedCapabilities` from `[needs].toys`, WIT per-interface packages). Removed stale HTTP proxy / credentials toy references.
