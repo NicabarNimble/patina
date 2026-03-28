@@ -617,16 +617,25 @@ fn folder_text_to_parquet_scan_contract_end_to_end() {
         let manifest = ChildManifest::from_path(&manifest_path).unwrap();
         let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/folder-text-to-parquet");
+        let output_dir = tempfile::TempDir::new().unwrap();
+        let host_parquet_path = output_dir.path().join("scan-batch.parquet");
         let child = engine
             .instantiate_child_with_preopens(
                 &component,
                 &manifest,
                 None,
-                &[knowledge_child::FilesystemPreopen {
-                    host_path: fixture_dir.clone(),
-                    guest_path: "/input".to_string(),
-                    mode: FilesystemAccessMode::ReadOnly,
-                }],
+                &[
+                    knowledge_child::FilesystemPreopen {
+                        host_path: fixture_dir.clone(),
+                        guest_path: "/input".to_string(),
+                        mode: FilesystemAccessMode::ReadOnly,
+                    },
+                    knowledge_child::FilesystemPreopen {
+                        host_path: output_dir.path().to_path_buf(),
+                        guest_path: "/output".to_string(),
+                        mode: FilesystemAccessMode::ReadWrite,
+                    },
+                ],
             )
             .unwrap();
 
@@ -635,6 +644,7 @@ fn folder_text_to_parquet_scan_contract_end_to_end() {
                 action: "scan".into(),
                 payload: serde_json::json!({
                     "folder_path": "/input",
+                    "output_path": "/output/scan-batch.parquet",
                 }),
             })
             .unwrap();
@@ -652,6 +662,16 @@ fn folder_text_to_parquet_scan_contract_end_to_end() {
                 .unwrap_or(0),
             4,
             "expected four discovered files (.txt/.md except empty/hidden/wrong ext)"
+        );
+        assert_eq!(
+            payload.get("parquet_path").and_then(|v| v.as_str()),
+            Some("/output/scan-batch.parquet"),
+            "scan should report guest parquet output path"
+        );
+        assert!(
+            host_parquet_path.exists(),
+            "expected parquet file at {}",
+            host_parquet_path.display()
         );
 
         let records = payload
@@ -856,6 +876,49 @@ fn folder_text_to_parquet_scan_contract_end_to_end() {
             event_names.len(),
             4,
             "expected events for each discovered fixture file"
+        );
+
+        let written_events =
+            crate::child::toy_host::v2::events_subscribe("file.written", None, 64).unwrap();
+        assert!(
+            !written_events.is_empty(),
+            "expected at least one file.written event"
+        );
+        let last_written = written_events.last().unwrap();
+        let written_payload: serde_json::Value =
+            serde_json::from_str(&last_written.payload).unwrap();
+        assert_eq!(
+            written_payload.get("file_path").and_then(|v| v.as_str()),
+            Some("/output/scan-batch.parquet")
+        );
+        assert_eq!(
+            written_payload.get("record_count").and_then(|v| v.as_u64()),
+            Some(4)
+        );
+
+        let output = std::process::Command::new("duckdb")
+            .args([
+                ":memory:",
+                &format!(
+                    "COPY (SELECT COUNT(*) AS c FROM read_parquet('{}')) TO STDOUT (FORMAT CSV, HEADER FALSE);",
+                    host_parquet_path.to_string_lossy()
+                ),
+            ])
+            .output()
+            .expect("run duckdb parquet count query");
+        assert!(
+            output.status.success(),
+            "duckdb parquet count query failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let row_count = stdout
+            .trim()
+            .parse::<u64>()
+            .expect("duckdb parquet row count output as u64");
+        assert_eq!(
+            row_count, 4,
+            "parquet row count should match discovered files"
         );
 
         let conn = crate::eventlog::open_events_db().unwrap();

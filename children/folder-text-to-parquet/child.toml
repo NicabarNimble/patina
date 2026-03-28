@@ -6,6 +6,13 @@ role = "app"
 [needs]
 toys = ["log", "state", "events", "measure"]
 
+[needs.scopes.filesystem]
+path = "/tmp"
+
+[needs.scopes.filesystem.output]
+path = "/tmp"
+mode = "read-write"
+
 [needs.metrics]
 files_discovered = { type = "counter", labels = ["source_folder"] }
 records_written = { type = "counter", labels = [] }
