@@ -3,8 +3,6 @@ type: feat
 id: cloudflare-worker-child
 status: draft
 created: 2026-03-26
-blocked_by:
-  - toy-collapse-wasi-alignment
 sessions:
   origin: 20260325-150227-161735000
 beliefs:
@@ -12,17 +10,18 @@ beliefs:
   - "[[children-are-wasm]]"
 related:
   - sdk/patina-sdk/
-  - wit/toys/
+  - wit/toys/deps/
+  - wit/knowledge-child/
   - children/
 exit_criteria:
   - id: cwc1-single-component
     text: "A single WASM component exists that compiles once and runs on both Patina (under Mother) and Cloudflare Workers (via wrangler). Same .wasm artifact, two runtimes."
     checked: false
   - id: cwc2-patina-runtime
-    text: "The child runs under Mother using Patina toys (http, store, events, log). Toybox grants are mediated. child.toml manifest works."
+    text: "The child runs under Mother using the portable subset toys (http, state, log). Toybox grants are mediated. child.toml manifest works."
     checked: false
   - id: cwc3-cloudflare-runtime
-    text: "The same component runs on Cloudflare Workers with CF bindings satisfying the toy imports (fetch→http, KV→state, D1→store, Queues→events). wrangler.toml manifest works."
+    text: "The same component runs on Cloudflare Workers with CF bindings satisfying the portable subset imports (fetch->http, KV->state, console->log). wrangler.toml manifest works."
     checked: false
   - id: cwc4-same-behavior
     text: "Given the same inputs, the child produces the same outputs on both runtimes. Verified by test fixture."
@@ -59,7 +58,7 @@ This is the highest-value proof the architecture can produce: if a single WASM c
 
 This spec emerged from session `20260325-150227-161735000`, where we:
 1. Discovered Patina's toybox model maps 1:1 to Cloudflare's binding model
-2. Identified that 4 of our 8 collapsed toys align with WASI interfaces that CF already supports
+2. Identified a portable toy subset with strongest WASI overlap for an initial proof (`http`, `state`, `log`)
 3. Realized the component model's portability promise is testable: same WASM, different hosts
 4. Asked "how could we connect children to Workers?" and the answer was: a child IS a Worker if the interfaces align
 
@@ -266,4 +265,4 @@ curl https://portable-fetcher.workers.dev/cached
 
 ## Build Readiness
 
-Blocked on `toy-collapse-wasi-alignment`. The child must be written against the collapsed 8-toy interface set. Also depends on Cloudflare's WASM component model support at execution time — research needed during Step 3.
+Ready for execution once current Cloudflare runtime capabilities are revalidated at implementation time (Step 3). The initial proof remains constrained to the portable subset (`http`, `state`, `log`).

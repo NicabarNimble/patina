@@ -5,7 +5,6 @@ status: draft
 created: 2026-03-25
 related:
   - layer/surface/build/refactor/patina-code-to-vision/SPEC.md
-  - layer/surface/build/refactor/patina-code-to-vision-seam-closure/SPEC.md
 exit_criteria:
   - id: SSE1
     text: "Current scrape lanes are mapped with file:line evidence, explicitly separating core lanes (layer, beliefs) from non-core lanes (code, git, grammar/pipeline-backed)"
@@ -54,4 +53,4 @@ Explore and define the scrape seam so `patina scrape` remains core orchestrator 
 
 ## Build Readiness
 
-Ready to activate once seam-closure owner confirms CV11 is fully delegated to this spec.
+Ready to activate. This spec is the active seam-proof lane for CV11.

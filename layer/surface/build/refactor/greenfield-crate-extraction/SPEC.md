@@ -3,8 +3,6 @@ type: refactor
 id: greenfield-crate-extraction
 status: draft
 created: 2026-03-26
-blocked_by:
-  - toy-collapse-wasi-alignment
 sessions:
   origin: 20260325-150227-161735000
 beliefs:
@@ -61,7 +59,7 @@ Each architectural role lives in its own crate with explicit, enforced dependenc
 ## Non-Goals
 
 - Do NOT extract children to separate repos (that's a later effort).
-- Do NOT change the SDK or WIT interfaces (handled by `wit-contract-single-source`).
+- Do NOT change the SDK or WIT interfaces in this spec; treat contract changes as out-of-scope and handle them in dedicated contract-focused specs.
 - Do NOT add new features — this is a pure structural refactor.
 - Do NOT rewrite algorithms or business logic — move, don't modify.
 - Do NOT change CLI behavior or user-facing output.
@@ -200,6 +198,6 @@ cargo tree -p patina-connect | grep -v patina-core | grep -v patina-protocol | g
 
 ## Build Readiness
 
-Blocked on `wit-contract-single-source`. Engine extraction touches `src/child/` which is a WIT consumer — WIT source of truth must be clean before moving WIT-dependent code between crates.
+No hard external blocker remains in spec inventory. Execute after current scaffold/runtime contract stabilization slices to reduce churn while moving WIT-consuming code.
 
 Phase 1 requires seam analysis of `src/child/internal/` imports before execution. This is design work, not investigation — the spec is ready, the design doc needs the import map.
