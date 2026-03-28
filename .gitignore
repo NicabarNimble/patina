@@ -53,6 +53,9 @@ resources/models/tokenizer.json
 !resources/models/registry.toml
 !resources/models/README.md
 
+# Patina managed-file tracking (internal bookkeeping, regeneratable)
+**/.patina-managed.toml
+
 # Added by Patina for safety
 node_modules/
 .env
