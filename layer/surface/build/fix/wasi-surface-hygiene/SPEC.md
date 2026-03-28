@@ -1,48 +1,41 @@
 ---
 type: fix
 id: wasi-surface-hygiene
-status: draft
+status: ready
 created: 2026-03-27
 sessions:
   origin: 20260327-104954-066673000
-beliefs:
-  - "[[wasi-is-foundation-not-option]]"
-  - "[[observation-at-the-boundary]]"
-supersedes:
-  - belief: "[[connector-toy-is-indivisible-authority]]"
-    note: "The indivisible authority bundle survives — `connect.resolve(name)` still grants credential + domain + injection as one unit. What changes is the execution path: `connect::request()` is removed, HTTP flows through `wasi:http`, and Mother injects credentials based on active binding. The security invariant is preserved, the mechanism moves."
-sequencing:
-  before:
-    - folder-text-to-parquet
-  note: "Children built after this spec import a clean WASI-first surface. No dead WIT, no duplicated HTTP, no ghost imports."
 related:
-  - wit/toys/deps/
-  - wit/knowledge-child/knowledge-child.wit
-  - wit/pipeline/pipeline.wit
-  - sdk/patina-sdk/
-  - src/child/internal/knowledge_child.rs
+- wit/toys/deps/
+- wit/knowledge-child/knowledge-child.wit
+- wit/pipeline/pipeline.wit
+- sdk/patina-sdk/
+- src/child/internal/knowledge_child.rs
+beliefs:
+- '[[wasi-is-foundation-not-option]]'
+- '[[observation-at-the-boundary]]'
 exit_criteria:
-  - id: wsh1-dead-wit-removed
-    text: "Legacy WIT files that are no longer imported by any world are deleted: `patina-log.wit`, `patina-state.wit`, `patina-store.wit`, `patina-events.wit`."
-    checked: true
-  - id: wsh2-connect-stripped
-    text: "`patina:connect` stripped to service binding only: `resolve(name) -> binding`. No `request`, `header`, `response`, `base-url`. HTTP mechanics removed."
-    checked: true
-  - id: wsh3-wasi-http-linked
-    text: "`wasi:http/outgoing-handler` linked in Mother's child runtime. Children can make standard HTTP calls."
-    checked: true
-  - id: wsh4-connect-binding-wired
-    text: "Mother intercepts `wasi:http` calls and injects credentials when a `patina:connect` binding is active for the target host."
-    checked: true
-  - id: wsh5-existing-children-migrated
-    text: "All children using `patina:connect.request()` migrated to `wasi:http` + `patina:connect.resolve()` binding pattern."
-    checked: true
-  - id: wsh6-workspace-clean
-    text: "`cargo check --workspace -q`, `cargo test -q --workspace`, `wasm-tools component wit` all pass."
-    checked: true
-  - id: wsh7-no-ghost-imports
-    text: "Every import in `knowledge-child.wit` and `pipeline.wit` has a working host implementation in the linker."
-    checked: true
+- id: wsh1-dead-wit-removed
+  text: 'Legacy WIT files that are no longer imported by any world are deleted: `patina-log.wit`, `patina-state.wit`, `patina-store.wit`, `patina-events.wit`.'
+  checked: true
+- id: wsh2-connect-stripped
+  text: '`patina:connect` stripped to service binding only: `resolve(name) -> binding`. No `request`, `header`, `response`, `base-url`. HTTP mechanics removed.'
+  checked: true
+- id: wsh3-wasi-http-linked
+  text: '`wasi:http/outgoing-handler` linked in Mother''s child runtime. Children can make standard HTTP calls.'
+  checked: true
+- id: wsh4-connect-binding-wired
+  text: Mother intercepts `wasi:http` calls and injects credentials when a `patina:connect` binding is active for the target host.
+  checked: true
+- id: wsh5-existing-children-migrated
+  text: All children using `patina:connect.request()` migrated to `wasi:http` + `patina:connect.resolve()` binding pattern.
+  checked: true
+- id: wsh6-workspace-clean
+  text: '`cargo check --workspace -q`, `cargo test -q --workspace`, `wasm-tools component wit` all pass.'
+  checked: true
+- id: wsh7-no-ghost-imports
+  text: Every import in `knowledge-child.wit` and `pipeline.wit` has a working host implementation in the linker.
+  checked: true
 ---
 # fix: wasi-surface-hygiene
 
