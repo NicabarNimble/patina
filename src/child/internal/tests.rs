@@ -700,9 +700,8 @@ fn lakehouse_catalog_component_path() -> Option<std::path::PathBuf> {
 
 #[test]
 fn folder_text_to_parquet_scan_contract_end_to_end() {
-    let Some(wasm_path) = folder_text_to_parquet_component_path() else {
-        return;
-    };
+    let wasm_path = folder_text_to_parquet_component_path()
+        .expect("folder-text-to-parquet WASM artifact missing — run: cargo build -p patina-ai-child-folder-text-to-parquet --target wasm32-wasip2");
 
     with_temp_patina_home(|_| {
         let engine = KnowledgeChildEngine::new().unwrap();
@@ -995,8 +994,10 @@ fn folder_text_to_parquet_scan_contract_end_to_end() {
         let output = std::process::Command::new("duckdb")
             .args([
                 ":memory:",
+                "-csv",
+                "-noheader",
                 &format!(
-                    "COPY (SELECT COUNT(*) AS c FROM read_parquet('{}')) TO STDOUT (FORMAT CSV, HEADER FALSE);",
+                    "SELECT COUNT(*) FROM read_parquet('{}');",
                     host_parquet_path.to_string_lossy()
                 ),
             ])
@@ -1080,12 +1081,10 @@ fn folder_text_to_parquet_scan_contract_end_to_end() {
 
 #[test]
 fn folder_text_to_parquet_first_split_composes_via_events() {
-    let Some(monitor_wasm_path) = file_system_monitor_component_path() else {
-        return;
-    };
-    let Some(processor_wasm_path) = folder_text_to_parquet_component_path() else {
-        return;
-    };
+    let monitor_wasm_path = file_system_monitor_component_path()
+        .expect("file-system-monitor WASM artifact missing — run: cargo build -p patina-ai-child-file-system-monitor --target wasm32-wasip2");
+    let processor_wasm_path = folder_text_to_parquet_component_path()
+        .expect("folder-text-to-parquet WASM artifact missing — run: cargo build -p patina-ai-child-folder-text-to-parquet --target wasm32-wasip2");
 
     with_temp_patina_home(|_| {
         let engine = KnowledgeChildEngine::new().unwrap();
@@ -1219,24 +1218,18 @@ fn folder_text_to_parquet_first_split_composes_via_events() {
 
 #[test]
 fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
-    let Some(monitor_wasm_path) = file_system_monitor_component_path() else {
-        return;
-    };
-    let Some(extractor_wasm_path) = content_extractor_component_path() else {
-        return;
-    };
-    let Some(enforcer_wasm_path) = schema_enforcer_component_path() else {
-        return;
-    };
-    let Some(dedup_wasm_path) = dedup_filter_component_path() else {
-        return;
-    };
-    let Some(writer_wasm_path) = record_writer_component_path() else {
-        return;
-    };
-    let Some(catalog_wasm_path) = lakehouse_catalog_component_path() else {
-        return;
-    };
+    let monitor_wasm_path = file_system_monitor_component_path()
+        .expect("file-system-monitor WASM artifact missing — run: cargo build -p patina-ai-child-file-system-monitor --target wasm32-wasip2");
+    let extractor_wasm_path = content_extractor_component_path()
+        .expect("content-extractor WASM artifact missing — run: cargo build -p patina-ai-child-content-extractor --target wasm32-wasip2");
+    let enforcer_wasm_path = schema_enforcer_component_path()
+        .expect("schema-enforcer WASM artifact missing — run: cargo build -p patina-ai-child-schema-enforcer --target wasm32-wasip2");
+    let dedup_wasm_path = dedup_filter_component_path()
+        .expect("dedup-filter WASM artifact missing — run: cargo build -p patina-ai-child-dedup-filter --target wasm32-wasip2");
+    let writer_wasm_path = record_writer_component_path()
+        .expect("record-writer WASM artifact missing — run: cargo build -p patina-ai-child-record-writer --target wasm32-wasip2");
+    let catalog_wasm_path = lakehouse_catalog_component_path()
+        .expect("lakehouse-catalog WASM artifact missing — run: cargo build -p patina-ai-child-lakehouse-catalog --target wasm32-wasip2");
 
     with_temp_patina_home(|_| {
         let engine = KnowledgeChildEngine::new().unwrap();
@@ -1482,8 +1475,10 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
         let output = std::process::Command::new("duckdb")
             .args([
                 ":memory:",
+                "-csv",
+                "-noheader",
                 &format!(
-                    "COPY (SELECT COUNT(*) AS c FROM read_parquet('{}')) TO STDOUT (FORMAT CSV, HEADER FALSE);",
+                    "SELECT COUNT(*) FROM read_parquet('{}');",
                     host_parquet_path.to_string_lossy()
                 ),
             ])
