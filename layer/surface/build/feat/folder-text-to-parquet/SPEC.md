@@ -20,6 +20,9 @@ exit_criteria:
   - id: ftp1-composite-prototype
     text: "A single composite child proves the full flow: watch folder → parse text → write parquet → register in catalog."
     checked: true
+  - id: ftp2a-first-split-proven
+    text: "Two children compose via file.found events. Discovery (file-system-monitor) and processing (folder-text-to-parquet) separated with working subscribe/ack/offset."
+    checked: true
   - id: ftp2-six-children-built
     text: "Composite split into 6 focused children: file-system-monitor, content-extractor, schema-enforcer, dedup-filter, record-writer, lakehouse-catalog."
     checked: false
