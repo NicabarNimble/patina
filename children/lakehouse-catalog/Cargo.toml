@@ -1,0 +1,22 @@
+[package]
+name = "patina-ai-child-lakehouse-catalog"
+version = "0.1.0"
+edition = "2021"
+description = "Register parquet outputs in catalog metadata"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+patina-sdk = { path = "../../sdk/patina-sdk", features = ["knowledge-child", "toy-log", "toy-state"] }
+chrono = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+
+[package.metadata.component]
+package = "patina:lakehouse-catalog"
+
+[package.metadata.component.target]
+path = "../../wit/knowledge-child"
+world = "knowledge-child"
