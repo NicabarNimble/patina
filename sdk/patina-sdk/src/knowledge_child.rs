@@ -870,6 +870,8 @@ pub mod host {
                 "fact.ingested".to_string(),
                 "session.completed".to_string(),
                 "repo.synced".to_string(),
+                "file.found".to_string(),
+                "file.written".to_string(),
             ]
         }
     }

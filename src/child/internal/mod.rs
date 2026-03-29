@@ -230,6 +230,8 @@ pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
             "fact.ingested",
             "session.completed",
             "repo.synced",
+            "file.found",
+            "file.written",
         ];
         for stream in &manifest.subscribed_streams {
             if !KNOWN_STREAMS.contains(&stream.as_str()) {
