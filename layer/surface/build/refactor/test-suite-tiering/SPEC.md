@@ -3,169 +3,264 @@ type: refactor
 id: test-suite-tiering
 status: draft
 created: 2026-03-29
+updated: 2026-03-29
 sessions:
   origin: 20260328-134311-971500000
 beliefs:
   - "[[unix-philosophy]]"
   - "[[dependable-rust]]"
+  - "[[measure-first]]"
+  - "[[spec-needs-code-verification]]"
 related:
   - resources/git/pre-push-checks.sh
   - .github/workflows/test.yml
   - .github/workflows/pr-gate.yml
+  - resources/git/pre-commit-checks.sh
+  - resources/scripts/check-ducklake-parity.sh
+  - layer/surface/build/refactor/test-suite-tiering/DESIGN.md
   - .git/hooks/pre-push
 exit_criteria:
-  - id: tst1-pre-commit-fast
-    text: "Pre-commit hook runs in < 5 seconds. Only formatting and file-size checks."
+  - id: tst1-code-truth-baseline-captured
+    text: "Spec records current hook/CI behavior with code-truth evidence (including stale/no-op checks), so redesign decisions are based on code not drifted docs."
     checked: false
-  - id: tst2-pre-push-bounded
-    text: "Pre-push hook runs in < 30 seconds. No cargo test, no clippy, no WASM compilation."
+  - id: tst2-pre-commit-budget-and-scope
+    text: "Pre-commit gate runs in under 5 seconds and contains only deterministic instant checks (format + large file guard)."
     checked: false
-  - id: tst3-ci-complete
-    text: "CI runs the full check suite (clippy, tests, WASM parity, integration tests). Blocks merge, not push."
+  - id: tst3-pre-push-structural-budget
+    text: "Pre-push structural gate runs in under 30 seconds and contains no cargo build/test work."
     checked: false
-  - id: tst4-no-ssh-timeout
-    text: "git push to origin completes without SSH connection timeout on normal network conditions."
+  - id: tst4-local-targeted-cargo-lane
+    text: "A local targeted cargo lane runs on push by default (changed-package clippy/tests plus path-triggered parity/schema checks), with full-workspace fallback for broad-impact changes."
     checked: false
-  - id: tst5-no-check-loss
-    text: "Every check that exists today still runs — nothing dropped, only moved between tiers."
+  - id: tst5-ci-authoritative-and-complete
+    text: "CI contains all mandatory heavy checks (workspace clippy/tests/build/install, ducklake parity, schema consistency, broker integration, and policy checks) and is merge-blocking authority."
+    checked: false
+  - id: tst6-stale-checks-repaired
+    text: "Current stale checks are removed or replaced with live invariants (no no-op pass paths such as missing-file MCP checks or always-skipped integration gates)."
+    checked: false
+  - id: tst7-full-local-suite-available
+    text: "A single local command runs the full suite (same semantic coverage as CI) for release-grade local verification when needed."
+    checked: false
+  - id: tst8-end-to-end-not-always-on
+    text: "End-to-end/integration-heavy checks are selective locally by default and always covered in CI/nightly lanes."
+    checked: false
+  - id: tst9-bazel-decision-explicit
+    text: "Spec captures explicit Bazel decision: deferred now, with measurable trigger thresholds for reevaluation."
     checked: false
 ---
-# refactor: test-suite-tiering
+# refactor: test-suite-tiering (local-first selective rigor)
 
 ## Problem
 
-The pre-push hook (`resources/git/pre-push-checks.sh`) runs 14 checks including `cargo test --workspace`, `cargo clippy --workspace`, WASM parity tests, broker integration, and schema validation. This was designed to catch problems fast before they hit CI.
+Patina's local/CI test policy drifted into an unstable shape:
 
-With 11+ WASM children crates in the workspace, the hook now takes several minutes. The SSH connection to GitHub drops before the hook finishes, blocking all pushes. The checks are valuable — the hook has caught real problems since each check was added — but they can't all run locally at this project scale.
+- pre-push runs a mixed 14-step pipeline containing both instant policy checks and heavy cargo/test checks
+- some checks in that pipeline are now stale/no-op against current code layout
+- CI does not fully mirror all mandatory checks currently assumed by local hooks
 
-CI (`.github/workflows/test.yml`) already runs the same checks. They're duplicated between local and remote.
+This violates two project needs:
+
+1. local-first confidence (strong testing before remote)
+2. reliable push velocity (no brittle, minutes-long pre-push bottleneck)
 
 ## History
 
-The pre-push hook grew organically as each spec added guards:
-- WIT consistency (from stale WIT deps incident, Feb 2026)
-- Crate naming policy (from `crate-naming-policy-and-ci` spec)
-- Runtime boundary drift (post-toy-collapse)
-- DuckLake WASM parity (ducklake-native-removal spec)
-- MCP handler invariants (mcp-thin-handlers spec)
-- Schema consistency (schema management spec)
-- Broker integration test (pipe protocol drift guard)
+The hook grew incrementally as valid safeguards were added by prior specs:
 
-Each guard caught a real problem. None should be dropped — only moved to the right tier.
+- WIT consistency and mirror checks
+- crate naming and architectural boundary checks
+- ducklake parity check
+- clippy, tests, and schema checks
+- broker integration and MCP-thin-handler invariants
+
+The growth was additive and useful, but not re-tiered as project shape changed
+(MCP retirement, crate reshaping, integration guard drift, and larger workspace test load).
 
 ## Goal
 
-Restructure checks into tiers so developers push freely, problems are caught at the right layer, and no check is lost.
+Define and execute a testing constitution that is:
+
+- strong enough for enterprise-grade confidence
+- local-first by default
+- selective for expensive checks
+- CI-complete and authoritative
+- explicit about when Bazel is, or is not, justified
 
 ## Non-Goals
 
-- Adding new checks.
-- Rewriting CI from scratch.
-- Changing test content — only moving where tests run.
+- adopting Bazel in this spec
+- rewriting all tests or introducing a brand new harness stack
+- promising zero flakes in one pass
+- changing product behavior unrelated to testing and gate placement
 
-## Tier Design
+## Status
 
-### Tier 1 — Pre-commit (< 5 seconds)
+Draft. Code-truth audit complete on 2026-03-29.
 
-Fast, runs on every commit. Catches formatting and obvious mistakes.
+## Code-Truth Snapshot (2026-03-29)
 
-```bash
-cargo fmt --all -- --check
-# file size check (existing: no large staged files > 10MB)
-```
+- `resources/git/pre-commit-checks.sh` currently runs only large-file detection.
+- `resources/git/pre-push-checks.sh` currently runs 14 checks, including heavy
+  cargo checks (`fmt`, `clippy`, full `test`, schema check).
+- Step 12 broker integration is conditionally skipped based on metadata and local
+  child install expectations; this is not a reliable always-on guard.
+- Step 13 MCP handler invariants references `src/mcp/server/scry.rs` and
+  `src/mcp/server/assay.rs`, which do not exist in current code layout.
+- `.github/workflows/test.yml` currently does not run every check local hooks
+  imply is mandatory (notably schema consistency and broker integration behavior).
+- Observed timing sample from audit session:
+  - pre-commit hook around 0.02s
+  - pre-push reaches heavy cargo steps and runs substantially longer
+  - full workspace tests are minutes-scale, not seconds-scale
 
-That's it. No compilation, no tests, no network.
+## Testing Constitution (Target Shape)
 
-### Tier 2 — Pre-push (< 30 seconds)
+This spec separates checks by both trigger frequency and runtime cost.
 
-Lightweight structural checks. No compilation, no test execution.
+### Tier 0: pre-commit (< 5s)
 
-```bash
-# WIT consistency (SDK mirrors match canonical — file diff, no cargo)
-# WIT mirror completeness (file existence check)
-# Crate naming policy (grep-based, no cargo)
-# Core/protocol dependency direction (grep-based)
-# Single SDK surface (grep-based)
-# Runtime boundary drift (grep-based)
-# Layer output contract (directory existence check)
-# MCP handler invariants (line count + grep, no cargo)
-```
+- deterministic instant checks only
+- format check
+- staged large-file guard
 
-These are all the checks from steps 1-7 and 13 of the current hook. They run in seconds because they're file/grep based — no `cargo` invocation.
+### Tier 1: pre-push structural (< 30s, no cargo)
 
-### Tier 3 — CI on push (blocks merge, not push)
+- WIT consistency and mirror completeness
+- crate naming policy
+- core/protocol dependency direction
+- single SDK surface
+- runtime boundary drift
+- layer output contract
+- replacement for stale MCP check using current-runtime invariant(s)
 
-Full compilation and test suite. Runs on GitHub Actions after push.
+### Tier 2: pre-push targeted cargo (local-first default)
 
-```yaml
-# cargo fmt --check (redundant with pre-commit, but CI is the authority)
-# cargo clippy --workspace -- -D warnings
-# cargo test --workspace
-# cargo build --release
-# DuckLake WASM parity (cargo test with WASM artifacts)
-# Schema consistency (cargo run -- schema check)
-# Broker integration test (conditional, if test-child available)
-# cargo install --locked (release verification)
-```
+- changed-package `clippy` + tests
+- path-triggered heavy checks only when touched:
+  - ducklake parity
+  - schema consistency
+- full-workspace fallback when impact is broad (workspace/Cargo graph/toolchain/core boundary files)
 
-These are steps 8-12 and 14 of the current hook, plus clippy and tests. They require `cargo` and take minutes.
+### Tier 3: local full suite (manual, release-grade)
 
-### Tier 4 — CI on main push (nightly/release quality)
+- one command to run semantic equivalent of CI full suite
+- used before risky merges/releases or when targeted lane escalates
 
-Existing benchmark job, unchanged.
+### Tier 4: CI merge gate (authoritative)
 
-```yaml
-# Retrieval quality benchmark (MRR >= 0.55)
-# Already in test.yml as a separate job gated on main push
-```
+- full workspace checks (fmt/clippy/tests/build/install)
+- all required parity/integration/policy checks
+- merge-blocking source of truth
 
-## Migration Map
+### Tier 5: scheduled exhaustive lane
 
-| Current hook step | Check | Current tier | New tier | Reason |
+- expensive end-to-end and stability checks
+- flake detection/reporting
+- benchmark/regression surveillance
+
+## Migration Map (Current 14-Step Hook -> Target)
+
+| Current step | Check | Current state | Target tier | Notes |
 |---|---|---|---|---|
-| 1 | WIT consistency | pre-push | **pre-push** | File diff, fast |
-| 2 | WIT mirror completeness | pre-push | **pre-push** | File existence, fast |
-| 3 | Crate naming policy | pre-push | **pre-push** | Grep, fast |
-| 4 | Core/protocol deps | pre-push | **pre-push** | Grep, fast |
-| 5 | Single SDK surface | pre-push | **pre-push** | Grep, fast |
-| 6 | Runtime boundary drift | pre-push | **pre-push** | Grep, fast |
-| 7 | Layer output contract | pre-push | **pre-push** | Dir check, fast |
-| 8 | DuckLake WASM parity | pre-push | **CI** | Runs cargo test |
-| 9 | Formatting | pre-push | **pre-commit** | Already fast, better as pre-commit |
-| 10 | Clippy | pre-push | **CI** | Full workspace compile |
-| 11 | Tests | pre-push | **CI** | Full workspace compile + run |
-| 12 | Broker integration | pre-push | **CI** | Runs cargo build + cargo run |
-| 13 | MCP handler invariants | pre-push | **pre-push** | Grep + wc, fast |
-| 14 | Schema consistency | pre-push | **CI** | Runs cargo run |
+| 1 | WIT consistency | active | Tier 1 | stay fast local |
+| 2 | WIT mirror completeness | active | Tier 1 | stay fast local |
+| 3 | Crate naming policy | active | Tier 1 | stay fast local |
+| 4 | Core/protocol deps | active | Tier 1 | stay fast local |
+| 5 | Single SDK surface | active | Tier 1 | stay fast local |
+| 6 | Runtime boundary drift | active | Tier 1 | stay fast local |
+| 7 | Layer output contract | active | Tier 1 | stay fast local |
+| 8 | DuckLake parity | active | Tier 2 + Tier 4 | local selective + always in CI |
+| 9 | Formatting | active | Tier 0 + Tier 4 | local instant + CI authority |
+| 10 | Clippy | active | Tier 2 + Tier 4 | targeted local + full CI |
+| 11 | Tests | active | Tier 2 + Tier 4 | targeted local + full CI |
+| 12 | Broker integration | stale/conditional | Tier 4 (+ optional Tier 3) | make deterministic CI check |
+| 13 | MCP invariants | stale/no-op | Tier 1 replacement | replace with live invariant |
+| 14 | Schema consistency | active | Tier 2 + Tier 4 | local selective + always in CI |
 
-**Result:** Pre-push drops from 14 checks to 8, all file/grep based. The 6 heavy checks (cargo-dependent) move to CI where they already run.
+## Solution
 
-## Approach
+### TST-G1: Normalize hooks around deterministic budgets
 
-1. Create new `resources/git/pre-commit-checks.sh` with tier 1 checks.
-2. Rewrite `resources/git/pre-push-checks.sh` to only include tier 2 checks (remove cargo-dependent steps).
-3. Verify CI already covers all tier 3 checks — add any missing ones.
-4. Update `.git/hooks/pre-commit` to call the new script.
-5. Update `.git/hooks/pre-push` to call the slimmed script.
-6. Test: `git push` completes without SSH timeout.
-7. Verify: no check is lost — every check still runs somewhere.
+- keep pre-commit instant
+- split pre-push into structural and targeted cargo lanes
+- enforce hard budgets in script output and failure text
+
+### TST-G2: Implement impact-driven local cargo selection
+
+- compute impacted packages from changed paths + cargo metadata
+- run `clippy` and tests on impacted set by default
+- escalate to full-workspace when impact rules are triggered
+
+### TST-G3: Repair stale checks
+
+- replace stale MCP invariant check with current-runtime invariant check
+- make broker integration deterministic and non-silent (no accidental always-skip path)
+
+### TST-G4: Close CI completeness gap
+
+- mirror all mandatory heavy checks in CI
+- ensure policy checks and selective local checks have CI authority equivalent
+
+### TST-G5: Add explicit full-local and exhaustive lanes
+
+- full local suite command for release-grade runs
+- scheduled exhaustive lane for end-to-end depth and flake detection
+
+### TST-G6: Record Bazel decision with objective triggers
+
+- defer Bazel now
+- record measurable thresholds that would justify a Bazel evaluation spec
+
+## Implementation Order
+
+1. Encode code-truth baseline in spec and design docs.
+2. Refactor pre-commit/pre-push scripts into Tier 0/1/2 model.
+3. Add impact selection script and fallback rules.
+4. Repair stale integration and invariant checks.
+5. Update CI workflow to close mandatory-check gaps.
+6. Add full-local suite command and docs.
+7. Add scheduled exhaustive lane and flake reporting.
+8. Capture before/after timing and check coverage matrix.
+
+## Resolved Decisions
+
+- Patina stays local-first: most useful signal should run locally before push.
+- End-to-end and heavy integration checks are selective locally, always covered in CI/nightly.
+- Stale/no-op checks are not acceptable gate coverage and must be replaced or removed.
+- CI is merge authority; local hooks are developer feedback accelerators.
+- Bazel is deferred for now; optimize with Rust-native tooling and impact selection first.
+
+## Bazel Position
+
+Decision for this spec: **do not adopt Bazel now**.
+
+Reevaluate only if measured pain remains after Tier 0-5 rollout, for example:
+
+- local targeted lane routinely exceeds agreed budget
+- CI latency remains unacceptable after parallelization and caching
+- multi-language remote execution requirements exceed Cargo-native ergonomics
+
+If those thresholds are hit, create a dedicated Bazel evaluation spec with
+migration and cost modeling.
 
 ## Verification
 
 ```bash
-# Tier 1 runs fast
-time resources/git/pre-commit-checks.sh   # must be < 5s
+# Tier budgets
+time resources/git/pre-commit-checks.sh
+time resources/git/pre-push-checks.sh
 
-# Tier 2 runs fast
-time resources/git/pre-push-checks.sh     # must be < 30s
+# Tier 2 behavior: targeted by default, full fallback on broad impact
+resources/git/pre-push-checks.sh
 
-# Tier 3 runs in CI
-# Verify test.yml covers: clippy, tests, WASM parity, schema, broker integration
+# Full local suite
+resources/git/preflight-full.sh
 
-# No check lost
-diff <(grep -c '📦' resources/git/pre-push-checks.sh.bak) <(grep -c '📦' resources/git/pre-push-checks.sh resources/git/pre-commit-checks.sh .github/workflows/test.yml)
+# CI coverage parity (manual audit or scripted assertion)
+rg -n "schema check|ducklake|clippy|cargo test|cargo install|crate naming|runtime boundary|WIT" .github/workflows/test.yml
 ```
 
 ## Build Readiness
 
-Ready to start. This is a pure restructuring — no new checks, no removed checks, just moving them to the right tier.
+Ready. Audit is complete and this spec now describes a code-truth-first
+execution path to enterprise-grade rigor without sacrificing local velocity.
