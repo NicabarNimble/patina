@@ -1,0 +1,24 @@
+[package]
+name = "patina-ai-child-record-writer"
+version = "0.1.0"
+edition = "2021"
+description = "Write ready records to parquet batches"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+patina-sdk = { path = "../../sdk/patina-sdk", features = ["knowledge-child", "toy-log", "toy-state", "toy-measure"] }
+chrono = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+arrow-array = "55"
+arrow-schema = "55"
+parquet = { version = "55", default-features = false, features = ["arrow"] }
+
+[package.metadata.component]
+package = "patina:record-writer"
+
+[package.metadata.component.target]
+path = "../../wit/knowledge-child"
+world = "knowledge-child"

@@ -1,0 +1,19 @@
+[child]
+name = "record-writer"
+kind = "knowledge-child"
+role = "app"
+
+[needs]
+toys = ["log", "state", "events", "measure"]
+
+[needs.scopes.events]
+subscribe = ["record.ready"]
+
+[needs.scopes.filesystem.output]
+path = "/tmp"
+mode = "read-write"
+
+[needs.metrics]
+records_written = { type = "counter", labels = [] }
+batch_size = { type = "gauge", labels = [] }
+write_latency_ms = { type = "gauge", labels = [] }
