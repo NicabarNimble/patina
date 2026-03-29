@@ -602,6 +602,22 @@ fn folder_text_to_parquet_component_path() -> Option<std::path::PathBuf> {
     None
 }
 
+fn file_system_monitor_component_path() -> Option<std::path::PathBuf> {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for rel in [
+        "target/wasm32-wasip2/debug/patina_ai_child_file_system_monitor.wasm",
+        "target/wasm32-wasip2/release/patina_ai_child_file_system_monitor.wasm",
+        "target/wasm32-wasip1/debug/patina_ai_child_file_system_monitor.wasm",
+        "target/wasm32-wasip1/release/patina_ai_child_file_system_monitor.wasm",
+    ] {
+        let path = root.join(rel);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    None
+}
+
 #[test]
 fn folder_text_to_parquet_scan_contract_end_to_end() {
     let Some(wasm_path) = folder_text_to_parquet_component_path() else {
@@ -979,6 +995,137 @@ fn folder_text_to_parquet_scan_contract_end_to_end() {
                 expected
             );
         }
+    });
+}
+
+#[test]
+fn folder_text_to_parquet_first_split_composes_via_events() {
+    let Some(monitor_wasm_path) = file_system_monitor_component_path() else {
+        return;
+    };
+    let Some(processor_wasm_path) = folder_text_to_parquet_component_path() else {
+        return;
+    };
+
+    with_temp_patina_home(|_| {
+        let engine = KnowledgeChildEngine::new().unwrap();
+
+        let monitor_wasm_bytes = std::fs::read(&monitor_wasm_path).unwrap();
+        let monitor_component = engine.load_component(&monitor_wasm_bytes).unwrap();
+        let monitor_manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("children/file-system-monitor/child.toml");
+        let monitor_manifest = ChildManifest::from_path(&monitor_manifest_path).unwrap();
+
+        let processor_wasm_bytes = std::fs::read(&processor_wasm_path).unwrap();
+        let processor_component = engine.load_component(&processor_wasm_bytes).unwrap();
+        let processor_manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("children/folder-text-to-parquet/child.toml");
+        let processor_manifest = ChildManifest::from_path(&processor_manifest_path).unwrap();
+
+        let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/folder-text-to-parquet");
+        let output_dir = tempfile::TempDir::new().unwrap();
+        let host_parquet_path = output_dir.path().join("split-batch.parquet");
+
+        let monitor_child = engine
+            .instantiate_child_with_preopens(
+                &monitor_component,
+                &monitor_manifest,
+                None,
+                &[knowledge_child::FilesystemPreopen {
+                    host_path: fixture_dir.clone(),
+                    guest_path: "/input".to_string(),
+                    mode: FilesystemAccessMode::ReadOnly,
+                }],
+            )
+            .unwrap();
+
+        let processor_child = engine
+            .instantiate_child_with_preopens(
+                &processor_component,
+                &processor_manifest,
+                None,
+                &[
+                    knowledge_child::FilesystemPreopen {
+                        host_path: fixture_dir,
+                        guest_path: "/input".to_string(),
+                        mode: FilesystemAccessMode::ReadOnly,
+                    },
+                    knowledge_child::FilesystemPreopen {
+                        host_path: output_dir.path().to_path_buf(),
+                        guest_path: "/output".to_string(),
+                        mode: FilesystemAccessMode::ReadWrite,
+                    },
+                ],
+            )
+            .unwrap();
+
+        let monitor_response = monitor_child
+            .handle(&crate::mother::ChildRequest {
+                action: "scan".into(),
+                payload: serde_json::json!({"folder_path": "/input"}),
+            })
+            .unwrap();
+        assert_eq!(
+            monitor_response
+                .payload
+                .get("processed_files")
+                .and_then(|v| v.as_u64()),
+            Some(4),
+            "monitor should emit four file.found events"
+        );
+
+        let processor_response = processor_child
+            .handle(&crate::mother::ChildRequest {
+                action: "process-discovered".into(),
+                payload: serde_json::json!({
+                    "output_path": "/output/split-batch.parquet",
+                    "limit": 64,
+                }),
+            })
+            .unwrap();
+        let payload = processor_response.payload;
+
+        assert_eq!(
+            payload.get("status").and_then(|v| v.as_str()),
+            Some("ok"),
+            "processor should return ok"
+        );
+        assert_eq!(
+            payload
+                .get("processed_records")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0),
+            4,
+            "first split should preserve four discovered fixture records"
+        );
+        assert!(
+            payload
+                .get("acked_through")
+                .and_then(|v| v.as_u64())
+                .is_some(),
+            "processor should ack consumed file.found events"
+        );
+
+        let state_keys = payload
+            .get("state_keys")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|v| v.as_str().map(ToString::to_string))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            state_keys.len(),
+            3,
+            "duplicate file should still dedupe to three record:* keys"
+        );
+
+        assert!(
+            host_parquet_path.exists(),
+            "expected split parquet file at {}",
+            host_parquet_path.display()
+        );
     });
 }
 
