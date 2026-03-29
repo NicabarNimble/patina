@@ -35,10 +35,10 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         }
     }
 
-    let patina_dir = project_path.join(".patina");
+    let patina_config = project_path.join(".patina").join("config.toml");
     let adapter_name: String;
 
-    if !patina_dir.exists() {
+    if !patina_config.exists() {
         if options.auto_init {
             // Pass explicit_adapter - if Some, skip selection prompt
             match prompt_are_you_lost(&project_path, explicit_adapter.as_deref())? {
