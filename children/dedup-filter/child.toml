@@ -1,0 +1,10 @@
+[child]
+name = "dedup-filter"
+kind = "knowledge-child"
+role = "app"
+
+[needs]
+toys = ["log", "events", "state"]
+
+[needs.scopes.events]
+subscribe = ["record.validated"]
