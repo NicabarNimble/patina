@@ -190,6 +190,8 @@ Toys are the platform API. New toys are rare and intentional.
 
 **Known toy needed:** `patina:crypto` — field-level encryption where Mother holds keys, child calls encrypt/decrypt. Required for `encryption-envelope` child. Credentials (keys) never cross the WASM wall.
 
+**Known cleanup needed: toy naming hierarchy.** Today toys have three names (manifest alias, WIT interface, runtime grant) with no clear hierarchy. Target design: manifest alias is the public canonical name (`log`, `state`, `events`). WIT interface is the contract reference, discoverable via `patina toy list`. Runtime grant names are private to Mother internals and never user-facing. Scoped cleanup spec to follow.
+
 ## Component Model Ecosystem
 
 Patina children are WASM components. They use WIT interfaces. They compile to `wasm32-wasip2`.
