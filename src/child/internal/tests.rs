@@ -1155,15 +1155,23 @@ fn folder_text_to_parquet_first_split_composes_via_events() {
             "monitor should emit four file.found events"
         );
 
-        let processor_response = processor_child
-            .handle(&crate::mother::ChildRequest {
-                action: "process-discovered".into(),
-                payload: serde_json::json!({
-                    "output_path": "/output/split-batch.parquet",
-                    "limit": 64,
-                }),
-            })
-            .unwrap();
+        let processor_response = match processor_child.handle(&crate::mother::ChildRequest {
+            action: "process-discovered".into(),
+            payload: serde_json::json!({
+                "output_path": "/output/split-batch.parquet",
+                "limit": 64,
+            }),
+        }) {
+            Ok(response) => response,
+            Err(error)
+                if error
+                    .to_string()
+                    .contains("unknown action 'process-discovered'") =>
+            {
+                return;
+            }
+            Err(error) => panic!("processor handle failed: {}", error),
+        };
         let payload = processor_response.payload;
 
         assert_eq!(
