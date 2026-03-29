@@ -22,31 +22,31 @@ related:
 exit_criteria:
   - id: tst1-code-truth-baseline-captured
     text: "Spec records current hook/CI behavior with code-truth evidence (including stale/no-op checks), so redesign decisions are based on code not drifted docs."
-    checked: false
+    checked: true
   - id: tst2-pre-commit-budget-and-scope
     text: "Pre-commit gate runs in under 5 seconds and contains only deterministic instant checks (format + large file guard)."
-    checked: false
+    checked: true
   - id: tst3-pre-push-structural-budget
     text: "Pre-push structural gate runs in under 30 seconds and contains no cargo build/test work."
-    checked: false
+    checked: true
   - id: tst4-local-targeted-cargo-lane
     text: "A local targeted cargo lane runs on push by default (changed-package clippy/tests plus path-triggered parity/schema checks), with full-workspace fallback for broad-impact changes."
-    checked: false
+    checked: true
   - id: tst5-ci-authoritative-and-complete
     text: "CI contains all mandatory heavy checks (workspace clippy/tests/build/install, ducklake parity, schema consistency, broker integration, and policy checks) and is merge-blocking authority."
-    checked: false
+    checked: true
   - id: tst6-stale-checks-repaired
     text: "Current stale checks are removed or replaced with live invariants (no no-op pass paths such as missing-file MCP checks or always-skipped integration gates)."
-    checked: false
+    checked: true
   - id: tst7-full-local-suite-available
     text: "A single local command runs the full suite (same semantic coverage as CI) for release-grade local verification when needed."
-    checked: false
+    checked: true
   - id: tst8-end-to-end-not-always-on
     text: "End-to-end/integration-heavy checks are selective locally by default and always covered in CI/nightly lanes."
-    checked: false
+    checked: true
   - id: tst9-bazel-decision-explicit
     text: "Spec captures explicit Bazel decision: deferred now, with measurable trigger thresholds for reevaluation."
-    checked: false
+    checked: true
 ---
 # refactor: test-suite-tiering (local-first selective rigor)
 
