@@ -232,6 +232,11 @@ pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
             "repo.synced",
             "file.found",
             "file.written",
+            "record.extracted",
+            "record.validated",
+            "record.rejected",
+            "record.ready",
+            "record.duplicate",
         ];
         for stream in &manifest.subscribed_streams {
             if !KNOWN_STREAMS.contains(&stream.as_str()) {
