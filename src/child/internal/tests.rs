@@ -618,6 +618,86 @@ fn file_system_monitor_component_path() -> Option<std::path::PathBuf> {
     None
 }
 
+fn content_extractor_component_path() -> Option<std::path::PathBuf> {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for rel in [
+        "target/wasm32-wasip2/debug/patina_ai_child_content_extractor.wasm",
+        "target/wasm32-wasip2/release/patina_ai_child_content_extractor.wasm",
+        "target/wasm32-wasip1/debug/patina_ai_child_content_extractor.wasm",
+        "target/wasm32-wasip1/release/patina_ai_child_content_extractor.wasm",
+    ] {
+        let path = root.join(rel);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn schema_enforcer_component_path() -> Option<std::path::PathBuf> {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for rel in [
+        "target/wasm32-wasip2/debug/patina_ai_child_schema_enforcer.wasm",
+        "target/wasm32-wasip2/release/patina_ai_child_schema_enforcer.wasm",
+        "target/wasm32-wasip1/debug/patina_ai_child_schema_enforcer.wasm",
+        "target/wasm32-wasip1/release/patina_ai_child_schema_enforcer.wasm",
+    ] {
+        let path = root.join(rel);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn dedup_filter_component_path() -> Option<std::path::PathBuf> {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for rel in [
+        "target/wasm32-wasip2/debug/patina_ai_child_dedup_filter.wasm",
+        "target/wasm32-wasip2/release/patina_ai_child_dedup_filter.wasm",
+        "target/wasm32-wasip1/debug/patina_ai_child_dedup_filter.wasm",
+        "target/wasm32-wasip1/release/patina_ai_child_dedup_filter.wasm",
+    ] {
+        let path = root.join(rel);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn record_writer_component_path() -> Option<std::path::PathBuf> {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for rel in [
+        "target/wasm32-wasip2/debug/patina_ai_child_record_writer.wasm",
+        "target/wasm32-wasip2/release/patina_ai_child_record_writer.wasm",
+        "target/wasm32-wasip1/debug/patina_ai_child_record_writer.wasm",
+        "target/wasm32-wasip1/release/patina_ai_child_record_writer.wasm",
+    ] {
+        let path = root.join(rel);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn lakehouse_catalog_component_path() -> Option<std::path::PathBuf> {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for rel in [
+        "target/wasm32-wasip2/debug/patina_ai_child_lakehouse_catalog.wasm",
+        "target/wasm32-wasip2/release/patina_ai_child_lakehouse_catalog.wasm",
+        "target/wasm32-wasip1/debug/patina_ai_child_lakehouse_catalog.wasm",
+        "target/wasm32-wasip1/release/patina_ai_child_lakehouse_catalog.wasm",
+    ] {
+        let path = root.join(rel);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    None
+}
+
 #[test]
 fn folder_text_to_parquet_scan_contract_end_to_end() {
     let Some(wasm_path) = folder_text_to_parquet_component_path() else {
@@ -1125,6 +1205,295 @@ fn folder_text_to_parquet_first_split_composes_via_events() {
             host_parquet_path.exists(),
             "expected split parquet file at {}",
             host_parquet_path.display()
+        );
+    });
+}
+
+#[test]
+fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
+    let Some(monitor_wasm_path) = file_system_monitor_component_path() else {
+        return;
+    };
+    let Some(extractor_wasm_path) = content_extractor_component_path() else {
+        return;
+    };
+    let Some(enforcer_wasm_path) = schema_enforcer_component_path() else {
+        return;
+    };
+    let Some(dedup_wasm_path) = dedup_filter_component_path() else {
+        return;
+    };
+    let Some(writer_wasm_path) = record_writer_component_path() else {
+        return;
+    };
+    let Some(catalog_wasm_path) = lakehouse_catalog_component_path() else {
+        return;
+    };
+
+    with_temp_patina_home(|_| {
+        let engine = KnowledgeChildEngine::new().unwrap();
+
+        let monitor_wasm_bytes = std::fs::read(&monitor_wasm_path).unwrap();
+        let monitor_component = engine.load_component(&monitor_wasm_bytes).unwrap();
+        let monitor_manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("children/file-system-monitor/child.toml");
+        let monitor_manifest = ChildManifest::from_path(&monitor_manifest_path).unwrap();
+
+        let extractor_wasm_bytes = std::fs::read(&extractor_wasm_path).unwrap();
+        let extractor_component = engine.load_component(&extractor_wasm_bytes).unwrap();
+        let extractor_manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("children/content-extractor/child.toml");
+        let extractor_manifest = ChildManifest::from_path(&extractor_manifest_path).unwrap();
+
+        let enforcer_wasm_bytes = std::fs::read(&enforcer_wasm_path).unwrap();
+        let enforcer_component = engine.load_component(&enforcer_wasm_bytes).unwrap();
+        let enforcer_manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("children/schema-enforcer/child.toml");
+        let enforcer_manifest = ChildManifest::from_path(&enforcer_manifest_path).unwrap();
+
+        let dedup_wasm_bytes = std::fs::read(&dedup_wasm_path).unwrap();
+        let dedup_component = engine.load_component(&dedup_wasm_bytes).unwrap();
+        let dedup_manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("children/dedup-filter/child.toml");
+        let dedup_manifest = ChildManifest::from_path(&dedup_manifest_path).unwrap();
+
+        let writer_wasm_bytes = std::fs::read(&writer_wasm_path).unwrap();
+        let writer_component = engine.load_component(&writer_wasm_bytes).unwrap();
+        let writer_manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("children/record-writer/child.toml");
+        let writer_manifest = ChildManifest::from_path(&writer_manifest_path).unwrap();
+
+        let catalog_wasm_bytes = std::fs::read(&catalog_wasm_path).unwrap();
+        let catalog_component = engine.load_component(&catalog_wasm_bytes).unwrap();
+        let catalog_manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("children/lakehouse-catalog/child.toml");
+        let catalog_manifest = ChildManifest::from_path(&catalog_manifest_path).unwrap();
+
+        let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/folder-text-to-parquet");
+        let output_dir = tempfile::TempDir::new().unwrap();
+        let host_parquet_path = output_dir.path().join("six-child-batch.parquet");
+
+        let monitor_child = engine
+            .instantiate_child_with_preopens(
+                &monitor_component,
+                &monitor_manifest,
+                None,
+                &[knowledge_child::FilesystemPreopen {
+                    host_path: fixture_dir.clone(),
+                    guest_path: "/input".to_string(),
+                    mode: FilesystemAccessMode::ReadOnly,
+                }],
+            )
+            .unwrap();
+
+        let extractor_child = engine
+            .instantiate_child_with_preopens(
+                &extractor_component,
+                &extractor_manifest,
+                None,
+                &[knowledge_child::FilesystemPreopen {
+                    host_path: fixture_dir,
+                    guest_path: "/input".to_string(),
+                    mode: FilesystemAccessMode::ReadOnly,
+                }],
+            )
+            .unwrap();
+
+        let enforcer_child = engine
+            .instantiate_child(&enforcer_component, &enforcer_manifest, None)
+            .unwrap();
+
+        let dedup_child = engine
+            .instantiate_child(&dedup_component, &dedup_manifest, None)
+            .unwrap();
+
+        let writer_child = engine
+            .instantiate_child_with_preopens(
+                &writer_component,
+                &writer_manifest,
+                None,
+                &[knowledge_child::FilesystemPreopen {
+                    host_path: output_dir.path().to_path_buf(),
+                    guest_path: "/output".to_string(),
+                    mode: FilesystemAccessMode::ReadWrite,
+                }],
+            )
+            .unwrap();
+
+        let catalog_child = engine
+            .instantiate_child(&catalog_component, &catalog_manifest, None)
+            .unwrap();
+
+        let last_offset = |stream: &str| {
+            crate::child::toy_host::v2::events_subscribe(stream, None, 1_000_000)
+                .unwrap_or_default()
+                .last()
+                .map(|event| event.offset)
+        };
+
+        let file_found_before = last_offset("file.found");
+        let record_extracted_before = last_offset("record.extracted");
+        let record_validated_before = last_offset("record.validated");
+        let record_ready_before = last_offset("record.ready");
+        let file_written_before = last_offset("file.written");
+
+        let monitor_response = monitor_child
+            .handle(&crate::mother::ChildRequest {
+                action: "scan".into(),
+                payload: serde_json::json!({"folder_path": "/input"}),
+            })
+            .unwrap();
+        assert_eq!(
+            monitor_response
+                .payload
+                .get("processed_files")
+                .and_then(|v| v.as_u64()),
+            Some(4)
+        );
+
+        let extractor_response = extractor_child
+            .handle(&crate::mother::ChildRequest {
+                action: "extract-found".into(),
+                payload: serde_json::json!({
+                    "limit": 64,
+                    "after_offset": file_found_before,
+                }),
+            })
+            .unwrap();
+        assert_eq!(
+            extractor_response
+                .payload
+                .get("processed_records")
+                .and_then(|v| v.as_u64()),
+            Some(4)
+        );
+        assert!(
+            extractor_response
+                .payload
+                .get("acked_through")
+                .and_then(|v| v.as_u64())
+                .is_some(),
+            "content-extractor should ack consumed file.found events"
+        );
+
+        let enforcer_response = enforcer_child
+            .handle(&crate::mother::ChildRequest {
+                action: "enforce-schema".into(),
+                payload: serde_json::json!({
+                    "limit": 64,
+                    "after_offset": record_extracted_before,
+                }),
+            })
+            .unwrap();
+        assert_eq!(
+            enforcer_response
+                .payload
+                .get("validated_records")
+                .and_then(|v| v.as_u64()),
+            Some(4)
+        );
+        assert_eq!(
+            enforcer_response
+                .payload
+                .get("rejected_records")
+                .and_then(|v| v.as_u64()),
+            Some(0)
+        );
+
+        let dedup_response = dedup_child
+            .handle(&crate::mother::ChildRequest {
+                action: "filter-dedup".into(),
+                payload: serde_json::json!({
+                    "limit": 64,
+                    "after_offset": record_validated_before,
+                }),
+            })
+            .unwrap();
+        assert_eq!(
+            dedup_response
+                .payload
+                .get("ready_records")
+                .and_then(|v| v.as_u64()),
+            Some(3)
+        );
+        assert_eq!(
+            dedup_response
+                .payload
+                .get("duplicate_records")
+                .and_then(|v| v.as_u64()),
+            Some(1)
+        );
+
+        let writer_response = writer_child
+            .handle(&crate::mother::ChildRequest {
+                action: "write-records".into(),
+                payload: serde_json::json!({
+                    "output_path": "/output/six-child-batch.parquet",
+                    "limit": 64,
+                    "after_offset": record_ready_before,
+                }),
+            })
+            .unwrap();
+        assert_eq!(
+            writer_response
+                .payload
+                .get("processed_records")
+                .and_then(|v| v.as_u64()),
+            Some(3)
+        );
+        let state_keys = writer_response
+            .payload
+            .get("state_keys")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|v| v.as_str().map(ToString::to_string))
+            .collect::<Vec<_>>();
+        assert_eq!(state_keys.len(), 3);
+        assert!(host_parquet_path.exists());
+
+        let catalog_response = catalog_child
+            .handle(&crate::mother::ChildRequest {
+                action: "register-written".into(),
+                payload: serde_json::json!({
+                    "limit": 64,
+                    "after_offset": file_written_before,
+                }),
+            })
+            .unwrap();
+        assert_eq!(
+            catalog_response
+                .payload
+                .get("registered_files")
+                .and_then(|v| v.as_u64()),
+            Some(1)
+        );
+
+        let output = std::process::Command::new("duckdb")
+            .args([
+                ":memory:",
+                &format!(
+                    "COPY (SELECT COUNT(*) AS c FROM read_parquet('{}')) TO STDOUT (FORMAT CSV, HEADER FALSE);",
+                    host_parquet_path.to_string_lossy()
+                ),
+            ])
+            .output()
+            .expect("run duckdb parquet count query");
+        assert!(
+            output.status.success(),
+            "duckdb parquet count query failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let row_count = stdout
+            .trim()
+            .parse::<u64>()
+            .expect("duckdb parquet row count output as u64");
+        assert_eq!(
+            row_count, 3,
+            "dedup-filter should reduce output rows to three"
         );
     });
 }

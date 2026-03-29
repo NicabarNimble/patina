@@ -3230,6 +3230,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "patina-ai-child-content-extractor"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "patina-sdk",
+ "serde",
+ "serde_json",
+ "sha2",
+ "uuid",
+]
+
+[[package]]
+name = "patina-ai-child-dedup-filter"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "patina-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "patina-ai-child-doctor"
 version = "0.1.0"
 dependencies = [
@@ -3277,6 +3299,39 @@ name = "patina-ai-child-lake-manager"
 version = "0.1.0"
 dependencies = [
  "patina-sdk",
+ "serde_json",
+]
+
+[[package]]
+name = "patina-ai-child-lakehouse-catalog"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "patina-sdk",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "patina-ai-child-record-writer"
+version = "0.1.0"
+dependencies = [
+ "arrow-array 55.2.0",
+ "arrow-schema 55.2.0",
+ "chrono",
+ "parquet",
+ "patina-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "patina-ai-child-schema-enforcer"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk",
+ "serde",
  "serde_json",
 ]
 

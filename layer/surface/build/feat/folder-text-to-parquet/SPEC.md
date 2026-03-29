@@ -25,10 +25,10 @@ exit_criteria:
     checked: true
   - id: ftp2-six-children-built
     text: "Composite split into 6 focused children: file-system-monitor, content-extractor, schema-enforcer, dedup-filter, record-writer, lakehouse-catalog."
-    checked: false
+    checked: true
   - id: ftp3-children-compose
     text: "All 6 children compose via events into a working pipeline on a deterministic test fixture."
-    checked: false
+    checked: true
   - id: ftp4-mother-metrics
     text: "Mother-tier metrics collected automatically for every child without child implementation."
     checked: false
