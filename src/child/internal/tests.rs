@@ -561,24 +561,10 @@ fn ducklake_fixture_sync_writes_lake_queryable_by_duckdb_cli() {
             db_path.display()
         );
 
-        let output = std::process::Command::new("duckdb")
-            .args([
-                db_path.to_str().unwrap(),
-                "COPY (SELECT COUNT(*) AS c FROM default_issues) TO STDOUT (FORMAT CSV, HEADER FALSE);",
-            ])
-            .output()
-            .expect("run duckdb CLI query");
-        assert!(
-            output.status.success(),
-            "duckdb query failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let count = stdout
-            .trim()
-            .parse::<u64>()
-            .expect("duckdb count output as u64");
+        let db = duckdb::Connection::open(&db_path).expect("open lake duckdb for verification");
+        let count: u64 = db
+            .query_row("SELECT COUNT(*) FROM default_issues", [], |row| row.get(0))
+            .expect("query default_issues count");
         assert!(
             count > 0,
             "expected default_issues to be queryable and non-empty"
@@ -991,28 +977,18 @@ fn folder_text_to_parquet_scan_contract_end_to_end() {
             Some(4)
         );
 
-        let output = std::process::Command::new("duckdb")
-            .args([
-                ":memory:",
-                "-csv",
-                "-noheader",
+        let db = duckdb::Connection::open_in_memory()
+            .expect("open in-memory duckdb for parquet verification");
+        let row_count: u64 = db
+            .query_row(
                 &format!(
-                    "SELECT COUNT(*) FROM read_parquet('{}');",
+                    "SELECT COUNT(*) FROM read_parquet('{}')",
                     host_parquet_path.to_string_lossy()
                 ),
-            ])
-            .output()
-            .expect("run duckdb parquet count query");
-        assert!(
-            output.status.success(),
-            "duckdb parquet count query failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let row_count = stdout
-            .trim()
-            .parse::<u64>()
-            .expect("duckdb parquet row count output as u64");
+                [],
+                |row| row.get(0),
+            )
+            .expect("query parquet row count");
         assert_eq!(
             row_count, 4,
             "parquet row count should match discovered files"
@@ -1472,28 +1448,18 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
             Some(1)
         );
 
-        let output = std::process::Command::new("duckdb")
-            .args([
-                ":memory:",
-                "-csv",
-                "-noheader",
+        let db = duckdb::Connection::open_in_memory()
+            .expect("open in-memory duckdb for parquet verification");
+        let row_count: u64 = db
+            .query_row(
                 &format!(
-                    "SELECT COUNT(*) FROM read_parquet('{}');",
+                    "SELECT COUNT(*) FROM read_parquet('{}')",
                     host_parquet_path.to_string_lossy()
                 ),
-            ])
-            .output()
-            .expect("run duckdb parquet count query");
-        assert!(
-            output.status.success(),
-            "duckdb parquet count query failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let row_count = stdout
-            .trim()
-            .parse::<u64>()
-            .expect("duckdb parquet row count output as u64");
+                [],
+                |row| row.get(0),
+            )
+            .expect("query parquet row count");
         assert_eq!(
             row_count, 3,
             "dedup-filter should reduce output rows to three"
