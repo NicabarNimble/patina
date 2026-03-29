@@ -1,0 +1,10 @@
+[child]
+name = "schema-enforcer"
+kind = "knowledge-child"
+role = "app"
+
+[needs]
+toys = ["log", "events"]
+
+[needs.scopes.events]
+subscribe = ["record.extracted"]
