@@ -6,6 +6,9 @@ role = "app"
 [needs]
 toys = ["log", "state", "events", "measure"]
 
+[needs.scopes.events]
+subscribe = ["file.found"]
+
 [needs.scopes.filesystem]
 path = "/tmp"
 

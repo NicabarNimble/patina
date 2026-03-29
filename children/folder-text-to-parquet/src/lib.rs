@@ -4,7 +4,7 @@ use parquet::file::properties::WriterProperties;
 use patina_sdk::granted;
 use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
 use patina_sdk::register_knowledge_child;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -39,6 +39,11 @@ struct FileFoundEvent {
     source_hash: String,
     source_size_bytes: u64,
     discovered_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct FileFoundPayload {
+    source_path: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -298,7 +303,129 @@ fn list_flat_entries(folder: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(paths)
 }
 
+fn build_record_from_path(path: &Path, batch_id: &str) -> Result<Record, String> {
+    let bytes =
+        fs::read(path).map_err(|e| format!("failed to read file '{}': {}", path.display(), e))?;
+    let content = String::from_utf8(bytes.clone())
+        .map_err(|_| format!("file '{}' is not valid utf-8", path.display()))?;
+    let metadata = fs::metadata(path)
+        .map_err(|e| format!("failed to read metadata '{}': {}", path.display(), e))?;
+    let source_hash = sha256_hex(&bytes);
+    let content_hash = sha256_hex(content.as_bytes());
+    let source_modified_at = metadata
+        .modified()
+        .map(rfc3339_from_system_time)
+        .unwrap_or_else(|_| Utc::now().to_rfc3339());
+
+    Ok(Record {
+        record_id: Uuid::new_v4().to_string(),
+        source_path: path.to_string_lossy().to_string(),
+        source_hash,
+        source_modified_at,
+        source_size_bytes: bytes.len() as u64,
+        content_hash,
+        content_type: content_type_for_extension(
+            path.extension().and_then(|s| s.to_str()).unwrap_or(""),
+        )
+        .unwrap_or("text/plain")
+        .to_string(),
+        encoding: "utf-8".to_string(),
+        line_count: content.lines().count() as u64,
+        ingested_at: Utc::now().to_rfc3339(),
+        batch_id: batch_id.to_string(),
+        schema_version: 1,
+        content,
+    })
+}
+
 impl FolderTextToParquetChild {
+    fn process_discovered(&mut self, payload: &str) -> Result<String, String> {
+        let payload_value = parse_payload(payload)?;
+        let output_path = resolve_output_path(&payload_value)?;
+        let limit = payload_value
+            .get("limit")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(128)
+            .min(u32::MAX as u64) as u32;
+        let after_offset = payload_value
+            .get("after_offset")
+            .and_then(|value| value.as_u64());
+
+        let events = patina_sdk::knowledge_child::patina::events_stream::events_stream::subscribe(
+            "file.found",
+            after_offset,
+            limit,
+        )?;
+
+        let batch_id = format!("scan-{}", Utc::now().format("%Y%m%d-%H%M%S"));
+        let mut records = Vec::new();
+        let mut skipped = Vec::new();
+        let mut last_offset = None;
+        let state = granted::state();
+        let log = granted::log();
+
+        for event in events {
+            last_offset = Some(event.offset);
+            let payload: FileFoundPayload = serde_json::from_str(&event.payload)
+                .map_err(|e| format!("invalid file.found payload: {}", e))?;
+            let path = PathBuf::from(&payload.source_path);
+
+            let record = match build_record_from_path(&path, &batch_id) {
+                Ok(record) => record,
+                Err(error) => {
+                    skipped.push(SkippedFile {
+                        path: path.to_string_lossy().to_string(),
+                        reason: error,
+                    });
+                    continue;
+                }
+            };
+
+            let key = format!("record:{}", record.source_hash);
+            let state_json = serde_json::to_string(&record).map_err(|e| e.to_string())?;
+            let write_start = Instant::now();
+            state.put(&key, &state_json)?;
+            let write_latency_ms = write_start.elapsed().as_secs_f64() * 1000.0;
+
+            emit_metric_counter("records_written", 1.0, vec![])?;
+            emit_metric_gauge("write_latency_ms", write_latency_ms)?;
+            records.push(record);
+        }
+
+        if let Some(offset) = last_offset {
+            patina_sdk::knowledge_child::patina::events_stream::events_stream::ack(
+                "file.found",
+                offset,
+            )?;
+        }
+
+        for skipped_file in &skipped {
+            log.info(&format!(
+                "folder-text-to-parquet skipped {} ({})",
+                skipped_file.path, skipped_file.reason
+            ));
+        }
+
+        write_records_parquet(&records, &output_path)?;
+        emit_file_written(&FileWrittenEvent {
+            file_path: output_path.to_string_lossy().to_string(),
+            record_count: records.len() as u64,
+            written_at: Utc::now().to_rfc3339(),
+        })?;
+
+        let state_keys = state.list_prefix("record:");
+        Ok(serde_json::json!({
+            "status": "ok",
+            "parquet_path": output_path.to_string_lossy(),
+            "processed_records": records.len(),
+            "skipped_files": skipped,
+            "state_keys": state_keys,
+            "records": records,
+            "acked_through": last_offset,
+        })
+        .to_string())
+    }
+
     fn scan(&mut self, payload: &str) -> Result<String, String> {
         let payload_value = parse_payload(payload)?;
         let folder_path = resolve_folder_path(&payload_value)?;
@@ -497,6 +624,7 @@ impl KnowledgeChild for FolderTextToParquetChild {
     fn handle(&mut self, action: &str, payload: &str) -> Result<String, String> {
         match action {
             "scan" => self.scan(payload),
+            "process-discovered" => self.process_discovered(payload),
             other => Err(format!(
                 "folder-text-to-parquet: unknown action '{}'",
                 other
