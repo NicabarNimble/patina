@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: test-suite-tiering
-status: ready
+status: active
 created: 2026-03-29
 updated: 2026-03-29
 sessions:
