@@ -137,7 +137,7 @@ Reusable children, each providing one general capability, configured by manifest
 
 | Child | Capability | Toys |
 |---|---|---|
-| `file-system-monitor` | Watch folder for changes, emit file-found events | `wasi:filesystem`, `wasi:keyvalue`, `wasi:messaging/producer`, `wasi:logging` |
+| `file-system-monitor` | Scan folder, emit file-found events | `wasi:filesystem`, `wasi:messaging/producer`, `wasi:logging`, `patina:measure` |
 | `content-extractor` | Blob → structured records with provenance | `wasi:filesystem`, `patina:events-stream`, `wasi:messaging/producer`, `wasi:logging` |
 | `schema-enforcer` | Validate records against declared schema | `patina:events-stream`, `wasi:messaging/producer`, `wasi:logging` |
 | `dedup-filter` | Reject duplicate records by content hash | `patina:events-stream`, `wasi:keyvalue`, `wasi:messaging/producer`, `wasi:logging` |

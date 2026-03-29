@@ -173,7 +173,7 @@ record-writer
 lakehouse-catalog
 ```
 
-All composition via `wasi:messaging/producer` (publish) and `patina:events-stream` (subscribe/ack). Mother orchestrates `tick()` for file-system-monitor. All other children are event-driven.
+All composition via `wasi:messaging/producer` (publish) and `patina:events-stream` (subscribe/ack). All children are action-driven — Mother calls `handle()` with the appropriate action. file-system-monitor receives `scan`, downstream children receive their respective consume actions.
 
 ## Acceptance Gates
 
