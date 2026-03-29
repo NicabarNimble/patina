@@ -1,7 +1,7 @@
 ---
 type: feat
 id: folder-text-to-parquet
-status: draft
+status: active
 created: 2026-03-27
 parent: child-construction-canon
 sessions:
@@ -68,9 +68,9 @@ Build a working pipeline: watch a folder for text files, parse them into structu
 
 **Capability:** Watch a configured folder, detect new/changed files, emit file-found events.
 
-**Toys:** `wasi:filesystem` (read-only scoped preopen), `wasi:keyvalue` (track known files + hashes), `wasi:messaging/producer` (emit events), `wasi:logging`
+**Toys:** `wasi:filesystem` (read-only scoped preopen), `wasi:messaging/producer` (emit events), `wasi:logging`, `patina:measure`
 
-**How it works:** On each `tick()` from Mother, scans the folder, diffs against stored state in keyvalue, publishes `file.found` or `file.changed` events for new/modified files. Manifest configures: folder path, file patterns, poll behavior.
+**How it works:** Handles `scan` action with a `folder_path` payload. Flat-scans the folder, skips hidden/symlinks/empty/non-matching files, publishes `file.found` events for each valid file with source_path, source_hash, source_size_bytes. Reports `files_discovered` metric. Stateless — no keyvalue tracking of known files in current implementation (future: add state for change detection across scans).
 
 **Reuse:** log-monitoring, document-indexing, code-analysis, audit-trail — anything reacting to file changes.
 

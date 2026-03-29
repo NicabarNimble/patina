@@ -1,7 +1,7 @@
 ---
 type: feat
 id: child-construction-canon
-status: draft
+status: active
 created: 2026-03-27
 sessions:
   origin: 20260327-021039-379187000
