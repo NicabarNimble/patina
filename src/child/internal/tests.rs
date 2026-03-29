@@ -1528,29 +1528,66 @@ child = "bad-ingress"
     );
 }
 
+/// Write a minimal github connection fixture into a PATINA_HOME connections dir.
+fn write_github_connection_fixture(patina_home: &std::path::Path) {
+    let conn_dir = patina_home.join("connections");
+    std::fs::create_dir_all(&conn_dir).unwrap();
+    std::fs::write(
+        conn_dir.join("github.toml"),
+        r#"schema_version = 0
+
+[identity]
+name = "github"
+provider = "github"
+auth_method = "oauth"
+scopes = ["repo"]
+is_default = true
+created_at = "2026-01-01T00:00:00Z"
+updated_at = "2026-01-01T00:00:00Z"
+scope = "global"
+
+[auth]
+secret_ref = "github-test"
+child = "github-connector"
+allowed_domains = ["api.github.com"]
+refresh_capable = false
+
+[auth.injection]
+type = "bearer"
+"#,
+    )
+    .unwrap();
+}
+
 #[test]
 fn ducklake_manifest_uses_granted_ingress_not_ambient_http() {
-    let path =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/child.toml");
-    let manifest = ChildManifest::from_path(&path).unwrap();
-    assert!(manifest
-        .host_http_domains
-        .contains(&"api.github.com".to_string()));
-    assert!(manifest.capabilities.contains(&"host_http".to_string()));
-    assert!(!manifest.toys.github);
+    with_temp_patina_home(|home| {
+        write_github_connection_fixture(home);
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("children/ducklake/child.toml");
+        let manifest = ChildManifest::from_path(&path).unwrap();
+        assert!(manifest
+            .host_http_domains
+            .contains(&"api.github.com".to_string()));
+        assert!(manifest.capabilities.contains(&"host_http".to_string()));
+        assert!(!manifest.toys.github);
+    });
 }
 
 #[test]
 fn ducklake_manifest_runtime_grants_sdk_story_stays_connected() {
-    let path =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/child.toml");
-    let manifest = ChildManifest::from_path(&path).unwrap();
-    let grants = manifest.granted_capabilities();
+    with_temp_patina_home(|home| {
+        write_github_connection_fixture(home);
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("children/ducklake/child.toml");
+        let manifest = ChildManifest::from_path(&path).unwrap();
+        let grants = manifest.granted_capabilities();
 
-    assert!(!grants.toys.github);
-    assert!(grants.toys.lake_names.contains("default"));
-    assert!(!grants.toys.fetch);
-    assert!(grants.http_domains.contains("api.github.com"));
+        assert!(!grants.toys.github);
+        assert!(grants.toys.lake_names.contains("default"));
+        assert!(!grants.toys.fetch);
+        assert!(grants.http_domains.contains("api.github.com"));
+    });
 }
 
 // =====================================================================

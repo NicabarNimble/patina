@@ -114,12 +114,6 @@ pub(crate) fn resolve_project_path(path_opt: Option<&str>) -> Result<PathBuf> {
     Ok(canonical)
 }
 
-/// Check if mother is running via UDS health endpoint
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn check_mother_health() -> bool {
-    mother_uptime_secs().is_some()
-}
-
 fn mother_uptime_secs() -> Option<u64> {
     let sock_path = paths::serve::socket_path();
     let mut stream = match std::os::unix::net::UnixStream::connect(&sock_path) {
