@@ -70,8 +70,14 @@ jobs:
     - name: Check layer output contract
       run: bash resources/scripts/check-layer-output-contract.sh
 
+    - name: Check retired MCP surface invariants
+      run: bash resources/scripts/check-retired-mcp-surface.sh
+
     - name: Check DuckLake wasm parity
       run: bash resources/scripts/check-ducklake-parity.sh
+
+    - name: Check broker integration invariants
+      run: bash resources/scripts/check-broker-integration.sh
 
     - name: Check Rust formatting
       run: cargo fmt --all -- --check
@@ -81,6 +87,9 @@ jobs:
 
     - name: Run Rust tests
       run: cargo test --workspace
+
+    - name: Check schema consistency
+      run: cargo run --release --quiet -- schema check
 
     - name: Build release
       run: cargo build --release
