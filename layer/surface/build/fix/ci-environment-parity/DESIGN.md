@@ -130,6 +130,11 @@ but requires validation for this codebase:
 | nextest parallel WASM tests | ~5 min |
 | **Total potential** | **~35 min per fast-lane run** |
 
+Note: rows overlap. "Skip release build on non-merge" and "build release before
+schema check" address the same 18 min from different angles (skip vs reorder).
+The ~35 min total assumes fast-lane (skip) not full-lane (reorder). On the full
+merge-gate lane, savings are ~17 min (collapse scripts + nextest + reorder).
+
 ## Verification
 
 ```bash

@@ -6,7 +6,7 @@ created: 2026-03-29
 sessions:
   origin: 20260329-100923-421215000
 related:
-- "test-suite-tiering (archived: git tag spec/test-suite-tiering)"
+# predecessor archived: git show spec/test-suite-tiering:layer/surface/build/refactor/test-suite-tiering/SPEC.md
 - .github/workflows/test.yml
 - resources/scripts/test-linux.sh
 - resources/git/preflight-full.sh
@@ -24,7 +24,7 @@ exit_criteria:
     text: "CI passes on patina branch with zero test failures."
     checked: false
   - id: cep2-preflight-reproduces-ci
-    text: "preflight-full.sh builds WASM children and runs the same checks as CI (matching targets, ordering, and artifacts). Verified on a clean clone."
+    text: "preflight-full.sh runs: structural checks, fmt, clippy --workspace, WASM child builds, nextest --workspace (or cargo test --workspace), schema check, build release, install test — in that order. Verified on a clean clone with no pre-built artifacts."
     checked: false
   - id: cep3-ci-mirror-dockerfile
     text: "CI-mirror Dockerfile verified — test-linux.sh --workspace produces same pass/fail as CI (no bare-image fallback accepted for this criterion)."
