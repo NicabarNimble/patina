@@ -16,12 +16,9 @@ run_check_script() {
     fi
 }
 
-RUN_TARGETED=false
-if [[ $# -ge 2 ]]; then
-    RUN_TARGETED=true
-fi
-if [[ "${PATINA_PRE_PUSH_RUN_TARGETED:-}" == "1" ]]; then
-    RUN_TARGETED=true
+RUN_TARGETED=true
+if [[ "${PATINA_PRE_PUSH_RUN_TARGETED:-}" == "0" ]]; then
+    RUN_TARGETED=false
 fi
 if [[ "${1:-}" == "--structural-only" ]]; then
     RUN_TARGETED=false
@@ -134,7 +131,7 @@ echo "✅ Tier 1 structural checks passed (cargo-free)."
 if [[ "$RUN_TARGETED" == false ]]; then
     echo ""
     echo "ℹ Tier 2 targeted cargo lane not run in this invocation."
-    echo "  Use git push (hook args) or PATINA_PRE_PUSH_RUN_TARGETED=1 to include Tier 2."
+    echo "  Use default invocation (or omit --structural-only) to include Tier 2."
     exit 0
 fi
 

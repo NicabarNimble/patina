@@ -19,7 +19,7 @@ The pre-commit and pre-push hooks use exec-style delegation (see `.git/hooks/pre
 - Tier 2 (`resources/git/pre-push-targeted-cargo.sh`): changed-package clippy/tests plus path-triggered parity/schema.
 - Tier 3 (`resources/git/preflight-full.sh`): full local suite equivalent to merge-gate semantics.
 
-`resources/git/pre-push-checks.sh` runs Tier 2 automatically when invoked by `git push` through the hook (or when `PATINA_PRE_PUSH_RUN_TARGETED=1`).
+`resources/git/pre-push-checks.sh` runs Tier 2 by default; use `--structural-only` (or `PATINA_PRE_PUSH_RUN_TARGETED=0`) to run Tier 1 only.
 
 Verify:
 ```bash
