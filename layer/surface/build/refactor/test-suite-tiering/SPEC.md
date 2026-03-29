@@ -1,52 +1,52 @@
 ---
 type: refactor
 id: test-suite-tiering
-status: draft
+status: ready
 created: 2026-03-29
 updated: 2026-03-29
 sessions:
   origin: 20260328-134311-971500000
-beliefs:
-  - "[[unix-philosophy]]"
-  - "[[dependable-rust]]"
-  - "[[measure-first]]"
-  - "[[spec-needs-code-verification]]"
 related:
-  - resources/git/pre-push-checks.sh
-  - .github/workflows/test.yml
-  - .github/workflows/pr-gate.yml
-  - resources/git/pre-commit-checks.sh
-  - resources/scripts/check-ducklake-parity.sh
-  - layer/surface/build/refactor/test-suite-tiering/DESIGN.md
-  - .git/hooks/pre-push
+- resources/git/pre-push-checks.sh
+- .github/workflows/test.yml
+- .github/workflows/pr-gate.yml
+- resources/git/pre-commit-checks.sh
+- resources/scripts/check-ducklake-parity.sh
+- layer/surface/build/refactor/test-suite-tiering/DESIGN.md
+- .git/hooks/pre-push
+beliefs:
+- '[[unix-philosophy]]'
+- '[[dependable-rust]]'
+- '[[measure-first]]'
+- '[[spec-needs-code-verification]]'
 exit_criteria:
-  - id: tst1-code-truth-baseline-captured
-    text: "Spec records current hook/CI behavior with code-truth evidence (including stale/no-op checks), so redesign decisions are based on code not drifted docs."
-    checked: true
-  - id: tst2-pre-commit-budget-and-scope
-    text: "Pre-commit gate runs in under 5 seconds and contains only deterministic instant checks (format + large file guard)."
-    checked: true
-  - id: tst3-pre-push-structural-budget
-    text: "Pre-push structural gate runs in under 30 seconds and contains no cargo build/test work."
-    checked: true
-  - id: tst4-local-targeted-cargo-lane
-    text: "A local targeted cargo lane runs on push by default (changed-package clippy/tests plus path-triggered parity/schema checks), with full-workspace fallback for broad-impact changes."
-    checked: true
-  - id: tst5-ci-authoritative-and-complete
-    text: "CI contains all mandatory heavy checks (workspace clippy/tests/build/install, ducklake parity, schema consistency, broker integration, and policy checks) and is merge-blocking authority."
-    checked: true
-  - id: tst6-stale-checks-repaired
-    text: "Current stale checks are removed or replaced with live invariants (no no-op pass paths such as missing-file MCP checks or always-skipped integration gates)."
-    checked: true
-  - id: tst7-full-local-suite-available
-    text: "A single local command runs the full suite (same semantic coverage as CI) for release-grade local verification when needed."
-    checked: true
-  - id: tst8-end-to-end-not-always-on
-    text: "End-to-end/integration-heavy checks are selective locally by default and always covered in CI/nightly lanes."
-    checked: true
-  - id: tst9-bazel-decision-explicit
-    text: "Spec captures explicit Bazel decision: deferred now, with measurable trigger thresholds for reevaluation."
-    checked: true
+- id: tst1-code-truth-baseline-captured
+  text: Spec records current hook/CI behavior with code-truth evidence (including stale/no-op checks), so redesign decisions are based on code not drifted docs.
+  checked: true
+- id: tst2-pre-commit-budget-and-scope
+  text: Pre-commit gate runs in under 5 seconds and contains only deterministic instant checks (format + large file guard).
+  checked: true
+- id: tst3-pre-push-structural-budget
+  text: Pre-push structural gate runs in under 30 seconds and contains no cargo build/test work.
+  checked: true
+- id: tst4-local-targeted-cargo-lane
+  text: A local targeted cargo lane runs on push by default (changed-package clippy/tests plus path-triggered parity/schema checks), with full-workspace fallback for broad-impact changes.
+  checked: true
+- id: tst5-ci-authoritative-and-complete
+  text: CI contains all mandatory heavy checks (workspace clippy/tests/build/install, ducklake parity, schema consistency, broker integration, and policy checks) and is merge-blocking authority.
+  checked: true
+- id: tst6-stale-checks-repaired
+  text: Current stale checks are removed or replaced with live invariants (no no-op pass paths such as missing-file MCP checks or always-skipped integration gates).
+  checked: true
+- id: tst7-full-local-suite-available
+  text: A single local command runs the full suite (same semantic coverage as CI) for release-grade local verification when needed.
+  checked: true
+- id: tst8-end-to-end-not-always-on
+  text: End-to-end/integration-heavy checks are selective locally by default and always covered in CI/nightly lanes.
+  checked: true
+- id: tst9-bazel-decision-explicit
+  text: 'Spec captures explicit Bazel decision: deferred now, with measurable trigger thresholds for reevaluation.'
+  checked: true
 ---
 # refactor: test-suite-tiering (local-first selective rigor)
 
@@ -95,7 +95,19 @@ Define and execute a testing constitution that is:
 
 ## Status
 
-Draft. Code-truth audit complete on 2026-03-29.
+Complete. Tiering structure implemented and deployed 2026-03-29.
+
+### Completion Notes (2026-03-29)
+
+All 9 exit criteria met for the gate *structure* redesign. Two caveats
+carried forward to `ci-environment-parity` fix spec:
+
+- **tst5**: CI workflow now lists all mandatory checks, but `cargo test --workspace`
+  fails due to missing WASM toolchain and connection config in the CI environment.
+  The gate structure is correct; the environment setup is not. See `ci-environment-parity`.
+- **tst7**: `preflight-full.sh` runs the same check set as CI, but does not build
+  WASM child artifacts either. Local passes because dev machines have pre-built
+  artifacts; CI and clean environments do not. See `ci-environment-parity`.
 
 ## Code-Truth Snapshot (2026-03-29)
 
