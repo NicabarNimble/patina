@@ -1,80 +1,100 @@
 ---
 type: refactor
 id: greenfield-mother-patina-data-platform
-status: draft
+status: ready
 created: 2026-03-30
+blocks:
+- multiproject-belief-share
 sessions:
   origin: 20260330-083255-177610000
-beliefs:
-  - "[[standards-are-storage-coordination-sits-above]]"
-  - "[[observation-at-the-boundary]]"
-  - "[[children-have-agency-toys-are-capabilities]]"
-  - "[[four-roles-no-overlap]]"
-  - "[[mother-is-the-daemon]]"
-  - "[[core-verbs-standalone-mother-additive]]"
-  - "[[if-its-patina-its-git]]"
-  - "[[eventlog-is-truth]]"
-blocked_by: []
-blocks:
-  - multiproject-belief-share
 related:
-  - mother/src/registry.rs
-  - mother/src/state.rs
-  - src/eventlog.rs
-  - src/measure.rs
-  - src/child/internal/host_support.rs
-  - src/commands/scrape/
-  - src/commands/oxidize/
-  - src/commands/scry/
-  - src/commands/eval/
-  - src/commands/measure/
-  - src/commands/assay/
-  - src/commands/session/
-  - src/session/
-  - layer/surface/build/refactor/greenfield-mother-clean-continued/
-  - layer/surface/build/feat/folder-text-to-parquet/
-  - layer/surface/build/feat/child-construction-canon/
+- mother/src/registry.rs
+- mother/src/state.rs
+- src/eventlog.rs
+- src/measure.rs
+- src/child/internal/host_support.rs
+- src/commands/scrape/
+- src/commands/oxidize/
+- src/commands/scry/
+- src/commands/eval/
+- src/commands/measure/
+- src/commands/assay/
+- src/commands/session/
+- src/session/
+- layer/surface/build/refactor/greenfield-mother-clean-continued/
+- layer/surface/build/feat/folder-text-to-parquet/
+- layer/surface/build/feat/child-construction-canon/
+beliefs:
+- '[[standards-are-storage-coordination-sits-above]]'
+- '[[observation-at-the-boundary]]'
+- '[[children-have-agency-toys-are-capabilities]]'
+- '[[four-roles-no-overlap]]'
+- '[[mother-is-the-daemon]]'
+- '[[core-verbs-standalone-mother-additive]]'
+- '[[if-its-patina-its-git]]'
+- '[[eventlog-is-truth]]'
 exit_criteria:
-  - id: gmdp1-dead-databases-removed
-    text: "cortex.db, navigation.db, and project-level graph.db code references deleted. Zero hits in codebase."
-    checked: true
-  - id: gmdp2-per-project-isolation
-    text: "Mother stores per-project databases at ~/.patina/mother/projects/{project_uid}/. Each project gets its own events.db, runtime.db, and patina.db. Two projects with the same child name have independent state."
-    checked: true
-  - id: gmdp3-project-registration
-    text: "Projects register with Mother on first use (patina init or first command). Mother creates projects/{uid}/ directory structure. Registration is idempotent. Mother can enumerate registered projects."
-    checked: true
-  - id: gmdp4-event-writing-unified
-    text: "One event-writing code path for all producers: scrape, child metrics (host_support), Mother boundary metrics (registry), sessions, measure. No duplicated schema DDL. No duplicated open_events_db(). All writers resolve path via project_uid to Mother's project directory."
-    checked: true
-  - id: gmdp5-cli-uses-mother-paths
-    text: "CLI commands that read or write databases resolve paths through project_uid to ~/.patina/mother/projects/{uid}/. The ~56 direct events.db call sites and ~50 direct patina.db call sites use Mother-resolved paths. CLI opens local SQLite files directly — no daemon round-trip required for core protocol operations."
-    checked: true
-  - id: gmdp6-scrape-oxidize-scry-adapted
-    text: "Scrape writes projections to Mother-scoped patina.db. Oxidize reads from Mother-scoped patina.db, writes embeddings to working-copy-local cache. Scry reads from both. Pipeline produces identical results to current system."
-    checked: true
-  - id: gmdp7-observation-unified
-    text: "Mother boundary metrics for children flow through the same event path as all other producers. New events use source_id taxonomy per INV-4: 'mother:*' for boundary observation, 'child:*' for child events, 'core' for scrape/measure. Registry's duplicated open_events_db() eliminated. Query code handles both legacy 'plugin:*' and new 'child:*' prefixes."
-    checked: true
-  - id: gmdp8-project-directory-clean
-    text: "No SQLite databases in project .patina/local/data/. Remaining local contents (embeddings, forge cache, logs, interface-sessions, backups) are all rebuildable or runtime-only. See INV-6 for full inventory."
-    checked: true
-  - id: gmdp9-mother-state-split
-    text: "Mother-level state (sessions, project registry, belief/graph mutations, lake cursors) lives in state.db. Per-project child state (keyvalue, offsets, tasks) lives in projects/{uid}/runtime.db. Current global runtime.db split along this boundary."
-    checked: true
-  - id: gmdp10-persona-belief-store
-    text: "Persona beliefs have a designated store at ~/.patina/mother/persona/{persona_uid}/. Structure does not block future belief propagation across projects (multiproject-belief-share)."
-    checked: true
-  - id: gmdp11-existing-data-migrated
-    text: "One-time migration moves existing events.db and patina.db to Mother project directory. User informed of what moved and what was deleted."
-    checked: true
-  - id: gmdp12-workspace-compiles-tests-pass
-    text: "cargo check --workspace -q. cargo test -q --lib. WASM integration tests pass. patina scrape && patina scry returns results from Mother-scoped databases."
-    checked: true
+- id: gmdp1-dead-databases-removed
+  text: cortex.db, navigation.db, and project-level graph.db code references deleted. Zero hits in codebase.
+  checked: true
+- id: gmdp2-per-project-isolation
+  text: Mother stores per-project databases at ~/.patina/mother/projects/{project_uid}/. Each project gets its own events.db, runtime.db, and patina.db. Two projects with the same child name have independent state.
+  checked: true
+- id: gmdp3-project-registration
+  text: Projects register with Mother on first use (patina init or first command). Mother creates projects/{uid}/ directory structure. Registration is idempotent. Mother can enumerate registered projects.
+  checked: true
+- id: gmdp4-event-writing-unified
+  text: 'One event-writing code path for all producers: scrape, child metrics (host_support), Mother boundary metrics (registry), sessions, measure. No duplicated schema DDL. No duplicated open_events_db(). All writers resolve path via project_uid to Mother''s project directory.'
+  checked: true
+- id: gmdp5-cli-uses-mother-paths
+  text: CLI commands that read or write databases resolve paths through project_uid to ~/.patina/mother/projects/{uid}/. The ~56 direct events.db call sites and ~50 direct patina.db call sites use Mother-resolved paths. CLI opens local SQLite files directly — no daemon round-trip required for core protocol operations.
+  checked: true
+- id: gmdp6-scrape-oxidize-scry-adapted
+  text: Scrape writes projections to Mother-scoped patina.db. Oxidize reads from Mother-scoped patina.db, writes embeddings to working-copy-local cache. Scry reads from both. Pipeline produces identical results to current system.
+  checked: true
+- id: gmdp7-observation-unified
+  text: 'Mother boundary metrics for children flow through the same event path as all other producers. New events use source_id taxonomy per INV-4: ''mother:*'' for boundary observation, ''child:*'' for child events, ''core'' for scrape/measure. Registry''s duplicated open_events_db() eliminated. Query code handles both legacy ''plugin:*'' and new ''child:*'' prefixes.'
+  checked: true
+- id: gmdp8-project-directory-clean
+  text: No SQLite databases in project .patina/local/data/. Remaining local contents (embeddings, forge cache, logs, interface-sessions, backups) are all rebuildable or runtime-only. See INV-6 for full inventory.
+  checked: true
+- id: gmdp9-mother-state-split
+  text: Mother-level state (sessions, project registry, belief/graph mutations, lake cursors) lives in state.db. Per-project child state (keyvalue, offsets, tasks) lives in projects/{uid}/runtime.db. Current global runtime.db split along this boundary.
+  checked: true
+- id: gmdp10-persona-belief-store
+  text: Persona beliefs have a designated store at ~/.patina/mother/persona/{persona_uid}/. Structure does not block future belief propagation across projects (multiproject-belief-share).
+  checked: true
+- id: gmdp11-existing-data-migrated
+  text: One-time migration moves existing events.db and patina.db to Mother project directory. User informed of what moved and what was deleted.
+  checked: true
+- id: gmdp12-workspace-compiles-tests-pass
+  text: cargo check --workspace -q. cargo test -q --lib. WASM integration tests pass. patina scrape && patina scry returns results from Mother-scoped databases.
+  checked: true
 ---
 # refactor: Greenfield Mother Data Platform
 
 > Build Mother as Patina's local data platform. Per-project SQLite databases move from the project directory to Mother's project directory, scoped by project_uid. The CLI opens these local files directly for core protocol operations — no daemon round-trip. Mother daemon adds coordination: child orchestration, boundary observation, cross-project queries via DuckDB. Projects become plain text (layer/ + config). This is the foundation for multiproject-belief-share (MVP 2) and eventual multi-Mother federation via iroh.
+
+## Status
+
+- Current status: ready to complete
+- Exit criteria: 12/12 checked
+- Remaining work: archive via `patina spec complete`
+
+## Implementation Order
+
+1. GMDP-G1 dead database cleanup
+2. GMDP-G2 path authority and uid validation
+3. GMDP-G3 project registration
+4. GMDP-G4 unified event writing path
+5. GMDP-G5 runtime/state split
+6. GMDP-G6 pipeline rewires to Mother path
+7. GMDP-G7 remaining consumer rewires and taxonomy cleanup
+8. GMDP-G8 project directory cleanup
+9. GMDP-G9 persona store structure
+10. GMDP-G10 migration protocol implementation + execution
+11. GMDP-G11 migration verification on real project data
+12. GMDP-G12 full verification and smoke tests
 
 ## Problem
 
