@@ -98,14 +98,14 @@ jobs:
     - name: Run clippy
       run: cargo clippy --workspace -- -D warnings
 
+    - name: Build release
+      run: cargo build --release
+
     - name: Check schema consistency
-      run: cargo run --release --quiet -- schema check
+      run: ./target/release/patina schema check
 
     - name: Run Rust tests
       run: cargo test --workspace
-
-    - name: Build release
-      run: cargo build --release
 
     - name: Test cargo install
       run: cargo install --path . --locked --root ./test-install
