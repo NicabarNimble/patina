@@ -274,6 +274,132 @@ Replace `==` in `check_auth` (http_routes.rs:77) with constant-time comparison. 
 - **Entry**: All previous gates pass.
 - **Exit proof**: `cargo check --workspace -q`. `cargo test -q --lib`. `cargo test -q -p mother`. `patina mother start`. `/health` returns deep JSON. `patina mother stop` clean exit. Verify log file written.
 
+## Implementation Decisions (concrete)
+
+These resolve ambiguities flagged by audit. Build agents: follow these exactly.
+
+### Thread pool mechanism (MEH-G3)
+
+std has no native semaphore. Use `Arc<(Mutex<usize>, Condvar)>` — a counting semaphore built from std primitives. No new dependency.
+
+```rust
+struct ConnectionPool {
+    max: usize,
+    active: Mutex<usize>,
+    slot_available: Condvar,
+}
+
+impl ConnectionPool {
+    fn try_acquire(&self) -> bool {
+        let mut active = self.active.lock().unwrap();
+        if *active < self.max {
+            *active += 1;
+            true
+        } else {
+            false
+        }
+    }
+    fn release(&self) {
+        let mut active = self.active.lock().unwrap();
+        *active -= 1;
+        self.slot_available.notify_one();
+    }
+}
+```
+
+Accept loop: `if !pool.try_acquire() { write 503; continue; }`. Handler thread calls `pool.release()` on drop (use a guard struct). No crossbeam, no rayon, no async. Pure std.
+
+### tracing init (MEH-G4)
+
+Single global subscriber, set once in daemon bootstrap before any logging:
+
+```rust
+fn init_logging() -> Result<()> {
+    let log_dir = paths::mother::logs_dir();
+    std::fs::create_dir_all(&log_dir)?;
+    let log_file = std::fs::OpenOptions::new()
+        .create(true).append(true)
+        .open(log_dir.join("mother.jsonl"))?;
+    let subscriber = tracing_subscriber::fmt()
+        .json()
+        .with_writer(log_file)
+        .with_max_level(tracing::Level::INFO)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber)
+        .map_err(|e| anyhow::anyhow!("failed to set tracing subscriber: {}", e))?;
+    Ok(())
+}
+```
+
+**Test safety**: `set_global_default` panics if called twice. Tests must NOT call it. Mother tests that log should either:
+- Use `tracing::subscriber::with_default()` (per-test, thread-local)
+- Or skip logging setup entirely (tests use stderr by default)
+
+The daemon is the only code path that calls `init_logging()`.
+
+### Signal handling contract (MEH-G6)
+
+Signal handlers must be minimal (async-signal-safe). The current handler does file I/O in the signal handler — that's technically unsafe. Fix:
+
+```
+Signal handler (async-signal-safe):
+  └── Set AtomicBool SHUTDOWN_REQUESTED = true
+      (that's ALL the handler does — atomic store is signal-safe)
+
+Main accept loop (checks flag):
+  └── if SHUTDOWN_REQUESTED.load(Relaxed) { break; }
+
+Coordinated shutdown (runs after accept loop breaks):
+  1. Log "draining in-flight requests"
+  2. Wait for connection pool to drain (pool.active == 0, with 5s timeout)
+  3. Checkpoint all project databases (PRAGMA wal_checkpoint(TRUNCATE))
+  4. Stop heartbeat thread (set separate AtomicBool, join thread)
+  5. Remove PID file
+  6. Remove socket file
+  7. Log "shutdown complete"
+  8. exit(0)
+```
+
+PID + socket cleanup moves OUT of the signal handler and INTO the coordinated shutdown path. Signal handler only sets a flag. This is the correct POSIX pattern.
+
+### /health compatibility policy (MEH-G7)
+
+Current `HealthInfo` (parsed by lifecycle.rs:14):
+
+```rust
+pub struct HealthInfo {
+    pub version: String,
+    pub uptime_secs: u64,
+    #[serde(default)]
+    pub children: Vec<ChildHealthInfo>,
+}
+```
+
+**Policy: additive only.** New fields are added alongside existing ones. Existing fields (`version`, `uptime_secs`, `children`) never change shape or are removed. The `#[serde(default)]` pattern means the CLI parser ignores unknown fields — new fields don't break old CLI versions.
+
+New fields added by MEH-G7:
+
+```json
+{
+  "version": "0.43.17",
+  "uptime_secs": 3621,
+  "children": [...],
+  "registered_projects": 2,
+  "project_databases": {
+    "2bdc808e": {
+      "events_db_bytes": 11534336,
+      "patina_db_bytes": 206569472,
+      "runtime_db_bytes": 54272
+    }
+  },
+  "state_db_bytes": 3276800,
+  "pool": { "max": 16, "active": 2 },
+  "last_checkpoint_at": "2026-03-30T20:45:00Z"
+}
+```
+
+CLI `lifecycle.rs` HealthInfo struct gets `#[serde(default)]` on new fields so old responses still parse. No breaking change.
+
 ## Verification
 
 ```bash
