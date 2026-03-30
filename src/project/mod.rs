@@ -108,6 +108,11 @@ pub fn create_uid_if_missing(project_path: &Path) -> Result<String> {
     internal::create_uid_if_missing(project_path)
 }
 
+/// Ensure project has a UID and is registered with Mother.
+pub fn register_with_mother(project_path: &Path) -> Result<String> {
+    internal::register_with_mother(project_path)
+}
+
 /// Get the UID for a project (returns None if not initialized)
 pub fn get_uid(project_path: &Path) -> Option<String> {
     internal::get_uid(project_path)

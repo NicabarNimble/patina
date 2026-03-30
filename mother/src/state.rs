@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use chrono::{Duration, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::{TaskIntent, TaskIntentKind};
 
@@ -68,7 +68,8 @@ pub struct QueuedTask {
 
 #[derive(Debug, Clone)]
 pub struct KnowledgeRuntimeStore {
-    path: PathBuf,
+    state_path: PathBuf,
+    project_uid: Option<ProjectUid>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -184,6 +185,14 @@ pub struct MotherSessionParticipant {
     pub left_at: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectRegistration {
+    pub project_uid: String,
+    pub project_path: String,
+    pub registered_at: String,
+    pub updated_at: String,
+}
+
 impl Default for KnowledgeRuntimeStore {
     fn default() -> Self {
         let home = std::env::var_os("PATINA_HOME")
@@ -193,90 +202,73 @@ impl Default for KnowledgeRuntimeStore {
                     .unwrap_or_else(|| PathBuf::from("."))
                     .join(".patina")
             });
-        Self::new(home.join("mother").join("runtime.db"))
+        let project_uid = std::env::current_dir()
+            .ok()
+            .and_then(|root| std::fs::read_to_string(root.join(".patina/uid")).ok())
+            .and_then(|raw| ProjectUid::new(raw.trim().to_string()).ok());
+        Self {
+            state_path: home.join("mother").join("state.db"),
+            project_uid,
+        }
     }
 }
 
 impl KnowledgeRuntimeStore {
     pub fn new(path: PathBuf) -> Self {
-        Self { path }
+        Self {
+            state_path: path,
+            project_uid: None,
+        }
+    }
+
+    pub fn new_with_project(path: PathBuf, project_uid: ProjectUid) -> Self {
+        Self {
+            state_path: path,
+            project_uid: Some(project_uid),
+        }
     }
 
     fn open(&self) -> Result<Connection> {
-        if let Some(parent) = self.path.parent() {
+        if let Some(parent) = self.state_path.parent() {
             std::fs::create_dir_all(parent)
-                .with_context(|| format!("creating mother runtime dir {}", parent.display()))?;
+                .with_context(|| format!("creating mother state dir {}", parent.display()))?;
         }
-        let conn = Connection::open(&self.path)
-            .with_context(|| format!("opening mother runtime db {}", self.path.display()))?;
+        let conn = Connection::open(&self.state_path)
+            .with_context(|| format!("opening mother state db {}", self.state_path.display()))?;
         conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;")?;
         self.init_schema(&conn)?;
+        Ok(conn)
+    }
+
+    fn open_project_runtime(&self) -> Result<Connection> {
+        let project_uid = self
+            .project_uid
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("project uid required for child runtime state"))?;
+        let mother_root = self
+            .state_path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("invalid mother state path"))?;
+        let runtime_path = mother_root
+            .join("projects")
+            .join(project_uid.as_str())
+            .join("runtime.db");
+
+        if let Some(parent) = runtime_path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating project runtime dir {}", parent.display()))?;
+        }
+
+        let conn = Connection::open(&runtime_path)
+            .with_context(|| format!("opening project runtime db {}", runtime_path.display()))?;
+        conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;")?;
+        self.init_project_runtime_schema(&conn)?;
         Ok(conn)
     }
 
     fn init_schema(&self, conn: &Connection) -> Result<()> {
         conn.execute_batch(
             r#"
-            CREATE TABLE IF NOT EXISTS mother_child_state (
-                plugin_name TEXT NOT NULL,
-                key TEXT NOT NULL,
-                value_json TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                PRIMARY KEY (plugin_name, key)
-            );
-
-            CREATE TABLE IF NOT EXISTS mother_child_checkpoints (
-                plugin_name TEXT NOT NULL,
-                stream TEXT NOT NULL,
-                checkpoint_json TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                PRIMARY KEY (plugin_name, stream)
-            );
-
-            CREATE TABLE IF NOT EXISTS mother_child_subscriptions (
-                plugin_name TEXT NOT NULL,
-                stream TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                PRIMARY KEY (plugin_name, stream)
-            );
-
-            CREATE TABLE IF NOT EXISTS mother_child_offsets (
-                plugin_name TEXT NOT NULL,
-                stream TEXT NOT NULL,
-                acked_offset INTEGER NOT NULL,
-                updated_at TEXT NOT NULL,
-                PRIMARY KEY (plugin_name, stream)
-            );
-
-            CREATE TABLE IF NOT EXISTS mother_child_tasks (
-                id TEXT PRIMARY KEY,
-                plugin_name TEXT NOT NULL,
-                intent_type TEXT NOT NULL,
-                payload_json TEXT NOT NULL,
-                dedupe_key TEXT,
-                status TEXT NOT NULL,
-                lease_owner TEXT,
-                lease_until TEXT,
-                attempts INTEGER NOT NULL DEFAULT 0,
-                last_error TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_mother_child_tasks_dedupe
-            ON mother_child_tasks (plugin_name, dedupe_key)
-            WHERE dedupe_key IS NOT NULL;
-
-            CREATE TABLE IF NOT EXISTS mother_child_runs (
-                id INTEGER PRIMARY KEY,
-                plugin_name TEXT NOT NULL,
-                started_at TEXT NOT NULL,
-                finished_at TEXT,
-                status TEXT NOT NULL,
-                metrics_json TEXT,
-                error TEXT
-            );
-
             CREATE TABLE IF NOT EXISTS graph_mutation_log (
                 seq INTEGER PRIMARY KEY,
                 plugin_name TEXT NOT NULL,
@@ -373,13 +365,131 @@ impl KnowledgeRuntimeStore {
                 reason TEXT,
                 created_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS project_registry (
+                project_uid TEXT PRIMARY KEY,
+                project_path TEXT NOT NULL,
+                registered_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_project_registry_updated_at
+            ON project_registry (updated_at DESC);
             "#,
         )?;
         Ok(())
     }
 
-    pub fn get_state(&self, plugin_name: &str, key: &str) -> Result<Option<String>> {
+    fn init_project_runtime_schema(&self, conn: &Connection) -> Result<()> {
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS mother_child_state (
+                plugin_name TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (plugin_name, key)
+            );
+
+            CREATE TABLE IF NOT EXISTS mother_child_checkpoints (
+                plugin_name TEXT NOT NULL,
+                stream TEXT NOT NULL,
+                checkpoint_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (plugin_name, stream)
+            );
+
+            CREATE TABLE IF NOT EXISTS mother_child_subscriptions (
+                plugin_name TEXT NOT NULL,
+                stream TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (plugin_name, stream)
+            );
+
+            CREATE TABLE IF NOT EXISTS mother_child_offsets (
+                plugin_name TEXT NOT NULL,
+                stream TEXT NOT NULL,
+                acked_offset INTEGER NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (plugin_name, stream)
+            );
+
+            CREATE TABLE IF NOT EXISTS mother_child_tasks (
+                id TEXT PRIMARY KEY,
+                plugin_name TEXT NOT NULL,
+                intent_type TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                dedupe_key TEXT,
+                status TEXT NOT NULL,
+                lease_owner TEXT,
+                lease_until TEXT,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_mother_child_tasks_dedupe
+            ON mother_child_tasks (plugin_name, dedupe_key)
+            WHERE dedupe_key IS NOT NULL;
+
+            CREATE TABLE IF NOT EXISTS mother_child_runs (
+                id INTEGER PRIMARY KEY,
+                plugin_name TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                status TEXT NOT NULL,
+                metrics_json TEXT,
+                error TEXT
+            );
+            "#,
+        )?;
+        Ok(())
+    }
+
+    pub fn register_project(&self, project_uid: &ProjectUid, project_path: &Path) -> Result<()> {
         let conn = self.open()?;
+        let now = Utc::now().to_rfc3339();
+        let canonical =
+            std::fs::canonicalize(project_path).unwrap_or_else(|_| project_path.to_path_buf());
+        let path_text = canonical.to_string_lossy().to_string();
+        conn.execute(
+            r#"
+            INSERT INTO project_registry (project_uid, project_path, registered_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4)
+            ON CONFLICT(project_uid) DO UPDATE SET
+                project_path = excluded.project_path,
+                updated_at = excluded.updated_at
+            "#,
+            params![project_uid.as_str(), path_text, now, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_registered_projects(&self) -> Result<Vec<ProjectRegistration>> {
+        let conn = self.open()?;
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT project_uid, project_path, registered_at, updated_at
+            FROM project_registry
+            ORDER BY updated_at DESC, project_uid ASC
+            "#,
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(ProjectRegistration {
+                    project_uid: row.get(0)?,
+                    project_path: row.get(1)?,
+                    registered_at: row.get(2)?,
+                    updated_at: row.get(3)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn get_state(&self, plugin_name: &str, key: &str) -> Result<Option<String>> {
+        let conn = self.open_project_runtime()?;
         conn.query_row(
             "SELECT value_json FROM mother_child_state WHERE plugin_name = ?1 AND key = ?2",
             params![plugin_name, key],
@@ -390,7 +500,7 @@ impl KnowledgeRuntimeStore {
     }
 
     pub fn put_state(&self, plugin_name: &str, key: &str, value_json: &str) -> Result<()> {
-        let conn = self.open()?;
+        let conn = self.open_project_runtime()?;
         let now = Utc::now().to_rfc3339();
         conn.execute(
             r#"
@@ -406,7 +516,7 @@ impl KnowledgeRuntimeStore {
     }
 
     pub fn delete_state(&self, plugin_name: &str, key: &str) -> Result<()> {
-        let conn = self.open()?;
+        let conn = self.open_project_runtime()?;
         conn.execute(
             "DELETE FROM mother_child_state WHERE plugin_name = ?1 AND key = ?2",
             params![plugin_name, key],
@@ -415,7 +525,7 @@ impl KnowledgeRuntimeStore {
     }
 
     pub fn list_state_prefix(&self, plugin_name: &str, prefix: &str) -> Result<Vec<String>> {
-        let conn = self.open()?;
+        let conn = self.open_project_runtime()?;
         let like_pattern = format!("{prefix}%");
         let mut stmt = conn.prepare(
             "SELECT key FROM mother_child_state WHERE plugin_name = ?1 AND key LIKE ?2 ORDER BY key",
@@ -427,7 +537,7 @@ impl KnowledgeRuntimeStore {
     }
 
     pub fn load_checkpoint(&self, plugin_name: &str, stream: &str) -> Result<Option<String>> {
-        let conn = self.open()?;
+        let conn = self.open_project_runtime()?;
         conn.query_row(
             "SELECT checkpoint_json FROM mother_child_checkpoints WHERE plugin_name = ?1 AND stream = ?2",
             params![plugin_name, stream],
@@ -443,7 +553,7 @@ impl KnowledgeRuntimeStore {
         stream: &str,
         checkpoint_json: &str,
     ) -> Result<()> {
-        let conn = self.open()?;
+        let conn = self.open_project_runtime()?;
         let now = Utc::now().to_rfc3339();
         conn.execute(
             r#"
@@ -459,7 +569,7 @@ impl KnowledgeRuntimeStore {
     }
 
     pub fn ensure_subscriptions(&self, plugin_name: &str, streams: &[String]) -> Result<()> {
-        let conn = self.open()?;
+        let conn = self.open_project_runtime()?;
         let now = Utc::now().to_rfc3339();
         for stream in streams {
             conn.execute(
@@ -471,7 +581,7 @@ impl KnowledgeRuntimeStore {
     }
 
     pub fn load_offset(&self, plugin_name: &str, stream: &str) -> Result<Option<u64>> {
-        let conn = self.open()?;
+        let conn = self.open_project_runtime()?;
         conn.query_row(
             "SELECT acked_offset FROM mother_child_offsets WHERE plugin_name = ?1 AND stream = ?2",
             params![plugin_name, stream],
@@ -483,7 +593,7 @@ impl KnowledgeRuntimeStore {
     }
 
     pub fn ack_offset(&self, plugin_name: &str, stream: &str, offset: u64) -> Result<()> {
-        let conn = self.open()?;
+        let conn = self.open_project_runtime()?;
         let now = Utc::now().to_rfc3339();
         conn.execute(
             r#"
@@ -499,7 +609,7 @@ impl KnowledgeRuntimeStore {
     }
 
     pub fn enqueue_task(&self, plugin_name: &str, intent: &TaskIntent) -> Result<String> {
-        let conn = self.open()?;
+        let conn = self.open_project_runtime()?;
         if let Some(dedupe_key) = intent.dedupe_key.as_deref() {
             if let Some(existing) = conn
                 .query_row(
@@ -545,7 +655,7 @@ impl KnowledgeRuntimeStore {
         plugin_name: &str,
         lease_owner: &str,
     ) -> Result<Option<QueuedTask>> {
-        let conn = self.open()?;
+        let conn = self.open_project_runtime()?;
         let now = Utc::now();
         let now_str = now.to_rfc3339();
         let mut stmt = conn.prepare(
@@ -604,7 +714,7 @@ impl KnowledgeRuntimeStore {
     }
 
     pub fn mark_task_running(&self, task_id: &str) -> Result<()> {
-        let conn = self.open()?;
+        let conn = self.open_project_runtime()?;
         let now = Utc::now().to_rfc3339();
         conn.execute(
             "UPDATE mother_child_tasks SET status = ?2, updated_at = ?3 WHERE id = ?1",
@@ -614,7 +724,7 @@ impl KnowledgeRuntimeStore {
     }
 
     pub fn mark_task_succeeded(&self, task_id: &str) -> Result<()> {
-        let conn = self.open()?;
+        let conn = self.open_project_runtime()?;
         let now = Utc::now().to_rfc3339();
         conn.execute(
             r#"
@@ -632,7 +742,7 @@ impl KnowledgeRuntimeStore {
     }
 
     pub fn mark_task_failed(&self, task_id: &str, attempts: i64, error: &str) -> Result<()> {
-        let conn = self.open()?;
+        let conn = self.open_project_runtime()?;
         let now = Utc::now();
         let status = if attempts >= 5 {
             TaskStatus::DeadLetter
@@ -667,7 +777,7 @@ impl KnowledgeRuntimeStore {
     }
 
     pub fn record_run_start(&self, plugin_name: &str) -> Result<i64> {
-        let conn = self.open()?;
+        let conn = self.open_project_runtime()?;
         let now = Utc::now().to_rfc3339();
         conn.execute(
             "INSERT INTO mother_child_runs (plugin_name, started_at, status) VALUES (?1, ?2, ?3)",
@@ -683,7 +793,7 @@ impl KnowledgeRuntimeStore {
         metrics_json: Option<&str>,
         error: Option<&str>,
     ) -> Result<()> {
-        let conn = self.open()?;
+        let conn = self.open_project_runtime()?;
         let now = Utc::now().to_rfc3339();
         conn.execute(
             r#"
@@ -1007,7 +1117,7 @@ impl KnowledgeRuntimeStore {
     }
 
     pub fn path(&self) -> &PathBuf {
-        &self.path
+        &self.state_path
     }
 }
 
@@ -1041,7 +1151,7 @@ mod tests {
             "patina-knowledge-runtime-{}.db",
             uuid::Uuid::new_v4()
         ));
-        KnowledgeRuntimeStore::new(path)
+        KnowledgeRuntimeStore::new_with_project(path, ProjectUid::new("2bdc808e").unwrap())
     }
 
     #[test]
@@ -1252,6 +1362,71 @@ mod tests {
         assert_eq!(
             reloaded.end_tag.as_deref(),
             Some("session-20260311-100000-ABCD-opencode-end")
+        );
+    }
+
+    #[test]
+    fn project_registration_roundtrips_and_is_idempotent() {
+        let store = temp_store();
+        let uid = ProjectUid::new("2bdc808e").unwrap();
+
+        let first_dir = tempfile::tempdir().unwrap();
+        store.register_project(&uid, first_dir.path()).unwrap();
+
+        let listed = store.list_registered_projects().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].project_uid, "2bdc808e");
+        assert!(listed[0]
+            .project_path
+            .contains(first_dir.path().to_string_lossy().as_ref()));
+
+        let first_registered_at = listed[0].registered_at.clone();
+
+        let second_dir = tempfile::tempdir().unwrap();
+        store.register_project(&uid, second_dir.path()).unwrap();
+
+        let listed = store.list_registered_projects().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].project_uid, "2bdc808e");
+        assert!(listed[0]
+            .project_path
+            .contains(second_dir.path().to_string_lossy().as_ref()));
+        assert_eq!(listed[0].registered_at, first_registered_at);
+    }
+
+    #[test]
+    fn child_state_isolated_by_project_uid() {
+        let temp = tempfile::tempdir().unwrap();
+        let state_path = temp.path().join("mother/state.db");
+        let project_a = KnowledgeRuntimeStore::new_with_project(
+            state_path.clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        let project_b = KnowledgeRuntimeStore::new_with_project(
+            state_path,
+            ProjectUid::new("1a2b3c4d").unwrap(),
+        );
+
+        project_a
+            .put_state("ducklake", "shared-key", r#"{"project":"a"}"#)
+            .unwrap();
+        project_b
+            .put_state("ducklake", "shared-key", r#"{"project":"b"}"#)
+            .unwrap();
+
+        assert_eq!(
+            project_a
+                .get_state("ducklake", "shared-key")
+                .unwrap()
+                .as_deref(),
+            Some(r#"{"project":"a"}"#)
+        );
+        assert_eq!(
+            project_b
+                .get_state("ducklake", "shared-key")
+                .unwrap()
+                .as_deref(),
+            Some(r#"{"project":"b"}"#)
         );
     }
 }

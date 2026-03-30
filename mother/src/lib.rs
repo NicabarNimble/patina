@@ -6,6 +6,7 @@ pub mod daemon_bootstrap_config;
 pub mod daemon_heartbeat;
 pub mod daemon_lifecycle;
 pub mod daemon_runner;
+pub mod eventlog_schema;
 pub mod events;
 pub mod http_api;
 pub mod http_daemon;

@@ -35,7 +35,7 @@ pub struct LiveSessionHandle {
 
 pub fn begin_session(project_root: &Path, request: BeginSessionRequest) -> Result<SessionStart> {
     let store = KnowledgeRuntimeStore::default();
-    let project_uid = project::create_uid_if_missing(project_root)?;
+    let project_uid = project::register_with_mother(project_root)?;
     let created_local = Local::now();
     let created_at = Utc::now().to_rfc3339();
     let runtime_id = generate_runtime_id();

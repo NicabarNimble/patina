@@ -399,6 +399,23 @@ pub fn get_uid(project_path: &Path) -> Option<String> {
     }
 }
 
+/// Ensure project is registered in Mother's project registry.
+pub fn register_with_mother(project_path: &Path) -> Result<String> {
+    let uid = create_uid_if_missing(project_path)?;
+    let uid_typed = crate::mother::ProjectUid::new(uid.clone())?;
+    crate::mother::KnowledgeRuntimeStore::default().register_project(&uid_typed, project_path)?;
+
+    // Ensure default persona store structure exists (GMDP-G9).
+    let _persona_dir =
+        crate::paths::mother::persona::ensure_persona_dir("default").map_err(anyhow::Error::msg)?;
+    let beliefs_db =
+        crate::paths::mother::persona::beliefs_db("default").map_err(anyhow::Error::msg)?;
+    rusqlite::Connection::open(&beliefs_db)
+        .with_context(|| format!("initializing persona store at {}", beliefs_db.display()))?;
+
+    Ok(uid)
+}
+
 // =============================================================================
 // Detection
 // =============================================================================
@@ -793,5 +810,36 @@ mod tests {
         assert_eq!(upstream.remote, "origin");
         assert!(upstream.include_patina);
         assert!(upstream.include_adapters);
+    }
+
+    #[test]
+    fn test_register_with_mother_creates_default_persona_store() {
+        let _guard = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let home = TempDir::new().unwrap();
+        let project = TempDir::new().unwrap();
+        fs::create_dir_all(project.path().join(".patina")).unwrap();
+        fs::write(
+            project.path().join(".patina/config.toml"),
+            "[project]\nname='x'\n",
+        )
+        .unwrap();
+
+        let old = std::env::var_os("PATINA_HOME");
+        unsafe {
+            std::env::set_var("PATINA_HOME", home.path());
+        }
+
+        register_with_mother(project.path()).unwrap();
+
+        let persona_dir = home.path().join("mother/persona/default");
+        assert!(persona_dir.exists());
+        assert!(persona_dir.join("beliefs.db").exists());
+
+        match old {
+            Some(value) => unsafe { std::env::set_var("PATINA_HOME", value) },
+            None => unsafe { std::env::remove_var("PATINA_HOME") },
+        }
     }
 }

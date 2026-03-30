@@ -44,7 +44,7 @@ pub struct CheckInResult {
 pub fn check_in(request: &InterfaceCheckIn) -> Result<CheckInResult> {
     let _project_uid = match &request.project_uid {
         Some(uid) => uid.clone(),
-        None => project::create_uid_if_missing(&request.project_root)?,
+        None => project::register_with_mother(&request.project_root)?,
     };
 
     if let Some(selector) = &request.requested_session {
