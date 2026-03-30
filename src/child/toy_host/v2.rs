@@ -440,7 +440,10 @@ type = "bearer"
     #[test]
     fn v2_state_round_trip() {
         with_temp_patina_home(|home| {
-            let runtime = KnowledgeRuntimeStore::new(home.join("mother/runtime.db"));
+            let runtime = KnowledgeRuntimeStore::new_with_project(
+                home.join("mother/state.db"),
+                crate::mother::ProjectUid::new("2bdc808e").unwrap(),
+            );
             state_set(&runtime, "phase4", "k1", r#"{"ok":true}"#).unwrap();
             let loaded = state_get(&runtime, "phase4", "k1").unwrap();
             assert_eq!(loaded.as_deref(), Some(r#"{"ok":true}"#));
@@ -499,7 +502,10 @@ type = "bearer"
     #[test]
     fn v2_events_publish_subscribe_and_ack() {
         with_temp_patina_home(|home| {
-            let runtime = KnowledgeRuntimeStore::new(home.join("mother/runtime.db"));
+            let runtime = KnowledgeRuntimeStore::new_with_project(
+                home.join("mother/state.db"),
+                crate::mother::ProjectUid::new("2bdc808e").unwrap(),
+            );
             let _ = events_publish(
                 &runtime,
                 "phase4",
@@ -519,7 +525,10 @@ type = "bearer"
     #[test]
     fn v2_task_and_peer_enqueue_native_jobs() {
         with_temp_patina_home(|home| {
-            let runtime = KnowledgeRuntimeStore::new(home.join("mother/runtime.db"));
+            let runtime = KnowledgeRuntimeStore::new_with_project(
+                home.join("mother/state.db"),
+                crate::mother::ProjectUid::new("2bdc808e").unwrap(),
+            );
             let task_id = task_enqueue(
                 &runtime,
                 "phase4",

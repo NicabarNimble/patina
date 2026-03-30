@@ -432,7 +432,7 @@ pub(super) fn record_declared_metric(
         "source": plugin_name,
     });
 
-    let source_id = format!("plugin:{}:measure:{}", plugin_name, name);
+    let source_id = format!("child:{}:measure:{}", plugin_name, name);
     let timestamp = chrono::Utc::now().to_rfc3339();
     crate::eventlog::insert_event(
         &conn,
@@ -504,7 +504,7 @@ pub(super) fn record_measurement(
     });
 
     let event_type = format!("measure.{}", verb);
-    let source_id = format!("plugin:{}:{}:{}", plugin_name, tool, mode);
+    let source_id = format!("child:{}:{}:{}", plugin_name, tool, mode);
     let timestamp = chrono::Utc::now().to_rfc3339();
 
     crate::eventlog::insert_event(
@@ -563,7 +563,7 @@ pub(super) fn validate_emit(
 /// Emit a structured fact to the project eventlog.
 ///
 /// Validates via cached schema facts (zero disk I/O), writes child data
-/// directly to events.db. Provenance is carried by source_id ("plugin:<name>"),
+/// directly to events.db. Provenance is carried by source_id ("child:<name>"),
 /// schema by event_type (e.g., "github.issue"). No wrapper — data shape matches
 /// what downstream consumers expect.
 ///
@@ -588,7 +588,7 @@ pub(super) fn emit_fact(
     let conn = crate::eventlog::open_events_db().map_err(|e| format!("open events.db: {}", e))?;
 
     let timestamp = chrono::Utc::now().to_rfc3339();
-    let source_id = format!("plugin:{}", plugin_name);
+    let source_id = format!("child:{}", plugin_name);
 
     // Write child data directly — no wrapper envelope.
     // Provenance: 'external' — child-emitted facts are external evidence.

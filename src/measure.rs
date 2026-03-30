@@ -57,7 +57,7 @@ pub fn validate(event: &MeasureEvent) -> Result<(), String> {
         && !event.source.starts_with("child:")
     {
         return Err(format!(
-            "invalid source '{}': must be 'core', 'plugin:<name>', or 'child:<name>'",
+            "invalid source '{}': must be 'core', 'child:<name>' (preferred), or legacy 'plugin:<name>'",
             event.source
         ));
     }
@@ -121,5 +121,34 @@ pub fn emit(verb: &str, tool: &str, mode: &str, metrics: &serde_json::Value) -> 
 pub fn emit_or_warn(verb: &str, tool: &str, mode: &str, metrics: &serde_json::Value) {
     if let Err(e) = emit(verb, tool, mode, metrics) {
         eprintln!("patina: warning: failed to record event: {e}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_event(source: &str) -> MeasureEvent {
+        MeasureEvent {
+            schema_version: 1,
+            verb: "capture".to_string(),
+            tool: "scrape".to_string(),
+            mode: "default".to_string(),
+            metrics: serde_json::json!({"count": 1}),
+            timestamp: "2026-03-30T00:00:00Z".to_string(),
+            source: source.to_string(),
+        }
+    }
+
+    #[test]
+    fn validate_accepts_child_source_prefix() {
+        let event = sample_event("child:ducklake");
+        assert!(validate(&event).is_ok());
+    }
+
+    #[test]
+    fn validate_accepts_legacy_plugin_source_prefix() {
+        let event = sample_event("plugin:ducklake");
+        assert!(validate(&event).is_ok());
     }
 }

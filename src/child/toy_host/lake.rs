@@ -171,8 +171,11 @@ mod tests {
     #[test]
     fn lake_table_append_query_and_cursor_roundtrip() {
         with_temp_patina_home(|home| {
-            let runtime_db = home.join("mother/runtime.db");
-            let store = KnowledgeRuntimeStore::new(runtime_db);
+            let state_db = home.join("mother/state.db");
+            let store = KnowledgeRuntimeStore::new_with_project(
+                state_db,
+                crate::mother::ProjectUid::new("2bdc808e").unwrap(),
+            );
 
             ensure_table("default", "gh_issues").unwrap();
 
