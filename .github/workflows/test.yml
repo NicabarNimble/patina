@@ -5,6 +5,7 @@ on:
     branches: [ main, patina ]
   push:
     branches: [ main, patina ]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -17,12 +18,29 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 2  # need parent for change detection
+
+    - name: Detect WASM-relevant changes
+      id: changes
+      run: |
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          BASE=${{ github.event.pull_request.base.sha }}
+          HEAD=${{ github.event.pull_request.head.sha }}
+          CHANGED=$(git diff --name-only "$BASE"..."$HEAD" 2>/dev/null || echo "")
+        elif [[ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]; then
+          CHANGED=$(git diff --name-only "${{ github.event.before }}"..."${{ github.sha }}" 2>/dev/null || echo "")
+        else
+          CHANGED=""
+        fi
+        if echo "$CHANGED" | grep -qE '^(src/child/|children/|mother/src/|wit/|sdk/)'; then
+          echo "wasm=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "wasm=false" >> "$GITHUB_OUTPUT"
+        fi
 
     - name: Install Rust toolchain
       run: rustup show # installs toolchain from rust-toolchain.toml
-
-    - name: Install WASM target
-      run: rustup target add wasm32-wasip2
 
     - name: Install DuckDB
       run: |
@@ -58,15 +76,9 @@ jobs:
       if: steps.cache-models-test.outputs.cache-hit != 'true'
       run: ./resources/scripts/download-active-model.sh
 
-    - name: Build WASM children for integration tests
-      run: |
-        cargo build -p patina-ai-child-file-system-monitor --target wasm32-wasip2
-        cargo build -p patina-ai-child-folder-text-to-parquet --target wasm32-wasip2
-        cargo build -p patina-ai-child-content-extractor --target wasm32-wasip2
-        cargo build -p patina-ai-child-schema-enforcer --target wasm32-wasip2
-        cargo build -p patina-ai-child-dedup-filter --target wasm32-wasip2
-        cargo build -p patina-ai-child-record-writer --target wasm32-wasip2
-        cargo build -p patina-ai-child-lakehouse-catalog --target wasm32-wasip2
+    # =================================================================
+    # Fast lane (every push) — ~15 min target
+    # =================================================================
 
     - name: Check crate naming policy
       run: bash resources/scripts/check-crate-names.sh
@@ -86,28 +98,58 @@ jobs:
     - name: Check retired MCP surface invariants
       run: bash resources/scripts/check-retired-mcp-surface.sh
 
-    - name: Check DuckLake wasm parity
-      run: bash resources/scripts/check-ducklake-parity.sh
-
-    - name: Check broker integration invariants
-      run: bash resources/scripts/check-broker-integration.sh
-
     - name: Check Rust formatting
       run: cargo fmt --all -- --check
 
     - name: Run clippy
       run: cargo clippy --workspace -- -D warnings
 
+    - name: Run unit tests
+      run: cargo test --workspace --lib
+
+    - name: Check DuckLake wasm parity
+      run: bash resources/scripts/check-ducklake-parity.sh
+
+    - name: Check broker integration invariants
+      run: bash resources/scripts/check-broker-integration.sh
+
+    # =================================================================
+    # Integration lane (path-triggered or PR/dispatch) — ~18 min target
+    # =================================================================
+
+    - name: Install WASM target
+      if: steps.changes.outputs.wasm == 'true' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+      run: rustup target add wasm32-wasip2
+
+    - name: Build WASM children for integration tests
+      if: steps.changes.outputs.wasm == 'true' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+      run: |
+        cargo build -p patina-ai-child-file-system-monitor --target wasm32-wasip2
+        cargo build -p patina-ai-child-folder-text-to-parquet --target wasm32-wasip2
+        cargo build -p patina-ai-child-content-extractor --target wasm32-wasip2
+        cargo build -p patina-ai-child-schema-enforcer --target wasm32-wasip2
+        cargo build -p patina-ai-child-dedup-filter --target wasm32-wasip2
+        cargo build -p patina-ai-child-record-writer --target wasm32-wasip2
+        cargo build -p patina-ai-child-lakehouse-catalog --target wasm32-wasip2
+
+    - name: Run WASM integration tests
+      if: steps.changes.outputs.wasm == 'true' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+      run: cargo test --test wasm_integration
+
+    # =================================================================
+    # Full lane (PR merge gate + manual dispatch) — ~25 min target
+    # =================================================================
+
     - name: Build release
+      if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
       run: cargo build --release
 
     - name: Check schema consistency
+      if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
       run: ./target/release/patina schema check
 
-    - name: Run Rust tests
-      run: cargo test --workspace
-
     - name: Test cargo install
+      if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
       run: cargo install --path . --locked --root ./test-install
 
   # Embedding/retrieval benchmarks - only on main pushes
@@ -193,19 +235,15 @@ jobs:
         RECALL_10=$(jq -r '.recall_at_10' benchmark-results.json)
 
         echo ""
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "📊 Retrieval Quality Metrics"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "Retrieval Quality Metrics"
         echo "MRR:        $MRR"
         echo "Recall@5:   $RECALL_5"
         echo "Recall@10:  $RECALL_10"
         echo ""
 
         if awk "BEGIN {exit !($MRR >= 0.55)}"; then
-          echo "✅ Quality: MRR meets target (>= 0.55)"
+          echo "Quality: MRR meets target (>= 0.55)"
         else
-          echo "❌ Quality: MRR below target (< 0.55)"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Quality: MRR below target (< 0.55)"
           exit 1
         fi
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
