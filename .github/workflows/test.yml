@@ -11,15 +11,69 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test:
-    name: Test Suite
+  # ==================================================================
+  # Lint — clippy + structural checks + fmt (~12 min cold)
+  # ==================================================================
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      run: rustup show
+
+    - name: Install DuckDB
+      run: |
+        wget -q https://github.com/duckdb/duckdb/releases/download/v1.1.3/libduckdb-linux-amd64.zip
+        unzip -q libduckdb-linux-amd64.zip -d libduckdb
+        echo "DUCKDB_LIB_DIR=$PWD/libduckdb" >> $GITHUB_ENV
+        echo "DUCKDB_INCLUDE_DIR=$PWD/libduckdb" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=$PWD/libduckdb" >> $GITHUB_ENV
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
       with:
-        fetch-depth: 2  # need parent for change detection
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-lint-
+          ${{ runner.os }}-cargo-
+
+    - name: Check crate naming policy
+      run: bash resources/scripts/check-crate-names.sh
+    - name: Check single SDK surface
+      run: bash resources/scripts/check-single-sdk-surface.sh
+    - name: Check core/protocol dependency direction
+      run: bash resources/scripts/check-core-protocol-deps.sh
+    - name: Check runtime boundary drift
+      run: bash resources/scripts/check-runtime-boundaries.sh
+    - name: Check layer output contract
+      run: bash resources/scripts/check-layer-output-contract.sh
+    - name: Check retired MCP surface invariants
+      run: bash resources/scripts/check-retired-mcp-surface.sh
+
+    - name: Check Rust formatting
+      run: cargo fmt --all -- --check
+
+    - name: Run clippy
+      run: cargo clippy --workspace -- -D warnings
+
+  # ==================================================================
+  # Test — unit tests + parity/broker + WASM integration (~14 min cold)
+  # ==================================================================
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 2
 
     - name: Detect WASM-relevant changes
       id: changes
@@ -40,7 +94,7 @@ jobs:
         fi
 
     - name: Install Rust toolchain
-      run: rustup show # installs toolchain from rust-toolchain.toml
+      run: rustup show
 
     - name: Install DuckDB
       run: |
@@ -59,7 +113,10 @@ jobs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
           target/
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-test-
+          ${{ runner.os }}-cargo-
 
     - name: Get active model name
       id: active-model
@@ -76,34 +133,6 @@ jobs:
       if: steps.cache-models-test.outputs.cache-hit != 'true'
       run: ./resources/scripts/download-active-model.sh
 
-    # =================================================================
-    # Fast lane (every push) — ~15 min target
-    # =================================================================
-
-    - name: Check crate naming policy
-      run: bash resources/scripts/check-crate-names.sh
-
-    - name: Check single SDK surface
-      run: bash resources/scripts/check-single-sdk-surface.sh
-
-    - name: Check core/protocol dependency direction
-      run: bash resources/scripts/check-core-protocol-deps.sh
-
-    - name: Check runtime boundary drift
-      run: bash resources/scripts/check-runtime-boundaries.sh
-
-    - name: Check layer output contract
-      run: bash resources/scripts/check-layer-output-contract.sh
-
-    - name: Check retired MCP surface invariants
-      run: bash resources/scripts/check-retired-mcp-surface.sh
-
-    - name: Check Rust formatting
-      run: cargo fmt --all -- --check
-
-    - name: Run clippy
-      run: cargo clippy --workspace -- -D warnings
-
     - name: Run unit tests
       run: cargo test --workspace --lib
 
@@ -113,10 +142,7 @@ jobs:
     - name: Check broker integration invariants
       run: bash resources/scripts/check-broker-integration.sh
 
-    # =================================================================
-    # Integration lane (path-triggered or PR/dispatch) — ~18 min target
-    # =================================================================
-
+    # Integration lane — WASM tests (conditional)
     - name: Install WASM target
       if: steps.changes.outputs.wasm == 'true' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
       run: rustup target add wasm32-wasip2
@@ -136,37 +162,18 @@ jobs:
       if: steps.changes.outputs.wasm == 'true' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
       run: cargo test --test wasm_integration
 
-    # =================================================================
-    # Full lane (PR merge gate + manual dispatch) — ~25 min target
-    # =================================================================
-
-    - name: Build release
-      if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-      run: cargo build --release
-
-    - name: Check schema consistency
-      if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-      run: ./target/release/patina schema check
-
-    - name: Test cargo install
-      if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-      run: cargo install --path . --locked --root ./test-install
-
-  # Embedding/retrieval benchmarks - only on main pushes
-  benchmark:
-    name: Retrieval Benchmark
+  # ==================================================================
+  # Release — build + schema + install (PR/dispatch only, ~20 min cold)
+  # ==================================================================
+  release:
+    name: Release
     runs-on: ubuntu-latest
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+    - uses: actions/checkout@v4
 
     - name: Install Rust toolchain
-      run: rustup show # installs toolchain from rust-toolchain.toml
+      run: rustup show
 
     - name: Install DuckDB
       run: |
@@ -185,7 +192,59 @@ jobs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
           target/
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-release-
+          ${{ runner.os }}-cargo-
+
+    - name: Build release
+      run: cargo build --release
+
+    - name: Check schema consistency
+      run: ./target/release/patina schema check
+
+    - name: Test cargo install
+      run: cargo install --path . --locked --root ./test-install
+
+  # ==================================================================
+  # Benchmark — retrieval quality (main pushes only)
+  # ==================================================================
+  benchmark:
+    name: Retrieval Benchmark
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install Rust toolchain
+      run: rustup show
+
+    - name: Install DuckDB
+      run: |
+        wget -q https://github.com/duckdb/duckdb/releases/download/v1.1.3/libduckdb-linux-amd64.zip
+        unzip -q libduckdb-linux-amd64.zip -d libduckdb
+        echo "DUCKDB_LIB_DIR=$PWD/libduckdb" >> $GITHUB_ENV
+        echo "DUCKDB_INCLUDE_DIR=$PWD/libduckdb" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=$PWD/libduckdb" >> $GITHUB_ENV
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-release-
+          ${{ runner.os }}-cargo-
 
     - name: Free Disk Space
       run: |
