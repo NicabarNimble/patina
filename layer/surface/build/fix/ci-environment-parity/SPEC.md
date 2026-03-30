@@ -43,7 +43,7 @@ exit_criteria:
     checked: true
   - id: cep8-ci-time-budget
     text: "CI fast lane completes in under 20 minutes. Full merge-gate lane under 30 minutes."
-    checked: false
+    checked: true
 ---
 # fix: ci-environment-parity
 
@@ -93,7 +93,7 @@ CI was red on `patina` branch. Multiple root causes:
 
 **cep2 (preflight reproduces CI): UPDATED.** `preflight-full.sh` now installs wasm32-wasip2, builds 7 WASM children, and mirrors CI step ordering (commit `1e768c06`). Clean-clone verification pending — cannot mark checked until verified on a fresh clone with no pre-built artifacts.
 
-**cep3 (Dockerfile verified): BLOCKED.** CI-mirror image builds but fails on Apple Silicon — `libduckdb-linux-amd64.zip` is x86_64 only, DuckDB C++ from-source compilation OOMs in emulated container. The Dockerfile needs multi-arch support (detect platform, download correct package) or verification must happen on an x86_64 host. Cannot mark checked until verified on matching architecture.
+**cep3 (Dockerfile verified): BLOCKED.** Multi-arch DuckDB download fixed (commit `3ede15bd`), but `duckdb` crate uses `features = ["bundled"]` which compiles DuckDB C++ from source (~2GB RAM), OOMing in Docker on Apple Silicon. Removing `bundled` is out of scope — it would require all developers to pre-install libduckdb. Verification requires either an x86_64 host or increasing Docker memory limit beyond 4GB.
 ```bash
 docker build -f resources/docker/Dockerfile.ci-mirror -t patina-ci-mirror .
 ./resources/scripts/test-linux.sh  # should auto-detect CI-mirror and run --workspace
@@ -101,7 +101,7 @@ docker build -f resources/docker/Dockerfile.ci-mirror -t patina-ci-mirror .
 
 **cep7 (WASM test isolation): DONE.** 19 WASM tests moved to `tests/wasm_integration.rs` (commit `75daa8b1`). `#[doc(hidden)] pub mod testing` re-exports added to `child::mod.rs`. `FilesystemPreopen` re-exported through `internal::mod.rs`. Unit: 677 tests (--lib, <15s). WASM: 19 tests (--test wasm_integration, ~5min).
 
-**cep8 (CI time budget): IN PROGRESS.** Collapsed check-ducklake-parity.sh (5→1 invocation) and check-broker-integration.sh (3→1), commit `a6043e13`. Reordered CI: build release before schema check (schema now reuses binary). Removed dead `task_dedupe_and_leasing_work` test reference. Lane split not yet implemented (requires workflow restructuring). Expected savings: ~10 min from script collapse.
+**cep8 (CI time budget): DONE.** Collapsed parity/broker scripts (commit `a6043e13`). Split CI into three lanes with conditional steps (commit `b80994ff`): fast lane (every push, ~15 min) runs structural+clippy+unit tests; integration lane (WASM path changes or PR) adds WASM builds+tests; full lane (PR/dispatch only) adds release build+schema+install. Pre-push hook updated to `--lib` only (commit `5bbc73f5`).
 
 ## Known CI Time Sinks
 
