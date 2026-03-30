@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: greenfield-mother-patina-data-platform
-status: ready
+status: active
 created: 2026-03-30
 blocks:
 - multiproject-belief-share
