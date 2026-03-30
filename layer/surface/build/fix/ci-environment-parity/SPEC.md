@@ -1,7 +1,7 @@
 ---
 type: fix
 id: ci-environment-parity
-status: draft
+status: complete
 created: 2026-03-29
 sessions:
   origin: 20260329-100923-421215000
