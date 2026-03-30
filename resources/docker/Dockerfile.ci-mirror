@@ -32,4 +32,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# machine-id: GitHub Actions runners have this; minimal Docker images don't.
+# Tests in secrets::encrypted_file expect it for key derivation.
+RUN [ -f /etc/machine-id ] || (cat /proc/sys/kernel/random/uuid | tr -d '-' > /etc/machine-id)
+
 WORKDIR /src
