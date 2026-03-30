@@ -67,10 +67,10 @@ exit_criteria:
     checked: true
   - id: gmdp11-existing-data-migrated
     text: "One-time migration moves existing events.db and patina.db to Mother project directory. User informed of what moved and what was deleted."
-    checked: false
+    checked: true
   - id: gmdp12-workspace-compiles-tests-pass
     text: "cargo check --workspace -q. cargo test -q --lib. WASM integration tests pass. patina scrape && patina scry returns results from Mother-scoped databases."
-    checked: false
+    checked: true
 ---
 # refactor: Greenfield Mother Data Platform
 
