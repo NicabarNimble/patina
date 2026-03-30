@@ -25,12 +25,34 @@ struct CatalogFileEntry {
     schema_version: u32,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CatalogColumn {
+    name: String,
+    nullable: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct CatalogSchema {
     version: u32,
-    columns: Vec<String>,
+    columns: Vec<CatalogColumn>,
     updated_at: String,
 }
+
+const BASE_COLUMNS: &[&str] = &[
+    "record_id",
+    "source_path",
+    "source_hash",
+    "source_modified_at",
+    "source_size_bytes",
+    "content",
+    "content_hash",
+    "content_type",
+    "encoding",
+    "line_count",
+    "ingested_at",
+    "batch_id",
+    "schema_version",
+];
 
 fn parse_payload(payload: &str) -> Result<Value, String> {
     if payload.trim().is_empty() {
@@ -46,6 +68,76 @@ fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
+fn default_schema() -> CatalogSchema {
+    CatalogSchema {
+        version: 1,
+        columns: BASE_COLUMNS
+            .iter()
+            .map(|name| CatalogColumn {
+                name: (*name).to_string(),
+                nullable: false,
+            })
+            .collect(),
+        updated_at: Utc::now().to_rfc3339(),
+    }
+}
+
+fn load_schema(state: &patina_sdk::granted::State) -> CatalogSchema {
+    let Some(raw) = state.get("catalog:schema:current") else {
+        return default_schema();
+    };
+    serde_json::from_str::<CatalogSchema>(&raw).unwrap_or_else(|_| default_schema())
+}
+
+fn persist_schema(
+    state: &patina_sdk::granted::State,
+    schema: &CatalogSchema,
+) -> Result<(), String> {
+    state.put(
+        "catalog:schema:current",
+        &serde_json::to_string(schema).map_err(|e| e.to_string())?,
+    )?;
+    state.put(
+        &format!("catalog:schema:history:{}", schema.version),
+        &serde_json::to_string(schema).map_err(|e| e.to_string())?,
+    )?;
+    Ok(())
+}
+
+fn evolve_schema(
+    schema: &CatalogSchema,
+    added_columns: &[String],
+) -> Result<(CatalogSchema, Vec<String>), String> {
+    let mut next = schema.clone();
+    let mut applied = Vec::new();
+
+    for column in added_columns {
+        let name = column.trim();
+        if name.is_empty() {
+            return Err("schema evolution column cannot be empty".to_string());
+        }
+        if name.contains('.') || name.contains(':') || name.contains(' ') {
+            return Err(format!(
+                "schema evolution column '{}' contains unsupported characters",
+                name
+            ));
+        }
+        if next.columns.iter().any(|existing| existing.name == name) {
+            continue;
+        }
+
+        next.columns.push(CatalogColumn {
+            name: name.to_string(),
+            nullable: true,
+        });
+        next.version += 1;
+        next.updated_at = Utc::now().to_rfc3339();
+        applied.push(name.to_string());
+    }
+
+    Ok((next, applied))
+}
+
 impl LakehouseCatalogChild {
     fn register_written(&mut self, payload: &str) -> Result<String, String> {
         let payload_value = parse_payload(payload)?;
@@ -57,6 +149,16 @@ impl LakehouseCatalogChild {
         let after_offset = payload_value
             .get("after_offset")
             .and_then(|value| value.as_u64());
+        let schema_additions = payload_value
+            .get("add_nullable_columns")
+            .and_then(|value| value.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|value| value.as_str().map(ToString::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
 
         let events = patina_sdk::knowledge_child::patina::events_stream::events_stream::subscribe(
             "file.written",
@@ -65,6 +167,11 @@ impl LakehouseCatalogChild {
         )?;
 
         let state = granted::state();
+        let current_schema = load_schema(&state);
+        let (next_schema, applied_schema_changes) =
+            evolve_schema(&current_schema, &schema_additions)?;
+        persist_schema(&state, &next_schema)?;
+
         let mut registered = 0_u64;
         let mut entries = Vec::new();
         let mut last_offset = None;
@@ -83,7 +190,7 @@ impl LakehouseCatalogChild {
                 record_count: file_written.record_count,
                 written_at: file_written.written_at,
                 registered_at: Utc::now().to_rfc3339(),
-                schema_version: 1,
+                schema_version: next_schema.version,
             };
 
             state.put(
@@ -101,35 +208,14 @@ impl LakehouseCatalogChild {
             )?;
         }
 
-        let schema = CatalogSchema {
-            version: 1,
-            columns: vec![
-                "record_id".to_string(),
-                "source_path".to_string(),
-                "source_hash".to_string(),
-                "source_modified_at".to_string(),
-                "source_size_bytes".to_string(),
-                "content".to_string(),
-                "content_hash".to_string(),
-                "content_type".to_string(),
-                "encoding".to_string(),
-                "line_count".to_string(),
-                "ingested_at".to_string(),
-                "batch_id".to_string(),
-                "schema_version".to_string(),
-            ],
-            updated_at: Utc::now().to_rfc3339(),
-        };
-        state.put(
-            "catalog:schema:current",
-            &serde_json::to_string(&schema).map_err(|e| e.to_string())?,
-        )?;
-
         Ok(serde_json::json!({
             "status": "ok",
             "registered_files": registered,
             "entries": entries,
             "catalog_keys": state.list_prefix("catalog:file:"),
+            "schema_version": next_schema.version,
+            "schema": next_schema,
+            "schema_migrations_applied": applied_schema_changes,
             "acked_through": last_offset,
         })
         .to_string())
