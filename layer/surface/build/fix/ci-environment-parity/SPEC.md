@@ -40,7 +40,7 @@ exit_criteria:
     checked: true
   - id: cep7-wasm-test-isolation
     text: "WASM integration tests (wasmtime-backed) are in a separate test target from unit tests. Tier 2 pre-push runs --lib only. CI can target unit and integration independently."
-    checked: false
+    checked: true
   - id: cep8-ci-time-budget
     text: "CI fast lane completes in under 20 minutes. Full merge-gate lane under 30 minutes."
     checked: false
@@ -99,7 +99,7 @@ docker build -f resources/docker/Dockerfile.ci-mirror -t patina-ci-mirror .
 ./resources/scripts/test-linux.sh  # should auto-detect CI-mirror and run --workspace
 ```
 
-**cep7 (WASM test isolation):** See DESIGN.md for full approach.
+**cep7 (WASM test isolation): DONE.** 19 WASM tests moved to `tests/wasm_integration.rs` (commit `75daa8b1`). `#[doc(hidden)] pub mod testing` re-exports added to `child::mod.rs`. `FilesystemPreopen` re-exported through `internal::mod.rs`. Unit: 677 tests (--lib, <15s). WASM: 19 tests (--test wasm_integration, ~5min).
 
 **cep8 (CI time budget):** See "Known CI Time Sinks" and "Target CI Lane Structure" below.
 
