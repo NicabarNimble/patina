@@ -31,19 +31,19 @@ exit_criteria:
     checked: true
   - id: ftp4-mother-metrics
     text: "Mother-tier metrics collected automatically for every child without child implementation."
-    checked: false
+    checked: true
   - id: ftp5-acceptance-gates
     text: "All acceptance gates pass with real measurements."
-    checked: false
+    checked: true
   - id: ftp6-schema-evolution
     text: "Lakehouse catalog handles at least one schema evolution (add nullable column) without breaking existing data."
-    checked: false
+    checked: true
   - id: ftp7-storage-portable
     text: "Parquet output works on local folder. Storage location is configurable (designed for S3/similar later)."
-    checked: false
+    checked: true
   - id: ftp8-recipe-validated
     text: "Objective recipe from parent canon filled in with concrete values from implementation."
-    checked: false
+    checked: true
 ---
 # feat: folder-text-to-parquet
 
