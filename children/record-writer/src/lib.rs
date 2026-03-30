@@ -47,6 +47,24 @@ fn parse_payload(payload: &str) -> Result<Value, String> {
 }
 
 fn resolve_output_path(payload: &Value) -> Result<PathBuf, String> {
+    let output_root = payload
+        .get("output_root")
+        .and_then(|v| v.as_str())
+        .unwrap_or("/output");
+    if output_root.trim().is_empty() {
+        return Err("output_root cannot be empty".to_string());
+    }
+    let output_root = PathBuf::from(output_root);
+    if !output_root.is_absolute() {
+        return Err("output_root must be an absolute path".to_string());
+    }
+    if output_root
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err("output_root cannot contain '..' segments".to_string());
+    }
+
     let Some(output_path) = payload.get("output_path").and_then(|v| v.as_str()) else {
         return Err("missing output_path in action payload".to_string());
     };
@@ -54,16 +72,24 @@ fn resolve_output_path(payload: &Value) -> Result<PathBuf, String> {
         return Err("output_path cannot be empty".to_string());
     }
     let output = PathBuf::from(output_path);
-    if !output.starts_with("/output") {
-        return Err("output_path must stay under /output preopen".to_string());
+    let resolved = if output.is_absolute() {
+        output
+    } else {
+        output_root.join(output)
+    };
+    if !resolved.starts_with(&output_root) {
+        return Err(format!(
+            "output_path must stay under configured output_root '{}'",
+            output_root.display()
+        ));
     }
-    if output
+    if resolved
         .components()
         .any(|component| matches!(component, std::path::Component::ParentDir))
     {
         return Err("output_path cannot contain '..' segments".to_string());
     }
-    Ok(output)
+    Ok(resolved)
 }
 
 fn emit_metric_counter(
