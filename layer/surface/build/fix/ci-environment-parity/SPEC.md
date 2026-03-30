@@ -93,7 +93,7 @@ CI was red on `patina` branch. Multiple root causes:
 
 **cep2 (preflight reproduces CI): UPDATED.** `preflight-full.sh` now installs wasm32-wasip2, builds 7 WASM children, and mirrors CI step ordering (commit `1e768c06`). Clean-clone verification pending — cannot mark checked until verified on a fresh clone with no pre-built artifacts.
 
-**cep3 (Dockerfile verified):** Built but not tested. Must verify with CI-mirror image specifically — the bare-image fallback mode (`patina-pipe` only) does not satisfy this criterion.
+**cep3 (Dockerfile verified): BLOCKED.** CI-mirror image builds but fails on Apple Silicon — `libduckdb-linux-amd64.zip` is x86_64 only, DuckDB C++ from-source compilation OOMs in emulated container. The Dockerfile needs multi-arch support (detect platform, download correct package) or verification must happen on an x86_64 host. Cannot mark checked until verified on matching architecture.
 ```bash
 docker build -f resources/docker/Dockerfile.ci-mirror -t patina-ci-mirror .
 ./resources/scripts/test-linux.sh  # should auto-detect CI-mirror and run --workspace
