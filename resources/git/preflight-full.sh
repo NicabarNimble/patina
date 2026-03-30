@@ -49,8 +49,8 @@ echo "[9/12] Schema consistency..."
 ./target/release/patina schema check
 echo ""
 
-echo "[10/12] Workspace tests (unit + integration)..."
-cargo test --workspace
+echo "[10/12] Workspace tests (unit + integration via nextest)..."
+cargo nextest run --workspace
 echo ""
 
 echo "[11/12] Test cargo install..."

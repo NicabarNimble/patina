@@ -133,8 +133,11 @@ jobs:
       if: steps.cache-models-test.outputs.cache-hit != 'true'
       run: ./resources/scripts/download-active-model.sh
 
+    - name: Install cargo-nextest
+      run: curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
+
     - name: Run unit tests
-      run: cargo test --workspace --lib
+      run: cargo nextest run --workspace --lib --profile ci
 
     - name: Check DuckLake wasm parity
       run: bash resources/scripts/check-ducklake-parity.sh
@@ -160,7 +163,7 @@ jobs:
 
     - name: Run WASM integration tests
       if: steps.changes.outputs.wasm == 'true' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-      run: cargo test --test wasm_integration
+      run: cargo nextest run --test wasm_integration --profile ci
 
   # ==================================================================
   # Release — build + schema + install (PR/dispatch only, ~20 min cold)
