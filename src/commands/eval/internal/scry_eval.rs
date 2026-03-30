@@ -221,7 +221,7 @@ pub fn execute_raw() -> Result<()> {
     println!("Loaded {} eval queries\n", cases.len());
 
     // Load knowledge corpus from DB
-    let db_path = ".patina/local/data/patina.db";
+    let db_path = patina::eventlog::patina_db_path()?;
     let conn = Connection::open(db_path).context("Cannot open database")?;
     let corpus = oxidize::query_knowledge_corpus(&conn)?;
     println!("Knowledge corpus: {} items\n", corpus.len());

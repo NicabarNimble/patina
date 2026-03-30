@@ -373,7 +373,7 @@ pub fn show_repo(name: &str) -> Result<()> {
     }
 
     // Show event count from database
-    let db_path = repo_path.join(".patina/local/data/patina.db");
+    let db_path = patina::eventlog::resolve_patina_db_path(repo_path);
     if db_path.exists() {
         if let Ok(conn) = rusqlite::Connection::open(&db_path) {
             if let Ok(count) = conn.query_row("SELECT COUNT(*) FROM eventlog", [], |row| {
@@ -395,7 +395,7 @@ pub fn get_repo_db_path(name: &str) -> Result<String> {
         .get(name)
         .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found", name))?;
 
-    let db_path = Path::new(&entry.path).join(".patina/local/data/patina.db");
+    let db_path = patina::eventlog::resolve_patina_db_path(Path::new(&entry.path));
     if !db_path.exists() {
         bail!(
             "Database not found for '{}'. Run 'patina repo update {}' to rebuild.",

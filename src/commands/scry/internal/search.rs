@@ -17,17 +17,28 @@ use super::enrichment::{enrich_results, SearchResults};
 /// Get database and embeddings paths (handles --repo flag)
 pub fn get_paths(options: &ScryOptions) -> Result<(String, String)> {
     if let Some(ref repo_name) = options.repo {
-        // For repos, model name is stored in repo's config (future: read from repo metadata)
-        // For now, default to e5-base-v2 for repo queries
+        let repo_root = crate::commands::repo::get_path(repo_name)?;
+        let model = patina::project::load(&repo_root)
+            .ok()
+            .map(|c| c.embeddings.model)
+            .unwrap_or_else(|| "e5-base-v2".to_string());
         let db_path = crate::commands::repo::get_db_path(repo_name)?;
-        let embeddings_dir = db_path.replace("patina.db", "embeddings/e5-base-v2/projections");
+        let embeddings_dir = patina::paths::project::model_projections_dir(&repo_root, &model)
+            .to_string_lossy()
+            .to_string();
         Ok((db_path, embeddings_dir))
     } else {
         // For local project, read model from config
         let model = get_embedding_model();
+        let project_root = std::env::current_dir()?;
+        let db_path = patina::eventlog::resolve_patina_db_path(&project_root)
+            .to_string_lossy()
+            .to_string();
         Ok((
-            ".patina/local/data/patina.db".to_string(),
-            format!(".patina/local/data/embeddings/{}/projections", model),
+            db_path,
+            patina::paths::project::model_projections_dir(&project_root, &model)
+                .to_string_lossy()
+                .to_string(),
         ))
     }
 }

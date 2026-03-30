@@ -31,7 +31,10 @@ pub struct ScrapeConfig {
 impl ScrapeConfig {
     pub fn new(force: bool) -> Self {
         Self {
-            db_path: database::PATINA_DB.to_string(),
+            db_path: database::patina_db_path()
+                .unwrap_or_else(|_| PathBuf::from("patina.db"))
+                .to_string_lossy()
+                .to_string(),
             force,
             extension_filter: None,
             changed_code_files: None,
@@ -58,7 +61,7 @@ pub fn execute_all() -> Result<()> {
     let total_start = std::time::Instant::now();
 
     // Ensure UID exists (migration for projects without one)
-    patina::project::create_uid_if_missing(&std::env::current_dir()?)?;
+    patina::project::register_with_mother(&std::env::current_dir()?)?;
 
     // Compute delta: what changed since last scrape?
     let scrape_delta = delta::compute_delta()?;
@@ -190,9 +193,9 @@ fn trigger_on_scrape_sources() {
 /// See: layer/surface/build/spec-ref-repo-storage.md
 pub fn execute_rebuild() -> Result<()> {
     // Ensure UID exists (migration for projects without one)
-    patina::project::create_uid_if_missing(&std::env::current_dir()?)?;
+    patina::project::register_with_mother(&std::env::current_dir()?)?;
 
-    let db_path = PathBuf::from(database::PATINA_DB);
+    let db_path = database::patina_db_path()?;
     let is_ref = database::is_ref_repo(&db_path);
 
     // Get old size if exists
@@ -278,7 +281,7 @@ fn execute_code_with_filter(
     extensions: Option<HashSet<String>>,
 ) -> Result<()> {
     let config = ScrapeConfig {
-        db_path: database::PATINA_DB.to_string(),
+        db_path: database::patina_db_path()?.to_string_lossy().to_string(),
         force,
         extension_filter: extensions,
         changed_code_files: None,
@@ -308,7 +311,7 @@ fn execute_code_incremental(
     changed_files: Vec<String>,
 ) -> Result<()> {
     let config = ScrapeConfig {
-        db_path: database::PATINA_DB.to_string(),
+        db_path: database::patina_db_path()?.to_string_lossy().to_string(),
         force,
         extension_filter: extensions,
         changed_code_files: Some(changed_files),

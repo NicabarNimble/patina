@@ -472,7 +472,7 @@ fn collect_md_files(dir: &Path, recursive: bool) -> Vec<std::path::PathBuf> {
 /// appropriate sub-scraper. Beliefs are skipped (separate pipeline).
 pub fn run(full: bool) -> Result<ScrapeStats> {
     let start = Instant::now();
-    let db_path = Path::new(database::PATINA_DB);
+    let db_path = database::patina_db_path()?;
     let layer_dir = Path::new(LAYER_DIR);
 
     if !layer_dir.exists() {
@@ -480,7 +480,7 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     }
 
     // Initialize unified database with eventlog
-    let conn = database::initialize(db_path)?;
+    let conn = database::initialize(&db_path)?;
 
     // Collect all markdown files from layer/ and classify
     let all_files = collect_md_files(layer_dir, true);

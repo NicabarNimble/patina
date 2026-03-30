@@ -106,7 +106,8 @@ fn orient_entries(conn: &Connection, dir_path: &str, limit: usize) -> Result<Vec
 pub fn execute_orient(dir_path: &str, limit: usize) -> Result<()> {
     println!("🔮 Scry Orient - What's important in {}\n", dir_path);
 
-    let conn = Connection::open(eventlog::PATINA_DB)
+    let db_path = eventlog::patina_db_path()?;
+    let conn = Connection::open(db_path)
         .with_context(|| "Failed to open database. Run 'patina scrape' first.")?;
 
     let results = orient_entries(&conn, dir_path, limit)?;
@@ -259,7 +260,8 @@ pub fn execute_recent(query: Option<&str>, days: u32, limit: usize) -> Result<()
             .unwrap_or_default()
     );
 
-    let conn = Connection::open(eventlog::PATINA_DB)
+    let db_path = eventlog::patina_db_path()?;
+    let conn = Connection::open(db_path)
         .with_context(|| "Failed to open database. Run 'patina scrape' first.")?;
 
     let entries = recent_entries(&conn, query, days, limit)?;

@@ -1256,7 +1256,8 @@ fn build_event_counts(conn: &Connection) -> Result<EventCounts> {
 // ============================================================================
 
 pub fn run(options: MeasureOptions) -> Result<()> {
-    let db_path = Path::new(eventlog::PATINA_DB);
+    let db_path_buf = eventlog::patina_db_path()?;
+    let db_path = db_path_buf.as_path();
     if !db_path.exists() {
         print_empty_state();
         return Ok(());
@@ -2454,7 +2455,8 @@ fn format_metrics_inline(metrics: &VerbMetrics) -> String {
 /// Returns the same `FullMeasureReport` as `--full --json`.
 /// MCP and CLI share one code path — no shape divergence.
 pub fn mcp_measure() -> Result<FullMeasureReport> {
-    let db_path = Path::new(eventlog::PATINA_DB);
+    let db_path_buf = eventlog::patina_db_path()?;
+    let db_path = db_path_buf.as_path();
     if !db_path.exists() {
         return Ok(FullMeasureReport::new(
             std::collections::BTreeMap::new(),

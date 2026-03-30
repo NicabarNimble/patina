@@ -426,7 +426,7 @@ pub fn truncate_content(content: &str, max_len: usize) -> String {
 ///
 /// Returns a map from source_id (e.g., "src/foo.rs::bar") to matching beliefs.
 pub fn find_belief_impact(results: &[ScryResult]) -> Result<HashMap<String, Vec<(String, f32)>>> {
-    let db_path = ".patina/local/data/patina.db";
+    let db_path = patina::eventlog::patina_db_path()?;
     let conn = Connection::open(db_path)?;
 
     // Check if belief_code_reach table exists

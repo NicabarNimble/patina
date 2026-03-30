@@ -153,7 +153,8 @@ pub fn execute_detail(query_id: &str, rank: usize) -> Result<()> {
 
     // Fetch full content from eventlog
     // doc_ids may have prefixes (e.g., "belief:foo") that don't match eventlog source_id ("foo")
-    let conn = Connection::open(patina::eventlog::PATINA_DB)?;
+    let db_path = patina::eventlog::patina_db_path()?;
+    let conn = Connection::open(db_path)?;
     let lookup_id = if let Some(stripped) = doc_id.strip_prefix("belief:") {
         stripped
     } else {

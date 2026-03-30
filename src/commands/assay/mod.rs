@@ -20,7 +20,11 @@ use rusqlite::Connection;
 #[allow(unused_imports)]
 pub use internal::search::{assay_search, assay_search_json, SearchOptions, SearchResult};
 
-const DB_PATH: &str = ".patina/local/data/patina.db";
+fn local_db_path() -> Result<String> {
+    Ok(patina::eventlog::patina_db_path()?
+        .to_string_lossy()
+        .to_string())
+}
 
 /// Query type for assay command
 #[derive(Debug, Clone, Default)]
@@ -128,7 +132,7 @@ fn execute_inner(options: &AssayOptions) -> Result<()> {
     if let QueryType::Cochange { ref file } = options.query_type {
         let db_path = match &options.repo {
             Some(name) => crate::commands::repo::get_db_path(name)?,
-            None => DB_PATH.to_string(),
+            None => local_db_path()?,
         };
         if options.json {
             let json = internal::temporal::execute_cochange_json(file, options.limit, &db_path)?;
@@ -151,7 +155,7 @@ fn execute_inner(options: &AssayOptions) -> Result<()> {
     // Resolve database path: specific repo or current directory
     let db_path = match &options.repo {
         Some(name) => crate::commands::repo::get_db_path(name)?,
-        None => DB_PATH.to_string(),
+        None => local_db_path()?,
     };
 
     let conn = Connection::open(&db_path)
@@ -196,7 +200,7 @@ pub fn execute_query(options: &AssayOptions) -> Result<String> {
     if let QueryType::Cochange { ref file } = options.query_type {
         let db_path = match &options.repo {
             Some(name) => crate::commands::repo::get_db_path(name)?,
-            None => DB_PATH.to_string(),
+            None => local_db_path()?,
         };
         return internal::temporal::execute_cochange_json(file, options.limit, &db_path);
     }
@@ -209,7 +213,7 @@ pub fn execute_query(options: &AssayOptions) -> Result<String> {
     // Structural queries: open DB and return JSON
     let db_path = match &options.repo {
         Some(name) => crate::commands::repo::get_db_path(name)?,
-        None => DB_PATH.to_string(),
+        None => local_db_path()?,
     };
     let conn = Connection::open(&db_path)
         .with_context(|| format!("Failed to open database: {}", db_path))?;
@@ -237,14 +241,15 @@ fn execute_all_repos(options: &AssayOptions) -> Result<()> {
     }
 
     // Also query current project if it has a database
-    let current_has_db = std::path::Path::new(DB_PATH).exists();
+    let current_db_path = local_db_path()?;
+    let current_has_db = std::path::Path::new(&current_db_path).exists();
 
     if options.json {
         // JSON mode: collect all results into a single array
         let mut all_results: Vec<serde_json::Value> = Vec::new();
 
         if current_has_db {
-            if let Ok(conn) = Connection::open(DB_PATH) {
+            if let Ok(conn) = Connection::open(&current_db_path) {
                 if let Ok(results) = collect_inventory_json(&conn, options, Some("(current)")) {
                     all_results.extend(results);
                 }
@@ -252,7 +257,8 @@ fn execute_all_repos(options: &AssayOptions) -> Result<()> {
         }
 
         for repo in &repos {
-            let db_path = std::path::Path::new(&repo.path).join(".patina/local/data/patina.db");
+            let db_path =
+                patina::eventlog::resolve_patina_db_path(std::path::Path::new(&repo.path));
             if let Ok(conn) = Connection::open(&db_path) {
                 if let Ok(results) = collect_inventory_json(&conn, options, Some(&repo.name)) {
                     all_results.extend(results);
@@ -265,7 +271,7 @@ fn execute_all_repos(options: &AssayOptions) -> Result<()> {
         // Text mode: print each repo's results with headers
         if current_has_db {
             println!("━━━ (current) ━━━\n");
-            if let Ok(conn) = Connection::open(DB_PATH) {
+            if let Ok(conn) = Connection::open(&current_db_path) {
                 let _ = execute_inventory(&conn, options, Some("(current)"));
             }
             println!();
@@ -273,7 +279,8 @@ fn execute_all_repos(options: &AssayOptions) -> Result<()> {
 
         for repo in &repos {
             println!("━━━ {} ━━━\n", repo.name);
-            let db_path = std::path::Path::new(&repo.path).join(".patina/local/data/patina.db");
+            let db_path =
+                patina::eventlog::resolve_patina_db_path(std::path::Path::new(&repo.path));
             if let Ok(conn) = Connection::open(&db_path) {
                 let _ = execute_inventory(&conn, options, Some(&repo.name));
             } else {

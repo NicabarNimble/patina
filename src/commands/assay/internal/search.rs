@@ -11,7 +11,11 @@ use rusqlite::Connection;
 
 use super::query_prep::prepare_fts_query;
 
-const DB_PATH: &str = ".patina/local/data/patina.db";
+fn local_db_path() -> Result<String> {
+    Ok(patina::eventlog::patina_db_path()?
+        .to_string_lossy()
+        .to_string())
+}
 
 /// A single ranked search result from FTS5
 #[derive(Debug, Clone)]
@@ -50,7 +54,7 @@ impl Default for SearchOptions {
 pub fn assay_search(query: &str, options: &SearchOptions) -> Result<Vec<SearchResult>> {
     let db_path = match &options.repo {
         Some(name) => crate::commands::repo::get_db_path(name)?,
-        None => DB_PATH.to_string(),
+        None => local_db_path()?,
     };
 
     let conn = Connection::open(&db_path)

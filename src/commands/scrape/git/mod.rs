@@ -751,11 +751,11 @@ fn is_shallow_clone() -> bool {
 /// Main entry point for git scraping
 pub fn run(full: bool) -> Result<ScrapeStats> {
     let start = Instant::now();
-    let db_path = Path::new(database::PATINA_DB);
+    let db_path = database::patina_db_path()?;
 
     // Ref repos use lean storage - skip eventlog for git data
     // Git IS the source of truth, no need to duplicate in eventlog
-    let skip_eventlog = database::is_ref_repo(db_path);
+    let skip_eventlog = database::is_ref_repo(&db_path);
 
     // Check for shallow clone - skip co-change analysis
     if is_shallow_clone() {
@@ -764,14 +764,14 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
         return Ok(ScrapeStats {
             items_processed: 0,
             time_elapsed: start.elapsed(),
-            database_size_kb: std::fs::metadata(db_path)
+            database_size_kb: std::fs::metadata(&db_path)
                 .map(|m| m.len() / 1024)
                 .unwrap_or(0),
         });
     }
 
     // Initialize unified database with eventlog
-    let conn = database::initialize(db_path)?;
+    let conn = database::initialize(&db_path)?;
 
     // Create materialized views for git events
     create_materialized_views(&conn)?;

@@ -203,7 +203,7 @@ pub fn migrate_registry_paths() -> bool {
         // Check if path needs updating
         if entry.path != expected_path_str {
             // Verify the repo actually exists at the expected location
-            if expected_path.join(".patina/local/data/patina.db").exists()
+            if patina::eventlog::resolve_patina_db_path(&expected_path).exists()
                 || expected_path.join(".git").exists()
             {
                 updates.push((name.clone(), expected_path_str));

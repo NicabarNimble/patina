@@ -14,7 +14,11 @@ use rusqlite::Connection;
 
 use super::search::SearchResult;
 
-const DB_PATH: &str = ".patina/local/data/patina.db";
+fn local_db_path() -> Result<String> {
+    Ok(patina::eventlog::patina_db_path()?
+        .to_string_lossy()
+        .to_string())
+}
 
 /// Search beliefs using FTS5 keyword matching
 pub fn search_beliefs_fts(
@@ -107,8 +111,9 @@ pub fn fetch_reached_files(conn: &Connection, belief_id: &str, limit: usize) -> 
 
 /// Execute belief grounding — find evidence for/against a belief (CLI output)
 pub fn execute_belief_grounding(belief_id: &str, limit: usize, json: bool) -> Result<()> {
-    let conn = Connection::open(DB_PATH)
-        .with_context(|| format!("Failed to open database: {}", DB_PATH))?;
+    let db_path = local_db_path()?;
+    let conn = Connection::open(&db_path)
+        .with_context(|| format!("Failed to open database: {}", db_path))?;
 
     // Look up belief
     let (statement, entrenchment, file_path, evidence_count, evidence_verified, applied_in): (
@@ -193,8 +198,9 @@ pub fn execute_belief_grounding(belief_id: &str, limit: usize, json: bool) -> Re
 
 /// Execute belief grounding and return JSON string (for MCP)
 pub fn execute_belief_grounding_json(belief_id: &str, limit: usize) -> Result<String> {
-    let conn = Connection::open(DB_PATH)
-        .with_context(|| format!("Failed to open database: {}", DB_PATH))?;
+    let db_path = local_db_path()?;
+    let conn = Connection::open(&db_path)
+        .with_context(|| format!("Failed to open database: {}", db_path))?;
 
     let (statement, entrenchment, file_path, evidence_count, evidence_verified, applied_in): (
         String,
