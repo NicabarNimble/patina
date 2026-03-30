@@ -22,7 +22,7 @@ related:
   - layer/surface/build/refactor/greenfield-mother-patina-data-platform/
 exit_criteria:
   - id: meh1-failing-tests-fixed
-    text: "All mother crate tests pass. The 2 tests broken by runtime split (state_checkpoints_and_offsets, task_dedupe_and_leasing) are updated for project_uid-scoped API. cargo test -q -p mother passes with zero failures."
+    text: "All mother crate tests pass. The 3 failing tests fixed: state_checkpoints_and_offsets and task_dedupe_and_leasing (project_uid scoping), tcp_http_returns_error_when_port_in_use (port binding). cargo test -q -p mother passes with zero failures."
     checked: false
   - id: meh2-panic-recovery
     text: "Request handler threads use std::panic::catch_unwind. A panicking handler logs the panic and returns 500 Internal Server Error instead of killing the thread silently. Proven with a test that triggers a panic in a handler and verifies the accept loop continues serving."
@@ -66,7 +66,7 @@ exit_criteria:
 
 Mother is a working prototype daemon. The architecture is sound — clean separation of concerns, bearer token auth, signal handling, small HTTP surface (7 routes), custom microserver with input validation. But operational maturity gaps exist:
 
-1. **2 tests failing** from the greenfield-mother-patina-data-platform runtime split. The API changed but tests weren't updated.
+1. **3 tests failing** — 2 from the runtime split (state_checkpoints_and_offsets, task_dedupe_and_leasing need project_uid scoping), 1 pre-existing (tcp_http_returns_error_when_port_in_use).
 
 2. **Unbounded thread spawn** per connection in accept loops. No backpressure, no capacity limit.
 
@@ -192,9 +192,11 @@ Do NOT refactor the microserver, HTTP types, route structure, or request parsing
 
 ### MEH-G1: Fix failing tests
 
-Update 2 failing tests to use `new_with_project()` for project-scoped runtime store.
+Fix 3 failing tests:
+- `state_checkpoints_and_offsets` and `task_dedupe_and_leasing`: update to use `new_with_project()`. The reopen path at state.rs:1177 uses `new()` after writing with `new_with_project()` — must use consistent project-scoped access. Possible test-state bleed from shared runtime DB path under temp parent with fixed project uid.
+- `tcp_http_returns_error_when_port_in_use`: diagnose port binding issue in daemon_bootstrap_config.rs:82.
 
-- **Entry**: Read both tests, understand project_uid requirement from runtime split.
+- **Entry**: Read all 3 failing tests. Run each in isolation to distinguish test-state bleed from real bugs.
 - **Exit proof**: `cargo test -q -p mother` — zero failures.
 
 ### MEH-G2: Panic recovery on request threads
@@ -213,9 +215,9 @@ Replace unbounded `thread::spawn` with bounded pool. Semaphore-guarded spawn or 
 
 ### MEH-G4: Structured logging
 
-Replace `eprintln!` with `tracing` macros. JSON file subscriber to `~/.patina/mother/logs/mother.jsonl`. Initialize in daemon bootstrap.
+Add `tracing` and `tracing-subscriber` to mother/Cargo.toml (not currently listed). Replace `eprintln!` with `tracing` macros. JSON file subscriber to `~/.patina/mother/logs/mother.jsonl`. Initialize in daemon bootstrap.
 
-- **Entry**: MEH-G3 passes. Count `eprintln!` in mother/.
+- **Entry**: MEH-G3 passes. Count `eprintln!` in mother/. Add tracing dependencies.
 - **Exit proof**: `rg "eprintln!" mother/src/ --type rust` zero in non-test code. JSON log file written. `cargo test -q -p mother`.
 
 ### MEH-G5: WAL checkpoint scheduling
@@ -234,10 +236,10 @@ SIGINT/SIGTERM sets `AtomicBool`. Accept loop refuses new connections. Drain win
 
 ### MEH-G7: Deep health endpoint
 
-`/health` returns: uptime_seconds, child_count, children (name + health per child), registered_projects, database_sizes (per active project). Structured JSON.
+Expand existing `/health` response (currently returns `status`, `version`, `uptime_secs`, `children` vector). Add: registered project count, per-project database sizes, pool capacity/active connections, last checkpoint timestamp. CLI lifecycle.rs:14 parses the health response — either maintain backwards compatibility (additive fields only) or update CLI parser simultaneously.
 
-- **Entry**: MEH-G6 passes. Read `http_api.rs` health handler.
-- **Exit proof**: `/health` returns all fields. Schema shape test. `cargo test -q -p mother`.
+- **Entry**: MEH-G6 passes. Read `http_api.rs:53,97` health handler and `lifecycle.rs:14` CLI parser.
+- **Exit proof**: `/health` returns all new fields alongside existing ones. CLI `patina mother status` still works. Schema shape test. `cargo test -q -p mother`.
 
 ### MEH-G8: Supervisor integration (macOS launchd)
 
@@ -255,9 +257,9 @@ On startup: if PID file exists, check process alive via `kill(pid, 0)`. Alive �
 
 ### MEH-G10: Constant-time token compare
 
-Replace `==` in `check_auth` with constant-time comparison. Check if `subtle` crate is available as transitive dep of `age`. If so, use `ConstantTimeEq`. Otherwise, manual XOR accumulator.
+Replace `==` in `check_auth` (http_routes.rs:77) with constant-time comparison. `subtle` is a transitive dep of `age` but NOT in mother/Cargo.toml — add it explicitly. Use `subtle::ConstantTimeEq`.
 
-- **Entry**: MEH-G9 passes. Read `http_routes.rs:77-82`.
+- **Entry**: MEH-G9 passes. Add `subtle` to mother/Cargo.toml. Read `http_routes.rs:77-82`.
 - **Exit proof**: Token comparison is constant-time. Auth tests pass. `cargo test -q -p mother`.
 
 ### MEH-G11: Production expect() audit
