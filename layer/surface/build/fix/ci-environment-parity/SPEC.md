@@ -101,7 +101,7 @@ docker build -f resources/docker/Dockerfile.ci-mirror -t patina-ci-mirror .
 
 **cep7 (WASM test isolation): DONE.** 19 WASM tests moved to `tests/wasm_integration.rs` (commit `75daa8b1`). `#[doc(hidden)] pub mod testing` re-exports added to `child::mod.rs`. `FilesystemPreopen` re-exported through `internal::mod.rs`. Unit: 677 tests (--lib, <15s). WASM: 19 tests (--test wasm_integration, ~5min).
 
-**cep8 (CI time budget):** See "Known CI Time Sinks" and "Target CI Lane Structure" below.
+**cep8 (CI time budget): IN PROGRESS.** Collapsed check-ducklake-parity.sh (5→1 invocation) and check-broker-integration.sh (3→1), commit `a6043e13`. Reordered CI: build release before schema check (schema now reuses binary). Removed dead `task_dedupe_and_leasing_work` test reference. Lane split not yet implemented (requires workflow restructuring). Expected savings: ~10 min from script collapse.
 
 ## Known CI Time Sinks
 
