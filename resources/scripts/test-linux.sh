@@ -59,6 +59,12 @@ if [ $# -gt 0 ]; then
     CARGO_ARGS="test $*"
 fi
 
+# CI-mirror has pre-built libduckdb — skip bundled C++ compilation
+FEATURE_ARGS=""
+if [[ "$IMAGE" == "$CI_MIRROR_IMAGE" ]]; then
+    FEATURE_ARGS="--no-default-features --features bundled-doctor"
+fi
+
 # Build WASM children inside container if using CI mirror and running workspace tests
 WASM_BUILD_CMD=""
 if [[ "$IMAGE" == "$CI_MIRROR_IMAGE" && "$CARGO_ARGS" == *"--workspace"* ]]; then
@@ -84,11 +90,11 @@ docker run --rm \
     "${IMAGE}" \
     sh -c "
         ${WASM_BUILD_CMD}
-        echo '📦 Running: cargo ${CARGO_ARGS}'
+        echo 'Running: cargo ${CARGO_ARGS} ${FEATURE_ARGS}'
         echo ''
-        echo '🐧 Linux kernel:' \$(uname -r)
+        echo 'Linux kernel:' \$(uname -r)
         echo ''
-        cargo ${CARGO_ARGS}
+        cargo ${CARGO_ARGS} ${FEATURE_ARGS}
     "
 
 STATUS=$?

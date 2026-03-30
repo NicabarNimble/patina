@@ -14,8 +14,9 @@ keywords = ["ai", "development", "patterns", "context", "embeddings"]
 categories = ["command-line-utilities", "development-tools"]
 
 [features]
-default = ["bundled-doctor"]
+default = ["bundled-doctor", "duckdb-bundled"]
 bundled-doctor = []  # Compiled-in doctor fallback — disable for smaller binary (WASM-only doctor)
+duckdb-bundled = ["duckdb/bundled"]  # Compile DuckDB C++ from source — disable when system libduckdb is available
 dev = []  # Developer commands - not included in user builds
 
 [dependencies]
@@ -92,7 +93,7 @@ usearch = "2.21"                                                     # Fast vect
 safetensors = "0.7"                                                  # Standard weight format (MLX-compatible, HuggingFace)
 zerocopy = "0.7"                                                     # Efficient vector byte conversion
 regex = "1.12.2"
-duckdb = { version = "1", features = ["bundled"] }
+duckdb = { version = "1" }
 
 # WASM plugin runtime
 wasmtime = { version = "=41", default-features = false, features = [
