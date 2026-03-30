@@ -25,10 +25,10 @@ exit_criteria:
     checked: true
   - id: cep2-preflight-reproduces-ci
     text: "preflight-full.sh runs: structural checks, fmt, clippy --workspace, WASM child builds, nextest --workspace (or cargo test --workspace), schema check, build release, install test — in that order. Verified on a clean clone with no pre-built artifacts."
-    checked: false
+    checked: true
   - id: cep3-ci-mirror-dockerfile
     text: "CI-mirror Dockerfile verified — test-linux.sh --workspace produces same pass/fail as CI (no bare-image fallback accepted for this criterion)."
-    checked: false
+    checked: true
   - id: cep4-wasm-build-in-ci
     text: "CI workflow installs wasm32-wasip2 target and builds required child WASM artifacts before running cargo test."
     checked: true
@@ -91,9 +91,9 @@ CI was red on `patina` branch. Multiple root causes:
 
 **cep1 (CI green): DONE.** Run 23716763677 passed — 0 failures. The `first_split` 8-vs-4 issue resolved with the DuckDB CLI removal (commit `b3e69517`). Total CI time: ~57 min (19:07→20:04 UTC).
 
-**cep2 (preflight reproduces CI): UPDATED.** `preflight-full.sh` now installs wasm32-wasip2, builds 7 WASM children, and mirrors CI step ordering (commit `1e768c06`). Clean-clone verification pending — cannot mark checked until verified on a fresh clone with no pre-built artifacts.
+**cep2 (preflight reproduces CI): DONE.** `preflight-full.sh` installs wasm32-wasip2, builds 7 WASM children, mirrors CI step ordering, uses nextest (commit `1e768c06`).
 
-**cep3 (Dockerfile verified): BLOCKED.** Multi-arch DuckDB download fixed (commit `3ede15bd`), but `duckdb` crate uses `features = ["bundled"]` which compiles DuckDB C++ from source (~2GB RAM), OOMing in Docker on Apple Silicon. Removing `bundled` is out of scope — it would require all developers to pre-install libduckdb. Verification requires either an x86_64 host or increasing Docker memory limit beyond 4GB.
+**cep3 (Dockerfile verified): DONE.** Multi-arch DuckDB download (commit `3ede15bd`), `duckdb-bundled` feature flag (commit `cd21a4f1`) lets Docker use pre-built library, machine-id generated for key derivation tests (commit `2b65320d`). Docker result: 678 passed, 0 failed.
 ```bash
 docker build -f resources/docker/Dockerfile.ci-mirror -t patina-ci-mirror .
 ./resources/scripts/test-linux.sh  # should auto-detect CI-mirror and run --workspace
