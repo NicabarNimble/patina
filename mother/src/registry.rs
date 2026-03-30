@@ -7,7 +7,7 @@
 use anyhow::Result;
 use chrono::Utc;
 use rusqlite::{params, Connection};
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
@@ -28,41 +28,47 @@ impl Default for ChildRegistry {
 }
 
 impl ChildRegistry {
-    const EVENTS_DB_REL_PATH: &'static str = ".patina/local/data/events.db";
-
     pub fn new() -> Self {
         Self { children: vec![] }
     }
 
-    fn open_events_db() -> Result<Connection> {
-        let path = Path::new(Self::EVENTS_DB_REL_PATH);
+    fn read_project_uid(project_root: &std::path::Path) -> Option<String> {
+        let uid = std::fs::read_to_string(project_root.join(".patina/uid")).ok()?;
+        let uid = uid.trim();
+        if uid.len() == 8
+            && uid
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        {
+            Some(uid.to_string())
+        } else {
+            None
+        }
+    }
+
+    fn resolve_events_db_path() -> PathBuf {
+        let project_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        if let Some(uid) = Self::read_project_uid(&project_root) {
+            return crate::secrets_paths::patina_home()
+                .join("mother")
+                .join("projects")
+                .join(uid)
+                .join("events.db");
+        }
+        project_root
+            .join(".patina")
+            .join("local")
+            .join("data")
+            .join("events.db")
+    }
+
+    fn open_registry_events_connection() -> Result<Connection> {
+        let path = Self::resolve_events_db_path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
         let conn = Connection::open(path)?;
-        conn.execute_batch(
-            r#"
-            PRAGMA journal_mode = WAL;
-            PRAGMA synchronous = FULL;
-
-            CREATE TABLE IF NOT EXISTS eventlog (
-                seq INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_type TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                source_id TEXT NOT NULL,
-                source_file TEXT,
-                data TEXT NOT NULL,
-                provenance TEXT NOT NULL DEFAULT 'local',
-                content_hash TEXT,
-                CHECK(json_valid(data))
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_eventlog_type ON eventlog(event_type);
-            CREATE INDEX IF NOT EXISTS idx_eventlog_timestamp ON eventlog(timestamp);
-            CREATE INDEX IF NOT EXISTS idx_eventlog_source ON eventlog(source_id);
-            CREATE INDEX IF NOT EXISTS idx_eventlog_type_time ON eventlog(event_type, timestamp);
-            "#,
-        )?;
+        crate::eventlog_schema::prepare_events_db(&conn)?;
         Ok(conn)
     }
 
@@ -73,7 +79,7 @@ impl ChildRegistry {
         kind: &str,
         value: f64,
     ) -> Result<()> {
-        let conn = Self::open_events_db()?;
+        let conn = Self::open_registry_events_connection()?;
         let timestamp = Utc::now().to_rfc3339();
         let data = serde_json::json!({
             "name": name,
@@ -300,7 +306,6 @@ impl ChildRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rusqlite::Connection;
     use serde_json::Value;
 
     /// Minimal knowledge child for testing registry logic.
@@ -361,7 +366,7 @@ mod tests {
     }
 
     fn metric_names_for_action(action: &str) -> Vec<String> {
-        let conn = Connection::open(ChildRegistry::EVENTS_DB_REL_PATH)
+        let conn = ChildRegistry::open_registry_events_connection()
             .expect("open events db for metric assertion");
         let mut stmt = conn
             .prepare("SELECT data FROM eventlog WHERE event_type = 'measure.metric' ORDER BY seq DESC LIMIT 256")
