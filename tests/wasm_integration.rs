@@ -4,6 +4,7 @@
 //! tests. Tier 2 pre-push runs `--lib` only; CI can target these independently
 //! via `--test wasm_integration`.
 
+use mother_crate::registry::ChildRegistry;
 use patina::child::testing::{
     events_subscribe, ChildKind, ChildManifest, ChildProvides, FilesystemAccessMode,
     FilesystemPreopen, KnowledgeChildEngine, PipelineEngine,
@@ -1040,7 +1041,7 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
                 None,
                 &[FilesystemPreopen {
                     host_path: output_dir.path().to_path_buf(),
-                    guest_path: "/output".to_string(),
+                    guest_path: "/lake".to_string(),
                     mode: FilesystemAccessMode::ReadWrite,
                 }],
             )
@@ -1049,6 +1050,14 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
         let catalog_child = engine
             .instantiate_child(&catalog_component, &catalog_manifest, None)
             .unwrap();
+
+        let mut registry = ChildRegistry::new();
+        registry.register_knowledge(monitor_child).unwrap();
+        registry.register_knowledge(extractor_child).unwrap();
+        registry.register_knowledge(enforcer_child).unwrap();
+        registry.register_knowledge(dedup_child).unwrap();
+        registry.register_knowledge(writer_child).unwrap();
+        registry.register_knowledge(catalog_child).unwrap();
 
         let last_offset = |stream: &str| {
             events_subscribe(stream, None, 1_000_000)
@@ -1063,11 +1072,14 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
         let record_ready_before = last_offset("record.ready");
         let file_written_before = last_offset("file.written");
 
-        let monitor_response = monitor_child
-            .handle(&ChildRequest {
-                action: "scan".into(),
-                payload: serde_json::json!({"folder_path": "/input"}),
-            })
+        let monitor_response = registry
+            .handle(
+                "file-system-monitor",
+                &ChildRequest {
+                    action: "scan".into(),
+                    payload: serde_json::json!({"folder_path": "/input"}),
+                },
+            )
             .unwrap();
         assert_eq!(
             monitor_response
@@ -1077,14 +1089,17 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
             Some(4)
         );
 
-        let extractor_response = extractor_child
-            .handle(&ChildRequest {
-                action: "extract-found".into(),
-                payload: serde_json::json!({
-                    "limit": 64,
-                    "after_offset": file_found_before,
-                }),
-            })
+        let extractor_response = registry
+            .handle(
+                "content-extractor",
+                &ChildRequest {
+                    action: "extract-found".into(),
+                    payload: serde_json::json!({
+                        "limit": 64,
+                        "after_offset": file_found_before,
+                    }),
+                },
+            )
             .unwrap();
         assert_eq!(
             extractor_response
@@ -1102,14 +1117,17 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
             "content-extractor should ack consumed file.found events"
         );
 
-        let enforcer_response = enforcer_child
-            .handle(&ChildRequest {
-                action: "enforce-schema".into(),
-                payload: serde_json::json!({
-                    "limit": 64,
-                    "after_offset": record_extracted_before,
-                }),
-            })
+        let enforcer_response = registry
+            .handle(
+                "schema-enforcer",
+                &ChildRequest {
+                    action: "enforce-schema".into(),
+                    payload: serde_json::json!({
+                        "limit": 64,
+                        "after_offset": record_extracted_before,
+                    }),
+                },
+            )
             .unwrap();
         assert_eq!(
             enforcer_response
@@ -1126,14 +1144,17 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
             Some(0)
         );
 
-        let dedup_response = dedup_child
-            .handle(&ChildRequest {
-                action: "filter-dedup".into(),
-                payload: serde_json::json!({
-                    "limit": 64,
-                    "after_offset": record_validated_before,
-                }),
-            })
+        let dedup_response = registry
+            .handle(
+                "dedup-filter",
+                &ChildRequest {
+                    action: "filter-dedup".into(),
+                    payload: serde_json::json!({
+                        "limit": 64,
+                        "after_offset": record_validated_before,
+                    }),
+                },
+            )
             .unwrap();
         assert_eq!(
             dedup_response
@@ -1150,15 +1171,19 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
             Some(1)
         );
 
-        let writer_response = writer_child
-            .handle(&ChildRequest {
-                action: "write-records".into(),
-                payload: serde_json::json!({
-                    "output_path": "/output/six-child-batch.parquet",
-                    "limit": 64,
-                    "after_offset": record_ready_before,
-                }),
-            })
+        let writer_response = registry
+            .handle(
+                "record-writer",
+                &ChildRequest {
+                    action: "write-records".into(),
+                    payload: serde_json::json!({
+                        "output_root": "/lake",
+                        "output_path": "six-child-batch.parquet",
+                        "limit": 64,
+                        "after_offset": record_ready_before,
+                    }),
+                },
+            )
             .unwrap();
         assert_eq!(
             writer_response
@@ -1179,14 +1204,17 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
         assert_eq!(state_keys.len(), 3);
         assert!(host_parquet_path.exists());
 
-        let catalog_response = catalog_child
-            .handle(&ChildRequest {
-                action: "register-written".into(),
-                payload: serde_json::json!({
-                    "limit": 64,
-                    "after_offset": file_written_before,
-                }),
-            })
+        let catalog_response = registry
+            .handle(
+                "lakehouse-catalog",
+                &ChildRequest {
+                    action: "register-written".into(),
+                    payload: serde_json::json!({
+                        "limit": 64,
+                        "after_offset": file_written_before,
+                    }),
+                },
+            )
             .unwrap();
         assert_eq!(
             catalog_response
@@ -1194,6 +1222,56 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
                 .get("registered_files")
                 .and_then(|v| v.as_u64()),
             Some(1)
+        );
+
+        let evolved_catalog_response = registry
+            .handle(
+                "lakehouse-catalog",
+                &ChildRequest {
+                    action: "register-written".into(),
+                    payload: serde_json::json!({
+                        "limit": 64,
+                        "after_offset": file_written_before,
+                        "add_nullable_columns": ["source_owner"],
+                    }),
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            evolved_catalog_response
+                .payload
+                .get("schema_version")
+                .and_then(|v| v.as_u64()),
+            Some(2),
+            "schema evolution should bump schema version"
+        );
+        let evolved_columns = evolved_catalog_response
+            .payload
+            .get("schema")
+            .and_then(|v| v.get("columns"))
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let mut has_source_owner = false;
+        for column in evolved_columns {
+            if column.get("name").and_then(|v| v.as_str()) == Some("source_owner") {
+                has_source_owner = column.get("nullable").and_then(|v| v.as_bool()) == Some(true);
+                break;
+            }
+        }
+        assert!(
+            has_source_owner,
+            "schema evolution should add nullable source_owner column"
+        );
+        assert_eq!(
+            evolved_catalog_response
+                .payload
+                .get("catalog_keys")
+                .and_then(|v| v.as_array())
+                .map(|keys| keys.len())
+                .unwrap_or(0),
+            1,
+            "schema evolution should preserve existing catalog file entries"
         );
 
         let db = duckdb::Connection::open_in_memory()
@@ -1211,6 +1289,217 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
         assert_eq!(
             row_count, 3,
             "dedup-filter should reduce output rows to three"
+        );
+
+        let file_found_after = last_offset("file.found");
+        let record_extracted_after = last_offset("record.extracted");
+        let record_validated_after = last_offset("record.validated");
+        let record_ready_after = last_offset("record.ready");
+        let file_written_after = last_offset("file.written");
+
+        let extractor_rerun = registry
+            .handle(
+                "content-extractor",
+                &ChildRequest {
+                    action: "extract-found".into(),
+                    payload: serde_json::json!({
+                        "limit": 64,
+                        "after_offset": file_found_after,
+                    }),
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            extractor_rerun
+                .payload
+                .get("processed_records")
+                .and_then(|v| v.as_u64()),
+            Some(0),
+            "checkpoint restart should not reprocess file.found offsets"
+        );
+
+        let enforcer_rerun = registry
+            .handle(
+                "schema-enforcer",
+                &ChildRequest {
+                    action: "enforce-schema".into(),
+                    payload: serde_json::json!({
+                        "limit": 64,
+                        "after_offset": record_extracted_after,
+                    }),
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            enforcer_rerun
+                .payload
+                .get("validated_records")
+                .and_then(|v| v.as_u64()),
+            Some(0),
+            "checkpoint restart should not reprocess record.extracted offsets"
+        );
+
+        let dedup_rerun = registry
+            .handle(
+                "dedup-filter",
+                &ChildRequest {
+                    action: "filter-dedup".into(),
+                    payload: serde_json::json!({
+                        "limit": 64,
+                        "after_offset": record_validated_after,
+                    }),
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            dedup_rerun
+                .payload
+                .get("ready_records")
+                .and_then(|v| v.as_u64()),
+            Some(0),
+            "checkpoint restart should not reprocess record.validated offsets"
+        );
+
+        let catalog_rerun = registry
+            .handle(
+                "lakehouse-catalog",
+                &ChildRequest {
+                    action: "register-written".into(),
+                    payload: serde_json::json!({
+                        "limit": 64,
+                        "after_offset": file_written_after,
+                    }),
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            catalog_rerun
+                .payload
+                .get("registered_files")
+                .and_then(|v| v.as_u64()),
+            Some(0),
+            "checkpoint restart should not reprocess file.written offsets"
+        );
+
+        let writer_rerun = registry
+            .handle(
+                "record-writer",
+                &ChildRequest {
+                    action: "write-records".into(),
+                    payload: serde_json::json!({
+                        "output_root": "/lake",
+                        "output_path": "six-child-rerun.parquet",
+                        "limit": 64,
+                        "after_offset": record_ready_after,
+                    }),
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            writer_rerun
+                .payload
+                .get("processed_records")
+                .and_then(|v| v.as_u64()),
+            Some(0),
+            "checkpoint restart should not reprocess record.ready offsets"
+        );
+
+        let conn = patina::eventlog::open_events_db().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT data FROM eventlog WHERE event_type = 'measure.metric' ORDER BY seq")
+            .unwrap();
+        let metric_rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let expected_actions = [
+            "scan",
+            "extract-found",
+            "enforce-schema",
+            "filter-dedup",
+            "write-records",
+            "register-written",
+        ]
+        .into_iter()
+        .collect::<std::collections::HashSet<_>>();
+        let mut throughput = 0_u64;
+        let mut success = 0_u64;
+        let mut errors = 0_u64;
+        for raw in metric_rows {
+            let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+            if value.get("source").and_then(|v| v.as_str()) != Some("mother") {
+                continue;
+            }
+            if value.get("scope").and_then(|v| v.as_str()) != Some("child-handle-boundary") {
+                continue;
+            }
+
+            let mut action: Option<String> = None;
+            for label in value
+                .get("labels")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default()
+            {
+                let pair = label.as_array().cloned().unwrap_or_default();
+                if pair.len() == 2 && pair.first().and_then(|v| v.as_str()) == Some("action") {
+                    action = pair
+                        .get(1)
+                        .and_then(|v| v.as_str())
+                        .map(ToString::to_string);
+                }
+            }
+            if !action
+                .as_deref()
+                .is_some_and(|name| expected_actions.contains(name))
+            {
+                continue;
+            }
+
+            match value.get("name").and_then(|v| v.as_str()) {
+                Some("mother_handle_throughput") => throughput += 1,
+                Some("mother_handle_success") => success += 1,
+                Some("mother_handle_error") => errors += 1,
+                _ => {}
+            }
+        }
+
+        assert!(throughput >= 6, "expected mother throughput measurements");
+        assert!(success >= 6, "expected mother success measurements");
+        assert_eq!(
+            errors, 0,
+            "expected zero mother handle errors for successful pipeline run"
+        );
+
+        let mut dedup_duplicate_output_rate = None;
+        let mut provenance_completeness = None;
+        for raw in stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+        {
+            let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+            let source = value.get("source").and_then(|v| v.as_str());
+            let name = value.get("name").and_then(|v| v.as_str());
+            let metric_value = value.get("value").and_then(|v| v.as_f64());
+            if source == Some("dedup-filter") && name == Some("duplicate_output_rate_pct") {
+                dedup_duplicate_output_rate = metric_value;
+            }
+            if source == Some("schema-enforcer") && name == Some("provenance_completeness_pct") {
+                provenance_completeness = metric_value;
+            }
+        }
+        assert_eq!(
+            dedup_duplicate_output_rate,
+            Some(0.0),
+            "expected dedup duplicate output rate measurement to be 0%"
+        );
+        assert_eq!(
+            provenance_completeness,
+            Some(100.0),
+            "expected full provenance completeness measurement"
         );
     });
 }
