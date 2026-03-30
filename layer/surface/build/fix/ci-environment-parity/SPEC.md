@@ -91,7 +91,7 @@ CI was red on `patina` branch. Multiple root causes:
 
 **cep1 (CI green): DONE.** Run 23716763677 passed — 0 failures. The `first_split` 8-vs-4 issue resolved with the DuckDB CLI removal (commit `b3e69517`). Total CI time: ~57 min (19:07→20:04 UTC).
 
-**cep2 (preflight reproduces CI):** `preflight-full.sh` does not currently build WASM children or install `wasm32-wasip2`. It must be updated to match CI's setup steps so a clean-clone run produces the same result. The check ordering also differs from CI.
+**cep2 (preflight reproduces CI): UPDATED.** `preflight-full.sh` now installs wasm32-wasip2, builds 7 WASM children, and mirrors CI step ordering (commit `1e768c06`). Clean-clone verification pending — cannot mark checked until verified on a fresh clone with no pre-built artifacts.
 
 **cep3 (Dockerfile verified):** Built but not tested. Must verify with CI-mirror image specifically — the bare-image fallback mode (`patina-pipe` only) does not satisfy this criterion.
 ```bash
