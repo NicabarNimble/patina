@@ -16,6 +16,7 @@ mod pipeline;
 #[cfg(test)]
 mod tests;
 
+pub use knowledge_child::FilesystemPreopen;
 pub use knowledge_child::KnowledgeChildEngine as ChildEngine;
 pub use knowledge_child::KnowledgeChildEngine;
 pub use pipeline::PipelineEngine;
