@@ -5,7 +5,11 @@
 //! RwLock for concurrent handle() vs exclusive tick().
 
 use anyhow::Result;
+use chrono::Utc;
+use rusqlite::{params, Connection};
+use std::path::Path;
 use std::sync::{Arc, RwLock};
+use std::time::Instant;
 
 use crate::{
     ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, KnowledgeRuntimeStore, MotherHost,
@@ -24,8 +28,136 @@ impl Default for ChildRegistry {
 }
 
 impl ChildRegistry {
+    const EVENTS_DB_REL_PATH: &'static str = ".patina/local/data/events.db";
+
     pub fn new() -> Self {
         Self { children: vec![] }
+    }
+
+    fn open_events_db() -> Result<Connection> {
+        let path = Path::new(Self::EVENTS_DB_REL_PATH);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let conn = Connection::open(path)?;
+        conn.execute_batch(
+            r#"
+            PRAGMA journal_mode = WAL;
+            PRAGMA synchronous = FULL;
+
+            CREATE TABLE IF NOT EXISTS eventlog (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                source_file TEXT,
+                data TEXT NOT NULL,
+                provenance TEXT NOT NULL DEFAULT 'local',
+                content_hash TEXT,
+                CHECK(json_valid(data))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_eventlog_type ON eventlog(event_type);
+            CREATE INDEX IF NOT EXISTS idx_eventlog_timestamp ON eventlog(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_eventlog_source ON eventlog(source_id);
+            CREATE INDEX IF NOT EXISTS idx_eventlog_type_time ON eventlog(event_type, timestamp);
+            "#,
+        )?;
+        Ok(conn)
+    }
+
+    fn emit_mother_metric(
+        child_name: &str,
+        action: &str,
+        name: &str,
+        kind: &str,
+        value: f64,
+    ) -> Result<()> {
+        let conn = Self::open_events_db()?;
+        let timestamp = Utc::now().to_rfc3339();
+        let data = serde_json::json!({
+            "name": name,
+            "kind": kind,
+            "value": value,
+            "labels": [
+                ["child", child_name],
+                ["action", action],
+            ],
+            "source": "mother",
+            "scope": "child-handle-boundary",
+        })
+        .to_string();
+
+        conn.execute(
+            "INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data, provenance)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                "measure.metric",
+                timestamp,
+                format!("mother:{}:{}", child_name, name),
+                Option::<String>::None,
+                data,
+                "local"
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    fn observe_handle(child_name: &str, action: &str, started_at: Instant, is_success: bool) {
+        let latency_ms = started_at.elapsed().as_secs_f64() * 1000.0;
+        let _ = Self::emit_mother_metric(
+            child_name,
+            action,
+            "mother_handle_latency_ms",
+            "gauge",
+            latency_ms,
+        )
+        .map_err(|error| {
+            eprintln!(
+                "[mother] failed to emit mother_handle_latency_ms for '{}': {}",
+                child_name, error
+            )
+        });
+
+        let _ = Self::emit_mother_metric(
+            child_name,
+            action,
+            "mother_handle_throughput",
+            "counter",
+            1.0,
+        )
+        .map_err(|error| {
+            eprintln!(
+                "[mother] failed to emit mother_handle_throughput for '{}': {}",
+                child_name, error
+            )
+        });
+
+        let metric_name = if is_success {
+            "mother_handle_success"
+        } else {
+            "mother_handle_error"
+        };
+        let _ = Self::emit_mother_metric(child_name, action, metric_name, "counter", 1.0).map_err(
+            |error| {
+                eprintln!(
+                    "[mother] failed to emit {} for '{}': {}",
+                    metric_name, child_name, error
+                )
+            },
+        );
+    }
+
+    fn invoke_handle_observed(
+        child_name: &str,
+        child: &dyn KnowledgeChild,
+        request: &ChildRequest,
+    ) -> Result<ChildResponse> {
+        let started_at = Instant::now();
+        let response = child.handle(request);
+        Self::observe_handle(child_name, &request.action, started_at, response.is_ok());
+        response
     }
 
     pub fn register_knowledge(&mut self, child: Box<dyn KnowledgeChild>) -> Result<()> {
@@ -90,7 +222,7 @@ impl ChildRegistry {
                         payload: serde_json::from_str(&task.payload_json)
                             .unwrap_or(serde_json::Value::Null),
                     };
-                    match child.handle(&request) {
+                    match Self::invoke_handle_observed(&plugin_name, child.as_ref(), &request) {
                         Ok(_) => runtime.mark_task_succeeded(&task.id)?,
                         Err(error) => {
                             runtime.mark_task_failed(&task.id, task.attempts, &error.to_string())?
@@ -141,7 +273,7 @@ impl ChildRegistry {
             .find(|child| child.read().unwrap_or_else(|e| e.into_inner()).name() == child_name)
         {
             let child = child.read().unwrap_or_else(|e| e.into_inner());
-            return child.handle(request);
+            return Self::invoke_handle_observed(child_name, child.as_ref(), request);
         }
 
         Err(anyhow::anyhow!("unknown child: {}", child_name))
@@ -168,6 +300,8 @@ impl ChildRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusqlite::Connection;
+    use serde_json::Value;
 
     /// Minimal knowledge child for testing registry logic.
     struct StubChild {
@@ -199,6 +333,76 @@ mod tests {
         }
     }
 
+    struct ErrorStubChild {
+        child_name: String,
+    }
+
+    impl ErrorStubChild {
+        fn boxed(name: &str) -> Box<dyn KnowledgeChild> {
+            Box::new(Self {
+                child_name: name.to_string(),
+            })
+        }
+    }
+
+    impl KnowledgeChild for ErrorStubChild {
+        fn name(&self) -> &str {
+            &self.child_name
+        }
+        fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
+            Ok(())
+        }
+        fn health(&self) -> ChildHealth {
+            ChildHealth::Healthy
+        }
+        fn handle(&self, _request: &ChildRequest) -> Result<ChildResponse> {
+            Err(anyhow::anyhow!("intentional failure"))
+        }
+    }
+
+    fn metric_names_for_action(action: &str) -> Vec<String> {
+        let conn = Connection::open(ChildRegistry::EVENTS_DB_REL_PATH)
+            .expect("open events db for metric assertion");
+        let mut stmt = conn
+            .prepare("SELECT data FROM eventlog WHERE event_type = 'measure.metric' ORDER BY seq DESC LIMIT 256")
+            .expect("prepare events query");
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query events")
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .expect("collect events");
+
+        let mut names = Vec::new();
+        for raw in rows {
+            let Ok(value) = serde_json::from_str::<Value>(&raw) else {
+                continue;
+            };
+            let labels = value
+                .get("labels")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let mut action_match = false;
+            for label in labels {
+                let pair = label.as_array().cloned().unwrap_or_default();
+                if pair.len() == 2
+                    && pair.first().and_then(|v| v.as_str()) == Some("action")
+                    && pair.get(1).and_then(|v| v.as_str()) == Some(action)
+                {
+                    action_match = true;
+                    break;
+                }
+            }
+            if !action_match {
+                continue;
+            }
+            if let Some(name) = value.get("name").and_then(|v| v.as_str()) {
+                names.push(name.to_string());
+            }
+        }
+        names
+    }
+
     #[test]
     fn register_unique_names() {
         let mut registry = ChildRegistry::new();
@@ -226,5 +430,53 @@ mod tests {
             err
         );
         assert_eq!(registry.knowledge_len(), 1);
+    }
+
+    #[test]
+    fn observed_handle_emits_success_metrics() {
+        let mut registry = ChildRegistry::new();
+        registry
+            .register_knowledge(StubChild::boxed("observed-success"))
+            .unwrap();
+
+        let action = format!("action-{}", uuid::Uuid::new_v4());
+        let response = registry
+            .handle(
+                "observed-success",
+                &ChildRequest {
+                    action: action.clone(),
+                    payload: serde_json::json!({}),
+                },
+            )
+            .expect("registry handle should succeed");
+        assert_eq!(response.payload.get("stub"), Some(&serde_json::json!(true)));
+
+        let names = metric_names_for_action(&action);
+        assert!(names.iter().any(|n| n == "mother_handle_latency_ms"));
+        assert!(names.iter().any(|n| n == "mother_handle_throughput"));
+        assert!(names.iter().any(|n| n == "mother_handle_success"));
+    }
+
+    #[test]
+    fn observed_handle_emits_error_metrics() {
+        let mut registry = ChildRegistry::new();
+        registry
+            .register_knowledge(ErrorStubChild::boxed("observed-error"))
+            .unwrap();
+
+        let action = format!("action-{}", uuid::Uuid::new_v4());
+        let result = registry.handle(
+            "observed-error",
+            &ChildRequest {
+                action: action.clone(),
+                payload: serde_json::json!({}),
+            },
+        );
+        assert!(result.is_err());
+
+        let names = metric_names_for_action(&action);
+        assert!(names.iter().any(|n| n == "mother_handle_latency_ms"));
+        assert!(names.iter().any(|n| n == "mother_handle_throughput"));
+        assert!(names.iter().any(|n| n == "mother_handle_error"));
     }
 }
