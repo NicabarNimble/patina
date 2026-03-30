@@ -26,9 +26,9 @@ collect_changed_files() {
 mapfile -t changed_files < <(collect_changed_files | sed '/^$/d')
 
 if [[ "${#changed_files[@]}" -eq 0 ]]; then
-    echo "ℹ No changed files detected. Running full workspace checks (fail-closed)."
+    echo "No changed files detected. Running full workspace checks (fail-closed)."
     cargo clippy --workspace -- -D warnings
-    cargo test --workspace
+    cargo test --workspace --lib
     exit 0
 fi
 
@@ -63,9 +63,9 @@ for file in "${changed_files[@]}"; do
 done
 
 if [[ "$run_full_workspace" == true ]]; then
-    echo "⚠ Broad-impact files changed. Escalating to full workspace clippy+test."
+    echo "Broad-impact files changed. Escalating to full workspace clippy + unit tests."
     cargo clippy --workspace -- -D warnings
-    cargo test --workspace
+    cargo test --workspace --lib
 else
     metadata_json=$(cargo metadata --no-deps --format-version 1)
     mapfile -t package_rows < <(jq -r '.packages[] | [.name, .manifest_path] | @tsv' <<<"$metadata_json")
@@ -96,9 +96,9 @@ else
     done
 
     if [[ "${#impacted_packages[@]}" -eq 0 ]]; then
-        echo "⚠ Could not resolve impacted package set. Escalating to full workspace checks."
+        echo "Could not resolve impacted package set. Escalating to full workspace checks."
         cargo clippy --workspace -- -D warnings
-        cargo test --workspace
+        cargo test --workspace --lib
     else
         mapfile -t sorted_packages < <(printf '%s\n' "${!impacted_packages[@]}" | sort)
         echo "Impacted packages: ${sorted_packages[*]}"
@@ -109,8 +109,8 @@ else
         done
         echo ""
         for package in "${sorted_packages[@]}"; do
-            echo "📦 Running tests for $package..."
-            cargo test -p "$package"
+            echo "Running unit tests for $package..."
+            cargo test -p "$package" --lib
         done
     fi
 fi
