@@ -7,7 +7,6 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 
 use super::MeasureOptions;
 use patina::eventlog;
@@ -1157,11 +1156,11 @@ impl FullMeasureReport {
 /// Callers query `events.eventlog` for measure.* events.
 fn attach_events(conn: &Connection) -> Result<()> {
     eventlog::ensure_events_db()?;
-    let events_path = Path::new(eventlog::EVENTS_DB);
+    let events_path = eventlog::events_db_path()?;
     if events_path.exists() {
         conn.execute(
             "ATTACH DATABASE ?1 AS events",
-            [events_path.to_str().unwrap_or(eventlog::EVENTS_DB)],
+            [events_path.to_string_lossy().as_ref()],
         )?;
     }
     Ok(())

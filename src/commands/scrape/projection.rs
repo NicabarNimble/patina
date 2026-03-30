@@ -37,8 +37,11 @@ pub fn project_from_schemas(patina_conn: &Connection) -> Result<ProjectionStats>
     populate_schema_registry(patina_conn, &schemas)?;
 
     patina::eventlog::ensure_events_db()?;
-    let events_path = patina::eventlog::EVENTS_DB;
-    patina_conn.execute("ATTACH DATABASE ?1 AS events_db", [events_path])?;
+    let events_path = patina::eventlog::events_db_path()?;
+    patina_conn.execute(
+        "ATTACH DATABASE ?1 AS events_db",
+        [events_path.to_string_lossy().as_ref()],
+    )?;
 
     let mut stats = ProjectionStats {
         tables_created: 0,

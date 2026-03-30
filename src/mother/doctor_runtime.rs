@@ -161,7 +161,7 @@ impl EventStorePort for FsEventStorePort {
 
 fn check_data_integrity(project_root: &Path) -> DataIntegrity {
     let mut integrity = DataIntegrity::default();
-    let events_path = Path::new(eventlog::EVENTS_DB);
+    let events_path = eventlog::resolve_events_db_path(project_root);
     integrity.events_db.exists = events_path.exists();
 
     if !integrity.events_db.exists {
@@ -170,7 +170,7 @@ fn check_data_integrity(project_root: &Path) -> DataIntegrity {
             .warnings
             .push("events.db not found".to_string());
     } else {
-        match Connection::open(events_path) {
+        match Connection::open(&events_path) {
             Ok(conn) => {
                 let quick_check: String = conn
                     .query_row("PRAGMA quick_check", [], |row| row.get(0))
@@ -269,7 +269,8 @@ fn check_emission_coverage(project_root: &Path) -> EmissionCoverage {
         types_checked: event_types.len(),
         ..Default::default()
     };
-    let conn = match Connection::open(eventlog::EVENTS_DB) {
+    let events_path = eventlog::resolve_events_db_path(project_root);
+    let conn = match Connection::open(events_path) {
         Ok(c) => c,
         Err(_) => return coverage,
     };

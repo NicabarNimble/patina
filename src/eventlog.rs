@@ -174,13 +174,18 @@ pub fn set_last_processed(conn: &Connection, scraper: &str, value: &str) -> Resu
 /// Eliminates per-call exists() syscall overhead (CLI: negligible; MCP: meaningful).
 static EVENTS_INIT: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
 
-fn resolve_events_db_path(project_root: &Path) -> PathBuf {
+pub fn resolve_events_db_path(project_root: &Path) -> PathBuf {
     if let Some(uid) = resolve_project_uid(project_root) {
         if let Ok(path) = crate::paths::mother::projects::events_db(&uid) {
             return path;
         }
     }
     project_root.join(EVENTS_DB)
+}
+
+pub fn events_db_path() -> Result<PathBuf> {
+    let project_root = std::env::current_dir()?;
+    Ok(resolve_events_db_path(&project_root))
 }
 
 pub fn resolve_patina_db_path(project_root: &Path) -> PathBuf {
