@@ -221,6 +221,102 @@ Domain-specific fields (when relevant):
 - `trust_model` (multi-Mother or P2P objectives)
 - `encryption_requirements` (privacy-sensitive objectives)
 
+### Validated recipe — `folder-text-to-parquet`
+
+```yaml
+objective_id: folder-text-to-parquet
+user_intent: "Ingest local .txt/.md files into parquet with provenance and catalog registration."
+children:
+  - child: file-system-monitor
+    action: scan
+    config:
+      folder_path: /input
+    outputs:
+      stream: file.found
+
+  - child: content-extractor
+    action: extract-found
+    config:
+      subscribe: file.found
+    outputs:
+      stream: record.extracted
+
+  - child: schema-enforcer
+    action: enforce-schema
+    config:
+      subscribe: record.extracted
+    outputs:
+      stream: record.validated
+
+  - child: dedup-filter
+    action: filter-dedup
+    config:
+      subscribe: record.validated
+      dedupe_key: content_hash
+    outputs:
+      stream: record.ready
+
+  - child: record-writer
+    action: write-records
+    config:
+      subscribe: record.ready
+      output_root: /lake
+      output_path: six-child-batch.parquet
+    outputs:
+      stream: file.written
+
+  - child: lakehouse-catalog
+    action: register-written
+    config:
+      subscribe: file.written
+      add_nullable_columns: [source_owner] # validated schema evolution path
+
+composition:
+  - file-system-monitor.file.found -> content-extractor
+  - content-extractor.record.extracted -> schema-enforcer
+  - schema-enforcer.record.validated -> dedup-filter
+  - dedup-filter.record.ready -> record-writer
+  - record-writer.file.written -> lakehouse-catalog
+
+measurement_contract:
+  mother_guaranteed:
+    - mother_handle_latency_ms
+    - mother_handle_throughput
+    - mother_handle_success
+    - mother_handle_error
+  child_declared:
+    - file-system-monitor.files_discovered
+    - record-writer.records_written
+    - record-writer.batch_size
+    - record-writer.write_latency_ms
+    - dedup-filter.duplicate_output_rate_pct
+    - schema-enforcer.provenance_completeness_pct
+
+acceptance_gates:
+  - gate: throughput
+    observed_by: mother
+    signal: mother_handle_throughput > 0
+  - gate: error_rate
+    observed_by: mother
+    signal: mother_handle_error == 0 in successful fixture run
+  - gate: checkpoint_restart
+    observed_by: mother
+    signal: rerun with after_offset checkpoints reprocesses 0 records
+  - gate: duplicate_rate
+    observed_by: child
+    signal: dedup-filter.duplicate_output_rate_pct == 0
+  - gate: provenance_completeness
+    observed_by: child
+    signal: schema-enforcer.provenance_completeness_pct == 100
+  - gate: schema_evolution
+    observed_by: integration
+    signal: add_nullable_columns increments schema_version and preserves catalog entries
+
+failure_recovery:
+  - Persist stream offsets and resume via after_offset per child action.
+  - Dedup state (`dedup:<content_hash>`) prevents duplicate downstream writes after replay.
+```
+
 ## Unknowns (resolved during build, not before)
 
 These are assumptions the design depends on that have not been proven. They will be encountered and resolved during construction — not tested in isolation first. When an unknown is hit, the resolution is documented in the session and the spec is adapted with user approval.
