@@ -8,7 +8,7 @@ use std::path::Path;
 use patina::spec::{parse_spec_file, SpecFrontmatter, SpecStatus};
 
 use super::archive::load_spec;
-use super::DB_PATH;
+use super::db_path;
 
 /// An unchecked exit criterion (for check results)
 #[derive(Debug, Clone, Serialize)]
@@ -311,9 +311,9 @@ pub fn get_all_specs(filters: &ListFilters) -> Result<Vec<SpecInfo>> {
         disk_specs.into_iter().map(|s| (s.id.clone(), s)).collect();
 
     // 2. Merge with DB if it exists (supplementary data)
-    let db_path = Path::new(DB_PATH);
+    let db_path = db_path()?;
     if db_path.exists() {
-        if let Ok(conn) = Connection::open(db_path) {
+        if let Ok(conn) = Connection::open(&db_path) {
             let mut stmt = conn.prepare(
                 "SELECT p.id, p.status, p.target, p.title
                  FROM patterns p

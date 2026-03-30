@@ -237,7 +237,7 @@ fn run_safeguard_checks(new_version: &str, spec_path: &str) -> Result<()> {
 /// Fine-grained staleness checks are left to `patina scrape` — checking every
 /// spec file on every release is wasteful when the scrape timestamp is visible.
 fn check_index_freshness() -> Result<()> {
-    let db_path = Path::new(".patina/local/data/patina.db");
+    let db_path = crate::eventlog::patina_db_path()?;
     if !db_path.exists() {
         anyhow::bail!(
             "No index found\n\n\

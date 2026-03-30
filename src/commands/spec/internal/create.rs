@@ -5,9 +5,9 @@ use std::path::Path;
 
 use patina::spec::{serialize_spec_file, Sessions, SpecFrontmatter, SpecStatus, SpecType};
 
+use super::db_path;
 use super::mutations::git_stage_and_commit;
 use super::queue::tag_exists;
-use super::DB_PATH;
 
 /// Typed result for spec create command.
 #[derive(Debug, Serialize)]
@@ -172,9 +172,9 @@ pub fn create_spec_value(
     git_stage_and_commit(&directory, &commit_msg)?;
 
     // 11. Update database
-    let db_path = Path::new(DB_PATH);
+    let db_path = db_path()?;
     if db_path.exists() {
-        let conn = Connection::open(db_path).context("Failed to open database")?;
+        let conn = Connection::open(&db_path).context("Failed to open database")?;
         conn.execute(
             "INSERT OR REPLACE INTO patterns (id, title, layer, status, file_path) VALUES (?1, ?2, ?3, ?4, ?5)",
             rusqlite::params![id, display_title, "surface", SpecStatus::Draft.as_str(), spec_path],

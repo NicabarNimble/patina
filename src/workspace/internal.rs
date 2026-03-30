@@ -128,6 +128,21 @@ pub fn setup() -> Result<SetupResult> {
         .with_context(|| format!("Failed to create {}", mother.display()))?;
     println!("  ✓ Created {}", mother.display());
 
+    // ~/.patina/mother/persona/default/
+    let persona_dir =
+        paths::mother::persona::ensure_persona_dir("default").map_err(|e| anyhow::anyhow!(e))?;
+    let beliefs_db =
+        paths::mother::persona::beliefs_db("default").map_err(|e| anyhow::anyhow!(e))?;
+    rusqlite::Connection::open(&beliefs_db)
+        .with_context(|| format!("Failed to initialize {}", beliefs_db.display()))?;
+    let identity_age =
+        paths::mother::persona::identity_age("default").map_err(|e| anyhow::anyhow!(e))?;
+    if !identity_age.exists() {
+        fs::write(&identity_age, "")
+            .with_context(|| format!("Failed to create {}", identity_age.display()))?;
+    }
+    println!("  ✓ Created {}", persona_dir.display());
+
     // ~/.patina/adapters/
     fs::create_dir_all(&adapters)?;
 

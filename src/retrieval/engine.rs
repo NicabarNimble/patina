@@ -5,6 +5,7 @@
 //! The QueryEngine still handles multi-repo federation for semantic queries.
 
 use anyhow::Result;
+use patina::eventlog;
 use rusqlite::Connection;
 use std::path::Path;
 use std::time::Instant;
@@ -239,7 +240,7 @@ impl QueryEngine {
 
         // 1. Query current project
         let current_dir = std::env::current_dir()?;
-        if current_dir.join(".patina/local/data/patina.db").exists() {
+        if eventlog::resolve_patina_db_path(&current_dir).exists() {
             if let Ok(results) = self.query_local(query, limit) {
                 all_results.extend(results);
             }
@@ -418,9 +419,12 @@ fn quota_merge(per_domain: Vec<Vec<FusedResult>>, limit: usize) -> Vec<FusedResu
 
 /// Populate structural annotations from module_signals table
 fn populate_annotations(results: &mut [FusedResult]) {
-    const DB_PATH: &str = ".patina/local/data/patina.db";
+    let db_path = match eventlog::patina_db_path() {
+        Ok(path) => path,
+        Err(_) => return,
+    };
 
-    let conn = match Connection::open(DB_PATH) {
+    let conn = match Connection::open(db_path) {
         Ok(c) => c,
         Err(_) => return,
     };

@@ -11,9 +11,9 @@ use patina::spec::{serialize_spec_file, SpecFrontmatter, SpecStatus};
 use super::archive::{
     archive_spec_inner, find_spec, load_spec, release_and_archive, resolve_spec_dir, LoadedSpec,
 };
+use super::db_path;
 use super::queries::{check_spec_value, get_all_specs, ListFilters};
 use super::queue::tag_exists;
-use super::DB_PATH;
 
 const FRESHNESS_MAX_GLOBAL_COMMITS: u64 = 200;
 const FRESHNESS_MAX_RELATED_COMMITS: u64 = 40;
@@ -626,10 +626,10 @@ where
         .with_context(|| format!("Failed to write {}", loaded.file_path))?;
 
     // Update DB status if DB exists
-    let db_path = Path::new(DB_PATH);
+    let db_path = db_path()?;
     if db_path.exists() {
         if let Some(status) = post.status {
-            let conn = Connection::open(db_path).context("Failed to open database")?;
+            let conn = Connection::open(&db_path).context("Failed to open database")?;
             conn.execute(
                 "UPDATE patterns SET status = ?1 WHERE id = ?2",
                 rusqlite::params![status.as_str(), pre.id],
@@ -922,9 +922,9 @@ pub fn complete_spec_value(id: &str, major: bool, force: bool) -> Result<Mutatio
         Err(e) => {
             // with_content_rollback already restored the YAML file.
             // Also restore DB status to pre-mutation value.
-            let db_path = Path::new(DB_PATH);
+            let db_path = db_path()?;
             if db_path.exists() {
-                if let Ok(conn) = Connection::open(db_path) {
+                if let Ok(conn) = Connection::open(&db_path) {
                     let _ = conn.execute(
                         "UPDATE patterns SET status = ?1 WHERE id = ?2",
                         rusqlite::params![pre_status, id],
@@ -1001,9 +1001,9 @@ pub fn abandon_spec_value(id: &str, reason: Option<&str>) -> Result<MutationResu
         Err(e) => {
             // with_content_rollback already restored the YAML file.
             // Also restore DB status to pre-mutation value.
-            let db_path = Path::new(DB_PATH);
+            let db_path = db_path()?;
             if db_path.exists() {
-                if let Ok(conn) = Connection::open(db_path) {
+                if let Ok(conn) = Connection::open(&db_path) {
                     let _ = conn.execute(
                         "UPDATE patterns SET status = ?1 WHERE id = ?2",
                         rusqlite::params![pre_status, id],
@@ -1160,9 +1160,9 @@ pub fn resume_spec_value(id: &str, force: bool) -> Result<MutationResult> {
 
     // 4. Clear spec_deps if was blocked
     if loaded_status == SpecStatus::Blocked {
-        let db_path = Path::new(DB_PATH);
+        let db_path = db_path()?;
         if db_path.exists() {
-            let conn = Connection::open(db_path).context("Failed to open database")?;
+            let conn = Connection::open(&db_path).context("Failed to open database")?;
             conn.execute(
                 "DELETE FROM spec_deps WHERE spec_id = ?1",
                 rusqlite::params![id],
@@ -1227,9 +1227,9 @@ pub fn block_spec_value(id: &str, blocker: &str, reason: &str) -> Result<Mutatio
         })?;
 
         // Update spec_deps in DB
-        let db_path = Path::new(DB_PATH);
+        let db_path = db_path()?;
         if db_path.exists() {
-            let conn = Connection::open(db_path).context("Failed to open database")?;
+            let conn = Connection::open(&db_path).context("Failed to open database")?;
             conn.execute(
                 "INSERT OR IGNORE INTO spec_deps (spec_id, depends_on) VALUES (?1, ?2)",
                 rusqlite::params![id, blocker],
@@ -1302,9 +1302,9 @@ pub fn rename_spec_value(id: &str, new_id: &str) -> Result<MutationResult> {
     let new_file = new_dir.join("SPEC.md");
     let new_file_str = new_file.to_string_lossy().to_string();
 
-    let db_path = Path::new(DB_PATH);
+    let db_path = db_path()?;
     if db_path.exists() {
-        let conn = Connection::open(db_path).context("Failed to open database")?;
+        let conn = Connection::open(&db_path).context("Failed to open database")?;
         conn.execute(
             "UPDATE patterns SET id = ?1, file_path = ?2 WHERE id = ?3",
             rusqlite::params![new_id, new_file_str, id],

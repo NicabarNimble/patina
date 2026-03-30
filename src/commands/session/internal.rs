@@ -720,7 +720,7 @@ fn note_session_document(
     // 4. Write session.observation event to eventlog
     //    Read session ID from the active session file for the source_id
     let session_id = read_session_id(session_path)?;
-    let db_path = project_root.join(patina::eventlog::PATINA_DB);
+    let db_path = patina::eventlog::resolve_patina_db_path(project_root);
     let conn = patina::eventlog::initialize(&db_path)?;
     let timestamp = now.to_rfc3339();
     let data = json!({
@@ -1019,7 +1019,7 @@ mod tests {
         config.adapters.allowed = vec!["opencode".to_string(), "gemini".to_string()];
         config.adapters.default = "opencode".to_string();
         project::save(temp.path(), &config).unwrap();
-        fs::create_dir_all(temp.path().join(".patina/local/data")).unwrap();
+        fs::create_dir_all(temp.path().join(".patina").join("local").join("data")).unwrap();
         temp
     }
 

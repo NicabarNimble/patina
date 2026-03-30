@@ -250,10 +250,10 @@ pub(super) struct FoundSpec {
 /// Tries DB first, falls back to filesystem scan for unscraped specs.
 pub(super) fn find_spec(id: &str) -> Result<FoundSpec> {
     // Try DB first
-    let db_path = Path::new(super::DB_PATH);
+    let db_path = super::db_path()?;
 
     if db_path.exists() {
-        if let Ok(conn) = Connection::open(db_path) {
+        if let Ok(conn) = Connection::open(&db_path) {
             let result = conn.query_row(
                 "SELECT file_path, status, title FROM patterns WHERE id = ?1",
                 rusqlite::params![id],

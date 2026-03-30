@@ -613,7 +613,7 @@ impl BeliefRow {
 }
 
 fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool, stale: bool) -> Result<()> {
-    let db_path = Path::new(database::PATINA_DB);
+    let db_path = database::patina_db_path()?;
     if !db_path.exists() {
         anyhow::bail!("No database found. Run `patina scrape` first.");
     }
@@ -622,7 +622,7 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool, stale: bo
     let config = patina::project::load(Path::new(".")).unwrap_or_default();
     let stale_days = config.beliefs.stale_days;
 
-    let conn = Connection::open(db_path)?;
+    let conn = Connection::open(&db_path)?;
 
     // Check if metric columns exist
     let has_metrics = conn
@@ -1050,13 +1050,12 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool, stale: bo
 /// belief is semantically connected to.
 fn run_grounding_report(conn: &Connection, rows: &[BeliefRow]) -> Result<()> {
     // Get embeddings path
+    let project_root = std::env::current_dir()?;
     let model = crate::commands::scry::internal::search::get_embedding_model();
-    let index_path = format!(
-        ".patina/local/data/embeddings/{}/projections/semantic.usearch",
-        model
-    );
+    let index_path = patina::paths::project::model_projections_dir(&project_root, &model)
+        .join("semantic.usearch");
 
-    if !Path::new(&index_path).exists() {
+    if !index_path.exists() {
         println!("  Grounding: semantic index not found. Run `patina oxidize` first.\n");
         return Ok(());
     }
@@ -1071,7 +1070,7 @@ fn run_grounding_report(conn: &Connection, rows: &[BeliefRow]) -> Result<()> {
 
     let index = Index::new(&index_options).context("Failed to create index")?;
     index
-        .load(&index_path)
+        .load(index_path.to_string_lossy().as_ref())
         .context("Failed to load semantic index")?;
 
     use patina::embeddings::offsets::*;

@@ -4,6 +4,7 @@
 
 use anyhow::{Context, Result};
 use chrono::Utc;
+use patina::eventlog;
 use rusqlite::Connection;
 use serde::Serialize;
 use std::fs;
@@ -12,7 +13,9 @@ use std::path::Path;
 use super::ReportOptions;
 use crate::commands::scry::{scry, ScryOptions};
 
-const DB_PATH: &str = ".patina/local/data/patina.db";
+fn local_db_path() -> Result<String> {
+    Ok(eventlog::patina_db_path()?.to_string_lossy().to_string())
+}
 
 // ============================================================================
 // Data Structures
@@ -95,7 +98,7 @@ pub fn generate_report(options: ReportOptions) -> Result<()> {
     // Determine database path
     let db_path = match &options.repo {
         Some(name) => crate::commands::repo::get_db_path(name)?,
-        None => DB_PATH.to_string(),
+        None => local_db_path()?,
     };
 
     // Check if database exists
@@ -356,7 +359,8 @@ fn collect_rag_health(conn: &Connection) -> Result<RagHealth> {
         .unwrap_or(0);
 
     // Check for vector indices
-    let embeddings_dir = Path::new(".patina/local/data/embeddings");
+    let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let embeddings_dir = patina::paths::project::embeddings_dir(&project_root);
     let mut vector_dimensions = Vec::new();
 
     if embeddings_dir.exists() {

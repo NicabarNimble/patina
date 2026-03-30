@@ -6,8 +6,9 @@
 //! # Example
 //! ```no_run
 //! use patina::db::SqliteDatabase;
+//! use std::path::Path;
 //!
-//! let db = SqliteDatabase::open(".patina/local/data/facts.db")?;
+//! let db = SqliteDatabase::open(Path::new("facts.db"))?;
 //! db.execute("CREATE TABLE test (id INTEGER)", &[])?;
 //! # Ok::<(), anyhow::Error>(())
 //! ```

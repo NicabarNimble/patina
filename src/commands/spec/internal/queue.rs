@@ -2,12 +2,11 @@ use anyhow::Result;
 use rusqlite::Connection;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::path::Path;
 
 use patina::spec::SpecStatus;
 
+use super::db_path;
 use super::queries::{get_all_specs, get_blocked_specs, ListFilters, SpecInfo};
-use super::DB_PATH;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct Recommendation {
@@ -172,11 +171,14 @@ pub fn spec_age_days_from_list(spec: &SpecInfo) -> i64 {
 
 /// Load dependency counts from spec_deps: how many specs depend on each spec.
 pub fn load_dep_counts() -> HashMap<String, usize> {
-    let db_path = Path::new(DB_PATH);
+    let db_path = match db_path() {
+        Ok(path) => path,
+        Err(_) => return HashMap::new(),
+    };
     if !db_path.exists() {
         return HashMap::new();
     }
-    let conn = match Connection::open(db_path) {
+    let conn = match Connection::open(&db_path) {
         Ok(c) => c,
         Err(_) => return HashMap::new(),
     };

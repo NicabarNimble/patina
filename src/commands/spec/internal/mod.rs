@@ -10,7 +10,9 @@ mod queries;
 mod queue;
 mod split;
 
-pub(crate) const DB_PATH: &str = ".patina/local/data/patina.db";
+pub(crate) fn db_path() -> anyhow::Result<std::path::PathBuf> {
+    patina::eventlog::patina_db_path()
+}
 
 // --- Re-exports for parent mod.rs ---
 //
