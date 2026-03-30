@@ -4,7 +4,13 @@ kind = "knowledge-child"
 role = "app"
 
 [needs]
-toys = ["log", "events", "state"]
+toys = ["log", "events", "state", "measure"]
 
 [needs.scopes.events]
 subscribe = ["record.validated"]
+
+[needs.metrics]
+records_seen = { type = "counter", labels = [] }
+ready_records = { type = "counter", labels = [] }
+duplicate_records = { type = "counter", labels = [] }
+duplicate_output_rate_pct = { type = "gauge", labels = [] }

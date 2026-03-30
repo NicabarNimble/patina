@@ -4,7 +4,12 @@ kind = "knowledge-child"
 role = "app"
 
 [needs]
-toys = ["log", "events"]
+toys = ["log", "events", "measure"]
 
 [needs.scopes.events]
 subscribe = ["record.extracted"]
+
+[needs.metrics]
+provenance_complete_records = { type = "counter", labels = [] }
+provenance_incomplete_records = { type = "counter", labels = [] }
+provenance_completeness_pct = { type = "gauge", labels = [] }

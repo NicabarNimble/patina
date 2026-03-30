@@ -51,6 +51,14 @@ fn emit(topic: &str, payload_json: String) -> Result<u64, String> {
     patina_sdk::knowledge_child::wasi::messaging::producer::send(&client, &message)
 }
 
+fn emit_metric_counter(name: &str, delta: f64) -> Result<(), String> {
+    patina_sdk::knowledge_child::patina::measure::measure::counter(name, delta)
+}
+
+fn emit_metric_gauge(name: &str, value: f64) -> Result<(), String> {
+    patina_sdk::knowledge_child::patina::measure::measure::gauge(name, value)
+}
+
 impl DedupFilterChild {
     fn filter_dedup(&mut self, payload: &str) -> Result<String, String> {
         let payload_value = parse_payload(payload)?;
@@ -75,11 +83,14 @@ impl DedupFilterChild {
         let mut duplicate_records = 0_u64;
         let mut duplicates = Vec::new();
         let mut last_offset = None;
+        let mut duplicate_output_violations = 0_u64;
+        let mut ready_hashes = std::collections::HashSet::new();
 
         for event in events {
             last_offset = Some(event.offset);
             let record: Record = serde_json::from_str(&event.payload)
                 .map_err(|e| format!("invalid record.validated payload: {}", e))?;
+            emit_metric_counter("records_seen", 1.0)?;
 
             let dedup_key = format!("dedup:{}", record.content_hash);
             if state.get(&dedup_key).is_some() {
@@ -94,6 +105,7 @@ impl DedupFilterChild {
                 )?;
                 duplicates.push(duplicate);
                 duplicate_records += 1;
+                emit_metric_counter("duplicate_records", 1.0)?;
                 continue;
             }
 
@@ -102,8 +114,19 @@ impl DedupFilterChild {
                 "record.ready",
                 serde_json::to_string(&record).map_err(|e| e.to_string())?,
             )?;
+            if !ready_hashes.insert(record.content_hash.clone()) {
+                duplicate_output_violations += 1;
+            }
             ready_records += 1;
+            emit_metric_counter("ready_records", 1.0)?;
         }
+
+        let duplicate_output_rate_pct = if ready_records == 0 {
+            0.0
+        } else {
+            (duplicate_output_violations as f64 / ready_records as f64) * 100.0
+        };
+        emit_metric_gauge("duplicate_output_rate_pct", duplicate_output_rate_pct)?;
 
         if let Some(offset) = last_offset {
             patina_sdk::knowledge_child::patina::events_stream::events_stream::ack(
@@ -123,6 +146,7 @@ impl DedupFilterChild {
             "status": "ok",
             "ready_records": ready_records,
             "duplicate_records": duplicate_records,
+            "duplicate_output_rate_pct": duplicate_output_rate_pct,
             "duplicates": duplicates,
             "dedup_keys": state.list_prefix("dedup:"),
             "acked_through": last_offset,

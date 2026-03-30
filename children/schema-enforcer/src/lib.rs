@@ -86,6 +86,24 @@ fn emit(topic: &str, payload_json: String) -> Result<u64, String> {
     patina_sdk::knowledge_child::wasi::messaging::producer::send(&client, &message)
 }
 
+fn emit_metric_counter(name: &str, delta: f64) -> Result<(), String> {
+    patina_sdk::knowledge_child::patina::measure::measure::counter(name, delta)
+}
+
+fn emit_metric_gauge(name: &str, value: f64) -> Result<(), String> {
+    patina_sdk::knowledge_child::patina::measure::measure::gauge(name, value)
+}
+
+fn provenance_complete(record: &Record) -> bool {
+    !record.source_path.trim().is_empty()
+        && !record.source_hash.trim().is_empty()
+        && !record.source_modified_at.trim().is_empty()
+        && record.source_size_bytes > 0
+        && !record.ingested_at.trim().is_empty()
+        && !record.batch_id.trim().is_empty()
+        && record.schema_version >= 1
+}
+
 impl SchemaEnforcerChild {
     fn enforce_schema(&mut self, payload: &str) -> Result<String, String> {
         let payload_value = parse_payload(payload)?;
@@ -108,12 +126,22 @@ impl SchemaEnforcerChild {
         let mut rejected_records = 0_u64;
         let mut rejected = Vec::new();
         let mut last_offset = None;
+        let mut provenance_complete_records = 0_u64;
+        let mut provenance_incomplete_records = 0_u64;
         let log = granted::log();
 
         for event in events {
             last_offset = Some(event.offset);
             let record: Record = serde_json::from_str(&event.payload)
                 .map_err(|e| format!("invalid record.extracted payload: {}", e))?;
+
+            if provenance_complete(&record) {
+                provenance_complete_records += 1;
+                emit_metric_counter("provenance_complete_records", 1.0)?;
+            } else {
+                provenance_incomplete_records += 1;
+                emit_metric_counter("provenance_incomplete_records", 1.0)?;
+            }
 
             match validate_record(&record) {
                 Ok(()) => {
@@ -135,6 +163,14 @@ impl SchemaEnforcerChild {
             }
         }
 
+        let provenance_total = provenance_complete_records + provenance_incomplete_records;
+        let provenance_completeness_pct = if provenance_total == 0 {
+            100.0
+        } else {
+            (provenance_complete_records as f64 / provenance_total as f64) * 100.0
+        };
+        emit_metric_gauge("provenance_completeness_pct", provenance_completeness_pct)?;
+
         if let Some(offset) = last_offset {
             patina_sdk::knowledge_child::patina::events_stream::events_stream::ack(
                 "record.extracted",
@@ -153,6 +189,9 @@ impl SchemaEnforcerChild {
             "status": "ok",
             "validated_records": validated_records,
             "rejected_records": rejected_records,
+            "provenance_complete_records": provenance_complete_records,
+            "provenance_incomplete_records": provenance_incomplete_records,
+            "provenance_completeness_pct": provenance_completeness_pct,
             "rejected": rejected,
             "acked_through": last_offset,
         })
