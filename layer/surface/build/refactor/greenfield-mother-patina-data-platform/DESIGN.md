@@ -238,6 +238,53 @@ Events are like LiveStore's event log — they're the source of truth for this m
 
 7. **patina rebuild routes through Mother path.** Regenerates patina.db and embeddings. Mother owns the projection path.
 
+## Build Target
+
+Deliver a complete cutover to Mother-scoped per-project databases (`events.db`, `patina.db`, `runtime.db`) with zero project-local SQLite runtime writes, while preserving standalone CLI protocol verbs and adding persona store scaffolding.
+
+## Resolved Decisions
+
+1. Keep core verbs standalone (direct local SQLite opens) and treat Mother daemon as additive coordination.
+2. Store project databases under `~/.patina/mother/projects/{uid}/` and split Mother lifecycle state into `state.db`.
+3. Keep embeddings as working-copy cache under project `.patina/local/cache/embeddings/`.
+4. Use `child:*` taxonomy for new child events while preserving legacy `plugin:*` read compatibility.
+5. Execute migration with explicit lock/copy/verify/delete/marker protocol and no move-before-verify behavior.
+
+## Commits
+
+- `f7e4150f` belief: standards-are-storage-coordination-sits-above
+- `1ce8d60c` spec: greenfield-mother-patina-data-platform design and gates
+- `0aaffaeb` feat: Mother project and persona path resolution — GMDP-G2/G10
+- `4218d01a` feat: project registration and runtime split — GMDP-G3/G5/G9
+- `9af59cf4` refactor: unify event writing, kill registry duplication — GMDP-G4
+- `bc0da7b7` refactor: rewire pipeline to Mother paths — GMDP-G6
+- `bd832c81` refactor: eliminate raw .patina/local/data refs — GMDP-G7/G8
+- `789123b0` refactor: child:* source taxonomy — GMDP-G7
+- `f9e9c4f8` session: archive sessions
+
+## Direct Code Targets
+
+- `src/eventlog.rs`
+- `src/paths.rs`
+- `mother/src/state.rs`
+- `mother/src/registry.rs`
+- `mother/src/eventlog_schema.rs`
+- `src/child/internal/host_support.rs`
+- `src/commands/{scrape,oxidize,scry,eval,assay,measure,rebuild,session,spec}/`
+- `src/mother/doctor_runtime.rs`
+
+## Verification Plan
+
+1. Preflight/migration checks: daemon stopped, WAL handling, lock acquisition, integrity and row-count verification, marker creation.
+2. Compile/test gates: `cargo check --workspace -q`, `cargo test -q --lib`.
+3. Integration gate: `cargo test -q --test wasm_integration folder_text_to_parquet_six_child_pipeline_composes_via_events`.
+4. Smoke gate: `patina scrape && patina scry "how does handle work?" --limit 3`.
+5. Spec gate: `patina spec check greenfield-mother-patina-data-platform --json` must report all criteria checked.
+
+## Build Readiness
+
+Ready to complete. All gate criteria are checked and verification commands pass on current code after migration cutover cleanup.
+
 ## Open Questions (resolved)
 
 1. **How does patina rebuild work?** → Rebuild runs scrape (writes to Mother-scoped patina.db) then oxidize (rebuilds local embeddings). Mother path resolution, same as any other command.
