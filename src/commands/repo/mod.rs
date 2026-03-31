@@ -64,6 +64,10 @@ pub enum RepoCommands {
         /// Also run oxidize to build semantic indices
         #[arg(long)]
         oxidize: bool,
+
+        /// Number of repositories to process concurrently (used with --all)
+        #[arg(long)]
+        jobs: Option<usize>,
     },
 
     /// Remove a repository
@@ -104,14 +108,27 @@ pub fn execute_cli(
             no_oxidize,
         },
         (Some(RepoCommands::List { status }), _) => RepoCommand::List { status },
-        (Some(RepoCommands::Update { name, all, oxidize }), _) => {
+        (
+            Some(RepoCommands::Update {
+                name,
+                all,
+                oxidize,
+                jobs,
+            }),
+            _,
+        ) => {
             if all {
                 RepoCommand::Update {
                     name: None,
                     oxidize,
+                    jobs,
                 }
             } else {
-                RepoCommand::Update { name, oxidize }
+                RepoCommand::Update {
+                    name,
+                    oxidize,
+                    jobs,
+                }
             }
         }
         (Some(RepoCommands::Remove { name }), _) => RepoCommand::Remove { name },
@@ -154,8 +171,8 @@ pub fn update(name: &str, oxidize: bool) -> Result<()> {
 }
 
 /// Update all repositories
-pub fn update_all(oxidize: bool) -> Result<()> {
-    internal::update_all_repos(oxidize)
+pub fn update_all(oxidize: bool, jobs: Option<usize>) -> Result<()> {
+    internal::update_all_repos(oxidize, jobs)
 }
 
 /// Remove a repository
@@ -276,11 +293,18 @@ pub fn execute(command: RepoCommand) -> Result<()> {
             }
             Ok(())
         }
-        RepoCommand::Update { name, oxidize } => {
+        RepoCommand::Update {
+            name,
+            oxidize,
+            jobs,
+        } => {
             if let Some(n) = name {
+                if jobs.is_some() {
+                    println!("ℹ️  Ignoring --jobs for single repository update");
+                }
                 update(&n, oxidize)
             } else {
-                update_all(oxidize)
+                update_all(oxidize, jobs)
             }
         }
         RepoCommand::Remove { name } => remove(&name),
@@ -302,6 +326,7 @@ pub enum RepoCommand {
     Update {
         name: Option<String>,
         oxidize: bool,
+        jobs: Option<usize>,
     },
     Remove {
         name: String,

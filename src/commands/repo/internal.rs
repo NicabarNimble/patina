@@ -275,7 +275,7 @@ pub fn update_repo(name: &str, oxidize: bool) -> Result<()> {
 }
 
 /// Update all repositories
-pub fn update_all_repos(oxidize: bool) -> Result<()> {
+pub fn update_all_repos(oxidize: bool, jobs: Option<usize>) -> Result<()> {
     let repos = list_repos()?;
 
     if repos.is_empty() {
@@ -283,7 +283,11 @@ pub fn update_all_repos(oxidize: bool) -> Result<()> {
         return Ok(());
     }
 
+    let requested_jobs = jobs.unwrap_or(1);
+    let effective_jobs = requested_jobs.max(1).min(repos.len());
+
     println!("🔄 Updating {} repositories...\n", repos.len());
+    println!("   Mode: batch update (jobs={})", effective_jobs);
 
     let mut success = 0;
     for repo in &repos {
