@@ -56,7 +56,7 @@ exit_criteria:
     checked: true
   - id: meh12-workspace-compiles-tests-pass
     text: "cargo check --workspace -q. cargo test -q --lib. cargo test -q -p mother. patina mother start + /health returns deep health JSON."
-    checked: false
+    checked: true
 ---
 # refactor: Mother Enterprise Hardening
 
