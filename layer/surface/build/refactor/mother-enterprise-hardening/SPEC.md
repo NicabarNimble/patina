@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: mother-enterprise-hardening
-status: ready
+status: active
 created: 2026-03-30
 sessions:
   origin: 20260330-083255-177610000
