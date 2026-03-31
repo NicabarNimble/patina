@@ -3,6 +3,7 @@
 //! Central storage at `~/.patina/cache/repos/` with registry at `~/.patina/registry.yaml`
 
 use anyhow::{bail, Context, Result};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -239,36 +240,12 @@ pub fn update_repo(name: &str, oxidize: bool) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found", name))?
         .clone();
 
-    println!("🔄 Updating {}...\n", name);
-
-    let repo_path = Path::new(&entry.path);
-
-    // Ensure UID exists (migration for existing ref repos)
-    patina::project::create_uid_if_missing(repo_path)?;
-
-    // Git pull
-    println!("📥 Pulling latest changes...");
-    git_pull(repo_path)?;
-
-    // Re-scrape
-    println!("🔍 Re-scraping codebase...");
-    let event_count = scrape_repo(repo_path)?;
-
-    // Oxidize if requested
-    if oxidize {
-        println!("\n🧪 Building semantic indices...");
-        oxidize_repo(repo_path)?;
-    }
+    let synced_commit = run_repo_refresh(&entry, oxidize, true)?;
 
     // Record synced commit
     if let Some(entry) = registry.repos.get_mut(name) {
-        entry.synced_commit = get_head_sha(repo_path);
+        entry.synced_commit = synced_commit;
         registry.save()?;
-    }
-
-    println!("\n✅ Updated {} ({} events)", name, event_count);
-    if oxidize {
-        println!("   Semantic indices built - scry will use vector search");
     }
 
     Ok(())
@@ -289,21 +266,92 @@ pub fn update_all_repos(oxidize: bool, jobs: Option<usize>) -> Result<()> {
     println!("🔄 Updating {} repositories...\n", repos.len());
     println!("   Mode: batch update (jobs={})", effective_jobs);
 
-    let mut success = 0;
-    for repo in &repos {
-        print!("  {} ... ", repo.name);
-        match update_repo(&repo.name, oxidize) {
-            Ok(_) => {
-                println!("✓");
+    let results: Vec<(String, Result<Option<String>, String>)> = if effective_jobs > 1 {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(effective_jobs)
+            .build()
+            .context("failed to build rayon thread pool")?;
+        pool.install(|| {
+            repos
+                .par_iter()
+                .map(|repo| {
+                    (
+                        repo.name.clone(),
+                        run_repo_refresh(repo, oxidize, false).map_err(|e| e.to_string()),
+                    )
+                })
+                .collect()
+        })
+    } else {
+        repos
+            .iter()
+            .map(|repo| {
+                (
+                    repo.name.clone(),
+                    run_repo_refresh(repo, oxidize, false).map_err(|e| e.to_string()),
+                )
+            })
+            .collect()
+    };
+
+    let mut registry = Registry::load()?;
+    let mut success = 0usize;
+    for (name, result) in results {
+        match result {
+            Ok(synced_commit) => {
+                if let Some(entry) = registry.repos.get_mut(&name) {
+                    entry.synced_commit = synced_commit;
+                }
+                println!("  {} ... ✓", name);
                 success += 1;
             }
-            Err(e) => println!("✗ {}", e),
+            Err(error) => {
+                println!("  {} ... ✗ {}", name, error);
+            }
         }
     }
+
+    registry.save()?;
 
     println!("\n✅ Updated {}/{} repositories", success, repos.len());
 
     Ok(())
+}
+
+fn run_repo_refresh(entry: &RepoEntry, oxidize: bool, verbose: bool) -> Result<Option<String>> {
+    if verbose {
+        println!("🔄 Updating {}...\n", entry.name);
+    }
+
+    let repo_path = Path::new(&entry.path);
+
+    patina::project::create_uid_if_missing(repo_path)?;
+
+    if verbose {
+        println!("📥 Pulling latest changes...");
+    }
+    git_pull(repo_path)?;
+
+    if verbose {
+        println!("🔍 Re-scraping codebase...");
+    }
+    let event_count = scrape_repo(repo_path)?;
+
+    if oxidize {
+        if verbose {
+            println!("\n🧪 Building semantic indices...");
+        }
+        oxidize_repo(repo_path)?;
+    }
+
+    if verbose {
+        println!("\n✅ Updated {} ({} events)", entry.name, event_count);
+        if oxidize {
+            println!("   Semantic indices built - scry will use vector search");
+        }
+    }
+
+    Ok(get_head_sha(repo_path))
 }
 
 /// Remove a repository
