@@ -296,6 +296,7 @@ pub fn update_all_repos(oxidize: bool, jobs: Option<usize>) -> Result<()> {
 
     let mut registry = Registry::load()?;
     let mut success = 0usize;
+    let mut failures: Vec<(String, String)> = Vec::new();
     for (name, result) in results {
         match result {
             Ok(synced_commit) => {
@@ -307,6 +308,7 @@ pub fn update_all_repos(oxidize: bool, jobs: Option<usize>) -> Result<()> {
             }
             Err(error) => {
                 println!("  {} ... ✗ {}", name, error);
+                failures.push((name, error));
             }
         }
     }
@@ -315,7 +317,19 @@ pub fn update_all_repos(oxidize: bool, jobs: Option<usize>) -> Result<()> {
 
     println!("\n✅ Updated {}/{} repositories", success, repos.len());
 
-    Ok(())
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        println!("\n❌ Failed repositories:");
+        for (name, error) in &failures {
+            println!("  - {}: {}", name, error);
+        }
+        bail!(
+            "{} repository updates failed ({} succeeded)",
+            failures.len(),
+            success
+        )
+    }
 }
 
 fn run_repo_refresh(entry: &RepoEntry, oxidize: bool, verbose: bool) -> Result<Option<String>> {
