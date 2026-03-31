@@ -53,7 +53,7 @@ exit_criteria:
     checked: true
   - id: meh11-expect-audit
     text: "Production expect() calls in vault.rs and encrypted_file.rs replaced with proper Result propagation. Mother production paths have zero panic-capable calls outside startup preconditions."
-    checked: false
+    checked: true
   - id: meh12-workspace-compiles-tests-pass
     text: "cargo check --workspace -q. cargo test -q --lib. cargo test -q -p mother. patina mother start + /health returns deep health JSON."
     checked: false

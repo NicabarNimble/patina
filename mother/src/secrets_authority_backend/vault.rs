@@ -155,7 +155,7 @@ pub fn encrypt_vault(vault: &Vault, vault_path: &Path, recipients_path: &Path) -
 fn encrypt_bytes(data: &[u8], recipients: &[x25519::Recipient]) -> Result<Vec<u8>> {
     let encryptor =
         age::Encryptor::with_recipients(recipients.iter().map(|r| r as &dyn age::Recipient))
-            .expect("No recipients provided");
+            .map_err(|error| anyhow::anyhow!("Failed to initialize encryptor: {}", error))?;
 
     let mut encrypted = Vec::new();
     {

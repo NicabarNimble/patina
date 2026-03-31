@@ -298,7 +298,12 @@ fn validate_machine_id(id: &str) -> Result<()> {
 }
 
 fn write_atomic(path: &PathBuf, data: &[u8]) -> Result<()> {
-    let patina_dir = path.parent().expect("identity file has parent");
+    let patina_dir = path.parent().ok_or_else(|| {
+        anyhow::anyhow!(
+            "invalid identity path '{}': missing parent directory",
+            path.display()
+        )
+    })?;
     std::fs::create_dir_all(patina_dir)?;
 
     #[cfg(unix)]
