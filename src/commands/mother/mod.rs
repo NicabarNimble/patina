@@ -11,8 +11,10 @@
 //! ```text
 //! patina mother                    # Show daemon status
 //! patina mother start              # Start daemon (UDS default, TCP opt-in)
-//! patina mother stop               # Graceful shutdown (not yet implemented)
-//! patina mother status             # Health check (not yet implemented)
+//! patina mother stop               # Graceful shutdown
+//! patina mother status             # Health check
+//! patina mother install            # Install launchd supervisor
+//! patina mother uninstall          # Remove launchd supervisor
 //! patina mother graph              # Graph operations (sync, link, unlink, stats, learn)
 //! ```
 //!
@@ -48,6 +50,7 @@ pub(crate) use mother_crate::registry;
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use std::path::Path;
+use std::process::Command;
 
 use patina::paths;
 use patina::session::SessionManager;
@@ -76,15 +79,17 @@ pub enum MotherCommands {
         mcp: bool,
     },
 
-    /// Stop the mother daemon (not yet implemented)
-    ///
-    /// Sends a graceful shutdown signal to the running daemon.
+    /// Stop the mother daemon
     Stop,
 
-    /// Show daemon status (not yet implemented)
-    ///
-    /// Displays health, uptime, connected projects, and model cache state.
+    /// Show daemon status
     Status,
+
+    /// Install launchd supervisor (macOS)
+    Install,
+
+    /// Uninstall launchd supervisor (macOS)
+    Uninstall,
 
     /// Graph operations — manage cross-project relationships
     #[command(subcommand)]
@@ -267,8 +272,10 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             // Bare `patina mother` — show status (or help for now)
             println!("Mother daemon commands:\n");
             println!("  patina mother start    Start the daemon");
-            println!("  patina mother stop     Stop the daemon (not yet implemented)");
-            println!("  patina mother status   Show daemon status (not yet implemented)");
+            println!("  patina mother stop     Stop the daemon");
+            println!("  patina mother status   Show daemon status");
+            println!("  patina mother install  Install launchd supervisor");
+            println!("  patina mother uninstall Remove launchd supervisor");
             println!("  patina mother graph    Graph operations");
             println!("  patina mother search   Cross-project belief search\n");
             println!("Run 'patina mother --help' for details.");
@@ -284,6 +291,8 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
         }
         Some(MotherCommands::Stop) => stop_daemon(),
         Some(MotherCommands::Status) => show_status(),
+        Some(MotherCommands::Install) => install_supervisor(),
+        Some(MotherCommands::Uninstall) => uninstall_supervisor(),
         Some(MotherCommands::Graph(graph_cmd)) => execute_graph(graph_cmd),
         Some(MotherCommands::Search { query, limit }) => graph::search_beliefs_cli(&query, limit),
         Some(MotherCommands::Run { name, no_sandbox }) => run_source_cli(&name, no_sandbox),
@@ -293,6 +302,145 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             fresh_lake,
         }) => run_source_parity_cli(&name, no_sandbox, fresh_lake.as_deref()),
         Some(MotherCommands::Sources { prune }) => show_sources_cli(prune),
+    }
+}
+
+const MOTHER_LAUNCHD_LABEL: &str = "com.patina.mother";
+
+fn launch_agents_dir() -> Result<std::path::PathBuf> {
+    let home = dirs::home_dir().context("unable to resolve home directory")?;
+    Ok(home.join("Library/LaunchAgents"))
+}
+
+fn launchd_plist_path() -> Result<std::path::PathBuf> {
+    Ok(launch_agents_dir()?.join(format!("{}.plist", MOTHER_LAUNCHD_LABEL)))
+}
+
+fn xml_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+fn render_launchd_plist(exe_path: &Path) -> String {
+    let exe = xml_escape(&exe_path.display().to_string());
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n  <key>Label</key>\n  <string>{}</string>\n  <key>ProgramArguments</key>\n  <array>\n    <string>{}</string>\n    <string>mother</string>\n    <string>start</string>\n  </array>\n  <key>RunAtLoad</key>\n  <true/>\n  <key>KeepAlive</key>\n  <true/>\n</dict>\n</plist>\n",
+        MOTHER_LAUNCHD_LABEL, exe
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn launchctl_domains() -> Vec<String> {
+    let uid = unsafe { libc::geteuid() };
+    vec![format!("gui/{uid}"), format!("user/{uid}")]
+}
+
+fn install_supervisor() -> Result<()> {
+    #[cfg(not(target_os = "macos"))]
+    {
+        bail!("patina mother install is only supported on macOS");
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        fn run_launchctl(args: &[&str]) -> Result<()> {
+            let status = Command::new("launchctl")
+                .args(args)
+                .status()
+                .with_context(|| format!("running launchctl {}", args.join(" ")))?;
+            if !status.success() {
+                bail!("launchctl {} failed with status {}", args.join(" "), status);
+            }
+            Ok(())
+        }
+
+        let plist_path = launchd_plist_path()?;
+        let parent = plist_path
+            .parent()
+            .context("invalid launchd plist parent path")?;
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
+
+        let exe_path = std::env::current_exe().context("resolving current executable")?;
+        let plist = render_launchd_plist(&exe_path);
+        std::fs::write(&plist_path, plist)
+            .with_context(|| format!("writing {}", plist_path.display()))?;
+
+        for domain in launchctl_domains() {
+            let service = format!("{}/{}", domain, MOTHER_LAUNCHD_LABEL);
+            let _ = Command::new("launchctl")
+                .arg("bootout")
+                .arg(&service)
+                .status();
+        }
+        let plist_arg = plist_path.to_string_lossy().to_string();
+        let mut selected_domain = None;
+        let mut last_error = None;
+        for domain in launchctl_domains() {
+            match run_launchctl(&["bootstrap", &domain, &plist_arg]) {
+                Ok(()) => {
+                    selected_domain = Some(domain);
+                    break;
+                }
+                Err(error) => {
+                    last_error = Some(error);
+                }
+            }
+        }
+        let domain = selected_domain.ok_or_else(|| {
+            last_error.unwrap_or_else(|| anyhow::anyhow!("launchctl bootstrap failed"))
+        })?;
+        let service = format!("{}/{}", domain, MOTHER_LAUNCHD_LABEL);
+        run_launchctl(&["enable", &service])?;
+
+        println!("Installed launchd plist: {}", plist_path.display());
+        println!("Service label: {}", MOTHER_LAUNCHD_LABEL);
+        Ok(())
+    }
+}
+
+fn uninstall_supervisor() -> Result<()> {
+    #[cfg(not(target_os = "macos"))]
+    {
+        bail!("patina mother uninstall is only supported on macOS");
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        fn run_launchctl(args: &[&str]) -> Result<()> {
+            let status = Command::new("launchctl")
+                .args(args)
+                .status()
+                .with_context(|| format!("running launchctl {}", args.join(" ")))?;
+            if !status.success() {
+                bail!("launchctl {} failed with status {}", args.join(" "), status);
+            }
+            Ok(())
+        }
+
+        let plist_path = launchd_plist_path()?;
+        for domain in launchctl_domains() {
+            let service = format!("{}/{}", domain, MOTHER_LAUNCHD_LABEL);
+            let _ = Command::new("launchctl")
+                .arg("bootout")
+                .arg(&service)
+                .status();
+            let _ = run_launchctl(&["disable", &service]);
+        }
+
+        if plist_path.exists() {
+            std::fs::remove_file(&plist_path)
+                .with_context(|| format!("removing {}", plist_path.display()))?;
+            println!("Removed launchd plist: {}", plist_path.display());
+        } else {
+            println!("Launchd plist not found: {}", plist_path.display());
+        }
+
+        Ok(())
     }
 }
 
@@ -596,5 +744,28 @@ mod tests {
 
         let graph = MotherCommands::Graph(GraphCommands::Sync);
         assert!(matches!(graph, MotherCommands::Graph(_)));
+
+        let install = MotherCommands::Install;
+        assert!(matches!(install, MotherCommands::Install));
+
+        let uninstall = MotherCommands::Uninstall;
+        assert!(matches!(uninstall, MotherCommands::Uninstall));
+    }
+
+    #[test]
+    fn launchd_plist_contains_required_fields() {
+        let plist = render_launchd_plist(Path::new("/tmp/patina"));
+        assert!(plist.contains("<key>Label</key>"));
+        assert!(plist.contains(MOTHER_LAUNCHD_LABEL));
+        assert!(plist.contains("<string>mother</string>"));
+        assert!(plist.contains("<string>start</string>"));
+        assert!(plist.contains("<key>RunAtLoad</key>"));
+        assert!(plist.contains("<key>KeepAlive</key>"));
+    }
+
+    #[test]
+    fn xml_escape_escapes_special_characters() {
+        let escaped = xml_escape("a&b<c>\"d\'e");
+        assert_eq!(escaped, "a&amp;b&lt;c&gt;&quot;d&apos;e");
     }
 }
