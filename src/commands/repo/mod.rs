@@ -68,6 +68,10 @@ pub enum RepoCommands {
         /// Number of repositories to process concurrently (used with --all)
         #[arg(long)]
         jobs: Option<usize>,
+
+        /// Retry only repositories that failed in the previous batch run
+        #[arg(long)]
+        failed_only: bool,
     },
 
     /// Remove a repository
@@ -114,6 +118,7 @@ pub fn execute_cli(
                 all,
                 oxidize,
                 jobs,
+                failed_only,
             }),
             _,
         ) => {
@@ -122,12 +127,14 @@ pub fn execute_cli(
                     name: None,
                     oxidize,
                     jobs,
+                    failed_only,
                 }
             } else {
                 RepoCommand::Update {
                     name,
                     oxidize,
                     jobs,
+                    failed_only,
                 }
             }
         }
@@ -171,8 +178,8 @@ pub fn update(name: &str, oxidize: bool) -> Result<()> {
 }
 
 /// Update all repositories
-pub fn update_all(oxidize: bool, jobs: Option<usize>) -> Result<()> {
-    internal::update_all_repos(oxidize, jobs)
+pub fn update_all(oxidize: bool, jobs: Option<usize>, failed_only: bool) -> Result<()> {
+    internal::update_all_repos(oxidize, jobs, failed_only)
 }
 
 /// Remove a repository
@@ -297,14 +304,18 @@ pub fn execute(command: RepoCommand) -> Result<()> {
             name,
             oxidize,
             jobs,
+            failed_only,
         } => {
             if let Some(n) = name {
                 if jobs.is_some() {
                     println!("ℹ️  Ignoring --jobs for single repository update");
                 }
+                if failed_only {
+                    println!("ℹ️  Ignoring --failed-only for single repository update");
+                }
                 update(&n, oxidize)
             } else {
-                update_all(oxidize, jobs)
+                update_all(oxidize, jobs, failed_only)
             }
         }
         RepoCommand::Remove { name } => remove(&name),
@@ -327,6 +338,7 @@ pub enum RepoCommand {
         name: Option<String>,
         oxidize: bool,
         jobs: Option<usize>,
+        failed_only: bool,
     },
     Remove {
         name: String,

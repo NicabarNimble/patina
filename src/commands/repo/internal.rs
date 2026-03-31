@@ -54,6 +54,12 @@ pub struct RepoEntry {
     pub domains: Vec<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct FailedBatchState {
+    failed: Vec<String>,
+    updated_at: String,
+}
+
 impl Registry {
     /// Load registry from default location, validating paths on load.
     pub fn load() -> Result<Self> {
@@ -252,11 +258,24 @@ pub fn update_repo(name: &str, oxidize: bool) -> Result<()> {
 }
 
 /// Update all repositories
-pub fn update_all_repos(oxidize: bool, jobs: Option<usize>) -> Result<()> {
-    let repos = list_repos()?;
+pub fn update_all_repos(oxidize: bool, jobs: Option<usize>, failed_only: bool) -> Result<()> {
+    let mut repos = list_repos()?;
+
+    if failed_only {
+        let failed = load_failed_batch_list()?;
+        if failed.is_empty() {
+            println!("No previous batch failures recorded.");
+            return Ok(());
+        }
+        repos.retain(|repo| failed.contains(&repo.name));
+    }
 
     if repos.is_empty() {
-        println!("No repositories to update.");
+        if failed_only {
+            println!("No repositories matched previous failed batch entries.");
+        } else {
+            println!("No repositories to update.");
+        }
         return Ok(());
     }
 
@@ -313,6 +332,8 @@ pub fn update_all_repos(oxidize: bool, jobs: Option<usize>) -> Result<()> {
         }
     }
 
+    save_failed_batch_list(failures.iter().map(|(name, _)| name.clone()).collect())?;
+
     registry.save()?;
 
     println!("\n✅ Updated {}/{} repositories", success, repos.len());
@@ -330,6 +351,36 @@ pub fn update_all_repos(oxidize: bool, jobs: Option<usize>) -> Result<()> {
             success
         )
     }
+}
+
+fn failed_batch_state_path() -> std::path::PathBuf {
+    paths::patina_home().join("local/repo-update-failures.json")
+}
+
+fn load_failed_batch_list() -> Result<Vec<String>> {
+    let path = failed_batch_state_path();
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let content =
+        fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
+    let state: FailedBatchState = serde_json::from_str(&content)
+        .with_context(|| format!("Failed to parse {}", path.display()))?;
+    Ok(state.failed)
+}
+
+fn save_failed_batch_list(failed: Vec<String>) -> Result<()> {
+    let path = failed_batch_state_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let state = FailedBatchState {
+        failed,
+        updated_at: chrono::Utc::now().to_rfc3339(),
+    };
+    let content = serde_json::to_string_pretty(&state)?;
+    fs::write(&path, content).with_context(|| format!("Failed to write {}", path.display()))?;
+    Ok(())
 }
 
 fn run_repo_refresh(entry: &RepoEntry, oxidize: bool, verbose: bool) -> Result<Option<String>> {
