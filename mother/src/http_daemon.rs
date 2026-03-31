@@ -271,7 +271,7 @@ mod tests {
         let request =
             format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n");
         stream.write_all(request.as_bytes()).unwrap();
-        stream.shutdown(Shutdown::Write).unwrap();
+        let _ = stream.shutdown(Shutdown::Write);
 
         let mut bytes = Vec::new();
         stream.read_to_end(&mut bytes).unwrap();
