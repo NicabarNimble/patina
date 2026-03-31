@@ -7,6 +7,15 @@ static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 pub fn write_pid_file(pid_path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
+    if let Some(parent) = pid_path.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating runtime directory {}", parent.display()))?;
+            std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))
+                .with_context(|| format!("setting permissions on {}", parent.display()))?;
+        }
+    }
+
     let pid = std::process::id();
 
     std::fs::write(pid_path, pid.to_string())
