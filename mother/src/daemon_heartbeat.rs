@@ -17,7 +17,7 @@ pub fn spawn_heartbeat(registry: Arc<ChildRegistry>) {
         .spawn(move || loop {
             std::thread::sleep(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
             if let Err(error) = registry.run_knowledge_cycles(&runtime, "mother-heartbeat") {
-                eprintln!("[mother] knowledge-child heartbeat failed: {}", error);
+                tracing::warn!(%error, "knowledge-child heartbeat failed");
             }
         })
         .expect("failed to spawn heartbeat thread");

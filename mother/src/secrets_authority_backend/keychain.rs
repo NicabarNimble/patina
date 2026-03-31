@@ -6,7 +6,7 @@ use anyhow::bail;
 #[cfg(target_os = "macos")]
 fn log_debug(msg: &str) {
     if std::env::var("PATINA_LOG").is_ok() {
-        eprintln!("[DEBUG secrets::keychain] {}", msg);
+        tracing::debug!(message = msg, "secrets::keychain");
     }
 }
 

@@ -154,7 +154,7 @@ pub fn handle_connection(
                 } else {
                     "unknown panic payload".to_string()
                 };
-                eprintln!("HTTP handler panicked: {panic_message}");
+                tracing::error!(panic_message, "http handler panicked");
                 with_security_headers(json_error(500, "internal server error"))
             }
         }
@@ -186,7 +186,7 @@ pub fn accept_loop_tcp(
                     let _ = stream.shutdown(Shutdown::Write);
                 });
             }
-            Err(e) => eprintln!("TCP accept error: {}", e),
+            Err(error) => tracing::error!(%error, "tcp accept error"),
         }
     }
     std::process::exit(0);
@@ -306,7 +306,7 @@ pub fn accept_loop_uds(
                     let _ = stream.shutdown(Shutdown::Write);
                 });
             }
-            Err(e) => eprintln!("UDS accept error: {}", e),
+            Err(error) => tracing::error!(%error, "uds accept error"),
         }
     }
     std::process::exit(0);

@@ -32,7 +32,7 @@ exit_criteria:
     checked: true
   - id: meh4-structured-logging
     text: "Mother uses tracing with a JSON file subscriber. Log output to ~/.patina/mother/logs/mother.jsonl. Log levels: INFO for lifecycle events, WARN for degradation, ERROR for failures. All eprintln! calls in mother/ replaced with tracing macros."
-    checked: false
+    checked: true
   - id: meh5-wal-checkpoint-scheduling
     text: "Heartbeat thread periodically checkpoints project SQLite databases (PRAGMA wal_checkpoint(PASSIVE)). Interval configurable, default every 5 minutes. WAL files for active projects stay bounded."
     checked: false

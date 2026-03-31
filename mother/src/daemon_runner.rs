@@ -27,13 +27,8 @@ pub struct UdsServerLaunch {
 
 pub fn run_tcp_server(launch: TcpServerLaunch) -> ! {
     if launch.host != "127.0.0.1" && launch.host != "localhost" {
-        eprintln!(
-            "WARNING: Binding to {} exposes the server to the network.",
-            launch.host
-        );
-        eprintln!(
-            "  The server has no encryption (HTTP only). Use a reverse proxy for production."
-        );
+        tracing::warn!(host = %launch.host, "binding host exposes mother to the network");
+        tracing::warn!("server has no transport encryption; use a reverse proxy in production");
     }
 
     std::fs::write(&launch.token_path, launch.token.as_bytes())
@@ -44,7 +39,7 @@ pub fn run_tcp_server(launch: TcpServerLaunch) -> ! {
         std::fs::set_permissions(&launch.token_path, std::fs::Permissions::from_mode(0o600))
             .expect("failed to set Mother auth token file permissions");
     }
-    eprintln!("Auth token written to {}", launch.token_path.display());
+    tracing::info!(token_path = %launch.token_path.display(), "auth token written");
 
     println!("🚀 Mother daemon starting...");
     println!(

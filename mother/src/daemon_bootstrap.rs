@@ -54,14 +54,14 @@ pub fn load_children_from_dir<F>(
                 let manifest_path = path.with_extension("toml");
                 match loader(&path, &manifest_path) {
                     Ok(loaded) => match register_loaded_child(registry, runtime, loaded) {
-                        Ok(Some(message)) => eprintln!("[mother] {}", message),
+                        Ok(Some(message)) => tracing::info!(%message, "child loaded"),
                         Ok(None) => {}
                         Err(error) => {
-                            eprintln!("[mother] skipping {}: {}", path.display(), error)
+                            tracing::warn!(path = %path.display(), %error, "skipping child")
                         }
                     },
                     Err(error) => {
-                        eprintln!("[mother] failed to load {}: {}", path.display(), error);
+                        tracing::warn!(path = %path.display(), %error, "failed to load child");
                     }
                 }
             }
@@ -74,7 +74,7 @@ pub fn load_children_from_dir<F>(
             if path.extension().and_then(|e| e.to_str()) == Some("toml")
                 && !path.with_extension("wasm").exists()
             {
-                eprintln!("[mother] orphaned manifest (no .wasm): {}", path.display());
+                tracing::warn!(path = %path.display(), "orphaned manifest (no .wasm)");
             }
         }
     }

@@ -120,9 +120,10 @@ impl ChildRegistry {
             latency_ms,
         )
         .map_err(|error| {
-            eprintln!(
-                "[mother] failed to emit mother_handle_latency_ms for '{}': {}",
-                child_name, error
+            tracing::warn!(
+                child = child_name,
+                %error,
+                "failed to emit mother_handle_latency_ms"
             )
         });
 
@@ -134,9 +135,10 @@ impl ChildRegistry {
             1.0,
         )
         .map_err(|error| {
-            eprintln!(
-                "[mother] failed to emit mother_handle_throughput for '{}': {}",
-                child_name, error
+            tracing::warn!(
+                child = child_name,
+                %error,
+                "failed to emit mother_handle_throughput"
             )
         });
 
@@ -147,10 +149,7 @@ impl ChildRegistry {
         };
         let _ = Self::emit_mother_metric(child_name, action, metric_name, "counter", 1.0).map_err(
             |error| {
-                eprintln!(
-                    "[mother] failed to emit {} for '{}': {}",
-                    metric_name, child_name, error
-                )
+                tracing::warn!(child = child_name, metric = metric_name, %error, "failed to emit mother metric")
             },
         );
     }

@@ -8,6 +8,38 @@ use crate::registry::ChildRegistry;
 
 pub const DEFAULT_MAX_CONNECTIONS: usize = 16;
 
+#[cfg(not(test))]
+fn mother_logs_dir() -> PathBuf {
+    let home = std::env::var_os("PATINA_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".patina")
+        });
+    home.join("mother").join("logs")
+}
+
+#[cfg(not(test))]
+fn init_logging() -> Result<()> {
+    let log_dir = mother_logs_dir();
+    std::fs::create_dir_all(&log_dir)?;
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_dir.join("mother.jsonl"))?;
+
+    let subscriber = tracing_subscriber::fmt()
+        .json()
+        .with_max_level(tracing::Level::INFO)
+        .with_writer(std::sync::Mutex::new(log_file))
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber)
+        .map_err(|e| anyhow::anyhow!("failed to set tracing subscriber: {}", e))?;
+    Ok(())
+}
+
 #[derive(Debug, Clone)]
 pub enum TransportMode {
     UdsHttp {
@@ -36,6 +68,9 @@ pub struct DaemonBootstrapRuntime {
 
 #[allow(unreachable_code)]
 pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> Result<()> {
+    #[cfg(not(test))]
+    init_logging()?;
+
     let DaemonBootstrapConfig {
         transport,
         max_connections,

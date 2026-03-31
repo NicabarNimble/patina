@@ -20,7 +20,7 @@ const MIN_FILE_LEN: usize = HEADER_LEN + SALT_LEN + NONCE_LEN + TAG_LEN;
 
 fn debug_log(msg: &str) {
     if std::env::var("PATINA_LOG").is_ok() {
-        eprintln!("[DEBUG secrets::encrypted_file] {}", msg);
+        tracing::debug!(message = msg, "secrets::encrypted_file");
     }
 }
 
@@ -105,12 +105,8 @@ pub fn get_identity() -> Result<String> {
         let mode = perms.mode() & 0o777;
 
         if mode != 0o600 {
-            eprintln!(
-                "⚠️  Warning: Identity file has permissive permissions ({:o})",
-                mode
-            );
-            eprintln!("   Recommended: chmod 600 {}", path.display());
-            eprintln!("   File is encrypted but permissions should be owner-only.");
+            tracing::warn!(mode = mode, path = %path.display(), "identity file has permissive permissions");
+            tracing::warn!(path = %path.display(), "recommended: chmod 600 <path>; encrypted file should be owner-only");
         }
     }
 

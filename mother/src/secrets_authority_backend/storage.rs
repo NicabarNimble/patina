@@ -3,7 +3,7 @@ use anyhow::{bail, Result};
 
 fn debug_log(msg: &str) {
     if std::env::var("PATINA_LOG").is_ok() {
-        eprintln!("[DEBUG secrets::storage] {}", msg);
+        tracing::debug!(message = msg, "secrets::storage");
     }
 }
 
