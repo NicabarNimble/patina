@@ -382,6 +382,10 @@ fn failed_batch_state_path() -> std::path::PathBuf {
 
 fn load_failed_batch_list() -> Result<Vec<String>> {
     let path = failed_batch_state_path();
+    load_failed_batch_list_from(&path)
+}
+
+fn load_failed_batch_list_from(path: &Path) -> Result<Vec<String>> {
     if !path.exists() {
         return Ok(Vec::new());
     }
@@ -394,6 +398,10 @@ fn load_failed_batch_list() -> Result<Vec<String>> {
 
 fn save_failed_batch_list(failed: Vec<String>) -> Result<()> {
     let path = failed_batch_state_path();
+    save_failed_batch_list_to(&path, failed)
+}
+
+fn save_failed_batch_list_to(path: &Path, failed: Vec<String>) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -1240,18 +1248,11 @@ mod tests {
 
     #[test]
     fn test_failed_batch_state_roundtrip() {
-        let temp_home = tempfile::tempdir().unwrap();
-        let old_home = std::env::var_os("PATINA_HOME");
-        std::env::set_var("PATINA_HOME", temp_home.path());
+        let temp_dir = tempfile::tempdir().unwrap();
+        let state_path = temp_dir.path().join("repo-update-failures.json");
 
-        save_failed_batch_list(vec!["a/b".to_string(), "c/d".to_string()]).unwrap();
-        let loaded = load_failed_batch_list().unwrap();
+        save_failed_batch_list_to(&state_path, vec!["a/b".to_string(), "c/d".to_string()]).unwrap();
+        let loaded = load_failed_batch_list_from(&state_path).unwrap();
         assert_eq!(loaded, vec!["a/b".to_string(), "c/d".to_string()]);
-
-        if let Some(old) = old_home {
-            std::env::set_var("PATINA_HOME", old);
-        } else {
-            std::env::remove_var("PATINA_HOME");
-        }
     }
 }
