@@ -354,7 +354,10 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let shutdown_requested = Arc::new(AtomicBool::new(false));
-        let handler: Arc<dyn Fn(HttpRequest) -> HttpResponse + Send + Sync> = Arc::new(|_| {
+        let started = Arc::new(std::sync::Barrier::new(2));
+        let started_handler = Arc::clone(&started);
+        let handler: Arc<dyn Fn(HttpRequest) -> HttpResponse + Send + Sync> = Arc::new(move |_| {
+            started_handler.wait();
             std::thread::sleep(std::time::Duration::from_millis(150));
             HttpResponse::json(200, &serde_json::json!({"ok": true}))
         });
@@ -374,7 +377,7 @@ mod tests {
         });
 
         let first = std::thread::spawn(move || send_request(addr, "/slow"));
-        std::thread::sleep(std::time::Duration::from_millis(25));
+        started.wait();
         shutdown_requested.store(true, Ordering::Relaxed);
 
         let first_resp = first.join().unwrap();
