@@ -2813,6 +2813,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2",
+ "subtle",
  "tempfile",
  "toml 0.8.23",
  "tracing",

@@ -50,7 +50,7 @@ exit_criteria:
     checked: true
   - id: meh10-constant-time-token-compare
     text: "Bearer token comparison uses constant-time equality. Eliminates timing side channel on auth."
-    checked: false
+    checked: true
   - id: meh11-expect-audit
     text: "Production expect() calls in vault.rs and encrypted_file.rs replaced with proper Result propagation. Mother production paths have zero panic-capable calls outside startup preconditions."
     checked: false
