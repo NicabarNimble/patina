@@ -1,11 +1,63 @@
 use std::io::{Read, Write};
 use std::net::Shutdown;
 use std::panic::{self, AssertUnwindSafe};
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex};
 
 use crate::microserver;
 
 pub const DEFAULT_MAX_BODY_SIZE: usize = 1_048_576;
+
+struct ConnectionPool {
+    max: usize,
+    active: Mutex<usize>,
+    slot_available: Condvar,
+}
+
+struct ConnectionPermit {
+    pool: Arc<ConnectionPool>,
+}
+
+impl ConnectionPool {
+    fn new(max: usize) -> Self {
+        Self {
+            max,
+            active: Mutex::new(0),
+            slot_available: Condvar::new(),
+        }
+    }
+
+    fn try_acquire(self: &Arc<Self>) -> Option<ConnectionPermit> {
+        let mut active = self
+            .active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if *active < self.max {
+            *active += 1;
+            Some(ConnectionPermit {
+                pool: Arc::clone(self),
+            })
+        } else {
+            None
+        }
+    }
+
+    fn release(&self) {
+        let mut active = self
+            .active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if *active > 0 {
+            *active -= 1;
+        }
+        self.slot_available.notify_one();
+    }
+}
+
+impl Drop for ConnectionPermit {
+    fn drop(&mut self) {
+        self.pool.release();
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct HttpRequest {
@@ -114,13 +166,22 @@ pub fn handle_connection(
 pub fn accept_loop_tcp(
     listener: std::net::TcpListener,
     max_body_size: usize,
+    max_connections: usize,
     handler: Arc<dyn Fn(HttpRequest) -> HttpResponse + Send + Sync>,
 ) -> ! {
+    let pool = Arc::new(ConnectionPool::new(max_connections));
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
+                let Some(permit) = pool.try_acquire() else {
+                    let busy = to_micro(with_security_headers(json_error(503, "Server busy")));
+                    microserver::write_response(&mut stream, &busy);
+                    let _ = stream.shutdown(Shutdown::Write);
+                    continue;
+                };
                 let handler = Arc::clone(&handler);
                 std::thread::spawn(move || {
+                    let _permit = permit;
                     handle_connection(&mut stream, max_body_size, handler.as_ref());
                     let _ = stream.shutdown(Shutdown::Write);
                 });
@@ -179,18 +240,68 @@ mod tests {
 
         server.join().unwrap();
     }
+
+    #[test]
+    fn pool_plus_one_connection_gets_503() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handler: Arc<dyn Fn(HttpRequest) -> HttpResponse + Send + Sync> = Arc::new(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            HttpResponse::json(200, &serde_json::json!({"ok": true}))
+        });
+
+        let server = std::thread::spawn(move || {
+            let pool = Arc::new(ConnectionPool::new(1));
+            for stream in listener.incoming().take(2) {
+                let mut stream = stream.unwrap();
+                let handler = Arc::clone(&handler);
+                if let Some(permit) = pool.try_acquire() {
+                    std::thread::spawn(move || {
+                        let _permit = permit;
+                        handle_connection(&mut stream, DEFAULT_MAX_BODY_SIZE, handler.as_ref());
+                        let _ = stream.shutdown(Shutdown::Write);
+                    });
+                } else {
+                    let busy = to_micro(with_security_headers(json_error(503, "Server busy")));
+                    microserver::write_response(&mut stream, &busy);
+                    let _ = stream.shutdown(Shutdown::Write);
+                }
+            }
+        });
+
+        let first = std::thread::spawn(move || send_request(addr, "/slow"));
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        let second = send_request(addr, "/busy");
+
+        assert!(second.starts_with("HTTP/1.1 503"));
+        assert!(second.contains("Server busy"));
+
+        let first_resp = first.join().unwrap();
+        assert!(first_resp.starts_with("HTTP/1.1 200"));
+
+        server.join().unwrap();
+    }
 }
 
 pub fn accept_loop_uds(
     listener: std::os::unix::net::UnixListener,
     max_body_size: usize,
+    max_connections: usize,
     handler: Arc<dyn Fn(HttpRequest) -> HttpResponse + Send + Sync>,
 ) -> ! {
+    let pool = Arc::new(ConnectionPool::new(max_connections));
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
+                let Some(permit) = pool.try_acquire() else {
+                    let busy = to_micro(with_security_headers(json_error(503, "Server busy")));
+                    microserver::write_response(&mut stream, &busy);
+                    let _ = stream.shutdown(Shutdown::Write);
+                    continue;
+                };
                 let handler = Arc::clone(&handler);
                 std::thread::spawn(move || {
+                    let _permit = permit;
                     handle_connection(&mut stream, max_body_size, handler.as_ref());
                     let _ = stream.shutdown(Shutdown::Write);
                 });

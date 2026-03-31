@@ -29,7 +29,7 @@ exit_criteria:
     checked: true
   - id: meh3-bounded-thread-pool
     text: "Accept loops use a bounded thread pool (not unbounded thread::spawn per connection). Pool size configurable via DaemonBootstrapConfig, default 16. Connections exceeding pool capacity receive 503 Service Unavailable."
-    checked: false
+    checked: true
   - id: meh4-structured-logging
     text: "Mother uses tracing with a JSON file subscriber. Log output to ~/.patina/mother/logs/mother.jsonl. Log levels: INFO for lifecycle events, WARN for degradation, ERROR for failures. All eprintln! calls in mother/ replaced with tracing macros."
     checked: false

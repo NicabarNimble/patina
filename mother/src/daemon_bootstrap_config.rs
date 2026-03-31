@@ -6,6 +6,8 @@ use crate::daemon_runner::{run_tcp_server, run_uds_server, TcpServerLaunch, UdsS
 use crate::http_routes::Router;
 use crate::registry::ChildRegistry;
 
+pub const DEFAULT_MAX_CONNECTIONS: usize = 16;
+
 #[derive(Debug, Clone)]
 pub enum TransportMode {
     UdsHttp {
@@ -24,6 +26,7 @@ pub enum TransportMode {
 #[derive(Debug, Clone)]
 pub struct DaemonBootstrapConfig {
     pub transport: TransportMode,
+    pub max_connections: usize,
 }
 
 pub struct DaemonBootstrapRuntime {
@@ -33,7 +36,11 @@ pub struct DaemonBootstrapRuntime {
 
 #[allow(unreachable_code)]
 pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> Result<()> {
-    match config.transport {
+    let DaemonBootstrapConfig {
+        transport,
+        max_connections,
+    } = config;
+    match transport {
         TransportMode::TcpHttp {
             host,
             port,
@@ -50,6 +57,7 @@ pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> 
                 token,
                 registry: runtime.registry,
                 router: runtime.router,
+                max_connections,
             });
         }
         TransportMode::UdsHttp {
@@ -65,6 +73,7 @@ pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> 
                 socket_path,
                 registry: runtime.registry,
                 router: runtime.router,
+                max_connections,
             });
         }
     }
@@ -88,6 +97,7 @@ mod tests {
                 token_path: std::path::PathBuf::from("/tmp/patina-token"),
                 token: "test-token".to_string(),
             },
+            max_connections: DEFAULT_MAX_CONNECTIONS,
         };
         let runtime = DaemonBootstrapRuntime {
             registry: Arc::new(crate::registry::ChildRegistry::new()),
@@ -151,6 +161,7 @@ mod tests {
                 socket_path: run_dir.join("serve.sock"),
                 pid_path: run_dir.join("serve.pid"),
             },
+            max_connections: DEFAULT_MAX_CONNECTIONS,
         };
         let runtime = DaemonBootstrapRuntime {
             registry: Arc::new(crate::registry::ChildRegistry::new()),

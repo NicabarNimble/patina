@@ -226,6 +226,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
                 token_path: patina::paths::serve::token_path(),
                 token: state.token.clone(),
             },
+            max_connections: mother_crate::daemon_bootstrap_config::DEFAULT_MAX_CONNECTIONS,
         };
         return mother_crate::daemon_bootstrap_config::start(
             config,
@@ -245,6 +246,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
             socket_path: patina::paths::serve::socket_path(),
             pid_path: patina::paths::serve::pid_path(),
         },
+        max_connections: mother_crate::daemon_bootstrap_config::DEFAULT_MAX_CONNECTIONS,
     };
     mother_crate::daemon_bootstrap_config::start(
         config,

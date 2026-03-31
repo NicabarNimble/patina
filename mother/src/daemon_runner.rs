@@ -14,6 +14,7 @@ pub struct TcpServerLaunch {
     pub token: String,
     pub registry: Arc<ChildRegistry>,
     pub router: Arc<Router>,
+    pub max_connections: usize,
 }
 
 pub struct UdsServerLaunch {
@@ -21,6 +22,7 @@ pub struct UdsServerLaunch {
     pub socket_path: PathBuf,
     pub registry: Arc<ChildRegistry>,
     pub router: Arc<Router>,
+    pub max_connections: usize,
 }
 
 pub fn run_tcp_server(launch: TcpServerLaunch) -> ! {
@@ -55,7 +57,12 @@ pub fn run_tcp_server(launch: TcpServerLaunch) -> ! {
     crate::daemon_heartbeat::spawn_heartbeat(Arc::clone(&launch.registry));
     let router = Arc::clone(&launch.router);
     let handler = Arc::new(move |request: HttpRequest| router.route(&request));
-    http_daemon::accept_loop_tcp(launch.listener, DEFAULT_MAX_BODY_SIZE, handler)
+    http_daemon::accept_loop_tcp(
+        launch.listener,
+        DEFAULT_MAX_BODY_SIZE,
+        launch.max_connections,
+        handler,
+    )
 }
 
 pub fn run_uds_server(launch: UdsServerLaunch) -> ! {
@@ -76,5 +83,10 @@ pub fn run_uds_server(launch: UdsServerLaunch) -> ! {
     crate::daemon_heartbeat::spawn_heartbeat(Arc::clone(&launch.registry));
     let router = Arc::clone(&launch.router);
     let handler = Arc::new(move |request: HttpRequest| router.route(&request));
-    http_daemon::accept_loop_uds(launch.listener, DEFAULT_MAX_BODY_SIZE, handler)
+    http_daemon::accept_loop_uds(
+        launch.listener,
+        DEFAULT_MAX_BODY_SIZE,
+        launch.max_connections,
+        handler,
+    )
 }
