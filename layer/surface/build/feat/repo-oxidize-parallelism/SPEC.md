@@ -1,7 +1,7 @@
 ---
 type: feat
 id: repo-oxidize-parallelism
-status: ready
+status: active
 created: 2026-03-31
 sessions:
   origin: 20260331-072235-030494000
