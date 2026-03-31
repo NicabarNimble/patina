@@ -106,6 +106,7 @@ pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> 
             socket_path,
             pid_path,
         } => {
+            crate::daemon_lifecycle::reconcile_pid_state(&pid_path, &socket_path)?;
             crate::daemon_lifecycle::write_pid_file(&pid_path)?;
             let listener = crate::socket::setup_unix_listener(&run_dir, &socket_path)?;
             run_uds_server(UdsServerLaunch {

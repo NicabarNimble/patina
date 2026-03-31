@@ -47,7 +47,7 @@ exit_criteria:
     checked: true
   - id: meh9-stale-pid-detection
     text: "On startup, if PID file exists, check if process is alive. If stale, clean up PID + socket and start. If alive, refuse to start with clear error. Prevents address-in-use confusion."
-    checked: false
+    checked: true
   - id: meh10-constant-time-token-compare
     text: "Bearer token comparison uses constant-time equality. Eliminates timing side channel on auth."
     checked: false
