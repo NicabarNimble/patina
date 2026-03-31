@@ -12,6 +12,7 @@
 //! - Opt-in: TCP at --host/--port (bearer token required)
 
 use anyhow::Result;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -30,6 +31,7 @@ pub struct ServerState {
     version: String,
     token: String,
     pub(super) registry: Arc<ChildRegistry>,
+    runtime_store: patina::mother::KnowledgeRuntimeStore,
     services: mother_crate::services::MotherServices,
     scry_backend: Arc<dyn ScryBackend>,
 }
@@ -40,12 +42,14 @@ impl ServerState {
         registry: ChildRegistry,
         runtime_store: patina::mother::KnowledgeRuntimeStore,
     ) -> Self {
+        let services_store = runtime_store.clone();
         Self {
             start_time: Instant::now(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             token,
             registry: Arc::new(registry),
-            services: mother_crate::services::MotherServices::new(runtime_store),
+            runtime_store,
+            services: mother_crate::services::MotherServices::new(services_store),
             scry_backend: Arc::new(RetrievalScryBackend),
         }
     }
@@ -53,6 +57,25 @@ impl ServerState {
     fn uptime_secs(&self) -> u64 {
         self.start_time.elapsed().as_secs()
     }
+}
+
+fn read_current_project_uid() -> Option<String> {
+    let cwd = std::env::current_dir().ok()?;
+    let uid = std::fs::read_to_string(cwd.join(".patina").join("uid")).ok()?;
+    let uid = uid.trim();
+    if uid.len() == 8
+        && uid
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    {
+        Some(uid.to_string())
+    } else {
+        None
+    }
+}
+
+fn file_size_if_exists(path: &Path) -> Option<u64> {
+    std::fs::metadata(path).ok().map(|m| m.len())
 }
 
 // === Host capabilities ===
@@ -88,6 +111,29 @@ impl ApiRuntime for ServerState {
 
     fn health_all(&self) -> Vec<(String, patina::mother::ChildHealth)> {
         self.services.health.child_health_all(&self.registry)
+    }
+
+    fn health_details(&self) -> anyhow::Result<mother_crate::http_api::HealthDetails> {
+        let registered_projects = self.runtime_store.list_registered_projects()?;
+        let state_db_bytes = file_size_if_exists(self.runtime_store.path());
+        let active_project_uid = read_current_project_uid();
+
+        let active_project_databases = active_project_uid.as_ref().and_then(|uid| {
+            let state_parent = self.runtime_store.path().parent()?;
+            let project_dir = state_parent.join("projects").join(uid);
+            Some(mother_crate::http_api::ProjectDatabases {
+                events_db_bytes: file_size_if_exists(&project_dir.join("events.db")),
+                patina_db_bytes: file_size_if_exists(&project_dir.join("patina.db")),
+                runtime_db_bytes: file_size_if_exists(&project_dir.join("runtime.db")),
+            })
+        });
+
+        Ok(mother_crate::http_api::HealthDetails {
+            registered_projects: registered_projects.len(),
+            active_project_uid,
+            active_project_databases,
+            state_db_bytes,
+        })
     }
 
     fn child_health(&self, child_name: &str) -> anyhow::Result<patina::mother::ChildHealth> {

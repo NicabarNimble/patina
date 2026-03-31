@@ -21,6 +21,7 @@ pub trait ApiRuntime {
     fn version(&self) -> String;
     fn uptime_secs(&self) -> u64;
     fn health_all(&self) -> Vec<(String, crate::ChildHealth)>;
+    fn health_details(&self) -> Result<HealthDetails>;
     fn child_health(&self, child_name: &str) -> Result<crate::ChildHealth>;
     fn child_handle(
         &self,
@@ -50,12 +51,42 @@ pub trait ApiRuntime {
     fn builtin_secrets_dispatch(&self, payload: serde_json::Value) -> HttpResponse;
 }
 
+#[derive(Debug, Clone)]
+pub struct HealthDetails {
+    pub registered_projects: usize,
+    pub active_project_uid: Option<String>,
+    pub active_project_databases: Option<ProjectDatabases>,
+    pub state_db_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProjectDatabases {
+    pub events_db_bytes: Option<u64>,
+    pub patina_db_bytes: Option<u64>,
+    pub runtime_db_bytes: Option<u64>,
+}
+
 #[derive(Serialize)]
 struct HealthResponse {
     status: String,
     version: String,
     uptime_secs: u64,
     children: Vec<ChildHealthJson>,
+    child_count: usize,
+    registered_projects: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    active_project_uid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    active_project_databases: Option<ProjectDatabasesJson>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state_db_bytes: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct ProjectDatabasesJson {
+    events_db_bytes: Option<u64>,
+    patina_db_bytes: Option<u64>,
+    runtime_db_bytes: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -104,13 +135,34 @@ pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
         })
         .collect();
 
+    let details = runtime.health_details().unwrap_or(HealthDetails {
+        registered_projects: 0,
+        active_project_uid: None,
+        active_project_databases: None,
+        state_db_bytes: None,
+    });
+
+    let active_project_databases =
+        details
+            .active_project_databases
+            .map(|db| ProjectDatabasesJson {
+                events_db_bytes: db.events_db_bytes,
+                patina_db_bytes: db.patina_db_bytes,
+                runtime_db_bytes: db.runtime_db_bytes,
+            });
+
     HttpResponse::json(
         200,
         &HealthResponse {
             status: "ok".to_string(),
             version: runtime.version(),
             uptime_secs: runtime.uptime_secs(),
+            child_count: children.len(),
             children,
+            registered_projects: details.registered_projects,
+            active_project_uid: details.active_project_uid,
+            active_project_databases,
+            state_db_bytes: details.state_db_bytes,
         },
     )
 }
@@ -289,5 +341,130 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
         }),
         post_secrets_lock: Arc::new(move |_request| handle_secrets_lock(&*secrets_lock_runtime)),
         child_request: Arc::new(move |request| handle_child_request(request, &*child_runtime)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct StubRuntime;
+
+    impl ApiRuntime for StubRuntime {
+        fn version(&self) -> String {
+            "0.0.0-test".to_string()
+        }
+
+        fn uptime_secs(&self) -> u64 {
+            42
+        }
+
+        fn health_all(&self) -> Vec<(String, crate::ChildHealth)> {
+            vec![("ducklake".to_string(), crate::ChildHealth::Healthy)]
+        }
+
+        fn health_details(&self) -> Result<HealthDetails> {
+            Ok(HealthDetails {
+                registered_projects: 2,
+                active_project_uid: Some("2bdc808e".to_string()),
+                active_project_databases: Some(ProjectDatabases {
+                    events_db_bytes: Some(1024),
+                    patina_db_bytes: Some(2048),
+                    runtime_db_bytes: Some(512),
+                }),
+                state_db_bytes: Some(256),
+            })
+        }
+
+        fn child_health(&self, _child_name: &str) -> Result<crate::ChildHealth> {
+            Ok(crate::ChildHealth::Healthy)
+        }
+
+        fn child_handle(
+            &self,
+            _child_name: &str,
+            _action: String,
+            payload: serde_json::Value,
+        ) -> Result<serde_json::Value> {
+            Ok(payload)
+        }
+
+        fn scry_query(
+            &self,
+            _query: &str,
+            _limit: usize,
+            _repo: Option<String>,
+            _all_repos: bool,
+        ) -> Result<Vec<ScryHit>> {
+            Ok(vec![])
+        }
+
+        fn secrets_get(&self) -> Result<serde_json::Value> {
+            Ok(serde_json::json!({}))
+        }
+
+        fn secrets_cache(&self, payload: serde_json::Value) -> Result<serde_json::Value> {
+            Ok(payload)
+        }
+
+        fn secrets_lock(&self) -> Result<serde_json::Value> {
+            Ok(serde_json::json!({"locked": true}))
+        }
+
+        fn builtin_spec_dispatch(
+            &self,
+            _request: patina_protocol::SpecDispatchRequest,
+        ) -> Result<serde_json::Value> {
+            Ok(serde_json::json!({}))
+        }
+
+        fn builtin_lake_dispatch(
+            &self,
+            _request: patina_protocol::LakeDispatchRequest,
+        ) -> Result<serde_json::Value> {
+            Ok(serde_json::json!({}))
+        }
+
+        fn builtin_doctor_run(&self) -> Result<patina_protocol::DoctorRunResult> {
+            Ok(patina_protocol::DoctorRunResult {
+                data: serde_json::json!({}),
+                exit_code: 0,
+            })
+        }
+
+        fn builtin_secrets_dispatch(&self, _payload: serde_json::Value) -> HttpResponse {
+            HttpResponse::json(200, &serde_json::json!({}))
+        }
+    }
+
+    #[test]
+    fn health_response_includes_additive_deep_fields() {
+        let response = handle_health(&StubRuntime);
+        assert_eq!(response.status, 200);
+        let json: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(
+            json.get("version").and_then(|v| v.as_str()),
+            Some("0.0.0-test")
+        );
+        assert_eq!(json.get("uptime_secs").and_then(|v| v.as_u64()), Some(42));
+        assert_eq!(json.get("child_count").and_then(|v| v.as_u64()), Some(1));
+        assert_eq!(
+            json.get("registered_projects").and_then(|v| v.as_u64()),
+            Some(2)
+        );
+        assert_eq!(
+            json.get("active_project_uid").and_then(|v| v.as_str()),
+            Some("2bdc808e")
+        );
+        assert_eq!(
+            json.get("state_db_bytes").and_then(|v| v.as_u64()),
+            Some(256)
+        );
+        assert_eq!(
+            json.get("active_project_databases")
+                .and_then(|v| v.get("events_db_bytes"))
+                .and_then(|v| v.as_u64()),
+            Some(1024)
+        );
     }
 }

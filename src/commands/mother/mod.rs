@@ -482,6 +482,32 @@ fn show_status() -> Result<()> {
         Some(health) => {
             println!("   Version: {}", health.version);
             println!("   Uptime: {}s", health.uptime_secs);
+            println!(
+                "   Children loaded: {}",
+                if health.child_count > 0 {
+                    health.child_count
+                } else {
+                    health.children.len()
+                }
+            );
+            println!("   Registered projects: {}", health.registered_projects);
+            if let Some(state_db_bytes) = health.state_db_bytes {
+                println!("   State DB bytes: {}", state_db_bytes);
+            }
+            if let Some(project_uid) = &health.active_project_uid {
+                println!("   Active project: {}", project_uid);
+            }
+            if let Some(databases) = &health.active_project_databases {
+                if let Some(bytes) = databases.events_db_bytes {
+                    println!("   Active events.db bytes: {}", bytes);
+                }
+                if let Some(bytes) = databases.patina_db_bytes {
+                    println!("   Active patina.db bytes: {}", bytes);
+                }
+                if let Some(bytes) = databases.runtime_db_bytes {
+                    println!("   Active runtime.db bytes: {}", bytes);
+                }
+            }
             let loaded_children: std::collections::HashSet<String> =
                 health.children.iter().map(|c| c.name.clone()).collect();
             if !health.children.is_empty() {
