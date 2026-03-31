@@ -1,7 +1,9 @@
 use std::io::{Read, Write};
 use std::net::Shutdown;
 use std::panic::{self, AssertUnwindSafe};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 
 use crate::microserver;
 
@@ -14,6 +16,10 @@ struct ConnectionPool {
 }
 
 struct ConnectionPermit {
+    pool: Arc<ConnectionPool>,
+}
+
+pub struct DrainHandle {
     pool: Arc<ConnectionPool>,
 }
 
@@ -51,11 +57,54 @@ impl ConnectionPool {
         }
         self.slot_available.notify_one();
     }
+
+    fn active(&self) -> usize {
+        *self
+            .active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn wait_for_drain(&self, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        let mut active = self
+            .active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        while *active > 0 {
+            let now = Instant::now();
+            if now >= deadline {
+                return false;
+            }
+            let remaining = deadline.saturating_duration_since(now);
+            let (next_active, wait_result) = self
+                .slot_available
+                .wait_timeout(active, remaining)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            active = next_active;
+            if wait_result.timed_out() && *active > 0 {
+                return false;
+            }
+        }
+
+        true
+    }
 }
 
 impl Drop for ConnectionPermit {
     fn drop(&mut self) {
         self.pool.release();
+    }
+}
+
+impl DrainHandle {
+    pub fn wait_for_drain(&self, timeout: Duration) -> bool {
+        self.pool.wait_for_drain(timeout)
+    }
+
+    pub fn active_connections(&self) -> usize {
+        self.pool.active()
     }
 }
 
@@ -167,12 +216,26 @@ pub fn accept_loop_tcp(
     listener: std::net::TcpListener,
     max_body_size: usize,
     max_connections: usize,
+    shutdown_requested: &AtomicBool,
     handler: Arc<dyn Fn(HttpRequest) -> HttpResponse + Send + Sync>,
-) -> ! {
+) -> std::io::Result<DrainHandle> {
+    listener.set_nonblocking(true)?;
     let pool = Arc::new(ConnectionPool::new(max_connections));
-    for stream in listener.incoming() {
-        match stream {
-            Ok(mut stream) => {
+    loop {
+        if shutdown_requested.load(Ordering::Relaxed) {
+            break;
+        }
+        match listener.accept() {
+            Ok((mut stream, _)) => {
+                if shutdown_requested.load(Ordering::Relaxed) {
+                    let shutting_down = to_micro(with_security_headers(json_error(
+                        503,
+                        "Server shutting down",
+                    )));
+                    microserver::write_response(&mut stream, &shutting_down);
+                    let _ = stream.shutdown(Shutdown::Write);
+                    continue;
+                }
                 let Some(permit) = pool.try_acquire() else {
                     let busy = to_micro(with_security_headers(json_error(503, "Server busy")));
                     microserver::write_response(&mut stream, &busy);
@@ -186,10 +249,13 @@ pub fn accept_loop_tcp(
                     let _ = stream.shutdown(Shutdown::Write);
                 });
             }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(25));
+            }
             Err(error) => tracing::error!(%error, "tcp accept error"),
         }
     }
-    std::process::exit(0);
+    Ok(DrainHandle { pool })
 }
 
 #[cfg(test)]
@@ -197,6 +263,7 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::{SocketAddr, TcpListener, TcpStream};
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
 
     fn send_request(addr: SocketAddr, path: &str) -> String {
@@ -281,18 +348,68 @@ mod tests {
 
         server.join().unwrap();
     }
+
+    #[test]
+    fn shutdown_flag_drains_in_flight_requests() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let shutdown_requested = Arc::new(AtomicBool::new(false));
+        let handler: Arc<dyn Fn(HttpRequest) -> HttpResponse + Send + Sync> = Arc::new(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            HttpResponse::json(200, &serde_json::json!({"ok": true}))
+        });
+
+        let server_shutdown = Arc::clone(&shutdown_requested);
+        let server = std::thread::spawn(move || {
+            let drain = accept_loop_tcp(
+                listener,
+                DEFAULT_MAX_BODY_SIZE,
+                16,
+                server_shutdown.as_ref(),
+                handler,
+            )
+            .unwrap();
+            let drained = drain.wait_for_drain(std::time::Duration::from_secs(5));
+            (drained, drain.active_connections())
+        });
+
+        let first = std::thread::spawn(move || send_request(addr, "/slow"));
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        shutdown_requested.store(true, Ordering::Relaxed);
+
+        let first_resp = first.join().unwrap();
+        assert!(first_resp.starts_with("HTTP/1.1 200"));
+
+        let (drained, active) = server.join().unwrap();
+        assert!(drained);
+        assert_eq!(active, 0);
+    }
 }
 
 pub fn accept_loop_uds(
     listener: std::os::unix::net::UnixListener,
     max_body_size: usize,
     max_connections: usize,
+    shutdown_requested: &AtomicBool,
     handler: Arc<dyn Fn(HttpRequest) -> HttpResponse + Send + Sync>,
-) -> ! {
+) -> std::io::Result<DrainHandle> {
+    listener.set_nonblocking(true)?;
     let pool = Arc::new(ConnectionPool::new(max_connections));
-    for stream in listener.incoming() {
-        match stream {
-            Ok(mut stream) => {
+    loop {
+        if shutdown_requested.load(Ordering::Relaxed) {
+            break;
+        }
+        match listener.accept() {
+            Ok((mut stream, _)) => {
+                if shutdown_requested.load(Ordering::Relaxed) {
+                    let shutting_down = to_micro(with_security_headers(json_error(
+                        503,
+                        "Server shutting down",
+                    )));
+                    microserver::write_response(&mut stream, &shutting_down);
+                    let _ = stream.shutdown(Shutdown::Write);
+                    continue;
+                }
                 let Some(permit) = pool.try_acquire() else {
                     let busy = to_micro(with_security_headers(json_error(503, "Server busy")));
                     microserver::write_response(&mut stream, &busy);
@@ -306,8 +423,11 @@ pub fn accept_loop_uds(
                     let _ = stream.shutdown(Shutdown::Write);
                 });
             }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(25));
+            }
             Err(error) => tracing::error!(%error, "uds accept error"),
         }
     }
-    std::process::exit(0);
+    Ok(DrainHandle { pool })
 }

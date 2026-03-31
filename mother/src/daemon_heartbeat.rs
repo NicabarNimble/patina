@@ -1,7 +1,22 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use crate::{registry::ChildRegistry, KnowledgeRuntimeStore};
+
+pub struct HeartbeatHandle {
+    stop_requested: Arc<AtomicBool>,
+    join_handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl HeartbeatHandle {
+    pub fn stop_and_join(mut self) {
+        self.stop_requested.store(true, Ordering::Relaxed);
+        if let Some(handle) = self.join_handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
 
 /// Heartbeat interval in seconds.
 const HEARTBEAT_INTERVAL_SECS: u64 = 60;
@@ -62,8 +77,13 @@ fn checkpoint_project_databases(runtime: &KnowledgeRuntimeStore) -> anyhow::Resu
 /// Spawn the heartbeat thread.
 ///
 /// Mother heartbeat advances knowledge children only.
-pub fn spawn_heartbeat(registry: Arc<ChildRegistry>, wal_checkpoint_interval_secs: u64) {
+pub fn spawn_heartbeat(
+    registry: Arc<ChildRegistry>,
+    wal_checkpoint_interval_secs: u64,
+) -> HeartbeatHandle {
     let runtime = KnowledgeRuntimeStore::default();
+    let stop_requested = Arc::new(AtomicBool::new(false));
+    let stop_flag = Arc::clone(&stop_requested);
     let checkpoint_interval_secs = if wal_checkpoint_interval_secs == 0 {
         DEFAULT_WAL_CHECKPOINT_INTERVAL_SECS
     } else {
@@ -71,12 +91,21 @@ pub fn spawn_heartbeat(registry: Arc<ChildRegistry>, wal_checkpoint_interval_sec
     };
     let checkpoint_every_ticks = checkpoint_interval_ticks(checkpoint_interval_secs);
 
-    std::thread::Builder::new()
+    let join_handle = std::thread::Builder::new()
         .name("mother-heartbeat".to_string())
         .spawn(move || {
             let mut ticks = 0u64;
             loop {
-                std::thread::sleep(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
+                for _ in 0..HEARTBEAT_INTERVAL_SECS {
+                    if stop_flag.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_secs(1));
+                }
+
+                if stop_flag.load(Ordering::Relaxed) {
+                    return;
+                }
                 if let Err(error) = registry.run_knowledge_cycles(&runtime, "mother-heartbeat") {
                     tracing::warn!(%error, "knowledge-child heartbeat failed");
                 }
@@ -90,6 +119,11 @@ pub fn spawn_heartbeat(registry: Arc<ChildRegistry>, wal_checkpoint_interval_sec
             }
         })
         .expect("failed to spawn heartbeat thread");
+
+    HeartbeatHandle {
+        stop_requested,
+        join_handle: Some(join_handle),
+    }
 }
 
 #[cfg(test)]

@@ -1,9 +1,8 @@
 use anyhow::{Context, Result};
-use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-static PID_PATH: OnceLock<PathBuf> = OnceLock::new();
-static SOCKET_PATH: OnceLock<PathBuf> = OnceLock::new();
+static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 pub fn write_pid_file(pid_path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
@@ -19,9 +18,8 @@ pub fn write_pid_file(pid_path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn register_signal_handlers(pid_path: PathBuf, socket_path: PathBuf) {
-    let _ = PID_PATH.set(pid_path);
-    let _ = SOCKET_PATH.set(socket_path);
+pub fn register_signal_handlers() {
+    SHUTDOWN_REQUESTED.store(false, Ordering::SeqCst);
 
     unsafe {
         libc::signal(
@@ -35,12 +33,14 @@ pub fn register_signal_handlers(pid_path: PathBuf, socket_path: PathBuf) {
     }
 }
 
+pub fn shutdown_flag() -> &'static AtomicBool {
+    &SHUTDOWN_REQUESTED
+}
+
+pub fn shutdown_requested() -> bool {
+    SHUTDOWN_REQUESTED.load(Ordering::Relaxed)
+}
+
 extern "C" fn sigint_handler(_: libc::c_int) {
-    if let Some(pid_path) = PID_PATH.get() {
-        let _ = std::fs::remove_file(pid_path);
-    }
-    if let Some(socket_path) = SOCKET_PATH.get() {
-        let _ = std::fs::remove_file(socket_path);
-    }
-    std::process::exit(0);
+    SHUTDOWN_REQUESTED.store(true, Ordering::Relaxed);
 }

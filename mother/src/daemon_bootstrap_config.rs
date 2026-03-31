@@ -73,6 +73,8 @@ pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> 
     #[cfg(not(test))]
     init_logging()?;
 
+    crate::daemon_lifecycle::register_signal_handlers();
+
     let DaemonBootstrapConfig {
         transport,
         max_connections,
@@ -97,7 +99,7 @@ pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> 
                 router: runtime.router,
                 max_connections,
                 wal_checkpoint_interval_secs,
-            });
+            })?;
         }
         TransportMode::UdsHttp {
             run_dir,
@@ -105,20 +107,20 @@ pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> 
             pid_path,
         } => {
             crate::daemon_lifecycle::write_pid_file(&pid_path)?;
-            crate::daemon_lifecycle::register_signal_handlers(pid_path, socket_path.clone());
             let listener = crate::socket::setup_unix_listener(&run_dir, &socket_path)?;
             run_uds_server(UdsServerLaunch {
                 listener,
+                pid_path,
                 socket_path,
                 registry: runtime.registry,
                 router: runtime.router,
                 max_connections,
                 wal_checkpoint_interval_secs,
-            });
+            })?;
         }
     }
 
-    unreachable!("daemon bootstrap returned unexpectedly")
+    Ok(())
 }
 
 #[cfg(test)]

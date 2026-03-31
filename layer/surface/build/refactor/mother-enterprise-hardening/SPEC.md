@@ -38,7 +38,7 @@ exit_criteria:
     checked: true
   - id: meh6-graceful-shutdown
     text: "SIGINT/SIGTERM triggers a drain period (default 5s) where in-flight requests complete but new connections are refused. After drain, checkpoint all databases, clean up PID + socket files and exit. Heartbeat thread stops cleanly."
-    checked: false
+    checked: true
   - id: meh7-health-endpoint-deep
     text: "/health returns structured JSON: daemon uptime, child count, child health per child, registered project count, database sizes for active project. Not just 'ok'."
     checked: false
