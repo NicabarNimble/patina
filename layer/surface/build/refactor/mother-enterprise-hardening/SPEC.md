@@ -35,7 +35,7 @@ exit_criteria:
     checked: true
   - id: meh5-wal-checkpoint-scheduling
     text: "Heartbeat thread periodically checkpoints project SQLite databases (PRAGMA wal_checkpoint(PASSIVE)). Interval configurable, default every 5 minutes. WAL files for active projects stay bounded."
-    checked: false
+    checked: true
   - id: meh6-graceful-shutdown
     text: "SIGINT/SIGTERM triggers a drain period (default 5s) where in-flight requests complete but new connections are refused. After drain, checkpoint all databases, clean up PID + socket files and exit. Heartbeat thread stops cleanly."
     checked: false

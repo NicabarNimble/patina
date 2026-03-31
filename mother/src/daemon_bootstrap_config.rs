@@ -7,6 +7,7 @@ use crate::http_routes::Router;
 use crate::registry::ChildRegistry;
 
 pub const DEFAULT_MAX_CONNECTIONS: usize = 16;
+pub const DEFAULT_WAL_CHECKPOINT_INTERVAL_SECS: u64 = 300;
 
 #[cfg(not(test))]
 fn mother_logs_dir() -> PathBuf {
@@ -59,6 +60,7 @@ pub enum TransportMode {
 pub struct DaemonBootstrapConfig {
     pub transport: TransportMode,
     pub max_connections: usize,
+    pub wal_checkpoint_interval_secs: u64,
 }
 
 pub struct DaemonBootstrapRuntime {
@@ -74,6 +76,7 @@ pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> 
     let DaemonBootstrapConfig {
         transport,
         max_connections,
+        wal_checkpoint_interval_secs,
     } = config;
     match transport {
         TransportMode::TcpHttp {
@@ -93,6 +96,7 @@ pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> 
                 registry: runtime.registry,
                 router: runtime.router,
                 max_connections,
+                wal_checkpoint_interval_secs,
             });
         }
         TransportMode::UdsHttp {
@@ -109,6 +113,7 @@ pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> 
                 registry: runtime.registry,
                 router: runtime.router,
                 max_connections,
+                wal_checkpoint_interval_secs,
             });
         }
     }
@@ -133,6 +138,7 @@ mod tests {
                 token: "test-token".to_string(),
             },
             max_connections: DEFAULT_MAX_CONNECTIONS,
+            wal_checkpoint_interval_secs: DEFAULT_WAL_CHECKPOINT_INTERVAL_SECS,
         };
         let runtime = DaemonBootstrapRuntime {
             registry: Arc::new(crate::registry::ChildRegistry::new()),
@@ -197,6 +203,7 @@ mod tests {
                 pid_path: run_dir.join("serve.pid"),
             },
             max_connections: DEFAULT_MAX_CONNECTIONS,
+            wal_checkpoint_interval_secs: DEFAULT_WAL_CHECKPOINT_INTERVAL_SECS,
         };
         let runtime = DaemonBootstrapRuntime {
             registry: Arc::new(crate::registry::ChildRegistry::new()),

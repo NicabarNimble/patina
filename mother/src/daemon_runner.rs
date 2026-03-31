@@ -15,6 +15,7 @@ pub struct TcpServerLaunch {
     pub registry: Arc<ChildRegistry>,
     pub router: Arc<Router>,
     pub max_connections: usize,
+    pub wal_checkpoint_interval_secs: u64,
 }
 
 pub struct UdsServerLaunch {
@@ -23,6 +24,7 @@ pub struct UdsServerLaunch {
     pub registry: Arc<ChildRegistry>,
     pub router: Arc<Router>,
     pub max_connections: usize,
+    pub wal_checkpoint_interval_secs: u64,
 }
 
 pub fn run_tcp_server(launch: TcpServerLaunch) -> ! {
@@ -49,7 +51,10 @@ pub fn run_tcp_server(launch: TcpServerLaunch) -> ! {
     println!("   Listening on http://{}", launch.addr);
     println!("   Press Ctrl+C to stop\n");
 
-    crate::daemon_heartbeat::spawn_heartbeat(Arc::clone(&launch.registry));
+    crate::daemon_heartbeat::spawn_heartbeat(
+        Arc::clone(&launch.registry),
+        launch.wal_checkpoint_interval_secs,
+    );
     let router = Arc::clone(&launch.router);
     let handler = Arc::new(move |request: HttpRequest| router.route(&request));
     http_daemon::accept_loop_tcp(
@@ -75,7 +80,10 @@ pub fn run_uds_server(launch: UdsServerLaunch) -> ! {
     println!("   No TCP listener (use --host/--port for network access)");
     println!("   Press Ctrl+C to stop\n");
 
-    crate::daemon_heartbeat::spawn_heartbeat(Arc::clone(&launch.registry));
+    crate::daemon_heartbeat::spawn_heartbeat(
+        Arc::clone(&launch.registry),
+        launch.wal_checkpoint_interval_secs,
+    );
     let router = Arc::clone(&launch.router);
     let handler = Arc::new(move |request: HttpRequest| router.route(&request));
     http_daemon::accept_loop_uds(

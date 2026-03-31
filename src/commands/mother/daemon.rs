@@ -227,6 +227,8 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
                 token: state.token.clone(),
             },
             max_connections: mother_crate::daemon_bootstrap_config::DEFAULT_MAX_CONNECTIONS,
+            wal_checkpoint_interval_secs:
+                mother_crate::daemon_bootstrap_config::DEFAULT_WAL_CHECKPOINT_INTERVAL_SECS,
         };
         return mother_crate::daemon_bootstrap_config::start(
             config,
@@ -247,6 +249,8 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
             pid_path: patina::paths::serve::pid_path(),
         },
         max_connections: mother_crate::daemon_bootstrap_config::DEFAULT_MAX_CONNECTIONS,
+        wal_checkpoint_interval_secs:
+            mother_crate::daemon_bootstrap_config::DEFAULT_WAL_CHECKPOINT_INTERVAL_SECS,
     };
     mother_crate::daemon_bootstrap_config::start(
         config,
@@ -294,7 +298,11 @@ mod tests {
     #[test]
     fn register_loaded_child_loads_knowledge_by_default() {
         let mut registry = ChildRegistry::new();
-        let runtime = patina::mother::KnowledgeRuntimeStore::default();
+        let runtime_root = tempfile::tempdir().unwrap();
+        let runtime = patina::mother::KnowledgeRuntimeStore::new_with_project(
+            runtime_root.path().join("mother/state.db"),
+            mother_crate::state::ProjectUid::new("2bdc808e").unwrap(),
+        );
 
         mother_crate::daemon_bootstrap::register_loaded_child(
             &mut registry,
