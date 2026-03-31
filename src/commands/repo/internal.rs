@@ -279,11 +279,14 @@ pub fn update_all_repos(oxidize: bool, jobs: Option<usize>, failed_only: bool) -
         return Ok(());
     }
 
-    let requested_jobs = jobs.unwrap_or(1);
-    let effective_jobs = requested_jobs.max(1).min(repos.len());
+    let requested_jobs = jobs.unwrap_or(default_jobs(oxidize));
+    let effective_jobs = effective_jobs(requested_jobs, repos.len(), oxidize);
 
     println!("🔄 Updating {} repositories...\n", repos.len());
     println!("   Mode: batch update (jobs={})", effective_jobs);
+    if oxidize && effective_jobs > 3 {
+        println!("   ⚠ high jobs with --oxidize may oversubscribe CPU; prefer 2-3 jobs on laptops");
+    }
 
     let results: Vec<(String, Result<Option<String>, String>)> = if effective_jobs > 1 {
         let pool = rayon::ThreadPoolBuilder::new()
@@ -351,6 +354,26 @@ pub fn update_all_repos(oxidize: bool, jobs: Option<usize>, failed_only: bool) -
             success
         )
     }
+}
+
+fn default_jobs(oxidize: bool) -> usize {
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    if oxidize {
+        2.min(cores.max(1))
+    } else {
+        4.min(cores.max(1))
+    }
+}
+
+fn effective_jobs(requested_jobs: usize, repo_count: usize, oxidize: bool) -> usize {
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .max(1);
+    let max_safe = if oxidize { (cores / 2).max(1) } else { cores };
+    requested_jobs.max(1).min(repo_count.max(1)).min(max_safe)
 }
 
 fn failed_batch_state_path() -> std::path::PathBuf {
@@ -1197,5 +1220,21 @@ mod tests {
     fn test_validate_repo_path_outside() {
         let cache = Path::new("/home/user/.patina/cache/repos");
         assert!(validate_repo_path("/tmp/evil", cache, "evil").is_err());
+    }
+
+    #[test]
+    fn test_effective_jobs_clamps_to_repo_count() {
+        assert_eq!(effective_jobs(8, 2, false), 2);
+    }
+
+    #[test]
+    fn test_effective_jobs_clamps_to_at_least_one() {
+        assert_eq!(effective_jobs(0, 0, true), 1);
+    }
+
+    #[test]
+    fn test_default_jobs_is_non_zero() {
+        assert!(default_jobs(true) >= 1);
+        assert!(default_jobs(false) >= 1);
     }
 }
