@@ -23,7 +23,7 @@ related:
 exit_criteria:
   - id: meh1-failing-tests-fixed
     text: "All mother crate tests pass. The 3 failing tests fixed: state_checkpoints_and_offsets and task_dedupe_and_leasing (project_uid scoping), tcp_http_returns_error_when_port_in_use (port binding). cargo test -q -p mother passes with zero failures."
-    checked: false
+    checked: true
   - id: meh2-panic-recovery
     text: "Request handler threads use std::panic::catch_unwind. A panicking handler logs the panic and returns 500 Internal Server Error instead of killing the thread silently. Proven with a test that triggers a panic in a handler and verifies the accept loop continues serving."
     checked: false

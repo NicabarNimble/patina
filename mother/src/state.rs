@@ -1147,10 +1147,9 @@ mod tests {
     use super::*;
 
     fn temp_store() -> KnowledgeRuntimeStore {
-        let path = std::env::temp_dir().join(format!(
-            "patina-knowledge-runtime-{}.db",
-            uuid::Uuid::new_v4()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("patina-knowledge-runtime-{}", uuid::Uuid::new_v4()));
+        let path = root.join("mother/state.db");
         KnowledgeRuntimeStore::new_with_project(path, ProjectUid::new("2bdc808e").unwrap())
     }
 
@@ -1174,7 +1173,10 @@ mod tests {
             .ack_offset("belief-verifier", "belief.changed", 42)
             .unwrap();
 
-        let reopened = KnowledgeRuntimeStore::new(store.path().clone());
+        let reopened = KnowledgeRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
         assert_eq!(
             reopened
                 .get_state("ducklake", "source:one")
