@@ -26,7 +26,7 @@ exit_criteria:
     checked: true
   - id: meh2-panic-recovery
     text: "Request handler threads use std::panic::catch_unwind. A panicking handler logs the panic and returns 500 Internal Server Error instead of killing the thread silently. Proven with a test that triggers a panic in a handler and verifies the accept loop continues serving."
-    checked: false
+    checked: true
   - id: meh3-bounded-thread-pool
     text: "Accept loops use a bounded thread pool (not unbounded thread::spawn per connection). Pool size configurable via DaemonBootstrapConfig, default 16. Connections exceeding pool capacity receive 503 Service Unavailable."
     checked: false

@@ -1,5 +1,6 @@
 use std::io::{Read, Write};
 use std::net::Shutdown;
+use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
 
 use crate::microserver;
@@ -91,7 +92,20 @@ pub fn handle_connection(
     let resp = if req.body.len() > max_body_size {
         with_security_headers(json_error(413, "Request too large"))
     } else {
-        handler(req)
+        match panic::catch_unwind(AssertUnwindSafe(|| handler(req))) {
+            Ok(resp) => resp,
+            Err(payload) => {
+                let panic_message = if let Some(msg) = payload.downcast_ref::<&str>() {
+                    (*msg).to_string()
+                } else if let Some(msg) = payload.downcast_ref::<String>() {
+                    msg.clone()
+                } else {
+                    "unknown panic payload".to_string()
+                };
+                eprintln!("HTTP handler panicked: {panic_message}");
+                with_security_headers(json_error(500, "internal server error"))
+            }
+        }
     };
 
     microserver::write_response(stream, &to_micro(resp));
@@ -115,6 +129,56 @@ pub fn accept_loop_tcp(
         }
     }
     std::process::exit(0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::{SocketAddr, TcpListener, TcpStream};
+    use std::sync::Arc;
+
+    fn send_request(addr: SocketAddr, path: &str) -> String {
+        let mut stream = TcpStream::connect(addr).unwrap();
+        let request =
+            format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n");
+        stream.write_all(request.as_bytes()).unwrap();
+        stream.shutdown(Shutdown::Write).unwrap();
+
+        let mut bytes = Vec::new();
+        stream.read_to_end(&mut bytes).unwrap();
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+
+    #[test]
+    fn panicking_handler_returns_500_and_server_keeps_serving() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handler: Arc<dyn Fn(HttpRequest) -> HttpResponse + Send + Sync> = Arc::new(|req| {
+            if req.path == "/panic" {
+                panic!("panic marker");
+            }
+            HttpResponse::json(200, &serde_json::json!({"ok": true}))
+        });
+
+        let server = std::thread::spawn(move || {
+            for stream in listener.incoming().take(2) {
+                let mut stream = stream.unwrap();
+                handle_connection(&mut stream, DEFAULT_MAX_BODY_SIZE, handler.as_ref());
+                let _ = stream.shutdown(Shutdown::Write);
+            }
+        });
+
+        let first = send_request(addr, "/panic");
+        assert!(first.starts_with("HTTP/1.1 500"));
+        assert!(first.contains("internal server error"));
+
+        let second = send_request(addr, "/ok");
+        assert!(second.starts_with("HTTP/1.1 200"));
+        assert!(second.contains("{\"ok\":true}"));
+
+        server.join().unwrap();
+    }
 }
 
 pub fn accept_loop_uds(
