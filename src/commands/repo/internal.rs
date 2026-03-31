@@ -1237,4 +1237,21 @@ mod tests {
         assert!(default_jobs(true) >= 1);
         assert!(default_jobs(false) >= 1);
     }
+
+    #[test]
+    fn test_failed_batch_state_roundtrip() {
+        let temp_home = tempfile::tempdir().unwrap();
+        let old_home = std::env::var_os("PATINA_HOME");
+        std::env::set_var("PATINA_HOME", temp_home.path());
+
+        save_failed_batch_list(vec!["a/b".to_string(), "c/d".to_string()]).unwrap();
+        let loaded = load_failed_batch_list().unwrap();
+        assert_eq!(loaded, vec!["a/b".to_string(), "c/d".to_string()]);
+
+        if let Some(old) = old_home {
+            std::env::set_var("PATINA_HOME", old);
+        } else {
+            std::env::remove_var("PATINA_HOME");
+        }
+    }
 }

@@ -66,6 +66,8 @@ pub enum RepoCommands {
         oxidize: bool,
 
         /// Number of repositories to process concurrently (used with --all)
+        ///
+        /// Tip: with --oxidize, 2-3 jobs is usually best on laptops.
         #[arg(long)]
         jobs: Option<usize>,
 
