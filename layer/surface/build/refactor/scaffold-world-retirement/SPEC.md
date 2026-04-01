@@ -82,6 +82,7 @@ exit_criteria:
   text: cargo check --workspace -q and cargo test -q --workspace pass. No dead code warnings introduced.
   checked: true
 validated_against_commit: 29113f35
+last_freshness_check: 2026-03-31
 ---
 # refactor: scaffold world retirement
 
