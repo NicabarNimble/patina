@@ -1,7 +1,7 @@
 ---
 type: fix
 id: car-deadcode-a8-a24
-status: ready
+status: active
 created: 2026-03-31
 sessions:
   origin: 20260331-224232-852361000
