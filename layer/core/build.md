@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Version:** 0.23.1 — Three pillars: epistemic (complete), mother (architecture shipped), distribution (grammar plugins + SDK shipped).
+**Version:** 0.45.1 — Three pillars: epistemic (complete), mother (architecture shipped), distribution (grammar plugins + SDK shipped).
 
 ---
 
@@ -111,6 +111,29 @@ A local-first RAG network: portable project knowledge + personal mother.
 0.22.0 ✓ Feat: Patina SDK — Consolidated Plugin Crate on crates.io
 0.23.0 ✓ Feat: Grammar Extraction — 9 Grammars as Pipeline Plugins
 0.23.1 ✓ Fix: Workspace Cleanup — 26 Root Dirs → 10
+0.24.0 ✓ Release milestone (cross-project graph routing era begins)
+0.25.0 ✓ Release milestone (belief graph and import workflows expanded)
+0.26.0 ✓ Release milestone (integration hardening)
+0.27.0 ✓ Release milestone (command surface iteration)
+0.28.0 ✓ Release milestone (runtime and tooling stabilization)
+0.29.0 ✓ Release milestone (retrieval and interface refinements)
+0.30.0 ✓ Release milestone (session and orchestration improvements)
+0.31.0 ✓ Release milestone (rapid patch train across reliability and UX)
+0.32.0 ✓ Release milestone (surface cleanup + follow-through)
+0.33.0 ✓ Release milestone (protocol ergonomics)
+0.34.0 ✓ Release milestone (architecture polish)
+0.35.0 ✓ Release milestone (command and runtime hardening)
+0.36.0 ✓ Release milestone (interface parity)
+0.37.0 ✓ Release milestone (delivery stabilization)
+0.38.0 ✓ Release milestone (quality and correctness iteration)
+0.39.0 ✓ Release milestone (cleanup + regression-proofing)
+0.40.0 ✓ Release milestone (operability upgrades)
+0.41.0 ✓ Release milestone (routing and session improvements)
+0.42.0 ✓ Release milestone (surface consistency)
+0.43.0 ✓ Release milestone (high-velocity patch cycle)
+0.44.0 ✓ Release milestone (pre-remediation cleanup)
+0.45.0 ✓ Release milestone (audit remediation kickoff)
+0.45.1 ✓ Fix: code-audit remediation gate progress and cleanup
 1.0.0  - All pillars complete
 ```
 
