@@ -414,7 +414,13 @@ pub fn truncate_content(content: &str, max_len: usize) -> String {
     if content.len() <= max_len {
         content
     } else {
-        format!("{}...", &content[..max_len])
+        let boundary = content
+            .char_indices()
+            .map(|(idx, _)| idx)
+            .take_while(|idx| *idx <= max_len)
+            .last()
+            .unwrap_or(0);
+        format!("{}...", &content[..boundary])
     }
 }
 
@@ -487,5 +493,12 @@ mod tests {
         assert_eq!(truncate_content("short", 10), "short");
         assert_eq!(truncate_content("a very long string", 10), "a very lon...");
         assert_eq!(truncate_content("with\nnewlines", 20), "with newlines");
+    }
+
+    #[test]
+    fn test_truncate_content_utf8_char_boundary_safe() {
+        let content = "Hello 世界 🌍";
+        assert_eq!(truncate_content(content, 7), "Hello ...");
+        assert_eq!(truncate_content(content, 10), "Hello 世...");
     }
 }
