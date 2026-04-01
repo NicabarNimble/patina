@@ -10,6 +10,7 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
+use super::database::is_safe_identifier;
 use crate::commands::schema::{ProjectionDef, SchemaMetadata};
 
 // ============================================================================
@@ -209,15 +210,6 @@ fn generate_insert_sql(projection: &ProjectionDef, event_type: &str) -> String {
         event_type = event_type,
         pk = projection.primary_key,
     )
-}
-
-// ============================================================================
-// Shared utilities
-// ============================================================================
-
-/// Check that a string is a safe SQL identifier (alphanumeric + underscore only).
-fn is_safe_identifier(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 // ============================================================================

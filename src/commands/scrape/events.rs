@@ -9,6 +9,8 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
+use super::database::is_safe_identifier;
+
 // ============================================================================
 // FTS5 indexing — schema-driven (Seam 2: contract model consumer)
 // ============================================================================
@@ -100,11 +102,6 @@ fn populate_fts5_for_table(
 
     let count = conn.execute(&sql, [event_type])?;
     Ok(count)
-}
-
-/// Check that a string is a safe SQL identifier (alphanumeric + underscore only).
-fn is_safe_identifier(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// Get column names from a table via PRAGMA table_info.

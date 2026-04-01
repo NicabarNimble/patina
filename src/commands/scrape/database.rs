@@ -16,6 +16,11 @@ pub use patina::eventlog::insert_event;
 pub use patina::eventlog::is_ref_repo;
 pub use patina::eventlog::set_last_processed;
 
+/// Check that a string is a safe SQL identifier (alphanumeric + underscore only).
+pub(crate) fn is_safe_identifier(s: &str) -> bool {
+    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 pub fn patina_db_path() -> Result<PathBuf> {
     patina::eventlog::patina_db_path()
 }
