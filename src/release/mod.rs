@@ -20,7 +20,7 @@
 //! }
 //! ```
 
-mod internal;
+pub(crate) mod internal;
 
 use anyhow::Result;
 use std::path::Path;

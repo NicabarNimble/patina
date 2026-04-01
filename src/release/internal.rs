@@ -395,7 +395,7 @@ fn execute_external(prepared: PreparedRelease, title: &str) -> Result<()> {
 // ============================================================================
 
 /// Read current version from Cargo.toml
-fn read_cargo_version() -> Result<String> {
+pub(crate) fn read_cargo_version() -> Result<String> {
     let content = fs::read_to_string("Cargo.toml")?;
     for line in content.lines() {
         let trimmed = line.trim();
@@ -410,7 +410,7 @@ fn read_cargo_version() -> Result<String> {
 }
 
 /// Compute next version from current version and bump type
-fn compute_next_version(current: &str, bump: BumpType) -> Result<String> {
+pub(crate) fn compute_next_version(current: &str, bump: BumpType) -> Result<String> {
     let parts: Vec<u32> = current
         .split('.')
         .map(|s| s.parse::<u32>().context("Invalid version component"))
@@ -428,7 +428,7 @@ fn compute_next_version(current: &str, bump: BumpType) -> Result<String> {
 }
 
 /// Update version in Cargo.toml's [package] section
-fn update_cargo_version(new_version: &str) -> Result<()> {
+pub(crate) fn update_cargo_version(new_version: &str) -> Result<()> {
     let path = Path::new("Cargo.toml");
     let content = fs::read_to_string(path)?;
 
