@@ -1072,6 +1072,7 @@ fn run_grounding_report(conn: &Connection, rows: &[BeliefRow]) -> Result<()> {
     index
         .load(index_path.to_string_lossy().as_ref())
         .context("Failed to load semantic index")?;
+    let index_dimensions = index.dimensions() as usize;
 
     use patina::embeddings::offsets::*;
     const GROUNDING_LIMIT: usize = 20; // Search this many neighbors
@@ -1097,7 +1098,7 @@ fn run_grounding_report(conn: &Connection, rows: &[BeliefRow]) -> Result<()> {
         let belief_key = (BELIEF_ID_OFFSET + rowid) as u64;
 
         // Get belief's vector
-        let mut vector = vec![0.0_f32; 256];
+        let mut vector = vec![0.0_f32; index_dimensions];
         if index.get(belief_key, &mut vector).is_err() {
             continue;
         }
@@ -1205,4 +1206,22 @@ fn truncate(s: &str, max: usize) -> String {
     }
     let truncated: String = s.chars().take(max - 1).collect();
     format!("{}…", truncated)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn grounding_vector_uses_runtime_index_dimensions() {
+        let options = IndexOptions {
+            dimensions: 384,
+            metric: MetricKind::Cos,
+            quantization: ScalarKind::F32,
+            ..Default::default()
+        };
+        let index = Index::new(&options).expect("create test index");
+        let vector = vec![0.0_f32; index.dimensions() as usize];
+        assert_eq!(vector.len(), 384);
+    }
 }
