@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::path::Path;
 
 use super::archive::load_spec;
+use super::queries::extract_section_items;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PromptPacket {
@@ -184,29 +185,6 @@ fn extract_title(body: &str) -> Option<String> {
     body.lines()
         .find(|line| line.trim_start().starts_with("# "))
         .map(|line| line.trim_start_matches("# ").trim().to_string())
-}
-
-fn extract_section_items(text: &str, heading: &str) -> Vec<String> {
-    let mut in_section = false;
-    let mut items = Vec::new();
-
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed == heading {
-            in_section = true;
-            continue;
-        }
-        if in_section && trimmed.starts_with("## ") {
-            break;
-        }
-        if in_section
-            && (trimmed.starts_with("- ") || trimmed.starts_with(|c: char| c.is_ascii_digit()))
-        {
-            items.push(trimmed.to_string());
-        }
-    }
-
-    items
 }
 
 fn extract_section_paragraph(text: &str, heading: &str) -> Option<String> {
