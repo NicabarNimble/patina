@@ -179,15 +179,14 @@ enum Commands {
         command: Option<ScryCommands>,
 
         /// Query text to search for (optional if --file is provided)
-        #[arg(conflicts_with = "command")]
         query: Option<String>,
 
         /// File path for temporal/dependency queries (e.g., src/auth.rs)
-        #[arg(long, conflicts_with = "command")]
+        #[arg(long)]
         file: Option<String>,
 
         /// Belief ID for grounding queries — find nearest code/commits/sessions (E4.6a)
-        #[arg(long, conflicts_with_all = ["command", "file"])]
+        #[arg(long, conflicts_with = "file")]
         belief: Option<String>,
 
         /// Filter results by content type (used with --belief): code, commits, sessions, patterns, beliefs
@@ -227,7 +226,7 @@ enum Commands {
         impact: bool,
 
         /// Fetch full content for a single result from a previous query (D3 scan-then-focus)
-        #[arg(long, value_name = "QUERY_ID", conflicts_with_all = ["command", "query", "file", "belief"])]
+        #[arg(long, value_name = "QUERY_ID", conflicts_with_all = ["query", "file", "belief"])]
         detail: Option<String>,
 
         /// Rank of the result to fetch (1-indexed, used with --detail)
