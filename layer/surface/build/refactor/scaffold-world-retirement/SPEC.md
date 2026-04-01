@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: scaffold-world-retirement
-status: ready
+status: active
 created: 2026-03-26
 sessions:
   origin: 20260326-165149-931909000
