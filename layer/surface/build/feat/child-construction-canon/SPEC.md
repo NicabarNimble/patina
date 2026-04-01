@@ -23,10 +23,10 @@ child_specs:
 exit_criteria:
   - id: ccc1-hard-rules-locked
     text: "Hard rules 1-8 are documented as normative canon."
-    checked: false
+    checked: true
   - id: ccc2-core-children-built
     text: "6 core reusable children built and proven in MVP 1 (file-system-monitor, content-extractor, schema-enforcer, dedup-filter, record-writer, lakehouse-catalog)."
-    checked: false
+    checked: true
   - id: ccc3-reuse-proven
     text: "MVP 2 reuses at least 4 children from MVP 1 without modification. Reuse failures documented and children adjusted."
     checked: false
