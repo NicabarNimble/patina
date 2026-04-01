@@ -226,20 +226,12 @@ enum Commands {
         impact: bool,
 
         /// Fetch full content for a single result from a previous query (D3 scan-then-focus)
-        #[arg(long, value_name = "QUERY_ID", conflicts_with_all = ["command", "query", "file", "belief", "full"])]
+        #[arg(long, value_name = "QUERY_ID", conflicts_with_all = ["command", "query", "file", "belief"])]
         detail: Option<String>,
 
         /// Rank of the result to fetch (1-indexed, used with --detail)
         #[arg(long, default_value = "1", requires = "detail")]
         rank: usize,
-
-        /// Return full content for all results (escape hatch, deprecated)
-        #[arg(long, conflicts_with_all = ["command", "detail"])]
-        full: bool,
-
-        /// Use legacy single-oracle search (deprecated, removed in v0.12.0)
-        #[arg(long, conflicts_with = "command")]
-        legacy: bool,
     },
 
     /// Get project patterns and conventions — USE THIS to understand design rules
@@ -1230,8 +1222,6 @@ fn main() -> Result<()> {
             impact,
             detail,
             rank,
-            full,
-            legacy,
         }) => {
             // Handle subcommands first
             if let Some(subcmd) = command {
@@ -1276,8 +1266,6 @@ fn main() -> Result<()> {
                     belief,
                     content_type,
                     impact,
-                    full,
-                    legacy,
                 };
                 commands::scry::execute(query.as_deref(), options)?;
             }

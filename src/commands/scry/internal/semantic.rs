@@ -108,11 +108,7 @@ pub fn execute_semantic(query: Option<&str>, options: &ScryOptions) -> Result<()
                 }
             }
 
-            if options.full {
-                println!("   Content:\n{}", &result.content);
-            } else {
-                println!("   Content: {}", truncate_content(&result.content, 150));
-            }
+            println!("   Content: {}", truncate_content(&result.content, 150));
         } else {
             // Default concise output with ranks
             let mut contributions_str: String = result
@@ -136,11 +132,7 @@ pub fn execute_semantic(query: Option<&str>, options: &ScryOptions) -> Result<()
                 result.fused_score,
                 contributions_str
             );
-            if options.full {
-                println!("    {}", &result.content);
-            } else {
-                println!("    {}", truncate_content(&result.content, 200));
-            }
+            println!("    {}", truncate_content(&result.content, 200));
         }
     }
 

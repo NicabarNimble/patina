@@ -12,8 +12,6 @@ pub mod internal;
 use anyhow::Result;
 use patina::mother;
 
-use crate::commands::persona;
-
 use internal::enrichment::{find_belief_impact, truncate_content};
 use internal::logging::log_scry_query;
 use internal::routing::{execute_graph_routing, execute_via_mother};
@@ -25,7 +23,7 @@ pub use internal::subcommands::{
     execute_copy, execute_feedback, execute_open, execute_orient, execute_recent, execute_why,
 };
 
-pub use internal::search::{scry, scry_text};
+pub use internal::search::scry;
 
 /// Result from a scry query
 #[derive(Debug, Clone)]
@@ -57,10 +55,6 @@ pub struct ScryOptions {
     pub content_type: Option<String>,
     /// Show belief impact for code results — which beliefs are semantically close (E4.6a)
     pub impact: bool,
-    /// Return full content instead of snippets (escape hatch, deprecated)
-    pub full: bool,
-    /// Use legacy single-oracle search (deprecated, removed in v0.12.0)
-    pub legacy: bool,
 }
 
 impl Default for ScryOptions {
@@ -78,8 +72,6 @@ impl Default for ScryOptions {
             belief: None,
             content_type: None,
             impact: false,
-            full: false,
-            legacy: false,
         }
     }
 }
@@ -118,12 +110,6 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
     // Require query text for default search
     if query.is_none() {
         anyhow::bail!("Either a query text, --file, or --belief must be provided");
-    }
-
-    // --legacy: deprecated single-oracle path (removed in v0.12.0)
-    if options.legacy {
-        eprintln!("⚠️  --legacy is deprecated and will be removed in v0.12.0");
-        return execute_legacy_search(query, &options);
     }
 
     // Default: semantic search via QueryEngine
@@ -266,40 +252,6 @@ fn execute_legacy_file(file: &str, options: &ScryOptions) -> Result<()> {
     display_legacy_results(None, &results, options)
 }
 
-/// Legacy single-oracle search (deprecated, behind --legacy flag)
-fn execute_legacy_search(query: Option<&str>, options: &ScryOptions) -> Result<()> {
-    let q = query.ok_or_else(|| anyhow::anyhow!("Query required"))?;
-    println!("Query: \"{}\"\n", q);
-    println!("Mode: Semantic (vector)\n");
-
-    let mut results = scry_text(q, options)?;
-
-    // Bolt on persona results
-    if options.include_persona {
-        if let Ok(persona_results) = persona::query(q, options.limit, options.min_score, None) {
-            for p in persona_results {
-                results.push(ScryResult {
-                    id: 0,
-                    content: p.content,
-                    score: p.score,
-                    event_type: "[PERSONA]".to_string(),
-                    source_id: format!("{} ({})", p.source, p.domains.join(", ")),
-                    timestamp: p.timestamp,
-                });
-            }
-        }
-    }
-
-    results.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    results.truncate(options.limit);
-
-    display_legacy_results(query, &results, options)
-}
-
 /// Display results in legacy ScryResult format
 fn display_legacy_results(
     query: Option<&str>,
@@ -370,6 +322,5 @@ mod tests {
         assert_eq!(opts.limit, 10);
         assert_eq!(opts.min_score, 0.0);
         assert!(opts.include_persona); // Persona enabled by default
-        assert!(!opts.legacy); // Legacy off by default
     }
 }
