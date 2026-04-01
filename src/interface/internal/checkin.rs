@@ -379,6 +379,7 @@ mod tests {
                 end_tag: None,
                 parent_runtime_id: None,
                 handoff_from_runtime_id: None,
+                starting_commit: Some("deadbeef".to_string()),
                 created_at: "2026-03-12T00:02:30Z".to_string(),
                 updated_at: "2026-03-12T00:02:30Z".to_string(),
             };
@@ -396,6 +397,7 @@ mod tests {
                 end_tag: None,
                 parent_runtime_id: None,
                 handoff_from_runtime_id: None,
+                starting_commit: Some("deadbeef".to_string()),
                 created_at: "2026-03-12T00:02:31Z".to_string(),
                 updated_at: "2026-03-12T00:02:31Z".to_string(),
             };
@@ -483,6 +485,7 @@ mod tests {
                 end_tag: None,
                 parent_runtime_id: None,
                 handoff_from_runtime_id: None,
+                starting_commit: Some("deadbeef".to_string()),
                 created_at: "2026-03-12T10:00:00Z".to_string(),
                 updated_at: "2026-03-12T10:00:00Z".to_string(),
             };
@@ -500,6 +503,7 @@ mod tests {
                 end_tag: None,
                 parent_runtime_id: None,
                 handoff_from_runtime_id: None,
+                starting_commit: Some("deadbeef".to_string()),
                 created_at: "2026-03-12T10:00:01Z".to_string(),
                 updated_at: "2026-03-12T10:00:01Z".to_string(),
             };
@@ -561,6 +565,7 @@ mod tests {
                 end_tag: None,
                 parent_runtime_id: None,
                 handoff_from_runtime_id: None,
+                starting_commit: Some("deadbeef".to_string()),
                 created_at: "2026-03-12T10:00:00Z".to_string(),
                 updated_at: "2026-03-12T10:00:00Z".to_string(),
             };

@@ -90,6 +90,7 @@ pub fn begin_session(project_root: &Path, request: BeginSessionRequest) -> Resul
         end_tag: None,
         parent_runtime_id: request.parent_runtime_id,
         handoff_from_runtime_id: request.handoff_from_runtime_id,
+        starting_commit: Some(starting_commit.clone()),
         created_at: created_at.clone(),
         updated_at: created_at.clone(),
     };
@@ -360,6 +361,12 @@ fn map_record(
     artifact_path: PathBuf,
     fallback_commit: String,
 ) -> LiveSessionHandle {
+    let starting_commit = if let Some(commit) = record.starting_commit.clone() {
+        commit
+    } else {
+        read_starting_commit_from_artifact(&artifact_path).unwrap_or(fallback_commit)
+    };
+
     LiveSessionHandle {
         runtime_id: record.runtime_id,
         file_id: record.file_id,
@@ -369,12 +376,34 @@ fn map_record(
         persona_uid: record.persona_uid,
         artifact_path,
         branch: record.branch.unwrap_or_else(|| "none".to_string()),
-        starting_commit: fallback_commit,
+        starting_commit,
         start_tag: record.start_tag.unwrap_or_default(),
         end_tag: record.end_tag,
         created_at: record.created_at,
         updated_at: record.updated_at,
     }
+}
+
+fn read_starting_commit_from_artifact(path: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let mut in_frontmatter = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed == "---" {
+            if in_frontmatter {
+                break;
+            }
+            in_frontmatter = true;
+            continue;
+        }
+        if in_frontmatter && trimmed.starts_with("starting_commit:") {
+            return trimmed
+                .split_once(':')
+                .map(|(_, value)| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+        }
+    }
+    None
 }
 
 fn map_interface_kind(kind: &str) -> InterfaceKind {

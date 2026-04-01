@@ -163,13 +163,16 @@ pub struct MotherSessionRecord {
     pub end_tag: Option<String>,
     pub parent_runtime_id: Option<String>,
     pub handoff_from_runtime_id: Option<String>,
+    pub starting_commit: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
 
 impl MotherSessionRecord {
     pub fn starting_commit(&self) -> String {
-        "none".to_string()
+        self.starting_commit
+            .clone()
+            .unwrap_or_else(|| "none".to_string())
     }
 }
 
@@ -339,6 +342,7 @@ impl KnowledgeRuntimeStore {
                 end_tag TEXT,
                 parent_runtime_id TEXT,
                 handoff_from_runtime_id TEXT,
+                starting_commit TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -377,6 +381,11 @@ impl KnowledgeRuntimeStore {
             ON project_registry (updated_at DESC);
             "#,
         )?;
+
+        let _ = conn.execute(
+            "ALTER TABLE mother_sessions ADD COLUMN starting_commit TEXT",
+            [],
+        );
         Ok(())
     }
 
@@ -947,8 +956,8 @@ impl KnowledgeRuntimeStore {
             INSERT INTO mother_sessions (
                 runtime_id, project_uid, file_id, title, persona_uid, status,
                 interface_kind, adapter_name, branch, start_tag, end_tag,
-                parent_runtime_id, handoff_from_runtime_id, created_at, updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                parent_runtime_id, handoff_from_runtime_id, starting_commit, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
             "#,
             params![
                 record.runtime_id,
@@ -964,6 +973,7 @@ impl KnowledgeRuntimeStore {
                 record.end_tag,
                 record.parent_runtime_id,
                 record.handoff_from_runtime_id,
+                record.starting_commit,
                 record.created_at,
                 record.updated_at,
             ],
@@ -1000,7 +1010,7 @@ impl KnowledgeRuntimeStore {
             r#"
             SELECT runtime_id, project_uid, file_id, title, persona_uid, status,
                    interface_kind, adapter_name, branch, start_tag, end_tag,
-                   parent_runtime_id, handoff_from_runtime_id, created_at, updated_at
+                   parent_runtime_id, handoff_from_runtime_id, starting_commit, created_at, updated_at
             FROM mother_sessions
             WHERE runtime_id = ?1
             "#,
@@ -1020,7 +1030,7 @@ impl KnowledgeRuntimeStore {
             r#"
             SELECT runtime_id, project_uid, file_id, title, persona_uid, status,
                    interface_kind, adapter_name, branch, start_tag, end_tag,
-                   parent_runtime_id, handoff_from_runtime_id, created_at, updated_at
+                   parent_runtime_id, handoff_from_runtime_id, starting_commit, created_at, updated_at
             FROM mother_sessions
             WHERE file_id = ?1
             "#,
@@ -1040,7 +1050,7 @@ impl KnowledgeRuntimeStore {
             r#"
             SELECT runtime_id, project_uid, file_id, title, persona_uid, status,
                    interface_kind, adapter_name, branch, start_tag, end_tag,
-                   parent_runtime_id, handoff_from_runtime_id, created_at, updated_at
+                   parent_runtime_id, handoff_from_runtime_id, starting_commit, created_at, updated_at
             FROM mother_sessions
             WHERE project_uid = ?1 AND status = 'active'
             ORDER BY updated_at DESC, created_at DESC
@@ -1064,7 +1074,7 @@ impl KnowledgeRuntimeStore {
             r#"
             SELECT runtime_id, project_uid, file_id, title, persona_uid, status,
                    interface_kind, adapter_name, branch, start_tag, end_tag,
-                   parent_runtime_id, handoff_from_runtime_id, created_at, updated_at
+                   parent_runtime_id, handoff_from_runtime_id, starting_commit, created_at, updated_at
             FROM mother_sessions
             WHERE project_uid = ?1
               AND status = 'active'
@@ -1137,8 +1147,9 @@ fn map_mother_session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MotherSes
         end_tag: row.get(10)?,
         parent_runtime_id: row.get(11)?,
         handoff_from_runtime_id: row.get(12)?,
-        created_at: row.get(13)?,
-        updated_at: row.get(14)?,
+        starting_commit: row.get(13)?,
+        created_at: row.get(14)?,
+        updated_at: row.get(15)?,
     })
 }
 
@@ -1288,6 +1299,7 @@ mod tests {
             end_tag: None,
             parent_runtime_id: None,
             handoff_from_runtime_id: None,
+            starting_commit: Some("deadbeef".to_string()),
             created_at: created_at.clone(),
             updated_at: created_at.clone(),
         };
@@ -1305,6 +1317,7 @@ mod tests {
             end_tag: None,
             parent_runtime_id: None,
             handoff_from_runtime_id: None,
+            starting_commit: Some("feedface".to_string()),
             created_at: created_at.clone(),
             updated_at: created_at.clone(),
         };
@@ -1361,6 +1374,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(reloaded.status, MotherSessionStatus::Archived);
+        assert_eq!(reloaded.starting_commit(), "deadbeef");
         assert_eq!(
             reloaded.end_tag.as_deref(),
             Some("session-20260311-100000-ABCD-opencode-end")
