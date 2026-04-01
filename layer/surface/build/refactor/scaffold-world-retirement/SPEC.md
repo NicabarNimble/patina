@@ -86,6 +86,7 @@ last_freshness_check: 2026-03-31
 freshness_scope:
 - src/child/internal/
 - sdk/patina-sdk/
+- wit/
 ---
 # refactor: scaffold world retirement
 
