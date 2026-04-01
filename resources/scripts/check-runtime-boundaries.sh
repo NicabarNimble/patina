@@ -89,4 +89,67 @@ if [[ -f "children/ducklake/src/main.rs" ]]; then
     exit 1
 fi
 
+echo "Checking no hardcoded .patina/ paths outside allowed modules..."
+# Allowed: paths.rs (canonical), migration.rs (old paths by design), init/ (creates .patina/),
+# test code (temp dirs), project/internal.rs (detection/config), secrets/ (vault paths).
+# This guard catches NEW production code hardcoding .patina/ instead of using crate::paths.
+if $has_rg; then
+    patina_path_violations=$(rg -n '\.join\(".patina"\)' src/ --glob '*.rs' \
+        --glob '!src/paths.rs' \
+        --glob '!src/migration.rs' \
+        --glob '!src/commands/init/*' \
+        --glob '!src/project/*' \
+        --glob '!src/secrets/*' \
+        --glob '!src/connect/*' \
+        --glob '!src/session/*' \
+        --glob '!src/commands/repo/*' \
+        --glob '!src/commands/schema/*' \
+        --glob '!src/test_support.rs' 2>/dev/null \
+        | grep -v 'mod tests' \
+        | grep -v 'fn test_' \
+        | grep -v '#\[test\]' \
+        | grep -v '// assert!' \
+        | grep -v 'assert!' \
+        | grep -v 'temp.*\.join' \
+        | grep -v 'unwrap()' || true)
+else
+    patina_path_violations=$(grep -RInE '\.join\(".patina"\)' src/ --include='*.rs' \
+        --exclude-dir=.git --exclude-dir=target 2>/dev/null \
+        | grep -v 'src/paths.rs' \
+        | grep -v 'src/migration.rs' \
+        | grep -v 'src/commands/init/' \
+        | grep -v 'src/project/' \
+        | grep -v 'src/secrets/' \
+        | grep -v 'src/connect/' \
+        | grep -v 'src/session/' \
+        | grep -v 'src/commands/repo/' \
+        | grep -v 'src/commands/schema/' \
+        | grep -v 'src/test_support.rs' \
+        | grep -v 'mod tests' \
+        | grep -v 'fn test_' \
+        | grep -v '#\[test\]' \
+        | grep -v '// assert!' \
+        | grep -v 'assert!' \
+        | grep -v 'temp.*\.join' \
+        | grep -v 'unwrap()' || true)
+fi
+if [[ -n "$patina_path_violations" ]]; then
+    echo "$patina_path_violations"
+    echo "error: hardcoded .patina/ path found — use crate::paths instead"
+    exit 1
+fi
+
+echo "Checking no blanket #![allow(dead_code)] annotations..."
+if $has_rg; then
+    blanket_dead_code=$(rg -n '#!\[allow\(dead_code\)\]' src/ --glob '*.rs' 2>/dev/null || true)
+else
+    blanket_dead_code=$(grep -RInE '#!\[allow\(dead_code\)\]' src/ --include='*.rs' \
+        --exclude-dir=.git --exclude-dir=target 2>/dev/null || true)
+fi
+if [[ -n "$blanket_dead_code" ]]; then
+    echo "$blanket_dead_code"
+    echo "error: blanket #![allow(dead_code)] found — use per-item #[allow(dead_code)] instead"
+    exit 1
+fi
+
 echo "ok: runtime boundary drift guards enforced"
