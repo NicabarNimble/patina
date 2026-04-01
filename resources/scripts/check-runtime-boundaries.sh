@@ -13,7 +13,6 @@ required_dirs=(
     "src/mother"
     "src/child"
     "src/child/toy_host"
-    "src/core_tools"
 )
 
 echo "Checking required runtime boundary roots..."
