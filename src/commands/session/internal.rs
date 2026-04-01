@@ -4,7 +4,7 @@
 
 use anyhow::{bail, Result};
 use chrono::{Local, Utc};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::json;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, Write};
@@ -27,56 +27,6 @@ const SESSIONS_DIR: &str = "layer/sessions";
 /// Importance keywords that suggest a checkpoint commit
 const IMPORTANCE_KEYWORDS: &[&str] =
     &["breakthrough", "discovered", "solved", "fixed", "important"];
-
-/// YAML frontmatter for session documents.
-///
-/// New sessions (step 7+) write this as `---\n<yaml>\n---` at the top of the
-/// markdown file. Legacy sessions use `**Field**: value` lines instead.
-/// `read_session_field` handles both formats transparently.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SessionFrontmatter {
-    r#type: String,
-    id: String,
-    runtime_id: String,
-    title: String,
-    status: String,
-    llm: String,
-    interface: String,
-    created: String,
-    updated: String,
-    start_timestamp: i64,
-    persona: Option<String>,
-    #[serde(default)]
-    participants: Vec<SessionParticipantFrontmatter>,
-    #[serde(default)]
-    interfaces: Vec<String>,
-    parent_session: Option<String>,
-    handoff_from: Option<String>,
-    #[serde(default)]
-    handoff_to: Vec<String>,
-    git: SessionGit,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SessionParticipantFrontmatter {
-    id: String,
-    role: String,
-    interface: String,
-    adapter: Option<String>,
-    display_name: Option<String>,
-    joined_at: String,
-    left_at: Option<String>,
-}
-
-/// Git context embedded in session YAML frontmatter.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SessionGit {
-    project_uid: Option<String>,
-    branch: String,
-    starting_commit: String,
-    start_tag: String,
-    end_tag: Option<String>,
-}
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum SessionSurfaceMode {
@@ -666,9 +616,9 @@ fn end_session_document_value(
 }
 
 fn last_update_from_document(session_path: &Path) -> String {
-    parse_session_frontmatter(&fs::read_to_string(session_path).unwrap_or_default())
-        .map(|fm| {
-            chrono::DateTime::parse_from_rfc3339(&fm.updated)
+    session::parse_document(&fs::read_to_string(session_path).unwrap_or_default())
+        .map(|doc| {
+            chrono::DateTime::parse_from_rfc3339(&doc.frontmatter.updated)
                 .map(|dt| dt.with_timezone(&Local).format("%H:%M").to_string())
                 .unwrap_or_else(|_| "session start".to_string())
         })
@@ -772,7 +722,8 @@ fn read_session_field(session_path: &Path, prefix: &str) -> Result<String> {
     let contents = fs::read_to_string(session_path)?;
 
     // Try YAML frontmatter first
-    if let Some(fm) = parse_session_frontmatter(&contents) {
+    if let Some(doc) = session::parse_document(&contents) {
+        let fm = doc.frontmatter;
         let value = match prefix {
             "**ID**: " => Some(fm.id),
             "**Runtime ID**: " => Some(fm.runtime_id),
@@ -801,17 +752,6 @@ fn read_session_field(session_path: &Path, prefix: &str) -> Result<String> {
         prefix.trim(),
         session_path.display()
     )
-}
-
-/// Parse YAML frontmatter from a session markdown file.
-///
-/// Returns `None` if the file doesn't start with `---` or YAML parsing fails.
-/// Used by `read_session_field` for the new frontmatter format.
-fn parse_session_frontmatter(content: &str) -> Option<SessionFrontmatter> {
-    let rest = content.strip_prefix("---")?;
-    let end = rest.find("\n---")?;
-    let yaml_str = &rest[..end];
-    serde_yaml::from_str(yaml_str).ok()
 }
 
 /// Parse insertion count from git diff --stat summary line.
