@@ -1,33 +1,33 @@
 ---
 type: fix
 id: code-audit-remediation
-status: draft
+status: ready
 created: 2026-03-31
 sessions:
   origin: 20260331-224232-852361000
-references:
-  - layer/core/patina-identity.md
-  - layer/core/unix-philosophy.md
-  - layer/core/spec-driven-design.md
-  - layer/core/dependable-rust.md
-  - layer/core/adapter-pattern.md
-  - layer/core/session-capture.md
 related:
-  - layer/surface/build/fix/car-safety-a1-a6/SPEC.md
-  - layer/surface/build/fix/car-architecture-a7-a25/SPEC.md
-  - layer/surface/build/fix/car-deadcode-a8-a24/SPEC.md
-  - layer/surface/build/fix/car-dedup-a9-a21/SPEC.md
-  - layer/surface/build/fix/car-cleanup-non-a/SPEC.md
+- layer/surface/build/fix/car-safety-a1-a6/SPEC.md
+- layer/surface/build/fix/car-architecture-a7-a25/SPEC.md
+- layer/surface/build/fix/car-deadcode-a8-a24/SPEC.md
+- layer/surface/build/fix/car-dedup-a9-a21/SPEC.md
+- layer/surface/build/fix/car-cleanup-non-a/SPEC.md
+references:
+- layer/core/patina-identity.md
+- layer/core/unix-philosophy.md
+- layer/core/spec-driven-design.md
+- layer/core/dependable-rust.md
+- layer/core/adapter-pattern.md
+- layer/core/session-capture.md
 exit_criteria:
-  - id: car-program-split
-    text: "Remediation scope is split into five focused child specs (safety, architecture, dead code, dedup, cleanup) and this umbrella spec no longer authorizes direct code edits."
-    checked: true
-  - id: car-program-ordering
-    text: "Execution order is explicit: safety -> architecture -> dead code -> dedup -> cleanup."
-    checked: true
-  - id: car-program-traceability
-    text: "Each child spec carries scope-limited file lists, test proof requirements, and direct references to layer/core values."
-    checked: true
+- id: car-program-split
+  text: Remediation scope is split into five focused child specs (safety, architecture, dead code, dedup, cleanup) and this umbrella spec no longer authorizes direct code edits.
+  checked: true
+- id: car-program-ordering
+  text: 'Execution order is explicit: safety -> architecture -> dead code -> dedup -> cleanup.'
+  checked: true
+- id: car-program-traceability
+  text: Each child spec carries scope-limited file lists, test proof requirements, and direct references to layer/core values.
+  checked: true
 ---
 
 # fix: Code Audit Remediation (Umbrella)
