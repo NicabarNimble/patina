@@ -2464,3 +2464,73 @@ fn role_none_skips_validation() {
     };
     assert!(check_capabilities(&m).is_ok());
 }
+
+#[test]
+fn capability_checks_match_for_auto_granted_capability() {
+    let f = write_temp_manifest(
+        r#"
+[child]
+name = "cap-match"
+kind = "knowledge-child"
+
+[capabilities]
+host_log = true
+
+[provides]
+child = "test"
+"#,
+    );
+    let m = ChildManifest::from_path(f.path()).unwrap();
+
+    let top_level = check_capabilities(&m).is_ok();
+    let engine_level = KnowledgeChildEngine::check_capabilities(&m).is_ok();
+
+    assert_eq!(top_level, engine_level);
+}
+
+#[test]
+fn capability_checks_match_for_unknown_capability() {
+    let f = write_temp_manifest(
+        r#"
+[child]
+name = "cap-mismatch"
+kind = "knowledge-child"
+
+[capabilities]
+host_log = true
+host_unknown = true
+
+[provides]
+child = "test"
+"#,
+    );
+    let m = ChildManifest::from_path(f.path()).unwrap();
+
+    let top_level = check_capabilities(&m).is_ok();
+    let engine_level = KnowledgeChildEngine::check_capabilities(&m).is_ok();
+
+    assert_eq!(top_level, engine_level);
+}
+
+#[test]
+fn capability_checks_match_for_host_layer_case() {
+    let f = write_temp_manifest(
+        r#"
+[child]
+name = "layer-check"
+kind = "knowledge-child"
+
+[needs]
+toys = ["layer"]
+
+[provides]
+child = "test"
+"#,
+    );
+    let m = ChildManifest::from_path(f.path()).unwrap();
+
+    let top_level = check_capabilities(&m).is_ok();
+    let engine_level = KnowledgeChildEngine::check_capabilities(&m).is_ok();
+
+    assert_eq!(top_level, engine_level);
+}

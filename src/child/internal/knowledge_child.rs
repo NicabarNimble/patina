@@ -776,17 +776,10 @@ impl KnowledgeChildEngine {
             );
         }
 
-        const AUTO_GRANTED: &[&str] = &[
-            "host_log",
-            "host_measure",
-            "host_emit",
-            "host_http",
-            "host_query",
-        ];
         let denied: Vec<&str> = manifest
             .capabilities
             .iter()
-            .filter(|cap| !AUTO_GRANTED.contains(&cap.as_str()))
+            .filter(|cap| !super::AUTO_GRANTED_CAPABILITIES.contains(&cap.as_str()))
             .map(|s| s.as_str())
             .collect();
         if !denied.is_empty() {

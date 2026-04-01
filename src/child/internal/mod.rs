@@ -124,6 +124,15 @@ impl ChildRole {
     }
 }
 
+pub(crate) const AUTO_GRANTED_CAPABILITIES: &[&str] = &[
+    "host_log",
+    "host_layer",
+    "host_measure",
+    "host_emit",
+    "host_http",
+    "host_query",
+];
+
 pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
     let allowed = manifest.world.allowed_capabilities();
     let world_denied: Vec<&str> = manifest
@@ -142,19 +151,10 @@ pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
         );
     }
 
-    let auto_granted = [
-        "host_log",
-        "host_layer",
-        "host_measure",
-        "host_emit",
-        "host_http",
-        "host_query",
-    ];
-
     let denied: Vec<&str> = manifest
         .capabilities
         .iter()
-        .filter(|cap| !auto_granted.contains(&cap.as_str()))
+        .filter(|cap| !AUTO_GRANTED_CAPABILITIES.contains(&cap.as_str()))
         .map(|s| s.as_str())
         .collect();
 
