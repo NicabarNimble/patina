@@ -61,7 +61,7 @@ impl ServerState {
 
 fn read_current_project_uid() -> Option<String> {
     let cwd = std::env::current_dir().ok()?;
-    let uid = std::fs::read_to_string(cwd.join(".patina").join("uid")).ok()?;
+    let uid = std::fs::read_to_string(patina::paths::project::uid_path(&cwd)).ok()?;
     let uid = uid.trim();
     if uid.len() == 8
         && uid

@@ -310,27 +310,27 @@ impl Default for SearchSection {
 
 /// Get the .patina directory for a project
 pub fn patina_dir(project_path: &Path) -> PathBuf {
-    project_path.join(".patina")
+    crate::paths::project::patina_dir(project_path)
 }
 
 /// Get the config file path for a project
 pub fn config_path(project_path: &Path) -> PathBuf {
-    patina_dir(project_path).join("config.toml")
+    crate::paths::project::config_path(project_path)
 }
 
 /// Get the legacy config.json path
 pub fn legacy_config_path(project_path: &Path) -> PathBuf {
-    patina_dir(project_path).join("config.json")
+    crate::paths::project::legacy_config_path(project_path)
 }
 
 /// Get the local state directory for a project (gitignored)
 pub fn local_dir(project_path: &Path) -> PathBuf {
-    patina_dir(project_path).join("local")
+    crate::paths::project::local_dir(project_path)
 }
 
 /// Get the backups directory for a project
 pub fn backups_dir(project_path: &Path) -> PathBuf {
-    local_dir(project_path).join("backups")
+    crate::paths::project::backups_dir(project_path)
 }
 
 // =============================================================================
@@ -339,12 +339,12 @@ pub fn backups_dir(project_path: &Path) -> PathBuf {
 
 /// Get the UID file path for a project
 pub fn uid_path(project_path: &Path) -> PathBuf {
-    patina_dir(project_path).join("uid")
+    crate::paths::project::uid_path(project_path)
 }
 
 /// Get the persona binding file path for a project
 pub fn persona_path(project_path: &Path) -> PathBuf {
-    patina_dir(project_path).join("persona")
+    crate::paths::project::persona_path(project_path)
 }
 
 /// Get the project persona binding (returns None if not set)

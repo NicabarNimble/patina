@@ -459,6 +459,11 @@ pub mod project {
         root.join(".patina/config.toml")
     }
 
+    /// Legacy project config: `.patina/config.json` (migration source)
+    pub fn legacy_config_path(root: &Path) -> PathBuf {
+        root.join(".patina/config.json")
+    }
+
     /// Local state directory (gitignored): `.patina/local/`
     pub fn local_dir(root: &Path) -> PathBuf {
         root.join(".patina/local")
@@ -495,6 +500,16 @@ pub mod project {
     /// Version manifest: `.patina/versions.json` (committed)
     pub fn versions_path(root: &Path) -> PathBuf {
         root.join(".patina/versions.json")
+    }
+
+    /// Project UID file: `.patina/uid` (committed)
+    pub fn uid_path(root: &Path) -> PathBuf {
+        root.join(".patina/uid")
+    }
+
+    /// Project persona binding file: `.patina/persona` (committed)
+    pub fn persona_path(root: &Path) -> PathBuf {
+        root.join(".patina/persona")
     }
 
     /// Backup directory: `.patina/local/backups/`

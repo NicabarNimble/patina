@@ -35,7 +35,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         }
     }
 
-    let patina_config = project_path.join(".patina").join("config.toml");
+    let patina_config = paths::project::config_path(&project_path);
     let adapter_name: String;
 
     if !patina_config.exists() {
