@@ -50,6 +50,7 @@ pub(crate) use mother_crate::registry;
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use std::path::Path;
+#[cfg(target_os = "macos")]
 use std::process::Command;
 
 use patina::paths;
@@ -305,17 +306,21 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
     }
 }
 
+#[cfg(target_os = "macos")]
 const MOTHER_LAUNCHD_LABEL: &str = "com.patina.mother";
 
+#[cfg(target_os = "macos")]
 fn launch_agents_dir() -> Result<std::path::PathBuf> {
     let home = dirs::home_dir().context("unable to resolve home directory")?;
     Ok(home.join("Library/LaunchAgents"))
 }
 
+#[cfg(target_os = "macos")]
 fn launchd_plist_path() -> Result<std::path::PathBuf> {
     Ok(launch_agents_dir()?.join(format!("{}.plist", MOTHER_LAUNCHD_LABEL)))
 }
 
+#[cfg(target_os = "macos")]
 fn xml_escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
@@ -325,6 +330,7 @@ fn xml_escape(value: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+#[cfg(target_os = "macos")]
 fn render_launchd_plist(exe_path: &Path) -> String {
     let exe = xml_escape(&exe_path.display().to_string());
     format!(
