@@ -90,6 +90,7 @@ enum Commands {
     },
 
     /// Check for new Patina CLI versions
+    #[cfg(feature = "dev")]
     Upgrade {
         /// Only check for updates, don't show instructions
         #[arg(short, long)]
@@ -1131,8 +1132,9 @@ fn main() -> Result<()> {
         }) => {
             commands::init::execute(name, force, local, no_commit)?;
         }
+        #[cfg(feature = "dev")]
         Some(Commands::Upgrade { check, json }) => {
-            commands::upgrade::execute(check, json)?;
+            commands::dev::upgrade::execute(check, json)?;
         }
         #[cfg(feature = "dev")]
         Some(Commands::Dev { command }) => match command {

@@ -16,7 +16,6 @@ pub fn execute(check_only: bool, json: bool) -> Result<()> {
         println!("🔍 Checking for Patina updates...");
     }
 
-    // Check GitHub releases
     let latest_release = check_latest_release()?;
     let latest_version = latest_release.tag_name.trim_start_matches('v');
 
@@ -36,7 +35,6 @@ pub fn execute(check_only: bool, json: bool) -> Result<()> {
     println!("Current version: v{current_version}");
     println!("Latest version:  v{latest_version}");
 
-    // Parse and display when the release was published
     if let Ok(published_date) = chrono::DateTime::parse_from_rfc3339(&latest_release.published_at) {
         let days_ago = (chrono::Utc::now() - published_date.with_timezone(&chrono::Utc)).num_days();
         if days_ago == 0 {
@@ -59,13 +57,11 @@ pub fn execute(check_only: bool, json: bool) -> Result<()> {
         return Ok(());
     }
 
-    // Provide upgrade instructions
     println!("\nTo upgrade Patina, run:");
     println!("  cargo install patina --version {latest_version}");
     println!("\nOr download from:");
     println!("  {}", latest_release.html_url);
 
-    // Check if running in non-interactive mode
     let non_interactive = std::env::var("PATINA_NONINTERACTIVE").is_ok();
 
     if !non_interactive {
@@ -83,17 +79,13 @@ pub fn execute(check_only: bool, json: bool) -> Result<()> {
 }
 
 fn check_latest_release() -> Result<GitHubRelease> {
-    // Use reqwest blocking client to fetch from GitHub API
     let client = reqwest::blocking::Client::builder()
         .user_agent("patina-cli")
         .timeout(std::time::Duration::from_secs(10))
         .build()?;
 
-    // For now, use a placeholder repo URL since the actual repo isn't published yet
-    // In production, this would be the real patina repo
     let url = "https://api.github.com/repos/rust-lang/rust/releases/latest";
 
-    // Add a note for when we have a real repo
     if std::env::var("PATINA_REPO_URL").is_ok() {
         eprintln!("Note: Using PATINA_REPO_URL for version check");
     }
@@ -105,12 +97,10 @@ fn check_latest_release() -> Result<GitHubRelease> {
         .context("Failed to connect to GitHub API")?;
 
     if !response.status().is_success() {
-        // If rate limited or other error, fall back to mock data
         if response.status() == reqwest::StatusCode::FORBIDDEN {
             eprintln!("Warning: GitHub API rate limit may have been exceeded");
         }
 
-        // Return mock data as fallback
         return Ok(GitHubRelease {
             tag_name: "v0.2.0".to_string(),
             published_at: "2025-08-07T00:00:00Z".to_string(),
@@ -126,9 +116,6 @@ fn check_latest_release() -> Result<GitHubRelease> {
 }
 
 fn is_version_outdated(current: &str, latest: &str) -> Result<bool> {
-    // Simple version comparison
-    // In production, use semver crate for proper semantic versioning
-
     let current_parts: Vec<u32> = current.split('.').filter_map(|s| s.parse().ok()).collect();
 
     let latest_parts: Vec<u32> = latest.split('.').filter_map(|s| s.parse().ok()).collect();
