@@ -81,6 +81,7 @@ exit_criteria:
 - id: swr14-gates-green
   text: cargo check --workspace -q and cargo test -q --workspace pass. No dead code warnings introduced.
   checked: true
+validated_against_commit: 29113f35
 ---
 # refactor: scaffold world retirement
 
