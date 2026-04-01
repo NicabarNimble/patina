@@ -1,32 +1,7 @@
 use super::*;
 use crate::mother::TaskIntentKind;
+use crate::test_support::with_temp_patina_home;
 use std::io::Write;
-
-fn with_temp_patina_home<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
-    let _guard = crate::test_support::env_test_mutex()
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    let temp = tempfile::TempDir::new().unwrap();
-    let home = temp.path().join("patina-home");
-    std::fs::create_dir_all(&home).unwrap();
-    let old_home = std::env::var_os("PATINA_HOME");
-    unsafe {
-        std::env::set_var("PATINA_HOME", &home);
-    }
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&home)));
-    match old_home {
-        Some(value) => unsafe {
-            std::env::set_var("PATINA_HOME", value);
-        },
-        None => unsafe {
-            std::env::remove_var("PATINA_HOME");
-        },
-    }
-    match result {
-        Ok(value) => value,
-        Err(panic) => std::panic::resume_unwind(panic),
-    }
-}
 
 fn write_temp_manifest(content: &str) -> tempfile::NamedTempFile {
     let mut f = tempfile::NamedTempFile::new().unwrap();
@@ -481,7 +456,7 @@ type = "bearer"
 #[test]
 fn ducklake_manifest_uses_granted_ingress_not_ambient_http() {
     with_temp_patina_home(|home| {
-        write_github_connection_fixture(home);
+        write_github_connection_fixture(&home);
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("children/ducklake/child.toml");
         let manifest = ChildManifest::from_path(&path).unwrap();
@@ -496,7 +471,7 @@ fn ducklake_manifest_uses_granted_ingress_not_ambient_http() {
 #[test]
 fn ducklake_manifest_runtime_grants_sdk_story_stays_connected() {
     with_temp_patina_home(|home| {
-        write_github_connection_fixture(home);
+        write_github_connection_fixture(&home);
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("children/ducklake/child.toml");
         let manifest = ChildManifest::from_path(&path).unwrap();

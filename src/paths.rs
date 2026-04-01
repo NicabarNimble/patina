@@ -526,37 +526,12 @@ pub mod project {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::with_temp_patina_home;
     use mother_crate::secrets_paths as mother_paths;
-
-    fn with_temp_patina_home<T>(f: impl FnOnce(PathBuf) -> T) -> T {
-        let _guard = crate::test_support::env_test_mutex()
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        let temp = tempfile::TempDir::new().unwrap();
-        let expected_home = temp.path().join("patina-home");
-        std::fs::create_dir_all(&expected_home).unwrap();
-        let old = std::env::var_os("PATINA_HOME");
-        unsafe {
-            std::env::set_var("PATINA_HOME", &expected_home);
-        }
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(expected_home)));
-        match old {
-            Some(value) => unsafe {
-                std::env::set_var("PATINA_HOME", value);
-            },
-            None => unsafe {
-                std::env::remove_var("PATINA_HOME");
-            },
-        }
-        match result {
-            Ok(value) => value,
-            Err(panic) => std::panic::resume_unwind(panic),
-        }
-    }
 
     #[test]
     fn test_patina_home() {
-        with_temp_patina_home(|expected_home| {
+        crate::test_support::with_temp_patina_home(|expected_home| {
             let home = patina_home();
             assert_eq!(home, expected_home);
         });

@@ -379,32 +379,7 @@ pub fn log_emit(plugin_name: &str, level: &str, message: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn with_temp_patina_home<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
-        let _guard = crate::test_support::env_test_mutex()
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        let temp = tempfile::TempDir::new().unwrap();
-        let home = temp.path().join("patina-home");
-        std::fs::create_dir_all(&home).unwrap();
-        let old_home = std::env::var_os("PATINA_HOME");
-        unsafe {
-            std::env::set_var("PATINA_HOME", &home);
-        }
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&home)));
-        match old_home {
-            Some(value) => unsafe {
-                std::env::set_var("PATINA_HOME", value);
-            },
-            None => unsafe {
-                std::env::remove_var("PATINA_HOME");
-            },
-        }
-        match result {
-            Ok(value) => value,
-            Err(panic) => std::panic::resume_unwind(panic),
-        }
-    }
+    use crate::test_support::with_temp_patina_home;
 
     #[test]
     fn v2_connect_resolve_exposes_base_url() {

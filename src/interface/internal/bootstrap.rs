@@ -476,34 +476,20 @@ mod tests {
         temp
     }
 
-    fn with_temp_patina_home<T>(temp: &TempDir, f: impl FnOnce() -> T) -> T {
-        let _guard = crate::test_support::env_test_mutex()
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        let patina_home = temp.path().join("patina-home");
-        std::fs::create_dir_all(&patina_home).unwrap();
-
-        let old = std::env::var_os("PATINA_HOME");
+    fn with_test_env<T>(temp: &TempDir, f: impl FnOnce() -> T) -> T {
         let old_home = std::env::var_os("HOME");
         unsafe {
-            std::env::set_var("PATINA_HOME", &patina_home);
             std::env::set_var("HOME", temp.path());
         }
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::test_support::with_temp_patina_home(|_| f())
+        }));
         match old_home {
             Some(value) => unsafe {
                 std::env::set_var("HOME", value);
             },
             None => unsafe {
                 std::env::remove_var("HOME");
-            },
-        }
-        match old {
-            Some(value) => unsafe {
-                std::env::set_var("PATINA_HOME", value);
-            },
-            None => unsafe {
-                std::env::remove_var("PATINA_HOME");
             },
         }
         match result {
@@ -520,7 +506,7 @@ mod tests {
     fn creates_native_projection_for_opencode() {
         let temp = setup_project("opencode");
 
-        let result = with_temp_patina_home(&temp, || {
+        let result = with_test_env(&temp, || {
             ensure_adapter_projection("opencode", temp.path(), ProjectionMode::RefreshManaged)
                 .unwrap()
         });
@@ -561,7 +547,7 @@ mod tests {
     fn bundle_status_reports_current_after_projection() {
         let temp = setup_project("gemini");
 
-        with_temp_patina_home(&temp, || {
+        with_test_env(&temp, || {
             ensure_bundle_projection("gemini", temp.path(), ProjectionMode::RefreshManaged).unwrap()
         });
 
@@ -577,11 +563,11 @@ mod tests {
     fn ensure_bundle_bootstrap_skips_backup_when_bundle_is_current() {
         let temp = setup_project("claude");
 
-        with_temp_patina_home(&temp, || {
+        with_test_env(&temp, || {
             ensure_bundle_projection("claude", temp.path(), ProjectionMode::RefreshManaged).unwrap()
         });
 
-        let result = with_temp_patina_home(&temp, || {
+        let result = with_test_env(&temp, || {
             ensure_bundle_bootstrap("claude", temp.path()).unwrap()
         });
 
@@ -606,7 +592,7 @@ mod tests {
         std::fs::write(adapter_dir.join("GEMINI.md"), "# Foreign shell\n").unwrap();
         std::fs::write(adapter_dir.join("commands/custom.toml"), "stale = true\n").unwrap();
 
-        let result = with_temp_patina_home(&temp, || {
+        let result = with_test_env(&temp, || {
             ensure_adapter_projection("gemini", temp.path(), ProjectionMode::RefreshManaged)
                 .unwrap()
         });
@@ -637,7 +623,7 @@ mod tests {
     fn rerun_refreshes_managed_surface_without_new_backup() {
         let temp = setup_project("gemini");
 
-        with_temp_patina_home(&temp, || {
+        with_test_env(&temp, || {
             ensure_adapter_projection("gemini", temp.path(), ProjectionMode::RefreshManaged)
                 .unwrap()
         });
@@ -649,7 +635,7 @@ mod tests {
         );
         std::fs::write(&root_path, root_with_user_text).unwrap();
 
-        let result = with_temp_patina_home(&temp, || {
+        let result = with_test_env(&temp, || {
             ensure_adapter_projection("gemini", temp.path(), ProjectionMode::RefreshManaged)
                 .unwrap()
         });
@@ -664,13 +650,13 @@ mod tests {
     fn force_rewrite_creates_fresh_backup_of_managed_surface() {
         let temp = setup_project("opencode");
 
-        with_temp_patina_home(&temp, || {
+        with_test_env(&temp, || {
             ensure_adapter_projection("opencode", temp.path(), ProjectionMode::RefreshManaged)
                 .unwrap()
         });
         std::fs::write(temp.path().join("AGENTS.md"), "# Replaced shell\n").unwrap();
 
-        let result = with_temp_patina_home(&temp, || {
+        let result = with_test_env(&temp, || {
             ensure_adapter_projection("opencode", temp.path(), ProjectionMode::ForceRewrite)
                 .unwrap()
         });
@@ -689,7 +675,7 @@ mod tests {
         std::fs::create_dir_all(nested.parent().unwrap()).unwrap();
         std::fs::write(&nested, "# Package local\n").unwrap();
 
-        let result = with_temp_patina_home(&temp, || {
+        let result = with_test_env(&temp, || {
             ensure_adapter_projection("opencode", temp.path(), ProjectionMode::RefreshManaged)
                 .unwrap()
         });

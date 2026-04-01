@@ -538,34 +538,8 @@ pub fn migrate_legacy_project_databases(project_root: &Path) -> Result<DataMigra
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use crate::test_support::with_temp_patina_home;
     use tempfile::tempdir;
-
-    fn with_temp_patina_home<T>(f: impl FnOnce(PathBuf) -> T) -> T {
-        let _guard = crate::test_support::env_test_mutex()
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        let temp = tempfile::TempDir::new().unwrap();
-        let expected_home = temp.path().join("patina-home");
-        std::fs::create_dir_all(&expected_home).unwrap();
-        let old = std::env::var_os("PATINA_HOME");
-        unsafe {
-            std::env::set_var("PATINA_HOME", &expected_home);
-        }
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(expected_home)));
-        match old {
-            Some(value) => unsafe {
-                std::env::set_var("PATINA_HOME", value);
-            },
-            None => unsafe {
-                std::env::remove_var("PATINA_HOME");
-            },
-        }
-        match result {
-            Ok(value) => value,
-            Err(panic) => std::panic::resume_unwind(panic),
-        }
-    }
 
     /// Count events by type (test helper)
     fn count_events_by_type(conn: &Connection, event_type: &str) -> Result<i64> {
@@ -791,7 +765,7 @@ mod tests {
 
     #[test]
     fn test_open_events_db_at_uses_mother_project_path_when_uid_exists() -> Result<()> {
-        with_temp_patina_home(|patina_home| {
+        crate::test_support::with_temp_patina_home(|patina_home| {
             let dir = tempdir().unwrap();
             std::fs::create_dir_all(dir.path().join(".patina")).unwrap();
             std::fs::write(dir.path().join(".patina/uid"), "2bdc808e").unwrap();
@@ -815,7 +789,7 @@ mod tests {
 
     #[test]
     fn test_migrate_legacy_project_databases_moves_and_marks() -> Result<()> {
-        with_temp_patina_home(|patina_home| {
+        crate::test_support::with_temp_patina_home(|patina_home| {
             let project = tempdir().unwrap();
             std::fs::create_dir_all(project.path().join(".patina/local/data")).unwrap();
             std::fs::write(project.path().join(".patina/uid"), "2bdc808e").unwrap();

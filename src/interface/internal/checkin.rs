@@ -361,7 +361,7 @@ mod tests {
     #[test]
     fn check_in_prefers_current_interface_pointer_over_ambiguous_matches() {
         let temp = tempfile::TempDir::new().unwrap();
-        with_temp_patina_home(&temp, || {
+        crate::test_support::with_temp_patina_home(|_| {
             let project_uid = project::create_uid_if_missing(temp.path()).unwrap();
             let store = KnowledgeRuntimeStore::default();
 
@@ -438,36 +438,10 @@ mod tests {
         });
     }
 
-    fn with_temp_patina_home<T>(temp: &tempfile::TempDir, f: impl FnOnce() -> T) -> T {
-        let _guard = crate::test_support::env_test_mutex()
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        let patina_home = temp.path().join("patina-home");
-        fs::create_dir_all(&patina_home).unwrap();
-
-        let old_patina_home = std::env::var_os("PATINA_HOME");
-        unsafe {
-            std::env::set_var("PATINA_HOME", &patina_home);
-        }
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-        match old_patina_home {
-            Some(value) => unsafe {
-                std::env::set_var("PATINA_HOME", value);
-            },
-            None => unsafe {
-                std::env::remove_var("PATINA_HOME");
-            },
-        }
-        match result {
-            Ok(value) => value,
-            Err(panic) => std::panic::resume_unwind(panic),
-        }
-    }
-
     #[test]
     fn check_in_persona_scope_ignores_pointer_mismatch_and_reattaches_matching_persona() {
         let temp = tempfile::TempDir::new().unwrap();
-        with_temp_patina_home(&temp, || {
+        crate::test_support::with_temp_patina_home(|_| {
             let project_uid = project::create_uid_if_missing(temp.path()).unwrap();
             let store = KnowledgeRuntimeStore::default();
 
@@ -547,7 +521,7 @@ mod tests {
     #[test]
     fn check_in_rejects_requested_session_when_persona_scope_mismatches() {
         let temp = tempfile::TempDir::new().unwrap();
-        with_temp_patina_home(&temp, || {
+        crate::test_support::with_temp_patina_home(|_| {
             let project_uid = project::create_uid_if_missing(temp.path()).unwrap();
             let store = KnowledgeRuntimeStore::default();
 
