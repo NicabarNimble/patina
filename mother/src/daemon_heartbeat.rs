@@ -111,7 +111,7 @@ pub fn spawn_heartbeat(
                 }
 
                 ticks += 1;
-                if ticks % checkpoint_every_ticks == 0 {
+                if ticks.is_multiple_of(checkpoint_every_ticks) {
                     if let Err(error) = checkpoint_project_databases(&runtime) {
                         tracing::warn!(%error, "wal checkpoint cycle failed");
                     }
