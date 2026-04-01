@@ -1,90 +1,86 @@
 ---
 type: refactor
 id: scaffold-world-retirement
-status: draft
+status: ready
 created: 2026-03-26
 sessions:
   origin: 20260326-165149-931909000
-beliefs:
-  - "[[children-are-wasm]]"
-  - "[[four-roles-no-overlap]]"
-  - "[[children-have-agency-toys-are-capabilities]]"
-  - "[[investigate-before-delete]]"
-sequencing:
-  before:
-    - child-command-surface
-  note: "Deleting the `command` kind removes the naming collision before child-command-surface begins. child-command-surface must NOT reference wit/command/ as its contract directory — that path will not exist. The new command-handler interface belongs in wit/knowledge-child/ or a new wit/command-handler/ package with fresh semantics."
 related:
-  - src/child/internal/command.rs
-  - src/child/internal/task.rs
-  - src/child/internal/pipeline.rs
-  - src/child/internal/mod.rs
-  - sdk/patina-sdk/src/command.rs
-  - sdk/patina-sdk/src/task.rs
-  - sdk/patina-sdk/src/pipeline.rs
-  - sdk/patina-sdk/src/lib.rs
-  - sdk/patina-sdk/wit/command/
-  - sdk/patina-sdk/wit/task/
-  - sdk/patina-sdk/wit/mother-child/
-  - sdk/patina-sdk/wit/pipeline/
-  - sdk/patina-sdk/README.md
-  - wit/command/command.wit
-  - wit/task/task.wit
-  - wit/deps/patina-host/host.wit
-  - wit/pipeline/pipeline.wit
-  - resources/templates/child/command/
-  - resources/templates/child/task/
-  - src/main.rs
-  - src/child/scaffold.rs
+- src/child/internal/command.rs
+- src/child/internal/task.rs
+- src/child/internal/pipeline.rs
+- src/child/internal/mod.rs
+- sdk/patina-sdk/src/command.rs
+- sdk/patina-sdk/src/task.rs
+- sdk/patina-sdk/src/pipeline.rs
+- sdk/patina-sdk/src/lib.rs
+- sdk/patina-sdk/wit/command/
+- sdk/patina-sdk/wit/task/
+- sdk/patina-sdk/wit/mother-child/
+- sdk/patina-sdk/wit/pipeline/
+- sdk/patina-sdk/README.md
+- wit/command/command.wit
+- wit/task/task.wit
+- wit/deps/patina-host/host.wit
+- wit/pipeline/pipeline.wit
+- resources/templates/child/command/
+- resources/templates/child/task/
+- src/main.rs
+- src/child/scaffold.rs
+beliefs:
+- '[[children-are-wasm]]'
+- '[[four-roles-no-overlap]]'
+- '[[children-have-agency-toys-are-capabilities]]'
+- '[[investigate-before-delete]]'
 exit_criteria:
-  - id: swr0-command-kind-removed
-    text: "ChildKind::Command variant removed from enum, CommandEngine deleted, and all host-side command-kind code removed."
-    checked: true
-  - id: swr1-task-kind-removed
-    text: "ChildKind::Task variant removed from enum, TaskEngine deleted, and all host-side task-kind code removed."
-    checked: true
-  - id: swr2-sdk-command-removed
-    text: "sdk/patina-sdk/src/command.rs deleted, `command` feature removed from SDK Cargo.toml, compile-time exclusion simplified."
-    checked: true
-  - id: swr3-sdk-task-removed
-    text: "sdk/patina-sdk/src/task.rs deleted, `task` feature removed from SDK Cargo.toml."
-    checked: true
-  - id: swr4-wit-command-removed
-    text: "wit/command/command.wit deleted. Directory removed."
-    checked: true
-  - id: swr5-wit-task-removed
-    text: "wit/task/task.wit deleted. Directory removed."
-    checked: true
-  - id: swr6-templates-removed
-    text: "resources/templates/child/command/ and resources/templates/child/task/ directories deleted."
-    checked: true
-  - id: swr7-pipeline-log-migrated
-    text: "Pipeline world migrated from patina:host/log import to patina:log/log (per-package), matching knowledge-child convention."
-    checked: true
-  - id: swr8-host-wit-removed
-    text: "wit/deps/patina-host/host.wit deleted. No WIT files in wit/ OR sdk/patina-sdk/wit/ import patina:host/* namespace."
-    checked: true
-  - id: swr8b-sdk-wit-snapshots-removed
-    text: "SDK-local WIT snapshots for dead worlds deleted: sdk/patina-sdk/wit/command/, sdk/patina-sdk/wit/task/, sdk/patina-sdk/wit/mother-child/. Pipeline snapshot updated for per-package log import."
-    checked: true
-  - id: swr9-role-extension-updated
-    text: "ChildRole::Extension `expected_worlds()` no longer returns dead kinds. Updated to reflect post-retirement valid worlds."
-    checked: true
-  - id: swr10-child-run-updated
-    text: "`patina child run` dispatch updated: knowledge-child arm intact, command/task arms removed. Catch-all error for unsupported kinds reads: \"child '{name}' has kind '{kind}' — only 'knowledge-child' is supported by `child run`\"."
-    checked: true
-  - id: swr11-scaffold-updated
-    text: "`patina child init` only offers knowledge-child and pipeline templates. No broken template references. Help text updated."
-    checked: true
-  - id: swr12-retired-kind-error
-    text: "ChildKind::from_str for 'command' and 'task' returns a clear retired-kind error message (not generic 'unknown kind') guiding migration to knowledge-child."
-    checked: true
-  - id: swr13-docs-updated
-    text: "sdk/patina-sdk/README.md stability table, world features list, and breaking change notes updated. No references to dead kinds remain in docs."
-    checked: true
-  - id: swr14-gates-green
-    text: "cargo check --workspace -q and cargo test -q --workspace pass. No dead code warnings introduced."
-    checked: true
+- id: swr0-command-kind-removed
+  text: ChildKind::Command variant removed from enum, CommandEngine deleted, and all host-side command-kind code removed.
+  checked: true
+- id: swr1-task-kind-removed
+  text: ChildKind::Task variant removed from enum, TaskEngine deleted, and all host-side task-kind code removed.
+  checked: true
+- id: swr2-sdk-command-removed
+  text: sdk/patina-sdk/src/command.rs deleted, `command` feature removed from SDK Cargo.toml, compile-time exclusion simplified.
+  checked: true
+- id: swr3-sdk-task-removed
+  text: sdk/patina-sdk/src/task.rs deleted, `task` feature removed from SDK Cargo.toml.
+  checked: true
+- id: swr4-wit-command-removed
+  text: wit/command/command.wit deleted. Directory removed.
+  checked: true
+- id: swr5-wit-task-removed
+  text: wit/task/task.wit deleted. Directory removed.
+  checked: true
+- id: swr6-templates-removed
+  text: resources/templates/child/command/ and resources/templates/child/task/ directories deleted.
+  checked: true
+- id: swr7-pipeline-log-migrated
+  text: Pipeline world migrated from patina:host/log import to patina:log/log (per-package), matching knowledge-child convention.
+  checked: true
+- id: swr8-host-wit-removed
+  text: wit/deps/patina-host/host.wit deleted. No WIT files in wit/ OR sdk/patina-sdk/wit/ import patina:host/* namespace.
+  checked: true
+- id: swr8b-sdk-wit-snapshots-removed
+  text: 'SDK-local WIT snapshots for dead worlds deleted: sdk/patina-sdk/wit/command/, sdk/patina-sdk/wit/task/, sdk/patina-sdk/wit/mother-child/. Pipeline snapshot updated for per-package log import.'
+  checked: true
+- id: swr9-role-extension-updated
+  text: ChildRole::Extension `expected_worlds()` no longer returns dead kinds. Updated to reflect post-retirement valid worlds.
+  checked: true
+- id: swr10-child-run-updated
+  text: '`patina child run` dispatch updated: knowledge-child arm intact, command/task arms removed. Catch-all error for unsupported kinds reads: "child ''{name}'' has kind ''{kind}'' — only ''knowledge-child'' is supported by `child run`".'
+  checked: true
+- id: swr11-scaffold-updated
+  text: '`patina child init` only offers knowledge-child and pipeline templates. No broken template references. Help text updated.'
+  checked: true
+- id: swr12-retired-kind-error
+  text: ChildKind::from_str for 'command' and 'task' returns a clear retired-kind error message (not generic 'unknown kind') guiding migration to knowledge-child.
+  checked: true
+- id: swr13-docs-updated
+  text: sdk/patina-sdk/README.md stability table, world features list, and breaking change notes updated. No references to dead kinds remain in docs.
+  checked: true
+- id: swr14-gates-green
+  text: cargo check --workspace -q and cargo test -q --workspace pass. No dead code warnings introduced.
+  checked: true
 ---
 # refactor: scaffold world retirement
 
