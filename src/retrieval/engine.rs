@@ -7,7 +7,7 @@
 use anyhow::Result;
 use patina::eventlog;
 use rusqlite::Connection;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use super::fusion::{FusedResult, StructuralAnnotations};
@@ -54,6 +54,24 @@ pub struct QueryOptions {
 pub struct QueryEngine {
     oracles: Vec<SemanticOracle>,
     config: RetrievalConfig,
+}
+
+struct CwdGuard {
+    original_dir: PathBuf,
+}
+
+impl CwdGuard {
+    fn enter(context_path: &Path) -> Result<Self> {
+        let original_dir = std::env::current_dir()?;
+        std::env::set_current_dir(context_path)?;
+        Ok(Self { original_dir })
+    }
+}
+
+impl Drop for CwdGuard {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.original_dir);
+    }
 }
 
 impl QueryEngine {
@@ -280,8 +298,7 @@ impl QueryEngine {
         context_path: &Path,
         repo_name: Option<&str>,
     ) -> Result<Vec<FusedResult>> {
-        let original_dir = std::env::current_dir()?;
-        std::env::set_current_dir(context_path)?;
+        let _cwd_guard = CwdGuard::enter(context_path)?;
 
         // Discover available domains in repo context
         let domains = SemanticOracle::available_domains();
@@ -304,8 +321,6 @@ impl QueryEngine {
                 }
             }
         }
-
-        std::env::set_current_dir(original_dir)?;
 
         let mut results: Vec<FusedResult> = all_oracle_results
             .into_iter()
@@ -488,5 +503,24 @@ fn extract_file_path(doc_id: &str) -> String {
         doc_id[..idx].to_string()
     } else {
         doc_id.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CwdGuard;
+
+    #[test]
+    fn cwd_guard_restores_on_panic() {
+        let original = std::env::current_dir().expect("read current dir");
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+
+        let panicked = std::panic::catch_unwind(|| {
+            let _guard = CwdGuard::enter(temp_dir.path()).expect("enter guard");
+            panic!("intentional panic");
+        });
+
+        assert!(panicked.is_err());
+        assert_eq!(std::env::current_dir().expect("read current dir"), original);
     }
 }
