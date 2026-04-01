@@ -6,10 +6,6 @@ pub fn execute(component: &str, bump_type: &str, dry_run: bool) -> Result<()> {
 
     match component {
         "patina" => bump_patina_version(bump_type, dry_run)?,
-        "claude-adapter" => bump_component_version("claude-adapter", bump_type, dry_run)?,
-        "gemini-adapter" => bump_component_version("gemini-adapter", bump_type, dry_run)?,
-        "openai-adapter" => bump_component_version("openai-adapter", bump_type, dry_run)?,
-        "docker-templates" => bump_component_version("docker-templates", bump_type, dry_run)?,
         _ => anyhow::bail!("Unknown component: {}", component),
     }
 
@@ -57,46 +53,6 @@ fn bump_patina_version(bump_type: &str, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
-fn bump_component_version(component: &str, bump_type: &str, dry_run: bool) -> Result<()> {
-    // Components are tracked in version manifests
-    let manifest_path = ".patina/version_manifest.json";
-
-    if !Path::new(manifest_path).exists() {
-        // If no manifest, create one
-        println!("   No version manifest found");
-        return Ok(());
-    }
-
-    let content = fs::read_to_string(manifest_path)?;
-    let mut manifest: serde_json::Value = serde_json::from_str(&content)?;
-
-    let components = manifest
-        .get_mut("components")
-        .and_then(|c| c.as_object_mut())
-        .context("Invalid manifest format")?;
-
-    let current_version = components
-        .get(component)
-        .and_then(|v| v.as_str())
-        .unwrap_or("0.1.0");
-
-    let new_version = calculate_new_version(current_version, bump_type)?;
-
-    println!("   Current: {}", current_version);
-    println!("   New:     {}", new_version);
-
-    if !dry_run {
-        components[component] = serde_json::Value::String(new_version.clone());
-        let new_content = serde_json::to_string_pretty(&manifest)?;
-        fs::write(manifest_path, new_content)?;
-
-        // Also update version constants in code
-        update_version_in_code(component, &new_version)?;
-    }
-
-    Ok(())
-}
-
 fn calculate_new_version(current: &str, bump_type: &str) -> Result<String> {
     let parts: Vec<u32> = current.split('.').map(|s| s.parse().unwrap_or(0)).collect();
 
@@ -113,26 +69,3 @@ fn calculate_new_version(current: &str, bump_type: &str) -> Result<String> {
         _ => anyhow::bail!("Invalid bump type: {}", bump_type),
     })
 }
-
-fn update_version_in_code(component: &str, new_version: &str) -> Result<()> {
-    // Update version constants in the appropriate files
-    if component == "claude-adapter" {
-        let path = "src/adapters/claude.rs";
-        if let Ok(content) = fs::read_to_string(path) {
-            let new_content = content.replace(
-                "const CLAUDE_ADAPTER_VERSION: &str = ",
-                &format!(
-                    "const CLAUDE_ADAPTER_VERSION: &str = \"{}\"; // ",
-                    new_version
-                ),
-            );
-            if content != new_content {
-                fs::write(path, new_content)?;
-            }
-        }
-    }
-
-    Ok(())
-}
-
-use std::path::Path;
