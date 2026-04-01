@@ -5,7 +5,6 @@ pub mod child;
 pub mod commands;
 pub mod connect;
 pub mod core_tools;
-pub mod db;
 pub mod embeddings;
 pub mod environment;
 pub mod eventlog;
