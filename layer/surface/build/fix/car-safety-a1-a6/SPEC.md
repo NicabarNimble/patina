@@ -30,25 +30,25 @@ related:
 exit_criteria:
   - id: car-a1-utf8-panic
     text: "enrichment.rs byte-slice truncation replaced with char-boundary-safe truncation and regression test for multi-byte content."
-    checked: false
+    checked: true
   - id: car-a2-cwd-thread-safety
     text: "Retrieval path no longer mutates process-global CWD in any concurrent or batch execution path. Panic-safe restoration applies only to legacy serialized fallback paths. Cross-repo scry works without CWD corruption."
-    checked: false
+    checked: true
   - id: car-a3-capability-divergence
     text: "Capability check divergence resolved. If both check points are needed (manifest-time vs instantiation-time), auto_granted lists are proven identical via test. If only one is needed, the duplicate is removed."
-    checked: false
+    checked: true
   - id: car-a4-starting-commit-stub
     text: "Mother session starting commit is persisted and returned from real session data, not hardcoded 'none'."
-    checked: false
+    checked: true
   - id: car-a5-dimension-mismatch
     text: "Belief grounding reads index dimensions dynamically; both 256-d projected and 768-d raw indexes work."
-    checked: false
+    checked: true
   - id: car-a6-frontmatter-dedup
     text: "Single canonical SessionFrontmatter type used by both library and CLI. project_uid is Option<String> to handle pre-UID sessions. Duplicated struct and parser deleted."
-    checked: false
+    checked: true
   - id: car-safety-proof
     text: "`cargo check --workspace -q`, `cargo test -q --lib`, and targeted functional checks for scry/session/mother safety paths all pass."
-    checked: false
+    checked: true
 ---
 
 # fix: Code Audit Remediation — Safety (A1-A6)

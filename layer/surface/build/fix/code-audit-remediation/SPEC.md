@@ -49,11 +49,11 @@ Split outcome:
 
 ## Child Specs
 
-1. `car-safety-a1-a6` - correctness and safety first.
-2. `car-architecture-a7-a25` - dependency direction and module boundaries.
-3. `car-deadcode-a8-a24` - delete dead paths after safety and architecture settle.
-4. `car-dedup-a9-a21` - converge duplicated logic without behavior expansion.
-5. `car-cleanup-non-a` - deprecated/stale cleanup and docs alignment.
+1. `car-safety-a1-a6` — correctness and safety first. Capability check (A3) is security-critical per [[children-have-agency-toys-are-capabilities]].
+2. `car-architecture-a7-a25` — A7 only (retrieval must stand alone for Mother-served scry). A25 dropped: spec dispatch inversion is intentional daemon-first architecture.
+3. `car-deadcode-a8-a24` — delete dead paths after safety and architecture settle. A22 requires care: toy host functions may be "dead to Rust" but live in the toybox.
+4. `car-dedup-a9-a21` — converge duplicated logic without behavior expansion.
+5. `car-cleanup-non-a` — deprecated/stale cleanup and docs alignment.
 
 ## Execution Rules
 

@@ -20,13 +20,13 @@ related:
 exit_criteria:
   - id: car-a7-retrieval-inversion
     text: "retrieval/oracles/semantic no longer imports from commands::scry internals; enrichment logic lives in retrieval/ so Mother can serve scry without CLI dependencies."
-    checked: false
+    checked: true
   - id: car-a25-intentional-dispatch-proof
     text: "Daemon-first spec dispatch architecture is validated as intentional: dependency graph and call ownership are documented with explicit non-regression checks showing no accidental CLI->library inversion debt."
-    checked: false
+    checked: true
   - id: car-architecture-proof
     text: "`cargo check --workspace -q`, `cargo test -q --lib`, and `patina scry` sanity checks pass after enrichment move."
-    checked: false
+    checked: true
 ---
 
 # fix: Code Audit Remediation — Architecture (A7)
