@@ -10,7 +10,7 @@ use std::sync::{Mutex, OnceLock};
 use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
 
 use crate::commands::oxidize::trainer::Projection;
-use crate::commands::scry::internal::enrichment::{enrich_results, SearchResults};
+use crate::retrieval::enrichment::{enrich_results, SearchResults};
 use crate::retrieval::oracle::{Oracle, OracleMetadata, OracleResult};
 use patina::embeddings::{create_embedder, EmbeddingEngine};
 
