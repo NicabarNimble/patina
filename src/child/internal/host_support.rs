@@ -8,8 +8,6 @@
 //! F1 fix: eliminates ~700 lines of duplicated host trait logic.
 //! F2 fix: path traversal protection in count_layer_files.
 
-#![allow(dead_code)]
-
 use std::path::PathBuf;
 
 use super::{
@@ -29,12 +27,14 @@ pub(super) fn log(plugin_name: &str, level_str: &str, message: &str) {
 // Layer host support
 // =========================================================================
 
+#[allow(dead_code)]
 pub(super) fn find_project_root(project_root: &Option<PathBuf>) -> Option<String> {
     project_root
         .as_ref()
         .map(|p| p.to_string_lossy().to_string())
 }
 
+#[allow(dead_code)]
 pub(super) fn read_config(project_root: &Option<PathBuf>) -> Result<String, String> {
     let root = project_root
         .as_ref()
@@ -44,12 +44,14 @@ pub(super) fn read_config(project_root: &Option<PathBuf>) -> Result<String, Stri
     serde_json::to_string(&config).map_err(|e| format!("serialize config: {}", e))
 }
 
+#[allow(dead_code)]
 pub(super) fn detect_environment() -> Result<String, String> {
     let env =
         crate::environment::Environment::detect().map_err(|e| format!("detect env: {}", e))?;
     serde_json::to_string(&env).map_err(|e| format!("serialize env: {}", e))
 }
 
+#[allow(dead_code)]
 pub(super) fn get_stored_tools(project_root: &Option<PathBuf>) -> Vec<String> {
     let root = match project_root.as_ref() {
         Some(r) => r,
@@ -70,6 +72,7 @@ pub(super) fn get_stored_tools(project_root: &Option<PathBuf>) -> Vec<String> {
 /// F2 fix: rejects path traversal attempts (`../`, absolute paths).
 /// Returns 0 on invalid input — no information leak, no error message
 /// that confirms the traversal was attempted.
+#[allow(dead_code)]
 pub(super) fn count_layer_files(project_root: &Option<PathBuf>, subdir: &str) -> u32 {
     let root = match project_root.as_ref() {
         Some(r) => r,
@@ -96,11 +99,13 @@ pub(super) fn count_layer_files(project_root: &Option<PathBuf>, subdir: &str) ->
     }
 }
 
+#[allow(dead_code)]
 pub(super) fn get_project_uid(project_root: &Option<PathBuf>) -> Option<String> {
     let root = project_root.as_ref()?;
     crate::project::get_uid(root)
 }
 
+#[allow(dead_code)]
 pub(super) fn check_adapter_version(
     _project_root: &Option<PathBuf>,
     adapter_name: &str,
@@ -117,12 +122,14 @@ pub(super) fn check_adapter_version(
 /// Keys in query params that are host-controlled and must not be
 /// set by children. The lib strips these before dispatch when the
 /// child's scope doesn't grant them.
+#[allow(dead_code)]
 const SCOPE_RESERVED_KEYS: &[&str] = &["all_repos", "repo", "project_root", "db_path"];
 
 /// Sanitize query params by stripping scope-reserved keys.
 ///
 /// Called before dispatching to the binary callback.
 /// Testable independently of wasmtime infrastructure.
+#[allow(dead_code)]
 pub(super) fn sanitize_query_params(params: &str, scope: &QueryScope) -> String {
     let mut args: serde_json::Value = match serde_json::from_str(params) {
         Ok(v) => v,
@@ -149,6 +156,7 @@ pub(super) fn sanitize_query_params(params: &str, scope: &QueryScope) -> String 
 /// Defense in depth: kinds are validated at load time (check_capabilities)
 /// AND at call time (grants.query_kinds check below). Query scope is
 /// enforced at call time — all_repos requires AllRepos scope.
+#[allow(dead_code)]
 pub(crate) fn query(
     plugin_name: &str,
     grants: &GrantedCapabilities,
@@ -236,6 +244,7 @@ pub(crate) fn validate_http_url(url: &str) -> Result<String, String> {
 }
 
 /// Result of an HTTP operation — plain types for cross-world portability.
+#[allow(dead_code)]
 pub(crate) struct HttpResult {
     pub status: u16,
     pub body: String,
@@ -251,6 +260,7 @@ pub(crate) struct HttpResult {
 ///
 /// Returns true only if the file exists, the child is listed, and the
 /// secret is in the child's `secrets` array. Denies by default.
+#[allow(dead_code)]
 pub(super) fn check_secret_grant(plugin_name: &str, secret_name: &str) -> bool {
     let grants_path = crate::paths::child::secret_grants_path();
     let content = match std::fs::read_to_string(&grants_path) {
@@ -301,6 +311,7 @@ pub(super) fn check_secret_grant(plugin_name: &str, secret_name: &str) -> bool {
 ///
 /// Returns None if no mapping, not granted, secret missing, or decryption fails.
 /// Logs warnings for each denial — never errors out.
+#[allow(dead_code)]
 fn resolve_credential(
     plugin_name: &str,
     grants: &GrantedCapabilities,
@@ -333,6 +344,7 @@ fn resolve_credential(
 }
 
 /// Inject credential into a request builder based on the mapping's location.
+#[allow(dead_code)]
 pub(crate) fn inject_credential(
     builder: reqwest::blocking::RequestBuilder,
     mapping: &CredentialMapping,
@@ -345,6 +357,7 @@ pub(crate) fn inject_credential(
 
 /// Scan response body for leaked credential values, replacing with [REDACTED].
 ///
+#[allow(dead_code)]
 pub(crate) fn leak_check(body: &str, secret_name: &str, secret_value: &str) -> String {
     if body.contains(secret_value) {
         eprintln!(
@@ -452,6 +465,7 @@ pub(super) fn record_declared_metric(
 /// Validates verb, checks metrics are numeric JSON, writes to eventlog
 /// with source overridden to the child name (security: children can't
 /// impersonate core).
+#[allow(dead_code)]
 pub(super) fn record_measurement(
     _project_root: &Option<PathBuf>,
     plugin_name: &str,
@@ -533,6 +547,7 @@ pub(super) fn record_measurement(
 /// 1. Schema exists in cached facts (was declared in manifest + installed)
 /// 2. Fact-type exists in schema (returns its event_type)
 /// 3. Data is valid JSON
+#[allow(dead_code)]
 pub(super) fn validate_emit(
     schema_facts: &std::collections::HashMap<String, std::collections::HashMap<String, String>>,
     plugin_name: &str,
@@ -560,62 +575,12 @@ pub(super) fn validate_emit(
     Ok(event_type.clone())
 }
 
-/// Emit a structured fact to the project eventlog.
-///
-/// Validates via cached schema facts (zero disk I/O), writes child data
-/// directly to events.db. Provenance is carried by source_id ("child:<name>"),
-/// schema by event_type (e.g., "github.issue"). No wrapper — data shape matches
-/// what downstream consumers expect.
-///
-/// data-architecture-v3 will add explicit provenance/schema columns; until then
-/// source_id and event_type carry the signal.
-///
-/// FROZEN LEGACY PATH — WASM facts bypass the broker routing engine.
-/// Knowledge children validate facts internally, which provides
-/// content-hash dedup, manifest schema validation, and transactional cursor writes.
-/// This direct-write path exists only for the forge WASM child. No new WASM children
-/// may use this path — all new children must be native and route through the broker.
-/// See DESIGN.md §5 (wasm-routing-resolved).
-pub(super) fn emit_fact(
-    schema_facts: &std::collections::HashMap<String, std::collections::HashMap<String, String>>,
-    plugin_name: &str,
-    schema: &str,
-    fact_type: &str,
-    data: &str,
-) -> Result<u64, String> {
-    let event_type = validate_emit(schema_facts, plugin_name, schema, fact_type, data)?;
-
-    let conn = crate::eventlog::open_events_db().map_err(|e| format!("open events.db: {}", e))?;
-
-    let timestamp = chrono::Utc::now().to_rfc3339();
-    let source_id = format!("child:{}", plugin_name);
-
-    // Write child data directly — no wrapper envelope.
-    // Provenance: 'external' — child-emitted facts are external evidence.
-    // Schema: event_type = "<schema>.<fact>" (e.g., "github.issue")
-    conn.execute(
-        "INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data, provenance)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        rusqlite::params![
-            &event_type,
-            &timestamp,
-            &source_id,
-            Option::<&str>::None,
-            data,
-            "external"
-        ],
-    )
-    .map_err(|e| format!("insert event: {}", e))?;
-
-    let seq = conn.last_insert_rowid() as u64;
-    Ok(seq)
-}
-
 /// Domain-allowlisted HTTP POST.
 ///
 /// Defense in depth: domains are validated at load time (check_capabilities)
 /// AND at call time (grants.http_domains check). URLs are sanitized by
 /// validate_http_url. Cross-domain redirects rejected by client policy.
+#[allow(dead_code)]
 pub(crate) fn http_post(
     http_client: &reqwest::blocking::Client,
     grants: &GrantedCapabilities,
@@ -667,6 +632,7 @@ pub(crate) fn http_post(
 }
 
 /// Domain-allowlisted HTTP GET.
+#[allow(dead_code)]
 pub(crate) fn http_get(
     http_client: &reqwest::blocking::Client,
     grants: &GrantedCapabilities,

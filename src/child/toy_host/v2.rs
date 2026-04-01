@@ -1,14 +1,14 @@
-#![allow(dead_code)]
-
 use crate::connect::{ConnectionRecord, InjectionStrategy};
 use crate::mother::KnowledgeRuntimeStore;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Header {
     pub name: String,
     pub value: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Response {
     pub status: u16,
@@ -19,6 +19,7 @@ pub struct Response {
 #[derive(Debug, Clone)]
 pub struct ConnectionHandle {
     pub name: String,
+    #[allow(dead_code)]
     pub base_url: String,
     pub(crate) record: ConnectionRecord,
 }
@@ -38,6 +39,7 @@ pub fn connect_resolve(name: &str) -> Result<ConnectionHandle, String> {
     })
 }
 
+#[allow(dead_code)]
 pub fn connect_base_url(conn: &ConnectionHandle) -> String {
     conn.base_url.clone()
 }
@@ -69,6 +71,7 @@ pub fn normalize_domain(domain: &str) -> String {
     domain.trim().trim_end_matches('.').to_ascii_lowercase()
 }
 
+#[allow(dead_code)]
 pub fn connect_request(
     http_client: &reqwest::blocking::Client,
     conn: &ConnectionHandle,
