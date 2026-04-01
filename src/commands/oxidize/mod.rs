@@ -768,7 +768,7 @@ pub(crate) fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<
 }
 
 /// Strip YAML frontmatter from markdown content
-fn strip_frontmatter(content: &str) -> &str {
+pub(crate) fn strip_frontmatter(content: &str) -> &str {
     if !content.starts_with("---") {
         return content;
     }
