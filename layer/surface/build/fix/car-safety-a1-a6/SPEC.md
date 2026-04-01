@@ -1,54 +1,54 @@
 ---
 type: fix
 id: car-safety-a1-a6
-status: draft
+status: ready
 created: 2026-03-31
 sessions:
   origin: 20260331-224232-852361000
-references:
-  - layer/core/patina-identity.md
-  - layer/core/dependable-rust.md
-  - layer/core/safety-boundaries.md
-  - layer/surface/build/feat/child-construction-canon/SPEC.md
-beliefs:
-  - "[[children-have-agency-toys-are-capabilities]]"
-  - "[[audit-before-refactor]]"
 related:
-  - layer/surface/build/fix/code-audit-remediation/SPEC.md
-  - layer/surface/build/fix/car-architecture-a7-a25/SPEC.md
-  - src/commands/scry/internal/enrichment.rs
-  - src/retrieval/engine.rs
-  - src/retrieval/oracles/semantic.rs
-  - src/commands/scry/internal/search.rs
-  - src/child/internal/mod.rs
-  - src/child/internal/knowledge_child.rs
-  - src/child/internal/tests.rs
-  - mother/src/state.rs
-  - src/commands/belief/mod.rs
-  - src/commands/session/internal.rs
-  - src/session/internal/artifact.rs
+- layer/surface/build/fix/code-audit-remediation/SPEC.md
+- layer/surface/build/fix/car-architecture-a7-a25/SPEC.md
+- src/commands/scry/internal/enrichment.rs
+- src/retrieval/engine.rs
+- src/retrieval/oracles/semantic.rs
+- src/commands/scry/internal/search.rs
+- src/child/internal/mod.rs
+- src/child/internal/knowledge_child.rs
+- src/child/internal/tests.rs
+- mother/src/state.rs
+- src/commands/belief/mod.rs
+- src/commands/session/internal.rs
+- src/session/internal/artifact.rs
+beliefs:
+- '[[children-have-agency-toys-are-capabilities]]'
+- '[[audit-before-refactor]]'
+references:
+- layer/core/patina-identity.md
+- layer/core/dependable-rust.md
+- layer/core/safety-boundaries.md
+- layer/surface/build/feat/child-construction-canon/SPEC.md
 exit_criteria:
-  - id: car-a1-utf8-panic
-    text: "enrichment.rs byte-slice truncation replaced with char-boundary-safe truncation and regression test for multi-byte content."
-    checked: true
-  - id: car-a2-cwd-thread-safety
-    text: "Retrieval path no longer mutates process-global CWD in any concurrent or batch execution path. Panic-safe restoration applies only to legacy serialized fallback paths. Cross-repo scry works without CWD corruption."
-    checked: true
-  - id: car-a3-capability-divergence
-    text: "Capability check divergence resolved. If both check points are needed (manifest-time vs instantiation-time), auto_granted lists are proven identical via test. If only one is needed, the duplicate is removed."
-    checked: true
-  - id: car-a4-starting-commit-stub
-    text: "Mother session starting commit is persisted and returned from real session data, not hardcoded 'none'."
-    checked: true
-  - id: car-a5-dimension-mismatch
-    text: "Belief grounding reads index dimensions dynamically; both 256-d projected and 768-d raw indexes work."
-    checked: true
-  - id: car-a6-frontmatter-dedup
-    text: "Single canonical SessionFrontmatter type used by both library and CLI. project_uid is Option<String> to handle pre-UID sessions. Duplicated struct and parser deleted."
-    checked: true
-  - id: car-safety-proof
-    text: "`cargo check --workspace -q`, `cargo test -q --lib`, and targeted functional checks for scry/session/mother safety paths all pass."
-    checked: true
+- id: car-a1-utf8-panic
+  text: enrichment.rs byte-slice truncation replaced with char-boundary-safe truncation and regression test for multi-byte content.
+  checked: true
+- id: car-a2-cwd-thread-safety
+  text: Retrieval path no longer mutates process-global CWD in any concurrent or batch execution path. Panic-safe restoration applies only to legacy serialized fallback paths. Cross-repo scry works without CWD corruption.
+  checked: true
+- id: car-a3-capability-divergence
+  text: Capability check divergence resolved. If both check points are needed (manifest-time vs instantiation-time), auto_granted lists are proven identical via test. If only one is needed, the duplicate is removed.
+  checked: true
+- id: car-a4-starting-commit-stub
+  text: Mother session starting commit is persisted and returned from real session data, not hardcoded 'none'.
+  checked: true
+- id: car-a5-dimension-mismatch
+  text: Belief grounding reads index dimensions dynamically; both 256-d projected and 768-d raw indexes work.
+  checked: true
+- id: car-a6-frontmatter-dedup
+  text: Single canonical SessionFrontmatter type used by both library and CLI. project_uid is Option<String> to handle pre-UID sessions. Duplicated struct and parser deleted.
+  checked: true
+- id: car-safety-proof
+  text: '`cargo check --workspace -q`, `cargo test -q --lib`, and targeted functional checks for scry/session/mother safety paths all pass.'
+  checked: true
 ---
 
 # fix: Code Audit Remediation — Safety (A1-A6)
