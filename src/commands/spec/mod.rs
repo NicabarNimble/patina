@@ -83,7 +83,7 @@ pub fn execute(command: SpecCommands) -> Result<()> {
             .get("json")
             .and_then(|v| v.as_bool())
             .unwrap_or_else(|| command.wants_json())
-            || response.get("text").map_or(true, |v| v.is_null())
+            || response.get("text").is_none_or(|v| v.is_null())
         {
             println!("{}", serde_json::to_string_pretty(data)?);
         }

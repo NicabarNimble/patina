@@ -390,7 +390,7 @@ fn load_failed_batch_list_from(path: &Path) -> Result<Vec<String>> {
         return Ok(Vec::new());
     }
     let content =
-        fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
+        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
     let state: FailedBatchState = serde_json::from_str(&content)
         .with_context(|| format!("Failed to parse {}", path.display()))?;
     Ok(state.failed)
@@ -410,7 +410,7 @@ fn save_failed_batch_list_to(path: &Path, failed: Vec<String>) -> Result<()> {
         updated_at: chrono::Utc::now().to_rfc3339(),
     };
     let content = serde_json::to_string_pretty(&state)?;
-    fs::write(&path, content).with_context(|| format!("Failed to write {}", path.display()))?;
+    fs::write(path, content).with_context(|| format!("Failed to write {}", path.display()))?;
     Ok(())
 }
 

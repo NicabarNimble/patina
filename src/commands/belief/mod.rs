@@ -1072,7 +1072,7 @@ fn run_grounding_report(conn: &Connection, rows: &[BeliefRow]) -> Result<()> {
     index
         .load(index_path.to_string_lossy().as_ref())
         .context("Failed to load semantic index")?;
-    let index_dimensions = index.dimensions() as usize;
+    let index_dimensions = index.dimensions();
 
     use patina::embeddings::offsets::*;
     const GROUNDING_LIMIT: usize = 20; // Search this many neighbors
@@ -1221,7 +1221,7 @@ mod tests {
             ..Default::default()
         };
         let index = Index::new(&options).expect("create test index");
-        let vector = vec![0.0_f32; index.dimensions() as usize];
+        let vector = vec![0.0_f32; index.dimensions()];
         assert_eq!(vector.len(), 384);
     }
 }
