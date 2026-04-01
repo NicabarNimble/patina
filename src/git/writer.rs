@@ -175,33 +175,6 @@ fn get_repo_name_from_git(repo_path: &Path) -> Result<String> {
         .ok_or_else(|| anyhow::anyhow!("Could not parse repository name from URL: {}", url))
 }
 
-/// Null implementation for repos without a forge.
-///
-/// All operations fail with clear error messages.
-pub struct NoneWriter;
-
-impl ForgeWriter for NoneWriter {
-    fn is_authenticated(&self) -> Result<bool> {
-        Ok(false)
-    }
-
-    fn current_user(&self) -> Result<String> {
-        bail!("No forge configured - cannot get current user")
-    }
-
-    fn repo_exists(&self, _owner: &str, _repo: &str) -> Result<bool> {
-        Ok(false)
-    }
-
-    fn fork(&self, _repo_path: &Path) -> Result<String> {
-        bail!("No forge configured - cannot create fork")
-    }
-
-    fn create_repo(&self, _name: &str, _private: bool, _repo_path: &Path) -> Result<String> {
-        bail!("No forge configured - cannot create repository")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
