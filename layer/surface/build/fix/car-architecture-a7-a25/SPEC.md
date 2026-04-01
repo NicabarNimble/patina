@@ -1,32 +1,32 @@
 ---
 type: fix
 id: car-architecture-a7-a25
-status: draft
+status: ready
 created: 2026-03-31
 sessions:
   origin: 20260331-224232-852361000
-references:
-  - layer/core/patina-identity.md
-  - layer/core/dependable-rust.md
-  - layer/surface/build/feat/child-construction-canon/SPEC.md
-beliefs:
-  - "[[children-have-agency-toys-are-capabilities]]"
 related:
-  - layer/surface/build/fix/code-audit-remediation/SPEC.md
-  - layer/surface/build/fix/car-safety-a1-a6/SPEC.md
-  - layer/surface/build/fix/car-deadcode-a8-a24/SPEC.md
-  - src/retrieval/oracles/semantic.rs
-  - src/commands/scry/internal/enrichment.rs
+- layer/surface/build/fix/code-audit-remediation/SPEC.md
+- layer/surface/build/fix/car-safety-a1-a6/SPEC.md
+- layer/surface/build/fix/car-deadcode-a8-a24/SPEC.md
+- src/retrieval/oracles/semantic.rs
+- src/commands/scry/internal/enrichment.rs
+beliefs:
+- '[[children-have-agency-toys-are-capabilities]]'
+references:
+- layer/core/patina-identity.md
+- layer/core/dependable-rust.md
+- layer/surface/build/feat/child-construction-canon/SPEC.md
 exit_criteria:
-  - id: car-a7-retrieval-inversion
-    text: "retrieval/oracles/semantic no longer imports from commands::scry internals; enrichment logic lives in retrieval/ so Mother can serve scry without CLI dependencies."
-    checked: true
-  - id: car-a25-intentional-dispatch-proof
-    text: "Daemon-first spec dispatch architecture is validated as intentional: dependency graph and call ownership are documented with explicit non-regression checks showing no accidental CLI->library inversion debt."
-    checked: true
-  - id: car-architecture-proof
-    text: "`cargo check --workspace -q`, `cargo test -q --lib`, and `patina scry` sanity checks pass after enrichment move."
-    checked: true
+- id: car-a7-retrieval-inversion
+  text: retrieval/oracles/semantic no longer imports from commands::scry internals; enrichment logic lives in retrieval/ so Mother can serve scry without CLI dependencies.
+  checked: true
+- id: car-a25-intentional-dispatch-proof
+  text: 'Daemon-first spec dispatch architecture is validated as intentional: dependency graph and call ownership are documented with explicit non-regression checks showing no accidental CLI->library inversion debt.'
+  checked: true
+- id: car-architecture-proof
+  text: '`cargo check --workspace -q`, `cargo test -q --lib`, and `patina scry` sanity checks pass after enrichment move.'
+  checked: true
 ---
 
 # fix: Code Audit Remediation — Architecture (A7)
