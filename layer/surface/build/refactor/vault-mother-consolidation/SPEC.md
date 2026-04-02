@@ -111,6 +111,24 @@ re-exports, dead wrapper functions.
 4. Slim mod.rs
 5. Clean root Cargo.toml deps
 
+## Compatibility Matrix
+
+This spec is the foundation. Other specs progressively remove features.
+This matrix prevents agents from "optimizing ahead" across spec boundaries.
+
+| Feature | After consolidation | After load-all-ipc | After single-vault |
+|---------|-------------------|--------------------|--------------------|
+| `--global` flag | works | works | accepted silently (deprecated) |
+| Project vault | works via daemon | works via daemon | removed (warning) |
+| Session cache | works | works | removed |
+| `run_with_secrets` | N+1 IPC bridge | single IPC call | single IPC call |
+| Protocol `global` field | present | present | removed (old payloads parse) |
+| Protocol `project_root` | present | present | removed (old payloads parse) |
+
+**Rule:** Each spec only removes what it explicitly lists. If consolidation
+says "project vault still works", no agent removes project vault support
+during consolidation, even if single-vault will do so later.
+
 ## Resolved Decisions
 
 - **run_with_secrets bridge**: N+1 IPC calls using existing operations. Replaced

@@ -185,5 +185,7 @@ debugging. Making it opt-in is the right call.
 - [x] Current keychain.rs code analyzed (167 lines in Mother)
 - [x] Platform dep count known (9 crates)
 - [ ] IdentityBackend trait designed (needs review)
-- [ ] Native child runtime pattern defined (may need separate spec)
+- [ ] Native child runtime pattern defined — **BLOCKER**: if dylib/subprocess
+  pattern doesn't exist yet, this spec needs a prerequisite spec for native
+  child runtime, OR the decision to use a cargo feature flag instead
 - [ ] Blocked by vault-mother-consolidation

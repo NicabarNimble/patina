@@ -5,7 +5,7 @@ status: draft
 created: 2026-04-02
 sessions:
   origin: 20260402-064905-376539000
-children:
+child_specs:
   - vault-mother-consolidation
   - drop-age-crate
   - secrets-load-all-ipc
@@ -200,11 +200,15 @@ Mother's identity resolution becomes:
 
 ## Implementation Order
 
-1. Phase 1: Replace age with primitives (biggest dep reduction, independent)
-2. Phase 2: Delete CLI vault code, route through IPC (depends on Phase 1)
-3. Phase 3: Add LoadAllSecrets operation (depends on Phase 2)
-4. Phase 4: Single vault + remove cache (depends on Phase 3)
-5. Phase 5: Keychain child extraction (independent, can happen anytime after Phase 2)
+**See child specs for authoritative ordering.** Dependency graph:
+
+```
+vault-mother-consolidation (foundation, no blockers)
+  ├── drop-age-crate
+  ├── secrets-load-all-ipc
+  │     └── single-vault (also blocked by consolidation)
+  └── keychain-child
+```
 
 ## Resolved Decisions
 

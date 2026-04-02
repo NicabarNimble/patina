@@ -144,10 +144,14 @@ AddSecret { name, value, env, global: bool, project_root: Option<String> }
 AddSecret { name, value, env }
 ```
 
-**Backward compatibility (audit agent concern #10):** Old protocol clients
-sending `global` and `project_root` fields are handled by serde's
-`#[serde(default)]` — extra fields are silently ignored. No breaking change
-for existing callers.
+**Backward compatibility (audit agent concern #10):** The protocol uses explicit
+`from_payload` parsing, not serde derive. Old clients sending `global` and
+`project_root` fields are safe because `from_payload` extracts them with
+`unwrap_or(false)` and `optional_str_field` respectively — extra/missing fields
+are handled gracefully. When these fields are removed from the enum variant,
+the `from_payload` match arm simply stops extracting them. Old payloads still
+parse. This must be tested: send a payload with `global: true` and
+`project_root: "/some/path"` to the new handler, verify it succeeds.
 
 ## Implementation Order
 
