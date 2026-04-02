@@ -192,33 +192,6 @@ pub fn cache_secrets(secrets: &HashMap<String, String>) -> Result<bool> {
     Ok(response.status().is_success())
 }
 
-/// Clear the secrets cache (lock).
-///
-/// Returns Ok(true) if cleared, Ok(false) if serve not running.
-pub fn clear_cache() -> Result<bool> {
-    // Try UDS
-    if uds_post("/secrets/lock", b"{}").is_some() {
-        return Ok(true);
-    }
-
-    // Fall back to TCP
-    if !is_serve_running() {
-        return Ok(false);
-    }
-
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()?;
-
-    let mut req = client.post(format!("{}/secrets/lock", serve_url()));
-    if let Some(token) = serve_token() {
-        req = req.header("Authorization", format!("Bearer {}", token));
-    }
-
-    let response = req.send()?;
-    Ok(response.status().is_success())
-}
-
 /// Request body for caching secrets.
 #[derive(Debug, serde::Serialize)]
 struct CacheRequest {
