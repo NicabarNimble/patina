@@ -35,7 +35,7 @@ exit_criteria:
     text: "child-construction-canon SPEC.md uses 'pando' instead of 'objective recipe' for composed child groups. Recipe YAML section renamed. ccc7 gate text updated."
     checked: false
   - id: pva2-agents-updated
-    text: "AGENTS.md vocabulary section reflects current concepts: Patina, Mother, child, toy, pando, project."
+    text: "AGENTS.md vocabulary section reflects current concepts: Patina, Mother, child, toy, pando, project. Includes Phase 2 compatibility note per AF7."
     checked: false
   - id: pva3-beliefs-connected
     text: "[[pando-is-composed-children]] belief linked from [[child-construction-canon]] and [[five-boundaries-no-overlap]]."
@@ -71,7 +71,7 @@ exit_criteria:
     text: "Cargo test verifies a child with toys = [\"log\"] cannot access state/layer-fs/git host functions."
     checked: false
   - id: pva-legacy-inventory
-    text: "Legacy (non-SDK) children inventoried. Migration follow-ups created for each. No new legacy children may be introduced."
+    text: "Legacy children inventoried. Migration follow-ups created for each. No new legacy children may be introduced."
     checked: false
 
 # Phase 3: CI regression guards
