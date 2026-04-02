@@ -81,10 +81,14 @@ The merged engine:
 
 **CRITICAL — Capability enforcement (AF2):**
 Today PipelineEngine links only WASI + host_log. KnowledgeChildEngine links ~15
-interfaces but checks grants. The merged engine must NOT widen access for
-former-pipeline children. After merge, verify: a child with `toys = ["log"]`
-gets ONLY log. The grant check in KnowledgeChildEngine is the pattern to follow —
-link all interfaces, but gate activation on `[needs].toys` from child.toml.
+interfaces but gates non-granted toys at the call boundary (host functions
+return error/no-op for non-granted toys). The merged engine links ALL interfaces
+(Wasmtime requires imports to be satisfied at link time) but gates access at
+runtime via the same call-boundary pattern KnowledgeChildEngine already uses.
+
+**Required test (not optional):** Add a test that loads a child with
+`toys = ["log"]` and asserts that invoking a state/layer-fs/git host function
+returns an error. This must be in `cargo test`, not "inspect logs."
 
 ### pva7: ChildKind Collapsed
 

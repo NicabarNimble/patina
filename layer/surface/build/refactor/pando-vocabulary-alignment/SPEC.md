@@ -143,14 +143,23 @@ Pipeline's single `request` maps to `action = "handle", payload = request`.
 Grammar plugins must be recompiled against the new signature — the SDK provides
 a compatibility shim in the default stubs so existing plugin code compiles with
 a one-line change to the export. Details in DESIGN.md pva5.
+**Non-SDK children:** Any child built with raw `wit-bindgen` (not patina-sdk)
+must update their `handle` export to match the unified signature manually.
+This spec assumes all current children use the SDK. If a non-SDK child exists,
+it must be identified and migrated explicitly during pva10.
 
 **AF2 — Capability widening risk.**
 Pipeline children get only host_log today. Kind collapse must not silently grant
 them state, layer-fs, git, etc.
-**Resolution:** The merged engine enforces `[needs].toys` from child.toml at load
-time. A child declaring `toys = ["log"]` gets only log. Toy grants are checked
-before linking — not after. Engine merge must preserve this check. Verification:
-after merge, confirm a `toys = ["log"]` child does NOT get state/layer-fs/git.
+**Resolution:** The merged engine links all WIT interfaces at linker build time
+(Wasmtime requires this), but gates capability at the call boundary — host
+functions for non-granted toys return an error or no-op when invoked. A child
+declaring `toys = ["log"]` has all imports wired but only log actually functions.
+This is how KnowledgeChildEngine already works. Engine merge must preserve this
+runtime gate pattern, not weaken it.
+**Verification (required, not optional):** Add a test that loads a child with
+`toys = ["log"]` and asserts that calling a state/layer-fs/git toy function
+returns an error. This must be in `cargo test`, not "inspect logs."
 
 **AF3 — kind field decision.**
 **Resolution:** `kind = "child"` is required in child.toml. `"knowledge-child"`
@@ -158,9 +167,11 @@ and `"pipeline"` accepted as silent aliases mapped to `Child`. No deprecation
 warning (these are internal, not user-facing). The field is not optional.
 
 **AF4 — Pando YAML schema.**
-**Resolution:** `objective_id:` key in pando YAML renamed to `pando:`.
-Old `objective_id:` key rejected with message: "Renamed: use `pando:` instead
-of `objective_id:`". Locked in pva1 commit.
+**Resolution:** `objective_id:` key in pando YAML renamed to `pando:` in docs
+(Phase 1, pva1). Parser enforcement — old `objective_id:` key rejected with
+message "Renamed: use `pando:` instead of `objective_id:`" — happens in Phase 2
+when code changes are in scope. Phase 1 is docs-only; the parser doesn't exist
+yet so rejection behavior is a Phase 2 deliverable, not a Phase 1 claim.
 
 **AF5 — Grammar plugin path/layout.**
 `~/.patina/pipeline/` contains 9 grammar plugins. Path stays after kind collapse
@@ -204,6 +215,33 @@ Do not duplicate. pva12 (SDK_WORLDS update) is the only Phase 3 code change.
 **Resolution:** Phase 1 AGENTS.md update references target state with "will
 become wit/child/ in Phase 2" note. Phase 2 pva7 commit removes the note
 and updates paths to final state.
+
+## Policies (locked)
+
+**Alias lifetime:** `kind = "knowledge-child"` and `kind = "pipeline"` aliases
+in FromStr, and `pipeline`/`knowledge-child` feature aliases in SDK Cargo.toml,
+are removed in the NEXT minor release after this spec completes. If this spec
+ships as v0.46.0, aliases are removed in v0.47.0. Enforcement: the removal is
+a one-line change tracked as a follow-up commit after next minor bump.
+
+**WIT package migration:** The unified world uses package `patina:child@0.1.0`,
+replacing `patina:knowledge-child@0.1.0` and `patina:pipeline@0.1.0`. Old
+compiled WASM artifacts (targeting old package names) will fail to instantiate
+with a linker error. There is no runtime compatibility for old artifacts — they
+must be recompiled. Grammar plugins are recompiled in pva8. Third-party children
+(if any) must recompile against the new world.
+
+**User-facing terminology:** `~/.patina/pipeline/` path stays as a storage
+location. The word "pipeline" in path names is not deprecated — it describes
+what grammar plugins do (parse pipelines). The deprecation applies to
+`kind = "pipeline"` in child.toml and `pipeline` as a world/feature name, not
+to the storage directory or the concept of processing pipelines.
+
+**Required exports for non-SDK components:** The unified world requires all
+exports (init, name, handle, health, tick, drain, on-load, on-unload). SDK
+children get default stubs for free. Non-SDK children (raw wit-bindgen) must
+implement all exports. The WIT file is the contract — if it exports it, you
+must provide it.
 
 ## Not in Scope
 
