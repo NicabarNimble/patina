@@ -2,12 +2,12 @@
 type: belief
 id: complete-foundation-then-supersede-parity-tail
 persona: architect
-facets: [specs, workflow, ducklake, lakehouse]
+facets: [specs, workflow, migration, lakehouse]
 entrenchment: medium
 status: active
 endorsed: true
 extracted: 2026-03-12
-revised: 2026-03-12
+revised: 2026-04-02
 ---
 
 # complete-foundation-then-supersede-parity-tail
@@ -39,9 +39,10 @@ When migration parity conflicts with product-direction quality goals, complete t
 
 ## Applied-In
 
-- [[ducklake-knowledge-child-cutover]]: Closed as foundation-complete while acknowledging unresolved parity tail explicitly.
-- [[ducklake-github-lakehouse-ingestion]]: Activated as the new primary execution spec for full-scope, quality-first ingestion outcomes.
+- Historical case study: [[ducklake-knowledge-child-cutover]] and [[ducklake-github-lakehouse-ingestion]]
+- Current application: [[pando-vocabulary-alignment]] abandoned in favor of split, executable specs ([[ducklake-retirement]], [[child-rename]], [[engine-consolidate]])
 
 ## Revision Log
 
 - 2026-03-12: Created — metrics computed by `patina scrape`
+- 2026-04-02: Revised — retained ducklake references as historical case study only; added current split-spec application.

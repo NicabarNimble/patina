@@ -7,7 +7,7 @@ entrenchment: medium
 status: active
 endorsed: true
 extracted: 2026-03-12
-revised: 2026-03-12
+revised: 2026-04-02
 ---
 
 # patina-is-combination-of-knowledge-and-action
@@ -21,7 +21,7 @@ Patina is the combination of knowledge and action: Mother governs authority and 
 ## Evidence
 
 - [[session-20260312-160150]]: User corrected the framing from either/or to both/and: Patina must be both knowledge layer and actionable layer, "like a child and their toy". (weight: 0.97)
-- [[layer/surface/build/refactor/ducklake-knowledge-child-cutover/SPEC.md]]: Cutover requires Mother-authoritative enqueue/bounded-wait runtime, explicit child orchestration, and grant-scoped capability paths, matching this belief's control/agency/boundary split. (weight: 0.85)
+- [[layer/surface/build/refactor/ducklake-retirement/SPEC.md]]: Retirement of legacy ducklake coupling reinforced this belief's boundary split: Mother authority + child orchestration + toy-bounded capability. (weight: 0.9)
 
 ## Supports
 
@@ -40,10 +40,11 @@ Patina is the combination of knowledge and action: Mother governs authority and 
 
 ## Applied-In
 
-- `src/broker/mod.rs` — `Destination::Lake` route models actionable-layer orchestration by enqueueing DuckLake work through Mother state/checkpoint semantics.
-- `src/plugin/internal/knowledge_child.rs` — connector sync and OAuth resolution remain host-authoritative while child logic stays orchestration-focused.
-- `src/commands/mother/mod.rs` — parity command exposes operator-facing interface while preserving runtime authority boundaries.
+- `src/mother/broker/mod.rs` — Mother-owned source broker performs authoritative routing while keeping child/runtime boundaries explicit.
+- `src/child/internal/mod.rs` and `src/child/internal/knowledge_child.rs` — capability grants are resolved by Mother and enforced at child host-call boundaries.
+- `src/commands/mother/mod.rs` — operator-facing Mother commands expose orchestration without collapsing authority boundaries.
 
 ## Revision Log
 
 - 2026-03-12: Created — metrics computed by `patina scrape`
+- 2026-04-02: Revised — replaced stale ducklake cutover/code anchors with current broker + child boundary anchors.
