@@ -5,22 +5,38 @@ status: draft
 created: 2026-04-02
 sessions:
   origin: 20260402-064905-376539000
+children:
+  - vault-mother-consolidation
+  - drop-age-crate
+  - secrets-load-all-ipc
+  - single-vault
+  - keychain-child
 exit_criteria:
-  - Mother is the sole vault decryptor — CLI never touches vault.age or identity.enc
-  - age crate removed from dependency tree — vault uses x25519-dalek + chacha20poly1305 directly
-  - Single vault at ~/.patina/mother/vault.age — no project-scoped vaults
-  - LoadAllSecrets IPC operation added to SecretsAuthorityOperation protocol
-  - run_with_secrets and run_with_secrets_ssh use IPC, not direct vault decrypt
-  - Session cache removed — decrypt-on-demand with zeroize after serve
-  - Keychain code extracted from core binary — available as opt-in child
+  - All child specs completed
   - src/secrets/ reduced to scanner.rs, prompt_for_value(), and IPC client wrappers
   - All existing patina secrets CLI commands work identically from user perspective
   - cargo check and all secrets tests pass
   - Vault files remain age-format compatible (recoverable with age CLI tool)
 ---
-# feat: Mother as sole vault authority
+# feat: Mother as sole vault authority (umbrella)
 
 > Consolidate secrets vault into Mother: single vault, drop age crate, decrypt-on-demand, keychain as opt-in child, CLI becomes pure IPC client
+
+**This is an umbrella spec.** Split into 5 child specs after audit review
+(scope too wide for one milestone per `[[spec-is-milestone]]`):
+
+| Spec | Type | Blocked by | Scope |
+|------|------|-----------|-------|
+| `vault-mother-consolidation` | refactor | — | Delete CLI vault code, IPC-only |
+| `drop-age-crate` | refactor | consolidation | Replace age with primitives (114 → ~30 deps) |
+| `secrets-load-all-ipc` | feat | consolidation | LoadAllSecrets protocol operation |
+| `single-vault` | refactor | consolidation, load-all | One vault, no cache, deprecate --global |
+| `keychain-child` | feat | consolidation | Keychain as opt-in native child |
+
+The sections below are preserved as the vision document and design context
+that informed the child specs. Build against the children, not this umbrella.
+
+---
 
 ## Problem
 
