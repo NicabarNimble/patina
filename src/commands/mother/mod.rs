@@ -759,6 +759,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn launchd_plist_contains_required_fields() {
         let plist = render_launchd_plist(Path::new("/tmp/patina"));
         assert!(plist.contains("<key>Label</key>"));
@@ -770,6 +771,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn xml_escape_escapes_special_characters() {
         let escaped = xml_escape("a&b<c>\"d\'e");
         assert_eq!(escaped, "a&amp;b&lt;c&gt;&quot;d&apos;e");
