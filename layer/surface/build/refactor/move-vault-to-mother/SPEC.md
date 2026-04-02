@@ -1,22 +1,41 @@
 ---
 type: refactor
 id: move-vault-to-mother
-status: draft
+status: ready
 created: 2026-04-02
 sessions:
   origin: 20260402-064905-376539000
-blocked_by: []
 exit_criteria:
-  - src/secrets/ contains zero vault/identity/crypto modules — only scanner.rs, session.rs, mod.rs (thin IPC + run_with_secrets + prompt)
-  - Mother secrets_authority_backend is the sole vault/identity code path
-  - Every patina secrets CLI command works identically (same flags, same output, same behavior)
-  - age crate stays (no crypto changes)
-  - Keychain stays in Mother (no extraction)
-  - --global flag works
-  - Project vault works
-  - Session cache works
-  - patina secrets run injects secrets correctly (local and SSH)
-  - cargo check and all secrets tests pass
+- id: src-secrets-contains-zero-vault-identity-crypto-modules-only-scanner-rs-session-rs-mod-rs-thin-ipc-run-with-secrets-prompt
+  text: src/secrets/ contains zero vault/identity/crypto modules — only scanner.rs, session.rs, mod.rs (thin IPC + run_with_secrets + prompt)
+  checked: false
+- id: mother-secrets-authority-backend-is-the-sole-vault-identity-code-path
+  text: Mother secrets_authority_backend is the sole vault/identity code path
+  checked: false
+- id: every-patina-secrets-cli-command-works-identically-same-flags-same-output-same-behavior
+  text: Every patina secrets CLI command works identically (same flags, same output, same behavior)
+  checked: false
+- id: age-crate-stays-no-crypto-changes
+  text: age crate stays (no crypto changes)
+  checked: false
+- id: keychain-stays-in-mother-no-extraction
+  text: Keychain stays in Mother (no extraction)
+  checked: false
+- id: global-flag-works
+  text: --global flag works
+  checked: false
+- id: project-vault-works
+  text: Project vault works
+  checked: false
+- id: session-cache-works
+  text: Session cache works
+  checked: false
+- id: patina-secrets-run-injects-secrets-correctly-local-and-ssh
+  text: patina secrets run injects secrets correctly (local and SSH)
+  checked: false
+- id: cargo-check-and-all-secrets-tests-pass
+  text: cargo check and all secrets tests pass
+  checked: false
 ---
 # refactor: Move vault to Mother — 1:1 parity, thin CLI
 
