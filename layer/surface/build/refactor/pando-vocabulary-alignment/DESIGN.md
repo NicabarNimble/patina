@@ -96,8 +96,6 @@ pub enum ChildKind {
 }
 
 // After:
-// No enum needed. All children are children.
-// If we keep the field for forward compat:
 pub enum ChildKind {
     Child,
 }
@@ -110,13 +108,14 @@ kind = "knowledge-child"
 # or
 kind = "pipeline"
 
-# After:
+# After (required):
 kind = "child"
 ```
 
-`FromStr` keeps retired kind error messages:
-- `"knowledge-child"` → accepted, maps to `Child` (backward compat)
-- `"pipeline"` → accepted, maps to `Child` (backward compat)
+`kind` field is required, not optional. `FromStr` behavior:
+- `"child"` → `Child` (canonical)
+- `"knowledge-child"` → `Child` (silent alias, no warning)
+- `"pipeline"` → `Child` (silent alias, no warning)
 - `"command"` / `"task"` → error with migration message (already exists)
 
 ### pva8: Grammar Plugin Recompilation
@@ -137,6 +136,24 @@ child = []
 ```
 
 `src/lib.rs` compile-error guard simplified — no more mutual exclusion check. One world, one feature.
+
+**SDK macro/trait bridge (AF6):**
+`sdk/patina-sdk/src/pipeline.rs` exports `PipelineChild` trait (line 136) and
+`register_pipeline_child!` macro (line 219). Grammar plugins use these.
+
+Migration plan:
+- Keep `pipeline.rs` file, mark module `#[deprecated(note = "Use Child trait")]`
+- `PipelineChild` trait gets a blanket impl that adapts `handle(request)` to the
+  unified `handle(action, payload)` by ignoring action and passing payload as request
+- `register_pipeline_child!` macro re-exports to the unified child registration
+- `pipeline` feature becomes an alias for `child` feature in Cargo.toml:
+  ```toml
+  [features]
+  child = []
+  pipeline = ["child"]           # deprecated alias
+  knowledge-child = ["child"]    # deprecated alias
+  ```
+- Shims removed after one release
 
 ### pva10-11: Children and Template
 

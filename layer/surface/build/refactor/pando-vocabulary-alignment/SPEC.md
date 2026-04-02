@@ -50,7 +50,7 @@ exit_criteria:
     text: "PipelineEngine and KnowledgeChildEngine merged into single ChildEngine. One engine loads all children regardless of which exports they actively use."
     checked: false
   - id: pva7-kind-collapsed
-    text: "ChildKind enum has one variant. child.toml uses `kind = \"child\"` (or kind field removed entirely). Retired kind error messages updated."
+    text: "ChildKind enum has one variant (Child). child.toml requires `kind = \"child\"`. Old values \"knowledge-child\" and \"pipeline\" accepted as silent aliases. Retired kind error messages updated."
     checked: false
   - id: pva8-grammar-plugins-recompiled
     text: "9 grammar plugins recompiled against unified world. `patina setup grammars` installs updated binaries."
@@ -168,9 +168,17 @@ of `objective_id:`". Locked in pva1 commit.
 against the unified world but installed to the same path. No path rename.
 
 **AF6 — SDK macro bridge.**
-No `register_pipeline_child!` or `register_knowledge_child!` macros exist in
-the current SDK (verified: zero matches in sdk/patina-sdk/src/lib.rs). The SDK
-uses trait-based registration via `GrantedBundle`. No macro shims needed.
+`register_pipeline_child!` macro and `PipelineChild` trait exist in
+`sdk/patina-sdk/src/pipeline.rs` (lines 134-226), exported via
+`sdk/patina-sdk/src/lib.rs:55` behind the `pipeline` feature flag. Grammar
+plugins use these.
+**Resolution:** When SDK features merge (pva9), `register_pipeline_child!` and
+`PipelineChild` become deprecated aliases. The macro re-exports to the unified
+registration. The trait gets a blanket impl that adapts `handle(request)` to
+`handle(action, payload)` (ignoring action, passing payload as request). These
+shims stay for one release, then are removed. `pipeline.rs` file is kept but
+marked `#[deprecated]` with migration guidance pointing to the unified `Child`
+trait.
 
 **AF7 — Phase 1 docs vs Phase 2 code gap.**
 **Resolution:** Phase 1 doc updates include a compatibility note:
