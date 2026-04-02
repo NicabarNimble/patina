@@ -14,6 +14,9 @@ beliefs:
   - "[[five-boundaries-no-overlap]]"
   - "[[children-have-agency-toys-are-capabilities]]"
   - "[[wasi-is-foundation-not-option]]"
+  - "[[children-are-wasm]]"
+  - "[[world-boundary-is-type-safety]]"
+  - "[[core-primitives-are-not-children]]"
 related:
   - layer/surface/build/feat/child-construction-canon/SPEC.md
   - AGENTS.md
