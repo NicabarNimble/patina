@@ -35,7 +35,7 @@ exit_criteria:
     text: "child-construction-canon SPEC.md uses 'pando' instead of 'objective recipe' for composed child groups. Recipe YAML section renamed. ccc7 gate text updated."
     checked: false
   - id: pva2-agents-updated
-    text: "AGENTS.md vocabulary section uses the six concepts: Patina, Mother, child, toy, pando, project."
+    text: "AGENTS.md vocabulary section reflects current concepts: Patina, Mother, child, toy, pando, project."
     checked: false
   - id: pva3-beliefs-connected
     text: "[[pando-is-composed-children]] belief linked from [[child-construction-canon]] and [[five-boundaries-no-overlap]]."
@@ -44,28 +44,31 @@ exit_criteria:
     text: "sdk/patina-sdk/README.md uses pando vocabulary for composition examples and drops knowledge-child/pipeline distinction in user-facing docs."
     checked: false
 
-# Phase 2: Kind unification (code change)
+# Phase 2: Kind collapse and world unification (code change)
 
   - id: pva5-one-wit-world
-    text: "wit/pipeline/pipeline.wit merged into wit/knowledge-child/ (renamed to wit/child/). One WIT world with all exports. SDK provides default stub implementations for lifecycle exports (health, tick, drain, on-load, on-unload)."
+    text: "wit/pipeline/ merged into wit/knowledge-child/ (renamed to wit/child/). One WIT world. SDK provides default stub implementations for lifecycle exports (health, tick, drain, on-load, on-unload)."
     checked: false
   - id: pva6-one-engine
-    text: "PipelineEngine and KnowledgeChildEngine merged into single ChildEngine. One engine loads all children regardless of which exports they actively use."
+    text: "PipelineEngine and KnowledgeChildEngine merged into single ChildEngine."
     checked: false
   - id: pva7-kind-collapsed
-    text: "ChildKind enum has one variant (Child). child.toml requires `kind = \"child\"`. Old values \"knowledge-child\" and \"pipeline\" accepted as silent aliases. Retired kind error messages updated."
+    text: "ChildKind enum has one variant (Child). child.toml requires `kind = \"child\"`. Old values \"knowledge-child\" and \"pipeline\" accepted as silent aliases."
     checked: false
   - id: pva8-grammar-plugins-recompiled
     text: "9 grammar plugins recompiled against unified world. `patina setup grammars` installs updated binaries."
     checked: false
   - id: pva9-sdk-unified
-    text: "SDK `knowledge-child` and `pipeline` features merged into single `child` feature. patina-sdk Cargo.toml and src/lib.rs updated."
+    text: "SDK `knowledge-child` and `pipeline` features merged into single `child` feature. patina-sdk Cargo.toml and src/lib.rs updated. PipelineChild trait and register_pipeline_child! macro deprecated with shims."
     checked: false
   - id: pva10-children-updated
-    text: "All 13 children in children/ updated: child.toml uses `kind = \"child\"`, Cargo.toml targets unified WIT world."
+    text: "All 14 child.toml files (13 children + template) updated: `kind = \"child\"`, Cargo.toml targets unified WIT world."
     checked: false
   - id: pva11-template-updated
     text: "children/template/ and `patina child init` scaffold use `kind = \"child\"` and unified world."
+    checked: false
+  - id: pva-cap-test
+    text: "Cargo test verifies a child with toys = [\"log\"] cannot access state/layer-fs/git host functions."
     checked: false
 
 # Phase 3: CI regression guards
@@ -92,14 +95,14 @@ exit_criteria:
     text: "`patina child run doctor health` works. `patina scrape code` uses grammar plugins successfully. Both paths use the unified engine."
     checked: false
   - id: pva18-guard-scripts-pass
-    text: "All pre-push guard scripts pass including the new path and dead_code guards."
+    text: "All pre-push guard scripts pass."
     checked: false
 ---
 
 # refactor: Pando Vocabulary Alignment
 
 Two changes: give a name to composed children (pando), and collapse the
-artificial knowledge-child/pipeline split into one kind (child).
+artificial knowledge-child/pipeline split into one kind and one world (child).
 
 ## Pando — a word for a group of children
 
@@ -108,19 +111,21 @@ that are one organism connected by shared roots.
 
 Sometimes you compose several children to do one thing. A pando is that group.
 "The scrape pando" instead of "the group of six children that together do
-folder-text-to-parquet."
+folder-text-to-parquet." DuckLake is a pando — multiple children, each with
+a role, composed for one purpose.
 
 Each child in a pando has bounded agency (`[[children-have-agency-toys-are-capabilities]]`)
 — it makes decisions within the sandbox Mother grants. The pando's behavior
 emerges from composition, not from any single child's intelligence. Mother
-orchestrates the pando; children do the work; toys are the capability surface
-each child gets.
+orchestrates; children do the work; toys are the capability surface each
+child gets.
 
-## Why One Kind
+## Why One Kind and One World
 
-Today there are two kinds of child: `knowledge-child` and `pipeline`. We split
-them early because grammar parsers felt different from knowledge children. They
-aren't — or at least, we haven't proven they are. The split was premature.
+Today there are two kinds (`knowledge-child`, `pipeline`) and two WIT worlds.
+We split them early because grammar parsers felt different from knowledge
+children. They aren't — or at least, we haven't proven they are. The split
+was premature. Both the kind enum and the two worlds were the same false seam.
 
 **Don't invent categories before the seam is proven.** If a real seam emerges
 from building more children, we split then — with evidence.
@@ -128,29 +133,30 @@ from building more children, we split then — with evidence.
 ### What the beliefs tell us
 
 **`[[children-are-wasm]]`** — children are WASM runtime units. Not some
-children. All children. Native capabilities belong to Mother. The pipeline/
-knowledge-child split created two WASM engine paths for what is one runtime
-model. One kind of child, one WASM runtime.
+children. All children. Native capabilities belong to Mother. The two-engine
+split (PipelineEngine, KnowledgeChildEngine) was two runtime paths for one
+model.
 
 **`[[children-have-agency-toys-are-capabilities]]`** — children have bounded
 agency within Mother's sandbox. Toys are capability surfaces granted at init
-time via `[needs].toys` in child.toml. The manifest determines what a child
-can do — not a kind label. A grammar parser with `toys = ["log"]` has bounded
-agency over logging. A knowledge child with `toys = ["log", "state", "layer-fs"]`
-has broader agency. Same runtime, different grants.
+time via `[needs].toys` in child.toml. A grammar parser with `toys = ["log"]`
+has bounded agency over logging. A knowledge child with
+`toys = ["log", "state", "layer-fs"]` has broader agency. Same runtime,
+different grants. The manifest determines behavior — not a kind label.
 
-**`[[world-boundary-is-type-safety]]`** — the WIT world boundary is where type
-safety lives. Capability isolation determines what a child can see. Having two
-worlds (knowledge-child and pipeline) with different `handle()` signatures
-created two type boundaries for what should be one. One world means one type
-contract. String dispatch within that world is intentional low coupling — the
-world boundary provides isolation, not the payload types.
+**`[[world-boundary-is-type-safety]]`** — WIT world boundaries provide
+compile-time isolation. This principle is sound. But pipeline and
+knowledge-child were never a real seam — they were 1:1 with the false kind
+split. Merging them into `wit/child/` doesn't reject the principle. It
+corrects a misapplication. Future worlds may emerge when real seams appear
+(e.g., when scrape-code becomes a child and grammar children need new toy
+connections). The number of worlds isn't fixed — it grows from evidence.
 
 **`[[core-primitives-are-not-children]]`** — Patina's knowledge primitives
 (scrape, scry, assay, belief) are core Mother capabilities. Children are
 pluggable strategy providers that feed INTO core. Grammar parsers are scrape
-strategy children — they feed into the core scrape primitive. They're not a
-different species. They're children doing one job.
+strategy children. They're not a different species. They're children doing
+one job.
 
 ### What this means concretely
 
@@ -159,13 +165,14 @@ different species. They're children doing one job.
   the old model it suddenly isn't a "pipeline" anymore. Under one kind, it
   just adds `state` to its toys.
 - `GrantedCapabilities` is resolved from `[needs].toys` at init time and
-  checked at call-time. This is the security boundary, not the kind enum.
+  checked at the call boundary. This is the security boundary, not the kind
+  enum and not the world split.
 
-**Solution:** One WIT world with all exports. SDK provides default stubs for
-lifecycle exports. A grammar parser exports `health() -> healthy`,
-`tick() -> []`, `drain() -> []` as no-ops (SDK gives these for free). From
-Mother's perspective it's just a child with no lifecycle activity. The toybox
-determines what it can do.
+**Solution:** One WIT world (`wit/child/`) with all exports. SDK provides
+default stubs for lifecycle exports. A grammar parser exports
+`health() -> healthy`, `tick() -> []`, `drain() -> []` as no-ops (SDK gives
+these for free). From Mother's perspective it's just a child with no lifecycle
+activity. The toybox determines what it can do.
 
 **What was pipeline becomes:** a child with `[needs].toys = ["log"]` and
 default lifecycle stubs. Same behavior, simpler model. More children will
@@ -173,121 +180,108 @@ come. If a real seam appears, we split with evidence then.
 
 ## Phases
 
-**Phase 1 (docs only):** Update vocabulary in specs, AGENTS.md, SDK docs, beliefs. No code changes. No compile risk.
+**Phase 1 (docs only):** Update vocabulary in specs, AGENTS.md, SDK docs,
+beliefs. No code changes. No compile risk.
 
-**Phase 2 (code change):** Merge WIT worlds, merge engines, collapse ChildKind, recompile grammar plugins, update SDK features, update all children and templates.
+**Phase 2 (code change):** Merge WIT worlds into `wit/child/`, merge engines,
+collapse ChildKind, recompile grammar plugins, update SDK features, update
+all children and templates.
+
+**Phase 3 (CI):** Update pre-push world references.
 
 ## Audit Findings (resolved)
 
-Audit review surfaced 10 risks. Each is resolved here or in DESIGN.md.
+Audit review surfaced 10 risks. Each resolved here or in DESIGN.md.
 
 **AF1 — handle() signature mismatch (CRITICAL).**
 pipeline exports `handle(request: string)`, knowledge-child exports
-`handle(action: string, payload: string)`. This is the real migration risk.
-**Resolution:** Unified world uses the knowledge-child signature (action + payload).
-Pipeline's single `request` maps to `action = "handle", payload = request`.
-Grammar plugins must be recompiled against the new signature — the SDK provides
-a compatibility shim in the default stubs so existing plugin code compiles with
-a one-line change to the export. Details in DESIGN.md pva5.
-**Non-SDK children:** Any child built with raw `wit-bindgen` (not patina-sdk)
-must update their `handle` export to match the unified signature manually.
-This spec assumes all current children use the SDK. If a non-SDK child exists,
-it must be identified and migrated explicitly during pva10.
+`handle(action: string, payload: string)`.
+**Resolution:** Unified world uses the knowledge-child signature (action +
+payload). Grammar plugins must be recompiled. SDK provides a compatibility
+shim: `PipelineChild` trait gets a blanket impl that adapts
+`handle(request)` to `handle(action, payload)` by passing payload as request.
+**Non-SDK children:** Any child built with raw `wit-bindgen` must update
+their `handle` export manually. This spec assumes all current children use
+the SDK. Non-SDK children identified during pva10 must be migrated explicitly.
 
 **AF2 — Capability widening risk.**
-Pipeline children get only host_log today. Kind collapse must not silently grant
-them state, layer-fs, git, etc.
-**Resolution:** The merged engine links all WIT interfaces at linker build time
-(Wasmtime requires this), but gates capability at the call boundary — host
-functions for non-granted toys return an error or no-op when invoked. A child
-declaring `toys = ["log"]` has all imports wired but only log actually functions.
-This is how KnowledgeChildEngine already works. Engine merge must preserve this
-runtime gate pattern, not weaken it.
-**Verification (required, not optional):** Add a test that loads a child with
-`toys = ["log"]` and asserts that calling a state/layer-fs/git toy function
-returns an error. This must be in `cargo test`, not "inspect logs."
+Pipeline children get only host_log today. Kind collapse must not silently
+grant them state, layer-fs, git, etc.
+**Resolution:** The merged engine links all WIT interfaces at linker build
+time (Wasmtime requires this), but gates capability at the call boundary —
+host functions for non-granted toys return an error when invoked. A child
+declaring `toys = ["log"]` has all imports wired but only log functions.
+This is how KnowledgeChildEngine already works.
+**Required test:** `cargo test` must verify a child with `toys = ["log"]`
+cannot access state/layer-fs/git host functions. Not optional.
 
 **AF3 — kind field decision.**
-**Resolution:** `kind = "child"` is required in child.toml. `"knowledge-child"`
-and `"pipeline"` accepted as silent aliases mapped to `Child`. No deprecation
-warning (these are internal, not user-facing). The field is not optional.
+`kind = "child"` is required in child.toml. `"knowledge-child"` and
+`"pipeline"` accepted as silent aliases mapped to `Child`. Not optional.
 
 **AF4 — Pando YAML schema.**
-**Resolution:** `objective_id:` key in pando YAML renamed to `pando:` in docs
-(Phase 1, pva1). Parser enforcement — old `objective_id:` key rejected with
-message "Renamed: use `pando:` instead of `objective_id:`" — happens in Phase 2
-when code changes are in scope. Phase 1 is docs-only; the parser doesn't exist
-yet so rejection behavior is a Phase 2 deliverable, not a Phase 1 claim.
+`objective_id:` key renamed to `pando:` in docs (Phase 1). Parser enforcement
+(old key rejected with migration message) is Phase 2. Phase 1 is docs-only.
 
 **AF5 — Grammar plugin path/layout.**
-`~/.patina/pipeline/` contains 9 grammar plugins. Path stays after kind collapse
-(it's a storage location, not a kind label). Grammar plugins are recompiled
-against the unified world but installed to the same path. No path rename.
+`~/.patina/pipeline/` path stays. It's a storage location, not a kind label.
+Grammar plugins are recompiled against the unified world but installed to
+the same path.
 
 **AF6 — SDK macro bridge.**
 `register_pipeline_child!` macro and `PipelineChild` trait exist in
-`sdk/patina-sdk/src/pipeline.rs` (lines 134-226), exported via
-`sdk/patina-sdk/src/lib.rs:55` behind the `pipeline` feature flag. Grammar
-plugins use these.
-**Resolution:** When SDK features merge (pva9), `register_pipeline_child!` and
-`PipelineChild` become deprecated aliases. The macro re-exports to the unified
-registration. The trait gets a blanket impl that adapts `handle(request)` to
-`handle(action, payload)` (ignoring action, passing payload as request). These
-shims stay for one release, then are removed. `pipeline.rs` file is kept but
-marked `#[deprecated]` with migration guidance pointing to the unified `Child`
-trait.
+`sdk/patina-sdk/src/pipeline.rs`. When SDK features merge (pva9), these
+become deprecated aliases with shims. `PipelineChild` gets a blanket impl
+adapting `handle(request)` to `handle(action, payload)`. Shims removed in
+the next minor release after this spec ships.
 
 **AF7 — Phase 1 docs vs Phase 2 code gap.**
-**Resolution:** Phase 1 doc updates include a compatibility note:
-"Note: code still uses knowledge-child/pipeline until Phase 2 of
-pando-vocabulary-alignment." Note removed in Phase 2 pva7 commit.
+Phase 1 doc updates include a compatibility note: "Note: code still uses
+knowledge-child/pipeline until Phase 2." Note removed in Phase 2 pva7 commit.
 
 **AF8 — CI guard duplication.**
-pva13 (hardcoded .patina/ paths) and pva14 (blanket dead_code) guards
-ALREADY EXIST in `resources/scripts/check-runtime-boundaries.sh` (lines 92-151).
-**Resolution:** pva13 and pva14 exit criteria are already met. Check them off.
-Do not duplicate. pva12 (SDK_WORLDS update) is the only Phase 3 code change.
+pva13 and pva14 guards already exist in
+`resources/scripts/check-runtime-boundaries.sh`. Already checked off.
 
-**AF9 — Test acceptance too light.**
-**Resolution:** Expanded verification after Phase 2 (added to pva16/pva17):
-- Old kind = "knowledge-child" child.toml still loads
-- Old kind = "pipeline" child.toml still loads
+**AF9 — Test acceptance.**
+Expanded verification after Phase 2:
+- Old `kind = "knowledge-child"` child.toml still loads
+- Old `kind = "pipeline"` child.toml still loads
 - `patina child run doctor health` works
 - `patina scrape code` works (grammar plugins via unified engine)
-- A child with `toys = ["log"]` does NOT get state/layer-fs/git access
+- A child with `toys = ["log"]` cannot access state/layer-fs/git (cargo test)
 - `patina child init` produces valid child.toml with `kind = "child"`
 
 **AF10 — Terminology lock drift.**
-**Resolution:** Phase 1 AGENTS.md update references target state with "will
-become wit/child/ in Phase 2" note. Phase 2 pva7 commit removes the note
-and updates paths to final state.
+Phase 1 AGENTS.md references target state with "will become wit/child/ in
+Phase 2" note. Phase 2 pva7 commit removes the note.
 
 ## Policies (locked)
 
 **Alias lifetime:** `kind = "knowledge-child"` and `kind = "pipeline"` aliases
 in FromStr, and `pipeline`/`knowledge-child` feature aliases in SDK Cargo.toml,
-are removed in the NEXT minor release after this spec completes. If this spec
-ships as v0.46.0, aliases are removed in v0.47.0. Enforcement: the removal is
-a one-line change tracked as a follow-up commit after next minor bump.
+are removed in the next minor release after this spec ships. If this spec
+ships as v0.46.0, aliases are removed in v0.47.0.
 
-**WIT package migration:** The unified world uses package `patina:child@0.1.0`,
+**WIT package migration:** Unified world uses package `patina:child@0.1.0`,
 replacing `patina:knowledge-child@0.1.0` and `patina:pipeline@0.1.0`. Old
-compiled WASM artifacts (targeting old package names) will fail to instantiate
-with a linker error. There is no runtime compatibility for old artifacts — they
-must be recompiled. Grammar plugins are recompiled in pva8. Third-party children
-(if any) must recompile against the new world.
+compiled WASM artifacts will fail to instantiate with a linker error. No
+runtime compatibility — they must be recompiled.
 
 **User-facing terminology:** `~/.patina/pipeline/` path stays as a storage
-location. The word "pipeline" in path names is not deprecated — it describes
-what grammar plugins do (parse pipelines). The deprecation applies to
-`kind = "pipeline"` in child.toml and `pipeline` as a world/feature name, not
-to the storage directory or the concept of processing pipelines.
+location. The word "pipeline" in path names is not deprecated. The deprecation
+applies to `kind = "pipeline"` in child.toml and `pipeline` as a world/feature
+name.
 
-**Required exports for non-SDK components:** The unified world requires all
-exports (init, name, handle, health, tick, drain, on-load, on-unload). SDK
-children get default stubs for free. Non-SDK children (raw wit-bindgen) must
-implement all exports. The WIT file is the contract — if it exports it, you
-must provide it.
+**Required exports:** The unified world requires all exports (init, name,
+handle, health, tick, drain, on-load, on-unload). SDK children get default
+stubs for free. Non-SDK children must implement all exports.
+
+**World boundaries going forward:** This spec merges two worlds because the
+pipeline/knowledge-child split was a false seam. The principle that world
+boundaries provide compile-time isolation (`[[world-boundary-is-type-safety]]`)
+remains sound. New worlds may emerge when real seams appear — the number of
+worlds is not fixed, it grows from evidence.
 
 ## Not in Scope
 
