@@ -90,6 +90,7 @@ enum Commands {
     },
 
     /// Check for new Patina CLI versions
+    #[cfg(feature = "dev")]
     Upgrade {
         /// Only check for updates, don't show instructions
         #[arg(short, long)]
@@ -114,10 +115,11 @@ enum Commands {
         json: bool,
     },
 
-    /// Manage WASM plugins
-    Plugin {
+    /// Manage WASM children
+    #[command(name = "child", visible_alias = "plugin")]
+    Child {
         #[command(subcommand)]
-        command: PluginCommands,
+        command: ChildCommands,
     },
 
     /// Manage project versioning (semver: MAJOR.MINOR.PATCH)
@@ -177,15 +179,14 @@ enum Commands {
         command: Option<ScryCommands>,
 
         /// Query text to search for (optional if --file is provided)
-        #[arg(conflicts_with = "command")]
         query: Option<String>,
 
         /// File path for temporal/dependency queries (e.g., src/auth.rs)
-        #[arg(long, conflicts_with = "command")]
+        #[arg(long)]
         file: Option<String>,
 
         /// Belief ID for grounding queries — find nearest code/commits/sessions (E4.6a)
-        #[arg(long, conflicts_with_all = ["command", "file"])]
+        #[arg(long, conflicts_with = "file")]
         belief: Option<String>,
 
         /// Filter results by content type (used with --belief): code, commits, sessions, patterns, beliefs
@@ -225,20 +226,12 @@ enum Commands {
         impact: bool,
 
         /// Fetch full content for a single result from a previous query (D3 scan-then-focus)
-        #[arg(long, value_name = "QUERY_ID", conflicts_with_all = ["command", "query", "file", "belief", "full"])]
+        #[arg(long, value_name = "QUERY_ID", conflicts_with_all = ["query", "file", "belief"])]
         detail: Option<String>,
 
         /// Rank of the result to fetch (1-indexed, used with --detail)
         #[arg(long, default_value = "1", requires = "detail")]
         rank: usize,
-
-        /// Return full content for all results (escape hatch, deprecated)
-        #[arg(long, conflicts_with_all = ["command", "detail"])]
-        full: bool,
-
-        /// Use legacy single-oracle search (deprecated, removed in v0.12.0)
-        #[arg(long, conflicts_with = "command")]
-        legacy: bool,
     },
 
     /// Get project patterns and conventions — USE THIS to understand design rules
@@ -956,25 +949,25 @@ enum SetupCommands {
 }
 
 #[derive(Subcommand)]
-enum PluginCommands {
-    /// List installed plugins
+enum ChildCommands {
+    /// List installed children
     List,
-    /// Run a plugin by name
+    /// Run a child by name
     Run {
-        /// Plugin name (matches <name>.wasm in plugins dir)
+        /// Child name (matches <name>.wasm in command-children dir)
         name: String,
-        /// Arguments passed to the plugin
+        /// Arguments passed to the child
         #[arg(last = true)]
         args: Vec<String>,
     },
-    /// Create a new plugin project from template
+    /// Create a new child project from template
     Init {
-        /// Plugin name (valid Rust crate name, e.g. "review-bot")
+        /// Child name (valid Rust crate name, e.g. "review-bot")
         name: String,
-        /// Plugin world: mother-child, command, task, pipeline
+        /// Child world: knowledge-child, pipeline
         #[arg(long)]
         world: String,
-        /// Build the plugin after scaffolding
+        /// Build the child after scaffolding
         #[arg(long)]
         build: bool,
         /// Build in release mode (requires --build)
@@ -983,9 +976,9 @@ enum PluginCommands {
     },
 }
 
-/// Build a query dispatch closure for command plugins.
+/// Build a query dispatch closure for children with query grants.
 ///
-/// Returns None if the plugin has no host_query grants. Otherwise,
+/// Returns None if the child has no host_query grants. Otherwise,
 /// returns a closure that dispatches to context/scry/assay engines.
 fn make_query_dispatch(
     manifest: &patina::child::engine::ChildManifest,
@@ -1138,8 +1131,9 @@ fn main() -> Result<()> {
         }) => {
             commands::init::execute(name, force, local, no_commit)?;
         }
+        #[cfg(feature = "dev")]
         Some(Commands::Upgrade { check, json }) => {
-            commands::upgrade::execute(check, json)?;
+            commands::dev::upgrade::execute(check, json)?;
         }
         #[cfg(feature = "dev")]
         Some(Commands::Dev { command }) => match command {
@@ -1229,8 +1223,6 @@ fn main() -> Result<()> {
             impact,
             detail,
             rank,
-            full,
-            legacy,
         }) => {
             // Handle subcommands first
             if let Some(subcmd) = command {
@@ -1275,8 +1267,6 @@ fn main() -> Result<()> {
                     belief,
                     content_type,
                     impact,
-                    full,
-                    legacy,
                 };
                 commands::scry::execute(query.as_deref(), options)?;
             }
@@ -1378,9 +1368,9 @@ fn main() -> Result<()> {
         Some(Commands::Doctor { json }) => {
             commands::doctor::execute_cli(json)?;
         }
-        Some(Commands::Plugin { command }) => match command {
-            PluginCommands::List => commands::child::execute_list()?,
-            PluginCommands::Init {
+        Some(Commands::Child { command }) => match command {
+            ChildCommands::List => commands::child::execute_list()?,
+            ChildCommands::Init {
                 name,
                 world,
                 build,
@@ -1395,7 +1385,7 @@ fn main() -> Result<()> {
                     .join(format!("target/wasm32-wasip2/{}", profile))
                     .join(format!("{}.wasm", name.replace('-', "_")));
 
-                println!("Created {} plugin: {}", world, project_dir.display());
+                println!("Created {} child: {}", world, project_dir.display());
                 println!();
                 println!("  cd {}", name);
                 if release {
@@ -1451,26 +1441,26 @@ fn main() -> Result<()> {
                     }
                 }
             }
-            PluginCommands::Run { name, args } => {
-                let plugins_dir = patina::paths::child::plugins_dir();
-                let wasm_path = plugins_dir.join(format!("{}.wasm", name));
-                let toml_path = plugins_dir.join(format!("{}.toml", name));
+            ChildCommands::Run { name, args } => {
+                let command_children_dir = patina::paths::child::command_children_dir();
+                let wasm_path = command_children_dir.join(format!("{}.wasm", name));
+                let toml_path = command_children_dir.join(format!("{}.toml", name));
 
                 if !wasm_path.exists() {
                     anyhow::bail!(
-                        "plugin '{}' not found at {}\nInstall: cp {}.wasm {}",
+                        "child '{}' not found at {}\nInstall: cp {}.wasm {}",
                         name,
                         wasm_path.display(),
                         name,
-                        plugins_dir.display()
+                        command_children_dir.display()
                     );
                 }
 
                 let manifest = if toml_path.exists() {
-                    patina::child::engine::MotherChildEngine::load_manifest(&toml_path)?
+                    patina::child::engine::ChildManifest::from_path(&toml_path)?
                 } else {
                     anyhow::bail!(
-                        "child manifest not found at {}\nTask and command plugins require a .toml manifest",
+                        "child manifest not found at {}\nKnowledge-child and pipeline children require a .toml manifest",
                         toml_path.display()
                     );
                 };
@@ -1479,60 +1469,6 @@ fn main() -> Result<()> {
 
                 // Auto-detect world from manifest and dispatch
                 match &manifest.world {
-                    patina::child::engine::ChildKind::Task => {
-                        let engine = patina::child::engine::TaskEngine::new()?;
-                        let component = engine.load_component(&wasm_bytes)?;
-                        let query_fn = make_query_dispatch(&manifest);
-                        let (exit_code, toys) =
-                            engine.run_task(&component, &manifest, &args, query_fn)?;
-
-                        // Execute approved toys
-                        for toy in &toys {
-                            eprintln!(
-                                "[task:{}] executing toy '{}': {} {}",
-                                name,
-                                toy.name,
-                                toy.command,
-                                toy.args.join(" ")
-                            );
-                            let status = std::process::Command::new(&toy.command)
-                                .args(&toy.args)
-                                .status();
-                            match status {
-                                Ok(s) if s.success() => {
-                                    eprintln!("[task:{}] toy '{}' succeeded", name, toy.name);
-                                }
-                                Ok(s) => {
-                                    eprintln!(
-                                        "[task:{}] toy '{}' failed with exit code {}",
-                                        name,
-                                        toy.name,
-                                        s.code().unwrap_or(-1)
-                                    );
-                                }
-                                Err(e) => {
-                                    eprintln!(
-                                        "[task:{}] toy '{}' failed to execute: {}",
-                                        name, toy.name, e
-                                    );
-                                }
-                            }
-                        }
-
-                        if exit_code != 0 {
-                            std::process::exit(exit_code);
-                        }
-                    }
-                    patina::child::engine::ChildKind::Command => {
-                        let engine = patina::child::engine::CommandEngine::new()?;
-                        let component = engine.load_component(&wasm_bytes)?;
-                        let query_fn = make_query_dispatch(&manifest);
-                        let exit_code =
-                            engine.run_command(&component, &manifest, &args, query_fn)?;
-                        if exit_code != 0 {
-                            std::process::exit(exit_code);
-                        }
-                    }
                     patina::child::engine::ChildKind::KnowledgeChild => {
                         let action = args.first().map(|s| s.as_str()).unwrap_or("health");
                         let payload_str = args.get(1).map(|s| s.as_str()).unwrap_or("{}");
@@ -1588,55 +1524,12 @@ fn main() -> Result<()> {
                             }
                         }
                     }
-                    patina::child::engine::ChildKind::MotherChild => {
-                        // mother-child: args = [action, payload_json]
-                        let action = args.first().map(|s| s.as_str()).unwrap_or("health");
-                        let payload_str = args.get(1).map(|s| s.as_str()).unwrap_or("{}");
-
-                        let engine = patina::child::engine::MotherChildEngine::new()?;
+                    patina::child::engine::ChildKind::Pipeline => {
+                        let request = args.first().map(|s| s.as_str()).unwrap_or("{}");
+                        let engine = patina::child::engine::PipelineEngine::new()?;
                         let component = engine.load_component(&wasm_bytes)?;
-                        let query_fn = make_query_dispatch(&manifest);
-                        let mut child =
-                            engine.instantiate_child(&component, &manifest, query_fn)?;
-
-                        // on_load — initialize the plugin
-                        use patina::mother::MotherHost;
-                        struct CliHost;
-                        impl MotherHost for CliHost {
-                            fn log(&self, child: &str, message: &str) {
-                                eprintln!("[{}] {}", child, message);
-                            }
-                        }
-                        child.on_load(&CliHost)?;
-
-                        if action == "health" {
-                            let health = child.health();
-                            println!("{:?}", health);
-                        } else {
-                            let request = patina::mother::ChildRequest {
-                                action: action.to_string(),
-                                payload: serde_json::from_str(payload_str)
-                                    .unwrap_or(serde_json::Value::String(payload_str.to_string())),
-                            };
-                            match child.handle(&request) {
-                                Ok(response) => {
-                                    println!(
-                                        "{}",
-                                        serde_json::to_string_pretty(&response.payload)?
-                                    );
-                                }
-                                Err(e) => {
-                                    eprintln!("error: {}", e);
-                                    std::process::exit(1);
-                                }
-                            }
-                        }
-                    }
-                    other => {
-                        anyhow::bail!(
-                            "plugin '{}' has world '{}' — only 'task', 'command', 'mother-child', and 'knowledge-child' are supported by `plugin run`",
-                            name, other
-                        );
+                        let response = engine.handle(&component, &name, request)?;
+                        println!("{}", response);
                     }
                 }
             }
@@ -1739,11 +1632,7 @@ fn main() -> Result<()> {
             if mcp {
                 anyhow::bail!("MCP server path has been retired; use `patina mother start`");
             } else {
-                let options = commands::mother::DaemonOptions {
-                    host,
-                    port,
-                    legacy_migration: false,
-                };
+                let options = commands::mother::DaemonOptions { host, port };
                 commands::mother::daemon::run_server(options)?;
             }
         }

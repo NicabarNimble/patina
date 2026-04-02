@@ -14,159 +14,43 @@ use crate::mother::{
 };
 
 mod bindings {
-    use rayon::prelude::*;
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use std::collections::HashMap;
 
-    #[derive(Debug)]
-    struct GithubPageResult {
-        page: u32,
-        raw_count: usize,
-        rows: Vec<serde_json::Value>,
-    }
-
-    fn env_usize(name: &str, default: usize) -> usize {
-        std::env::var(name)
-            .ok()
-            .and_then(|value| value.parse::<usize>().ok())
-            .unwrap_or(default)
-    }
-
-    fn backoff_seconds(headers: &reqwest::header::HeaderMap, attempt: usize) -> u64 {
-        if let Some(retry_after) = headers
-            .get(reqwest::header::RETRY_AFTER)
-            .and_then(|h| h.to_str().ok())
-            .and_then(|s| s.parse::<u64>().ok())
-        {
-            return retry_after.max(1);
-        }
-
-        if let (Some(remaining), Some(reset_epoch)) = (
-            headers
-                .get("x-ratelimit-remaining")
-                .and_then(|h| h.to_str().ok()),
-            headers
-                .get("x-ratelimit-reset")
-                .and_then(|h| h.to_str().ok())
-                .and_then(|s| s.parse::<u64>().ok()),
-        ) {
-            if remaining == "0" {
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                if reset_epoch > now {
-                    return (reset_epoch - now + 1).min(60);
-                }
-            }
-        }
-
-        (1_u64 << attempt.min(5)).min(30)
-    }
-
-    fn fetch_github_page(
-        client: &reqwest::blocking::Client,
-        credential: &crate::connect::ResolvedCredential,
-        endpoint: &str,
-        data_type: &str,
-        since: Option<&str>,
-        page: u32,
-    ) -> Result<GithubPageResult, String> {
-        let mut attempt = 0usize;
-        loop {
-            let mut url = reqwest::Url::parse(endpoint).map_err(|e| e.to_string())?;
-            {
-                let mut query = url.query_pairs_mut();
-                query.append_pair("state", "all");
-                query.append_pair("per_page", "100");
-                query.append_pair("page", &page.to_string());
-                query.append_pair("sort", "updated");
-                query.append_pair("direction", "desc");
-                if data_type == "issues" {
-                    if let Some(cursor) = since {
-                        if !cursor.trim().is_empty() {
-                            query.append_pair("since", cursor);
-                        }
-                    }
-                }
-            }
-
-            let mut request = client
-                .get(url)
-                .header("User-Agent", "patina-ducklake")
-                .header("Accept", "application/vnd.github+json");
-            request = match &credential.injection {
-                crate::connect::InjectionStrategy::Bearer
-                | crate::connect::InjectionStrategy::InProcess => request.header(
-                    "Authorization",
-                    format!("Bearer {}", credential.value.as_str()),
-                ),
-                crate::connect::InjectionStrategy::Header { name } => {
-                    request.header(name, credential.value.as_str())
-                }
-            };
-
-            let response = request.send().map_err(|e| e.to_string())?;
-            let status = response.status().as_u16();
-            let headers = response.headers().clone();
-            let body = response.text().map_err(|e| e.to_string())?;
-
-            if status == 401 {
-                return Err("github auth denied (status 401)".into());
-            }
-
-            if status == 429 || status == 403 {
-                let secondary = body.to_ascii_lowercase().contains("secondary rate limit");
-                let primary_exhausted = headers
-                    .get("x-ratelimit-remaining")
-                    .and_then(|h| h.to_str().ok())
-                    .is_some_and(|remaining| remaining == "0");
-                if (secondary || primary_exhausted || status == 429) && attempt < 6 {
-                    let sleep_secs = backoff_seconds(&headers, attempt);
-                    std::thread::sleep(Duration::from_secs(sleep_secs));
-                    attempt += 1;
-                    continue;
-                }
-                return Err(format!("github auth/rate-limit denied (status {})", status));
-            }
-
-            if status >= 400 {
-                return Err(format!("github sync failed (status {})", status));
-            }
-
-            let mut page_rows: Vec<serde_json::Value> = serde_json::from_str(&body)
-                .map_err(|e| format!("invalid github payload: {}", e))?;
-            let raw_count = page_rows.len();
-
-            if data_type == "issues" {
-                page_rows.retain(|row| row.get("pull_request").is_none());
-            } else if let Some(cursor) = since {
-                if !cursor.is_empty() {
-                    page_rows.retain(|row| {
-                        row.get("updated_at")
-                            .and_then(|v| v.as_str())
-                            .map(|updated| updated > cursor)
-                            .unwrap_or(true)
-                    });
-                }
-            }
-
-            return Ok(GithubPageResult {
-                page,
-                raw_count,
-                rows: page_rows,
-            });
-        }
-    }
-
+    #[allow(dead_code)]
     pub struct HostState {
         pub plugin_name: String,
         pub wasi: wasmtime_wasi::WasiCtx,
         pub wasi_table: wasmtime::component::ResourceTable,
+        pub http: wasmtime_wasi_http::WasiHttpCtx,
         pub project_root: Option<std::path::PathBuf>,
         pub grants: super::GrantedCapabilities,
         pub query_fn: Option<super::QueryDispatchFn>,
         pub http_client: reqwest::blocking::Client,
         pub runtime: crate::mother::KnowledgeRuntimeStore,
+        pub active_bindings: HashMap<u32, crate::child::toy_host::v2::ConnectionHandle>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct StateBucketHandle {
+        pub identifier: String,
+    }
+
+    #[derive(Debug, Clone)]
+    #[allow(dead_code)]
+    pub struct SqlConnectionHandle {
+        pub name: String,
+        pub conn: crate::child::toy_host::v2::ConnectionHandle,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct SqlStatementHandle {
+        pub query: String,
+        pub params: Vec<String>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct MessagingClientHandle {
+        pub stream_name: String,
     }
 
     impl wasmtime_wasi::WasiView for HostState {
@@ -178,911 +62,570 @@ mod bindings {
         }
     }
 
+    impl wasmtime_wasi_http::WasiHttpView for HostState {
+        fn ctx(&mut self) -> &mut wasmtime_wasi_http::WasiHttpCtx {
+            &mut self.http
+        }
+
+        fn table(&mut self) -> &mut wasmtime::component::ResourceTable {
+            &mut self.wasi_table
+        }
+
+        fn send_request(
+            &mut self,
+            mut request: hyper::Request<wasmtime_wasi_http::body::HyperOutgoingBody>,
+            config: wasmtime_wasi_http::types::OutgoingRequestConfig,
+        ) -> wasmtime_wasi_http::HttpResult<wasmtime_wasi_http::types::HostFutureIncomingResponse>
+        {
+            let Some(host) = request.uri().host() else {
+                return Ok(wasmtime_wasi_http::types::default_send_request(
+                    request, config,
+                ));
+            };
+            let host = crate::child::toy_host::v2::normalize_domain(host);
+
+            let mut matched: Option<crate::child::toy_host::v2::ConnectionHandle> = None;
+            for binding in self.active_bindings.values() {
+                if crate::child::toy_host::v2::connect_matches_domain(binding, &host) {
+                    if matched.is_some() {
+                        return Err(
+                            wasmtime_wasi_http::bindings::http::types::ErrorCode::ConfigurationError
+                                .into(),
+                        );
+                    }
+                    matched = Some(binding.clone());
+                }
+            }
+
+            if let Some(binding) = matched {
+                if let Some((name, value)) =
+                    crate::child::toy_host::v2::connect_auth_header_for_domain(&binding, &host)
+                        .map_err(|error| {
+                            wasmtime_wasi_http::HttpError::trap(anyhow::anyhow!(error))
+                        })?
+                {
+                    request.headers_mut().insert(
+                        hyper::header::HeaderName::from_bytes(name.as_bytes()).map_err(|_| {
+                            wasmtime_wasi_http::bindings::http::types::ErrorCode::HttpRequestDenied
+                        })?,
+                        hyper::header::HeaderValue::from_str(&value).map_err(|_| {
+                            wasmtime_wasi_http::bindings::http::types::ErrorCode::HttpRequestDenied
+                        })?,
+                    );
+                }
+            }
+
+            Ok(wasmtime_wasi_http::types::default_send_request(
+                request, config,
+            ))
+        }
+    }
+
     wasmtime::component::bindgen!({
         path: "wit/knowledge-child/",
         world: "knowledge-child",
     });
 
-    impl patina::host::log::Host for HostState {
-        fn log(&mut self, level: patina::host::log::LogLevel, message: String) {
+    impl wasi::logging::logging::Host for HostState {
+        fn log(&mut self, level: wasi::logging::logging::Level, context: String, message: String) {
             let level_str = match level {
-                patina::host::log::LogLevel::Debug => "DEBUG",
-                patina::host::log::LogLevel::Info => "INFO",
-                patina::host::log::LogLevel::Warn => "WARN",
-                patina::host::log::LogLevel::Error => "ERROR",
+                wasi::logging::logging::Level::Trace => "TRACE",
+                wasi::logging::logging::Level::Debug => "DEBUG",
+                wasi::logging::logging::Level::Info => "INFO",
+                wasi::logging::logging::Level::Warn => "WARN",
+                wasi::logging::logging::Level::Error => "ERROR",
+                wasi::logging::logging::Level::Critical => "CRITICAL",
             };
-            super::super::host_support::log(&self.plugin_name, level_str, &message);
+            let source = if context.trim().is_empty() {
+                self.plugin_name.clone()
+            } else {
+                format!("{}:{}", self.plugin_name, context)
+            };
+            crate::child::toy_host::v2::log_emit(&source, level_str, &message);
         }
     }
 
-    impl patina::host::types::Host for HostState {}
+    impl patina::knowledge_child::runtime_types::Host for HostState {}
 
-    impl patina::host::query::Host for HostState {
-        fn query(&mut self, kind: String, params: String) -> Result<String, String> {
-            crate::child::toy_host::query::dispatch(
-                &self.plugin_name,
-                &self.grants,
-                &mut self.query_fn,
-                &kind,
-                &params,
-            )
+    fn bucket_scoped_key(bucket: &str, key: &str) -> String {
+        if bucket == "default" {
+            key.to_string()
+        } else {
+            format!("{}:{}", bucket, key)
         }
     }
 
-    impl patina::host::http::Host for HostState {
-        fn http_post(
+    fn bucket_prefix(bucket: &str) -> String {
+        if bucket == "default" {
+            String::new()
+        } else {
+            format!("{}:", bucket)
+        }
+    }
+
+    impl wasi::keyvalue::store::Host for HostState {
+        fn open(
             &mut self,
-            url: String,
-            body: String,
-            content_type: String,
-        ) -> Result<patina::host::http::HttpResponse, String> {
-            let r = crate::child::toy_host::http::post(
-                &self.http_client,
-                &self.grants,
-                &self.plugin_name,
-                &url,
-                &body,
-                &content_type,
-            )?;
-            Ok(patina::host::http::HttpResponse {
-                status: r.status,
-                body: r.body,
-            })
-        }
-
-        fn http_get(&mut self, url: String) -> Result<patina::host::http::HttpResponse, String> {
-            let r = crate::child::toy_host::http::get(
-                &self.http_client,
-                &self.grants,
-                &self.plugin_name,
-                &url,
-            )?;
-            Ok(patina::host::http::HttpResponse {
-                status: r.status,
-                body: r.body,
-            })
-        }
-    }
-
-    impl patina::host::emit::Host for HostState {
-        fn emit_fact(
-            &mut self,
-            schema: String,
-            fact_type: String,
-            data: String,
-        ) -> Result<u64, String> {
-            if !self.grants.host_emit {
+            identifier: String,
+        ) -> Result<wasmtime::component::Resource<wasi::keyvalue::store::Bucket>, String> {
+            if !self.grants.state_enabled {
                 return Err(format!(
-                    "host_emit not granted for plugin '{}'",
+                    "state not granted for child '{}'",
                     self.plugin_name
                 ));
             }
-            super::super::host_support::emit_fact(
-                &self.grants.schema_facts,
-                &self.plugin_name,
-                &schema,
-                &fact_type,
-                &data,
-            )
+            let handle = StateBucketHandle { identifier };
+            let rep = self.wasi_table.push(handle).map_err(|e| e.to_string())?;
+            Ok(wasmtime::component::Resource::new_own(rep.rep()))
         }
     }
 
-    impl patina::host::measure::Host for HostState {
-        fn record_measurement(
+    impl wasi::keyvalue::store::HostBucket for HostState {
+        fn get(
             &mut self,
-            verb: String,
-            tool: String,
-            mode: String,
-            metrics_json: String,
+            bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+            key: String,
+        ) -> Result<Option<Vec<u8>>, String> {
+            let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
+            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let scoped = bucket_scoped_key(&handle.identifier, &key);
+            let value =
+                crate::child::toy_host::v2::state_get(&self.runtime, &self.plugin_name, &scoped)?;
+            Ok(value.map(|v| v.into_bytes()))
+        }
+
+        fn set(
+            &mut self,
+            bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+            key: String,
+            value: Vec<u8>,
         ) -> Result<(), String> {
-            super::super::host_support::record_measurement(
-                &self.project_root,
-                &self.plugin_name,
-                &verb,
-                &tool,
-                &mode,
-                &metrics_json,
+            let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
+            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let scoped = bucket_scoped_key(&handle.identifier, &key);
+            let value = String::from_utf8(value)
+                .map_err(|e| format!("state value for '{}' is not valid UTF-8: {}", key, e))?;
+            crate::child::toy_host::v2::state_set(&self.runtime, &self.plugin_name, &scoped, &value)
+        }
+
+        fn delete(
+            &mut self,
+            bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+            key: String,
+        ) -> Result<(), String> {
+            let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
+            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let scoped = bucket_scoped_key(&handle.identifier, &key);
+            crate::child::toy_host::v2::state_delete(&self.runtime, &self.plugin_name, &scoped)
+        }
+
+        fn exists(
+            &mut self,
+            bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+            key: String,
+        ) -> Result<bool, String> {
+            let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
+            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let scoped = bucket_scoped_key(&handle.identifier, &key);
+            Ok(
+                crate::child::toy_host::v2::state_get(&self.runtime, &self.plugin_name, &scoped)?
+                    .is_some(),
             )
+        }
+
+        fn list_keys(
+            &mut self,
+            bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+            cursor: Option<String>,
+        ) -> Result<wasi::keyvalue::store::KeyResponse, String> {
+            let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
+            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let prefix = bucket_prefix(&handle.identifier);
+            let mut keys = crate::child::toy_host::v2::state_list_prefix(
+                &self.runtime,
+                &self.plugin_name,
+                &prefix,
+            )
+            .unwrap_or_default();
+            if !prefix.is_empty() {
+                keys = keys
+                    .into_iter()
+                    .filter_map(|k| k.strip_prefix(&prefix).map(ToString::to_string))
+                    .collect();
+            }
+            keys.sort();
+            let start = cursor
+                .as_deref()
+                .and_then(|c| c.parse::<usize>().ok())
+                .unwrap_or(0);
+            let page_size = 200usize;
+            let end = std::cmp::min(start + page_size, keys.len());
+            let next = if end < keys.len() {
+                Some(end.to_string())
+            } else {
+                None
+            };
+            Ok(wasi::keyvalue::store::KeyResponse {
+                keys: keys[start..end].to_vec(),
+                cursor: next,
+            })
+        }
+
+        fn drop(
+            &mut self,
+            rep: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+        ) -> wasmtime::Result<()> {
+            let rep = wasmtime::component::Resource::<StateBucketHandle>::new_own(rep.rep());
+            Ok(self.wasi_table.delete(rep).map(|_| ())?)
         }
     }
 
-    impl patina::host::state::Host for HostState {
-        fn get(&mut self, key: String) -> Option<String> {
-            self.runtime
-                .get_state(&self.plugin_name, &key)
-                .ok()
-                .flatten()
+    impl patina::connect::connect::Host for HostState {
+        fn resolve(
+            &mut self,
+            name: String,
+        ) -> Result<wasmtime::component::Resource<patina::connect::connect::Binding>, String>
+        {
+            let binding = crate::child::toy_host::v2::connect_resolve(&name)?;
+            let rep = self.wasi_table.push(binding).map_err(|e| e.to_string())?;
+            let binding = self
+                .wasi_table
+                .get(&rep)
+                .map_err(|e| e.to_string())?
+                .clone();
+            self.active_bindings.insert(rep.rep(), binding);
+            Ok(wasmtime::component::Resource::new_own(rep.rep()))
+        }
+    }
+
+    impl patina::connect::connect::HostBinding for HostState {
+        fn drop(
+            &mut self,
+            rep: wasmtime::component::Resource<patina::connect::connect::Binding>,
+        ) -> wasmtime::Result<()> {
+            self.active_bindings.remove(&rep.rep());
+            let rep = wasmtime::component::Resource::<crate::child::toy_host::v2::ConnectionHandle>::new_own(rep.rep());
+            Ok(self.wasi_table.delete(rep).map(|_| ())?)
+        }
+    }
+
+    impl wasi::sql::readwrite::Host for HostState {
+        fn open(
+            &mut self,
+            name: String,
+        ) -> Result<wasmtime::component::Resource<wasi::sql::readwrite::Connection>, String>
+        {
+            let conn = crate::child::toy_host::v2::connect_resolve(&name)?;
+            let handle = SqlConnectionHandle { name, conn };
+            let rep = self.wasi_table.push(handle).map_err(|e| e.to_string())?;
+            Ok(wasmtime::component::Resource::new_own(rep.rep()))
         }
 
-        fn put(&mut self, key: String, value_json: String) -> Result<(), String> {
-            if !self.grants.state_enabled {
-                return Err(format!(
-                    "state not granted for plugin '{}'",
-                    self.plugin_name
-                ));
+        fn prepare(
+            &mut self,
+            query: String,
+            params: Vec<String>,
+        ) -> Result<wasmtime::component::Resource<wasi::sql::readwrite::Statement>, String>
+        {
+            let stmt = SqlStatementHandle { query, params };
+            let rep = self.wasi_table.push(stmt).map_err(|e| e.to_string())?;
+            Ok(wasmtime::component::Resource::new_own(rep.rep()))
+        }
+
+        fn query(
+            &mut self,
+            c: wasmtime::component::Resource<wasi::sql::readwrite::Connection>,
+            s: wasmtime::component::Resource<wasi::sql::readwrite::Statement>,
+        ) -> Result<Vec<wasi::sql::readwrite::Row>, String> {
+            let c_rep = wasmtime::component::Resource::<SqlConnectionHandle>::new_borrow(c.rep());
+            let s_rep = wasmtime::component::Resource::<SqlStatementHandle>::new_borrow(s.rep());
+            let conn = self.wasi_table.get(&c_rep).map_err(|e| e.to_string())?;
+            let stmt = self.wasi_table.get(&s_rep).map_err(|e| e.to_string())?;
+
+            let result = crate::child::toy_host::v2::store_query(&conn.conn, &stmt.query)?;
+            Ok(vec![wasi::sql::readwrite::Row {
+                values: vec![wasi::sql::readwrite::DataType::Text(result)],
+            }])
+        }
+
+        fn exec(
+            &mut self,
+            c: wasmtime::component::Resource<wasi::sql::readwrite::Connection>,
+            s: wasmtime::component::Resource<wasi::sql::readwrite::Statement>,
+        ) -> Result<u32, String> {
+            let c_rep = wasmtime::component::Resource::<SqlConnectionHandle>::new_borrow(c.rep());
+            let s_rep = wasmtime::component::Resource::<SqlStatementHandle>::new_borrow(s.rep());
+            let conn = self.wasi_table.get(&c_rep).map_err(|e| e.to_string())?;
+            let stmt = self.wasi_table.get(&s_rep).map_err(|e| e.to_string())?;
+
+            if stmt.query == "__patina_mutate__" {
+                let action = stmt.params.first().cloned().unwrap_or_default();
+                let payload = stmt.params.get(1).cloned().unwrap_or_default();
+                let out = crate::child::toy_host::v2::store_mutate(&conn.conn, &action, &payload)?;
+                return out.parse::<u32>().map_err(|e| e.to_string());
             }
-            self.runtime
-                .put_state(&self.plugin_name, &key, &value_json)
-                .map_err(|e| e.to_string())
-        }
 
-        fn delete(&mut self, key: String) -> Result<(), String> {
-            if !self.grants.state_enabled {
-                return Err(format!(
-                    "state not granted for plugin '{}'",
-                    self.plugin_name
-                ));
-            }
-            self.runtime
-                .delete_state(&self.plugin_name, &key)
-                .map_err(|e| e.to_string())
+            let out = crate::child::toy_host::v2::store_query(&conn.conn, &stmt.query)?;
+            out.parse::<u32>().map_err(|e| e.to_string())
         }
+    }
 
-        fn list_prefix(&mut self, prefix: String) -> Vec<String> {
-            self.runtime
-                .list_state_prefix(&self.plugin_name, &prefix)
+    impl wasi::sql::readwrite::HostConnection for HostState {
+        fn drop(
+            &mut self,
+            rep: wasmtime::component::Resource<wasi::sql::readwrite::Connection>,
+        ) -> wasmtime::Result<()> {
+            let rep = wasmtime::component::Resource::<SqlConnectionHandle>::new_own(rep.rep());
+            Ok(self.wasi_table.delete(rep).map(|_| ())?)
+        }
+    }
+
+    impl wasi::sql::readwrite::HostStatement for HostState {
+        fn query(
+            &mut self,
+            rep: wasmtime::component::Resource<wasi::sql::readwrite::Statement>,
+        ) -> String {
+            let rep = wasmtime::component::Resource::<SqlStatementHandle>::new_borrow(rep.rep());
+            self.wasi_table
+                .get(&rep)
+                .map(|s| s.query.clone())
                 .unwrap_or_default()
         }
+
+        fn params(
+            &mut self,
+            rep: wasmtime::component::Resource<wasi::sql::readwrite::Statement>,
+        ) -> Vec<String> {
+            let rep = wasmtime::component::Resource::<SqlStatementHandle>::new_borrow(rep.rep());
+            self.wasi_table
+                .get(&rep)
+                .map(|s| s.params.clone())
+                .unwrap_or_default()
+        }
+
+        fn drop(
+            &mut self,
+            rep: wasmtime::component::Resource<wasi::sql::readwrite::Statement>,
+        ) -> wasmtime::Result<()> {
+            let rep = wasmtime::component::Resource::<SqlStatementHandle>::new_own(rep.rep());
+            Ok(self.wasi_table.delete(rep).map(|_| ())?)
+        }
     }
 
-    impl patina::host::checkpoint::Host for HostState {
-        fn load(&mut self, stream: String) -> Option<String> {
-            self.runtime
-                .load_checkpoint(&self.plugin_name, &stream)
-                .ok()
-                .flatten()
-        }
-
-        fn save(&mut self, stream: String, checkpoint_json: String) -> Result<(), String> {
-            if !self.grants.checkpoint_streams.contains(&stream) {
-                return Err(format!(
-                    "checkpoint stream '{}' not granted for plugin '{}'",
-                    stream, self.plugin_name
-                ));
-            }
-            self.runtime
-                .save_checkpoint(&self.plugin_name, &stream, &checkpoint_json)
-                .map_err(|e| e.to_string())
-        }
-    }
-
-    impl patina::host::lake::Host for HostState {
-        fn ensure_lake(&mut self, name: String) -> Result<String, String> {
-            if !self.grants.lake_names.contains(&name) {
-                return Err(format!(
-                    "lake '{}' not granted for '{}'",
-                    name, self.plugin_name
-                ));
-            }
-            crate::child::toy_host::lake::ensure_lake(&name).map_err(|e| e.to_string())
-        }
-
-        fn list_granted_lakes(&mut self) -> Result<Vec<patina::host::lake::GrantedLake>, String> {
-            self.grants
-                .lake_names
-                .iter()
-                .cloned()
-                .map(|name| {
-                    let path = crate::child::toy_host::lake::ensure_lake(&name)
-                        .map_err(|e| e.to_string())?;
-                    Ok(patina::host::lake::GrantedLake { name, path })
-                })
-                .collect()
-        }
-
-        fn load_cursor(
+    impl wasi::messaging::producer::Host for HostState {
+        fn connect(
             &mut self,
-            lake: String,
-            source: String,
-            data_type: String,
-        ) -> Option<String> {
-            if !self.grants.lake_names.contains(&lake) {
-                return None;
-            }
-            crate::child::toy_host::lake::load_cursor(&self.runtime, &lake, &source, &data_type)
-                .ok()
-                .flatten()
+            name: String,
+        ) -> Result<wasmtime::component::Resource<wasi::messaging::producer::Client>, String>
+        {
+            let handle = MessagingClientHandle { stream_name: name };
+            let rep = self.wasi_table.push(handle).map_err(|e| e.to_string())?;
+            Ok(wasmtime::component::Resource::new_own(rep.rep()))
         }
 
-        fn save_cursor(
+        fn send(
             &mut self,
-            lake: String,
-            source: String,
-            data_type: String,
-            cursor: Option<String>,
-            written: u64,
-            status: String,
-            last_error: Option<String>,
-        ) -> Result<(), String> {
-            if !self.grants.lake_names.contains(&lake) {
-                return Err(format!(
-                    "lake '{}' not granted for '{}'",
-                    lake, self.plugin_name
-                ));
-            }
-            crate::child::toy_host::lake::save_cursor(
-                &self.runtime,
-                &crate::mother::state::LakeCursorUpdate {
-                    lake_name: &lake,
-                    source_name: &source,
-                    data_type: &data_type,
-                    cursor_value: cursor.as_deref(),
-                    records_written: written,
-                    status: &status,
-                    last_error: last_error.as_deref(),
-                },
-            )
-            .map_err(|e| e.to_string())
-        }
-
-        fn ensure_table(&mut self, lake: String, table: String) -> Result<(), String> {
-            if !self.grants.lake_names.contains(&lake) {
-                return Err(format!(
-                    "lake '{}' not granted for '{}'",
-                    lake, self.plugin_name
-                ));
-            }
-            crate::child::toy_host::lake::ensure_table(&lake, &table).map_err(|e| e.to_string())
-        }
-
-        fn append_json_batch(
-            &mut self,
-            lake: String,
-            table: String,
-            source: String,
-            rows_json: Vec<String>,
+            client: wasmtime::component::Resource<wasi::messaging::producer::Client>,
+            message: wasi::messaging::types::Message,
         ) -> Result<u64, String> {
-            if !self.grants.lake_names.contains(&lake) {
+            if !self.grants.toys.events {
                 return Err(format!(
-                    "lake '{}' not granted for '{}'",
-                    lake, self.plugin_name
-                ));
-            }
-            crate::child::toy_host::lake::append_json_batch(&lake, &table, &source, &rows_json)
-                .map_err(|e| e.to_string())
-        }
-
-        fn query_json(&mut self, lake: String, sql: String) -> Result<String, String> {
-            if !self.grants.lake_names.contains(&lake) {
-                return Err(format!(
-                    "lake '{}' not granted for '{}'",
-                    lake, self.plugin_name
-                ));
-            }
-            crate::child::toy_host::lake::query_json(&lake, &sql).map_err(|e| e.to_string())
-        }
-    }
-
-    impl patina::host::ingress::Host for HostState {
-        fn list_granted_sources(&mut self) -> Vec<patina::host::ingress::GrantedSource> {
-            crate::child::toy_host::ingress::list_granted_sources(&self.grants.toys)
-                .into_iter()
-                .map(|(name, endpoint)| patina::host::ingress::GrantedSource { name, endpoint })
-                .collect()
-        }
-
-        fn fetch(&mut self, source_name: String) -> Result<String, String> {
-            let endpoint = crate::child::toy_host::ingress::resolve_source_endpoint(
-                &self.grants.toys,
-                &self.plugin_name,
-                &source_name,
-            )?;
-            super::super::host_support::http_get(
-                &self.http_client,
-                &self.grants,
-                &self.plugin_name,
-                &endpoint,
-            )
-            .map(|result| result.body)
-        }
-    }
-
-    impl patina::host::connector::Host for HostState {
-        fn list_bindings(&mut self) -> Result<Vec<patina::host::connector::RepoBinding>, String> {
-            crate::child::toy_host::connector::ensure_granted(
-                self.grants.toys.connector,
-                &self.plugin_name,
-            )?;
-            crate::child::toy_host::connector::list_bindings(&self.runtime, &self.plugin_name).map(
-                |items| {
-                    items
-                        .into_iter()
-                        .map(|parsed| patina::host::connector::RepoBinding {
-                            binding_id: parsed.binding_id,
-                            connection: parsed.connection,
-                            owner: parsed.owner,
-                            repo: parsed.repo,
-                            types: parsed.types,
-                        })
-                        .collect()
-                },
-            )
-        }
-
-        fn upsert_binding(
-            &mut self,
-            binding: patina::host::connector::RepoBinding,
-        ) -> Result<patina::host::connector::RepoBinding, String> {
-            crate::child::toy_host::connector::ensure_granted(
-                self.grants.toys.connector,
-                &self.plugin_name,
-            )?;
-            let record = crate::child::toy_host::connector::ConnectorBindingRecord {
-                binding_id: binding.binding_id.clone(),
-                connection: binding.connection.clone(),
-                owner: binding.owner.clone(),
-                repo: binding.repo.clone(),
-                types: binding.types.clone(),
-            };
-            crate::child::toy_host::connector::upsert_binding(
-                &self.runtime,
-                &self.plugin_name,
-                record,
-            )?;
-            Ok(binding)
-        }
-
-        fn remove_binding(&mut self, binding_id: String) -> Result<(), String> {
-            crate::child::toy_host::connector::ensure_granted(
-                self.grants.toys.connector,
-                &self.plugin_name,
-            )?;
-            crate::child::toy_host::connector::remove_binding(
-                &self.runtime,
-                &self.plugin_name,
-                &binding_id,
-            )
-        }
-
-        fn sync_binding(
-            &mut self,
-            binding_id: String,
-            data_type: String,
-            since: Option<String>,
-        ) -> Result<patina::host::connector::SyncResult, String> {
-            crate::child::toy_host::connector::ensure_granted(
-                self.grants.toys.connector,
-                &self.plugin_name,
-            )?;
-
-            let binding = crate::child::toy_host::connector::load_binding(
-                &self.runtime,
-                &self.plugin_name,
-                &binding_id,
-            )?;
-            crate::child::toy_host::connector::ensure_type_enabled(&binding, &data_type)?;
-
-            let connection = crate::connect::load(&binding.connection)
-                .map_err(|e| format!("connection '{}': {}", binding.connection, e))?;
-            let credential =
-                crate::connect::resolve_credential_for_domain(&connection, "api.github.com")?;
-
-            let endpoint = crate::child::toy_host::connector::endpoint_for(&binding, &data_type)?;
-
-            let max_pages = env_usize("PATINA_GITHUB_MAX_PAGES", 500).clamp(1, 5_000) as u32;
-            let max_parallel = env_usize("PATINA_GITHUB_MAX_PARALLEL", 4).clamp(1, 16);
-            let mut rows: Vec<serde_json::Value> = Vec::new();
-            let mut next_page = 1_u32;
-            let since_ref = since.as_deref();
-
-            while next_page <= max_pages {
-                let upper = (next_page + max_parallel as u32 - 1).min(max_pages);
-                let pages: Vec<u32> = (next_page..=upper).collect();
-                let client = self.http_client.clone();
-                let credential = credential.clone();
-                let endpoint_cloned = endpoint.clone();
-                let data_type_cloned = data_type.clone();
-
-                let mut batch = pages
-                    .into_par_iter()
-                    .map(|page| {
-                        fetch_github_page(
-                            &client,
-                            &credential,
-                            &endpoint_cloned,
-                            &data_type_cloned,
-                            since_ref,
-                            page,
-                        )
-                    })
-                    .collect::<Vec<_>>();
-
-                batch.sort_by_key(|item| item.as_ref().map(|p| p.page).unwrap_or(u32::MAX));
-                let mut reached_end = false;
-                for page in batch {
-                    let page = page.map_err(|error| {
-                        format!(
-                            "github sync failed for {}/{} {} via connection '{}': {}",
-                            binding.owner, binding.repo, data_type, binding.connection, error
-                        )
-                    })?;
-                    let raw_count = page.raw_count;
-                    rows.extend(page.rows);
-                    if raw_count < 100 {
-                        reached_end = true;
-                        break;
-                    }
-                }
-
-                if reached_end {
-                    break;
-                }
-                next_page = upper + 1;
-            }
-
-            if next_page > max_pages {
-                return Err(format!(
-                    "github sync exceeded max pages ({}) for {}/{} {}. Increase PATINA_GITHUB_MAX_PAGES to continue.",
-                    max_pages, binding.owner, binding.repo, data_type
-                ));
-            }
-
-            let cursor = rows
-                .iter()
-                .filter_map(|row| row.get("updated_at").and_then(|v| v.as_str()))
-                .max()
-                .map(ToString::to_string)
-                .or(since);
-            let rows_json = rows
-                .into_iter()
-                .map(|row| serde_json::to_string(&row).map_err(|e| e.to_string()))
-                .collect::<Result<Vec<_>, _>>()?;
-
-            Ok(patina::host::connector::SyncResult {
-                binding_id: binding.binding_id,
-                data_type,
-                cursor,
-                rows_json,
-            })
-        }
-    }
-
-    impl patina::host::github::Host for HostState {
-        fn list_issues(
-            &mut self,
-            owner: String,
-            repo: String,
-            params: patina::host::github::ListParams,
-        ) -> Result<patina::host::github::Page, String> {
-            crate::child::toy_host::github::ensure_granted(
-                self.grants.toys.github,
-                &self.plugin_name,
-            )?;
-            let page = crate::child::toy_host::github::list_issues(
-                &self.http_client,
-                &self.grants,
-                &self.plugin_name,
-                &owner,
-                &repo,
-                &crate::child::toy_host::github::ListParams {
-                    since: params.since,
-                    state: params.state,
-                    page: params.page,
-                    per_page: params.per_page,
-                },
-            )?;
-            Ok(patina::host::github::Page {
-                items: page.items,
-                has_next: page.has_next,
-                next_page: page.next_page,
-                rate_remaining: page.rate_remaining,
-            })
-        }
-
-        fn list_pulls(
-            &mut self,
-            owner: String,
-            repo: String,
-            params: patina::host::github::ListParams,
-        ) -> Result<patina::host::github::Page, String> {
-            crate::child::toy_host::github::ensure_granted(
-                self.grants.toys.github,
-                &self.plugin_name,
-            )?;
-            let page = crate::child::toy_host::github::list_pulls(
-                &self.http_client,
-                &self.grants,
-                &self.plugin_name,
-                &owner,
-                &repo,
-                &crate::child::toy_host::github::ListParams {
-                    since: params.since,
-                    state: params.state,
-                    page: params.page,
-                    per_page: params.per_page,
-                },
-            )?;
-            Ok(patina::host::github::Page {
-                items: page.items,
-                has_next: page.has_next,
-                next_page: page.next_page,
-                rate_remaining: page.rate_remaining,
-            })
-        }
-
-        fn list_issue_comments(
-            &mut self,
-            owner: String,
-            repo: String,
-            issue_number: u32,
-        ) -> Result<patina::host::github::Page, String> {
-            crate::child::toy_host::github::ensure_granted(
-                self.grants.toys.github,
-                &self.plugin_name,
-            )?;
-            let page = crate::child::toy_host::github::list_issue_comments(
-                &self.http_client,
-                &self.grants,
-                &self.plugin_name,
-                &owner,
-                &repo,
-                issue_number,
-            )?;
-            Ok(patina::host::github::Page {
-                items: page.items,
-                has_next: page.has_next,
-                next_page: page.next_page,
-                rate_remaining: page.rate_remaining,
-            })
-        }
-
-        fn list_issue_events(
-            &mut self,
-            owner: String,
-            repo: String,
-            issue_number: u32,
-        ) -> Result<patina::host::github::Page, String> {
-            crate::child::toy_host::github::ensure_granted(
-                self.grants.toys.github,
-                &self.plugin_name,
-            )?;
-            let page = crate::child::toy_host::github::list_issue_events(
-                &self.http_client,
-                &self.grants,
-                &self.plugin_name,
-                &owner,
-                &repo,
-                issue_number,
-            )?;
-            Ok(patina::host::github::Page {
-                items: page.items,
-                has_next: page.has_next,
-                next_page: page.next_page,
-                rate_remaining: page.rate_remaining,
-            })
-        }
-
-        fn list_pull_comments(
-            &mut self,
-            owner: String,
-            repo: String,
-            pull_number: u32,
-        ) -> Result<patina::host::github::Page, String> {
-            crate::child::toy_host::github::ensure_granted(
-                self.grants.toys.github,
-                &self.plugin_name,
-            )?;
-            let page = crate::child::toy_host::github::list_pull_comments(
-                &self.http_client,
-                &self.grants,
-                &self.plugin_name,
-                &owner,
-                &repo,
-                pull_number,
-            )?;
-            Ok(patina::host::github::Page {
-                items: page.items,
-                has_next: page.has_next,
-                next_page: page.next_page,
-                rate_remaining: page.rate_remaining,
-            })
-        }
-
-        fn list_reviews(
-            &mut self,
-            owner: String,
-            repo: String,
-            pull_number: u32,
-        ) -> Result<patina::host::github::Page, String> {
-            crate::child::toy_host::github::ensure_granted(
-                self.grants.toys.github,
-                &self.plugin_name,
-            )?;
-            let page = crate::child::toy_host::github::list_reviews(
-                &self.http_client,
-                &self.grants,
-                &self.plugin_name,
-                &owner,
-                &repo,
-                pull_number,
-            )?;
-            Ok(patina::host::github::Page {
-                items: page.items,
-                has_next: page.has_next,
-                next_page: page.next_page,
-                rate_remaining: page.rate_remaining,
-            })
-        }
-
-        fn list_review_comments(
-            &mut self,
-            owner: String,
-            repo: String,
-            pull_number: u32,
-            review_id: u64,
-        ) -> Result<patina::host::github::Page, String> {
-            crate::child::toy_host::github::ensure_granted(
-                self.grants.toys.github,
-                &self.plugin_name,
-            )?;
-            let page = crate::child::toy_host::github::list_review_comments(
-                &self.http_client,
-                &self.grants,
-                &self.plugin_name,
-                &owner,
-                &repo,
-                pull_number,
-                review_id,
-            )?;
-            Ok(patina::host::github::Page {
-                items: page.items,
-                has_next: page.has_next,
-                next_page: page.next_page,
-                rate_remaining: page.rate_remaining,
-            })
-        }
-    }
-
-    impl patina::host::session::Host for HostState {
-        fn get_session_id(&mut self) -> String {
-            crate::child::toy_host::session::get_session_id()
-        }
-
-        fn get_previous_session(&mut self) -> Option<String> {
-            crate::child::toy_host::session::get_previous_session()
-        }
-
-        fn get_previous_session_runtime_id(&mut self) -> Option<String> {
-            crate::child::toy_host::session::get_previous_session_runtime_id()
-        }
-
-        fn get_previous_session_handoff(&mut self) -> Option<String> {
-            crate::child::toy_host::session::get_previous_session_handoff()
-        }
-
-        fn write_artifact(&mut self, section: String, content: String) -> Result<(), String> {
-            crate::child::toy_host::session::ensure_granted(
-                self.grants.toys.session,
-                &self.plugin_name,
-            )?;
-            crate::child::toy_host::session::write_artifact(&section, &content)
-        }
-
-        fn set_parent_session(&mut self, runtime_id: String) -> Result<(), String> {
-            crate::child::toy_host::session::ensure_granted(
-                self.grants.toys.session,
-                &self.plugin_name,
-            )?;
-            crate::child::toy_host::session::set_parent_session(&runtime_id)
-        }
-
-        fn create_tag(&mut self, name: String) -> Result<(), String> {
-            crate::child::toy_host::session::ensure_granted(
-                self.grants.toys.session,
-                &self.plugin_name,
-            )?;
-            crate::child::toy_host::session::create_tag(&name)
-        }
-
-        fn set_status(&mut self, status: String) -> Result<(), String> {
-            crate::child::toy_host::session::ensure_granted(
-                self.grants.toys.session,
-                &self.plugin_name,
-            )?;
-            crate::child::toy_host::session::set_status(&status)
-        }
-
-        fn write_handoff(&mut self, modified_files: String, summary: String) -> Result<(), String> {
-            crate::child::toy_host::session::ensure_granted(
-                self.grants.toys.session,
-                &self.plugin_name,
-            )?;
-            crate::child::toy_host::session::write_handoff(&modified_files, &summary)
-        }
-    }
-
-    impl patina::host::events::Host for HostState {
-        fn pull(
-            &mut self,
-            stream: String,
-            after_offset: Option<u64>,
-            limit: u32,
-        ) -> Result<Vec<patina::host::events::PendingEvent>, String> {
-            if !self.grants.subscribed_streams.contains(&stream) {
-                return Err(format!(
-                    "event stream '{}' not granted for plugin '{}'",
-                    stream, self.plugin_name
-                ));
-            }
-            let events = crate::child::toy_host::events::pull(&stream, after_offset, limit)
-                .map_err(|e| e.to_string())?;
-            Ok(events
-                .into_iter()
-                .map(|event| patina::host::events::PendingEvent {
-                    stream_name: event.stream,
-                    offset: event.offset,
-                    event_type: event.event_type,
-                    payload_json: serde_json::to_string(&event.payload)
-                        .unwrap_or_else(|_| "null".into()),
-                    occurred_at: event.occurred_at,
-                })
-                .collect())
-        }
-
-        fn ack_through(&mut self, stream: String, offset: u64) -> Result<(), String> {
-            if !self.grants.subscribed_streams.contains(&stream) {
-                return Err(format!(
-                    "event stream '{}' not granted for plugin '{}'",
-                    stream, self.plugin_name
-                ));
-            }
-            crate::child::toy_host::events::ack_through(
-                &self.runtime,
-                &self.plugin_name,
-                &stream,
-                offset,
-            )
-            .map_err(|e| e.to_string())
-        }
-
-        fn list_streams(&mut self) -> Vec<String> {
-            crate::child::toy_host::events::list_streams()
-        }
-    }
-
-    impl patina::host::peer::Host for HostState {
-        fn emit_event(&mut self, event_type: String, payload_json: String) -> Result<(), String> {
-            let conn =
-                crate::eventlog::open_events_db().map_err(|e| format!("open events.db: {}", e))?;
-            let timestamp = chrono::Utc::now().to_rfc3339();
-            let source_id = format!("plugin:{}", self.plugin_name);
-            conn.execute(
-                "INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data, provenance)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                rusqlite::params![
-                    &event_type,
-                    &timestamp,
-                    &source_id,
-                    Option::<&str>::None,
-                    &payload_json,
-                    "external"
-                ],
-            )
-            .map_err(|e| format!("insert peer event: {}", e))?;
-            Ok(())
-        }
-
-        fn on_event(
-            &mut self,
-            stream_name: String,
-            after_offset: Option<u64>,
-            limit: u32,
-        ) -> Result<Vec<patina::host::peer::PeerEvent>, String> {
-            let events = crate::child::toy_host::events::pull(&stream_name, after_offset, limit)
-                .map_err(|e| format!("peer on_event: {}", e))?;
-            Ok(events
-                .into_iter()
-                .map(|event| patina::host::peer::PeerEvent {
-                    stream_name: event.stream,
-                    offset: event.offset,
-                    event_type: event.event_type,
-                    payload_json: serde_json::to_string(&event.payload)
-                        .unwrap_or_else(|_| "null".into()),
-                    occurred_at: event.occurred_at,
-                })
-                .collect())
-        }
-    }
-
-    impl patina::host::task::Host for HostState {
-        fn enqueue(&mut self, intent: patina::host::task::TaskIntent) -> Result<String, String> {
-            let kind = match intent.kind {
-                patina::host::task::TaskIntentKind::FetchSource => {
-                    crate::mother::TaskIntentKind::FetchSource
-                }
-                patina::host::task::TaskIntentKind::RunQuery => {
-                    crate::mother::TaskIntentKind::RunQuery
-                }
-                patina::host::task::TaskIntentKind::EmitFacts => {
-                    crate::mother::TaskIntentKind::EmitFacts
-                }
-                patina::host::task::TaskIntentKind::MaterializeIndex => {
-                    crate::mother::TaskIntentKind::MaterializeIndex
-                }
-                patina::host::task::TaskIntentKind::VerifyBelief => {
-                    crate::mother::TaskIntentKind::VerifyBelief
-                }
-                patina::host::task::TaskIntentKind::SyncGraph => {
-                    crate::mother::TaskIntentKind::SyncGraph
-                }
-                patina::host::task::TaskIntentKind::RefreshCredential => {
-                    crate::mother::TaskIntentKind::RefreshCredential
-                }
-                patina::host::task::TaskIntentKind::NativeJob => {
-                    crate::mother::TaskIntentKind::NativeJob
-                }
-            };
-            if !self.grants.task_intents.contains(&kind) {
-                return Err(format!(
-                    "task intent '{}' not granted for '{}'",
-                    kind, self.plugin_name
-                ));
-            }
-            let payload = serde_json::from_str(&intent.payload_json)
-                .map_err(|e| format!("invalid task payload json: {}", e))?;
-            self.runtime
-                .enqueue_task(
-                    &self.plugin_name,
-                    &crate::mother::TaskIntent {
-                        kind,
-                        payload,
-                        dedupe_key: intent.dedupe_key,
-                    },
-                )
-                .map_err(|e| e.to_string())
-        }
-    }
-
-    impl patina::host::graph::Host for HostState {
-        fn query(&mut self, kind: String, params_json: String) -> Result<String, String> {
-            if !self.grants.graph_read {
-                return Err(format!("graph read not granted for '{}'", self.plugin_name));
-            }
-            crate::beliefs::graph_host::query(&kind, &params_json).map_err(|e| e.to_string())
-        }
-
-        fn mutate(&mut self, action: String, payload_json: String) -> Result<(), String> {
-            if !self.grants.graph_write_actions.contains(&action) {
-                return Err(format!(
-                    "graph action '{}' not granted for '{}'",
-                    action, self.plugin_name
-                ));
-            }
-            crate::beliefs::graph_host::mutate(
-                &self.runtime,
-                &self.plugin_name,
-                &action,
-                &payload_json,
-            )
-            .map_err(|e| e.to_string())
-        }
-    }
-
-    impl patina::host::belief::Host for HostState {
-        fn query(&mut self, kind: String, params_json: String) -> Result<String, String> {
-            if !self.grants.belief_read {
-                return Err(format!(
-                    "belief read not granted for '{}'",
+                    "events toy not granted for child '{}'",
                     self.plugin_name
                 ));
             }
-            crate::beliefs::belief_host::query(&kind, &params_json).map_err(|e| e.to_string())
-        }
-
-        fn mutate(&mut self, action: String, payload_json: String) -> Result<(), String> {
-            if !self.grants.belief_write_actions.contains(&action) {
-                return Err(format!(
-                    "belief action '{}' not granted for '{}'",
-                    action, self.plugin_name
-                ));
-            }
-            crate::beliefs::belief_host::mutate(
+            let rep =
+                wasmtime::component::Resource::<MessagingClientHandle>::new_borrow(client.rep());
+            let client = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let event_type = message.topic;
+            let payload = String::from_utf8(message.data).map_err(|e| e.to_string())?;
+            crate::child::toy_host::v2::events_publish(
                 &self.runtime,
                 &self.plugin_name,
-                &action,
-                &payload_json,
+                &client.stream_name,
+                &event_type,
+                &payload,
             )
-            .map_err(|e| e.to_string())
+        }
+    }
+
+    impl wasi::messaging::producer::HostClient for HostState {
+        fn drop(
+            &mut self,
+            rep: wasmtime::component::Resource<wasi::messaging::producer::Client>,
+        ) -> wasmtime::Result<()> {
+            let rep = wasmtime::component::Resource::<MessagingClientHandle>::new_own(rep.rep());
+            Ok(self.wasi_table.delete(rep).map(|_| ())?)
+        }
+    }
+
+    impl patina::events_stream::events_stream::Host for HostState {
+        fn subscribe(
+            &mut self,
+            stream_name: String,
+            after: Option<u64>,
+            limit: u32,
+        ) -> Result<Vec<patina::events_stream::events_stream::Event>, String> {
+            if !self.grants.subscribed_streams.contains(&stream_name) {
+                return Err(format!(
+                    "event stream '{}' not granted for child '{}'",
+                    stream_name, self.plugin_name
+                ));
+            }
+            crate::child::toy_host::v2::events_subscribe(&stream_name, after, limit).map(|events| {
+                events
+                    .into_iter()
+                    .map(|event| patina::events_stream::events_stream::Event {
+                        stream_name: event.stream_name,
+                        offset: event.offset,
+                        event_type: event.event_type,
+                        payload: event.payload,
+                        occurred_at: event.occurred_at,
+                    })
+                    .collect()
+            })
+        }
+
+        fn ack(&mut self, stream_name: String, offset: u64) -> Result<(), String> {
+            if !self.grants.subscribed_streams.contains(&stream_name) {
+                return Err(format!(
+                    "event stream '{}' not granted for child '{}'",
+                    stream_name, self.plugin_name
+                ));
+            }
+            crate::child::toy_host::v2::events_ack(
+                &self.runtime,
+                &self.plugin_name,
+                &stream_name,
+                offset,
+            )
+        }
+    }
+
+    impl patina::measure::measure::Host for HostState {
+        fn emit(&mut self, metric: patina::measure::measure::Metric) -> Result<(), String> {
+            if !self.grants.toys.measure {
+                return Err(format!(
+                    "measure toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
+            let metric_type = self
+                .grants
+                .declared_metrics
+                .get(&metric.name)
+                .map(|declared| declared.metric_type.clone())
+                .unwrap_or(crate::child::internal::DeclaredMetricType::Gauge);
+            crate::child::internal::host_support::record_declared_metric(
+                &self.plugin_name,
+                &self.grants.declared_metrics,
+                &metric.name,
+                metric_type,
+                metric.value,
+                &metric.labels,
+            )
+        }
+
+        fn gauge(&mut self, name: String, value: f64) -> Result<(), String> {
+            if !self.grants.toys.measure {
+                return Err(format!(
+                    "measure toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
+            crate::child::internal::host_support::record_declared_metric(
+                &self.plugin_name,
+                &self.grants.declared_metrics,
+                &name,
+                crate::child::internal::DeclaredMetricType::Gauge,
+                value,
+                &[],
+            )
+        }
+
+        fn counter(&mut self, name: String, delta: f64) -> Result<(), String> {
+            if !self.grants.toys.measure {
+                return Err(format!(
+                    "measure toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
+            crate::child::internal::host_support::record_declared_metric(
+                &self.plugin_name,
+                &self.grants.declared_metrics,
+                &name,
+                crate::child::internal::DeclaredMetricType::Counter,
+                delta,
+                &[],
+            )
+        }
+    }
+
+    impl patina::task::task::Host for HostState {
+        fn enqueue(
+            &mut self,
+            kind: String,
+            payload: String,
+            dedupe_key: Option<String>,
+        ) -> Result<String, String> {
+            let resolved = crate::mother::TaskIntentKind::parse(&kind)
+                .ok_or_else(|| format!("unknown task intent kind '{}'", kind))?;
+            if !self.grants.task_intents.contains(&resolved) {
+                return Err(format!(
+                    "task intent '{}' not granted for '{}'",
+                    resolved, self.plugin_name
+                ));
+            }
+            crate::child::toy_host::v2::task_enqueue(
+                &self.runtime,
+                &self.plugin_name,
+                &kind,
+                &payload,
+                dedupe_key,
+            )
+        }
+    }
+
+    impl patina::peer::peer::Host for HostState {
+        fn call(
+            &mut self,
+            child: String,
+            action: String,
+            payload: String,
+        ) -> Result<String, String> {
+            crate::child::toy_host::v2::peer_call(
+                &self.runtime,
+                &self.plugin_name,
+                &child,
+                &action,
+                &payload,
+            )
+        }
+    }
+
+    impl patina::git::git::Host for HostState {
+        fn create_tag(&mut self, name: String) -> Result<(), String> {
+            crate::child::toy_host::v2::git_create_tag(&name)
+        }
+
+        fn delete_tag(&mut self, name: String) -> Result<(), String> {
+            crate::child::toy_host::v2::git_delete_tag(&name)
+        }
+
+        fn tag_exists(&mut self, name: String) -> Result<bool, String> {
+            crate::child::toy_host::v2::git_tag_exists(&name)
+        }
+
+        fn commit(&mut self, message: String) -> Result<String, String> {
+            crate::child::toy_host::v2::git_commit(&message)
+        }
+
+        fn log_oneline(&mut self, limit: u32) -> Result<Vec<String>, String> {
+            crate::child::toy_host::v2::git_log_oneline(limit)
+        }
+
+        fn diff_stat(&mut self) -> Result<String, String> {
+            crate::child::toy_host::v2::git_diff_stat()
         }
     }
 }
@@ -1093,94 +636,38 @@ pub struct KnowledgeChildEngine {
     _unit: (),
 }
 
+#[derive(Debug, Clone)]
+pub struct FilesystemPreopen {
+    pub host_path: std::path::PathBuf,
+    pub guest_path: String,
+    pub mode: crate::child::internal::FilesystemAccessMode,
+}
+
 impl KnowledgeChildEngine {
     fn link_wasi(linker: &mut Linker<HostState>) -> Result<()> {
         wasmtime_wasi::p2::add_to_linker_sync(linker)?;
+        wasmtime_wasi_http::add_only_http_to_linker_sync(linker)?;
         Ok(())
     }
 
     fn link_log(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::log::add_to_linker::<
+        bindings::wasi::logging::logging::add_to_linker::<
             HostState,
             wasmtime::component::HasSelf<HostState>,
         >(linker, |s| s)?;
         Ok(())
     }
 
-    fn link_measure(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::measure::add_to_linker::<
+    fn link_connect(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::connect::connect::add_to_linker::<
             HostState,
             wasmtime::component::HasSelf<HostState>,
         >(linker, |s| s)?;
         Ok(())
     }
 
-    fn link_query(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::query::add_to_linker::<
-            HostState,
-            wasmtime::component::HasSelf<HostState>,
-        >(linker, |s| s)?;
-        Ok(())
-    }
-
-    fn link_http(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::http::add_to_linker::<
-            HostState,
-            wasmtime::component::HasSelf<HostState>,
-        >(linker, |s| s)?;
-        Ok(())
-    }
-
-    fn link_ingress(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::ingress::add_to_linker::<
-            HostState,
-            wasmtime::component::HasSelf<HostState>,
-        >(linker, |s| s)?;
-        Ok(())
-    }
-
-    fn link_connector(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::connector::add_to_linker::<
-            HostState,
-            wasmtime::component::HasSelf<HostState>,
-        >(linker, |s| s)?;
-        Ok(())
-    }
-
-    fn link_github(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::github::add_to_linker::<
-            HostState,
-            wasmtime::component::HasSelf<HostState>,
-        >(linker, |s| s)?;
-        Ok(())
-    }
-
-    fn link_emit(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::emit::add_to_linker::<
-            HostState,
-            wasmtime::component::HasSelf<HostState>,
-        >(linker, |s| s)?;
-        Ok(())
-    }
-
-    fn link_state(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::state::add_to_linker::<
-            HostState,
-            wasmtime::component::HasSelf<HostState>,
-        >(linker, |s| s)?;
-        Ok(())
-    }
-
-    fn link_checkpoint(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::checkpoint::add_to_linker::<
-            HostState,
-            wasmtime::component::HasSelf<HostState>,
-        >(linker, |s| s)?;
-        Ok(())
-    }
-
-    fn link_lake(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::lake::add_to_linker::<
+    fn link_store(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::wasi::sql::readwrite::add_to_linker::<
             HostState,
             wasmtime::component::HasSelf<HostState>,
         >(linker, |s| s)?;
@@ -1188,15 +675,15 @@ impl KnowledgeChildEngine {
     }
 
     fn link_events(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::events::add_to_linker::<
+        bindings::wasi::messaging::producer::add_to_linker::<
             HostState,
             wasmtime::component::HasSelf<HostState>,
         >(linker, |s| s)?;
-        Ok(())
-    }
-
-    fn link_peer(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::peer::add_to_linker::<
+        bindings::patina::events_stream::events_stream::add_to_linker::<
+            HostState,
+            wasmtime::component::HasSelf<HostState>,
+        >(linker, |s| s)?;
+        bindings::patina::measure::measure::add_to_linker::<
             HostState,
             wasmtime::component::HasSelf<HostState>,
         >(linker, |s| s)?;
@@ -1204,39 +691,31 @@ impl KnowledgeChildEngine {
     }
 
     fn link_task(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::task::add_to_linker::<
+        bindings::patina::task::task::add_to_linker::<
             HostState,
             wasmtime::component::HasSelf<HostState>,
         >(linker, |s| s)?;
         Ok(())
     }
 
-    fn link_graph(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::graph::add_to_linker::<
+    fn link_state(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::wasi::keyvalue::store::add_to_linker::<
             HostState,
             wasmtime::component::HasSelf<HostState>,
         >(linker, |s| s)?;
         Ok(())
     }
 
-    fn link_belief(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::belief::add_to_linker::<
+    fn link_peer(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::peer::peer::add_to_linker::<
             HostState,
             wasmtime::component::HasSelf<HostState>,
         >(linker, |s| s)?;
         Ok(())
     }
 
-    fn link_types(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::types::add_to_linker::<
-            HostState,
-            wasmtime::component::HasSelf<HostState>,
-        >(linker, |s| s)?;
-        Ok(())
-    }
-
-    fn link_session(linker: &mut Linker<HostState>) -> Result<()> {
-        bindings::patina::host::session::add_to_linker::<
+    fn link_git(linker: &mut Linker<HostState>) -> Result<()> {
+        bindings::patina::git::git::add_to_linker::<
             HostState,
             wasmtime::component::HasSelf<HostState>,
         >(linker, |s| s)?;
@@ -1246,88 +725,16 @@ impl KnowledgeChildEngine {
     fn build_linker(manifest: &ChildManifest) -> Result<Linker<HostState>> {
         let mut linker = Linker::new(wasm_engine());
         Self::link_wasi(&mut linker)?;
-        Self::link_types(&mut linker)?;
+        Self::link_log(&mut linker)?;
+        Self::link_state(&mut linker)?;
+        Self::link_connect(&mut linker)?;
+        Self::link_store(&mut linker)?;
+        Self::link_events(&mut linker)?;
+        Self::link_task(&mut linker)?;
+        Self::link_peer(&mut linker)?;
+        Self::link_git(&mut linker)?;
 
-        let wants_log = manifest.capabilities.iter().any(|cap| cap == "host_log");
-        let wants_measure = manifest
-            .capabilities
-            .iter()
-            .any(|cap| cap == "host_measure")
-            || manifest.toys.measure;
-        let wants_query = manifest.capabilities.iter().any(|cap| cap == "host_query")
-            || !manifest.host_query_kinds.is_empty()
-            || manifest.toys.query;
-        let wants_http = manifest.capabilities.iter().any(|cap| cap == "host_http")
-            || !manifest.host_http_domains.is_empty()
-            || !manifest.ingress_sources.is_empty();
-        let wants_emit = manifest.capabilities.iter().any(|cap| cap == "host_emit");
-        let wants_state = manifest.state_enabled;
-        let wants_checkpoint = !manifest.checkpoint_streams.is_empty();
-        let wants_lake = !manifest.lake_names.is_empty();
-        let wants_ingress = !manifest.ingress_sources.is_empty();
-        let wants_connector = manifest.toys.connector;
-        let wants_github = manifest.toys.github;
-        let wants_events = !manifest.subscribed_streams.is_empty();
-        let wants_peer = wants_events;
-        let wants_task = !manifest.task_intent_names.is_empty();
-        let wants_graph =
-            manifest.graph_read || !manifest.graph_write_actions.is_empty() || manifest.toys.graph;
-        let wants_belief = manifest.belief_read
-            || !manifest.belief_write_actions.is_empty()
-            || manifest.toys.belief;
-        let wants_session = manifest.toys.session;
-
-        if wants_log {
-            Self::link_log(&mut linker)?;
-        }
-        if wants_measure {
-            Self::link_measure(&mut linker)?;
-        }
-        if wants_query {
-            Self::link_query(&mut linker)?;
-        }
-        if wants_http {
-            Self::link_http(&mut linker)?;
-        }
-        if wants_ingress {
-            Self::link_ingress(&mut linker)?;
-        }
-        if wants_connector {
-            Self::link_connector(&mut linker)?;
-        }
-        if wants_github {
-            Self::link_github(&mut linker)?;
-        }
-        if wants_emit {
-            Self::link_emit(&mut linker)?;
-        }
-        if wants_state {
-            Self::link_state(&mut linker)?;
-        }
-        if wants_checkpoint {
-            Self::link_checkpoint(&mut linker)?;
-        }
-        if wants_lake {
-            Self::link_lake(&mut linker)?;
-        }
-        if wants_events {
-            Self::link_events(&mut linker)?;
-        }
-        if wants_peer {
-            Self::link_peer(&mut linker)?;
-        }
-        if wants_task {
-            Self::link_task(&mut linker)?;
-        }
-        if wants_graph {
-            Self::link_graph(&mut linker)?;
-        }
-        if wants_belief {
-            Self::link_belief(&mut linker)?;
-        }
-        if wants_session {
-            Self::link_session(&mut linker)?;
-        }
+        let _ = manifest;
 
         Ok(linker)
     }
@@ -1347,7 +754,7 @@ impl KnowledgeChildEngine {
     pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
         if manifest.world != ChildKind::KnowledgeChild {
             anyhow::bail!(
-                "plugin '{}' has world '{}', expected 'knowledge-child'",
+                "child '{}' has world '{}', expected 'knowledge-child'",
                 manifest.name,
                 manifest.world
             );
@@ -1362,29 +769,22 @@ impl KnowledgeChildEngine {
             .collect();
         if !world_denied.is_empty() {
             anyhow::bail!(
-                "plugin '{}' (world '{}') requests capabilities not allowed for this world: {}",
+                "child '{}' (world '{}') requests capabilities not allowed for this world: {}",
                 manifest.name,
                 manifest.world,
                 world_denied.join(", ")
             );
         }
 
-        const AUTO_GRANTED: &[&str] = &[
-            "host_log",
-            "host_measure",
-            "host_emit",
-            "host_http",
-            "host_query",
-        ];
         let denied: Vec<&str> = manifest
             .capabilities
             .iter()
-            .filter(|cap| !AUTO_GRANTED.contains(&cap.as_str()))
+            .filter(|cap| !super::AUTO_GRANTED_CAPABILITIES.contains(&cap.as_str()))
             .map(|s| s.as_str())
             .collect();
         if !denied.is_empty() {
             anyhow::bail!(
-                "plugin '{}' requests capabilities not granted: {}",
+                "child '{}' requests capabilities not granted: {}",
                 manifest.name,
                 denied.join(", ")
             );
@@ -1396,11 +796,18 @@ impl KnowledgeChildEngine {
             "fact.ingested",
             "session.completed",
             "repo.synced",
+            "file.found",
+            "file.written",
+            "record.extracted",
+            "record.validated",
+            "record.rejected",
+            "record.ready",
+            "record.duplicate",
         ];
         for stream in &manifest.subscribed_streams {
             if !KNOWN_STREAMS.contains(&stream.as_str()) {
                 anyhow::bail!(
-                    "plugin '{}' requests unknown event stream '{}'",
+                    "child '{}' requests unknown event stream '{}'",
                     manifest.name,
                     stream
                 );
@@ -1409,7 +816,7 @@ impl KnowledgeChildEngine {
         for source in manifest.ingress_sources.values() {
             super::host_support::validate_http_url(&source.endpoint).map_err(|error| {
                 anyhow::anyhow!(
-                    "plugin '{}' declares invalid ingress source '{}' endpoint '{}': {}",
+                    "child '{}' declares invalid ingress source '{}' endpoint '{}': {}",
                     manifest.name,
                     source.name,
                     source.endpoint,
@@ -1425,7 +832,7 @@ impl KnowledgeChildEngine {
             .collect();
         if !unknown_intents.is_empty() {
             anyhow::bail!(
-                "plugin '{}' requests unknown task intents: {}",
+                "child '{}' requests unknown task intents: {}",
                 manifest.name,
                 unknown_intents.join(", ")
             );
@@ -1440,7 +847,7 @@ impl KnowledgeChildEngine {
             .collect();
         if !unknown_graph.is_empty() {
             anyhow::bail!(
-                "plugin '{}' requests unknown graph write actions: {}",
+                "child '{}' requests unknown graph write actions: {}",
                 manifest.name,
                 unknown_graph.join(", ")
             );
@@ -1460,7 +867,7 @@ impl KnowledgeChildEngine {
             .collect();
         if !unknown_belief.is_empty() {
             anyhow::bail!(
-                "plugin '{}' requests unknown belief write actions: {}",
+                "child '{}' requests unknown belief write actions: {}",
                 manifest.name,
                 unknown_belief.join(", ")
             );
@@ -1468,7 +875,7 @@ impl KnowledgeChildEngine {
 
         if manifest.capabilities.contains(&"host_emit".to_string()) && manifest.schemas.is_empty() {
             anyhow::bail!(
-                "plugin '{}' declares host_emit but has no [schemas.*] entries",
+                "child '{}' declares host_emit but has no [schemas.*] entries",
                 manifest.name
             );
         }
@@ -1482,23 +889,68 @@ impl KnowledgeChildEngine {
         manifest: &ChildManifest,
         query_fn: Option<QueryDispatchFn>,
     ) -> Result<Box<dyn KnowledgeChild>> {
+        self.instantiate_child_with_preopens(component, manifest, query_fn, &[])
+    }
+
+    pub fn instantiate_child_with_preopens(
+        &self,
+        component: &Component,
+        manifest: &ChildManifest,
+        query_fn: Option<QueryDispatchFn>,
+        test_preopens: &[FilesystemPreopen],
+    ) -> Result<Box<dyn KnowledgeChild>> {
         Self::check_capabilities(manifest)?;
 
         let linker = Self::build_linker(manifest)?;
 
         let grants = manifest.granted_capabilities();
         let http_client = super::host_support::build_http_client()?;
-        let wasi = wasmtime_wasi::WasiCtxBuilder::new().build();
+        let mut wasi_builder = wasmtime_wasi::WasiCtxBuilder::new();
+        for mount in &manifest.filesystem_preopens {
+            let host_path = std::path::PathBuf::from(&mount.host_path);
+            let (dir_perms, file_perms) = match mount.mode {
+                crate::child::internal::FilesystemAccessMode::ReadOnly => (
+                    wasmtime_wasi::DirPerms::READ,
+                    wasmtime_wasi::FilePerms::READ,
+                ),
+                crate::child::internal::FilesystemAccessMode::ReadWrite => (
+                    wasmtime_wasi::DirPerms::READ | wasmtime_wasi::DirPerms::MUTATE,
+                    wasmtime_wasi::FilePerms::READ | wasmtime_wasi::FilePerms::WRITE,
+                ),
+            };
+            wasi_builder.preopened_dir(&host_path, &mount.guest_path, dir_perms, file_perms)?;
+        }
+        for mount in test_preopens {
+            let (dir_perms, file_perms) = match mount.mode {
+                crate::child::internal::FilesystemAccessMode::ReadOnly => (
+                    wasmtime_wasi::DirPerms::READ,
+                    wasmtime_wasi::FilePerms::READ,
+                ),
+                crate::child::internal::FilesystemAccessMode::ReadWrite => (
+                    wasmtime_wasi::DirPerms::READ | wasmtime_wasi::DirPerms::MUTATE,
+                    wasmtime_wasi::FilePerms::READ | wasmtime_wasi::FilePerms::WRITE,
+                ),
+            };
+            wasi_builder.preopened_dir(
+                &mount.host_path,
+                &mount.guest_path,
+                dir_perms,
+                file_perms,
+            )?;
+        }
+        let wasi = wasi_builder.build();
         let project_root = crate::session::SessionManager::find_project_root().ok();
         let host_state = HostState {
             plugin_name: manifest.name.clone(),
             wasi,
             wasi_table: wasmtime::component::ResourceTable::new(),
+            http: wasmtime_wasi_http::WasiHttpCtx::new(),
             project_root,
             grants,
             query_fn,
             http_client,
             runtime: crate::mother::KnowledgeRuntimeStore::default(),
+            active_bindings: std::collections::HashMap::new(),
         };
         let mut store = Store::new(wasm_engine(), host_state);
         let instance = bindings::KnowledgeChild::instantiate(&mut store, component, &linker)?;
@@ -1548,15 +1000,17 @@ impl KnowledgeChild for WasmKnowledgeChild {
             Ok(h) => {
                 let reason = h.reason.unwrap_or_default();
                 match h.status {
-                    bindings::patina::host::types::HealthStatus::Healthy => ChildHealth::Healthy,
-                    bindings::patina::host::types::HealthStatus::Degraded => {
+                    bindings::patina::knowledge_child::runtime_types::HealthStatus::Healthy => {
+                        ChildHealth::Healthy
+                    }
+                    bindings::patina::knowledge_child::runtime_types::HealthStatus::Degraded => {
                         ChildHealth::Degraded(if reason.is_empty() {
                             "degraded".into()
                         } else {
                             reason
                         })
                     }
-                    bindings::patina::host::types::HealthStatus::Unhealthy => {
+                    bindings::patina::knowledge_child::runtime_types::HealthStatus::Unhealthy => {
                         ChildHealth::Unhealthy(if reason.is_empty() {
                             "unhealthy".into()
                         } else {
@@ -1609,28 +1063,28 @@ impl KnowledgeChild for WasmKnowledgeChild {
                 .filter_map(|intent| {
                     Some(TaskIntent {
                         kind: match intent.kind {
-                            bindings::patina::host::task::TaskIntentKind::FetchSource => {
+                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::FetchSource => {
                                 crate::mother::TaskIntentKind::FetchSource
                             }
-                            bindings::patina::host::task::TaskIntentKind::RunQuery => {
+                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::RunQuery => {
                                 crate::mother::TaskIntentKind::RunQuery
                             }
-                            bindings::patina::host::task::TaskIntentKind::EmitFacts => {
+                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::EmitFacts => {
                                 crate::mother::TaskIntentKind::EmitFacts
                             }
-                            bindings::patina::host::task::TaskIntentKind::MaterializeIndex => {
+                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::MaterializeIndex => {
                                 crate::mother::TaskIntentKind::MaterializeIndex
                             }
-                            bindings::patina::host::task::TaskIntentKind::VerifyBelief => {
+                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::VerifyBelief => {
                                 crate::mother::TaskIntentKind::VerifyBelief
                             }
-                            bindings::patina::host::task::TaskIntentKind::SyncGraph => {
+                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::SyncGraph => {
                                 crate::mother::TaskIntentKind::SyncGraph
                             }
-                            bindings::patina::host::task::TaskIntentKind::RefreshCredential => {
+                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::RefreshCredential => {
                                 crate::mother::TaskIntentKind::RefreshCredential
                             }
-                            bindings::patina::host::task::TaskIntentKind::NativeJob => {
+                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::NativeJob => {
                                 crate::mother::TaskIntentKind::NativeJob
                             }
                         },
@@ -1640,7 +1094,7 @@ impl KnowledgeChild for WasmKnowledgeChild {
                 })
                 .collect(),
             Err(e) => {
-                eprintln!("[plugin:{}] tick failed: {}", self.name, e);
+                eprintln!("[child:{}] tick failed: {}", self.name, e);
                 vec![]
             }
         }

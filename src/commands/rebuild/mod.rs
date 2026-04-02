@@ -1,13 +1,14 @@
-//! Rebuild command - Regenerate .patina/ from layer/ and local sources
+//! Rebuild command - Regenerate Patina projections from layer/ and local sources
 //!
 //! This is the "clone and go" command that makes Patina projects portable.
 //!
 //! # Use Cases
 //! 1. Clone a repo with `layer/` → `patina rebuild` → working local RAG
-//! 2. Corrupted `.patina/local/data/` → `patina rebuild` → fresh indices
+//! 2. Corrupted local cache/projections → `patina rebuild` → fresh indices
 //! 3. Upgrade embedding model → `patina rebuild` → new projections
 
 use anyhow::{Context, Result};
+use patina::eventlog;
 use std::path::Path;
 
 /// Options for the rebuild command
@@ -32,7 +33,7 @@ struct ValidationResult {
 
 /// Execute the rebuild command
 pub fn execute(options: RebuildOptions) -> Result<()> {
-    println!("🔄 Rebuilding .patina/ from layer/\n");
+    println!("🔄 Rebuilding Patina data from layer/\n");
 
     // Step 1: Validate
     println!("📋 Validation");
@@ -156,10 +157,25 @@ fn count_commits() -> Result<usize> {
 
 /// Clear existing data directory
 fn clear_data() -> Result<()> {
-    let data_dir = Path::new(".patina/local/data");
-    if data_dir.exists() {
-        std::fs::remove_dir_all(data_dir).context("Failed to remove .patina/local/data/")?;
-        println!("   ✓ Cleared .patina/local/data/");
+    let project_root = std::env::current_dir()?;
+    let patina_db_path = eventlog::resolve_patina_db_path(&project_root);
+    let embeddings_dir = patina::paths::project::embeddings_dir(&project_root);
+
+    if patina_db_path.exists() {
+        std::fs::remove_file(&patina_db_path)
+            .with_context(|| format!("Failed to remove {}", patina_db_path.display()))?;
+        for suffix in ["-wal", "-shm"] {
+            let sidecar =
+                std::path::PathBuf::from(format!("{}{}", patina_db_path.display(), suffix));
+            let _ = std::fs::remove_file(sidecar);
+        }
+        println!("   ✓ Cleared {}", patina_db_path.display());
+    }
+
+    if embeddings_dir.exists() {
+        std::fs::remove_dir_all(&embeddings_dir)
+            .with_context(|| format!("Failed to remove {}", embeddings_dir.display()))?;
+        println!("   ✓ Cleared {}", embeddings_dir.display());
     }
     Ok(())
 }
@@ -186,9 +202,9 @@ fn run_scrape(validation: &ValidationResult) -> Result<()> {
     println!("complete");
 
     // Get total event count
-    let db_path = Path::new(".patina/local/data/patina.db");
+    let db_path = eventlog::patina_db_path()?;
     if db_path.exists() {
-        let total = count_events(db_path)?;
+        let total = count_events(&db_path)?;
         println!("   ✓ patina.db: {} events", total);
     }
 
@@ -216,20 +232,18 @@ fn print_summary() -> Result<()> {
     println!("\n✅ Rebuild complete!");
 
     // Database size
-    let db_path = Path::new(".patina/local/data/patina.db");
+    let db_path = eventlog::patina_db_path()?;
     if db_path.exists() {
-        let size_kb = std::fs::metadata(db_path)?.len() / 1024;
-        println!("   Database: .patina/local/data/patina.db ({} KB)", size_kb);
+        let size_kb = std::fs::metadata(&db_path)?.len() / 1024;
+        println!("   Database: {} ({} KB)", db_path.display(), size_kb);
     }
 
     // Embeddings size
-    let embeddings_dir = Path::new(".patina/local/data/embeddings");
+    let project_root = std::env::current_dir()?;
+    let embeddings_dir = patina::paths::project::embeddings_dir(&project_root);
     if embeddings_dir.exists() {
-        let size_kb = dir_size(embeddings_dir)? / 1024;
-        println!(
-            "   Indices: .patina/local/data/embeddings/ ({} KB)",
-            size_kb
-        );
+        let size_kb = dir_size(&embeddings_dir)? / 1024;
+        println!("   Indices: {} ({} KB)", embeddings_dir.display(), size_kb);
     }
 
     Ok(())

@@ -6,7 +6,8 @@ use crate::session::{InterfaceKind, SessionParticipant};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionGitEnvelope {
-    pub project_uid: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_uid: Option<String>,
     pub branch: String,
     pub starting_commit: String,
     pub start_tag: String,
@@ -121,7 +122,7 @@ pub fn initial_document(request: NewDocument) -> Result<SessionDocument> {
         handoff_from: request.handoff_from,
         handoff_to: Vec::new(),
         git: SessionGitEnvelope {
-            project_uid: request.project_uid,
+            project_uid: Some(request.project_uid),
             branch: request.branch.clone(),
             starting_commit: request.starting_commit.clone(),
             start_tag: request.start_tag.clone(),

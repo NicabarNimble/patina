@@ -1,0 +1,19 @@
+package wasi:messaging@0.2.0;
+
+interface types {
+    record message {
+        topic: string,
+        content-type: option<string>,
+        data: list<u8>,
+        metadata: list<tuple<string, string>>,
+    }
+}
+
+interface producer {
+    use types.{message};
+
+    resource client;
+
+    connect: func(name: string) -> result<client, string>;
+    send: func(client: borrow<client>, message: message) -> result<u64, string>;
+}

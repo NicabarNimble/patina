@@ -56,7 +56,6 @@ Enable exactly one world feature per crate:
 - `pipeline` (experimental lane)
 - `task` (legacy compatibility scaffold)
 - `command` (legacy compatibility scaffold)
-- `mother-child` (legacy migration scaffold)
 
 M5 stabilization target in this repo is `knowledge-child` plus tier crates.
 
@@ -68,7 +67,12 @@ M5 stabilization target in this repo is `knowledge-child` plus tier crates.
 | `pipeline` | experimental | opt-in, no stability promises yet |
 | `task` | migration shim | compatibility-only, removal-gated |
 | `command` | migration shim | compatibility-only, removal-gated |
-| `mother-child` | migration shim | compatibility-only, removal-gated |
+
+## Breaking Change (2026-03)
+
+- `mother-child` SDK feature is retired.
+- `MotherChild` trait and `register_mother_child!` are removed from `patina-sdk`.
+- Migrate child crates to `knowledge-child` (preferred) or `task`/`command` where appropriate.
 
 Shim removal gates:
 
@@ -93,7 +97,7 @@ Litmus test for adding/keeping a toy:
 Anti-goals:
 
 - Toys are not convenience wrappers for provider-specific product logic.
-- Toys are not a plugin-defined extension surface.
+- Toys are not a child-defined extension surface.
 - Toys are not a way to bypass scoped grants or host-side policy checks.
 
 ## Canonical Toybox (v1)

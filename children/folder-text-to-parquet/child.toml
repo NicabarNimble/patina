@@ -1,0 +1,22 @@
+[child]
+name = "folder-text-to-parquet"
+kind = "knowledge-child"
+role = "app"
+
+[needs]
+toys = ["log", "state", "events", "measure"]
+
+[needs.scopes.events]
+subscribe = ["file.found"]
+
+[needs.scopes.filesystem]
+path = "/tmp"
+
+[needs.scopes.filesystem.output]
+path = "/tmp"
+mode = "read-write"
+
+[needs.metrics]
+files_discovered = { type = "counter", labels = ["source_folder"] }
+records_written = { type = "counter", labels = [] }
+write_latency_ms = { type = "gauge", labels = [] }

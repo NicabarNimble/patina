@@ -15,7 +15,7 @@ const SESSIONS_DIR: &str = "layer/sessions";
 /// Main entry point for standalone sessions scraping (deprecated path)
 pub fn run(full: bool) -> Result<ScrapeStats> {
     let start = Instant::now();
-    let db_path = Path::new(database::PATINA_DB);
+    let db_path = database::patina_db_path()?;
     let sessions_dir = Path::new(SESSIONS_DIR);
 
     if !sessions_dir.exists() {
@@ -23,7 +23,7 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     }
 
     // Initialize unified database with eventlog
-    let conn = database::initialize(db_path)?;
+    let conn = database::initialize(&db_path)?;
 
     // Collect session files
     let mut session_files: Vec<_> = std::fs::read_dir(sessions_dir)?

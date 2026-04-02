@@ -10,7 +10,7 @@ Patina is a local-first Rust CLI that turns a repository into a reusable knowled
 - Provides semantic search with `patina scry` and structural queries with `patina assay`
 - Captures project rules and decisions through `patina context`, specs, and epistemic beliefs
 - Supports cross-project knowledge via external repos, persona data, and the Mother daemon
-- Extends the system with adapters, schemas, and WASM plugins
+- Extends the system with adapters, schemas, and WASM children
 
 Patina is designed around a simple idea: project knowledge should compound instead of being re-explained every session.
 
@@ -35,7 +35,7 @@ patina oxidize
 
 # Query it
 patina scry "error handling patterns"
-patina assay search "plugin engine"
+patina assay search "child engine"
 patina context --topic "testing"
 ```
 
@@ -143,8 +143,8 @@ patina adapter list
 patina adapter add opencode
 patina adapter mcp
 
-patina plugin list
-patina plugin init my-plugin
+patina child list                  # Canonical (alias: `patina plugin list`)
+patina child init my-child --world task
 patina schema new my-schema
 patina schema build
 
@@ -163,7 +163,7 @@ patina yolo
 Sources                         Storage / indices                  Query surface
 -------                         -----------------                  -------------
 git history                 ->  .patina/local/data/patina.db   ->  scry
-code + grammar plugins      ->  .patina/local/data/events.db   ->  assay
+code + grammar children     ->  .patina/local/data/events.db   ->  assay
 layer/ (specs, sessions,    ->  .patina/local/data/embeddings  ->  context
 beliefs, patterns)                                              ->  belief / report / measure
 external repos + sources
@@ -182,10 +182,11 @@ Core ideas:
 ```text
 patina/
 ├── src/                      # Rust CLI, retrieval, daemon, adapters, storage
-├── grammars/                 # Grammar plugins used by the pipeline
-├── plugins/                  # WASM plugin crates and SDK
+├── grammars/                 # Grammar child sources used by scrape pipeline
 ├── crates/                   # Shared internal crates
-├── children/                 # Mother child components
+├── children/                 # First-party child components
+├── wit/                      # WIT contracts (toys/) and compositions (worlds/)
+├── sdk/                      # SDK tiers: core, data, agent, umbrella
 ├── layer/                    # Git-tracked project memory
 │   ├── core/                 # Stable principles and patterns
 │   ├── surface/              # Active specs, beliefs, reports, architecture docs
@@ -208,7 +209,7 @@ patina/
 ├── registry.yaml             # Project and repo registry
 ├── adapters/                 # Adapter templates
 ├── cache/repos/              # Cloned reference repos
-├── pipeline/                 # Installed grammar plugins
+├── pipeline/                 # Installed grammar child artifacts
 ├── personas/                 # Cross-project persona events
 └── run/                      # Mother runtime files
 ```
@@ -220,7 +221,7 @@ patina/
 - Git as memory for durable project knowledge
 - Adapter-based AI integration
 - Spec-driven workflow for larger changes
-- Extensible via schemas, plugins, and grammar pipelines
+- Extensible via schemas, children, and grammar pipelines
 
 ## Requirements
 

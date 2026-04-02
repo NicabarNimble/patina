@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use subtle::ConstantTimeEq;
 
 use crate::http_daemon::{json_error, with_security_headers, HttpRequest, HttpResponse};
 
@@ -75,9 +76,10 @@ impl Router {
     }
 
     fn check_auth(&self, request: &HttpRequest) -> bool {
+        let expected = format!("Bearer {}", self.token);
         request
             .header("Authorization")
-            .map(|h| h == format!("Bearer {}", self.token))
+            .map(|header| header.as_bytes().ct_eq(expected.as_bytes()).into())
             .unwrap_or(false)
     }
 }

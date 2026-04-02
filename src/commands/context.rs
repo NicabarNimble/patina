@@ -121,8 +121,8 @@ pub fn get_project_context(topic: Option<&str>) -> Result<String> {
 pub fn get_belief_metrics() -> Result<String> {
     use rusqlite::Connection;
 
-    const DB_PATH: &str = ".patina/local/data/patina.db";
-    let conn = Connection::open(DB_PATH)?;
+    let db_path = patina::eventlog::patina_db_path()?;
+    let conn = Connection::open(db_path)?;
 
     // Check if beliefs table exists
     let table_exists: bool = conn
@@ -300,9 +300,12 @@ fn get_topic_search_results(topic: &str) -> String {
 /// relevant to the given topic. Falls back to aggregate metrics if
 /// the database is unavailable.
 fn get_topic_beliefs(topic: &str) -> String {
-    const DB_PATH: &str = ".patina/local/data/patina.db";
+    let db_path = match patina::eventlog::patina_db_path() {
+        Ok(path) => path,
+        Err(_) => return get_belief_metrics().unwrap_or_default(),
+    };
 
-    let conn = match Connection::open(DB_PATH) {
+    let conn = match Connection::open(db_path) {
         Ok(c) => c,
         Err(_) => return get_belief_metrics().unwrap_or_default(),
     };

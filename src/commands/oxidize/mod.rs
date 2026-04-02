@@ -34,6 +34,7 @@ pub fn oxidize() -> Result<()> {
 
     // Load recipe
     let recipe = OxidizeRecipe::load()?;
+    let project_root = std::env::current_dir()?;
 
     let model_name = recipe.get_model_name()?;
     println!("✅ Recipe loaded: {}", model_name);
@@ -59,9 +60,11 @@ pub fn oxidize() -> Result<()> {
         }
     }
 
-    let db_path = ".patina/local/data/patina.db";
-    let output_dir = format!(".patina/local/data/embeddings/{}/projections", model_name);
-    std::fs::create_dir_all(&output_dir)?;
+    let db_path = patina::eventlog::patina_db_path()?;
+    let db_path_str = db_path.to_string_lossy().to_string();
+    let output_dir_path = patina::paths::project::model_projections_dir(&project_root, &model_name);
+    let output_dir = output_dir_path.to_string_lossy().to_string();
+    std::fs::create_dir_all(&output_dir_path)?;
 
     let workers = embedding_worker_count();
     println!("   Workers: {} (parallel embedding)", workers);
@@ -92,12 +95,12 @@ pub fn oxidize() -> Result<()> {
             let input_dim = config.input_dim(&recipe)?;
             println!("\n🔍 Building USearch index ({}d raw E5)...", input_dim);
             total_documents_embedded +=
-                build_projection_index(name, db_path, None, input_dim, &output_dir, workers)?;
+                build_projection_index(name, &db_path_str, None, input_dim, &output_dir, workers)?;
         } else {
             println!("📊 Training {} projection...", name);
             println!("{}", "=".repeat(60));
 
-            let projection = train_projection(name, config, &recipe, db_path, workers)?;
+            let projection = train_projection(name, config, &recipe, &db_path_str, workers)?;
 
             // Save trained weights
             println!("\n💾 Saving projection weights...");
@@ -109,7 +112,7 @@ pub fn oxidize() -> Result<()> {
             println!("\n🔍 Building USearch index...");
             total_documents_embedded += build_projection_index(
                 name,
-                db_path,
+                &db_path_str,
                 Some(&projection),
                 config.output_dim(),
                 &output_dir,
@@ -765,7 +768,7 @@ pub(crate) fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<
 }
 
 /// Strip YAML frontmatter from markdown content
-fn strip_frontmatter(content: &str) -> &str {
+pub(crate) fn strip_frontmatter(content: &str) -> &str {
     if !content.starts_with("---") {
         return content;
     }

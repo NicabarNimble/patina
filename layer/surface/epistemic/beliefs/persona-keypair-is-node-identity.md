@@ -7,7 +7,7 @@ entrenchment: medium
 status: active
 endorsed: true
 extracted: 2026-03-05
-revised: 2026-03-21
+revised: 2026-03-25
 ---
 
 # persona-keypair-is-node-identity
@@ -26,7 +26,7 @@ The persona keypair is persona identity — signing beliefs, issuing UCAN capabi
 
 - [[persona-is-a-patina-instance]] — persona as sovereign instance needs a cryptographic identity, not just a string label
 - [[mother-is-connection-and-continuity]] — Mother federates personas; keypair enables authenticated federation
-- [[host-proxied-io-is-the-security-model]] — UCAN capability tokens derived from persona keypair scope pipe access
+- [[four-roles-no-overlap]] — persona identity and Mother node identity remain separate role boundaries.
 
 ## Attacks
 

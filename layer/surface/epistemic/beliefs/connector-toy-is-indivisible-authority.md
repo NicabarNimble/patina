@@ -7,16 +7,16 @@ entrenchment: medium
 status: active
 endorsed: true
 extracted: 2026-03-10
-revised: 2026-03-10
+revised: 2026-03-26
 ---
 
 # connector-toy-is-indivisible-authority
 
-The connector toy is a single indivisible capability bundle (binary, credential, domain allowlist, params, types); HTTP proxy is not a separate toy but a derived enforcement mechanism the child builds from the connector grant, preserving broker security invariants when authority moves from Mother to child.
+The `patina:connect` toy is a single indivisible capability bundle: named connections carry credential, domain allowlist, and injection config as one grant. `connect::request(...)` owns the credential path. HTTP access, credential injection, and domain policy are not separate toys but facets of the connect grant, preserving security invariants when authority moves from Mother to child via WIT host imports.
 
 ## Statement
 
-The connector toy is a single indivisible capability bundle (binary, credential, domain allowlist, params, types); HTTP proxy is not a separate toy but a derived enforcement mechanism the child builds from the connector grant, preserving broker security invariants when authority moves from Mother to child.
+The `patina:connect` toy is a single indivisible capability bundle: named connections carry credential, domain allowlist, and injection config as one grant. `connect::request(...)` owns the credential path. HTTP access, credential injection, and domain policy are not separate toys but facets of the connect grant, preserving security invariants when authority moves from Mother to child via WIT host imports.
 
 ## Evidence
 
@@ -26,23 +26,25 @@ The connector toy is a single indivisible capability bundle (binary, credential,
 
 ## Supports
 
-- [[children-have-agency-toys-are-capabilities]] — refines the toy taxonomy: connector and storage are the two toy categories, proxy is derived
-- [[initialize-is-capability-grant]] — the connector toy IS the primary capability payload in pipe/initialize
+- [[children-have-agency-toys-are-capabilities]] — refines the toy taxonomy: `connect` bundles credential + domain + HTTP as one indivisible grant
+- [[initialize-is-capability-grant]] — connect grants are part of the `GrantedCapabilities` resolved at init from `[needs].toys`
 
 ## Attacks
 
-- Proxy-as-separate-toy model — treating HTTP proxy as a peer-level toy alongside connector creates a split where a child could conceptually have "connector without policy" or "policy without connector"
+- Proxy-as-separate-toy model — defeated by toy-collapse-wasi-alignment; HTTP proxy merged into `patina:connect` as a facet, not a peer toy
+- Split-capability model — any design where credential, domain policy, and HTTP access are separable toys; the indivisible bundle prevents "HTTP without policy" or "credential without domain scope"
 
 ## Attacked-By
 
-- "What if a child needs HTTP access without a connector?" — currently no use case; if one arises, that would be a different toy type, not unbundling the connector
+- "What if a child needs raw HTTP without named connections?" — addressed by WASI `wasi:http` adoption: children can import `wasi:http` for raw HTTP, but `patina:connect` is the credential-safe path. Raw HTTP has no credential injection.
 
 ## Applied-In
 
-- [[ducklake]] DESIGN.md §1: DuckLake child receives ConnectorToy struct, derives HTTP proxy from it via build_http_proxy
-- [[http-proxy-extraction]] SPEC.md: build_http_proxy in patina-pipe is trusted substrate that preserves security invariant when authority moves to child
-- [[ducklake]] DESIGN.md §2: grant_lake_capabilities sends connector toy as single JSON object in pipe/initialize toys field
+- `wit/toys/deps/patina-connect.wit` — WIT interface defining `connect::request(...)` as the credential-safe named connection surface
+- `src/child/internal/mod.rs` — `GrantedCapabilities` resolves connect grants (http_domains, credential_mappings) from `[needs].toys` at init
+- [[toy-collapse-wasi-alignment]] — connector + http-proxy collapsed into `patina:connect`; `connect::request(...)` owns the credential path as decided in Phase 0
 
 ## Revision Log
 
 - 2026-03-10: Created — three-session convergence from separate-toy to derived-enforcement model
+- 2026-03-26: Revised — reframed around `patina:connect` WIT interface post-toy-collapse. Retired ConnectorToy/build_http_proxy vocabulary. Updated Applied-In to current code paths. Attacks/Attacked-By updated for WASI http coexistence.

@@ -911,11 +911,10 @@ fn extract_belief_keywords(belief_id: &str) -> Vec<String> {
 /// None if the index hasn't changed. The caller passes the mtime to
 /// `update_grounding_watermark()` to avoid a TOCTOU race between read and write.
 fn grounding_index_changed(conn: &Connection) -> Option<String> {
+    let project_root = std::env::current_dir().ok()?;
     let model = crate::commands::scry::internal::search::get_embedding_model();
-    let index_path = format!(
-        ".patina/local/data/embeddings/{}/projections/semantic.usearch",
-        model
-    );
+    let index_path = patina::paths::project::model_projections_dir(&project_root, &model)
+        .join("semantic.usearch");
 
     let current_mtime = match std::fs::metadata(&index_path).and_then(|m| m.modified()) {
         Ok(t) => t
@@ -961,13 +960,12 @@ fn is_source_code(path: &str) -> bool {
 fn compute_belief_grounding(conn: &Connection) -> Result<()> {
     use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
 
+    let project_root = std::env::current_dir()?;
     let model = crate::commands::scry::internal::search::get_embedding_model();
-    let index_path = format!(
-        ".patina/local/data/embeddings/{}/projections/semantic.usearch",
-        model
-    );
+    let index_path = patina::paths::project::model_projections_dir(&project_root, &model)
+        .join("semantic.usearch");
 
-    if !Path::new(&index_path).exists() {
+    if !index_path.exists() {
         return Ok(());
     }
 
@@ -979,7 +977,7 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
     };
 
     let index = Index::new(&index_options)?;
-    index.load(&index_path)?;
+    index.load(index_path.to_string_lossy().as_ref())?;
 
     use patina::embeddings::offsets::*;
     const SEARCH_LIMIT: usize = 20;
@@ -1395,7 +1393,7 @@ fn compute_health_score(metrics: &BeliefMetrics, stale_days: u32) -> f64 {
 /// Main entry point for belief scraping
 pub fn run(full: bool) -> Result<ScrapeStats> {
     let start = Instant::now();
-    let db_path = Path::new(database::PATINA_DB);
+    let db_path = database::patina_db_path()?;
     let beliefs_path = Path::new(BELIEFS_DIR);
 
     // Check if beliefs directory exists
@@ -1413,7 +1411,7 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     let stale_days = config.beliefs.stale_days;
 
     // Initialize unified database with eventlog
-    let conn = database::initialize(db_path)?;
+    let conn = database::initialize(&db_path)?;
 
     // Create materialized views for belief events
     create_materialized_views(&conn)?;

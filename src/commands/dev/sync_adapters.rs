@@ -1,5 +1,4 @@
 use anyhow::Result;
-use std::fs;
 use std::path::Path;
 
 pub fn execute(adapter: Option<&str>, dry_run: bool) -> Result<()> {
@@ -83,35 +82,6 @@ fn sync_claude_adapter(dry_run: bool) -> Result<()> {
         } else {
             println!("   ⚠️  Missing: {} ({})", path, description);
         }
-    }
-
-    // Update version in adapter code
-    let adapter_path = "src/adapters/claude.rs";
-    if Path::new(adapter_path).exists() {
-        if dry_run {
-            println!("   Would update version in: {}", adapter_path);
-        } else {
-            update_claude_version()?;
-            println!("   ✓ Updated version to: 0.7.0");
-        }
-    }
-
-    Ok(())
-}
-
-fn update_claude_version() -> Result<()> {
-    // In real implementation: update CLAUDE_ADAPTER_VERSION constant
-    let adapter_file = "src/adapters/claude.rs";
-    let content = fs::read_to_string(adapter_file)?;
-
-    // Simple version bump for now
-    let new_content = content.replace(
-        "const CLAUDE_ADAPTER_VERSION: &str = \"0.6.0\";",
-        "const CLAUDE_ADAPTER_VERSION: &str = \"0.7.0\";",
-    );
-
-    if content != new_content {
-        fs::write(adapter_file, new_content)?;
     }
 
     Ok(())

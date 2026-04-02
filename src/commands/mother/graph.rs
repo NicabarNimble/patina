@@ -84,7 +84,7 @@ fn sync_from_registry_with(
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown");
-        let db_path = project_root.join(".patina/local/data/patina.db");
+        let db_path = patina::eventlog::resolve_patina_db_path(project_root);
         match collect_project_beliefs(project_name, &db_path) {
             Ok(entries) => {
                 let b = entries.iter().filter(|e| e.kind != "value").count();
@@ -121,7 +121,7 @@ fn sync_from_registry_with(
                 continue; // Already collected as current project
             }
         }
-        let db_path = registry_path.join(".patina/local/data/patina.db");
+        let db_path = patina::eventlog::resolve_patina_db_path(registry_path);
         match collect_project_beliefs(&entry.name, &db_path) {
             Ok(entries) => {
                 let b = entries.iter().filter(|e| e.kind != "value").count();
@@ -184,7 +184,7 @@ fn sync_from_registry_with(
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown");
-        let db_path = project_root.join(".patina/local/data/patina.db");
+        let db_path = patina::eventlog::resolve_patina_db_path(project_root);
         match collect_belief_edges(project_name, &db_path) {
             Ok((s, a)) => {
                 let count = s.len() + a.len();
@@ -209,7 +209,7 @@ fn sync_from_registry_with(
                 continue;
             }
         }
-        let db_path = registry_path.join(".patina/local/data/patina.db");
+        let db_path = patina::eventlog::resolve_patina_db_path(registry_path);
         match collect_belief_edges(&entry.name, &db_path) {
             Ok((s, a)) => {
                 let count = s.len() + a.len();

@@ -1,0 +1,13 @@
+[child]
+name = "content-extractor"
+kind = "knowledge-child"
+role = "app"
+
+[needs]
+toys = ["log", "events"]
+
+[needs.scopes.events]
+subscribe = ["file.found"]
+
+[needs.scopes.filesystem]
+path = "/tmp"

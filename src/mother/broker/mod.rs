@@ -1,8 +1,8 @@
 //! Broker — routing engine for Mother.
 //!
 //! Routes facts from children to destination events.db files based on
-//! sources.toml declarations. Manages child lifecycle (spawn, fetch,
-//! shutdown) for native children via the pipe protocol.
+//! sources.toml declarations. Manages legacy broker flow used for
+//! Mother-owned source routing and knowledge-child lake destinations.
 
 // Data types and source parsing now live in the mother crate.
 // Re-export for existing callers.

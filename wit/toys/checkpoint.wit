@@ -1,6 +1,0 @@
-package patina:host@0.1.0;
-
-interface checkpoint {
-    load: func(stream-name: string) -> option<string>;
-    save: func(stream-name: string, checkpoint-json: string) -> result<_, string>;
-}

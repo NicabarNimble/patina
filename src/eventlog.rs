@@ -13,14 +13,15 @@
 
 use anyhow::Result;
 use rusqlite::Connection;
-use std::path::Path;
-use std::sync::OnceLock;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
-/// Path to projection database (rebuildable from git + layer/)
-pub const PATINA_DB: &str = ".patina/local/data/patina.db";
+/// Legacy project-local projection database path (migration source).
+pub const PATINA_DB: &str = concat!(".patina", "/local/data/patina.db");
 
-/// Path to events database (runtime events — irreplaceable)
-pub const EVENTS_DB: &str = ".patina/local/data/events.db";
+/// Legacy project-local events database path (migration source).
+pub const EVENTS_DB: &str = concat!(".patina", "/local/data/events.db");
 
 /// Check if a path is within a ref repo (external reference repository).
 ///
@@ -171,121 +172,60 @@ pub fn set_last_processed(conn: &Connection, scraper: &str, value: &str) -> Resu
 
 /// Process-level gate: ensure_events_db() runs once per process via OnceLock.
 /// Eliminates per-call exists() syscall overhead (CLI: negligible; MCP: meaningful).
-static EVENTS_INIT: OnceLock<std::result::Result<(), String>> = OnceLock::new();
+static EVENTS_INIT: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
 
-/// Ensure events.db exists with correct schema. Migrates runtime events
-/// from patina.db on first run (one-time copy, idempotent).
-///
-/// Runs once per process via OnceLock. Safe under concurrent execution:
-/// schema uses CREATE TABLE IF NOT EXISTS, migration uses INSERT OR IGNORE
-/// with explicit seq to prevent duplicate events.
-pub fn ensure_events_db() -> Result<()> {
-    let result = EVENTS_INIT.get_or_init(|| ensure_events_db_inner().map_err(|e| e.to_string()));
-    match result {
-        Ok(()) => Ok(()),
-        Err(e) => anyhow::bail!("events.db initialization failed: {e}"),
+pub fn resolve_events_db_path(project_root: &Path) -> PathBuf {
+    if let Some(uid) = resolve_project_uid(project_root) {
+        if let Ok(path) = crate::paths::mother::projects::events_db(&uid) {
+            return path;
+        }
     }
+    project_root.join(EVENTS_DB)
 }
 
-fn ensure_events_db_inner() -> Result<()> {
-    let events_path = Path::new(EVENTS_DB);
+pub fn events_db_path() -> Result<PathBuf> {
+    let project_root = std::env::current_dir()?;
+    Ok(resolve_events_db_path(&project_root))
+}
 
-    // Create parent directory
+pub fn resolve_patina_db_path(project_root: &Path) -> PathBuf {
+    if let Some(uid) = resolve_project_uid(project_root) {
+        if let Ok(path) = crate::paths::mother::projects::patina_db(&uid) {
+            return path;
+        }
+    }
+    project_root.join(PATINA_DB)
+}
+
+fn resolve_project_uid(project_root: &Path) -> Option<String> {
+    if let Some(uid) = crate::project::get_uid(project_root) {
+        return Some(uid);
+    }
+    if crate::project::is_patina_project(project_root)
+        && project_root.join(".patina/config.toml").exists()
+    {
+        if let Ok(uid) = crate::project::register_with_mother(project_root) {
+            return Some(uid);
+        }
+    }
+    None
+}
+
+pub fn patina_db_path() -> Result<PathBuf> {
+    let project_root = std::env::current_dir()?;
+    Ok(resolve_patina_db_path(&project_root))
+}
+
+fn ensure_events_db_path(events_path: &Path, patina_path: &Path) -> Result<()> {
     if let Some(parent) = events_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
 
     let conn = Connection::open(events_path)?;
-
-    // Safety-critical: WAL mode + synchronous FULL for irreplaceable data
-    conn.execute_batch(
-        r#"
-        PRAGMA journal_mode = WAL;
-        PRAGMA synchronous = FULL;
-
-        CREATE TABLE IF NOT EXISTS eventlog (
-            seq INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_type TEXT NOT NULL,
-            timestamp TEXT NOT NULL,
-            source_id TEXT NOT NULL,
-            source_file TEXT,
-            data TEXT NOT NULL,
-            provenance TEXT NOT NULL DEFAULT 'local',
-            CHECK(json_valid(data))
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_eventlog_type ON eventlog(event_type);
-        CREATE INDEX IF NOT EXISTS idx_eventlog_timestamp ON eventlog(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_eventlog_source ON eventlog(source_id);
-        CREATE INDEX IF NOT EXISTS idx_eventlog_type_time ON eventlog(event_type, timestamp);
-
-        -- Metadata for events.db (tracks export state for JSONL replica)
-        CREATE TABLE IF NOT EXISTS scrape_meta (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        );
-
-        PRAGMA user_version = 2;
-        "#,
-    )?;
-
-    // Schema migration: add provenance column to existing events.db (v1 → v2).
-    // ALTER TABLE ADD COLUMN is a no-op if column already exists (catches
-    // "duplicate column name" error). Existing events default to 'local'.
-    let has_provenance: bool = conn
-        .query_row(
-            "SELECT COUNT(*) FROM pragma_table_info('eventlog') WHERE name = 'provenance'",
-            [],
-            |row| Ok(row.get::<_, i64>(0)? > 0),
-        )
-        .unwrap_or(false);
-
-    if !has_provenance {
-        conn.execute_batch(
-            "ALTER TABLE eventlog ADD COLUMN provenance TEXT NOT NULL DEFAULT 'local';",
-        )?;
-        eprintln!("  Migrated events.db: added provenance column");
-    }
-
-    // Schema migration: add content_hash column (v2 → v3).
-    // Broker-routed facts carry a blake3 content hash for dedup.
-    // Existing events get NULL (unaffected by partial unique index).
-    let has_content_hash: bool = conn
-        .query_row(
-            "SELECT COUNT(*) FROM pragma_table_info('eventlog') WHERE name = 'content_hash'",
-            [],
-            |row| Ok(row.get::<_, i64>(0)? > 0),
-        )
-        .unwrap_or(false);
-
-    if !has_content_hash {
-        conn.execute_batch(
-            r#"
-            ALTER TABLE eventlog ADD COLUMN content_hash TEXT;
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_eventlog_content_hash
-                ON eventlog(content_hash) WHERE content_hash IS NOT NULL;
-            "#,
-        )?;
-        eprintln!("  Migrated events.db: added content_hash column with dedup index");
-    }
-
-    // Broker cursor table: tracks last-fetched position per source.
-    // Dedicated table (not scrape_meta) to avoid namespace coupling.
-    conn.execute_batch(
-        r#"
-        CREATE TABLE IF NOT EXISTS broker_cursors (
-            source_name TEXT PRIMARY KEY,
-            cursor_value TEXT NOT NULL CHECK(length(cursor_value) <= 4096),
-            updated_at TEXT NOT NULL
-        );
-        "#,
-    )?;
+    mother_crate::eventlog_schema::prepare_events_db(&conn)?;
 
     // Migrate runtime events from patina.db if it exists.
-    // Uses INSERT OR IGNORE with explicit seq — safe under concurrent execution
-    // (two processes racing past OnceLock in separate process spaces both insert,
-    // but the second process's duplicates are ignored by PRIMARY KEY constraint).
-    let patina_path = Path::new(PATINA_DB);
+    // Uses INSERT OR IGNORE with explicit seq — safe under concurrent execution.
     if patina_path.exists() {
         conn.execute(
             "ATTACH DATABASE ?1 AS patina",
@@ -326,10 +266,46 @@ fn ensure_events_db_inner() -> Result<()> {
     Ok(())
 }
 
+/// Ensure events.db exists with correct schema. Migrates runtime events
+/// from patina.db on first run (one-time copy, idempotent).
+///
+/// Runs once per process via OnceLock. Safe under concurrent execution:
+/// schema uses CREATE TABLE IF NOT EXISTS, migration uses INSERT OR IGNORE
+/// with explicit seq to prevent duplicate events.
+pub fn ensure_events_db() -> Result<()> {
+    let project_root = std::env::current_dir()?;
+    ensure_events_db_for_root(&project_root)
+}
+
+fn ensure_events_db_for_root(project_root: &Path) -> Result<()> {
+    let events_path = resolve_events_db_path(project_root);
+    let init = EVENTS_INIT.get_or_init(|| Mutex::new(HashSet::new()));
+    {
+        let initialized = init.lock().unwrap_or_else(|error| error.into_inner());
+        if initialized.contains(&events_path) {
+            return Ok(());
+        }
+    }
+
+    ensure_events_db_path(&events_path, &resolve_patina_db_path(project_root))?;
+
+    let mut initialized = init.lock().unwrap_or_else(|error| error.into_inner());
+    initialized.insert(events_path);
+
+    Ok(())
+}
+
+fn ensure_events_db_path_initialized(project_root: &Path) -> Result<PathBuf> {
+    let events_path = resolve_events_db_path(project_root);
+    ensure_events_db_for_root(project_root)?;
+    Ok(events_path)
+}
+
 /// Open events.db with safety PRAGMAs. Creates and migrates if needed.
 pub fn open_events_db() -> Result<Connection> {
-    ensure_events_db()?;
-    let conn = Connection::open(EVENTS_DB)?;
+    let project_root = std::env::current_dir()?;
+    let events_path = ensure_events_db_path_initialized(&project_root)?;
+    let conn = Connection::open(events_path)?;
     // synchronous = FULL is per-connection, must be set each time
     conn.execute_batch("PRAGMA synchronous = FULL;")?;
     Ok(conn)
@@ -340,60 +316,229 @@ pub fn open_events_db() -> Result<Connection> {
 /// Used by the broker to write to a destination project's events.db.
 /// Same PRAGMAs and schema as open_events_db(), just parameterized path.
 pub fn open_events_db_at(project_root: &Path) -> Result<Connection> {
-    let events_path = project_root.join(EVENTS_DB);
-
-    // Ensure parent directory exists
-    if let Some(parent) = events_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    let conn = Connection::open(&events_path)?;
-
-    // Same safety PRAGMAs as ensure_events_db_inner
-    conn.execute_batch(
-        r#"
-        PRAGMA journal_mode = WAL;
-        PRAGMA synchronous = FULL;
-        PRAGMA busy_timeout = 5000;
-
-        CREATE TABLE IF NOT EXISTS eventlog (
-            seq INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_type TEXT NOT NULL,
-            timestamp TEXT NOT NULL,
-            source_id TEXT NOT NULL,
-            source_file TEXT,
-            data TEXT NOT NULL,
-            provenance TEXT NOT NULL DEFAULT 'local',
-            content_hash TEXT,
-            CHECK(json_valid(data))
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_eventlog_type ON eventlog(event_type);
-        CREATE INDEX IF NOT EXISTS idx_eventlog_timestamp ON eventlog(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_eventlog_source ON eventlog(source_id);
-        CREATE INDEX IF NOT EXISTS idx_eventlog_type_time ON eventlog(event_type, timestamp);
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_eventlog_content_hash
-            ON eventlog(content_hash) WHERE content_hash IS NOT NULL;
-
-        CREATE TABLE IF NOT EXISTS scrape_meta (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        );
-
-        CREATE TABLE IF NOT EXISTS broker_cursors (
-            source_name TEXT PRIMARY KEY,
-            cursor_value TEXT NOT NULL CHECK(length(cursor_value) <= 4096),
-            updated_at TEXT NOT NULL
-        );
-        "#,
-    )?;
+    let events_path = resolve_events_db_path(project_root);
+    ensure_events_db_path(&events_path, &resolve_patina_db_path(project_root))?;
+    let conn = Connection::open(events_path)?;
+    conn.execute_batch("PRAGMA synchronous = FULL;")?;
 
     Ok(conn)
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DataMigrationReport {
+    pub project_uid: String,
+    pub events_rows: i64,
+    pub patina_rows: Option<i64>,
+    pub moved_events_db: bool,
+    pub moved_patina_db: bool,
+    pub deleted_legacy_events_db: bool,
+    pub deleted_legacy_patina_db: bool,
+    pub deleted_dead_cortex_db: bool,
+    pub deleted_dead_graph_db: bool,
+    pub marker_path: String,
+}
+
+struct MigrationLock {
+    path: PathBuf,
+}
+
+impl Drop for MigrationLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+fn is_process_alive(pid: u32) -> bool {
+    std::process::Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+fn acquire_migration_lock(path: &Path) -> Result<MigrationLock> {
+    if let Ok(existing) = std::fs::read_to_string(path) {
+        if let Ok(pid) = existing.trim().parse::<u32>() {
+            if is_process_alive(pid) {
+                anyhow::bail!(
+                    "migration lock already held by pid {} at {}",
+                    pid,
+                    path.display()
+                );
+            }
+        }
+    }
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, std::process::id().to_string())?;
+    Ok(MigrationLock {
+        path: path.to_path_buf(),
+    })
+}
+
+fn quick_integrity_check(path: &Path) -> Result<()> {
+    let conn = Connection::open(path)?;
+    let integrity: String = conn.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+    if integrity != "ok" {
+        anyhow::bail!(
+            "integrity_check failed for {}: {}",
+            path.display(),
+            integrity
+        );
+    }
+    let quick: String = conn.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+    if quick != "ok" {
+        anyhow::bail!("quick_check failed for {}: {}", path.display(), quick);
+    }
+    Ok(())
+}
+
+fn table_row_count(path: &Path, table: &str) -> Result<i64> {
+    let conn = Connection::open(path)?;
+    let sql = format!("SELECT COUNT(*) FROM {}", table);
+    Ok(conn.query_row(&sql, [], |row| row.get(0)).unwrap_or(0))
+}
+
+/// One-time migration: copy legacy project-local databases into Mother's project directory.
+///
+/// This prepares GMDP-G10 without running destructive commands elsewhere.
+pub fn migrate_legacy_project_databases(project_root: &Path) -> Result<DataMigrationReport> {
+    if std::env::var("PATINA_SKIP_MOTHER_PGREP").ok().as_deref() != Some("1") {
+        let pgrep = std::process::Command::new("pgrep")
+            .args(["-f", "patina mother"])
+            .output();
+        if let Ok(output) = pgrep {
+            if output.status.success() && !String::from_utf8_lossy(&output.stdout).trim().is_empty()
+            {
+                anyhow::bail!("mother daemon appears to be running; stop it before migration");
+            }
+        }
+    }
+
+    let uid = crate::project::get_uid(project_root)
+        .ok_or_else(|| anyhow::anyhow!("project uid missing at {}", project_root.display()))?;
+    let project_dir =
+        crate::paths::mother::projects::ensure_project_dir(&uid).map_err(anyhow::Error::msg)?;
+    let lock_path = project_dir.join(".migration-lock");
+    let _lock = acquire_migration_lock(&lock_path)?;
+
+    let legacy_events = project_root.join(EVENTS_DB);
+    let legacy_patina = project_root.join(PATINA_DB);
+    for wal in [
+        legacy_events.with_extension("db-wal"),
+        legacy_events.with_extension("db-shm"),
+    ] {
+        if wal.exists() {
+            anyhow::bail!(
+                "WAL sidecar exists at {} — checkpoint before migration",
+                wal.display()
+            );
+        }
+    }
+
+    let target_events =
+        crate::paths::mother::projects::events_db(&uid).map_err(anyhow::Error::msg)?;
+    let target_patina =
+        crate::paths::mother::projects::patina_db(&uid).map_err(anyhow::Error::msg)?;
+
+    let mut moved_events = false;
+    let mut moved_patina = false;
+    if legacy_events.exists() && !target_events.exists() {
+        std::fs::copy(&legacy_events, &target_events)?;
+        moved_events = true;
+    }
+    if legacy_patina.exists() && !target_patina.exists() {
+        std::fs::copy(&legacy_patina, &target_patina)?;
+        moved_patina = true;
+    }
+
+    if target_events.exists() {
+        quick_integrity_check(&target_events)?;
+    }
+    if target_patina.exists() {
+        quick_integrity_check(&target_patina)?;
+    }
+
+    let events_rows = if target_events.exists() {
+        let target_rows = table_row_count(&target_events, "eventlog")?;
+        if legacy_events.exists() {
+            let source_rows = table_row_count(&legacy_events, "eventlog")?;
+            if source_rows != target_rows {
+                anyhow::bail!(
+                    "events row count mismatch source={} target={}",
+                    source_rows,
+                    target_rows
+                );
+            }
+        }
+        target_rows
+    } else {
+        0
+    };
+
+    let patina_rows = if target_patina.exists() {
+        Some(table_row_count(&target_patina, "eventlog")?)
+    } else {
+        None
+    };
+
+    let deleted_legacy_events_db = if legacy_events.exists() {
+        std::fs::remove_file(&legacy_events)?;
+        true
+    } else {
+        false
+    };
+    let deleted_legacy_patina_db = if legacy_patina.exists() {
+        std::fs::remove_file(&legacy_patina)?;
+        true
+    } else {
+        false
+    };
+
+    let legacy_cortex = project_root.join(".patina/local/data/cortex.db");
+    let deleted_dead_cortex_db = if legacy_cortex.exists() {
+        std::fs::remove_file(&legacy_cortex)?;
+        true
+    } else {
+        false
+    };
+    let legacy_graph = project_root.join(".patina/local/data/graph.db");
+    let deleted_dead_graph_db = if legacy_graph.exists() {
+        std::fs::remove_file(&legacy_graph)?;
+        true
+    } else {
+        false
+    };
+
+    let marker_path = project_dir.join(".migrated");
+    let marker = serde_json::json!({
+        "migrated_at": chrono::Utc::now().to_rfc3339(),
+        "project_uid": uid,
+        "events_rows": events_rows,
+        "patina_rows": patina_rows,
+    });
+    std::fs::write(&marker_path, serde_json::to_string_pretty(&marker)?)?;
+
+    Ok(DataMigrationReport {
+        project_uid: crate::project::get_uid(project_root).unwrap_or_default(),
+        events_rows,
+        patina_rows,
+        moved_events_db: moved_events,
+        moved_patina_db: moved_patina,
+        deleted_legacy_events_db,
+        deleted_legacy_patina_db,
+        deleted_dead_cortex_db,
+        deleted_dead_graph_db,
+        marker_path: marker_path.to_string_lossy().to_string(),
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::with_temp_patina_home;
     use tempfile::tempdir;
 
     /// Count events by type (test helper)
@@ -615,6 +760,114 @@ mod tests {
         )
         .is_err());
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_open_events_db_at_uses_mother_project_path_when_uid_exists() -> Result<()> {
+        crate::test_support::with_temp_patina_home(|patina_home| {
+            let dir = tempdir().unwrap();
+            std::fs::create_dir_all(dir.path().join(".patina")).unwrap();
+            std::fs::write(dir.path().join(".patina/uid"), "2bdc808e").unwrap();
+
+            let conn = open_events_db_at(dir.path()).unwrap();
+            insert_event(
+                &conn,
+                "test.event",
+                "2026-03-30T00:00:00Z",
+                "core",
+                None,
+                r#"{"ok":true}"#,
+            )
+            .unwrap();
+
+            let expected = patina_home.join("mother/projects/2bdc808e/events.db");
+            assert!(expected.exists());
+        });
+        Ok(())
+    }
+
+    #[test]
+    fn test_migrate_legacy_project_databases_moves_and_marks() -> Result<()> {
+        crate::test_support::with_temp_patina_home(|patina_home| {
+            let project = tempdir().unwrap();
+            std::fs::create_dir_all(project.path().join(".patina/local/data")).unwrap();
+            std::fs::write(project.path().join(".patina/uid"), "2bdc808e").unwrap();
+
+            let legacy_events = project.path().join(EVENTS_DB);
+            let conn = Connection::open(&legacy_events).unwrap();
+            mother_crate::eventlog_schema::prepare_events_db(&conn).unwrap();
+            conn.execute(
+                "INSERT INTO eventlog (event_type, timestamp, source_id, data) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params!["test.event", "2026-03-30T00:00:00Z", "core", r#"{"ok":true}"#],
+            )
+            .unwrap();
+            conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+                .unwrap();
+            drop(conn);
+
+            let legacy_patina = project.path().join(PATINA_DB);
+            let pconn = initialize(&legacy_patina).unwrap();
+            insert_event(
+                &pconn,
+                "code.symbol",
+                "2026-03-30T00:00:00Z",
+                "src/main.rs::main",
+                Some("src/main.rs"),
+                r#"{"content":"fn main() {}"}"#,
+            )
+            .unwrap();
+
+            unsafe {
+                std::env::set_var("PATINA_SKIP_MOTHER_PGREP", "1");
+            }
+            let report = migrate_legacy_project_databases(project.path()).unwrap();
+            unsafe {
+                std::env::remove_var("PATINA_SKIP_MOTHER_PGREP");
+            }
+
+            assert!(report.moved_events_db);
+            assert!(report.moved_patina_db);
+            assert!(report.deleted_legacy_events_db);
+            assert!(report.deleted_legacy_patina_db);
+            assert!(!legacy_events.exists());
+            assert!(!legacy_patina.exists());
+
+            let target_events = patina_home.join("mother/projects/2bdc808e/events.db");
+            let target_patina = patina_home.join("mother/projects/2bdc808e/patina.db");
+            assert!(target_events.exists());
+            assert!(target_patina.exists());
+            assert!(std::path::Path::new(&report.marker_path).exists());
+        });
+        Ok(())
+    }
+
+    #[test]
+    fn test_migrate_legacy_project_databases_is_idempotent() -> Result<()> {
+        with_temp_patina_home(|_patina_home| {
+            let project = tempdir().unwrap();
+            std::fs::create_dir_all(project.path().join(".patina/local/data")).unwrap();
+            std::fs::write(project.path().join(".patina/uid"), "2bdc808e").unwrap();
+
+            let legacy_events = project.path().join(EVENTS_DB);
+            let conn = Connection::open(&legacy_events).unwrap();
+            mother_crate::eventlog_schema::prepare_events_db(&conn).unwrap();
+            conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+                .unwrap();
+            drop(conn);
+
+            unsafe {
+                std::env::set_var("PATINA_SKIP_MOTHER_PGREP", "1");
+            }
+            let first = migrate_legacy_project_databases(project.path()).unwrap();
+            let second = migrate_legacy_project_databases(project.path()).unwrap();
+            unsafe {
+                std::env::remove_var("PATINA_SKIP_MOTHER_PGREP");
+            }
+
+            assert!(first.moved_events_db || first.deleted_legacy_events_db);
+            assert!(!second.moved_events_db);
+        });
         Ok(())
     }
 }

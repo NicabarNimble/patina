@@ -10,7 +10,7 @@ use std::sync::{Mutex, OnceLock};
 use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
 
 use crate::commands::oxidize::trainer::Projection;
-use crate::commands::scry::internal::enrichment::{enrich_results, SearchResults};
+use crate::retrieval::enrichment::{enrich_results, SearchResults};
 use crate::retrieval::oracle::{Oracle, OracleMetadata, OracleResult};
 use patina::embeddings::{create_embedder, EmbeddingEngine};
 
@@ -42,16 +42,17 @@ impl SemanticOracle {
     /// Each domain has its own index and projection in the embeddings directory.
     /// Falls back to legacy "semantic" name for the knowledge domain.
     pub fn for_domain(domain: &str) -> Self {
+        let project_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let model = patina::project::load(Path::new("."))
             .ok()
             .map(|c| c.embeddings.model)
             .unwrap_or_else(|| "e5-base-v2".to_string());
 
-        let embeddings_dir = format!(".patina/local/data/embeddings/{}/projections", model);
+        let embeddings_dir = patina::paths::project::model_projections_dir(&project_root, &model);
 
         // For knowledge domain, fall back to legacy "semantic" name
         let (index_name, proj_name) = if domain == "knowledge" {
-            if PathBuf::from(format!("{}/knowledge.usearch", embeddings_dir)).exists() {
+            if embeddings_dir.join("knowledge.usearch").exists() {
                 ("knowledge", "knowledge")
             } else {
                 ("semantic", "semantic")
@@ -61,9 +62,9 @@ impl SemanticOracle {
         };
 
         Self {
-            db_path: PathBuf::from(".patina/local/data/patina.db"),
-            index_path: PathBuf::from(format!("{}/{}.usearch", embeddings_dir, index_name)),
-            projection_path: PathBuf::from(format!("{}/{}.safetensors", embeddings_dir, proj_name)),
+            db_path: patina::eventlog::resolve_patina_db_path(&project_root),
+            index_path: embeddings_dir.join(format!("{}.usearch", index_name)),
+            projection_path: embeddings_dir.join(format!("{}.safetensors", proj_name)),
             domain: domain.to_string(),
             cache: OnceLock::new(),
         }
@@ -75,13 +76,14 @@ impl SemanticOracle {
     /// non-semantic projections (temporal, dependency). Projection (.safetensors)
     /// is optional — Phase 5d: knowledge/sessions use raw E5 embeddings.
     pub fn available_domains() -> Vec<String> {
+        let project_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let model = patina::project::load(Path::new("."))
             .ok()
             .map(|c| c.embeddings.model)
             .unwrap_or_else(|| "e5-base-v2".to_string());
 
-        let embeddings_dir = format!(".patina/local/data/embeddings/{}/projections", model);
-        let dir = Path::new(&embeddings_dir);
+        let embeddings_dir = patina::paths::project::model_projections_dir(&project_root, &model);
+        let dir = embeddings_dir.as_path();
 
         if !dir.exists() {
             return vec![];

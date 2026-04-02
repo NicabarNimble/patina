@@ -6,6 +6,41 @@ use crate::daemon_runner::{run_tcp_server, run_uds_server, TcpServerLaunch, UdsS
 use crate::http_routes::Router;
 use crate::registry::ChildRegistry;
 
+pub const DEFAULT_MAX_CONNECTIONS: usize = 16;
+pub const DEFAULT_WAL_CHECKPOINT_INTERVAL_SECS: u64 = 300;
+
+#[cfg(not(test))]
+fn mother_logs_dir() -> PathBuf {
+    let home = std::env::var_os("PATINA_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".patina")
+        });
+    home.join("mother").join("logs")
+}
+
+#[cfg(not(test))]
+fn init_logging() -> Result<()> {
+    let log_dir = mother_logs_dir();
+    std::fs::create_dir_all(&log_dir)?;
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_dir.join("mother.jsonl"))?;
+
+    let subscriber = tracing_subscriber::fmt()
+        .json()
+        .with_max_level(tracing::Level::INFO)
+        .with_writer(std::sync::Mutex::new(log_file))
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber)
+        .map_err(|e| anyhow::anyhow!("failed to set tracing subscriber: {}", e))?;
+    Ok(())
+}
+
 #[derive(Debug, Clone)]
 pub enum TransportMode {
     UdsHttp {
@@ -24,7 +59,8 @@ pub enum TransportMode {
 #[derive(Debug, Clone)]
 pub struct DaemonBootstrapConfig {
     pub transport: TransportMode,
-    pub legacy_migration: bool,
+    pub max_connections: usize,
+    pub wal_checkpoint_interval_secs: u64,
 }
 
 pub struct DaemonBootstrapRuntime {
@@ -34,7 +70,17 @@ pub struct DaemonBootstrapRuntime {
 
 #[allow(unreachable_code)]
 pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> Result<()> {
-    match config.transport {
+    #[cfg(not(test))]
+    init_logging()?;
+
+    crate::daemon_lifecycle::register_signal_handlers();
+
+    let DaemonBootstrapConfig {
+        transport,
+        max_connections,
+        wal_checkpoint_interval_secs,
+    } = config;
+    match transport {
         TransportMode::TcpHttp {
             host,
             port,
@@ -49,30 +95,33 @@ pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> 
                 addr,
                 token_path,
                 token,
-                legacy_migration: config.legacy_migration,
                 registry: runtime.registry,
                 router: runtime.router,
-            });
+                max_connections,
+                wal_checkpoint_interval_secs,
+            })?;
         }
         TransportMode::UdsHttp {
             run_dir,
             socket_path,
             pid_path,
         } => {
+            crate::daemon_lifecycle::reconcile_pid_state(&pid_path, &socket_path)?;
             crate::daemon_lifecycle::write_pid_file(&pid_path)?;
-            crate::daemon_lifecycle::register_signal_handlers(pid_path, socket_path.clone());
             let listener = crate::socket::setup_unix_listener(&run_dir, &socket_path)?;
             run_uds_server(UdsServerLaunch {
                 listener,
+                pid_path,
                 socket_path,
-                legacy_migration: config.legacy_migration,
                 registry: runtime.registry,
                 router: runtime.router,
-            });
+                max_connections,
+                wal_checkpoint_interval_secs,
+            })?;
         }
     }
 
-    unreachable!("daemon bootstrap returned unexpectedly")
+    Ok(())
 }
 
 #[cfg(test)]
@@ -91,7 +140,8 @@ mod tests {
                 token_path: std::path::PathBuf::from("/tmp/patina-token"),
                 token: "test-token".to_string(),
             },
-            legacy_migration: false,
+            max_connections: DEFAULT_MAX_CONNECTIONS,
+            wal_checkpoint_interval_secs: DEFAULT_WAL_CHECKPOINT_INTERVAL_SECS,
         };
         let runtime = DaemonBootstrapRuntime {
             registry: Arc::new(crate::registry::ChildRegistry::new()),
@@ -155,7 +205,8 @@ mod tests {
                 socket_path: run_dir.join("serve.sock"),
                 pid_path: run_dir.join("serve.pid"),
             },
-            legacy_migration: false,
+            max_connections: DEFAULT_MAX_CONNECTIONS,
+            wal_checkpoint_interval_secs: DEFAULT_WAL_CHECKPOINT_INTERVAL_SECS,
         };
         let runtime = DaemonBootstrapRuntime {
             registry: Arc::new(crate::registry::ChildRegistry::new()),

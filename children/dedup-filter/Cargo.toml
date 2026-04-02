@@ -1,0 +1,21 @@
+[package]
+name = "patina-ai-child-dedup-filter"
+version = "0.1.0"
+edition = "2021"
+description = "Filter duplicate records by content hash"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+patina-sdk = { path = "../../sdk/patina-sdk", features = ["knowledge-child", "toy-log", "toy-state"] }
+chrono = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[package.metadata.component]
+package = "patina:dedup-filter"
+
+[package.metadata.component.target]
+path = "../../wit/knowledge-child"
+world = "knowledge-child"

@@ -6,6 +6,7 @@ pub mod daemon_bootstrap_config;
 pub mod daemon_heartbeat;
 pub mod daemon_lifecycle;
 pub mod daemon_runner;
+pub mod eventlog_schema;
 pub mod events;
 pub mod http_api;
 pub mod http_daemon;
@@ -14,20 +15,18 @@ pub mod lifecycle;
 pub mod microserver;
 pub mod registry;
 pub mod runtime;
-pub mod secrets;
 pub mod secrets_authority_api;
 pub mod secrets_authority_backend;
 pub mod secrets_paths;
-pub mod session_writer;
+pub mod services;
 pub mod socket;
 pub mod state;
-pub mod static_child;
 pub mod tasks;
 pub mod toys;
 
 pub use runtime::{
-    ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, MotherChild, MotherHost,
-    PendingEvent, TaskIntent, TaskIntentKind, Toy,
+    ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, MotherHost, PendingEvent, TaskIntent,
+    TaskIntentKind, Toy,
 };
 pub use state::{
     KnowledgeRuntimeStore, LakeCursorUpdate, MotherSessionParticipant, MotherSessionRecord,

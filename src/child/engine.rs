@@ -1,10 +1,9 @@
 //! Canonical child-engine surface.
 
 pub use crate::child::internal::{
-    ChildEngine, ChildKind, ChildManifest, ChildRole, CommandEngine, CredentialMapping,
+    check_capabilities, ChildEngine, ChildKind, ChildManifest, ChildRole, CredentialMapping,
     GrantedCapabilities, InjectionLocation, KnowledgeChildEngine, PipelineEngine, QueryDispatchFn,
-    QueryScope, TaskEngine,
+    QueryScope,
 };
 
-pub type MotherChildEngine = crate::child::internal::MotherChildEngine;
 pub type ChildProvides = crate::child::internal::ChildProvides;

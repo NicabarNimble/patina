@@ -10,6 +10,7 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
+use super::database::is_safe_identifier;
 use crate::commands::schema::{ProjectionDef, SchemaMetadata};
 
 // ============================================================================
@@ -37,8 +38,11 @@ pub fn project_from_schemas(patina_conn: &Connection) -> Result<ProjectionStats>
     populate_schema_registry(patina_conn, &schemas)?;
 
     patina::eventlog::ensure_events_db()?;
-    let events_path = patina::eventlog::EVENTS_DB;
-    patina_conn.execute("ATTACH DATABASE ?1 AS events_db", [events_path])?;
+    let events_path = patina::eventlog::events_db_path()?;
+    patina_conn.execute(
+        "ATTACH DATABASE ?1 AS events_db",
+        [events_path.to_string_lossy().as_ref()],
+    )?;
 
     let mut stats = ProjectionStats {
         tables_created: 0,
@@ -206,15 +210,6 @@ fn generate_insert_sql(projection: &ProjectionDef, event_type: &str) -> String {
         event_type = event_type,
         pk = projection.primary_key,
     )
-}
-
-// ============================================================================
-// Shared utilities
-// ============================================================================
-
-/// Check that a string is a safe SQL identifier (alphanumeric + underscore only).
-fn is_safe_identifier(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 // ============================================================================

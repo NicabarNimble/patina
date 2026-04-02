@@ -1,0 +1,22 @@
+[package]
+name = "patina-ai-child-file-system-monitor"
+version = "0.1.0"
+edition = "2021"
+description = "File discovery child for folder-text-to-parquet split"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+patina-sdk = { path = "../../sdk/patina-sdk", features = ["knowledge-child", "toy-log", "toy-measure"] }
+chrono = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+
+[package.metadata.component]
+package = "patina:file-system-monitor"
+
+[package.metadata.component.target]
+path = "../../wit/knowledge-child"
+world = "knowledge-child"

@@ -1,4 +1,5 @@
 use patina_sdk::granted::{self, Bundle as GrantedBundle};
+use patina_sdk::helpers::{github as github_helpers, lake as lake_helpers};
 use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
 use patina_sdk::register_knowledge_child;
 use patina_sdk::substrate::{TaskIntent, TaskIntentKind};
@@ -11,7 +12,6 @@ struct DuckLakeToys {
     state: granted::State,
     checkpoint: granted::Checkpoint,
     lake: granted::Lake,
-    github: granted::Github,
     peer: granted::Peer,
 }
 
@@ -23,7 +23,6 @@ impl GrantedBundle for DuckLakeToys {
             state: granted::state(),
             checkpoint: granted::checkpoint(),
             lake: granted::lake("default"),
-            github: granted::github(),
             peer: granted::peer(),
         }
     }
@@ -103,21 +102,16 @@ impl DuckLakeChild {
             let cursor_before = self.toys.lake.load_cursor(&config.source_id, &data_type);
             let rows = self.fetch_rows(&config, &data_type, cursor_before.as_deref())?;
             let table = format!("{}_{}", config.table_prefix, data_type).replace('-', "_");
-            self.toys.lake.ensure_table(&table)?;
-            let written =
-                self.toys
-                    .lake
-                    .append_json_batch(&table, &config.source_id, &rows.rows_json)?;
-            self.toys
-                .lake
-                .save_cursor(&patina_sdk::toys::LakeCursorRecord {
-                    source: config.source_id.clone(),
-                    data_type: data_type.clone(),
-                    cursor: rows.cursor.clone(),
-                    written,
-                    status: "ok".into(),
-                    last_error: None,
-                })?;
+            let written = lake_helpers::append_batch_with_cursor::<
+                patina_sdk::knowledge_child::host::GuestHost,
+            >(
+                "default",
+                &table,
+                &config.source_id,
+                &data_type,
+                &rows.rows_json,
+                rows.cursor.clone(),
+            )?;
             written_total += written;
             per_type.insert(
                 data_type,
@@ -167,58 +161,53 @@ impl DuckLakeChild {
         data_type: &str,
         since: Option<&str>,
     ) -> Result<FetchRows, String> {
-        let mut page = Some(1_u32);
         let mut rows = Vec::new();
 
-        while let Some(current_page) = page {
-            let params = patina_sdk::toys::GithubListParams {
-                since: since.map(ToString::to_string),
-                state: Some("all".to_string()),
-                page: Some(current_page),
-                per_page: Some(100),
-            };
-            let result = match data_type {
-                "issues" => self
-                    .toys
-                    .github
-                    .list_issues(&config.owner, &config.repo, &params),
-                "prs" | "pulls" => {
-                    self.toys
-                        .github
-                        .list_pulls(&config.owner, &config.repo, &params)
-                }
-                other => {
-                    return Err(format!(
-                        "unsupported data_type '{}' (expected issues or prs)",
-                        other
-                    ));
-                }
-            };
+        let pages = match data_type {
+            "issues" => {
+                github_helpers::list_all_issues::<patina_sdk::knowledge_child::host::GuestHost>(
+                    &config.owner,
+                    &config.repo,
+                    since.map(ToString::to_string),
+                    Some("all".to_string()),
+                    100,
+                )
+            }
+            "prs" | "pulls" => {
+                github_helpers::list_all_pulls::<patina_sdk::knowledge_child::host::GuestHost>(
+                    &config.owner,
+                    &config.repo,
+                    since.map(ToString::to_string),
+                    Some("all".to_string()),
+                    100,
+                )
+            }
+            other => {
+                return Err(format!(
+                    "unsupported data_type '{}' (expected issues or prs)",
+                    other
+                ));
+            }
+        };
 
-            let result = match result {
-                Ok(page_result) => page_result,
-                Err(error) => {
-                    if current_page == 1 {
-                        if let Some(fixture) = fixture_rows(data_type) {
-                            rows.extend(fixture);
-                            break;
-                        }
-                    }
+        let pages = match pages {
+            Ok(pages) => pages,
+            Err(error) => {
+                if let Some(fixture) = fixture_rows(data_type) {
+                    rows.extend(fixture);
+                    vec![]
+                } else {
                     return Err(error);
                 }
-            };
+            }
+        };
 
-            let page_rows = parse_rows(&result.items)?;
+        for page in pages {
+            let page_rows = parse_rows(&page)?;
             if page_rows.is_empty() {
-                break;
+                continue;
             }
             rows.extend(page_rows);
-
-            if result.has_next {
-                page = result.next_page;
-            } else {
-                page = None;
-            }
         }
 
         let cursor = rows

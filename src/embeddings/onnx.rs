@@ -452,7 +452,7 @@ mod tests {
 
         if !model_path.exists() || !tokenizer_path.exists() {
             eprintln!(
-                "Skipping ONNX test: model fixtures missing. Run ./scripts/download-model.sh all-minilm-l6-v2"
+                "Skipping ONNX test: model fixtures missing. Run ./resources/scripts/download-model.sh all-minilm-l6-v2"
             );
             return None;
         }

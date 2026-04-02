@@ -1,0 +1,13 @@
+[child]
+name = "lakehouse-catalog"
+kind = "knowledge-child"
+role = "app"
+
+[needs]
+toys = ["log", "state", "events", "store"]
+
+[needs.connections]
+default = { toy = "store" }
+
+[needs.scopes.events]
+subscribe = ["file.written"]

@@ -7,7 +7,7 @@ entrenchment: medium
 status: active
 endorsed: true
 extracted: 2026-03-08
-revised: 2026-03-08
+revised: 2026-03-25
 ---
 
 # connectors-never-materialize
@@ -26,7 +26,7 @@ Connectors are source-boundary adapters that own one external system boundary. T
 ## Supports
 
 - [[mother-owns-destination-format]] — Mother routes, lakehouse writes. This belief extends the principle: Mother routes, scope-appropriate materializers write. Connectors only fetch.
-- [[pipes-are-processes-not-wasm]] — children are single-purpose services. A connector that also materializes is two services in one binary.
+- [[children-have-agency-toys-are-capabilities]] — children are single-purpose workers with bounded agency; a connector that also materializes smears roles.
 - [[raw-lake-is-capture-contract-first]] — raw lake is about what gets captured, not how it's stored. Connector owns the "what" (domain records). Lakehouse owns the "how" (Parquet format).
 
 ## Attacks

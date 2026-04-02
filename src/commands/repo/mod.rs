@@ -64,6 +64,16 @@ pub enum RepoCommands {
         /// Also run oxidize to build semantic indices
         #[arg(long)]
         oxidize: bool,
+
+        /// Number of repositories to process concurrently (used with --all)
+        ///
+        /// Tip: with --oxidize, 2-3 jobs is usually best on laptops.
+        #[arg(long)]
+        jobs: Option<usize>,
+
+        /// Retry only repositories that failed in the previous batch run
+        #[arg(long)]
+        failed_only: bool,
     },
 
     /// Remove a repository
@@ -104,14 +114,30 @@ pub fn execute_cli(
             no_oxidize,
         },
         (Some(RepoCommands::List { status }), _) => RepoCommand::List { status },
-        (Some(RepoCommands::Update { name, all, oxidize }), _) => {
+        (
+            Some(RepoCommands::Update {
+                name,
+                all,
+                oxidize,
+                jobs,
+                failed_only,
+            }),
+            _,
+        ) => {
             if all {
                 RepoCommand::Update {
                     name: None,
                     oxidize,
+                    jobs,
+                    failed_only,
                 }
             } else {
-                RepoCommand::Update { name, oxidize }
+                RepoCommand::Update {
+                    name,
+                    oxidize,
+                    jobs,
+                    failed_only,
+                }
             }
         }
         (Some(RepoCommands::Remove { name }), _) => RepoCommand::Remove { name },
@@ -154,8 +180,8 @@ pub fn update(name: &str, oxidize: bool) -> Result<()> {
 }
 
 /// Update all repositories
-pub fn update_all(oxidize: bool) -> Result<()> {
-    internal::update_all_repos(oxidize)
+pub fn update_all(oxidize: bool, jobs: Option<usize>, failed_only: bool) -> Result<()> {
+    internal::update_all_repos(oxidize, jobs, failed_only)
 }
 
 /// Remove a repository
@@ -203,7 +229,7 @@ pub fn migrate_registry_paths() -> bool {
         // Check if path needs updating
         if entry.path != expected_path_str {
             // Verify the repo actually exists at the expected location
-            if expected_path.join(".patina/local/data/patina.db").exists()
+            if patina::eventlog::resolve_patina_db_path(&expected_path).exists()
                 || expected_path.join(".git").exists()
             {
                 updates.push((name.clone(), expected_path_str));
@@ -276,11 +302,22 @@ pub fn execute(command: RepoCommand) -> Result<()> {
             }
             Ok(())
         }
-        RepoCommand::Update { name, oxidize } => {
+        RepoCommand::Update {
+            name,
+            oxidize,
+            jobs,
+            failed_only,
+        } => {
             if let Some(n) = name {
+                if jobs.is_some() {
+                    println!("ℹ️  Ignoring --jobs for single repository update");
+                }
+                if failed_only {
+                    println!("ℹ️  Ignoring --failed-only for single repository update");
+                }
                 update(&n, oxidize)
             } else {
-                update_all(oxidize)
+                update_all(oxidize, jobs, failed_only)
             }
         }
         RepoCommand::Remove { name } => remove(&name),
@@ -302,6 +339,8 @@ pub enum RepoCommand {
     Update {
         name: Option<String>,
         oxidize: bool,
+        jobs: Option<usize>,
+        failed_only: bool,
     },
     Remove {
         name: String,

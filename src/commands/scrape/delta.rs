@@ -111,7 +111,7 @@ impl ScrapeDelta {
 pub fn compute_delta() -> Result<ScrapeDelta> {
     let start = Instant::now();
 
-    let db_path = Path::new(database::PATINA_DB);
+    let db_path = database::patina_db_path()?;
 
     // If DB doesn't exist, everything is "changed" — need full scrape
     if !db_path.exists() {
@@ -124,7 +124,7 @@ pub fn compute_delta() -> Result<ScrapeDelta> {
         });
     }
 
-    let conn = database::initialize(db_path)?;
+    let conn = database::initialize(&db_path)?;
 
     // 1. Check for new commits since last scrape
     let last_sha = database::get_last_processed(&conn, "git")?;

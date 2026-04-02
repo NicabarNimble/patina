@@ -8,6 +8,7 @@
 
 use std::cell::UnsafeCell;
 
+#[allow(dead_code)]
 pub(crate) struct WasmCell<T>(pub(crate) UnsafeCell<T>);
 
 #[cfg(not(target_feature = "atomics"))]

@@ -1,0 +1,14 @@
+package patina:events-stream@0.1.0;
+
+interface events-stream {
+    record event {
+        stream-name: string,
+        offset: u64,
+        event-type: string,
+        payload: string,
+        occurred-at: string,
+    }
+
+    subscribe: func(stream-name: string, after: option<u64>, limit: u32) -> result<list<event>, string>;
+    ack: func(stream-name: string, offset: u64) -> result<_, string>;
+}

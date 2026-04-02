@@ -10,28 +10,31 @@
 
 use std::path::PathBuf;
 
-use super::command::QueryDispatchFn;
-use super::{CredentialMapping, GrantedCapabilities, InjectionLocation, QueryScope};
+use super::{
+    CredentialMapping, GrantedCapabilities, InjectionLocation, QueryDispatchFn, QueryScope,
+};
 
 // =========================================================================
 // Log host support
 // =========================================================================
 
-/// Shared log implementation — formats and emits plugin log messages.
+/// Shared log implementation — formats and emits child log messages.
 pub(super) fn log(plugin_name: &str, level_str: &str, message: &str) {
-    eprintln!("[plugin:{}] {}: {}", plugin_name, level_str, message);
+    eprintln!("[child:{}] {}: {}", plugin_name, level_str, message);
 }
 
 // =========================================================================
 // Layer host support
 // =========================================================================
 
+#[allow(dead_code)]
 pub(super) fn find_project_root(project_root: &Option<PathBuf>) -> Option<String> {
     project_root
         .as_ref()
         .map(|p| p.to_string_lossy().to_string())
 }
 
+#[allow(dead_code)]
 pub(super) fn read_config(project_root: &Option<PathBuf>) -> Result<String, String> {
     let root = project_root
         .as_ref()
@@ -41,12 +44,14 @@ pub(super) fn read_config(project_root: &Option<PathBuf>) -> Result<String, Stri
     serde_json::to_string(&config).map_err(|e| format!("serialize config: {}", e))
 }
 
+#[allow(dead_code)]
 pub(super) fn detect_environment() -> Result<String, String> {
     let env =
         crate::environment::Environment::detect().map_err(|e| format!("detect env: {}", e))?;
     serde_json::to_string(&env).map_err(|e| format!("serialize env: {}", e))
 }
 
+#[allow(dead_code)]
 pub(super) fn get_stored_tools(project_root: &Option<PathBuf>) -> Vec<String> {
     let root = match project_root.as_ref() {
         Some(r) => r,
@@ -67,6 +72,7 @@ pub(super) fn get_stored_tools(project_root: &Option<PathBuf>) -> Vec<String> {
 /// F2 fix: rejects path traversal attempts (`../`, absolute paths).
 /// Returns 0 on invalid input — no information leak, no error message
 /// that confirms the traversal was attempted.
+#[allow(dead_code)]
 pub(super) fn count_layer_files(project_root: &Option<PathBuf>, subdir: &str) -> u32 {
     let root = match project_root.as_ref() {
         Some(r) => r,
@@ -93,11 +99,13 @@ pub(super) fn count_layer_files(project_root: &Option<PathBuf>, subdir: &str) ->
     }
 }
 
+#[allow(dead_code)]
 pub(super) fn get_project_uid(project_root: &Option<PathBuf>) -> Option<String> {
     let root = project_root.as_ref()?;
     crate::project::get_uid(root)
 }
 
+#[allow(dead_code)]
 pub(super) fn check_adapter_version(
     _project_root: &Option<PathBuf>,
     adapter_name: &str,
@@ -112,14 +120,16 @@ pub(super) fn check_adapter_version(
 // =========================================================================
 
 /// Keys in query params that are host-controlled and must not be
-/// set by plugins. The lib strips these before dispatch when the
-/// plugin's scope doesn't grant them.
+/// set by children. The lib strips these before dispatch when the
+/// child's scope doesn't grant them.
+#[allow(dead_code)]
 const SCOPE_RESERVED_KEYS: &[&str] = &["all_repos", "repo", "project_root", "db_path"];
 
 /// Sanitize query params by stripping scope-reserved keys.
 ///
 /// Called before dispatching to the binary callback.
 /// Testable independently of wasmtime infrastructure.
+#[allow(dead_code)]
 pub(super) fn sanitize_query_params(params: &str, scope: &QueryScope) -> String {
     let mut args: serde_json::Value = match serde_json::from_str(params) {
         Ok(v) => v,
@@ -146,6 +156,7 @@ pub(super) fn sanitize_query_params(params: &str, scope: &QueryScope) -> String 
 /// Defense in depth: kinds are validated at load time (check_capabilities)
 /// AND at call time (grants.query_kinds check below). Query scope is
 /// enforced at call time — all_repos requires AllRepos scope.
+#[allow(dead_code)]
 pub(crate) fn query(
     plugin_name: &str,
     grants: &GrantedCapabilities,
@@ -156,7 +167,7 @@ pub(crate) fn query(
     // Call-time gating: kind must be in granted set
     if !grants.query_kinds.contains(kind) {
         return Err(format!(
-            "query kind '{}' not granted for plugin '{}'",
+            "query kind '{}' not granted for child '{}'",
             kind, plugin_name
         ));
     }
@@ -168,10 +179,10 @@ pub(crate) fn query(
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
         if all_repos && !matches!(grants.query_scope, QueryScope::AllRepos) {
-            return Err("all_repos not allowed: plugin query_scope is current_project".to_string());
+            return Err("all_repos not allowed: child query_scope is current_project".to_string());
         }
         if all_repos {
-            eprintln!("[plugin:{}] query: all_repos=true (audit)", plugin_name);
+            eprintln!("[child:{}] query: all_repos=true (audit)", plugin_name);
         }
     }
 
@@ -233,29 +244,31 @@ pub(crate) fn validate_http_url(url: &str) -> Result<String, String> {
 }
 
 /// Result of an HTTP operation — plain types for cross-world portability.
+#[allow(dead_code)]
 pub(crate) struct HttpResult {
     pub status: u16,
     pub body: String,
 }
 
-/// Check if a plugin is granted access to a specific secret.
+/// Check if a child is granted access to a specific secret.
 ///
 /// Reads `~/.patina/plugin-config/secret-grants.toml`. Format:
 /// ```toml
-/// [my-plugin]
+/// [my-child]
 /// secrets = ["github-token"]
 /// ```
 ///
-/// Returns true only if the file exists, the plugin is listed, and the
-/// secret is in the plugin's `secrets` array. Denies by default.
+/// Returns true only if the file exists, the child is listed, and the
+/// secret is in the child's `secrets` array. Denies by default.
+#[allow(dead_code)]
 pub(super) fn check_secret_grant(plugin_name: &str, secret_name: &str) -> bool {
     let grants_path = crate::paths::child::secret_grants_path();
     let content = match std::fs::read_to_string(&grants_path) {
         Ok(c) => c,
         Err(_) => {
             eprintln!(
-                "[plugin:{}] no secret-grants.toml — run 'patina plugin grant {} {}' to allow",
-                plugin_name, plugin_name, secret_name
+                "[child:{}] no secret-grants.toml — add '{}' under child '{}' to allow",
+                plugin_name, secret_name, plugin_name
             );
             return false;
         }
@@ -264,7 +277,7 @@ pub(super) fn check_secret_grant(plugin_name: &str, secret_name: &str) -> bool {
         Ok(t) => t,
         Err(e) => {
             eprintln!(
-                "[plugin:{}] failed to parse secret-grants.toml: {}",
+                "[child:{}] failed to parse secret-grants.toml: {}",
                 plugin_name, e
             );
             return false;
@@ -274,7 +287,7 @@ pub(super) fn check_secret_grant(plugin_name: &str, secret_name: &str) -> bool {
         Some(t) => t,
         None => {
             eprintln!(
-                "[plugin:{}] not listed in secret-grants.toml — run 'patina plugin grant {} {}' to allow",
+                "[child:{}] not listed in secret-grants.toml — add child '{}' with secret '{}' to allow",
                 plugin_name, plugin_name, secret_name
             );
             return false;
@@ -287,8 +300,8 @@ pub(super) fn check_secret_grant(plugin_name: &str, secret_name: &str) -> bool {
         .unwrap_or(false);
     if !allowed {
         eprintln!(
-            "[plugin:{}] secret '{}' not granted — run 'patina plugin grant {} {}' to allow",
-            plugin_name, secret_name, plugin_name, secret_name
+            "[child:{}] secret '{}' not granted — add it under child '{}' in secret-grants.toml",
+            plugin_name, secret_name, plugin_name
         );
     }
     allowed
@@ -298,6 +311,7 @@ pub(super) fn check_secret_grant(plugin_name: &str, secret_name: &str) -> bool {
 ///
 /// Returns None if no mapping, not granted, secret missing, or decryption fails.
 /// Logs warnings for each denial — never errors out.
+#[allow(dead_code)]
 fn resolve_credential(
     plugin_name: &str,
     grants: &GrantedCapabilities,
@@ -314,14 +328,14 @@ fn resolve_credential(
         Ok(Some(value)) => Some((mapping.secret_name.clone(), value)),
         Ok(None) => {
             eprintln!(
-                "[plugin:{}] secret '{}' not found in vault, sending unauthenticated",
+                "[child:{}] secret '{}' not found in vault, sending unauthenticated",
                 plugin_name, mapping.secret_name
             );
             None
         }
         Err(e) => {
             eprintln!(
-                "[plugin:{}] failed to decrypt secret '{}': {}, sending unauthenticated",
+                "[child:{}] failed to decrypt secret '{}': {}, sending unauthenticated",
                 plugin_name, mapping.secret_name, e
             );
             None
@@ -330,6 +344,7 @@ fn resolve_credential(
 }
 
 /// Inject credential into a request builder based on the mapping's location.
+#[allow(dead_code)]
 pub(crate) fn inject_credential(
     builder: reqwest::blocking::RequestBuilder,
     mapping: &CredentialMapping,
@@ -342,6 +357,7 @@ pub(crate) fn inject_credential(
 
 /// Scan response body for leaked credential values, replacing with [REDACTED].
 ///
+#[allow(dead_code)]
 pub(crate) fn leak_check(body: &str, secret_name: &str, secret_value: &str) -> String {
     if body.contains(secret_value) {
         eprintln!(
@@ -360,11 +376,96 @@ pub(crate) fn leak_check(body: &str, secret_name: &str, secret_value: &str) -> S
 
 use crate::measure::{REGISTERED_TOOLS, VALID_VERBS};
 
-/// Record a measurement event from a plugin.
+pub(super) fn record_declared_metric(
+    plugin_name: &str,
+    declared_metrics: &std::collections::HashMap<String, super::DeclaredMetric>,
+    name: &str,
+    metric_type: super::DeclaredMetricType,
+    value: f64,
+    labels: &[(String, String)],
+) -> Result<(), String> {
+    let Some(policy) = declared_metrics.get(name) else {
+        return Err(format!(
+            "measure/undeclared-metric: '{}' is not declared in [needs.metrics]",
+            name
+        ));
+    };
+
+    if policy.metric_type != metric_type {
+        let expected = match policy.metric_type {
+            super::DeclaredMetricType::Gauge => "gauge",
+            super::DeclaredMetricType::Counter => "counter",
+        };
+        let got = match metric_type {
+            super::DeclaredMetricType::Gauge => "gauge",
+            super::DeclaredMetricType::Counter => "counter",
+        };
+        return Err(format!(
+            "measure/type-mismatch: metric '{}' declared as '{}' but got '{}'",
+            name, expected, got
+        ));
+    }
+
+    let allowed: std::collections::HashSet<&str> =
+        policy.labels.iter().map(String::as_str).collect();
+    let mut seen = std::collections::HashSet::new();
+    for (key, _) in labels {
+        if !allowed.contains(key.as_str()) {
+            return Err(format!(
+                "measure/undeclared-label: label '{}' not declared for metric '{}'",
+                key, name
+            ));
+        }
+        if !seen.insert(key.as_str()) {
+            return Err(format!(
+                "measure/duplicate-label: label '{}' repeated for metric '{}'",
+                key, name
+            ));
+        }
+    }
+
+    if labels.len() > 10 {
+        return Err(format!(
+            "measure/label-cap: metric '{}' exceeds max label keys (10)",
+            name
+        ));
+    }
+
+    let kind = match metric_type {
+        super::DeclaredMetricType::Gauge => "gauge",
+        super::DeclaredMetricType::Counter => "counter",
+    };
+
+    let conn = crate::eventlog::open_events_db().map_err(|e| format!("open events.db: {}", e))?;
+    let event_data = serde_json::json!({
+        "name": name,
+        "kind": kind,
+        "value": value,
+        "labels": labels,
+        "source": plugin_name,
+    });
+
+    let source_id = format!("child:{}:measure:{}", plugin_name, name);
+    let timestamp = chrono::Utc::now().to_rfc3339();
+    crate::eventlog::insert_event(
+        &conn,
+        "measure.metric",
+        &timestamp,
+        &source_id,
+        None,
+        &event_data.to_string(),
+    )
+    .map_err(|e| format!("insert declared metric event: {}", e))?;
+
+    Ok(())
+}
+
+/// Record a measurement event from a child.
 ///
 /// Validates verb, checks metrics are numeric JSON, writes to eventlog
-/// with source overridden to the plugin name (security: plugins can't
+/// with source overridden to the child name (security: children can't
 /// impersonate core).
+#[allow(dead_code)]
 pub(super) fn record_measurement(
     _project_root: &Option<PathBuf>,
     plugin_name: &str,
@@ -404,10 +505,10 @@ pub(super) fn record_measurement(
     }
 
     // Open events.db — measure.* events live in events.db, not patina.db.
-    // Core tools use eventlog::open_events_db(); plugins must use the same path.
+    // Core tools use eventlog::open_events_db(); children must use the same path.
     let conn = crate::eventlog::open_events_db().map_err(|e| format!("open events.db: {}", e))?;
 
-    // Build event data — source is always the plugin name
+    // Build event data — source is always the child name
     let event_data = serde_json::json!({
         "verb": verb,
         "tool": tool,
@@ -417,7 +518,7 @@ pub(super) fn record_measurement(
     });
 
     let event_type = format!("measure.{}", verb);
-    let source_id = format!("plugin:{}:{}:{}", plugin_name, tool, mode);
+    let source_id = format!("child:{}:{}:{}", plugin_name, tool, mode);
     let timestamp = chrono::Utc::now().to_rfc3339();
 
     crate::eventlog::insert_event(
@@ -439,13 +540,14 @@ pub(super) fn record_measurement(
 
 /// Validate emit parameters and resolve the event_type from cached schema.
 ///
-/// Pure validation — no disk I/O. Schemas are parsed once at plugin load
+/// Pure validation — no disk I/O. Schemas are parsed once at child load
 /// time and cached on GrantedCapabilities.schema_facts.
 ///
 /// Checks:
 /// 1. Schema exists in cached facts (was declared in manifest + installed)
 /// 2. Fact-type exists in schema (returns its event_type)
 /// 3. Data is valid JSON
+#[allow(dead_code)]
 pub(super) fn validate_emit(
     schema_facts: &std::collections::HashMap<String, std::collections::HashMap<String, String>>,
     plugin_name: &str,
@@ -456,7 +558,7 @@ pub(super) fn validate_emit(
     // 1. Schema must exist in cache (parsed at load time from manifest + disk)
     let facts = schema_facts.get(schema).ok_or_else(|| {
         format!(
-            "schema '{}' not available for plugin '{}' (not declared or not installed)",
+            "schema '{}' not available for child '{}' (not declared or not installed)",
             schema, plugin_name
         )
     })?;
@@ -473,62 +575,12 @@ pub(super) fn validate_emit(
     Ok(event_type.clone())
 }
 
-/// Emit a structured fact to the project eventlog.
-///
-/// Validates via cached schema facts (zero disk I/O), writes plugin data
-/// directly to events.db. Provenance is carried by source_id ("plugin:<name>"),
-/// schema by event_type (e.g., "github.issue"). No wrapper — data shape matches
-/// what downstream consumers expect.
-///
-/// data-architecture-v3 will add explicit provenance/schema columns; until then
-/// source_id and event_type carry the signal.
-///
-/// FROZEN LEGACY PATH — WASM facts bypass the broker routing engine.
-/// Knowledge children validate facts internally, which provides
-/// content-hash dedup, manifest schema validation, and transactional cursor writes.
-/// This direct-write path exists only for the forge WASM plugin. No new WASM children
-/// may use this path — all new children must be native and route through the broker.
-/// See DESIGN.md §5 (wasm-routing-resolved).
-pub(super) fn emit_fact(
-    schema_facts: &std::collections::HashMap<String, std::collections::HashMap<String, String>>,
-    plugin_name: &str,
-    schema: &str,
-    fact_type: &str,
-    data: &str,
-) -> Result<u64, String> {
-    let event_type = validate_emit(schema_facts, plugin_name, schema, fact_type, data)?;
-
-    let conn = crate::eventlog::open_events_db().map_err(|e| format!("open events.db: {}", e))?;
-
-    let timestamp = chrono::Utc::now().to_rfc3339();
-    let source_id = format!("plugin:{}", plugin_name);
-
-    // Write plugin data directly — no wrapper envelope.
-    // Provenance: 'external' — plugin-emitted facts are external evidence.
-    // Schema: event_type = "<schema>.<fact>" (e.g., "github.issue")
-    conn.execute(
-        "INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data, provenance)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        rusqlite::params![
-            &event_type,
-            &timestamp,
-            &source_id,
-            Option::<&str>::None,
-            data,
-            "external"
-        ],
-    )
-    .map_err(|e| format!("insert event: {}", e))?;
-
-    let seq = conn.last_insert_rowid() as u64;
-    Ok(seq)
-}
-
 /// Domain-allowlisted HTTP POST.
 ///
 /// Defense in depth: domains are validated at load time (check_capabilities)
 /// AND at call time (grants.http_domains check). URLs are sanitized by
 /// validate_http_url. Cross-domain redirects rejected by client policy.
+#[allow(dead_code)]
 pub(crate) fn http_post(
     http_client: &reqwest::blocking::Client,
     grants: &GrantedCapabilities,
@@ -540,7 +592,7 @@ pub(crate) fn http_post(
     let domain = validate_http_url(url)?;
     if !grants.http_domains.contains(&domain) {
         return Err(format!(
-            "domain '{}' not in allowlist for plugin '{}'",
+            "domain '{}' not in allowlist for child '{}'",
             domain, plugin_name
         ));
     }
@@ -580,6 +632,7 @@ pub(crate) fn http_post(
 }
 
 /// Domain-allowlisted HTTP GET.
+#[allow(dead_code)]
 pub(crate) fn http_get(
     http_client: &reqwest::blocking::Client,
     grants: &GrantedCapabilities,
@@ -589,7 +642,7 @@ pub(crate) fn http_get(
     let domain = validate_http_url(url)?;
     if !grants.http_domains.contains(&domain) {
         return Err(format!(
-            "domain '{}' not in allowlist for plugin '{}'",
+            "domain '{}' not in allowlist for child '{}'",
             domain, plugin_name
         ));
     }

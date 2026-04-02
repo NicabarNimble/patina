@@ -39,16 +39,23 @@ mod pipeline_bindings {
         world: "pipeline",
     });
 
-    // patina:host/log — delegates to host_support
-    impl patina::host::log::Host for PipelineHostState {
-        fn log(&mut self, level: patina::host::log::LogLevel, message: String) {
+    // wasi:logging/logging — delegates to host_support
+    impl wasi::logging::logging::Host for PipelineHostState {
+        fn log(&mut self, level: wasi::logging::logging::Level, context: String, message: String) {
             let level_str = match level {
-                patina::host::log::LogLevel::Debug => "DEBUG",
-                patina::host::log::LogLevel::Info => "INFO",
-                patina::host::log::LogLevel::Warn => "WARN",
-                patina::host::log::LogLevel::Error => "ERROR",
+                wasi::logging::logging::Level::Trace => "TRACE",
+                wasi::logging::logging::Level::Debug => "DEBUG",
+                wasi::logging::logging::Level::Info => "INFO",
+                wasi::logging::logging::Level::Warn => "WARN",
+                wasi::logging::logging::Level::Error => "ERROR",
+                wasi::logging::logging::Level::Critical => "CRITICAL",
             };
-            super::super::host_support::log(&self.plugin_name, level_str, &message);
+            let source = if context.trim().is_empty() {
+                self.plugin_name.clone()
+            } else {
+                format!("{}:{}", self.plugin_name, context)
+            };
+            super::super::host_support::log(&source, level_str, &message);
         }
     }
 }

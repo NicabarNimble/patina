@@ -6,15 +6,24 @@
 
 use anyhow::Result;
 use rusqlite::Connection;
+use std::path::PathBuf;
 
 // Re-export shared eventlog infrastructure
-// All scrape submodules use `database::insert_event`, `database::PATINA_DB`, etc.
+// All scrape submodules use `database::insert_event`, `database::patina_db_path`, etc.
 pub use patina::eventlog::get_last_processed;
 pub use patina::eventlog::initialize;
 pub use patina::eventlog::insert_event;
 pub use patina::eventlog::is_ref_repo;
 pub use patina::eventlog::set_last_processed;
-pub use patina::eventlog::PATINA_DB;
+
+/// Check that a string is a safe SQL identifier (alphanumeric + underscore only).
+pub(crate) fn is_safe_identifier(s: &str) -> bool {
+    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+pub fn patina_db_path() -> Result<PathBuf> {
+    patina::eventlog::patina_db_path()
+}
 
 // ============================================================================
 // Scrape-specific FTS population (not shared infrastructure)

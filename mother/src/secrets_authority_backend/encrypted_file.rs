@@ -20,7 +20,7 @@ const MIN_FILE_LEN: usize = HEADER_LEN + SALT_LEN + NONCE_LEN + TAG_LEN;
 
 fn debug_log(msg: &str) {
     if std::env::var("PATINA_LOG").is_ok() {
-        eprintln!("[DEBUG secrets::encrypted_file] {}", msg);
+        tracing::debug!(message = msg, "secrets::encrypted_file");
     }
 }
 
@@ -105,12 +105,8 @@ pub fn get_identity() -> Result<String> {
         let mode = perms.mode() & 0o777;
 
         if mode != 0o600 {
-            eprintln!(
-                "⚠️  Warning: Identity file has permissive permissions ({:o})",
-                mode
-            );
-            eprintln!("   Recommended: chmod 600 {}", path.display());
-            eprintln!("   File is encrypted but permissions should be owner-only.");
+            tracing::warn!(mode = mode, path = %path.display(), "identity file has permissive permissions");
+            tracing::warn!(path = %path.display(), "recommended: chmod 600 <path>; encrypted file should be owner-only");
         }
     }
 
@@ -302,7 +298,12 @@ fn validate_machine_id(id: &str) -> Result<()> {
 }
 
 fn write_atomic(path: &PathBuf, data: &[u8]) -> Result<()> {
-    let patina_dir = path.parent().expect("identity file has parent");
+    let patina_dir = path.parent().ok_or_else(|| {
+        anyhow::anyhow!(
+            "invalid identity path '{}': missing parent directory",
+            path.display()
+        )
+    })?;
     std::fs::create_dir_all(patina_dir)?;
 
     #[cfg(unix)]

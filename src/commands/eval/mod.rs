@@ -56,7 +56,7 @@ pub fn execute(dimension: Option<String>) -> Result<()> {
     println!("📊 Evaluation Framework\n");
     println!("Testing retrieval quality: unified pipeline + per-oracle ablation\n");
 
-    let db_path = ".patina/local/data/patina.db";
+    let db_path = eventlog::patina_db_path()?;
     let conn = Connection::open(db_path)?;
 
     // Create engines: unified (all oracles), ablation per-oracle, and belief delta
@@ -971,14 +971,14 @@ pub fn execute_feedback() -> Result<()> {
     let conn = eventlog::open_events_db()?;
 
     // ATTACH patina.db for git.commit data and structured commit_files table
-    let patina_path = std::path::Path::new(eventlog::PATINA_DB);
+    let patina_path = eventlog::patina_db_path()?;
     if !patina_path.exists() {
         println!("No patina.db found — cannot correlate queries with commits.");
         return Ok(());
     }
     conn.execute(
         "ATTACH DATABASE ?1 AS patina",
-        [patina_path.to_str().unwrap_or(eventlog::PATINA_DB)],
+        [patina_path.to_str().unwrap_or("patina.db")],
     )?;
 
     // Step 1: Session → commit SHA mapping from patina.db git.commit events.

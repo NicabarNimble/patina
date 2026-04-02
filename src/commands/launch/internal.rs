@@ -35,10 +35,10 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         }
     }
 
-    let patina_dir = project_path.join(".patina");
+    let patina_config = paths::project::config_path(&project_path);
     let adapter_name: String;
 
-    if !patina_dir.exists() {
+    if !patina_config.exists() {
         if options.auto_init {
             // Pass explicit_adapter - if Some, skip selection prompt
             match prompt_are_you_lost(&project_path, explicit_adapter.as_deref())? {
@@ -112,12 +112,6 @@ pub(crate) fn resolve_project_path(path_opt: Option<&str>) -> Result<PathBuf> {
         .with_context(|| format!("Project path does not exist: {}", path.display()))?;
 
     Ok(canonical)
-}
-
-/// Check if mother is running via UDS health endpoint
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn check_mother_health() -> bool {
-    mother_uptime_secs().is_some()
 }
 
 fn mother_uptime_secs() -> Option<u64> {

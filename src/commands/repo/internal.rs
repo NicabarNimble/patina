@@ -3,6 +3,7 @@
 //! Central storage at `~/.patina/cache/repos/` with registry at `~/.patina/registry.yaml`
 
 use anyhow::{bail, Context, Result};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -51,6 +52,12 @@ pub struct RepoEntry {
     pub synced_commit: Option<String>,
     #[serde(default)]
     pub domains: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct FailedBatchState {
+    failed: Vec<String>,
+    updated_at: String,
 }
 
 impl Registry {
@@ -239,67 +246,208 @@ pub fn update_repo(name: &str, oxidize: bool) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found", name))?
         .clone();
 
-    println!("🔄 Updating {}...\n", name);
-
-    let repo_path = Path::new(&entry.path);
-
-    // Ensure UID exists (migration for existing ref repos)
-    patina::project::create_uid_if_missing(repo_path)?;
-
-    // Git pull
-    println!("📥 Pulling latest changes...");
-    git_pull(repo_path)?;
-
-    // Re-scrape
-    println!("🔍 Re-scraping codebase...");
-    let event_count = scrape_repo(repo_path)?;
-
-    // Oxidize if requested
-    if oxidize {
-        println!("\n🧪 Building semantic indices...");
-        oxidize_repo(repo_path)?;
-    }
+    let synced_commit = run_repo_refresh(&entry, oxidize, true)?;
 
     // Record synced commit
     if let Some(entry) = registry.repos.get_mut(name) {
-        entry.synced_commit = get_head_sha(repo_path);
+        entry.synced_commit = synced_commit;
         registry.save()?;
-    }
-
-    println!("\n✅ Updated {} ({} events)", name, event_count);
-    if oxidize {
-        println!("   Semantic indices built - scry will use vector search");
     }
 
     Ok(())
 }
 
 /// Update all repositories
-pub fn update_all_repos(oxidize: bool) -> Result<()> {
-    let repos = list_repos()?;
+pub fn update_all_repos(oxidize: bool, jobs: Option<usize>, failed_only: bool) -> Result<()> {
+    let mut repos = list_repos()?;
+
+    if failed_only {
+        let failed = load_failed_batch_list()?;
+        if failed.is_empty() {
+            println!("No previous batch failures recorded.");
+            return Ok(());
+        }
+        repos.retain(|repo| failed.contains(&repo.name));
+    }
 
     if repos.is_empty() {
-        println!("No repositories to update.");
+        if failed_only {
+            println!("No repositories matched previous failed batch entries.");
+        } else {
+            println!("No repositories to update.");
+        }
         return Ok(());
     }
 
-    println!("🔄 Updating {} repositories...\n", repos.len());
+    let requested_jobs = jobs.unwrap_or(default_jobs(oxidize));
+    let effective_jobs = effective_jobs(requested_jobs, repos.len(), oxidize);
 
-    let mut success = 0;
-    for repo in &repos {
-        print!("  {} ... ", repo.name);
-        match update_repo(&repo.name, oxidize) {
-            Ok(_) => {
-                println!("✓");
+    println!("🔄 Updating {} repositories...\n", repos.len());
+    println!("   Mode: batch update (jobs={})", effective_jobs);
+    if oxidize && effective_jobs > 3 {
+        println!("   ⚠ high jobs with --oxidize may oversubscribe CPU; prefer 2-3 jobs on laptops");
+    }
+
+    let results: Vec<(String, Result<Option<String>, String>)> = if effective_jobs > 1 {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(effective_jobs)
+            .build()
+            .context("failed to build rayon thread pool")?;
+        pool.install(|| {
+            repos
+                .par_iter()
+                .map(|repo| {
+                    (
+                        repo.name.clone(),
+                        run_repo_refresh(repo, oxidize, false).map_err(|e| e.to_string()),
+                    )
+                })
+                .collect()
+        })
+    } else {
+        repos
+            .iter()
+            .map(|repo| {
+                (
+                    repo.name.clone(),
+                    run_repo_refresh(repo, oxidize, false).map_err(|e| e.to_string()),
+                )
+            })
+            .collect()
+    };
+
+    let mut registry = Registry::load()?;
+    let mut success = 0usize;
+    let mut failures: Vec<(String, String)> = Vec::new();
+    for (name, result) in results {
+        match result {
+            Ok(synced_commit) => {
+                if let Some(entry) = registry.repos.get_mut(&name) {
+                    entry.synced_commit = synced_commit;
+                }
+                println!("  {} ... ✓", name);
                 success += 1;
             }
-            Err(e) => println!("✗ {}", e),
+            Err(error) => {
+                println!("  {} ... ✗ {}", name, error);
+                failures.push((name, error));
+            }
         }
     }
 
+    save_failed_batch_list(failures.iter().map(|(name, _)| name.clone()).collect())?;
+
+    registry.save()?;
+
     println!("\n✅ Updated {}/{} repositories", success, repos.len());
 
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        println!("\n❌ Failed repositories:");
+        for (name, error) in &failures {
+            println!("  - {}: {}", name, error);
+        }
+        bail!(
+            "{} repository updates failed ({} succeeded)",
+            failures.len(),
+            success
+        )
+    }
+}
+
+fn default_jobs(oxidize: bool) -> usize {
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    if oxidize {
+        2.min(cores.max(1))
+    } else {
+        4.min(cores.max(1))
+    }
+}
+
+fn effective_jobs(requested_jobs: usize, repo_count: usize, oxidize: bool) -> usize {
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .max(1);
+    let max_safe = if oxidize { (cores / 2).max(1) } else { cores };
+    requested_jobs.max(1).min(repo_count.max(1)).min(max_safe)
+}
+
+fn failed_batch_state_path() -> std::path::PathBuf {
+    paths::patina_home().join("local/repo-update-failures.json")
+}
+
+fn load_failed_batch_list() -> Result<Vec<String>> {
+    let path = failed_batch_state_path();
+    load_failed_batch_list_from(&path)
+}
+
+fn load_failed_batch_list_from(path: &Path) -> Result<Vec<String>> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let content =
+        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    let state: FailedBatchState = serde_json::from_str(&content)
+        .with_context(|| format!("Failed to parse {}", path.display()))?;
+    Ok(state.failed)
+}
+
+fn save_failed_batch_list(failed: Vec<String>) -> Result<()> {
+    let path = failed_batch_state_path();
+    save_failed_batch_list_to(&path, failed)
+}
+
+fn save_failed_batch_list_to(path: &Path, failed: Vec<String>) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let state = FailedBatchState {
+        failed,
+        updated_at: chrono::Utc::now().to_rfc3339(),
+    };
+    let content = serde_json::to_string_pretty(&state)?;
+    fs::write(path, content).with_context(|| format!("Failed to write {}", path.display()))?;
     Ok(())
+}
+
+fn run_repo_refresh(entry: &RepoEntry, oxidize: bool, verbose: bool) -> Result<Option<String>> {
+    if verbose {
+        println!("🔄 Updating {}...\n", entry.name);
+    }
+
+    let repo_path = Path::new(&entry.path);
+
+    patina::project::create_uid_if_missing(repo_path)?;
+
+    if verbose {
+        println!("📥 Pulling latest changes...");
+    }
+    git_pull(repo_path)?;
+
+    if verbose {
+        println!("🔍 Re-scraping codebase...");
+    }
+    let event_count = scrape_repo(repo_path)?;
+
+    if oxidize {
+        if verbose {
+            println!("\n🧪 Building semantic indices...");
+        }
+        oxidize_repo(repo_path)?;
+    }
+
+    if verbose {
+        println!("\n✅ Updated {} ({} events)", entry.name, event_count);
+        if oxidize {
+            println!("   Semantic indices built - scry will use vector search");
+        }
+    }
+
+    Ok(get_head_sha(repo_path))
 }
 
 /// Remove a repository
@@ -373,7 +521,7 @@ pub fn show_repo(name: &str) -> Result<()> {
     }
 
     // Show event count from database
-    let db_path = repo_path.join(".patina/local/data/patina.db");
+    let db_path = patina::eventlog::resolve_patina_db_path(repo_path);
     if db_path.exists() {
         if let Ok(conn) = rusqlite::Connection::open(&db_path) {
             if let Ok(count) = conn.query_row("SELECT COUNT(*) FROM eventlog", [], |row| {
@@ -395,7 +543,7 @@ pub fn get_repo_db_path(name: &str) -> Result<String> {
         .get(name)
         .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found", name))?;
 
-    let db_path = Path::new(&entry.path).join(".patina/local/data/patina.db");
+    let db_path = patina::eventlog::resolve_patina_db_path(Path::new(&entry.path));
     if !db_path.exists() {
         bail!(
             "Database not found for '{}'. Run 'patina repo update {}' to rebuild.",
@@ -1080,5 +1228,31 @@ mod tests {
     fn test_validate_repo_path_outside() {
         let cache = Path::new("/home/user/.patina/cache/repos");
         assert!(validate_repo_path("/tmp/evil", cache, "evil").is_err());
+    }
+
+    #[test]
+    fn test_effective_jobs_clamps_to_repo_count() {
+        assert_eq!(effective_jobs(8, 2, false), 2);
+    }
+
+    #[test]
+    fn test_effective_jobs_clamps_to_at_least_one() {
+        assert_eq!(effective_jobs(0, 0, true), 1);
+    }
+
+    #[test]
+    fn test_default_jobs_is_non_zero() {
+        assert!(default_jobs(true) >= 1);
+        assert!(default_jobs(false) >= 1);
+    }
+
+    #[test]
+    fn test_failed_batch_state_roundtrip() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let state_path = temp_dir.path().join("repo-update-failures.json");
+
+        save_failed_batch_list_to(&state_path, vec!["a/b".to_string(), "c/d".to_string()]).unwrap();
+        let loaded = load_failed_batch_list_from(&state_path).unwrap();
+        assert_eq!(loaded, vec!["a/b".to_string(), "c/d".to_string()]);
     }
 }

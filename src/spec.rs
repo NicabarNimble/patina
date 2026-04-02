@@ -581,6 +581,18 @@ pub struct SpecFrontmatter {
     /// Parent spec ID (set by split)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub split_from: Option<String>,
+
+    /// Commit SHA this spec was last validated against for freshness checks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validated_against_commit: Option<String>,
+
+    /// Last freshness validation date/time (ISO date or RFC3339).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_freshness_check: Option<String>,
+
+    /// Paths/contracts validated during the freshness pass.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub freshness_scope: Vec<String>,
 }
 
 // ============================================================================

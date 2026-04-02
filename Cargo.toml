@@ -1,11 +1,11 @@
 [workspace]
-members = [".", "mother", "sdk/patina-sdk", "sdk/patina-sdk-core", "sdk/patina-sdk-data", "sdk/patina-sdk-agent", "plugins/models", "plugins/repos", "plugins/doctor", "children/ducklake", "children/belief-verifier", "children/session-writer", "children/spec-manager", "children/doctor", "children/lake-manager", "crates/patina-core", "crates/patina-protocol"]
+members = [".", "mother", "sdk/patina-sdk", "children/ducklake", "children/belief-verifier", "children/session-writer", "children/spec-manager", "children/doctor", "children/lake-manager", "children/folder-text-to-parquet", "children/file-system-monitor", "children/content-extractor", "children/schema-enforcer", "children/dedup-filter", "children/record-writer", "children/lakehouse-catalog", "crates/patina-core", "crates/patina-protocol"]
 exclude = ["layer/dust"]
 resolver = "2"
 
 [package]
 name = "patina-ai"
-version = "0.43.13"
+version = "0.45.7"
 edition = "2021"
 license = "MIT"
 description = "Context orchestration for AI development - captures and evolves patterns over time"
@@ -14,8 +14,9 @@ keywords = ["ai", "development", "patterns", "context", "embeddings"]
 categories = ["command-line-utilities", "development-tools"]
 
 [features]
-default = ["bundled-doctor"]
+default = ["bundled-doctor", "duckdb-bundled"]
 bundled-doctor = []  # Compiled-in doctor fallback — disable for smaller binary (WASM-only doctor)
+duckdb-bundled = ["duckdb/bundled"]  # Compile DuckDB C++ from source — disable when system libduckdb is available
 dev = []  # Developer commands - not included in user builds
 
 [dependencies]
@@ -45,6 +46,7 @@ which = "7.0"
 
 # HTTP client (blocking only - no async)
 reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false }
+hyper = "1"
 
 # HTTP request parser (zero-copy, zero deps) — blocking microserver
 httparse = "1.10"
@@ -91,7 +93,7 @@ usearch = "2.21"                                                     # Fast vect
 safetensors = "0.7"                                                  # Standard weight format (MLX-compatible, HuggingFace)
 zerocopy = "0.7"                                                     # Efficient vector byte conversion
 regex = "1.12.2"
-duckdb = { version = "1", features = ["bundled"] }
+duckdb = { version = "1" }
 
 # WASM plugin runtime
 wasmtime = { version = "=41", default-features = false, features = [
@@ -102,6 +104,7 @@ wasmtime = { version = "=41", default-features = false, features = [
 # WASI support — wasm32-wasip2 components always import basic WASI (stdio, env, clocks)
 # even for pure-computation code. p2 feature = WASIp2 component model.
 wasmtime-wasi = { version = "=41", default-features = false, features = ["p2"] }
+wasmtime-wasi-http = { version = "=41", default-features = false, features = ["default-send-request"] }
 
 mother-crate = { package = "mother", path = "mother" }
 patina-core = { path = "crates/patina-core" }

@@ -11,11 +11,31 @@ pub struct ChildHealthInfo {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct ProjectDatabasesInfo {
+    #[serde(default)]
+    pub events_db_bytes: Option<u64>,
+    #[serde(default)]
+    pub patina_db_bytes: Option<u64>,
+    #[serde(default)]
+    pub runtime_db_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct HealthInfo {
     pub version: String,
     pub uptime_secs: u64,
     #[serde(default)]
     pub children: Vec<ChildHealthInfo>,
+    #[serde(default)]
+    pub child_count: usize,
+    #[serde(default)]
+    pub registered_projects: usize,
+    #[serde(default)]
+    pub active_project_uid: Option<String>,
+    #[serde(default)]
+    pub active_project_databases: Option<ProjectDatabasesInfo>,
+    #[serde(default)]
+    pub state_db_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -128,4 +148,50 @@ fn query_health(socket_path: &Path) -> Result<HealthInfo> {
     let body = &response_str[body_start..];
 
     serde_json::from_str(body).with_context(|| "parsing health response")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn health_info_parses_legacy_shape() {
+        let json = r#"{"version":"0.1.0","uptime_secs":10,"children":[]}"#;
+        let info: HealthInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.version, "0.1.0");
+        assert_eq!(info.uptime_secs, 10);
+        assert_eq!(info.child_count, 0);
+        assert_eq!(info.registered_projects, 0);
+        assert!(info.active_project_uid.is_none());
+        assert!(info.active_project_databases.is_none());
+    }
+
+    #[test]
+    fn health_info_parses_deep_shape() {
+        let json = r#"{
+            "version":"0.2.0",
+            "uptime_secs":20,
+            "children":[{"name":"ducklake","status":"healthy"}],
+            "child_count":1,
+            "registered_projects":3,
+            "active_project_uid":"2bdc808e",
+            "active_project_databases":{
+                "events_db_bytes":100,
+                "patina_db_bytes":200,
+                "runtime_db_bytes":50
+            },
+            "state_db_bytes":400
+        }"#;
+        let info: HealthInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.child_count, 1);
+        assert_eq!(info.registered_projects, 3);
+        assert_eq!(info.active_project_uid.as_deref(), Some("2bdc808e"));
+        assert_eq!(
+            info.active_project_databases
+                .as_ref()
+                .and_then(|d| d.events_db_bytes),
+            Some(100)
+        );
+        assert_eq!(info.state_db_bytes, Some(400));
+    }
 }

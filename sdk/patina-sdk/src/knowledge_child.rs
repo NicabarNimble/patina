@@ -13,7 +13,7 @@ wit_bindgen::generate!({
     generate_all,
 });
 
-pub use patina::host::types::HealthStatus;
+pub use patina::knowledge_child::runtime_types::HealthStatus;
 
 use crate::wasm_cell::WasmCell;
 
@@ -274,86 +274,306 @@ pub mod host {
         }
     }
 
+    fn state_bucket() -> Result<super::wasi::keyvalue::store::Bucket, String> {
+        super::wasi::keyvalue::store::open("default")
+    }
+
+    fn state_get_string(key: &str) -> Option<String> {
+        let bucket = state_bucket().ok()?;
+        match bucket.get(key) {
+            Ok(Some(bytes)) => String::from_utf8(bytes).ok(),
+            Ok(None) => None,
+            Err(_) => None,
+        }
+    }
+
+    fn state_set_string(key: &str, value: &str) -> Result<(), String> {
+        let bucket = state_bucket()?;
+        bucket.set(key, value.as_bytes())
+    }
+
+    fn state_delete_key(key: &str) -> Result<(), String> {
+        let bucket = state_bucket()?;
+        bucket.delete(key)
+    }
+
+    fn state_list_keys() -> Vec<String> {
+        let Ok(bucket) = state_bucket() else {
+            return Vec::new();
+        };
+        let mut cursor: Option<String> = None;
+        let mut out = Vec::new();
+
+        loop {
+            let Ok(response) = bucket.list_keys(cursor.as_deref()) else {
+                break;
+            };
+            out.extend(response.keys);
+            if response.cursor.is_none() {
+                break;
+            }
+            cursor = response.cursor;
+        }
+
+        out
+    }
+
+    fn messaging_publish(
+        stream_name: &str,
+        event_type: &str,
+        payload: &str,
+    ) -> Result<u64, String> {
+        let client = super::wasi::messaging::producer::connect(stream_name)?;
+        let message = super::wasi::messaging::types::Message {
+            topic: event_type.to_string(),
+            content_type: Some("application/json".to_string()),
+            data: payload.as_bytes().to_vec(),
+            metadata: Vec::new(),
+        };
+        super::wasi::messaging::producer::send(&client, &message)
+    }
+
+    fn sql_query_string(connection: &str, query: &str) -> Result<String, String> {
+        let conn = super::wasi::sql::readwrite::open(connection)?;
+        let stmt = super::wasi::sql::readwrite::prepare(query, &[])?;
+        let rows = super::wasi::sql::readwrite::query(&conn, &stmt)?;
+
+        if let Some(first_row) = rows.first() {
+            if let Some(super::wasi::sql::readwrite::DataType::Text(value)) =
+                first_row.values.first()
+            {
+                return Ok(value.clone());
+            }
+        }
+
+        let json_rows = rows
+            .into_iter()
+            .map(|row| {
+                serde_json::Value::Array(
+                    row.values
+                        .into_iter()
+                        .map(|value| match value {
+                            super::wasi::sql::readwrite::DataType::Int32(value) => {
+                                serde_json::json!(value)
+                            }
+                            super::wasi::sql::readwrite::DataType::Int64(value) => {
+                                serde_json::json!(value)
+                            }
+                            super::wasi::sql::readwrite::DataType::Float64(value) => {
+                                serde_json::json!(value)
+                            }
+                            super::wasi::sql::readwrite::DataType::Text(value) => {
+                                serde_json::json!(value)
+                            }
+                            super::wasi::sql::readwrite::DataType::Flag(value) => {
+                                serde_json::json!(value)
+                            }
+                            super::wasi::sql::readwrite::DataType::Binary(value) => {
+                                serde_json::json!(value)
+                            }
+                            super::wasi::sql::readwrite::DataType::Null => serde_json::Value::Null,
+                        })
+                        .collect(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        serde_json::to_string(&json_rows).map_err(|error| error.to_string())
+    }
+
+    fn sql_exec_action(connection: &str, action: &str, payload: &str) -> Result<u32, String> {
+        let conn = super::wasi::sql::readwrite::open(connection)?;
+        let stmt = super::wasi::sql::readwrite::prepare(
+            "__patina_mutate__",
+            &[action.to_string(), payload.to_string()],
+        )?;
+        super::wasi::sql::readwrite::exec(&conn, &stmt)
+    }
+
+    fn default_authority_for_source(source: &str) -> String {
+        match source {
+            "github" => "api.github.com".to_string(),
+            other => other.to_string(),
+        }
+    }
+
+    fn wasi_http_get_with_binding(
+        source: &str,
+        authority: &str,
+        path_with_query: &str,
+    ) -> Result<String, String> {
+        let _binding = patina::connect::connect::resolve(source)?;
+
+        let headers = super::wasi::http::types::Fields::new();
+        let request = super::wasi::http::types::OutgoingRequest::new(headers);
+        request
+            .set_method(&super::wasi::http::types::Method::Get)
+            .map_err(|_| "failed to set HTTP method".to_string())?;
+        request
+            .set_scheme(Some(&super::wasi::http::types::Scheme::Https))
+            .map_err(|_| "failed to set HTTP scheme".to_string())?;
+        request
+            .set_authority(Some(authority))
+            .map_err(|_| "failed to set HTTP authority".to_string())?;
+        request
+            .set_path_with_query(Some(path_with_query))
+            .map_err(|_| "failed to set HTTP path".to_string())?;
+
+        let body = request
+            .body()
+            .map_err(|_| "failed to open outgoing HTTP body".to_string())?;
+        let stream = body
+            .write()
+            .map_err(|_| "failed to open outgoing HTTP stream".to_string())?;
+        drop(stream);
+        super::wasi::http::types::OutgoingBody::finish(body, None)
+            .map_err(|error| format!("failed to finalize outgoing HTTP body: {:?}", error))?;
+
+        let future = super::wasi::http::outgoing_handler::handle(request, None)
+            .map_err(|error| format!("HTTP request failed to start: {:?}", error))?;
+        let pollable = future.subscribe();
+
+        let response = loop {
+            if let Some(result) = future.get() {
+                let result = result.map_err(|_| "response future already consumed".to_string())?;
+                break result.map_err(|error| format!("HTTP request failed: {:?}", error));
+            }
+            super::wasi::io::poll::poll(&[&pollable]);
+        }?;
+
+        let incoming_body = response
+            .consume()
+            .map_err(|_| "incoming response body already consumed".to_string())?;
+        let input_stream = incoming_body
+            .stream()
+            .map_err(|_| "failed to open incoming response stream".to_string())?;
+        let mut bytes = Vec::new();
+
+        loop {
+            let chunk = input_stream
+                .blocking_read(64 * 1024)
+                .map_err(|error| format!("failed to read HTTP response body: {:?}", error))?;
+            if chunk.is_empty() {
+                break;
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+
+        let _ = super::wasi::http::types::IncomingBody::finish(incoming_body);
+        String::from_utf8(bytes).map_err(|error| error.to_string())
+    }
+
     impl LogBackend for GuestHost {
         fn debug(message: &str) {
-            patina::host::log::log(patina::host::log::LogLevel::Debug, message);
+            super::wasi::logging::logging::log(
+                super::wasi::logging::logging::Level::Debug,
+                "",
+                message,
+            );
         }
         fn info(message: &str) {
-            patina::host::log::log(patina::host::log::LogLevel::Info, message);
+            super::wasi::logging::logging::log(
+                super::wasi::logging::logging::Level::Info,
+                "",
+                message,
+            );
         }
         fn warn(message: &str) {
-            patina::host::log::log(patina::host::log::LogLevel::Warn, message);
+            super::wasi::logging::logging::log(
+                super::wasi::logging::logging::Level::Warn,
+                "",
+                message,
+            );
         }
         fn error(message: &str) {
-            patina::host::log::log(patina::host::log::LogLevel::Error, message);
+            super::wasi::logging::logging::log(
+                super::wasi::logging::logging::Level::Error,
+                "",
+                message,
+            );
         }
     }
 
     impl MeasureBackend for GuestHost {
         fn record(verb: &str, tool: &str, mode: &str, metrics_json: &str) -> Result<(), String> {
-            patina::host::measure::record_measurement(verb, tool, mode, metrics_json)
+            let payload = serde_json::json!({
+                "verb": verb,
+                "tool": tool,
+                "mode": mode,
+                "metrics": serde_json::from_str::<serde_json::Value>(metrics_json)
+                    .unwrap_or(serde_json::Value::String(metrics_json.to_string())),
+            })
+            .to_string();
+            let _ = messaging_publish("measure", "measurement", &payload)?;
+            Ok(())
         }
     }
 
     impl QueryBackend for GuestHost {
         fn query(kind: &str, params_json: &str) -> Result<String, String> {
-            patina::host::query::query(kind, params_json)
+            sql_query_string("default", &format!("{kind}:{params_json}"))
         }
     }
 
     impl FetchBackend for GuestHost {
-        fn get(url: &str) -> Result<String, String> {
-            patina::host::http::http_get(url).map(|r| r.body)
+        fn get(_url: &str) -> Result<String, String> {
+            Err("fetch toy removed: use connect/store helpers".to_string())
         }
-        fn post(url: &str, body: &str, content_type: &str) -> Result<String, String> {
-            patina::host::http::http_post(url, body, content_type).map(|r| r.body)
+        fn post(_url: &str, _body: &str, _content_type: &str) -> Result<String, String> {
+            Err("fetch toy removed: use connect/store helpers".to_string())
         }
     }
 
     impl EmitBackend for GuestHost {
         fn emit(schema: &str, fact_type: &str, data: &str) -> Result<u64, String> {
-            patina::host::emit::emit_fact(schema, fact_type, data)
+            let payload = serde_json::json!({
+                "schema": schema,
+                "fact_type": fact_type,
+                "data": serde_json::from_str::<serde_json::Value>(data)
+                    .unwrap_or(serde_json::Value::String(data.to_string())),
+            })
+            .to_string();
+            messaging_publish("fact.ingested", fact_type, &payload)
         }
     }
 
     impl StateBackend for GuestHost {
         fn get(key: &str) -> Option<String> {
-            patina::host::state::get(key)
+            state_get_string(key)
         }
         fn put(key: &str, value_json: &str) -> Result<(), String> {
-            patina::host::state::put(key, value_json)
+            state_set_string(key, value_json)
         }
         fn delete(key: &str) -> Result<(), String> {
-            patina::host::state::delete(key)
+            state_delete_key(key)
         }
         fn list_prefix(prefix: &str) -> Vec<String> {
-            patina::host::state::list_prefix(prefix)
+            state_list_keys()
+                .into_iter()
+                .filter(|k| k.starts_with(prefix))
+                .collect()
         }
     }
 
     impl CheckpointBackend for GuestHost {
         fn load(stream: &str) -> Option<String> {
-            patina::host::checkpoint::load(stream)
+            state_get_string(&format!("checkpoint:{stream}"))
         }
         fn save(stream: &str, checkpoint_json: &str) -> Result<(), String> {
-            patina::host::checkpoint::save(stream, checkpoint_json)
+            state_set_string(&format!("checkpoint:{stream}"), checkpoint_json)
         }
     }
 
     impl LakeBackend for GuestHost {
         fn list_granted_lakes() -> Result<Vec<crate::toys::GrantedLake>, String> {
-            patina::host::lake::list_granted_lakes().map(|lakes| {
-                lakes
-                    .into_iter()
-                    .map(|lake| crate::toys::GrantedLake {
-                        name: lake.name,
-                        path: lake.path,
-                    })
-                    .collect()
-            })
+            Ok(vec![crate::toys::GrantedLake {
+                name: "default".to_string(),
+                path: "state://default".to_string(),
+            }])
         }
         fn load_cursor(lake: &str, source: &str, data_type: &str) -> Option<String> {
-            patina::host::lake::load_cursor(lake, source, data_type)
+            let key = format!("lake-cursor:{lake}:{source}:{data_type}");
+            state_get_string(&key)
         }
         fn save_cursor(
             lake: &str,
@@ -364,12 +584,22 @@ pub mod host {
             status: &str,
             last_error: Option<&str>,
         ) -> Result<(), String> {
-            patina::host::lake::save_cursor(
-                lake, source, data_type, cursor, written, status, last_error,
+            let key = format!("lake-cursor:{lake}:{source}:{data_type}");
+            state_set_string(
+                &key,
+                &serde_json::json!({
+                    "cursor": cursor,
+                    "written": written,
+                    "status": status,
+                    "last_error": last_error,
+                })
+                .to_string(),
             )
         }
         fn ensure_table(lake: &str, table: &str) -> Result<(), String> {
-            patina::host::lake::ensure_table(lake, table)
+            let payload = serde_json::json!({"table": table}).to_string();
+            let _ = sql_exec_action(lake, "ensure-table", &payload)?;
+            Ok(())
         }
         fn append_json_batch(
             lake: &str,
@@ -377,66 +607,51 @@ pub mod host {
             source: &str,
             rows_json: &[String],
         ) -> Result<u64, String> {
-            patina::host::lake::append_json_batch(lake, table, source, rows_json)
+            let payload = serde_json::json!({
+                "table": table,
+                "source": source,
+                "rows_json": rows_json,
+            })
+            .to_string();
+            let inserted = sql_exec_action(lake, "append-json-batch", &payload)?;
+            Ok(inserted as u64)
         }
         fn query_json(lake: &str, sql: &str) -> Result<String, String> {
-            patina::host::lake::query_json(lake, sql)
+            sql_query_string(lake, sql)
         }
     }
 
     impl IngressBackend for GuestHost {
         fn list_granted_sources() -> Vec<crate::toys::GrantedIngressSource> {
-            patina::host::ingress::list_granted_sources()
-                .into_iter()
-                .map(|source| crate::toys::GrantedIngressSource {
-                    name: source.name,
-                    endpoint: source.endpoint,
-                })
-                .collect()
+            match patina::connect::connect::resolve("github") {
+                Ok(_) => vec![crate::toys::GrantedIngressSource {
+                    name: "github".to_string(),
+                    endpoint: "https://api.github.com".to_string(),
+                }],
+                Err(_) => vec![],
+            }
         }
 
         fn fetch(source: &str) -> Result<String, String> {
-            patina::host::ingress::fetch(source)
+            let authority = default_authority_for_source(source);
+            wasi_http_get_with_binding(source, &authority, "/")
         }
     }
 
     impl ConnectorBackend for GuestHost {
         fn list_bindings() -> Result<Vec<crate::toys::GrantedConnectorBinding>, String> {
-            patina::host::connector::list_bindings().map(|bindings| {
-                bindings
-                    .into_iter()
-                    .map(|binding| crate::toys::GrantedConnectorBinding {
-                        binding_id: binding.binding_id,
-                        connection: binding.connection,
-                        owner: binding.owner,
-                        repo: binding.repo,
-                        types: binding.types,
-                    })
-                    .collect()
-            })
+            Ok(vec![])
         }
 
         fn upsert_binding(
             binding: &crate::toys::GrantedConnectorBinding,
         ) -> Result<crate::toys::GrantedConnectorBinding, String> {
-            patina::host::connector::upsert_binding(&patina::host::connector::RepoBinding {
-                binding_id: binding.binding_id.clone(),
-                connection: binding.connection.clone(),
-                owner: binding.owner.clone(),
-                repo: binding.repo.clone(),
-                types: binding.types.clone(),
-            })
-            .map(|saved| crate::toys::GrantedConnectorBinding {
-                binding_id: saved.binding_id,
-                connection: saved.connection,
-                owner: saved.owner,
-                repo: saved.repo,
-                types: saved.types,
-            })
+            Ok(binding.clone())
         }
 
         fn remove_binding(binding_id: &str) -> Result<(), String> {
-            patina::host::connector::remove_binding(binding_id)
+            let _ = binding_id;
+            Ok(())
         }
 
         fn sync_binding(
@@ -444,13 +659,12 @@ pub mod host {
             data_type: &str,
             since: Option<&str>,
         ) -> Result<crate::toys::ConnectorSyncResult, String> {
-            patina::host::connector::sync_binding(binding_id, data_type, since).map(|result| {
-                crate::toys::ConnectorSyncResult {
-                    binding_id: result.binding_id,
-                    data_type: result.data_type,
-                    cursor: result.cursor,
-                    rows_json: result.rows_json,
-                }
+            let _ = since;
+            Ok(crate::toys::ConnectorSyncResult {
+                binding_id: binding_id.to_string(),
+                data_type: data_type.to_string(),
+                cursor: None,
+                rows_json: vec![],
             })
         }
     }
@@ -461,21 +675,25 @@ pub mod host {
             repo: &str,
             params: &crate::toys::GithubListParams,
         ) -> Result<crate::toys::GithubPage, String> {
-            patina::host::github::list_issues(
-                owner,
-                repo,
-                &patina::host::github::ListParams {
-                    since: params.since.clone(),
-                    state: params.state.clone(),
-                    page: params.page,
-                    per_page: params.per_page,
-                },
-            )
-            .map(|page| crate::toys::GithubPage {
-                items: page.items,
-                has_next: page.has_next,
-                next_page: page.next_page,
-                rate_remaining: page.rate_remaining,
+            let mut path = format!(
+                "/repos/{owner}/{repo}/issues?state={}",
+                params.state.clone().unwrap_or_else(|| "open".to_string())
+            );
+            if let Some(since) = &params.since {
+                path.push_str(&format!("&since={since}"));
+            }
+            if let Some(page) = params.page {
+                path.push_str(&format!("&page={page}"));
+            }
+            if let Some(per_page) = params.per_page {
+                path.push_str(&format!("&per_page={per_page}"));
+            }
+            let items = wasi_http_get_with_binding("github", "api.github.com", &path)?;
+            Ok(crate::toys::GithubPage {
+                items,
+                has_next: false,
+                next_page: None,
+                rate_remaining: 0,
             })
         }
 
@@ -484,21 +702,25 @@ pub mod host {
             repo: &str,
             params: &crate::toys::GithubListParams,
         ) -> Result<crate::toys::GithubPage, String> {
-            patina::host::github::list_pulls(
-                owner,
-                repo,
-                &patina::host::github::ListParams {
-                    since: params.since.clone(),
-                    state: params.state.clone(),
-                    page: params.page,
-                    per_page: params.per_page,
-                },
-            )
-            .map(|page| crate::toys::GithubPage {
-                items: page.items,
-                has_next: page.has_next,
-                next_page: page.next_page,
-                rate_remaining: page.rate_remaining,
+            let mut path = format!(
+                "/repos/{owner}/{repo}/pulls?state={}",
+                params.state.clone().unwrap_or_else(|| "open".to_string())
+            );
+            if let Some(since) = &params.since {
+                path.push_str(&format!("&since={since}"));
+            }
+            if let Some(page) = params.page {
+                path.push_str(&format!("&page={page}"));
+            }
+            if let Some(per_page) = params.per_page {
+                path.push_str(&format!("&per_page={per_page}"));
+            }
+            let items = wasi_http_get_with_binding("github", "api.github.com", &path)?;
+            Ok(crate::toys::GithubPage {
+                items,
+                has_next: false,
+                next_page: None,
+                rate_remaining: 0,
             })
         }
 
@@ -507,13 +729,12 @@ pub mod host {
             repo: &str,
             issue_number: u32,
         ) -> Result<crate::toys::GithubPage, String> {
-            patina::host::github::list_issue_comments(owner, repo, issue_number).map(|page| {
-                crate::toys::GithubPage {
-                    items: page.items,
-                    has_next: page.has_next,
-                    next_page: page.next_page,
-                    rate_remaining: page.rate_remaining,
-                }
+            let path = format!("/repos/{owner}/{repo}/issues/{issue_number}/comments");
+            Ok(crate::toys::GithubPage {
+                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
+                has_next: false,
+                next_page: None,
+                rate_remaining: 0,
             })
         }
 
@@ -522,13 +743,12 @@ pub mod host {
             repo: &str,
             issue_number: u32,
         ) -> Result<crate::toys::GithubPage, String> {
-            patina::host::github::list_issue_events(owner, repo, issue_number).map(|page| {
-                crate::toys::GithubPage {
-                    items: page.items,
-                    has_next: page.has_next,
-                    next_page: page.next_page,
-                    rate_remaining: page.rate_remaining,
-                }
+            let path = format!("/repos/{owner}/{repo}/issues/{issue_number}/events");
+            Ok(crate::toys::GithubPage {
+                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
+                has_next: false,
+                next_page: None,
+                rate_remaining: 0,
             })
         }
 
@@ -537,13 +757,12 @@ pub mod host {
             repo: &str,
             pull_number: u32,
         ) -> Result<crate::toys::GithubPage, String> {
-            patina::host::github::list_pull_comments(owner, repo, pull_number).map(|page| {
-                crate::toys::GithubPage {
-                    items: page.items,
-                    has_next: page.has_next,
-                    next_page: page.next_page,
-                    rate_remaining: page.rate_remaining,
-                }
+            let path = format!("/repos/{owner}/{repo}/pulls/{pull_number}/comments");
+            Ok(crate::toys::GithubPage {
+                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
+                has_next: false,
+                next_page: None,
+                rate_remaining: 0,
             })
         }
 
@@ -552,13 +771,12 @@ pub mod host {
             repo: &str,
             pull_number: u32,
         ) -> Result<crate::toys::GithubPage, String> {
-            patina::host::github::list_reviews(owner, repo, pull_number).map(|page| {
-                crate::toys::GithubPage {
-                    items: page.items,
-                    has_next: page.has_next,
-                    next_page: page.next_page,
-                    rate_remaining: page.rate_remaining,
-                }
+            let path = format!("/repos/{owner}/{repo}/pulls/{pull_number}/reviews");
+            Ok(crate::toys::GithubPage {
+                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
+                has_next: false,
+                next_page: None,
+                rate_remaining: 0,
             })
         }
 
@@ -568,52 +786,56 @@ pub mod host {
             pull_number: u32,
             review_id: u64,
         ) -> Result<crate::toys::GithubPage, String> {
-            patina::host::github::list_review_comments(owner, repo, pull_number, review_id).map(
-                |page| crate::toys::GithubPage {
-                    items: page.items,
-                    has_next: page.has_next,
-                    next_page: page.next_page,
-                    rate_remaining: page.rate_remaining,
-                },
-            )
+            let path =
+                format!("/repos/{owner}/{repo}/pulls/{pull_number}/reviews/{review_id}/comments");
+            Ok(crate::toys::GithubPage {
+                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
+                has_next: false,
+                next_page: None,
+                rate_remaining: 0,
+            })
         }
     }
 
     impl SessionBackend for GuestHost {
         fn get_session_id() -> String {
-            patina::host::session::get_session_id()
+            state_get_string("session-id").unwrap_or_else(|| "unknown".to_string())
         }
 
         fn get_previous_session() -> Option<String> {
-            patina::host::session::get_previous_session()
+            state_get_string("previous-session")
         }
 
         fn get_previous_session_runtime_id() -> Option<String> {
-            patina::host::session::get_previous_session_runtime_id()
+            state_get_string("parent-session-runtime")
         }
 
         fn get_previous_session_handoff() -> Option<String> {
-            patina::host::session::get_previous_session_handoff()
+            state_get_string("parent-handoff")
         }
 
         fn write(section: &str, content: &str) -> Result<(), String> {
-            patina::host::session::write_artifact(section, content)
+            state_set_string(&format!("session:{section}"), content)
         }
 
         fn set_parent_session(runtime_id: &str) -> Result<(), String> {
-            patina::host::session::set_parent_session(runtime_id)
+            state_set_string("parent-session-runtime", runtime_id)
         }
 
         fn create_tag(name: &str) -> Result<(), String> {
-            patina::host::session::create_tag(name)
+            patina::git::git::create_tag(name)
         }
 
         fn set_status(status: &str) -> Result<(), String> {
-            patina::host::session::set_status(status)
+            state_set_string("session-status", status)
         }
 
         fn write_handoff(modified_files: &str, summary: &str) -> Result<(), String> {
-            patina::host::session::write_handoff(modified_files, summary)
+            state_set_string(
+                "session-handoff",
+                &serde_json::json!({"modified_files": modified_files, "summary": summary})
+                    .to_string(),
+            )
         }
     }
 
@@ -623,31 +845,42 @@ pub mod host {
             after_offset: Option<u64>,
             limit: u32,
         ) -> Result<Vec<PendingEvent>, String> {
-            patina::host::events::pull(stream, after_offset, limit).map(|events| {
-                events
-                    .into_iter()
-                    .map(|event| PendingEvent {
-                        stream_name: event.stream_name,
-                        offset: event.offset,
-                        event_type: event.event_type,
-                        payload_json: event.payload_json,
-                        occurred_at: event.occurred_at,
-                    })
-                    .collect()
-            })
+            patina::events_stream::events_stream::subscribe(stream, after_offset, limit).map(
+                |events| {
+                    events
+                        .into_iter()
+                        .map(|event| PendingEvent {
+                            stream_name: event.stream_name,
+                            offset: event.offset,
+                            event_type: event.event_type,
+                            payload_json: event.payload,
+                            occurred_at: event.occurred_at,
+                        })
+                        .collect()
+                },
+            )
         }
         fn ack_through(stream: &str, offset: u64) -> Result<(), String> {
-            patina::host::events::ack_through(stream, offset)
+            patina::events_stream::events_stream::ack(stream, offset)
         }
         fn list_streams() -> Vec<String> {
-            patina::host::events::list_streams()
+            vec![
+                "belief.changed".to_string(),
+                "graph.changed".to_string(),
+                "fact.ingested".to_string(),
+                "session.completed".to_string(),
+                "repo.synced".to_string(),
+                "file.found".to_string(),
+                "file.written".to_string(),
+            ]
         }
     }
 
     #[cfg(feature = "toy-peer")]
     impl PeerBackend for GuestHost {
         fn emit_event(event_type: &str, payload_json: &str) -> Result<(), String> {
-            patina::host::peer::emit_event(event_type, payload_json)
+            let _ = messaging_publish(event_type, event_type, payload_json)?;
+            Ok(())
         }
 
         fn on_event(
@@ -655,42 +888,36 @@ pub mod host {
             after_offset: Option<u64>,
             limit: u32,
         ) -> Result<Vec<PeerEvent>, String> {
-            patina::host::peer::on_event(stream_name, after_offset, limit).map(|events| {
-                events
-                    .into_iter()
-                    .map(|event| PeerEvent {
-                        stream_name: event.stream_name,
-                        offset: event.offset,
-                        event_type: event.event_type,
-                        payload_json: event.payload_json,
-                        occurred_at: event.occurred_at,
-                    })
-                    .collect()
-            })
+            patina::events_stream::events_stream::subscribe(stream_name, after_offset, limit).map(
+                |events| {
+                    events
+                        .into_iter()
+                        .map(|event| PeerEvent {
+                            stream_name: event.stream_name,
+                            offset: event.offset,
+                            event_type: event.event_type,
+                            payload_json: event.payload,
+                            occurred_at: event.occurred_at,
+                        })
+                        .collect()
+                },
+            )
         }
     }
 
     impl TaskBackend for GuestHost {
         fn enqueue(intent: &TaskIntent) -> Result<String, String> {
             let kind = match intent.kind {
-                TaskIntentKind::FetchSource => patina::host::task::TaskIntentKind::FetchSource,
-                TaskIntentKind::RunQuery => patina::host::task::TaskIntentKind::RunQuery,
-                TaskIntentKind::EmitFacts => patina::host::task::TaskIntentKind::EmitFacts,
-                TaskIntentKind::MaterializeIndex => {
-                    patina::host::task::TaskIntentKind::MaterializeIndex
-                }
-                TaskIntentKind::VerifyBelief => patina::host::task::TaskIntentKind::VerifyBelief,
-                TaskIntentKind::SyncGraph => patina::host::task::TaskIntentKind::SyncGraph,
-                TaskIntentKind::RefreshCredential => {
-                    patina::host::task::TaskIntentKind::RefreshCredential
-                }
-                TaskIntentKind::NativeJob => patina::host::task::TaskIntentKind::NativeJob,
+                TaskIntentKind::FetchSource => "fetch-source",
+                TaskIntentKind::RunQuery => "run-query",
+                TaskIntentKind::EmitFacts => "emit-facts",
+                TaskIntentKind::MaterializeIndex => "materialize-index",
+                TaskIntentKind::VerifyBelief => "verify-belief",
+                TaskIntentKind::SyncGraph => "sync-graph",
+                TaskIntentKind::RefreshCredential => "refresh-credential",
+                TaskIntentKind::NativeJob => "native-job",
             };
-            patina::host::task::enqueue(&patina::host::task::TaskIntent {
-                kind,
-                payload_json: intent.payload_json.clone(),
-                dedupe_key: intent.dedupe_key.clone(),
-            })
+            patina::task::task::enqueue(kind, &intent.payload_json, intent.dedupe_key.as_deref())
         }
     }
 
@@ -702,19 +929,21 @@ pub mod host {
 
     impl GraphBackend for GuestHost {
         fn query(kind: &str, params_json: &str) -> Result<String, String> {
-            patina::host::graph::query(kind, params_json)
+            sql_query_string("graph", &format!("{kind}:{params_json}"))
         }
         fn mutate(action: &str, payload_json: &str) -> Result<(), String> {
-            patina::host::graph::mutate(action, payload_json)
+            let _ = sql_exec_action("graph", action, payload_json)?;
+            Ok(())
         }
     }
 
     impl BeliefBackend for GuestHost {
         fn query(kind: &str, params_json: &str) -> Result<String, String> {
-            patina::host::belief::query(kind, params_json)
+            sql_query_string("beliefs", &format!("{kind}:{params_json}"))
         }
         fn mutate(action: &str, payload_json: &str) -> Result<(), String> {
-            patina::host::belief::mutate(action, payload_json)
+            let _ = sql_exec_action("beliefs", action, payload_json)?;
+            Ok(())
         }
     }
 }
@@ -773,46 +1002,48 @@ mod __wasm {
             child().drain(limit).map(|events| {
                 events
                     .into_iter()
-                    .map(|event| patina::host::events::PendingEvent {
-                        stream_name: event.stream_name,
-                        offset: event.offset,
-                        event_type: event.event_type,
-                        payload_json: event.payload_json,
-                        occurred_at: event.occurred_at,
-                    })
+                    .map(
+                        |event| patina::knowledge_child::runtime_types::PendingEvent {
+                            stream_name: event.stream_name,
+                            offset: event.offset,
+                            event_type: event.event_type,
+                            payload_json: event.payload_json,
+                            occurred_at: event.occurred_at,
+                        },
+                    )
                     .collect()
             })
         }
 
-        fn tick() -> Vec<patina::host::task::TaskIntent> {
+        fn tick() -> Vec<patina::knowledge_child::runtime_types::TaskIntent> {
             child()
                 .tick()
                 .into_iter()
-                .map(|intent| patina::host::task::TaskIntent {
+                .map(|intent| patina::knowledge_child::runtime_types::TaskIntent {
                     kind: match intent.kind {
                         crate::toys::TaskIntentKind::FetchSource => {
-                            patina::host::task::TaskIntentKind::FetchSource
+                            patina::knowledge_child::runtime_types::TaskIntentKind::FetchSource
                         }
                         crate::toys::TaskIntentKind::RunQuery => {
-                            patina::host::task::TaskIntentKind::RunQuery
+                            patina::knowledge_child::runtime_types::TaskIntentKind::RunQuery
                         }
                         crate::toys::TaskIntentKind::EmitFacts => {
-                            patina::host::task::TaskIntentKind::EmitFacts
+                            patina::knowledge_child::runtime_types::TaskIntentKind::EmitFacts
                         }
                         crate::toys::TaskIntentKind::MaterializeIndex => {
-                            patina::host::task::TaskIntentKind::MaterializeIndex
+                            patina::knowledge_child::runtime_types::TaskIntentKind::MaterializeIndex
                         }
                         crate::toys::TaskIntentKind::VerifyBelief => {
-                            patina::host::task::TaskIntentKind::VerifyBelief
+                            patina::knowledge_child::runtime_types::TaskIntentKind::VerifyBelief
                         }
                         crate::toys::TaskIntentKind::SyncGraph => {
-                            patina::host::task::TaskIntentKind::SyncGraph
+                            patina::knowledge_child::runtime_types::TaskIntentKind::SyncGraph
                         }
                         crate::toys::TaskIntentKind::RefreshCredential => {
-                            patina::host::task::TaskIntentKind::RefreshCredential
+                            patina::knowledge_child::runtime_types::TaskIntentKind::RefreshCredential
                         }
                         crate::toys::TaskIntentKind::NativeJob => {
-                            patina::host::task::TaskIntentKind::NativeJob
+                            patina::knowledge_child::runtime_types::TaskIntentKind::NativeJob
                         }
                     },
                     payload_json: intent.payload_json,

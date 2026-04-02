@@ -3,6 +3,7 @@
 //! Metrics: MRR, Recall@K, Latency p50/p95
 
 use anyhow::{Context, Result};
+use patina::eventlog;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -556,7 +557,7 @@ pub fn generate_from_commits(config: GenerateConfig) -> Result<QuerySet> {
     let db_path = if let Some(ref repo_name) = config.repo {
         crate::commands::repo::get_db_path(repo_name)?
     } else {
-        ".patina/local/data/patina.db".to_string()
+        eventlog::patina_db_path()?.to_string_lossy().to_string()
     };
 
     let conn = Connection::open(&db_path)

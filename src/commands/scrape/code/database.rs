@@ -9,12 +9,11 @@
 //! - Proper type preservation (arrays as JSON, booleans, JSON)
 //! - Transaction support with automatic rollback
 //!
-//! Uses SqliteDatabase directly for type-safe database operations.
+//! Uses rusqlite directly for type-safe database operations.
 
 use crate::commands::scrape::code::types::CallGraphEntry;
 use anyhow::{Context, Result};
-use patina::db::SqliteDatabase;
-use rusqlite::params;
+use rusqlite::{params, Connection};
 use std::path::Path;
 
 // Unified eventlog support
@@ -80,14 +79,14 @@ pub struct ImportFact {
 /// Database wrapper for code scraping operations
 ///
 /// Follows the same pattern as other modules (embeddings, semantic_search):
-/// - Owns SqliteDatabase
+/// - Owns rusqlite::Connection
 /// - Domain-specific methods for code facts
 ///
 /// For ref repos (skip_eventlog=true), uses direct-write pattern:
 /// - Code files ARE the source of truth, no need to duplicate in eventlog
 /// - See: layer/surface/build/spec-ref-repo-storage.md
 pub struct Database {
-    db: SqliteDatabase,
+    db: Connection,
     skip_eventlog: bool,
 }
 
@@ -97,14 +96,14 @@ impl Database {
         let path_ref = path.as_ref();
         // Detect if this is a ref repo - use lean storage (no eventlog for code)
         let skip_eventlog = unified_db::is_ref_repo(path_ref);
-        let db = SqliteDatabase::open(path_ref).context("Failed to open SQLite database")?;
+        let db = Connection::open(path_ref).context("Failed to open SQLite database")?;
         Ok(Self { db, skip_eventlog })
     }
 
     /// Create an in-memory database for testing
     #[cfg(test)]
     pub fn open_in_memory() -> Result<Self> {
-        let db = SqliteDatabase::open_in_memory().context("Failed to create in-memory database")?;
+        let db = Connection::open_in_memory().context("Failed to create in-memory database")?;
         Ok(Self {
             db,
             skip_eventlog: false,
@@ -114,13 +113,13 @@ impl Database {
     /// Get reference to underlying connection for cross-module operations
     /// (e.g., forge insert routing from pipeline host).
     pub fn connection(&self) -> &rusqlite::Connection {
-        self.db.connection()
+        &self.db
     }
 
     /// Initialize schema with proper types
     pub fn init_schema(&mut self) -> Result<()> {
         // Use a transaction for atomic schema creation
-        let tx = self.db.connection_mut().transaction()?;
+        let tx = self.db.transaction()?;
 
         // Code search table with full-text indexing
         tx.execute(
@@ -279,8 +278,7 @@ impl Database {
             return Ok(0);
         }
 
-        let conn = self.db.connection();
-        let tx = conn.unchecked_transaction()?;
+        let tx = self.db.unchecked_transaction()?;
 
         for symbol in symbols {
             // 1. Insert into eventlog (skip for ref repos - files ARE the source)
@@ -326,8 +324,7 @@ impl Database {
             return Ok(0);
         }
 
-        let conn = self.db.connection();
-        let tx = conn.unchecked_transaction()?;
+        let tx = self.db.unchecked_transaction()?;
 
         for func in functions {
             // 1. Insert into eventlog (skip for ref repos - files ARE the source)
@@ -390,8 +387,7 @@ impl Database {
             return Ok(0);
         }
 
-        let conn = self.db.connection();
-        let tx = conn.unchecked_transaction()?;
+        let tx = self.db.unchecked_transaction()?;
 
         for type_fact in types {
             // 1. Insert into eventlog (skip for ref repos - files ARE the source)
@@ -449,8 +445,7 @@ impl Database {
             return Ok(0);
         }
 
-        let conn = self.db.connection();
-        let tx = conn.unchecked_transaction()?;
+        let tx = self.db.unchecked_transaction()?;
 
         for import in imports {
             // 1. Insert into eventlog (skip for ref repos - files ARE the source)
@@ -497,8 +492,7 @@ impl Database {
             return Ok(0);
         }
 
-        let conn = self.db.connection();
-        let tx = conn.unchecked_transaction()?;
+        let tx = self.db.unchecked_transaction()?;
 
         for edge in edges {
             // 1. Insert into eventlog (skip for ref repos - files ARE the source)
@@ -544,7 +538,7 @@ impl Database {
     /// it means the file is new. Used by the mtime skip optimization to avoid
     /// re-parsing unchanged files.
     pub fn get_index_state(&self, path: &str) -> Result<Option<(i64, i64)>> {
-        let result: std::result::Result<(i64, i64), _> = self.db.connection().query_row(
+        let result: std::result::Result<(i64, i64), _> = self.db.query_row(
             "SELECT mtime, size FROM index_state WHERE path = ?1",
             params![path],
             |row| Ok((row.get(0)?, row.get(1)?)),
@@ -566,7 +560,7 @@ impl Database {
         &self,
         walked_paths: &std::collections::HashSet<String>,
     ) -> Result<usize> {
-        let conn = self.db.connection();
+        let conn = &self.db;
 
         // Get all paths from index_state
         let mut stmt = conn.prepare("SELECT path FROM index_state")?;
@@ -602,7 +596,7 @@ impl Database {
         hash: Option<&str>,
         line_count: Option<i64>,
     ) -> Result<()> {
-        self.db.connection().execute(
+        self.db.execute(
             "INSERT OR REPLACE INTO index_state (path, mtime, size, hash, line_count) VALUES (?, ?, ?, ?, ?)",
             params![path, mtime, size, hash, line_count],
         )?;
@@ -611,7 +605,7 @@ impl Database {
 
     /// Mark a file as skipped
     pub fn mark_skipped(&self, path: &str, reason: &str) -> Result<()> {
-        self.db.connection().execute(
+        self.db.execute(
             "INSERT OR REPLACE INTO skipped_files (path, reason) VALUES (?, ?)",
             params![path, reason],
         )?;
@@ -627,8 +621,7 @@ impl Database {
             return Ok(0);
         }
 
-        let conn = self.db.connection();
-        let tx = conn.unchecked_transaction()?;
+        let tx = self.db.unchecked_transaction()?;
 
         for constant in constants {
             // 1. Insert into eventlog (skip for ref repos - files ARE the source)
@@ -679,8 +672,7 @@ impl Database {
             return Ok(0);
         }
 
-        let conn = self.db.connection();
-        let tx = conn.unchecked_transaction()?;
+        let tx = self.db.unchecked_transaction()?;
 
         for member in members {
             // 1. Insert into eventlog (skip for ref repos - files ARE the source)
@@ -736,7 +728,7 @@ mod tests {
         let mut db = Database::open_in_memory()?;
 
         // Initialize unified eventlog schema (required for dual-write)
-        let conn = db.db.connection();
+        let conn = &db.db;
         conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS eventlog (

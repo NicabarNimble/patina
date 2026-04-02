@@ -1,13 +1,9 @@
 use anyhow::Result;
 use std::path::Path;
 
-use crate::{registry::ChildRegistry, KnowledgeChild, KnowledgeRuntimeStore, MotherChild};
+use crate::{registry::ChildRegistry, KnowledgeChild, KnowledgeRuntimeStore};
 
 pub enum LoadedChild {
-    Legacy {
-        child: Box<dyn MotherChild>,
-        name: String,
-    },
     Knowledge {
         child: Box<dyn KnowledgeChild>,
         name: String,
@@ -16,52 +12,12 @@ pub enum LoadedChild {
     },
 }
 
-pub fn register_builtin_children(registry: &mut ChildRegistry) -> Result<()> {
-    registry
-        .register(Box::new(crate::secrets::SecretsCacheChild::new()))
-        .expect("failed to register secrets child");
-    registry
-        .register(Box::new(crate::session_writer::SessionWriterChild::new()))
-        .expect("failed to register session-writer child");
-    registry
-        .register(Box::new(crate::static_child::StaticChild::new(
-            "spec-manager",
-        )))
-        .expect("failed to register spec-manager child marker");
-    registry
-        .register(Box::new(crate::static_child::StaticChild::new("doctor")))
-        .expect("failed to register doctor child marker");
-    registry
-        .register(Box::new(crate::static_child::StaticChild::new(
-            "lake-manager",
-        )))
-        .expect("failed to register lake-manager child marker");
-    registry
-        .register(Box::new(crate::static_child::StaticChild::new(
-            "secrets-authority",
-        )))
-        .expect("failed to register secrets-authority child marker");
-    Ok(())
-}
-
 pub fn register_loaded_child(
     registry: &mut ChildRegistry,
     runtime: &KnowledgeRuntimeStore,
     loaded: LoadedChild,
-    legacy_migration: bool,
 ) -> Result<Option<String>> {
     match loaded {
-        LoadedChild::Legacy { child, name } => {
-            if legacy_migration {
-                registry.register_legacy(child)?;
-                Ok(Some(format!("loaded legacy migration child: {}", name)))
-            } else {
-                Ok(Some(format!(
-                    "skipping legacy child {} (use --legacy-migration to load mother-child plugins)",
-                    name
-                )))
-            }
-        }
         LoadedChild::Knowledge {
             child,
             name,
@@ -83,7 +39,6 @@ pub fn load_children_from_dir<F>(
     children_dir: &Path,
     registry: &mut ChildRegistry,
     runtime: &KnowledgeRuntimeStore,
-    legacy_migration: bool,
     mut loader: F,
 ) where
     F: FnMut(&Path, &Path) -> Result<LoadedChild>,
@@ -98,17 +53,15 @@ pub fn load_children_from_dir<F>(
             if path.extension().and_then(|e| e.to_str()) == Some("wasm") {
                 let manifest_path = path.with_extension("toml");
                 match loader(&path, &manifest_path) {
-                    Ok(loaded) => {
-                        match register_loaded_child(registry, runtime, loaded, legacy_migration) {
-                            Ok(Some(message)) => eprintln!("[mother] {}", message),
-                            Ok(None) => {}
-                            Err(error) => {
-                                eprintln!("[mother] skipping {}: {}", path.display(), error)
-                            }
+                    Ok(loaded) => match register_loaded_child(registry, runtime, loaded) {
+                        Ok(Some(message)) => tracing::info!(%message, "child loaded"),
+                        Ok(None) => {}
+                        Err(error) => {
+                            tracing::warn!(path = %path.display(), %error, "skipping child")
                         }
-                    }
+                    },
                     Err(error) => {
-                        eprintln!("[mother] failed to load {}: {}", path.display(), error);
+                        tracing::warn!(path = %path.display(), %error, "failed to load child");
                     }
                 }
             }
@@ -121,7 +74,7 @@ pub fn load_children_from_dir<F>(
             if path.extension().and_then(|e| e.to_str()) == Some("toml")
                 && !path.with_extension("wasm").exists()
             {
-                eprintln!("[mother] orphaned manifest (no .wasm): {}", path.display());
+                tracing::warn!(path = %path.display(), "orphaned manifest (no .wasm)");
             }
         }
     }

@@ -9,7 +9,7 @@ pub const IDENTITY_ENV_VAR: &str = "PATINA_IDENTITY";
 
 fn log_debug(msg: &str) {
     if std::env::var("PATINA_LOG").is_ok() {
-        eprintln!("[DEBUG secrets::identity] {}", msg);
+        tracing::debug!(message = msg, "secrets::identity");
     }
 }
 

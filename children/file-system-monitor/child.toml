@@ -1,0 +1,13 @@
+[child]
+name = "file-system-monitor"
+kind = "knowledge-child"
+role = "app"
+
+[needs]
+toys = ["log", "events", "measure"]
+
+[needs.scopes.filesystem]
+path = "/tmp"
+
+[needs.metrics]
+files_discovered = { type = "counter", labels = ["source_folder"] }

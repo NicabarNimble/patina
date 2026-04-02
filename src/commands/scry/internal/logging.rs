@@ -3,8 +3,6 @@
 //! Logs scry queries, usage, and feedback to the eventlog for later analysis.
 //! Best-effort logging - failures are silently ignored to not disrupt scry.
 
-use std::sync::Mutex;
-
 use anyhow::Result;
 
 use patina::eventlog;
@@ -37,9 +35,6 @@ pub struct RoutingContext {
     /// Whether domain filtering was applied
     pub domain_filter_applied: bool,
 }
-
-/// Last query ID for use by scry open/copy/feedback commands
-pub static LAST_QUERY_ID: Mutex<Option<String>> = Mutex::new(None);
 
 /// Generate a query ID in the format: q_YYYYMMDD_HHMMSS_xxx
 pub fn generate_query_id() -> String {
@@ -108,13 +103,7 @@ pub fn log_scry_query(query: &str, mode: &str, results: &[ScryResult]) -> Option
     })();
 
     match insert_result {
-        Ok(()) => {
-            // Store as last query for open/copy/feedback without explicit query_id
-            if let Ok(mut last) = LAST_QUERY_ID.lock() {
-                *last = Some(query_id.clone());
-            }
-            Some(query_id)
-        }
+        Ok(()) => Some(query_id),
         Err(e) => {
             eprintln!("patina: warning: failed to record scry.query event: {e}");
             None
@@ -206,13 +195,7 @@ pub fn log_scry_query_with_routing(
     })();
 
     match insert_result {
-        Ok(()) => {
-            // Store as last query for open/copy/feedback without explicit query_id
-            if let Ok(mut last) = LAST_QUERY_ID.lock() {
-                *last = Some(query_id.clone());
-            }
-            Some(query_id)
-        }
+        Ok(()) => Some(query_id),
         Err(e) => {
             eprintln!("patina: warning: failed to record scry.query event: {e}");
             None

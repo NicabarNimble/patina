@@ -142,7 +142,6 @@ pub fn mutate(
                 .ok_or_else(|| anyhow::anyhow!("weight requires 'weight'"))?;
             graph.set_edge_weight(edge_id, weight as f32)?;
         }
-        "tag" => {}
         other => anyhow::bail!("unknown graph action '{}'", other),
     }
     store.record_graph_mutation(plugin_name, action, payload_json)?;

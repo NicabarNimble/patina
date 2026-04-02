@@ -13,6 +13,7 @@
 //! - Fusion types kept for backward compatibility (MCP, eval, bench)
 
 mod engine;
+pub(crate) mod enrichment;
 mod fusion;
 mod oracle;
 mod oracles;

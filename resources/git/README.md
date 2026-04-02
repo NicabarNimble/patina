@@ -12,6 +12,15 @@ ln -sf ../../resources/git/post-merge.sh .git/hooks/post-merge
 
 The pre-commit and pre-push hooks use exec-style delegation (see `.git/hooks/pre-commit` and `.git/hooks/pre-push`).
 
+## Test gate tiers
+
+- Tier 0 (`resources/git/pre-commit-checks.sh`): `cargo fmt --check` + staged large-file guard (<5s target).
+- Tier 1 (`resources/git/pre-push-checks.sh --structural-only`): structural policy checks only, no cargo (<30s target).
+- Tier 2 (`resources/git/pre-push-targeted-cargo.sh`): changed-package clippy/tests plus path-triggered parity/schema.
+- Tier 3 (`resources/git/preflight-full.sh`): full local suite equivalent to merge-gate semantics.
+
+`resources/git/pre-push-checks.sh` runs Tier 2 by default; use `--structural-only` (or `PATINA_PRE_PUSH_RUN_TARGETED=0`) to run Tier 1 only.
+
 Verify:
 ```bash
 ls -la .git/hooks/pre-commit .git/hooks/pre-push .git/hooks/post-*

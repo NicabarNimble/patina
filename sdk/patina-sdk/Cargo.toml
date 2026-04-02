@@ -3,7 +3,7 @@ name = "patina-sdk"
 version = "0.21.0"
 edition = "2021"
 license = "MIT"
-description = "SDK for building Patina WASM children (stable knowledge-child + compatibility shim lanes)"
+description = "SDK for building Patina WASM children (knowledge-child first)"
 repository = "https://github.com/NicabarNimble/patina"
 keywords = ["patina", "wasm", "child", "component-model"]
 categories = ["development-tools", "wasm"]
@@ -13,18 +13,10 @@ include = ["src/**", "wit/**", "Cargo.toml", "README.md", "LICENSE*"]
 
 [features]
 default = []
-# Legacy compatibility worlds (migration scaffolds).
-# Preferred stabilization path is `knowledge-child`.
-task = []
-command = []
-mother-child = []
 # Canonical world for Mother/Child/Toy contract.
 knowledge-child = [
     "dep:serde",
     "dep:serde_json",
-    "dep:patina-sdk-core",
-    "dep:patina-sdk-data",
-    "dep:patina-sdk-agent",
     "toy-log",
     "toy-state",
 ]
@@ -32,27 +24,24 @@ toy-log = []
 toy-state = []
 toy-task = []
 toy-fetch = []
-toy-measure = ["patina-sdk-data/toy-measure"]
-toy-query = ["patina-sdk-agent/toy-query"]
-toy-emit = ["patina-sdk-agent/toy-emit"]
-toy-checkpoint = ["patina-sdk-data/toy-checkpoint"]
-toy-lake = ["patina-sdk-data/toy-lake"]
+toy-measure = []
+toy-query = []
+toy-emit = []
+toy-checkpoint = []
+toy-lake = []
 toy-ingress = []
-toy-github = ["patina-sdk-data/toy-github"]
-toy-connector = ["patina-sdk-data/toy-connector"]
+toy-github = []
+toy-connector = []
 toy-events = []
-toy-peer = ["patina-sdk-core/toy-peer"]
+toy-peer = []
 toy-graph = []
 toy-belief = []
-toy-session = ["patina-sdk-agent/toy-session"]
-toy-layer-fs = ["patina-sdk-core/toy-layer-fs"]
-toy-git = ["patina-sdk-core/toy-git"]
+toy-session = []
+toy-layer-fs = []
+toy-git = []
 pipeline = ["dep:serde", "dep:serde_json"]
 
 [dependencies]
 wit-bindgen = "0.41"
-patina-sdk-core = { path = "../patina-sdk-core", optional = true }
-patina-sdk-data = { path = "../patina-sdk-data", optional = true }
-patina-sdk-agent = { path = "../patina-sdk-agent", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }

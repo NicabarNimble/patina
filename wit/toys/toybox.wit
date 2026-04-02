@@ -1,0 +1,16 @@
+package patina:toybox@0.1.0;
+
+world toybox {
+    import wasi:http/outgoing-handler@0.2.6;
+    import wasi:filesystem/types@0.2.6;
+    import wasi:logging/logging@0.1.0;
+    import wasi:keyvalue/store@0.2.0;
+    import patina:connect/connect@0.2.0;
+    import wasi:sql/readwrite@0.1.0;
+    import wasi:messaging/producer@0.2.0;
+    import patina:events-stream/events-stream@0.1.0;
+    import patina:measure/measure@0.1.0;
+    import patina:task/task@0.1.0;
+    import patina:peer/peer@0.1.0;
+    import patina:git/git@0.1.0;
+}

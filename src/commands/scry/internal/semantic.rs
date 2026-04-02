@@ -58,21 +58,10 @@ pub fn execute_semantic(query: Option<&str>, options: &ScryOptions) -> Result<()
 
     for (i, result) in results.iter().enumerate() {
         let event_type = result.metadata.event_type.as_deref().unwrap_or("unknown");
-        let source_tag = if result.sources.contains(&"persona") {
-            "[PERSONA] "
-        } else {
-            ""
-        };
 
         if options.explain {
             // Detailed output with per-oracle contributions
-            println!(
-                "\n{}. {}{} ({})",
-                i + 1,
-                source_tag,
-                result.doc_id,
-                event_type
-            );
+            println!("\n{}. {} ({})", i + 1, result.doc_id, event_type);
 
             // Show each oracle's contribution
             for (oracle_name, contrib) in &result.contributions {
@@ -119,11 +108,7 @@ pub fn execute_semantic(query: Option<&str>, options: &ScryOptions) -> Result<()
                 }
             }
 
-            if options.full {
-                println!("   Content:\n{}", &result.content);
-            } else {
-                println!("   Content: {}", truncate_content(&result.content, 150));
-            }
+            println!("   Content: {}", truncate_content(&result.content, 150));
         } else {
             // Default concise output with ranks
             let mut contributions_str: String = result
@@ -141,18 +126,13 @@ pub fn execute_semantic(query: Option<&str>, options: &ScryOptions) -> Result<()
             }
 
             println!(
-                "\n[{}] {}{} (score: {:.3}) ({})",
+                "\n[{}] {} (score: {:.3}) ({})",
                 i + 1,
-                source_tag,
                 result.doc_id,
                 result.fused_score,
                 contributions_str
             );
-            if options.full {
-                println!("    {}", &result.content);
-            } else {
-                println!("    {}", truncate_content(&result.content, 200));
-            }
+            println!("    {}", truncate_content(&result.content, 200));
         }
     }
 

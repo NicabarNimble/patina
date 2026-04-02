@@ -24,6 +24,9 @@ uuid = { version = "1.10", features = ["v4"] }
 httparse = "1.10"
 libc = "0.2"
 zeroize = "1.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json"] }
+subtle = "2.6"
 patina-protocol = { path = "../crates/patina-protocol" }
 
 [target.'cfg(target_os = "macos")'.dependencies]

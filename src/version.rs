@@ -52,7 +52,7 @@ impl VersionManifest {
     }
 
     pub fn load(project_path: &Path) -> Result<Self> {
-        let manifest_path = project_path.join(".patina").join("versions.json");
+        let manifest_path = crate::paths::project::versions_path(project_path);
 
         if manifest_path.exists() {
             let content = fs::read_to_string(&manifest_path)?;
@@ -63,9 +63,9 @@ impl VersionManifest {
     }
 
     pub fn save(&self, project_path: &Path) -> Result<()> {
-        let patina_dir = project_path.join(".patina");
+        let patina_dir = crate::paths::project::patina_dir(project_path);
         fs::create_dir_all(&patina_dir)?;
-        let manifest_path = patina_dir.join("versions.json");
+        let manifest_path = crate::paths::project::versions_path(project_path);
         let content = serde_json::to_string_pretty(self)?;
         fs::write(manifest_path, content)?;
         Ok(())

@@ -3,7 +3,9 @@ mod internal;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
-pub use internal::artifact::{parse_session_ids, rewrite_document_status};
+pub use internal::artifact::{
+    parse_document, parse_session_ids, rewrite_document_status, SessionDocument, SessionFrontmatter,
+};
 pub use internal::live::LiveSessionHandle;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,7 +80,7 @@ impl SessionManager {
         let mut current = std::env::current_dir()?;
 
         loop {
-            if current.join(".patina").exists() {
+            if current.join(".patina").is_dir() && current.join("layer").is_dir() {
                 return Ok(current);
             }
 
@@ -176,6 +178,7 @@ mod tests {
     fn test_find_project_root_from_subdirectory() {
         let temp_dir = TempDir::new().unwrap();
         fs::create_dir(temp_dir.path().join(".patina")).unwrap();
+        fs::create_dir(temp_dir.path().join("layer")).unwrap();
         let sub_dir = temp_dir.path().join("src").join("commands");
         fs::create_dir_all(&sub_dir).unwrap();
 

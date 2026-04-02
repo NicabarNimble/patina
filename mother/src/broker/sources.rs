@@ -150,10 +150,10 @@ pub fn scan_all_sources(registry_path: &Path) -> Result<Vec<ProjectSources>> {
                     }
                     Ok(_) => {} // No sources.toml or empty
                     Err(e) => {
-                        eprintln!(
-                            "[broker] warning: failed to read sources from {}: {}",
-                            project_root.display(),
-                            e
+                        tracing::warn!(
+                            project_root = %project_root.display(),
+                            error = %e,
+                            "failed to read sources from project"
                         );
                     }
                 }

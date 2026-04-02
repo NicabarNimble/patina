@@ -146,7 +146,7 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         );
     }
 
-    if !project_path.join(".patina").exists() {
+    if !patina::paths::project::config_path(&project_path).exists() {
         match launch_internal::prompt_are_you_lost(&project_path, Some(&interface_name))? {
             Some(_) => {
                 project_path = launch_internal::resolve_project_path(Some(

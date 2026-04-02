@@ -13,6 +13,7 @@
 //! - Negative: random unrelated pattern or belief
 
 use super::pairs::TrainingPair;
+use super::strip_frontmatter;
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
@@ -326,19 +327,6 @@ fn extract_wiki_links(content: &str) -> Vec<String> {
     links
 }
 
-/// Strip YAML frontmatter from markdown content
-fn strip_frontmatter(content: &str) -> &str {
-    if !content.starts_with("---") {
-        return content;
-    }
-    if let Some(end) = content[3..].find("\n---") {
-        let after_frontmatter = &content[3 + end + 4..];
-        after_frontmatter.trim_start()
-    } else {
-        content
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -380,7 +368,7 @@ mod tests {
     #[test]
     fn test_strip_frontmatter() {
         let content = "---\ntype: belief\nid: test\n---\n\n# Title\nBody text";
-        let body = strip_frontmatter(content);
+        let body = crate::commands::oxidize::strip_frontmatter(content);
         assert_eq!(body, "# Title\nBody text");
     }
 }

@@ -8,7 +8,7 @@ use std::path::Path;
 use patina::spec::{parse_spec_file, SpecFrontmatter, SpecStatus};
 
 use super::archive::load_spec;
-use super::DB_PATH;
+use super::db_path;
 
 /// An unchecked exit criterion (for check results)
 #[derive(Debug, Clone, Serialize)]
@@ -311,9 +311,9 @@ pub fn get_all_specs(filters: &ListFilters) -> Result<Vec<SpecInfo>> {
         disk_specs.into_iter().map(|s| (s.id.clone(), s)).collect();
 
     // 2. Merge with DB if it exists (supplementary data)
-    let db_path = Path::new(DB_PATH);
+    let db_path = db_path()?;
     if db_path.exists() {
-        if let Ok(conn) = Connection::open(db_path) {
+        if let Ok(conn) = Connection::open(&db_path) {
             let mut stmt = conn.prepare(
                 "SELECT p.id, p.status, p.target, p.title
                  FROM patterns p
@@ -412,7 +412,7 @@ fn extract_outline(text: &str) -> Vec<String> {
     headings
 }
 
-fn extract_section_items(text: &str, heading: &str) -> Vec<String> {
+pub(super) fn extract_section_items(text: &str, heading: &str) -> Vec<String> {
     let mut in_section = false;
     let mut items = Vec::new();
 
@@ -426,16 +426,7 @@ fn extract_section_items(text: &str, heading: &str) -> Vec<String> {
             break;
         }
         if in_section
-            && (trimmed.starts_with("- ")
-                || trimmed.starts_with("1. ")
-                || trimmed.starts_with("2. ")
-                || trimmed.starts_with("3. ")
-                || trimmed.starts_with("4. ")
-                || trimmed.starts_with("5. ")
-                || trimmed.starts_with("6. ")
-                || trimmed.starts_with("7. ")
-                || trimmed.starts_with("8. ")
-                || trimmed.starts_with("9. "))
+            && (trimmed.starts_with("- ") || trimmed.starts_with(|c: char| c.is_ascii_digit()))
         {
             items.push(trimmed.to_string());
         }
@@ -725,6 +716,15 @@ src/mcp/server.rs                      — new spec.show tool handler
         assert_eq!(
             extract_section_items(text, "## Resolved Decisions"),
             vec!["- first", "- second"]
+        );
+    }
+
+    #[test]
+    fn test_extract_section_items_handles_multi_digit_numbering() {
+        let text = "## Implementation Order\n\n9. ninth\n10. tenth\n11. eleventh\n\n## Next\n";
+        assert_eq!(
+            extract_section_items(text, "## Implementation Order"),
+            vec!["9. ninth", "10. tenth", "11. eleventh"]
         );
     }
 

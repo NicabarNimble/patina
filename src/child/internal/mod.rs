@@ -9,22 +9,23 @@ use wasmtime::{Config, Engine};
 
 use crate::mother::GrantedIngressSource;
 
-mod command;
 pub(crate) mod host_support;
 mod knowledge_child;
-mod mother_child;
 mod pipeline;
-mod task;
 
 #[cfg(test)]
 mod tests;
 
-pub use command::{CommandEngine, QueryDispatchFn};
+pub use knowledge_child::FilesystemPreopen;
 pub use knowledge_child::KnowledgeChildEngine as ChildEngine;
 pub use knowledge_child::KnowledgeChildEngine;
-pub use mother_child::MotherChildEngine;
 pub use pipeline::PipelineEngine;
-pub use task::TaskEngine;
+
+/// Query dispatch function type.
+///
+/// Provided by the binary crate at runtime since query engines
+/// (retrieval, commands) live in the binary, not the library.
+pub type QueryDispatchFn = Box<dyn FnMut(&str, &str) -> Result<String, String> + Send>;
 
 // =========================================================================
 // Child kind enum — parsed from manifest, enforced at load time (F4)
@@ -34,9 +35,6 @@ pub use task::TaskEngine;
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChildKind {
     KnowledgeChild,
-    MotherChild,
-    Command,
-    Task,
     Pipeline,
 }
 
@@ -46,10 +44,16 @@ impl std::str::FromStr for ChildKind {
     fn from_str(s: &str) -> Result<Self> {
         match s {
             "knowledge-child" => Ok(Self::KnowledgeChild),
-            "mother-child" => Ok(Self::MotherChild),
-            "command" => Ok(Self::Command),
-            "task" => Ok(Self::Task),
+            "command" => {
+                anyhow::bail!("child kind 'command' is retired; migrate to 'knowledge-child'")
+            }
+            "task" => {
+                anyhow::bail!("child kind 'task' is retired; migrate to 'knowledge-child'")
+            }
             "pipeline" => Ok(Self::Pipeline),
+            "mother-child" => {
+                anyhow::bail!("child kind 'mother-child' is retired; migrate to 'knowledge-child'")
+            }
             other => anyhow::bail!("unknown child kind: '{}'", other),
         }
     }
@@ -66,23 +70,6 @@ impl ChildKind {
                 "host_measure",
                 "host_emit",
             ],
-            Self::MotherChild => &[
-                "host_log",
-                "host_layer",
-                "host_query",
-                "host_http",
-                "host_measure",
-                "host_emit",
-            ],
-            Self::Command => &["host_log", "host_layer", "host_query", "host_measure"],
-            Self::Task => &[
-                "host_log",
-                "host_layer",
-                "host_query",
-                "host_http",
-                "host_measure",
-                "host_emit",
-            ],
             Self::Pipeline => &["host_log"],
         }
     }
@@ -92,9 +79,6 @@ impl std::fmt::Display for ChildKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::KnowledgeChild => write!(f, "knowledge-child"),
-            Self::MotherChild => write!(f, "mother-child"),
-            Self::Command => write!(f, "command"),
-            Self::Task => write!(f, "task"),
             Self::Pipeline => write!(f, "pipeline"),
         }
     }
@@ -132,20 +116,200 @@ impl ChildRole {
     /// Used for validation warnings — not enforcement.
     pub fn expected_worlds(&self) -> &[ChildKind] {
         match self {
-            Self::Connector => &[
-                ChildKind::KnowledgeChild,
-                ChildKind::MotherChild,
-                ChildKind::Task,
-            ],
+            Self::Connector => &[ChildKind::KnowledgeChild],
             Self::Grammar => &[ChildKind::Pipeline],
-            Self::Extension => &[ChildKind::Command, ChildKind::Task],
-            Self::App => &[
-                ChildKind::KnowledgeChild,
-                ChildKind::MotherChild,
-                ChildKind::Task,
-            ],
+            Self::Extension => &[ChildKind::KnowledgeChild],
+            Self::App => &[ChildKind::KnowledgeChild],
         }
     }
+}
+
+pub(crate) const AUTO_GRANTED_CAPABILITIES: &[&str] = &[
+    "host_log",
+    "host_layer",
+    "host_measure",
+    "host_emit",
+    "host_http",
+    "host_query",
+];
+
+pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
+    let allowed = manifest.world.allowed_capabilities();
+    let world_denied: Vec<&str> = manifest
+        .capabilities
+        .iter()
+        .filter(|cap| !allowed.contains(&cap.as_str()))
+        .map(|s| s.as_str())
+        .collect();
+
+    if !world_denied.is_empty() {
+        anyhow::bail!(
+            "child '{}' (world '{}') requests capabilities not allowed for this world: {}",
+            manifest.name,
+            manifest.world,
+            world_denied.join(", ")
+        );
+    }
+
+    let denied: Vec<&str> = manifest
+        .capabilities
+        .iter()
+        .filter(|cap| !AUTO_GRANTED_CAPABILITIES.contains(&cap.as_str()))
+        .map(|s| s.as_str())
+        .collect();
+
+    if !denied.is_empty() {
+        anyhow::bail!(
+            "child '{}' requests capabilities not granted: {}",
+            manifest.name,
+            denied.join(", ")
+        );
+    }
+
+    const KNOWN_QUERY_KINDS: &[&str] = &["scry", "context", "assay"];
+    let unknown: Vec<&str> = manifest
+        .host_query_kinds
+        .iter()
+        .filter(|k| !KNOWN_QUERY_KINDS.contains(&k.as_str()))
+        .map(|s| s.as_str())
+        .collect();
+
+    if !unknown.is_empty() {
+        anyhow::bail!(
+            "child '{}' requests unknown query kinds: {}",
+            manifest.name,
+            unknown.join(", ")
+        );
+    }
+
+    for domain in &manifest.host_http_domains {
+        if domain.is_empty() {
+            anyhow::bail!(
+                "child '{}' has empty HTTP domain in host_http",
+                manifest.name
+            );
+        }
+        if !domain.is_ascii() {
+            anyhow::bail!(
+                "child '{}' has non-ASCII HTTP domain '{}' in host_http",
+                manifest.name,
+                domain
+            );
+        }
+        if domain.contains('/') {
+            anyhow::bail!(
+                "child '{}' has path component in HTTP domain '{}' in host_http",
+                manifest.name,
+                domain
+            );
+        }
+    }
+
+    if manifest.capabilities.contains(&"host_emit".to_string()) && manifest.schemas.is_empty() {
+        anyhow::bail!(
+            "child '{}' declares host_emit but has no [schemas.*] entries",
+            manifest.name
+        );
+    }
+
+    if manifest.capabilities.contains(&"host_measure".to_string()) {
+        for (metric_name, metric) in &manifest.declared_metrics {
+            if metric.labels.len() > 10 {
+                anyhow::bail!(
+                    "child '{}' metric '{}' exceeds max label keys (10)",
+                    manifest.name,
+                    metric_name
+                );
+            }
+        }
+    }
+
+    if manifest.world == ChildKind::KnowledgeChild {
+        const KNOWN_STREAMS: &[&str] = &[
+            "belief.changed",
+            "graph.changed",
+            "fact.ingested",
+            "session.completed",
+            "repo.synced",
+            "file.found",
+            "file.written",
+            "record.extracted",
+            "record.validated",
+            "record.rejected",
+            "record.ready",
+            "record.duplicate",
+        ];
+        for stream in &manifest.subscribed_streams {
+            if !KNOWN_STREAMS.contains(&stream.as_str()) {
+                anyhow::bail!(
+                    "child '{}' requests unknown event stream '{}'",
+                    manifest.name,
+                    stream
+                );
+            }
+        }
+
+        for source in manifest.ingress_sources.values() {
+            host_support::validate_http_url(&source.endpoint).map_err(|error| {
+                anyhow::anyhow!(
+                    "child '{}' declares invalid ingress source '{}' endpoint '{}': {}",
+                    manifest.name,
+                    source.name,
+                    source.endpoint,
+                    error
+                )
+            })?;
+        }
+    }
+
+    let http_set: std::collections::HashSet<&str> = manifest
+        .host_http_domains
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
+    for (domain, mapping) in &manifest.host_secrets {
+        if !http_set.contains(domain.as_str()) {
+            anyhow::bail!(
+                "child '{}': domain '{}' in host_secrets but not in host_http",
+                manifest.name,
+                domain
+            );
+        }
+        match crate::mother::get_global_secret(&mapping.secret_name) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                eprintln!(
+                    "[child:{}] warning: secret '{}' not found in vault (domain '{}')",
+                    manifest.name, mapping.secret_name, domain
+                );
+            }
+            Err(e) => {
+                eprintln!(
+                    "[child:{}] warning: could not probe secret '{}': {}",
+                    manifest.name, mapping.secret_name, e
+                );
+            }
+        }
+    }
+
+    if let Some(ref role) = manifest.role {
+        let expected_worlds = role.expected_worlds();
+        if !expected_worlds.contains(&manifest.world) {
+            eprintln!(
+                "[child:{}] warning: role '{}' is unusual for world '{}' (expected: {})",
+                manifest.name,
+                role,
+                manifest.world,
+                expected_worlds
+                    .iter()
+                    .map(|w| w.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+    }
+
+    Ok(())
 }
 
 impl std::fmt::Display for ChildRole {
@@ -192,6 +356,31 @@ pub struct CredentialMapping {
     pub location: InjectionLocation,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeclaredMetricType {
+    Gauge,
+    Counter,
+}
+
+#[derive(Debug, Clone)]
+pub struct DeclaredMetric {
+    pub metric_type: DeclaredMetricType,
+    pub labels: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilesystemAccessMode {
+    ReadOnly,
+    ReadWrite,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilesystemPreopenConfig {
+    pub host_path: String,
+    pub guest_path: String,
+    pub mode: FilesystemAccessMode,
+}
+
 // =========================================================================
 // Child manifest (child.toml)
 // =========================================================================
@@ -203,27 +392,32 @@ pub struct ChildManifest {
     pub version: String,
     pub description: String,
     pub world: ChildKind,
-    /// Plugin role — what the plugin is FOR (connector, grammar, extension, app).
-    /// None for legacy plugins that haven't declared a role yet.
+    /// Child role — what the child is FOR (connector, grammar, extension, app).
+    /// None for legacy children that haven't declared a role yet.
     pub role: Option<ChildRole>,
     pub patina_min: String,
     pub capabilities: Vec<String>,
-    /// Toy commands this plugin is allowed to request (from [capabilities.toys].commands).
+    /// Toy commands this child is allowed to request (from [capabilities.toys].commands).
     /// Empty means no toys allowed.
     pub allowed_toy_commands: Vec<String>,
-    /// Query kinds this plugin is allowed to call (from [capabilities].host_query).
+    /// Query kinds this child is allowed to call (from [capabilities].host_query).
     /// E.g., ["scry", "context", "assay"]. Empty means no query access.
     pub host_query_kinds: Vec<String>,
-    /// HTTP domains this plugin is allowed to access (from [capabilities].host_http).
+    /// HTTP domains this child is allowed to access (from [capabilities].host_http).
     /// E.g., ["api.github.com", "hooks.slack.com"]. Empty means no HTTP access.
     pub host_http_domains: Vec<String>,
     /// Credential mappings per domain (from [capabilities.host_secrets]).
     /// Maps domain → secret name + injection location.
     pub host_secrets: std::collections::HashMap<String, CredentialMapping>,
     pub provides: ChildProvides,
-    /// Schema packages this plugin references (from [schemas.<name>].package).
+    /// Schema packages this child references (from [schemas.<name>].package).
     /// Maps schema name → package string (e.g., "forge" → "patina:schema/forge@1.0.0").
     pub schemas: std::collections::HashMap<String, String>,
+    /// Metrics this child is allowed to emit (from [needs.metrics]).
+    pub declared_metrics: std::collections::HashMap<String, DeclaredMetric>,
+    /// Host filesystem preopens for this child.
+    /// Configured from [needs.scopes.filesystem].
+    pub filesystem_preopens: Vec<FilesystemPreopenConfig>,
     pub state_enabled: bool,
     pub checkpoint_streams: Vec<String>,
     pub lake_names: Vec<String>,
@@ -245,10 +439,10 @@ pub struct ChildManifest {
 /// Query scope controls cross-project access.
 #[derive(Debug, Clone, Default)]
 pub enum QueryScope {
-    /// Plugin can only query current project (default).
+    /// Child can only query current project (default).
     #[default]
     CurrentProject,
-    /// Plugin can query all registered repos.
+    /// Child can query all registered repos.
     AllRepos,
 }
 
@@ -264,12 +458,14 @@ pub struct GrantedCapabilities {
     /// Credential mappings: domain → secret name + injection location.
     /// Empty means no credential injection.
     pub credential_mappings: std::collections::HashMap<String, CredentialMapping>,
-    /// Whether plugin can emit facts to eventlog.
+    /// Whether child can emit facts to eventlog.
     pub host_emit: bool,
     /// Parsed schema facts cached at load time. Outer key = schema name,
     /// inner key = fact-type name, value = event_type string.
     /// Zero disk reads at emit time — all validation from this cache.
     pub schema_facts: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+    /// Declared metric policies from manifest [needs.metrics].
+    pub declared_metrics: std::collections::HashMap<String, DeclaredMetric>,
     pub state_enabled: bool,
     pub checkpoint_streams: std::collections::HashSet<String>,
     pub lake_names: std::collections::HashSet<String>,
@@ -287,9 +483,9 @@ pub struct GrantedCapabilities {
 pub struct ChildProvides {
     pub child: Option<String>,
     pub commands: Vec<String>,
-    /// Pipeline operations this plugin handles (e.g., ["parse", "chunk"]).
+    /// Pipeline operations this child handles (e.g., ["parse", "chunk"]).
     pub pipeline_ops: Vec<String>,
-    /// Languages (file extensions) this pipeline plugin claims (e.g., ["zig", "nim"]).
+    /// Languages (file extensions) this pipeline child claims (e.g., ["zig", "nim"]).
     pub languages: Vec<String>,
 }
 
@@ -353,6 +549,9 @@ impl ChildManifest {
         let needs_scopes = needs_table
             .and_then(|needs| needs.get("scopes"))
             .and_then(|v| v.as_table());
+        let needs_connections = needs_table
+            .and_then(|needs| needs.get("connections"))
+            .and_then(|v| v.as_table());
 
         // Parse capabilities
         let cap_table = table.get("capabilities").and_then(|v| v.as_table());
@@ -413,10 +612,10 @@ impl ChildManifest {
                     .collect()
             })
             .unwrap_or_default();
-        let host_http_domains: Vec<String> = host_http_domains;
+        let mut host_http_domains: Vec<String> = host_http_domains;
 
         // Parse [capabilities.host_secrets] — credential mappings per domain
-        let host_secrets = cap_table
+        let mut host_secrets: std::collections::HashMap<String, CredentialMapping> = cap_table
             .and_then(|cap| cap.get("host_secrets"))
             .and_then(|v| v.as_table())
             .map(|secrets_table| {
@@ -449,6 +648,69 @@ impl ChildManifest {
                     .collect()
             })
             .unwrap_or_default();
+
+        if let Some(connections) = needs_connections {
+            for (connection_name, value) in connections {
+                let Some(entry) = value.as_table() else {
+                    continue;
+                };
+                let Some(toy) = entry.get("toy").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+                match toy {
+                    "http" => {
+                        let record = match crate::connect::load(connection_name) {
+                            Ok(record) => record,
+                            Err(error) => {
+                                eprintln!(
+                                    "warning: could not resolve connection '{}' for [needs.connections]: {}",
+                                    connection_name, error
+                                );
+                                continue;
+                            }
+                        };
+                        if !capabilities.iter().any(|cap| cap == "host_http") {
+                            capabilities.push("host_http".to_string());
+                        }
+                        for domain in &record.auth.allowed_domains {
+                            if !host_http_domains.iter().any(|d| d == domain) {
+                                host_http_domains.push(domain.clone());
+                            }
+                            if host_secrets.contains_key(domain) {
+                                continue;
+                            }
+                            match &record.auth.injection {
+                                crate::connect::InjectionStrategy::Bearer => {
+                                    host_secrets.insert(
+                                        domain.clone(),
+                                        CredentialMapping {
+                                            secret_name: record.auth.secret_ref.clone(),
+                                            location: InjectionLocation::Bearer,
+                                        },
+                                    );
+                                }
+                                _ => {
+                                    eprintln!(
+                                        "warning: connection '{}' uses unsupported injection strategy for host_secrets; skipping derived mapping",
+                                        connection_name
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    "store" => {
+                        // Store connections are parsed for Phase 3 schema compatibility.
+                        // Runtime routing and policy mediation are introduced in later phases.
+                    }
+                    other => {
+                        eprintln!(
+                            "warning: unsupported [needs.connections] toy '{}' for connection '{}'; skipping",
+                            other, connection_name
+                        );
+                    }
+                }
+            }
+        }
 
         // Parse provides
         let provides_table = table.get("provides").and_then(|v| v.as_table());
@@ -500,6 +762,108 @@ impl ChildManifest {
                             .map(|pkg| (name.clone(), pkg.to_string()))
                     })
                     .collect()
+            })
+            .unwrap_or_default();
+
+        let declared_metrics = needs_table
+            .and_then(|needs| needs.get("metrics"))
+            .and_then(|v| v.as_table())
+            .map(|metrics_table| {
+                metrics_table
+                    .iter()
+                    .filter_map(|(name, value)| {
+                        let table = value.as_table()?;
+                        let metric_type = match table.get("type").and_then(|v| v.as_str()) {
+                            Some("gauge") => DeclaredMetricType::Gauge,
+                            Some("counter") => DeclaredMetricType::Counter,
+                            Some(other) => {
+                                eprintln!(
+                                    "warning: metric '{}' has unknown type '{}', skipping",
+                                    name, other
+                                );
+                                return None;
+                            }
+                            None => {
+                                eprintln!("warning: metric '{}' missing type, skipping", name);
+                                return None;
+                            }
+                        };
+                        let labels = table
+                            .get("labels")
+                            .and_then(|v| v.as_array())
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|v| v.as_str().map(ToString::to_string))
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default();
+                        Some((
+                            name.clone(),
+                            DeclaredMetric {
+                                metric_type,
+                                labels,
+                            },
+                        ))
+                    })
+                    .collect::<std::collections::HashMap<_, _>>()
+            })
+            .unwrap_or_default();
+
+        let filesystem_preopens = needs_scopes
+            .and_then(|scopes| scopes.get("filesystem"))
+            .and_then(|v| v.as_table())
+            .map(|table| {
+                let mut mounts = Vec::new();
+                if let Some(path) = table.get("path").and_then(|v| v.as_str()) {
+                    let trimmed = path.trim();
+                    if !trimmed.is_empty() {
+                        mounts.push(FilesystemPreopenConfig {
+                            host_path: trimmed.to_string(),
+                            guest_path: "/input".to_string(),
+                            mode: FilesystemAccessMode::ReadOnly,
+                        });
+                    }
+                }
+                if let Some(extra) = table.get("paths").and_then(|v| v.as_array()) {
+                    for (idx, value) in extra.iter().enumerate() {
+                        if let Some(path) = value.as_str() {
+                            let trimmed = path.trim();
+                            if !trimmed.is_empty() {
+                                mounts.push(FilesystemPreopenConfig {
+                                    host_path: trimmed.to_string(),
+                                    guest_path: format!("/input-{}", idx + 1),
+                                    mode: FilesystemAccessMode::ReadOnly,
+                                });
+                            }
+                        }
+                    }
+                }
+                for (scope_name, scope_value) in table {
+                    let Some(scope_table) = scope_value.as_table() else {
+                        continue;
+                    };
+                    let Some(path) = scope_table.get("path").and_then(|v| v.as_str()) else {
+                        continue;
+                    };
+                    let trimmed = path.trim();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    let mode = match scope_table
+                        .get("mode")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("read-only")
+                    {
+                        "read-write" => FilesystemAccessMode::ReadWrite,
+                        _ => FilesystemAccessMode::ReadOnly,
+                    };
+                    mounts.push(FilesystemPreopenConfig {
+                        host_path: trimmed.to_string(),
+                        guest_path: format!("/{}", scope_name),
+                        mode,
+                    });
+                }
+                mounts
             })
             .unwrap_or_default();
 
@@ -608,6 +972,7 @@ impl ChildManifest {
             .unwrap_or_default();
         let toys = crate::mother::GrantedToys {
             fetch: needs_toys.iter().any(|toy| toy == "fetch"),
+            events: needs_toys.iter().any(|toy| toy == "events"),
             lake_names: lake_names.iter().cloned().collect(),
             ingress_sources: ingress_sources.clone(),
             connector: needs_toys.iter().any(|toy| toy == "connector"),
@@ -638,6 +1003,8 @@ impl ChildManifest {
                 languages,
             },
             schemas,
+            declared_metrics,
+            filesystem_preopens,
             state_enabled,
             checkpoint_streams,
             lake_names,
@@ -700,6 +1067,7 @@ impl ChildManifest {
             credential_mappings,
             host_emit,
             schema_facts,
+            declared_metrics: self.declared_metrics.clone(),
             state_enabled: self.state_enabled,
             checkpoint_streams: self.checkpoint_streams.iter().cloned().collect(),
             lake_names: self.lake_names.iter().cloned().collect(),

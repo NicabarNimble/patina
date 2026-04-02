@@ -7,7 +7,7 @@ entrenchment: medium
 status: active
 endorsed: true
 extracted: 2026-03-08
-revised: 2026-03-08
+revised: 2026-03-25
 ---
 
 # connectors-own-tables-schemas-are-contracts
@@ -27,8 +27,8 @@ Schemas declare domain contracts via `[[projections]]`, `[[indexes]]`, and `[[co
 ## Supports
 
 - [[patina-is-domain-agnostic-knowledge-system]] — domain agnosticism requires domain knowledge to live in schemas, not in core or child runtime code
-- [[pipes-are-processes-not-wasm]] — connectors are single-purpose fetch services; materialization is a separate concern handled by core infrastructure or dedicated children
-- [[mother-holds-connections-pipes-transform]] — Mother routes and governs; scope-appropriate materializers execute
+- [[children-have-agency-toys-are-capabilities]] — connectors remain bounded workers; materialization is separate capability execution.
+- [[mother-is-connection-and-continuity]] — Mother routes/governs boundaries while dedicated children execute specialized materialization lanes.
 - [[connectors-never-materialize]] — connectors are source-boundary adapters; they never write to storage in any scope
 
 ## Attacks

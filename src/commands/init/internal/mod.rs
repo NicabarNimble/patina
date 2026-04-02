@@ -126,7 +126,7 @@ pub fn execute_init(name: String, force: bool, local: bool, no_commit: bool) -> 
     println!("  ✓ Created layer structure");
 
     // Create UID (stable project identity)
-    let uid = patina::project::create_uid_if_missing(&project_path)?;
+    let uid = patina::project::register_with_mother(&project_path)?;
     if !is_reinit {
         println!("  ✓ Created project UID: {}", uid);
     }

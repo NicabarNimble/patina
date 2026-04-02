@@ -37,8 +37,7 @@
 //! ├── oxidize.yaml             # Embedding recipe (committed)
 //! ├── versions.json            # Version manifest (committed)
 //! └── local/                   # Local state (gitignored)
-//!     ├── data/
-//!     │   ├── patina.db        # SQLite database
+//!     ├── cache/
 //!     │   └── embeddings/      # Vector indices
 //!     └── backups/             # Backup files
 //! ```
@@ -190,16 +189,21 @@ pub mod child {
         patina_home().join("children")
     }
 
-    /// CLI command plugins directory: `~/.patina/plugins/`
-    /// Contains .wasm files + `.toml` child manifests for CLI command plugins (Phase 2+).
-    pub fn plugins_dir() -> PathBuf {
+    /// CLI command children directory (compat path): `~/.patina/plugins/`
+    /// Contains .wasm files + `.toml` child manifests for CLI command children.
+    pub fn command_children_dir() -> PathBuf {
         patina_home().join("plugins")
     }
 
-    /// Plugin work directory (WASI sandbox root): `~/.patina/plugins/{name}/work/`
-    /// Mapped to `/work/` in the plugin's virtual filesystem (Phase 2+ when WASI lands).
+    /// Command child work directory (WASI sandbox root): `~/.patina/plugins/{name}/work/`
+    /// Mapped to `/work/` in the child's virtual filesystem.
     pub fn work_dir(name: &str) -> PathBuf {
-        plugins_dir().join(name).join("work")
+        command_children_dir().join(name).join("work")
+    }
+
+    /// Legacy alias kept during vocabulary migration.
+    pub fn plugins_dir() -> PathBuf {
+        command_children_dir()
     }
 
     /// Pipeline grammar children directory: `~/.patina/pipeline/`
@@ -208,8 +212,8 @@ pub mod child {
         patina_home().join("pipeline")
     }
 
-    /// Secret grants file: `~/.patina/plugin-config/secret-grants.toml`
-    /// Maps plugin names to allowed secret names for credential injection.
+    /// Secret grants file (compat path): `~/.patina/plugin-config/secret-grants.toml`
+    /// Maps child names to allowed secret names for credential injection.
     pub fn secret_grants_path() -> PathBuf {
         patina_home()
             .join("plugin-config")
@@ -291,9 +295,106 @@ pub mod mother {
         data_dir().join("graph.db")
     }
 
-    /// Knowledge-child runtime state: `~/.patina/mother/runtime.db`
+    /// Mother lifecycle state: `~/.patina/mother/state.db`
     pub fn runtime_db() -> PathBuf {
-        data_dir().join("runtime.db")
+        data_dir().join("state.db")
+    }
+
+    /// Per-project Mother database paths: `~/.patina/mother/projects/{project_uid}/`
+    pub mod projects {
+        use super::*;
+
+        fn is_valid_project_uid(uid: &str) -> bool {
+            uid.len() == 8
+                && uid
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        }
+
+        fn validate_project_uid(uid: &str) -> Result<(), String> {
+            if is_valid_project_uid(uid) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "invalid project uid '{}': expected 8 lowercase hex chars",
+                    uid
+                ))
+            }
+        }
+
+        /// Project directory: `~/.patina/mother/projects/{project_uid}/`
+        pub fn project_dir(uid: &str) -> Result<PathBuf, String> {
+            validate_project_uid(uid)?;
+            Ok(data_dir().join("projects").join(uid))
+        }
+
+        /// Ensure project directory exists and return path.
+        pub fn ensure_project_dir(uid: &str) -> Result<PathBuf, String> {
+            let dir = project_dir(uid)?;
+            std::fs::create_dir_all(&dir)
+                .map_err(|e| format!("failed to create project dir '{}': {e}", dir.display()))?;
+            Ok(dir)
+        }
+
+        /// Project events database: `~/.patina/mother/projects/{project_uid}/events.db`
+        pub fn events_db(uid: &str) -> Result<PathBuf, String> {
+            Ok(project_dir(uid)?.join("events.db"))
+        }
+
+        /// Project projections database: `~/.patina/mother/projects/{project_uid}/patina.db`
+        pub fn patina_db(uid: &str) -> Result<PathBuf, String> {
+            Ok(project_dir(uid)?.join("patina.db"))
+        }
+
+        /// Project runtime database: `~/.patina/mother/projects/{project_uid}/runtime.db`
+        pub fn runtime_db(uid: &str) -> Result<PathBuf, String> {
+            Ok(project_dir(uid)?.join("runtime.db"))
+        }
+    }
+
+    /// Persona storage: `~/.patina/mother/persona/{persona_uid}/`
+    pub mod persona {
+        use super::*;
+
+        fn validate_persona_uid(persona_uid: &str) -> Result<(), String> {
+            let valid = !persona_uid.is_empty()
+                && persona_uid.len() <= 64
+                && persona_uid
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+            if valid {
+                Ok(())
+            } else {
+                Err(format!(
+                    "invalid persona uid '{}': expected 1-64 chars [a-zA-Z0-9_-]",
+                    persona_uid
+                ))
+            }
+        }
+
+        /// Persona directory: `~/.patina/mother/persona/{persona_uid}/`
+        pub fn persona_dir(persona_uid: &str) -> Result<PathBuf, String> {
+            validate_persona_uid(persona_uid)?;
+            Ok(data_dir().join("persona").join(persona_uid))
+        }
+
+        /// Ensure persona directory exists and return path.
+        pub fn ensure_persona_dir(persona_uid: &str) -> Result<PathBuf, String> {
+            let dir = persona_dir(persona_uid)?;
+            std::fs::create_dir_all(&dir)
+                .map_err(|e| format!("failed to create persona dir '{}': {e}", dir.display()))?;
+            Ok(dir)
+        }
+
+        /// Persona key identity file: `~/.patina/mother/persona/{persona_uid}/identity.age`
+        pub fn identity_age(persona_uid: &str) -> Result<PathBuf, String> {
+            Ok(persona_dir(persona_uid)?.join("identity.age"))
+        }
+
+        /// Persona beliefs store: `~/.patina/mother/persona/{persona_uid}/beliefs.db`
+        pub fn beliefs_db(persona_uid: &str) -> Result<PathBuf, String> {
+            Ok(persona_dir(persona_uid)?.join("beliefs.db"))
+        }
     }
 }
 
@@ -358,6 +459,11 @@ pub mod project {
         root.join(".patina/config.toml")
     }
 
+    /// Legacy project config: `.patina/config.json` (migration source)
+    pub fn legacy_config_path(root: &Path) -> PathBuf {
+        root.join(".patina/config.json")
+    }
+
     /// Local state directory (gitignored): `.patina/local/`
     pub fn local_dir(root: &Path) -> PathBuf {
         root.join(".patina/local")
@@ -368,20 +474,20 @@ pub mod project {
         root.join(".patina/local/data")
     }
 
-    /// Main SQLite database: `.patina/local/data/patina.db`
+    /// Legacy local database path (migration source): `.patina/local/data/patina.db`
     pub fn db_path(root: &Path) -> PathBuf {
         root.join(".patina/local/data/patina.db")
     }
 
-    /// Embedding indices: `.patina/local/data/embeddings/`
+    /// Embedding indices: `.patina/local/cache/embeddings/`
     pub fn embeddings_dir(root: &Path) -> PathBuf {
-        root.join(".patina/local/data/embeddings")
+        root.join(".patina/local/cache/embeddings")
     }
 
-    /// Model-specific projections: `.patina/local/data/embeddings/{model}/projections/`
+    /// Model-specific projections: `.patina/local/cache/embeddings/{model}/projections/`
     pub fn model_projections_dir(root: &Path, model: &str) -> PathBuf {
         root.join(format!(
-            ".patina/local/data/embeddings/{}/projections",
+            ".patina/local/cache/embeddings/{}/projections",
             model
         ))
     }
@@ -394,6 +500,16 @@ pub mod project {
     /// Version manifest: `.patina/versions.json` (committed)
     pub fn versions_path(root: &Path) -> PathBuf {
         root.join(".patina/versions.json")
+    }
+
+    /// Project UID file: `.patina/uid` (committed)
+    pub fn uid_path(root: &Path) -> PathBuf {
+        root.join(".patina/uid")
+    }
+
+    /// Project persona binding file: `.patina/persona` (committed)
+    pub fn persona_path(root: &Path) -> PathBuf {
+        root.join(".patina/persona")
     }
 
     /// Backup directory: `.patina/local/backups/`
@@ -410,37 +526,12 @@ pub mod project {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::with_temp_patina_home;
     use mother_crate::secrets_paths as mother_paths;
-
-    fn with_temp_patina_home<T>(f: impl FnOnce(PathBuf) -> T) -> T {
-        let _guard = crate::test_support::env_test_mutex()
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        let temp = tempfile::TempDir::new().unwrap();
-        let expected_home = temp.path().join("patina-home");
-        std::fs::create_dir_all(&expected_home).unwrap();
-        let old = std::env::var_os("PATINA_HOME");
-        unsafe {
-            std::env::set_var("PATINA_HOME", &expected_home);
-        }
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(expected_home)));
-        match old {
-            Some(value) => unsafe {
-                std::env::set_var("PATINA_HOME", value);
-            },
-            None => unsafe {
-                std::env::remove_var("PATINA_HOME");
-            },
-        }
-        match result {
-            Ok(value) => value,
-            Err(panic) => std::panic::resume_unwind(panic),
-        }
-    }
 
     #[test]
     fn test_patina_home() {
-        with_temp_patina_home(|expected_home| {
+        crate::test_support::with_temp_patina_home(|expected_home| {
             let home = patina_home();
             assert_eq!(home, expected_home);
         });
@@ -532,6 +623,67 @@ mod tests {
     }
 
     #[test]
+    fn test_mother_project_paths_validate_uid() {
+        with_temp_patina_home(|expected_home| {
+            let project_dir = mother::projects::project_dir("2bdc808e").expect("valid uid");
+            assert_eq!(project_dir, expected_home.join("mother/projects/2bdc808e"));
+
+            assert!(mother::projects::project_dir("").is_err());
+            assert!(mother::projects::project_dir("123").is_err());
+            assert!(mother::projects::project_dir("../etc").is_err());
+            assert!(mother::projects::project_dir("ABCDEF12").is_err());
+            assert!(mother::projects::project_dir("deadbeeg").is_err());
+        });
+    }
+
+    #[test]
+    fn test_mother_project_paths_ensure_dir() {
+        with_temp_patina_home(|expected_home| {
+            let dir = mother::projects::ensure_project_dir("2bdc808e").expect("create dir");
+            assert_eq!(dir, expected_home.join("mother/projects/2bdc808e"));
+            assert!(dir.exists());
+        });
+    }
+
+    #[test]
+    fn test_mother_project_database_paths() {
+        with_temp_patina_home(|expected_home| {
+            assert_eq!(
+                mother::projects::events_db("2bdc808e").unwrap(),
+                expected_home.join("mother/projects/2bdc808e/events.db")
+            );
+            assert_eq!(
+                mother::projects::patina_db("2bdc808e").unwrap(),
+                expected_home.join("mother/projects/2bdc808e/patina.db")
+            );
+            assert_eq!(
+                mother::projects::runtime_db("2bdc808e").unwrap(),
+                expected_home.join("mother/projects/2bdc808e/runtime.db")
+            );
+        });
+    }
+
+    #[test]
+    fn test_mother_persona_paths() {
+        with_temp_patina_home(|expected_home| {
+            assert_eq!(
+                mother::persona::persona_dir("default").unwrap(),
+                expected_home.join("mother/persona/default")
+            );
+            assert_eq!(
+                mother::persona::identity_age("default").unwrap(),
+                expected_home.join("mother/persona/default/identity.age")
+            );
+            assert_eq!(
+                mother::persona::beliefs_db("default").unwrap(),
+                expected_home.join("mother/persona/default/beliefs.db")
+            );
+            assert!(mother::persona::persona_dir("../oops").is_err());
+            assert!(mother::persona::persona_dir("").is_err());
+        });
+    }
+
+    #[test]
     fn test_mother_paths_contract_project_secrets() {
         let root = Path::new("/tmp/test-project");
 
@@ -587,7 +739,9 @@ mod tests {
         );
         assert_eq!(
             project::model_projections_dir(root, "e5-base-v2"),
-            PathBuf::from("/tmp/test-project/.patina/local/data/embeddings/e5-base-v2/projections")
+            PathBuf::from(
+                "/tmp/test-project/.patina/local/cache/embeddings/e5-base-v2/projections"
+            )
         );
     }
 }

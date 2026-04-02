@@ -5,21 +5,23 @@ on:
     branches: [ main, patina ]
   push:
     branches: [ main, patina ]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test:
-    name: Test Suite
+  # ==================================================================
+  # Lint — clippy + structural checks + fmt (~12 min cold)
+  # ==================================================================
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
     - name: Install Rust toolchain
-      run: rustup show # installs toolchain from rust-toolchain.toml
+      run: rustup show
 
     - name: Install DuckDB
       run: |
@@ -38,11 +40,87 @@ jobs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
           target/
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-lint-
+          ${{ runner.os }}-cargo-
+
+    - name: Check crate naming policy
+      run: bash resources/scripts/check-crate-names.sh
+    - name: Check single SDK surface
+      run: bash resources/scripts/check-single-sdk-surface.sh
+    - name: Check core/protocol dependency direction
+      run: bash resources/scripts/check-core-protocol-deps.sh
+    - name: Check runtime boundary drift
+      run: bash resources/scripts/check-runtime-boundaries.sh
+    - name: Check layer output contract
+      run: bash resources/scripts/check-layer-output-contract.sh
+    - name: Check retired MCP surface invariants
+      run: bash resources/scripts/check-retired-mcp-surface.sh
+
+    - name: Check Rust formatting
+      run: cargo fmt --all -- --check
+
+    - name: Run clippy
+      run: cargo clippy --workspace -- -D warnings
+
+  # ==================================================================
+  # Test — unit tests + parity/broker + WASM integration (~14 min cold)
+  # ==================================================================
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 2
+
+    - name: Detect WASM-relevant changes
+      id: changes
+      run: |
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          BASE=${{ github.event.pull_request.base.sha }}
+          HEAD=${{ github.event.pull_request.head.sha }}
+          CHANGED=$(git diff --name-only "$BASE"..."$HEAD" 2>/dev/null || echo "")
+        elif [[ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]; then
+          CHANGED=$(git diff --name-only "${{ github.event.before }}"..."${{ github.sha }}" 2>/dev/null || echo "")
+        else
+          CHANGED=""
+        fi
+        if echo "$CHANGED" | grep -qE '^(src/child/|children/|mother/src/|wit/|sdk/)'; then
+          echo "wasm=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "wasm=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Install Rust toolchain
+      run: rustup show
+
+    - name: Install DuckDB
+      run: |
+        wget -q https://github.com/duckdb/duckdb/releases/download/v1.1.3/libduckdb-linux-amd64.zip
+        unzip -q libduckdb-linux-amd64.zip -d libduckdb
+        echo "DUCKDB_LIB_DIR=$PWD/libduckdb" >> $GITHUB_ENV
+        echo "DUCKDB_INCLUDE_DIR=$PWD/libduckdb" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=$PWD/libduckdb" >> $GITHUB_ENV
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-test-
+          ${{ runner.os }}-cargo-
 
     - name: Get active model name
       id: active-model
-      run: echo "model=$(./scripts/get-active-model.sh)" >> $GITHUB_OUTPUT
+      run: echo "model=$(./resources/scripts/get-active-model.sh)" >> $GITHUB_OUTPUT
 
     - name: Cache embedding models
       id: cache-models-test
@@ -53,59 +131,52 @@ jobs:
 
     - name: Download active model
       if: steps.cache-models-test.outputs.cache-hit != 'true'
-      run: ./scripts/download-active-model.sh
+      run: ./resources/scripts/download-active-model.sh
 
-    - name: Check crate naming policy
-      run: bash resources/scripts/check-crate-names.sh
+    - name: Install cargo-nextest
+      run: curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
 
-    - name: Check single SDK surface
-      run: bash resources/scripts/check-single-sdk-surface.sh
-
-    - name: Check core/protocol dependency direction
-      run: bash resources/scripts/check-core-protocol-deps.sh
-
-    - name: Check runtime boundary drift
-      run: bash resources/scripts/check-runtime-boundaries.sh
-
-    - name: Check layer output contract
-      run: bash resources/scripts/check-layer-output-contract.sh
+    - name: Run unit tests
+      run: cargo nextest run --workspace --lib --profile ci
 
     - name: Check DuckLake wasm parity
       run: bash resources/scripts/check-ducklake-parity.sh
 
-    - name: Check WIT toy/world sync
-      run: bash resources/scripts/check-wit-toys-sync.sh
+    - name: Check broker integration invariants
+      run: bash resources/scripts/check-broker-integration.sh
 
-    - name: Check Rust formatting
-      run: cargo fmt --all -- --check
+    # Integration lane — WASM tests (conditional)
+    - name: Install WASM target
+      if: steps.changes.outputs.wasm == 'true' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+      run: rustup target add wasm32-wasip2
 
-    - name: Run clippy
-      run: cargo clippy --workspace -- -D warnings
+    - name: Build WASM children for integration tests
+      if: steps.changes.outputs.wasm == 'true' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+      run: |
+        cargo build -p patina-ai-child-file-system-monitor --target wasm32-wasip2
+        cargo build -p patina-ai-child-folder-text-to-parquet --target wasm32-wasip2
+        cargo build -p patina-ai-child-content-extractor --target wasm32-wasip2
+        cargo build -p patina-ai-child-schema-enforcer --target wasm32-wasip2
+        cargo build -p patina-ai-child-dedup-filter --target wasm32-wasip2
+        cargo build -p patina-ai-child-record-writer --target wasm32-wasip2
+        cargo build -p patina-ai-child-lakehouse-catalog --target wasm32-wasip2
 
-    - name: Run Rust tests
-      run: cargo test --workspace
+    - name: Run WASM integration tests
+      if: steps.changes.outputs.wasm == 'true' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+      run: cargo nextest run --test wasm_integration --profile ci
 
-    - name: Build release
-      run: cargo build --release
-
-    - name: Test cargo install
-      run: cargo install --path . --locked --root ./test-install
-
-  # Embedding/retrieval benchmarks - only on main pushes
-  benchmark:
-    name: Retrieval Benchmark
+  # ==================================================================
+  # Release — build + schema + install (PR/dispatch only, ~20 min cold)
+  # ==================================================================
+  release:
+    name: Release
     runs-on: ubuntu-latest
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+    - uses: actions/checkout@v4
 
     - name: Install Rust toolchain
-      run: rustup show # installs toolchain from rust-toolchain.toml
+      run: rustup show
 
     - name: Install DuckDB
       run: |
@@ -124,7 +195,59 @@ jobs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
           target/
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-release-
+          ${{ runner.os }}-cargo-
+
+    - name: Build release
+      run: cargo build --release
+
+    - name: Check schema consistency
+      run: ./target/release/patina schema check
+
+    - name: Test cargo install
+      run: cargo install --path . --locked --root ./test-install
+
+  # ==================================================================
+  # Benchmark — retrieval quality (main pushes only)
+  # ==================================================================
+  benchmark:
+    name: Retrieval Benchmark
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install Rust toolchain
+      run: rustup show
+
+    - name: Install DuckDB
+      run: |
+        wget -q https://github.com/duckdb/duckdb/releases/download/v1.1.3/libduckdb-linux-amd64.zip
+        unzip -q libduckdb-linux-amd64.zip -d libduckdb
+        echo "DUCKDB_LIB_DIR=$PWD/libduckdb" >> $GITHUB_ENV
+        echo "DUCKDB_INCLUDE_DIR=$PWD/libduckdb" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=$PWD/libduckdb" >> $GITHUB_ENV
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-release-
+          ${{ runner.os }}-cargo-
 
     - name: Free Disk Space
       run: |
@@ -135,7 +258,7 @@ jobs:
 
     - name: Get active model name
       id: active-model
-      run: echo "model=$(./scripts/get-active-model.sh)" >> $GITHUB_OUTPUT
+      run: echo "model=$(./resources/scripts/get-active-model.sh)" >> $GITHUB_OUTPUT
 
     - name: Cache embedding models
       id: cache-models
@@ -146,7 +269,7 @@ jobs:
 
     - name: Download active model
       if: steps.cache-models.outputs.cache-hit != 'true'
-      run: ./scripts/download-active-model.sh
+      run: ./resources/scripts/download-active-model.sh
 
     - name: Build release
       run: cargo build --release
@@ -174,19 +297,15 @@ jobs:
         RECALL_10=$(jq -r '.recall_at_10' benchmark-results.json)
 
         echo ""
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "📊 Retrieval Quality Metrics"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "Retrieval Quality Metrics"
         echo "MRR:        $MRR"
         echo "Recall@5:   $RECALL_5"
         echo "Recall@10:  $RECALL_10"
         echo ""
 
         if awk "BEGIN {exit !($MRR >= 0.55)}"; then
-          echo "✅ Quality: MRR meets target (>= 0.55)"
+          echo "Quality: MRR meets target (>= 0.55)"
         else
-          echo "❌ Quality: MRR below target (< 0.55)"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Quality: MRR below target (< 0.55)"
           exit 1
         fi
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

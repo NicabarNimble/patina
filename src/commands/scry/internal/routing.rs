@@ -3,8 +3,6 @@
 //! Handles routing queries to mother daemon and cross-repo searches.
 //! Graph routing is the sole cross-repo strategy (D4).
 
-use std::path::Path;
-
 use anyhow::Result;
 
 use patina::mother::{self, EdgeType, Graph};
@@ -167,7 +165,9 @@ pub fn execute_graph_routing(query: Option<&str>, options: &ScryOptions) -> Resu
     let mut all_results: Vec<(String, String, f32, ScryResult)> = Vec::new();
 
     // Search current project
-    let in_project = Path::new(".patina/local/data/patina.db").exists();
+    let in_project = patina::eventlog::patina_db_path()
+        .map(|p| p.exists())
+        .unwrap_or(false);
     if in_project {
         println!("📂 Searching current project...");
         let project_options = ScryOptions {

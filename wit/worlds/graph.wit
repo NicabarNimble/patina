@@ -1,6 +1,0 @@
-package patina:host@0.1.0;
-
-interface graph {
-    query: func(kind: string, params-json: string) -> result<string, string>;
-    mutate: func(action: string, payload-json: string) -> result<_, string>;
-}

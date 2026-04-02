@@ -12,6 +12,7 @@
 //! - Opt-in: TCP at --host/--port (bearer token required)
 
 use anyhow::Result;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -30,16 +31,25 @@ pub struct ServerState {
     version: String,
     token: String,
     pub(super) registry: Arc<ChildRegistry>,
+    runtime_store: patina::mother::KnowledgeRuntimeStore,
+    services: mother_crate::services::MotherServices,
     scry_backend: Arc<dyn ScryBackend>,
 }
 
 impl ServerState {
-    fn new(token: String, registry: ChildRegistry) -> Self {
+    fn new(
+        token: String,
+        registry: ChildRegistry,
+        runtime_store: patina::mother::KnowledgeRuntimeStore,
+    ) -> Self {
+        let services_store = runtime_store.clone();
         Self {
             start_time: Instant::now(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             token,
             registry: Arc::new(registry),
+            runtime_store,
+            services: mother_crate::services::MotherServices::new(services_store),
             scry_backend: Arc::new(RetrievalScryBackend),
         }
     }
@@ -47,6 +57,25 @@ impl ServerState {
     fn uptime_secs(&self) -> u64 {
         self.start_time.elapsed().as_secs()
     }
+}
+
+fn read_current_project_uid() -> Option<String> {
+    let cwd = std::env::current_dir().ok()?;
+    let uid = std::fs::read_to_string(patina::paths::project::uid_path(&cwd)).ok()?;
+    let uid = uid.trim();
+    if uid.len() == 8
+        && uid
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    {
+        Some(uid.to_string())
+    } else {
+        None
+    }
+}
+
+fn file_size_if_exists(path: &Path) -> Option<u64> {
+    std::fs::metadata(path).ok().map(|m| m.len())
 }
 
 // === Host capabilities ===
@@ -81,7 +110,30 @@ impl ApiRuntime for ServerState {
     }
 
     fn health_all(&self) -> Vec<(String, patina::mother::ChildHealth)> {
-        self.registry.health_all()
+        self.services.health.child_health_all(&self.registry)
+    }
+
+    fn health_details(&self) -> anyhow::Result<mother_crate::http_api::HealthDetails> {
+        let registered_projects = self.runtime_store.list_registered_projects()?;
+        let state_db_bytes = file_size_if_exists(self.runtime_store.path());
+        let active_project_uid = read_current_project_uid();
+
+        let active_project_databases = active_project_uid.as_ref().and_then(|uid| {
+            let state_parent = self.runtime_store.path().parent()?;
+            let project_dir = state_parent.join("projects").join(uid);
+            Some(mother_crate::http_api::ProjectDatabases {
+                events_db_bytes: file_size_if_exists(&project_dir.join("events.db")),
+                patina_db_bytes: file_size_if_exists(&project_dir.join("patina.db")),
+                runtime_db_bytes: file_size_if_exists(&project_dir.join("runtime.db")),
+            })
+        });
+
+        Ok(mother_crate::http_api::HealthDetails {
+            registered_projects: registered_projects.len(),
+            active_project_uid,
+            active_project_databases,
+            state_db_bytes,
+        })
     }
 
     fn child_health(&self, child_name: &str) -> anyhow::Result<patina::mother::ChildHealth> {
@@ -118,14 +170,60 @@ impl ApiRuntime for ServerState {
             })
             .collect())
     }
+
+    fn secrets_get(&self) -> anyhow::Result<serde_json::Value> {
+        self.services.secrets.get()
+    }
+
+    fn secrets_cache(&self, payload: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        self.services.secrets.cache(&payload)
+    }
+
+    fn secrets_lock(&self) -> anyhow::Result<serde_json::Value> {
+        Ok(self.services.secrets.lock())
+    }
+
+    fn builtin_spec_dispatch(
+        &self,
+        request: patina_protocol::SpecDispatchRequest,
+    ) -> anyhow::Result<serde_json::Value> {
+        let command: patina::spec::SpecCommands = serde_json::from_value(request.command)
+            .map_err(|e| anyhow::anyhow!("Invalid spec-manager command payload: {}", e))?;
+        patina::spec::execute_command_value(command)
+    }
+
+    fn builtin_lake_dispatch(
+        &self,
+        request: patina_protocol::LakeDispatchRequest,
+    ) -> anyhow::Result<serde_json::Value> {
+        let command: patina::lake::LakeCommand = serde_json::from_value(request.command)
+            .map_err(|e| anyhow::anyhow!("Invalid lake-manager command payload: {}", e))?;
+        patina::lake::execute_value(command)
+    }
+
+    fn builtin_doctor_run(&self) -> anyhow::Result<patina_protocol::DoctorRunResult> {
+        let value = patina::mother::doctor_runtime::execute_value()?;
+        let exit_code = value.get("exit_code").and_then(|v| v.as_i64()).unwrap_or(0);
+        Ok(patina_protocol::DoctorRunResult {
+            data: value,
+            exit_code,
+        })
+    }
+
+    fn builtin_secrets_dispatch(
+        &self,
+        payload: serde_json::Value,
+    ) -> mother_crate::http_daemon::HttpResponse {
+        mother_crate::secrets_authority_api::dispatch(
+            payload,
+            &mother_crate::secrets_authority_backend::MotherSecretsAuthorityBackend,
+        )
+    }
 }
 
 fn build_router(state: Arc<ServerState>, require_auth: bool) -> Router {
     let token = state.token.clone();
-    let route_table = mother_crate::http_api::build_route_table(
-        state,
-        Arc::new(super::builtin_dispatch::handle_builtin_child_request),
-    );
+    let route_table = mother_crate::http_api::build_route_table(state);
     Router::new(require_auth, token, route_table)
 }
 
@@ -133,7 +231,6 @@ fn build_router(state: Arc<ServerState>, require_auth: bool) -> Router {
 pub struct DaemonOptions {
     pub host: Option<String>,
     pub port: u16,
-    pub legacy_migration: bool,
 }
 
 impl Default for DaemonOptions {
@@ -141,7 +238,6 @@ impl Default for DaemonOptions {
         Self {
             host: None,
             port: 50051,
-            legacy_migration: false,
         }
     }
 }
@@ -152,16 +248,12 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     let mut registry = ChildRegistry::new();
     let runtime = patina::mother::KnowledgeRuntimeStore::default();
 
-    // Compiled-in children (always available)
-    mother_crate::daemon_bootstrap::register_builtin_children(&mut registry)?;
-
     // WASM children (discovered from ~/.patina/children/)
     let children_dir = patina::paths::child::children_dir();
     mother_crate::daemon_bootstrap::load_children_from_dir(
         &children_dir,
         &mut registry,
         &runtime,
-        options.legacy_migration,
         super::loader::load_wasm_child,
     );
 
@@ -171,7 +263,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     // TCP opt-in path (--host flag) — requires bearer token
     if let Some(ref host) = options.host {
         let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
-        let state = Arc::new(ServerState::new(token, registry));
+        let state = Arc::new(ServerState::new(token, registry, runtime.clone()));
         let router = Arc::new(build_router(Arc::clone(&state), true));
         let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
             transport: mother_crate::daemon_bootstrap_config::TransportMode::TcpHttp {
@@ -180,7 +272,9 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
                 token_path: patina::paths::serve::token_path(),
                 token: state.token.clone(),
             },
-            legacy_migration: options.legacy_migration,
+            max_connections: mother_crate::daemon_bootstrap_config::DEFAULT_MAX_CONNECTIONS,
+            wal_checkpoint_interval_secs:
+                mother_crate::daemon_bootstrap_config::DEFAULT_WAL_CHECKPOINT_INTERVAL_SECS,
         };
         return mother_crate::daemon_bootstrap_config::start(
             config,
@@ -192,7 +286,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     }
 
     // Default: UDS path (no TCP, no token needed — file permissions are auth)
-    let state = Arc::new(ServerState::new(String::new(), registry));
+    let state = Arc::new(ServerState::new(String::new(), registry, runtime));
     let router = Arc::new(build_router(Arc::clone(&state), false));
     let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
         transport: mother_crate::daemon_bootstrap_config::TransportMode::UdsHttp {
@@ -200,7 +294,9 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
             socket_path: patina::paths::serve::socket_path(),
             pid_path: patina::paths::serve::pid_path(),
         },
-        legacy_migration: options.legacy_migration,
+        max_connections: mother_crate::daemon_bootstrap_config::DEFAULT_MAX_CONNECTIONS,
+        wal_checkpoint_interval_secs:
+            mother_crate::daemon_bootstrap_config::DEFAULT_WAL_CHECKPOINT_INTERVAL_SECS,
     };
     mother_crate::daemon_bootstrap_config::start(
         config,
@@ -214,31 +310,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use patina::mother::{
-        ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, MotherChild, MotherHost,
-    };
-
-    struct StubLegacy;
-
-    impl MotherChild for StubLegacy {
-        fn name(&self) -> &str {
-            "legacy"
-        }
-
-        fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
-            Ok(())
-        }
-
-        fn health(&self) -> ChildHealth {
-            ChildHealth::Healthy
-        }
-
-        fn handle(&self, _request: &ChildRequest) -> Result<ChildResponse> {
-            Ok(ChildResponse {
-                payload: serde_json::Value::Null,
-            })
-        }
-    }
+    use patina::mother::{ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, MotherHost};
 
     struct StubKnowledge;
 
@@ -263,37 +335,20 @@ mod tests {
     }
 
     #[test]
-    fn daemon_options_default_keeps_legacy_quarantined() {
+    fn daemon_options_default() {
         let options = DaemonOptions::default();
-        assert!(!options.legacy_migration);
-    }
-
-    #[test]
-    fn register_loaded_child_skips_legacy_without_migration_mode() {
-        let mut registry = ChildRegistry::new();
-        let runtime = patina::mother::KnowledgeRuntimeStore::default();
-
-        let message = mother_crate::daemon_bootstrap::register_loaded_child(
-            &mut registry,
-            &runtime,
-            mother_crate::daemon_bootstrap::LoadedChild::Legacy {
-                child: Box::new(StubLegacy),
-                name: "legacy".into(),
-            },
-            false,
-        )
-        .unwrap()
-        .unwrap();
-
-        assert!(message.contains("skipping legacy child legacy"));
-        assert_eq!(registry.legacy_len(), 0);
-        assert_eq!(registry.knowledge_len(), 0);
+        assert_eq!(options.port, 50051);
+        assert!(options.host.is_none());
     }
 
     #[test]
     fn register_loaded_child_loads_knowledge_by_default() {
         let mut registry = ChildRegistry::new();
-        let runtime = patina::mother::KnowledgeRuntimeStore::default();
+        let runtime_root = tempfile::tempdir().unwrap();
+        let runtime = patina::mother::KnowledgeRuntimeStore::new_with_project(
+            runtime_root.path().join("mother/state.db"),
+            mother_crate::state::ProjectUid::new("2bdc808e").unwrap(),
+        );
 
         mother_crate::daemon_bootstrap::register_loaded_child(
             &mut registry,
@@ -304,11 +359,9 @@ mod tests {
                 subscribed_streams: vec!["belief.changed".into()],
                 relationship_listens: vec![],
             },
-            false,
         )
         .unwrap();
 
         assert_eq!(registry.knowledge_len(), 1);
-        assert_eq!(registry.legacy_len(), 0);
     }
 }
