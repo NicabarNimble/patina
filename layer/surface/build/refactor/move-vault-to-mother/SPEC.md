@@ -7,7 +7,7 @@ sessions:
   origin: 20260402-064905-376539000
 blocked_by: []
 exit_criteria:
-  - src/secrets/ contains zero vault/identity/crypto modules — only scanner.rs, mod.rs (thin IPC + run_with_secrets + prompt)
+  - src/secrets/ contains zero vault/identity/crypto modules — only scanner.rs, session.rs, mod.rs (thin IPC + run_with_secrets + prompt)
   - Mother secrets_authority_backend is the sole vault/identity code path
   - Every patina secrets CLI command works identically (same flags, same output, same behavior)
   - age crate stays (no crypto changes)
@@ -70,7 +70,6 @@ Draft. No blockers. Stopgap identity mismatch fix already committed.
 - Removing session cache
 - Changing vault file locations
 - Changing any CLI flag or output
-- Adding new IPC operations to the protocol
 
 ## Current State
 
@@ -115,7 +114,8 @@ Only 2 of 14 commands need changes. The rest are already IPC.
 ```
 src/secrets/
   mod.rs      ~120 lines — run_with_secrets (IPC), prompt_for_value, shell_join
-  session.rs   273 lines — unchanged
+  session.rs   273 lines — session cache client (unchanged, talks to Mother serve endpoint)
+  scanner.rs         — secret detection in staged/tracked files (unchanged, no vault)
 
 src/commands/secrets.rs — same 14 handlers, 0 direct vault calls
 ```
@@ -125,7 +125,7 @@ recipients.rs, registry.rs (~1,925 lines removed).
 
 Slim: mod.rs from 632 → ~120 lines (~512 lines removed).
 
-Total removed: ~2,437 lines. Total remaining: ~393 lines.
+Total removed: ~2,437 lines. Total remaining: ~393 lines + scanner.
 
 ## Solution
 
@@ -142,21 +142,27 @@ One line change. No new code.
 `run_with_secrets()` at `src/secrets/mod.rs:258` calls `load_all_secrets()`
 which decrypts vaults directly. Two options:
 
-**Option A — N+1 IPC bridge (simple, no protocol change):**
-Rewrite `load_all_secrets()` to call `dispatch_secrets_authority("status", ...)`
-to get secret names, then `dispatch_secrets_authority("get_global_secret", ...)`
-for each value. Rewrite `load_env_mappings()` to extract env mappings from the
-status response.
+The current IPC surface cannot achieve parity: `get_global_secret` only reads
+the global vault. Project vault secrets aren't reachable through any existing
+operation. N+1 calls via Status + GetGlobalSecret would silently drop project
+secrets — breaking parity.
 
-N+1 calls for N secrets. UDS roundtrip is <1ms, so 10 secrets = ~12ms. Fine.
+**Minimal protocol addition required:** Add one operation to
+`SecretsAuthorityOperation`:
 
-**Option B — Add LoadAllSecrets to protocol (clean, one call):**
-Add `LoadAllSecrets` variant to `SecretsAuthorityOperation`. Mother handler
-decrypts vault, builds env_var→value map, returns it. Single IPC call.
+```rust
+LoadSecretsEnvMap {
+    project_root: Option<String>,
+}
+```
 
-**Choice: Option A first.** It works today with zero protocol changes. If
-performance matters later, Option B is a clean follow-up. The whole point of
-this spec is 1:1 parity with minimum changes.
+Mother handler: decrypt global vault + project vault (if project_root provided),
+merge with registries (project overrides global), return `{env_var: value}` map.
+Single IPC call, exact parity with current `load_all_secrets` + `load_env_mappings`.
+
+This is the smallest protocol change that achieves parity. It adds one match
+arm to `from_payload`, one handler in the API, and one backend method that
+reuses existing `decrypt_vault` + registry code already in Mother.
 
 ### Fix 3: Delete CLI vault code
 
@@ -172,12 +178,13 @@ in mother/Cargo.toml — it's Mother's dependency now, not the CLI's.
 
 ## Implementation Order
 
-1. Fix setup_claude (1 line)
-2. Rewrite load_all_secrets + load_env_mappings as IPC (N+1 bridge)
-3. Delete 7 files from src/secrets/
-4. Slim mod.rs
-5. Clean root Cargo.toml
-6. Run full test suite
+1. Add LoadSecretsEnvMap to protocol + Mother handler + backend
+2. Fix setup_claude (1 line)
+3. Rewrite run_with_secrets to use LoadSecretsEnvMap IPC
+4. Delete 7 files from src/secrets/
+5. Slim mod.rs
+6. Clean root Cargo.toml
+7. Run full test suite
 
 ## Resolved Decisions
 
@@ -188,7 +195,7 @@ in mother/Cargo.toml — it's Mother's dependency now, not the CLI's.
 | --global flag | Keep working | Zero behavior change. |
 | Project vault | Keep working | Zero behavior change. |
 | Session cache | Keep working | Zero behavior change. |
-| run_with_secrets bridge | N+1 IPC (no protocol change) | Minimum delta. LoadAllSecrets is a follow-up. |
+| run_with_secrets bridge | LoadSecretsEnvMap (one new op) | N+1 can't reach project vault. Minimal addition for parity. |
 | Re-exported types | Check consumers, move if needed | Can't break external code. |
 | Vault file locations | No change | ~/.patina/vault.age stays. .patina/vault.age stays. |
 

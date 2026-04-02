@@ -14,8 +14,9 @@ optional follow-up work on a clean foundation.
 
 ## Build Target
 
-Delete 7 files, slim 1, fix 2 call sites. ~2,437 lines removed.
-No new protocol operations. No new dependencies. No new files.
+Delete 7 files, slim 1, fix 2 call sites, add 1 protocol operation.
+~2,437 lines removed. One new IPC operation (`LoadSecretsEnvMap`) that
+reuses existing backend methods. No new dependencies. No new files in CLI.
 
 ## Prior Art
 
@@ -62,7 +63,70 @@ Session cache client. Talks to Mother's serve endpoint. No vault code.
 
 ## Commits
 
-### 1. `refactor(secrets): route setup_claude check through mother IPC`
+### 1. `feat(protocol): add LoadSecretsEnvMap to SecretsAuthorityOperation`
+
+Add variant to `crates/patina-protocol/src/lib.rs`:
+```rust
+LoadSecretsEnvMap {
+    project_root: Option<String>,
+},
+```
+
+Add `from_payload` / `into_payload` handling (match arm for `"load_secrets_env_map"`).
+
+Add Mother backend method in `mother/src/secrets_authority_backend/mod.rs`:
+```rust
+pub fn load_secrets_env_map(project_root: Option<&Path>) -> Result<HashMap<String, String>> {
+    let mut env_map = HashMap::new();
+
+    // Global vault + registry
+    let global_vault_path = paths::secrets::vault_path();
+    let global_registry_path = paths::secrets::registry_path();
+    if global_vault_path.exists() {
+        let vault_data = vault::decrypt_vault(&global_vault_path)?;
+        let reg = registry::SecretsRegistry::load_from(&global_registry_path).unwrap_or_default();
+        for (name, value) in &vault_data.values {
+            if let Some(env_var) = reg.get_env(name) {
+                env_map.insert(env_var.to_string(), value.clone());
+            }
+        }
+    }
+
+    // Project vault + registry (overrides global)
+    if let Some(root) = project_root {
+        let project_vault_path = paths::secrets::project_vault_path(root);
+        let project_registry_path = paths::secrets::project_registry_path(root);
+        if project_vault_path.exists() {
+            let vault_data = vault::decrypt_vault(&project_vault_path)?;
+            let reg = registry::SecretsRegistry::load_from(&project_registry_path).unwrap_or_default();
+            for (name, value) in &vault_data.values {
+                if let Some(env_var) = reg.get_env(name) {
+                    env_map.insert(env_var.to_string(), value.clone());
+                }
+            }
+        }
+    }
+
+    Ok(env_map)
+}
+```
+
+Add API handler in `mother/src/secrets_authority_api.rs`:
+```rust
+"load_secrets_env_map" => match backend.load_secrets_env_map(project_root) {
+    Ok(secrets) => HttpResponse::json(200, &serde_json::json!({
+        "status": "ok",
+        "secrets": secrets,
+        "count": secrets.len(),
+    })),
+    Err(error) => json_error(400, &error.to_string()),
+}
+```
+
+This reuses existing `decrypt_vault` and `SecretsRegistry` — no new crypto,
+no new file formats. Just wiring existing backend methods into a new operation.
+
+### 2. `refactor(secrets): route setup_claude check through mother IPC`
 
 One line:
 ```
@@ -74,33 +138,35 @@ src/commands/secrets.rs:518
 Verify: `patina secrets setup-claude` shows same prompt. `mother` already
 imported at line 7.
 
-### 2. `refactor(secrets): rewrite load_all_secrets as IPC bridge`
+### 3. `refactor(secrets): rewrite run_with_secrets to use LoadSecretsEnvMap`
 
-Replace `src/secrets/mod.rs:526-568` (`load_all_secrets` + `load_env_mappings`)
-with IPC-based versions:
+Replace `load_all_secrets()` + `load_env_mappings()` calls in `run_with_secrets`
+and `run_with_secrets_ssh` with a single IPC call:
 
 ```rust
-fn dispatch_load_all_secrets(project_root: Option<&Path>) -> Result<HashMap<String, String>> {
-    // 1. Call dispatch_secrets_authority("status", {}) to get secret names + env mappings
-    // 2. For each secret name, call dispatch_secrets_authority("get_global_secret", {name})
-    // 3. Build name→value map
-    // Note: dispatches through Mother, not direct vault access
-}
-
-fn dispatch_load_env_mappings(project_root: Option<&Path>) -> Result<HashMap<String, String>> {
-    // Status response already includes secret_names
-    // Registry env mappings come from status or a separate call
-    // Build name→env_var map
+fn load_secrets_via_ipc(project_root: Option<&Path>) -> Result<HashMap<String, String>> {
+    let response = dispatch_secrets_authority(
+        "load_secrets_env_map",
+        serde_json::json!({}),  // project_root added by build_authority_payload
+    )?
+    .ok_or_else(|| anyhow::anyhow!("Missing secrets authority response"))?;
+    
+    let secrets: HashMap<String, String> = response
+        .get("secrets")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+    
+    Ok(secrets)
 }
 ```
 
-Then update `run_with_secrets` and `run_with_secrets_ssh` to call these
-instead of the old direct-decrypt helpers.
+`run_with_secrets` becomes: call `load_secrets_via_ipc`, inject env vars, spawn.
+The returned map is already env_var→value (not name→value), so no registry
+lookup needed on the CLI side.
 
-**Key detail:** The current `run_with_secrets` calls `session::get_secrets_with_cache(|| load_all_secrets(root))`.
-The session cache wraps the vault access. With the IPC bridge, the session
-cache still works — it caches the IPC results, not the vault decrypt. No
-change to session.rs needed.
+**Session cache**: `session::get_secrets_with_cache(|| load_secrets_via_ipc(root))`
+still works — it caches the IPC result, not the vault decrypt. No session.rs
+changes needed.
 
 ### 3. `refactor(secrets): delete CLI vault/identity/crypto stack`
 
@@ -166,13 +232,20 @@ These deps stay in mother/Cargo.toml — they're Mother's now.
 
 ## Direct Code Targets
 
-### Commit 1
+### Commit 1 (LoadSecretsEnvMap)
+- `crates/patina-protocol/src/lib.rs:69-109` — add variant to enum
+- `crates/patina-protocol/src/lib.rs:123-167` — add from_payload match arm
+- `mother/src/secrets_authority_backend/mod.rs` — add `load_secrets_env_map()` fn
+- `mother/src/secrets_authority_api.rs` — add handler match arm
+- `mother/src/secrets_authority_api.rs:57-74` — add to trait
+
+### Commit 2 (setup_claude)
 - `src/commands/secrets.rs:518` — one line change
 
-### Commit 2
-- `src/secrets/mod.rs:258-300` — update run_with_secrets to use IPC bridge
-- `src/secrets/mod.rs:306-351` — update run_with_secrets_ssh to use IPC bridge
-- `src/secrets/mod.rs:526-568` — replace load_all_secrets + load_env_mappings
+### Commit 3 (run_with_secrets IPC)
+- `src/secrets/mod.rs:258-300` — rewrite run_with_secrets
+- `src/secrets/mod.rs:306-351` — rewrite run_with_secrets_ssh
+- `src/secrets/mod.rs:526-568` — replace with load_secrets_via_ipc
 
 ### Commit 3
 - DELETE: 7 files (see commit 3 above)
@@ -218,18 +291,11 @@ wc -l src/secrets/*.rs  # ~393 (mod.rs ~120 + session.rs 273)
 
 ## Open Questions
 
-1. **N+1 bridge for run_with_secrets**: The status response includes
-   `secret_names` but not values. Getting values requires one
-   `get_global_secret` call per secret. For N secrets, that's N+1 IPC calls.
-   
-   Current protocol doesn't have a "get all secret values" operation.
-   We could add one, but that's a protocol change — against the "minimum
-   delta" goal of this spec.
-   
-   **Assessment**: N+1 over UDS is <15ms for 10 secrets. Acceptable as-is.
-   A `LoadAllSecrets` operation is a clean follow-up if needed.
+1. **session.rs dependency on secrets types**: `session.rs` may import types
+   from deleted modules. Need to verify imports before commit 4.
+   **Action**: `grep "use crate::secrets::" src/secrets/session.rs` before deleting.
 
-2. **session.rs dependency on secrets types**: `session.rs` may import types
-   from deleted modules (e.g., `HashMap<String, String>` for cached secrets).
-   Need to check.
-   **Action**: Read session.rs imports before commit 3.
+2. **registry.get_env()**: The backend method assumes `SecretsRegistry` has a
+   `get_env(name) -> Option<&str>` method. Verify this exists, or check
+   if it needs to be added (it may currently be `iter()` only).
+   **Action**: Check `mother/src/secrets_authority_backend/registry.rs` API.
