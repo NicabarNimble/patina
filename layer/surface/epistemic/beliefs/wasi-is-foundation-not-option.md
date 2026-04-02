@@ -37,7 +37,8 @@ Patina builds with the WASI ecosystem, never parallel to it — standard interfa
 
 ## Applied-In
 
-<!-- Add concrete applications -->
+- [[child-construction-canon]] — codifies this as hard rule 8: "WASI is foundation, not option. Toys use standard WASI interfaces where they exist; custom interfaces cover only the delta."
+- [[toy-collapse-wasi-alignment]] — collapsed 22 toys to 10, aligning 6 with WASI proposals
 
 ## Revision Log
 

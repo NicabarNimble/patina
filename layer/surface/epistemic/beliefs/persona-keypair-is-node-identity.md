@@ -26,7 +26,7 @@ The persona keypair is persona identity — signing beliefs, issuing UCAN capabi
 
 - [[persona-is-a-patina-instance]] — persona as sovereign instance needs a cryptographic identity, not just a string label
 - [[mother-is-connection-and-continuity]] — Mother federates personas; keypair enables authenticated federation
-- [[four-roles-no-overlap]] — persona identity and Mother node identity remain separate role boundaries.
+- [[five-boundaries-no-overlap]] — persona identity and Mother node identity remain separate role boundaries.
 
 ## Attacks
 

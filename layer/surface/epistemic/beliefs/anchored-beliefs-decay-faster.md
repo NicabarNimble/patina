@@ -21,7 +21,7 @@ Beliefs that reference specific file paths, type names, or code structures decay
 ## Evidence
 
 - [[session-20260326-165149-931909000]]: Post-toy-collapse belief audit found 5 beliefs with stale anchors. All 5 had sound principles — the core statements were *more* true after the collapse. But Applied-In paths pointed at deleted files (`compat.rs`, `wit/worlds/`), type names referenced deleted types (`ConnectorToy`, `DuckLakeGrant`, `StorageToy`), and Attacked-By sections described mitigations using retired patterns. (weight: 0.95)
-- [[session-20260326-165149-931909000]]: Beliefs that survived unchanged: [[four-roles-no-overlap]], [[children-are-wasm]], [[core-primitives-are-not-children]] — all principle-level with minimal code anchoring. Beliefs that needed revision: [[compat-seam-before-rewire]], [[children-have-agency-toys-are-capabilities]], [[connector-toy-is-indivisible-authority]], [[initialize-is-capability-grant]] — all had specific file paths and type names in Applied-In. (weight: 0.90)
+- [[session-20260326-165149-931909000]]: Beliefs that survived unchanged: [[five-boundaries-no-overlap]], [[children-are-wasm]], [[core-primitives-are-not-children]] — all principle-level with minimal code anchoring. Beliefs that needed revision: [[compat-seam-before-rewire]], [[children-have-agency-toys-are-capabilities]], [[connector-toy-is-indivisible-authority]], [[initialize-is-capability-grant]] — all had specific file paths and type names in Applied-In. (weight: 0.90)
 
 ## Supports
 

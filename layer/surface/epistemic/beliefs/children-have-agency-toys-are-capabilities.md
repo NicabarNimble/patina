@@ -44,6 +44,7 @@ Children have bounded agency — they make decisions and own workflow within the
 
 ## Applied-In
 
+- [[child-construction-canon]] — codifies this belief as hard rule 2 ("Toys are explicit grants") and hard rule 3 ("Least-privilege toyboxes"). Registry of reusable children proven across 3 MVPs.
 - [[ducklake]] spec — first child using granted toys via `GrantedCapabilities` resolved from `[needs].toys` in `child.toml`
 - `src/child/internal/mod.rs` — `GrantedCapabilities` struct built at init time from manifest; capabilities are resolved once and checked at call-time via Host impl
 - [[toy-collapse-wasi-alignment]] — collapsed 22 toys to 10 primitives (connect, store, events, task, peer, git + WASI http, fs + shimmed log, state); init-time grant model survived and strengthened

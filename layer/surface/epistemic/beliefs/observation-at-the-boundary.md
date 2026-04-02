@@ -37,7 +37,7 @@ Each layer observes the layer below it at the interface boundary, never inside i
 
 ## Applied-In
 
-<!-- Add concrete applications -->
+- [[child-construction-canon]] — codifies this as hard rule 7: "Each layer observes the layer below it at the interface, never inside it." Two-tier measurement contract: Mother-guaranteed automatic + child-declared via `measure` toy.
 
 ## Revision Log
 

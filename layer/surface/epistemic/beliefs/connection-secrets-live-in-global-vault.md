@@ -24,7 +24,7 @@ Credentials referenced by ~/.patina/connections/ configs must be stored in the g
 
 ## Supports
 
-- [[four-roles-no-overlap]] — secret decryption is Mother infrastructure responsibility, not child runtime logic.
+- [[five-boundaries-no-overlap]] — secret decryption is Mother infrastructure responsibility, not child runtime logic.
 
 ## Attacks
 

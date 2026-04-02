@@ -37,6 +37,7 @@ Patina's knowledge primitives (scry, scrape, assay, belief, measure, oxidize) ar
 
 ## Applied-In
 
+- [[child-construction-canon]] — the canon's architecture section confirms: protocol core stays native CLI (scrape, oxidize, scry, assay, belief, session), children are reusable compute legos that feed INTO core. Core verbs are the pipeline, children are the inputs.
 - Reframes zero-fallback cutover: the question isn't "make daemon stubs real" but "what's core vs what's pluggable strategy"
 - scrape should have its own strategy children (code-scraper, github-scraper, markdown-scraper) — not every project is code-based
 - DuckLake is a scrape strategy for GitHub data, not a standalone knowledge child

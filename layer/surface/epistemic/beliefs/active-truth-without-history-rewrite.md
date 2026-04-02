@@ -26,7 +26,7 @@ Correct active code and doctrine to current architecture truth while preserving 
 
 - [[specs-describe-current-code-not-aspirations]] — active specs/docs should describe what is true now, not stale architecture.
 - [[read-code-before-write]] — factual updates are grounded by direct file/runtime verification before edits.
-- [[four-roles-no-overlap]] — active role doctrine can be corrected without erasing prior historical exploration.
+- [[five-boundaries-no-overlap]] — active role doctrine can be corrected without erasing prior historical exploration.
 
 ## Attacks
 
