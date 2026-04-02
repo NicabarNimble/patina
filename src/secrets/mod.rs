@@ -54,6 +54,10 @@ pub use self::vault::VaultStatus;
 
 use crate::paths;
 use anyhow::{bail, Result};
+use patina_protocol::{
+    BuiltinChild, BuiltinChildAction, BuiltinChildRequest, BuiltinChildResult,
+    SecretsAuthorityOperation, SecretsDispatchRequest,
+};
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
@@ -261,14 +265,11 @@ pub fn run_with_secrets(project_root: Option<&Path>, command: &[String]) -> Resu
     }
 
     // Load secrets with session caching
-    let secrets = session::get_secrets_with_cache(|| load_all_secrets(project_root))?;
+    let secrets = session::get_secrets_with_cache(|| load_secrets_via_ipc(project_root))?;
 
     if secrets.is_empty() {
         println!("No secrets to inject.");
     } else {
-        // Load registries to get env var mappings
-        let env_map = load_env_mappings(project_root)?;
-
         println!("✓ Injecting {} secrets", secrets.len());
 
         // Build environment with secrets
@@ -279,10 +280,8 @@ pub fn run_with_secrets(project_root: Option<&Path>, command: &[String]) -> Resu
         cmd.envs(std::env::vars());
 
         // Add secrets as env vars
-        for (name, value) in &secrets {
-            if let Some(env_var) = env_map.get(name) {
-                cmd.env(env_var, value);
-            }
+        for (env_var, value) in &secrets {
+            cmd.env(env_var, value);
         }
 
         cmd.stdin(Stdio::inherit());
@@ -313,19 +312,14 @@ pub fn run_with_secrets_ssh(
     }
 
     // Load secrets with session caching
-    let secrets = session::get_secrets_with_cache(|| load_all_secrets(project_root))?;
-
-    // Load registries to get env var mappings
-    let env_map = load_env_mappings(project_root)?;
+    let secrets = session::get_secrets_with_cache(|| load_secrets_via_ipc(project_root))?;
 
     // Build stdin script: export secrets then exec the user's command.
     // exec replaces the shell so secrets don't linger in the process tree.
     let mut stdin_script = String::new();
-    for (name, value) in &secrets {
-        if let Some(env_var) = env_map.get(name) {
-            let escaped_value = value.replace('\'', "'\\''");
-            stdin_script.push_str(&format!("export {}='{}'\n", env_var, escaped_value));
-        }
+    for (env_var, value) in &secrets {
+        let escaped_value = value.replace('\'', "'\\''");
+        stdin_script.push_str(&format!("export {}='{}'\n", env_var, escaped_value));
     }
     stdin_script.push_str(&format!("exec {}\n", shell_join(command)));
 
@@ -522,49 +516,36 @@ pub fn get_global_secret(name: &str) -> Result<Option<String>> {
 // Helper Functions
 // =============================================================================
 
-/// Load all secrets from global and project vaults.
-fn load_all_secrets(project_root: Option<&Path>) -> Result<HashMap<String, String>> {
-    let global_path = paths::secrets::vault_path();
-    let project_path = project_root.map(paths::secrets::project_vault_path);
+/// Load env-var-to-value secrets map from Mother secrets authority.
+fn load_secrets_via_ipc(project_root: Option<&Path>) -> Result<HashMap<String, String>> {
+    let client = crate::mother::control_plane_client();
+    let request = BuiltinChildRequest::new(
+        BuiltinChild::SecretsAuthority,
+        BuiltinChildAction::SecretsDispatch(SecretsDispatchRequest {
+            operation: SecretsAuthorityOperation::LoadSecretsEnvMap {
+                project_root: project_root.map(|root| root.display().to_string()),
+            },
+        }),
+    );
+    let response = client.child_action_typed(&request).map_err(|error| {
+        anyhow::anyhow!(
+            "secrets-authority unavailable via Mother (start with `patina mother start`): {}",
+            error
+        )
+    })?;
+    let payload = match response.result {
+        BuiltinChildResult::Dispatch { payload } => payload,
+        other => bail!(
+            "Unexpected typed response from secrets-authority: {:?}",
+            other
+        ),
+    };
 
-    vault::load_merged_secrets(
-        if global_path.exists() {
-            Some(&global_path)
-        } else {
-            None
-        },
-        project_path
-            .as_ref()
-            .filter(|p| p.exists())
-            .map(|p| p.as_path()),
-    )
-}
-
-/// Load env var mappings from registries.
-fn load_env_mappings(project_root: Option<&Path>) -> Result<HashMap<String, String>> {
-    let mut mappings = HashMap::new();
-
-    // Global registry
-    let global_registry_path = paths::secrets::registry_path();
-    if global_registry_path.exists() {
-        let reg = registry::SecretsRegistry::load_from(&global_registry_path)?;
-        for (name, env) in reg.iter() {
-            mappings.insert(name.to_string(), env.to_string());
-        }
-    }
-
-    // Project registry (overrides global)
-    if let Some(root) = project_root {
-        let project_registry_path = paths::secrets::project_registry_path(root);
-        if project_registry_path.exists() {
-            let reg = registry::SecretsRegistry::load_from(&project_registry_path)?;
-            for (name, env) in reg.iter() {
-                mappings.insert(name.to_string(), env.to_string());
-            }
-        }
-    }
-
-    Ok(mappings)
+    let secrets = payload
+        .get("secrets")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+    Ok(serde_json::from_value(secrets).unwrap_or_default())
 }
 
 /// Prompt for a secret value interactively (masked, no echo).
