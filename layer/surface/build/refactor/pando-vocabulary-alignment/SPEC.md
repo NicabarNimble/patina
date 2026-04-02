@@ -110,6 +110,12 @@ Sometimes you compose several children to do one thing. A pando is that group.
 "The scrape pando" instead of "the group of six children that together do
 folder-text-to-parquet."
 
+Each child in a pando has bounded agency (`[[children-have-agency-toys-are-capabilities]]`)
+— it makes decisions within the sandbox Mother grants. The pando's behavior
+emerges from composition, not from any single child's intelligence. Mother
+orchestrates the pando; children do the work; toys are the capability surface
+each child gets.
+
 ## Why One Kind
 
 Today there are two kinds of child: `knowledge-child` and `pipeline`. We split
@@ -117,17 +123,43 @@ them early because grammar parsers felt different from knowledge children. They
 aren't — or at least, we haven't proven they are. The split was premature.
 
 **Don't invent categories before the seam is proven.** If a real seam emerges
-from building more children, we split then — with evidence. Until then, one
-kind. This is `[[audit-before-refactor]]` applied to architecture: don't split
-the kind until you've built enough children to know where the boundary actually
-falls.
+from building more children, we split then — with evidence.
 
-What we know today:
-- The only real difference is which toys are granted and whether lifecycle
-  exports are active.
-- A grammar parser that wanted to cache parse trees would need state — suddenly
-  it's not a "pipeline" anymore.
-- The toybox already determines behavior. The kind label adds nothing.
+### What the beliefs tell us
+
+**`[[children-are-wasm]]`** — children are WASM runtime units. Not some
+children. All children. Native capabilities belong to Mother. The pipeline/
+knowledge-child split created two WASM engine paths for what is one runtime
+model. One kind of child, one WASM runtime.
+
+**`[[children-have-agency-toys-are-capabilities]]`** — children have bounded
+agency within Mother's sandbox. Toys are capability surfaces granted at init
+time via `[needs].toys` in child.toml. The manifest determines what a child
+can do — not a kind label. A grammar parser with `toys = ["log"]` has bounded
+agency over logging. A knowledge child with `toys = ["log", "state", "layer-fs"]`
+has broader agency. Same runtime, different grants.
+
+**`[[world-boundary-is-type-safety]]`** — the WIT world boundary is where type
+safety lives. Capability isolation determines what a child can see. Having two
+worlds (knowledge-child and pipeline) with different `handle()` signatures
+created two type boundaries for what should be one. One world means one type
+contract. String dispatch within that world is intentional low coupling — the
+world boundary provides isolation, not the payload types.
+
+**`[[core-primitives-are-not-children]]`** — Patina's knowledge primitives
+(scrape, scry, assay, belief) are core Mother capabilities. Children are
+pluggable strategy providers that feed INTO core. Grammar parsers are scrape
+strategy children — they feed into the core scrape primitive. They're not a
+different species. They're children doing one job.
+
+### What this means concretely
+
+- The toybox determines behavior, not the kind label.
+- A grammar parser that wants to cache parse trees would need state — under
+  the old model it suddenly isn't a "pipeline" anymore. Under one kind, it
+  just adds `state` to its toys.
+- `GrantedCapabilities` is resolved from `[needs].toys` at init time and
+  checked at call-time. This is the security boundary, not the kind enum.
 
 **Solution:** One WIT world with all exports. SDK provides default stubs for
 lifecycle exports. A grammar parser exports `health() -> healthy`,
