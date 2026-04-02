@@ -197,9 +197,9 @@ After Phase 2 complete, in addition to `cargo check` and `cargo test --lib`:
 patina child run doctor health          # unified engine runs doctor
 patina scrape code                      # grammar plugins via unified engine
 
-# Capability enforcement
-# Verify a toys = ["log"] child does NOT get state/layer-fs/git access
-# (inspect engine linking logs with PATINA_LOG=1, or unit test)
+# Capability enforcement (required cargo test, not optional)
+# Test: load a child with toys = ["log"], assert state/layer-fs/git calls error
+cargo test -- capability_gate
 
 # Template proof
 # patina child init produces valid child.toml with kind = "child"
