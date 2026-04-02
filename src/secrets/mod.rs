@@ -179,7 +179,23 @@ pub fn add_secret(
     };
 
     // Load and update vault (requires decrypt → Touch ID)
-    let mut vault_data = vault::decrypt_vault(&vault_path)?;
+    let mut vault_data = match vault::decrypt_vault(&vault_path) {
+        Ok(data) => data,
+        Err(e) => {
+            // Identity/vault mismatch: if registry has no secrets, safe to re-init
+            let reg = registry::SecretsRegistry::load_from(&registry_path).unwrap_or_default();
+            if reg.list().is_empty() {
+                eprintln!("⚠ Vault identity mismatch with empty registry, re-initializing");
+                let _recipient = vault::init_vault(&vault_path, &recipients_path)?;
+                vault::decrypt_vault(&vault_path)?
+            } else {
+                return Err(e.context(
+                    "Vault identity mismatch. The vault was encrypted with a different key.\n\
+                     Recovery: patina secrets --import-key (re-import your identity)",
+                ));
+            }
+        }
+    };
     vault_data.insert(name, value);
     vault::encrypt_vault(&vault_data, &vault_path, &recipients_path)?;
 
