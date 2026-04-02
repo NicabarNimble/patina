@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: move-vault-to-mother
-status: ready
+status: active
 created: 2026-04-02
 sessions:
   origin: 20260402-064905-376539000
