@@ -71,11 +71,11 @@ exit_criteria:
     text: "pre-push-checks.sh SDK_WORLDS updated from (knowledge-child pipeline) to (child). WIT consistency and mirror checks use wit/child/ paths."
     checked: false
   - id: pva13-ci-path-guard
-    text: "CI guard added: `grep -r '.join(\".patina\")' src/ --include='*.rs' | grep -v 'src/paths.rs' | grep -v '#[cfg(test)]'` must return empty. Prevents hardcoded .patina/ paths regrowing outside paths.rs (regression guard for A9)."
-    checked: false
+    text: "CI guard for hardcoded .patina/ paths exists in resources/scripts/check-runtime-boundaries.sh and passes."
+    checked: true
   - id: pva14-ci-blanket-dead-code-guard
-    text: "CI guard added: `grep -r '#![allow(dead_code)]' src/ --include='*.rs'` must return empty. Prevents blanket dead_code allows reappearing on files (regression guard for A22)."
-    checked: false
+    text: "CI guard for blanket #![allow(dead_code)] exists in resources/scripts/check-runtime-boundaries.sh and passes."
+    checked: true
 
 # Proof
 
@@ -130,6 +130,72 @@ Today there are two kinds: `knowledge-child` (Mother-hosted, full toybox, lifecy
 **Phase 1 (docs only):** Update vocabulary in specs, AGENTS.md, SDK docs, beliefs. No code changes. No compile risk.
 
 **Phase 2 (code change):** Merge WIT worlds, merge engines, collapse ChildKind, recompile grammar plugins, update SDK features, update all children and templates.
+
+## Audit Findings (resolved)
+
+Audit review surfaced 10 risks. Each is resolved here or in DESIGN.md.
+
+**AF1 — handle() signature mismatch (CRITICAL).**
+pipeline exports `handle(request: string)`, knowledge-child exports
+`handle(action: string, payload: string)`. This is the real migration risk.
+**Resolution:** Unified world uses the knowledge-child signature (action + payload).
+Pipeline's single `request` maps to `action = "handle", payload = request`.
+Grammar plugins must be recompiled against the new signature — the SDK provides
+a compatibility shim in the default stubs so existing plugin code compiles with
+a one-line change to the export. Details in DESIGN.md pva5.
+
+**AF2 — Capability widening risk.**
+Pipeline children get only host_log today. Kind collapse must not silently grant
+them state, layer-fs, git, etc.
+**Resolution:** The merged engine enforces `[needs].toys` from child.toml at load
+time. A child declaring `toys = ["log"]` gets only log. Toy grants are checked
+before linking — not after. Engine merge must preserve this check. Verification:
+after merge, confirm a `toys = ["log"]` child does NOT get state/layer-fs/git.
+
+**AF3 — kind field decision.**
+**Resolution:** `kind = "child"` is required in child.toml. `"knowledge-child"`
+and `"pipeline"` accepted as silent aliases mapped to `Child`. No deprecation
+warning (these are internal, not user-facing). The field is not optional.
+
+**AF4 — Pando YAML schema.**
+**Resolution:** `objective_id:` key in pando YAML renamed to `pando:`.
+Old `objective_id:` key rejected with message: "Renamed: use `pando:` instead
+of `objective_id:`". Locked in pva1 commit.
+
+**AF5 — Grammar plugin path/layout.**
+`~/.patina/pipeline/` contains 9 grammar plugins. Path stays after kind collapse
+(it's a storage location, not a kind label). Grammar plugins are recompiled
+against the unified world but installed to the same path. No path rename.
+
+**AF6 — SDK macro bridge.**
+No `register_pipeline_child!` or `register_knowledge_child!` macros exist in
+the current SDK (verified: zero matches in sdk/patina-sdk/src/lib.rs). The SDK
+uses trait-based registration via `GrantedBundle`. No macro shims needed.
+
+**AF7 — Phase 1 docs vs Phase 2 code gap.**
+**Resolution:** Phase 1 doc updates include a compatibility note:
+"Note: code still uses knowledge-child/pipeline until Phase 2 of
+pando-vocabulary-alignment." Note removed in Phase 2 pva7 commit.
+
+**AF8 — CI guard duplication.**
+pva13 (hardcoded .patina/ paths) and pva14 (blanket dead_code) guards
+ALREADY EXIST in `resources/scripts/check-runtime-boundaries.sh` (lines 92-151).
+**Resolution:** pva13 and pva14 exit criteria are already met. Check them off.
+Do not duplicate. pva12 (SDK_WORLDS update) is the only Phase 3 code change.
+
+**AF9 — Test acceptance too light.**
+**Resolution:** Expanded verification after Phase 2 (added to pva16/pva17):
+- Old kind = "knowledge-child" child.toml still loads
+- Old kind = "pipeline" child.toml still loads
+- `patina child run doctor health` works
+- `patina scrape code` works (grammar plugins via unified engine)
+- A child with `toys = ["log"]` does NOT get state/layer-fs/git access
+- `patina child init` produces valid child.toml with `kind = "child"`
+
+**AF10 — Terminology lock drift.**
+**Resolution:** Phase 1 AGENTS.md update references target state with "will
+become wit/child/ in Phase 2" note. Phase 2 pva7 commit removes the note
+and updates paths to final state.
 
 ## Not in Scope
 
