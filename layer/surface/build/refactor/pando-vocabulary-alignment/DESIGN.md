@@ -7,13 +7,14 @@
 - [[children-are-wasm]] — all children are WASM; no species split
 - [[children-have-agency-toys-are-capabilities]] — toybox determines behavior, not kind
 - [[world-boundary-is-type-safety]] — world boundaries provide compile-time isolation;
-  pipeline/knowledge-child was a false seam, not a real boundary. The principle is
-  sound; the application was wrong. Future worlds emerge from evidence.
+  pipeline/knowledge-child was a false seam. The principle is sound; the application
+  was wrong. Future worlds emerge from evidence.
 - [[wasi-is-foundation-not-option]] — one world built on WASI foundation
-- [[core-primitives-are-not-children]] — grammar parsers are scrape strategy children,
-  not a different species
+- [[core-primitives-are-not-children]] — grammar parsers are scrape strategy children
 
 ## Phase 1: Vocabulary (docs only)
+
+Phase 1 is truth alignment. Docs reflect intended vocabulary. No code changes.
 
 ### pva1: child-construction-canon
 
@@ -23,6 +24,9 @@ Changes to `layer/surface/build/feat/child-construction-canon/SPEC.md`:
 - `objective_id:` YAML key → `pando:`
 - ccc7 gate: "using the recipe format" → "using the pando format"
 - "composition" subsection stays (describes wiring within a pando)
+
+No parser enforcement — pando YAML parser doesn't exist yet. Parser behavior
+is a future spec (runtime pando execution).
 
 ### pva2: AGENTS.md
 
@@ -44,7 +48,12 @@ Removed in Phase 2 pva7 commit.
 - Drop "knowledge-child" vs "pipeline" distinction in user-facing docs
 - One SDK, one child kind, toys determine behavior
 
-## Phase 2: Kind Collapse and World Unification (code)
+**Phase 1 verification:** docs match intended vocabulary. No compile checks.
+
+## Phase 2: SDK-Based Kind Collapse and World Unification (code)
+
+All children use the SDK. Legacy children (not using SDK) are temporary
+compatibility artifacts, inventoried and slated for migration.
 
 ### pva5: One WIT World
 
@@ -56,13 +65,12 @@ Rename directory to `wit/child/`. Package becomes `patina:child@0.1.0`.
 - knowledge-child: `export handle: func(action: string, payload: string) -> result<string, string>;`
 
 Unified world uses the knowledge-child signature (action + payload). This is
-the richer contract. All knowledge children already implement it.
+the richer contract. All SDK knowledge children already implement it.
 
-Grammar plugins (compiled against pipeline world) require recompilation (pva8).
-The SDK provides a compatibility adapter: `PipelineChild` trait gets a blanket
-impl that adapts `handle(request)` to `handle(action, payload)` by passing
-payload as request and ignoring action. Migration is a one-line signature
-change per plugin for non-SDK children.
+Grammar plugins require recompilation (pva8). SDK provides a temporary shim:
+`PipelineChild` trait adapts `handle(request)` to `handle(action, payload)` by
+passing payload as request. This shim is migration triage — it keeps legacy
+grammar plugins compiling during transition, not permanent support.
 
 The unified world keeps all current knowledge-child exports. SDK provides
 default stubs:
@@ -80,8 +88,8 @@ A child that only implements `init`, `name`, `handle` gets stubs for free.
 Same as today's pipeline behavior, compiled against the unified world.
 
 **World boundaries going forward:** This merge removes a false seam, not the
-principle. `[[world-boundary-is-type-safety]]` remains sound. If a real seam
-appears from building more children, a new world earns its existence then.
+principle. If a real seam appears from building more children, a new world
+earns its existence then.
 
 ### pva6: One Engine
 
@@ -138,8 +146,8 @@ kind = "child"
 
 `kind` field is required, not optional. `FromStr` behavior:
 - `"child"` → `Child` (canonical)
-- `"knowledge-child"` → `Child` (silent alias, no warning)
-- `"pipeline"` → `Child` (silent alias, no warning)
+- `"knowledge-child"` → `Child` (silent alias, removed next minor)
+- `"pipeline"` → `Child` (silent alias, removed next minor)
 - `"command"` / `"task"` → error with migration message (already exists)
 
 Remove Phase 1 compatibility note from AGENTS.md. Update wit/ path references
@@ -148,11 +156,11 @@ to final state.
 ### pva8: Grammar Plugin Recompilation
 
 9 grammar plugins in `~/.patina/pipeline/` need recompilation against unified
-world. `patina setup grammars` installs updated binaries.
+world via SDK. `patina setup grammars` installs updated binaries.
 
 Plugins change: `handle(request)` signature becomes `handle(action, payload)`.
-SDK adapter handles this for SDK-based plugins. Non-SDK plugins need a manual
-one-line signature change.
+SDK `PipelineChild` shim handles this temporarily. Grammar plugins should
+migrate fully to the unified `Child` trait by next minor release.
 
 Path `~/.patina/pipeline/` stays — it's a storage location, not a kind label.
 
@@ -167,49 +175,55 @@ pipeline = []
 # After:
 [features]
 child = []
-pipeline = ["child"]           # deprecated alias, removed next minor
-knowledge-child = ["child"]    # deprecated alias, removed next minor
+pipeline = ["child"]           # temporary alias, removed next minor
+knowledge-child = ["child"]    # temporary alias, removed next minor
 ```
 
 `src/lib.rs` compile-error guard simplified — no more mutual exclusion check.
 One world, one feature.
 
-**SDK macro/trait bridge (AF6):**
+**SDK macro/trait bridge (AF6) — temporary triage:**
 `sdk/patina-sdk/src/pipeline.rs` exports `PipelineChild` trait (line 136) and
-`register_pipeline_child!` macro (line 219). Grammar plugins use these.
+`register_pipeline_child!` macro (line 219). Legacy grammar plugins use these.
 
-Migration plan:
-- Keep `pipeline.rs` file, mark module `#[deprecated(note = "Use Child trait")]`
-- `PipelineChild` trait gets a blanket impl adapting `handle(request)` to
-  `handle(action, payload)` by passing payload as request
+Temporary migration plan:
+- Keep `pipeline.rs` file, mark module `#[deprecated(note = "Use Child trait — legacy, removed next minor")]`
+- `PipelineChild` trait adapts `handle(request)` to `handle(action, payload)`
 - `register_pipeline_child!` macro re-exports to unified child registration
-- Shims removed in next minor release after this spec ships
+- **Removed in next minor release.** These are not permanent compatibility.
 
-### pva10: Children Updated
+### pva10: Children Updated + Legacy Inventory
 
 All 14 child.toml files (13 children + template):
 - `kind = "knowledge-child"` → `kind = "child"`
 - Cargo.toml `metadata.component.target.path`: `wit/knowledge-child/` → `wit/child/`
 
-Verify no non-SDK children exist. If any use raw wit-bindgen, their `handle`
-export must be updated manually.
+**Legacy inventory (pva-legacy-inventory):** Identify any children not using
+patina-sdk. For each legacy child found:
+1. Document which child and what bindings it uses
+2. Create an explicit migration follow-up (issue or spec)
+3. Mark the shim dependency so it's tracked for removal
+
+**Hard rule: no new legacy children.** `patina child init` produces SDK
+children only. The template uses the SDK. No legacy world option exposed.
 
 ### pva11: Template Updated
 
 `children/template/` and `patina child init` scaffold:
 - child.toml: `kind = "child"`
-- Cargo.toml: target path `wit/child/`
-- CLI help: `--world` options updated
+- Cargo.toml: target path `wit/child/`, depends on patina-sdk with `child` feature
+- CLI help: `--world` options updated (no legacy options)
 
 ## Risks
 
-- **handle() signature (AF1)** — real migration risk. SDK adapter handles it
-  for SDK children. Non-SDK children need manual one-line change.
+- **handle() signature (AF1)** — real migration risk. SDK shim handles it
+  temporarily for legacy grammar plugins. Legacy children inventoried.
 - **Capability widening (AF2)** — merged engine must gate at call boundary.
   Required cargo test validates this.
 - **Grammar recompilation** — users need `patina setup grammars --force` after
   upgrade. Add version check in grammar discovery to detect old-world plugins.
-- **Backward compat** — silent aliases in FromStr. Removed next minor.
+- **Backward compat** — silent aliases in FromStr and SDK features. Temporary.
+  Removed next minor.
 - **Engine merge complexity** — 1109 + 276 lines. Read both fully. Linker
   setup is the tricky part (knowledge-child links ~15 interfaces, pipeline
   links 1).
@@ -217,14 +231,17 @@ export must be updated manually.
 
 ## Verification
 
-After Phase 2 complete:
+**Phase 1:** Truth-alignment checks. Docs match intended vocabulary. No
+compile checks needed.
+
+**Phase 2:**
 
 ```bash
 # Compile proof
 cargo check --workspace -q
 cargo test -q --lib
 
-# Backward compat
+# Backward compat (aliases)
 # Verify FromStr accepts "knowledge-child" and "pipeline" silently
 
 # Runtime proof
@@ -235,7 +252,11 @@ patina scrape code                      # grammar plugins
 cargo test -- capability_gate
 
 # Template proof
-# patina child init produces kind = "child" and wit/child/ target
+# patina child init produces SDK child with kind = "child" and wit/child/ target
+
+# Legacy inventory
+# List any children not using patina-sdk
+# Migration follow-ups created for each
 ```
 
 ## Phase 3: CI Regression Guards
@@ -255,4 +276,5 @@ Both guards already exist in `resources/scripts/check-runtime-boundaries.sh`
 - History rewriting
 - Runtime pando execution (`patina pando run` — future spec)
 - Per-child WIT world generation from manifest (future spec)
-- Interface/skill system overhaul (separate spec)
+- Pando YAML parser enforcement (future spec — parser doesn't exist)
+- Broad legacy/third-party compatibility guarantees
