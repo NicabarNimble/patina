@@ -1,10 +1,13 @@
 ---
 type: refactor
 id: pando-vocabulary-alignment
-status: draft
+status: abandoned
 created: 2026-04-01
 sessions:
   origin: 20260331-224232-852361000
+superseded_by:
+  - child-rename
+  - engine-consolidate
 references:
   - layer/core/patina-identity.md
   - layer/core/unix-philosophy.md
@@ -103,6 +106,19 @@ exit_criteria:
 ---
 
 # refactor: Pando Vocabulary Alignment
+
+## Status
+
+Abandoned. This spec combined two unrelated scopes (vocabulary alignment and
+runtime kind/world/engine consolidation), which made execution unfocused.
+
+Replacement path:
+
+- `child-rename` handles naming/kind migration.
+- `engine-consolidate` handles runtime and world consolidation.
+
+`pando` remains valid as vocabulary, but runtime pando semantics are deferred
+until there is a focused execution spec for composition artifacts.
 
 Two changes: give a name to composed children (pando), and collapse the
 artificial knowledge-child/pipeline split into one kind and one world (child).

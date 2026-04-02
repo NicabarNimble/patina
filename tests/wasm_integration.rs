@@ -41,20 +41,6 @@ fn with_temp_patina_home<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
     }
 }
 
-fn ducklake_component_path() -> Option<std::path::PathBuf> {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    for rel in [
-        "target/wasm32-wasip1/debug/patina_ai_child_ducklake.wasm",
-        "target/wasm32-wasip1/release/patina_ai_child_ducklake.wasm",
-    ] {
-        let path = root.join(rel);
-        if path.exists() {
-            return Some(path);
-        }
-    }
-    None
-}
-
 fn session_writer_component_path() -> Option<std::path::PathBuf> {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for rel in [
@@ -295,7 +281,7 @@ fn load_panic_pipeline_component() -> Option<(PipelineEngine, wasmtime::componen
 }
 
 // =====================================================================
-// WASM integration — session-writer, ducklake linker, ducklake sync
+// WASM integration — session-writer and canon children
 // =====================================================================
 
 #[test]
@@ -316,110 +302,6 @@ fn session_writer_component_instantiates_in_knowledge_child_engine() {
         result.is_ok(),
         "session-writer should instantiate in knowledge-child engine"
     );
-}
-
-#[test]
-fn knowledge_child_linker_fails_when_lake_not_linked() {
-    let Some(wasm_path) = ducklake_component_path() else {
-        return;
-    };
-
-    let engine = KnowledgeChildEngine::new().unwrap();
-    let wasm_bytes = std::fs::read(&wasm_path).unwrap();
-    let component = engine.load_component(&wasm_bytes).unwrap();
-
-    let manifest_path =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/child.toml");
-    let mut manifest = ChildManifest::from_path(&manifest_path).unwrap();
-    manifest.lake_names.clear();
-    manifest.toys.lake_names.clear();
-
-    let result = engine.instantiate_child(&component, &manifest, None);
-    assert!(result.is_err(), "expected missing-lake linker failure");
-}
-
-#[test]
-fn knowledge_child_linker_succeeds_when_lake_declared() {
-    let Some(wasm_path) = ducklake_component_path() else {
-        return;
-    };
-
-    let engine = KnowledgeChildEngine::new().unwrap();
-    let wasm_bytes = std::fs::read(&wasm_path).unwrap();
-    let component = engine.load_component(&wasm_bytes).unwrap();
-
-    let manifest_path =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/child.toml");
-    let manifest = ChildManifest::from_path(&manifest_path).unwrap();
-
-    let result = engine.instantiate_child(&component, &manifest, None);
-    assert!(
-        result.is_ok(),
-        "expected granted-lake instantiation success"
-    );
-}
-
-#[test]
-fn ducklake_fixture_sync_writes_lake_queryable_by_duckdb_cli() {
-    let Some(wasm_path) = ducklake_component_path() else {
-        return;
-    };
-
-    with_temp_patina_home(|home| {
-        let engine = KnowledgeChildEngine::new().unwrap();
-        let wasm_bytes = std::fs::read(&wasm_path).unwrap();
-        let component = engine.load_component(&wasm_bytes).unwrap();
-
-        let manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("children/ducklake/child.toml");
-        let manifest = ChildManifest::from_path(&manifest_path).unwrap();
-        let child = engine
-            .instantiate_child(&component, &manifest, None)
-            .unwrap();
-
-        child
-            .handle(&ChildRequest {
-                action: "configure-source".into(),
-                payload: serde_json::json!({
-                    "source_id": "fixture-source",
-                    "table": "default",
-                    "owner": "not-used",
-                    "repo": "not-used",
-                    "data_types": ["issues"],
-                }),
-            })
-            .unwrap();
-
-        let response = child
-            .handle(&ChildRequest {
-                action: "fetch-source".into(),
-                payload: serde_json::json!({"source_id": "fixture-source"}),
-            })
-            .unwrap();
-
-        let written = response
-            .payload
-            .get("written")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        assert!(written > 0, "expected fixture sync to write rows");
-
-        let db_path = home.join("lakes/default/lake.duckdb");
-        assert!(
-            db_path.exists(),
-            "expected lake DB at {}",
-            db_path.display()
-        );
-
-        let db = duckdb::Connection::open(&db_path).expect("open lake duckdb for verification");
-        let count: u64 = db
-            .query_row("SELECT COUNT(*) FROM default_issues", [], |row| row.get(0))
-            .expect("query default_issues count");
-        assert!(
-            count > 0,
-            "expected default_issues to be queryable and non-empty"
-        );
-    });
 }
 
 // =====================================================================

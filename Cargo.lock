@@ -3256,15 +3256,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-ai-child-ducklake"
-version = "0.1.0"
-dependencies = [
- "patina-sdk",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "patina-ai-child-file-system-monitor"
 version = "0.1.0"
 dependencies = [
