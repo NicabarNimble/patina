@@ -95,35 +95,62 @@ exit_criteria:
 
 # refactor: Pando Vocabulary Alignment
 
-Vocabulary overhaul: introduce "pando" for composed children, collapse "knowledge-child" and "pipeline" into just "child." One kind, one world, one engine. The toybox is the only thing that differentiates children.
+Two changes: give a name to composed children (pando), and collapse the
+artificial knowledge-child/pipeline split into one kind (child).
 
-## Context
+## Pando — a word for a group of children
 
-Latin: pandō — "I spread." Named after the Pando aspen colony: 47,000 trees that are one organism connected by shared roots. A pando of children shares roots through Mother and appears as one capability to the user.
+Latin: pandō — "I spread." Named after the Pando aspen colony: 47,000 trees
+that are one organism connected by shared roots.
 
-The six concepts:
+Sometimes you compose several children to do one thing. You need a word for
+that. "The scrape pando" instead of "the group of six children that together
+do folder-text-to-parquet." That's all pando is — vocabulary for a composition
+of children working as one.
 
-| Concept | Word | What it is |
-|---------|------|-----------|
-| The protocol | **Patina** | 5 verbs, native CLI, belief core |
-| The daemon | **Mother** | Authority, orchestration, state |
-| A WASM worker | **Child** | One job, reusable, composable |
-| A capability grant | **Toy** | WASI-first sandbox opening |
-| Composed children | **Pando** | One organism, shared roots, spreads the patina |
-| The workspace | **Project** | Where knowledge accumulates |
+Pando is NOT a new architectural boundary. Belief `[[five-boundaries-no-overlap]]`
+defines five roles. Pando lives inside boundary #3 (child+toy = knowledge worker).
+It's how children compose into deliverable capability. The belief says it
+directly: "pando is how child+toy composes into deliverable capability."
+
+The five boundaries remain five:
+
+| Boundary | Role |
+|----------|------|
+| **Patina** | Belief core, protocol, five verbs |
+| **Mother** | Infrastructure daemon, authority |
+| **Child + Toy** | Knowledge worker (pando = a composed group of these) |
+| **Interface + Agent** | AI guest |
+| **Project** | User workspace |
 
 ## Why One Kind
 
-Today there are two kinds: `knowledge-child` (Mother-hosted, full toybox, lifecycle) and `pipeline` (CLI-invoked, log only, stateless). But:
+Today there are two kinds of child: `knowledge-child` and `pipeline`. We split
+them early because grammar parsers felt different from knowledge children. They
+aren't — or at least, we haven't proven they are. The split was premature.
 
-- Pipeline IS a child. Saying it's a different kind implies it isn't.
-- The only real difference is which toys are granted and whether lifecycle exports are active.
-- A grammar parser that wanted to cache parse trees would need state — suddenly it's not a "pipeline" anymore.
-- The toybox should determine behavior, not the kind label.
+**Don't invent categories before the seam is proven.** If a real seam emerges
+from building more children, we split then — with evidence. Until then, one
+kind. This is `[[audit-before-refactor]]` applied to architecture: don't split
+the kind until you've built enough children to know where the boundary actually
+falls.
 
-**Solution:** One WIT world with all exports. SDK provides default stubs for lifecycle exports. A grammar parser exports `health() -> healthy`, `tick() -> []`, `drain() -> []` as no-ops (SDK gives these for free). From Mother's perspective it's just a child with no lifecycle activity. The toybox determines what it can do.
+What we know today:
+- The only real difference is which toys are granted and whether lifecycle
+  exports are active.
+- A grammar parser that wanted to cache parse trees would need state — suddenly
+  it's not a "pipeline" anymore.
+- The toybox already determines behavior. The kind label adds nothing.
 
-**What was pipeline becomes:** a child with `[needs].toys = ["log"]` and default lifecycle stubs. Same behavior, simpler model.
+**Solution:** One WIT world with all exports. SDK provides default stubs for
+lifecycle exports. A grammar parser exports `health() -> healthy`,
+`tick() -> []`, `drain() -> []` as no-ops (SDK gives these for free). From
+Mother's perspective it's just a child with no lifecycle activity. The toybox
+determines what it can do.
+
+**What was pipeline becomes:** a child with `[needs].toys = ["log"]` and
+default lifecycle stubs. Same behavior, simpler model. More children will
+come. If a real seam appears, we split with evidence then.
 
 ## Phases
 
