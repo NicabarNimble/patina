@@ -106,6 +106,9 @@ pub enum SecretsAuthorityOperation {
         token: String,
         project_root: Option<String>,
     },
+    LoadSecretsEnvMap {
+        project_root: Option<String>,
+    },
 }
 
 impl SecretsAuthorityOperation {
@@ -164,6 +167,7 @@ impl SecretsAuthorityOperation {
                 token: required_str_field(&payload, "token", op)?,
                 project_root,
             },
+            "load_secrets_env_map" => Self::LoadSecretsEnvMap { project_root },
             _ => return Err(format!("Unknown secrets-authority operation '{}'", op)),
         };
 
@@ -247,6 +251,15 @@ impl SecretsAuthorityOperation {
                 let mut payload = serde_json::json!({
                     "op": "setup_claude_token",
                     "token": token,
+                });
+                if let Some(project_root) = project_root {
+                    payload["project_root"] = Value::String(project_root);
+                }
+                payload
+            }
+            Self::LoadSecretsEnvMap { project_root } => {
+                let mut payload = serde_json::json!({
+                    "op": "load_secrets_env_map",
                 });
                 if let Some(project_root) = project_root {
                     payload["project_root"] = Value::String(project_root);

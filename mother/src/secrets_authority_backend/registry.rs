@@ -92,6 +92,10 @@ impl SecretsRegistry {
     pub fn list(&self) -> Vec<&str> {
         self.secrets.keys().map(|s| s.as_str()).collect()
     }
+
+    pub fn get_env(&self, name: &str) -> Option<&str> {
+        self.secrets.get(name).map(|def| def.env.as_str())
+    }
 }
 
 pub fn is_valid_secret_name(name: &str) -> bool {

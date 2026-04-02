@@ -1,5 +1,6 @@
 use anyhow::Result;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::http_daemon::{json_error, HttpResponse};
@@ -72,6 +73,10 @@ pub trait SecretsAuthorityBackend {
         token: String,
         project_root: Option<PathBuf>,
     ) -> Result<SetupClaudeTokenResult>;
+    fn load_secrets_env_map(
+        &self,
+        project_root: Option<PathBuf>,
+    ) -> Result<HashMap<String, String>>;
 }
 
 pub fn dispatch(payload: Value, backend: &dyn SecretsAuthorityBackend) -> HttpResponse {
@@ -276,6 +281,17 @@ pub fn dispatch(payload: Value, backend: &dyn SecretsAuthorityBackend) -> HttpRe
                 Err(error) => json_error(400, &error.to_string()),
             }
         }
+        "load_secrets_env_map" => match backend.load_secrets_env_map(project_root) {
+            Ok(secrets) => HttpResponse::json(
+                200,
+                &serde_json::json!({
+                    "status": "ok",
+                    "secrets": secrets,
+                    "count": secrets.len(),
+                }),
+            ),
+            Err(error) => json_error(400, &error.to_string()),
+        },
         _ => json_error(400, "Unknown secrets-authority operation"),
     }
 }
