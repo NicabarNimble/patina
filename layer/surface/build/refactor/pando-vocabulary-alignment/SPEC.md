@@ -103,25 +103,9 @@ artificial knowledge-child/pipeline split into one kind (child).
 Latin: pandō — "I spread." Named after the Pando aspen colony: 47,000 trees
 that are one organism connected by shared roots.
 
-Sometimes you compose several children to do one thing. You need a word for
-that. "The scrape pando" instead of "the group of six children that together
-do folder-text-to-parquet." That's all pando is — vocabulary for a composition
-of children working as one.
-
-Pando is NOT a new architectural boundary. Belief `[[five-boundaries-no-overlap]]`
-defines five roles. Pando lives inside boundary #3 (child+toy = knowledge worker).
-It's how children compose into deliverable capability. The belief says it
-directly: "pando is how child+toy composes into deliverable capability."
-
-The five boundaries remain five:
-
-| Boundary | Role |
-|----------|------|
-| **Patina** | Belief core, protocol, five verbs |
-| **Mother** | Infrastructure daemon, authority |
-| **Child + Toy** | Knowledge worker (pando = a composed group of these) |
-| **Interface + Agent** | AI guest |
-| **Project** | User workspace |
+Sometimes you compose several children to do one thing. A pando is that group.
+"The scrape pando" instead of "the group of six children that together do
+folder-text-to-parquet."
 
 ## Why One Kind
 
