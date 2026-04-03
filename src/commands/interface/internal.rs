@@ -3,25 +3,6 @@ use std::path::Path;
 
 use patina::interface::{self, interface as load_interface};
 
-use crate::commands::launch::internal as launch_internal;
-
-pub fn setup(interface_name: &str, path: Option<String>, force: bool) -> Result<()> {
-    let project_path = launch_internal::resolve_project_path(path.as_deref())?;
-    if !interface::is_supported_ai_interface(interface_name) {
-        anyhow::bail!(
-            "Interface '{}' is not part of the Patina AI surface. Choose one of: {}.",
-            interface_name,
-            interface::supported_ai_interfaces().join(", ")
-        );
-    }
-
-    crate::commands::ai::surface::setup(crate::commands::ai::surface::AiSetupRequest {
-        interface: None,
-        path: Some(project_path.display().to_string()),
-        force,
-    })
-}
-
 pub fn ensure_interface_ready(
     interface_name: &str,
     project_path: &Path,
@@ -83,13 +64,11 @@ mod tests {
         let temp = setup_project("opencode");
 
         with_test_env(&temp, || {
-            crate::commands::interface::execute(
-                crate::commands::interface::InterfaceCommands::Setup {
-                    name: "opencode".to_string(),
-                    path: Some(temp.path().display().to_string()),
-                    force: false,
-                },
-            )
+            crate::commands::ai::surface::setup(crate::commands::ai::surface::AiSetupRequest {
+                interface: None,
+                path: Some(temp.path().display().to_string()),
+                force: false,
+            })
             .unwrap();
         });
 
