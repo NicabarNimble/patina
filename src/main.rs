@@ -1473,7 +1473,7 @@ fn main() -> Result<()> {
                         let action = args.first().map(|s| s.as_str()).unwrap_or("health");
                         let payload_str = args.get(1).map(|s| s.as_str()).unwrap_or("{}");
 
-                        let engine = patina::child::engine::KnowledgeChildEngine::new()?;
+                        let engine = patina::child::engine::ChildEngine::new()?;
                         let component = engine.load_component(&wasm_bytes)?;
                         let query_fn = make_query_dispatch(&manifest);
                         let mut child =
