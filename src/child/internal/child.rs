@@ -1,4 +1,4 @@
-//! Knowledge-child world — bindgen, engine, and WASM adapter.
+//! Child world — bindgen, engine, and WASM adapter.
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -632,7 +632,7 @@ mod bindings {
 
 use bindings::HostState;
 
-pub struct KnowledgeChildEngine {
+pub struct ChildEngine {
     _unit: (),
 }
 
@@ -643,7 +643,7 @@ pub struct FilesystemPreopen {
     pub mode: crate::child::internal::FilesystemAccessMode,
 }
 
-impl KnowledgeChildEngine {
+impl ChildEngine {
     fn link_wasi(linker: &mut Linker<HostState>) -> Result<()> {
         wasmtime_wasi::p2::add_to_linker_sync(linker)?;
         wasmtime_wasi_http::add_only_http_to_linker_sync(linker)?;

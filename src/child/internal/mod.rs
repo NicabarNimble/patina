@@ -9,16 +9,16 @@ use wasmtime::{Config, Engine};
 
 use crate::mother::GrantedIngressSource;
 
+mod child;
 pub(crate) mod host_support;
-mod knowledge_child;
 mod pipeline;
 
 #[cfg(test)]
 mod tests;
 
-pub use knowledge_child::FilesystemPreopen;
-pub use knowledge_child::KnowledgeChildEngine as ChildEngine;
-pub use knowledge_child::KnowledgeChildEngine;
+pub use child::ChildEngine;
+pub use child::ChildEngine as KnowledgeChildEngine;
+pub use child::FilesystemPreopen;
 pub use pipeline::PipelineEngine;
 
 /// Query dispatch function type.
