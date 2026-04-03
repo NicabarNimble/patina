@@ -9,7 +9,7 @@ use wasmtime::Store;
 
 use super::{wasm_engine, ChildKind, ChildManifest, GrantedCapabilities, QueryDispatchFn};
 use crate::mother::{
-    ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, MotherHost, PendingEvent, TaskIntent,
+    Child, ChildHealth, ChildRequest, ChildResponse, MotherHost, PendingEvent, TaskIntent,
     TaskIntentKind,
 };
 
@@ -888,7 +888,7 @@ impl ChildEngine {
         component: &Component,
         manifest: &ChildManifest,
         query_fn: Option<QueryDispatchFn>,
-    ) -> Result<Box<dyn KnowledgeChild>> {
+    ) -> Result<Box<dyn Child>> {
         self.instantiate_child_with_preopens(component, manifest, query_fn, &[])
     }
 
@@ -898,7 +898,7 @@ impl ChildEngine {
         manifest: &ChildManifest,
         query_fn: Option<QueryDispatchFn>,
         test_preopens: &[FilesystemPreopen],
-    ) -> Result<Box<dyn KnowledgeChild>> {
+    ) -> Result<Box<dyn Child>> {
         Self::check_capabilities(manifest)?;
 
         let linker = Self::build_linker(manifest)?;
@@ -973,7 +973,7 @@ struct WasmKnowledgeChildInner {
     instance: bindings::KnowledgeChild,
 }
 
-impl KnowledgeChild for WasmKnowledgeChild {
+impl Child for WasmKnowledgeChild {
     fn name(&self) -> &str {
         &self.name
     }

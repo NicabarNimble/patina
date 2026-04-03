@@ -1,4 +1,4 @@
 pub use mother_crate::{
-    ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, MotherHost, PendingEvent, TaskIntent,
+    Child, ChildHealth, ChildRequest, ChildResponse, MotherHost, PendingEvent, TaskIntent,
     TaskIntentKind, Toy,
 };

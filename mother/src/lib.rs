@@ -25,7 +25,7 @@ pub mod tasks;
 pub mod toys;
 
 pub use runtime::{
-    ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, MotherHost, PendingEvent, TaskIntent,
+    Child, ChildHealth, ChildRequest, ChildResponse, MotherHost, PendingEvent, TaskIntent,
     TaskIntentKind, Toy,
 };
 pub use state::{

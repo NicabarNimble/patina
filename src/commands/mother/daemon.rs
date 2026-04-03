@@ -310,11 +310,11 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use patina::mother::{ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, MotherHost};
+    use patina::mother::{Child, ChildHealth, ChildRequest, ChildResponse, MotherHost};
 
     struct StubKnowledge;
 
-    impl KnowledgeChild for StubKnowledge {
+    impl Child for StubKnowledge {
         fn name(&self) -> &str {
             "knowledge"
         }

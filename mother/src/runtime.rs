@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-pub trait KnowledgeChild: Send + Sync {
+pub trait Child: Send + Sync {
     fn name(&self) -> &str;
 
     fn on_load(&mut self, host: &dyn MotherHost) -> Result<()>;

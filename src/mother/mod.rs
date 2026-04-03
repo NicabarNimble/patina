@@ -42,8 +42,10 @@ use patina_protocol::{
 };
 
 // Child trait exports
+#[deprecated(since = "0.46.0", note = "use Child")]
+pub use crate::child::runtime::Child as KnowledgeChild;
 pub use crate::child::runtime::{
-    ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, MotherHost, PendingEvent, TaskIntent,
+    Child, ChildHealth, ChildRequest, ChildResponse, MotherHost, PendingEvent, TaskIntent,
     TaskIntentKind, Toy,
 };
 pub use mother_crate::state::{
