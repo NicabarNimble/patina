@@ -1,4 +1,4 @@
-//! Adapter command - compatibility shim for AI interface configuration
+//! Interface management command — manage AI interface configuration
 //!
 //! Interfaces are integrations with AI tools (Claude Code, Gemini CLI, etc.) that
 //! interact with a patina project. This command manages:
@@ -34,7 +34,7 @@ use patina::project;
 
 /// Interface subcommands (compatibility re-export for main.rs)
 #[derive(Debug, Clone, clap::Subcommand)]
-pub enum AdapterCommands {
+pub enum InterfaceManageCommands {
     /// List available interfaces (global) and allowed interfaces (project)
     List,
 
@@ -103,20 +103,20 @@ pub enum AdapterCommands {
 }
 
 /// Execute the interface compatibility command (main entry point from CLI)
-pub fn execute(command: Option<AdapterCommands>) -> Result<()> {
+pub fn execute(command: Option<InterfaceManageCommands>) -> Result<()> {
     match command {
-        None | Some(AdapterCommands::List) => list(),
-        Some(AdapterCommands::Default { name, project }) => set_default(&name, project),
-        Some(AdapterCommands::Check { name }) => check(name.as_deref()),
-        Some(AdapterCommands::Add { name, no_commit }) => add(&name, no_commit),
-        Some(AdapterCommands::Remove {
+        None | Some(InterfaceManageCommands::List) => list(),
+        Some(InterfaceManageCommands::Default { name, project }) => set_default(&name, project),
+        Some(InterfaceManageCommands::Check { name }) => check(name.as_deref()),
+        Some(InterfaceManageCommands::Add { name, no_commit }) => add(&name, no_commit),
+        Some(InterfaceManageCommands::Remove {
             name,
             no_backup,
             no_commit,
         }) => remove(&name, no_backup, no_commit),
-        Some(AdapterCommands::Refresh { name, no_commit }) => refresh(&name, no_commit),
-        Some(AdapterCommands::Doctor) => doctor(),
-        Some(AdapterCommands::Mcp { name, remove }) => configure_mcp(&name, remove),
+        Some(InterfaceManageCommands::Refresh { name, no_commit }) => refresh(&name, no_commit),
+        Some(InterfaceManageCommands::Doctor) => doctor(),
+        Some(InterfaceManageCommands::Mcp { name, remove }) => configure_mcp(&name, remove),
     }
 }
 
@@ -767,13 +767,13 @@ mod tests {
 
     #[test]
     fn test_adapter_commands_variants() {
-        let list = AdapterCommands::List;
-        assert!(matches!(list, AdapterCommands::List));
+        let list = InterfaceManageCommands::List;
+        assert!(matches!(list, InterfaceManageCommands::List));
 
-        let add = AdapterCommands::Add {
+        let add = InterfaceManageCommands::Add {
             name: "claude".to_string(),
             no_commit: false,
         };
-        assert!(matches!(add, AdapterCommands::Add { .. }));
+        assert!(matches!(add, InterfaceManageCommands::Add { .. }));
     }
 }
