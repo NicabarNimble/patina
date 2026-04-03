@@ -120,6 +120,8 @@ pub struct InterfaceInfo {
     pub mcp: Option<McpConfig>,
 }
 
+/// Deprecated alias — use InterfaceInfo
+#[deprecated(since = "0.46.0", note = "use InterfaceInfo")]
 pub type AdapterInfo = InterfaceInfo;
 
 /// MCP configuration for an interface

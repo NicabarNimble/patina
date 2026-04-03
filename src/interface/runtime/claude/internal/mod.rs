@@ -1,4 +1,4 @@
-//! Internal implementation details for Claude adapter
+//! Internal implementation details for Claude interface
 //!
 //! This module contains all the implementation logic, keeping the public
 //! interface in the parent module clean and minimal.
@@ -34,7 +34,7 @@ pub fn init_project(
     context_generation::generate_initial_context(project_path, project_name, environment)?;
 
     // Create adapter manifest
-    manifest::create_adapter_manifest(project_path)?;
+    manifest::create_interface_manifest(project_path)?;
 
     Ok(())
 }
@@ -64,7 +64,7 @@ pub fn update_interface_files(project_path: &Path) -> Result<()> {
     session_scripts::create_session_scripts(project_path)?;
 
     // Update manifest
-    manifest::create_adapter_manifest(project_path)?;
+    manifest::create_interface_manifest(project_path)?;
 
     Ok(())
 }

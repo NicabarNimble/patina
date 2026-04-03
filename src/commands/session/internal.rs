@@ -130,7 +130,7 @@ pub(crate) fn start_session_value(
     project_root: &Path,
     request: SessionStartRequest,
 ) -> Result<SessionStartResult> {
-    let adapter = resolve_adapter(
+    let adapter = resolve_interface(
         (!request.adapter.is_empty()).then_some(request.adapter.as_str()),
         project_root,
     )?;
@@ -934,11 +934,11 @@ fn dev_branch_name(project_root: &Path) -> String {
         .unwrap_or_else(|_| "work".to_string())
 }
 
-/// Resolve adapter name from explicit flag or project config.
+/// Resolve interface name from explicit flag or project config.
 ///
-/// Resolution chain: --adapter flag > config.interfaces.default.
+/// Resolution chain: --interface flag > config.interfaces.default.
 /// Function signature is honest about dependencies (Jon Gjengset principle).
-pub fn resolve_adapter(explicit: Option<&str>, project_root: &Path) -> Result<String> {
+pub fn resolve_interface(explicit: Option<&str>, project_root: &Path) -> Result<String> {
     if let Some(name) = explicit {
         return Ok(name.to_string());
     }

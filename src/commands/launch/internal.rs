@@ -27,8 +27,8 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         let adapter_info = interfaces::get(name)?;
         if !adapter_info.detected {
             bail!(
-                "Adapter '{}' ({}) is not installed.\n\
-                 Install it and try again, or use a different adapter.",
+                "Interface '{}' ({}) is not installed.\n\
+                 Install it and try again, or use a different interface.",
                 name,
                 adapter_info.display
             );
