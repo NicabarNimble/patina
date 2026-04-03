@@ -62,6 +62,8 @@ substrate for query-time cross-project reads.
 
 Build a Mother-owned DuckDB federation layer (with optional DuckLake extension)
 that sits above project SQLite stores, without replacing project sovereignty.
+This spec is intentionally identity-model neutral and does not depend on
+persona semantics.
 
 ## Non-Goals
 
@@ -69,6 +71,7 @@ that sits above project SQLite stores, without replacing project sovereignty.
 - Reintroducing `patina-ducklake` child behavior as storage authority.
 - Tying federation availability to baseline local protocol execution.
 - Building full distributed transport in this spec (handled by downstream specs).
+- Introducing or requiring persona/lane identity model changes.
 
 ## Architecture
 
@@ -85,6 +88,8 @@ that sits above project SQLite stores, without replacing project sovereignty.
 - Children remain engine-agnostic; they consume toys/contracts, not backend
   engine details.
 - Federation failures cannot break standalone local project workflows.
+- Federation contracts in this spec are project-scoped and do not assume any
+  persona-specific partitioning model.
 
 ## Minimal Surface
 
