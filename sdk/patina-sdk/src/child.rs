@@ -7,13 +7,13 @@ use crate::toys::{PendingEvent as ToyPendingEvent, TaskIntent as ToyTaskIntent};
 static API_VERSION: [u8; 3] = [0, 1, 0];
 
 wit_bindgen::generate!({
-    path: "wit/knowledge-child",
-    world: "knowledge-child",
+    path: "wit/child",
+    world: "child",
     skip: ["init"],
     generate_all,
 });
 
-pub use patina::knowledge_child::runtime_types::HealthStatus;
+pub use patina::child::runtime_types::HealthStatus;
 
 use crate::wasm_cell::WasmCell;
 
@@ -177,7 +177,7 @@ pub mod substrate {
     }
 }
 
-pub trait KnowledgeChild {
+pub trait Child {
     fn name(&self) -> String;
 
     fn on_load(&mut self) -> Result<(), String> {
@@ -948,26 +948,25 @@ pub mod host {
     }
 }
 
-static PLUGIN: WasmCell<Option<Box<dyn KnowledgeChild>>> =
-    WasmCell(std::cell::UnsafeCell::new(None));
+static PLUGIN: WasmCell<Option<Box<dyn Child>>> = WasmCell(std::cell::UnsafeCell::new(None));
 
 #[doc(hidden)]
-pub fn __register_knowledge_child(child: Box<dyn KnowledgeChild>) {
+pub fn __register_child(child: Box<dyn Child>) {
     unsafe {
         *PLUGIN.0.get() = Some(child);
     }
 }
 
 #[doc(hidden)]
-pub fn __register_plugin(plugin: Box<dyn KnowledgeChild>) {
-    __register_knowledge_child(plugin);
+pub fn __register_plugin(plugin: Box<dyn Child>) {
+    __register_child(plugin);
 }
 
 #[cfg(target_arch = "wasm32")]
 mod __wasm {
     use super::*;
 
-    fn child() -> &'static mut dyn KnowledgeChild {
+    fn child() -> &'static mut dyn Child {
         unsafe {
             (*PLUGIN.0.get())
                 .as_deref_mut()
@@ -1002,48 +1001,46 @@ mod __wasm {
             child().drain(limit).map(|events| {
                 events
                     .into_iter()
-                    .map(
-                        |event| patina::knowledge_child::runtime_types::PendingEvent {
-                            stream_name: event.stream_name,
-                            offset: event.offset,
-                            event_type: event.event_type,
-                            payload_json: event.payload_json,
-                            occurred_at: event.occurred_at,
-                        },
-                    )
+                    .map(|event| patina::child::runtime_types::PendingEvent {
+                        stream_name: event.stream_name,
+                        offset: event.offset,
+                        event_type: event.event_type,
+                        payload_json: event.payload_json,
+                        occurred_at: event.occurred_at,
+                    })
                     .collect()
             })
         }
 
-        fn tick() -> Vec<patina::knowledge_child::runtime_types::TaskIntent> {
+        fn tick() -> Vec<patina::child::runtime_types::TaskIntent> {
             child()
                 .tick()
                 .into_iter()
-                .map(|intent| patina::knowledge_child::runtime_types::TaskIntent {
+                .map(|intent| patina::child::runtime_types::TaskIntent {
                     kind: match intent.kind {
                         crate::toys::TaskIntentKind::FetchSource => {
-                            patina::knowledge_child::runtime_types::TaskIntentKind::FetchSource
+                            patina::child::runtime_types::TaskIntentKind::FetchSource
                         }
                         crate::toys::TaskIntentKind::RunQuery => {
-                            patina::knowledge_child::runtime_types::TaskIntentKind::RunQuery
+                            patina::child::runtime_types::TaskIntentKind::RunQuery
                         }
                         crate::toys::TaskIntentKind::EmitFacts => {
-                            patina::knowledge_child::runtime_types::TaskIntentKind::EmitFacts
+                            patina::child::runtime_types::TaskIntentKind::EmitFacts
                         }
                         crate::toys::TaskIntentKind::MaterializeIndex => {
-                            patina::knowledge_child::runtime_types::TaskIntentKind::MaterializeIndex
+                            patina::child::runtime_types::TaskIntentKind::MaterializeIndex
                         }
                         crate::toys::TaskIntentKind::VerifyBelief => {
-                            patina::knowledge_child::runtime_types::TaskIntentKind::VerifyBelief
+                            patina::child::runtime_types::TaskIntentKind::VerifyBelief
                         }
                         crate::toys::TaskIntentKind::SyncGraph => {
-                            patina::knowledge_child::runtime_types::TaskIntentKind::SyncGraph
+                            patina::child::runtime_types::TaskIntentKind::SyncGraph
                         }
                         crate::toys::TaskIntentKind::RefreshCredential => {
-                            patina::knowledge_child::runtime_types::TaskIntentKind::RefreshCredential
+                            patina::child::runtime_types::TaskIntentKind::RefreshCredential
                         }
                         crate::toys::TaskIntentKind::NativeJob => {
-                            patina::knowledge_child::runtime_types::TaskIntentKind::NativeJob
+                            patina::child::runtime_types::TaskIntentKind::NativeJob
                         }
                     },
                     payload_json: intent.payload_json,
@@ -1057,15 +1054,28 @@ mod __wasm {
 }
 
 #[macro_export]
-macro_rules! register_knowledge_child {
+macro_rules! register_child {
     ($plugin_type:ty) => {
         #[export_name = "init"]
         extern "C" fn __patina_plugin_init() {
-            $crate::knowledge_child::__register_knowledge_child(
-                Box::new(<$plugin_type>::default()),
-            );
+            $crate::child::__register_child(Box::new(<$plugin_type>::default()));
         }
     };
 }
 
-pub use KnowledgeChild as KnowledgeChildPlugin;
+#[macro_export]
+// MIGRATION-SHIM: remove in v0.47.0
+#[deprecated(since = "0.46.0", note = "use register_child!")]
+macro_rules! register_knowledge_child {
+    ($plugin_type:ty) => {
+        $crate::register_child!($plugin_type);
+    };
+}
+
+pub use Child as ChildPlugin;
+// MIGRATION-SHIM: remove in v0.47.0
+#[deprecated(since = "0.46.0", note = "use Child")]
+pub use Child as KnowledgeChild;
+// MIGRATION-SHIM: remove in v0.47.0
+#[deprecated(since = "0.46.0", note = "use ChildPlugin")]
+pub use ChildPlugin as KnowledgeChildPlugin;

@@ -14,12 +14,14 @@ include = ["src/**", "wit/**", "Cargo.toml", "README.md", "LICENSE*"]
 [features]
 default = []
 # Canonical world for Mother/Child/Toy contract.
-knowledge-child = [
+child = [
     "dep:serde",
     "dep:serde_json",
     "toy-log",
     "toy-state",
 ]
+# MIGRATION-SHIM: remove in v0.47.0
+knowledge-child = ["child"]
 toy-log = []
 toy-state = []
 toy-task = []
