@@ -36,13 +36,13 @@ patina mother start
 patina mother status
 ```
 
-## Knowledge Child Baseline
+## Child Baseline
 
 Use this feature set for a minimal child:
 
 ```toml
 [dependencies]
-patina-sdk = { version = "0.21", features = ["knowledge-child", "toy-log"] }
+patina-sdk = { version = "0.21", features = ["child", "toy-log"] }
 ```
 
 Add toys incrementally (`toy-state`, `toy-checkpoint`, `toy-lake`, `toy-github`, `toy-session`, etc.)
@@ -52,18 +52,18 @@ as your `child.toml` grants expand.
 
 Enable exactly one world feature per crate:
 
-- `knowledge-child` (default path)
+- `child` (default path)
 - `pipeline` (experimental lane)
 - `task` (legacy compatibility scaffold)
 - `command` (legacy compatibility scaffold)
 
-M5 stabilization target in this repo is `knowledge-child` plus tier crates.
+M5 stabilization target in this repo is `child` plus tier crates.
 
 ## Stability Policy
 
 | Lane | Status | Policy |
 | --- | --- | --- |
-| `knowledge-child` | stable | canonical child authoring surface |
+| `child` | stable | canonical child authoring surface |
 | `pipeline` | experimental | opt-in, no stability promises yet |
 | `task` | migration shim | compatibility-only, removal-gated |
 | `command` | migration shim | compatibility-only, removal-gated |
@@ -72,7 +72,7 @@ M5 stabilization target in this repo is `knowledge-child` plus tier crates.
 
 - `mother-child` SDK feature is retired.
 - `MotherChild` trait and `register_mother_child!` are removed from `patina-sdk`.
-- Migrate child crates to `knowledge-child` (preferred) or `task`/`command` where appropriate.
+- Migrate child crates to `child` (preferred) or `task`/`command` where appropriate.
 
 Shim removal gates:
 

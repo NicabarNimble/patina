@@ -964,7 +964,7 @@ enum ChildCommands {
     Init {
         /// Child name (valid Rust crate name, e.g. "review-bot")
         name: String,
-        /// Child world: knowledge-child, pipeline
+        /// Child world: child, pipeline
         #[arg(long)]
         world: String,
         /// Build the child after scaffolding
