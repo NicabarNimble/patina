@@ -34,10 +34,6 @@ use crate::Environment;
 
 /// Available interface names
 pub const INTERFACES: &[&str] = &["claude", "gemini", "opencode"];
-/// Deprecated alias — use INTERFACES
-#[deprecated(since = "0.46.0", note = "use INTERFACES")]
-pub const ADAPTERS: &[&str] = INTERFACES;
-
 /// Markers for Patina-managed section in bootstrap files
 const MARKER_START: &str = "<!-- PATINA:START -->";
 const MARKER_END: &str = "<!-- PATINA:END -->";
@@ -54,10 +50,6 @@ pub enum InterfaceKind {
     Gemini,
     OpenCode,
 }
-
-/// Deprecated alias — use InterfaceKind
-#[deprecated(since = "0.46.0", note = "use InterfaceKind")]
-pub type Adapter = InterfaceKind;
 
 impl InterfaceKind {
     pub fn name(&self) -> &'static str {
@@ -119,10 +111,6 @@ pub struct InterfaceInfo {
     pub version: Option<String>,
     pub mcp: Option<McpConfig>,
 }
-
-/// Deprecated alias — use InterfaceInfo
-#[deprecated(since = "0.46.0", note = "use InterfaceInfo")]
-pub type AdapterInfo = InterfaceInfo;
 
 /// MCP configuration for an interface
 #[derive(Debug, Clone, Serialize, Deserialize)]
