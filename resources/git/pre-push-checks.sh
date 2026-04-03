@@ -28,7 +28,7 @@ echo "🔍 Running pre-push checks (Tier 1 structural)..."
 echo ""
 
 # Worlds currently shipped by sdk/patina-sdk.
-SDK_WORLDS=(knowledge-child pipeline)
+SDK_WORLDS=(child pipeline)
 
 # Step 1: WIT consistency — SDK mirror must match canonical wit/
 echo "📦 [1/8] Checking WIT consistency..."
