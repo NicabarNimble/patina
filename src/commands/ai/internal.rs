@@ -57,11 +57,7 @@ pub fn list(json_output: bool) -> Result<()> {
 
 pub fn session(command: AiSessionCommands) -> Result<()> {
     match command {
-        AiSessionCommands::Start {
-            title,
-            adapter,
-            json,
-        } => start_session(&title, adapter, json),
+        AiSessionCommands::Start { title, json } => start_session(&title, json),
         AiSessionCommands::Update { session, json } => update_session(session, json),
         AiSessionCommands::Note { content, session } => note_session(content, session),
         AiSessionCommands::End {
@@ -142,9 +138,9 @@ pub fn end(
     Ok(())
 }
 
-fn start_session(title: &str, adapter: Option<String>, json_output: bool) -> Result<()> {
+fn start_session(title: &str, json_output: bool) -> Result<()> {
     let project_root = SessionManager::find_project_root()?;
-    let adapter_name = resolve_native_session_adapter(&project_root, adapter.as_deref())?;
+    let adapter_name = resolve_native_session_adapter(&project_root, None)?;
     let result = crate::commands::session::start_session_value(
         &project_root,
         crate::commands::session::SessionStartRequest::native(title, &adapter_name),

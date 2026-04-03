@@ -10,9 +10,6 @@ pub enum AiSessionCommands {
     Start {
         title: String,
 
-        #[arg(long = "interface", alias = "adapter")]
-        adapter: Option<String>,
-
         #[arg(long)]
         json: bool,
     },
