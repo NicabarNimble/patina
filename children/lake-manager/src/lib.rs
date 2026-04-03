@@ -1,6 +1,6 @@
 use patina_sdk::granted::{self, Bundle as GrantedBundle};
 use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
-use patina_sdk::register_knowledge_child;
+use patina_sdk::register_child;
 
 #[derive(Debug, Clone)]
 struct LakeManagerToys {
@@ -86,4 +86,4 @@ impl KnowledgeChild for LakeManagerChild {
     }
 }
 
-register_knowledge_child!(LakeManagerChild);
+register_child!(LakeManagerChild);

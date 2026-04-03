@@ -3,7 +3,7 @@ use parquet::arrow::ArrowWriter;
 use parquet::file::properties::WriterProperties;
 use patina_sdk::granted;
 use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
-use patina_sdk::register_knowledge_child;
+use patina_sdk::register_child;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
@@ -346,4 +346,4 @@ impl KnowledgeChild for RecordWriterChild {
     }
 }
 
-register_knowledge_child!(RecordWriterChild);
+register_child!(RecordWriterChild);
