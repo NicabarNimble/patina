@@ -477,13 +477,21 @@ mod tests {
     }
 
     fn with_test_env<T>(temp: &TempDir, f: impl FnOnce() -> T) -> T {
+        let _guard = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let patina_home = temp.path().join("patina-home");
+        std::fs::create_dir_all(&patina_home).unwrap();
+
         let old_home = std::env::var_os("HOME");
+        let old_patina_home = std::env::var_os("PATINA_HOME");
+        let old_cwd = std::env::current_dir().ok();
         unsafe {
             std::env::set_var("HOME", temp.path());
+            std::env::set_var("PATINA_HOME", &patina_home);
         }
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            crate::test_support::with_temp_patina_home(|_| f())
-        }));
+        std::env::set_current_dir(temp.path()).expect("set cwd for bootstrap test");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
         match old_home {
             Some(value) => unsafe {
                 std::env::set_var("HOME", value);
@@ -491,6 +499,17 @@ mod tests {
             None => unsafe {
                 std::env::remove_var("HOME");
             },
+        }
+        match old_patina_home {
+            Some(value) => unsafe {
+                std::env::set_var("PATINA_HOME", value);
+            },
+            None => unsafe {
+                std::env::remove_var("PATINA_HOME");
+            },
+        }
+        if let Some(path) = old_cwd {
+            let _ = std::env::set_current_dir(path);
         }
         match result {
             Ok(value) => value,

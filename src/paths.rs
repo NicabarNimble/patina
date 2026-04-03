@@ -539,9 +539,11 @@ mod tests {
 
     #[test]
     fn test_patina_cache() {
-        let cache = patina_cache();
-        assert!(cache.ends_with("cache"));
-        assert!(cache.starts_with(patina_home()));
+        with_temp_patina_home(|expected_home| {
+            let cache = patina_cache();
+            assert!(cache.ends_with("cache"));
+            assert!(cache.starts_with(expected_home));
+        });
     }
 
     #[test]
