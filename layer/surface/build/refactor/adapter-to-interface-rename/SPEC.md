@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: adapter-to-interface-rename
-status: active
+status: complete
 created: 2026-04-03
 sessions:
   origin: 20260403-070944-045859000
@@ -31,39 +31,39 @@ exit_criteria:
 
   - id: air1-structs-renamed
     text: "ClaudeAdapter → ClaudeInterface, GeminiAdapter → GeminiInterface, OpenCodeAdapter → OpenCodeInterface. AdapterConfig → InterfaceConfig, AdaptersConfig → InterfacesConfig, AdapterEntry → InterfaceEntry, AdapterDetection → InterfaceDetection, AdapterManifest → InterfaceManifest. Deprecated re-exports added for ClaudeAdapter/GeminiAdapter/OpenCodeAdapter with #[deprecated(since = \"0.46.0\", note = \"use XxxInterface\")]."
-    checked: false
+    checked: true
 
   - id: air2-functions-renamed
     text: "ensure_adapter_bootstrap → ensure_interface_bootstrap, ensure_adapter_projection → ensure_interface_projection, launch_adapter_cli → launch_interface_cli, from_adapter_name → from_interface_name, update_adapter_files → update_interface_files. All call sites updated."
-    checked: false
+    checked: true
 
   - id: air3-cli-command-promoted
     text: "`patina interface` becomes the full command surface (list, default, check, add, remove, refresh, doctor). `patina adapter` becomes a deprecated alias that forwards to `patina interface` with a deprecation warning on first use."
-    checked: false
+    checked: true
 
   - id: air4-session-field-deprecated
     text: "ArtifactParticipant.adapter field remains as Option<String> for deserialization of old sessions. New sessions no longer emit adapter field. from_adapter_name renamed to from_interface_name."
-    checked: false
+    checked: true
 
   - id: air5-config-compat
     text: "TOML config continues to accept [adapter]/[adapters] as aliases for [interface]/[interfaces]. Serde rename/alias attributes preserved. No migration required for existing config files."
-    checked: false
+    checked: true
 
   - id: air6-cli-flag-compat
     text: "--adapter remains as alias for --interface global flag. No user-facing breakage."
-    checked: false
+    checked: true
 
   - id: air7-docs-updated
     text: "AGENTS.md vocabulary section updated. layer/core/adapter-pattern.md unchanged (it is the design pattern, not the AI interface domain). User-facing help text in CLI updated."
-    checked: false
+    checked: true
 
   - id: air8-compile-proof
     text: "cargo check --workspace -q passes. cargo test -q --lib passes. cargo test -q --tests passes."
-    checked: false
+    checked: true
 
   - id: air9-no-stale-adapter-refs
     text: "grep -r 'Adapter' src/ mother/ sdk/ returns only: (a) deprecated re-exports, (b) adapter-pattern references in docs/comments about the design pattern, (c) serde alias attributes for backward compat. No live non-deprecated code paths use Adapter as a type name for the AI interface domain."
-    checked: false
+    checked: true
 ---
 
 # refactor: Adapter-to-Interface Rename
@@ -84,7 +84,7 @@ outlived its concept.
 - `layer/core/adapter-pattern.md` — this is the design pattern, not the domain
 - `InterfaceProvider` trait name — already correct
 - `InterfaceKind` enum — already correct
-- `pub type Adapter = InterfaceKind` alias — removed (it's the drift)
+- `pub type Adapter = InterfaceKind` alias — deprecated, not removed (backward compat)
 - TOML config aliases — preserved for backward compat
 - `--adapter` CLI flag alias — preserved for backward compat
 - `adapter` field in old session YAML — read but no longer written
