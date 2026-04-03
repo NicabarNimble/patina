@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use crate::interface::{CLAUDE_ADAPTER_VERSION, GEMINI_ADAPTER_VERSION};
+use crate::interface::{CLAUDE_INTERFACE_VERSION, GEMINI_INTERFACE_VERSION};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VersionManifest {
@@ -32,7 +32,7 @@ impl VersionManifest {
         components.insert(
             "claude-adapter".to_string(),
             ComponentInfo {
-                version: CLAUDE_ADAPTER_VERSION.to_string(),
+                version: CLAUDE_INTERFACE_VERSION.to_string(),
                 description: "Claude AI session management and context generation".to_string(),
             },
         );
@@ -40,7 +40,7 @@ impl VersionManifest {
         components.insert(
             "gemini-adapter".to_string(),
             ComponentInfo {
-                version: GEMINI_ADAPTER_VERSION.to_string(),
+                version: GEMINI_INTERFACE_VERSION.to_string(),
                 description: "Gemini AI context file generation".to_string(),
             },
         );
@@ -91,11 +91,11 @@ impl UpdateChecker {
         // Pull from the actual constants - single source of truth
         available.insert(
             "claude-adapter".to_string(),
-            CLAUDE_ADAPTER_VERSION.to_string(),
+            CLAUDE_INTERFACE_VERSION.to_string(),
         );
         available.insert(
             "gemini-adapter".to_string(),
-            GEMINI_ADAPTER_VERSION.to_string(),
+            GEMINI_INTERFACE_VERSION.to_string(),
         );
 
         available
@@ -151,7 +151,7 @@ mod tests {
 
         // Verify component info
         let claude = &manifest.components["claude-adapter"];
-        assert_eq!(claude.version, CLAUDE_ADAPTER_VERSION);
+        assert_eq!(claude.version, CLAUDE_INTERFACE_VERSION);
         assert!(!claude.description.is_empty());
     }
 
@@ -198,7 +198,7 @@ mod tests {
 
         // Test existing component
         let version = manifest.get_component_version("claude-adapter").unwrap();
-        assert_eq!(version, CLAUDE_ADAPTER_VERSION);
+        assert_eq!(version, CLAUDE_INTERFACE_VERSION);
 
         // Test non-existent component
         let version = manifest.get_component_version("nonexistent");
@@ -244,7 +244,7 @@ mod tests {
         let (component, current, available) = &updates[0];
         assert_eq!(component, "claude-adapter");
         assert_eq!(current, "0.1.0");
-        assert_eq!(available, CLAUDE_ADAPTER_VERSION);
+        assert_eq!(available, CLAUDE_INTERFACE_VERSION);
     }
 
     #[test]

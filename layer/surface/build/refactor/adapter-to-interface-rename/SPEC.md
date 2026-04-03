@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: adapter-to-interface-rename
-status: draft
+status: active
 created: 2026-04-03
 sessions:
   origin: 20260403-070944-045859000

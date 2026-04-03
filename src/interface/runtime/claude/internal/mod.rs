@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use crate::environment::Environment;
 
 // Re-export version info
-pub use self::manifest::CLAUDE_ADAPTER_VERSION;
+pub use self::manifest::CLAUDE_INTERFACE_VERSION;
 
 // Submodules for different responsibilities
 mod commands;
@@ -59,7 +59,7 @@ pub fn check_for_updates(project_path: &Path) -> Result<Option<(String, String)>
     manifest::check_for_updates(project_path)
 }
 
-pub fn update_adapter_files(project_path: &Path) -> Result<()> {
+pub fn update_interface_files(project_path: &Path) -> Result<()> {
     // Update session scripts
     session_scripts::create_session_scripts(project_path)?;
 

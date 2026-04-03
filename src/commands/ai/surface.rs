@@ -325,8 +325,8 @@ mod tests {
     fn setup_project() -> TempDir {
         let temp = TempDir::new().unwrap();
         let mut config = ProjectConfig::with_name("patina");
-        config.adapters.allowed = vec![];
-        config.adapters.default = String::new();
+        config.interfaces.allowed = vec![];
+        config.interfaces.default = String::new();
         project::save(temp.path(), &config).unwrap();
         temp
     }
@@ -376,7 +376,7 @@ mod tests {
         });
 
         let config = project::load_with_migration(temp.path()).unwrap();
-        assert_eq!(config.adapters.default, "gemini");
+        assert_eq!(config.interfaces.default, "gemini");
         assert!(temp.path().join(".claude").exists());
         assert!(temp.path().join(".opencode").exists());
         assert!(temp.path().join(".gemini").exists());
@@ -405,7 +405,7 @@ mod tests {
         });
 
         let config = project::load_with_migration(temp.path()).unwrap();
-        assert_eq!(config.adapters.default, "claude");
+        assert_eq!(config.interfaces.default, "claude");
         assert!(temp.path().join(".gemini/commands/spec.toml").exists());
     }
 

@@ -24,7 +24,7 @@ enum DirectReason {
     TmuxTooOld,
 }
 
-pub fn launch_adapter_cli(
+pub fn launch_interface_cli(
     adapter_name: &str,
     project_root: &Path,
     tmux_mode: TmuxLaunchMode,

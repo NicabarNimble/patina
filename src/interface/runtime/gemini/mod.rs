@@ -1,4 +1,4 @@
-//! Gemini adapter for Patina (stub implementation)
+//! Gemini interface for Patina (stub implementation)
 //!
 //! Placeholder for future Gemini AI integration.
 //! Creates basic `.gemini/` structure with context file.
@@ -11,13 +11,13 @@ mod internal;
 use super::InterfaceProvider;
 
 // Export version for version management
-pub const GEMINI_ADAPTER_VERSION: &str = "0.1.0";
+pub const GEMINI_INTERFACE_VERSION: &str = "0.1.0";
 
-/// Gemini adapter implementation (stub)
-pub struct GeminiAdapter;
+/// Gemini interface implementation (stub)
+pub struct GeminiInterface;
 
-impl GeminiAdapter {
-    /// Create a new Gemini adapter
+impl GeminiInterface {
+    /// Create a new Gemini interface
     pub fn new() -> Self {
         Self
     }
@@ -31,13 +31,13 @@ impl GeminiAdapter {
     }
 }
 
-impl Default for GeminiAdapter {
+impl Default for GeminiInterface {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl InterfaceProvider for GeminiAdapter {
+impl InterfaceProvider for GeminiInterface {
     fn name(&self) -> &'static str {
         "gemini"
     }
@@ -77,7 +77,7 @@ impl InterfaceProvider for GeminiAdapter {
         Ok(None)
     }
 
-    fn update_adapter_files(&self, _project_path: &Path) -> Result<()> {
+    fn update_interface_files(&self, _project_path: &Path) -> Result<()> {
         // Nothing to update in stub
         Ok(())
     }
@@ -105,15 +105,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_adapter_name() {
-        let adapter = GeminiAdapter::new();
-        assert_eq!(adapter.name(), "gemini");
+    fn test_interface_name() {
+        let iface = GeminiInterface::new();
+        assert_eq!(iface.name(), "gemini");
     }
 
     #[test]
     fn test_custom_commands() {
-        let adapter = GeminiAdapter::new();
-        let commands = adapter.get_custom_commands();
+        let iface = GeminiInterface::new();
+        let commands = iface.get_custom_commands();
         assert_eq!(commands.len(), 5);
         assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/session-")));
         assert!(commands

@@ -148,8 +148,8 @@ fn list() -> Result<()> {
     if project::is_patina_project(&cwd) {
         let config = project::load_with_migration(&cwd)?;
         println!("\n📁 Project Allowed Interfaces\n");
-        println!("Allowed: {:?}", config.adapters.allowed);
-        println!("Project default: {}", config.adapters.default);
+        println!("Allowed: {:?}", config.interfaces.allowed);
+        println!("Project default: {}", config.interfaces.default);
     }
 
     Ok(())
@@ -164,13 +164,13 @@ fn set_default(name: &str, is_project: bool) -> Result<()> {
             anyhow::bail!("Not a patina project. Run `patina init .` first.");
         }
         let mut config = project::load_with_migration(&cwd)?;
-        if !config.adapters.allowed.contains(&name.to_string()) {
+        if !config.interfaces.allowed.contains(&name.to_string()) {
             anyhow::bail!(
                 "Interface '{}' is not in allowed list. Prepare the Patina AI surface first with: patina ai setup",
                 name,
             );
         }
-        config.adapters.default = name.to_string();
+        config.interfaces.default = name.to_string();
         project::save(&cwd, &config)?;
         println!("✓ Project default interface set to: {}", name);
     } else {
@@ -215,7 +215,7 @@ fn add(name: &str, no_commit: bool) -> Result<()> {
 
     if interface::is_supported_ai_interface(name) {
         let config = project::load_with_migration(&cwd)?;
-        let default_interface = if config.adapters.default.is_empty() {
+        let default_interface = if config.interfaces.default.is_empty() {
             Some(name)
         } else {
             None
@@ -251,16 +251,16 @@ fn add(name: &str, no_commit: bool) -> Result<()> {
     }
 
     let mut config = project::load_with_migration(&cwd)?;
-    let already_allowed = config.adapters.allowed.contains(&name.to_string());
+    let already_allowed = config.interfaces.allowed.contains(&name.to_string());
 
     if !already_allowed {
-        config.adapters.allowed.push(name.to_string());
-        if config.adapters.default.is_empty() {
-            config.adapters.default = name.to_string();
+        config.interfaces.allowed.push(name.to_string());
+        if config.interfaces.default.is_empty() {
+            config.interfaces.default = name.to_string();
         }
         project::save(&cwd, &config)?;
         println!("✓ Added '{}' to allowed interfaces", name);
-        println!("  Allowed: {:?}", config.adapters.allowed);
+        println!("  Allowed: {:?}", config.interfaces.allowed);
     } else {
         println!("Interface '{}' is already in allowed list.", name);
     }
@@ -311,7 +311,7 @@ fn remove(name: &str, no_backup: bool, _no_commit: bool) -> Result<()> {
     }
 
     let mut config = project::load_with_migration(&cwd)?;
-    if !config.adapters.allowed.contains(&name.to_string()) {
+    if !config.interfaces.allowed.contains(&name.to_string()) {
         println!("Interface '{}' is not in allowed list.", name);
         return Ok(());
     }
@@ -322,20 +322,25 @@ fn remove(name: &str, no_backup: bool, _no_commit: bool) -> Result<()> {
     }
 
     // Remove from allowed list
-    config.adapters.allowed.retain(|a| a != name);
+    config.interfaces.allowed.retain(|a| a != name);
 
     // Update default if we removed it
-    if config.adapters.default == name {
-        config.adapters.default = config.adapters.allowed.first().cloned().unwrap_or_default();
-        if !config.adapters.default.is_empty() {
-            println!("  ✓ Default changed to: {}", config.adapters.default);
+    if config.interfaces.default == name {
+        config.interfaces.default = config
+            .interfaces
+            .allowed
+            .first()
+            .cloned()
+            .unwrap_or_default();
+        if !config.interfaces.default.is_empty() {
+            println!("  ✓ Default changed to: {}", config.interfaces.default);
         }
     }
 
     project::save(&cwd, &config)?;
 
     println!("✓ Removed '{}' from allowed interfaces", name);
-    println!("  Allowed: {:?}", config.adapters.allowed);
+    println!("  Allowed: {:?}", config.interfaces.allowed);
     println!(
         "\n💡 To also remove files: rm -rf .{}/ {}",
         name,
@@ -406,7 +411,7 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
     }
 
     let config = project::load_with_migration(&cwd)?;
-    if !config.adapters.allowed.contains(&name.to_string()) {
+    if !config.interfaces.allowed.contains(&name.to_string()) {
         anyhow::bail!(
             "Interface '{}' is not in allowed list. Deploy the Patina AI bundles first with: patina ai setup",
             name,
@@ -627,7 +632,7 @@ fn doctor() -> Result<()> {
 
     println!("🩺 Interface Health Check\n");
 
-    if config.adapters.allowed.is_empty() {
+    if config.interfaces.allowed.is_empty() {
         println!("⚠️  No interfaces configured.");
         println!("   Run: patina ai setup");
         return Ok(());
@@ -635,7 +640,7 @@ fn doctor() -> Result<()> {
 
     let mut all_healthy = true;
 
-    for adapter_name in &config.adapters.allowed {
+    for adapter_name in &config.interfaces.allowed {
         println!("📱 {} interface:", adapter_name);
 
         // Check 1: Interface CLI installed on system

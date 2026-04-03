@@ -34,6 +34,8 @@ use crate::Environment;
 
 /// Available interface names
 pub const INTERFACES: &[&str] = &["claude", "gemini", "opencode"];
+/// Deprecated alias — use INTERFACES
+#[deprecated(since = "0.46.0", note = "use INTERFACES")]
 pub const ADAPTERS: &[&str] = INTERFACES;
 
 /// Markers for Patina-managed section in bootstrap files
@@ -53,6 +55,8 @@ pub enum InterfaceKind {
     OpenCode,
 }
 
+/// Deprecated alias — use InterfaceKind
+#[deprecated(since = "0.46.0", note = "use InterfaceKind")]
 pub type Adapter = InterfaceKind;
 
 impl InterfaceKind {
@@ -168,7 +172,7 @@ pub fn is_available(name: &str) -> bool {
 /// Get the default interface name from global config
 pub fn default_interface_name() -> Result<String> {
     let config = workspace::config()?;
-    Ok(config.adapter.default)
+    Ok(config.interface.default)
 }
 
 pub fn default_name() -> Result<String> {
@@ -181,7 +185,7 @@ pub fn set_default_interface(name: &str) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("Unknown interface: {}", name))?;
 
     let mut config = workspace::config()?;
-    config.adapter.default = name.to_string();
+    config.interface.default = name.to_string();
     workspace::save_config(&config)?;
 
     Ok(())

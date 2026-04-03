@@ -117,7 +117,7 @@ struct FsProjectRepoPort {
 impl ProjectRepoPort for FsProjectRepoPort {
     fn snapshot(&self) -> std::result::Result<ProjectSnapshot, String> {
         let config = project::load_with_migration(&self.project_root).map_err(|e| e.to_string())?;
-        let llm = config.adapters.default.clone();
+        let llm = config.interfaces.default.clone();
         let adapter = crate::interface::runtime::get_interface_provider(&llm);
         let adapter_version = adapter
             .check_for_updates(&self.project_root)

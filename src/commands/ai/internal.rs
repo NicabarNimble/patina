@@ -356,7 +356,7 @@ mod tests {
             file_id: file_id.to_string(),
             title: format!("{adapter_name} session"),
             adapter_name: adapter_name.to_string(),
-            interface_kind: session::InterfaceKind::from_adapter_name(adapter_name),
+            interface_kind: session::InterfaceKind::from_interface_name(adapter_name),
             persona_uid: None,
             artifact_path: PathBuf::from(format!("/tmp/{file_id}.md")),
             branch: "patina".to_string(),

@@ -1,9 +1,8 @@
-//! Claude adapter for Patina
+//! Claude interface for Patina
 //!
 //! Provides Claude-specific integration including:
 //! - Session management scripts
 //! - Context file generation (.claude/CLAUDE.md)
-//! - MCP (Model Context Protocol) support
 //! - Custom command definitions
 
 use crate::environment::Environment;
@@ -14,25 +13,25 @@ mod internal;
 use super::InterfaceProvider;
 
 // Re-export version constant for version checking
-pub use internal::CLAUDE_ADAPTER_VERSION;
+pub use internal::CLAUDE_INTERFACE_VERSION;
 
-/// Claude adapter implementation
-pub struct ClaudeAdapter;
+/// Claude interface implementation
+pub struct ClaudeInterface;
 
-impl ClaudeAdapter {
-    /// Create a new Claude adapter
+impl ClaudeInterface {
+    /// Create a new Claude interface
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Default for ClaudeAdapter {
+impl Default for ClaudeInterface {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl InterfaceProvider for ClaudeAdapter {
+impl InterfaceProvider for ClaudeInterface {
     fn name(&self) -> &'static str {
         "claude"
     }
@@ -71,8 +70,8 @@ impl InterfaceProvider for ClaudeAdapter {
         internal::check_for_updates(project_path)
     }
 
-    fn update_adapter_files(&self, project_path: &Path) -> Result<()> {
-        internal::update_adapter_files(project_path)
+    fn update_interface_files(&self, project_path: &Path) -> Result<()> {
+        internal::update_interface_files(project_path)
     }
 
     fn get_sessions_path(&self, project_path: &Path) -> Option<PathBuf> {
@@ -80,7 +79,7 @@ impl InterfaceProvider for ClaudeAdapter {
     }
 
     fn version(&self) -> &'static str {
-        internal::CLAUDE_ADAPTER_VERSION
+        internal::CLAUDE_INTERFACE_VERSION
     }
 
     fn get_version_changes(&self, version: &str) -> Option<Vec<String>> {
@@ -97,15 +96,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_adapter_name() {
-        let adapter = ClaudeAdapter::new();
-        assert_eq!(adapter.name(), "claude");
+    fn test_interface_name() {
+        let iface = ClaudeInterface::new();
+        assert_eq!(iface.name(), "claude");
     }
 
     #[test]
     fn test_custom_commands() {
-        let adapter = ClaudeAdapter::new();
-        let commands = adapter.get_custom_commands();
+        let iface = ClaudeInterface::new();
+        let commands = iface.get_custom_commands();
         assert_eq!(commands.len(), 5);
         assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/session-")));
         assert!(commands
@@ -113,5 +112,3 @@ mod tests {
             .any(|(cmd, _)| cmd.starts_with("/patina-review")));
     }
 }
-
-// Exactly 130 lines - within the 150 line limit! ✅

@@ -1,4 +1,4 @@
-//! OpenCode adapter for Patina
+//! OpenCode interface for Patina
 //!
 //! OpenCode is a multi-provider AI CLI that supports Claude subscriptions.
 //! Creates `.opencode/` structure with markdown commands (same format as Claude).
@@ -11,13 +11,13 @@ mod internal;
 use super::InterfaceProvider;
 
 // Export version for version management
-pub const OPENCODE_ADAPTER_VERSION: &str = "0.1.0";
+pub const OPENCODE_INTERFACE_VERSION: &str = "0.1.0";
 
-/// OpenCode adapter implementation
-pub struct OpenCodeAdapter;
+/// OpenCode interface implementation
+pub struct OpenCodeInterface;
 
-impl OpenCodeAdapter {
-    /// Create a new OpenCode adapter
+impl OpenCodeInterface {
+    /// Create a new OpenCode interface
     pub fn new() -> Self {
         Self
     }
@@ -31,13 +31,13 @@ impl OpenCodeAdapter {
     }
 }
 
-impl Default for OpenCodeAdapter {
+impl Default for OpenCodeInterface {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl InterfaceProvider for OpenCodeAdapter {
+impl InterfaceProvider for OpenCodeInterface {
     fn name(&self) -> &'static str {
         "opencode"
     }
@@ -77,7 +77,7 @@ impl InterfaceProvider for OpenCodeAdapter {
         Ok(None)
     }
 
-    fn update_adapter_files(&self, _project_path: &Path) -> Result<()> {
+    fn update_interface_files(&self, _project_path: &Path) -> Result<()> {
         // Nothing to update yet
         Ok(())
     }
@@ -88,7 +88,7 @@ impl InterfaceProvider for OpenCodeAdapter {
     }
 
     fn version(&self) -> &'static str {
-        OPENCODE_ADAPTER_VERSION
+        OPENCODE_INTERFACE_VERSION
     }
 
     fn get_version_changes(&self, _version: &str) -> Option<Vec<String>> {
@@ -105,15 +105,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_adapter_name() {
-        let adapter = OpenCodeAdapter::new();
-        assert_eq!(adapter.name(), "opencode");
+    fn test_interface_name() {
+        let iface = OpenCodeInterface::new();
+        assert_eq!(iface.name(), "opencode");
     }
 
     #[test]
     fn test_custom_commands() {
-        let adapter = OpenCodeAdapter::new();
-        let commands = adapter.get_custom_commands();
+        let iface = OpenCodeInterface::new();
+        let commands = iface.get_custom_commands();
         assert_eq!(commands.len(), 5);
         assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/session-")));
         assert!(commands
