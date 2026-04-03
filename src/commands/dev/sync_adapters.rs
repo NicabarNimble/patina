@@ -1,17 +1,17 @@
 use anyhow::Result;
 use std::path::Path;
 
-pub fn execute(adapter: Option<&str>, dry_run: bool) -> Result<()> {
-    println!("🔄 Syncing adapter templates...");
+pub fn execute(interface: Option<&str>, dry_run: bool) -> Result<()> {
+    println!("🔄 Syncing interface templates...");
     println!();
 
-    let adapters = match adapter {
+    let interfaces = match interface {
         Some(name) => vec![name],
         None => vec!["claude", "gemini", "openai"],
     };
 
-    for adapter_name in adapters {
-        sync_adapter(adapter_name, dry_run)?;
+    for interface_name in interfaces {
+        sync_interface(interface_name, dry_run)?;
     }
 
     if !dry_run {
@@ -27,26 +27,26 @@ pub fn execute(adapter: Option<&str>, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
-fn sync_adapter(name: &str, dry_run: bool) -> Result<()> {
-    println!("📦 Syncing {} adapter...", name);
+fn sync_interface(name: &str, dry_run: bool) -> Result<()> {
+    println!("📦 Syncing {} interface...", name);
 
     match name {
-        "claude" => sync_claude_adapter(dry_run)?,
+        "claude" => sync_claude_interface(dry_run)?,
         "gemini" => {
-            println!("   ⚠️  Gemini adapter not yet implemented");
+            println!("   ⚠️  Gemini interface not yet implemented");
         }
         "openai" => {
-            println!("   ⚠️  OpenAI adapter not yet implemented");
+            println!("   ⚠️  OpenAI interface not yet implemented");
         }
         _ => {
-            println!("   ❌ Unknown adapter: {}", name);
+            println!("   ❌ Unknown interface: {}", name);
         }
     }
 
     Ok(())
 }
 
-fn sync_claude_adapter(dry_run: bool) -> Result<()> {
+fn sync_claude_interface(dry_run: bool) -> Result<()> {
     // In real implementation, this would:
     // 1. Read current version from resources
     // 2. Check for updates in a template repository

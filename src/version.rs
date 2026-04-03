@@ -28,9 +28,9 @@ impl VersionManifest {
     pub fn new() -> Self {
         let mut components = HashMap::new();
 
-        // LLM Adapters
+        // AI Interfaces
         components.insert(
-            "claude-adapter".to_string(),
+            "claude-interface".to_string(),
             ComponentInfo {
                 version: CLAUDE_INTERFACE_VERSION.to_string(),
                 description: "Claude AI session management and context generation".to_string(),
@@ -38,7 +38,7 @@ impl VersionManifest {
         );
 
         components.insert(
-            "gemini-adapter".to_string(),
+            "gemini-interface".to_string(),
             ComponentInfo {
                 version: GEMINI_INTERFACE_VERSION.to_string(),
                 description: "Gemini AI context file generation".to_string(),
@@ -94,7 +94,7 @@ impl UpdateChecker {
             CLAUDE_INTERFACE_VERSION.to_string(),
         );
         available.insert(
-            "gemini-adapter".to_string(),
+            "gemini-interface".to_string(),
             GEMINI_INTERFACE_VERSION.to_string(),
         );
 
@@ -147,7 +147,7 @@ mod tests {
 
         // Check all expected components exist
         assert!(manifest.components.contains_key("claude-adapter"));
-        assert!(manifest.components.contains_key("gemini-adapter"));
+        assert!(manifest.components.contains_key("gemini-interface"));
 
         // Verify component info
         let claude = &manifest.components["claude-adapter"];
@@ -225,7 +225,7 @@ mod tests {
 
         assert_eq!(versions.len(), 2);
         assert!(versions.contains_key("claude-adapter"));
-        assert!(versions.contains_key("gemini-adapter"));
+        assert!(versions.contains_key("gemini-interface"));
     }
 
     #[test]
@@ -287,6 +287,6 @@ mod tests {
         // Verify all components are included
         let components: Vec<String> = updates.iter().map(|(c, _, _)| c.clone()).collect();
         assert!(components.contains(&"claude-adapter".to_string()));
-        assert!(components.contains(&"gemini-adapter".to_string()));
+        assert!(components.contains(&"gemini-interface".to_string()));
     }
 }
