@@ -1,6 +1,6 @@
 [child]
 name = "dedup-filter"
-kind = "knowledge-child"
+kind = "child"
 role = "app"
 
 [needs]

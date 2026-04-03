@@ -2,7 +2,7 @@
 name = "{{ package_name }}"
 version = "0.1.0"
 description = "{{ description }}"
-kind = "knowledge-child"
+kind = "child"
 role = "app"
 patina_min = "0.41.0"
 
