@@ -36,7 +36,7 @@ Use adapter when crossing a system boundary. Use strategy when choosing among in
 Apply this pattern when:
 - 2+ implementations exist today (not "might exist someday")
 - An external system may change independently of Patina (DuckDB versions, LLM APIs, embedding models)
-- Testing requires a mock/stub of the external system
+- You need to swap implementations without changing calling code
 
 **Real examples in Patina:**
 
@@ -134,19 +134,9 @@ The trait lives in the parent module. Implementations live in their own subdirec
 
 ## Testing
 
-Trait boundaries make testing clean:
+Prefer integration tests with real implementations. Trait boundaries exist to isolate external systems, not to invite mocks. Test the real thing whenever possible — real DuckDB connections, real file I/O, real ONNX inference.
 
-```rust
-// Production: real registry
-let backend = RepoRegistryBackend;
-let snapshot = backend.load_snapshot()?;
-
-// Test: controlled data, no filesystem
-let backend = MockRegistryBackend::with_projects(vec!["test-project"]);
-let snapshot = backend.load_snapshot()?;
-```
-
-The mock proves the trait contract is sufficient. If you can't write a useful mock, the trait boundary might be in the wrong place.
+Mocks are a last resort for when the real system is genuinely unavailable in CI (external APIs requiring credentials, third-party services with rate limits). Even then, prefer a lightweight real implementation (in-memory database, local test server) over a mock that fakes behavior.
 
 ## Common Mistakes
 
