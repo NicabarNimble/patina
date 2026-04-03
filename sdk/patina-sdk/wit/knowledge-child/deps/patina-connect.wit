@@ -1,7 +1,0 @@
-package patina:connect@0.2.0;
-
-interface connect {
-    resource binding;
-
-    resolve: func(name: string) -> result<binding, string>;
-}

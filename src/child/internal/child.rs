@@ -122,8 +122,8 @@ mod bindings {
     }
 
     wasmtime::component::bindgen!({
-        path: "wit/knowledge-child/",
-        world: "knowledge-child",
+        path: "wit/child/",
+        world: "child",
     });
 
     impl wasi::logging::logging::Host for HostState {
@@ -145,7 +145,7 @@ mod bindings {
         }
     }
 
-    impl patina::knowledge_child::runtime_types::Host for HostState {}
+    impl patina::child::runtime_types::Host for HostState {}
 
     fn bucket_scoped_key(bucket: &str, key: &str) -> String {
         if bucket == "default" {
@@ -953,7 +953,7 @@ impl ChildEngine {
             active_bindings: std::collections::HashMap::new(),
         };
         let mut store = Store::new(wasm_engine(), host_state);
-        let instance = bindings::KnowledgeChild::instantiate(&mut store, component, &linker)?;
+        let instance = bindings::Child::instantiate(&mut store, component, &linker)?;
         instance.call_init(&mut store)?;
         let name = instance.call_name(&mut store)?;
         Ok(Box::new(WasmKnowledgeChild {
@@ -970,7 +970,7 @@ struct WasmKnowledgeChild {
 
 struct WasmKnowledgeChildInner {
     store: Store<HostState>,
-    instance: bindings::KnowledgeChild,
+    instance: bindings::Child,
 }
 
 impl Child for WasmKnowledgeChild {
@@ -1000,17 +1000,17 @@ impl Child for WasmKnowledgeChild {
             Ok(h) => {
                 let reason = h.reason.unwrap_or_default();
                 match h.status {
-                    bindings::patina::knowledge_child::runtime_types::HealthStatus::Healthy => {
+                    bindings::patina::child::runtime_types::HealthStatus::Healthy => {
                         ChildHealth::Healthy
                     }
-                    bindings::patina::knowledge_child::runtime_types::HealthStatus::Degraded => {
+                    bindings::patina::child::runtime_types::HealthStatus::Degraded => {
                         ChildHealth::Degraded(if reason.is_empty() {
                             "degraded".into()
                         } else {
                             reason
                         })
                     }
-                    bindings::patina::knowledge_child::runtime_types::HealthStatus::Unhealthy => {
+                    bindings::patina::child::runtime_types::HealthStatus::Unhealthy => {
                         ChildHealth::Unhealthy(if reason.is_empty() {
                             "unhealthy".into()
                         } else {
@@ -1063,28 +1063,28 @@ impl Child for WasmKnowledgeChild {
                 .filter_map(|intent| {
                     Some(TaskIntent {
                         kind: match intent.kind {
-                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::FetchSource => {
+                            bindings::patina::child::runtime_types::TaskIntentKind::FetchSource => {
                                 crate::mother::TaskIntentKind::FetchSource
                             }
-                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::RunQuery => {
+                            bindings::patina::child::runtime_types::TaskIntentKind::RunQuery => {
                                 crate::mother::TaskIntentKind::RunQuery
                             }
-                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::EmitFacts => {
+                            bindings::patina::child::runtime_types::TaskIntentKind::EmitFacts => {
                                 crate::mother::TaskIntentKind::EmitFacts
                             }
-                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::MaterializeIndex => {
+                            bindings::patina::child::runtime_types::TaskIntentKind::MaterializeIndex => {
                                 crate::mother::TaskIntentKind::MaterializeIndex
                             }
-                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::VerifyBelief => {
+                            bindings::patina::child::runtime_types::TaskIntentKind::VerifyBelief => {
                                 crate::mother::TaskIntentKind::VerifyBelief
                             }
-                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::SyncGraph => {
+                            bindings::patina::child::runtime_types::TaskIntentKind::SyncGraph => {
                                 crate::mother::TaskIntentKind::SyncGraph
                             }
-                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::RefreshCredential => {
+                            bindings::patina::child::runtime_types::TaskIntentKind::RefreshCredential => {
                                 crate::mother::TaskIntentKind::RefreshCredential
                             }
-                            bindings::patina::knowledge_child::runtime_types::TaskIntentKind::NativeJob => {
+                            bindings::patina::child::runtime_types::TaskIntentKind::NativeJob => {
                                 crate::mother::TaskIntentKind::NativeJob
                             }
                         },
