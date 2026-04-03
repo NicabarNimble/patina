@@ -98,19 +98,22 @@ if [[ -z "$child_toml_refs" ]]; then
     exit 1
 fi
 
+# Check children/ and sdk/ for native Child trait impls that bypass the SDK.
+# src/ is excluded — host-side code (WASM runtime, test stubs) legitimately
+# implements Child to present WASM children to the host.
 if $has_rg; then
     native_child_refs=$(rg -n "impl Child for" \
         --glob '!resources/scripts/check-single-sdk-surface.sh' \
-        src children sdk 2>/dev/null || true)
+        children sdk 2>/dev/null || true)
 else
     native_child_refs=$(grep -RInE "impl Child for" \
         --exclude-dir=.git --exclude-dir=target \
-        src children sdk 2>/dev/null \
+        children sdk 2>/dev/null \
         | grep -v "resources/scripts/check-single-sdk-surface.sh" || true)
 fi
 if [[ -n "$native_child_refs" ]]; then
     echo "$native_child_refs"
-    echo "error: native Child trait usage found — use patina-sdk worlds"
+    echo "error: native Child trait usage found in children/sdk — use patina-sdk worlds"
     exit 1
 fi
 
