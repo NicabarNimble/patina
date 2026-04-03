@@ -366,10 +366,6 @@ pub fn select_interface(available: &[InterfaceInfo], preference: Option<&str>) -
     }
 }
 
-pub fn select_adapter(available: &[AdapterInfo], preference: Option<&str>) -> Result<String> {
-    select_interface(available, preference)
-}
-
 // =============================================================================
 // Internal
 // =============================================================================
@@ -734,7 +730,7 @@ mod tests {
     }
 
     #[test]
-    fn test_select_adapter_zero_available() {
+    fn test_select_interface_zero_available() {
         let available: Vec<InterfaceInfo> = vec![];
         let result = select_interface(&available, None);
         assert!(result.is_err());
@@ -743,7 +739,7 @@ mod tests {
     }
 
     #[test]
-    fn test_select_adapter_single_available() {
+    fn test_select_interface_single_available() {
         let available = vec![InterfaceInfo {
             name: "claude".to_string(),
             display: "Claude Code".to_string(),
@@ -757,7 +753,7 @@ mod tests {
     }
 
     #[test]
-    fn test_select_adapter_single_ignores_preference() {
+    fn test_select_interface_single_ignores_preference() {
         let available = vec![InterfaceInfo {
             name: "gemini".to_string(),
             display: "Gemini CLI".to_string(),

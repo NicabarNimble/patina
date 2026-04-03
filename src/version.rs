@@ -90,7 +90,7 @@ impl UpdateChecker {
 
         // Pull from the actual constants - single source of truth
         available.insert(
-            "claude-adapter".to_string(),
+            "claude-interface".to_string(),
             CLAUDE_INTERFACE_VERSION.to_string(),
         );
         available.insert(
@@ -146,11 +146,11 @@ mod tests {
         assert_eq!(manifest.patina, env!("CARGO_PKG_VERSION"));
 
         // Check all expected components exist
-        assert!(manifest.components.contains_key("claude-adapter"));
+        assert!(manifest.components.contains_key("claude-interface"));
         assert!(manifest.components.contains_key("gemini-interface"));
 
         // Verify component info
-        let claude = &manifest.components["claude-adapter"];
+        let claude = &manifest.components["claude-interface"];
         assert_eq!(claude.version, CLAUDE_INTERFACE_VERSION);
         assert!(!claude.description.is_empty());
     }
@@ -197,7 +197,7 @@ mod tests {
         let manifest = VersionManifest::new();
 
         // Test existing component
-        let version = manifest.get_component_version("claude-adapter").unwrap();
+        let version = manifest.get_component_version("claude-interface").unwrap();
         assert_eq!(version, CLAUDE_INTERFACE_VERSION);
 
         // Test non-existent component
@@ -210,8 +210,8 @@ mod tests {
         let mut manifest = VersionManifest::new();
 
         // Update existing component
-        manifest.update_component_version("claude-adapter", "2.0.0");
-        assert_eq!(manifest.components["claude-adapter"].version, "2.0.0");
+        manifest.update_component_version("claude-interface", "2.0.0");
+        assert_eq!(manifest.components["claude-interface"].version, "2.0.0");
 
         // Update non-existent component (should not crash)
         manifest.update_component_version("new-component", "1.0.0");
@@ -224,7 +224,7 @@ mod tests {
         let versions = UpdateChecker::get_available_versions();
 
         assert_eq!(versions.len(), 2);
-        assert!(versions.contains_key("claude-adapter"));
+        assert!(versions.contains_key("claude-interface"));
         assert!(versions.contains_key("gemini-interface"));
     }
 
@@ -233,7 +233,7 @@ mod tests {
         let mut manifest = VersionManifest::new();
 
         // Set a component to old version
-        manifest.update_component_version("claude-adapter", "0.1.0");
+        manifest.update_component_version("claude-interface", "0.1.0");
 
         let updates = UpdateChecker::check_for_updates(&manifest);
 
@@ -242,7 +242,7 @@ mod tests {
 
         // Verify update details
         let (component, current, available) = &updates[0];
-        assert_eq!(component, "claude-adapter");
+        assert_eq!(component, "claude-interface");
         assert_eq!(current, "0.1.0");
         assert_eq!(available, CLAUDE_INTERFACE_VERSION);
     }
@@ -271,8 +271,8 @@ mod tests {
 
         // Verify a specific component
         assert_eq!(
-            deserialized.components["claude-adapter"].version,
-            manifest.components["claude-adapter"].version
+            deserialized.components["claude-interface"].version,
+            manifest.components["claude-interface"].version
         );
     }
 
@@ -286,7 +286,7 @@ mod tests {
 
         // Verify all components are included
         let components: Vec<String> = updates.iter().map(|(c, _, _)| c.clone()).collect();
-        assert!(components.contains(&"claude-adapter".to_string()));
+        assert!(components.contains(&"claude-interface".to_string()));
         assert!(components.contains(&"gemini-interface".to_string()));
     }
 }

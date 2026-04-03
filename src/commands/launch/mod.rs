@@ -11,7 +11,7 @@ use anyhow::Result;
 pub struct LaunchOptions {
     /// Path to project (default: current directory)
     pub path: Option<String>,
-    /// Adapter to use (default: from config)
+    /// Interface to use (default: from config)
     pub adapter: Option<String>,
     /// Start mother in background if not running
     #[allow(dead_code)]

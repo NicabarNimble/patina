@@ -16,7 +16,7 @@ pub fn execute(interface: Option<&str>, dry_run: bool) -> Result<()> {
 
     if !dry_run {
         println!();
-        println!("✅ Adapter sync complete!");
+        println!("✅ Interface sync complete!");
         println!();
         println!("Next steps:");
         println!("1. Review changes: git diff");
