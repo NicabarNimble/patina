@@ -34,7 +34,7 @@ pub type QueryDispatchFn = Box<dyn FnMut(&str, &str) -> Result<String, String> +
 /// Known child kinds — parsed from manifest, enforced at load time.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChildKind {
-    KnowledgeChild,
+    Child,
     Pipeline,
 }
 
@@ -42,17 +42,26 @@ impl std::str::FromStr for ChildKind {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self> {
+        static KNOWLEDGE_CHILD_KIND_ALIAS_WARNED: OnceLock<()> = OnceLock::new();
         match s {
-            "knowledge-child" => Ok(Self::KnowledgeChild),
+            "child" => Ok(Self::Child),
+            "knowledge-child" => {
+                if KNOWLEDGE_CHILD_KIND_ALIAS_WARNED.set(()).is_ok() {
+                    tracing::warn!(
+                        "child kind 'knowledge-child' is deprecated; use 'child' (alias removed in v0.47.0)"
+                    );
+                }
+                Ok(Self::Child)
+            }
             "command" => {
-                anyhow::bail!("child kind 'command' is retired; migrate to 'knowledge-child'")
+                anyhow::bail!("child kind 'command' is retired; migrate to 'child'")
             }
             "task" => {
-                anyhow::bail!("child kind 'task' is retired; migrate to 'knowledge-child'")
+                anyhow::bail!("child kind 'task' is retired; migrate to 'child'")
             }
             "pipeline" => Ok(Self::Pipeline),
             "mother-child" => {
-                anyhow::bail!("child kind 'mother-child' is retired; migrate to 'knowledge-child'")
+                anyhow::bail!("child kind 'mother-child' is retired; migrate to 'child'")
             }
             other => anyhow::bail!("unknown child kind: '{}'", other),
         }
@@ -63,7 +72,7 @@ impl ChildKind {
     /// Capabilities this world is allowed to declare.
     pub fn allowed_capabilities(&self) -> &[&str] {
         match self {
-            Self::KnowledgeChild => &[
+            Self::Child => &[
                 "host_log",
                 "host_query",
                 "host_http",
@@ -78,7 +87,7 @@ impl ChildKind {
 impl std::fmt::Display for ChildKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::KnowledgeChild => write!(f, "knowledge-child"),
+            Self::Child => write!(f, "child"),
             Self::Pipeline => write!(f, "pipeline"),
         }
     }
@@ -116,10 +125,10 @@ impl ChildRole {
     /// Used for validation warnings — not enforcement.
     pub fn expected_worlds(&self) -> &[ChildKind] {
         match self {
-            Self::Connector => &[ChildKind::KnowledgeChild],
+            Self::Connector => &[ChildKind::Child],
             Self::Grammar => &[ChildKind::Pipeline],
-            Self::Extension => &[ChildKind::KnowledgeChild],
-            Self::App => &[ChildKind::KnowledgeChild],
+            Self::Extension => &[ChildKind::Child],
+            Self::App => &[ChildKind::Child],
         }
     }
 }
@@ -224,7 +233,7 @@ pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
         }
     }
 
-    if manifest.world == ChildKind::KnowledgeChild {
+    if manifest.world == ChildKind::Child {
         const KNOWN_STREAMS: &[&str] = &[
             "belief.changed",
             "graph.changed",

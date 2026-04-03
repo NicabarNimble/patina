@@ -752,9 +752,9 @@ impl KnowledgeChildEngine {
     }
 
     pub fn check_capabilities(manifest: &ChildManifest) -> Result<()> {
-        if manifest.world != ChildKind::KnowledgeChild {
+        if manifest.world != ChildKind::Child {
             anyhow::bail!(
-                "child '{}' has world '{}', expected 'knowledge-child'",
+                "child '{}' has world '{}', expected 'child'",
                 manifest.name,
                 manifest.world
             );

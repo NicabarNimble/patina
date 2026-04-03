@@ -1469,7 +1469,7 @@ fn main() -> Result<()> {
 
                 // Auto-detect world from manifest and dispatch
                 match &manifest.world {
-                    patina::child::engine::ChildKind::KnowledgeChild => {
+                    patina::child::engine::ChildKind::Child => {
                         let action = args.first().map(|s| s.as_str()).unwrap_or("health");
                         let payload_str = args.get(1).map(|s| s.as_str()).unwrap_or("{}");
 

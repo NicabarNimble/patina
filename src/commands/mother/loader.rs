@@ -27,7 +27,7 @@ pub(super) fn load_wasm_child(
     let relationship_listens = parse_relationship_listens(manifest_path)?;
     let wasm_bytes = std::fs::read(wasm_path)?;
     match manifest.world {
-        patina::child::engine::ChildKind::KnowledgeChild => {
+        patina::child::engine::ChildKind::Child => {
             let engine = patina::child::engine::KnowledgeChildEngine::new()?;
             let component = engine.load_component(&wasm_bytes)?;
             let child = engine.instantiate_child(&component, &manifest, None)?;
