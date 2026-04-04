@@ -11,9 +11,6 @@ pub enum AiSessionCommands {
         title: String,
 
         #[arg(long)]
-        adapter: Option<String>,
-
-        #[arg(long)]
         json: bool,
     },
 

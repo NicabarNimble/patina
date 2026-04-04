@@ -9,7 +9,7 @@ use std::path::Path;
 use super::paths;
 
 /// Version of the Claude adapter - increment when scripts/commands change
-pub const CLAUDE_ADAPTER_VERSION: &str = "0.7.0";
+pub const CLAUDE_INTERFACE_VERSION: &str = "0.7.0";
 
 /// Changelog for adapter versions
 const VERSION_CHANGES: &[(&str, &[&str])] = &[
@@ -60,18 +60,18 @@ const VERSION_CHANGES: &[(&str, &[&str])] = &[
 ];
 
 #[derive(Serialize, Deserialize)]
-pub struct AdapterManifest {
+pub struct InterfaceManifest {
     adapter: String,
     version: String,
     installed_at: String,
     files: HashMap<String, String>,
 }
 
-/// Create or update the adapter manifest file
-pub fn create_adapter_manifest(project_path: &Path) -> Result<()> {
-    let manifest = AdapterManifest {
+/// Create or update the interface manifest file
+pub fn create_interface_manifest(project_path: &Path) -> Result<()> {
+    let manifest = InterfaceManifest {
         adapter: "claude".to_string(),
-        version: CLAUDE_ADAPTER_VERSION.to_string(),
+        version: CLAUDE_INTERFACE_VERSION.to_string(),
         installed_at: chrono::Utc::now().to_rfc3339(),
         files: HashMap::new(),
     };
@@ -82,7 +82,7 @@ pub fn create_adapter_manifest(project_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Check if adapter files need updating
+/// Check if interface files need updating
 pub fn check_for_updates(project_path: &Path) -> Result<Option<(String, String)>> {
     let manifest_path = paths::get_manifest_path(project_path);
 
@@ -90,14 +90,17 @@ pub fn check_for_updates(project_path: &Path) -> Result<Option<(String, String)>
         // No manifest means old installation
         return Ok(Some((
             "0.0.0".to_string(),
-            CLAUDE_ADAPTER_VERSION.to_string(),
+            CLAUDE_INTERFACE_VERSION.to_string(),
         )));
     }
 
-    let manifest: AdapterManifest = serde_json::from_str(&fs::read_to_string(&manifest_path)?)?;
+    let manifest: InterfaceManifest = serde_json::from_str(&fs::read_to_string(&manifest_path)?)?;
 
-    if manifest.version != CLAUDE_ADAPTER_VERSION {
-        Ok(Some((manifest.version, CLAUDE_ADAPTER_VERSION.to_string())))
+    if manifest.version != CLAUDE_INTERFACE_VERSION {
+        Ok(Some((
+            manifest.version,
+            CLAUDE_INTERFACE_VERSION.to_string(),
+        )))
     } else {
         Ok(None)
     }

@@ -502,7 +502,7 @@ fn run_source_cli(name: &str, no_sandbox: bool) -> Result<()> {
 fn run_source_parity_cli(name: &str, no_sandbox: bool, fresh_lake: Option<&str>) -> Result<()> {
     let _ = (name, no_sandbox, fresh_lake);
     bail!(
-        "legacy DuckLake runtime identity has been removed; `patina mother parity` is retired for this branch"
+        "legacy source parity runtime has been removed; `patina mother parity` is retired for this branch"
     )
 }
 

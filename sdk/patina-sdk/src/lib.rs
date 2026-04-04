@@ -6,12 +6,12 @@
 //! # Pipeline child (pure compute, log only)
 //! patina-sdk = { version = "0.21", features = ["pipeline"] }
 //!
-//! # Knowledge-child (Mother/Child/Toy doctrine)
-//! patina-sdk = { version = "0.21", features = ["knowledge-child"] }
+//! # Child world (Mother/Child/Toy doctrine)
+//! patina-sdk = { version = "0.21", features = ["child"] }
 //! ```
 //!
 //! Child world policy:
-//! - Stabilization target: `knowledge-child`.
+//! - Stabilization target: `child`.
 //! - Pure-compute lane: `pipeline`.
 //!
 //! Toy contract policy:
@@ -27,11 +27,8 @@
 // Only enforce on wasm32 — workspace builds on native unify features across
 // consumers (doctor=command) which is harmless on native
 // but would break a WASM binary with conflicting export symbols.
-#[cfg(all(
-    target_arch = "wasm32",
-    all(feature = "knowledge-child", feature = "pipeline")
-))]
-compile_error!("Enable exactly one patina-sdk world feature: knowledge-child or pipeline");
+#[cfg(all(target_arch = "wasm32", all(feature = "child", feature = "pipeline")))]
+compile_error!("Enable exactly one patina-sdk world feature: child or pipeline");
 
 // =========================================================================
 // Shared internals
@@ -43,14 +40,26 @@ mod wasm_cell;
 // Feature-gated world modules
 // =========================================================================
 
-#[cfg(feature = "knowledge-child")]
+#[cfg(feature = "child")]
+pub mod child;
+#[cfg(feature = "child")]
 pub mod helpers;
-#[cfg(feature = "knowledge-child")]
-pub mod knowledge_child;
-#[cfg(feature = "knowledge-child")]
+#[cfg(feature = "child")]
 pub mod toys;
-#[cfg(feature = "knowledge-child")]
-pub use knowledge_child::{granted, substrate, KnowledgeChild, KnowledgeChildPlugin};
+#[cfg(feature = "child")]
+// MIGRATION-SHIM: remove in v0.47.0
+#[deprecated(since = "0.46.0", note = "use child")]
+pub use child as knowledge_child;
+#[cfg(feature = "child")]
+// MIGRATION-SHIM: remove in v0.47.0
+#[deprecated(since = "0.46.0", note = "use Child")]
+pub use child::Child as KnowledgeChild;
+#[cfg(feature = "child")]
+// MIGRATION-SHIM: remove in v0.47.0
+#[deprecated(since = "0.46.0", note = "use ChildPlugin")]
+pub use child::ChildPlugin as KnowledgeChildPlugin;
+#[cfg(feature = "child")]
+pub use child::{granted, substrate, Child, ChildPlugin};
 
 #[cfg(feature = "pipeline")]
 pub mod pipeline;

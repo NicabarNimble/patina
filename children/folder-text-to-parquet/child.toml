@@ -1,6 +1,6 @@
 [child]
 name = "folder-text-to-parquet"
-kind = "knowledge-child"
+kind = "child"
 role = "app"
 
 [needs]

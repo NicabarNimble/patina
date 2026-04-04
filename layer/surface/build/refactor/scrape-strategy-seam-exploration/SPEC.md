@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: scrape-strategy-seam-exploration
-status: draft
+status: abandoned
 created: 2026-03-25
 related:
   - layer/surface/build/refactor/patina-code-to-vision/SPEC.md

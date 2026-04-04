@@ -3,294 +3,177 @@ id: adapter-pattern
 layer: core
 status: active
 created: 2025-08-02
-tags: [architecture, patterns, adapters, traits, external-systems]
-references: [dependable-rust, unix-philosophy]
+revised: 2026-04-03
+tags: [architecture, patterns, traits, external-systems, gjengset]
+references: [dependable-rust, unix-philosophy, gjengset-lens-type-integrity]
 ---
 
 # Adapter Pattern
 
-**Purpose:** Use trait-based adapters to remain agnostic to external systems while providing rich, system-specific integrations.
+**Purpose:** Define trait boundaries at external system edges. Prove the boundary with real implementations — don't abstract speculatively.
 
 ---
 
 ## Core Principle
 
-Patina uses trait-based adapters to integrate with external systems (LLMs, databases, build tools) without coupling core logic to any specific implementation. Each adapter implements a common trait, enabling runtime selection and easy testing with mocks.
+When Patina touches an external system (database, AI interface, embedding model, file format), put a trait boundary in front of it. The trait is the contract. Implementations are black boxes. But only introduce the trait when you have 2+ real implementations — a trait with one implementation is ceremony, not architecture.
+
+This is the Gjengset principle applied to system boundaries: honest signatures, type integrity at the seam, and proof before abstraction.
+
+## Adapter vs Strategy
+
+Not every trait boundary is an adapter. The distinction matters:
+
+- **Adapter**: bridges an external system into Patina's domain. The implementation wraps vendor-specific code. Examples: `EmbeddingEngine` (wraps ONNX), `InterfaceProvider` (wraps Claude/Gemini/OpenCode), `Provider` (wraps OAuth flows).
+- **Strategy**: selects among internal algorithms. No external system involved. Example: `Oracle` (retrieval strategies — semantic, temporal, lexical — all internal to Patina).
+
+The Oracle trait explicitly documents this: "This is a strategy pattern (not adapter pattern) because oracles are internal retrieval mechanisms, not external system integrations."
+
+Use adapter when crossing a system boundary. Use strategy when choosing among internal approaches. Both use traits; only adapters isolate external dependencies.
 
 ## When to Use
 
 Apply this pattern when:
-- Integrating with external systems (LLMs, APIs, databases)
-- Multiple implementations exist for the same behavior
-- You want to remain agnostic to vendor/tool choice
-- Testing requires mock implementations
+- 2+ implementations exist today (not "might exist someday")
+- An external system may change independently of Patina (DuckDB versions, LLM APIs, embedding models)
+- You need to swap implementations without changing calling code
 
-**Common use cases in Patina:**
-- LLM adapters (Claude, Gemini, future providers)
-- Build system adapters (Docker, Dagger, native)
-- Storage backends (SQLite, PostgreSQL, in-memory)
+**Real examples in Patina:**
+
+| Trait | Boundary | Implementations |
+|-------|----------|-----------------|
+| `EmbeddingEngine` | ONNX runtime | `OnnxEmbedder` (symmetric + asymmetric models) |
+| `InterfaceProvider` | AI tools | `ClaudeAdapter`, `GeminiAdapter`, `OpenCodeAdapter` |
+| `RegistryBackend` | Mother registry | `RepoRegistryBackend` + test mocks |
+| `ScryBackend` | Retrieval engine | `RetrievalScryBackend` + test mocks |
+| `Provider` | OAuth/credentials | GitHub, Linear, Slack providers |
+| `ForgeWriter` | Git forges | GitHub writer |
+
+## When NOT to Use
+
+- Only one implementation exists and no second is planned — use a module, not a trait
+- Internal code talking to internal code — modules and function calls, not trait objects
+- The "abstraction" just forwards calls — wrapper tax with no benefit
+- You're guessing where the seam is — wait until the second implementation proves it
 
 ## How to Apply
 
-### 1. Define the Trait Contract
+### 1. Honest Signatures
 
-Core defines the contract - what all adapters must provide:
-
-```rust
-// In core (not adapter-specific code)
-pub trait LLMAdapter {
-    /// Adapter name for user-facing messages
-    fn name(&self) -> &'static str;
-
-    /// Initialize project with adapter-specific setup
-    fn init_project(
-        &self,
-        project_path: &Path,
-        design: &Value,
-        environment: &Environment,
-    ) -> Result<()>;
-
-    /// Generate context document for this LLM
-    fn generate_context(
-        &self,
-        patterns: &[Pattern],
-        environment: &Environment,
-    ) -> Result<String>;
-}
-```
-
-**Trait design principles:**
-- Keep interface minimal (3-7 methods typical)
-- Return `Result<T>` for fallible operations
-- Accept borrowed data (`&Path`, `&[Pattern]`) when possible
-- Use domain types, not adapter-specific types
-
-### 2. Implement Adapter-Specific Logic
-
-Each adapter implements the trait with vendor-specific details:
+The trait should declare exactly what it needs. No smuggling dependencies through config bags.
 
 ```rust
-// In src/adapters/claude/mod.rs
-pub struct ClaudeAdapter {
-    version: String,
-    template_dir: PathBuf,
+// ❌ Bad: hides what the function actually depends on
+pub fn query(config: &AppConfig) -> Result<Vec<Hit>> {
+    let engine = config.get_scry_backend();  // hidden dependency
+    engine.query(config.query_text(), 10, None, false)
 }
 
-impl LLMAdapter for ClaudeAdapter {
-    fn name(&self) -> &'static str {
-        "claude"
-    }
-
-    fn init_project(
-        &self,
-        project_path: &Path,
-        design: &Value,
-        environment: &Environment,
-    ) -> Result<()> {
-        // Claude-specific: .claude/ directory structure
-        self.create_claude_dir(project_path)?;
-        self.copy_templates(project_path)?;
-        self.generate_claude_md(design, environment)?;
-        Ok(())
-    }
-
-    fn generate_context(
-        &self,
-        patterns: &[Pattern],
-        environment: &Environment,
-    ) -> Result<String> {
-        // Claude-specific: format for CLAUDE.md
-        let mut ctx = String::new();
-        ctx.push_str("# Project Patterns\n\n");
-        for pattern in patterns {
-            ctx.push_str(&self.format_pattern_claude(pattern));
-        }
-        Ok(ctx)
-    }
+// ✅ Good: dependency is visible in the signature
+pub fn query(backend: &dyn ScryBackend, query: &str, limit: usize) -> Result<Vec<Hit>> {
+    backend.query(query, limit, None, false)
 }
 ```
 
-### 3. Use Traits, Not Concrete Types
+### 2. Prove the Boundary
 
-Commands use trait objects, never concrete adapter types:
+A trait with one implementation is a hypothesis. Two implementations prove the seam is in the right place.
 
 ```rust
-// ❌ Bad: coupled to Claude
-pub fn init(path: &Path, adapter: ClaudeAdapter) -> Result<()> {
-    adapter.init_project(path, &design, &env)?;
-}
+// Proven boundary: EmbeddingEngine
+// - OnnxEmbedder (production, multiple model families)
+// - embed()/embed_query()/embed_passage() contract proven by
+//   symmetric vs asymmetric model implementations
 
-// ✅ Good: works with any adapter
-pub fn init(path: &Path, adapter: &dyn LLMAdapter) -> Result<()> {
-    adapter.init_project(path, &design, &env)?;
-}
-
-// ✅ Better: generic constraint
-pub fn init<A: LLMAdapter>(path: &Path, adapter: &A) -> Result<()> {
-    adapter.init_project(path, &design, &env)?;
-}
+// Unproven: don't create a trait
+// - If you only have SQLite storage and no plan for PostgreSQL,
+//   just use SQLite directly. Add the trait when the second backend arrives.
 ```
 
-### 4. Runtime Selection
+### 3. Keep Traits Minimal
 
-Let users choose adapter at runtime:
+3-7 methods is typical. If a trait grows beyond that, it's doing too much — split it or push methods into the implementation.
 
 ```rust
-pub fn select_adapter(name: &str) -> Result<Box<dyn LLMAdapter>> {
-    match name {
-        "claude" => Ok(Box::new(ClaudeAdapter::new()?)),
-        "gemini" => Ok(Box::new(GeminiAdapter::new()?)),
-        _ => Err(Error::UnknownAdapter(name.to_string())),
-    }
+// ✅ Good: focused trait
+pub trait EmbeddingEngine: Send {
+    fn embed(&mut self, text: &str) -> Result<Vec<f32>>;
+    fn embed_query(&mut self, text: &str) -> Result<Vec<f32>>;
+    fn embed_passage(&mut self, text: &str) -> Result<Vec<f32>>;
 }
+// Model-specific logic (prefixes, tokenization) stays in the implementation.
 ```
 
-### 5. Combine with Dependable-Rust Pattern
+### 4. Domain Types at the Boundary
 
-Each adapter is a black-box module:
-
-```
-src/adapters/claude/
-├── mod.rs          # Public LLMAdapter impl
-└── internal.rs     # Claude-specific logic (templates, formatting)
-```
-
-## Versioning Strategy
-
-External systems evolve - adapters should track versions:
+The trait uses Patina's domain types. Implementation-specific types stay behind the boundary.
 
 ```rust
-pub trait LLMAdapter {
-    fn name(&self) -> &'static str;
-    fn version(&self) -> &str;  // "claude-3.5" or "gemini-2.0"
-    // ... other methods
+// ❌ Bad: leaks implementation type
+pub trait Backend {
+    fn query(&self) -> rusqlite::Rows;  // caller now depends on rusqlite
 }
 
-impl ClaudeAdapter {
-    pub fn new() -> Result<Self> {
-        Ok(Self {
-            version: "3.5".to_string(),  // Claude API version
-            // ...
-        })
-    }
+// ✅ Good: domain type at the boundary
+pub trait Backend {
+    fn query(&self, q: &str, limit: usize) -> Result<Vec<ScryHit>>;  // Patina's type
 }
 ```
 
-**Changelog best practice:**
-```markdown
-# Claude Adapter Changelog
+### 5. Combine with Dependable-Rust
 
-## v3.5 (2024-11-15)
-- Added artifacts support
-- Updated context format for extended thinking
+Each adapter implementation is a black-box module:
 
-## v3.0 (2024-03-01)
-- Initial Claude 3 support
+```
+src/interface/runtime/claude/
+├── mod.rs          # InterfaceProvider impl (public contract)
+└── internal/       # Claude-specific logic (templates, paths, manifest)
 ```
 
-## Testing Strategy
+The trait lives in the parent module. Implementations live in their own subdirectories. Nothing in the implementation leaks into the trait.
 
-Adapters enable clean testing:
+## Testing
 
-**1. Mock adapter for tests:**
-```rust
-struct MockAdapter {
-    calls: RefCell<Vec<String>>,
-}
+Prefer integration tests with real implementations. Trait boundaries exist to isolate external systems, not to invite mocks. Test the real thing whenever possible — real DuckDB connections, real file I/O, real ONNX inference.
 
-impl LLMAdapter for MockAdapter {
-    fn init_project(&self, path: &Path, ...) -> Result<()> {
-        self.calls.borrow_mut().push(format!("init: {:?}", path));
-        Ok(())
-    }
-}
-
-#[test]
-fn test_init_command() {
-    let adapter = MockAdapter::new();
-    init("/tmp/test", &adapter).unwrap();
-    assert_eq!(adapter.calls.borrow()[0], "init: \"/tmp/test\"");
-}
-```
-
-**2. Integration tests per adapter:**
-```rust
-// tests/claude_adapter_test.rs
-#[test]
-fn test_claude_generates_valid_context() {
-    let adapter = ClaudeAdapter::new().unwrap();
-    let patterns = load_test_patterns();
-    let ctx = adapter.generate_context(&patterns, &env).unwrap();
-    assert!(ctx.contains("# Project Patterns"));
-}
-```
+Mocks are a last resort for when the real system is genuinely unavailable in CI (external APIs requiring credentials, third-party services with rate limits). Even then, prefer a lightweight real implementation (in-memory database, local test server) over a mock that fakes behavior.
 
 ## Common Mistakes
 
-**1. Leaking adapter-specific types into trait**
+**1. Abstracting with one implementation**
 ```rust
-// ❌ Bad: trait exposes Claude-specific type
-trait LLMAdapter {
-    fn get_config(&self) -> ClaudeConfig;  // ❌
-}
-
-// ✅ Good: trait uses generic type
-trait LLMAdapter {
-    fn get_config(&self) -> Value;  // ✅ or generic Config
-}
+// ❌ Bad: trait exists "just in case"
+trait CacheBackend { fn get(&self, key: &str) -> Option<String>; }
+struct RedisCacheBackend;  // the only implementation
+// Just use Redis directly. Add the trait when you need a second backend.
 ```
 
-**2. Not using trait objects in commands**
+**2. Leaking implementation types**
 ```rust
-// ❌ Bad: command knows about all adapters
-pub fn init(path: &Path, adapter_name: &str) -> Result<()> {
-    if adapter_name == "claude" {
-        ClaudeAdapter::new()?.init_project(...)?;
-    } else if adapter_name == "gemini" {
-        GeminiAdapter::new()?.init_project(...)?;
-    }
-}
-
-// ✅ Good: command uses trait
-pub fn init(path: &Path, adapter: &dyn LLMAdapter) -> Result<()> {
-    adapter.init_project(...)?;
-}
+// ❌ Bad: trait exposes vendor type
+trait Storage { fn connection(&self) -> &duckdb::Connection; }
+// ✅ Good: trait exposes domain operations
+trait Storage { fn store_fact(&self, fact: &Fact) -> Result<()>; }
 ```
 
-**3. Making trait too large**
+**3. Oversized traits**
 ```rust
-// ❌ Bad: 20+ methods in trait
-trait LLMAdapter {
-    fn init_project(...) -> Result<()>;
-    fn update_config(...) -> Result<()>;
-    fn validate_setup(...) -> Result<()>;
-    fn generate_docs(...) -> Result<()>;
-    fn format_pattern(...) -> String;
-    fn format_session(...) -> String;
-    fn format_insight(...) -> String;
-    // ... 15 more methods
+// ❌ Bad: 15 methods — some callers only need 2
+trait FullService {
+    fn query(&self, ...) -> Result<...>;
+    fn index(&self, ...) -> Result<()>;
+    fn delete(&self, ...) -> Result<()>;
+    fn migrate(&self, ...) -> Result<()>;
+    // ... 11 more
 }
-
-// ✅ Good: focused trait
-trait LLMAdapter {
-    fn name(&self) -> &'static str;
-    fn init_project(...) -> Result<()>;
-    fn generate_context(...) -> Result<String>;
-}
-// Formatting methods are internal to adapter
+// ✅ Good: split into focused traits
+trait Queryable { fn query(&self, ...) -> Result<...>; }
+trait Indexable { fn index(&self, ...) -> Result<()>; }
 ```
-
-## Benefits
-
-When you use adapter pattern:
-- ✅ New adapters added without changing core
-- ✅ Each adapter optimizes for its system
-- ✅ Clean testing with mock adapters
-- ✅ Future-proof architecture
-- ✅ User choice at runtime
 
 ## References
 
-- [Dependable Rust](./dependable-rust.md) - How to structure each adapter as a black box
-- [Unix Philosophy](./unix-philosophy.md) - Adapters as focused tools
-- Rust Book: Trait Objects - https://doc.rust-lang.org/book/ch17-02-trait-objects.html
+- [Dependable Rust](./dependable-rust.md) — How to structure each implementation as a black box
+- [Unix Philosophy](./unix-philosophy.md) — Each implementation does one thing
+- [gjengset-lens-type-integrity](../surface/epistemic/beliefs/gjengset-lens-type-integrity.md) — Encode invariants in types, honest signatures
+- [boundary-string-internal-enum](../surface/epistemic/beliefs/boundary-string-internal-enum.md) — String at serialization boundary, enum internally

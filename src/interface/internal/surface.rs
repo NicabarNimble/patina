@@ -69,18 +69,18 @@ pub fn ensure_ai_project_config(
 
     for supported in supported_ai_interfaces() {
         if !config
-            .adapters
+            .interfaces
             .allowed
             .iter()
             .any(|allowed| allowed == supported)
         {
-            config.adapters.allowed.push((*supported).to_string());
+            config.interfaces.allowed.push((*supported).to_string());
             updated = true;
         }
     }
 
-    if config.adapters.default != desired_default {
-        config.adapters.default = desired_default.clone();
+    if config.interfaces.default != desired_default {
+        config.interfaces.default = desired_default.clone();
         updated = true;
     }
 
@@ -156,7 +156,7 @@ fn choose_default_interface(
         return canonicalize_required_interface(name).map(str::to_string);
     }
 
-    if let Some(name) = canonical_interface_name(&config.adapters.default) {
+    if let Some(name) = canonical_interface_name(&config.interfaces.default) {
         return Ok(name.to_string());
     }
 
@@ -188,8 +188,8 @@ mod tests {
     fn setup_project() -> TempDir {
         let temp = TempDir::new().unwrap();
         let mut config = ProjectConfig::with_name("patina");
-        config.adapters.allowed = vec!["claude".to_string()];
-        config.adapters.default = String::new();
+        config.interfaces.allowed = vec!["claude".to_string()];
+        config.interfaces.default = String::new();
         project::save(temp.path(), &config).unwrap();
         temp
     }
@@ -240,14 +240,22 @@ mod tests {
 
         let config = project::load_with_migration(temp.path()).unwrap();
         assert!(result.updated);
-        assert_eq!(config.adapters.default, result.default_interface);
-        assert!(config.adapters.allowed.iter().any(|name| name == "claude"));
+        assert_eq!(config.interfaces.default, result.default_interface);
         assert!(config
-            .adapters
+            .interfaces
+            .allowed
+            .iter()
+            .any(|name| name == "claude"));
+        assert!(config
+            .interfaces
             .allowed
             .iter()
             .any(|name| name == "opencode"));
-        assert!(config.adapters.allowed.iter().any(|name| name == "gemini"));
+        assert!(config
+            .interfaces
+            .allowed
+            .iter()
+            .any(|name| name == "gemini"));
     }
 
     #[test]
@@ -323,6 +331,6 @@ mod tests {
         });
 
         let config = project::load_with_migration(temp.path()).unwrap();
-        assert_eq!(config.adapters.default, "gemini");
+        assert_eq!(config.interfaces.default, "gemini");
     }
 }

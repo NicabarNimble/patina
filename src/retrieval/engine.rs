@@ -512,7 +512,9 @@ mod tests {
 
     #[test]
     fn cwd_guard_restores_on_panic() {
-        let original = std::env::current_dir().expect("read current dir");
+        let original = std::env::current_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+        std::env::set_current_dir(&original).expect("set current dir");
         let temp_dir = tempfile::tempdir().expect("create temp dir");
 
         let panicked = std::panic::catch_unwind(|| {

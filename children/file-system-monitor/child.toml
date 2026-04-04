@@ -1,6 +1,6 @@
 [child]
 name = "file-system-monitor"
-kind = "knowledge-child"
+kind = "child"
 role = "app"
 
 [needs]

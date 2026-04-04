@@ -7,7 +7,7 @@ entrenchment: medium
 status: active
 endorsed: true
 extracted: 2026-03-10
-revised: 2026-03-10
+revised: 2026-04-02
 ---
 
 # telemetry-is-process-owned
@@ -20,7 +20,7 @@ Each process (Mother, child, project) owns its own telemetry capture. Shared sub
 
 ## Evidence
 
-- [[session-20260310-074810]]: [[session-20260310-074810]] - Emerged from DuckLake spec design: autonomous child model means each child captures its own metrics. HTTP proxy extraction audit confirmed shared proxy should not carry telemetry hooks. Outside agent validated: 'telemetry should follow ownership boundaries' (weight: 0.9)
+- [[session-20260310-074810]]: Emerged during early child-architecture exploration: autonomous child model means each child captures its own metrics. HTTP proxy extraction audit confirmed shared proxy should not carry telemetry hooks. Outside agent validated: "telemetry should follow ownership boundaries". (weight: 0.9)
 
 ## Supports
 
@@ -29,13 +29,15 @@ Each process (Mother, child, project) owns its own telemetry capture. Shared sub
 
 ## Attacked-By
 
-- Fragmented metrics risk: without a thin common telemetry contract for querying across processes, each child can become an island. Mitigated by Mother's ability to query child telemetry on demand (e.g., DuckLake's `_sync_cursors` table).
+- Fragmented metrics risk: without a thin common telemetry contract for querying across processes, each child can become an island. Mitigated by Mother's ability to query child telemetry on demand via shared observation surfaces.
 
 ## Applied-In
 
 - [[http-proxy-extraction]] — shared proxy enforces security policy, does not emit telemetry; broker wrapper adds its own measurement
-- [[ducklake]] — DuckLake child tracks ingest metrics, cursor state, and errors inside its own DuckLake catalog; Mother queries on demand via `patina mother status`
+- `src/measure.rs` and `src/child/internal/mod.rs` — source/process ownership checks keep telemetry tied to emitting actor boundaries
+- [[child-construction-canon]] — canon children own their own telemetry while Mother owns federation/observation access
 
 ## Revision Log
 
 - 2026-03-10: Created — metrics computed by `patina scrape`
+- 2026-04-02: Revised — retained origin context as historical, removed ducklake-specific current anchors, and re-anchored to current measurement surfaces.

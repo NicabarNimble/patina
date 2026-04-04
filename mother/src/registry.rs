@@ -12,13 +12,12 @@ use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
 use crate::{
-    ChildHealth, ChildRequest, ChildResponse, KnowledgeChild, KnowledgeRuntimeStore, MotherHost,
-    RunStatus,
+    Child, ChildHealth, ChildRequest, ChildResponse, KnowledgeRuntimeStore, MotherHost, RunStatus,
 };
 
 /// Registry of Mother's children.
 pub struct ChildRegistry {
-    children: Vec<Arc<RwLock<Box<dyn KnowledgeChild>>>>,
+    children: Vec<Arc<RwLock<Box<dyn Child>>>>,
 }
 
 impl Default for ChildRegistry {
@@ -156,7 +155,7 @@ impl ChildRegistry {
 
     fn invoke_handle_observed(
         child_name: &str,
-        child: &dyn KnowledgeChild,
+        child: &dyn Child,
         request: &ChildRequest,
     ) -> Result<ChildResponse> {
         let started_at = Instant::now();
@@ -165,7 +164,7 @@ impl ChildRegistry {
         response
     }
 
-    pub fn register_knowledge(&mut self, child: Box<dyn KnowledgeChild>) -> Result<()> {
+    pub fn register_knowledge(&mut self, child: Box<dyn Child>) -> Result<()> {
         let name = child.name().to_string();
         if self.child_name_exists(&name) {
             anyhow::bail!("duplicate child name: {}", name);
@@ -313,14 +312,14 @@ mod tests {
     }
 
     impl StubChild {
-        fn boxed(name: &str) -> Box<dyn KnowledgeChild> {
+        fn boxed(name: &str) -> Box<dyn Child> {
             Box::new(Self {
                 child_name: name.to_string(),
             })
         }
     }
 
-    impl KnowledgeChild for StubChild {
+    impl Child for StubChild {
         fn name(&self) -> &str {
             &self.child_name
         }
@@ -342,14 +341,14 @@ mod tests {
     }
 
     impl ErrorStubChild {
-        fn boxed(name: &str) -> Box<dyn KnowledgeChild> {
+        fn boxed(name: &str) -> Box<dyn Child> {
             Box::new(Self {
                 child_name: name.to_string(),
             })
         }
     }
 
-    impl KnowledgeChild for ErrorStubChild {
+    impl Child for ErrorStubChild {
         fn name(&self) -> &str {
             &self.child_name
         }

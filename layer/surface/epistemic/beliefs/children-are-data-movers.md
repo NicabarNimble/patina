@@ -26,7 +26,7 @@ Children are data movers and transformers, not general-purpose compute. They ope
 
 - [[children-have-agency-toys-are-capabilities]] — bounded agency within data movement scope, not unbounded compute
 - [[children-are-wasm]] — WASM sandbox is the right isolation for data workers
-- [[four-roles-no-overlap]] — children are one role (data movement), not everything
+- [[five-boundaries-no-overlap]] — children are one role (data movement), not everything
 
 ## Attacks
 

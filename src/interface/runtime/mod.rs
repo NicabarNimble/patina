@@ -44,7 +44,7 @@ pub trait InterfaceProvider {
     }
 
     /// Update interface files to latest version
-    fn update_adapter_files(&self, _project_path: &Path) -> Result<()> {
+    fn update_interface_files(&self, _project_path: &Path) -> Result<()> {
         Ok(()) // Default: no-op
     }
 
@@ -72,9 +72,9 @@ pub trait InterfaceProvider {
 /// Get an AI interface provider by name
 pub fn get_interface_provider(interface_name: &str) -> Box<dyn InterfaceProvider> {
     match interface_name.to_lowercase().as_str() {
-        "claude" => Box::new(claude::ClaudeAdapter),
-        "gemini" => Box::new(gemini::GeminiAdapter::new()),
-        "opencode" => Box::new(opencode::OpenCodeAdapter::new()),
-        _ => Box::new(claude::ClaudeAdapter),
+        "claude" => Box::new(claude::ClaudeInterface),
+        "gemini" => Box::new(gemini::GeminiInterface::new()),
+        "opencode" => Box::new(opencode::OpenCodeInterface::new()),
+        _ => Box::new(claude::ClaudeInterface),
     }
 }

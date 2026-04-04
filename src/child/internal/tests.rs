@@ -31,7 +31,7 @@ child = "test"
     );
     let m = ChildManifest::from_path(f.path()).unwrap();
     assert_eq!(m.name, "test-plugin");
-    assert_eq!(m.world, ChildKind::KnowledgeChild);
+    assert_eq!(m.world, ChildKind::Child);
     assert_eq!(m.version, "0.0.0"); // default
     assert_eq!(m.capabilities, vec!["host_log"]);
     assert_eq!(m.provides.child.as_deref(), Some("test"));
@@ -54,7 +54,7 @@ child = "test"
     );
     let m = ChildManifest::from_path(f.path()).unwrap();
     assert_eq!(m.name, "test-child");
-    assert_eq!(m.world, ChildKind::KnowledgeChild);
+    assert_eq!(m.world, ChildKind::Child);
 }
 
 #[test]
@@ -136,7 +136,7 @@ child = "test"
 "#,
     );
     let m = ChildManifest::from_path(f.path()).unwrap();
-    assert_eq!(m.world, ChildKind::KnowledgeChild);
+    assert_eq!(m.world, ChildKind::Child);
 }
 
 #[test]
@@ -155,7 +155,7 @@ child = "test"
 "#,
     );
     let m = ChildManifest::from_path(f.path()).unwrap();
-    assert_eq!(m.world, ChildKind::KnowledgeChild);
+    assert_eq!(m.world, ChildKind::Child);
 }
 
 #[test]
@@ -286,17 +286,17 @@ fn manifest_parses_knowledge_child_capabilities_and_toys() {
     let f = write_temp_manifest(
         r#"
 [child]
-name = "ducklake"
+name = "source-router"
 kind = "knowledge-child"
 
 [needs]
 toys = ["log", "state", "checkpoint", "events", "task", "graph", "belief", "fetch", "lake", "query", "measure", "github"]
 
 [needs.scopes.checkpoint]
-streams = ["ducklake.sync"]
+streams = ["source.sync"]
 
 [needs.scopes.events]
-subscribe = ["ducklake.sync", "belief.changed"]
+subscribe = ["source.sync", "belief.changed"]
 
 [needs.scopes.task]
 intents = ["fetch-source", "verify-belief"]
@@ -316,17 +316,14 @@ names = ["default", "archive"]
 endpoint = "https://api.github.com/repos/openai/openai/issues"
 
 [provides]
-child = "ducklake"
+child = "source-router"
 "#,
     );
     let m = ChildManifest::from_path(f.path()).unwrap();
-    assert_eq!(m.world, ChildKind::KnowledgeChild);
+    assert_eq!(m.world, ChildKind::Child);
     assert!(m.state_enabled);
-    assert_eq!(m.checkpoint_streams, vec!["ducklake.sync"]);
-    assert_eq!(
-        m.subscribed_streams,
-        vec!["ducklake.sync", "belief.changed"]
-    );
+    assert_eq!(m.checkpoint_streams, vec!["source.sync"]);
+    assert_eq!(m.subscribed_streams, vec!["source.sync", "belief.changed"]);
     assert_eq!(m.task_intent_names, vec!["fetch-source", "verify-belief"]);
     assert_eq!(
         m.task_intents,
@@ -381,12 +378,9 @@ child = "bad-child"
 #[test]
 fn knowledge_child_example_manifests_validate() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    for path in [
-        root.join("children/ducklake/child.toml"),
-        root.join("children/belief-verifier/child.toml"),
-    ] {
+    for path in [root.join("children/belief-verifier/child.toml")] {
         let manifest = ChildManifest::from_path(&path).unwrap();
-        assert_eq!(manifest.world, ChildKind::KnowledgeChild);
+        assert_eq!(manifest.world, ChildKind::Child);
         assert!(
             check_capabilities(&manifest).is_ok(),
             "manifest failed validation: {}",
@@ -422,68 +416,6 @@ child = "bad-ingress"
     );
 }
 
-/// Write a minimal github connection fixture into a PATINA_HOME connections dir.
-fn write_github_connection_fixture(patina_home: &std::path::Path) {
-    let conn_dir = patina_home.join("connections");
-    std::fs::create_dir_all(&conn_dir).unwrap();
-    std::fs::write(
-        conn_dir.join("github.toml"),
-        r#"schema_version = 0
-
-[identity]
-name = "github"
-provider = "github"
-auth_method = "oauth"
-scopes = ["repo"]
-is_default = true
-created_at = "2026-01-01T00:00:00Z"
-updated_at = "2026-01-01T00:00:00Z"
-scope = "global"
-
-[auth]
-secret_ref = "github-test"
-child = "github-connector"
-allowed_domains = ["api.github.com"]
-refresh_capable = false
-
-[auth.injection]
-type = "bearer"
-"#,
-    )
-    .unwrap();
-}
-
-#[test]
-fn ducklake_manifest_uses_granted_ingress_not_ambient_http() {
-    with_temp_patina_home(|home| {
-        write_github_connection_fixture(&home);
-        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("children/ducklake/child.toml");
-        let manifest = ChildManifest::from_path(&path).unwrap();
-        assert!(manifest
-            .host_http_domains
-            .contains(&"api.github.com".to_string()));
-        assert!(manifest.capabilities.contains(&"host_http".to_string()));
-        assert!(!manifest.toys.github);
-    });
-}
-
-#[test]
-fn ducklake_manifest_runtime_grants_sdk_story_stays_connected() {
-    with_temp_patina_home(|home| {
-        write_github_connection_fixture(&home);
-        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("children/ducklake/child.toml");
-        let manifest = ChildManifest::from_path(&path).unwrap();
-        let grants = manifest.granted_capabilities();
-
-        assert!(!grants.toys.github);
-        assert!(grants.toys.lake_names.contains("default"));
-        assert!(!grants.toys.fetch);
-        assert!(grants.http_domains.contains("api.github.com"));
-    });
-}
-
 // =====================================================================
 // check_capabilities
 // =====================================================================
@@ -494,7 +426,7 @@ fn capabilities_all_granted() {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -532,7 +464,7 @@ fn capabilities_empty() {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec![],
@@ -570,7 +502,7 @@ fn capabilities_denied() {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into(), "filesystem".into(), "network".into()],
@@ -683,7 +615,7 @@ fn check_capabilities_rejects_unknown_query_kinds() {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -726,7 +658,7 @@ fn check_capabilities_accepts_known_query_kinds() {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -868,7 +800,7 @@ fn check_capabilities_rejects_empty_http_domain() {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -907,7 +839,7 @@ fn check_capabilities_rejects_http_domain_with_path() {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -946,7 +878,7 @@ fn check_capabilities_accepts_valid_http_domains() {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -988,7 +920,7 @@ fn granted_capabilities_includes_http_domains() {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -1237,14 +1169,14 @@ fn check_capabilities_rejects_pipeline_with_http() {
 // F4: ChildKind Display impl returns kebab-case strings.
 #[test]
 fn plugin_world_display() {
-    assert_eq!(ChildKind::KnowledgeChild.to_string(), "knowledge-child");
+    assert_eq!(ChildKind::Child.to_string(), "child");
     assert_eq!(ChildKind::Pipeline.to_string(), "pipeline");
 }
 
 // F4: ChildKind round-trips through from_str and Display.
 #[test]
 fn plugin_world_roundtrip() {
-    for world in [ChildKind::KnowledgeChild, ChildKind::Pipeline] {
+    for world in [ChildKind::Child, ChildKind::Pipeline] {
         let s = world.to_string();
         let parsed = s.parse::<ChildKind>().unwrap();
         assert_eq!(parsed, world, "round-trip failed for {}", s);
@@ -1255,14 +1187,14 @@ fn plugin_world_roundtrip() {
 fn plugin_world_retires_command_and_task() {
     let command = "command".parse::<ChildKind>().unwrap_err().to_string();
     assert!(
-        command.contains("retired") && command.contains("knowledge-child"),
+        command.contains("retired") && command.contains("child"),
         "unexpected command retirement error: {}",
         command
     );
 
     let task = "task".parse::<ChildKind>().unwrap_err().to_string();
     assert!(
-        task.contains("retired") && task.contains("knowledge-child"),
+        task.contains("retired") && task.contains("child"),
         "unexpected task retirement error: {}",
         task
     );
@@ -1440,7 +1372,7 @@ fn check_capabilities_rejects_host_secrets_domain_not_in_host_http() {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -1492,7 +1424,7 @@ fn check_capabilities_accepts_host_secrets_with_matching_host_http() {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -1542,7 +1474,7 @@ fn granted_capabilities_includes_credential_mappings() {
         name: "test".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -2021,7 +1953,7 @@ package = "patina:schema/forge@1.0.0"
     );
     let err = ChildManifest::from_path(f.path()).unwrap_err().to_string();
     assert!(
-        err.contains("retired") && err.contains("knowledge-child"),
+        err.contains("retired") && err.contains("child"),
         "command kind should return retired-kind guidance: {}",
         err
     );
@@ -2104,7 +2036,7 @@ package = "patina:schema/forge@1.0.0"
     );
     let err = ChildManifest::from_path(f.path()).unwrap_err().to_string();
     assert!(
-        err.contains("retired") && err.contains("knowledge-child"),
+        err.contains("retired") && err.contains("child"),
         "task kind should return retired-kind guidance: {}",
         err
     );
@@ -2239,16 +2171,14 @@ fn role_display() {
 fn role_expected_worlds() {
     assert!(ChildRole::Connector
         .expected_worlds()
-        .contains(&ChildKind::KnowledgeChild));
+        .contains(&ChildKind::Child));
     assert!(ChildRole::Grammar
         .expected_worlds()
         .contains(&ChildKind::Pipeline));
     assert!(ChildRole::Extension
         .expected_worlds()
-        .contains(&ChildKind::KnowledgeChild));
-    assert!(ChildRole::App
-        .expected_worlds()
-        .contains(&ChildKind::KnowledgeChild));
+        .contains(&ChildKind::Child));
+    assert!(ChildRole::App.expected_worlds().contains(&ChildKind::Child));
 }
 
 // =====================================================================
@@ -2328,7 +2258,7 @@ fn role_world_valid_combo_passes() {
         name: "conn".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: Some(ChildRole::Connector),
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -2368,7 +2298,7 @@ fn role_world_unusual_combo_still_passes() {
         name: "weird-grammar".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: Some(ChildRole::Grammar),
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -2408,7 +2338,7 @@ fn role_none_skips_validation() {
         name: "legacy".into(),
         version: "0.1.0".into(),
         description: String::new(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -2508,4 +2438,17 @@ child = "test"
     let engine_level = KnowledgeChildEngine::check_capabilities(&m).is_ok();
 
     assert_eq!(top_level, engine_level);
+}
+
+#[cfg(all(test, patina_compat_proof))]
+#[allow(deprecated)]
+#[test]
+fn compat_proof_deprecated_knowledge_child_aliases_compile() {
+    use crate::child::engine::KnowledgeChildEngine;
+    use crate::mother::KnowledgeChild;
+
+    fn accepts_legacy_trait(_child: &dyn KnowledgeChild) {}
+
+    let _ = std::any::TypeId::of::<KnowledgeChildEngine>();
+    let _ = accepts_legacy_trait as fn(&dyn KnowledgeChild);
 }

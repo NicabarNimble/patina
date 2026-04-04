@@ -170,8 +170,8 @@ pub fn session_writer_action(
     Ok(Some(response.payload))
 }
 
-fn load_session_writer_knowledge_child() -> Result<Option<Box<dyn crate::mother::KnowledgeChild>>> {
-    let engine = crate::child::engine::KnowledgeChildEngine::new()?;
+fn load_session_writer_knowledge_child() -> Result<Option<Box<dyn crate::mother::Child>>> {
+    let engine = crate::child::engine::ChildEngine::new()?;
 
     let mut candidates: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
     let installed_dir = crate::paths::child::children_dir();

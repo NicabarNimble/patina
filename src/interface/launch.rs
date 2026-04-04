@@ -34,8 +34,6 @@ use crate::Environment;
 
 /// Available interface names
 pub const INTERFACES: &[&str] = &["claude", "gemini", "opencode"];
-pub const ADAPTERS: &[&str] = INTERFACES;
-
 /// Markers for Patina-managed section in bootstrap files
 const MARKER_START: &str = "<!-- PATINA:START -->";
 const MARKER_END: &str = "<!-- PATINA:END -->";
@@ -52,8 +50,6 @@ pub enum InterfaceKind {
     Gemini,
     OpenCode,
 }
-
-pub type Adapter = InterfaceKind;
 
 impl InterfaceKind {
     pub fn name(&self) -> &'static str {
@@ -116,8 +112,6 @@ pub struct InterfaceInfo {
     pub mcp: Option<McpConfig>,
 }
 
-pub type AdapterInfo = InterfaceInfo;
-
 /// MCP configuration for an interface
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpConfig {
@@ -168,7 +162,7 @@ pub fn is_available(name: &str) -> bool {
 /// Get the default interface name from global config
 pub fn default_interface_name() -> Result<String> {
     let config = workspace::config()?;
-    Ok(config.adapter.default)
+    Ok(config.interface.default)
 }
 
 pub fn default_name() -> Result<String> {
@@ -181,7 +175,7 @@ pub fn set_default_interface(name: &str) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("Unknown interface: {}", name))?;
 
     let mut config = workspace::config()?;
-    config.adapter.default = name.to_string();
+    config.interface.default = name.to_string();
     workspace::save_config(&config)?;
 
     Ok(())
@@ -358,10 +352,6 @@ pub fn select_interface(available: &[InterfaceInfo], preference: Option<&str>) -
             }
         }
     }
-}
-
-pub fn select_adapter(available: &[AdapterInfo], preference: Option<&str>) -> Result<String> {
-    select_interface(available, preference)
 }
 
 // =============================================================================
@@ -728,7 +718,7 @@ mod tests {
     }
 
     #[test]
-    fn test_select_adapter_zero_available() {
+    fn test_select_interface_zero_available() {
         let available: Vec<InterfaceInfo> = vec![];
         let result = select_interface(&available, None);
         assert!(result.is_err());
@@ -737,7 +727,7 @@ mod tests {
     }
 
     #[test]
-    fn test_select_adapter_single_available() {
+    fn test_select_interface_single_available() {
         let available = vec![InterfaceInfo {
             name: "claude".to_string(),
             display: "Claude Code".to_string(),
@@ -751,7 +741,7 @@ mod tests {
     }
 
     #[test]
-    fn test_select_adapter_single_ignores_preference() {
+    fn test_select_interface_single_ignores_preference() {
         let available = vec![InterfaceInfo {
             name: "gemini".to_string(),
             display: "Gemini CLI".to_string(),

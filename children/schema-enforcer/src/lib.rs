@@ -1,6 +1,6 @@
 use patina_sdk::granted;
 use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
-use patina_sdk::register_knowledge_child;
+use patina_sdk::register_child;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -224,4 +224,4 @@ impl KnowledgeChild for SchemaEnforcerChild {
     }
 }
 
-register_knowledge_child!(SchemaEnforcerChild);
+register_child!(SchemaEnforcerChild);

@@ -27,8 +27,8 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         let adapter_info = interfaces::get(name)?;
         if !adapter_info.detected {
             bail!(
-                "Adapter '{}' ({}) is not installed.\n\
-                 Install it and try again, or use a different adapter.",
+                "Interface '{}' ({}) is not installed.\n\
+                 Install it and try again, or use a different interface.",
                 name,
                 adapter_info.display
             );
@@ -63,8 +63,8 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         let project_config = project::load_with_migration(&project_path)?;
         adapter_name = explicit_adapter.unwrap_or_else(|| {
             // Use project default if set, otherwise fall back to global
-            if !project_config.adapters.default.is_empty() {
-                project_config.adapters.default.clone()
+            if !project_config.interfaces.default.is_empty() {
+                project_config.interfaces.default.clone()
             } else {
                 interfaces::default_interface_name().unwrap_or_else(|_| "claude".to_string())
             }
@@ -659,14 +659,22 @@ mod tests {
         assert!(result.unwrap());
 
         let config = project::load_with_migration(temp.path()).unwrap();
-        assert_eq!(config.adapters.default, "gemini");
-        assert!(config.adapters.allowed.iter().any(|name| name == "claude"));
+        assert_eq!(config.interfaces.default, "gemini");
         assert!(config
-            .adapters
+            .interfaces
+            .allowed
+            .iter()
+            .any(|name| name == "claude"));
+        assert!(config
+            .interfaces
             .allowed
             .iter()
             .any(|name| name == "opencode"));
-        assert!(config.adapters.allowed.iter().any(|name| name == "gemini"));
+        assert!(config
+            .interfaces
+            .allowed
+            .iter()
+            .any(|name| name == "gemini"));
         assert!(temp.path().join("AGENTS.md").exists());
         assert!(temp.path().join("CLAUDE.md").exists());
         assert!(temp.path().join("GEMINI.md").exists());

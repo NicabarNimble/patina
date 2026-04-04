@@ -8,12 +8,12 @@ description = "Doctor knowledge child for Mother"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-patina-sdk = { path = "../../sdk/patina-sdk", features = ["knowledge-child", "toy-log", "toy-state"] }
+patina-sdk = { path = "../../sdk/patina-sdk", features = ["child", "toy-log", "toy-state"] }
 serde_json = "1.0"
 
 [package.metadata.component]
 package = "patina:doctor"
 
 [package.metadata.component.target]
-path = "../../wit/worlds"
-world = "knowledge-child"
+path = "../../wit/child"
+world = "child"

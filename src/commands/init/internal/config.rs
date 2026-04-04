@@ -6,7 +6,7 @@ use std::path::Path;
 
 use patina::environment::Environment;
 use patina::project::{
-    AdaptersSection, EmbeddingsSection, EnvironmentSection, ProjectConfig, ProjectSection,
+    EmbeddingsSection, EnvironmentSection, InterfacesSection, ProjectConfig, ProjectSection,
     RetrievalSection, SearchSection,
 };
 // Note: CiSection and UpstreamSection are optional, set to None for new projects
@@ -64,10 +64,10 @@ pub fn create_project_config(
         // Note: dev section is deprecated and skipped on serialization
         dev: Default::default(),
         // Preserve existing adapters on re-init, otherwise empty
-        adapters: existing_config
+        interfaces: existing_config
             .as_ref()
-            .map(|c| c.adapters.clone())
-            .unwrap_or_else(|| AdaptersSection {
+            .map(|c| c.interfaces.clone())
+            .unwrap_or_else(|| InterfacesSection {
                 allowed: vec![],
                 default: String::new(),
             }),

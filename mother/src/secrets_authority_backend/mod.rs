@@ -13,6 +13,7 @@ pub use self::vault::VaultStatus;
 use crate::secrets_authority_api as api;
 use crate::secrets_paths as paths;
 use anyhow::{bail, Result};
+use std::collections::HashMap;
 use std::path::Path;
 
 #[derive(Debug)]
@@ -108,7 +109,23 @@ pub fn add_secret(
         false
     };
 
-    let mut vault_data = vault::decrypt_vault(&vault_path)?;
+    let mut vault_data = match vault::decrypt_vault(&vault_path) {
+        Ok(data) => data,
+        Err(e) => {
+            // Identity/vault mismatch: if registry has no secrets, safe to re-init
+            let reg = registry::SecretsRegistry::load_from(&registry_path).unwrap_or_default();
+            if reg.list().is_empty() {
+                tracing::warn!("Vault decrypt failed with empty registry, re-initializing");
+                let _recipient = vault::init_vault(&vault_path, &recipients_path)?;
+                vault::decrypt_vault(&vault_path)?
+            } else {
+                return Err(e.context(
+                    "Vault identity mismatch. The vault was encrypted with a different key.\n\
+                     Recovery: patina secrets --import-key (re-import your identity)",
+                ));
+            }
+        }
+    };
     vault_data.insert(name, value);
     vault::encrypt_vault(&vault_data, &vault_path, &recipients_path)?;
 
@@ -239,6 +256,40 @@ pub fn get_global_secret(name: &str) -> Result<Option<String>> {
     Ok(vault_data.values.get(name).cloned())
 }
 
+pub fn load_secrets_env_map(project_root: Option<&Path>) -> Result<HashMap<String, String>> {
+    let mut env_map = HashMap::new();
+
+    let global_vault_path = paths::secrets::vault_path();
+    let global_registry_path = paths::secrets::registry_path();
+    if global_vault_path.exists() {
+        let vault_data = vault::decrypt_vault(&global_vault_path)?;
+        let registry =
+            registry::SecretsRegistry::load_from(&global_registry_path).unwrap_or_default();
+        for (name, value) in &vault_data.values {
+            if let Some(env_var) = registry.get_env(name) {
+                env_map.insert(env_var.to_string(), value.clone());
+            }
+        }
+    }
+
+    if let Some(root) = project_root {
+        let project_vault_path = paths::secrets::project_vault_path(root);
+        let project_registry_path = paths::secrets::project_registry_path(root);
+        if project_vault_path.exists() {
+            let vault_data = vault::decrypt_vault(&project_vault_path)?;
+            let registry =
+                registry::SecretsRegistry::load_from(&project_registry_path).unwrap_or_default();
+            for (name, value) in &vault_data.values {
+                if let Some(env_var) = registry.get_env(name) {
+                    env_map.insert(env_var.to_string(), value.clone());
+                }
+            }
+        }
+    }
+
+    Ok(env_map)
+}
+
 pub struct MotherSecretsAuthorityBackend;
 
 impl api::SecretsAuthorityBackend for MotherSecretsAuthorityBackend {
@@ -336,5 +387,12 @@ impl api::SecretsAuthorityBackend for MotherSecretsAuthorityBackend {
             created_vault: result.created_vault,
             env_var: result.env_var,
         })
+    }
+
+    fn load_secrets_env_map(
+        &self,
+        project_root: Option<std::path::PathBuf>,
+    ) -> anyhow::Result<HashMap<String, String>> {
+        load_secrets_env_map(project_root.as_deref())
     }
 }

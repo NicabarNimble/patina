@@ -7,7 +7,7 @@ entrenchment: medium
 status: active
 endorsed: true
 extracted: 2026-03-10
-revised: 2026-03-10
+revised: 2026-04-02
 ---
 
 # no-untyped-blobs-at-trust-boundaries
@@ -20,7 +20,7 @@ Patina can be concrete before it is generic, but it cannot be vague at trust bou
 
 ## Evidence
 
-- [[session-20260310-142000]]: Corrected Option<Value> on InitializeParams to typed DuckLakeGrant after agent review identified it as vague at a security boundary (weight: 0.9)
+- [[session-20260310-142000]]: Corrected Option<Value>-style init payload to typed capability fields after review identified it as vague at a security boundary (weight: 0.9)
 
 ## Supports
 
@@ -38,9 +38,11 @@ Patina can be concrete before it is generic, but it cannot be vague at trust bou
 
 ## Applied-In
 
-- [[ducklake]] DESIGN.md: `DuckLakeGrant`, `ConnectorToy`, `StorageToy` as typed fields on `InitializeParams`
-- [[ducklake]] DESIGN.md: child fails closed with `PipeError::Fatal` if grant is missing
+- `src/child/internal/mod.rs` — manifest parsing + `GrantedCapabilities` assembly enforces typed capability mapping at load time
+- `src/child/internal/mod.rs` (`check_capabilities`) — fail-closed capability validation rejects malformed/unknown grant shapes before runtime use
+- [[initialize-is-capability-grant]] — current doctrine anchor for typed init grants
 
 ## Revision Log
 
 - 2026-03-10: Created — corrected from Option<Value> approach after agent review
+- 2026-04-02: Revised — removed ducklake-specific typed-grant anchors and re-anchored to current `GrantedCapabilities` + fail-closed validation surfaces.

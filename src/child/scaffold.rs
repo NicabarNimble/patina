@@ -15,13 +15,12 @@ use super::engine::ChildKind;
 // =========================================================================
 
 mod templates {
-    pub mod knowledge_child {
+    pub mod child {
         pub const CARGO_TOML: &str =
-            include_str!("../../resources/templates/child/knowledge-child/Cargo.toml.tmpl");
+            include_str!("../../resources/templates/child/child/Cargo.toml.tmpl");
         pub const MANIFEST_TOML: &str =
-            include_str!("../../resources/templates/child/knowledge-child/child.toml.tmpl");
-        pub const LIB_RS: &str =
-            include_str!("../../resources/templates/child/knowledge-child/lib.rs.tmpl");
+            include_str!("../../resources/templates/child/child/child.toml.tmpl");
+        pub const LIB_RS: &str = include_str!("../../resources/templates/child/child/lib.rs.tmpl");
     }
     pub mod pipeline {
         pub const CARGO_TOML: &str =
@@ -107,10 +106,10 @@ fn substitute(template: &str, name: &str) -> String {
 /// Get the template set for a given world.
 fn world_templates(world: &ChildKind) -> (&'static str, &'static str, &'static str) {
     match world {
-        ChildKind::KnowledgeChild => (
-            templates::knowledge_child::CARGO_TOML,
-            templates::knowledge_child::MANIFEST_TOML,
-            templates::knowledge_child::LIB_RS,
+        ChildKind::Child => (
+            templates::child::CARGO_TOML,
+            templates::child::MANIFEST_TOML,
+            templates::child::LIB_RS,
         ),
         ChildKind::Pipeline => (
             templates::pipeline::CARGO_TOML,
@@ -201,7 +200,7 @@ mod tests {
     #[test]
     fn test_scaffold_creates_files() {
         let tmp = tempfile::tempdir().unwrap();
-        let result = scaffold(tmp.path(), "test-plugin", &ChildKind::KnowledgeChild);
+        let result = scaffold(tmp.path(), "test-plugin", &ChildKind::Child);
         assert!(result.is_ok());
 
         let project = result.unwrap();
@@ -215,14 +214,14 @@ mod tests {
         let lib = std::fs::read_to_string(project.join("src/lib.rs")).unwrap();
         assert!(cargo.contains("test-plugin"));
         assert!(lib.contains("TestPlugin"));
-        assert!(lib.contains("register_knowledge_child!"));
+        assert!(lib.contains("register_child!"));
     }
 
     #[test]
     fn test_scaffold_rejects_existing_dir() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir(tmp.path().join("existing")).unwrap();
-        let result = scaffold(tmp.path(), "existing", &ChildKind::KnowledgeChild);
+        let result = scaffold(tmp.path(), "existing", &ChildKind::Child);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already exists"));
     }
@@ -231,7 +230,7 @@ mod tests {
     fn test_scaffold_all_worlds() {
         let tmp = tempfile::tempdir().unwrap();
         for (world, expected_macro) in [
-            (ChildKind::KnowledgeChild, "register_knowledge_child!"),
+            (ChildKind::Child, "register_child!"),
             (ChildKind::Pipeline, "register_pipeline_child!"),
         ] {
             let name = format!("test-{}", world);

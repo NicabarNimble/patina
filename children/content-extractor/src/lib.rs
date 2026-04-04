@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use patina_sdk::granted;
 use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
-use patina_sdk::register_knowledge_child;
+use patina_sdk::register_child;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -208,4 +208,4 @@ impl KnowledgeChild for ContentExtractorChild {
     }
 }
 
-register_knowledge_child!(ContentExtractorChild);
+register_child!(ContentExtractorChild);

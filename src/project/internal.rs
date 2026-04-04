@@ -22,7 +22,7 @@ pub struct ProjectConfig {
     #[serde(default, skip_serializing)]
     pub dev: DevSection,
     #[serde(default, rename = "interfaces", alias = "adapters")]
-    pub adapters: AdaptersSection,
+    pub interfaces: InterfacesSection,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub upstream: Option<UpstreamSection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -107,27 +107,27 @@ impl Default for DevSection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AdaptersSection {
-    /// Allowed adapters for this project
+pub struct InterfacesSection {
+    /// Allowed interfaces for this project
     #[serde(default = "default_allowed")]
     pub allowed: Vec<String>,
-    /// Default adapter for this project
-    #[serde(default = "default_adapter")]
+    /// Default interface for this project
+    #[serde(default = "default_interface")]
     pub default: String,
 }
 
 fn default_allowed() -> Vec<String> {
     vec!["claude".to_string()]
 }
-fn default_adapter() -> String {
+fn default_interface() -> String {
     "claude".to_string()
 }
 
-impl Default for AdaptersSection {
+impl Default for InterfacesSection {
     fn default() -> Self {
         Self {
             allowed: default_allowed(),
-            default: default_adapter(),
+            default: default_interface(),
         }
     }
 }
@@ -461,9 +461,9 @@ pub fn migrate_legacy_config(project_path: &Path) -> Result<bool> {
     // Note: dev field from legacy config is ignored (dev_env subsystem removed)
     if let Some(llm) = json.get("llm").and_then(|v| v.as_str()) {
         // Map llm to adapters.default and ensure it's in allowed list
-        config.adapters.default = llm.to_string();
-        if !config.adapters.allowed.contains(&llm.to_string()) {
-            config.adapters.allowed.push(llm.to_string());
+        config.interfaces.default = llm.to_string();
+        if !config.interfaces.allowed.contains(&llm.to_string()) {
+            config.interfaces.allowed.push(llm.to_string());
         }
     }
 
@@ -615,8 +615,8 @@ mod tests {
         let config = ProjectConfig::default();
         assert_eq!(config.project.name, "unnamed");
         // Note: dev section is deprecated and skipped on serialization
-        assert_eq!(config.adapters.default, "claude");
-        assert!(config.adapters.allowed.contains(&"claude".to_string()));
+        assert_eq!(config.interfaces.default, "claude");
+        assert!(config.interfaces.allowed.contains(&"claude".to_string()));
         assert_eq!(config.embeddings.model, "e5-base-v2");
         assert!(config.upstream.is_none()); // No upstream by default (owned repo)
         assert!(config.ci.is_none()); // No CI checks by default
@@ -666,13 +666,13 @@ mod tests {
         let project_path = tmp.path();
 
         let mut config = ProjectConfig::with_name("test-project");
-        config.adapters.allowed = vec!["claude".to_string(), "gemini".to_string()];
+        config.interfaces.allowed = vec!["claude".to_string(), "gemini".to_string()];
 
         save(project_path, &config).unwrap();
         let loaded = load(project_path).unwrap();
 
         assert_eq!(loaded.project.name, "test-project");
-        assert_eq!(loaded.adapters.allowed.len(), 2);
+        assert_eq!(loaded.interfaces.allowed.len(), 2);
     }
 
     #[test]
@@ -694,7 +694,7 @@ mod tests {
         assert_eq!(config.embeddings.model, "all-minilm-l6-v2");
         // Other sections should have defaults
         assert_eq!(config.project.name, "unnamed");
-        assert_eq!(config.adapters.default, "claude");
+        assert_eq!(config.interfaces.default, "claude");
     }
 
     #[test]
@@ -741,8 +741,8 @@ mod tests {
         let config = load(tmp.path()).unwrap();
         assert_eq!(config.project.name, "test-project");
         // Note: dev field from legacy config is ignored (dev_env subsystem removed)
-        assert_eq!(config.adapters.default, "gemini");
-        assert!(config.adapters.allowed.contains(&"gemini".to_string()));
+        assert_eq!(config.interfaces.default, "gemini");
+        assert!(config.interfaces.allowed.contains(&"gemini".to_string()));
         assert_eq!(config.embeddings.model, "bge-base"); // preserved from existing toml
 
         // Verify JSON was removed

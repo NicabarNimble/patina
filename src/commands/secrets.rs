@@ -515,7 +515,7 @@ fn remove_secret(name: &str, global: bool) -> Result<()> {
 /// Walks the user through generating and storing a long-lived OAuth token
 /// so the launcher can inject it for headless/SSH/tmux sessions.
 fn setup_claude() -> Result<()> {
-    let replacing_hint = matches!(secrets::get_global_secret("claude-oauth"), Ok(Some(_)));
+    let replacing_hint = matches!(mother::get_global_secret("claude-oauth"), Ok(Some(_)));
 
     // First-time users need instructions; repeat users just need the prompt
     if !replacing_hint {

@@ -142,13 +142,13 @@ mod tests {
 
     #[test]
     fn validate_accepts_child_source_prefix() {
-        let event = sample_event("child:ducklake");
+        let event = sample_event("child:source-router");
         assert!(validate(&event).is_ok());
     }
 
     #[test]
     fn validate_accepts_legacy_plugin_source_prefix() {
-        let event = sample_event("plugin:ducklake");
+        let event = sample_event("plugin:source-router");
         assert!(validate(&event).is_ok());
     }
 }

@@ -58,7 +58,7 @@ pub enum ConnectCommands {
         force: bool,
     },
 
-    /// Manage DuckLake repo bindings (knowledge-child control plane)
+    /// Manage source bindings used by Mother source routing
     #[command(subcommand)]
     Binding(BindingCommands),
 }
@@ -117,7 +117,7 @@ pub fn execute_cli(command: Option<ConnectCommands>) -> Result<()> {
 
 fn manage_binding(command: BindingCommands) -> Result<()> {
     let runtime = patina::mother::KnowledgeRuntimeStore::default();
-    let plugin = "patina-ducklake";
+    let plugin = "source-bindings";
 
     match command {
         BindingCommands::Upsert {
@@ -129,10 +129,10 @@ fn manage_binding(command: BindingCommands) -> Result<()> {
         } => {
             let valid: Vec<String> = types
                 .into_iter()
-                .filter(|t| t == "issues" || t == "prs")
+                .filter(|t| t == "issues" || t == "prs" || t == "pulls")
                 .collect();
-            if !(valid.iter().any(|t| t == "issues") && valid.iter().any(|t| t == "prs")) {
-                bail!("DuckLake GitHub scope contract requires both --type issues and --type prs");
+            if valid.is_empty() {
+                bail!("binding requires at least one supported --type (issues, prs)");
             }
             let include_pr_commits = false;
             let scope_contract = serde_json::json!({
@@ -186,7 +186,7 @@ fn manage_binding(command: BindingCommands) -> Result<()> {
         BindingCommands::List => {
             let keys = runtime.list_state_prefix(plugin, "connector:binding:")?;
             if keys.is_empty() {
-                println!("No DuckLake repo bindings found.");
+                println!("No source bindings found.");
                 return Ok(());
             }
             for key in keys {

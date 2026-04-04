@@ -28,7 +28,7 @@ impl InterfaceKind {
         }
     }
 
-    pub fn from_adapter_name(name: &str) -> Self {
+    pub fn from_interface_name(name: &str) -> Self {
         match name {
             "opencode" => Self::OpenCode,
             "gemini" => Self::Gemini,

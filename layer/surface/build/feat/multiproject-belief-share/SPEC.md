@@ -8,6 +8,7 @@ sessions:
   origin: 20260327-104954-066673000
 blocked_by:
   - folder-text-to-parquet
+  - mother-duckdb-ducklake-federation
 beliefs:
   - "[[children-have-agency-toys-are-capabilities]]"
   - "[[patina-is-knowledge-layer]]"
@@ -16,8 +17,10 @@ beliefs:
 related:
   - sdk/patina-sdk/
   - children/
+  - mother/src/
   - layer/surface/epistemic/
   - layer/surface/build/feat/child-construction-canon/
+  - layer/surface/build/feat/mother-duckdb-ducklake-federation/SPEC.md
 exit_criteria:
   - id: mbs1-core-children-reused
     text: "At least 4 children from MVP 1 reused without modification: record-writer, schema-enforcer, dedup-filter, lakehouse-catalog."
@@ -46,6 +49,10 @@ exit_criteria:
 ## Problem
 
 Epistemic beliefs are project-local. Insights from one Patina project cannot inform another. This MVP proves the registry model by reusing core children from MVP 1 and building 3 new federation children.
+
+This MVP also assumes Mother has a federation query substrate (DuckDB with
+optional DuckLake extension) for cross-project reads. That substrate is built
+in `mother-duckdb-ducklake-federation` and is a hard dependency for this spec.
 
 ## Goal
 
@@ -154,4 +161,7 @@ cargo test -q --workspace
 
 ## Build Readiness
 
-Blocked by `folder-text-to-parquet`. The core children must exist before this MVP can prove reuse.
+Blocked by `folder-text-to-parquet` and
+`mother-duckdb-ducklake-federation`. Core children must exist before this MVP
+can prove reuse, and Mother federation substrate must exist before
+cross-project query/respond flows are built.

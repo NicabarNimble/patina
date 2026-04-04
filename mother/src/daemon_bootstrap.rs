@@ -1,11 +1,11 @@
 use anyhow::Result;
 use std::path::Path;
 
-use crate::{registry::ChildRegistry, KnowledgeChild, KnowledgeRuntimeStore};
+use crate::{registry::ChildRegistry, Child, KnowledgeRuntimeStore};
 
 pub enum LoadedChild {
     Knowledge {
-        child: Box<dyn KnowledgeChild>,
+        child: Box<dyn Child>,
         name: String,
         subscribed_streams: Vec<String>,
         relationship_listens: Vec<String>,

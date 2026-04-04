@@ -24,7 +24,7 @@ Projects are sovereign islands that own their knowledge (layer/) and identity (u
 
 ## Supports
 
-- [[four-roles-no-overlap]] — projects are the development zone, Mother is infrastructure. Sovereignty follows from non-overlapping roles.
+- [[five-boundaries-no-overlap]] — projects are the development zone, Mother is infrastructure. Sovereignty follows from non-overlapping roles.
 - [[core-verbs-standalone-mother-additive]] — core protocol works without Mother. Projects must be complete at rest for this to hold.
 - [[standards-are-storage-coordination-sits-above]] — SQLite per-project is the storage unit (sovereign). DuckDB/Mother coordinate above without replacing.
 

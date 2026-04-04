@@ -22,10 +22,10 @@ use crate::paths;
 pub struct GlobalConfig {
     pub workspace: WorkspaceConfig,
     #[serde(rename = "interface", alias = "adapter")]
-    pub adapter: AdapterConfig,
+    pub interface: InterfaceConfig,
     pub serve: ServeConfig,
     #[serde(default, rename = "interfaces", alias = "adapters")]
-    pub adapters: AdaptersConfig,
+    pub interfaces: InterfacesConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,12 +48,12 @@ impl Default for WorkspaceConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AdapterConfig {
-    /// Default adapter to use (claude, gemini, codex)
+pub struct InterfaceConfig {
+    /// Default interface to use (claude, gemini, opencode)
     pub default: String,
 }
 
-impl Default for AdapterConfig {
+impl Default for InterfaceConfig {
     fn default() -> Self {
         Self {
             default: "claude".to_string(),
@@ -65,7 +65,7 @@ impl Default for AdapterConfig {
 pub struct ServeConfig {
     /// Port for mother server
     pub port: u16,
-    /// Auto-start mother when launching adapter
+    /// Auto-start mother when launching interface
     pub auto_start: bool,
 }
 
@@ -78,15 +78,15 @@ impl Default for ServeConfig {
     }
 }
 
-/// Detected adapters configuration (flexible HashMap)
+/// Detected interfaces configuration (flexible HashMap)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct AdaptersConfig {
+pub struct InterfacesConfig {
     #[serde(flatten)]
-    pub entries: HashMap<String, AdapterEntry>,
+    pub entries: HashMap<String, InterfaceEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AdapterEntry {
+pub struct InterfaceEntry {
     pub command: String,
     pub detected: bool,
     #[serde(default)]
@@ -159,7 +159,7 @@ pub fn setup() -> Result<SetupResult> {
 
     // Detect installed adapters
     let mut detected = Vec::new();
-    let mut adapters_config = AdaptersConfig::default();
+    let mut adapters_config = InterfacesConfig::default();
 
     // Detect available adapters
     for (name, mcp_config) in [
@@ -172,7 +172,7 @@ pub fn setup() -> Result<SetupResult> {
             detected.push(name.to_string());
             adapters_config.entries.insert(
                 name.to_string(),
-                AdapterEntry {
+                InterfaceEntry {
                     command: name.to_string(),
                     detected: true,
                     mcp_config: mcp_config.map(String::from),
@@ -209,13 +209,13 @@ pub fn setup() -> Result<SetupResult> {
         workspace: WorkspaceConfig {
             path: workspace_path.to_string_lossy().to_string(),
         },
-        adapter: AdapterConfig {
+        interface: InterfaceConfig {
             default: default_adapter
                 .clone()
                 .unwrap_or_else(|| "claude".to_string()),
         },
         serve: ServeConfig::default(),
-        adapters: adapters_config,
+        interfaces: adapters_config,
     };
 
     save_config(&config)?;
@@ -351,7 +351,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = GlobalConfig::default();
-        assert_eq!(config.adapter.default, "claude");
+        assert_eq!(config.interface.default, "claude");
         assert_eq!(config.serve.port, 50051);
         assert!(config.serve.auto_start);
     }

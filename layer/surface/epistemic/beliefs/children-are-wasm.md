@@ -24,7 +24,7 @@ Children are external WASM runtime units; native capabilities belong to Mother s
 
 ## Supports
 
-- [[four-roles-no-overlap]] — children are workers, Mother is infrastructure; role boundaries stay explicit.
+- [[five-boundaries-no-overlap]] — children are workers, Mother is infrastructure; role boundaries stay explicit.
 - [[core-primitives-are-not-children]] — core verbs remain protocol primitives, children stay extension lane.
 - [[children-have-agency-toys-are-capabilities]] — agency/capability model remains, with WASM runtime as the child boundary.
 
@@ -41,10 +41,10 @@ Children are external WASM runtime units; native capabilities belong to Mother s
 
 ## Applied-In
 
+- [[child-construction-canon]] — "Only Three Things" section: children are WASM components that do compute. Two worlds: knowledge-child (Mother-hosted, has toys) and pipeline (host-invoked, log only).
 - `sdk/patina-sdk/README.md` — SDK authoring lane documented as WASM children.
 - `src/child/internal/mod.rs` — child manifest and runtime gating centered on child worlds/kinds.
-- `layer/surface/build/refactor/greenfield-mother-clean-continued/SPEC.md` — Mother internal services separated from external child runtime lane.
-- `layer/surface/build/refactor/plugin-vocabulary-retirement/SPEC.md` — child-first runtime vocabulary locked and completed.
+- [[scaffold-world-retirement]] — retired command and task worlds, leaving only knowledge-child and pipeline as WASM-only child lanes.
 
 ## Revision Log
 

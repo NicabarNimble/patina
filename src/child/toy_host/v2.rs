@@ -517,7 +517,7 @@ type = "bearer"
             .unwrap();
             assert!(!task_id.is_empty());
 
-            let peer_id = peer_call(&runtime, "phase4", "ducklake", "sync", "{}").unwrap();
+            let peer_id = peer_call(&runtime, "phase4", "source-router", "sync", "{}").unwrap();
             assert!(!peer_id.is_empty());
         });
     }

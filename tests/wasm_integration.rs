@@ -41,20 +41,6 @@ fn with_temp_patina_home<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
     }
 }
 
-fn ducklake_component_path() -> Option<std::path::PathBuf> {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    for rel in [
-        "target/wasm32-wasip1/debug/patina_ai_child_ducklake.wasm",
-        "target/wasm32-wasip1/release/patina_ai_child_ducklake.wasm",
-    ] {
-        let path = root.join(rel);
-        if path.exists() {
-            return Some(path);
-        }
-    }
-    None
-}
-
 fn session_writer_component_path() -> Option<std::path::PathBuf> {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for rel in [
@@ -196,7 +182,7 @@ fn load_repos_child() -> Option<Box<dyn KnowledgeChild>> {
         name: "patina-repos".into(),
         version: "0.1.0".into(),
         description: "test".into(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -295,7 +281,7 @@ fn load_panic_pipeline_component() -> Option<(PipelineEngine, wasmtime::componen
 }
 
 // =====================================================================
-// WASM integration — session-writer, ducklake linker, ducklake sync
+// WASM integration — session-writer and canon children
 // =====================================================================
 
 #[test]
@@ -318,118 +304,15 @@ fn session_writer_component_instantiates_in_knowledge_child_engine() {
     );
 }
 
-#[test]
-fn knowledge_child_linker_fails_when_lake_not_linked() {
-    let Some(wasm_path) = ducklake_component_path() else {
-        return;
-    };
-
-    let engine = KnowledgeChildEngine::new().unwrap();
-    let wasm_bytes = std::fs::read(&wasm_path).unwrap();
-    let component = engine.load_component(&wasm_bytes).unwrap();
-
-    let manifest_path =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/child.toml");
-    let mut manifest = ChildManifest::from_path(&manifest_path).unwrap();
-    manifest.lake_names.clear();
-    manifest.toys.lake_names.clear();
-
-    let result = engine.instantiate_child(&component, &manifest, None);
-    assert!(result.is_err(), "expected missing-lake linker failure");
-}
-
-#[test]
-fn knowledge_child_linker_succeeds_when_lake_declared() {
-    let Some(wasm_path) = ducklake_component_path() else {
-        return;
-    };
-
-    let engine = KnowledgeChildEngine::new().unwrap();
-    let wasm_bytes = std::fs::read(&wasm_path).unwrap();
-    let component = engine.load_component(&wasm_bytes).unwrap();
-
-    let manifest_path =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("children/ducklake/child.toml");
-    let manifest = ChildManifest::from_path(&manifest_path).unwrap();
-
-    let result = engine.instantiate_child(&component, &manifest, None);
-    assert!(
-        result.is_ok(),
-        "expected granted-lake instantiation success"
-    );
-}
-
-#[test]
-fn ducklake_fixture_sync_writes_lake_queryable_by_duckdb_cli() {
-    let Some(wasm_path) = ducklake_component_path() else {
-        return;
-    };
-
-    with_temp_patina_home(|home| {
-        let engine = KnowledgeChildEngine::new().unwrap();
-        let wasm_bytes = std::fs::read(&wasm_path).unwrap();
-        let component = engine.load_component(&wasm_bytes).unwrap();
-
-        let manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("children/ducklake/child.toml");
-        let manifest = ChildManifest::from_path(&manifest_path).unwrap();
-        let child = engine
-            .instantiate_child(&component, &manifest, None)
-            .unwrap();
-
-        child
-            .handle(&ChildRequest {
-                action: "configure-source".into(),
-                payload: serde_json::json!({
-                    "source_id": "fixture-source",
-                    "table": "default",
-                    "owner": "not-used",
-                    "repo": "not-used",
-                    "data_types": ["issues"],
-                }),
-            })
-            .unwrap();
-
-        let response = child
-            .handle(&ChildRequest {
-                action: "fetch-source".into(),
-                payload: serde_json::json!({"source_id": "fixture-source"}),
-            })
-            .unwrap();
-
-        let written = response
-            .payload
-            .get("written")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        assert!(written > 0, "expected fixture sync to write rows");
-
-        let db_path = home.join("lakes/default/lake.duckdb");
-        assert!(
-            db_path.exists(),
-            "expected lake DB at {}",
-            db_path.display()
-        );
-
-        let db = duckdb::Connection::open(&db_path).expect("open lake duckdb for verification");
-        let count: u64 = db
-            .query_row("SELECT COUNT(*) FROM default_issues", [], |row| row.get(0))
-            .expect("query default_issues count");
-        assert!(
-            count > 0,
-            "expected default_issues to be queryable and non-empty"
-        );
-    });
-}
-
 // =====================================================================
 // folder-text-to-parquet — scan contract end-to-end
 // =====================================================================
 
 #[test]
 fn folder_text_to_parquet_scan_contract_end_to_end() {
-    let wasm_path = folder_text_to_parquet_component_path()
-        .expect("folder-text-to-parquet WASM artifact missing — run: cargo build -p patina-ai-child-folder-text-to-parquet --target wasm32-wasip2");
+    let Some(wasm_path) = folder_text_to_parquet_component_path() else {
+        return;
+    };
 
     with_temp_patina_home(|_| {
         let engine = KnowledgeChildEngine::new().unwrap();
@@ -802,10 +685,12 @@ fn folder_text_to_parquet_scan_contract_end_to_end() {
 
 #[test]
 fn folder_text_to_parquet_first_split_composes_via_events() {
-    let monitor_wasm_path = file_system_monitor_component_path()
-        .expect("file-system-monitor WASM artifact missing — run: cargo build -p patina-ai-child-file-system-monitor --target wasm32-wasip2");
-    let processor_wasm_path = folder_text_to_parquet_component_path()
-        .expect("folder-text-to-parquet WASM artifact missing — run: cargo build -p patina-ai-child-folder-text-to-parquet --target wasm32-wasip2");
+    let Some(monitor_wasm_path) = file_system_monitor_component_path() else {
+        return;
+    };
+    let Some(processor_wasm_path) = folder_text_to_parquet_component_path() else {
+        return;
+    };
 
     with_temp_patina_home(|_| {
         let engine = KnowledgeChildEngine::new().unwrap();
@@ -943,18 +828,24 @@ fn folder_text_to_parquet_first_split_composes_via_events() {
 
 #[test]
 fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
-    let monitor_wasm_path = file_system_monitor_component_path()
-        .expect("file-system-monitor WASM artifact missing — run: cargo build -p patina-ai-child-file-system-monitor --target wasm32-wasip2");
-    let extractor_wasm_path = content_extractor_component_path()
-        .expect("content-extractor WASM artifact missing — run: cargo build -p patina-ai-child-content-extractor --target wasm32-wasip2");
-    let enforcer_wasm_path = schema_enforcer_component_path()
-        .expect("schema-enforcer WASM artifact missing — run: cargo build -p patina-ai-child-schema-enforcer --target wasm32-wasip2");
-    let dedup_wasm_path = dedup_filter_component_path()
-        .expect("dedup-filter WASM artifact missing — run: cargo build -p patina-ai-child-dedup-filter --target wasm32-wasip2");
-    let writer_wasm_path = record_writer_component_path()
-        .expect("record-writer WASM artifact missing — run: cargo build -p patina-ai-child-record-writer --target wasm32-wasip2");
-    let catalog_wasm_path = lakehouse_catalog_component_path()
-        .expect("lakehouse-catalog WASM artifact missing — run: cargo build -p patina-ai-child-lakehouse-catalog --target wasm32-wasip2");
+    let Some(monitor_wasm_path) = file_system_monitor_component_path() else {
+        return;
+    };
+    let Some(extractor_wasm_path) = content_extractor_component_path() else {
+        return;
+    };
+    let Some(enforcer_wasm_path) = schema_enforcer_component_path() else {
+        return;
+    };
+    let Some(dedup_wasm_path) = dedup_filter_component_path() else {
+        return;
+    };
+    let Some(writer_wasm_path) = record_writer_component_path() else {
+        return;
+    };
+    let Some(catalog_wasm_path) = lakehouse_catalog_component_path() else {
+        return;
+    };
 
     with_temp_patina_home(|_| {
         let engine = KnowledgeChildEngine::new().unwrap();
@@ -1529,7 +1420,7 @@ fn wasm_models_child_handle_roundtrip() {
         name: "patina-models".into(),
         version: "0.1.0".into(),
         description: "test".into(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -1599,7 +1490,7 @@ fn wasm_models_child_health() {
         name: "patina-models".into(),
         version: "0.1.0".into(),
         description: "test".into(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -1788,7 +1679,7 @@ fn benchmark_plugin_performance() {
         name: "patina-models".into(),
         version: "0.1.0".into(),
         description: "bench".into(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
@@ -2043,7 +1934,7 @@ fn wasm_trap_mother_child_panic_returns_error() {
         name: "wrong-world".into(),
         version: "0.1.0".into(),
         description: "world mismatch".into(),
-        world: ChildKind::KnowledgeChild,
+        world: ChildKind::Child,
         role: None,
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],

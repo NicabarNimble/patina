@@ -1,4 +1,4 @@
-//! Internal implementation details for Claude adapter
+//! Internal implementation details for Claude interface
 //!
 //! This module contains all the implementation logic, keeping the public
 //! interface in the parent module clean and minimal.
@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use crate::environment::Environment;
 
 // Re-export version info
-pub use self::manifest::CLAUDE_ADAPTER_VERSION;
+pub use self::manifest::CLAUDE_INTERFACE_VERSION;
 
 // Submodules for different responsibilities
 mod commands;
@@ -34,7 +34,7 @@ pub fn init_project(
     context_generation::generate_initial_context(project_path, project_name, environment)?;
 
     // Create adapter manifest
-    manifest::create_adapter_manifest(project_path)?;
+    manifest::create_interface_manifest(project_path)?;
 
     Ok(())
 }
@@ -59,12 +59,12 @@ pub fn check_for_updates(project_path: &Path) -> Result<Option<(String, String)>
     manifest::check_for_updates(project_path)
 }
 
-pub fn update_adapter_files(project_path: &Path) -> Result<()> {
+pub fn update_interface_files(project_path: &Path) -> Result<()> {
     // Update session scripts
     session_scripts::create_session_scripts(project_path)?;
 
     // Update manifest
-    manifest::create_adapter_manifest(project_path)?;
+    manifest::create_interface_manifest(project_path)?;
 
     Ok(())
 }

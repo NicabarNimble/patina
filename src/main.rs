@@ -380,10 +380,11 @@ enum Commands {
         mcp: bool,
     },
 
-    /// Manage AI adapters
-    Adapter {
+    /// Manage AI interfaces (list, add, remove, refresh, doctor)
+    #[command(alias = "adapter")]
+    Interface {
         #[command(subcommand)]
-        command: Option<AdapterCommands>,
+        command: Option<InterfaceManageCommands>,
     },
 
     /// Generate project state report using patina's own tools
@@ -424,12 +425,6 @@ enum Commands {
     Ai {
         #[command(subcommand)]
         command: Option<commands::ai::AiCommands>,
-    },
-
-    /// Compatibility shims for project-local interface projection surfaces
-    Interface {
-        #[command(subcommand)]
-        command: commands::interface::InterfaceCommands,
     },
 
     /// Git hook handlers (post-commit, post-merge)
@@ -867,7 +862,7 @@ enum PersonaCommands {
 }
 
 // CLI subcommand enums are defined in their respective command modules
-use commands::adapter::AdapterCommands;
+use commands::adapter::InterfaceManageCommands;
 use commands::repo::RepoCommands;
 
 #[cfg(feature = "dev")]
@@ -892,9 +887,9 @@ enum DevCommands {
     },
 
     /// Sync interface templates from resources
-    SyncAdapters {
+    SyncInterfaces {
         /// Specific interface to sync (claude, gemini, opencode)
-        adapter: Option<String>,
+        interface: Option<String>,
 
         /// Dry run - show what would change
         #[arg(short, long)]
@@ -964,7 +959,7 @@ enum ChildCommands {
     Init {
         /// Child name (valid Rust crate name, e.g. "review-bot")
         name: String,
-        /// Child world: knowledge-child, pipeline
+        /// Child world: child, pipeline
         #[arg(long)]
         world: String,
         /// Build the child after scaffolding
@@ -1150,8 +1145,8 @@ fn main() -> Result<()> {
                     dry_run,
                 )?;
             }
-            DevCommands::SyncAdapters { adapter, dry_run } => {
-                commands::dev::sync_adapters::execute(adapter.as_deref(), dry_run)?;
+            DevCommands::SyncInterfaces { interface, dry_run } => {
+                commands::dev::sync_adapters::execute(interface.as_deref(), dry_run)?;
             }
             DevCommands::BumpVersion {
                 component,
@@ -1469,11 +1464,11 @@ fn main() -> Result<()> {
 
                 // Auto-detect world from manifest and dispatch
                 match &manifest.world {
-                    patina::child::engine::ChildKind::KnowledgeChild => {
+                    patina::child::engine::ChildKind::Child => {
                         let action = args.first().map(|s| s.as_str()).unwrap_or("health");
                         let payload_str = args.get(1).map(|s| s.as_str()).unwrap_or("{}");
 
-                        let engine = patina::child::engine::KnowledgeChildEngine::new()?;
+                        let engine = patina::child::engine::ChildEngine::new()?;
                         let component = engine.load_component(&wasm_bytes)?;
                         let query_fn = make_query_dispatch(&manifest);
                         let mut child =
@@ -1570,9 +1565,6 @@ fn main() -> Result<()> {
         Some(Commands::Ai { command }) => {
             commands::ai::execute(command)?;
         }
-        Some(Commands::Interface { command }) => {
-            commands::interface::execute(command)?;
-        }
         Some(Commands::Hook { command }) => {
             commands::hook::execute(command)?;
         }
@@ -1636,7 +1628,7 @@ fn main() -> Result<()> {
                 commands::mother::daemon::run_server(options)?;
             }
         }
-        Some(Commands::Adapter { command }) => commands::adapter::execute(command)?,
+        Some(Commands::Interface { command }) => commands::adapter::execute(command)?,
         Some(Commands::Report { output, repo, json }) => {
             let options = commands::report::ReportOptions { output, repo, json };
             commands::report::execute(options)?;

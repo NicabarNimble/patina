@@ -6,7 +6,7 @@ Project-specific notes:
 - Interface runtimes are decoupled: Claude/OpenCode/Gemini are external guests and should use their own session helper scripts.
 - Child capability schema is `[needs].toys` with optional `[needs.scopes]`; do not use legacy `[capabilities]`/`[toys]` manifests.
 - Vocabulary lock: use `child`/`kind` terminology for runtime manifests (`child.toml`, `child.kind`); reserve `world` for WIT component composition contexts.
-- WIT toy contracts live in `wit/toys/deps/` (per-interface packages). Child world composition lives in `wit/knowledge-child/` and `wit/pipeline/` (per-kind).
+- WIT toy contracts live in `wit/toys/deps/` (per-interface packages). Child world composition lives in `wit/child/` and `wit/pipeline/` (per-kind).
 - SDK surface is `sdk/patina-sdk` (umbrella crate with inline toy types).
 
 <!-- PATINA:START -->

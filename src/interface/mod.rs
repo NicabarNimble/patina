@@ -9,9 +9,9 @@ use crate::session::InterfaceKind;
 
 pub use internal::assets;
 pub use internal::bootstrap::{
-    bundle_deployment_status, ensure_adapter_bootstrap, ensure_adapter_projection,
-    ensure_bundle_bootstrap, ensure_bundle_projection, BootstrapResult, BundleDeploymentStatus,
-    ProjectionMode,
+    bundle_deployment_status, ensure_bundle_bootstrap, ensure_bundle_projection,
+    ensure_interface_bootstrap, ensure_interface_projection, BootstrapResult,
+    BundleDeploymentStatus, ProjectionMode,
 };
 pub use internal::bundle::{
     interface_bundle, interface_bundle_catalog, is_supported_ai_interface, supported_ai_interfaces,
@@ -20,18 +20,18 @@ pub use internal::bundle::{
 pub use internal::checkin::{
     check_in, session_writer_action, CheckInResult, InterfaceCapabilities, InterfaceCheckIn,
 };
-pub use internal::launcher::{derive_interface_session_name, launch_adapter_cli};
+pub use internal::launcher::{derive_interface_session_name, launch_interface_cli};
 pub use internal::surface::{
     ensure_ai_project_config, ensure_ai_surface, prepare_ai_bundle, resolve_preferred_ai_interface,
     set_project_default_interface, AiProjectConfigResult, AiSurfaceRequest, AiSurfaceResult,
     PreparedInterface,
 };
-pub use runtime::claude::CLAUDE_ADAPTER_VERSION;
-pub use runtime::gemini::GEMINI_ADAPTER_VERSION;
+pub use runtime::claude::CLAUDE_INTERFACE_VERSION;
+pub use runtime::gemini::GEMINI_INTERFACE_VERSION;
 pub use runtime::templates;
 
 #[derive(Debug, Clone)]
-pub struct AdapterDetection {
+pub struct InterfaceDetection {
     pub detected: bool,
     pub display_name: String,
     pub version: Option<String>,
@@ -57,9 +57,9 @@ pub trait AiInterface {
     fn display_name(&self) -> &'static str;
     fn interface_kind(&self) -> InterfaceKind;
 
-    fn detect(&self) -> Result<AdapterDetection> {
+    fn detect(&self) -> Result<InterfaceDetection> {
         let info = crate::interface::launch::get(self.name())?;
-        Ok(AdapterDetection {
+        Ok(InterfaceDetection {
             detected: info.detected,
             display_name: info.display,
             version: info.version,
@@ -73,7 +73,7 @@ pub trait AiInterface {
     fn context_file(&self, project_root: &Path) -> PathBuf;
 
     fn launch(&self, request: LaunchRequest) -> Result<()> {
-        launch_adapter_cli(
+        launch_interface_cli(
             self.name(),
             &request.project_root,
             request.tmux_mode,

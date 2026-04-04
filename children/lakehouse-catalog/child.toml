@@ -1,6 +1,6 @@
 [child]
 name = "lakehouse-catalog"
-kind = "knowledge-child"
+kind = "child"
 role = "app"
 
 [needs]

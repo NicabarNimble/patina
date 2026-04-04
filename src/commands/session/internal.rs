@@ -60,7 +60,7 @@ impl SessionStartRequest {
             title: title.to_string(),
             adapter: adapter.to_string(),
             mode: SessionSurfaceMode::NativeInterface {
-                interface_kind: InterfaceKind::from_adapter_name(adapter),
+                interface_kind: InterfaceKind::from_interface_name(adapter),
             },
         }
     }
@@ -130,7 +130,7 @@ pub(crate) fn start_session_value(
     project_root: &Path,
     request: SessionStartRequest,
 ) -> Result<SessionStartResult> {
-    let adapter = resolve_adapter(
+    let adapter = resolve_interface(
         (!request.adapter.is_empty()).then_some(request.adapter.as_str()),
         project_root,
     )?;
@@ -934,17 +934,17 @@ fn dev_branch_name(project_root: &Path) -> String {
         .unwrap_or_else(|_| "work".to_string())
 }
 
-/// Resolve adapter name from explicit flag or project config.
+/// Resolve interface name from explicit flag or project config.
 ///
-/// Resolution chain: --adapter flag > config.adapters.default.
+/// Resolution chain: --interface flag > config.interfaces.default.
 /// Function signature is honest about dependencies (Jon Gjengset principle).
-pub fn resolve_adapter(explicit: Option<&str>, project_root: &Path) -> Result<String> {
+pub fn resolve_interface(explicit: Option<&str>, project_root: &Path) -> Result<String> {
     if let Some(name) = explicit {
         return Ok(name.to_string());
     }
 
     let config = patina::project::load(project_root)?;
-    Ok(config.adapters.default)
+    Ok(config.interfaces.default)
 }
 
 #[cfg(test)]
@@ -956,8 +956,8 @@ mod tests {
     fn setup_project() -> TempDir {
         let temp = TempDir::new().unwrap();
         let mut config = ProjectConfig::with_name("patina");
-        config.adapters.allowed = vec!["opencode".to_string(), "gemini".to_string()];
-        config.adapters.default = "opencode".to_string();
+        config.interfaces.allowed = vec!["opencode".to_string(), "gemini".to_string()];
+        config.interfaces.default = "opencode".to_string();
         project::save(temp.path(), &config).unwrap();
         fs::create_dir_all(temp.path().join(".patina").join("local").join("data")).unwrap();
         temp

@@ -1,6 +1,6 @@
 [child]
 name = "content-extractor"
-kind = "knowledge-child"
+kind = "child"
 role = "app"
 
 [needs]
