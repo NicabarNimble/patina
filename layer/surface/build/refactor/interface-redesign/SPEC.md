@@ -59,19 +59,23 @@ exit_criteria:
     text: "interface.toml sessions.max_concurrent controls how many simultaneous sessions of that interface a project can have. Default 1. sessions.allow_attach enables tmux reconnection to existing sessions. Mother enforces limits and tracks active sessions per interface per project."
     checked: false
 
-  - id: ir10-detect-and-version
+  - id: ir10-durable-object-state
+    text: "Each interface instance in a project has durable state at project/.patina/interfaces/{name}/ with state.toml (active session ref, last session handoff, lifecycle status: dormant|active|orphaned) and overrides/ (project-specific skill config, custom instructions). Mother creates instance on first use, hibernates on session end, wakes on next launch. Global ~/.patina/interfaces/{name}/ is the definition; project .patina/interfaces/{name}/ is the instance."
+    checked: false
+
+  - id: ir11-detect-and-version
     text: "Mother runs interface detect command to check availability and cache installed version. patina ai list shows both Mother's bundle version and the detected tool version. Detect is lazy — cached in state/, refreshed on explicit check."
     checked: false
 
-  - id: ir11-skill-projection-merge
+  - id: ir12-skill-projection-merge
     text: "During projection, Mother merges skills from three sources in order: (1) base patina skill (always), (2) manifest-referenced skills from ~/.patina/skills/, (3) interface-specific skills from templates/skills/. All land in .{name}/skills/ (or equivalent for the interface format). Projection is self-contained."
     checked: false
 
-  - id: ir12-no-hardcoded-interfaces
+  - id: ir13-no-hardcoded-interfaces
     text: "InterfaceBundle, INTERFACE_BUNDLES, claude_templates/gemini_templates/opencode_templates modules removed. interface_bundle() reads from Mother's registry on disk. Binary retains embedded seed data for first-run extraction only."
     checked: false
 
-  - id: ir13-compile-proof
+  - id: ir14-compile-proof
     text: "cargo check --workspace -q passes. cargo test -q --lib passes. patina ai list shows all registered interfaces. patina ai claude round-trip works (project → launch → session → end → clean)."
     checked: false
 ---
@@ -147,6 +151,31 @@ include = ["epistemic-beliefs", "spec", "patina-review"]
 The `patina` base skill is injected into every projection regardless of manifest.
 It teaches the interface how to use Patina: scry, context, assay, repo, belief,
 spec, sessions. This is the "how to ask Mother" knowledge.
+
+### Durable Object Model — Per-Interface Per-Project State
+
+Each interface in a project is an instance with durable state that survives
+across sessions. Global definition (templates, manifest) lives in Mother's
+space. Per-project instance state lives in the project's `.patina/`:
+
+```
+~/.patina/interfaces/claude/           # DEFINITION — templates, manifest
+project/.patina/interfaces/claude/     # INSTANCE — per-project durable state
+├── state.toml                         # lifecycle, active session ref, last handoff
+└── overrides/                         # project-specific custom instructions
+```
+
+`state.toml`:
+```toml
+status = "dormant"                     # dormant | active | orphaned
+last_session = "20260403-070944-045859000"
+last_handoff = "Completed adapter-to-interface rename, duckdb blocked"
+active_session = ""                    # empty when dormant
+active_pid = 0                         # process ID when active (orphan detection)
+```
+
+Lifecycle: dormant → active (wake/project) → dormant (hibernate/cleanup).
+Mother detects orphans: status=active but pid is dead → status=orphaned → offer cleanup.
 
 ### Ephemeral Projection Lifecycle
 
