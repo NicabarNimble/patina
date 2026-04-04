@@ -79,7 +79,11 @@ exit_criteria:
     text: "Interface lifecycle emits events to project events.db via existing insert_event(): interface.projected (files created), interface.cleaned (files removed), interface.orphaned (stale projection detected), interface.recovered (orphan cleaned). Payloads include interface name, projected paths, bundle version, session ref. Events export to layer/events.jsonl via patina events export."
     checked: false
 
-  - id: ir15-compile-proof
+  - id: ir15-bundle-update-flow
+    text: "On patina binary upgrade, Mother detects binary version > bundle version and re-extracts seed data for built-in interfaces. Re-extract uses a seed manifest to only touch seed-origin files — user-added files survive. interface.toml pinned=true skips auto-update entirely. Tool version detection (claude --version) is independent — cached lazily, refreshed on patina ai list or session start."
+    checked: false
+
+  - id: ir16-compile-proof
     text: "cargo check --workspace -q passes. cargo test -q --lib passes. patina ai list shows all registered interfaces. patina ai claude round-trip works (project → launch → session → end → clean)."
     checked: false
 ---
@@ -216,6 +220,35 @@ During projection into `.{name}/skills/`:
 1. **Base**: `~/.patina/skills/patina/` → always
 2. **Manifest**: each name in `[skills].include` → from `~/.patina/skills/{name}/`
 3. **Interface-specific**: `templates/skills/*` → interface's own skills
+
+### Bundle Update Flow
+
+Two independent version concerns:
+
+**Tool version** (Claude Code 2.1 → 2.2): Updates independently of Patina. Mother
+runs the detect command (`claude --version`), caches result, shows in `patina ai list`.
+No Patina changes needed.
+
+**Bundle version** (Patina interface templates, skills, commands): Three update paths:
+
+1. **Binary upgrade** — `cargo install patina-ai` ships new seed data. On next use,
+   Mother detects binary version > bundle version, re-extracts seed templates.
+   Re-extract uses a seed manifest to only overwrite seed-origin files — user-added
+   files in `~/.patina/interfaces/{name}/templates/` survive.
+
+2. **Manual edit** — User modifies templates or adds skills directly in
+   `~/.patina/interfaces/{name}/`. Next session projection picks up changes.
+   No binary rebuild.
+
+3. **Future: remote pull** — `patina interface update claude` from git/registry.
+   Same pattern as `patina repo add` but for interface definitions.
+
+**Pinning** — `interface.toml` `pinned = true` tells Mother: don't auto-update
+this bundle on binary upgrade. For users who fork and customize a bundle entirely.
+
+**No active session impact** — updates happen before projection. Since projections
+are ephemeral and regenerated fresh each session, there's no migration concern.
+The old projection was cleaned up when the last session ended.
 
 ### What Gets Gitignored
 
