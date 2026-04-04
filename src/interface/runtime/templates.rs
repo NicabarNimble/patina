@@ -112,10 +112,10 @@ mod opencode_templates {
 ///
 /// Called during first-run setup. Creates the full template structure
 /// for all supported adapters.
-pub fn install_all(adapters_dir: &Path) -> Result<()> {
-    install_claude_templates(adapters_dir)?;
-    install_gemini_templates(adapters_dir)?;
-    install_opencode_templates(adapters_dir)?;
+pub fn install_all(interfaces_dir: &Path) -> Result<()> {
+    install_claude_templates(interfaces_dir)?;
+    install_gemini_templates(interfaces_dir)?;
+    install_opencode_templates(interfaces_dir)?;
     Ok(())
 }
 
@@ -124,7 +124,7 @@ pub fn install_all(adapters_dir: &Path) -> Result<()> {
 /// Copies the adapter-specific directory (.claude/, .gemini/) from
 /// central templates to the project.
 pub fn copy_to_project(adapter_name: &str, project_path: &Path) -> Result<()> {
-    let templates_dir = paths::adapters_dir().join(adapter_name).join("templates");
+    let templates_dir = paths::interfaces_dir().join(adapter_name).join("templates");
 
     let adapter_dir_name = format!(".{}", adapter_name);
     let src = templates_dir.join(&adapter_dir_name);
@@ -132,7 +132,7 @@ pub fn copy_to_project(adapter_name: &str, project_path: &Path) -> Result<()> {
 
     // Always refresh cache from embedded templates
     // This ensures updates to templates in the binary are applied
-    let adapters = paths::adapters_dir();
+    let adapters = paths::interfaces_dir();
     install_all(&adapters)?;
 
     copy_dir_recursive(&src, &dest)?;
@@ -141,7 +141,7 @@ pub fn copy_to_project(adapter_name: &str, project_path: &Path) -> Result<()> {
 
 /// Check if templates are installed for an adapter
 pub fn templates_installed(adapter_name: &str) -> bool {
-    let templates_dir = paths::adapters_dir().join(adapter_name).join("templates");
+    let templates_dir = paths::interfaces_dir().join(adapter_name).join("templates");
     templates_dir.exists()
 }
 
@@ -149,8 +149,8 @@ pub fn templates_installed(adapter_name: &str) -> bool {
 // Claude Templates Installation
 // =============================================================================
 
-fn install_claude_templates(adapters_dir: &Path) -> Result<()> {
-    let templates_dir = adapters_dir.join("claude").join("templates");
+fn install_claude_templates(interfaces_dir: &Path) -> Result<()> {
+    let templates_dir = interfaces_dir.join("claude").join("templates");
     // Create .claude/ structure inside templates/ so copy_to_project works correctly
     let claude_dir = templates_dir.join(".claude");
     let bin_dir = claude_dir.join("bin");
@@ -227,8 +227,8 @@ fn install_claude_templates(adapters_dir: &Path) -> Result<()> {
 // Gemini Templates Installation
 // =============================================================================
 
-fn install_gemini_templates(adapters_dir: &Path) -> Result<()> {
-    let templates_dir = adapters_dir.join("gemini").join("templates");
+fn install_gemini_templates(interfaces_dir: &Path) -> Result<()> {
+    let templates_dir = interfaces_dir.join("gemini").join("templates");
     // Create .gemini/ structure inside templates/ so copy_to_project works correctly
     let gemini_dir = templates_dir.join(".gemini");
     let bin_dir = gemini_dir.join("bin");
@@ -285,8 +285,8 @@ fn install_gemini_templates(adapters_dir: &Path) -> Result<()> {
 // OpenCode Templates Installation
 // =============================================================================
 
-fn install_opencode_templates(adapters_dir: &Path) -> Result<()> {
-    let templates_dir = adapters_dir.join("opencode").join("templates");
+fn install_opencode_templates(interfaces_dir: &Path) -> Result<()> {
+    let templates_dir = interfaces_dir.join("opencode").join("templates");
     // Create .opencode/ structure inside templates/ so copy_to_project works correctly
     let opencode_dir = templates_dir.join(".opencode");
     let bin_dir = opencode_dir.join("bin");

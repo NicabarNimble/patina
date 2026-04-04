@@ -17,7 +17,7 @@
 //! ~/.patina/
 //! ├── config.toml              # Global config
 //! ├── registry.yaml            # Project/repo registry
-//! ├── adapters/                # LLM adapter templates
+//! ├── interfaces/              # AI interface templates
 //! ├── connections/             # Connection records (TOML)
 //! ├── personas/default/events/ # Source (valuable)
 //! ├── run/                     # Runtime (socket, pid, token)
@@ -74,9 +74,9 @@ pub fn registry_path() -> PathBuf {
     patina_home().join("registry.yaml")
 }
 
-/// LLM adapter templates: `~/.patina/adapters/`
-pub fn adapters_dir() -> PathBuf {
-    patina_home().join("adapters")
+/// AI interface templates: `~/.patina/interfaces/`
+pub fn interfaces_dir() -> PathBuf {
+    patina_home().join("interfaces")
 }
 
 /// Persona paths (cross-project user knowledge)

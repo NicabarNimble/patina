@@ -118,7 +118,7 @@ pub fn is_first_run() -> bool {
 /// Perform first-run setup
 pub fn setup() -> Result<SetupResult> {
     let mother = paths::patina_home();
-    let adapters = paths::adapters_dir();
+    let adapters = paths::interfaces_dir();
 
     // Create directory structure
     println!("First-time setup...");
@@ -248,7 +248,7 @@ pub fn ensure_workspace() -> Result<()> {
     }
 
     // Ensure subdirectories exist
-    let adapters = paths::adapters_dir();
+    let adapters = paths::interfaces_dir();
     if !adapters.exists() {
         fs::create_dir_all(&adapters)?;
         for adapter in &["claude", "gemini", "codex"] {
@@ -315,7 +315,7 @@ pub fn workspace_info() -> Result<WorkspaceInfo> {
     let workspace_path = PathBuf::from(shellexpand::tilde(&config.workspace.path).as_ref());
 
     // Check installed adapters
-    let adapters = paths::adapters_dir();
+    let adapters = paths::interfaces_dir();
     let mut installed = Vec::new();
     for name in &["claude", "gemini", "codex"] {
         if adapters.join(name).exists() {

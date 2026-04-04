@@ -66,7 +66,7 @@ pub fn ensure() -> Result<()> {
 }
 
 // Path functions moved to patina::paths module
-// Use paths::patina_home(), paths::adapters_dir(), etc.
+// Use paths::patina_home(), paths::interfaces_dir(), etc.
 
 /// Result of first-run setup
 #[derive(Debug)]
