@@ -153,8 +153,8 @@ pub struct UpstreamSection {
     pub include_patina: bool,
     /// Include interface files (CLAUDE.md, .claude/, etc.) in PRs (default: false)
     /// Set true for owned repos to share with collaborators
-    #[serde(default)]
-    pub include_adapters: bool,
+    #[serde(default, rename = "include_interfaces", alias = "include_interfaces")]
+    pub include_interfaces: bool,
 }
 
 fn default_upstream_branch() -> String {
@@ -764,7 +764,7 @@ mod tests {
             branch: "main".to_string(),
             remote: "upstream".to_string(),
             include_patina: false,
-            include_adapters: false,
+            include_interfaces: false,
         });
         config.ci = Some(CiSection {
             checks: vec!["sozo build".to_string(), "scarb test".to_string()],
@@ -780,7 +780,7 @@ mod tests {
         assert_eq!(upstream.branch, "main");
         assert_eq!(upstream.remote, "upstream");
         assert!(!upstream.include_patina);
-        assert!(!upstream.include_adapters);
+        assert!(!upstream.include_interfaces);
 
         // Verify CI
         let ci = loaded.ci.unwrap();
@@ -800,7 +800,7 @@ mod tests {
             branch: "main".to_string(),
             remote: "origin".to_string(), // origin because we own it
             include_patina: true,         // share knowledge
-            include_adapters: true,       // share with collaborators
+            include_interfaces: true,     // share with collaborators
         });
 
         save(project_path, &config).unwrap();
@@ -809,7 +809,7 @@ mod tests {
         let upstream = loaded.upstream.unwrap();
         assert_eq!(upstream.remote, "origin");
         assert!(upstream.include_patina);
-        assert!(upstream.include_adapters);
+        assert!(upstream.include_interfaces);
     }
 
     #[test]
