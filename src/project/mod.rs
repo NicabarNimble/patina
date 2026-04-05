@@ -1,7 +1,7 @@
 //! Project module - Unified project configuration
 //!
 //! Manages `.patina/config.toml` for project-specific settings including
-//! project metadata, dev environment, allowed adapters, and embeddings.
+//! project metadata, dev environment, allowed interfaces, and embeddings.
 //!
 //! Supports automatic migration from legacy `config.json` format.
 //!
@@ -18,10 +18,10 @@
 //!     // Load config (with automatic migration if needed)
 //!     let mut config = project::load_with_migration(path)?;
 //!     println!("Project: {}", config.project.name);
-//!     println!("Allowed adapters: {:?}", config.adapters.allowed);
+//!     println!("Allowed interfaces: {:?}", config.interfaces.allowed);
 //!
 //!     // Modify and save
-//!     config.adapters.allowed.push("gemini".to_string());
+//!     config.interfaces.allowed.push("gemini".to_string());
 //!     project::save(path, &config)?;
 //! }
 //! # Ok::<(), anyhow::Error>(())

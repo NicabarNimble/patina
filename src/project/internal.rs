@@ -151,7 +151,7 @@ pub struct UpstreamSection {
     /// Set true for owned repos where you want to share knowledge
     #[serde(default)]
     pub include_patina: bool,
-    /// Include adapter files (CLAUDE.md, .claude/, etc.) in PRs (default: false)
+    /// Include interface files (CLAUDE.md, .claude/, etc.) in PRs (default: false)
     /// Set true for owned repos to share with collaborators
     #[serde(default)]
     pub include_adapters: bool,
@@ -460,7 +460,7 @@ pub fn migrate_legacy_config(project_path: &Path) -> Result<bool> {
     }
     // Note: dev field from legacy config is ignored (dev_env subsystem removed)
     if let Some(llm) = json.get("llm").and_then(|v| v.as_str()) {
-        // Map llm to adapters.default and ensure it's in allowed list
+        // Map llm to interfaces.default and ensure it's in allowed list
         config.interfaces.default = llm.to_string();
         if !config.interfaces.allowed.contains(&llm.to_string()) {
             config.interfaces.allowed.push(llm.to_string());
