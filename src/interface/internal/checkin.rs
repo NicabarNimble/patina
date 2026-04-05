@@ -416,7 +416,7 @@ mod tests {
             fs::create_dir_all(pointer_path.parent().unwrap()).unwrap();
             fs::write(
                 &pointer_path,
-                "adapter = \"opencode\"\nruntime_id = \"runtime-second\"\nfile_id = \"20260312-000231-BBBB\"\n",
+                "interface_name = \"opencode\"\nruntime_id = \"runtime-second\"\nfile_id = \"20260312-000231-BBBB\"\n",
             )
             .unwrap();
 
@@ -496,7 +496,7 @@ mod tests {
             fs::create_dir_all(pointer_path.parent().unwrap()).unwrap();
             fs::write(
                 &pointer_path,
-                "adapter = \"opencode\"\nruntime_id = \"runtime-none-persona\"\nfile_id = \"20260312-100000-AAAA\"\n",
+                "interface_name = \"opencode\"\nruntime_id = \"runtime-none-persona\"\nfile_id = \"20260312-100000-AAAA\"\n",
             )
             .unwrap();
 

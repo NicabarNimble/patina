@@ -21,10 +21,10 @@ use crate::paths;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GlobalConfig {
     pub workspace: WorkspaceConfig,
-    #[serde(rename = "interface", alias = "adapter")]
+    #[serde(rename = "interface")]
     pub interface: InterfaceConfig,
     pub serve: ServeConfig,
-    #[serde(default, rename = "interfaces", alias = "adapters")]
+    #[serde(default, rename = "interfaces")]
     pub interfaces: InterfacesConfig,
 }
 

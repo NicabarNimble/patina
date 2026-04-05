@@ -20,7 +20,7 @@ pub struct ArtifactParticipant {
     pub id: String,
     pub role: String,
     pub interface: String,
-    #[serde(skip_serializing_if = "Option::is_none", alias = "adapter")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub interface_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
