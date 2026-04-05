@@ -1,4 +1,3 @@
-pub mod adapter;
 pub mod ai;
 pub mod assay;
 pub mod belief;

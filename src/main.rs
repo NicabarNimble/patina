@@ -862,7 +862,7 @@ enum PersonaCommands {
 }
 
 // CLI subcommand enums are defined in their respective command modules
-use commands::adapter::InterfaceManageCommands;
+use commands::interface::InterfaceManageCommands;
 use commands::repo::RepoCommands;
 
 #[cfg(feature = "dev")]
@@ -1628,7 +1628,7 @@ fn main() -> Result<()> {
                 commands::mother::daemon::run_server(options)?;
             }
         }
-        Some(Commands::Interface { command }) => commands::adapter::execute(command)?,
+        Some(Commands::Interface { command }) => commands::interface::execute(command)?,
         Some(Commands::Report { output, repo, json }) => {
             let options = commands::report::ReportOptions { output, repo, json };
             commands::report::execute(options)?;
