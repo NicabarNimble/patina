@@ -1,4 +1,4 @@
-//! Internal implementation for Gemini adapter
+//! Internal implementation for Gemini interface
 
 use anyhow::Result;
 use std::path::{Path, PathBuf};
@@ -9,7 +9,7 @@ use crate::environment::Environment;
 /// Initialize Gemini project structure.
 ///
 /// Native Patina projection now uses root `AGENTS.md` as the canonical
-/// instruction surface. `.gemini/` only carries adapter-local command assets.
+/// instruction surface. `.gemini/` only carries interface-local command assets.
 pub fn init_project(
     project_path: &Path,
     _project_name: &str,

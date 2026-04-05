@@ -1,10 +1,10 @@
 //! Template extraction and management
 //!
-//! Handles extracting embedded templates to ~/.patina/adapters/
+//! Handles extracting embedded templates to ~/.patina/interfaces/
 //! and copying templates to projects.
 //!
 //! Templates are embedded at compile time and extracted on first run.
-//! This allows user customization of templates in ~/.patina/adapters/.
+//! This allows user customization of templates in ~/.patina/interfaces/.
 
 use anyhow::{Context, Result};
 use std::fs;
@@ -13,30 +13,30 @@ use std::path::Path;
 use crate::paths;
 
 // =============================================================================
-// Thin wrapper scripts — generated per adapter
+// Thin wrapper scripts — generated per interface
 // =============================================================================
 // These keep the native session backend behind local interface scripts so the
 // command markdown/TOML can stay workflow-oriented.
 
-fn wrapper_start(adapter: &str) -> String {
+fn wrapper_start(interface: &str) -> String {
     format!(
-        "#!/bin/bash\nexec env PATINA_AI_INTERFACE={adapter} patina ai session start --json --adapter {adapter} \"$@\"\n"
+        "#!/bin/bash\nexec env PATINA_AI_INTERFACE={interface} patina ai session start --json --interface {interface} \"$@\"\n"
     )
 }
 
-fn wrapper_update(adapter: &str) -> String {
+fn wrapper_update(interface: &str) -> String {
     format!(
-        "#!/bin/bash\nexec env PATINA_AI_INTERFACE={adapter} patina ai session update --json \"$@\"\n"
+        "#!/bin/bash\nexec env PATINA_AI_INTERFACE={interface} patina ai session update --json \"$@\"\n"
     )
 }
 
-fn wrapper_note(adapter: &str) -> String {
-    format!("#!/bin/bash\nexec env PATINA_AI_INTERFACE={adapter} patina ai session note \"$@\"\n")
+fn wrapper_note(interface: &str) -> String {
+    format!("#!/bin/bash\nexec env PATINA_AI_INTERFACE={interface} patina ai session note \"$@\"\n")
 }
 
-fn wrapper_end(adapter: &str) -> String {
+fn wrapper_end(interface: &str) -> String {
     format!(
-        "#!/bin/bash\nexec env PATINA_AI_INTERFACE={adapter} patina ai session end --json --commit \"$@\"\n"
+        "#!/bin/bash\nexec env PATINA_AI_INTERFACE={interface} patina ai session end --json --commit \"$@\"\n"
     )
 }
 
@@ -108,10 +108,10 @@ mod opencode_templates {
 // Public API
 // =============================================================================
 
-/// Extract all templates to ~/.patina/adapters/
+/// Extract all templates to ~/.patina/interfaces/
 ///
 /// Called during first-run setup. Creates the full template structure
-/// for all supported adapters.
+/// for all supported interfaces.
 pub fn install_all(interfaces_dir: &Path) -> Result<()> {
     install_claude_templates(interfaces_dir)?;
     install_gemini_templates(interfaces_dir)?;
@@ -119,29 +119,31 @@ pub fn install_all(interfaces_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Copy adapter templates to project
+/// Copy interface templates to project
 ///
-/// Copies the adapter-specific directory (.claude/, .gemini/) from
+/// Copies the interface-specific directory (.claude/, .gemini/) from
 /// central templates to the project.
-pub fn copy_to_project(adapter_name: &str, project_path: &Path) -> Result<()> {
-    let templates_dir = paths::interfaces_dir().join(adapter_name).join("templates");
+pub fn copy_to_project(interface_name: &str, project_path: &Path) -> Result<()> {
+    let templates_dir = paths::interfaces_dir()
+        .join(interface_name)
+        .join("templates");
 
-    let adapter_dir_name = format!(".{}", adapter_name);
-    let src = templates_dir.join(&adapter_dir_name);
-    let dest = project_path.join(&adapter_dir_name);
+    let iface_dir_name = format!(".{}", interface_name);
+    let src = templates_dir.join(&iface_dir_name);
+    let dest = project_path.join(&iface_dir_name);
 
-    // Always refresh cache from embedded templates
-    // This ensures updates to templates in the binary are applied
-    let adapters = paths::interfaces_dir();
-    install_all(&adapters)?;
+    let interfaces = paths::interfaces_dir();
+    install_all(&interfaces)?;
 
     copy_dir_recursive(&src, &dest)?;
     Ok(())
 }
 
-/// Check if templates are installed for an adapter
-pub fn templates_installed(adapter_name: &str) -> bool {
-    let templates_dir = paths::interfaces_dir().join(adapter_name).join("templates");
+/// Check if templates are installed for an interface
+pub fn templates_installed(interface_name: &str) -> bool {
+    let templates_dir = paths::interfaces_dir()
+        .join(interface_name)
+        .join("templates");
     templates_dir.exists()
 }
 
@@ -446,7 +448,7 @@ mod tests {
         let end = wrapper_end("claude");
 
         assert!(start.contains("PATINA_AI_INTERFACE=claude"));
-        assert!(start.contains("patina ai session start --json --adapter claude"));
+        assert!(start.contains("patina ai session start --json --interface claude"));
         assert!(update.contains("PATINA_AI_INTERFACE=opencode"));
         assert!(update.contains("patina ai session update --json"));
         assert!(note.contains("PATINA_AI_INTERFACE=gemini"));
@@ -479,7 +481,7 @@ mod tests {
         let wrapper =
             fs::read_to_string(templates_dir.join(".claude/bin/session-start.sh")).unwrap();
         assert!(wrapper.contains("PATINA_AI_INTERFACE=claude"));
-        assert!(wrapper.contains("patina ai session start --json --adapter claude"));
+        assert!(wrapper.contains("patina ai session start --json --interface claude"));
 
         // Skills should be installed
         assert!(templates_dir
@@ -517,7 +519,7 @@ mod tests {
         let wrapper =
             fs::read_to_string(templates_dir.join(".gemini/bin/session-start.sh")).unwrap();
         assert!(wrapper.contains("PATINA_AI_INTERFACE=gemini"));
-        assert!(wrapper.contains("patina ai session start --json --adapter gemini"));
+        assert!(wrapper.contains("patina ai session start --json --interface gemini"));
     }
 
     #[test]

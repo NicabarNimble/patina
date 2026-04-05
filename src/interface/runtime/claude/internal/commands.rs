@@ -1,4 +1,4 @@
-//! Command definitions for Claude adapter
+//! Command definitions for Claude interface
 //!
 //! Currently commands are defined inline, but this module
 //! can be extended for more complex command management.

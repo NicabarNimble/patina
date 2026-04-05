@@ -1,4 +1,4 @@
-//! Version and manifest management for Claude adapter
+//! Version and manifest management for Claude interface
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -8,10 +8,10 @@ use std::path::Path;
 
 use super::paths;
 
-/// Version of the Claude adapter - increment when scripts/commands change
+/// Version of the Claude interface - increment when scripts/commands change
 pub const CLAUDE_INTERFACE_VERSION: &str = "0.7.0";
 
-/// Changelog for adapter versions
+/// Changelog for interface versions
 const VERSION_CHANGES: &[(&str, &[&str])] = &[
     (
         "0.7.0",
@@ -61,7 +61,8 @@ const VERSION_CHANGES: &[(&str, &[&str])] = &[
 
 #[derive(Serialize, Deserialize)]
 pub struct InterfaceManifest {
-    adapter: String,
+    #[serde(alias = "adapter")]
+    interface: String,
     version: String,
     installed_at: String,
     files: HashMap<String, String>,
@@ -70,7 +71,7 @@ pub struct InterfaceManifest {
 /// Create or update the interface manifest file
 pub fn create_interface_manifest(project_path: &Path) -> Result<()> {
     let manifest = InterfaceManifest {
-        adapter: "claude".to_string(),
+        interface: "claude".to_string(),
         version: CLAUDE_INTERFACE_VERSION.to_string(),
         installed_at: chrono::Utc::now().to_rfc3339(),
         files: HashMap::new(),
