@@ -1,4 +1,4 @@
-//! Launch command - Open project in AI adapter
+//! Launch command - Open project in AI interface
 //!
 //! The launcher is how you open AI-assisted development sessions.
 
@@ -12,7 +12,7 @@ pub struct LaunchOptions {
     /// Path to project (default: current directory)
     pub path: Option<String>,
     /// Interface to use (default: from config)
-    pub adapter: Option<String>,
+    pub interface: Option<String>,
     /// Start mother in background if not running
     #[allow(dead_code)]
     pub auto_start_mother: bool,
@@ -24,7 +24,7 @@ impl Default for LaunchOptions {
     fn default() -> Self {
         Self {
             path: None,
-            adapter: None,
+            interface: None,
             auto_start_mother: true,
             auto_init: true,
         }
@@ -44,7 +44,7 @@ mod tests {
     fn test_default_options() {
         let opts = LaunchOptions::default();
         assert!(opts.path.is_none());
-        assert!(opts.adapter.is_none());
+        assert!(opts.interface.is_none());
         assert!(opts.auto_start_mother);
         assert!(opts.auto_init);
     }

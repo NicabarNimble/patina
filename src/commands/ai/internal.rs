@@ -24,8 +24,7 @@ pub fn list(json_output: bool) -> Result<()> {
                             "runtime_id": session.runtime_id,
                             "file_id": session.file_id,
                             "title": session.title,
-                            "adapter": session.adapter_name,
-                            "interface": session.interface_kind.as_str(),
+                            "interface": session.interface_name,
                             "artifact": session.artifact_path,
                             "created_at": session.created_at,
                             "updated_at": session.updated_at,
@@ -46,7 +45,7 @@ pub fn list(json_output: bool) -> Result<()> {
         println!(
             "{}  {}  {}  {}",
             session.file_id,
-            session.adapter_name,
+            session.interface_name,
             session.title,
             session.artifact_path.display()
         );
@@ -97,7 +96,7 @@ pub fn end(
         markdown = append_outcome_note(&markdown, &note);
     }
 
-    let end_tag = format!("session-{}-{}-end", handle.file_id, handle.adapter_name);
+    let end_tag = format!("session-{}-{}-end", handle.file_id, handle.interface_name);
     if git::is_git_repo().unwrap_or(false) && !git::tag_exists(&end_tag).unwrap_or(false) {
         let _ = git::create_tag(&end_tag, &format!("Session end: {}", handle.title));
     }
@@ -114,7 +113,7 @@ pub fn end(
     crate::commands::events::export_best_effort();
     stage_session_artifacts(&project_root, &handle.artifact_path)?;
     let commit_message =
-        maybe_commit_session_artifacts(&handle.file_id, &handle.adapter_name, auto_commit)?;
+        maybe_commit_session_artifacts(&handle.file_id, &handle.interface_name, auto_commit)?;
 
     if json_output {
         println!(
@@ -140,10 +139,10 @@ pub fn end(
 
 fn start_session(title: &str, json_output: bool) -> Result<()> {
     let project_root = SessionManager::find_project_root()?;
-    let adapter_name = resolve_native_session_adapter(&project_root, None)?;
+    let interface_name = resolve_native_session_interface(&project_root, None)?;
     let result = crate::commands::session::start_session_value(
         &project_root,
-        crate::commands::session::SessionStartRequest::native(title, &adapter_name),
+        crate::commands::session::SessionStartRequest::native(title, &interface_name),
     )?;
 
     if json_output {
@@ -152,7 +151,7 @@ fn start_session(title: &str, json_output: bool) -> Result<()> {
     }
 
     println!("Started AI session {}", result.session_id);
-    println!("  Interface: {}", result.adapter);
+    println!("  Interface: {}", result.interface);
     println!("  Artifact: {}", result.artifact_path);
     Ok(())
 }
@@ -162,7 +161,7 @@ fn update_session(session_selector: Option<String>, json_output: bool) -> Result
     let handle = crate::commands::session::resolve_live_session(
         &project_root,
         session_selector.as_deref(),
-        current_interface_adapter().as_deref(),
+        current_interface_name().as_deref(),
     )?;
     let result = crate::commands::session::update_live_session_value(&project_root, &handle)?;
 
@@ -181,7 +180,7 @@ fn note_session(content: String, session_selector: Option<String>) -> Result<()>
     let handle = crate::commands::session::resolve_live_session(
         &project_root,
         session_selector.as_deref(),
-        current_interface_adapter().as_deref(),
+        current_interface_name().as_deref(),
     )?;
     crate::commands::session::note_live_session(&project_root, &handle, &content)
 }
@@ -196,14 +195,14 @@ fn end_session(
     let handle = crate::commands::session::resolve_live_session(
         &project_root,
         session_selector.as_deref(),
-        current_interface_adapter().as_deref(),
+        current_interface_name().as_deref(),
     )?;
     let result =
         crate::commands::session::end_live_session_value(&project_root, &handle, note.as_deref())?;
     let artifact_path = std::path::PathBuf::from(&result.artifact_path);
     stage_session_artifacts(&project_root, &artifact_path)?;
     let commit_message =
-        maybe_commit_session_artifacts(&result.session_id, &result.adapter, auto_commit)?;
+        maybe_commit_session_artifacts(&result.session_id, &result.interface, auto_commit)?;
 
     if json_output {
         println!("{}", serde_json::to_string_pretty(&result)?);
@@ -237,7 +236,7 @@ pub(crate) fn stage_session_artifacts(project_root: &Path, artifact_path: &Path)
 
 fn maybe_commit_session_artifacts(
     session_id: &str,
-    adapter_name: &str,
+    interface_name: &str,
     enabled: bool,
 ) -> Result<Option<String>> {
     if !enabled || !git::is_git_repo().unwrap_or(false) {
@@ -248,7 +247,7 @@ fn maybe_commit_session_artifacts(
         return Ok(None);
     }
 
-    let message = format!("session: archive {} ({})", session_id, adapter_name);
+    let message = format!("session: archive {} ({})", session_id, interface_name);
     git::commit(&message)?;
     Ok(Some(message))
 }
@@ -270,7 +269,7 @@ fn record_ai_session_ended(
     let payload = json!({
         "session_id": handle.file_id,
         "runtime_id": handle.runtime_id,
-        "adapter": handle.adapter_name,
+        "interface": handle.interface_name,
         "end_tag": end_tag,
         "artifact": handle.artifact_path,
     });
@@ -285,10 +284,13 @@ fn record_ai_session_ended(
     Ok(())
 }
 
-fn resolve_native_session_adapter(project_root: &Path, adapter: Option<&str>) -> Result<String> {
-    let resolved = adapter
+fn resolve_native_session_interface(
+    project_root: &Path,
+    interface: Option<&str>,
+) -> Result<String> {
+    let resolved = interface
         .map(ToOwned::to_owned)
-        .or_else(current_interface_adapter)
+        .or_else(current_interface_name)
         .unwrap_or(patina::interface::resolve_preferred_ai_interface(
             project_root,
         )?);
@@ -303,7 +305,7 @@ fn resolve_native_session_adapter(project_root: &Path, adapter: Option<&str>) ->
     Ok(resolved)
 }
 
-fn current_interface_adapter() -> Option<String> {
+fn current_interface_name() -> Option<String> {
     std::env::var("PATINA_AI_INTERFACE")
         .ok()
         .filter(|value| !value.is_empty())
@@ -328,7 +330,7 @@ fn choose_single_session(
                 .map(|handle| {
                     format!(
                         "{}:{} ({})",
-                        handle.adapter_name, handle.file_id, handle.title
+                        handle.interface_name, handle.file_id, handle.title
                     )
                 })
                 .collect::<Vec<_>>()
@@ -346,18 +348,18 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    fn handle(file_id: &str, adapter_name: &str) -> session::LiveSessionHandle {
+    fn handle(file_id: &str, interface_name: &str) -> session::LiveSessionHandle {
         session::LiveSessionHandle {
             runtime_id: format!("runtime-{file_id}"),
             file_id: file_id.to_string(),
-            title: format!("{adapter_name} session"),
-            adapter_name: adapter_name.to_string(),
-            interface_kind: session::InterfaceKind::from_interface_name(adapter_name),
+            title: format!("{interface_name} session"),
+            interface_name: interface_name.to_string(),
+            interface_kind: session::InterfaceKind::from_interface_name(interface_name),
             persona_uid: None,
             artifact_path: PathBuf::from(format!("/tmp/{file_id}.md")),
             branch: "patina".to_string(),
             starting_commit: "deadbeef".to_string(),
-            start_tag: format!("session-{file_id}-{adapter_name}-start"),
+            start_tag: format!("session-{file_id}-{interface_name}-start"),
             end_tag: None,
             created_at: "2026-03-11T00:00:00Z".to_string(),
             updated_at: "2026-03-11T00:00:00Z".to_string(),

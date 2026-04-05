@@ -60,8 +60,8 @@ struct SurfaceReconciliation {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ManagedDirectoryMetadata {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    adapter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "adapter")]
+    interface: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     bundle: Option<String>,
     version: String,
@@ -70,13 +70,13 @@ struct ManagedDirectoryMetadata {
 
 impl ManagedDirectoryMetadata {
     fn owner_name(&self) -> Option<&str> {
-        self.bundle.as_deref().or(self.adapter.as_deref())
+        self.bundle.as_deref().or(self.interface.as_deref())
     }
 }
 
 #[derive(Debug, Serialize)]
 struct BackupManifest {
-    adapter: String,
+    interface: String,
     mode: String,
     created_at: String,
     paths: Vec<String>,
@@ -92,10 +92,10 @@ pub fn ensure_bundle_bootstrap(bundle_name: &str, project_root: &Path) -> Result
 }
 
 pub fn ensure_interface_bootstrap(
-    adapter_name: &str,
+    interface_name: &str,
     project_root: &Path,
 ) -> Result<BootstrapResult> {
-    ensure_bundle_bootstrap(adapter_name, project_root)
+    ensure_bundle_bootstrap(interface_name, project_root)
 }
 
 pub fn ensure_bundle_projection(
@@ -117,11 +117,11 @@ pub fn ensure_bundle_projection(
 }
 
 pub fn ensure_interface_projection(
-    adapter_name: &str,
+    interface_name: &str,
     project_root: &Path,
     mode: ProjectionMode,
 ) -> Result<BootstrapResult> {
-    ensure_bundle_projection(adapter_name, project_root, mode)
+    ensure_bundle_projection(interface_name, project_root, mode)
 }
 
 pub fn bundle_deployment_status(
@@ -182,16 +182,16 @@ pub fn bundle_deployment_status(
 }
 
 fn sync_managed_templates(
-    adapter_name: &str,
+    interface_name: &str,
     project_root: &Path,
     mode: ProjectionMode,
 ) -> Result<()> {
-    let adapter_dir = project_root.join(format!(".{}", adapter_name));
-    if mode == ProjectionMode::CreateMissing && adapter_dir.exists() {
+    let iface_dir = project_root.join(format!(".{}", interface_name));
+    if mode == ProjectionMode::CreateMissing && iface_dir.exists() {
         return Ok(());
     }
 
-    templates::copy_to_project(adapter_name, project_root)
+    templates::copy_to_project(interface_name, project_root)
 }
 
 fn bootstrap_result(
@@ -312,7 +312,7 @@ fn write_managed_directory_metadata(project_root: &Path, bundle: &InterfaceBundl
     fs::create_dir_all(&path)?;
     let metadata_path = path.join(MANAGED_DIR_METADATA_FILE);
     let metadata = ManagedDirectoryMetadata {
-        adapter: Some(bundle.name.to_string()),
+        interface: Some(bundle.name.to_string()),
         bundle: Some(bundle.name.to_string()),
         version: bundle.version.to_string(),
         managed_by: "patina ai refresh".to_string(),
@@ -345,7 +345,7 @@ fn remove_existing_path(path: &Path, kind: ExistingPathKind) -> Result<()> {
 
 fn write_backup_snapshot(
     project_root: &Path,
-    adapter_name: &str,
+    interface_name: &str,
     mode: ProjectionMode,
     entries: &[BackupEntry],
 ) -> Result<PathBuf> {
@@ -360,7 +360,7 @@ fn write_backup_snapshot(
 
     let manifest_path = snapshot_path.join("manifest.toml");
     let manifest = BackupManifest {
-        adapter: adapter_name.to_string(),
+        interface: interface_name.to_string(),
         mode: projection_mode_name(mode).to_string(),
         created_at: Local::now().to_rfc3339(),
         paths: entries
@@ -467,11 +467,11 @@ mod tests {
     use chrono::TimeZone;
     use tempfile::TempDir;
 
-    fn setup_project(adapter_name: &str) -> TempDir {
+    fn setup_project(interface_name: &str) -> TempDir {
         let temp = TempDir::new().unwrap();
         let mut config = ProjectConfig::with_name("patina");
-        config.interfaces.allowed = vec!["claude".to_string(), adapter_name.to_string()];
-        config.interfaces.default = adapter_name.to_string();
+        config.interfaces.allowed = vec!["claude".to_string(), interface_name.to_string()];
+        config.interfaces.default = interface_name.to_string();
         project::save(temp.path(), &config).unwrap();
         temp
     }

@@ -10,7 +10,8 @@ const SESSIONS_DIR: &str = "layer/sessions";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NativeInterfaceSessionPointer {
-    pub adapter: String,
+    #[serde(alias = "adapter")]
+    pub interface_name: String,
     pub runtime_id: String,
     pub file_id: String,
 }
@@ -29,10 +30,10 @@ pub fn durable_session_path(project_root: &Path, file_id: &str) -> PathBuf {
         .join(format!("{file_id}.md"))
 }
 
-pub fn native_interface_session_path(project_root: &Path, adapter: &str) -> PathBuf {
+pub fn native_interface_session_path(project_root: &Path, interface_name: &str) -> PathBuf {
     project_root
         .join(INTERFACE_SESSIONS_DIR)
-        .join(format!("{adapter}.toml"))
+        .join(format!("{interface_name}.toml"))
 }
 
 pub fn write_durable_artifact(
@@ -51,17 +52,17 @@ pub fn write_durable_artifact(
 
 pub fn write_native_interface_session(
     project_root: &Path,
-    adapter: &str,
+    interface_name: &str,
     runtime_id: &str,
     file_id: &str,
 ) -> Result<()> {
-    let path = native_interface_session_path(project_root, adapter);
+    let path = native_interface_session_path(project_root, interface_name);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("creating interface session dir {}", parent.display()))?;
     }
     let pointer = NativeInterfaceSessionPointer {
-        adapter: adapter.to_string(),
+        interface_name: interface_name.to_string(),
         runtime_id: runtime_id.to_string(),
         file_id: file_id.to_string(),
     };
@@ -73,9 +74,9 @@ pub fn write_native_interface_session(
 
 pub fn read_native_interface_session(
     project_root: &Path,
-    adapter: &str,
+    interface_name: &str,
 ) -> Result<Option<NativeInterfaceSessionPointer>> {
-    let path = native_interface_session_path(project_root, adapter);
+    let path = native_interface_session_path(project_root, interface_name);
     if !path.exists() {
         return Ok(None);
     }
@@ -88,15 +89,15 @@ pub fn read_native_interface_session(
 
 pub fn clear_native_interface_session(
     project_root: &Path,
-    adapter: &str,
+    interface_name: &str,
     runtime_id: Option<&str>,
 ) -> Result<()> {
-    let path = native_interface_session_path(project_root, adapter);
+    let path = native_interface_session_path(project_root, interface_name);
     if !path.exists() {
         return Ok(());
     }
     if let Some(expected_runtime_id) = runtime_id {
-        if let Some(pointer) = read_native_interface_session(project_root, adapter)? {
+        if let Some(pointer) = read_native_interface_session(project_root, interface_name)? {
             if pointer.runtime_id != expected_runtime_id {
                 return Ok(());
             }
@@ -123,7 +124,7 @@ mod tests {
         assert_eq!(
             pointer,
             NativeInterfaceSessionPointer {
-                adapter: "claude".to_string(),
+                interface_name: "claude".to_string(),
                 runtime_id: "runtime-123".to_string(),
                 file_id: "file-123".to_string(),
             }

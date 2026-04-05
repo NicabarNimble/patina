@@ -22,32 +22,29 @@ use super::LaunchOptions;
 /// Main launch entry point
 pub fn launch(options: LaunchOptions) -> Result<()> {
     let project_path = resolve_project_path(options.path.as_deref())?;
-    let explicit_adapter: Option<String> = options.adapter.clone();
-    if let Some(ref name) = explicit_adapter {
-        let adapter_info = interfaces::get(name)?;
-        if !adapter_info.detected {
+    let explicit_interface: Option<String> = options.interface.clone();
+    if let Some(ref name) = explicit_interface {
+        let iface_info = interfaces::get(name)?;
+        if !iface_info.detected {
             bail!(
                 "Interface '{}' ({}) is not installed.\n\
                  Install it and try again, or use a different interface.",
                 name,
-                adapter_info.display
+                iface_info.display
             );
         }
     }
 
     let patina_config = paths::project::config_path(&project_path);
-    let adapter_name: String;
+    let interface_name: String;
 
     if !patina_config.exists() {
         if options.auto_init {
-            // Pass explicit_adapter - if Some, skip selection prompt
-            match prompt_are_you_lost(&project_path, explicit_adapter.as_deref())? {
+            match prompt_are_you_lost(&project_path, explicit_interface.as_deref())? {
                 Some(selected) => {
-                    // Update adapter_name to what user selected (or explicit)
-                    adapter_name = selected;
+                    interface_name = selected;
                 }
                 None => {
-                    // User declined
                     return Ok(());
                 }
             }
@@ -58,11 +55,8 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
             );
         }
     } else {
-        // Existing project - resolve interface name
-        // Priority: explicit flag > project default > global default
         let project_config = project::load_with_migration(&project_path)?;
-        adapter_name = explicit_adapter.unwrap_or_else(|| {
-            // Use project default if set, otherwise fall back to global
+        interface_name = explicit_interface.unwrap_or_else(|| {
             if !project_config.interfaces.default.is_empty() {
                 project_config.interfaces.default.clone()
             } else {
@@ -70,26 +64,25 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
             }
         });
 
-        // Validate interface is installed
-        let adapter_info = interfaces::get(&adapter_name)?;
-        if !adapter_info.detected {
+        let iface_info = interfaces::get(&interface_name)?;
+        if !iface_info.detected {
             bail!(
                 "Interface '{}' ({}) is not installed.\n\
                  Install it and try again, or use a different interface.",
-                adapter_name,
-                adapter_info.display
+                interface_name,
+                iface_info.display
             );
         }
 
         println!(
             "🚀 Launching {} in {}",
-            adapter_info.display,
+            iface_info.display,
             project_path.display()
         );
     }
 
     crate::commands::ai::surface::launch(crate::commands::ai::surface::AiLaunchRequest {
-        interface_name: adapter_name,
+        interface_name,
         title: None,
         requested_session: None,
         persona: None,
@@ -271,24 +264,18 @@ pub(crate) fn prompt_are_you_lost(
     }
 
     // User wants to init - determine which interface to use
-    let adapter_name = if let Some(explicit) = explicit_adapter {
-        // Flow A: explicit interface from --interface flag
+    let interface_name = if let Some(explicit) = explicit_adapter {
         explicit.to_string()
     } else {
-        // Flow B: detect available interfaces and let user choose
-        let all_adapters = interfaces::list()?;
-        let available: Vec<_> = all_adapters.into_iter().filter(|a| a.detected).collect();
-
-        // Get global default as preference
+        let all_interfaces = interfaces::list()?;
+        let available: Vec<_> = all_interfaces.into_iter().filter(|a| a.detected).collect();
         let preference = interfaces::default_interface_name().ok();
-
         interfaces::select_interface(&available, preference.as_deref())?
     };
 
-    // Initialize the project with selected interface
     println!();
-    if initialize_project(project_path, &adapter_name)? {
-        Ok(Some(adapter_name))
+    if initialize_project(project_path, &interface_name)? {
+        Ok(Some(interface_name))
     } else {
         Ok(None)
     }
@@ -412,7 +399,7 @@ pub(crate) fn ensure_on_patina_branch() -> Result<BranchAction> {
 }
 
 /// Initialize project from the "Are you lost?" prompt
-fn initialize_project(project_path: &Path, adapter_name: &str) -> Result<bool> {
+fn initialize_project(project_path: &Path, interface_name: &str) -> Result<bool> {
     // Change to project directory for init
     let original_dir = env::current_dir()?;
     env::set_current_dir(project_path)?;
@@ -432,26 +419,25 @@ fn initialize_project(project_path: &Path, adapter_name: &str) -> Result<bool> {
     }
 
     // Step 2: Prepare the Patina AI surface and establish the selected default
-    let adapter_result =
+    let setup_result =
         crate::commands::ai::surface::setup(crate::commands::ai::surface::AiSetupRequest {
-            interface: Some(adapter_name.to_string()),
+            interface: Some(interface_name.to_string()),
             path: Some(project_path.display().to_string()),
             force: false,
         });
 
-    if let Err(e) = adapter_result {
+    if let Err(e) = setup_result {
         env::set_current_dir(original_dir)?;
         eprintln!("\n❌ Failed to prepare Patina AI setup: {}", e);
         eprintln!("   Run 'patina ai setup' to retry manually");
         return Ok(false);
     }
 
-    // Restore original directory
     env::set_current_dir(original_dir)?;
 
     println!(
         "\n✓ Initialized as patina project with {} as the default AI interface",
-        adapter_name
+        interface_name
     );
     Ok(true) // Continue to launch
 }

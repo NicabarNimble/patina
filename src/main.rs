@@ -1107,11 +1107,11 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        // Launcher mode: no subcommand means launch adapter
+        // Launcher mode: no subcommand means launch interface
         None => {
             let options = commands::launch::LaunchOptions {
                 path: None,
-                adapter: cli.interface,
+                interface: cli.interface,
                 auto_start_mother: true,
                 auto_init: true,
             };

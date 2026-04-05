@@ -43,14 +43,14 @@ pub struct SessionParticipant {
     pub participant_id: String,
     pub role: String,
     pub interface_kind: InterfaceKind,
-    pub adapter_name: Option<String>,
+    pub interface_name: Option<String>,
     pub display_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct BeginSessionRequest {
     pub title: String,
-    pub adapter_name: String,
+    pub interface_name: String,
     pub interface_kind: InterfaceKind,
     pub persona_uid: Option<String>,
     pub parent_runtime_id: Option<String>,
@@ -118,13 +118,13 @@ pub fn list_active_sessions(project_root: &Path) -> Result<Vec<LiveSessionHandle
 
 pub fn find_active_interface_session(
     project_root: &Path,
-    adapter_name: &str,
+    interface_name: &str,
     interface_kind: InterfaceKind,
     persona_uid: Option<&str>,
 ) -> Result<Option<LiveSessionHandle>> {
     internal::live::find_active_interface_session(
         project_root,
-        adapter_name,
+        interface_name,
         interface_kind,
         persona_uid,
     )
@@ -151,9 +151,9 @@ pub fn current_session_runtime_id(project_root: &Path) -> Result<Option<String>>
 
 pub fn load_current_interface_session(
     project_root: &Path,
-    adapter_name: &str,
+    interface_name: &str,
 ) -> Result<Option<LiveSessionHandle>> {
-    internal::live::load_current_interface_session(project_root, adapter_name)
+    internal::live::load_current_interface_session(project_root, interface_name)
 }
 
 pub fn active_session_path(project_root: &Path) -> PathBuf {

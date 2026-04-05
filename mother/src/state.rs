@@ -157,7 +157,7 @@ pub struct MotherSessionRecord {
     pub persona_uid: Option<String>,
     pub status: MotherSessionStatus,
     pub interface_kind: String,
-    pub adapter_name: String,
+    pub interface_name: String,
     pub branch: Option<String>,
     pub start_tag: Option<String>,
     pub end_tag: Option<String>,
@@ -182,7 +182,7 @@ pub struct MotherSessionParticipant {
     pub participant_id: String,
     pub role: String,
     pub interface_kind: Option<String>,
-    pub adapter_name: Option<String>,
+    pub interface_name: Option<String>,
     pub display_name: Option<String>,
     pub joined_at: String,
     pub left_at: Option<String>,
@@ -336,7 +336,7 @@ impl KnowledgeRuntimeStore {
                 persona_uid TEXT,
                 status TEXT NOT NULL,
                 interface_kind TEXT NOT NULL,
-                adapter_name TEXT NOT NULL,
+                interface_name TEXT NOT NULL,
                 branch TEXT,
                 start_tag TEXT,
                 end_tag TEXT,
@@ -355,7 +355,7 @@ impl KnowledgeRuntimeStore {
                 participant_id TEXT NOT NULL,
                 role TEXT NOT NULL,
                 interface_kind TEXT,
-                adapter_name TEXT,
+                interface_name TEXT,
                 display_name TEXT,
                 joined_at TEXT NOT NULL,
                 left_at TEXT,
@@ -384,6 +384,15 @@ impl KnowledgeRuntimeStore {
 
         let _ = conn.execute(
             "ALTER TABLE mother_sessions ADD COLUMN starting_commit TEXT",
+            [],
+        );
+        // Vocabulary migration: adapter_name → interface_name
+        let _ = conn.execute(
+            "ALTER TABLE mother_sessions RENAME COLUMN adapter_name TO interface_name",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE mother_session_participants RENAME COLUMN adapter_name TO interface_name",
             [],
         );
         Ok(())
@@ -955,7 +964,7 @@ impl KnowledgeRuntimeStore {
             r#"
             INSERT INTO mother_sessions (
                 runtime_id, project_uid, file_id, title, persona_uid, status,
-                interface_kind, adapter_name, branch, start_tag, end_tag,
+                interface_kind, interface_name, branch, start_tag, end_tag,
                 parent_runtime_id, handoff_from_runtime_id, starting_commit, created_at, updated_at
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
             "#,
@@ -967,7 +976,7 @@ impl KnowledgeRuntimeStore {
                 record.persona_uid,
                 record.status.as_str(),
                 record.interface_kind,
-                record.adapter_name,
+                record.interface_name,
                 record.branch,
                 record.start_tag,
                 record.end_tag,
@@ -984,7 +993,7 @@ impl KnowledgeRuntimeStore {
                 r#"
                 INSERT INTO mother_session_participants (
                     session_runtime_id, participant_id, role, interface_kind,
-                    adapter_name, display_name, joined_at, left_at
+                    interface_name, display_name, joined_at, left_at
                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                 "#,
                 params![
@@ -992,7 +1001,7 @@ impl KnowledgeRuntimeStore {
                     participant.participant_id,
                     participant.role,
                     participant.interface_kind,
-                    participant.adapter_name,
+                    participant.interface_name,
                     participant.display_name,
                     participant.joined_at,
                     participant.left_at,
@@ -1009,7 +1018,7 @@ impl KnowledgeRuntimeStore {
         conn.query_row(
             r#"
             SELECT runtime_id, project_uid, file_id, title, persona_uid, status,
-                   interface_kind, adapter_name, branch, start_tag, end_tag,
+                   interface_kind, interface_name, branch, start_tag, end_tag,
                    parent_runtime_id, handoff_from_runtime_id, starting_commit, created_at, updated_at
             FROM mother_sessions
             WHERE runtime_id = ?1
@@ -1029,7 +1038,7 @@ impl KnowledgeRuntimeStore {
         conn.query_row(
             r#"
             SELECT runtime_id, project_uid, file_id, title, persona_uid, status,
-                   interface_kind, adapter_name, branch, start_tag, end_tag,
+                   interface_kind, interface_name, branch, start_tag, end_tag,
                    parent_runtime_id, handoff_from_runtime_id, starting_commit, created_at, updated_at
             FROM mother_sessions
             WHERE file_id = ?1
@@ -1049,7 +1058,7 @@ impl KnowledgeRuntimeStore {
         let mut stmt = conn.prepare(
             r#"
             SELECT runtime_id, project_uid, file_id, title, persona_uid, status,
-                   interface_kind, adapter_name, branch, start_tag, end_tag,
+                   interface_kind, interface_name, branch, start_tag, end_tag,
                    parent_runtime_id, handoff_from_runtime_id, starting_commit, created_at, updated_at
             FROM mother_sessions
             WHERE project_uid = ?1 AND status = 'active'
@@ -1065,7 +1074,7 @@ impl KnowledgeRuntimeStore {
     pub fn find_active_mother_session_for_interface(
         &self,
         project_uid: &ProjectUid,
-        adapter_name: &str,
+        interface_name: &str,
         interface_kind: &InterfaceKindId,
         persona_uid: Option<&PersonaUid>,
     ) -> Result<Option<MotherSessionRecord>> {
@@ -1073,12 +1082,12 @@ impl KnowledgeRuntimeStore {
         conn.query_row(
             r#"
             SELECT runtime_id, project_uid, file_id, title, persona_uid, status,
-                   interface_kind, adapter_name, branch, start_tag, end_tag,
+                   interface_kind, interface_name, branch, start_tag, end_tag,
                    parent_runtime_id, handoff_from_runtime_id, starting_commit, created_at, updated_at
             FROM mother_sessions
             WHERE project_uid = ?1
               AND status = 'active'
-              AND adapter_name = ?2
+              AND interface_name = ?2
               AND interface_kind = ?3
               AND ((?4 IS NULL AND persona_uid IS NULL) OR persona_uid = ?4)
             ORDER BY updated_at DESC, created_at DESC
@@ -1086,7 +1095,7 @@ impl KnowledgeRuntimeStore {
             "#,
             params![
                 project_uid.as_str(),
-                adapter_name,
+                interface_name,
                 interface_kind.as_str(),
                 persona_uid.map(PersonaUid::as_str)
             ],
@@ -1141,7 +1150,7 @@ fn map_mother_session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MotherSes
         persona_uid: row.get(4)?,
         status: MotherSessionStatus::from_db(&status),
         interface_kind: row.get(6)?,
-        adapter_name: row.get(7)?,
+        interface_name: row.get(7)?,
         branch: row.get(8)?,
         start_tag: row.get(9)?,
         end_tag: row.get(10)?,
@@ -1293,7 +1302,7 @@ mod tests {
             persona_uid: None,
             status: MotherSessionStatus::Active,
             interface_kind: "opencode".to_string(),
-            adapter_name: "opencode".to_string(),
+            interface_name: "opencode".to_string(),
             branch: Some("patina".to_string()),
             start_tag: Some("session-20260311-100000-ABCD-opencode-start".to_string()),
             end_tag: None,
@@ -1311,7 +1320,7 @@ mod tests {
             persona_uid: Some("persona-1".to_string()),
             status: MotherSessionStatus::Active,
             interface_kind: "gemini".to_string(),
-            adapter_name: "gemini".to_string(),
+            interface_name: "gemini".to_string(),
             branch: Some("patina".to_string()),
             start_tag: Some("session-20260311-100001-EFGH-gemini-start".to_string()),
             end_tag: None,

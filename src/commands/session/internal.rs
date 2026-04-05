@@ -50,17 +50,17 @@ impl SessionSurfaceMode {
 #[derive(Debug, Clone)]
 pub(crate) struct SessionStartRequest {
     pub title: String,
-    pub adapter: String,
+    pub interface: String,
     pub mode: SessionSurfaceMode,
 }
 
 impl SessionStartRequest {
-    pub(crate) fn native(title: &str, adapter: &str) -> Self {
+    pub(crate) fn native(title: &str, interface_name: &str) -> Self {
         Self {
             title: title.to_string(),
-            adapter: adapter.to_string(),
+            interface: interface_name.to_string(),
             mode: SessionSurfaceMode::NativeInterface {
-                interface_kind: InterfaceKind::from_interface_name(adapter),
+                interface_kind: InterfaceKind::from_interface_name(interface_name),
             },
         }
     }
@@ -72,7 +72,6 @@ pub(crate) struct SessionStartResult {
     pub session_id: String,
     pub runtime_id: String,
     pub title: String,
-    pub adapter: String,
     pub interface: String,
     pub branch: String,
     pub starting_commit: String,
@@ -110,7 +109,7 @@ pub(crate) struct SessionEndResult {
     pub session_id: String,
     pub runtime_id: String,
     pub title: String,
-    pub adapter: String,
+    pub interface: String,
     pub branch: String,
     pub start_tag: String,
     pub end_tag: String,
@@ -130,8 +129,8 @@ pub(crate) fn start_session_value(
     project_root: &Path,
     request: SessionStartRequest,
 ) -> Result<SessionStartResult> {
-    let adapter = resolve_interface(
-        (!request.adapter.is_empty()).then_some(request.adapter.as_str()),
+    let interface = resolve_interface(
+        (!request.interface.is_empty()).then_some(request.interface.as_str()),
         project_root,
     )?;
     let dev_branch = dev_branch_name(project_root);
@@ -144,8 +143,8 @@ pub(crate) fn start_session_value(
         }
     ) {
         bail!(
-            "Native session mode requires a native interface adapter, got '{}'",
-            adapter
+            "Native session mode requires a known interface, got '{}'",
+            interface
         );
     }
 
@@ -166,7 +165,7 @@ pub(crate) fn start_session_value(
         project_root,
         BeginSessionRequest {
             title: request.title.clone(),
-            adapter_name: adapter.clone(),
+            interface_name: interface.clone(),
             interface_kind: mode.interface_kind(),
             persona_uid: None,
             parent_runtime_id: None,
@@ -179,10 +178,10 @@ pub(crate) fn start_session_value(
                 ),
                 role: mode.participant_role().to_string(),
                 interface_kind: mode.interface_kind(),
-                adapter_name: Some(adapter.clone()),
+                interface_name: Some(interface.clone()),
                 display_name: std::env::var("USER").ok().or_else(|| {
                     (mode.interface_kind() != InterfaceKind::LegacyCli)
-                        .then(|| Some(adapter.clone()))
+                        .then(|| Some(interface.clone()))
                         .flatten()
                 }),
             }),
@@ -195,7 +194,7 @@ pub(crate) fn start_session_value(
         "session_id": start.handle.file_id,
         "runtime_id": start.handle.runtime_id,
         "title": request.title,
-        "adapter": adapter,
+        "interface": interface,
         "branch": start.handle.branch,
         "starting_commit": start.handle.starting_commit,
         "tag": start.handle.start_tag,
@@ -215,8 +214,7 @@ pub(crate) fn start_session_value(
         session_id: start.handle.file_id.clone(),
         runtime_id: start.handle.runtime_id.clone(),
         title: start.handle.title.clone(),
-        adapter: start.handle.adapter_name.clone(),
-        interface: start.handle.interface_kind.as_str().to_string(),
+        interface: start.handle.interface_name.clone(),
         branch: start.handle.branch.clone(),
         starting_commit: start.handle.starting_commit.clone(),
         start_tag: start.handle.start_tag.clone(),
@@ -256,19 +254,19 @@ pub(crate) fn end_live_session_value(
 pub(crate) fn resolve_live_session(
     project_root: &Path,
     selector: Option<&str>,
-    adapter_filter: Option<&str>,
+    interface_filter: Option<&str>,
 ) -> Result<session::LiveSessionHandle> {
     if let Some(selector) = selector {
         return load_session(project_root, selector)?
             .ok_or_else(|| anyhow::anyhow!("No active session found for selector '{}'", selector));
     }
 
-    if let Some(adapter) = adapter_filter
+    if let Some(iface) = interface_filter
         .map(ToOwned::to_owned)
         .or_else(|| std::env::var("PATINA_AI_INTERFACE").ok())
         .filter(|value| !value.is_empty())
     {
-        if let Some(handle) = session::load_current_interface_session(project_root, &adapter)? {
+        if let Some(handle) = session::load_current_interface_session(project_root, &iface)? {
             return Ok(handle);
         }
     }
@@ -292,12 +290,12 @@ pub(crate) fn resolve_live_session(
     }
 
     let mut sessions = session::list_active_sessions(project_root)?;
-    if let Some(adapter) = adapter_filter
+    if let Some(iface) = interface_filter
         .map(ToOwned::to_owned)
         .or_else(|| std::env::var("PATINA_AI_INTERFACE").ok())
         .filter(|value| !value.is_empty())
     {
-        sessions.retain(|handle| handle.adapter_name == adapter);
+        sessions.retain(|handle| handle.interface_name == iface);
     }
 
     match sessions.len() {
@@ -471,7 +469,7 @@ fn end_session_document_value(
     let session_title = read_session_field(session_path, "# Session: ")?;
     let session_tag = read_session_field(session_path, "**Session Tag**: ")?;
     let starting_commit = read_session_field(session_path, "**Starting Commit**: ")?;
-    let adapter = read_session_field(session_path, "**LLM**: ")?;
+    let interface = read_session_field(session_path, "**LLM**: ")?;
 
     {
         let content = fs::read_to_string(session_path)?;
@@ -481,7 +479,7 @@ fn end_session_document_value(
         fs::write(session_path, &updated)?;
     }
 
-    let end_tag = format!("session-{}-{}-end", session_id, adapter);
+    let end_tag = format!("session-{}-{}-end", session_id, interface);
     if git::is_git_repo().unwrap_or(false) {
         let _ = git::create_tag(&end_tag, &format!("Session end: {}", session_title));
     }
@@ -567,7 +565,7 @@ fn end_session_document_value(
         "session_id": session_id,
         "runtime_id": runtime_id,
         "title": session_title,
-        "adapter": adapter,
+        "interface": interface,
         "classification": classification,
         "files_changed": files_changed,
         "commits_made": commits_made,
@@ -598,7 +596,7 @@ fn end_session_document_value(
         session_id,
         runtime_id,
         title: session_title,
-        adapter,
+        interface,
         branch: git::current_branch().unwrap_or_else(|_| "none".to_string()),
         start_tag: session_tag,
         end_tag,
