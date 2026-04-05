@@ -34,7 +34,7 @@ pub struct EnvironmentChanges {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectStatus {
     pub llm: String,
-    pub adapter_version: Option<String>,
+    pub interface_version: Option<String>,
     pub layer_patterns: usize,
     pub sessions: usize,
 }
@@ -95,7 +95,7 @@ pub struct DoctorRunResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectSnapshot {
     pub llm: String,
-    pub adapter_version: Option<String>,
+    pub interface_version: Option<String>,
     pub layer_patterns: usize,
     pub sessions: usize,
     pub stored_tools: Vec<String>,
@@ -196,7 +196,7 @@ pub fn run_doctor(
             environment_changes,
             project_config: ProjectStatus {
                 llm: project.llm,
-                adapter_version: project.adapter_version,
+                interface_version: project.interface_version,
                 layer_patterns: project.layer_patterns,
                 sessions: project.sessions,
             },
@@ -329,7 +329,7 @@ mod tests {
     fn base_project_snapshot() -> ProjectSnapshot {
         ProjectSnapshot {
             llm: "opencode".to_string(),
-            adapter_version: Some("1.0.0".to_string()),
+            interface_version: Some("1.0.0".to_string()),
             layer_patterns: 10,
             sessions: 5,
             stored_tools: vec!["git".to_string(), "cargo".to_string()],

@@ -45,7 +45,7 @@ use anyhow::Result;
 ///
 /// # What This Does NOT Do
 ///
-/// - Create adapter directories (.claude/, .gemini/)
+/// - Create interface directories (.claude/, .gemini/)
 /// - Configure MCP
 /// - Run scrape or oxidize
 /// - Create devcontainer (use `patina yolo` for that)

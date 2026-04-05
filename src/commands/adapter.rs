@@ -10,19 +10,19 @@
 //! ```no_run
 //! # fn main() -> anyhow::Result<()> {
 //! // List available and allowed interfaces
-//! // patina adapter list
+//! // patina interface list
 //!
 //! // Set global default
-//! // patina adapter default claude
+//! // patina interface default claude
 //!
 //! // Set project default
-//! // patina adapter default gemini --project
+//! // patina interface default gemini --project
 //!
 //! // Add interface to project
-//! // patina adapter add gemini  # compatibility shim for `patina ai setup`
+//! // patina interface add gemini
 //!
 //! // Remove interface from project (with backup)
-//! // patina adapter remove claude
+//! // patina interface remove claude
 //! # Ok(())
 //! # }
 //! ```
@@ -123,20 +123,20 @@ pub fn execute(command: Option<InterfaceManageCommands>) -> Result<()> {
 /// List available interfaces (global) and allowed interfaces (project)
 fn list() -> Result<()> {
     // Show global interfaces
-    let adapter_list = interfaces::list()?;
+    let interface_list = interfaces::list()?;
     println!("📱 Available AI Interfaces (Global)\n");
     println!("{:<12} {:<15} {:<10} VERSION", "NAME", "DISPLAY", "STATUS");
     println!("{}", "─".repeat(50));
-    for adapter in adapter_list {
-        let status = if adapter.detected {
+    for iface in interface_list {
+        let status = if iface.detected {
             "✓ found"
         } else {
             "✗ missing"
         };
-        let version = adapter.version.unwrap_or_else(|| "-".to_string());
+        let version = iface.version.unwrap_or_else(|| "-".to_string());
         println!(
             "{:<12} {:<15} {:<10} {}",
-            adapter.name, adapter.display, status, version
+            iface.name, iface.display, status, version
         );
     }
 
@@ -184,20 +184,19 @@ fn set_default(name: &str, is_project: bool) -> Result<()> {
 /// Check interface installation status
 fn check(name: Option<&str>) -> Result<()> {
     if let Some(n) = name {
-        let adapter = interfaces::get(n)?;
-        if adapter.detected {
-            println!("✓ {} is installed", adapter.display);
-            if let Some(v) = adapter.version {
+        let iface = interfaces::get(n)?;
+        if iface.detected {
+            println!("✓ {} is installed", iface.display);
+            if let Some(v) = iface.version {
                 println!("  Version: {}", v);
             }
         } else {
-            println!("✗ {} is not installed", adapter.display);
+            println!("✗ {} is not installed", iface.display);
         }
     } else {
-        // Check all
-        for adapter in interfaces::list()? {
-            let status = if adapter.detected { "✓" } else { "✗" };
-            println!("{} {}", status, adapter.display);
+        for iface in interfaces::list()? {
+            let status = if iface.detected { "✓" } else { "✗" };
+            println!("{} {}", status, iface.display);
         }
     }
     Ok(())
@@ -640,12 +639,12 @@ fn doctor() -> Result<()> {
 
     let mut all_healthy = true;
 
-    for adapter_name in &config.interfaces.allowed {
-        println!("📱 {} interface:", adapter_name);
+    for interface_name in &config.interfaces.allowed {
+        println!("📱 {} interface:", interface_name);
 
         // Check 1: Interface CLI installed on system
-        let adapter_info = interfaces::get(adapter_name);
-        match adapter_info {
+        let iface_info = interfaces::get(interface_name);
+        match iface_info {
             Ok(a) if a.detected => {
                 println!("  ✓ CLI installed: {}", a.version.unwrap_or_default());
             }
@@ -660,28 +659,28 @@ fn doctor() -> Result<()> {
         }
 
         // Check 2: Interface directory exists
-        let adapter_dir = cwd.join(format!(".{}", adapter_name));
-        if adapter_dir.exists() {
-            println!("  ✓ .{}/ directory exists", adapter_name);
+        let iface_dir = cwd.join(format!(".{}", interface_name));
+        if iface_dir.exists() {
+            println!("  ✓ .{}/ directory exists", interface_name);
         } else {
-            println!("  ✗ .{}/ directory missing", adapter_name);
-            println!("    Fix: patina ai refresh {}", adapter_name);
+            println!("  ✗ .{}/ directory missing", interface_name);
+            println!("    Fix: patina ai refresh {}", interface_name);
             all_healthy = false;
         }
 
         // Check 3: Bootstrap file exists
-        let bootstrap_file = get_bootstrap_filename(adapter_name);
+        let bootstrap_file = get_bootstrap_filename(interface_name);
         let bootstrap_path = cwd.join(&bootstrap_file);
         if bootstrap_path.exists() {
             println!("  ✓ {} exists", bootstrap_file);
         } else {
             println!("  ✗ {} missing", bootstrap_file);
-            println!("    Fix: patina ai refresh {}", adapter_name);
+            println!("    Fix: patina ai refresh {}", interface_name);
             all_healthy = false;
         }
 
         // Check 4: MCP configuration (Claude only)
-        if adapter_name == "claude" {
+        if interface_name == "claude" {
             println!("  ℹ MCP integration retired for this runtime");
             println!(
                 "    Use daemon-first CLI flows: patina mother start / patina context / patina scry"
@@ -755,7 +754,7 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
 fn configure_mcp(name: &str, remove: bool) -> Result<()> {
     let action = if remove { "remove" } else { "add" };
     anyhow::bail!(
-        "`patina adapter mcp {}` is retired for interface `{}`. Use daemon-first CLI flows instead: `patina mother start`, `patina context`, `patina scry`, `patina assay`.",
+        "`patina interface mcp {}` is retired for interface `{}`. Use daemon-first CLI flows instead: `patina mother start`, `patina context`, `patina scry`, `patina assay`.",
         action,
         name
     )

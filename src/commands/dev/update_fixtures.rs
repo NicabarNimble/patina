@@ -134,9 +134,9 @@ fn update_version_manifest_fixture() -> Result<()> {
     let manifest_fixture = serde_json::json!({
         "patina": "0.1.0",
         "components": {
-            "claude-adapter": "0.6.0",
-            "gemini-adapter": "0.1.0",
-            "openai-adapter": "0.1.0",
+            "claude-interface": "0.6.0",
+            "gemini-interface": "0.1.0",
+            "openai-interface": "0.1.0",
             "docker-templates": "0.1.0"
         },
         "updated": "2025-08-06T00:00:00Z"

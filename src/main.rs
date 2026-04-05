@@ -34,7 +34,7 @@ impl Dimension {
     }
 }
 
-/// LLM adapter for project initialization
+/// LLM interface for project initialization
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum Llm {
     /// Claude Code (Anthropic)
@@ -898,7 +898,7 @@ enum DevCommands {
 
     /// Bump component versions
     BumpVersion {
-        /// Component to bump (patina, claude-adapter, etc)
+        /// Component to bump (patina, claude-interface, etc)
         component: String,
 
         /// Version bump type
