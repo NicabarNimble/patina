@@ -153,7 +153,7 @@ pub fn execute_init(name: String, force: bool, local: bool, no_commit: bool) -> 
     // Initialize navigation index
     initialize_navigation(&project_path)?;
 
-    // Note: Component updates for adapters are handled by 'interface refresh'
+    // Note: Component updates for interfaces are handled by 'interface refresh'
 
     // Validate environment
     if let Some(warnings) = validate_environment(&environment)? {
