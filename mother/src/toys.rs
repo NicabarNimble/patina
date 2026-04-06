@@ -16,6 +16,7 @@ pub struct GrantedToys {
     pub messaging: bool,
     pub filesystem: bool,
     pub sql: bool,
+    pub git: bool,
     pub lake_names: HashSet<String>,
     pub ingress_sources: HashMap<String, GrantedIngressSource>,
     pub connector: bool,

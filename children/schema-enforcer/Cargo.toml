@@ -8,7 +8,7 @@ description = "Validate extracted records against schema"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-patina-sdk = { path = "../../sdk/patina-sdk", features = ["child", "toy-log"] }
+patina-sdk = { path = "../../sdk/patina-sdk", features = ["child", "toy-log", "toy-emit", "toy-measure"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 

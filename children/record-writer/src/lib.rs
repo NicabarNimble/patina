@@ -112,14 +112,15 @@ fn emit_metric_gauge(name: &str, value: f64) -> Result<(), String> {
 
 fn emit_file_written(event: &FileWrittenEvent) -> Result<u64, String> {
     let payload = serde_json::to_string(event).map_err(|e| e.to_string())?;
-    let client = patina_sdk::knowledge_child::wasi::messaging::producer::connect("file.written")?;
-    let message = patina_sdk::knowledge_child::wasi::messaging::types::Message {
+    let messaging = granted::messaging();
+    let client = messaging.connect("file.written")?;
+    let message = patina_sdk::toys::MessagingMessage {
         topic: "file.written".to_string(),
         content_type: Some("application/json".to_string()),
         data: payload.into_bytes(),
         metadata: vec![],
     };
-    patina_sdk::knowledge_child::wasi::messaging::producer::send(&client, &message)
+    messaging.send(&client, &message)
 }
 
 fn write_records_parquet(records: &[Record], output_path: &Path) -> Result<(), String> {

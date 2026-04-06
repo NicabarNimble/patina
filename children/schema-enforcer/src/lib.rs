@@ -76,14 +76,15 @@ fn validate_record(record: &Record) -> Result<(), String> {
 }
 
 fn emit(topic: &str, payload_json: String) -> Result<u64, String> {
-    let client = patina_sdk::knowledge_child::wasi::messaging::producer::connect(topic)?;
-    let message = patina_sdk::knowledge_child::wasi::messaging::types::Message {
+    let messaging = granted::messaging();
+    let client = messaging.connect(topic)?;
+    let message = patina_sdk::toys::MessagingMessage {
         topic: topic.to_string(),
         content_type: Some("application/json".to_string()),
         data: payload_json.into_bytes(),
         metadata: vec![],
     };
-    patina_sdk::knowledge_child::wasi::messaging::producer::send(&client, &message)
+    messaging.send(&client, &message)
 }
 
 fn emit_metric_counter(name: &str, delta: f64) -> Result<(), String> {

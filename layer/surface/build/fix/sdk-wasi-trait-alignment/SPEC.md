@@ -33,19 +33,19 @@ exit_criteria:
 
   - id: swa3-filesystem-matches-wasi
     text: "LayerFsBackend trait matches `wasi:filesystem@0.2.6` shape: descriptor-based access with preopened directories. Not simplified string path functions. Children that need filesystem access must declare `filesystem` in their `[needs].toys` list."
-    checked: false
+    checked: true
 
   - id: swa4-messaging-matches-wasi
     text: "Event publishing is a separate `messaging` toy matching `wasi:messaging/producer@0.2.0` shape: client resource with `connect(name)`, `send(client, message)`. Split from current `events` bundle. Children that only publish list `messaging`. Children that only consume list `events`."
-    checked: false
+    checked: true
 
   - id: swa5-http-matches-wasi
     text: "FetchBackend trait matches `wasi:http/outgoing-handler@0.2.6` shape. Not simplified `get(url)/post(url, body)` string functions."
-    checked: false
+    checked: true
 
   - id: swa6-sql-matches-wasi
     text: "Current `store` toy (LakeBackend) replaced with `sql` toy matching `wasi:sql/readwrite@0.1.0` shape: `open(name)`, `prepare(query, params)`, `query(connection, statement)`, `exec(connection, statement)`. Child says `sql`, Mother wires to DuckDB. DuckDB is an implementation detail, not a toy contract."
-    checked: false
+    checked: true
 
   - id: swa7-patina-delta-documented
     text: "Every `patina:*` toy (`git`, `events-stream`, `measure`, `connect`, `task`, `peer`) has a comment in its WIT file stating: (a) why WASI doesn't cover this, (b) whether a WASI proposal exists that overlaps, (c) if so, how our interface mirrors the proposal shape."
@@ -53,11 +53,11 @@ exit_criteria:
 
   - id: swa8-canon-children-updated
     text: "All 6 canon children (`file-system-monitor`, `content-extractor`, `schema-enforcer`, `dedup-filter`, `record-writer`, `lakehouse-catalog`) updated to use aligned toy names and traits. `store` → `sql`. `events` split into `messaging` + `events`. `filesystem` explicitly granted where needed. All compile against aligned SDK. Spec-manager stub is out of scope — it will be rebuilt as the slate pando child on the aligned SDK."
-    checked: false
+    checked: true
 
   - id: swa9-capability-enforcement
     text: "A child with `toys = [\"log\"]` cannot call keyvalue, filesystem, sql, or git host functions. A child without `filesystem` in its toy grants cannot access the filesystem. Test proves enforcement."
-    checked: false
+    checked: true
 
   - id: swa10-mother-toys-registry
     text: "Mother manages a toy registry at `wit/toys/deps/` with version pinning. `patina mother toys status` shows all toys: name, version, source (wasi upstream or patina delta), WASI proposal phase where applicable. `patina mother toys check` verifies local WIT files match pinned versions."
@@ -69,7 +69,7 @@ exit_criteria:
 
   - id: swa12-compile-proof
     text: "SDK, 6 canon children (`patina-ai-child-*`), `patina-ai`, and `patina-mother` all pass `cargo check -q`. `cargo test -q --lib` passes. `patina mother toys status` shows clean alignment."
-    checked: false
+    checked: true
 ---
 # fix: SDK WASI Trait Alignment
 
@@ -499,3 +499,100 @@ cargo test -q --lib
 patina mother toys status
 patina mother toys check
 ```
+
+## Post-Build Audit: Unnecessary Toy Abstractions
+
+The alignment work surfaced four SDK traits that add a layer where an
+existing capability already covers the need. These should be removed in
+follow-up work — each removal simplifies the SDK, reduces Mother's host
+implementation surface, and aligns with the toybox principle that domain
+logic belongs in children, not toys.
+
+### 1. `LayerFsBackend` — remove (std::fs covers it)
+
+When Rust compiles to `wasm32-wasip2`, `std::fs` calls go through
+`wasi:filesystem` automatically. Mother's wasmtime preopens enforce
+sandbox boundaries. The `LayerFsBackend` trait and `LayerFsToy` wrapper
+duplicate what the Rust standard library already provides.
+
+- Children already use `std::fs` (file-system-monitor, content-extractor,
+  record-writer). None use `LayerFsToy`.
+- The `toy-layer-fs` SDK feature flag is unused by any canon child.
+- The `filesystem` grant in `[needs].toys` is still needed — it tells
+  Mother to configure preopens. The trait is what's unnecessary.
+- Remove: `LayerFsBackend`, `LayerFsDescriptorBackend`, `LayerFsToy`,
+  `toy-layer-fs` feature, host implementation in `mother/src/toys/layer_fs.rs`.
+
+### 2. `CheckpointBackend` — remove (keyvalue covers it)
+
+`CheckpointBackend` has two methods: `load(stream) -> Option<String>`
+and `save(stream, json)`. This is keyvalue with a specific bucket:
+
+```rust
+// Current (unnecessary toy)
+checkpoint.load("file.found")
+checkpoint.save("file.found", offset_json)
+
+// Replacement (keyvalue bucket)
+let bucket = keyvalue.open("checkpoints")?;
+bucket.get_string("file.found")
+bucket.set_string("file.found", offset_json)
+```
+
+- Remove: `CheckpointBackend`, `CheckpointToy`, `toy-checkpoint` feature.
+- Children using checkpoints switch to `keyvalue.open("checkpoints")`.
+- Mother no longer needs a separate checkpoint host implementation.
+
+### 3. `EmitBackend` — remove (messaging covers it)
+
+`EmitBackend` has one method: `emit(schema, fact_type, data) -> u64`.
+This is publishing a structured event:
+
+```rust
+// Current (unnecessary toy)
+emit.emit("patina", "session.started", data_json)
+
+// Replacement (messaging)
+let client = messaging.connect("events")?;
+messaging.send(&client, Message {
+    topic: "session.started".into(),
+    content_type: Some("application/json".into()),
+    data: data_json.as_bytes().to_vec(),
+    metadata: vec![("schema".into(), "patina".as_bytes().to_vec())],
+})
+```
+
+- Remove: `EmitBackend`, `EmitToy`, `toy-emit` feature.
+- Children using emit switch to `messaging.send()` with structured messages.
+
+### 4. `GithubBackend` — remove (http + child logic covers it)
+
+`GithubBackend` has methods like `list_issues()`, `list_pulls()`,
+`list_reviews()`. This is domain-specific API logic baked into a toy.
+Per the toybox principle: "Why can't the child do this from pure WASM
+compute?" — it can, using the `http` toy.
+
+```rust
+// Current (domain logic in toy)
+github.list_issues("owner", "repo", &params)
+
+// Replacement (http toy + child logic)
+let request = HttpRequest {
+    method: Method::Get,
+    scheme: Scheme::Https,
+    authority: "api.github.com".into(),
+    path_with_query: format!("/repos/{}/{}/issues?state=open", owner, repo),
+    headers: vec![("Authorization".into(), token.as_bytes().to_vec())],
+    body: vec![],
+};
+let response = http.send(&request)?;
+```
+
+- The GitHub child (`children/github-connector/`) should own the API
+  logic — pagination, rate limiting, response parsing.
+- Mother provides `http` toy with credential injection via
+  `[needs.scopes.http]`. The child handles the GitHub domain specifics.
+- Remove: `GithubBackend`, `GithubToy`, `toy-github` feature, host
+  implementation in `src/child/toy_host/github.rs`.
+- The existing GitHub child already exists — move API methods from host
+  into child code.

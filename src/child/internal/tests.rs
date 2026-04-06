@@ -46,7 +46,7 @@ name = "test-child"
 kind = "knowledge-child"
 
 [needs]
-toys = ["logging"]
+toys = ["logging", "filesystem"]
 
 [provides]
 child = "test"
@@ -129,7 +129,7 @@ name = "test-plugin"
 kind = "knowledge-child"
 
 [needs]
-toys = ["logging"]
+toys = ["logging", "filesystem"]
 
 [provides]
 child = "test"
@@ -2088,7 +2088,7 @@ name = "fs-plugin"
 kind = "knowledge-child"
 
 [needs]
-toys = ["logging"]
+toys = ["logging", "filesystem"]
 
 [needs.scopes.filesystem]
 path = "/tmp/input"
@@ -2132,6 +2132,29 @@ fn measure_undeclared_metric_rejected() {
         error.starts_with("measure/undeclared-metric:"),
         "expected deterministic undeclared metric error, got: {}",
         error
+    );
+}
+
+#[test]
+fn manifest_rejects_filesystem_scope_without_filesystem_toy() {
+    let f = write_temp_manifest(
+        r#"
+[child]
+name = "fs-plugin"
+kind = "knowledge-child"
+
+[needs]
+toys = ["logging"]
+
+[needs.scopes.filesystem]
+path = "/tmp/input"
+"#,
+    );
+    let err = ChildManifest::from_path(f.path()).unwrap_err();
+    assert!(
+        err.to_string().contains("does not grant 'filesystem'"),
+        "got: {}",
+        err
     );
 }
 

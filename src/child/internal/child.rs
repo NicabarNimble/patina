@@ -327,6 +327,12 @@ mod bindings {
             name: String,
         ) -> Result<wasmtime::component::Resource<wasi::sql::readwrite::Connection>, String>
         {
+            if !self.grants.toys.sql {
+                return Err(format!(
+                    "sql toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
             let conn = crate::child::toy_host::v2::connect_resolve(&name)?;
             let handle = SqlConnectionHandle { name, conn };
             let rep = self.wasi_table.push(handle).map_err(|e| e.to_string())?;
@@ -617,26 +623,62 @@ mod bindings {
 
     impl patina::git::git::Host for HostState {
         fn create_tag(&mut self, name: String) -> Result<(), String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
             crate::child::toy_host::v2::git_create_tag(&name)
         }
 
         fn delete_tag(&mut self, name: String) -> Result<(), String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
             crate::child::toy_host::v2::git_delete_tag(&name)
         }
 
         fn tag_exists(&mut self, name: String) -> Result<bool, String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
             crate::child::toy_host::v2::git_tag_exists(&name)
         }
 
         fn commit(&mut self, message: String) -> Result<String, String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
             crate::child::toy_host::v2::git_commit(&message)
         }
 
         fn log_oneline(&mut self, limit: u32) -> Result<Vec<String>, String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
             crate::child::toy_host::v2::git_log_oneline(limit)
         }
 
         fn diff_stat(&mut self) -> Result<String, String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
             crate::child::toy_host::v2::git_diff_stat()
         }
     }
@@ -1110,5 +1152,56 @@ impl Child for WasmKnowledgeChild {
                 vec![]
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bindings::HostState;
+    use super::GrantedCapabilities;
+
+    fn host_state_with_grants(grants: GrantedCapabilities) -> HostState {
+        HostState {
+            plugin_name: "capability-test".to_string(),
+            wasi: wasmtime_wasi::WasiCtxBuilder::new().build(),
+            wasi_table: wasmtime::component::ResourceTable::new(),
+            http: wasmtime_wasi_http::WasiHttpCtx::new(),
+            project_root: None,
+            grants,
+            query_fn: None,
+            http_client: reqwest::blocking::Client::new(),
+            runtime: crate::mother::KnowledgeRuntimeStore::default(),
+            active_bindings: std::collections::HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn sql_open_denied_without_sql_toy_grant() {
+        let mut state = host_state_with_grants(GrantedCapabilities::default());
+        let err = <HostState as super::bindings::wasi::sql::readwrite::Host>::open(
+            &mut state,
+            "default".to_string(),
+        )
+        .unwrap_err();
+        assert!(err.contains("sql toy not granted"), "got: {}", err);
+    }
+
+    #[test]
+    fn keyvalue_open_denied_without_keyvalue_toy_grant() {
+        let mut state = host_state_with_grants(GrantedCapabilities::default());
+        let err = <HostState as super::bindings::wasi::keyvalue::store::Host>::open(
+            &mut state,
+            "default".to_string(),
+        )
+        .unwrap_err();
+        assert!(err.contains("keyvalue not granted"), "got: {}", err);
+    }
+
+    #[test]
+    fn git_calls_denied_without_git_toy_grant() {
+        let mut state = host_state_with_grants(GrantedCapabilities::default());
+        let err = <HostState as super::bindings::patina::git::git::Host>::diff_stat(&mut state)
+            .unwrap_err();
+        assert!(err.contains("git toy not granted"), "got: {}", err);
     }
 }

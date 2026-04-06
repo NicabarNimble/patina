@@ -990,6 +990,7 @@ impl ChildManifest {
             messaging: needs_toys.iter().any(|toy| toy == "messaging"),
             filesystem: needs_toys.iter().any(|toy| toy == "filesystem"),
             sql: needs_toys.iter().any(|toy| toy == "sql"),
+            git: needs_toys.iter().any(|toy| toy == "git"),
             lake_names: lake_names.iter().cloned().collect(),
             ingress_sources: ingress_sources.clone(),
             connector: needs_toys.iter().any(|toy| toy == "connector"),
@@ -1000,6 +1001,13 @@ impl ChildManifest {
             graph: needs_toys.iter().any(|toy| toy == "graph"),
             belief: needs_toys.iter().any(|toy| toy == "belief"),
         };
+
+        if !toys.filesystem && !filesystem_preopens.is_empty() {
+            anyhow::bail!(
+                "child '{}' declares [needs.scopes.filesystem] but does not grant 'filesystem' in [needs].toys",
+                name
+            );
+        }
 
         Ok(Self {
             name,

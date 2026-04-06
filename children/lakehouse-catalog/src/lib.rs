@@ -4,7 +4,6 @@ use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
 use patina_sdk::register_child;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 
 #[derive(Default)]
 struct LakehouseCatalogChild;
@@ -60,12 +59,6 @@ fn parse_payload(payload: &str) -> Result<Value, String> {
     } else {
         serde_json::from_str(payload).map_err(|e| format!("invalid payload json: {}", e))
     }
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    format!("{:x}", hasher.finalize())
 }
 
 fn default_schema() -> CatalogSchema {
@@ -138,6 +131,44 @@ fn evolve_schema(
     Ok((next, applied))
 }
 
+fn append_catalog_entries(entries: &[CatalogFileEntry]) -> Result<u32, String> {
+    if entries.is_empty() {
+        return Ok(0);
+    }
+    let rows_json = entries
+        .iter()
+        .map(|entry| serde_json::to_string(entry).map_err(|e| e.to_string()))
+        .collect::<Result<Vec<_>, _>>()?;
+    let payload = serde_json::json!({
+        "table": "catalog_files",
+        "source": "lakehouse-catalog",
+        "rows_json": rows_json,
+    });
+    let sql = granted::sql();
+    let conn = sql.open("default")?;
+    let stmt = sql.prepare(
+        "__patina_mutate__",
+        &["append-json-batch".to_string(), payload.to_string()],
+    )?;
+    sql.exec(&conn, &stmt)
+}
+
+fn read_catalog_row_count() -> Result<u64, String> {
+    let sql = granted::sql();
+    let conn = sql.open("default")?;
+    let stmt = sql.prepare("SELECT COUNT(*) FROM catalog_files", &[])?;
+    let rows = sql.query(&conn, &stmt)?;
+    let Some(value) = rows.first().and_then(|row| row.values.first()) else {
+        return Ok(0);
+    };
+    match value {
+        patina_sdk::toys::SqlValue::Int32(v) => Ok((*v).max(0) as u64),
+        patina_sdk::toys::SqlValue::Int64(v) => Ok((*v).max(0) as u64),
+        patina_sdk::toys::SqlValue::Text(v) => v.parse::<u64>().map_err(|e| e.to_string()),
+        _ => Err("catalog count query returned unsupported SQL type".to_string()),
+    }
+}
+
 impl LakehouseCatalogChild {
     fn register_written(&mut self, payload: &str) -> Result<String, String> {
         let payload_value = parse_payload(payload)?;
@@ -181,10 +212,6 @@ impl LakehouseCatalogChild {
             let file_written: FileWrittenEvent = serde_json::from_str(&event.payload)
                 .map_err(|e| format!("invalid file.written payload: {}", e))?;
 
-            let file_key = format!(
-                "catalog:file:{}",
-                sha256_hex(file_written.file_path.as_bytes())
-            );
             let entry = CatalogFileEntry {
                 file_path: file_written.file_path,
                 record_count: file_written.record_count,
@@ -192,14 +219,12 @@ impl LakehouseCatalogChild {
                 registered_at: Utc::now().to_rfc3339(),
                 schema_version: next_schema.version,
             };
-
-            state.put(
-                &file_key,
-                &serde_json::to_string(&entry).map_err(|e| e.to_string())?,
-            )?;
             entries.push(entry);
             registered += 1;
         }
+
+        let sql_inserted = append_catalog_entries(&entries)?;
+        let catalog_rows = read_catalog_row_count()?;
 
         if let Some(offset) = last_offset {
             patina_sdk::knowledge_child::patina::events_stream::events_stream::ack(
@@ -211,8 +236,9 @@ impl LakehouseCatalogChild {
         Ok(serde_json::json!({
             "status": "ok",
             "registered_files": registered,
+            "sql_inserted_rows": sql_inserted,
             "entries": entries,
-            "catalog_keys": state.list_prefix("catalog:file:"),
+            "catalog_rows": catalog_rows,
             "schema_version": next_schema.version,
             "schema": next_schema,
             "schema_migrations_applied": applied_schema_changes,
