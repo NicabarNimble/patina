@@ -319,8 +319,21 @@ hash = "sha256:abc123..."  # hash of our pinned local copy
 ### Phase 2 continued: swa2
 14. [[commit-0a7007a8]] — keyvalue trait aligned with bucket resources, bytes values
 
-### Still pending
-- swa3-6: filesystem, messaging split, http, sql trait alignments
-- swa8: child `src/lib.rs` code updates to use aligned trait names
-- swa9: capability enforcement tests
-- swa12: final compile proof
+### Phase 2 continued: swa3-6 (completed by builder)
+- swa3: filesystem descriptor model aligned
+- swa4: messaging split from events
+- swa5: http aligned to outgoing-handler
+- swa6: sql aligned to wasi:sql/readwrite
+
+### Phase 4 continued: swa8 child code + swa9 enforcement (completed by builder)
+- swa8: all 6 canon children updated to use aligned traits in src/lib.rs
+- swa9: capability enforcement tests added (keyvalue, sql, git denied without grants; filesystem scope requires grant)
+
+### Phase 5: swa13 unnecessary toy removal (completed by builder)
+15. [[commit-80f5caf0]] — remove LayerFs abstraction
+16. [[commit-b425257f]] — remove Checkpoint abstraction, migrate to keyvalue bucket
+17. [[commit-dedff06c]] — remove Emit abstraction, add toy-messaging, migrate children
+18. [[commit-e75caa5b]] — remove GitHub abstraction and SDK helper
+
+### Complete
+All 13 criteria checked. 696 tests pass. Toys check all green.

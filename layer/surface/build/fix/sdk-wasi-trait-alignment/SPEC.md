@@ -1,7 +1,7 @@
 ---
 type: fix
 id: sdk-wasi-trait-alignment
-status: active
+status: complete
 created: 2026-04-06
 sessions:
   origin: 20260405-133644-511306000
@@ -73,7 +73,7 @@ exit_criteria:
 
   - id: swa13-unnecessary-toys-removed
     text: "Four unnecessary toy abstractions removed: (1) `LayerFsBackend`/`LayerFsToy`/`toy-layer-fs` removed — children use `std::fs` through WASI preopens. (2) `CheckpointBackend`/`CheckpointToy`/`toy-checkpoint` removed — children use `keyvalue.open(\"checkpoints\")`. (3) `EmitBackend`/`EmitToy` removed, `toy-emit` migrated to `toy-messaging` — children use `messaging.send()`. (4) `GithubBackend`/`GithubToy`/`toy-github` removed — GitHub API logic moves to child code using `http` toy. All children compile. All tests pass."
-    checked: false
+    checked: true
 ---
 # fix: SDK WASI Trait Alignment
 
