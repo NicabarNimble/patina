@@ -574,11 +574,15 @@ impl ChildManifest {
             })
             .unwrap_or_default();
         for (toy, capability) in [
-            ("log", "host_log"),
+            ("logging", "host_log"),
             ("query", "host_query"),
             ("http", "host_http"),
+            ("messaging", "host_emit"),
             ("emit", "host_emit"),
             ("measure", "host_measure"),
+            ("keyvalue", "host_layer"),
+            ("filesystem", "host_layer"),
+            ("sql", "host_layer"),
             ("layer", "host_layer"),
         ] {
             if needs_toys.iter().any(|entry| entry == toy)
@@ -708,8 +712,8 @@ impl ChildManifest {
                             }
                         }
                     }
-                    "store" => {
-                        // Store connections are parsed for Phase 3 schema compatibility.
+                    "sql" => {
+                        // SQL connections are parsed for schema compatibility.
                         // Runtime routing and policy mediation are introduced in later phases.
                     }
                     other => {
@@ -877,7 +881,7 @@ impl ChildManifest {
             })
             .unwrap_or_default();
 
-        let state_enabled = needs_toys.iter().any(|toy| toy == "state");
+        let state_enabled = needs_toys.iter().any(|toy| toy == "keyvalue");
         let checkpoint_streams = needs_scopes
             .and_then(|scopes| scopes.get("checkpoint"))
             .and_then(|v| v.as_table())
@@ -981,8 +985,11 @@ impl ChildManifest {
             })
             .unwrap_or_default();
         let toys = crate::mother::GrantedToys {
-            fetch: needs_toys.iter().any(|toy| toy == "fetch"),
+            http: needs_toys.iter().any(|toy| toy == "http"),
             events: needs_toys.iter().any(|toy| toy == "events"),
+            messaging: needs_toys.iter().any(|toy| toy == "messaging"),
+            filesystem: needs_toys.iter().any(|toy| toy == "filesystem"),
+            sql: needs_toys.iter().any(|toy| toy == "sql"),
             lake_names: lake_names.iter().cloned().collect(),
             ingress_sources: ingress_sources.clone(),
             connector: needs_toys.iter().any(|toy| toy == "connector"),

@@ -11,8 +11,11 @@ pub struct GrantedIngressSource {
 
 #[derive(Debug, Clone, Default)]
 pub struct GrantedToys {
-    pub fetch: bool,
+    pub http: bool,
     pub events: bool,
+    pub messaging: bool,
+    pub filesystem: bool,
+    pub sql: bool,
     pub lake_names: HashSet<String>,
     pub ingress_sources: HashMap<String, GrantedIngressSource>,
     pub connector: bool,

@@ -170,7 +170,7 @@ mod bindings {
         ) -> Result<wasmtime::component::Resource<wasi::keyvalue::store::Bucket>, String> {
             if !self.grants.state_enabled {
                 return Err(format!(
-                    "state not granted for child '{}'",
+                    "keyvalue not granted for child '{}'",
                     self.plugin_name
                 ));
             }
@@ -428,9 +428,9 @@ mod bindings {
             client: wasmtime::component::Resource<wasi::messaging::producer::Client>,
             message: wasi::messaging::types::Message,
         ) -> Result<u64, String> {
-            if !self.grants.toys.events {
+            if !self.grants.toys.messaging {
                 return Err(format!(
-                    "events toy not granted for child '{}'",
+                    "messaging toy not granted for child '{}'",
                     self.plugin_name
                 ));
             }

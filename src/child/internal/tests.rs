@@ -46,7 +46,7 @@ name = "test-child"
 kind = "knowledge-child"
 
 [needs]
-toys = ["log"]
+toys = ["logging"]
 
 [provides]
 child = "test"
@@ -129,7 +129,7 @@ name = "test-plugin"
 kind = "knowledge-child"
 
 [needs]
-toys = ["log"]
+toys = ["logging"]
 
 [provides]
 child = "test"
@@ -148,7 +148,7 @@ name = "test-plugin"
 kind = "knowledge-child"
 
 [needs]
-toys = ["log"]
+toys = ["logging"]
 
 [provides]
 child = "test"
@@ -290,7 +290,7 @@ name = "source-router"
 kind = "knowledge-child"
 
 [needs]
-toys = ["log", "state", "checkpoint", "events", "task", "graph", "belief", "fetch", "lake", "query", "measure", "github"]
+toys = ["logging", "keyvalue", "checkpoint", "events", "task", "graph", "belief", "http", "lake", "query", "measure", "github"]
 
 [needs.scopes.checkpoint]
 streams = ["source.sync"]
@@ -333,7 +333,7 @@ child = "source-router"
     assert_eq!(m.graph_write_actions, vec!["link", "tag"]);
     assert!(m.belief_read);
     assert_eq!(m.belief_write_actions, vec!["record-verification"]);
-    assert!(m.toys.fetch);
+    assert!(m.toys.http);
     assert!(m.toys.query);
     assert!(m.toys.measure);
     assert!(m.toys.graph);
@@ -356,7 +356,7 @@ name = "bad-child"
 kind = "knowledge-child"
 
 [needs]
-toys = ["log", "events"]
+toys = ["logging", "events"]
 
 [needs.scopes.events]
 subscribe = ["unknown.stream"]
@@ -398,7 +398,7 @@ name = "bad-ingress"
 kind = "knowledge-child"
 
 [needs]
-toys = ["log", "ingress"]
+toys = ["logging", "ingress"]
 
 [needs.scopes.ingress.bad]
 endpoint = "http://localhost/internal"
@@ -2088,7 +2088,7 @@ name = "fs-plugin"
 kind = "knowledge-child"
 
 [needs]
-toys = ["log"]
+toys = ["logging"]
 
 [needs.scopes.filesystem]
 path = "/tmp/input"
