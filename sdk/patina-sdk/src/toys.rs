@@ -147,6 +147,20 @@ pub trait QueryBackend {
     fn query(kind: &str, params_json: &str) -> Result<String, String>;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MessagingMessage {
+    pub topic: String,
+    pub content_type: Option<String>,
+    pub data: Vec<u8>,
+    pub metadata: Vec<(String, String)>,
+}
+
+pub trait MessagingBackend {
+    type Client;
+    fn connect(name: &str) -> Result<Self::Client, String>;
+    fn send(client: &Self::Client, message: &MessagingMessage) -> Result<u64, String>;
+}
+
 pub trait EmitBackend {
     fn emit(schema: &str, fact_type: &str, data: &str) -> Result<u64, String>;
 }
@@ -558,6 +572,43 @@ impl<B> EmitToy<B> {
 impl<B: EmitBackend> EmitToy<B> {
     pub fn emit(&self, schema: &str, fact_type: &str, data: &str) -> Result<u64, String> {
         B::emit(schema, fact_type, data)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MessagingClient<B: MessagingBackend>(B::Client);
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MessagingToy<B>(std::marker::PhantomData<B>);
+
+impl<B> MessagingToy<B> {
+    pub fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<B: MessagingBackend> MessagingToy<B> {
+    pub fn connect(&self, name: &str) -> Result<MessagingClient<B>, String> {
+        Ok(MessagingClient(B::connect(name)?))
+    }
+
+    pub fn send(
+        &self,
+        client: &MessagingClient<B>,
+        message: &MessagingMessage,
+    ) -> Result<u64, String> {
+        B::send(&client.0, message)
+    }
+
+    pub fn publish(&self, stream_name: &str, topic: &str, payload: &[u8]) -> Result<u64, String> {
+        let client = self.connect(stream_name)?;
+        let message = MessagingMessage {
+            topic: topic.to_string(),
+            content_type: Some("application/json".to_string()),
+            data: payload.to_vec(),
+            metadata: Vec::new(),
+        };
+        self.send(&client, &message)
     }
 }
 

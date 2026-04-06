@@ -31,6 +31,8 @@ pub mod granted {
     pub type Fetch = toys::FetchToy<GuestHost>;
     #[cfg(feature = "toy-emit")]
     pub type Emit = toys::EmitToy<GuestHost>;
+    #[cfg(feature = "toy-emit")]
+    pub type Messaging = toys::MessagingToy<GuestHost>;
     #[cfg(feature = "toy-state")]
     pub type State = toys::StateToy<GuestHost>;
     #[cfg(feature = "toy-layer-fs")]
@@ -89,6 +91,11 @@ pub mod granted {
     #[cfg(feature = "toy-emit")]
     pub fn emit() -> Emit {
         Emit::new()
+    }
+
+    #[cfg(feature = "toy-emit")]
+    pub fn messaging() -> Messaging {
+        Messaging::new()
     }
 
     #[cfg(feature = "toy-state")]
@@ -217,8 +224,8 @@ pub mod host {
     use crate::toys::{
         BeliefBackend, CheckpointBackend, ConnectorBackend, EmitBackend, EventBackend,
         FetchBackend, GithubBackend, GraphBackend, IngressBackend, LakeBackend, LogBackend,
-        LogLevel, MeasureBackend, PendingEvent, QueryBackend, SessionBackend, StateBackend,
-        StateBucketBackend, TaskBackend, TaskIntent, TaskIntentKind,
+        LogLevel, MeasureBackend, MessagingBackend, MessagingMessage, PendingEvent, QueryBackend,
+        SessionBackend, StateBackend, StateBucketBackend, TaskBackend, TaskIntent, TaskIntentKind,
     };
     #[cfg(feature = "toy-layer-fs")]
     use crate::toys::{
@@ -233,6 +240,8 @@ pub mod host {
 
     #[derive(Debug)]
     pub struct GuestStateBucket(super::wasi::keyvalue::store::Bucket);
+    #[derive(Debug)]
+    pub struct GuestMessagingClient(super::wasi::messaging::producer::Client);
     #[cfg(feature = "toy-layer-fs")]
     #[derive(Debug)]
     pub struct GuestFsDescriptor(super::wasi::filesystem::types::Descriptor);
@@ -255,6 +264,9 @@ pub mod host {
         }
         pub fn emit() -> crate::toys::EmitToy<Self> {
             crate::toys::EmitToy::new()
+        }
+        pub fn messaging() -> crate::toys::MessagingToy<Self> {
+            crate::toys::MessagingToy::new()
         }
         pub fn state() -> crate::toys::StateToy<Self> {
             crate::toys::StateToy::new()
@@ -516,6 +528,25 @@ pub mod host {
             })
             .to_string();
             messaging_publish("fact.ingested", fact_type, &payload)
+        }
+    }
+
+    impl MessagingBackend for GuestHost {
+        type Client = GuestMessagingClient;
+
+        fn connect(name: &str) -> Result<Self::Client, String> {
+            let client = super::wasi::messaging::producer::connect(name)?;
+            Ok(GuestMessagingClient(client))
+        }
+
+        fn send(client: &Self::Client, message: &MessagingMessage) -> Result<u64, String> {
+            let msg = super::wasi::messaging::types::Message {
+                topic: message.topic.clone(),
+                content_type: message.content_type.clone(),
+                data: message.data.clone(),
+                metadata: message.metadata.clone(),
+            };
+            super::wasi::messaging::producer::send(&client.0, &msg)
         }
     }
 
