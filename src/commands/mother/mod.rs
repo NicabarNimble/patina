@@ -43,6 +43,7 @@ pub(crate) mod adapters;
 pub(crate) mod daemon;
 pub(crate) mod graph;
 pub(crate) mod loader;
+pub(crate) mod toys;
 
 // Moved to mother crate — re-export for daemon.rs
 pub(crate) use mother_crate::registry;
@@ -147,6 +148,22 @@ pub enum MotherCommands {
         #[arg(long)]
         prune: bool,
     },
+
+    /// Toy registry operations
+    #[command(subcommand)]
+    Toys(ToysCommands),
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum ToysCommands {
+    /// Show toy registry status
+    Status,
+
+    /// Check local toy WIT files against pinned versions
+    Check,
+
+    /// Sync local toy WIT files against upstream WASI repos
+    Sync,
 }
 
 /// Graph subcommands (nested under `patina mother graph`)
@@ -278,6 +295,7 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             println!("  patina mother install  Install launchd supervisor");
             println!("  patina mother uninstall Remove launchd supervisor");
             println!("  patina mother graph    Graph operations");
+            println!("  patina mother toys     Toy registry operations");
             println!("  patina mother search   Cross-project belief search\n");
             println!("Run 'patina mother --help' for details.");
             Ok(())
@@ -303,6 +321,17 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             fresh_lake,
         }) => run_source_parity_cli(&name, no_sandbox, fresh_lake.as_deref()),
         Some(MotherCommands::Sources { prune }) => show_sources_cli(prune),
+        Some(MotherCommands::Toys(ToysCommands::Status)) => {
+            let project_root = SessionManager::find_project_root()
+                .context("`patina mother toys status` must run in a Patina project")?;
+            toys::toys_status(&project_root)
+        }
+        Some(MotherCommands::Toys(ToysCommands::Check)) => {
+            bail!("`patina mother toys check` not implemented yet")
+        }
+        Some(MotherCommands::Toys(ToysCommands::Sync)) => {
+            bail!("`patina mother toys sync` not implemented yet")
+        }
     }
 }
 
@@ -756,6 +785,9 @@ mod tests {
 
         let uninstall = MotherCommands::Uninstall;
         assert!(matches!(uninstall, MotherCommands::Uninstall));
+
+        let toys = MotherCommands::Toys(ToysCommands::Status);
+        assert!(matches!(toys, MotherCommands::Toys(_)));
     }
 
     #[test]

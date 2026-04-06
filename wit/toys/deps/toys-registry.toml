@@ -1,0 +1,74 @@
+# Tier 1: WASI standard toys
+[wasi-logging]
+source = "https://github.com/WebAssembly/wasi-logging"
+version = "0.1.0"
+phase = 2
+file = "logging.wit"
+
+[wasi-keyvalue]
+source = "https://github.com/WebAssembly/wasi-keyvalue"
+version = "0.2.0"
+phase = 3
+file = "keyvalue.wit"
+
+[wasi-filesystem]
+source = "https://github.com/WebAssembly/wasi-filesystem"
+version = "0.2.6"
+phase = 3
+file = "filesystem.wit"
+
+[wasi-http]
+source = "https://github.com/WebAssembly/wasi-http"
+version = "0.2.6"
+phase = 3
+file = "http.wit"
+
+# Tier 2: WASI proposal toys
+[wasi-messaging]
+source = "https://github.com/WebAssembly/wasi-messaging"
+version = "0.2.0"
+phase = 1
+file = "messaging.wit"
+
+[wasi-sql]
+source = "https://github.com/WebAssembly/wasi-sql"
+version = "0.1.0"
+phase = 1
+file = "sql.wit"
+
+# Tier 3: Patina delta toys
+[patina-git]
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "none"
+file = "patina-git.wit"
+
+[patina-events-stream]
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "wasi-messaging covers producing; consumption is our delta"
+file = "patina-events-stream.wit"
+
+[patina-measure]
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "none"
+file = "patina-measure.wit"
+
+[patina-connect]
+source = "patina"
+version = "0.2.0"
+wasi_overlap = "extends wasi-http with credential injection"
+file = "patina-connect.wit"
+
+[patina-task]
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "none"
+file = "patina-task.wit"
+
+[patina-peer]
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "none"
+file = "patina-peer.wit"
