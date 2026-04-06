@@ -1,7 +1,7 @@
 ---
 type: fix
 id: sdk-wasi-trait-alignment
-status: complete
+status: active
 created: 2026-04-06
 sessions:
   origin: 20260405-133644-511306000
@@ -70,6 +70,10 @@ exit_criteria:
   - id: swa12-compile-proof
     text: "SDK, 6 canon children (`patina-ai-child-*`), `patina-ai`, and `patina-mother` all pass `cargo check -q`. `cargo test -q --lib` passes. `patina mother toys status` shows clean alignment."
     checked: true
+
+  - id: swa13-unnecessary-toys-removed
+    text: "Four unnecessary toy abstractions removed: (1) `LayerFsBackend`/`LayerFsToy`/`toy-layer-fs` removed — children use `std::fs` through WASI preopens. (2) `CheckpointBackend`/`CheckpointToy`/`toy-checkpoint` removed — children use `keyvalue.open(\"checkpoints\")`. (3) `EmitBackend`/`EmitToy` removed, `toy-emit` migrated to `toy-messaging` — children use `messaging.send()`. (4) `GithubBackend`/`GithubToy`/`toy-github` removed — GitHub API logic moves to child code using `http` toy. All children compile. All tests pass."
+    checked: false
 ---
 # fix: SDK WASI Trait Alignment
 
