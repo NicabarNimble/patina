@@ -1,7 +1,7 @@
 ---
 type: fix
 id: sdk-upstream-toy-sync
-status: complete
+status: active
 created: 2026-04-06
 sessions:
   origin: 20260405-133644-511306000
@@ -38,20 +38,32 @@ exit_criteria:
     checked: true
 
   - id: uts7-upstream-pulled
-    text: "All 6 WASI toy WIT files pulled at their pinned release versions. `mother toys check` all green. Local files match upstream release content."
-    checked: true
+    text: "All WASI toy WIT files pulled at their pinned versions (release tag for monorepo, commit for standalone). `mother toys check` all green."
+    checked: false
 
   - id: uts8-trait-divergences-fixed
-    text: "If pulled upstream WIT changed error types or interface shapes (e.g., keyvalue `error` from `type error = string` to `variant error`), SDK traits and host implementations are updated to match. This is separate work from the pull command itself."
-    checked: true
+    text: "If pulled upstream WIT changed error types or interface shapes, SDK traits and host implementations are updated to match. This is separate work from the pull command itself."
+    checked: false
 
   - id: uts9-command-tests
-    text: "Tests exist for: pull rejects patina delta toys, pull updates registry hash on success, pull reverts on compile failure, check passes after pull, `--all` reports per-toy status and reverts all on compile failure. Sync tests: prerelease/draft tags filtered, `v` prefix normalized, API failure reports error and continues to next toy, rate limit handled gracefully."
-    checked: true
+    text: "Tests exist for: pull rejects patina delta toys, pull updates registry hash on success, pull reverts on compile failure, check passes after pull, `--all` reports per-toy status and reverts all on compile failure. Sync tests: monorepo release discovery, standalone commit comparison, prerelease filtering, API failure graceful continue."
+    checked: false
 
-  - id: uts10-compile-proof
+  - id: uts10-monorepo-sources-fixed
+    text: "Registry sources corrected: filesystem, http, cli, clocks, io, random, sockets point to `WebAssembly/WASI` monorepo with `source_type = monorepo` and correct `path`. Standalone repos (keyvalue, logging, messaging, sql) have `source_type = standalone` with `commit` field."
+    checked: false
+
+  - id: uts11-new-toys-added
+    text: "Registry includes all monorepo proposals: cli, clocks, io, random, sockets. WIT files pulled and added to `wit/toys/deps/`. Not all need SDK traits immediately — they are tracked for freshness."
+    checked: false
+
+  - id: uts12-sync-dual-strategy
+    text: "`toys sync` uses two strategies: GitHub Releases API for monorepo toys, commit comparison (pinned commit vs HEAD) for standalone toys. Reports per toy: version/commit status, how far behind, source type."
+    checked: false
+
+  - id: uts13-compile-proof
     text: "SDK, 6 canon children (`patina-ai-child-*`), `patina-ai`, and `mother` all pass `cargo check -q`. `cargo test -q --lib` passes."
-    checked: true
+    checked: false
 ---
 # fix: SDK Upstream Toy Sync
 
@@ -61,60 +73,209 @@ WASI toy WIT files in `wit/toys/deps/` were hand-copied and are stale.
 `mother toys sync` shows 3 of 6 WASI toys have upstream changes. There
 is no command to pull updates. Updating requires manual work.
 
+## Upstream Reality
+
+WASI toys come from two places:
+
+**WASI monorepo** (`github.com/WebAssembly/WASI`) — proposals that have
+graduated to the main WASI repo. Has formal releases (latest stable:
+`v0.2.10`, latest RC: `v0.3.0-rc-2026-03-15`). WIT files live under
+`proposals/{name}/wit/`. Contains: cli, clocks, filesystem, http, io,
+random, sockets.
+
+**Standalone repos** (`github.com/WebAssembly/wasi-{name}`) — earlier
+proposals not yet in the monorepo. No formal releases, sparse tagging.
+Contains: keyvalue, logging, messaging, sql.
+
 ## Pin Model
 
-Every WASI toy pins to a release version. This is the only truth.
+Two pin strategies based on where the toy lives:
+
+### Monorepo toys — pin to WASI release version
+
+```toml
+[wasi-filesystem]
+source = "https://github.com/WebAssembly/WASI"
+source_type = "monorepo"
+path = "proposals/filesystem/wit"
+version = "0.2.10"
+hash = "sha256:abc..."
+upstream_files = ["types.wit", "preopens.wit"]
+file = "filesystem.wit"
+```
+
+`sync` checks the monorepo's GitHub Releases for newer stable versions.
+`pull` fetches from the release tag.
+
+### Standalone toys — pin to commit SHA
 
 ```toml
 [wasi-keyvalue]
 source = "https://github.com/WebAssembly/wasi-keyvalue"
-version = "0.2.0"        # pinned release version
-hash = "sha256:abc..."    # hash of local file after last pull
-upstream_files = ["wit/store.wit"]  # which files to fetch from this tag
-file = "keyvalue.wit"     # local consolidated file
+source_type = "standalone"
+path = "wit"
+version = "0.2.0"
+commit = "a1b2c3d4"
+hash = "sha256:def..."
+upstream_files = ["store.wit"]
+file = "keyvalue.wit"
 ```
 
+`sync` compares pinned commit against HEAD of default branch. Reports
+how many commits behind. `pull` fetches from the pinned commit.
+
+To bump: update `commit` in registry, run `toys pull`.
+
+### Commands
+
 - **`toys check`** — local file hash vs registry hash. Offline.
-- **`toys sync`** — queries upstream repo for release tags newer than
-  pinned version. Reports what's available. Does not modify files.
-- **`toys pull <name>`** — fetches from the pinned release tag (e.g.,
-  `v0.2.0`), replaces local file, updates registry hash. Verifies SDK
-  compiles. Reverts on failure.
+- **`toys sync`** — monorepo toys: check for newer releases. Standalone
+  toys: check if pinned commit is behind HEAD. Reports per toy. Does
+  not modify files.
+- **`toys pull <name>`** — monorepo: fetch from release tag. Standalone:
+  fetch from pinned commit. Replace local, update hash, verify SDK
+  compiles, revert on failure.
 - **`toys pull --all`** — pulls all WASI toys at their pinned versions.
 
-To upgrade a toy version: edit `version` in the registry, then
-`toys pull <name>`. Same as bumping a version in Cargo.toml and
-running cargo update.
+To upgrade: edit `version` (monorepo) or `commit` (standalone) in
+registry, then `toys pull <name>`.
 
-## Multi-File Mapping
+## Full Toy Registry
 
-Upstream WASI repos split WIT across multiple files. Each registry
-entry declares which upstream files map to our local file:
+### Monorepo toys (WASI stable — `WebAssembly/WASI/proposals/`)
 
 ```toml
-[wasi-keyvalue]
-upstream_files = ["wit/store.wit"]
-file = "keyvalue.wit"
+[wasi-cli]
+source = "https://github.com/WebAssembly/WASI"
+source_type = "monorepo"
+path = "proposals/cli/wit"
+version = "0.2.10"
+upstream_files = ["command.wit", "environment.wit", "exit.wit", "run.wit", "stdio.wit", "terminal.wit"]
+file = "cli.wit"
+
+[wasi-clocks]
+source = "https://github.com/WebAssembly/WASI"
+source_type = "monorepo"
+path = "proposals/clocks/wit"
+version = "0.2.10"
+upstream_files = ["monotonic-clock.wit", "wall-clock.wit", "timezone.wit"]
+file = "clocks.wit"
 
 [wasi-filesystem]
-upstream_files = ["wit/types.wit", "wit/preopens.wit"]
+source = "https://github.com/WebAssembly/WASI"
+source_type = "monorepo"
+path = "proposals/filesystem/wit"
+version = "0.2.10"
+upstream_files = ["types.wit", "preopens.wit"]
 file = "filesystem.wit"
 
 [wasi-http]
-upstream_files = ["wit/types.wit", "wit/handler.wit"]
+source = "https://github.com/WebAssembly/WASI"
+source_type = "monorepo"
+path = "proposals/http/wit"
+version = "0.2.10"
+upstream_files = ["types.wit", "handler.wit"]
 file = "http.wit"
 
+[wasi-io]
+source = "https://github.com/WebAssembly/WASI"
+source_type = "monorepo"
+path = "proposals/io/wit"
+version = "0.2.10"
+upstream_files = ["streams.wit", "poll.wit", "error.wit"]
+file = "io.wit"
+
+[wasi-random]
+source = "https://github.com/WebAssembly/WASI"
+source_type = "monorepo"
+path = "proposals/random/wit"
+version = "0.2.10"
+upstream_files = ["random.wit", "insecure.wit", "insecure-seed.wit"]
+file = "random.wit"
+
+[wasi-sockets]
+source = "https://github.com/WebAssembly/WASI"
+source_type = "monorepo"
+path = "proposals/sockets/wit"
+version = "0.2.10"
+upstream_files = ["tcp.wit", "udp.wit", "network.wit", "ip-name-lookup.wit"]
+file = "sockets.wit"
+```
+
+### Standalone toys (WASI proposals — individual repos)
+
+```toml
+[wasi-keyvalue]
+source = "https://github.com/WebAssembly/wasi-keyvalue"
+source_type = "standalone"
+path = "wit"
+version = "0.2.0"
+upstream_files = ["store.wit"]
+file = "keyvalue.wit"
+
 [wasi-logging]
-upstream_files = ["wit/logging.wit"]
+source = "https://github.com/WebAssembly/wasi-logging"
+source_type = "standalone"
+path = "wit"
+version = "0.1.0"
+upstream_files = ["logging.wit"]
 file = "logging.wit"
 
 [wasi-messaging]
-upstream_files = ["wit/messaging.wit"]
+source = "https://github.com/WebAssembly/wasi-messaging"
+source_type = "standalone"
+path = "wit"
+version = "0.2.0"
+upstream_files = ["messaging.wit"]
 file = "messaging.wit"
 
 [wasi-sql]
-upstream_files = ["wit/readwrite.wit"]
+source = "https://github.com/WebAssembly/wasi-sql"
+source_type = "standalone"
+path = "wit"
+version = "0.1.0"
+upstream_files = ["readwrite.wit"]
 file = "sql.wit"
+```
+
+### Patina delta toys (we own these)
+
+```toml
+[patina-git]
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "none"
+file = "patina-git.wit"
+
+[patina-events-stream]
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "wasi-messaging covers producing; consumption is our delta"
+file = "patina-events-stream.wit"
+
+[patina-measure]
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "none"
+file = "patina-measure.wit"
+
+[patina-connect]
+source = "patina"
+version = "0.2.0"
+wasi_overlap = "extends wasi-http with credential injection"
+file = "patina-connect.wit"
+
+[patina-task]
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "none"
+file = "patina-task.wit"
+
+[patina-peer]
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "none"
+file = "patina-peer.wit"
 ```
 
 For single-upstream-file toys: direct replacement.
