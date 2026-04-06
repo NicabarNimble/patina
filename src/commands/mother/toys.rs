@@ -1099,4 +1099,88 @@ mod tests {
         let expected = format!("sha256:{old_hash}");
         assert_eq!(entry.hash.as_deref(), Some(expected.as_str()));
     }
+
+    #[test]
+    fn pull_all_reverts_all_files_and_registry_hashes_on_compile_failure() {
+        let old_keyvalue = "old-keyvalue";
+        let old_sql = "old-sql";
+        let old_keyvalue_hash = hash_bytes(old_keyvalue.as_bytes());
+        let old_sql_hash = hash_bytes(old_sql.as_bytes());
+        let registry = format!(
+            "[wasi-keyvalue]\nsource = \"https://github.com/WebAssembly/wasi-keyvalue\"\nversion = \"0.2.0\"\nfile = \"keyvalue.wit\"\nhash = \"sha256:{old_keyvalue_hash}\"\n\n[wasi-sql]\nsource = \"https://github.com/WebAssembly/wasi-sql\"\nversion = \"0.1.0\"\nfile = \"sql.wit\"\nhash = \"sha256:{old_sql_hash}\"\n\n[patina-connect]\nsource = \"patina\"\nversion = \"0.2.0\"\nfile = \"patina-connect.wit\"\n"
+        );
+        let temp = setup_project(
+            &registry,
+            &[
+                ("keyvalue.wit", old_keyvalue),
+                ("sql.wit", old_sql),
+                ("patina-connect.wit", "delta"),
+            ],
+        );
+        let root = temp.path();
+        let client = test_http_client();
+
+        let result = toys_pull_all_with(
+            root,
+            &client,
+            |project_root, _, entry| {
+                let new_content = format!("new-{}", entry.id);
+                let local_path = local_wit_path(project_root, entry);
+                std::fs::write(&local_path, &new_content)
+                    .with_context(|| format!("write updated {}", entry.id))?;
+                update_registry_hash(project_root, &entry.id, &hash_bytes(new_content.as_bytes()))?;
+                Ok(true)
+            },
+            |_| bail!("forced compile failure"),
+        );
+
+        assert!(result.is_err());
+        let err = result.expect_err("expected rollback error").to_string();
+        assert!(err.contains("reverted all changes"));
+
+        let keyvalue_local =
+            std::fs::read_to_string(root.join(TOYS_DEPS_PATH).join("keyvalue.wit"))
+                .expect("read reverted keyvalue file");
+        let sql_local = std::fs::read_to_string(root.join(TOYS_DEPS_PATH).join("sql.wit"))
+            .expect("read reverted sql file");
+        assert_eq!(keyvalue_local, old_keyvalue);
+        assert_eq!(sql_local, old_sql);
+
+        let entries = load_registry(root).expect("load reverted registry");
+        let keyvalue_entry = entries
+            .iter()
+            .find(|entry| entry.id == "wasi-keyvalue")
+            .expect("wasi-keyvalue entry");
+        let sql_entry = entries
+            .iter()
+            .find(|entry| entry.id == "wasi-sql")
+            .expect("wasi-sql entry");
+        let expected_keyvalue_hash = format!("sha256:{old_keyvalue_hash}");
+        let expected_sql_hash = format!("sha256:{old_sql_hash}");
+        assert_eq!(
+            keyvalue_entry.hash.as_deref(),
+            Some(expected_keyvalue_hash.as_str())
+        );
+        assert_eq!(sql_entry.hash.as_deref(), Some(expected_sql_hash.as_str()));
+    }
+
+    #[test]
+    fn pull_rejects_patina_delta_toy_by_name() {
+        let registry = "[patina-connect]\nsource = \"patina\"\nversion = \"0.2.0\"\nfile = \"patina-connect.wit\"\n";
+        let temp = setup_project(registry, &[("patina-connect.wit", "delta")]);
+        let root = temp.path();
+        let client = test_http_client();
+
+        let result = toys_pull_with(
+            root,
+            "patina-connect",
+            &client,
+            |_, _, _| bail!("puller should not run for patina delta toy"),
+            |_| Ok(()),
+        );
+
+        assert!(result.is_err());
+        let err = result.expect_err("expected patina rejection").to_string();
+        assert!(err.contains("patina-delta"));
+    }
 }
