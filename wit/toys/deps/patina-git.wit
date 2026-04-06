@@ -1,5 +1,11 @@
 package patina:git@0.1.0;
 
+/// Patina delta: children need explicit git operations (tagging, commit history,
+/// and diff summaries) that pure WASM compute cannot perform.
+/// WASI overlap: none today; there is no active WASI proposal that standardizes
+/// repository/VCS host capabilities.
+/// Proposal mirroring: n/a until a WASI VCS proposal exists.
+
 interface git {
     create-tag: func(name: string) -> result<_, string>;
     delete-tag: func(name: string) -> result<_, string>;

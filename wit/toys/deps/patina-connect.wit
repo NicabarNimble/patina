@@ -1,5 +1,12 @@
 package patina:connect@0.2.0;
 
+/// Patina delta: connector resolution injects Mother-held credentials into host
+/// requests, which children cannot access from pure compute by design.
+/// WASI overlap: partially overlaps `wasi:http` request handling, but WASI does
+/// not define authenticated binding lookup/secret mediation.
+/// Proposal mirroring: this toy composes with WASI HTTP by keeping the child-side
+/// contract as binding resolution while transport stays in wasi:http shapes.
+
 interface connect {
     resource binding;
 

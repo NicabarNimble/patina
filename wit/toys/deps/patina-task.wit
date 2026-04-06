@@ -1,5 +1,10 @@
 package patina:task@0.1.0;
 
+/// Patina delta: task queue submission depends on Mother-owned orchestration
+/// state and durable scheduling outside the child sandbox.
+/// WASI overlap: none today; there is no WASI proposal for host task queues.
+/// Proposal mirroring: n/a until a WASI task/scheduler interface exists.
+
 interface task {
     enqueue: func(kind: string, payload: string, dedupe-key: option<string>) -> result<string, string>;
 }

@@ -1,5 +1,11 @@
 package patina:measure@0.1.0;
 
+/// Patina delta: structured platform metrics emission is a host-observed channel
+/// and cannot be guaranteed by pure child compute alone.
+/// WASI overlap: none today; no standardized WASI metrics interface currently
+/// covers typed gauges/counters with labels.
+/// Proposal mirroring: n/a until a WASI observability/metrics proposal exists.
+
 interface measure {
     record metric {
         name: string,

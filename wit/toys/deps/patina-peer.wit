@@ -1,5 +1,11 @@
 package patina:peer@0.1.0;
 
+/// Patina delta: peer-to-peer child invocation crosses Mother trust boundaries
+/// and routing policy, which pure compute components cannot authorize directly.
+/// WASI overlap: none today; no WASI proposal currently defines inter-child or
+/// inter-host peer orchestration primitives.
+/// Proposal mirroring: n/a until a WASI peer/federation proposal emerges.
+
 interface peer {
     call: func(child: string, action: string, payload: string) -> result<string, string>;
 }
