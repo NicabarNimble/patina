@@ -60,7 +60,7 @@ struct SurfaceReconciliation {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ManagedDirectoryMetadata {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "adapter")]
     interface: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     bundle: Option<String>,

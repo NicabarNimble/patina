@@ -62,7 +62,7 @@ impl Llm {
 #[command(author, version = env!("CARGO_PKG_VERSION"), about = "Context management for AI-assisted development", long_about = None)]
 struct Cli {
     /// AI interface to launch (claude, gemini, opencode). Default: from config.
-    #[arg(long = "interface", global = true)]
+    #[arg(long = "interface", alias = "adapter", global = true)]
     interface: Option<String>,
 
     #[command(subcommand)]
@@ -381,6 +381,7 @@ enum Commands {
     },
 
     /// Manage AI interfaces (list, add, remove, refresh, doctor)
+    #[command(alias = "adapter")]
     Interface {
         #[command(subcommand)]
         command: Option<InterfaceManageCommands>,

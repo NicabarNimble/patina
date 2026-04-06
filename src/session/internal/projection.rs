@@ -10,6 +10,7 @@ const SESSIONS_DIR: &str = "layer/sessions";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NativeInterfaceSessionPointer {
+    #[serde(alias = "adapter")]
     pub interface_name: String,
     pub runtime_id: String,
     pub file_id: String,

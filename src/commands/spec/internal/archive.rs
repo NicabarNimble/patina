@@ -247,29 +247,30 @@ pub(super) struct FoundSpec {
 
 /// Find a spec by its frontmatter id.
 ///
-/// Tries DB first, falls back to filesystem scan for unscraped specs.
+/// Uses DB for fast file path lookup, then reads status from frontmatter on
+/// disk (source of truth). Falls back to filesystem scan for unscraped specs.
 pub(super) fn find_spec(id: &str) -> Result<FoundSpec> {
-    // Try DB first
+    // Try DB for file path, but always re-read status from disk
     let db_path = super::db_path()?;
 
     if db_path.exists() {
         if let Ok(conn) = Connection::open(&db_path) {
             let result = conn.query_row(
-                "SELECT file_path, status, title FROM patterns WHERE id = ?1",
+                "SELECT file_path, title FROM patterns WHERE id = ?1",
                 rusqlite::params![id],
-                |row| {
-                    let status_str: Option<String> = row.get(1)?;
-                    let status = status_str.and_then(|s| s.parse::<SpecStatus>().ok());
-                    Ok(FoundSpec {
-                        file_path: row.get::<_, String>(0)?,
-                        status,
-                        title: row.get::<_, Option<String>>(2)?,
-                    })
-                },
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
             );
 
             match result {
-                Ok(found) => return Ok(found),
+                Ok((file_path, title)) => {
+                    // DB gives us the path — read status from frontmatter
+                    let status = read_frontmatter_status(&file_path);
+                    return Ok(FoundSpec {
+                        file_path,
+                        status,
+                        title,
+                    });
+                }
                 Err(rusqlite::Error::QueryReturnedNoRows) => {
                     // Fall through to filesystem scan
                 }
@@ -308,6 +309,28 @@ pub(super) fn find_spec(id: &str) -> Result<FoundSpec> {
          Check the id, or create it under layer/surface/build/.",
         id
     );
+}
+
+/// Read spec status directly from YAML frontmatter on disk.
+fn read_frontmatter_status(file_path: &str) -> Option<SpecStatus> {
+    let content = std::fs::read_to_string(file_path).ok()?;
+    let mut in_frontmatter = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed == "---" {
+            if in_frontmatter {
+                break;
+            }
+            in_frontmatter = true;
+            continue;
+        }
+        if in_frontmatter {
+            if let Some(rest) = trimmed.strip_prefix("status:") {
+                return rest.trim().parse::<SpecStatus>().ok();
+            }
+        }
+    }
+    None
 }
 
 /// Determine archived spec status from the archive commit message.

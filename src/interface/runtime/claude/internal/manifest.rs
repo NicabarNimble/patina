@@ -61,6 +61,7 @@ const VERSION_CHANGES: &[(&str, &[&str])] = &[
 
 #[derive(Serialize, Deserialize)]
 pub struct InterfaceManifest {
+    #[serde(alias = "adapter")]
     interface: String,
     version: String,
     installed_at: String,

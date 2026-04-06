@@ -21,7 +21,7 @@ pub struct ProjectConfig {
     /// Deprecated: dev environment config (kept for backwards compat on load)
     #[serde(default, skip_serializing)]
     pub dev: DevSection,
-    #[serde(default, rename = "interfaces")]
+    #[serde(default, rename = "interfaces", alias = "adapters")]
     pub interfaces: InterfacesSection,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub upstream: Option<UpstreamSection>,
@@ -153,7 +153,7 @@ pub struct UpstreamSection {
     pub include_patina: bool,
     /// Include interface files (CLAUDE.md, .claude/, etc.) in PRs (default: false)
     /// Set true for owned repos to share with collaborators
-    #[serde(default)]
+    #[serde(default, alias = "include_adapters")]
     pub include_interfaces: bool,
 }
 

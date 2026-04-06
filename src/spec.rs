@@ -660,7 +660,7 @@ impl std::str::FromStr for SpecStatus {
             "active" => Ok(SpecStatus::Active),
             "paused" => Ok(SpecStatus::Paused),
             "blocked" => Ok(SpecStatus::Blocked),
-            "complete" | "done" => Ok(SpecStatus::Complete),
+            "complete" | "completed" | "done" => Ok(SpecStatus::Complete),
             "abandoned" => Ok(SpecStatus::Abandoned),
             _ => Err(SpecStatusError { got: s.to_string() }),
         }

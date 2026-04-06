@@ -1,7 +1,7 @@
 ---
 type: fix
 id: spec-archive-db-path
-status: draft
+status: active
 created: 2026-04-05
 related:
   - src/commands/spec/internal/archive.rs
