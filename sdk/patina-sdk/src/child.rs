@@ -33,6 +33,8 @@ pub mod granted {
     pub type Emit = toys::EmitToy<GuestHost>;
     #[cfg(feature = "toy-state")]
     pub type State = toys::StateToy<GuestHost>;
+    #[cfg(feature = "toy-layer-fs")]
+    pub type LayerFs = toys::LayerFsToy<GuestHost>;
     #[cfg(feature = "toy-checkpoint")]
     pub type Checkpoint = toys::CheckpointToy<GuestHost>;
     #[cfg(feature = "toy-lake")]
@@ -92,6 +94,11 @@ pub mod granted {
     #[cfg(feature = "toy-state")]
     pub fn state() -> State {
         State::new()
+    }
+
+    #[cfg(feature = "toy-layer-fs")]
+    pub fn layer_fs() -> LayerFs {
+        LayerFs::new()
     }
 
     #[cfg(feature = "toy-checkpoint")]
@@ -213,6 +220,11 @@ pub mod host {
         LogLevel, MeasureBackend, PendingEvent, QueryBackend, SessionBackend, StateBackend,
         StateBucketBackend, TaskBackend, TaskIntent, TaskIntentKind,
     };
+    #[cfg(feature = "toy-layer-fs")]
+    use crate::toys::{
+        LayerFsBackend, LayerFsDescriptorBackend, LayerFsDescriptorType, LayerFsDirectoryEntry,
+        LayerFsDirectoryEntryStreamBackend,
+    };
     #[cfg(feature = "toy-peer")]
     use crate::toys::{PeerBackend, PeerEvent};
 
@@ -221,6 +233,12 @@ pub mod host {
 
     #[derive(Debug)]
     pub struct GuestStateBucket(super::wasi::keyvalue::store::Bucket);
+    #[cfg(feature = "toy-layer-fs")]
+    #[derive(Debug)]
+    pub struct GuestFsDescriptor(super::wasi::filesystem::types::Descriptor);
+    #[cfg(feature = "toy-layer-fs")]
+    #[derive(Debug)]
+    pub struct GuestFsDirectoryStream(super::wasi::filesystem::types::DirectoryEntryStream);
 
     impl GuestHost {
         pub fn log() -> crate::toys::LogToy<Self> {
@@ -240,6 +258,10 @@ pub mod host {
         }
         pub fn state() -> crate::toys::StateToy<Self> {
             crate::toys::StateToy::new()
+        }
+        #[cfg(feature = "toy-layer-fs")]
+        pub fn layer_fs() -> crate::toys::LayerFsToy<Self> {
+            crate::toys::LayerFsToy::new()
         }
         pub fn checkpoint() -> crate::toys::CheckpointToy<Self> {
             crate::toys::CheckpointToy::new()
@@ -528,6 +550,139 @@ pub mod host {
                 keys: response.keys,
                 cursor: response.cursor,
             })
+        }
+    }
+
+    #[cfg(feature = "toy-layer-fs")]
+    fn fs_error(error: super::wasi::filesystem::types::ErrorCode) -> String {
+        format!("{:?}", error)
+    }
+
+    #[cfg(feature = "toy-layer-fs")]
+    fn fs_descriptor_type(
+        ty: super::wasi::filesystem::types::DescriptorType,
+    ) -> LayerFsDescriptorType {
+        use super::wasi::filesystem::types::DescriptorType;
+        match ty {
+            DescriptorType::Unknown => LayerFsDescriptorType::Unknown,
+            DescriptorType::BlockDevice => LayerFsDescriptorType::BlockDevice,
+            DescriptorType::CharacterDevice => LayerFsDescriptorType::CharacterDevice,
+            DescriptorType::Directory => LayerFsDescriptorType::Directory,
+            DescriptorType::Fifo => LayerFsDescriptorType::Fifo,
+            DescriptorType::SymbolicLink => LayerFsDescriptorType::SymbolicLink,
+            DescriptorType::RegularFile => LayerFsDescriptorType::RegularFile,
+            DescriptorType::Socket => LayerFsDescriptorType::Socket,
+        }
+    }
+
+    #[cfg(feature = "toy-layer-fs")]
+    impl LayerFsBackend for GuestHost {
+        type Descriptor = GuestFsDescriptor;
+
+        fn get_directories() -> Result<Vec<(Self::Descriptor, String)>, String> {
+            Ok(super::wasi::filesystem::preopens::get_directories()
+                .into_iter()
+                .map(|(descriptor, path)| (GuestFsDescriptor(descriptor), path))
+                .collect())
+        }
+    }
+
+    #[cfg(feature = "toy-layer-fs")]
+    impl LayerFsDirectoryEntryStreamBackend for GuestFsDirectoryStream {
+        fn read_directory_entry(&self) -> Result<Option<LayerFsDirectoryEntry>, String> {
+            self.0
+                .read_directory_entry()
+                .map_err(fs_error)
+                .map(|entry| {
+                    entry.map(|entry| LayerFsDirectoryEntry {
+                        name: entry.name,
+                        descriptor_type: fs_descriptor_type(entry.type_),
+                    })
+                })
+        }
+    }
+
+    #[cfg(feature = "toy-layer-fs")]
+    impl LayerFsDescriptorBackend for GuestFsDescriptor {
+        type DirectoryStream = GuestFsDirectoryStream;
+
+        fn read(&self, length: u64, offset: u64) -> Result<(Vec<u8>, bool), String> {
+            self.0.read(length, offset).map_err(fs_error)
+        }
+
+        fn write(&self, buffer: &[u8], offset: u64) -> Result<u64, String> {
+            self.0.write(buffer, offset).map_err(fs_error)
+        }
+
+        fn read_directory(&self) -> Result<Self::DirectoryStream, String> {
+            self.0
+                .read_directory()
+                .map(GuestFsDirectoryStream)
+                .map_err(fs_error)
+        }
+
+        fn create_directory_at(&self, path: &str) -> Result<(), String> {
+            self.0.create_directory_at(path).map_err(fs_error)
+        }
+
+        fn open_at(
+            &self,
+            path: &str,
+            create: bool,
+            directory: bool,
+            truncate: bool,
+            read: bool,
+            write: bool,
+        ) -> Result<Self, String> {
+            let mut open_flags = super::wasi::filesystem::types::OpenFlags::empty();
+            if create {
+                open_flags |= super::wasi::filesystem::types::OpenFlags::CREATE;
+            }
+            if directory {
+                open_flags |= super::wasi::filesystem::types::OpenFlags::DIRECTORY;
+            }
+            if truncate {
+                open_flags |= super::wasi::filesystem::types::OpenFlags::TRUNCATE;
+            }
+
+            let mut descriptor_flags = super::wasi::filesystem::types::DescriptorFlags::empty();
+            if read {
+                descriptor_flags |= super::wasi::filesystem::types::DescriptorFlags::READ;
+            }
+            if write {
+                descriptor_flags |= super::wasi::filesystem::types::DescriptorFlags::WRITE;
+                descriptor_flags |=
+                    super::wasi::filesystem::types::DescriptorFlags::MUTATE_DIRECTORY;
+            }
+
+            self.0
+                .open_at(
+                    super::wasi::filesystem::types::PathFlags::empty(),
+                    path,
+                    open_flags,
+                    descriptor_flags,
+                )
+                .map(GuestFsDescriptor)
+                .map_err(fs_error)
+        }
+
+        fn unlink_file_at(&self, path: &str) -> Result<(), String> {
+            self.0.unlink_file_at(path).map_err(fs_error)
+        }
+
+        fn remove_directory_at(&self, path: &str) -> Result<(), String> {
+            self.0.remove_directory_at(path).map_err(fs_error)
+        }
+
+        fn rename_at(
+            &self,
+            old_path: &str,
+            new_descriptor: &Self,
+            new_path: &str,
+        ) -> Result<(), String> {
+            self.0
+                .rename_at(old_path, &new_descriptor.0, new_path)
+                .map_err(fs_error)
         }
     }
 

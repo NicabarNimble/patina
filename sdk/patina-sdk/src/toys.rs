@@ -76,12 +76,61 @@ pub trait StateBackend {
 
 #[cfg(feature = "toy-layer-fs")]
 pub trait LayerFsBackend {
-    fn read_file(path: &str) -> Result<String, String>;
-    fn write_file(path: &str, contents: &str) -> Result<(), String>;
-    fn list_dir(path: &str) -> Result<Vec<String>, String>;
-    fn delete_file(path: &str) -> Result<(), String>;
-    fn move_path(from: &str, to: &str) -> Result<(), String>;
-    fn exists(path: &str) -> Result<bool, String>;
+    type Descriptor: LayerFsDescriptorBackend;
+    fn get_directories() -> Result<Vec<(Self::Descriptor, String)>, String>;
+}
+
+#[cfg(feature = "toy-layer-fs")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LayerFsDescriptorType {
+    Unknown,
+    BlockDevice,
+    CharacterDevice,
+    Directory,
+    Fifo,
+    SymbolicLink,
+    RegularFile,
+    Socket,
+}
+
+#[cfg(feature = "toy-layer-fs")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LayerFsDirectoryEntry {
+    pub name: String,
+    pub descriptor_type: LayerFsDescriptorType,
+}
+
+#[cfg(feature = "toy-layer-fs")]
+pub trait LayerFsDirectoryEntryStreamBackend {
+    fn read_directory_entry(&self) -> Result<Option<LayerFsDirectoryEntry>, String>;
+}
+
+#[cfg(feature = "toy-layer-fs")]
+pub trait LayerFsDescriptorBackend: Sized {
+    type DirectoryStream: LayerFsDirectoryEntryStreamBackend;
+
+    fn read(&self, length: u64, offset: u64) -> Result<(Vec<u8>, bool), String>;
+    fn write(&self, buffer: &[u8], offset: u64) -> Result<u64, String>;
+    fn read_directory(&self) -> Result<Self::DirectoryStream, String>;
+    fn create_directory_at(&self, path: &str) -> Result<(), String>;
+    fn open_at(
+        &self,
+        path: &str,
+        create: bool,
+        directory: bool,
+        truncate: bool,
+        read: bool,
+        write: bool,
+    ) -> Result<Self, String>;
+    fn unlink_file_at(&self, path: &str) -> Result<(), String>;
+    fn remove_directory_at(&self, path: &str) -> Result<(), String>;
+    fn rename_at(
+        &self,
+        old_path: &str,
+        new_descriptor: &Self,
+        new_path: &str,
+    ) -> Result<(), String>;
 }
 
 #[cfg(feature = "toy-git")]
@@ -379,23 +428,79 @@ impl<B> LayerFsToy<B> {
 }
 #[cfg(feature = "toy-layer-fs")]
 impl<B: LayerFsBackend> LayerFsToy<B> {
+    pub fn get_directories(&self) -> Result<Vec<(B::Descriptor, String)>, String> {
+        B::get_directories()
+    }
+
     pub fn read_file(&self, path: &str) -> Result<String, String> {
-        B::read_file(path)
+        let descriptor = self.open_relative(path, false, false)?;
+        let (bytes, _) = descriptor.read(u64::MAX, 0)?;
+        String::from_utf8(bytes).map_err(|error| error.to_string())
     }
+
     pub fn write_file(&self, path: &str, contents: &str) -> Result<(), String> {
-        B::write_file(path, contents)
+        let descriptor = self.open_relative(path, true, false)?;
+        let _ = descriptor.write(contents.as_bytes(), 0)?;
+        Ok(())
     }
+
     pub fn list_dir(&self, path: &str) -> Result<Vec<String>, String> {
-        B::list_dir(path)
+        let descriptor = self.open_relative(path, false, true)?;
+        let stream = descriptor.read_directory()?;
+        let mut entries = Vec::new();
+        while let Some(entry) = stream.read_directory_entry()? {
+            entries.push(entry.name);
+        }
+        Ok(entries)
     }
+
     pub fn delete_file(&self, path: &str) -> Result<(), String> {
-        B::delete_file(path)
+        let (root, relative) = self.resolve_preopen(path)?;
+        root.unlink_file_at(&relative)
     }
+
     pub fn move_path(&self, from: &str, to: &str) -> Result<(), String> {
-        B::move_path(from, to)
+        let (root_from, from_relative) = self.resolve_preopen(from)?;
+        let (root_to, to_relative) = self.resolve_preopen(to)?;
+        root_from.rename_at(&from_relative, &root_to, &to_relative)
     }
+
     pub fn exists(&self, path: &str) -> Result<bool, String> {
-        B::exists(path)
+        let (root, relative) = self.resolve_preopen(path)?;
+        match root.open_at(&relative, false, false, false, true, false) {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
+    }
+
+    fn open_relative(
+        &self,
+        path: &str,
+        create: bool,
+        directory: bool,
+    ) -> Result<B::Descriptor, String> {
+        let (root, relative) = self.resolve_preopen(path)?;
+        root.open_at(&relative, create, directory, create, true, true)
+    }
+
+    fn resolve_preopen(&self, path: &str) -> Result<(B::Descriptor, String), String> {
+        let normalized = path.trim_start_matches('/');
+        for (descriptor, guest_path) in B::get_directories()? {
+            let guest = guest_path.trim_start_matches('/');
+            if normalized == guest {
+                return Ok((descriptor, ".".to_string()));
+            }
+            if let Some(rest) = normalized.strip_prefix(guest) {
+                let relative = rest.trim_start_matches('/');
+                if !relative.is_empty() {
+                    return Ok((descriptor, relative.to_string()));
+                }
+            }
+        }
+        Err(format!(
+            "path '{}' is outside granted filesystem preopens",
+            path
+        ))
     }
 }
 
