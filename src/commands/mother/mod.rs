@@ -327,7 +327,9 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             toys::toys_status(&project_root)
         }
         Some(MotherCommands::Toys(ToysCommands::Check)) => {
-            bail!("`patina mother toys check` not implemented yet")
+            let project_root = SessionManager::find_project_root()
+                .context("`patina mother toys check` must run in a Patina project")?;
+            toys::toys_check(&project_root)
         }
         Some(MotherCommands::Toys(ToysCommands::Sync)) => {
             bail!("`patina mother toys sync` not implemented yet")

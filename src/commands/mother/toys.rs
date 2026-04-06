@@ -1,6 +1,7 @@
 use anyhow::{bail, Context, Result};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 const TOYS_REGISTRY_PATH: &str = "wit/toys/deps/toys-registry.toml";
 const TOYS_DEPS_PATH: &str = "wit/toys/deps";
@@ -65,6 +66,61 @@ pub fn toys_status(project_root: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub fn toys_check(project_root: &Path) -> Result<()> {
+    let entries = load_registry(project_root)?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .context("building HTTP client")?;
+
+    let mut failures = Vec::new();
+    println!("Checking toy WIT files against pinned versions:\n");
+
+    for entry in entries {
+        let local_path = local_wit_path(project_root, &entry);
+        let local_hash = hash_file(&local_path)?;
+
+        if entry.source == "patina" {
+            println!("ok   {:<22} local-only (patina delta)", entry.id);
+            continue;
+        }
+
+        let pinned_bytes = match fetch_upstream_pinned(&client, &entry) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                failures.push(format!("{}: {}", entry.id, error));
+                println!("fail {:<22} unable to fetch pinned source", entry.id);
+                continue;
+            }
+        };
+        let pinned_hash = hash_bytes(&pinned_bytes);
+
+        if pinned_hash == local_hash {
+            println!("ok   {:<22} matches pinned {}", entry.id, entry.version);
+        } else {
+            failures.push(format!(
+                "{}: local hash {} does not match pinned hash {}",
+                entry.id, local_hash, pinned_hash
+            ));
+            println!(
+                "fail {:<22} hash mismatch vs pinned {}",
+                entry.id, entry.version
+            );
+        }
+    }
+
+    if failures.is_empty() {
+        println!("\nAll toy WIT files match pinned versions.");
+        Ok(())
+    } else {
+        println!("\nMismatches:");
+        for failure in &failures {
+            println!("- {}", failure);
+        }
+        bail!("toy registry check failed with {} issue(s)", failures.len())
+    }
 }
 
 pub fn load_registry(project_root: &Path) -> Result<Vec<ToyEntry>> {
@@ -149,4 +205,75 @@ pub fn require_upstream(entry: &ToyEntry) -> Result<()> {
         );
     }
     Ok(())
+}
+
+fn fetch_upstream_pinned(client: &reqwest::blocking::Client, entry: &ToyEntry) -> Result<Vec<u8>> {
+    require_upstream(entry)?;
+
+    let mut last_error: Option<anyhow::Error> = None;
+    for git_ref in candidate_refs(entry) {
+        for url in candidate_urls(entry, &git_ref) {
+            match client.get(&url).send() {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return response
+                            .bytes()
+                            .map(|b| b.to_vec())
+                            .context("reading upstream response body");
+                    }
+                    last_error = Some(anyhow::anyhow!(
+                        "{} returned HTTP {}",
+                        url,
+                        response.status()
+                    ));
+                }
+                Err(error) => {
+                    last_error = Some(anyhow::anyhow!("request failed for {}: {}", url, error));
+                }
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("no upstream URL candidates")))
+}
+
+fn candidate_urls(entry: &ToyEntry, git_ref: &str) -> Vec<String> {
+    let repo = entry.source.trim_start_matches("https://github.com/");
+    let mut urls = Vec::new();
+    for file_name in candidate_file_names(entry) {
+        urls.push(format!(
+            "https://raw.githubusercontent.com/{}/{}/wit/{}",
+            repo, git_ref, file_name
+        ));
+        urls.push(format!(
+            "https://raw.githubusercontent.com/{}/{}/{}",
+            repo, git_ref, file_name
+        ));
+    }
+    urls
+}
+
+fn candidate_refs(entry: &ToyEntry) -> Vec<String> {
+    vec![
+        format!("v{}", entry.version),
+        format!("v{}-draft", entry.version),
+        "main".to_string(),
+    ]
+}
+
+fn candidate_file_names(entry: &ToyEntry) -> Vec<String> {
+    let mut names = vec![entry.file.clone()];
+    let extra = match entry.id.as_str() {
+        "wasi-keyvalue" => Some("store.wit"),
+        "wasi-filesystem" => Some("types.wit"),
+        "wasi-http" => Some("types.wit"),
+        "wasi-sql" => Some("readwrite.wit"),
+        _ => None,
+    };
+    if let Some(extra_name) = extra {
+        if !names.iter().any(|n| n == extra_name) {
+            names.push(extra_name.to_string());
+        }
+    }
+    names
 }
