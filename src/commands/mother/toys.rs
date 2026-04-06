@@ -1,6 +1,7 @@
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -58,6 +59,21 @@ struct GithubRelease {
 struct GithubTagRef {
     #[serde(rename = "ref")]
     ref_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubTag {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubRepo {
+    default_branch: String,
+}
+
+enum FetchRefError {
+    NotFound,
+    Fatal(anyhow::Error),
 }
 
 impl ToyEntry {
@@ -234,6 +250,30 @@ pub fn toys_sync(project_root: &Path) -> Result<()> {
 }
 
 pub fn toys_pull(project_root: &Path, toy_name: &str) -> Result<()> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .context("building HTTP client")?;
+    toys_pull_with(
+        project_root,
+        toy_name,
+        &client,
+        pull_entry_without_compile,
+        run_sdk_check,
+    )
+}
+
+fn toys_pull_with<P, C>(
+    project_root: &Path,
+    toy_name: &str,
+    client: &reqwest::blocking::Client,
+    pull_entry: P,
+    run_check: C,
+) -> Result<()>
+where
+    P: Fn(&Path, &reqwest::blocking::Client, &ToyEntry) -> Result<bool>,
+    C: Fn(&Path) -> Result<()>,
+{
     let entries = load_registry(project_root)?;
     let entry = entries
         .into_iter()
@@ -248,11 +288,7 @@ pub fn toys_pull(project_root: &Path, toy_name: &str) -> Result<()> {
     let old_registry = std::fs::read(&registry_path)
         .with_context(|| format!("reading {}", registry_path.display()))?;
 
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(20))
-        .build()
-        .context("building HTTP client")?;
-    let changed = pull_entry_without_compile(project_root, &client, &entry)?;
+    let changed = pull_entry(project_root, client, &entry)?;
     if !changed {
         println!(
             "unchanged {:<22} hash matches pinned {}",
@@ -261,7 +297,7 @@ pub fn toys_pull(project_root: &Path, toy_name: &str) -> Result<()> {
         return Ok(());
     }
 
-    match run_sdk_check(project_root) {
+    match run_check(project_root) {
         Ok(()) => {
             println!(
                 "pulled {:<22} updated {} and registry hash",
@@ -285,6 +321,28 @@ pub fn toys_pull(project_root: &Path, toy_name: &str) -> Result<()> {
 }
 
 pub fn toys_pull_all(project_root: &Path) -> Result<()> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .context("building HTTP client")?;
+    toys_pull_all_with(
+        project_root,
+        &client,
+        pull_entry_without_compile,
+        run_sdk_check,
+    )
+}
+
+fn toys_pull_all_with<P, C>(
+    project_root: &Path,
+    client: &reqwest::blocking::Client,
+    pull_entry: P,
+    run_check: C,
+) -> Result<()>
+where
+    P: Fn(&Path, &reqwest::blocking::Client, &ToyEntry) -> Result<bool>,
+    C: Fn(&Path) -> Result<()>,
+{
     let entries = load_registry(project_root)?;
     let wasi_entries: Vec<ToyEntry> = entries
         .into_iter()
@@ -297,14 +355,9 @@ pub fn toys_pull_all(project_root: &Path) -> Result<()> {
     }
     let snapshot = create_snapshot(project_root, &snapshot_targets)?;
 
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(20))
-        .build()
-        .context("building HTTP client")?;
-
     let mut reports = Vec::new();
     for entry in &wasi_entries {
-        match pull_entry_without_compile(project_root, &client, entry) {
+        match pull_entry(project_root, client, entry) {
             Ok(true) => reports.push(PullReport {
                 id: entry.id.clone(),
                 status: PullStatus::Pulled,
@@ -323,7 +376,7 @@ pub fn toys_pull_all(project_root: &Path) -> Result<()> {
         }
     }
 
-    if let Err(error) = run_sdk_check(project_root) {
+    if let Err(error) = run_check(project_root) {
         restore_snapshot(project_root, &snapshot)?;
         for report in &mut reports {
             if matches!(report.status, PullStatus::Pulled) {
@@ -540,22 +593,123 @@ fn fetch_upstream_pinned(
     } else {
         entry.upstream_files.clone()
     };
-    let mut out = Vec::new();
+    let refs = candidate_pull_refs(client, &repo, &entry.version);
+    let mut attempts = Vec::new();
+    for reference in refs {
+        match fetch_files_for_ref(client, &repo, &reference, &files) {
+            Ok(contents) => return Ok(contents),
+            Err(FetchRefError::NotFound) => attempts.push(reference),
+            Err(FetchRefError::Fatal(error)) => return Err(error),
+        }
+    }
+
+    bail!(
+        "unable to fetch upstream files for '{}' at pinned version '{}'; tried refs: {}",
+        entry.id,
+        entry.version,
+        attempts.join(", ")
+    )
+}
+
+fn fetch_files_for_ref(
+    client: &reqwest::blocking::Client,
+    repo: &str,
+    reference: &str,
+    files: &[String],
+) -> std::result::Result<Vec<String>, FetchRefError> {
+    let mut out = Vec::with_capacity(files.len());
     for upstream_file in files {
         let url = format!(
-            "https://raw.githubusercontent.com/{}/v{}/{}",
-            repo, entry.version, upstream_file
+            "https://raw.githubusercontent.com/{}/{}/{}",
+            repo, reference, upstream_file
         );
-        let response = client
-            .get(&url)
-            .send()
-            .with_context(|| format!("request failed for {}", url))?;
-        if !response.status().is_success() {
-            bail!("{} returned HTTP {}", url, response.status());
+        let response = client.get(&url).send().map_err(|error| {
+            FetchRefError::Fatal(anyhow::anyhow!("request failed for {}: {}", url, error))
+        })?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(FetchRefError::NotFound);
         }
-        out.push(response.text().context("reading upstream response body")?);
+        if !response.status().is_success() {
+            return Err(FetchRefError::Fatal(anyhow::anyhow!(
+                "{} returned HTTP {}",
+                url,
+                response.status()
+            )));
+        }
+        let body = response.text().map_err(|error| {
+            FetchRefError::Fatal(anyhow::anyhow!("reading upstream response body: {}", error))
+        })?;
+        out.push(body);
     }
     Ok(out)
+}
+
+fn candidate_pull_refs(
+    client: &reqwest::blocking::Client,
+    repo: &str,
+    version: &str,
+) -> Vec<String> {
+    let mut refs = Vec::new();
+    refs.push(format!("v{}", version));
+    refs.push(version.to_string());
+
+    if let Ok(tags) = fetch_matching_tags(client, repo, version) {
+        refs.extend(tags);
+    }
+    if let Ok(default_branch) = fetch_default_branch(client, repo) {
+        refs.push(default_branch);
+    }
+
+    let mut seen = HashSet::new();
+    refs.into_iter()
+        .filter(|reference| seen.insert(reference.clone()))
+        .collect()
+}
+
+fn fetch_matching_tags(
+    client: &reqwest::blocking::Client,
+    repo: &str,
+    version: &str,
+) -> Result<Vec<String>> {
+    let tags_url = format!("https://api.github.com/repos/{}/tags?per_page=100", repo);
+    let response = client
+        .get(&tags_url)
+        .header(reqwest::header::USER_AGENT, "patina-toys-sync")
+        .send()
+        .context("requesting repository tags")?;
+    if !response.status().is_success() {
+        bail!("tags API returned HTTP {}", response.status());
+    }
+    let tags: Vec<GithubTag> = response.json().context("parsing GitHub tags response")?;
+    Ok(tags
+        .into_iter()
+        .map(|tag| tag.name)
+        .filter(|name| tag_matches_version(name, version))
+        .collect())
+}
+
+fn fetch_default_branch(client: &reqwest::blocking::Client, repo: &str) -> Result<String> {
+    let repo_url = format!("https://api.github.com/repos/{}", repo);
+    let response = client
+        .get(&repo_url)
+        .header(reqwest::header::USER_AGENT, "patina-toys-sync")
+        .send()
+        .context("requesting repository metadata")?;
+    if !response.status().is_success() {
+        bail!(
+            "repository metadata API returned HTTP {}",
+            response.status()
+        );
+    }
+    let repo: GithubRepo = response
+        .json()
+        .context("parsing repository metadata response")?;
+    Ok(repo.default_branch)
+}
+
+fn tag_matches_version(tag: &str, version: &str) -> bool {
+    let normalized = tag.strip_prefix('v').unwrap_or(tag);
+    normalized == version || normalized.strip_prefix(version) == Some("-draft")
 }
 
 fn compose_upstream_wit(files: &[String]) -> Result<String> {
@@ -786,4 +940,163 @@ fn repo_slug(entry: &ToyEntry) -> Result<String> {
         bail!("invalid GitHub source URL '{}'", entry.source);
     }
     Ok(slug)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn latest_from_releases_filters_unstable_and_normalizes_v_prefix() {
+        let releases = vec![
+            GithubRelease {
+                tag_name: "v0.2.7".to_string(),
+                draft: false,
+                prerelease: false,
+            },
+            GithubRelease {
+                tag_name: "v0.2.8-rc.1".to_string(),
+                draft: false,
+                prerelease: false,
+            },
+            GithubRelease {
+                tag_name: "0.2.9".to_string(),
+                draft: true,
+                prerelease: false,
+            },
+            GithubRelease {
+                tag_name: "v0.2.8".to_string(),
+                draft: false,
+                prerelease: false,
+            },
+        ];
+
+        let (version, semver) = latest_from_releases(&releases).expect("stable release");
+        assert_eq!(version, "0.2.8");
+        assert_eq!(semver.major, 0);
+        assert_eq!(semver.minor, 2);
+        assert_eq!(semver.patch, 8);
+    }
+
+    #[test]
+    fn latest_from_tags_uses_semver_only() {
+        let tags = vec![
+            GithubTagRef {
+                ref_name: "refs/tags/v0.2.0-draft".to_string(),
+            },
+            GithubTagRef {
+                ref_name: "refs/tags/v0.1.9".to_string(),
+            },
+            GithubTagRef {
+                ref_name: "refs/tags/0.2.1^{}".to_string(),
+            },
+        ];
+
+        let (version, semver) = latest_from_tags(&tags).expect("stable semver tag");
+        assert_eq!(version, "0.2.1");
+        assert_eq!(semver.major, 0);
+        assert_eq!(semver.minor, 2);
+        assert_eq!(semver.patch, 1);
+    }
+
+    #[test]
+    fn tag_matches_version_accepts_draft_variant() {
+        assert!(tag_matches_version("v0.2.0-draft", "0.2.0"));
+        assert!(tag_matches_version("0.2.0", "0.2.0"));
+        assert!(!tag_matches_version("v0.2.1", "0.2.0"));
+    }
+
+    #[test]
+    fn require_upstream_rejects_patina_entries() {
+        let entry = ToyEntry {
+            id: "patina-connect".to_string(),
+            source: "patina".to_string(),
+            version: "0.1.0".to_string(),
+            file: "patina-connect.wit".to_string(),
+            upstream_files: Vec::new(),
+            hash: None,
+            phase: None,
+        };
+
+        assert!(require_upstream(&entry).is_err());
+    }
+
+    #[test]
+    fn compose_multi_file_wit_keeps_single_package_and_moves_use_lines() {
+        let files = vec![
+            "package wasi:demo@0.1.0;\n\ninterface first {\n  a: func();\n}\n".to_string(),
+            "package wasi:demo@0.1.0;\nuse dep.{x};\n\ninterface second {\n  b: func(v: x);\n}\n"
+                .to_string(),
+        ];
+
+        let composed = compose_upstream_wit(&files).expect("compose success");
+        assert_eq!(composed.matches("package wasi:demo@0.1.0;").count(), 1);
+        let use_pos = composed.find("use dep.{x};").expect("use line present");
+        let second_pos = composed
+            .find("interface second")
+            .expect("second interface present");
+        assert!(use_pos < second_pos);
+    }
+
+    fn test_http_client() -> reqwest::blocking::Client {
+        reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .expect("test http client")
+    }
+
+    fn setup_project(registry: &str, files: &[(&str, &str)]) -> TempDir {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path();
+        let deps = root.join(TOYS_DEPS_PATH);
+        std::fs::create_dir_all(&deps).expect("create deps dir");
+        std::fs::write(root.join(TOYS_REGISTRY_PATH), registry).expect("write registry");
+        for (file, content) in files {
+            std::fs::write(deps.join(file), content).expect("write toy file");
+        }
+        temp
+    }
+
+    #[test]
+    fn pull_reverts_local_file_and_registry_hash_on_compile_failure() {
+        let old = "old-keyvalue";
+        let old_hash = hash_bytes(old.as_bytes());
+        let registry = format!(
+            "[wasi-keyvalue]\nsource = \"https://github.com/WebAssembly/wasi-keyvalue\"\nversion = \"0.2.0\"\nfile = \"keyvalue.wit\"\nhash = \"sha256:{old_hash}\"\n"
+        );
+        let temp = setup_project(&registry, &[("keyvalue.wit", old)]);
+        let root = temp.path();
+        let client = test_http_client();
+
+        let result = toys_pull_with(
+            root,
+            "wasi-keyvalue",
+            &client,
+            |project_root, _, entry| {
+                let local_path = local_wit_path(project_root, entry);
+                let new = "new-keyvalue";
+                std::fs::write(&local_path, new).context("write updated local keyvalue")?;
+                update_registry_hash(project_root, &entry.id, &hash_bytes(new.as_bytes()))?;
+                Ok(true)
+            },
+            |_| bail!("forced compile failure"),
+        );
+
+        assert!(result.is_err());
+        let err = result.expect_err("expected rollback error").to_string();
+        assert!(err.contains("pull reverted"));
+
+        let local = std::fs::read_to_string(root.join(TOYS_DEPS_PATH).join("keyvalue.wit"))
+            .expect("read reverted keyvalue file");
+        assert_eq!(local, old);
+
+        let entry = load_registry(root)
+            .expect("load registry")
+            .into_iter()
+            .find(|entry| entry.id == "wasi-keyvalue")
+            .expect("wasi-keyvalue registry entry");
+        let expected = format!("sha256:{old_hash}");
+        assert_eq!(entry.hash.as_deref(), Some(expected.as_str()));
+    }
 }
