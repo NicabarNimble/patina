@@ -264,14 +264,58 @@ patina mother toys check
 10. [[commit-1442a443]] — record-writer toy grants aligned
 11. [[commit-5c619efa]] — lakehouse-catalog toy grants aligned (store → sql)
 
+### Next: capability wiring fix (blocks swa8, swa9)
+
+Mother's capability mapping in `src/child/internal/mod.rs` uses legacy
+toy name strings. The 6 canon children now declare aligned names
+(`logging`, `keyvalue`, `messaging`, `filesystem`, `sql`) but Mother
+only recognizes the old names (`log`, `state`, `events`, `fs`, `store`).
+Without this fix, children don't get their granted toys.
+
+Locations to update:
+- Lines 576-589: host capability mapping table
+  `("log", "host_log")` → `("logging", "host_log")`
+  Add entries for `"keyvalue"`, `"filesystem"`, `"messaging"`, `"sql"`
+- Line 880: `toy == "state"` → `toy == "keyvalue"`
+- Lines 983-995: `GrantedToys` struct field mapping
+  `toy == "events"` stays for subscribe
+  Add `toy == "messaging"` for publish (separate grant)
+  `toy == "fetch"` → `toy == "http"`
+- Any other string comparison in `src/child/` that matches toy names
+
+This is vocabulary alignment in the runtime wiring — same pattern as
+the adapter→interface rename, but for toy grant names.
+
+### Next: toys check approach fix (blocks swa10 full)
+
+`mother toys check` hash-compares local WIT files against upstream
+GitHub raw files. This is brittle because:
+- Upstream WASI repos have inconsistent tag naming (v0.2.0, v0.1.0-draft)
+- File layouts vary (single file vs split across types.wit + preopens.wit)
+- Our local WIT files are single-file consolidations of upstream splits
+
+Fix approach: `toys check` verifies local files haven't been accidentally
+modified by comparing against a committed known-good hash stored in the
+registry manifest. `toys sync` is the command that fetches upstream and
+shows content diffs. Hash comparison stays local, not upstream.
+
+Add `hash` field to `toys-registry.toml` entries:
+```toml
+[wasi-keyvalue]
+source = "https://github.com/WebAssembly/wasi-keyvalue"
+version = "0.2.0"
+phase = 3
+file = "keyvalue.wit"
+hash = "sha256:abc123..."  # hash of our pinned local copy
+```
+
+`toys check` = local file hash vs manifest hash (fast, offline, reliable).
+`toys sync` = fetch upstream, show diff, user decides to bump.
+
 ### Still pending
+- Capability wiring fix (above — blocks swa8, swa9)
+- Toys check approach fix (above — blocks swa10 full)
 - swa2-6: keyvalue, filesystem, messaging split, http, sql trait alignments
 - swa8: child `src/lib.rs` code updates to use aligned trait names
 - swa9: capability enforcement tests
 - swa12: final compile proof
-
-### Known issues from build
-- `mother toys check` reports hash mismatches — upstream WASI repos have
-  inconsistent tagging/file layouts, complicating strict pinned-hash checks
-- Mother's capability mapping in `src/child/internal/mod.rs` uses legacy
-  toy aliases — new grant names need deeper wiring for enforcement

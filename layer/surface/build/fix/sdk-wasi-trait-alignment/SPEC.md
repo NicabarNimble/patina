@@ -451,19 +451,35 @@ These are built as part of this spec:
 
 ## Implementation Order
 
-1. **swa10-swa11** — Build toy registry manifest and Mother commands.
-   Establishes source of truth before changing any traits.
-2. **swa1** — Log: add level enum + context parameter.
-3. **swa2** — Keyvalue: add bucket resource, bytes values, cursor-based list.
-4. **swa3** — Filesystem: add descriptor model with preopened dirs. Fix
-   grant enforcement.
-5. **swa4** — Messaging: split from events, match wasi:messaging shape.
-6. **swa5** — HTTP: align with outgoing-handler shape.
-7. **swa6** — SQL: replace store/LakeBackend with wasi:sql shape.
-8. **swa7** — Document Patina delta toys in WIT files.
-9. **swa8** — Update all 6 canon children toy grants and code.
-10. **swa9** — Prove capability enforcement.
-11. **swa12** — Compile/test proof.
+### Done
+1. **swa10-swa11** — Toy registry manifest and Mother commands. ✓
+2. **swa1** — Logging trait aligned to WASI shape. ✓
+3. **swa7** — Patina delta toys documented in WIT files. ✓
+4. **swa8 partial** — Canon child manifests updated to aligned grant names. ✓
+
+### Next: runtime wiring (blocks all remaining work)
+5. **Capability wiring fix** — update `src/child/internal/mod.rs` string
+   comparisons from legacy names (`log`, `state`, `events`, `fetch`) to
+   aligned names (`logging`, `keyvalue`, `events` + `messaging`, `http`).
+   Add `filesystem` and `sql` grant checks. Without this, children with
+   aligned manifests don't get their toys at runtime.
+6. **Toys check fix** — change `mother toys check` from upstream hash
+   comparison to local pinned-hash comparison. Add `hash` field to
+   `toys-registry.toml`. `toys check` = offline local verification.
+   `toys sync` = upstream comparison (unchanged).
+
+### Then: trait alignments
+7. **swa2** — Keyvalue: bucket resource, bytes values, cursor-based list.
+8. **swa3** — Filesystem: descriptor model with preopened dirs.
+9. **swa4** — Messaging: split from events, match wasi:messaging shape.
+10. **swa5** — HTTP: align with outgoing-handler shape.
+11. **swa6** — SQL: replace store/LakeBackend with wasi:sql shape.
+
+### Then: children and proof
+12. **swa8 remainder** — Canon child `src/lib.rs` code updated to use
+    aligned traits.
+13. **swa9** — Capability enforcement tests.
+14. **swa12** — Compile/test proof.
 
 ## Verification
 
