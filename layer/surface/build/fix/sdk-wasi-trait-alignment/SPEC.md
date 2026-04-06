@@ -1,7 +1,7 @@
 ---
 type: fix
 id: sdk-wasi-trait-alignment
-status: draft
+status: complete
 created: 2026-04-06
 sessions:
   origin: 20260405-133644-511306000
@@ -554,15 +554,19 @@ emit.emit("patina", "session.started", data_json)
 
 // Replacement (messaging)
 let client = messaging.connect("events")?;
-messaging.send(&client, Message {
+messaging.send(&client, MessagingMessage {
     topic: "session.started".into(),
     content_type: Some("application/json".into()),
     data: data_json.as_bytes().to_vec(),
-    metadata: vec![("schema".into(), "patina".as_bytes().to_vec())],
+    metadata: vec![("schema".into(), "patina".into())],
 })
 ```
 
-- Remove: `EmitBackend`, `EmitToy`, `toy-emit` feature.
+- Remove: `EmitBackend`, `EmitToy`.
+- Migration: `toy-emit` feature currently gates `granted::messaging()`.
+  Add `toy-messaging` feature flag first, wire `granted::messaging()` to
+  it, migrate children from `toy-emit` to `toy-messaging`, then remove
+  `toy-emit`.
 - Children using emit switch to `messaging.send()` with structured messages.
 
 ### 4. `GithubBackend` — remove (http + child logic covers it)
@@ -588,11 +592,12 @@ let request = HttpRequest {
 let response = http.send(&request)?;
 ```
 
-- The GitHub child (`children/github-connector/`) should own the API
-  logic — pagination, rate limiting, response parsing.
+- A GitHub child should own the API logic — pagination, rate limiting,
+  response parsing. No standalone GitHub child directory exists today;
+  one would need to be created or the logic absorbed into an existing
+  child that handles GitHub interaction.
 - Mother provides `http` toy with credential injection via
   `[needs.scopes.http]`. The child handles the GitHub domain specifics.
-- Remove: `GithubBackend`, `GithubToy`, `toy-github` feature, host
-  implementation in `src/child/toy_host/github.rs`.
-- The existing GitHub child already exists — move API methods from host
-  into child code.
+- Remove: `GithubBackend`, `GithubToy`, `toy-github` feature. The
+  `GithubBackend` implementation is in `sdk/patina-sdk/src/child.rs`
+  (guest-side host bindings), not a standalone file.
