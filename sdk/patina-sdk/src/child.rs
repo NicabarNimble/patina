@@ -35,8 +35,6 @@ pub mod granted {
     pub type Messaging = toys::MessagingToy<GuestHost>;
     #[cfg(feature = "toy-state")]
     pub type State = toys::StateToy<GuestHost>;
-    #[cfg(feature = "toy-checkpoint")]
-    pub type Checkpoint = toys::CheckpointToy<GuestHost>;
     #[cfg(feature = "toy-lake")]
     pub type Lakes = toys::LakeCatalog<GuestHost>;
     #[cfg(feature = "toy-lake")]
@@ -101,11 +99,6 @@ pub mod granted {
     #[cfg(feature = "toy-state")]
     pub fn state() -> State {
         State::new()
-    }
-
-    #[cfg(feature = "toy-checkpoint")]
-    pub fn checkpoint() -> Checkpoint {
-        Checkpoint::new()
     }
 
     #[cfg(feature = "toy-lake")]
@@ -222,12 +215,11 @@ pub trait Child {
 pub mod host {
     use super::patina;
     use crate::toys::{
-        BeliefBackend, CheckpointBackend, ConnectorBackend, EmitBackend, EventBackend,
-        FetchBackend, GithubBackend, GraphBackend, HttpMethod, HttpRequest, HttpResponse,
-        IngressBackend, LakeBackend, LogBackend, LogLevel, MeasureBackend, MessagingBackend,
-        MessagingMessage, PendingEvent, QueryBackend, SessionBackend, SqlBackend, SqlRow,
-        SqlStatementBackend, SqlValue, StateBackend, StateBucketBackend, TaskBackend, TaskIntent,
-        TaskIntentKind,
+        BeliefBackend, ConnectorBackend, EmitBackend, EventBackend, FetchBackend, GithubBackend,
+        GraphBackend, HttpMethod, HttpRequest, HttpResponse, IngressBackend, LakeBackend,
+        LogBackend, LogLevel, MeasureBackend, MessagingBackend, MessagingMessage, PendingEvent,
+        QueryBackend, SessionBackend, SqlBackend, SqlRow, SqlStatementBackend, SqlValue,
+        StateBackend, StateBucketBackend, TaskBackend, TaskIntent, TaskIntentKind,
     };
     #[cfg(feature = "toy-peer")]
     use crate::toys::{PeerBackend, PeerEvent};
@@ -265,9 +257,6 @@ pub mod host {
         }
         pub fn state() -> crate::toys::StateToy<Self> {
             crate::toys::StateToy::new()
-        }
-        pub fn checkpoint() -> crate::toys::CheckpointToy<Self> {
-            crate::toys::CheckpointToy::new()
         }
         pub fn lake(name: &str) -> crate::toys::LakeToy<Self> {
             crate::toys::LakeCatalog::<Self>::new()
@@ -687,15 +676,6 @@ pub mod host {
                 keys: response.keys,
                 cursor: response.cursor,
             })
-        }
-    }
-
-    impl CheckpointBackend for GuestHost {
-        fn load(stream: &str) -> Option<String> {
-            state_get_string(&format!("checkpoint:{stream}"))
-        }
-        fn save(stream: &str, checkpoint_json: &str) -> Result<(), String> {
-            state_set_string(&format!("checkpoint:{stream}"), checkpoint_json)
         }
     }
 

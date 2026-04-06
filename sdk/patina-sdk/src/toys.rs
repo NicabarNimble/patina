@@ -171,11 +171,6 @@ pub trait MeasureBackend {
     fn record(verb: &str, tool: &str, mode: &str, metrics_json: &str) -> Result<(), String>;
 }
 
-pub trait CheckpointBackend {
-    fn load(stream: &str) -> Option<String>;
-    fn save(stream: &str, checkpoint_json: &str) -> Result<(), String>;
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SqlValue {
@@ -554,22 +549,6 @@ impl<B: MeasureBackend> MeasureToy<B> {
         metrics_json: &str,
     ) -> Result<(), String> {
         B::record(verb, tool, mode, metrics_json)
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct CheckpointToy<B>(std::marker::PhantomData<B>);
-impl<B> CheckpointToy<B> {
-    pub fn new() -> Self {
-        Self(std::marker::PhantomData)
-    }
-}
-impl<B: CheckpointBackend> CheckpointToy<B> {
-    pub fn load(&self, stream: &str) -> Option<String> {
-        B::load(stream)
-    }
-    pub fn save(&self, stream: &str, checkpoint_json: &str) -> Result<(), String> {
-        B::save(stream, checkpoint_json)
     }
 }
 
