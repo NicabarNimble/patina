@@ -39,7 +39,6 @@ toy-peer = []
 toy-graph = []
 toy-belief = []
 toy-session = []
-toy-layer-fs = []
 toy-git = []
 pipeline = ["dep:serde", "dep:serde_json"]
 

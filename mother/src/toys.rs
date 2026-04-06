@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
 pub mod git;
-pub mod layer_fs;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GrantedIngressSource {
