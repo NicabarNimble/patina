@@ -1,11 +1,15 @@
 package wasi:keyvalue@0.2.0;
 
 interface store {
-    type error = string;
+    variant error {
+        no-such-store,
+        access-denied,
+        other(string),
+    }
 
     record key-response {
         keys: list<string>,
-        cursor: option<string>,
+        cursor: option<u64>,
     }
 
     resource bucket {
@@ -13,7 +17,7 @@ interface store {
         set: func(key: string, value: list<u8>) -> result<_, error>;
         delete: func(key: string) -> result<_, error>;
         exists: func(key: string) -> result<bool, error>;
-        list-keys: func(cursor: option<string>) -> result<key-response, error>;
+        list-keys: func(cursor: option<u64>) -> result<key-response, error>;
     }
 
     open: func(identifier: string) -> result<bucket, error>;

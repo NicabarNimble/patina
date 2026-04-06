@@ -202,8 +202,8 @@ pub mod host {
     use super::patina;
     use crate::toys::{
         BeliefBackend, ConnectorBackend, EventBackend, FetchBackend, GraphBackend, HttpMethod,
-        HttpRequest, HttpResponse, IngressBackend, LakeBackend, LogBackend, LogLevel,
-        MeasureBackend, MessagingBackend, MessagingMessage, PendingEvent, QueryBackend,
+        HttpRequest, HttpResponse, IngressBackend, KeyvalueError, LakeBackend, LogBackend,
+        LogLevel, MeasureBackend, MessagingBackend, MessagingMessage, PendingEvent, QueryBackend,
         SessionBackend, SqlBackend, SqlRow, SqlStatementBackend, SqlValue, StateBackend,
         StateBucketBackend, TaskBackend, TaskIntent, TaskIntentKind,
     };
@@ -274,8 +274,18 @@ pub mod host {
         }
     }
 
-    fn state_bucket(identifier: &str) -> Result<super::wasi::keyvalue::store::Bucket, String> {
-        super::wasi::keyvalue::store::open(identifier)
+    fn keyvalue_error_from_wasi(error: super::wasi::keyvalue::store::Error) -> KeyvalueError {
+        match error {
+            super::wasi::keyvalue::store::Error::NoSuchStore => KeyvalueError::NoSuchStore,
+            super::wasi::keyvalue::store::Error::AccessDenied => KeyvalueError::AccessDenied,
+            super::wasi::keyvalue::store::Error::Other(message) => KeyvalueError::Other(message),
+        }
+    }
+
+    fn state_bucket(
+        identifier: &str,
+    ) -> Result<super::wasi::keyvalue::store::Bucket, KeyvalueError> {
+        super::wasi::keyvalue::store::open(identifier).map_err(keyvalue_error_from_wasi)
     }
 
     fn state_get_string(key: &str) -> Option<String> {
@@ -288,8 +298,11 @@ pub mod host {
     }
 
     fn state_set_string(key: &str, value: &str) -> Result<(), String> {
-        let bucket = state_bucket("default")?;
-        bucket.set(key, value.as_bytes())
+        let bucket = state_bucket("default").map_err(|error| error.to_string())?;
+        bucket
+            .set(key, value.as_bytes())
+            .map_err(keyvalue_error_from_wasi)
+            .map_err(|error| error.to_string())
     }
 
     fn messaging_publish(
@@ -615,30 +628,33 @@ pub mod host {
     impl StateBackend for GuestHost {
         type Bucket = GuestStateBucket;
 
-        fn open(identifier: &str) -> Result<Self::Bucket, String> {
+        fn open(identifier: &str) -> Result<Self::Bucket, KeyvalueError> {
             Ok(GuestStateBucket(state_bucket(identifier)?))
         }
     }
 
     impl StateBucketBackend for GuestStateBucket {
-        fn get(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
-            self.0.get(key)
+        fn get(&self, key: &str) -> Result<Option<Vec<u8>>, KeyvalueError> {
+            self.0.get(key).map_err(keyvalue_error_from_wasi)
         }
 
-        fn set(&self, key: &str, value: &[u8]) -> Result<(), String> {
-            self.0.set(key, value)
+        fn set(&self, key: &str, value: &[u8]) -> Result<(), KeyvalueError> {
+            self.0.set(key, value).map_err(keyvalue_error_from_wasi)
         }
 
-        fn delete(&self, key: &str) -> Result<(), String> {
-            self.0.delete(key)
+        fn delete(&self, key: &str) -> Result<(), KeyvalueError> {
+            self.0.delete(key).map_err(keyvalue_error_from_wasi)
         }
 
-        fn exists(&self, key: &str) -> Result<bool, String> {
-            self.0.exists(key)
+        fn exists(&self, key: &str) -> Result<bool, KeyvalueError> {
+            self.0.exists(key).map_err(keyvalue_error_from_wasi)
         }
 
-        fn list_keys(&self, cursor: Option<&str>) -> Result<crate::toys::KeyResponse, String> {
-            let response = self.0.list_keys(cursor)?;
+        fn list_keys(
+            &self,
+            cursor: Option<u64>,
+        ) -> Result<crate::toys::KeyResponse, KeyvalueError> {
+            let response = self.0.list_keys(cursor).map_err(keyvalue_error_from_wasi)?;
             Ok(crate::toys::KeyResponse {
                 keys: response.keys,
                 cursor: response.cursor,

@@ -171,19 +171,23 @@ mod bindings {
         serde_json::from_str::<Vec<u8>>(raw).unwrap_or_else(|_| raw.as_bytes().to_vec())
     }
 
+    fn keyvalue_other(error: impl ToString) -> wasi::keyvalue::store::Error {
+        wasi::keyvalue::store::Error::Other(error.to_string())
+    }
+
     impl wasi::keyvalue::store::Host for HostState {
         fn open(
             &mut self,
             identifier: String,
-        ) -> Result<wasmtime::component::Resource<wasi::keyvalue::store::Bucket>, String> {
+        ) -> Result<
+            wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+            wasi::keyvalue::store::Error,
+        > {
             if !self.grants.state_enabled {
-                return Err(format!(
-                    "keyvalue not granted for child '{}'",
-                    self.plugin_name
-                ));
+                return Err(wasi::keyvalue::store::Error::AccessDenied);
             }
             let handle = StateBucketHandle { identifier };
-            let rep = self.wasi_table.push(handle).map_err(|e| e.to_string())?;
+            let rep = self.wasi_table.push(handle).map_err(keyvalue_other)?;
             Ok(wasmtime::component::Resource::new_own(rep.rep()))
         }
     }
@@ -193,12 +197,13 @@ mod bindings {
             &mut self,
             bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
             key: String,
-        ) -> Result<Option<Vec<u8>>, String> {
+        ) -> Result<Option<Vec<u8>>, wasi::keyvalue::store::Error> {
             let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
-            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let handle = self.wasi_table.get(&rep).map_err(keyvalue_other)?;
             let scoped = bucket_scoped_key(&handle.identifier, &key);
             let value =
-                crate::child::toy_host::v2::state_get(&self.runtime, &self.plugin_name, &scoped)?;
+                crate::child::toy_host::v2::state_get(&self.runtime, &self.plugin_name, &scoped)
+                    .map_err(keyvalue_other)?;
             Ok(value.map(|raw| decode_state_value(&raw)))
         }
 
@@ -207,40 +212,43 @@ mod bindings {
             bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
             key: String,
             value: Vec<u8>,
-        ) -> Result<(), String> {
+        ) -> Result<(), wasi::keyvalue::store::Error> {
             let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
-            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let handle = self.wasi_table.get(&rep).map_err(keyvalue_other)?;
             let scoped = bucket_scoped_key(&handle.identifier, &key);
-            let encoded = encode_state_value(&value)?;
+            let encoded = encode_state_value(&value).map_err(keyvalue_other)?;
             crate::child::toy_host::v2::state_set(
                 &self.runtime,
                 &self.plugin_name,
                 &scoped,
                 &encoded,
             )
+            .map_err(keyvalue_other)
         }
 
         fn delete(
             &mut self,
             bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
             key: String,
-        ) -> Result<(), String> {
+        ) -> Result<(), wasi::keyvalue::store::Error> {
             let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
-            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let handle = self.wasi_table.get(&rep).map_err(keyvalue_other)?;
             let scoped = bucket_scoped_key(&handle.identifier, &key);
             crate::child::toy_host::v2::state_delete(&self.runtime, &self.plugin_name, &scoped)
+                .map_err(keyvalue_other)
         }
 
         fn exists(
             &mut self,
             bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
             key: String,
-        ) -> Result<bool, String> {
+        ) -> Result<bool, wasi::keyvalue::store::Error> {
             let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
-            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let handle = self.wasi_table.get(&rep).map_err(keyvalue_other)?;
             let scoped = bucket_scoped_key(&handle.identifier, &key);
             Ok(
-                crate::child::toy_host::v2::state_get(&self.runtime, &self.plugin_name, &scoped)?
+                crate::child::toy_host::v2::state_get(&self.runtime, &self.plugin_name, &scoped)
+                    .map_err(keyvalue_other)?
                     .is_some(),
             )
         }
@@ -248,10 +256,10 @@ mod bindings {
         fn list_keys(
             &mut self,
             bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
-            cursor: Option<String>,
-        ) -> Result<wasi::keyvalue::store::KeyResponse, String> {
+            cursor: Option<u64>,
+        ) -> Result<wasi::keyvalue::store::KeyResponse, wasi::keyvalue::store::Error> {
             let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
-            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let handle = self.wasi_table.get(&rep).map_err(keyvalue_other)?;
             let prefix = bucket_prefix(&handle.identifier);
             let mut keys = crate::child::toy_host::v2::state_list_prefix(
                 &self.runtime,
@@ -266,14 +274,11 @@ mod bindings {
                     .collect();
             }
             keys.sort();
-            let start = cursor
-                .as_deref()
-                .and_then(|c| c.parse::<usize>().ok())
-                .unwrap_or(0);
+            let start = cursor.and_then(|c| usize::try_from(c).ok()).unwrap_or(0);
             let page_size = 200usize;
             let end = std::cmp::min(start + page_size, keys.len());
             let next = if end < keys.len() {
-                Some(end.to_string())
+                Some(end as u64)
             } else {
                 None
             };
@@ -1194,7 +1199,10 @@ mod tests {
             "default".to_string(),
         )
         .unwrap_err();
-        assert!(err.contains("keyvalue not granted"), "got: {}", err);
+        assert!(matches!(
+            err,
+            super::bindings::wasi::keyvalue::store::Error::AccessDenied
+        ));
     }
 
     #[test]

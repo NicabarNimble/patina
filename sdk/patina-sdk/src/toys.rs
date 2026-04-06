@@ -56,22 +56,42 @@ pub trait LogBackend {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum KeyvalueError {
+    NoSuchStore,
+    AccessDenied,
+    Other(String),
+}
+
+impl std::fmt::Display for KeyvalueError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoSuchStore => write!(f, "no-such-store"),
+            Self::AccessDenied => write!(f, "access-denied"),
+            Self::Other(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl std::error::Error for KeyvalueError {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyResponse {
     pub keys: Vec<String>,
-    pub cursor: Option<String>,
+    pub cursor: Option<u64>,
 }
 
 pub trait StateBucketBackend {
-    fn get(&self, key: &str) -> Result<Option<Vec<u8>>, String>;
-    fn set(&self, key: &str, value: &[u8]) -> Result<(), String>;
-    fn delete(&self, key: &str) -> Result<(), String>;
-    fn exists(&self, key: &str) -> Result<bool, String>;
-    fn list_keys(&self, cursor: Option<&str>) -> Result<KeyResponse, String>;
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>, KeyvalueError>;
+    fn set(&self, key: &str, value: &[u8]) -> Result<(), KeyvalueError>;
+    fn delete(&self, key: &str) -> Result<(), KeyvalueError>;
+    fn exists(&self, key: &str) -> Result<bool, KeyvalueError>;
+    fn list_keys(&self, cursor: Option<u64>) -> Result<KeyResponse, KeyvalueError>;
 }
 
 pub trait StateBackend {
     type Bucket: StateBucketBackend;
-    fn open(identifier: &str) -> Result<Self::Bucket, String>;
+    fn open(identifier: &str) -> Result<Self::Bucket, KeyvalueError>;
 }
 
 #[cfg(feature = "toy-git")]
@@ -265,7 +285,7 @@ impl<B> StateToy<B> {
     }
 }
 impl<B: StateBackend> StateToy<B> {
-    pub fn open(&self, identifier: &str) -> Result<StateBucket<B::Bucket>, String> {
+    pub fn open(&self, identifier: &str) -> Result<StateBucket<B::Bucket>, KeyvalueError> {
         Ok(StateBucket(B::open(identifier)?))
     }
 
@@ -277,11 +297,11 @@ impl<B: StateBackend> StateToy<B> {
         self.set_string(key, value_json)
     }
 
-    pub fn get_bytes(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
+    pub fn get_bytes(&self, key: &str) -> Result<Option<Vec<u8>>, KeyvalueError> {
         self.open("default")?.get(key)
     }
 
-    pub fn put_bytes(&self, key: &str, value: &[u8]) -> Result<(), String> {
+    pub fn put_bytes(&self, key: &str, value: &[u8]) -> Result<(), KeyvalueError> {
         self.open("default")?.set(key, value)
     }
 
@@ -290,25 +310,28 @@ impl<B: StateBackend> StateToy<B> {
     }
 
     pub fn set_string(&self, key: &str, value: &str) -> Result<(), String> {
-        self.open("default")?.set_string(key, value)
+        self.open("default")
+            .map_err(|error| error.to_string())?
+            .set_string(key, value)
+            .map_err(|error| error.to_string())
     }
 
-    pub fn delete(&self, key: &str) -> Result<(), String> {
+    pub fn delete(&self, key: &str) -> Result<(), KeyvalueError> {
         self.open("default")?.delete(key)
     }
 
-    pub fn exists(&self, key: &str) -> Result<bool, String> {
+    pub fn exists(&self, key: &str) -> Result<bool, KeyvalueError> {
         self.open("default")?.exists(key)
     }
 
     pub fn list_prefix(&self, prefix: &str) -> Vec<String> {
         let mut all: Vec<String> = Vec::new();
-        let mut cursor: Option<String> = None;
+        let mut cursor: Option<u64> = None;
         loop {
             let Ok(bucket) = self.open("default") else {
                 return Vec::new();
             };
-            let Ok(page) = bucket.list_keys(cursor.as_deref()) else {
+            let Ok(page) = bucket.list_keys(cursor) else {
                 return all.into_iter().filter(|k| k.starts_with(prefix)).collect();
             };
             all.extend(page.keys);
@@ -326,23 +349,23 @@ impl<B: StateBackend> StateToy<B> {
 pub struct StateBucket<B>(B);
 
 impl<B: StateBucketBackend> StateBucket<B> {
-    pub fn get(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
+    pub fn get(&self, key: &str) -> Result<Option<Vec<u8>>, KeyvalueError> {
         self.0.get(key)
     }
 
-    pub fn set(&self, key: &str, value: &[u8]) -> Result<(), String> {
+    pub fn set(&self, key: &str, value: &[u8]) -> Result<(), KeyvalueError> {
         self.0.set(key, value)
     }
 
-    pub fn delete(&self, key: &str) -> Result<(), String> {
+    pub fn delete(&self, key: &str) -> Result<(), KeyvalueError> {
         self.0.delete(key)
     }
 
-    pub fn exists(&self, key: &str) -> Result<bool, String> {
+    pub fn exists(&self, key: &str) -> Result<bool, KeyvalueError> {
         self.0.exists(key)
     }
 
-    pub fn list_keys(&self, cursor: Option<&str>) -> Result<KeyResponse, String> {
+    pub fn list_keys(&self, cursor: Option<u64>) -> Result<KeyResponse, KeyvalueError> {
         self.0.list_keys(cursor)
     }
 
@@ -355,6 +378,7 @@ impl<B: StateBucketBackend> StateBucket<B> {
 
     pub fn set_string(&self, key: &str, value: &str) -> Result<(), String> {
         self.set(key, value.as_bytes())
+            .map_err(|error| error.to_string())
     }
 }
 
