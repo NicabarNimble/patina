@@ -40,7 +40,7 @@ exit_criteria:
     text: "SDK guidance extracted from three MVPs: child authoring, toy selection, composition patterns, registry documentation."
     checked: false
   - id: ccc7-deterministic-assembly
-    text: "An agent composes children for a stated objective using the recipe format. Demonstrated on at least one objective not in the three MVPs."
+    text: "An agent composes children into a pando for a stated objective using the pando format. Demonstrated on at least one objective not in the three MVPs."
     checked: false
 ---
 # feat: child construction canon
@@ -69,9 +69,9 @@ Three tiers of people use this system:
 - Forcing one composition for every objective.
 - Adding runtime capability escalation or dynamic toy discovery.
 
-## Only Three Things
+## Four Concepts
 
-The architecture has exactly three concepts. Nothing else.
+The architecture has exactly four concepts. Nothing else.
 
 **Mother** — authority boundary, orchestration, observation.
 - Grants toys to children
@@ -79,6 +79,7 @@ The architecture has exactly three concepts. Nothing else.
 - Mediates all external access (credentials, storage, network)
 - Observes children at the boundary (metrics, telemetry)
 - Routes events between children (event bus)
+- Approves pando command registrations, rejects collisions
 - Upgrades bring new toys
 
 **Children** — WASM components that do compute.
@@ -88,6 +89,7 @@ The architecture has exactly three concepts. Nothing else.
 - Declare all needs in manifest
 - Configured by manifest for specific use (same child, different config = different behavior)
 - Built by developers, composed by users/agents, orchestrated by Mother
+- Children are internal compute — they have no user-facing surface on their own
 
 **Toys** — controlled openings in the WASM sandbox wall.
 - The ONLY way a child touches the outside world
@@ -95,6 +97,15 @@ The architecture has exactly three concepts. Nothing else.
 - WASI standard where available, Patina delta where not
 - New toys require platform-level approval (like WASI proposals)
 - Toy litmus test: "Why can't the child do this from pure WASM compute?" If it can, it's child code, not a toy.
+
+**Pandos** — composed groups of children that appear as one capability.
+- Named after the Pando aspen colony — 47,000 trees that are one organism connected by shared roots through Mother
+- A pando defines: which children, how they're wired, what CLI commands they expose, and what measurement contracts they declare
+- Pandos are the user-facing and agent-facing surface — users install pandos, not individual children
+- A pando's CLI commands are registered with Mother; Mother rejects collisions between pandos
+- The same children can appear in different pandos with different configuration
+- A pando is defined by `pando.toml` (children, composition, commands, measurement contract)
+- Children are libraries; pandos are apps
 
 ## Hard Rules (normative)
 
@@ -202,30 +213,31 @@ Patina children are WASM components. They use WIT interfaces. They compile to `w
 - **Inbound portability** — WASM components from other ecosystems can run in Mother if they import compatible interfaces.
 - **Upstream contribution** — Patina's custom toys, composition model, and observation patterns can inform Component Model standards.
 
-## Objective Recipe Format
+## Pando Format
 
-Every objective recipe defines:
+Every pando is defined by a `pando.toml` manifest:
 
-- `objective_id`
-- `user_intent`
-- `children` (list of children from registry with configuration and manifest overrides)
-- `composition` (how children connect — event stream wiring)
-- `measurement_contract` (two tiers: Mother-guaranteed + child-declared)
-- `acceptance_gates` (which tier observes each gate)
+- `name` — pando identifier (e.g., `spec`, `folder-text-to-parquet`)
+- `description` — what this pando does for the user
+- `children` — list of children from registry with configuration and manifest overrides
+- `composition` — how children connect (event stream wiring)
+- `commands` — CLI commands this pando exposes to the user (registered with Mother)
+- `measurement_contract` — two tiers: Mother-guaranteed + child-declared
+- `acceptance_gates` — which tier observes each gate
 - `failure_recovery`
 
 Domain-specific fields (when relevant):
 
-- `input_sources` / `expected_outputs` (data objectives)
-- `checkpoint_plan` / `dedupe_strategy` (stateful objectives)
-- `trust_model` (multi-Mother or P2P objectives)
-- `encryption_requirements` (privacy-sensitive objectives)
+- `input_sources` / `expected_outputs` (data pandos)
+- `checkpoint_plan` / `dedupe_strategy` (stateful pandos)
+- `trust_model` (multi-Mother or P2P pandos)
+- `encryption_requirements` (privacy-sensitive pandos)
 
-### Validated recipe — `folder-text-to-parquet`
+### Validated pando — `folder-text-to-parquet`
 
 ```yaml
-objective_id: folder-text-to-parquet
-user_intent: "Ingest local .txt/.md files into parquet with provenance and catalog registration."
+name: folder-text-to-parquet
+description: "Ingest local .txt/.md files into parquet with provenance and catalog registration."
 children:
   - child: file-system-monitor
     action: scan
@@ -367,28 +379,28 @@ Specs are living documents. They start as hypotheses and converge on truth throu
 ### Phase A — canon lock
 
 - Publish hard rules (1-8) as normative canon.
-- Publish children registry structure and recipe format.
+- Publish children registry structure and pando format.
 
 ### Phase B — build core children (MVP 1)
 
-- `folder-text-to-parquet` child spec builds 6 core reusable children.
+- `folder-text-to-parquet` pando builds 6 core reusable children.
 - Each child proven end-to-end with real data and measurements.
 
 ### Phase C — prove reuse (MVP 2)
 
-- `multiproject-belief-share` child spec reuses 4 children from MVP 1, builds 3 federation children.
+- `multiproject-belief-share` pando reuses 4 children from MVP 1, builds 3 federation children.
 - Reuse failures documented and children adjusted.
 
 ### Phase D — prove cross-domain (MVP 3)
 
-- `e2ee-multimother-chat` child spec reuses children from both prior MVPs, builds 2 P2P children.
+- `e2ee-multimother-chat` pando reuses children from both prior MVPs, builds 2 P2P children.
 - Registry proven across pipeline, federation, and P2P domains.
 
 ### Phase E — SDK extraction
 
 - SDK guidance extracted from all three MVPs.
-- Child authoring guide, composition patterns, registry documentation.
-- Deterministic assembly demonstrated: agent composes children for a new objective.
+- Child authoring guide, toy selection, pando composition patterns, registry documentation.
+- Deterministic assembly demonstrated: agent composes children into a pando for a new objective.
 
 ## Verification
 
