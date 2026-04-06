@@ -14,82 +14,127 @@ related:
 exit_criteria:
 
   - id: uts1-pull-command
-    text: "`patina mother toys pull <name>` fetches the upstream WIT file(s) for a WASI toy, replaces the local copy, and updates the pinned hash in `toys-registry.toml`. Patina delta toys are rejected."
+    text: "`patina mother toys pull <name>` fetches WIT file(s) from the upstream WASI repo at the pinned release tag, replaces the local copy, and updates the pinned hash in `toys-registry.toml`. Patina delta toys are rejected."
     checked: false
 
-  - id: uts2-multi-file-handling
-    text: "Pull handles upstream repos that split WIT across multiple files (e.g., keyvalue has `store.wit`, `atomic.wit`, `batch.wit`, `watch.wit`, `world.wit`; filesystem has `types.wit`, `preopens.wit`, `world.wit`). Local consolidated file is replaced with the upstream content we need."
+  - id: uts2-sync-reports-releases
+    text: "`patina mother toys sync` checks upstream WASI repos for release tags newer than the pinned version. Reports: current pinned version, latest release available, age. Does not modify files."
     checked: false
 
-  - id: uts3-pull-all
-    text: "`patina mother toys pull --all` pulls all WASI toys in the registry. Reports which succeeded, which failed, which had no changes."
+  - id: uts3-check-uses-registry-hash
+    text: "`patina mother toys check` compares local file hash against registry pinned hash. Offline, no HTTP. Passes when local files match what was last pulled."
     checked: false
 
-  - id: uts4-verify-after-pull
-    text: "After pull, the command runs `cargo check -q -p patina-sdk --features child` and reports pass/fail. If check fails, prints guidance: 'upstream change broke SDK — review diff, update traits, or revert with git checkout'."
+  - id: uts4-pull-all
+    text: "`patina mother toys pull --all` pulls all WASI toys at their pinned versions. Reports per-toy: success, no-change, or failure."
     checked: false
 
-  - id: uts5-upstream-files-current
-    text: "All 6 WASI toy WIT files updated to current upstream content. `mother toys sync` reports no diffs. `mother toys check` reports all green."
+  - id: uts5-multi-file-mapping
+    text: "Each WASI toy entry in `toys-registry.toml` declares which upstream file(s) to fetch and how they map to the local file. Per-toy mapping handles repos that split WIT across multiple files."
     checked: false
 
-  - id: uts6-error-type-alignment
-    text: "Where upstream WASI changed error types (e.g., keyvalue `error` from `type error = string` to `variant error { no-such-store, access-denied, other(string) }`), SDK traits and host implementations are updated to match."
+  - id: uts6-pull-then-verify
+    text: "After `pull`, the command runs `cargo check -q -p patina-sdk --features child`. If check fails: local files are reverted, registry hash unchanged, error printed with guidance. No half-updated state."
     checked: false
 
-  - id: uts7-compile-proof
-    text: "SDK, 6 canon children, `patina-ai`, and `mother` all compile. `cargo test -q --lib` passes."
+  - id: uts7-upstream-current
+    text: "All 6 WASI toy WIT files updated to their pinned release versions. `mother toys check` all green. If upstream changed error types or interface shapes, SDK traits and host implementations updated to match."
+    checked: false
+
+  - id: uts8-compile-proof
+    text: "SDK, 6 canon children (`patina-ai-child-*`), `patina-ai`, and `mother` all compile. `cargo test -q --lib` passes."
     checked: false
 ---
 # fix: SDK Upstream Toy Sync
 
 ## Problem
 
-WASI toy WIT files in `wit/toys/deps/` were hand-copied and are now stale.
-`mother toys sync` shows 3 of 6 WASI toys have upstream changes (filesystem,
-http, keyvalue). Our local files are missing doc comments, have simplified
-error types, and may be missing interface additions.
+WASI toy WIT files in `wit/toys/deps/` were hand-copied and are stale.
+`mother toys sync` shows 3 of 6 WASI toys have upstream changes. There
+is no command to pull updates. Updating requires manual work.
 
-There is no command to pull upstream changes — `toys sync` reports diffs but
-`toys pull` doesn't exist. Updating requires manual curl, manual file
-replacement, manual hash updates.
+## Pin Model
 
-## Root Cause
+Every WASI toy pins to a release version. This is the only truth.
 
-`mother toys sync` and `mother toys check` were built but `mother toys pull`
-was not. The sync/check/pull triad is incomplete.
-
-Additionally, upstream WASI repos split WIT across multiple files (e.g.,
-`store.wit` + `atomic.wit` + `world.wit`) while our local copies are
-single consolidated files. Pull needs to handle this mapping.
-
-## Current State
-
-From `mother toys sync`:
-```
-diff wasi-filesystem   pinned != latest
-diff wasi-http         pinned != latest
-diff wasi-keyvalue     pinned != latest
-ok   wasi-logging      no upstream changes
-ok   wasi-messaging    no upstream changes
-ok   wasi-sql          no upstream changes
+```toml
+[wasi-keyvalue]
+source = "https://github.com/WebAssembly/wasi-keyvalue"
+version = "0.2.0"        # pinned release version
+hash = "sha256:abc..."    # hash of local file after last pull
+upstream_files = ["wit/store.wit"]  # which files to fetch from this tag
+file = "keyvalue.wit"     # local consolidated file
 ```
 
-Known keyvalue divergence: our `error` is `type error = string`, upstream
-uses `variant error { no-such-store, access-denied, other(string) }`.
+- **`toys check`** — local file hash vs registry hash. Offline.
+- **`toys sync`** — queries upstream repo for release tags newer than
+  pinned version. Reports what's available. Does not modify files.
+- **`toys pull <name>`** — fetches from the pinned release tag (e.g.,
+  `v0.2.0`), replaces local file, updates registry hash. Verifies SDK
+  compiles. Reverts on failure.
+- **`toys pull --all`** — pulls all WASI toys at their pinned versions.
 
-## Fix
+To upgrade a toy version: edit `version` in the registry, then
+`toys pull <name>`. Same as bumping a version in Cargo.toml and
+running cargo update.
 
-Add `mother toys pull` command. Pull upstream, replace local, update hash,
-verify compilation. If upstream changes break the SDK, the developer
-updates traits and host implementations to match — then re-verifies.
+## Multi-File Mapping
+
+Upstream WASI repos split WIT across multiple files. Each registry
+entry declares which upstream files map to our local file:
+
+```toml
+[wasi-keyvalue]
+upstream_files = ["wit/store.wit"]
+file = "keyvalue.wit"
+
+[wasi-filesystem]
+upstream_files = ["wit/types.wit", "wit/preopens.wit"]
+file = "filesystem.wit"
+
+[wasi-http]
+upstream_files = ["wit/types.wit", "wit/handler.wit"]
+file = "http.wit"
+
+[wasi-logging]
+upstream_files = ["wit/logging.wit"]
+file = "logging.wit"
+
+[wasi-messaging]
+upstream_files = ["wit/messaging.wit"]
+file = "messaging.wit"
+
+[wasi-sql]
+upstream_files = ["wit/readwrite.wit"]
+file = "sql.wit"
+```
+
+For single-upstream-file toys: direct replacement. For multi-file toys:
+concatenate in declared order with the package declaration from the
+first file.
+
+## Pull Atomicity
+
+`toys pull` is transactional per toy:
+
+1. Fetch upstream file(s) from pinned tag to temp
+2. Compose into local file (in temp)
+3. Replace local file
+4. Update registry hash
+5. Run `cargo check -q -p patina-sdk --features child`
+6. If check passes: done
+7. If check fails: revert local file to pre-pull content, restore
+   registry hash, print error
+
+`pull --all` runs each toy independently. One failure does not revert
+others that succeeded. Summary reports per-toy status.
 
 ## Verification
 
 ```bash
 patina mother toys pull --all
-patina mother toys sync      # should show no diffs
-patina mother toys check     # should show all green
+patina mother toys sync       # should show: pinned versions match latest, or newer available
+patina mother toys check      # should show: all green
 cargo check -q -p patina-sdk --features child
 for child in file-system-monitor content-extractor schema-enforcer \
              dedup-filter record-writer lakehouse-catalog; do
