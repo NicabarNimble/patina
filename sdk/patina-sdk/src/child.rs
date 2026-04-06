@@ -211,13 +211,16 @@ pub mod host {
         BeliefBackend, CheckpointBackend, ConnectorBackend, EmitBackend, EventBackend,
         FetchBackend, GithubBackend, GraphBackend, IngressBackend, LakeBackend, LogBackend,
         LogLevel, MeasureBackend, PendingEvent, QueryBackend, SessionBackend, StateBackend,
-        TaskBackend, TaskIntent, TaskIntentKind,
+        StateBucketBackend, TaskBackend, TaskIntent, TaskIntentKind,
     };
     #[cfg(feature = "toy-peer")]
     use crate::toys::{PeerBackend, PeerEvent};
 
     #[derive(Debug, Clone, Copy, Default)]
     pub struct GuestHost;
+
+    #[derive(Debug)]
+    pub struct GuestStateBucket(super::wasi::keyvalue::store::Bucket);
 
     impl GuestHost {
         pub fn log() -> crate::toys::LogToy<Self> {
@@ -274,12 +277,12 @@ pub mod host {
         }
     }
 
-    fn state_bucket() -> Result<super::wasi::keyvalue::store::Bucket, String> {
-        super::wasi::keyvalue::store::open("default")
+    fn state_bucket(identifier: &str) -> Result<super::wasi::keyvalue::store::Bucket, String> {
+        super::wasi::keyvalue::store::open(identifier)
     }
 
     fn state_get_string(key: &str) -> Option<String> {
-        let bucket = state_bucket().ok()?;
+        let bucket = state_bucket("default").ok()?;
         match bucket.get(key) {
             Ok(Some(bytes)) => String::from_utf8(bytes).ok(),
             Ok(None) => None,
@@ -288,34 +291,8 @@ pub mod host {
     }
 
     fn state_set_string(key: &str, value: &str) -> Result<(), String> {
-        let bucket = state_bucket()?;
+        let bucket = state_bucket("default")?;
         bucket.set(key, value.as_bytes())
-    }
-
-    fn state_delete_key(key: &str) -> Result<(), String> {
-        let bucket = state_bucket()?;
-        bucket.delete(key)
-    }
-
-    fn state_list_keys() -> Vec<String> {
-        let Ok(bucket) = state_bucket() else {
-            return Vec::new();
-        };
-        let mut cursor: Option<String> = None;
-        let mut out = Vec::new();
-
-        loop {
-            let Ok(response) = bucket.list_keys(cursor.as_deref()) else {
-                break;
-            };
-            out.extend(response.keys);
-            if response.cursor.is_none() {
-                break;
-            }
-            cursor = response.cursor;
-        }
-
-        out
     }
 
     fn messaging_publish(
@@ -521,20 +498,36 @@ pub mod host {
     }
 
     impl StateBackend for GuestHost {
-        fn get(key: &str) -> Option<String> {
-            state_get_string(key)
+        type Bucket = GuestStateBucket;
+
+        fn open(identifier: &str) -> Result<Self::Bucket, String> {
+            Ok(GuestStateBucket(state_bucket(identifier)?))
         }
-        fn put(key: &str, value_json: &str) -> Result<(), String> {
-            state_set_string(key, value_json)
+    }
+
+    impl StateBucketBackend for GuestStateBucket {
+        fn get(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
+            self.0.get(key)
         }
-        fn delete(key: &str) -> Result<(), String> {
-            state_delete_key(key)
+
+        fn set(&self, key: &str, value: &[u8]) -> Result<(), String> {
+            self.0.set(key, value)
         }
-        fn list_prefix(prefix: &str) -> Vec<String> {
-            state_list_keys()
-                .into_iter()
-                .filter(|k| k.starts_with(prefix))
-                .collect()
+
+        fn delete(&self, key: &str) -> Result<(), String> {
+            self.0.delete(key)
+        }
+
+        fn exists(&self, key: &str) -> Result<bool, String> {
+            self.0.exists(key)
+        }
+
+        fn list_keys(&self, cursor: Option<&str>) -> Result<crate::toys::KeyResponse, String> {
+            let response = self.0.list_keys(cursor)?;
+            Ok(crate::toys::KeyResponse {
+                keys: response.keys,
+                cursor: response.cursor,
+            })
         }
     }
 

@@ -163,6 +163,14 @@ mod bindings {
         }
     }
 
+    fn encode_state_value(value: &[u8]) -> Result<String, String> {
+        serde_json::to_string(value).map_err(|error| error.to_string())
+    }
+
+    fn decode_state_value(raw: &str) -> Vec<u8> {
+        serde_json::from_str::<Vec<u8>>(raw).unwrap_or_else(|_| raw.as_bytes().to_vec())
+    }
+
     impl wasi::keyvalue::store::Host for HostState {
         fn open(
             &mut self,
@@ -191,7 +199,7 @@ mod bindings {
             let scoped = bucket_scoped_key(&handle.identifier, &key);
             let value =
                 crate::child::toy_host::v2::state_get(&self.runtime, &self.plugin_name, &scoped)?;
-            Ok(value.map(|v| v.into_bytes()))
+            Ok(value.map(|raw| decode_state_value(&raw)))
         }
 
         fn set(
@@ -203,9 +211,13 @@ mod bindings {
             let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
             let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
             let scoped = bucket_scoped_key(&handle.identifier, &key);
-            let value = String::from_utf8(value)
-                .map_err(|e| format!("state value for '{}' is not valid UTF-8: {}", key, e))?;
-            crate::child::toy_host::v2::state_set(&self.runtime, &self.plugin_name, &scoped, &value)
+            let encoded = encode_state_value(&value)?;
+            crate::child::toy_host::v2::state_set(
+                &self.runtime,
+                &self.plugin_name,
+                &scoped,
+                &encoded,
+            )
         }
 
         fn delete(

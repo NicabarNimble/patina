@@ -55,11 +55,23 @@ pub trait LogBackend {
     fn log(level: LogLevel, context: &str, message: &str);
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyResponse {
+    pub keys: Vec<String>,
+    pub cursor: Option<String>,
+}
+
+pub trait StateBucketBackend {
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>, String>;
+    fn set(&self, key: &str, value: &[u8]) -> Result<(), String>;
+    fn delete(&self, key: &str) -> Result<(), String>;
+    fn exists(&self, key: &str) -> Result<bool, String>;
+    fn list_keys(&self, cursor: Option<&str>) -> Result<KeyResponse, String>;
+}
+
 pub trait StateBackend {
-    fn get(key: &str) -> Option<String>;
-    fn put(key: &str, value_json: &str) -> Result<(), String>;
-    fn delete(key: &str) -> Result<(), String>;
-    fn list_prefix(prefix: &str) -> Vec<String>;
+    type Bucket: StateBucketBackend;
+    fn open(identifier: &str) -> Result<Self::Bucket, String>;
 }
 
 #[cfg(feature = "toy-layer-fs")]
@@ -263,25 +275,96 @@ impl<B> StateToy<B> {
     }
 }
 impl<B: StateBackend> StateToy<B> {
-    pub fn get(&self, key: &str) -> Option<String> {
-        B::get(key)
+    pub fn open(&self, identifier: &str) -> Result<StateBucket<B::Bucket>, String> {
+        Ok(StateBucket(B::open(identifier)?))
     }
+
+    pub fn get(&self, key: &str) -> Option<String> {
+        self.get_string(key)
+    }
+
     pub fn put(&self, key: &str, value_json: &str) -> Result<(), String> {
-        B::put(key, value_json)
+        self.set_string(key, value_json)
+    }
+
+    pub fn get_bytes(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
+        self.open("default")?.get(key)
+    }
+
+    pub fn put_bytes(&self, key: &str, value: &[u8]) -> Result<(), String> {
+        self.open("default")?.set(key, value)
     }
 
     pub fn get_string(&self, key: &str) -> Option<String> {
-        B::get(key)
+        self.open("default").ok()?.get_string(key)
     }
 
     pub fn set_string(&self, key: &str, value: &str) -> Result<(), String> {
-        B::put(key, value)
+        self.open("default")?.set_string(key, value)
     }
+
     pub fn delete(&self, key: &str) -> Result<(), String> {
-        B::delete(key)
+        self.open("default")?.delete(key)
     }
+
+    pub fn exists(&self, key: &str) -> Result<bool, String> {
+        self.open("default")?.exists(key)
+    }
+
     pub fn list_prefix(&self, prefix: &str) -> Vec<String> {
-        B::list_prefix(prefix)
+        let mut all: Vec<String> = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let Ok(bucket) = self.open("default") else {
+                return Vec::new();
+            };
+            let Ok(page) = bucket.list_keys(cursor.as_deref()) else {
+                return all.into_iter().filter(|k| k.starts_with(prefix)).collect();
+            };
+            all.extend(page.keys);
+            if let Some(next) = page.cursor {
+                cursor = Some(next);
+            } else {
+                break;
+            }
+        }
+        all.into_iter().filter(|k| k.starts_with(prefix)).collect()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct StateBucket<B>(B);
+
+impl<B: StateBucketBackend> StateBucket<B> {
+    pub fn get(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
+        self.0.get(key)
+    }
+
+    pub fn set(&self, key: &str, value: &[u8]) -> Result<(), String> {
+        self.0.set(key, value)
+    }
+
+    pub fn delete(&self, key: &str) -> Result<(), String> {
+        self.0.delete(key)
+    }
+
+    pub fn exists(&self, key: &str) -> Result<bool, String> {
+        self.0.exists(key)
+    }
+
+    pub fn list_keys(&self, cursor: Option<&str>) -> Result<KeyResponse, String> {
+        self.0.list_keys(cursor)
+    }
+
+    pub fn get_string(&self, key: &str) -> Option<String> {
+        self.get(key)
+            .ok()
+            .flatten()
+            .and_then(|bytes| String::from_utf8(bytes).ok())
+    }
+
+    pub fn set_string(&self, key: &str, value: &str) -> Result<(), String> {
+        self.set(key, value.as_bytes())
     }
 }
 
