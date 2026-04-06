@@ -1,7 +1,7 @@
 ---
 type: fix
 id: sdk-upstream-toy-sync
-status: draft
+status: complete
 created: 2026-04-06
 sessions:
   origin: 20260405-133644-511306000
@@ -15,43 +15,43 @@ exit_criteria:
 
   - id: uts1-pull-command
     text: "`patina mother toys pull <name>` fetches WIT file(s) from the upstream WASI repo at the pinned release tag, replaces the local copy, and updates the pinned hash in `toys-registry.toml`. Patina delta toys are rejected."
-    checked: false
+    checked: true
 
   - id: uts2-sync-reports-releases
     text: "`patina mother toys sync` queries GitHub Releases API for each WASI toy repo. Filters to stable releases only (no prereleases, no drafts). Normalizes `v` prefix (v0.2.0 → 0.2.0). Sorts by semver. Reports per toy: pinned version, latest stable release, age. On API failure or rate limit: reports error for that toy, continues to next. Does not modify files."
-    checked: false
+    checked: true
 
   - id: uts3-check-uses-registry-hash
     text: "`patina mother toys check` compares local file hash against registry pinned hash. Offline, no HTTP. Passes when local files match what was last pulled."
-    checked: false
+    checked: true
 
   - id: uts4-pull-all
     text: "`patina mother toys pull --all` pulls all WASI toys at their pinned versions. Reports per-toy: success, no-change, or failure."
-    checked: false
+    checked: true
 
   - id: uts5-multi-file-mapping
     text: "Each WASI toy entry in `toys-registry.toml` declares which upstream file(s) to fetch and how they map to the local file. Per-toy mapping handles repos that split WIT across multiple files."
-    checked: false
+    checked: true
 
   - id: uts6-pull-then-verify
     text: "After `pull`, the command runs `cargo check -q -p patina-sdk --features child`. If check fails: local files are reverted, registry hash unchanged, error printed with guidance. No half-updated state."
-    checked: false
+    checked: true
 
   - id: uts7-upstream-pulled
     text: "All 6 WASI toy WIT files pulled at their pinned release versions. `mother toys check` all green. Local files match upstream release content."
-    checked: false
+    checked: true
 
   - id: uts8-trait-divergences-fixed
     text: "If pulled upstream WIT changed error types or interface shapes (e.g., keyvalue `error` from `type error = string` to `variant error`), SDK traits and host implementations are updated to match. This is separate work from the pull command itself."
-    checked: false
+    checked: true
 
   - id: uts9-command-tests
     text: "Tests exist for: pull rejects patina delta toys, pull updates registry hash on success, pull reverts on compile failure, check passes after pull, `--all` reports per-toy status and reverts all on compile failure. Sync tests: prerelease/draft tags filtered, `v` prefix normalized, API failure reports error and continues to next toy, rate limit handled gracefully."
-    checked: false
+    checked: true
 
   - id: uts10-compile-proof
     text: "SDK, 6 canon children (`patina-ai-child-*`), `patina-ai`, and `mother` all pass `cargo check -q`. `cargo test -q --lib` passes."
-    checked: false
+    checked: true
 ---
 # fix: SDK Upstream Toy Sync
 

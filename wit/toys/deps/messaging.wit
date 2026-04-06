@@ -1,19 +1,29 @@
-package wasi:messaging@0.2.0;
+package wasi:messaging@0.2.0-draft;
 
-interface types {
-    record message {
-        topic: string,
-        content-type: option<string>,
-        data: list<u8>,
-        metadata: list<tuple<string, string>>,
-    }
+/// The `imports` world defines the interfaces that the component will import from the host.
+/// It includes the `producer` interface for sending messages.
+world imports {
+  import producer;
 }
 
-interface producer {
-    use types.{message};
+/// The `imports-request-reply` world extends `imports` by including the `request-reply` interface.
+/// This allows the component to perform request/reply messaging patterns.
+world imports-request-reply {
+  include imports;
+  import request-reply;
+}
 
-    resource client;
+/// The `messaging-request-reply` world combines `imports-request-reply` with the `incoming-handler`
+/// export. This setup allows the host to interact with the component for both sending messages and
+/// handling incoming messages with request/reply capabilities.
+world messaging-request-reply {
+  include imports-request-reply;
+  export incoming-handler;
+}
 
-    connect: func(name: string) -> result<client, string>;
-    send: func(client: borrow<client>, message: message) -> result<u64, string>;
+/// The `messaging-core` world includes the basic `imports` and exports the `incoming-handler`,
+/// enabling the component to handle incoming messages without request/reply capabilities.
+world messaging-core {
+  include imports;
+  export incoming-handler;
 }

@@ -1,86 +1,89 @@
-# Tier 1: WASI standard toys
-[wasi-logging]
-source = "https://github.com/WebAssembly/wasi-logging"
-version = "0.1.0"
-phase = 2
-file = "logging.wit"
-upstream_files = ["wit/logging.wit"]
-hash = "sha256:2acc73830f59d4317b7150182a164d7a0c25446980be535e1be32331b39e46af"
-
-[wasi-keyvalue]
-source = "https://github.com/WebAssembly/wasi-keyvalue"
-version = "0.2.0"
-phase = 3
-file = "keyvalue.wit"
-upstream_files = ["wit/store.wit"]
-hash = "sha256:1a6e083f51fe14bf02d62550e632b0746da908352fd49cc90404fa9f6fa2e050"
-
-[wasi-filesystem]
-source = "https://github.com/WebAssembly/wasi-filesystem"
-version = "0.2.6"
-phase = 3
-file = "filesystem.wit"
-upstream_files = ["wit/types.wit", "wit/preopens.wit"]
-hash = "sha256:6542c609ef56df7712b06f6480df33347c04173095d113f1153c6e4d78c181b9"
-
-[wasi-http]
-source = "https://github.com/WebAssembly/wasi-http"
-version = "0.2.6"
-phase = 3
-file = "http.wit"
-upstream_files = ["wit/types.wit", "wit/handler.wit"]
-hash = "sha256:ee46f5e8d599f8498a097a49f34d6b694d001932b56069008b8f20623e6d8902"
-
-# Tier 2: WASI proposal toys
-[wasi-messaging]
-source = "https://github.com/WebAssembly/wasi-messaging"
-version = "0.2.0"
-phase = 1
-file = "messaging.wit"
-upstream_files = ["wit/messaging.wit"]
-hash = "sha256:7dd7237beb0c1cacf23c4b648a405a10e0af92e3c3e4f41f022172deb2653932"
-
-[wasi-sql]
-source = "https://github.com/WebAssembly/wasi-sql"
-version = "0.1.0"
-phase = 1
-file = "sql.wit"
-upstream_files = ["wit/readwrite.wit"]
-hash = "sha256:d67bd367f6272e2510d836442a084c1f3dd9c98cf7bceada761a7e7e01fc21f6"
-
-# Tier 3: Patina delta toys
-[patina-git]
-source = "patina"
-version = "0.1.0"
-wasi_overlap = "none"
-file = "patina-git.wit"
-
-[patina-events-stream]
-source = "patina"
-version = "0.1.0"
-wasi_overlap = "wasi-messaging covers producing; consumption is our delta"
-file = "patina-events-stream.wit"
-
-[patina-measure]
-source = "patina"
-version = "0.1.0"
-wasi_overlap = "none"
-file = "patina-measure.wit"
-
 [patina-connect]
+file = "patina-connect.wit"
 source = "patina"
 version = "0.2.0"
 wasi_overlap = "extends wasi-http with credential injection"
-file = "patina-connect.wit"
 
-[patina-task]
+[patina-events-stream]
+file = "patina-events-stream.wit"
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "wasi-messaging covers producing; consumption is our delta"
+
+[patina-git]
+file = "patina-git.wit"
 source = "patina"
 version = "0.1.0"
 wasi_overlap = "none"
-file = "patina-task.wit"
+
+[patina-measure]
+file = "patina-measure.wit"
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "none"
 
 [patina-peer]
+file = "patina-peer.wit"
 source = "patina"
 version = "0.1.0"
 wasi_overlap = "none"
-file = "patina-peer.wit"
+
+[patina-task]
+file = "patina-task.wit"
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "none"
+
+[wasi-filesystem]
+file = "filesystem.wit"
+hash = "sha256:9ea7b55af76283365df4e6a1bb41e1dc16f7286a712eeb91580cce37360798dd"
+phase = 3
+source = "https://github.com/WebAssembly/wasi-filesystem"
+upstream_files = [
+    "wit/types.wit",
+    "wit/preopens.wit",
+]
+version = "0.2.6"
+
+[wasi-http]
+file = "http.wit"
+hash = "sha256:da62b809ab771c9d48ee4e53b5e1c8bca12a925f0388b813733394791f98d0f9"
+phase = 3
+source = "https://github.com/WebAssembly/wasi-http"
+upstream_files = [
+    "wit/types.wit",
+    "wit/handler.wit",
+]
+version = "0.2.6"
+
+[wasi-keyvalue]
+file = "keyvalue.wit"
+hash = "sha256:20b3c92fbd4b54a1c4a455ace1d752ced81231f9ec60f8f27c40409ef67c89a4"
+phase = 3
+source = "https://github.com/WebAssembly/wasi-keyvalue"
+upstream_files = ["wit/store.wit"]
+version = "0.2.0"
+
+[wasi-logging]
+file = "logging.wit"
+hash = "sha256:cbdd36f69d32c00077408ed5880da07d3ffcd126f9638863570dd22b12cde103"
+phase = 2
+source = "https://github.com/WebAssembly/wasi-logging"
+upstream_files = ["wit/logging.wit"]
+version = "0.1.0"
+
+[wasi-messaging]
+file = "messaging.wit"
+hash = "sha256:abeb223fe5b31a4648e9c42f2a75ee47f63ac2c2faf840a3ecc6447958162e59"
+phase = 1
+source = "https://github.com/WebAssembly/wasi-messaging"
+upstream_files = ["wit/messaging.wit"]
+version = "0.2.0"
+
+[wasi-sql]
+file = "sql.wit"
+hash = "sha256:6184974a354f8c5becd51e06186372e643e722fdfda0a650556d098f6253ea05"
+phase = 1
+source = "https://github.com/WebAssembly/wasi-sql"
+upstream_files = ["wit/readwrite.wit"]
+version = "0.1.0"

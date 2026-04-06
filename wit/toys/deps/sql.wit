@@ -1,31 +1,12 @@
-package wasi:sql@0.1.0;
-
 interface readwrite {
-    type error = string;
-
-    variant data-type {
-        int32(s32),
-        int64(s64),
-        float64(f64),
-        text(string),
-        flag(bool),
-        binary(list<u8>),
-        null,
-    }
-
-    record row {
-        values: list<data-type>,
-    }
-
-    resource connection;
-
-    resource statement {
-        query: func() -> string;
-        params: func() -> list<string>;
-    }
-
-    open: func(name: string) -> result<connection, error>;
-    prepare: func(query: string, params: list<string>) -> result<statement, error>;
-    query: func(c: borrow<connection>, s: borrow<statement>) -> result<list<row>, error>;
-    exec: func(c: borrow<connection>, s: borrow<statement>) -> result<u32, error>;
+    use types.{statement, row, error, connection};
+    
+    /// query is optimized for querying data, and 
+    /// implementors can make use of that fact to optimize 
+    /// the performance of query execution (e.g., using
+    /// indexes).
+    query: func(c: borrow<connection>, q: borrow<statement>) -> result<list<row>, error>;
+    
+    /// exec is for modifying data in the database.
+    exec: func(c: borrow<connection>, q: borrow<statement>) -> result<u32, error>;
 }
