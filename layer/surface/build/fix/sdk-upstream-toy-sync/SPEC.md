@@ -18,7 +18,7 @@ exit_criteria:
     checked: false
 
   - id: uts2-sync-reports-releases
-    text: "`patina mother toys sync` checks upstream WASI repos for release tags newer than the pinned version. Reports: current pinned version, latest release available, age. Does not modify files."
+    text: "`patina mother toys sync` queries GitHub Releases API for each WASI toy repo. Filters to stable releases only (no prereleases, no drafts). Normalizes `v` prefix (v0.2.0 → 0.2.0). Sorts by semver. Reports per toy: pinned version, latest stable release, age. On API failure or rate limit: reports error for that toy, continues to next. Does not modify files."
     checked: false
 
   - id: uts3-check-uses-registry-hash
@@ -46,7 +46,7 @@ exit_criteria:
     checked: false
 
   - id: uts9-command-tests
-    text: "Tests exist for: pull rejects patina delta toys, pull updates registry hash on success, pull reverts on compile failure, check passes after pull, `--all` reports per-toy status."
+    text: "Tests exist for: pull rejects patina delta toys, pull updates registry hash on success, pull reverts on compile failure, check passes after pull, `--all` reports per-toy status and reverts all on compile failure. Sync tests: prerelease/draft tags filtered, `v` prefix normalized, API failure reports error and continues to next toy, rate limit handled gracefully."
     checked: false
 
   - id: uts10-compile-proof
@@ -117,13 +117,24 @@ upstream_files = ["wit/readwrite.wit"]
 file = "sql.wit"
 ```
 
-For single-upstream-file toys: direct replacement. For multi-file toys:
-concatenate in declared order with the package declaration from the
-first file.
+For single-upstream-file toys: direct replacement.
+
+For multi-file toys, composition algorithm:
+1. Fetch each file in `upstream_files` order
+2. Strip duplicate `package` declarations — keep only the first
+3. Reorder `use` statements to appear before the types/functions that
+   reference them (topological sort within the merged output)
+4. If composition produces invalid WIT (parse error), pull fails for
+   that toy with the parse error message — no file replacement
+
+If a toy's upstream layout changes (files added/removed/renamed), the
+`upstream_files` list in the registry must be updated manually before
+pull will succeed. `sync` does not detect layout changes — only version
+changes.
 
 ## Pull Atomicity
 
-`toys pull` is transactional per toy:
+`toys pull <name>` is transactional per toy:
 
 1. Fetch upstream file(s) from pinned tag to temp
 2. Compose into local file (in temp)
@@ -134,8 +145,14 @@ first file.
 7. If check fails: revert local file to pre-pull content, restore
    registry hash, print error
 
-`pull --all` runs each toy independently. One failure does not revert
-others that succeeded. Summary reports per-toy status.
+`pull --all` pulls all toys first, then runs one compile check at the
+end (not per-toy — avoids N compile cycles). If the final compile
+fails, all toys are reverted and the user is told to pull individually
+to isolate which toy broke.
+
+Summary reports per-toy: `pulled` (file changed), `unchanged` (hash
+matched, no fetch needed), `failed` (fetch or compose error), or
+`reverted` (compile check failed, all rolled back).
 
 ## Verification
 
