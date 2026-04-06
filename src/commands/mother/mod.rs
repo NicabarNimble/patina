@@ -168,7 +168,11 @@ pub enum ToysCommands {
     /// Pull pinned upstream WIT for one toy
     Pull {
         /// Toy id from registry (for example: wasi-http)
-        name: String,
+        name: Option<String>,
+
+        /// Pull all WASI toys at pinned versions
+        #[arg(long)]
+        all: bool,
     },
 }
 
@@ -342,10 +346,17 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
                 .context("`patina mother toys sync` must run in a Patina project")?;
             toys::toys_sync(&project_root)
         }
-        Some(MotherCommands::Toys(ToysCommands::Pull { name })) => {
+        Some(MotherCommands::Toys(ToysCommands::Pull { name, all })) => {
             let project_root = SessionManager::find_project_root()
                 .context("`patina mother toys pull` must run in a Patina project")?;
-            toys::toys_pull(&project_root, &name)
+            if all {
+                toys::toys_pull_all(&project_root)
+            } else {
+                let name = name.ok_or_else(|| {
+                    anyhow::anyhow!("`patina mother toys pull` needs a toy name, or use `--all`")
+                })?;
+                toys::toys_pull(&project_root, &name)
+            }
         }
     }
 }

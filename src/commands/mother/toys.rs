@@ -32,6 +32,21 @@ struct LatestStableVersion {
     source: &'static str,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum PullStatus {
+    Pulled,
+    Unchanged,
+    Failed,
+    Reverted,
+}
+
+#[derive(Debug, Clone)]
+struct PullReport {
+    id: String,
+    status: PullStatus,
+    detail: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct GithubRelease {
     tag_name: String,
@@ -237,26 +252,14 @@ pub fn toys_pull(project_root: &Path, toy_name: &str) -> Result<()> {
         .timeout(Duration::from_secs(20))
         .build()
         .context("building HTTP client")?;
-    let upstream_contents = fetch_upstream_pinned(&client, &entry)?;
-    let composed = compose_upstream_wit(&upstream_contents)?;
-
-    let composed_hash = hash_bytes(composed.as_bytes());
-    if entry
-        .hash
-        .as_deref()
-        .map(|hash| hash.strip_prefix("sha256:").unwrap_or(hash))
-        == Some(composed_hash.as_str())
-    {
+    let changed = pull_entry_without_compile(project_root, &client, &entry)?;
+    if !changed {
         println!(
             "unchanged {:<22} hash matches pinned {}",
             entry.id, entry.version
         );
         return Ok(());
     }
-
-    std::fs::write(&local_path, composed.as_bytes())
-        .with_context(|| format!("writing {}", local_path.display()))?;
-    update_registry_hash(project_root, &entry.id, &composed_hash)?;
 
     match run_sdk_check(project_root) {
         Ok(()) => {
@@ -279,6 +282,66 @@ pub fn toys_pull(project_root: &Path, toy_name: &str) -> Result<()> {
             )
         }
     }
+}
+
+pub fn toys_pull_all(project_root: &Path) -> Result<()> {
+    let entries = load_registry(project_root)?;
+    let wasi_entries: Vec<ToyEntry> = entries
+        .into_iter()
+        .filter(|entry| entry.source != "patina")
+        .collect();
+
+    let mut snapshot_targets = vec![project_root.join(TOYS_REGISTRY_PATH)];
+    for entry in &wasi_entries {
+        snapshot_targets.push(local_wit_path(project_root, entry));
+    }
+    let snapshot = create_snapshot(project_root, &snapshot_targets)?;
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .context("building HTTP client")?;
+
+    let mut reports = Vec::new();
+    for entry in &wasi_entries {
+        match pull_entry_without_compile(project_root, &client, entry) {
+            Ok(true) => reports.push(PullReport {
+                id: entry.id.clone(),
+                status: PullStatus::Pulled,
+                detail: "file updated".to_string(),
+            }),
+            Ok(false) => reports.push(PullReport {
+                id: entry.id.clone(),
+                status: PullStatus::Unchanged,
+                detail: "hash already current".to_string(),
+            }),
+            Err(error) => reports.push(PullReport {
+                id: entry.id.clone(),
+                status: PullStatus::Failed,
+                detail: error.to_string(),
+            }),
+        }
+    }
+
+    if let Err(error) = run_sdk_check(project_root) {
+        restore_snapshot(project_root, &snapshot)?;
+        for report in &mut reports {
+            if matches!(report.status, PullStatus::Pulled) {
+                report.status = PullStatus::Reverted;
+                report.detail = "reverted after compile failure".to_string();
+            }
+        }
+        print_pull_report(&reports);
+        cleanup_snapshot(&snapshot);
+        bail!(
+            "pull --all reverted all changes because compile failed: {}. Pull individual toys to isolate the breakage.",
+            error
+        );
+    }
+
+    print_pull_report(&reports);
+    cleanup_snapshot(&snapshot);
+    Ok(())
 }
 
 pub fn load_registry(project_root: &Path) -> Result<Vec<ToyEntry>> {
@@ -332,6 +395,93 @@ pub fn hash_bytes(bytes: &[u8]) -> String {
 pub fn hash_file(path: &Path) -> Result<String> {
     let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
     Ok(hash_bytes(&bytes))
+}
+
+fn pull_entry_without_compile(
+    project_root: &Path,
+    client: &reqwest::blocking::Client,
+    entry: &ToyEntry,
+) -> Result<bool> {
+    let upstream_contents = fetch_upstream_pinned(client, entry)?;
+    let composed = compose_upstream_wit(&upstream_contents)?;
+    let composed_hash = hash_bytes(composed.as_bytes());
+    if entry
+        .hash
+        .as_deref()
+        .map(|hash| hash.strip_prefix("sha256:").unwrap_or(hash))
+        == Some(composed_hash.as_str())
+    {
+        return Ok(false);
+    }
+
+    let local_path = local_wit_path(project_root, entry);
+    std::fs::write(&local_path, composed.as_bytes())
+        .with_context(|| format!("writing {}", local_path.display()))?;
+    update_registry_hash(project_root, &entry.id, &composed_hash)?;
+    Ok(true)
+}
+
+fn create_snapshot(project_root: &Path, targets: &[PathBuf]) -> Result<PathBuf> {
+    let snapshot_root = std::env::temp_dir().join(format!(
+        "patina-toys-snapshot-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&snapshot_root)
+        .with_context(|| format!("creating {}", snapshot_root.display()))?;
+    for target in targets {
+        let relative = target
+            .strip_prefix(project_root)
+            .unwrap_or(target.as_path());
+        let snapshot_path = snapshot_root.join(relative);
+        if let Some(parent) = snapshot_path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating {}", parent.display()))?;
+        }
+        std::fs::copy(target, &snapshot_path)
+            .with_context(|| format!("snapshot {}", target.display()))?;
+    }
+    Ok(snapshot_root)
+}
+
+fn restore_snapshot(project_root: &Path, snapshot_root: &Path) -> Result<()> {
+    for entry in walkdir::WalkDir::new(snapshot_root)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file())
+    {
+        let path = entry.path();
+        let relative = path
+            .strip_prefix(snapshot_root)
+            .with_context(|| format!("computing snapshot relative path for {}", path.display()))?;
+        let target = project_root.join(relative);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating {}", parent.display()))?;
+        }
+        std::fs::copy(path, &target).with_context(|| format!("restoring {}", target.display()))?;
+    }
+    Ok(())
+}
+
+fn cleanup_snapshot(snapshot_root: &Path) {
+    let _ = std::fs::remove_dir_all(snapshot_root);
+}
+
+fn print_pull_report(reports: &[PullReport]) {
+    println!("\nPull report:");
+    for report in reports {
+        let status = match report.status {
+            PullStatus::Pulled => "pulled",
+            PullStatus::Unchanged => "unchanged",
+            PullStatus::Failed => "failed",
+            PullStatus::Reverted => "reverted",
+        };
+        println!("- {:<22} {:<9} {}", report.id, status, report.detail);
+    }
 }
 
 fn string_field(table: &toml::value::Table, entry_id: &str, field: &str) -> Result<String> {
