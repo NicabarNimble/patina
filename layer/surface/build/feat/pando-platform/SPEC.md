@@ -11,6 +11,8 @@ beliefs:
   - "[[pando-is-composed-children]]"
   - "[[children-have-agency-toys-are-capabilities]]"
   - "[[wasi-is-foundation-not-option]]"
+blocked_by:
+  - sdk-wasi-trait-alignment
 related:
   - layer/surface/build/feat/child-construction-canon/SPEC.md
   - children/spec-manager/
