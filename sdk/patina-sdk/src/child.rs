@@ -47,8 +47,6 @@ pub mod granted {
     pub type Connectors = toys::ConnectorCatalog<GuestHost>;
     #[cfg(feature = "toy-connector")]
     pub type Connector = toys::ConnectorBinding<GuestHost>;
-    #[cfg(feature = "toy-github")]
-    pub type Github = toys::GithubToy<GuestHost>;
     #[cfg(feature = "toy-events")]
     pub type Events = toys::EventToy<GuestHost>;
     #[cfg(feature = "toy-peer")]
@@ -138,11 +136,6 @@ pub mod granted {
         })
     }
 
-    #[cfg(feature = "toy-github")]
-    pub fn github() -> Github {
-        Github::new()
-    }
-
     #[cfg(feature = "toy-events")]
     pub fn events() -> Events {
         Events::new()
@@ -208,8 +201,8 @@ pub trait Child {
 pub mod host {
     use super::patina;
     use crate::toys::{
-        BeliefBackend, ConnectorBackend, EventBackend, FetchBackend, GithubBackend, GraphBackend,
-        HttpMethod, HttpRequest, HttpResponse, IngressBackend, LakeBackend, LogBackend, LogLevel,
+        BeliefBackend, ConnectorBackend, EventBackend, FetchBackend, GraphBackend, HttpMethod,
+        HttpRequest, HttpResponse, IngressBackend, LakeBackend, LogBackend, LogLevel,
         MeasureBackend, MessagingBackend, MessagingMessage, PendingEvent, QueryBackend,
         SessionBackend, SqlBackend, SqlRow, SqlStatementBackend, SqlValue, StateBackend,
         StateBucketBackend, TaskBackend, TaskIntent, TaskIntentKind,
@@ -269,9 +262,6 @@ pub mod host {
         #[cfg(feature = "toy-peer")]
         pub fn peer() -> crate::toys::PeerToy<Self> {
             crate::toys::PeerToy::new()
-        }
-        pub fn github() -> crate::toys::GithubToy<Self> {
-            crate::toys::GithubToy::new()
         }
         pub fn graph() -> crate::toys::GraphToy<Self> {
             crate::toys::GraphToy::new()
@@ -757,134 +747,6 @@ pub mod host {
                 data_type: data_type.to_string(),
                 cursor: None,
                 rows_json: vec![],
-            })
-        }
-    }
-
-    impl GithubBackend for GuestHost {
-        fn list_issues(
-            owner: &str,
-            repo: &str,
-            params: &crate::toys::GithubListParams,
-        ) -> Result<crate::toys::GithubPage, String> {
-            let mut path = format!(
-                "/repos/{owner}/{repo}/issues?state={}",
-                params.state.clone().unwrap_or_else(|| "open".to_string())
-            );
-            if let Some(since) = &params.since {
-                path.push_str(&format!("&since={since}"));
-            }
-            if let Some(page) = params.page {
-                path.push_str(&format!("&page={page}"));
-            }
-            if let Some(per_page) = params.per_page {
-                path.push_str(&format!("&per_page={per_page}"));
-            }
-            let items = wasi_http_get_with_binding("github", "api.github.com", &path)?;
-            Ok(crate::toys::GithubPage {
-                items,
-                has_next: false,
-                next_page: None,
-                rate_remaining: 0,
-            })
-        }
-
-        fn list_pulls(
-            owner: &str,
-            repo: &str,
-            params: &crate::toys::GithubListParams,
-        ) -> Result<crate::toys::GithubPage, String> {
-            let mut path = format!(
-                "/repos/{owner}/{repo}/pulls?state={}",
-                params.state.clone().unwrap_or_else(|| "open".to_string())
-            );
-            if let Some(since) = &params.since {
-                path.push_str(&format!("&since={since}"));
-            }
-            if let Some(page) = params.page {
-                path.push_str(&format!("&page={page}"));
-            }
-            if let Some(per_page) = params.per_page {
-                path.push_str(&format!("&per_page={per_page}"));
-            }
-            let items = wasi_http_get_with_binding("github", "api.github.com", &path)?;
-            Ok(crate::toys::GithubPage {
-                items,
-                has_next: false,
-                next_page: None,
-                rate_remaining: 0,
-            })
-        }
-
-        fn list_issue_comments(
-            owner: &str,
-            repo: &str,
-            issue_number: u32,
-        ) -> Result<crate::toys::GithubPage, String> {
-            let path = format!("/repos/{owner}/{repo}/issues/{issue_number}/comments");
-            Ok(crate::toys::GithubPage {
-                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
-                has_next: false,
-                next_page: None,
-                rate_remaining: 0,
-            })
-        }
-
-        fn list_issue_events(
-            owner: &str,
-            repo: &str,
-            issue_number: u32,
-        ) -> Result<crate::toys::GithubPage, String> {
-            let path = format!("/repos/{owner}/{repo}/issues/{issue_number}/events");
-            Ok(crate::toys::GithubPage {
-                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
-                has_next: false,
-                next_page: None,
-                rate_remaining: 0,
-            })
-        }
-
-        fn list_pull_comments(
-            owner: &str,
-            repo: &str,
-            pull_number: u32,
-        ) -> Result<crate::toys::GithubPage, String> {
-            let path = format!("/repos/{owner}/{repo}/pulls/{pull_number}/comments");
-            Ok(crate::toys::GithubPage {
-                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
-                has_next: false,
-                next_page: None,
-                rate_remaining: 0,
-            })
-        }
-
-        fn list_reviews(
-            owner: &str,
-            repo: &str,
-            pull_number: u32,
-        ) -> Result<crate::toys::GithubPage, String> {
-            let path = format!("/repos/{owner}/{repo}/pulls/{pull_number}/reviews");
-            Ok(crate::toys::GithubPage {
-                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
-                has_next: false,
-                next_page: None,
-                rate_remaining: 0,
-            })
-        }
-
-        fn list_review_comments(
-            owner: &str,
-            repo: &str,
-            pull_number: u32,
-            review_id: u64,
-        ) -> Result<crate::toys::GithubPage, String> {
-            let path =
-                format!("/repos/{owner}/{repo}/pulls/{pull_number}/reviews/{review_id}/comments");
-            Ok(crate::toys::GithubPage {
-                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
-                has_next: false,
-                next_page: None,
-                rate_remaining: 0,
             })
         }
     }
