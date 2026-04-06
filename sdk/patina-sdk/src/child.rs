@@ -210,8 +210,8 @@ pub mod host {
     use crate::toys::{
         BeliefBackend, CheckpointBackend, ConnectorBackend, EmitBackend, EventBackend,
         FetchBackend, GithubBackend, GraphBackend, IngressBackend, LakeBackend, LogBackend,
-        MeasureBackend, PendingEvent, QueryBackend, SessionBackend, StateBackend, TaskBackend,
-        TaskIntent, TaskIntentKind,
+        LogLevel, MeasureBackend, PendingEvent, QueryBackend, SessionBackend, StateBackend,
+        TaskBackend, TaskIntent, TaskIntentKind,
     };
     #[cfg(feature = "toy-peer")]
     use crate::toys::{PeerBackend, PeerEvent};
@@ -464,33 +464,16 @@ pub mod host {
     }
 
     impl LogBackend for GuestHost {
-        fn debug(message: &str) {
-            super::wasi::logging::logging::log(
-                super::wasi::logging::logging::Level::Debug,
-                "",
-                message,
-            );
-        }
-        fn info(message: &str) {
-            super::wasi::logging::logging::log(
-                super::wasi::logging::logging::Level::Info,
-                "",
-                message,
-            );
-        }
-        fn warn(message: &str) {
-            super::wasi::logging::logging::log(
-                super::wasi::logging::logging::Level::Warn,
-                "",
-                message,
-            );
-        }
-        fn error(message: &str) {
-            super::wasi::logging::logging::log(
-                super::wasi::logging::logging::Level::Error,
-                "",
-                message,
-            );
+        fn log(level: LogLevel, context: &str, message: &str) {
+            let level = match level {
+                LogLevel::Trace => super::wasi::logging::logging::Level::Trace,
+                LogLevel::Debug => super::wasi::logging::logging::Level::Debug,
+                LogLevel::Info => super::wasi::logging::logging::Level::Info,
+                LogLevel::Warn => super::wasi::logging::logging::Level::Warn,
+                LogLevel::Error => super::wasi::logging::logging::Level::Error,
+                LogLevel::Critical => super::wasi::logging::logging::Level::Critical,
+            };
+            super::wasi::logging::logging::log(level, context, message);
         }
     }
 

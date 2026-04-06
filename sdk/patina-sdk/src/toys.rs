@@ -40,11 +40,19 @@ pub struct PeerEvent {
     pub occurred_at: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+    Critical,
+}
+
 pub trait LogBackend {
-    fn debug(message: &str);
-    fn info(message: &str);
-    fn warn(message: &str);
-    fn error(message: &str);
+    fn log(level: LogLevel, context: &str, message: &str);
 }
 
 pub trait StateBackend {
@@ -218,17 +226,32 @@ impl<B> LogToy<B> {
     }
 }
 impl<B: LogBackend> LogToy<B> {
+    pub fn log(&self, level: LogLevel, context: &str, message: &str) {
+        B::log(level, context, message);
+    }
+
+    pub fn trace(&self, message: &str) {
+        B::log(LogLevel::Trace, "", message);
+    }
+
     pub fn debug(&self, message: &str) {
-        B::debug(message);
+        B::log(LogLevel::Debug, "", message);
     }
+
     pub fn info(&self, message: &str) {
-        B::info(message);
+        B::log(LogLevel::Info, "", message);
     }
+
     pub fn warn(&self, message: &str) {
-        B::warn(message);
+        B::log(LogLevel::Warn, "", message);
     }
+
     pub fn error(&self, message: &str) {
-        B::error(message);
+        B::log(LogLevel::Error, "", message);
+    }
+
+    pub fn critical(&self, message: &str) {
+        B::log(LogLevel::Critical, "", message);
     }
 }
 
