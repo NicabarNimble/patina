@@ -3356,6 +3356,7 @@ version = "0.21.0"
 dependencies = [
  "serde",
  "serde_json",
+ "url",
  "wit-bindgen 0.41.0",
 ]
 

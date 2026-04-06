@@ -879,8 +879,39 @@ pub struct GrantedIngressSource {
 }
 
 pub trait FetchBackend {
-    fn get(url: &str) -> Result<String, String>;
-    fn post(url: &str, body: &str, content_type: &str) -> Result<String, String>;
+    fn send(request: &HttpRequest) -> Result<HttpResponse, String>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HttpMethod {
+    Get,
+    Head,
+    Post,
+    Put,
+    Delete,
+    Connect,
+    Options,
+    Trace,
+    Patch,
+    Other(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HttpRequest {
+    pub method: HttpMethod,
+    pub scheme: Option<String>,
+    pub authority: Option<String>,
+    pub path_with_query: Option<String>,
+    pub headers: Vec<(String, Vec<u8>)>,
+    pub body: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HttpResponse {
+    pub status: u16,
+    pub headers: Vec<(String, Vec<u8>)>,
+    pub body: Vec<u8>,
 }
 
 pub trait IngressBackend {
@@ -920,12 +951,72 @@ impl<B> FetchToy<B> {
     }
 }
 impl<B: FetchBackend> FetchToy<B> {
+    pub fn send(&self, request: &HttpRequest) -> Result<HttpResponse, String> {
+        B::send(request)
+    }
+
     pub fn get(&self, url: &str) -> Result<String, String> {
-        B::get(url)
+        let parsed = parse_http_url(url)?;
+        let request = HttpRequest {
+            method: HttpMethod::Get,
+            scheme: Some(parsed.scheme),
+            authority: Some(parsed.authority),
+            path_with_query: Some(parsed.path_with_query),
+            headers: Vec::new(),
+            body: Vec::new(),
+        };
+        let response = B::send(&request)?;
+        String::from_utf8(response.body).map_err(|error| error.to_string())
     }
+
     pub fn post(&self, url: &str, body: &str, content_type: &str) -> Result<String, String> {
-        B::post(url, body, content_type)
+        let parsed = parse_http_url(url)?;
+        let request = HttpRequest {
+            method: HttpMethod::Post,
+            scheme: Some(parsed.scheme),
+            authority: Some(parsed.authority),
+            path_with_query: Some(parsed.path_with_query),
+            headers: vec![("content-type".to_string(), content_type.as_bytes().to_vec())],
+            body: body.as_bytes().to_vec(),
+        };
+        let response = B::send(&request)?;
+        String::from_utf8(response.body).map_err(|error| error.to_string())
     }
+}
+
+#[derive(Debug, Clone)]
+struct ParsedHttpUrl {
+    scheme: String,
+    authority: String,
+    path_with_query: String,
+}
+
+fn parse_http_url(url: &str) -> Result<ParsedHttpUrl, String> {
+    let parsed = url::Url::parse(url).map_err(|error| error.to_string())?;
+    let scheme = parsed.scheme().to_string();
+    let authority = parsed
+        .host_str()
+        .map(|host| {
+            if let Some(port) = parsed.port() {
+                format!("{}:{}", host, port)
+            } else {
+                host.to_string()
+            }
+        })
+        .ok_or_else(|| format!("missing host in URL '{}'", url))?;
+    let mut path_with_query = parsed.path().to_string();
+    if let Some(query) = parsed.query() {
+        path_with_query.push('?');
+        path_with_query.push_str(query);
+    }
+    if path_with_query.is_empty() {
+        path_with_query = "/".to_string();
+    }
+    Ok(ParsedHttpUrl {
+        scheme,
+        authority,
+        path_with_query,
+    })
 }
 
 #[derive(Debug, Clone)]

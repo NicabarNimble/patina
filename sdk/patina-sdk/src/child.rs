@@ -223,9 +223,10 @@ pub mod host {
     use super::patina;
     use crate::toys::{
         BeliefBackend, CheckpointBackend, ConnectorBackend, EmitBackend, EventBackend,
-        FetchBackend, GithubBackend, GraphBackend, IngressBackend, LakeBackend, LogBackend,
-        LogLevel, MeasureBackend, MessagingBackend, MessagingMessage, PendingEvent, QueryBackend,
-        SessionBackend, StateBackend, StateBucketBackend, TaskBackend, TaskIntent, TaskIntentKind,
+        FetchBackend, GithubBackend, GraphBackend, HttpMethod, HttpRequest, HttpResponse,
+        IngressBackend, LakeBackend, LogBackend, LogLevel, MeasureBackend, MessagingBackend,
+        MessagingMessage, PendingEvent, QueryBackend, SessionBackend, StateBackend,
+        StateBucketBackend, TaskBackend, TaskIntent, TaskIntentKind,
     };
     #[cfg(feature = "toy-layer-fs")]
     use crate::toys::{
@@ -408,39 +409,71 @@ pub mod host {
         }
     }
 
-    fn wasi_http_get_with_binding(
+    fn http_method_to_wasi(method: &HttpMethod) -> super::wasi::http::types::Method {
+        match method {
+            HttpMethod::Get => super::wasi::http::types::Method::Get,
+            HttpMethod::Head => super::wasi::http::types::Method::Head,
+            HttpMethod::Post => super::wasi::http::types::Method::Post,
+            HttpMethod::Put => super::wasi::http::types::Method::Put,
+            HttpMethod::Delete => super::wasi::http::types::Method::Delete,
+            HttpMethod::Connect => super::wasi::http::types::Method::Connect,
+            HttpMethod::Options => super::wasi::http::types::Method::Options,
+            HttpMethod::Trace => super::wasi::http::types::Method::Trace,
+            HttpMethod::Patch => super::wasi::http::types::Method::Patch,
+            HttpMethod::Other(value) => super::wasi::http::types::Method::Other(value.clone()),
+        }
+    }
+
+    fn wasi_http_send_with_binding(
         source: &str,
-        authority: &str,
-        path_with_query: &str,
-    ) -> Result<String, String> {
+        request: &HttpRequest,
+    ) -> Result<HttpResponse, String> {
         let _binding = patina::connect::connect::resolve(source)?;
 
-        let headers = super::wasi::http::types::Fields::new();
-        let request = super::wasi::http::types::OutgoingRequest::new(headers);
-        request
-            .set_method(&super::wasi::http::types::Method::Get)
+        let headers = super::wasi::http::types::Fields::from_list(
+            &request
+                .headers
+                .iter()
+                .map(|(name, value)| (name.clone(), value.clone()))
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|_| "failed to construct outgoing HTTP headers".to_string())?;
+
+        let outgoing = super::wasi::http::types::OutgoingRequest::new(headers);
+        outgoing
+            .set_method(&http_method_to_wasi(&request.method))
             .map_err(|_| "failed to set HTTP method".to_string())?;
-        request
-            .set_scheme(Some(&super::wasi::http::types::Scheme::Https))
+        let scheme = match request.scheme.as_deref().unwrap_or("https") {
+            "http" => super::wasi::http::types::Scheme::Http,
+            "https" => super::wasi::http::types::Scheme::Https,
+            other => super::wasi::http::types::Scheme::Other(other.to_string()),
+        };
+        outgoing
+            .set_scheme(Some(&scheme))
             .map_err(|_| "failed to set HTTP scheme".to_string())?;
-        request
-            .set_authority(Some(authority))
+        outgoing
+            .set_authority(request.authority.as_deref())
             .map_err(|_| "failed to set HTTP authority".to_string())?;
-        request
-            .set_path_with_query(Some(path_with_query))
+        outgoing
+            .set_path_with_query(request.path_with_query.as_deref())
             .map_err(|_| "failed to set HTTP path".to_string())?;
 
-        let body = request
+        let body = outgoing
             .body()
             .map_err(|_| "failed to open outgoing HTTP body".to_string())?;
         let stream = body
             .write()
             .map_err(|_| "failed to open outgoing HTTP stream".to_string())?;
+        if !request.body.is_empty() {
+            stream
+                .blocking_write_and_flush(&request.body)
+                .map_err(|error| format!("failed to write outgoing HTTP body: {:?}", error))?;
+        }
         drop(stream);
         super::wasi::http::types::OutgoingBody::finish(body, None)
             .map_err(|error| format!("failed to finalize outgoing HTTP body: {:?}", error))?;
 
-        let future = super::wasi::http::outgoing_handler::handle(request, None)
+        let future = super::wasi::http::outgoing_handler::handle(outgoing, None)
             .map_err(|error| format!("HTTP request failed to start: {:?}", error))?;
         let pollable = future.subscribe();
 
@@ -452,6 +485,7 @@ pub mod host {
             super::wasi::io::poll::poll(&[&pollable]);
         }?;
 
+        let status = response.status();
         let incoming_body = response
             .consume()
             .map_err(|_| "incoming response body already consumed".to_string())?;
@@ -471,7 +505,30 @@ pub mod host {
         }
 
         let _ = super::wasi::http::types::IncomingBody::finish(incoming_body);
-        String::from_utf8(bytes).map_err(|error| error.to_string())
+        Ok(HttpResponse {
+            status,
+            headers: Vec::new(),
+            body: bytes,
+        })
+    }
+
+    fn wasi_http_get_with_binding(
+        source: &str,
+        authority: &str,
+        path_with_query: &str,
+    ) -> Result<String, String> {
+        let response = wasi_http_send_with_binding(
+            source,
+            &HttpRequest {
+                method: HttpMethod::Get,
+                scheme: Some("https".to_string()),
+                authority: Some(authority.to_string()),
+                path_with_query: Some(path_with_query.to_string()),
+                headers: Vec::new(),
+                body: Vec::new(),
+            },
+        )?;
+        String::from_utf8(response.body).map_err(|error| error.to_string())
     }
 
     impl LogBackend for GuestHost {
@@ -510,11 +567,13 @@ pub mod host {
     }
 
     impl FetchBackend for GuestHost {
-        fn get(_url: &str) -> Result<String, String> {
-            Err("fetch toy removed: use connect/store helpers".to_string())
-        }
-        fn post(_url: &str, _body: &str, _content_type: &str) -> Result<String, String> {
-            Err("fetch toy removed: use connect/store helpers".to_string())
+        fn send(request: &HttpRequest) -> Result<HttpResponse, String> {
+            let authority = request
+                .authority
+                .as_deref()
+                .ok_or_else(|| "http authority is required".to_string())?;
+            let source = authority.split(':').next().unwrap_or(authority);
+            wasi_http_send_with_binding(source, request)
         }
     }
 
