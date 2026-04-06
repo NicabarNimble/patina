@@ -13,6 +13,12 @@ related:
   - sdk/patina-sdk/src/child.rs
   - wit/toys/deps/
   - wit/toys/toybox.wit
+  - children/file-system-monitor/child.toml
+  - children/content-extractor/child.toml
+  - children/schema-enforcer/child.toml
+  - children/dedup-filter/child.toml
+  - children/record-writer/child.toml
+  - children/lakehouse-catalog/child.toml
 blocks:
   - pando-platform
 exit_criteria:
@@ -26,39 +32,43 @@ exit_criteria:
     checked: false
 
   - id: swa3-filesystem-matches-wasi
-    text: "LayerFsBackend trait matches `wasi:filesystem@0.2.6` shape: descriptor-based access with preopened directories. Not simplified string path functions."
+    text: "LayerFsBackend trait matches `wasi:filesystem@0.2.6` shape: descriptor-based access with preopened directories. Not simplified string path functions. Children that need filesystem access must declare `filesystem` in their `[needs].toys` list."
     checked: false
 
   - id: swa4-messaging-matches-wasi
-    text: "Event publishing matches `wasi:messaging/producer@0.2.0` shape: client resource with `connect(name)`, `send(client, message)`. Message has topic, content-type, data (bytes), metadata."
+    text: "Event publishing is a separate `messaging` toy matching `wasi:messaging/producer@0.2.0` shape: client resource with `connect(name)`, `send(client, message)`. Split from current `events` bundle. Children that only publish list `messaging`. Children that only consume list `events`."
     checked: false
 
   - id: swa5-http-matches-wasi
     text: "FetchBackend trait matches `wasi:http/outgoing-handler@0.2.6` shape. Not simplified `get(url)/post(url, body)` string functions."
     checked: false
 
-  - id: swa6-patina-delta-documented
+  - id: swa6-sql-matches-wasi
+    text: "Current `store` toy (LakeBackend) replaced with `sql` toy matching `wasi:sql/readwrite@0.1.0` shape: `open(name)`, `prepare(query, params)`, `query(connection, statement)`, `exec(connection, statement)`. Child says `sql`, Mother wires to DuckDB. DuckDB is an implementation detail, not a toy contract."
+    checked: false
+
+  - id: swa7-patina-delta-documented
     text: "Every `patina:*` toy (`git`, `events-stream`, `measure`, `connect`, `task`, `peer`) has a comment in its WIT file stating: (a) why WASI doesn't cover this, (b) whether a WASI proposal exists that overlaps, (c) if so, how our interface mirrors the proposal shape."
     checked: false
 
-  - id: swa7-children-recompile
-    text: "All existing children (6 core + spec-manager stub + grammar plugins) compile against the aligned traits. No child uses the old simplified shapes."
+  - id: swa8-canon-children-updated
+    text: "All 6 canon children (`file-system-monitor`, `content-extractor`, `schema-enforcer`, `dedup-filter`, `record-writer`, `lakehouse-catalog`) updated to use aligned toy names and traits. `store` → `sql`. `events` split into `messaging` + `events`. `filesystem` explicitly granted where needed. All compile against aligned SDK."
     checked: false
 
-  - id: swa8-capability-enforcement
-    text: "A child with `toys = [\"log\"]` cannot call keyvalue, filesystem, or git host functions. Test proves enforcement."
+  - id: swa9-capability-enforcement
+    text: "A child with `toys = [\"log\"]` cannot call keyvalue, filesystem, sql, or git host functions. A child without `filesystem` in its toy grants cannot access the filesystem. Test proves enforcement."
     checked: false
 
-  - id: swa9-mother-toys-registry
+  - id: swa10-mother-toys-registry
     text: "Mother manages a toy registry at `wit/toys/deps/` with version pinning. `patina mother toys status` shows all toys: name, version, source (wasi upstream or patina delta), WASI proposal phase where applicable. `patina mother toys check` verifies local WIT files match pinned versions."
     checked: false
 
-  - id: swa10-mother-toys-sync
+  - id: swa11-mother-toys-sync
     text: "`patina mother toys sync` fetches latest WIT from upstream WASI repos, compares to pinned versions, reports changes. User decides when to bump. Pinned versions tracked in a registry manifest."
     checked: false
 
-  - id: swa11-compile-proof
-    text: "`cargo check --workspace -q` and `cargo test -q --lib` pass."
+  - id: swa12-compile-proof
+    text: "`cargo check --workspace -q` and `cargo test -q --lib` pass. All children compile. `patina mother toys status` shows clean alignment."
     checked: false
 ---
 # fix: SDK WASI Trait Alignment
@@ -67,16 +77,30 @@ exit_criteria:
 
 The SDK's Rust traits in `toys.rs` don't match the WASI interface shapes
 they claim to wrap. Children code against simplified Patina abstractions,
-not actual WASI contracts. This means:
+not actual WASI contracts. Additionally, toy grants in the 6 canon children
+have structural problems: a custom `store` toy that should be `wasi:sql`,
+an `events` toy that bundles publish and subscribe, and filesystem access
+without explicit toy grants.
 
-- A child built on Patina's `StateBackend` won't run on another WASI host
-- We can't honestly claim WASI alignment
-- The pando platform builds on a foundation that misrepresents its interface
-  contracts
+## Toy Priority Rule
+
+Every toy decision follows three tiers in strict order:
+
+1. **WASI standard** — if a stable WASI interface exists, use it exactly.
+   No simplification, no Patina wrapper that changes the shape.
+2. **WASI proposal** — if a proposal exists but isn't stable, mirror its
+   shape as closely as possible. Document where we diverge and why. When
+   the proposal stabilizes, we swap to the standard.
+3. **Patina delta** — only when WASI has nothing. Document why the child
+   can't do this from pure compute, and why no WASI interface covers it.
+
+No exceptions. This rule governs all toy design going forward.
 
 ## Divergence Inventory
 
-### `wasi:logging@0.1.0`
+### Tier 1: WASI Standard — must match exactly
+
+#### `wasi:logging@0.1.0` (phase 2)
 
 WIT:
 ```
@@ -97,7 +121,7 @@ trait LogBackend {
 Gap: no `context` parameter, no `trace`/`critical` levels, split into
 separate functions instead of one `log()` with level enum.
 
-### `wasi:keyvalue/store@0.2.0`
+#### `wasi:keyvalue/store@0.2.0` (phase 3)
 
 WIT:
 ```
@@ -125,7 +149,7 @@ Gaps: no bucket resource (no scoped access), values are strings not bytes,
 no `exists()`, `list_prefix` vs cursor-based `list-keys`, no error type
 on get.
 
-### `wasi:filesystem@0.2.6`
+#### `wasi:filesystem@0.2.6` (phase 3)
 
 WIT: descriptor-based API with preopened directories, streams, directory
 entries, file metadata, permissions.
@@ -143,22 +167,12 @@ trait LayerFsBackend {
 ```
 
 Gaps: no descriptors, no preopened directories, no streams, string content
-not bytes, flat string paths not scoped to preopens.
+not bytes, flat string paths not scoped to preopens. Additionally,
+`file-system-monitor` uses filesystem via `[needs.scopes.filesystem]`
+without declaring `filesystem` in its `[needs].toys` — violates hard rule 2
+(toys are explicit grants).
 
-### `wasi:messaging/producer@0.2.0`
-
-WIT:
-```
-resource client
-connect: func(name: string) -> result<client, string>
-send: func(client: borrow<client>, message: message) -> result<u64, string>
-message = { topic, content-type, data: list<u8>, metadata }
-```
-
-SDK: no direct messaging trait — event publishing goes through Mother's
-event bus via custom `EmitBackend` and `EventBackend` traits.
-
-### `wasi:http/outgoing-handler@0.2.6`
+#### `wasi:http/outgoing-handler@0.2.6` (phase 3)
 
 WIT: full HTTP with method variants, headers, trailers, streams, status
 codes, TLS config.
@@ -174,18 +188,111 @@ trait FetchBackend {
 Gaps: only GET/POST, no headers, no status codes, string body not streams,
 no method variants.
 
-## Patina Delta Toys (correctly custom)
+### Tier 2: WASI Proposal — mirror shape, document divergence
 
-These have no WASI equivalent and are correctly Patina-specific:
+#### `wasi:messaging/producer@0.2.0` (phase 1)
 
-- `patina:git@0.1.0` — version control ops (no WASI proposal exists)
-- `patina:events-stream@0.1.0` — event consumption (WASI messaging only
-  covers producing; consumption is Patina's delta)
-- `patina:measure@0.1.0` — structured metrics (no WASI proposal exists)
-- `patina:task@0.1.0` — task queue (no WASI proposal exists)
-- `patina:connect@0.2.0` — authenticated connectors (extends wasi:http
-  with credential injection)
-- `patina:peer@0.1.0` — P2P events (no WASI proposal exists)
+WIT:
+```
+resource client
+connect: func(name: string) -> result<client, string>
+send: func(client: borrow<client>, message: message) -> result<u64, string>
+message = { topic, content-type, data: list<u8>, metadata }
+```
+
+SDK: no direct messaging trait. Event publishing is bundled into `events`
+toy via `EmitBackend` and `EventBackend` traits. This bundles WASI-standard
+publish with Patina-delta subscribe under one grant, violating least-privilege
+(hard rule 3).
+
+Fix: split into `messaging` (WASI proposal shape, publish only) and
+`events` (Patina delta, subscribe/consume only).
+
+#### `wasi:sql/readwrite@0.1.0` (phase 1)
+
+WIT:
+```
+resource connection
+resource statement { query, params }
+open: func(name: string) -> result<connection, error>
+prepare: func(query: string, params: list<string>) -> result<statement, error>
+query: func(c, s) -> result<list<row>, error>
+exec: func(c, s) -> result<u32, error>
+```
+
+SDK: no SQL trait. `lakehouse-catalog` uses custom `store` toy backed by
+`LakeBackend` trait with DuckDB-specific operations (`ensure_table`,
+`append_json_batch`, `query_json`). This leaks the DuckDB implementation
+into the toy contract.
+
+Fix: replace `store` with `sql` matching `wasi:sql` shape. Child says
+`sql`, Mother wires to DuckDB. Child never knows it's DuckDB.
+
+### Tier 3: Patina Delta — no WASI coverage
+
+- `patina:git@0.1.0` — version control ops. No WASI proposal.
+- `patina:events-stream@0.1.0` — event consumption (subscribe/pull/ack).
+  WASI messaging covers producing only; consumption is our delta.
+- `patina:measure@0.1.0` — structured metrics recording. No WASI proposal.
+- `patina:task@0.1.0` — task queue. No WASI proposal.
+- `patina:connect@0.2.0` — authenticated connectors. Extends `wasi:http`
+  with credential injection where Mother holds secrets.
+- `patina:peer@0.1.0` — P2P event exchange. No WASI proposal.
+
+## Canon Children Audit
+
+Current toy grants and required fixes:
+
+### `file-system-monitor`
+```
+Current:  toys = ["log", "events", "measure"]
+          scopes.filesystem.path = "/tmp"
+Fixed:    toys = ["log", "messaging", "measure", "filesystem"]
+```
+- `events` → `messaging` (only publishes, doesn't subscribe)
+- `filesystem` added as explicit grant (was implicit scope)
+
+### `content-extractor`
+```
+Current:  toys = ["log", "events"]
+Fixed:    toys = ["log", "events", "messaging", "filesystem"]
+```
+- Already subscribes (events) AND publishes (needs messaging)
+- Reads files (needs filesystem)
+
+### `schema-enforcer`
+```
+Current:  toys = ["log", "events", "measure"]
+Fixed:    toys = ["log", "events", "messaging", "measure"]
+```
+- Subscribes (events) AND publishes (messaging)
+- No filesystem needed (pure compute on event payloads)
+
+### `dedup-filter`
+```
+Current:  toys = ["log", "events", "state", "measure"]
+Fixed:    toys = ["log", "events", "messaging", "keyvalue", "measure"]
+```
+- `state` → `keyvalue` (WASI standard name)
+- Subscribes (events) AND publishes (messaging)
+
+### `record-writer`
+```
+Current:  toys = ["log", "state", "events", "measure"]
+Fixed:    toys = ["log", "keyvalue", "events", "messaging", "measure", "filesystem"]
+```
+- `state` → `keyvalue`
+- Subscribes (events) AND publishes (messaging)
+- Writes parquet files (needs filesystem)
+
+### `lakehouse-catalog`
+```
+Current:  toys = ["log", "state", "events", "store"]
+Fixed:    toys = ["log", "keyvalue", "events", "sql"]
+```
+- `state` → `keyvalue`
+- `store` → `sql` (WASI proposal shape, Mother wires to DuckDB)
+- Only subscribes (events, no messaging needed — no outbound events)
 
 ## Root Cause
 
@@ -193,16 +300,8 @@ SDK traits were designed for developer ergonomics, not WASI conformance.
 The WIT files reference WASI packages, `wit_bindgen` generates bindings
 from them, but the hand-written trait layer in `toys.rs` simplifies the
 shapes. Children code against the simplified traits, not the generated
-bindings.
-
-## Fix
-
-For each WASI toy: align the SDK trait to match the WIT interface shape.
-Children code against WASI shapes. Convenience helpers can exist as
-extension methods but the trait contract matches WASI.
-
-For each Patina toy: document in the WIT file why it exists, whether a
-WASI proposal overlaps, and how we mirror the proposal if one exists.
+bindings. Toy grants in canon children were assigned ad-hoc without
+auditing against the three-tier priority rule.
 
 ## Mother Toy Registry
 
@@ -214,7 +313,7 @@ are the canonical toy contracts. Mother tracks their provenance and versions.
 `wit/toys/deps/toys-registry.toml`:
 
 ```toml
-# WASI standard toys — upstream source of truth
+# Tier 1: WASI standard toys
 [wasi-logging]
 source = "https://github.com/WebAssembly/wasi-logging"
 version = "0.1.0"
@@ -239,6 +338,7 @@ version = "0.2.6"
 phase = 3
 file = "http.wit"
 
+# Tier 2: WASI proposal toys — mirror shape, swap when stable
 [wasi-messaging]
 source = "https://github.com/WebAssembly/wasi-messaging"
 version = "0.2.0"
@@ -251,7 +351,7 @@ version = "0.1.0"
 phase = 1
 file = "sql.wit"
 
-# Patina delta toys — we own these
+# Tier 3: Patina delta toys
 [patina-git]
 source = "patina"
 version = "0.1.0"
@@ -292,28 +392,26 @@ file = "patina-peer.wit"
 ### Mother commands
 
 - `patina mother toys status` — show all toys with version, source, WASI
-  phase. Shows divergence between local WIT and pinned version.
-- `patina mother toys check` — verify local WIT files match pinned versions
-  (hash comparison).
+  phase, tier. Shows divergence between local WIT and pinned version.
+- `patina mother toys check` — verify local WIT files match pinned versions.
 - `patina mother toys sync` — fetch latest WIT from upstream WASI repos,
   compare to pinned, report what changed. User decides when to bump.
 
 ## Implementation Order
 
-1. **swa9-swa10** — Build toy registry manifest and Mother commands. This
-   establishes the source of truth before changing any traits.
-2. **swa1** — Log: add level enum + context parameter. Keep `.info()` etc
-   as convenience sugar on top of the real `log()` function.
-3. **swa2** — Keyvalue: add bucket resource, bytes values, cursor-based
-   list. Biggest change — every child using state needs updating.
-4. **swa3** — Filesystem: add descriptor model with preopened dirs.
-5. **swa4** — Messaging: align event publishing with wasi:messaging
-   producer shape.
+1. **swa10-swa11** — Build toy registry manifest and Mother commands.
+   Establishes source of truth before changing any traits.
+2. **swa1** — Log: add level enum + context parameter.
+3. **swa2** — Keyvalue: add bucket resource, bytes values, cursor-based list.
+4. **swa3** — Filesystem: add descriptor model with preopened dirs. Fix
+   grant enforcement.
+5. **swa4** — Messaging: split from events, match wasi:messaging shape.
 6. **swa5** — HTTP: align with outgoing-handler shape.
-7. **swa6** — Document Patina delta toys in WIT files.
-8. **swa7** — Recompile all children against aligned traits.
-9. **swa8** — Prove capability enforcement.
-10. **swa11** — Compile/test proof.
+7. **swa6** — SQL: replace store/LakeBackend with wasi:sql shape.
+8. **swa7** — Document Patina delta toys in WIT files.
+9. **swa8** — Update all 6 canon children toy grants and code.
+10. **swa9** — Prove capability enforcement.
+11. **swa12** — Compile/test proof.
 
 ## Verification
 
