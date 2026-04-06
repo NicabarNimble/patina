@@ -4,24 +4,28 @@ source = "https://github.com/WebAssembly/wasi-logging"
 version = "0.1.0"
 phase = 2
 file = "logging.wit"
+hash = "sha256:2acc73830f59d4317b7150182a164d7a0c25446980be535e1be32331b39e46af"
 
 [wasi-keyvalue]
 source = "https://github.com/WebAssembly/wasi-keyvalue"
 version = "0.2.0"
 phase = 3
 file = "keyvalue.wit"
+hash = "sha256:1a6e083f51fe14bf02d62550e632b0746da908352fd49cc90404fa9f6fa2e050"
 
 [wasi-filesystem]
 source = "https://github.com/WebAssembly/wasi-filesystem"
 version = "0.2.6"
 phase = 3
 file = "filesystem.wit"
+hash = "sha256:6542c609ef56df7712b06f6480df33347c04173095d113f1153c6e4d78c181b9"
 
 [wasi-http]
 source = "https://github.com/WebAssembly/wasi-http"
 version = "0.2.6"
 phase = 3
 file = "http.wit"
+hash = "sha256:ee46f5e8d599f8498a097a49f34d6b694d001932b56069008b8f20623e6d8902"
 
 # Tier 2: WASI proposal toys
 [wasi-messaging]
@@ -29,12 +33,14 @@ source = "https://github.com/WebAssembly/wasi-messaging"
 version = "0.2.0"
 phase = 1
 file = "messaging.wit"
+hash = "sha256:7dd7237beb0c1cacf23c4b648a405a10e0af92e3c3e4f41f022172deb2653932"
 
 [wasi-sql]
 source = "https://github.com/WebAssembly/wasi-sql"
 version = "0.1.0"
 phase = 1
 file = "sql.wit"
+hash = "sha256:d67bd367f6272e2510d836442a084c1f3dd9c98cf7bceada761a7e7e01fc21f6"
 
 # Tier 3: Patina delta toys
 [patina-git]

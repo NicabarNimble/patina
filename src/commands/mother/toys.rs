@@ -12,8 +12,8 @@ pub struct ToyEntry {
     pub source: String,
     pub version: String,
     pub file: String,
+    pub hash: Option<String>,
     pub phase: Option<u32>,
-    pub wasi_overlap: Option<String>,
 }
 
 impl ToyEntry {
@@ -70,10 +70,6 @@ pub fn toys_status(project_root: &Path) -> Result<()> {
 
 pub fn toys_check(project_root: &Path) -> Result<()> {
     let entries = load_registry(project_root)?;
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(20))
-        .build()
-        .context("building HTTP client")?;
 
     let mut failures = Vec::new();
     println!("Checking toy WIT files against pinned versions:\n");
@@ -87,22 +83,21 @@ pub fn toys_check(project_root: &Path) -> Result<()> {
             continue;
         }
 
-        let pinned_bytes = match fetch_upstream_pinned(&client, &entry) {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                failures.push(format!("{}: {}", entry.id, error));
-                println!("fail {:<22} unable to fetch pinned source", entry.id);
-                continue;
-            }
+        let Some(expected_hash) = entry.hash.as_deref() else {
+            failures.push(format!("{}: missing pinned hash in registry", entry.id));
+            println!("fail {:<22} missing hash field in registry", entry.id);
+            continue;
         };
-        let pinned_hash = hash_bytes(&pinned_bytes);
+        let expected_hash = expected_hash
+            .strip_prefix("sha256:")
+            .unwrap_or(expected_hash);
 
-        if pinned_hash == local_hash {
+        if expected_hash == local_hash {
             println!("ok   {:<22} matches pinned {}", entry.id, entry.version);
         } else {
             failures.push(format!(
                 "{}: local hash {} does not match pinned hash {}",
-                entry.id, local_hash, pinned_hash
+                entry.id, local_hash, expected_hash
             ));
             println!(
                 "fail {:<22} hash mismatch vs pinned {}",
@@ -215,16 +210,16 @@ pub fn load_registry(project_root: &Path) -> Result<Vec<ToyEntry>> {
         let source = string_field(entry_table, id, "source")?;
         let version = string_field(entry_table, id, "version")?;
         let file = string_field(entry_table, id, "file")?;
+        let hash = optional_string_field(entry_table, "hash");
         let phase = optional_u32_field(entry_table, "phase");
-        let wasi_overlap = optional_string_field(entry_table, "wasi_overlap");
 
         entries.push(ToyEntry {
             id: id.to_string(),
             source,
             version,
             file,
+            hash,
             phase,
-            wasi_overlap,
         });
     }
 
