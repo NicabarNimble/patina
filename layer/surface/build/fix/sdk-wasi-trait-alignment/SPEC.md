@@ -52,7 +52,7 @@ exit_criteria:
     checked: false
 
   - id: swa8-canon-children-updated
-    text: "All 6 canon children (`file-system-monitor`, `content-extractor`, `schema-enforcer`, `dedup-filter`, `record-writer`, `lakehouse-catalog`) updated to use aligned toy names and traits. `store` → `sql`. `events` split into `messaging` + `events`. `filesystem` explicitly granted where needed. All compile against aligned SDK."
+    text: "All 6 canon children (`file-system-monitor`, `content-extractor`, `schema-enforcer`, `dedup-filter`, `record-writer`, `lakehouse-catalog`) updated to use aligned toy names and traits. `store` → `sql`. `events` split into `messaging` + `events`. `filesystem` explicitly granted where needed. All compile against aligned SDK. Spec-manager stub is out of scope — it will be rebuilt as the slate pando child on the aligned SDK."
     checked: false
 
   - id: swa9-capability-enforcement
@@ -467,17 +467,18 @@ These are built as part of this spec:
 
 ## Verification
 
-Scoped to SDK + 6 canon children + spec-manager stub. Workspace-wide
-checks may pull legacy children — verify the 8 targets explicitly.
+Scoped to SDK + 6 canon children. Workspace-wide checks may pull legacy
+children — verify the 7 targets explicitly. Spec-manager stub is out of
+scope (rebuilt as slate pando child after this spec completes).
 
 ```bash
 # SDK compiles
 cargo check -q -p patina-sdk --features child
 
-# Canon children compile against aligned traits
+# 6 canon children compile against aligned traits
 for child in file-system-monitor content-extractor schema-enforcer \
-             dedup-filter record-writer lakehouse-catalog spec-manager; do
-  cargo check -q -p "patina-$child" 2>&1 || echo "FAIL: $child"
+             dedup-filter record-writer lakehouse-catalog; do
+  cargo check -q -p "patina-ai-child-$child" 2>&1 || echo "FAIL: $child"
 done
 
 # Host compiles

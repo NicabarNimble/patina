@@ -100,9 +100,9 @@ DuckDB internals into the toy contract.
 statement)`. The child works with SQL. Mother wires `open("catalog")` to
 DuckDB. If Mother switches to PostgreSQL tomorrow, the child doesn't change.
 
-`record-writer` also needs SQL for batch inserts. Currently it uses
-`keyvalue` for buffering — that stays, but any table operations move to
-`sql`.
+`record-writer` does not use SQL today — it uses `keyvalue` for batch
+buffering and `filesystem` for parquet writes. If it needs table operations
+in the future, it would use `sql`, but that is not part of this spec.
 
 ### Events/messaging split
 
@@ -202,7 +202,7 @@ a known set of children. No surprises.
 
 Order by dependency risk (lowest risk first):
 - Logging (no children depend on log shape for data flow)
-- Keyvalue (4 children use state — dedup, record-writer, lakehouse, spec-manager)
+- Keyvalue (3 canon children use state — dedup-filter, record-writer, lakehouse-catalog)
 - Filesystem (file-system-monitor, content-extractor, record-writer)
 - Messaging/events split (all 6 children affected)
 - HTTP (no canon children use it directly)
@@ -229,9 +229,15 @@ Each aligned toy is verified by:
 3. `patina mother toys status` shows aligned versions
 4. Capability enforcement test passes for the new toy
 
-Final verification:
+Final verification (scoped to SDK + 6 canon children, not workspace):
 ```bash
-cargo check --workspace -q
+cargo check -q -p patina-sdk --features child
+for child in file-system-monitor content-extractor schema-enforcer \
+             dedup-filter record-writer lakehouse-catalog; do
+  cargo check -q -p "patina-ai-child-$child"
+done
+cargo check -q -p patina-ai
+cargo check -q -p patina-mother
 cargo test -q --lib
 patina mother toys status
 patina mother toys check
