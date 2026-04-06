@@ -68,7 +68,7 @@ exit_criteria:
     checked: false
 
   - id: swa12-compile-proof
-    text: "`cargo check --workspace -q` and `cargo test -q --lib` pass. All children compile. `patina mother toys status` shows clean alignment."
+    text: "SDK, 6 canon children (`patina-ai-child-*`), `patina-ai`, and `patina-mother` all pass `cargo check -q`. `cargo test -q --lib` passes. `patina mother toys status` shows clean alignment."
     checked: false
 ---
 # fix: SDK WASI Trait Alignment
