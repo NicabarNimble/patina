@@ -25,7 +25,7 @@ exit_criteria:
 
   - id: swa1-log-matches-wasi
     text: "LogBackend trait matches `wasi:logging@0.1.0` shape: single `log(level, context, message)` function with level enum (trace, debug, info, warn, error, critical). Convenience methods (`.info()`, `.error()`) are sugar on top, not the trait contract."
-    checked: false
+    checked: true
 
   - id: swa2-keyvalue-matches-wasi
     text: "StateBackend trait matches `wasi:keyvalue/store@0.2.0` shape: bucket resource with `open(identifier)`, `get(key) -> list<u8>`, `set(key, list<u8>)`, `delete(key)`, `exists(key)`, `list-keys(cursor)`. Values are bytes not strings. Bucket identifier scopes access."
@@ -49,7 +49,7 @@ exit_criteria:
 
   - id: swa7-patina-delta-documented
     text: "Every `patina:*` toy (`git`, `events-stream`, `measure`, `connect`, `task`, `peer`) has a comment in its WIT file stating: (a) why WASI doesn't cover this, (b) whether a WASI proposal exists that overlaps, (c) if so, how our interface mirrors the proposal shape."
-    checked: false
+    checked: true
 
   - id: swa8-canon-children-updated
     text: "All 6 canon children (`file-system-monitor`, `content-extractor`, `schema-enforcer`, `dedup-filter`, `record-writer`, `lakehouse-catalog`) updated to use aligned toy names and traits. `store` → `sql`. `events` split into `messaging` + `events`. `filesystem` explicitly granted where needed. All compile against aligned SDK. Spec-manager stub is out of scope — it will be rebuilt as the slate pando child on the aligned SDK."
@@ -61,11 +61,11 @@ exit_criteria:
 
   - id: swa10-mother-toys-registry
     text: "Mother manages a toy registry at `wit/toys/deps/` with version pinning. `patina mother toys status` shows all toys: name, version, source (wasi upstream or patina delta), WASI proposal phase where applicable. `patina mother toys check` verifies local WIT files match pinned versions."
-    checked: false
+    checked: true
 
   - id: swa11-mother-toys-sync
     text: "`patina mother toys sync` fetches latest WIT from upstream WASI repos, compares to pinned versions, reports changes. User decides when to bump. Pinned versions tracked in a registry manifest."
-    checked: false
+    checked: true
 
   - id: swa12-compile-proof
     text: "SDK, 6 canon children (`patina-ai-child-*`), `patina-ai`, and `patina-mother` all pass `cargo check -q`. `cargo test -q --lib` passes. `patina mother toys status` shows clean alignment."

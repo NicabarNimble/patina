@@ -242,3 +242,36 @@ cargo test -q --lib
 patina mother toys status
 patina mother toys check
 ```
+
+## Commits
+
+### Phase 1: Toy registry (swa10, swa11)
+1. [[commit-b3d0f9af]] — `patina mother toys status` command + registry manifest
+2. [[commit-babb8044]] — `patina mother toys check` command (hash comparison)
+3. [[commit-c8b8fcb2]] — `patina mother toys sync` command (upstream fetch)
+
+### Phase 2: SDK trait alignment (swa1 only — swa2-6 pending)
+4. [[commit-e77250ec]] — logging trait aligned to `wasi:logging@0.1.0` shape
+
+### Phase 3: Patina delta documentation (swa7)
+5. [[commit-e9414e23]] — all 6 patina delta WIT files documented
+
+### Phase 4: Canon child manifests (swa8 partial — code updates pending)
+6. [[commit-9faed641]] — file-system-monitor toy grants aligned
+7. [[commit-392b3b91]] — content-extractor toy grants aligned
+8. [[commit-a1629be2]] — schema-enforcer toy grants aligned
+9. [[commit-5f97eff1]] — dedup-filter toy grants aligned
+10. [[commit-1442a443]] — record-writer toy grants aligned
+11. [[commit-5c619efa]] — lakehouse-catalog toy grants aligned (store → sql)
+
+### Still pending
+- swa2-6: keyvalue, filesystem, messaging split, http, sql trait alignments
+- swa8: child `src/lib.rs` code updates to use aligned trait names
+- swa9: capability enforcement tests
+- swa12: final compile proof
+
+### Known issues from build
+- `mother toys check` reports hash mismatches — upstream WASI repos have
+  inconsistent tagging/file layouts, complicating strict pinned-hash checks
+- Mother's capability mapping in `src/child/internal/mod.rs` uses legacy
+  toy aliases — new grant names need deeper wiring for enforcement
