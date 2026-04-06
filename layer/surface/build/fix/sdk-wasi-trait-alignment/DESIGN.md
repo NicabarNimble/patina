@@ -312,10 +312,15 @@ hash = "sha256:abc123..."  # hash of our pinned local copy
 `toys check` = local file hash vs manifest hash (fast, offline, reliable).
 `toys sync` = fetch upstream, show diff, user decides to bump.
 
+### Blocking fixes (resolved)
+12. [[commit-1508eb4b]] — runtime toy grant wiring aligned to new names
+13. [[commit-a1136e6f]] — toys check switched to offline pinned-hash verification
+
+### Phase 2 continued: swa2
+14. [[commit-0a7007a8]] — keyvalue trait aligned with bucket resources, bytes values
+
 ### Still pending
-- Capability wiring fix (above — blocks swa8, swa9)
-- Toys check approach fix (above — blocks swa10 full)
-- swa2-6: keyvalue, filesystem, messaging split, http, sql trait alignments
+- swa3-6: filesystem, messaging split, http, sql trait alignments
 - swa8: child `src/lib.rs` code updates to use aligned trait names
 - swa9: capability enforcement tests
 - swa12: final compile proof

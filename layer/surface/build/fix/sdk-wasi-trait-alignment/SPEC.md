@@ -29,7 +29,7 @@ exit_criteria:
 
   - id: swa2-keyvalue-matches-wasi
     text: "StateBackend trait matches `wasi:keyvalue/store@0.2.0` shape: bucket resource with `open(identifier)`, `get(key) -> list<u8>`, `set(key, list<u8>)`, `delete(key)`, `exists(key)`, `list-keys(cursor)`. Values are bytes not strings. Bucket identifier scopes access."
-    checked: false
+    checked: true
 
   - id: swa3-filesystem-matches-wasi
     text: "LayerFsBackend trait matches `wasi:filesystem@0.2.6` shape: descriptor-based access with preopened directories. Not simplified string path functions. Children that need filesystem access must declare `filesystem` in their `[needs].toys` list."
@@ -456,20 +456,11 @@ These are built as part of this spec:
 2. **swa1** — Logging trait aligned to WASI shape. ✓
 3. **swa7** — Patina delta toys documented in WIT files. ✓
 4. **swa8 partial** — Canon child manifests updated to aligned grant names. ✓
+5. **Capability wiring fix** — runtime toy grant mapping aligned. ✓
+6. **Toys check fix** — offline pinned-hash verification. ✓
+7. **swa2** — Keyvalue trait aligned with bucket resources, bytes values. ✓
 
-### Next: runtime wiring (blocks all remaining work)
-5. **Capability wiring fix** — update `src/child/internal/mod.rs` string
-   comparisons from legacy names (`log`, `state`, `events`, `fetch`) to
-   aligned names (`logging`, `keyvalue`, `events` + `messaging`, `http`).
-   Add `filesystem` and `sql` grant checks. Without this, children with
-   aligned manifests don't get their toys at runtime.
-6. **Toys check fix** — change `mother toys check` from upstream hash
-   comparison to local pinned-hash comparison. Add `hash` field to
-   `toys-registry.toml`. `toys check` = offline local verification.
-   `toys sync` = upstream comparison (unchanged).
-
-### Then: trait alignments
-7. **swa2** — Keyvalue: bucket resource, bytes values, cursor-based list.
+### Next: remaining trait alignments
 8. **swa3** — Filesystem: descriptor model with preopened dirs.
 9. **swa4** — Messaging: split from events, match wasi:messaging shape.
 10. **swa5** — HTTP: align with outgoing-handler shape.
