@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -12,8 +13,36 @@ pub struct ToyEntry {
     pub source: String,
     pub version: String,
     pub file: String,
+    pub upstream_files: Vec<String>,
     pub hash: Option<String>,
     pub phase: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct Semver {
+    major: u64,
+    minor: u64,
+    patch: u64,
+}
+
+#[derive(Debug, Clone)]
+struct LatestStableVersion {
+    version: String,
+    semver: Semver,
+    source: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubRelease {
+    tag_name: String,
+    draft: bool,
+    prerelease: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubTagRef {
+    #[serde(rename = "ref")]
+    ref_name: String,
 }
 
 impl ToyEntry {
@@ -126,56 +155,55 @@ pub fn toys_sync(project_root: &Path) -> Result<()> {
         .context("building HTTP client")?;
 
     let mut failures = Vec::new();
-    let mut changed = 0usize;
+    let mut behind = 0usize;
 
-    println!("Sync report against latest upstream WASI refs:\n");
+    println!("Sync report against latest upstream stable releases:\n");
+    println!(
+        "{:<22} {:<10} {:<10} {:<20} {:<10}",
+        "name", "pinned", "latest", "age", "source"
+    );
+    println!(
+        "{:-<22} {:-<10} {:-<10} {:-<20} {:-<10}",
+        "", "", "", "", ""
+    );
 
     for entry in entries {
         if entry.source == "patina" {
-            println!("skip {:<22} patina delta", entry.id);
+            println!(
+                "{:<22} {:<10} {:<10} {:<20} {:<10}",
+                entry.id, entry.version, "-", "patina-delta", "-"
+            );
             continue;
         }
 
-        let pinned_bytes = match fetch_upstream_pinned(&client, &entry) {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                failures.push(format!("{}: pinned fetch failed: {}", entry.id, error));
-                println!("fail {:<22} unable to fetch pinned source", entry.id);
-                continue;
+        match fetch_latest_stable_version(&client, &entry) {
+            Ok(latest) => {
+                let age = version_age(&entry.version, &latest.semver)?;
+                if latest.version != entry.version {
+                    behind += 1;
+                }
+                println!(
+                    "{:<22} {:<10} {:<10} {:<20} {:<10}",
+                    entry.id, entry.version, latest.version, age, latest.source
+                );
             }
-        };
-        let latest_bytes = match fetch_upstream_latest(&client, &entry) {
-            Ok(bytes) => bytes,
             Err(error) => {
-                failures.push(format!("{}: latest fetch failed: {}", entry.id, error));
-                println!("fail {:<22} unable to fetch latest source", entry.id);
-                continue;
+                failures.push(format!("{}: {}", entry.id, error));
+                println!(
+                    "{:<22} {:<10} {:<10} {:<20} {:<10}",
+                    entry.id, entry.version, "error", "unavailable", "error"
+                );
             }
-        };
-
-        let pinned_hash = hash_bytes(&pinned_bytes);
-        let latest_hash = hash_bytes(&latest_bytes);
-
-        if pinned_hash == latest_hash {
-            println!("ok   {:<22} no upstream changes", entry.id);
-        } else {
-            changed += 1;
-            println!(
-                "diff {:<22} pinned {} != latest {}",
-                entry.id,
-                short_hash(&pinned_hash),
-                short_hash(&latest_hash)
-            );
         }
     }
 
     println!();
-    if changed == 0 {
-        println!("No upstream toy changes detected against pinned versions.");
+    if behind == 0 {
+        println!("All WASI toy pins are on the latest stable release.");
     } else {
         println!(
-            "Detected {} toy(s) with upstream changes; review before version bumps.",
-            changed
+            "{} WASI toy(s) are behind latest stable releases; update version pins before pull.",
+            behind
         );
     }
 
@@ -218,6 +246,7 @@ pub fn load_registry(project_root: &Path) -> Result<Vec<ToyEntry>> {
             source,
             version,
             file,
+            upstream_files: string_array_field(entry_table, "upstream_files"),
             hash,
             phase,
         });
@@ -262,6 +291,19 @@ fn optional_string_field(table: &toml::value::Table, field: &str) -> Option<Stri
         .get(field)
         .and_then(toml::Value::as_str)
         .map(ToString::to_string)
+}
+
+fn string_array_field(table: &toml::value::Table, field: &str) -> Vec<String> {
+    table
+        .get(field)
+        .and_then(toml::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| value.as_str().map(ToString::to_string))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
 }
 
 pub fn require_upstream(entry: &ToyEntry) -> Result<()> {
@@ -332,6 +374,150 @@ fn fetch_upstream_latest(client: &reqwest::blocking::Client, entry: &ToyEntry) -
     }
 
     Err(last_error.unwrap_or_else(|| anyhow::anyhow!("no latest URL candidates")))
+}
+
+fn fetch_latest_stable_version(
+    client: &reqwest::blocking::Client,
+    entry: &ToyEntry,
+) -> Result<LatestStableVersion> {
+    require_upstream(entry)?;
+    let repo = repo_slug(entry)?;
+
+    let release_url = format!("https://api.github.com/repos/{}/releases", repo);
+    match client
+        .get(&release_url)
+        .header(reqwest::header::USER_AGENT, "patina-toys-sync")
+        .send()
+    {
+        Ok(response) if response.status().is_success() => {
+            let releases: Vec<GithubRelease> = response
+                .json()
+                .context("parsing GitHub releases response")?;
+            if let Some((version, semver)) = latest_from_releases(&releases) {
+                return Ok(LatestStableVersion {
+                    version,
+                    semver,
+                    source: "releases",
+                });
+            }
+        }
+        Ok(response) => {
+            let status = response.status();
+            let tag_fallback = fetch_latest_tag_version(client, &repo)
+                .with_context(|| format!("releases API HTTP {} and tag fallback failed", status))?;
+            return Ok(tag_fallback);
+        }
+        Err(error) => {
+            let tag_fallback = fetch_latest_tag_version(client, &repo).with_context(|| {
+                format!(
+                    "releases API request failed ({}) and tag fallback failed",
+                    error
+                )
+            })?;
+            return Ok(tag_fallback);
+        }
+    }
+
+    fetch_latest_tag_version(client, &repo)
+        .context("no stable releases found and tag fallback failed")
+}
+
+fn fetch_latest_tag_version(
+    client: &reqwest::blocking::Client,
+    repo: &str,
+) -> Result<LatestStableVersion> {
+    let tags_url = format!("https://api.github.com/repos/{}/git/refs/tags", repo);
+    let response = client
+        .get(&tags_url)
+        .header(reqwest::header::USER_AGENT, "patina-toys-sync")
+        .send()
+        .context("requesting GitHub tag refs")?;
+    if !response.status().is_success() {
+        bail!("tag refs API returned HTTP {}", response.status());
+    }
+    let tags: Vec<GithubTagRef> = response
+        .json()
+        .context("parsing GitHub tag refs response")?;
+    let (version, semver) = latest_from_tags(&tags)
+        .ok_or_else(|| anyhow::anyhow!("no stable semver tags found in git refs"))?;
+    Ok(LatestStableVersion {
+        version,
+        semver,
+        source: "tags",
+    })
+}
+
+fn latest_from_releases(releases: &[GithubRelease]) -> Option<(String, Semver)> {
+    releases
+        .iter()
+        .filter(|release| !release.draft && !release.prerelease)
+        .filter_map(|release| normalized_semver(&release.tag_name))
+        .max_by(|(_, left), (_, right)| left.cmp(right))
+}
+
+fn latest_from_tags(tags: &[GithubTagRef]) -> Option<(String, Semver)> {
+    tags.iter()
+        .filter_map(|tag| {
+            let name = tag
+                .ref_name
+                .strip_prefix("refs/tags/")
+                .unwrap_or(tag.ref_name.as_str())
+                .trim_end_matches("^{}");
+            normalized_semver(name)
+        })
+        .max_by(|(_, left), (_, right)| left.cmp(right))
+}
+
+fn normalized_semver(raw: &str) -> Option<(String, Semver)> {
+    let normalized = raw.strip_prefix('v').unwrap_or(raw).to_string();
+    if normalized.contains('-') || normalized.contains('+') {
+        return None;
+    }
+    let mut parts = normalized.split('.');
+    let major = parts.next()?.parse::<u64>().ok()?;
+    let minor = parts.next()?.parse::<u64>().ok()?;
+    let patch = parts.next()?.parse::<u64>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((
+        normalized,
+        Semver {
+            major,
+            minor,
+            patch,
+        },
+    ))
+}
+
+fn version_age(pinned: &str, latest: &Semver) -> Result<String> {
+    let (_, pinned_semver) = normalized_semver(pinned)
+        .ok_or_else(|| anyhow::anyhow!("pinned version '{}' is not semver", pinned))?;
+    if pinned_semver == *latest {
+        return Ok("current".to_string());
+    }
+    if pinned_semver > *latest {
+        return Ok("ahead".to_string());
+    }
+    Ok(format!(
+        "behind {}.{}.{}",
+        latest.major.saturating_sub(pinned_semver.major),
+        latest.minor.saturating_sub(pinned_semver.minor),
+        latest.patch.saturating_sub(pinned_semver.patch)
+    ))
+}
+
+fn repo_slug(entry: &ToyEntry) -> Result<String> {
+    require_upstream(entry)?;
+    let slug = entry
+        .source
+        .trim_start_matches("https://github.com/")
+        .trim_end_matches('/')
+        .to_string();
+    if slug.split('/').count() != 2 {
+        bail!("invalid GitHub source URL '{}'", entry.source);
+    }
+    Ok(slug)
 }
 
 fn candidate_urls(entry: &ToyEntry, git_ref: &str) -> Vec<String> {
