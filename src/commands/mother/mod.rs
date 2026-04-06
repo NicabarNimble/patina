@@ -332,7 +332,9 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             toys::toys_check(&project_root)
         }
         Some(MotherCommands::Toys(ToysCommands::Sync)) => {
-            bail!("`patina mother toys sync` not implemented yet")
+            let project_root = SessionManager::find_project_root()
+                .context("`patina mother toys sync` must run in a Patina project")?;
+            toys::toys_sync(&project_root)
         }
     }
 }

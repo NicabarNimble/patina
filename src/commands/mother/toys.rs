@@ -123,6 +123,78 @@ pub fn toys_check(project_root: &Path) -> Result<()> {
     }
 }
 
+pub fn toys_sync(project_root: &Path) -> Result<()> {
+    let entries = load_registry(project_root)?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .context("building HTTP client")?;
+
+    let mut failures = Vec::new();
+    let mut changed = 0usize;
+
+    println!("Sync report against latest upstream WASI refs:\n");
+
+    for entry in entries {
+        if entry.source == "patina" {
+            println!("skip {:<22} patina delta", entry.id);
+            continue;
+        }
+
+        let pinned_bytes = match fetch_upstream_pinned(&client, &entry) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                failures.push(format!("{}: pinned fetch failed: {}", entry.id, error));
+                println!("fail {:<22} unable to fetch pinned source", entry.id);
+                continue;
+            }
+        };
+        let latest_bytes = match fetch_upstream_latest(&client, &entry) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                failures.push(format!("{}: latest fetch failed: {}", entry.id, error));
+                println!("fail {:<22} unable to fetch latest source", entry.id);
+                continue;
+            }
+        };
+
+        let pinned_hash = hash_bytes(&pinned_bytes);
+        let latest_hash = hash_bytes(&latest_bytes);
+
+        if pinned_hash == latest_hash {
+            println!("ok   {:<22} no upstream changes", entry.id);
+        } else {
+            changed += 1;
+            println!(
+                "diff {:<22} pinned {} != latest {}",
+                entry.id,
+                short_hash(&pinned_hash),
+                short_hash(&latest_hash)
+            );
+        }
+    }
+
+    println!();
+    if changed == 0 {
+        println!("No upstream toy changes detected against pinned versions.");
+    } else {
+        println!(
+            "Detected {} toy(s) with upstream changes; review before version bumps.",
+            changed
+        );
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        println!("\nSync errors:");
+        for failure in &failures {
+            println!("- {}", failure);
+        }
+        bail!("toy sync encountered {} fetch error(s)", failures.len())
+    }
+}
+
 pub fn load_registry(project_root: &Path) -> Result<Vec<ToyEntry>> {
     let registry_path = project_root.join(TOYS_REGISTRY_PATH);
     let content = std::fs::read_to_string(&registry_path)
@@ -237,6 +309,36 @@ fn fetch_upstream_pinned(client: &reqwest::blocking::Client, entry: &ToyEntry) -
     Err(last_error.unwrap_or_else(|| anyhow::anyhow!("no upstream URL candidates")))
 }
 
+fn fetch_upstream_latest(client: &reqwest::blocking::Client, entry: &ToyEntry) -> Result<Vec<u8>> {
+    require_upstream(entry)?;
+
+    let mut last_error: Option<anyhow::Error> = None;
+    for git_ref in ["main", "master"] {
+        for url in candidate_urls(entry, git_ref) {
+            match client.get(&url).send() {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return response
+                            .bytes()
+                            .map(|b| b.to_vec())
+                            .context("reading upstream latest response body");
+                    }
+                    last_error = Some(anyhow::anyhow!(
+                        "{} returned HTTP {}",
+                        url,
+                        response.status()
+                    ));
+                }
+                Err(error) => {
+                    last_error = Some(anyhow::anyhow!("request failed for {}: {}", url, error));
+                }
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("no latest URL candidates")))
+}
+
 fn candidate_urls(entry: &ToyEntry, git_ref: &str) -> Vec<String> {
     let repo = entry.source.trim_start_matches("https://github.com/");
     let mut urls = Vec::new();
@@ -276,4 +378,9 @@ fn candidate_file_names(entry: &ToyEntry) -> Vec<String> {
         }
     }
     names
+}
+
+fn short_hash(hash: &str) -> &str {
+    let len = hash.len().min(8);
+    &hash[..len]
 }
