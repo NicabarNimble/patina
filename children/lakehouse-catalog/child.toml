@@ -4,10 +4,10 @@ kind = "child"
 role = "app"
 
 [needs]
-toys = ["log", "state", "events", "store"]
+toys = ["logging", "keyvalue", "events", "sql"]
 
 [needs.connections]
-default = { toy = "store" }
+default = { toy = "sql" }
 
 [needs.scopes.events]
 subscribe = ["file.written"]
