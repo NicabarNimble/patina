@@ -154,6 +154,29 @@ Summary reports per-toy: `pulled` (file changed), `unchanged` (hash
 matched, no fetch needed), `failed` (fetch or compose error), or
 `reverted` (compile check failed, all rolled back).
 
+## Implementation Notes
+
+Three execution risks for the builder:
+
+1. **Tag vs release fallback.** Some WASI repos have git tags but no
+   GitHub Release objects. Sync should try Releases API first, fall back
+   to tag listing (`git/refs/tags`), and report which method was used.
+   If neither produces results, hard-fail for that toy — don't silently
+   report "no updates."
+
+2. **Rollback snapshot strategy.** Before `pull --all` modifies any
+   files, copy all target WIT files + `toys-registry.toml` to temp.
+   Revert reads from temp, not from git. This guarantees rollback even
+   if the process is interrupted mid-write. Temp is cleaned up on
+   success.
+
+3. **Comment/doc preservation in composition.** Multi-file compose must
+   preserve upstream comments and doc blocks verbatim. No normalization
+   of whitespace or comment style. The composed output should be
+   byte-stable on repeated pulls of the same version — same input
+   produces same hash every time. If upstream reformats comments between
+   releases, that shows as a legitimate diff in `sync`.
+
 ## Verification
 
 ```bash
