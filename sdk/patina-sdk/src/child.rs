@@ -29,9 +29,7 @@ pub mod granted {
     pub type Query = toys::QueryToy<GuestHost>;
     #[cfg(feature = "toy-fetch")]
     pub type Fetch = toys::FetchToy<GuestHost>;
-    #[cfg(feature = "toy-emit")]
-    pub type Emit = toys::EmitToy<GuestHost>;
-    #[cfg(feature = "toy-emit")]
+    #[cfg(feature = "toy-messaging")]
     pub type Messaging = toys::MessagingToy<GuestHost>;
     #[cfg(feature = "toy-state")]
     pub type State = toys::StateToy<GuestHost>;
@@ -86,12 +84,7 @@ pub mod granted {
         Fetch::new()
     }
 
-    #[cfg(feature = "toy-emit")]
-    pub fn emit() -> Emit {
-        Emit::new()
-    }
-
-    #[cfg(feature = "toy-emit")]
+    #[cfg(feature = "toy-messaging")]
     pub fn messaging() -> Messaging {
         Messaging::new()
     }
@@ -215,11 +208,11 @@ pub trait Child {
 pub mod host {
     use super::patina;
     use crate::toys::{
-        BeliefBackend, ConnectorBackend, EmitBackend, EventBackend, FetchBackend, GithubBackend,
-        GraphBackend, HttpMethod, HttpRequest, HttpResponse, IngressBackend, LakeBackend,
-        LogBackend, LogLevel, MeasureBackend, MessagingBackend, MessagingMessage, PendingEvent,
-        QueryBackend, SessionBackend, SqlBackend, SqlRow, SqlStatementBackend, SqlValue,
-        StateBackend, StateBucketBackend, TaskBackend, TaskIntent, TaskIntentKind,
+        BeliefBackend, ConnectorBackend, EventBackend, FetchBackend, GithubBackend, GraphBackend,
+        HttpMethod, HttpRequest, HttpResponse, IngressBackend, LakeBackend, LogBackend, LogLevel,
+        MeasureBackend, MessagingBackend, MessagingMessage, PendingEvent, QueryBackend,
+        SessionBackend, SqlBackend, SqlRow, SqlStatementBackend, SqlValue, StateBackend,
+        StateBucketBackend, TaskBackend, TaskIntent, TaskIntentKind,
     };
     #[cfg(feature = "toy-peer")]
     use crate::toys::{PeerBackend, PeerEvent};
@@ -248,9 +241,6 @@ pub mod host {
         }
         pub fn fetch() -> crate::toys::FetchToy<Self> {
             crate::toys::FetchToy::new()
-        }
-        pub fn emit() -> crate::toys::EmitToy<Self> {
-            crate::toys::EmitToy::new()
         }
         pub fn messaging() -> crate::toys::MessagingToy<Self> {
             crate::toys::MessagingToy::new()
@@ -568,19 +558,6 @@ pub mod host {
                 .ok_or_else(|| "http authority is required".to_string())?;
             let source = authority.split(':').next().unwrap_or(authority);
             wasi_http_send_with_binding(source, request)
-        }
-    }
-
-    impl EmitBackend for GuestHost {
-        fn emit(schema: &str, fact_type: &str, data: &str) -> Result<u64, String> {
-            let payload = serde_json::json!({
-                "schema": schema,
-                "fact_type": fact_type,
-                "data": serde_json::from_str::<serde_json::Value>(data)
-                    .unwrap_or(serde_json::Value::String(data.to_string())),
-            })
-            .to_string();
-            messaging_publish("fact.ingested", fact_type, &payload)
         }
     }
 

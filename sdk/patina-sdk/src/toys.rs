@@ -102,10 +102,6 @@ pub trait MessagingBackend {
     fn send(client: &Self::Client, message: &MessagingMessage) -> Result<u64, String>;
 }
 
-pub trait EmitBackend {
-    fn emit(schema: &str, fact_type: &str, data: &str) -> Result<u64, String>;
-}
-
 pub trait SessionBackend {
     fn get_session_id() -> String;
     fn get_previous_session() -> Option<String>;
@@ -443,19 +439,6 @@ impl<B> QueryToy<B> {
 impl<B: QueryBackend> QueryToy<B> {
     pub fn query(&self, kind: &str, params_json: &str) -> Result<String, String> {
         B::query(kind, params_json)
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct EmitToy<B>(std::marker::PhantomData<B>);
-impl<B> EmitToy<B> {
-    pub fn new() -> Self {
-        Self(std::marker::PhantomData)
-    }
-}
-impl<B: EmitBackend> EmitToy<B> {
-    pub fn emit(&self, schema: &str, fact_type: &str, data: &str) -> Result<u64, String> {
-        B::emit(schema, fact_type, data)
     }
 }
 
