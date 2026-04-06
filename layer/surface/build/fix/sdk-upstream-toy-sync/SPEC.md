@@ -37,12 +37,20 @@ exit_criteria:
     text: "After `pull`, the command runs `cargo check -q -p patina-sdk --features child`. If check fails: local files are reverted, registry hash unchanged, error printed with guidance. No half-updated state."
     checked: false
 
-  - id: uts7-upstream-current
-    text: "All 6 WASI toy WIT files updated to their pinned release versions. `mother toys check` all green. If upstream changed error types or interface shapes, SDK traits and host implementations updated to match."
+  - id: uts7-upstream-pulled
+    text: "All 6 WASI toy WIT files pulled at their pinned release versions. `mother toys check` all green. Local files match upstream release content."
     checked: false
 
-  - id: uts8-compile-proof
-    text: "SDK, 6 canon children (`patina-ai-child-*`), `patina-ai`, and `mother` all compile. `cargo test -q --lib` passes."
+  - id: uts8-trait-divergences-fixed
+    text: "If pulled upstream WIT changed error types or interface shapes (e.g., keyvalue `error` from `type error = string` to `variant error`), SDK traits and host implementations are updated to match. This is separate work from the pull command itself."
+    checked: false
+
+  - id: uts9-command-tests
+    text: "Tests exist for: pull rejects patina delta toys, pull updates registry hash on success, pull reverts on compile failure, check passes after pull, `--all` reports per-toy status."
+    checked: false
+
+  - id: uts10-compile-proof
+    text: "SDK, 6 canon children (`patina-ai-child-*`), `patina-ai`, and `mother` all pass `cargo check -q`. `cargo test -q --lib` passes."
     checked: false
 ---
 # fix: SDK Upstream Toy Sync
@@ -132,15 +140,18 @@ others that succeeded. Summary reports per-toy status.
 ## Verification
 
 ```bash
+# Pull and verify upstream
 patina mother toys pull --all
-patina mother toys sync       # should show: pinned versions match latest, or newer available
-patina mother toys check      # should show: all green
+patina mother toys check      # all green (local matches pinned hashes)
+patina mother toys sync       # shows pinned versions vs latest available releases
+
+# Scoped compilation (not workspace-wide)
 cargo check -q -p patina-sdk --features child
 for child in file-system-monitor content-extractor schema-enforcer \
              dedup-filter record-writer lakehouse-catalog; do
   cargo check -q -p "patina-ai-child-$child"
 done
 cargo check -q -p patina-ai
-cargo check -q -p mother
+cargo check -q -p mother      # crate name is "mother", not "patina-mother"
 cargo test -q --lib
 ```
