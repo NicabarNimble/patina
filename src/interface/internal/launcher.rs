@@ -142,6 +142,60 @@ pub fn derive_interface_session_name(project_path: &Path, adapter_name: &str) ->
     format!("{}_{}", derive_session_name(project_path), lane)
 }
 
+pub fn teardown_interface_tmux_lane(project_path: &Path, adapter_name: &str) -> Result<bool> {
+    #[cfg(unix)]
+    {
+        if which::which("tmux").is_err() {
+            return Ok(false);
+        }
+
+        let session_name = derive_interface_session_name(project_path, adapter_name);
+        let tmux_socket = derive_tmux_socket_name(&session_name);
+
+        let has_session = Command::new("tmux")
+            .arg("-L")
+            .arg(&tmux_socket)
+            .args(["has-session", "-t", &session_name])
+            .status();
+
+        let Ok(status) = has_session else {
+            return Ok(false);
+        };
+        if !status.success() {
+            return Ok(false);
+        }
+
+        let kill_status = Command::new("tmux")
+            .arg("-L")
+            .arg(&tmux_socket)
+            .args(["kill-session", "-t", &session_name])
+            .status()?;
+
+        if !kill_status.success() {
+            bail!(
+                "Failed to kill tmux session '{}' on socket '{}'",
+                session_name,
+                tmux_socket
+            );
+        }
+
+        let _ = Command::new("tmux")
+            .arg("-L")
+            .arg(&tmux_socket)
+            .arg("kill-server")
+            .status();
+
+        return Ok(true);
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = project_path;
+        let _ = adapter_name;
+        Ok(false)
+    }
+}
+
 #[cfg(unix)]
 fn should_launch_tmux(tmux_mode: TmuxLaunchMode, tmux_session_name: Option<&str>) -> bool {
     matches!(
