@@ -235,6 +235,41 @@ pub trait CheckpointBackend {
     fn save(stream: &str, checkpoint_json: &str) -> Result<(), String>;
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SqlValue {
+    Int32(i32),
+    Int64(i64),
+    Float64(f64),
+    Text(String),
+    Flag(bool),
+    Binary(Vec<u8>),
+    Null,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SqlRow {
+    pub values: Vec<SqlValue>,
+}
+
+pub trait SqlStatementBackend {
+    fn query(&self) -> String;
+    fn params(&self) -> Vec<String>;
+}
+
+pub trait SqlBackend {
+    type Connection;
+    type Statement: SqlStatementBackend;
+
+    fn open(name: &str) -> Result<Self::Connection, String>;
+    fn prepare(query: &str, params: &[String]) -> Result<Self::Statement, String>;
+    fn query(
+        connection: &Self::Connection,
+        statement: &Self::Statement,
+    ) -> Result<Vec<SqlRow>, String>;
+    fn exec(connection: &Self::Connection, statement: &Self::Statement) -> Result<u32, String>;
+}
+
 pub trait LakeBackend {
     fn list_granted_lakes() -> Result<Vec<GrantedLake>, String>;
     fn load_cursor(lake: &str, source: &str, data_type: &str) -> Option<String>;
@@ -705,6 +740,57 @@ pub struct LakeCatalog<B>(std::marker::PhantomData<B>);
 impl<B> LakeCatalog<B> {
     pub fn new() -> Self {
         Self(std::marker::PhantomData)
+    }
+}
+
+#[derive(Debug)]
+pub struct SqlConnection<B: SqlBackend>(B::Connection);
+
+#[derive(Debug)]
+pub struct SqlStatement<B: SqlBackend>(B::Statement);
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SqlToy<B>(std::marker::PhantomData<B>);
+
+impl<B> SqlToy<B> {
+    pub fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<B: SqlBackend> SqlToy<B> {
+    pub fn open(&self, name: &str) -> Result<SqlConnection<B>, String> {
+        Ok(SqlConnection(B::open(name)?))
+    }
+
+    pub fn prepare(&self, query: &str, params: &[String]) -> Result<SqlStatement<B>, String> {
+        Ok(SqlStatement(B::prepare(query, params)?))
+    }
+
+    pub fn query(
+        &self,
+        connection: &SqlConnection<B>,
+        statement: &SqlStatement<B>,
+    ) -> Result<Vec<SqlRow>, String> {
+        B::query(&connection.0, &statement.0)
+    }
+
+    pub fn exec(
+        &self,
+        connection: &SqlConnection<B>,
+        statement: &SqlStatement<B>,
+    ) -> Result<u32, String> {
+        B::exec(&connection.0, &statement.0)
+    }
+}
+
+impl<B: SqlBackend> SqlStatement<B> {
+    pub fn query(&self) -> String {
+        self.0.query()
+    }
+
+    pub fn params(&self) -> Vec<String> {
+        self.0.params()
     }
 }
 impl<B: LakeBackend> LakeToy<B> {

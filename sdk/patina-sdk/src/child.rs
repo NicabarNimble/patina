@@ -43,6 +43,8 @@ pub mod granted {
     pub type Lakes = toys::LakeCatalog<GuestHost>;
     #[cfg(feature = "toy-lake")]
     pub type Lake = toys::LakeToy<GuestHost>;
+    #[cfg(feature = "toy-lake")]
+    pub type Sql = toys::SqlToy<GuestHost>;
     #[cfg(feature = "toy-ingress")]
     pub type IngressSources = toys::IngressCatalog<GuestHost>;
     #[cfg(feature = "toy-ingress")]
@@ -123,6 +125,11 @@ pub mod granted {
         lakes()
             .require(name)
             .unwrap_or_else(|error| panic!("missing granted lake '{}': {}", name, error))
+    }
+
+    #[cfg(feature = "toy-lake")]
+    pub fn sql() -> Sql {
+        Sql::new()
     }
 
     #[cfg(feature = "toy-ingress")]
@@ -225,8 +232,9 @@ pub mod host {
         BeliefBackend, CheckpointBackend, ConnectorBackend, EmitBackend, EventBackend,
         FetchBackend, GithubBackend, GraphBackend, HttpMethod, HttpRequest, HttpResponse,
         IngressBackend, LakeBackend, LogBackend, LogLevel, MeasureBackend, MessagingBackend,
-        MessagingMessage, PendingEvent, QueryBackend, SessionBackend, StateBackend,
-        StateBucketBackend, TaskBackend, TaskIntent, TaskIntentKind,
+        MessagingMessage, PendingEvent, QueryBackend, SessionBackend, SqlBackend, SqlRow,
+        SqlStatementBackend, SqlValue, StateBackend, StateBucketBackend, TaskBackend, TaskIntent,
+        TaskIntentKind,
     };
     #[cfg(feature = "toy-layer-fs")]
     use crate::toys::{
@@ -243,6 +251,10 @@ pub mod host {
     pub struct GuestStateBucket(super::wasi::keyvalue::store::Bucket);
     #[derive(Debug)]
     pub struct GuestMessagingClient(super::wasi::messaging::producer::Client);
+    #[derive(Debug)]
+    pub struct GuestSqlConnection(super::wasi::sql::readwrite::Connection);
+    #[derive(Debug)]
+    pub struct GuestSqlStatement(super::wasi::sql::readwrite::Statement);
     #[cfg(feature = "toy-layer-fs")]
     #[derive(Debug)]
     pub struct GuestFsDescriptor(super::wasi::filesystem::types::Descriptor);
@@ -283,6 +295,9 @@ pub mod host {
             crate::toys::LakeCatalog::<Self>::new()
                 .require(name)
                 .unwrap_or_else(|error| panic!("missing granted lake '{}': {}", name, error))
+        }
+        pub fn sql() -> crate::toys::SqlToy<Self> {
+            crate::toys::SqlToy::new()
         }
         pub fn ingress(name: &str) -> crate::toys::IngressToy<Self> {
             crate::toys::IngressCatalog::<Self>::new()
@@ -400,6 +415,18 @@ pub mod host {
             &[action.to_string(), payload.to_string()],
         )?;
         super::wasi::sql::readwrite::exec(&conn, &stmt)
+    }
+
+    fn sql_value_from_wasi(value: super::wasi::sql::readwrite::DataType) -> SqlValue {
+        match value {
+            super::wasi::sql::readwrite::DataType::Int32(value) => SqlValue::Int32(value),
+            super::wasi::sql::readwrite::DataType::Int64(value) => SqlValue::Int64(value),
+            super::wasi::sql::readwrite::DataType::Float64(value) => SqlValue::Float64(value),
+            super::wasi::sql::readwrite::DataType::Text(value) => SqlValue::Text(value),
+            super::wasi::sql::readwrite::DataType::Flag(value) => SqlValue::Flag(value),
+            super::wasi::sql::readwrite::DataType::Binary(value) => SqlValue::Binary(value),
+            super::wasi::sql::readwrite::DataType::Null => SqlValue::Null,
+        }
     }
 
     fn default_authority_for_source(source: &str) -> String {
@@ -606,6 +633,48 @@ pub mod host {
                 metadata: message.metadata.clone(),
             };
             super::wasi::messaging::producer::send(&client.0, &msg)
+        }
+    }
+
+    impl SqlStatementBackend for GuestSqlStatement {
+        fn query(&self) -> String {
+            self.0.query()
+        }
+
+        fn params(&self) -> Vec<String> {
+            self.0.params()
+        }
+    }
+
+    impl SqlBackend for GuestHost {
+        type Connection = GuestSqlConnection;
+        type Statement = GuestSqlStatement;
+
+        fn open(name: &str) -> Result<Self::Connection, String> {
+            Ok(GuestSqlConnection(super::wasi::sql::readwrite::open(name)?))
+        }
+
+        fn prepare(query: &str, params: &[String]) -> Result<Self::Statement, String> {
+            Ok(GuestSqlStatement(super::wasi::sql::readwrite::prepare(
+                query, params,
+            )?))
+        }
+
+        fn query(
+            connection: &Self::Connection,
+            statement: &Self::Statement,
+        ) -> Result<Vec<SqlRow>, String> {
+            let rows = super::wasi::sql::readwrite::query(&connection.0, &statement.0)?;
+            Ok(rows
+                .into_iter()
+                .map(|row| SqlRow {
+                    values: row.values.into_iter().map(sql_value_from_wasi).collect(),
+                })
+                .collect())
+        }
+
+        fn exec(connection: &Self::Connection, statement: &Self::Statement) -> Result<u32, String> {
+            super::wasi::sql::readwrite::exec(&connection.0, &statement.0)
         }
     }
 
