@@ -218,6 +218,69 @@ pub fn toys_sync(project_root: &Path) -> Result<()> {
     }
 }
 
+pub fn toys_pull(project_root: &Path, toy_name: &str) -> Result<()> {
+    let entries = load_registry(project_root)?;
+    let entry = entries
+        .into_iter()
+        .find(|entry| entry.id == toy_name)
+        .ok_or_else(|| anyhow::anyhow!("unknown toy '{}'", toy_name))?;
+    require_upstream(&entry)?;
+
+    let local_path = local_wit_path(project_root, &entry);
+    let old_local =
+        std::fs::read(&local_path).with_context(|| format!("reading {}", local_path.display()))?;
+    let registry_path = project_root.join(TOYS_REGISTRY_PATH);
+    let old_registry = std::fs::read(&registry_path)
+        .with_context(|| format!("reading {}", registry_path.display()))?;
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .context("building HTTP client")?;
+    let upstream_contents = fetch_upstream_pinned(&client, &entry)?;
+    let composed = compose_upstream_wit(&upstream_contents)?;
+
+    let composed_hash = hash_bytes(composed.as_bytes());
+    if entry
+        .hash
+        .as_deref()
+        .map(|hash| hash.strip_prefix("sha256:").unwrap_or(hash))
+        == Some(composed_hash.as_str())
+    {
+        println!(
+            "unchanged {:<22} hash matches pinned {}",
+            entry.id, entry.version
+        );
+        return Ok(());
+    }
+
+    std::fs::write(&local_path, composed.as_bytes())
+        .with_context(|| format!("writing {}", local_path.display()))?;
+    update_registry_hash(project_root, &entry.id, &composed_hash)?;
+
+    match run_sdk_check(project_root) {
+        Ok(()) => {
+            println!(
+                "pulled {:<22} updated {} and registry hash",
+                entry.id,
+                local_path.display()
+            );
+            Ok(())
+        }
+        Err(error) => {
+            std::fs::write(&local_path, &old_local)
+                .with_context(|| format!("restoring {}", local_path.display()))?;
+            std::fs::write(&registry_path, &old_registry)
+                .with_context(|| format!("restoring {}", registry_path.display()))?;
+            bail!(
+                "pull reverted for '{}' after compile failure: {}. Run `cargo check -q -p patina-sdk --features child` for details.",
+                entry.id,
+                error
+            )
+        }
+    }
+}
+
 pub fn load_registry(project_root: &Path) -> Result<Vec<ToyEntry>> {
     let registry_path = project_root.join(TOYS_REGISTRY_PATH);
     let content = std::fs::read_to_string(&registry_path)
@@ -316,64 +379,119 @@ pub fn require_upstream(entry: &ToyEntry) -> Result<()> {
     Ok(())
 }
 
-fn fetch_upstream_pinned(client: &reqwest::blocking::Client, entry: &ToyEntry) -> Result<Vec<u8>> {
+fn fetch_upstream_pinned(
+    client: &reqwest::blocking::Client,
+    entry: &ToyEntry,
+) -> Result<Vec<String>> {
     require_upstream(entry)?;
-
-    let mut last_error: Option<anyhow::Error> = None;
-    for git_ref in candidate_refs(entry) {
-        for url in candidate_urls(entry, &git_ref) {
-            match client.get(&url).send() {
-                Ok(response) => {
-                    if response.status().is_success() {
-                        return response
-                            .bytes()
-                            .map(|b| b.to_vec())
-                            .context("reading upstream response body");
-                    }
-                    last_error = Some(anyhow::anyhow!(
-                        "{} returned HTTP {}",
-                        url,
-                        response.status()
-                    ));
-                }
-                Err(error) => {
-                    last_error = Some(anyhow::anyhow!("request failed for {}: {}", url, error));
-                }
-            }
+    let repo = repo_slug(entry)?;
+    let files = if entry.upstream_files.is_empty() {
+        vec![entry.file.clone()]
+    } else {
+        entry.upstream_files.clone()
+    };
+    let mut out = Vec::new();
+    for upstream_file in files {
+        let url = format!(
+            "https://raw.githubusercontent.com/{}/v{}/{}",
+            repo, entry.version, upstream_file
+        );
+        let response = client
+            .get(&url)
+            .send()
+            .with_context(|| format!("request failed for {}", url))?;
+        if !response.status().is_success() {
+            bail!("{} returned HTTP {}", url, response.status());
         }
+        out.push(response.text().context("reading upstream response body")?);
     }
-
-    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("no upstream URL candidates")))
+    Ok(out)
 }
 
-fn fetch_upstream_latest(client: &reqwest::blocking::Client, entry: &ToyEntry) -> Result<Vec<u8>> {
-    require_upstream(entry)?;
+fn compose_upstream_wit(files: &[String]) -> Result<String> {
+    if files.is_empty() {
+        bail!("cannot compose empty upstream file list");
+    }
+    if files.len() == 1 {
+        return Ok(files[0].clone());
+    }
 
-    let mut last_error: Option<anyhow::Error> = None;
-    for git_ref in ["main", "master"] {
-        for url in candidate_urls(entry, git_ref) {
-            match client.get(&url).send() {
-                Ok(response) => {
-                    if response.status().is_success() {
-                        return response
-                            .bytes()
-                            .map(|b| b.to_vec())
-                            .context("reading upstream latest response body");
-                    }
-                    last_error = Some(anyhow::anyhow!(
-                        "{} returned HTTP {}",
-                        url,
-                        response.status()
-                    ));
+    let mut package_seen = false;
+    let mut use_lines: Vec<String> = Vec::new();
+    let mut body_lines: Vec<String> = Vec::new();
+
+    for content in files {
+        for line in content.lines() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("package ") {
+                if package_seen {
+                    continue;
                 }
-                Err(error) => {
-                    last_error = Some(anyhow::anyhow!("request failed for {}: {}", url, error));
-                }
+                package_seen = true;
+                body_lines.push(line.to_string());
+                continue;
             }
+            if trimmed.starts_with("use ") {
+                use_lines.push(line.to_string());
+                continue;
+            }
+            body_lines.push(line.to_string());
         }
     }
 
-    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("no latest URL candidates")))
+    let mut composed = Vec::new();
+    let mut inserted_uses = false;
+    for line in body_lines {
+        if !inserted_uses && !line.trim().is_empty() && !line.trim_start().starts_with("package ") {
+            if !use_lines.is_empty() {
+                composed.extend(use_lines.iter().cloned());
+                composed.push(String::new());
+            }
+            inserted_uses = true;
+        }
+        composed.push(line);
+    }
+    if !inserted_uses && !use_lines.is_empty() {
+        composed.extend(use_lines);
+    }
+
+    Ok(format!("{}\n", composed.join("\n")))
+}
+
+fn update_registry_hash(project_root: &Path, toy_id: &str, hash: &str) -> Result<()> {
+    let registry_path = project_root.join(TOYS_REGISTRY_PATH);
+    let content = std::fs::read_to_string(&registry_path)
+        .with_context(|| format!("reading {}", registry_path.display()))?;
+    let mut value: toml::Value =
+        toml::from_str(&content).with_context(|| format!("parsing {}", registry_path.display()))?;
+    let table = value
+        .as_table_mut()
+        .ok_or_else(|| anyhow::anyhow!("registry must be a TOML table"))?;
+    let entry = table
+        .get_mut(toy_id)
+        .and_then(toml::Value::as_table_mut)
+        .ok_or_else(|| anyhow::anyhow!("toy '{}' missing from registry", toy_id))?;
+    entry.insert(
+        "hash".to_string(),
+        toml::Value::String(format!("sha256:{}", hash)),
+    );
+    let rendered = toml::to_string_pretty(&value).context("rendering updated registry")?;
+    std::fs::write(&registry_path, rendered)
+        .with_context(|| format!("writing {}", registry_path.display()))?;
+    Ok(())
+}
+
+fn run_sdk_check(project_root: &Path) -> Result<()> {
+    let status = std::process::Command::new("cargo")
+        .args(["check", "-q", "-p", "patina-sdk", "--features", "child"])
+        .current_dir(project_root)
+        .status()
+        .context("running cargo check for patina-sdk")?;
+    if status.success() {
+        Ok(())
+    } else {
+        bail!("cargo check failed with status {}", status)
+    }
 }
 
 fn fetch_latest_stable_version(
@@ -518,50 +636,4 @@ fn repo_slug(entry: &ToyEntry) -> Result<String> {
         bail!("invalid GitHub source URL '{}'", entry.source);
     }
     Ok(slug)
-}
-
-fn candidate_urls(entry: &ToyEntry, git_ref: &str) -> Vec<String> {
-    let repo = entry.source.trim_start_matches("https://github.com/");
-    let mut urls = Vec::new();
-    for file_name in candidate_file_names(entry) {
-        urls.push(format!(
-            "https://raw.githubusercontent.com/{}/{}/wit/{}",
-            repo, git_ref, file_name
-        ));
-        urls.push(format!(
-            "https://raw.githubusercontent.com/{}/{}/{}",
-            repo, git_ref, file_name
-        ));
-    }
-    urls
-}
-
-fn candidate_refs(entry: &ToyEntry) -> Vec<String> {
-    vec![
-        format!("v{}", entry.version),
-        format!("v{}-draft", entry.version),
-        "main".to_string(),
-    ]
-}
-
-fn candidate_file_names(entry: &ToyEntry) -> Vec<String> {
-    let mut names = vec![entry.file.clone()];
-    let extra = match entry.id.as_str() {
-        "wasi-keyvalue" => Some("store.wit"),
-        "wasi-filesystem" => Some("types.wit"),
-        "wasi-http" => Some("types.wit"),
-        "wasi-sql" => Some("readwrite.wit"),
-        _ => None,
-    };
-    if let Some(extra_name) = extra {
-        if !names.iter().any(|n| n == extra_name) {
-            names.push(extra_name.to_string());
-        }
-    }
-    names
-}
-
-fn short_hash(hash: &str) -> &str {
-    let len = hash.len().min(8);
-    &hash[..len]
 }

@@ -164,6 +164,12 @@ pub enum ToysCommands {
 
     /// Sync local toy WIT files against upstream WASI repos
     Sync,
+
+    /// Pull pinned upstream WIT for one toy
+    Pull {
+        /// Toy id from registry (for example: wasi-http)
+        name: String,
+    },
 }
 
 /// Graph subcommands (nested under `patina mother graph`)
@@ -335,6 +341,11 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             let project_root = SessionManager::find_project_root()
                 .context("`patina mother toys sync` must run in a Patina project")?;
             toys::toys_sync(&project_root)
+        }
+        Some(MotherCommands::Toys(ToysCommands::Pull { name })) => {
+            let project_root = SessionManager::find_project_root()
+                .context("`patina mother toys pull` must run in a Patina project")?;
+            toys::toys_pull(&project_root, &name)
         }
     }
 }
