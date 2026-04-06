@@ -49,7 +49,15 @@ exit_criteria:
     text: "A child with `toys = [\"log\"]` cannot call keyvalue, filesystem, or git host functions. Test proves enforcement."
     checked: false
 
-  - id: swa9-compile-proof
+  - id: swa9-mother-toys-registry
+    text: "Mother manages a toy registry at `wit/toys/deps/` with version pinning. `patina mother toys status` shows all toys: name, version, source (wasi upstream or patina delta), WASI proposal phase where applicable. `patina mother toys check` verifies local WIT files match pinned versions."
+    checked: false
+
+  - id: swa10-mother-toys-sync
+    text: "`patina mother toys sync` fetches latest WIT from upstream WASI repos, compares to pinned versions, reports changes. User decides when to bump. Pinned versions tracked in a registry manifest."
+    checked: false
+
+  - id: swa11-compile-proof
     text: "`cargo check --workspace -q` and `cargo test -q --lib` pass."
     checked: false
 ---
@@ -196,20 +204,116 @@ extension methods but the trait contract matches WASI.
 For each Patina toy: document in the WIT file why it exists, whether a
 WASI proposal overlaps, and how we mirror the proposal if one exists.
 
+## Mother Toy Registry
+
+Mother manages toys as platform infrastructure. WIT files in `wit/toys/deps/`
+are the canonical toy contracts. Mother tracks their provenance and versions.
+
+### Registry manifest
+
+`wit/toys/deps/toys-registry.toml`:
+
+```toml
+# WASI standard toys — upstream source of truth
+[wasi-logging]
+source = "https://github.com/WebAssembly/wasi-logging"
+version = "0.1.0"
+phase = 2
+file = "logging.wit"
+
+[wasi-keyvalue]
+source = "https://github.com/WebAssembly/wasi-keyvalue"
+version = "0.2.0"
+phase = 3
+file = "keyvalue.wit"
+
+[wasi-filesystem]
+source = "https://github.com/WebAssembly/wasi-filesystem"
+version = "0.2.6"
+phase = 3
+file = "filesystem.wit"
+
+[wasi-http]
+source = "https://github.com/WebAssembly/wasi-http"
+version = "0.2.6"
+phase = 3
+file = "http.wit"
+
+[wasi-messaging]
+source = "https://github.com/WebAssembly/wasi-messaging"
+version = "0.2.0"
+phase = 1
+file = "messaging.wit"
+
+[wasi-sql]
+source = "https://github.com/WebAssembly/wasi-sql"
+version = "0.1.0"
+phase = 1
+file = "sql.wit"
+
+# Patina delta toys — we own these
+[patina-git]
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "none"
+file = "patina-git.wit"
+
+[patina-events-stream]
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "wasi-messaging covers producing; consumption is our delta"
+file = "patina-events-stream.wit"
+
+[patina-measure]
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "none"
+file = "patina-measure.wit"
+
+[patina-connect]
+source = "patina"
+version = "0.2.0"
+wasi_overlap = "extends wasi-http with credential injection"
+file = "patina-connect.wit"
+
+[patina-task]
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "none"
+file = "patina-task.wit"
+
+[patina-peer]
+source = "patina"
+version = "0.1.0"
+wasi_overlap = "none"
+file = "patina-peer.wit"
+```
+
+### Mother commands
+
+- `patina mother toys status` — show all toys with version, source, WASI
+  phase. Shows divergence between local WIT and pinned version.
+- `patina mother toys check` — verify local WIT files match pinned versions
+  (hash comparison).
+- `patina mother toys sync` — fetch latest WIT from upstream WASI repos,
+  compare to pinned, report what changed. User decides when to bump.
+
 ## Implementation Order
 
-1. **swa1** — Log: add level enum + context parameter. Keep `.info()` etc
+1. **swa9-swa10** — Build toy registry manifest and Mother commands. This
+   establishes the source of truth before changing any traits.
+2. **swa1** — Log: add level enum + context parameter. Keep `.info()` etc
    as convenience sugar on top of the real `log()` function.
-2. **swa2** — Keyvalue: add bucket resource, bytes values, cursor-based
+3. **swa2** — Keyvalue: add bucket resource, bytes values, cursor-based
    list. Biggest change — every child using state needs updating.
-3. **swa3** — Filesystem: add descriptor model with preopened dirs.
-4. **swa4** — Messaging: align event publishing with wasi:messaging
+4. **swa3** — Filesystem: add descriptor model with preopened dirs.
+5. **swa4** — Messaging: align event publishing with wasi:messaging
    producer shape.
-5. **swa5** — HTTP: align with outgoing-handler shape.
-6. **swa6** — Document Patina delta toys in WIT files.
-7. **swa7** — Recompile all children against aligned traits.
-8. **swa8** — Prove capability enforcement.
-9. **swa9** — Compile/test proof.
+6. **swa5** — HTTP: align with outgoing-handler shape.
+7. **swa6** — Document Patina delta toys in WIT files.
+8. **swa7** — Recompile all children against aligned traits.
+9. **swa8** — Prove capability enforcement.
+10. **swa11** — Compile/test proof.
 
 ## Verification
 
@@ -217,4 +321,6 @@ WASI proposal overlaps, and how we mirror the proposal if one exists.
 cargo check --workspace -q
 cargo test -q --lib
 cargo check -q -p patina-sdk --features child
+patina mother toys status
+patina mother toys check
 ```
