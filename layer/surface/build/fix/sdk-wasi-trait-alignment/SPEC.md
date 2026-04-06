@@ -247,60 +247,110 @@ Current toy grants and required fixes:
 ```
 Current:  toys = ["log", "events", "measure"]
           scopes.filesystem.path = "/tmp"
-Fixed:    toys = ["log", "messaging", "measure", "filesystem"]
+Fixed:    toys = ["logging", "messaging", "measure", "filesystem"]
+          scopes.filesystem.path = "/tmp"
 ```
+- `log` → `logging` (WASI package name)
 - `events` → `messaging` (only publishes, doesn't subscribe)
-- `filesystem` added as explicit grant (was implicit scope)
+- `filesystem` added as explicit grant (was implicit scope only)
 
 ### `content-extractor`
 ```
 Current:  toys = ["log", "events"]
-Fixed:    toys = ["log", "events", "messaging", "filesystem"]
+Fixed:    toys = ["logging", "events", "messaging", "filesystem"]
 ```
+- `log` → `logging`
 - Already subscribes (events) AND publishes (needs messaging)
 - Reads files (needs filesystem)
 
 ### `schema-enforcer`
 ```
 Current:  toys = ["log", "events", "measure"]
-Fixed:    toys = ["log", "events", "messaging", "measure"]
+Fixed:    toys = ["logging", "events", "messaging", "measure"]
 ```
+- `log` → `logging`
 - Subscribes (events) AND publishes (messaging)
 - No filesystem needed (pure compute on event payloads)
 
 ### `dedup-filter`
 ```
 Current:  toys = ["log", "events", "state", "measure"]
-Fixed:    toys = ["log", "events", "messaging", "keyvalue", "measure"]
+Fixed:    toys = ["logging", "events", "messaging", "keyvalue", "measure"]
 ```
-- `state` → `keyvalue` (WASI standard name)
+- `log` → `logging`, `state` → `keyvalue` (WASI package names)
 - Subscribes (events) AND publishes (messaging)
 
 ### `record-writer`
 ```
 Current:  toys = ["log", "state", "events", "measure"]
-Fixed:    toys = ["log", "keyvalue", "events", "messaging", "measure", "filesystem"]
+Fixed:    toys = ["logging", "keyvalue", "events", "messaging", "measure", "filesystem"]
 ```
-- `state` → `keyvalue`
+- `log` → `logging`, `state` → `keyvalue`
 - Subscribes (events) AND publishes (messaging)
 - Writes parquet files (needs filesystem)
 
 ### `lakehouse-catalog`
 ```
 Current:  toys = ["log", "state", "events", "store"]
-Fixed:    toys = ["log", "keyvalue", "events", "sql"]
+Fixed:    toys = ["logging", "keyvalue", "events", "sql"]
 ```
-- `state` → `keyvalue`
+- `log` → `logging`, `state` → `keyvalue`
 - `store` → `sql` (WASI proposal shape, Mother wires to DuckDB)
-- Only subscribes (events, no messaging needed — no outbound events)
+- Only subscribes (events, no messaging needed — terminal node)
+
+### SQL scope: what changes now vs future
+
+Only `lakehouse-catalog` uses `store` today. Its current operations
+(`ensure_table`, `append_json_batch`, `query_json`) map to `wasi:sql`
+`exec` and `query` calls. `record-writer` currently uses `keyvalue` for
+batch buffering and `filesystem` for parquet writes — it does not use
+`store`/`sql`. No other canon child touches SQL. The `store` → `sql`
+change affects one child.
+
+## Capability Model Rule
+
+One strict rule for all toys:
+
+**Toy grant enables. Scope constrains.**
+
+- A toy in `[needs].toys` authorizes the child to use that interface.
+  Without the grant, calls to that interface fail at the host boundary.
+- A scope in `[needs.scopes]` configures a granted toy (paths, streams,
+  buckets). Scopes without a corresponding toy grant are rejected by Mother
+  at child load time.
+- Mother enforces: no grant = no access. No exceptions.
+
+### Messaging vs events authorization
+
+- `messaging` in `[needs].toys` → child can call `wasi:messaging/producer`
+  (connect, send). Child publishes events.
+- `events` in `[needs].toys` → child can call `patina:events-stream`
+  (pull, ack, list-streams). Child consumes events.
+- `[needs.scopes.events].subscribe = ["stream.name"]` constrains which
+  streams the child can pull from.
+- A child with only `messaging` cannot subscribe. A child with only
+  `events` cannot publish. Mother checks at the host boundary per call.
+
+### Filesystem authorization
+
+- `filesystem` in `[needs].toys` → child can use `wasi:filesystem`.
+- `[needs.scopes.filesystem].path` constrains the preopened directory.
+- Without `filesystem` in toys, scope is rejected at load. Without scope,
+  filesystem toy has no preopen and all path operations fail.
+
+### DuckDB boundary
+
+The external toy contract is `wasi:sql`. DuckDB is Mother's internal
+implementation detail. No child manifest, SDK trait, or WIT interface
+references DuckDB. Mother wires `sql.open("catalog")` to her DuckDB
+instance. If Mother switches backends, zero children change.
 
 ## Root Cause
 
 SDK traits were designed for developer ergonomics, not WASI conformance.
 The WIT files reference WASI packages, `wit_bindgen` generates bindings
 from them, but the hand-written trait layer in `toys.rs` simplifies the
-shapes. Children code against the simplified traits, not the generated
-bindings. Toy grants in canon children were assigned ad-hoc without
+shapes. Toy grants in canon children were assigned ad-hoc without
 auditing against the three-tier priority rule.
 
 ## Mother Toy Registry
@@ -389,7 +439,9 @@ wasi_overlap = "none"
 file = "patina-peer.wit"
 ```
 
-### Mother commands
+### Mother commands (deliverables — these do not exist yet)
+
+These are built as part of this spec:
 
 - `patina mother toys status` — show all toys with version, source, WASI
   phase, tier. Shows divergence between local WIT and pinned version.
@@ -415,10 +467,27 @@ file = "patina-peer.wit"
 
 ## Verification
 
+Scoped to SDK + 6 canon children + spec-manager stub. Workspace-wide
+checks may pull legacy children — verify the 8 targets explicitly.
+
 ```bash
-cargo check --workspace -q
-cargo test -q --lib
+# SDK compiles
 cargo check -q -p patina-sdk --features child
+
+# Canon children compile against aligned traits
+for child in file-system-monitor content-extractor schema-enforcer \
+             dedup-filter record-writer lakehouse-catalog spec-manager; do
+  cargo check -q -p "patina-$child" 2>&1 || echo "FAIL: $child"
+done
+
+# Host compiles
+cargo check -q -p patina-ai
+cargo check -q -p patina-mother
+
+# Tests pass
+cargo test -q --lib
+
+# Mother toy registry works (deliverable, not assumed)
 patina mother toys status
 patina mother toys check
 ```

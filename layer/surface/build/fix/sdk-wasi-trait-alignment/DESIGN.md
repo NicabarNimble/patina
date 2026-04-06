@@ -34,11 +34,13 @@ every child built from here forward is wrong.
 WIT (wasi:keyvalue@0.2.0)
   → wit_bindgen generates Rust bindings in child.rs
     → toys.rs defines StateBackend trait (DIFFERENT shape)
-      → children code against StateBackend
+      → children code against StateBackend (most paths)
+      → some children also touch generated bindings directly
 ```
 
-Children never touch the generated bindings. The trait is a wall between
-the child and the real WASI interface.
+The trait layer diverges from the WASI shape. Children mostly use the
+simplified traits, but some code paths reach through to generated
+bindings. The inconsistency means two different APIs for the same toy.
 
 ### Target (aligned)
 
@@ -116,15 +118,29 @@ Children declare which they need. `schema-enforcer` needs both (subscribes
 to `record.extracted`, publishes `record.validated`). `lakehouse-catalog`
 only subscribes (terminal node, no outbound events).
 
-### Filesystem grant enforcement
+### Filesystem: what "aligned" means
 
-`file-system-monitor` currently has `[needs.scopes.filesystem]` without
-`filesystem` in `[needs].toys`. The scope configures the preopen path,
-but the toy grant is what authorizes filesystem access.
+Two separate concerns:
 
-Fix: `filesystem` must be in `[needs].toys`. Scope configures it. No
-grant = no access, regardless of scopes. Mother rejects a child that has
-`[needs.scopes.filesystem]` without `filesystem` in its toy list.
+**Contract alignment** (SDK trait shape): the SDK trait must match
+`wasi:filesystem@0.2.6` — descriptor-based access, preopened directories,
+byte streams. Not the current simplified `read_file(path) -> String`.
+
+**Runtime policy** (Mother enforcement): Mother uses wasmtime's preopen
+configuration to scope filesystem access. The child's WASM component sees
+a preopened directory and uses standard WASI filesystem calls within it.
+The grant (`filesystem` in `[needs].toys`) authorizes access. The scope
+(`[needs.scopes.filesystem].path`) configures the preopen. This is how
+wasmtime and Fastly Compute handle filesystem — preopens are the sandboxing
+mechanism.
+
+The child code uses normal `wasi:filesystem` calls (open, read, write).
+Mother's wasmtime configuration limits what paths are visible. The SDK
+trait matches the WASI interface. No Patina-specific filesystem abstraction.
+
+**Fix for `file-system-monitor`**: add `filesystem` to `[needs].toys`.
+Mother rejects any child that has `[needs.scopes.filesystem]` without the
+corresponding toy grant.
 
 ### Host implementation changes
 
@@ -192,14 +208,18 @@ Order by dependency risk (lowest risk first):
 - HTTP (no canon children use it directly)
 - SQL (lakehouse-catalog only)
 
-## Open Questions
+## Resolved Questions
 
-- Should `wasi:sql` phase 1 proposal shape be taken as-is, or should we
-  track the proposal repo for changes before committing? The proposal is
-  early — shapes may evolve.
-- Do grammar plugins (9 children) need updating, or do they only use `log`?
-- Should the `store` toy be removed entirely, or kept as a deprecated alias
-  during migration?
+- **`wasi:sql` shape stability:** Take the phase 1 shape as-is. Pin the
+  version in the toy registry. If the proposal evolves, `mother toys sync`
+  will flag the divergence and we update then. Don't wait for stability —
+  mirror the proposal now, adjust later.
+- **Grammar plugins:** Audit during swa8. They likely only use `logging`.
+  If so, only the grant name changes (`log` → `logging`). If any use other
+  toys, update accordingly.
+- **`store` toy removal:** Hard cutover. No deprecated alias. `store` is
+  removed from the SDK, replaced by `sql`. `lakehouse-catalog` is the only
+  consumer — one child to update.
 
 ## Verification Plan
 
