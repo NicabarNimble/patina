@@ -11,7 +11,8 @@ beliefs:
   - "[[pando-is-composed-children]]"
   - "[[children-have-agency-toys-are-capabilities]]"
   - "[[wasi-is-foundation-not-option]]"
-blocked_by: []
+blocked_by:
+  - mother-startup-observability
 related:
   - layer/surface/build/feat/pando-platform-phase-a/SPEC.md
   - layer/surface/build/feat/child-construction-canon/SPEC.md
@@ -35,6 +36,14 @@ exit_criteria:
   - id: pp5c1-ready-live-lifecycle
     text: "Pando lifecycle distinguishes readiness from runtime activity: `ready` means all required children are installed/resolvable; `live` means all required children are loaded in Mother. Missing children is not `error` for valid manifests."
     checked: true
+
+  - id: pp5c2-first-party-child-artifact-install
+    text: "First-party child artifacts required by `folder-text-to-parquet` are installable into `~/.patina/children/` as compiled `.wasm + .toml` pairs, and Mother can transition the pando from `registered`/`ready` to `live` when artifacts are present and loaded."
+    checked: false
+
+  - id: pp5c3-shared-artifact-composition-model
+    text: "Spec and design encode the portable artifact model: children are versioned reusable WASM artifacts, pandos are shareable compositions referencing those artifacts, and Mother separates artifact install/cache from runtime instances for future P2P sharing."
+    checked: false
 
   - id: pp6-slate-child-built
     text: "Slate-manager child exists as a proper WASM child using the SDK. Uses toys: `wasi:filesystem`, `patina:keyvalue`, `patina:logging`, `patina:git`. Handles all spec lifecycle actions (list, show, check, create, promote, complete, abandon, pause, resume, block, archive, rename, reopen, set, next, history, split, prompt, handoff)."
@@ -316,6 +325,23 @@ Mother running. The migration contract:
 - Mother registers it as a pando (no commands, pipeline only)
 - Proves basic pando lifecycle
 
+### Phase C1 — lifecycle semantics (complete)
+
+- Differentiate `registered`/`ready`/`live`/`degraded`/`error`
+- Reserve `error` for manifest/registry failure, not missing installs
+
+### Phase C2 — first-party child artifact install
+
+- Define/install first-party compiled child artifacts to `~/.patina/children/`
+- Ensure `folder-text-to-parquet` can reach `live` when required artifacts are installed
+- Keep monorepo child source as forge; runtime consumes compiled artifacts
+
+### Phase C3 — shared artifact/composition model
+
+- Define child artifact identity (`name`, version, digest) separate from runtime instances
+- Define pando composition identity as shareable metadata referencing child artifacts
+- Prepare Mother registry model for future P2P artifact/composition exchange
+
 ### Phase B — CLI routing
 
 - Binary catch-all for unknown commands
@@ -531,6 +557,6 @@ patina slate archive <id>
 
 ## Build Readiness
 
-Phases C and B are ready to execute next (in that order). Existing children and
-toys cover the remaining platform wiring needs. `patina:git` additions remain
-Phase D and do not block C/B.
+Phase C2 is the next build slice, followed by C3 and B. Existing parser/
+registry surfaces support this sequencing; `patina:git` additions remain Phase D
+and do not block C2/C3/B.
