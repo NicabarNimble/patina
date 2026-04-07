@@ -39,6 +39,11 @@ pub trait ApiRuntime {
     fn secrets_get(&self) -> Result<serde_json::Value>;
     fn secrets_cache(&self, payload: serde_json::Value) -> Result<serde_json::Value>;
     fn secrets_lock(&self) -> Result<serde_json::Value>;
+    fn pando_registry_init(
+        &self,
+        request: patina_protocol::PandoRegistryInit,
+    ) -> Result<patina_protocol::PandoRegistryState>;
+    fn pando_list(&self) -> Result<patina_protocol::PandoRegistryState>;
     fn builtin_spec_dispatch(
         &self,
         request: patina_protocol::SpecDispatchRequest,
@@ -244,6 +249,29 @@ pub fn handle_secrets_lock(runtime: &dyn ApiRuntime) -> HttpResponse {
     }
 }
 
+pub fn handle_pando_registry_init(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
+    if request.body.is_empty() {
+        return json_error(400, "Missing request body");
+    }
+
+    let init: patina_protocol::PandoRegistryInit = match serde_json::from_slice(&request.body) {
+        Ok(v) => v,
+        Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
+    };
+
+    match runtime.pando_registry_init(init) {
+        Ok(state) => HttpResponse::json(200, &state),
+        Err(e) => json_error(400, &e.to_string()),
+    }
+}
+
+pub fn handle_pando_list(runtime: &dyn ApiRuntime) -> HttpResponse {
+    match runtime.pando_list() {
+        Ok(state) => HttpResponse::json(200, &state),
+        Err(e) => json_error(500, &e.to_string()),
+    }
+}
+
 pub fn handle_child_request(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
     let parts: Vec<&str> = request.path[1..].split('/').collect();
     if parts.len() != 3 {
@@ -329,6 +357,8 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
     let secrets_get_runtime = Arc::clone(&runtime);
     let secrets_cache_runtime = Arc::clone(&runtime);
     let secrets_lock_runtime = Arc::clone(&runtime);
+    let pando_registry_runtime = Arc::clone(&runtime);
+    let pando_list_runtime = Arc::clone(&runtime);
     let child_runtime = Arc::clone(&runtime);
 
     RouteTable {
@@ -340,6 +370,10 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
             handle_secrets_cache(request, &*secrets_cache_runtime)
         }),
         post_secrets_lock: Arc::new(move |_request| handle_secrets_lock(&*secrets_lock_runtime)),
+        post_pando_registry_init: Arc::new(move |request| {
+            handle_pando_registry_init(request, &*pando_registry_runtime)
+        }),
+        get_pando_list: Arc::new(move |_request| handle_pando_list(&*pando_list_runtime)),
         child_request: Arc::new(move |request| handle_child_request(request, &*child_runtime)),
     }
 }
@@ -409,6 +443,23 @@ mod tests {
 
         fn secrets_lock(&self) -> Result<serde_json::Value> {
             Ok(serde_json::json!({"locked": true}))
+        }
+
+        fn pando_registry_init(
+            &self,
+            request: patina_protocol::PandoRegistryInit,
+        ) -> Result<patina_protocol::PandoRegistryState> {
+            Ok(patina_protocol::PandoRegistryState {
+                protocol_version: request.protocol_version,
+                pandos: vec![],
+            })
+        }
+
+        fn pando_list(&self) -> Result<patina_protocol::PandoRegistryState> {
+            Ok(patina_protocol::PandoRegistryState {
+                protocol_version: 1,
+                pandos: vec![],
+            })
         }
 
         fn builtin_spec_dispatch(

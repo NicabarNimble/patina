@@ -5,7 +5,9 @@
 //! - Remote mother: TCP with bearer token via reqwest
 
 use anyhow::{Context, Result};
-use patina_protocol::{BuiltinChildRequest, BuiltinChildResponse};
+use patina_protocol::{
+    BuiltinChildRequest, BuiltinChildResponse, PandoRegistryInit, PandoRegistryState,
+};
 use reqwest::blocking::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -152,6 +154,72 @@ impl Client {
         let http_payload = self.child_action(child, action, &payload)?;
         BuiltinChildResponse::from_http_payload(request.child, &request.action, http_payload)
             .map_err(|e| anyhow::anyhow!("Failed to decode typed child response: {}", e))
+    }
+
+    pub fn pando_registry_init(&self, request: &PandoRegistryInit) -> Result<PandoRegistryState> {
+        if self.try_uds {
+            let body = serde_json::to_vec(request)?;
+            if let Some((status, resp_body)) =
+                uds_request("POST", "/api/pando/registry/init", Some(&body))
+            {
+                if (200..300).contains(&status) {
+                    return serde_json::from_slice(&resp_body)
+                        .context("Failed to parse pando registry init response from UDS");
+                }
+                let msg = String::from_utf8_lossy(&resp_body).to_string();
+                anyhow::bail!("pando registry init failed ({}): {}", status, msg);
+            }
+        }
+
+        let url = format!("{}/api/pando/registry/init", self.base_url);
+        let mut req = self.http.post(&url).json(request);
+        if let Some(ref token) = self.token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let response = req.send().with_context(|| {
+            format!(
+                "Failed to send pando registry init request to {}",
+                self.base_url
+            )
+        })?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().unwrap_or_default();
+            anyhow::bail!("pando registry init failed ({}): {}", status, body);
+        }
+        response
+            .json::<PandoRegistryState>()
+            .with_context(|| "Failed to parse pando registry init response")
+    }
+
+    pub fn pando_list(&self) -> Result<PandoRegistryState> {
+        if self.try_uds {
+            if let Some((status, resp_body)) = uds_request("GET", "/api/pando/list", None) {
+                if (200..300).contains(&status) {
+                    return serde_json::from_slice(&resp_body)
+                        .context("Failed to parse pando list response from UDS");
+                }
+                let msg = String::from_utf8_lossy(&resp_body).to_string();
+                anyhow::bail!("pando list failed ({}): {}", status, msg);
+            }
+        }
+
+        let url = format!("{}/api/pando/list", self.base_url);
+        let mut req = self.http.get(&url);
+        if let Some(ref token) = self.token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let response = req
+            .send()
+            .with_context(|| format!("Failed to request pando list from {}", self.base_url))?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().unwrap_or_default();
+            anyhow::bail!("pando list failed ({}): {}", status, body);
+        }
+        response
+            .json::<PandoRegistryState>()
+            .with_context(|| "Failed to parse pando list response")
     }
 }
 

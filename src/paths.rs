@@ -221,6 +221,16 @@ pub mod child {
     }
 }
 
+/// Pando install paths (~/.patina/pandos/)
+pub mod pando {
+    use super::*;
+
+    /// Installed pando roots: `~/.patina/pandos/`
+    pub fn pandos_dir() -> PathBuf {
+        patina_home().join("pandos")
+    }
+}
+
 /// Legacy plugin-path alias maintained during vocabulary migration.
 pub mod plugin {
     pub use super::child::{children_dir, pipeline_dir, plugins_dir, secret_grants_path, work_dir};

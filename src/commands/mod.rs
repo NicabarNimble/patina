@@ -18,6 +18,7 @@ pub mod measure;
 pub mod model;
 pub mod mother;
 pub mod oxidize;
+pub mod pando;
 pub mod persona;
 pub mod rebuild;
 pub mod repo;

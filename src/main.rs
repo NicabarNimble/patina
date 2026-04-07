@@ -1106,6 +1106,8 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
+    commands::pando::init_registry_best_effort();
+
     match cli.command {
         // Launcher mode: no subcommand means launch interface
         None => {

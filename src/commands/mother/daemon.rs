@@ -12,8 +12,11 @@
 //! - Opt-in: TCP at --host/--port (bearer token required)
 
 use anyhow::Result;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Instant;
 
 use patina::mother::ChildRequest;
@@ -34,6 +37,10 @@ pub struct ServerState {
     runtime_store: patina::mother::KnowledgeRuntimeStore,
     services: mother_crate::services::MotherServices,
     scry_backend: Arc<dyn ScryBackend>,
+    pandos_root: PathBuf,
+    pando_registry: Mutex<mother_crate::pando::PandoRegistry>,
+    native_commands: Mutex<HashSet<String>>,
+    aliases: HashMap<String, String>,
 }
 
 impl ServerState {
@@ -43,7 +50,7 @@ impl ServerState {
         runtime_store: patina::mother::KnowledgeRuntimeStore,
     ) -> Self {
         let services_store = runtime_store.clone();
-        Self {
+        let state = Self {
             start_time: Instant::now(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             token,
@@ -51,11 +58,82 @@ impl ServerState {
             runtime_store,
             services: mother_crate::services::MotherServices::new(services_store),
             scry_backend: Arc::new(RetrievalScryBackend),
-        }
+            pandos_root: patina::paths::pando::pandos_dir(),
+            pando_registry: Mutex::new(mother_crate::pando::PandoRegistry::default()),
+            native_commands: Mutex::new(HashSet::new()),
+            aliases: HashMap::new(),
+        };
+
+        let _ = state.reload_pando_registry();
+        state
     }
 
     fn uptime_secs(&self) -> u64 {
         self.start_time.elapsed().as_secs()
+    }
+
+    fn available_children(&self) -> HashSet<String> {
+        self.registry
+            .health_all()
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect()
+    }
+
+    fn reload_pando_registry(&self) -> Result<()> {
+        let native = self
+            .native_commands
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let available_children = self.available_children();
+        let registry = mother_crate::pando::build_registry(
+            &self.pandos_root,
+            &native,
+            &self.aliases,
+            &available_children,
+        )?;
+        *self
+            .pando_registry
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = registry;
+        Ok(())
+    }
+
+    fn current_pando_state(&self) -> patina_protocol::PandoRegistryState {
+        let registry = self
+            .pando_registry
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+
+        patina_protocol::PandoRegistryState {
+            protocol_version: patina_protocol::PANDO_REGISTRY_PROTOCOL_VERSION,
+            pandos: registry
+                .pandos
+                .into_iter()
+                .map(|entry| patina_protocol::PandoStateEntry {
+                    name: entry.name,
+                    status: match entry.status {
+                        mother_crate::pando::PandoLifecycleStatus::Registered => {
+                            patina_protocol::PandoStatus::Registered
+                        }
+                        mother_crate::pando::PandoLifecycleStatus::Loaded => {
+                            patina_protocol::PandoStatus::Loaded
+                        }
+                        mother_crate::pando::PandoLifecycleStatus::Degraded => {
+                            patina_protocol::PandoStatus::Degraded
+                        }
+                        mother_crate::pando::PandoLifecycleStatus::Error => {
+                            patina_protocol::PandoStatus::Error
+                        }
+                    },
+                    commands: entry.commands,
+                    aliases: entry.aliases,
+                    child_count: entry.child_count,
+                })
+                .collect(),
+        }
     }
 }
 
@@ -181,6 +259,33 @@ impl ApiRuntime for ServerState {
 
     fn secrets_lock(&self) -> anyhow::Result<serde_json::Value> {
         Ok(self.services.secrets.lock())
+    }
+
+    fn pando_registry_init(
+        &self,
+        request: patina_protocol::PandoRegistryInit,
+    ) -> anyhow::Result<patina_protocol::PandoRegistryState> {
+        if request.protocol_version != patina_protocol::PANDO_REGISTRY_PROTOCOL_VERSION {
+            anyhow::bail!(
+                "Mother protocol v{} incompatible with binary v{} — upgrade patina",
+                patina_protocol::PANDO_REGISTRY_PROTOCOL_VERSION,
+                request.binary_version
+            );
+        }
+
+        *self
+            .native_commands
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) =
+            request.native_commands.into_iter().collect::<HashSet<_>>();
+
+        self.reload_pando_registry()?;
+        Ok(self.current_pando_state())
+    }
+
+    fn pando_list(&self) -> anyhow::Result<patina_protocol::PandoRegistryState> {
+        self.reload_pando_registry()?;
+        Ok(self.current_pando_state())
     }
 
     fn builtin_spec_dispatch(
