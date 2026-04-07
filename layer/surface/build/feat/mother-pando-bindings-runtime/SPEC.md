@@ -129,7 +129,8 @@ HTTP is the primary contract.
 **Key lock:** On reload failure, the old instance stays active with its
 **existing health status** — it is not marked degraded. The reload attempt
 failed, not the running instance. The failure is logged, emitted as a metric,
-and returned as an error response. The child's operational status doesn't change.
+and returned as a 200 response with `status: "reload_failed"` (not 500 — the
+operation completed deterministically). The child's operational status doesn't change.
 Degraded status only applies when a child's *own* `on_load` fails during initial
 activation (warmup) — not when a reload of a replacement fails.
 

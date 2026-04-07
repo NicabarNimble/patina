@@ -42,7 +42,7 @@ composition onto typed in-process bindings.
 - `src/commands/mother/loader.rs` — per-child activation instrumentation
 - `mother/src/http_api.rs` — readiness payload extensions
 - `mother/src/http_routes.rs` — lifecycle route registration (`/api/lifecycle/*`)
-- `mother/src/runtime.rs` — `MotherRuntime` trait definition (new file)
+- `mother/src/runtime.rs` — `MotherRuntime` trait definition (existing file, extend)
 - `src/mother/internal.rs` — control-plane client calls for lifecycle endpoints
 - `src/commands/mother/mod.rs` — CLI surface for lifecycle operations
 - `mother/src/registry.rs` — safe child reload/load orchestration boundaries
