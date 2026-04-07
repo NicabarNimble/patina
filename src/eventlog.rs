@@ -120,6 +120,8 @@ pub fn initialize(db_path: &Path) -> Result<Connection> {
         "#,
     )?;
 
+    set_schema_version(&conn, "3")?;
+
     Ok(conn)
 }
 
@@ -162,6 +164,14 @@ pub fn set_last_processed(conn: &Connection, scraper: &str, value: &str) -> Resu
     conn.execute(
         "INSERT OR REPLACE INTO scrape_meta (key, value) VALUES (?1, ?2)",
         rusqlite::params![&key, value],
+    )?;
+    Ok(())
+}
+
+pub fn set_schema_version(conn: &Connection, version: &str) -> Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO scrape_meta (key, value) VALUES (?1, ?2)",
+        rusqlite::params!["schema_version", version],
     )?;
     Ok(())
 }
@@ -572,6 +582,21 @@ mod tests {
         assert!(tables.contains(&"eventlog".to_string()));
         assert!(tables.contains(&"scrape_meta".to_string()));
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_initialize_sets_schema_version() -> Result<()> {
+        let dir = tempdir()?;
+        let db_path = dir.path().join("test.db");
+        let conn = initialize(&db_path)?;
+
+        let schema_version: String = conn.query_row(
+            "SELECT value FROM scrape_meta WHERE key = 'schema_version'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(schema_version, "3");
         Ok(())
     }
 

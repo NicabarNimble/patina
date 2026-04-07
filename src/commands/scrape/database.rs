@@ -15,6 +15,7 @@ pub use patina::eventlog::initialize;
 pub use patina::eventlog::insert_event;
 pub use patina::eventlog::is_ref_repo;
 pub use patina::eventlog::set_last_processed;
+pub use patina::eventlog::set_schema_version;
 
 /// Check that a string is a safe SQL identifier (alphanumeric + underscore only).
 pub(crate) fn is_safe_identifier(s: &str) -> bool {
