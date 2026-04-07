@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::path::Path;
+use std::time::Instant;
 
 use crate::{registry::ChildRegistry, Child, KnowledgeRuntimeStore};
 
@@ -10,6 +11,12 @@ pub enum LoadedChild {
         subscribed_streams: Vec<String>,
         relationship_listens: Vec<String>,
     },
+}
+
+fn loaded_child_name(loaded: &LoadedChild) -> &str {
+    match loaded {
+        LoadedChild::Knowledge { name, .. } => name,
+    }
 }
 
 pub fn register_loaded_child(
@@ -52,16 +59,56 @@ pub fn load_children_from_dir<F>(
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) == Some("wasm") {
                 let manifest_path = path.with_extension("toml");
+                tracing::info!(
+                    event = "startup.child.discovery.begin",
+                    wasm_path = %path.display(),
+                    manifest_path = %manifest_path.display(),
+                    "mother child discovery begin"
+                );
+                let started = Instant::now();
                 match loader(&path, &manifest_path) {
-                    Ok(loaded) => match register_loaded_child(registry, runtime, loaded) {
-                        Ok(Some(message)) => tracing::info!(%message, "child loaded"),
-                        Ok(None) => {}
-                        Err(error) => {
-                            tracing::warn!(path = %path.display(), %error, "skipping child")
+                    Ok(loaded) => {
+                        let child_name = loaded_child_name(&loaded).to_string();
+                        match register_loaded_child(registry, runtime, loaded) {
+                            Ok(Some(message)) => tracing::info!(
+                                event = "startup.child.discovery.success",
+                                child = %child_name,
+                                wasm_path = %path.display(),
+                                manifest_path = %manifest_path.display(),
+                                duration_ms = started.elapsed().as_millis() as u64,
+                                %message,
+                                "mother child discovery success"
+                            ),
+                            Ok(None) => tracing::info!(
+                                event = "startup.child.discovery.success",
+                                child = %child_name,
+                                wasm_path = %path.display(),
+                                manifest_path = %manifest_path.display(),
+                                duration_ms = started.elapsed().as_millis() as u64,
+                                "mother child discovery success"
+                            ),
+                            Err(error) => {
+                                tracing::warn!(
+                                    event = "startup.child.discovery.failure",
+                                    child = %child_name,
+                                    wasm_path = %path.display(),
+                                    manifest_path = %manifest_path.display(),
+                                    duration_ms = started.elapsed().as_millis() as u64,
+                                    %error,
+                                    "skipping child"
+                                )
+                            }
                         }
-                    },
+                    }
                     Err(error) => {
-                        tracing::warn!(path = %path.display(), %error, "failed to load child");
+                        tracing::warn!(
+                            event = "startup.child.discovery.failure",
+                            wasm_path = %path.display(),
+                            manifest_path = %manifest_path.display(),
+                            duration_ms = started.elapsed().as_millis() as u64,
+                            %error,
+                            "failed to load child"
+                        );
                     }
                 }
             }
