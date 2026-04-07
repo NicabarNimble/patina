@@ -99,7 +99,7 @@ pub struct WorkspaceInfo {
     pub mother_path: PathBuf,
     pub workspace_path: PathBuf,
     pub config_exists: bool,
-    pub adapters_installed: Vec<String>,
+    pub interfaces_installed: Vec<String>,
 }
 
 // =============================================================================
@@ -118,7 +118,7 @@ pub fn is_first_run() -> bool {
 /// Perform first-run setup
 pub fn setup() -> Result<SetupResult> {
     let mother = paths::patina_home();
-    let adapters = paths::adapters_dir();
+    let interfaces = paths::interfaces_dir();
 
     // Create directory structure
     println!("First-time setup...");
@@ -143,25 +143,23 @@ pub fn setup() -> Result<SetupResult> {
     }
     println!("  ✓ Created {}", persona_dir.display());
 
-    // ~/.patina/adapters/
-    fs::create_dir_all(&adapters)?;
+    // ~/.patina/interfaces/
+    fs::create_dir_all(&interfaces)?;
 
-    // ~/.patina/adapters/{claude,gemini,codex}/
-    for adapter in &["claude", "gemini", "codex"] {
-        let adapter_dir = adapters.join(adapter);
-        fs::create_dir_all(&adapter_dir)?;
+    // ~/.patina/interfaces/{claude,gemini,codex}/
+    for iface in &["claude", "gemini", "codex"] {
+        fs::create_dir_all(interfaces.join(iface))?;
     }
 
-    // Extract embedded templates to ~/.patina/adapters/
-    println!("  ✓ Installing adapter templates...");
-    crate::interface::templates::install_all(&adapters)?;
-    println!("  ✓ Installed adapters: claude, gemini, codex");
+    println!("  ✓ Installing interface templates...");
+    crate::interface::templates::install_all(&interfaces)?;
+    println!("  ✓ Installed interfaces: claude, gemini, codex");
 
-    // Detect installed adapters
+    // Detect installed interfaces
     let mut detected = Vec::new();
-    let mut adapters_config = InterfacesConfig::default();
+    let mut interfaces_config = InterfacesConfig::default();
 
-    // Detect available adapters
+    // Detect available interfaces
     for (name, mcp_config) in [
         ("claude", Some("~/.claude/settings.json")),
         ("gemini", None),
@@ -170,7 +168,7 @@ pub fn setup() -> Result<SetupResult> {
     ] {
         if detect_cli(name) {
             detected.push(name.to_string());
-            adapters_config.entries.insert(
+            interfaces_config.entries.insert(
                 name.to_string(),
                 InterfaceEntry {
                     command: name.to_string(),
@@ -181,7 +179,7 @@ pub fn setup() -> Result<SetupResult> {
         }
     }
 
-    println!("\nDetecting LLM adapters...");
+    println!("\nDetecting LLM interfaces...");
     for name in &["claude", "gemini", "codex", "opencode"] {
         if detected.contains(&name.to_string()) {
             println!("  ✓ {} (found)", name);
@@ -190,8 +188,7 @@ pub fn setup() -> Result<SetupResult> {
         }
     }
 
-    // Determine default adapter
-    let default_adapter = detected.first().cloned();
+    let default_interface = detected.first().cloned();
 
     // Create workspace folder
     let workspace_path = dirs::home_dir()
@@ -210,31 +207,31 @@ pub fn setup() -> Result<SetupResult> {
             path: workspace_path.to_string_lossy().to_string(),
         },
         interface: InterfaceConfig {
-            default: default_adapter
+            default: default_interface
                 .clone()
                 .unwrap_or_else(|| "claude".to_string()),
         },
         serve: ServeConfig::default(),
-        interfaces: adapters_config,
+        interfaces: interfaces_config,
     };
 
     save_config(&config)?;
 
-    if let Some(ref adapter) = default_adapter {
-        println!("\nSetting default: {}", adapter);
+    if let Some(ref iface) = default_interface {
+        println!("\nSetting default: {}", iface);
     }
 
     Ok(SetupResult {
         mother_path: mother,
         workspace_path,
-        adapters_installed: vec![
+        interfaces_installed: vec![
             "claude".to_string(),
             "gemini".to_string(),
             "codex".to_string(),
             "opencode".to_string(),
         ],
-        adapters_detected: detected,
-        default_adapter,
+        interfaces_detected: detected,
+        default_interface,
     })
 }
 
@@ -248,19 +245,17 @@ pub fn ensure_workspace() -> Result<()> {
     }
 
     // Ensure subdirectories exist
-    let adapters = paths::adapters_dir();
-    if !adapters.exists() {
-        fs::create_dir_all(&adapters)?;
-        for adapter in &["claude", "gemini", "codex"] {
-            fs::create_dir_all(adapters.join(adapter))?;
+    let interfaces = paths::interfaces_dir();
+    if !interfaces.exists() {
+        fs::create_dir_all(&interfaces)?;
+        for iface in &["claude", "gemini", "codex"] {
+            fs::create_dir_all(interfaces.join(iface))?;
         }
-        // Install templates if adapters directory was just created
-        crate::interface::templates::install_all(&adapters)?;
+        crate::interface::templates::install_all(&interfaces)?;
     } else {
-        // Check if templates need to be installed
-        let claude_templates = adapters.join("claude").join("templates");
+        let claude_templates = interfaces.join("claude").join("templates");
         if !claude_templates.exists() {
-            crate::interface::templates::install_all(&adapters)?;
+            crate::interface::templates::install_all(&interfaces)?;
         }
     }
 
@@ -314,11 +309,10 @@ pub fn workspace_info() -> Result<WorkspaceInfo> {
     let config = load_config()?;
     let workspace_path = PathBuf::from(shellexpand::tilde(&config.workspace.path).as_ref());
 
-    // Check installed adapters
-    let adapters = paths::adapters_dir();
+    let interfaces = paths::interfaces_dir();
     let mut installed = Vec::new();
     for name in &["claude", "gemini", "codex"] {
-        if adapters.join(name).exists() {
+        if interfaces.join(name).exists() {
             installed.push(name.to_string());
         }
     }
@@ -327,7 +321,7 @@ pub fn workspace_info() -> Result<WorkspaceInfo> {
         mother_path: mother.clone(),
         workspace_path,
         config_exists: paths::config_path().exists(),
-        adapters_installed: installed,
+        interfaces_installed: installed,
     })
 }
 

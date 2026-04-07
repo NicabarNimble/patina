@@ -4,7 +4,7 @@ kind = "child"
 role = "app"
 
 [needs]
-toys = ["log", "events", "state", "measure"]
+toys = ["logging", "events", "messaging", "keyvalue", "measure"]
 
 [needs.scopes.events]
 subscribe = ["record.validated"]

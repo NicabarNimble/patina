@@ -1,4 +1,4 @@
-//! Context file generation for Claude adapter
+//! Context file generation for Claude interface
 //!
 //! Generates minimal .claude/CLAUDE.md files (~50-100 lines)
 //! instead of the previous 1000+ line monsters.

@@ -39,13 +39,13 @@ impl SessionStateService {
     pub fn find_active_for_interface(
         &self,
         project_uid: &ProjectUid,
-        adapter_name: &str,
+        interface_name: &str,
         interface_kind: &InterfaceKindId,
         persona_uid: Option<&PersonaUid>,
     ) -> Result<Option<MotherSessionRecord>> {
         self.store.find_active_mother_session_for_interface(
             project_uid,
-            adapter_name,
+            interface_name,
             interface_kind,
             persona_uid,
         )

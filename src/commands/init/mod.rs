@@ -45,7 +45,7 @@ use anyhow::Result;
 ///
 /// # What This Does NOT Do
 ///
-/// - Create adapter directories (.claude/, .gemini/)
+/// - Create interface directories (.claude/, .gemini/)
 /// - Configure MCP
 /// - Run scrape or oxidize
 /// - Create devcontainer (use `patina yolo` for that)
@@ -56,7 +56,7 @@ use anyhow::Result;
 /// # Re-initialization
 ///
 /// When run in an existing Patina project:
-/// - Preserves project AI interface config (adapters.allowed, adapters.default)
+/// - Preserves project AI interface config (interfaces.allowed, interfaces.default)
 /// - Refreshes environment detection
 ///
 /// # Errors

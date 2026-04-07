@@ -169,8 +169,8 @@ pub fn execute_derive(conn: &Connection, options: &AssayOptions) -> Result<()> {
 
     for (path, file_size) in &modules_with_sizes {
         // Convert file path to module path pattern for import matching
-        // ./src/adapters/claude/mod.rs -> adapters::claude
-        // ./src/adapters/templates.rs -> adapters::templates
+        // ./src/interface/runtime/claude/mod.rs -> interface::runtime::claude
+        // ./src/interface/runtime/templates.rs -> interface::runtime::templates
         let module_path = path
             .trim_start_matches("./")
             .trim_start_matches("src/")

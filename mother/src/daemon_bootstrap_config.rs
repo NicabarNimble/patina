@@ -176,6 +176,18 @@ mod tests {
                     post_secrets_lock: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
+                    post_pando_registry_init: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(
+                            200,
+                            &serde_json::json!({"protocol_version": 1, "pandos": []}),
+                        )
+                    }),
+                    get_pando_list: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(
+                            200,
+                            &serde_json::json!({"protocol_version": 1, "pandos": []}),
+                        )
+                    }),
                     child_request: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(
                             404,
@@ -240,6 +252,18 @@ mod tests {
                     }),
                     post_secrets_lock: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    post_pando_registry_init: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(
+                            200,
+                            &serde_json::json!({"protocol_version": 1, "pandos": []}),
+                        )
+                    }),
+                    get_pando_list: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(
+                            200,
+                            &serde_json::json!({"protocol_version": 1, "pandos": []}),
+                        )
                     }),
                     child_request: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(

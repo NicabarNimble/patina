@@ -71,14 +71,15 @@ fn list_flat_entries(folder: &Path) -> Result<Vec<PathBuf>, String> {
 
 fn emit_file_found(event: &FileFoundEvent) -> Result<u64, String> {
     let payload = serde_json::to_string(event).map_err(|e| e.to_string())?;
-    let client = patina_sdk::knowledge_child::wasi::messaging::producer::connect("file.found")?;
-    let message = patina_sdk::knowledge_child::wasi::messaging::types::Message {
+    let messaging = granted::messaging();
+    let client = messaging.connect("file.found")?;
+    let message = patina_sdk::toys::MessagingMessage {
         topic: "file.found".to_string(),
         content_type: Some("application/json".to_string()),
         data: payload.into_bytes(),
         metadata: vec![],
     };
-    patina_sdk::knowledge_child::wasi::messaging::producer::send(&client, &message)
+    messaging.send(&client, &message)
 }
 
 fn emit_metric_counter(

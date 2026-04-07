@@ -23,7 +23,7 @@ impl Default for InterfaceCapabilities {
 #[derive(Debug, Clone)]
 pub struct InterfaceCheckIn {
     pub interface_kind: InterfaceKind,
-    pub adapter_name: String,
+    pub interface_name: String,
     pub project_root: PathBuf,
     pub project_uid: Option<String>,
     pub requested_persona: Option<String>,
@@ -63,7 +63,7 @@ pub fn check_in(request: &InterfaceCheckIn) -> Result<CheckInResult> {
     }
 
     if let Some(handle) =
-        session::load_current_interface_session(&request.project_root, &request.adapter_name)?
+        session::load_current_interface_session(&request.project_root, &request.interface_name)?
     {
         if persona_matches(
             request.requested_persona.as_deref(),
@@ -74,7 +74,8 @@ pub fn check_in(request: &InterfaceCheckIn) -> Result<CheckInResult> {
     }
 
     let active_interface_sessions = active_interface_sessions(request)?;
-    if let Some(handle) = select_reusable_session(&request.adapter_name, active_interface_sessions)?
+    if let Some(handle) =
+        select_reusable_session(&request.interface_name, active_interface_sessions)?
     {
         return Ok(result_from_handle(request, handle, true));
     }
@@ -82,25 +83,25 @@ pub fn check_in(request: &InterfaceCheckIn) -> Result<CheckInResult> {
     let title = request
         .title
         .clone()
-        .unwrap_or_else(|| format!("{} session", request.adapter_name));
+        .unwrap_or_else(|| format!("{} session", request.interface_name));
     let start = session::begin_session(
         &request.project_root,
         BeginSessionRequest {
             title,
-            adapter_name: request.adapter_name.clone(),
+            interface_name: request.interface_name.clone(),
             interface_kind: request.interface_kind,
             persona_uid: request.requested_persona.clone(),
             parent_runtime_id: None,
             handoff_from_runtime_id: None,
             participant: Some(SessionParticipant {
-                participant_id: format!("{}-{}", request.adapter_name, std::process::id()),
+                participant_id: format!("{}-{}", request.interface_name, std::process::id()),
                 role: "interface".to_string(),
                 interface_kind: request.interface_kind,
-                adapter_name: Some(request.adapter_name.clone()),
+                interface_name: Some(request.interface_name.clone()),
                 display_name: std::env::var("USER")
                     .ok()
                     .or_else(|| std::env::var("LOGNAME").ok())
-                    .or_else(|| Some(request.adapter_name.clone())),
+                    .or_else(|| Some(request.interface_name.clone())),
             }),
         },
     )?;
@@ -256,7 +257,7 @@ fn active_interface_sessions(
     Ok(session::list_active_sessions(&request.project_root)?
         .into_iter()
         .filter(|handle| {
-            handle.adapter_name == request.adapter_name
+            handle.interface_name == request.interface_name
                 && handle.interface_kind == request.interface_kind
                 && persona_matches(
                     request.requested_persona.as_deref(),
@@ -274,7 +275,7 @@ fn persona_matches(requested: Option<&str>, candidate: Option<&str>) -> bool {
 }
 
 fn select_reusable_session(
-    adapter_name: &str,
+    interface_name: &str,
     mut sessions: Vec<session::LiveSessionHandle>,
 ) -> Result<Option<session::LiveSessionHandle>> {
     match sessions.len() {
@@ -288,7 +289,7 @@ fn select_reusable_session(
                 .join(", ");
             anyhow::bail!(
                 "Multiple active {} sessions exist. Use `patina ai list` and retry with `--session <id>`.\nChoices: {}",
-                adapter_name,
+                interface_name,
                 choices
             );
         }
@@ -304,20 +305,20 @@ mod tests {
 
     fn handle(
         file_id: &str,
-        adapter_name: &str,
+        interface_name: &str,
         interface_kind: InterfaceKind,
     ) -> session::LiveSessionHandle {
         session::LiveSessionHandle {
             runtime_id: format!("runtime-{file_id}"),
             file_id: file_id.to_string(),
-            title: format!("{adapter_name} session"),
-            adapter_name: adapter_name.to_string(),
+            title: format!("{interface_name} session"),
+            interface_name: interface_name.to_string(),
             interface_kind,
             persona_uid: None,
             artifact_path: PathBuf::from(format!("/tmp/{file_id}.md")),
             branch: "patina".to_string(),
             starting_commit: "deadbeef".to_string(),
-            start_tag: format!("session-{file_id}-{adapter_name}-start"),
+            start_tag: format!("session-{file_id}-{interface_name}-start"),
             end_tag: None,
             created_at: "2026-03-11T00:00:00Z".to_string(),
             updated_at: "2026-03-11T00:00:00Z".to_string(),
@@ -337,7 +338,7 @@ mod tests {
         .unwrap()
         .unwrap();
 
-        assert_eq!(selected.adapter_name, "opencode");
+        assert_eq!(selected.interface_name, "opencode");
         assert_eq!(selected.interface_kind, InterfaceKind::OpenCode);
     }
 
@@ -373,7 +374,7 @@ mod tests {
                 persona_uid: None,
                 status: MotherSessionStatus::Active,
                 interface_kind: "opencode".to_string(),
-                adapter_name: "opencode".to_string(),
+                interface_name: "opencode".to_string(),
                 branch: Some("patina".to_string()),
                 start_tag: Some("session-20260312-000230-AAAA-opencode-start".to_string()),
                 end_tag: None,
@@ -391,7 +392,7 @@ mod tests {
                 persona_uid: None,
                 status: MotherSessionStatus::Active,
                 interface_kind: "opencode".to_string(),
-                adapter_name: "opencode".to_string(),
+                interface_name: "opencode".to_string(),
                 branch: Some("patina".to_string()),
                 start_tag: Some("session-20260312-000231-BBBB-opencode-start".to_string()),
                 end_tag: None,
@@ -415,13 +416,13 @@ mod tests {
             fs::create_dir_all(pointer_path.parent().unwrap()).unwrap();
             fs::write(
                 &pointer_path,
-                "adapter = \"opencode\"\nruntime_id = \"runtime-second\"\nfile_id = \"20260312-000231-BBBB\"\n",
+                "interface_name = \"opencode\"\nruntime_id = \"runtime-second\"\nfile_id = \"20260312-000231-BBBB\"\n",
             )
             .unwrap();
 
             let result = check_in(&InterfaceCheckIn {
                 interface_kind: InterfaceKind::OpenCode,
-                adapter_name: "opencode".to_string(),
+                interface_name: "opencode".to_string(),
                 project_root: temp.path().to_path_buf(),
                 project_uid: None,
                 requested_persona: None,
@@ -453,7 +454,7 @@ mod tests {
                 persona_uid: None,
                 status: MotherSessionStatus::Active,
                 interface_kind: "opencode".to_string(),
-                adapter_name: "opencode".to_string(),
+                interface_name: "opencode".to_string(),
                 branch: Some("patina".to_string()),
                 start_tag: Some("session-20260312-100000-AAAA-opencode-start".to_string()),
                 end_tag: None,
@@ -471,7 +472,7 @@ mod tests {
                 persona_uid: Some("persona-1".to_string()),
                 status: MotherSessionStatus::Active,
                 interface_kind: "opencode".to_string(),
-                adapter_name: "opencode".to_string(),
+                interface_name: "opencode".to_string(),
                 branch: Some("patina".to_string()),
                 start_tag: Some("session-20260312-100001-BBBB-opencode-start".to_string()),
                 end_tag: None,
@@ -495,13 +496,13 @@ mod tests {
             fs::create_dir_all(pointer_path.parent().unwrap()).unwrap();
             fs::write(
                 &pointer_path,
-                "adapter = \"opencode\"\nruntime_id = \"runtime-none-persona\"\nfile_id = \"20260312-100000-AAAA\"\n",
+                "interface_name = \"opencode\"\nruntime_id = \"runtime-none-persona\"\nfile_id = \"20260312-100000-AAAA\"\n",
             )
             .unwrap();
 
             let result = check_in(&InterfaceCheckIn {
                 interface_kind: InterfaceKind::OpenCode,
-                adapter_name: "opencode".to_string(),
+                interface_name: "opencode".to_string(),
                 project_root: temp.path().to_path_buf(),
                 project_uid: None,
                 requested_persona: Some("persona-1".to_string()),
@@ -533,7 +534,7 @@ mod tests {
                 persona_uid: None,
                 status: MotherSessionStatus::Active,
                 interface_kind: "opencode".to_string(),
-                adapter_name: "opencode".to_string(),
+                interface_name: "opencode".to_string(),
                 branch: Some("patina".to_string()),
                 start_tag: Some("session-20260312-100000-AAAA-opencode-start".to_string()),
                 end_tag: None,
@@ -550,7 +551,7 @@ mod tests {
 
             let error = check_in(&InterfaceCheckIn {
                 interface_kind: InterfaceKind::OpenCode,
-                adapter_name: "opencode".to_string(),
+                interface_name: "opencode".to_string(),
                 project_root: temp.path().to_path_buf(),
                 project_uid: None,
                 requested_persona: Some("persona-1".to_string()),

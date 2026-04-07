@@ -15,6 +15,38 @@ impl ProtocolVersion {
 }
 
 pub const CURRENT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V0_1;
+pub const PANDO_REGISTRY_PROTOCOL_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PandoRegistryInit {
+    pub protocol_version: u32,
+    pub native_commands: Vec<String>,
+    pub binary_version: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PandoStatus {
+    Registered,
+    Loaded,
+    Degraded,
+    Error,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PandoStateEntry {
+    pub name: String,
+    pub status: PandoStatus,
+    pub commands: Vec<String>,
+    pub aliases: Vec<String>,
+    pub child_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PandoRegistryState {
+    pub protocol_version: u32,
+    pub pandos: Vec<PandoStateEntry>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]

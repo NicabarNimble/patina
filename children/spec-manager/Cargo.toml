@@ -8,7 +8,7 @@ description = "Spec lifecycle manager knowledge child for Mother"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-patina-sdk = { path = "../../sdk/patina-sdk", features = ["child", "toy-log", "toy-state", "toy-layer-fs", "toy-git"] }
+patina-sdk = { path = "../../sdk/patina-sdk", features = ["child", "toy-log", "toy-state", "toy-git"] }
 serde_json = "1.0"
 
 [package.metadata.component]

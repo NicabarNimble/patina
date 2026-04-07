@@ -68,15 +68,15 @@ fn parse_payload(payload: &str) -> Result<Value, String> {
 
 fn emit_record_extracted(record: &Record) -> Result<u64, String> {
     let payload = serde_json::to_string(record).map_err(|e| e.to_string())?;
-    let client =
-        patina_sdk::knowledge_child::wasi::messaging::producer::connect("record.extracted")?;
-    let message = patina_sdk::knowledge_child::wasi::messaging::types::Message {
+    let messaging = granted::messaging();
+    let client = messaging.connect("record.extracted")?;
+    let message = patina_sdk::toys::MessagingMessage {
         topic: "record.extracted".to_string(),
         content_type: Some("application/json".to_string()),
         data: payload.into_bytes(),
         metadata: vec![],
     };
-    patina_sdk::knowledge_child::wasi::messaging::producer::send(&client, &message)
+    messaging.send(&client, &message)
 }
 
 fn build_record_from_path(path: &Path, batch_id: &str) -> Result<Record, String> {

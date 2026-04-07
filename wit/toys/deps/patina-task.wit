@@ -1,5 +1,0 @@
-package patina:task@0.1.0;
-
-interface task {
-    enqueue: func(kind: string, payload: string, dedupe-key: option<string>) -> result<string, string>;
-}

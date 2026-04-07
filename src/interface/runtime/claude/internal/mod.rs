@@ -33,7 +33,7 @@ pub fn init_project(
     // Generate initial context
     context_generation::generate_initial_context(project_path, project_name, environment)?;
 
-    // Create adapter manifest
+    // Create interface manifest
     manifest::create_interface_manifest(project_path)?;
 
     Ok(())

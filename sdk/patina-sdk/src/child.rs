@@ -29,16 +29,16 @@ pub mod granted {
     pub type Query = toys::QueryToy<GuestHost>;
     #[cfg(feature = "toy-fetch")]
     pub type Fetch = toys::FetchToy<GuestHost>;
-    #[cfg(feature = "toy-emit")]
-    pub type Emit = toys::EmitToy<GuestHost>;
+    #[cfg(feature = "toy-messaging")]
+    pub type Messaging = toys::MessagingToy<GuestHost>;
     #[cfg(feature = "toy-state")]
     pub type State = toys::StateToy<GuestHost>;
-    #[cfg(feature = "toy-checkpoint")]
-    pub type Checkpoint = toys::CheckpointToy<GuestHost>;
     #[cfg(feature = "toy-lake")]
     pub type Lakes = toys::LakeCatalog<GuestHost>;
     #[cfg(feature = "toy-lake")]
     pub type Lake = toys::LakeToy<GuestHost>;
+    #[cfg(feature = "toy-lake")]
+    pub type Sql = toys::SqlToy<GuestHost>;
     #[cfg(feature = "toy-ingress")]
     pub type IngressSources = toys::IngressCatalog<GuestHost>;
     #[cfg(feature = "toy-ingress")]
@@ -47,8 +47,6 @@ pub mod granted {
     pub type Connectors = toys::ConnectorCatalog<GuestHost>;
     #[cfg(feature = "toy-connector")]
     pub type Connector = toys::ConnectorBinding<GuestHost>;
-    #[cfg(feature = "toy-github")]
-    pub type Github = toys::GithubToy<GuestHost>;
     #[cfg(feature = "toy-events")]
     pub type Events = toys::EventToy<GuestHost>;
     #[cfg(feature = "toy-peer")]
@@ -84,19 +82,14 @@ pub mod granted {
         Fetch::new()
     }
 
-    #[cfg(feature = "toy-emit")]
-    pub fn emit() -> Emit {
-        Emit::new()
+    #[cfg(feature = "toy-messaging")]
+    pub fn messaging() -> Messaging {
+        Messaging::new()
     }
 
     #[cfg(feature = "toy-state")]
     pub fn state() -> State {
         State::new()
-    }
-
-    #[cfg(feature = "toy-checkpoint")]
-    pub fn checkpoint() -> Checkpoint {
-        Checkpoint::new()
     }
 
     #[cfg(feature = "toy-lake")]
@@ -109,6 +102,11 @@ pub mod granted {
         lakes()
             .require(name)
             .unwrap_or_else(|error| panic!("missing granted lake '{}': {}", name, error))
+    }
+
+    #[cfg(feature = "toy-lake")]
+    pub fn sql() -> Sql {
+        Sql::new()
     }
 
     #[cfg(feature = "toy-ingress")]
@@ -136,11 +134,6 @@ pub mod granted {
                 binding_id, error
             )
         })
-    }
-
-    #[cfg(feature = "toy-github")]
-    pub fn github() -> Github {
-        Github::new()
     }
 
     #[cfg(feature = "toy-events")]
@@ -208,16 +201,26 @@ pub trait Child {
 pub mod host {
     use super::patina;
     use crate::toys::{
-        BeliefBackend, CheckpointBackend, ConnectorBackend, EmitBackend, EventBackend,
-        FetchBackend, GithubBackend, GraphBackend, IngressBackend, LakeBackend, LogBackend,
-        MeasureBackend, PendingEvent, QueryBackend, SessionBackend, StateBackend, TaskBackend,
-        TaskIntent, TaskIntentKind,
+        BeliefBackend, ConnectorBackend, EventBackend, FetchBackend, GraphBackend, HttpMethod,
+        HttpRequest, HttpResponse, IngressBackend, KeyvalueError, LakeBackend, LogBackend,
+        LogLevel, MeasureBackend, MessagingBackend, MessagingMessage, PendingEvent, QueryBackend,
+        SessionBackend, SqlBackend, SqlRow, SqlStatementBackend, SqlValue, StateBackend,
+        StateBucketBackend, TaskBackend, TaskIntent, TaskIntentKind,
     };
     #[cfg(feature = "toy-peer")]
     use crate::toys::{PeerBackend, PeerEvent};
 
     #[derive(Debug, Clone, Copy, Default)]
     pub struct GuestHost;
+
+    #[derive(Debug)]
+    pub struct GuestStateBucket(super::wasi::keyvalue::store::Bucket);
+    #[derive(Debug)]
+    pub struct GuestMessagingClient(super::wasi::messaging::producer::Client);
+    #[derive(Debug)]
+    pub struct GuestSqlConnection(super::wasi::sql::readwrite::Connection);
+    #[derive(Debug)]
+    pub struct GuestSqlStatement(super::wasi::sql::readwrite::Statement);
 
     impl GuestHost {
         pub fn log() -> crate::toys::LogToy<Self> {
@@ -232,19 +235,19 @@ pub mod host {
         pub fn fetch() -> crate::toys::FetchToy<Self> {
             crate::toys::FetchToy::new()
         }
-        pub fn emit() -> crate::toys::EmitToy<Self> {
-            crate::toys::EmitToy::new()
+        pub fn messaging() -> crate::toys::MessagingToy<Self> {
+            crate::toys::MessagingToy::new()
         }
         pub fn state() -> crate::toys::StateToy<Self> {
             crate::toys::StateToy::new()
-        }
-        pub fn checkpoint() -> crate::toys::CheckpointToy<Self> {
-            crate::toys::CheckpointToy::new()
         }
         pub fn lake(name: &str) -> crate::toys::LakeToy<Self> {
             crate::toys::LakeCatalog::<Self>::new()
                 .require(name)
                 .unwrap_or_else(|error| panic!("missing granted lake '{}': {}", name, error))
+        }
+        pub fn sql() -> crate::toys::SqlToy<Self> {
+            crate::toys::SqlToy::new()
         }
         pub fn ingress(name: &str) -> crate::toys::IngressToy<Self> {
             crate::toys::IngressCatalog::<Self>::new()
@@ -260,9 +263,6 @@ pub mod host {
         pub fn peer() -> crate::toys::PeerToy<Self> {
             crate::toys::PeerToy::new()
         }
-        pub fn github() -> crate::toys::GithubToy<Self> {
-            crate::toys::GithubToy::new()
-        }
         pub fn graph() -> crate::toys::GraphToy<Self> {
             crate::toys::GraphToy::new()
         }
@@ -274,12 +274,22 @@ pub mod host {
         }
     }
 
-    fn state_bucket() -> Result<super::wasi::keyvalue::store::Bucket, String> {
-        super::wasi::keyvalue::store::open("default")
+    fn keyvalue_error_from_wasi(error: super::wasi::keyvalue::store::Error) -> KeyvalueError {
+        match error {
+            super::wasi::keyvalue::store::Error::NoSuchStore => KeyvalueError::NoSuchStore,
+            super::wasi::keyvalue::store::Error::AccessDenied => KeyvalueError::AccessDenied,
+            super::wasi::keyvalue::store::Error::Other(message) => KeyvalueError::Other(message),
+        }
+    }
+
+    fn state_bucket(
+        identifier: &str,
+    ) -> Result<super::wasi::keyvalue::store::Bucket, KeyvalueError> {
+        super::wasi::keyvalue::store::open(identifier).map_err(keyvalue_error_from_wasi)
     }
 
     fn state_get_string(key: &str) -> Option<String> {
-        let bucket = state_bucket().ok()?;
+        let bucket = state_bucket("default").ok()?;
         match bucket.get(key) {
             Ok(Some(bytes)) => String::from_utf8(bytes).ok(),
             Ok(None) => None,
@@ -288,34 +298,11 @@ pub mod host {
     }
 
     fn state_set_string(key: &str, value: &str) -> Result<(), String> {
-        let bucket = state_bucket()?;
-        bucket.set(key, value.as_bytes())
-    }
-
-    fn state_delete_key(key: &str) -> Result<(), String> {
-        let bucket = state_bucket()?;
-        bucket.delete(key)
-    }
-
-    fn state_list_keys() -> Vec<String> {
-        let Ok(bucket) = state_bucket() else {
-            return Vec::new();
-        };
-        let mut cursor: Option<String> = None;
-        let mut out = Vec::new();
-
-        loop {
-            let Ok(response) = bucket.list_keys(cursor.as_deref()) else {
-                break;
-            };
-            out.extend(response.keys);
-            if response.cursor.is_none() {
-                break;
-            }
-            cursor = response.cursor;
-        }
-
-        out
+        let bucket = state_bucket("default").map_err(|error| error.to_string())?;
+        bucket
+            .set(key, value.as_bytes())
+            .map_err(keyvalue_error_from_wasi)
+            .map_err(|error| error.to_string())
     }
 
     fn messaging_publish(
@@ -390,6 +377,18 @@ pub mod host {
         super::wasi::sql::readwrite::exec(&conn, &stmt)
     }
 
+    fn sql_value_from_wasi(value: super::wasi::sql::readwrite::DataType) -> SqlValue {
+        match value {
+            super::wasi::sql::readwrite::DataType::Int32(value) => SqlValue::Int32(value),
+            super::wasi::sql::readwrite::DataType::Int64(value) => SqlValue::Int64(value),
+            super::wasi::sql::readwrite::DataType::Float64(value) => SqlValue::Float64(value),
+            super::wasi::sql::readwrite::DataType::Text(value) => SqlValue::Text(value),
+            super::wasi::sql::readwrite::DataType::Flag(value) => SqlValue::Flag(value),
+            super::wasi::sql::readwrite::DataType::Binary(value) => SqlValue::Binary(value),
+            super::wasi::sql::readwrite::DataType::Null => SqlValue::Null,
+        }
+    }
+
     fn default_authority_for_source(source: &str) -> String {
         match source {
             "github" => "api.github.com".to_string(),
@@ -397,39 +396,71 @@ pub mod host {
         }
     }
 
-    fn wasi_http_get_with_binding(
+    fn http_method_to_wasi(method: &HttpMethod) -> super::wasi::http::types::Method {
+        match method {
+            HttpMethod::Get => super::wasi::http::types::Method::Get,
+            HttpMethod::Head => super::wasi::http::types::Method::Head,
+            HttpMethod::Post => super::wasi::http::types::Method::Post,
+            HttpMethod::Put => super::wasi::http::types::Method::Put,
+            HttpMethod::Delete => super::wasi::http::types::Method::Delete,
+            HttpMethod::Connect => super::wasi::http::types::Method::Connect,
+            HttpMethod::Options => super::wasi::http::types::Method::Options,
+            HttpMethod::Trace => super::wasi::http::types::Method::Trace,
+            HttpMethod::Patch => super::wasi::http::types::Method::Patch,
+            HttpMethod::Other(value) => super::wasi::http::types::Method::Other(value.clone()),
+        }
+    }
+
+    fn wasi_http_send_with_binding(
         source: &str,
-        authority: &str,
-        path_with_query: &str,
-    ) -> Result<String, String> {
+        request: &HttpRequest,
+    ) -> Result<HttpResponse, String> {
         let _binding = patina::connect::connect::resolve(source)?;
 
-        let headers = super::wasi::http::types::Fields::new();
-        let request = super::wasi::http::types::OutgoingRequest::new(headers);
-        request
-            .set_method(&super::wasi::http::types::Method::Get)
+        let headers = super::wasi::http::types::Fields::from_list(
+            &request
+                .headers
+                .iter()
+                .map(|(name, value)| (name.clone(), value.clone()))
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|_| "failed to construct outgoing HTTP headers".to_string())?;
+
+        let outgoing = super::wasi::http::types::OutgoingRequest::new(headers);
+        outgoing
+            .set_method(&http_method_to_wasi(&request.method))
             .map_err(|_| "failed to set HTTP method".to_string())?;
-        request
-            .set_scheme(Some(&super::wasi::http::types::Scheme::Https))
+        let scheme = match request.scheme.as_deref().unwrap_or("https") {
+            "http" => super::wasi::http::types::Scheme::Http,
+            "https" => super::wasi::http::types::Scheme::Https,
+            other => super::wasi::http::types::Scheme::Other(other.to_string()),
+        };
+        outgoing
+            .set_scheme(Some(&scheme))
             .map_err(|_| "failed to set HTTP scheme".to_string())?;
-        request
-            .set_authority(Some(authority))
+        outgoing
+            .set_authority(request.authority.as_deref())
             .map_err(|_| "failed to set HTTP authority".to_string())?;
-        request
-            .set_path_with_query(Some(path_with_query))
+        outgoing
+            .set_path_with_query(request.path_with_query.as_deref())
             .map_err(|_| "failed to set HTTP path".to_string())?;
 
-        let body = request
+        let body = outgoing
             .body()
             .map_err(|_| "failed to open outgoing HTTP body".to_string())?;
         let stream = body
             .write()
             .map_err(|_| "failed to open outgoing HTTP stream".to_string())?;
+        if !request.body.is_empty() {
+            stream
+                .blocking_write_and_flush(&request.body)
+                .map_err(|error| format!("failed to write outgoing HTTP body: {:?}", error))?;
+        }
         drop(stream);
         super::wasi::http::types::OutgoingBody::finish(body, None)
             .map_err(|error| format!("failed to finalize outgoing HTTP body: {:?}", error))?;
 
-        let future = super::wasi::http::outgoing_handler::handle(request, None)
+        let future = super::wasi::http::outgoing_handler::handle(outgoing, None)
             .map_err(|error| format!("HTTP request failed to start: {:?}", error))?;
         let pollable = future.subscribe();
 
@@ -441,6 +472,7 @@ pub mod host {
             super::wasi::io::poll::poll(&[&pollable]);
         }?;
 
+        let status = response.status();
         let incoming_body = response
             .consume()
             .map_err(|_| "incoming response body already consumed".to_string())?;
@@ -460,37 +492,43 @@ pub mod host {
         }
 
         let _ = super::wasi::http::types::IncomingBody::finish(incoming_body);
-        String::from_utf8(bytes).map_err(|error| error.to_string())
+        Ok(HttpResponse {
+            status,
+            headers: Vec::new(),
+            body: bytes,
+        })
+    }
+
+    fn wasi_http_get_with_binding(
+        source: &str,
+        authority: &str,
+        path_with_query: &str,
+    ) -> Result<String, String> {
+        let response = wasi_http_send_with_binding(
+            source,
+            &HttpRequest {
+                method: HttpMethod::Get,
+                scheme: Some("https".to_string()),
+                authority: Some(authority.to_string()),
+                path_with_query: Some(path_with_query.to_string()),
+                headers: Vec::new(),
+                body: Vec::new(),
+            },
+        )?;
+        String::from_utf8(response.body).map_err(|error| error.to_string())
     }
 
     impl LogBackend for GuestHost {
-        fn debug(message: &str) {
-            super::wasi::logging::logging::log(
-                super::wasi::logging::logging::Level::Debug,
-                "",
-                message,
-            );
-        }
-        fn info(message: &str) {
-            super::wasi::logging::logging::log(
-                super::wasi::logging::logging::Level::Info,
-                "",
-                message,
-            );
-        }
-        fn warn(message: &str) {
-            super::wasi::logging::logging::log(
-                super::wasi::logging::logging::Level::Warn,
-                "",
-                message,
-            );
-        }
-        fn error(message: &str) {
-            super::wasi::logging::logging::log(
-                super::wasi::logging::logging::Level::Error,
-                "",
-                message,
-            );
+        fn log(level: LogLevel, context: &str, message: &str) {
+            let level = match level {
+                LogLevel::Trace => super::wasi::logging::logging::Level::Trace,
+                LogLevel::Debug => super::wasi::logging::logging::Level::Debug,
+                LogLevel::Info => super::wasi::logging::logging::Level::Info,
+                LogLevel::Warn => super::wasi::logging::logging::Level::Warn,
+                LogLevel::Error => super::wasi::logging::logging::Level::Error,
+                LogLevel::Critical => super::wasi::logging::logging::Level::Critical,
+            };
+            super::wasi::logging::logging::log(level, context, message);
         }
     }
 
@@ -516,51 +554,111 @@ pub mod host {
     }
 
     impl FetchBackend for GuestHost {
-        fn get(_url: &str) -> Result<String, String> {
-            Err("fetch toy removed: use connect/store helpers".to_string())
-        }
-        fn post(_url: &str, _body: &str, _content_type: &str) -> Result<String, String> {
-            Err("fetch toy removed: use connect/store helpers".to_string())
+        fn send(request: &HttpRequest) -> Result<HttpResponse, String> {
+            let authority = request
+                .authority
+                .as_deref()
+                .ok_or_else(|| "http authority is required".to_string())?;
+            let source = authority.split(':').next().unwrap_or(authority);
+            wasi_http_send_with_binding(source, request)
         }
     }
 
-    impl EmitBackend for GuestHost {
-        fn emit(schema: &str, fact_type: &str, data: &str) -> Result<u64, String> {
-            let payload = serde_json::json!({
-                "schema": schema,
-                "fact_type": fact_type,
-                "data": serde_json::from_str::<serde_json::Value>(data)
-                    .unwrap_or(serde_json::Value::String(data.to_string())),
-            })
-            .to_string();
-            messaging_publish("fact.ingested", fact_type, &payload)
+    impl MessagingBackend for GuestHost {
+        type Client = GuestMessagingClient;
+
+        fn connect(name: &str) -> Result<Self::Client, String> {
+            let client = super::wasi::messaging::producer::connect(name)?;
+            Ok(GuestMessagingClient(client))
+        }
+
+        fn send(client: &Self::Client, message: &MessagingMessage) -> Result<u64, String> {
+            let msg = super::wasi::messaging::types::Message {
+                topic: message.topic.clone(),
+                content_type: message.content_type.clone(),
+                data: message.data.clone(),
+                metadata: message.metadata.clone(),
+            };
+            super::wasi::messaging::producer::send(&client.0, &msg)
+        }
+    }
+
+    impl SqlStatementBackend for GuestSqlStatement {
+        fn query(&self) -> String {
+            self.0.query()
+        }
+
+        fn params(&self) -> Vec<String> {
+            self.0.params()
+        }
+    }
+
+    impl SqlBackend for GuestHost {
+        type Connection = GuestSqlConnection;
+        type Statement = GuestSqlStatement;
+
+        fn open(name: &str) -> Result<Self::Connection, String> {
+            Ok(GuestSqlConnection(super::wasi::sql::readwrite::open(name)?))
+        }
+
+        fn prepare(query: &str, params: &[String]) -> Result<Self::Statement, String> {
+            Ok(GuestSqlStatement(super::wasi::sql::readwrite::prepare(
+                query, params,
+            )?))
+        }
+
+        fn query(
+            connection: &Self::Connection,
+            statement: &Self::Statement,
+        ) -> Result<Vec<SqlRow>, String> {
+            let rows = super::wasi::sql::readwrite::query(&connection.0, &statement.0)?;
+            Ok(rows
+                .into_iter()
+                .map(|row| SqlRow {
+                    values: row.values.into_iter().map(sql_value_from_wasi).collect(),
+                })
+                .collect())
+        }
+
+        fn exec(connection: &Self::Connection, statement: &Self::Statement) -> Result<u32, String> {
+            super::wasi::sql::readwrite::exec(&connection.0, &statement.0)
         }
     }
 
     impl StateBackend for GuestHost {
-        fn get(key: &str) -> Option<String> {
-            state_get_string(key)
-        }
-        fn put(key: &str, value_json: &str) -> Result<(), String> {
-            state_set_string(key, value_json)
-        }
-        fn delete(key: &str) -> Result<(), String> {
-            state_delete_key(key)
-        }
-        fn list_prefix(prefix: &str) -> Vec<String> {
-            state_list_keys()
-                .into_iter()
-                .filter(|k| k.starts_with(prefix))
-                .collect()
+        type Bucket = GuestStateBucket;
+
+        fn open(identifier: &str) -> Result<Self::Bucket, KeyvalueError> {
+            Ok(GuestStateBucket(state_bucket(identifier)?))
         }
     }
 
-    impl CheckpointBackend for GuestHost {
-        fn load(stream: &str) -> Option<String> {
-            state_get_string(&format!("checkpoint:{stream}"))
+    impl StateBucketBackend for GuestStateBucket {
+        fn get(&self, key: &str) -> Result<Option<Vec<u8>>, KeyvalueError> {
+            self.0.get(key).map_err(keyvalue_error_from_wasi)
         }
-        fn save(stream: &str, checkpoint_json: &str) -> Result<(), String> {
-            state_set_string(&format!("checkpoint:{stream}"), checkpoint_json)
+
+        fn set(&self, key: &str, value: &[u8]) -> Result<(), KeyvalueError> {
+            self.0.set(key, value).map_err(keyvalue_error_from_wasi)
+        }
+
+        fn delete(&self, key: &str) -> Result<(), KeyvalueError> {
+            self.0.delete(key).map_err(keyvalue_error_from_wasi)
+        }
+
+        fn exists(&self, key: &str) -> Result<bool, KeyvalueError> {
+            self.0.exists(key).map_err(keyvalue_error_from_wasi)
+        }
+
+        fn list_keys(
+            &self,
+            cursor: Option<u64>,
+        ) -> Result<crate::toys::KeyResponse, KeyvalueError> {
+            let response = self.0.list_keys(cursor).map_err(keyvalue_error_from_wasi)?;
+            Ok(crate::toys::KeyResponse {
+                keys: response.keys,
+                cursor: response.cursor,
+            })
         }
     }
 
@@ -665,134 +763,6 @@ pub mod host {
                 data_type: data_type.to_string(),
                 cursor: None,
                 rows_json: vec![],
-            })
-        }
-    }
-
-    impl GithubBackend for GuestHost {
-        fn list_issues(
-            owner: &str,
-            repo: &str,
-            params: &crate::toys::GithubListParams,
-        ) -> Result<crate::toys::GithubPage, String> {
-            let mut path = format!(
-                "/repos/{owner}/{repo}/issues?state={}",
-                params.state.clone().unwrap_or_else(|| "open".to_string())
-            );
-            if let Some(since) = &params.since {
-                path.push_str(&format!("&since={since}"));
-            }
-            if let Some(page) = params.page {
-                path.push_str(&format!("&page={page}"));
-            }
-            if let Some(per_page) = params.per_page {
-                path.push_str(&format!("&per_page={per_page}"));
-            }
-            let items = wasi_http_get_with_binding("github", "api.github.com", &path)?;
-            Ok(crate::toys::GithubPage {
-                items,
-                has_next: false,
-                next_page: None,
-                rate_remaining: 0,
-            })
-        }
-
-        fn list_pulls(
-            owner: &str,
-            repo: &str,
-            params: &crate::toys::GithubListParams,
-        ) -> Result<crate::toys::GithubPage, String> {
-            let mut path = format!(
-                "/repos/{owner}/{repo}/pulls?state={}",
-                params.state.clone().unwrap_or_else(|| "open".to_string())
-            );
-            if let Some(since) = &params.since {
-                path.push_str(&format!("&since={since}"));
-            }
-            if let Some(page) = params.page {
-                path.push_str(&format!("&page={page}"));
-            }
-            if let Some(per_page) = params.per_page {
-                path.push_str(&format!("&per_page={per_page}"));
-            }
-            let items = wasi_http_get_with_binding("github", "api.github.com", &path)?;
-            Ok(crate::toys::GithubPage {
-                items,
-                has_next: false,
-                next_page: None,
-                rate_remaining: 0,
-            })
-        }
-
-        fn list_issue_comments(
-            owner: &str,
-            repo: &str,
-            issue_number: u32,
-        ) -> Result<crate::toys::GithubPage, String> {
-            let path = format!("/repos/{owner}/{repo}/issues/{issue_number}/comments");
-            Ok(crate::toys::GithubPage {
-                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
-                has_next: false,
-                next_page: None,
-                rate_remaining: 0,
-            })
-        }
-
-        fn list_issue_events(
-            owner: &str,
-            repo: &str,
-            issue_number: u32,
-        ) -> Result<crate::toys::GithubPage, String> {
-            let path = format!("/repos/{owner}/{repo}/issues/{issue_number}/events");
-            Ok(crate::toys::GithubPage {
-                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
-                has_next: false,
-                next_page: None,
-                rate_remaining: 0,
-            })
-        }
-
-        fn list_pull_comments(
-            owner: &str,
-            repo: &str,
-            pull_number: u32,
-        ) -> Result<crate::toys::GithubPage, String> {
-            let path = format!("/repos/{owner}/{repo}/pulls/{pull_number}/comments");
-            Ok(crate::toys::GithubPage {
-                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
-                has_next: false,
-                next_page: None,
-                rate_remaining: 0,
-            })
-        }
-
-        fn list_reviews(
-            owner: &str,
-            repo: &str,
-            pull_number: u32,
-        ) -> Result<crate::toys::GithubPage, String> {
-            let path = format!("/repos/{owner}/{repo}/pulls/{pull_number}/reviews");
-            Ok(crate::toys::GithubPage {
-                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
-                has_next: false,
-                next_page: None,
-                rate_remaining: 0,
-            })
-        }
-
-        fn list_review_comments(
-            owner: &str,
-            repo: &str,
-            pull_number: u32,
-            review_id: u64,
-        ) -> Result<crate::toys::GithubPage, String> {
-            let path =
-                format!("/repos/{owner}/{repo}/pulls/{pull_number}/reviews/{review_id}/comments");
-            Ok(crate::toys::GithubPage {
-                items: wasi_http_get_with_binding("github", "api.github.com", &path)?,
-                has_next: false,
-                next_page: None,
-                rate_remaining: 0,
             })
         }
     }

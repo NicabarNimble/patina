@@ -4,7 +4,7 @@ kind = "child"
 role = "app"
 
 [needs]
-toys = ["log", "events", "measure"]
+toys = ["logging", "events", "messaging", "measure"]
 
 [needs.scopes.events]
 subscribe = ["record.extracted"]

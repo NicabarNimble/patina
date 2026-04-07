@@ -1,4 +1,4 @@
-//! Session script generation for Claude adapter
+//! Session script generation for Claude interface
 //!
 //! Deploys command definitions (.md) and thin wrapper scripts that forward
 //! to the native AI session backend while preserving local script entrypoints.
@@ -22,7 +22,7 @@ const PATINA_REVIEW_MD: &str = include_str!("../../../../../resources/claude/pat
 const SPEC_MD: &str = include_str!("../../../../../resources/claude/spec.md");
 
 fn wrapper_start() -> String {
-    "#!/bin/bash\nexec env PATINA_AI_INTERFACE=claude patina ai session start --json --adapter claude \"$@\"\n".to_string()
+    "#!/bin/bash\nexec env PATINA_AI_INTERFACE=claude patina ai session start --json --interface claude \"$@\"\n".to_string()
 }
 
 fn wrapper_update() -> String {

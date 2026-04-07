@@ -1,0 +1,138 @@
+[patina-connect]
+file = "patina-connect.wit"
+source = "patina"
+version = "0.2.0"
+
+[patina-events-stream]
+file = "patina-events-stream.wit"
+source = "patina"
+version = "0.1.0"
+
+[patina-git]
+file = "patina-git.wit"
+source = "patina"
+version = "0.1.0"
+
+[patina-keyvalue]
+file = "keyvalue.wit"
+inspired_by = "https://github.com/WebAssembly/wasi-keyvalue (stalled)"
+source = "patina"
+version = "0.2.0"
+
+[patina-logging]
+file = "logging.wit"
+inspired_by = "https://github.com/WebAssembly/wasi-logging (stalled)"
+source = "patina"
+version = "0.1.0"
+
+[patina-measure]
+file = "patina-measure.wit"
+source = "patina"
+version = "0.1.0"
+
+[patina-messaging]
+file = "messaging.wit"
+inspired_by = "https://github.com/WebAssembly/wasi-messaging (stalled)"
+source = "patina"
+version = "0.2.0"
+
+[patina-peer]
+file = "patina-peer.wit"
+source = "patina"
+version = "0.1.0"
+
+[patina-sql]
+file = "sql.wit"
+inspired_by = "https://github.com/WebAssembly/wasi-sql (stalled)"
+source = "patina"
+version = "0.1.0"
+
+[patina-task]
+file = "patina-task.wit"
+source = "patina"
+version = "0.1.0"
+
+[preview2]
+proposals = [
+    "io",
+    "clocks",
+    "random",
+    "filesystem",
+    "sockets",
+    "cli",
+    "http",
+]
+source = "https://github.com/WebAssembly/WASI"
+version = "0.2.8"
+
+[preview2.cli]
+file = "cli.wit"
+hash = "sha256:ce4f9085f44f1560082e226ae013cc63509c30fa78ae0b96e6ba5b120d9138e5"
+path = "wasip2/cli"
+upstream_files = [
+    "command.wit",
+    "environment.wit",
+    "exit.wit",
+    "run.wit",
+    "stdio.wit",
+    "terminal.wit",
+]
+
+[preview2.clocks]
+file = "clocks.wit"
+hash = "sha256:ed96f58d683838d3e4b4e58433025e8444bf7c4ec3de8476bfdaabb0dd7acccb"
+path = "wasip2/clocks"
+upstream_files = [
+    "monotonic-clock.wit",
+    "wall-clock.wit",
+    "timezone.wit",
+]
+
+[preview2.filesystem]
+file = "filesystem.wit"
+hash = "sha256:27b7f5744df9c74eb00a8ec0fb77820b052473ffdff1095072bc846b5f635e83"
+path = "wasip2/filesystem"
+upstream_files = [
+    "types.wit",
+    "preopens.wit",
+]
+
+[preview2.http]
+file = "http.wit"
+hash = "sha256:27666ac5b79eae689cca6f0fd131e730e062d4e7f07b3d040d2b3d745ffb8b39"
+path = "wasip2/http"
+upstream_files = [
+    "types.wit",
+    "handler.wit",
+]
+
+[preview2.io]
+file = "io.wit"
+hash = "sha256:5a72d68dab341adebacfc36b02a522c9248f090b8b756e8362ff03ab1e7dd416"
+path = "wasip2/io"
+upstream_files = [
+    "error.wit",
+    "poll.wit",
+    "streams.wit",
+]
+
+[preview2.random]
+file = "random.wit"
+hash = "sha256:a3261b50be936d7d8f8a4664a0f904f6dd0955393e7bcda643e6acd0bc7faaa8"
+path = "wasip2/random"
+upstream_files = [
+    "random.wit",
+    "insecure.wit",
+    "insecure-seed.wit",
+]
+
+[preview2.sockets]
+file = "sockets.wit"
+hash = "sha256:d3b3d1f9baeb60926b060d231a53be15d4b06bdb6e310c2f3e214b4a44aa2ef1"
+path = "wasip2/sockets"
+upstream_files = [
+    "network.wit",
+    "tcp.wit",
+    "udp.wit",
+    "ip-name-lookup.wit",
+]

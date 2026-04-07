@@ -75,6 +75,10 @@ impl ChildKind {
         match self {
             Self::Child => &[
                 "host_log",
+                "host_layer",
+                "host_filesystem",
+                "host_keyvalue",
+                "host_sql",
                 "host_query",
                 "host_http",
                 "host_measure",
@@ -137,6 +141,9 @@ impl ChildRole {
 pub(crate) const AUTO_GRANTED_CAPABILITIES: &[&str] = &[
     "host_log",
     "host_layer",
+    "host_filesystem",
+    "host_keyvalue",
+    "host_sql",
     "host_measure",
     "host_emit",
     "host_http",
@@ -574,11 +581,14 @@ impl ChildManifest {
             })
             .unwrap_or_default();
         for (toy, capability) in [
-            ("log", "host_log"),
+            ("logging", "host_log"),
             ("query", "host_query"),
             ("http", "host_http"),
             ("emit", "host_emit"),
             ("measure", "host_measure"),
+            ("keyvalue", "host_keyvalue"),
+            ("filesystem", "host_filesystem"),
+            ("sql", "host_sql"),
             ("layer", "host_layer"),
         ] {
             if needs_toys.iter().any(|entry| entry == toy)
@@ -708,8 +718,8 @@ impl ChildManifest {
                             }
                         }
                     }
-                    "store" => {
-                        // Store connections are parsed for Phase 3 schema compatibility.
+                    "sql" => {
+                        // SQL connections are parsed for schema compatibility.
                         // Runtime routing and policy mediation are introduced in later phases.
                     }
                     other => {
@@ -877,7 +887,7 @@ impl ChildManifest {
             })
             .unwrap_or_default();
 
-        let state_enabled = needs_toys.iter().any(|toy| toy == "state");
+        let state_enabled = needs_toys.iter().any(|toy| toy == "keyvalue");
         let checkpoint_streams = needs_scopes
             .and_then(|scopes| scopes.get("checkpoint"))
             .and_then(|v| v.as_table())
@@ -981,8 +991,12 @@ impl ChildManifest {
             })
             .unwrap_or_default();
         let toys = crate::mother::GrantedToys {
-            fetch: needs_toys.iter().any(|toy| toy == "fetch"),
+            http: needs_toys.iter().any(|toy| toy == "http"),
             events: needs_toys.iter().any(|toy| toy == "events"),
+            messaging: needs_toys.iter().any(|toy| toy == "messaging"),
+            filesystem: needs_toys.iter().any(|toy| toy == "filesystem"),
+            sql: needs_toys.iter().any(|toy| toy == "sql"),
+            git: needs_toys.iter().any(|toy| toy == "git"),
             lake_names: lake_names.iter().cloned().collect(),
             ingress_sources: ingress_sources.clone(),
             connector: needs_toys.iter().any(|toy| toy == "connector"),
@@ -993,6 +1007,13 @@ impl ChildManifest {
             graph: needs_toys.iter().any(|toy| toy == "graph"),
             belief: needs_toys.iter().any(|toy| toy == "belief"),
         };
+
+        if !toys.filesystem && !filesystem_preopens.is_empty() {
+            anyhow::bail!(
+                "child '{}' declares [needs.scopes.filesystem] but does not grant 'filesystem' in [needs].toys",
+                name
+            );
+        }
 
         Ok(Self {
             name,

@@ -34,7 +34,7 @@ impl Dimension {
     }
 }
 
-/// LLM adapter for project initialization
+/// LLM interface for project initialization
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum Llm {
     /// Claude Code (Anthropic)
@@ -330,6 +330,12 @@ enum Commands {
     Mother {
         #[command(subcommand)]
         command: Option<commands::mother::MotherCommands>,
+    },
+
+    /// Manage composed pando products
+    Pando {
+        #[command(subcommand)]
+        command: Option<commands::pando::PandoCommands>,
     },
 
     /// Secure secret management with age encryption
@@ -862,7 +868,7 @@ enum PersonaCommands {
 }
 
 // CLI subcommand enums are defined in their respective command modules
-use commands::adapter::InterfaceManageCommands;
+use commands::interface::InterfaceManageCommands;
 use commands::repo::RepoCommands;
 
 #[cfg(feature = "dev")]
@@ -898,7 +904,7 @@ enum DevCommands {
 
     /// Bump component versions
     BumpVersion {
-        /// Component to bump (patina, claude-adapter, etc)
+        /// Component to bump (patina, claude-interface, etc)
         component: String,
 
         /// Version bump type
@@ -1106,12 +1112,14 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
+    commands::pando::init_registry_best_effort();
+
     match cli.command {
-        // Launcher mode: no subcommand means launch adapter
+        // Launcher mode: no subcommand means launch interface
         None => {
             let options = commands::launch::LaunchOptions {
                 path: None,
-                adapter: cli.interface,
+                interface: cli.interface,
                 auto_start_mother: true,
                 auto_init: true,
             };
@@ -1538,6 +1546,7 @@ fn main() -> Result<()> {
         Some(Commands::Connect { command }) => commands::connect::execute_cli(command)?,
         Some(Commands::Lake { command }) => commands::lake::execute_cli(command)?,
         Some(Commands::Mother { command }) => commands::mother::execute_cli(command)?,
+        Some(Commands::Pando { command }) => commands::pando::execute_cli(command)?,
         Some(Commands::Secrets { command, flags }) => {
             commands::secrets::execute_cli(command, flags)?
         }
@@ -1628,7 +1637,7 @@ fn main() -> Result<()> {
                 commands::mother::daemon::run_server(options)?;
             }
         }
-        Some(Commands::Interface { command }) => commands::adapter::execute(command)?,
+        Some(Commands::Interface { command }) => commands::interface::execute(command)?,
         Some(Commands::Report { output, repo, json }) => {
             let options = commands::report::ReportOptions { output, repo, json };
             commands::report::execute(options)?;

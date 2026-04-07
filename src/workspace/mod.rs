@@ -16,7 +16,7 @@
 //!
 //!     // Load global config
 //!     let config = workspace::config()?;
-//!     println!("Default interface: {}", config.adapter.default);
+//!     println!("Default interface: {}", config.interface.default);
 //!     Ok(())
 //! }
 //! ```
@@ -66,7 +66,7 @@ pub fn ensure() -> Result<()> {
 }
 
 // Path functions moved to patina::paths module
-// Use paths::patina_home(), paths::adapters_dir(), etc.
+// Use paths::patina_home(), paths::interfaces_dir(), etc.
 
 /// Result of first-run setup
 #[derive(Debug)]
@@ -76,11 +76,11 @@ pub struct SetupResult {
     /// Path to workspace folder
     pub workspace_path: std::path::PathBuf,
     /// Installed interfaces
-    pub adapters_installed: Vec<String>,
+    pub interfaces_installed: Vec<String>,
     /// Detected interface CLIs
-    pub adapters_detected: Vec<String>,
+    pub interfaces_detected: Vec<String>,
     /// Default interface set
-    pub default_adapter: Option<String>,
+    pub default_interface: Option<String>,
 }
 
 // Tests for path functions are in paths module

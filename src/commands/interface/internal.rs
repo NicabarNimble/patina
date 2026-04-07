@@ -13,7 +13,7 @@ pub fn ensure_interface_ready(
 )> {
     interface::ensure_ai_project_config(project_path, None)?;
 
-    let adapter = load_interface(interface_name).map_err(|_| {
+    let iface = load_interface(interface_name).map_err(|_| {
         anyhow::anyhow!(
             "Unsupported Patina AI interface '{}'. Choose one of: {}.",
             interface_name,
@@ -21,7 +21,7 @@ pub fn ensure_interface_ready(
         )
     })?;
     let bootstrap = interface::prepare_ai_bundle(project_path, interface_name, force)?.bootstrap;
-    Ok((adapter, bootstrap))
+    Ok((iface, bootstrap))
 }
 
 #[cfg(test)]
@@ -29,7 +29,7 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    fn setup_project(adapter: &str) -> TempDir {
+    fn setup_project(interface_name: &str) -> TempDir {
         let temp = TempDir::new().unwrap();
         fs::create_dir_all(temp.path().join(".patina")).unwrap();
         fs::write(temp.path().join(".patina/uid"), "test-project\n").unwrap();
@@ -37,7 +37,7 @@ mod tests {
             temp.path().join(".patina/config.toml"),
             format!(
                 "[interfaces]\nallowed = [\"{}\"]\ndefault = \"{}\"\n",
-                adapter, adapter
+                interface_name, interface_name
             ),
         )
         .unwrap();

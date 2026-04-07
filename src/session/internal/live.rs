@@ -21,7 +21,7 @@ pub struct LiveSessionHandle {
     pub runtime_id: String,
     pub file_id: String,
     pub title: String,
-    pub adapter_name: String,
+    pub interface_name: String,
     pub interface_kind: InterfaceKind,
     pub persona_uid: Option<String>,
     pub artifact_path: PathBuf,
@@ -42,7 +42,7 @@ pub fn begin_session(project_root: &Path, request: BeginSessionRequest) -> Resul
     let file_id = generate_file_id(created_local);
     let branch = git::current_branch().unwrap_or_else(|_| "none".to_string());
     let starting_commit = git::head_sha().unwrap_or_else(|_| "none".to_string());
-    let start_tag = format!("session-{}-{}-start", file_id, request.adapter_name);
+    let start_tag = format!("session-{}-{}-start", file_id, request.interface_name);
 
     if git::is_git_repo().unwrap_or(false) {
         if git::tag_exists(&start_tag).unwrap_or(false) {
@@ -55,12 +55,12 @@ pub fn begin_session(project_root: &Path, request: BeginSessionRequest) -> Resul
     let participant = request
         .participant
         .clone()
-        .unwrap_or_else(|| default_participant(&request.adapter_name, request.interface_kind));
+        .unwrap_or_else(|| default_participant(&request.interface_name, request.interface_kind));
     let document = initial_document(NewDocument {
         file_id: file_id.clone(),
         runtime_id: runtime_id.clone(),
         title: request.title.clone(),
-        adapter_name: request.adapter_name.clone(),
+        interface_name: request.interface_name.clone(),
         interface_kind: request.interface_kind,
         persona_uid: request.persona_uid.clone(),
         project_uid: project_uid.clone(),
@@ -84,7 +84,7 @@ pub fn begin_session(project_root: &Path, request: BeginSessionRequest) -> Resul
         persona_uid: request.persona_uid.clone(),
         status: MotherSessionStatus::Active,
         interface_kind: request.interface_kind.as_str().to_string(),
-        adapter_name: request.adapter_name.clone(),
+        interface_name: request.interface_name.clone(),
         branch: Some(branch.clone()),
         start_tag: Some(start_tag.clone()),
         end_tag: None,
@@ -101,7 +101,7 @@ pub fn begin_session(project_root: &Path, request: BeginSessionRequest) -> Resul
             participant_id: participant.participant_id.clone(),
             role: participant.role.clone(),
             interface_kind: Some(participant.interface_kind.as_str().to_string()),
-            adapter_name: participant.adapter_name.clone(),
+            interface_name: participant.interface_name.clone(),
             display_name: participant.display_name.clone(),
             joined_at: created_at.clone(),
             left_at: None,
@@ -111,7 +111,7 @@ pub fn begin_session(project_root: &Path, request: BeginSessionRequest) -> Resul
     if request.interface_kind != crate::session::InterfaceKind::LegacyCli {
         projection::write_native_interface_session(
             project_root,
-            &request.adapter_name,
+            &request.interface_name,
             &runtime_id,
             &file_id,
         )?;
@@ -178,7 +178,7 @@ pub fn archive_session(
     if record.interface_kind != crate::session::InterfaceKind::LegacyCli.as_str() {
         projection::clear_native_interface_session(
             project_root,
-            &record.adapter_name,
+            &record.interface_name,
             Some(&request.runtime_id),
         )?;
     }
@@ -213,7 +213,7 @@ pub fn list_active_sessions(project_root: &Path) -> Result<Vec<LiveSessionHandle
 
 pub fn find_active_interface_session(
     project_root: &Path,
-    adapter_name: &str,
+    interface_name: &str,
     interface_kind: InterfaceKind,
     persona_uid: Option<&str>,
 ) -> Result<Option<LiveSessionHandle>> {
@@ -229,7 +229,7 @@ pub fn find_active_interface_session(
     let interface_kind_id = InterfaceKindId::new(interface_kind.as_str().to_string())?;
     let Some(record) = store.find_active_mother_session_for_interface(
         &project_uid,
-        adapter_name,
+        interface_name,
         &interface_kind_id,
         persona_uid.as_ref(),
     )?
@@ -295,9 +295,9 @@ pub fn current_session_runtime_id(project_root: &Path) -> Result<Option<String>>
 
 pub fn load_current_interface_session(
     project_root: &Path,
-    adapter_name: &str,
+    interface_name: &str,
 ) -> Result<Option<LiveSessionHandle>> {
-    let Some(pointer) = projection::read_native_interface_session(project_root, adapter_name)?
+    let Some(pointer) = projection::read_native_interface_session(project_root, interface_name)?
     else {
         return Ok(None);
     };
@@ -305,16 +305,16 @@ pub fn load_current_interface_session(
     let Some(record) = load_record(&pointer.runtime_id)? else {
         projection::clear_native_interface_session(
             project_root,
-            adapter_name,
+            interface_name,
             Some(&pointer.runtime_id),
         )?;
         return Ok(None);
     };
 
-    if record.adapter_name != adapter_name {
+    if record.interface_name != interface_name {
         projection::clear_native_interface_session(
             project_root,
-            adapter_name,
+            interface_name,
             Some(&pointer.runtime_id),
         )?;
         return Ok(None);
@@ -341,7 +341,7 @@ fn load_record(runtime_id: &str) -> Result<Option<MotherSessionRecord>> {
     KnowledgeRuntimeStore::default().get_mother_session(runtime_id)
 }
 
-fn default_participant(adapter_name: &str, interface_kind: InterfaceKind) -> SessionParticipant {
+fn default_participant(interface_name: &str, interface_kind: InterfaceKind) -> SessionParticipant {
     let participant_id = format!(
         "{}-{}",
         std::env::var("USER").unwrap_or_else(|_| "operator".to_string()),
@@ -351,7 +351,7 @@ fn default_participant(adapter_name: &str, interface_kind: InterfaceKind) -> Ses
         participant_id,
         role: "operator".to_string(),
         interface_kind,
-        adapter_name: Some(adapter_name.to_string()),
+        interface_name: Some(interface_name.to_string()),
         display_name: std::env::var("USER").ok(),
     }
 }
@@ -371,7 +371,7 @@ fn map_record(
         runtime_id: record.runtime_id,
         file_id: record.file_id,
         title: record.title,
-        adapter_name: record.adapter_name,
+        interface_name: record.interface_name,
         interface_kind: map_interface_kind(&record.interface_kind),
         persona_uid: record.persona_uid,
         artifact_path,

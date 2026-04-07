@@ -40,28 +40,58 @@ pub struct PeerEvent {
     pub occurred_at: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+    Critical,
+}
+
 pub trait LogBackend {
-    fn debug(message: &str);
-    fn info(message: &str);
-    fn warn(message: &str);
-    fn error(message: &str);
+    fn log(level: LogLevel, context: &str, message: &str);
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum KeyvalueError {
+    NoSuchStore,
+    AccessDenied,
+    Other(String),
+}
+
+impl std::fmt::Display for KeyvalueError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoSuchStore => write!(f, "no-such-store"),
+            Self::AccessDenied => write!(f, "access-denied"),
+            Self::Other(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl std::error::Error for KeyvalueError {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyResponse {
+    pub keys: Vec<String>,
+    pub cursor: Option<u64>,
+}
+
+pub trait StateBucketBackend {
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>, KeyvalueError>;
+    fn set(&self, key: &str, value: &[u8]) -> Result<(), KeyvalueError>;
+    fn delete(&self, key: &str) -> Result<(), KeyvalueError>;
+    fn exists(&self, key: &str) -> Result<bool, KeyvalueError>;
+    fn list_keys(&self, cursor: Option<u64>) -> Result<KeyResponse, KeyvalueError>;
 }
 
 pub trait StateBackend {
-    fn get(key: &str) -> Option<String>;
-    fn put(key: &str, value_json: &str) -> Result<(), String>;
-    fn delete(key: &str) -> Result<(), String>;
-    fn list_prefix(prefix: &str) -> Vec<String>;
-}
-
-#[cfg(feature = "toy-layer-fs")]
-pub trait LayerFsBackend {
-    fn read_file(path: &str) -> Result<String, String>;
-    fn write_file(path: &str, contents: &str) -> Result<(), String>;
-    fn list_dir(path: &str) -> Result<Vec<String>, String>;
-    fn delete_file(path: &str) -> Result<(), String>;
-    fn move_path(from: &str, to: &str) -> Result<(), String>;
-    fn exists(path: &str) -> Result<bool, String>;
+    type Bucket: StateBucketBackend;
+    fn open(identifier: &str) -> Result<Self::Bucket, KeyvalueError>;
 }
 
 #[cfg(feature = "toy-git")]
@@ -78,8 +108,18 @@ pub trait QueryBackend {
     fn query(kind: &str, params_json: &str) -> Result<String, String>;
 }
 
-pub trait EmitBackend {
-    fn emit(schema: &str, fact_type: &str, data: &str) -> Result<u64, String>;
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MessagingMessage {
+    pub topic: String,
+    pub content_type: Option<String>,
+    pub data: Vec<u8>,
+    pub metadata: Vec<(String, String)>,
+}
+
+pub trait MessagingBackend {
+    type Client;
+    fn connect(name: &str) -> Result<Self::Client, String>;
+    fn send(client: &Self::Client, message: &MessagingMessage) -> Result<u64, String>;
 }
 
 pub trait SessionBackend {
@@ -127,29 +167,43 @@ pub struct ConnectorSyncResult {
     pub rows_json: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GithubListParams {
-    pub since: Option<String>,
-    pub state: Option<String>,
-    pub page: Option<u32>,
-    pub per_page: Option<u32>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GithubPage {
-    pub items: String,
-    pub has_next: bool,
-    pub next_page: Option<u32>,
-    pub rate_remaining: u32,
-}
-
 pub trait MeasureBackend {
     fn record(verb: &str, tool: &str, mode: &str, metrics_json: &str) -> Result<(), String>;
 }
 
-pub trait CheckpointBackend {
-    fn load(stream: &str) -> Option<String>;
-    fn save(stream: &str, checkpoint_json: &str) -> Result<(), String>;
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SqlValue {
+    Int32(i32),
+    Int64(i64),
+    Float64(f64),
+    Text(String),
+    Flag(bool),
+    Binary(Vec<u8>),
+    Null,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SqlRow {
+    pub values: Vec<SqlValue>,
+}
+
+pub trait SqlStatementBackend {
+    fn query(&self) -> String;
+    fn params(&self) -> Vec<String>;
+}
+
+pub trait SqlBackend {
+    type Connection;
+    type Statement: SqlStatementBackend;
+
+    fn open(name: &str) -> Result<Self::Connection, String>;
+    fn prepare(query: &str, params: &[String]) -> Result<Self::Statement, String>;
+    fn query(
+        connection: &Self::Connection,
+        statement: &Self::Statement,
+    ) -> Result<Vec<SqlRow>, String>;
+    fn exec(connection: &Self::Connection, statement: &Self::Statement) -> Result<u32, String>;
 }
 
 pub trait LakeBackend {
@@ -186,30 +240,6 @@ pub trait ConnectorBackend {
     ) -> Result<ConnectorSyncResult, String>;
 }
 
-pub trait GithubBackend {
-    fn list_issues(
-        owner: &str,
-        repo: &str,
-        params: &GithubListParams,
-    ) -> Result<GithubPage, String>;
-    fn list_pulls(owner: &str, repo: &str, params: &GithubListParams)
-        -> Result<GithubPage, String>;
-    fn list_issue_comments(
-        owner: &str,
-        repo: &str,
-        issue_number: u32,
-    ) -> Result<GithubPage, String>;
-    fn list_issue_events(owner: &str, repo: &str, issue_number: u32) -> Result<GithubPage, String>;
-    fn list_pull_comments(owner: &str, repo: &str, pull_number: u32) -> Result<GithubPage, String>;
-    fn list_reviews(owner: &str, repo: &str, pull_number: u32) -> Result<GithubPage, String>;
-    fn list_review_comments(
-        owner: &str,
-        repo: &str,
-        pull_number: u32,
-        review_id: u64,
-    ) -> Result<GithubPage, String>;
-}
-
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LogToy<B>(std::marker::PhantomData<B>);
 impl<B> LogToy<B> {
@@ -218,17 +248,32 @@ impl<B> LogToy<B> {
     }
 }
 impl<B: LogBackend> LogToy<B> {
+    pub fn log(&self, level: LogLevel, context: &str, message: &str) {
+        B::log(level, context, message);
+    }
+
+    pub fn trace(&self, message: &str) {
+        B::log(LogLevel::Trace, "", message);
+    }
+
     pub fn debug(&self, message: &str) {
-        B::debug(message);
+        B::log(LogLevel::Debug, "", message);
     }
+
     pub fn info(&self, message: &str) {
-        B::info(message);
+        B::log(LogLevel::Info, "", message);
     }
+
     pub fn warn(&self, message: &str) {
-        B::warn(message);
+        B::log(LogLevel::Warn, "", message);
     }
+
     pub fn error(&self, message: &str) {
-        B::error(message);
+        B::log(LogLevel::Error, "", message);
+    }
+
+    pub fn critical(&self, message: &str) {
+        B::log(LogLevel::Critical, "", message);
     }
 }
 
@@ -240,56 +285,100 @@ impl<B> StateToy<B> {
     }
 }
 impl<B: StateBackend> StateToy<B> {
-    pub fn get(&self, key: &str) -> Option<String> {
-        B::get(key)
+    pub fn open(&self, identifier: &str) -> Result<StateBucket<B::Bucket>, KeyvalueError> {
+        Ok(StateBucket(B::open(identifier)?))
     }
+
+    pub fn get(&self, key: &str) -> Option<String> {
+        self.get_string(key)
+    }
+
     pub fn put(&self, key: &str, value_json: &str) -> Result<(), String> {
-        B::put(key, value_json)
+        self.set_string(key, value_json)
+    }
+
+    pub fn get_bytes(&self, key: &str) -> Result<Option<Vec<u8>>, KeyvalueError> {
+        self.open("default")?.get(key)
+    }
+
+    pub fn put_bytes(&self, key: &str, value: &[u8]) -> Result<(), KeyvalueError> {
+        self.open("default")?.set(key, value)
     }
 
     pub fn get_string(&self, key: &str) -> Option<String> {
-        B::get(key)
+        self.open("default").ok()?.get_string(key)
     }
 
     pub fn set_string(&self, key: &str, value: &str) -> Result<(), String> {
-        B::put(key, value)
+        self.open("default")
+            .map_err(|error| error.to_string())?
+            .set_string(key, value)
+            .map_err(|error| error.to_string())
     }
-    pub fn delete(&self, key: &str) -> Result<(), String> {
-        B::delete(key)
+
+    pub fn delete(&self, key: &str) -> Result<(), KeyvalueError> {
+        self.open("default")?.delete(key)
     }
+
+    pub fn exists(&self, key: &str) -> Result<bool, KeyvalueError> {
+        self.open("default")?.exists(key)
+    }
+
     pub fn list_prefix(&self, prefix: &str) -> Vec<String> {
-        B::list_prefix(prefix)
+        let mut all: Vec<String> = Vec::new();
+        let mut cursor: Option<u64> = None;
+        loop {
+            let Ok(bucket) = self.open("default") else {
+                return Vec::new();
+            };
+            let Ok(page) = bucket.list_keys(cursor) else {
+                return all.into_iter().filter(|k| k.starts_with(prefix)).collect();
+            };
+            all.extend(page.keys);
+            if let Some(next) = page.cursor {
+                cursor = Some(next);
+            } else {
+                break;
+            }
+        }
+        all.into_iter().filter(|k| k.starts_with(prefix)).collect()
     }
 }
 
-#[cfg(feature = "toy-layer-fs")]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct LayerFsToy<B>(std::marker::PhantomData<B>);
-#[cfg(feature = "toy-layer-fs")]
-impl<B> LayerFsToy<B> {
-    pub fn new() -> Self {
-        Self(std::marker::PhantomData)
+#[derive(Debug, Clone)]
+pub struct StateBucket<B>(B);
+
+impl<B: StateBucketBackend> StateBucket<B> {
+    pub fn get(&self, key: &str) -> Result<Option<Vec<u8>>, KeyvalueError> {
+        self.0.get(key)
     }
-}
-#[cfg(feature = "toy-layer-fs")]
-impl<B: LayerFsBackend> LayerFsToy<B> {
-    pub fn read_file(&self, path: &str) -> Result<String, String> {
-        B::read_file(path)
+
+    pub fn set(&self, key: &str, value: &[u8]) -> Result<(), KeyvalueError> {
+        self.0.set(key, value)
     }
-    pub fn write_file(&self, path: &str, contents: &str) -> Result<(), String> {
-        B::write_file(path, contents)
+
+    pub fn delete(&self, key: &str) -> Result<(), KeyvalueError> {
+        self.0.delete(key)
     }
-    pub fn list_dir(&self, path: &str) -> Result<Vec<String>, String> {
-        B::list_dir(path)
+
+    pub fn exists(&self, key: &str) -> Result<bool, KeyvalueError> {
+        self.0.exists(key)
     }
-    pub fn delete_file(&self, path: &str) -> Result<(), String> {
-        B::delete_file(path)
+
+    pub fn list_keys(&self, cursor: Option<u64>) -> Result<KeyResponse, KeyvalueError> {
+        self.0.list_keys(cursor)
     }
-    pub fn move_path(&self, from: &str, to: &str) -> Result<(), String> {
-        B::move_path(from, to)
+
+    pub fn get_string(&self, key: &str) -> Option<String> {
+        self.get(key)
+            .ok()
+            .flatten()
+            .and_then(|bytes| String::from_utf8(bytes).ok())
     }
-    pub fn exists(&self, path: &str) -> Result<bool, String> {
-        B::exists(path)
+
+    pub fn set_string(&self, key: &str, value: &str) -> Result<(), String> {
+        self.set(key, value.as_bytes())
+            .map_err(|error| error.to_string())
     }
 }
 
@@ -337,16 +426,40 @@ impl<B: QueryBackend> QueryToy<B> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct MessagingClient<B: MessagingBackend>(B::Client);
+
 #[derive(Debug, Clone, Copy, Default)]
-pub struct EmitToy<B>(std::marker::PhantomData<B>);
-impl<B> EmitToy<B> {
+pub struct MessagingToy<B>(std::marker::PhantomData<B>);
+
+impl<B> MessagingToy<B> {
     pub fn new() -> Self {
         Self(std::marker::PhantomData)
     }
 }
-impl<B: EmitBackend> EmitToy<B> {
-    pub fn emit(&self, schema: &str, fact_type: &str, data: &str) -> Result<u64, String> {
-        B::emit(schema, fact_type, data)
+
+impl<B: MessagingBackend> MessagingToy<B> {
+    pub fn connect(&self, name: &str) -> Result<MessagingClient<B>, String> {
+        Ok(MessagingClient(B::connect(name)?))
+    }
+
+    pub fn send(
+        &self,
+        client: &MessagingClient<B>,
+        message: &MessagingMessage,
+    ) -> Result<u64, String> {
+        B::send(&client.0, message)
+    }
+
+    pub fn publish(&self, stream_name: &str, topic: &str, payload: &[u8]) -> Result<u64, String> {
+        let client = self.connect(stream_name)?;
+        let message = MessagingMessage {
+            topic: topic.to_string(),
+            content_type: Some("application/json".to_string()),
+            data: payload.to_vec(),
+            metadata: Vec::new(),
+        };
+        self.send(&client, &message)
     }
 }
 
@@ -406,22 +519,6 @@ impl<B: MeasureBackend> MeasureToy<B> {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct CheckpointToy<B>(std::marker::PhantomData<B>);
-impl<B> CheckpointToy<B> {
-    pub fn new() -> Self {
-        Self(std::marker::PhantomData)
-    }
-}
-impl<B: CheckpointBackend> CheckpointToy<B> {
-    pub fn load(&self, stream: &str) -> Option<String> {
-        B::load(stream)
-    }
-    pub fn save(&self, stream: &str, checkpoint_json: &str) -> Result<(), String> {
-        B::save(stream, checkpoint_json)
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct LakeToy<B> {
     granted: GrantedLake,
@@ -443,6 +540,57 @@ pub struct LakeCatalog<B>(std::marker::PhantomData<B>);
 impl<B> LakeCatalog<B> {
     pub fn new() -> Self {
         Self(std::marker::PhantomData)
+    }
+}
+
+#[derive(Debug)]
+pub struct SqlConnection<B: SqlBackend>(B::Connection);
+
+#[derive(Debug)]
+pub struct SqlStatement<B: SqlBackend>(B::Statement);
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SqlToy<B>(std::marker::PhantomData<B>);
+
+impl<B> SqlToy<B> {
+    pub fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<B: SqlBackend> SqlToy<B> {
+    pub fn open(&self, name: &str) -> Result<SqlConnection<B>, String> {
+        Ok(SqlConnection(B::open(name)?))
+    }
+
+    pub fn prepare(&self, query: &str, params: &[String]) -> Result<SqlStatement<B>, String> {
+        Ok(SqlStatement(B::prepare(query, params)?))
+    }
+
+    pub fn query(
+        &self,
+        connection: &SqlConnection<B>,
+        statement: &SqlStatement<B>,
+    ) -> Result<Vec<SqlRow>, String> {
+        B::query(&connection.0, &statement.0)
+    }
+
+    pub fn exec(
+        &self,
+        connection: &SqlConnection<B>,
+        statement: &SqlStatement<B>,
+    ) -> Result<u32, String> {
+        B::exec(&connection.0, &statement.0)
+    }
+}
+
+impl<B: SqlBackend> SqlStatement<B> {
+    pub fn query(&self) -> String {
+        self.0.query()
+    }
+
+    pub fn params(&self) -> Vec<String> {
+        self.0.params()
     }
 }
 impl<B: LakeBackend> LakeToy<B> {
@@ -543,73 +691,6 @@ impl<B: ConnectorBackend> ConnectorCatalog<B> {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct GithubToy<B>(std::marker::PhantomData<B>);
-impl<B> GithubToy<B> {
-    pub fn new() -> Self {
-        Self(std::marker::PhantomData)
-    }
-}
-impl<B: GithubBackend> GithubToy<B> {
-    pub fn list_issues(
-        &self,
-        owner: &str,
-        repo: &str,
-        params: &GithubListParams,
-    ) -> Result<GithubPage, String> {
-        B::list_issues(owner, repo, params)
-    }
-    pub fn list_pulls(
-        &self,
-        owner: &str,
-        repo: &str,
-        params: &GithubListParams,
-    ) -> Result<GithubPage, String> {
-        B::list_pulls(owner, repo, params)
-    }
-    pub fn list_issue_comments(
-        &self,
-        owner: &str,
-        repo: &str,
-        issue_number: u32,
-    ) -> Result<GithubPage, String> {
-        B::list_issue_comments(owner, repo, issue_number)
-    }
-    pub fn list_issue_events(
-        &self,
-        owner: &str,
-        repo: &str,
-        issue_number: u32,
-    ) -> Result<GithubPage, String> {
-        B::list_issue_events(owner, repo, issue_number)
-    }
-    pub fn list_pull_comments(
-        &self,
-        owner: &str,
-        repo: &str,
-        pull_number: u32,
-    ) -> Result<GithubPage, String> {
-        B::list_pull_comments(owner, repo, pull_number)
-    }
-    pub fn list_reviews(
-        &self,
-        owner: &str,
-        repo: &str,
-        pull_number: u32,
-    ) -> Result<GithubPage, String> {
-        B::list_reviews(owner, repo, pull_number)
-    }
-    pub fn list_review_comments(
-        &self,
-        owner: &str,
-        repo: &str,
-        pull_number: u32,
-        review_id: u64,
-    ) -> Result<GithubPage, String> {
-        B::list_review_comments(owner, repo, pull_number, review_id)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GrantedIngressSource {
     pub name: String,
@@ -617,8 +698,39 @@ pub struct GrantedIngressSource {
 }
 
 pub trait FetchBackend {
-    fn get(url: &str) -> Result<String, String>;
-    fn post(url: &str, body: &str, content_type: &str) -> Result<String, String>;
+    fn send(request: &HttpRequest) -> Result<HttpResponse, String>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HttpMethod {
+    Get,
+    Head,
+    Post,
+    Put,
+    Delete,
+    Connect,
+    Options,
+    Trace,
+    Patch,
+    Other(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HttpRequest {
+    pub method: HttpMethod,
+    pub scheme: Option<String>,
+    pub authority: Option<String>,
+    pub path_with_query: Option<String>,
+    pub headers: Vec<(String, Vec<u8>)>,
+    pub body: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HttpResponse {
+    pub status: u16,
+    pub headers: Vec<(String, Vec<u8>)>,
+    pub body: Vec<u8>,
 }
 
 pub trait IngressBackend {
@@ -658,12 +770,72 @@ impl<B> FetchToy<B> {
     }
 }
 impl<B: FetchBackend> FetchToy<B> {
+    pub fn send(&self, request: &HttpRequest) -> Result<HttpResponse, String> {
+        B::send(request)
+    }
+
     pub fn get(&self, url: &str) -> Result<String, String> {
-        B::get(url)
+        let parsed = parse_http_url(url)?;
+        let request = HttpRequest {
+            method: HttpMethod::Get,
+            scheme: Some(parsed.scheme),
+            authority: Some(parsed.authority),
+            path_with_query: Some(parsed.path_with_query),
+            headers: Vec::new(),
+            body: Vec::new(),
+        };
+        let response = B::send(&request)?;
+        String::from_utf8(response.body).map_err(|error| error.to_string())
     }
+
     pub fn post(&self, url: &str, body: &str, content_type: &str) -> Result<String, String> {
-        B::post(url, body, content_type)
+        let parsed = parse_http_url(url)?;
+        let request = HttpRequest {
+            method: HttpMethod::Post,
+            scheme: Some(parsed.scheme),
+            authority: Some(parsed.authority),
+            path_with_query: Some(parsed.path_with_query),
+            headers: vec![("content-type".to_string(), content_type.as_bytes().to_vec())],
+            body: body.as_bytes().to_vec(),
+        };
+        let response = B::send(&request)?;
+        String::from_utf8(response.body).map_err(|error| error.to_string())
     }
+}
+
+#[derive(Debug, Clone)]
+struct ParsedHttpUrl {
+    scheme: String,
+    authority: String,
+    path_with_query: String,
+}
+
+fn parse_http_url(url: &str) -> Result<ParsedHttpUrl, String> {
+    let parsed = url::Url::parse(url).map_err(|error| error.to_string())?;
+    let scheme = parsed.scheme().to_string();
+    let authority = parsed
+        .host_str()
+        .map(|host| {
+            if let Some(port) = parsed.port() {
+                format!("{}:{}", host, port)
+            } else {
+                host.to_string()
+            }
+        })
+        .ok_or_else(|| format!("missing host in URL '{}'", url))?;
+    let mut path_with_query = parsed.path().to_string();
+    if let Some(query) = parsed.query() {
+        path_with_query.push('?');
+        path_with_query.push_str(query);
+    }
+    if path_with_query.is_empty() {
+        path_with_query = "/".to_string();
+    }
+    Ok(ParsedHttpUrl {
+        scheme,
+        authority,
+        path_with_query,
+    })
 }
 
 #[derive(Debug, Clone)]

@@ -178,7 +178,7 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         },
     )?;
 
-    let (adapter, bootstrap) =
+    let (iface, bootstrap) =
         crate::commands::interface::ensure_ready(&interface_name, &project_path, false)?;
 
     if request.set_default || config_result.default_interface.is_empty() {
@@ -188,14 +188,14 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
     let resolved_persona_uid = resolve_persona_uid(request.persona.as_deref(), &project_path);
 
     let checkin = check_in(&InterfaceCheckIn {
-        interface_kind: adapter.interface_kind(),
-        adapter_name: interface_name.clone(),
+        interface_kind: iface.interface_kind(),
+        interface_name: interface_name.clone(),
         project_root: project_path.clone(),
         project_uid: project::get_uid(&project_path),
         requested_persona: resolved_persona_uid.clone(),
         requested_session: request.requested_session,
         title: request.title,
-        capabilities: adapter.capabilities(),
+        capabilities: iface.capabilities(),
     })?;
 
     if !checkin.attached_existing {
@@ -214,7 +214,7 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         },
         checkin.session_file_id
     );
-    println!("  Interface: {}", adapter.display_name());
+    println!("  Interface: {}", iface.display_name());
     println!("  Context: {}", bootstrap.context_path.display());
     println!("  Bootstrap: {}", bootstrap.bootstrap_path.display());
     if let Some(backup_snapshot) = &bootstrap.backup_snapshot {
@@ -257,7 +257,7 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         &interface_name,
     ));
 
-    adapter.launch(interface::LaunchRequest {
+    iface.launch(interface::LaunchRequest {
         project_root: project_path,
         env,
         tmux_mode,
@@ -288,7 +288,7 @@ fn record_ai_session_started(
         "session_id": checkin.session_file_id,
         "runtime_id": checkin.session_runtime_id,
         "persona_uid": checkin.persona_uid,
-        "adapter": interface_name,
+        "interface": interface_name,
         "artifact": checkin.artifact_path,
         "attached_existing": false,
     });

@@ -59,7 +59,7 @@ fn doctor_result_to_value(result: &DoctorRunResult) -> serde_json::Value {
             },
             "project_config": {
                 "llm": result.health.project_config.llm,
-                "adapter_version": result.health.project_config.adapter_version,
+                "interface_version": result.health.project_config.interface_version,
                 "layer_patterns": result.health.project_config.layer_patterns,
                 "sessions": result.health.project_config.sessions,
             },
@@ -118,8 +118,8 @@ impl ProjectRepoPort for FsProjectRepoPort {
     fn snapshot(&self) -> std::result::Result<ProjectSnapshot, String> {
         let config = project::load_with_migration(&self.project_root).map_err(|e| e.to_string())?;
         let llm = config.interfaces.default.clone();
-        let adapter = crate::interface::runtime::get_interface_provider(&llm);
-        let adapter_version = adapter
+        let iface = crate::interface::runtime::get_interface_provider(&llm);
+        let iface_version = iface
             .check_for_updates(&self.project_root)
             .map_err(|e| e.to_string())?
             .map(|(current, _)| current);
@@ -131,7 +131,7 @@ impl ProjectRepoPort for FsProjectRepoPort {
 
         Ok(ProjectSnapshot {
             llm,
-            adapter_version,
+            interface_version: iface_version,
             layer_patterns: count_patterns(&self.project_root.join("layer")),
             sessions: count_sessions(&self.project_root.join("layer").join("sessions")),
             stored_tools,

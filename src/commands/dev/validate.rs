@@ -23,7 +23,7 @@ pub fn execute(json: bool) -> Result<()> {
         }
     }
 
-    // Check Claude adapter skill definitions
+    // Check Claude interface skill definitions
     let claude_checks = vec![
         "session-start.md",
         "session-update.md",
@@ -33,7 +33,7 @@ pub fn execute(json: bool) -> Result<()> {
 
     if !json {
         println!();
-        println!("🤖 Checking Claude adapter...");
+        println!("🤖 Checking Claude interface...");
     }
 
     for resource in &claude_checks {

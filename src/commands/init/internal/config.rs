@@ -63,7 +63,7 @@ pub fn create_project_config(
         },
         // Note: dev section is deprecated and skipped on serialization
         dev: Default::default(),
-        // Preserve existing adapters on re-init, otherwise empty
+        // Preserve existing interfaces on re-init, otherwise empty
         interfaces: existing_config
             .as_ref()
             .map(|c| c.interfaces.clone())

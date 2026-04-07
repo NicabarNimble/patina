@@ -8,7 +8,6 @@ struct BeliefVerifierToys {
     log: granted::Log,
     measure: granted::Measure,
     state: granted::State,
-    checkpoint: granted::Checkpoint,
     events: granted::Events,
     belief: granted::Belief,
 }
@@ -19,7 +18,6 @@ impl GrantedBundle for BeliefVerifierToys {
             log: granted::log(),
             measure: granted::measure(),
             state: granted::state(),
-            checkpoint: granted::checkpoint(),
             events: granted::events(),
             belief: granted::belief(),
         }
@@ -145,10 +143,13 @@ impl KnowledgeChild for BeliefVerifierChild {
     }
 
     fn drain(&mut self, limit: u32) -> Result<Vec<PendingEvent>, String> {
-        let checkpoint = self
+        let checkpoint_bucket = self
             .toys
-            .checkpoint
-            .load("belief.changed")
+            .state
+            .open("checkpoints")
+            .map_err(|e| e.to_string())?;
+        let checkpoint = checkpoint_bucket
+            .get_string("belief.changed")
             .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
             .and_then(|value| value.get("offset").and_then(|v| v.as_u64()));
         let events = self.toys.events.pull("belief.changed", checkpoint, limit)?;
@@ -180,7 +181,7 @@ impl KnowledgeChild for BeliefVerifierChild {
             self.toys
                 .events
                 .ack_through("belief.changed", last_offset)?;
-            self.toys.checkpoint.save(
+            checkpoint_bucket.set_string(
                 "belief.changed",
                 &serde_json::json!({"offset": last_offset}).to_string(),
             )?;

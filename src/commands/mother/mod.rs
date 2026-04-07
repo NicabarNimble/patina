@@ -43,6 +43,7 @@ pub(crate) mod adapters;
 pub(crate) mod daemon;
 pub(crate) mod graph;
 pub(crate) mod loader;
+pub(crate) mod toys;
 
 // Moved to mother crate — re-export for daemon.rs
 pub(crate) use mother_crate::registry;
@@ -146,6 +147,36 @@ pub enum MotherCommands {
         /// Remove orphaned cursors (cursors with no matching source)
         #[arg(long)]
         prune: bool,
+    },
+
+    /// Toy registry operations
+    #[command(subcommand)]
+    Toys(ToysCommands),
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum ToysCommands {
+    /// Show toy registry status
+    Status,
+
+    /// Check local toy WIT files against pinned versions
+    Check,
+
+    /// Sync Preview 2 pin against WASI monorepo releases
+    Sync,
+
+    /// Pull pinned WIT for one toy or Preview 2 as a unit
+    Pull {
+        /// Toy id from registry (for example: wasi-http)
+        name: Option<String>,
+
+        /// Pull all upstream toys at pinned versions (legacy alias)
+        #[arg(long)]
+        all: bool,
+
+        /// Pull WASI Preview 2 proposals as a unit
+        #[arg(long)]
+        preview2: bool,
     },
 }
 
@@ -278,6 +309,7 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             println!("  patina mother install  Install launchd supervisor");
             println!("  patina mother uninstall Remove launchd supervisor");
             println!("  patina mother graph    Graph operations");
+            println!("  patina mother toys     Toy registry operations");
             println!("  patina mother search   Cross-project belief search\n");
             println!("Run 'patina mother --help' for details.");
             Ok(())
@@ -303,6 +335,39 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             fresh_lake,
         }) => run_source_parity_cli(&name, no_sandbox, fresh_lake.as_deref()),
         Some(MotherCommands::Sources { prune }) => show_sources_cli(prune),
+        Some(MotherCommands::Toys(ToysCommands::Status)) => {
+            let project_root = SessionManager::find_project_root()
+                .context("`patina mother toys status` must run in a Patina project")?;
+            toys::toys_status(&project_root)
+        }
+        Some(MotherCommands::Toys(ToysCommands::Check)) => {
+            let project_root = SessionManager::find_project_root()
+                .context("`patina mother toys check` must run in a Patina project")?;
+            toys::toys_check(&project_root)
+        }
+        Some(MotherCommands::Toys(ToysCommands::Sync)) => {
+            let project_root = SessionManager::find_project_root()
+                .context("`patina mother toys sync` must run in a Patina project")?;
+            toys::toys_sync(&project_root)
+        }
+        Some(MotherCommands::Toys(ToysCommands::Pull {
+            name,
+            all,
+            preview2,
+        })) => {
+            let project_root = SessionManager::find_project_root()
+                .context("`patina mother toys pull` must run in a Patina project")?;
+            if preview2 || all {
+                toys::toys_pull_preview2(&project_root)
+            } else {
+                let name = name.ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "`patina mother toys pull` needs a toy name, or use `--preview2`"
+                    )
+                })?;
+                toys::toys_pull(&project_root, &name)
+            }
+        }
     }
 }
 
@@ -756,6 +821,9 @@ mod tests {
 
         let uninstall = MotherCommands::Uninstall;
         assert!(matches!(uninstall, MotherCommands::Uninstall));
+
+        let toys = MotherCommands::Toys(ToysCommands::Status);
+        assert!(matches!(toys, MotherCommands::Toys(_)));
     }
 
     #[test]

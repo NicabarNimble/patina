@@ -163,19 +163,86 @@ mod bindings {
         }
     }
 
+    fn encode_state_value(value: &[u8]) -> Result<String, String> {
+        serde_json::to_string(value).map_err(|error| error.to_string())
+    }
+
+    fn decode_state_value(raw: &str) -> Vec<u8> {
+        serde_json::from_str::<Vec<u8>>(raw).unwrap_or_else(|_| raw.as_bytes().to_vec())
+    }
+
+    fn keyvalue_other(error: impl ToString) -> wasi::keyvalue::store::Error {
+        wasi::keyvalue::store::Error::Other(error.to_string())
+    }
+
+    fn json_value_to_sql_data(value: serde_json::Value) -> wasi::sql::readwrite::DataType {
+        match value {
+            serde_json::Value::Null => wasi::sql::readwrite::DataType::Null,
+            serde_json::Value::Bool(v) => wasi::sql::readwrite::DataType::Flag(v),
+            serde_json::Value::Number(number) => {
+                if let Some(v) = number.as_i64() {
+                    if (i32::MIN as i64..=i32::MAX as i64).contains(&v) {
+                        wasi::sql::readwrite::DataType::Int32(v as i32)
+                    } else {
+                        wasi::sql::readwrite::DataType::Int64(v)
+                    }
+                } else {
+                    wasi::sql::readwrite::DataType::Float64(number.as_f64().unwrap_or_default())
+                }
+            }
+            serde_json::Value::String(v) => wasi::sql::readwrite::DataType::Text(v),
+            serde_json::Value::Array(values) => wasi::sql::readwrite::DataType::Text(
+                serde_json::to_string(&values).unwrap_or_default(),
+            ),
+            serde_json::Value::Object(values) => wasi::sql::readwrite::DataType::Text(
+                serde_json::to_string(&values).unwrap_or_default(),
+            ),
+        }
+    }
+
+    fn decode_sql_rows(result: &str) -> Vec<wasi::sql::readwrite::Row> {
+        let Ok(parsed) = serde_json::from_str::<serde_json::Value>(result) else {
+            return vec![wasi::sql::readwrite::Row {
+                values: vec![wasi::sql::readwrite::DataType::Text(result.to_string())],
+            }];
+        };
+        let Some(rows) = parsed.as_array() else {
+            return vec![wasi::sql::readwrite::Row {
+                values: vec![json_value_to_sql_data(parsed)],
+            }];
+        };
+        rows.iter()
+            .map(|row| {
+                let mut values = Vec::new();
+                if let Some(object) = row.as_object() {
+                    let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
+                    keys.sort_unstable();
+                    for key in keys {
+                        if let Some(value) = object.get(key) {
+                            values.push(json_value_to_sql_data(value.clone()));
+                        }
+                    }
+                } else {
+                    values.push(json_value_to_sql_data(row.clone()));
+                }
+                wasi::sql::readwrite::Row { values }
+            })
+            .collect()
+    }
+
     impl wasi::keyvalue::store::Host for HostState {
         fn open(
             &mut self,
             identifier: String,
-        ) -> Result<wasmtime::component::Resource<wasi::keyvalue::store::Bucket>, String> {
+        ) -> Result<
+            wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+            wasi::keyvalue::store::Error,
+        > {
             if !self.grants.state_enabled {
-                return Err(format!(
-                    "state not granted for child '{}'",
-                    self.plugin_name
-                ));
+                return Err(wasi::keyvalue::store::Error::AccessDenied);
             }
             let handle = StateBucketHandle { identifier };
-            let rep = self.wasi_table.push(handle).map_err(|e| e.to_string())?;
+            let rep = self.wasi_table.push(handle).map_err(keyvalue_other)?;
             Ok(wasmtime::component::Resource::new_own(rep.rep()))
         }
     }
@@ -185,13 +252,14 @@ mod bindings {
             &mut self,
             bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
             key: String,
-        ) -> Result<Option<Vec<u8>>, String> {
+        ) -> Result<Option<Vec<u8>>, wasi::keyvalue::store::Error> {
             let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
-            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let handle = self.wasi_table.get(&rep).map_err(keyvalue_other)?;
             let scoped = bucket_scoped_key(&handle.identifier, &key);
             let value =
-                crate::child::toy_host::v2::state_get(&self.runtime, &self.plugin_name, &scoped)?;
-            Ok(value.map(|v| v.into_bytes()))
+                crate::child::toy_host::v2::state_get(&self.runtime, &self.plugin_name, &scoped)
+                    .map_err(keyvalue_other)?;
+            Ok(value.map(|raw| decode_state_value(&raw)))
         }
 
         fn set(
@@ -199,36 +267,43 @@ mod bindings {
             bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
             key: String,
             value: Vec<u8>,
-        ) -> Result<(), String> {
+        ) -> Result<(), wasi::keyvalue::store::Error> {
             let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
-            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let handle = self.wasi_table.get(&rep).map_err(keyvalue_other)?;
             let scoped = bucket_scoped_key(&handle.identifier, &key);
-            let value = String::from_utf8(value)
-                .map_err(|e| format!("state value for '{}' is not valid UTF-8: {}", key, e))?;
-            crate::child::toy_host::v2::state_set(&self.runtime, &self.plugin_name, &scoped, &value)
+            let encoded = encode_state_value(&value).map_err(keyvalue_other)?;
+            crate::child::toy_host::v2::state_set(
+                &self.runtime,
+                &self.plugin_name,
+                &scoped,
+                &encoded,
+            )
+            .map_err(keyvalue_other)
         }
 
         fn delete(
             &mut self,
             bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
             key: String,
-        ) -> Result<(), String> {
+        ) -> Result<(), wasi::keyvalue::store::Error> {
             let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
-            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let handle = self.wasi_table.get(&rep).map_err(keyvalue_other)?;
             let scoped = bucket_scoped_key(&handle.identifier, &key);
             crate::child::toy_host::v2::state_delete(&self.runtime, &self.plugin_name, &scoped)
+                .map_err(keyvalue_other)
         }
 
         fn exists(
             &mut self,
             bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
             key: String,
-        ) -> Result<bool, String> {
+        ) -> Result<bool, wasi::keyvalue::store::Error> {
             let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
-            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let handle = self.wasi_table.get(&rep).map_err(keyvalue_other)?;
             let scoped = bucket_scoped_key(&handle.identifier, &key);
             Ok(
-                crate::child::toy_host::v2::state_get(&self.runtime, &self.plugin_name, &scoped)?
+                crate::child::toy_host::v2::state_get(&self.runtime, &self.plugin_name, &scoped)
+                    .map_err(keyvalue_other)?
                     .is_some(),
             )
         }
@@ -236,10 +311,10 @@ mod bindings {
         fn list_keys(
             &mut self,
             bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
-            cursor: Option<String>,
-        ) -> Result<wasi::keyvalue::store::KeyResponse, String> {
+            cursor: Option<u64>,
+        ) -> Result<wasi::keyvalue::store::KeyResponse, wasi::keyvalue::store::Error> {
             let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
-            let handle = self.wasi_table.get(&rep).map_err(|e| e.to_string())?;
+            let handle = self.wasi_table.get(&rep).map_err(keyvalue_other)?;
             let prefix = bucket_prefix(&handle.identifier);
             let mut keys = crate::child::toy_host::v2::state_list_prefix(
                 &self.runtime,
@@ -254,14 +329,11 @@ mod bindings {
                     .collect();
             }
             keys.sort();
-            let start = cursor
-                .as_deref()
-                .and_then(|c| c.parse::<usize>().ok())
-                .unwrap_or(0);
+            let start = cursor.and_then(|c| usize::try_from(c).ok()).unwrap_or(0);
             let page_size = 200usize;
             let end = std::cmp::min(start + page_size, keys.len());
             let next = if end < keys.len() {
-                Some(end.to_string())
+                Some(end as u64)
             } else {
                 None
             };
@@ -315,6 +387,12 @@ mod bindings {
             name: String,
         ) -> Result<wasmtime::component::Resource<wasi::sql::readwrite::Connection>, String>
         {
+            if !self.grants.toys.sql {
+                return Err(format!(
+                    "sql toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
             let conn = crate::child::toy_host::v2::connect_resolve(&name)?;
             let handle = SqlConnectionHandle { name, conn };
             let rep = self.wasi_table.push(handle).map_err(|e| e.to_string())?;
@@ -343,9 +421,7 @@ mod bindings {
             let stmt = self.wasi_table.get(&s_rep).map_err(|e| e.to_string())?;
 
             let result = crate::child::toy_host::v2::store_query(&conn.conn, &stmt.query)?;
-            Ok(vec![wasi::sql::readwrite::Row {
-                values: vec![wasi::sql::readwrite::DataType::Text(result)],
-            }])
+            Ok(decode_sql_rows(&result))
         }
 
         fn exec(
@@ -428,9 +504,9 @@ mod bindings {
             client: wasmtime::component::Resource<wasi::messaging::producer::Client>,
             message: wasi::messaging::types::Message,
         ) -> Result<u64, String> {
-            if !self.grants.toys.events {
+            if !self.grants.toys.messaging {
                 return Err(format!(
-                    "events toy not granted for child '{}'",
+                    "messaging toy not granted for child '{}'",
                     self.plugin_name
                 ));
             }
@@ -605,26 +681,62 @@ mod bindings {
 
     impl patina::git::git::Host for HostState {
         fn create_tag(&mut self, name: String) -> Result<(), String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
             crate::child::toy_host::v2::git_create_tag(&name)
         }
 
         fn delete_tag(&mut self, name: String) -> Result<(), String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
             crate::child::toy_host::v2::git_delete_tag(&name)
         }
 
         fn tag_exists(&mut self, name: String) -> Result<bool, String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
             crate::child::toy_host::v2::git_tag_exists(&name)
         }
 
         fn commit(&mut self, message: String) -> Result<String, String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
             crate::child::toy_host::v2::git_commit(&message)
         }
 
         fn log_oneline(&mut self, limit: u32) -> Result<Vec<String>, String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
             crate::child::toy_host::v2::git_log_oneline(limit)
         }
 
         fn diff_stat(&mut self) -> Result<String, String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
             crate::child::toy_host::v2::git_diff_stat()
         }
     }
@@ -1098,5 +1210,59 @@ impl Child for WasmKnowledgeChild {
                 vec![]
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bindings::HostState;
+    use super::GrantedCapabilities;
+
+    fn host_state_with_grants(grants: GrantedCapabilities) -> HostState {
+        HostState {
+            plugin_name: "capability-test".to_string(),
+            wasi: wasmtime_wasi::WasiCtxBuilder::new().build(),
+            wasi_table: wasmtime::component::ResourceTable::new(),
+            http: wasmtime_wasi_http::WasiHttpCtx::new(),
+            project_root: None,
+            grants,
+            query_fn: None,
+            http_client: reqwest::blocking::Client::new(),
+            runtime: crate::mother::KnowledgeRuntimeStore::default(),
+            active_bindings: std::collections::HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn sql_open_denied_without_sql_toy_grant() {
+        let mut state = host_state_with_grants(GrantedCapabilities::default());
+        let err = <HostState as super::bindings::wasi::sql::readwrite::Host>::open(
+            &mut state,
+            "default".to_string(),
+        )
+        .unwrap_err();
+        assert!(err.contains("sql toy not granted"), "got: {}", err);
+    }
+
+    #[test]
+    fn keyvalue_open_denied_without_keyvalue_toy_grant() {
+        let mut state = host_state_with_grants(GrantedCapabilities::default());
+        let err = <HostState as super::bindings::wasi::keyvalue::store::Host>::open(
+            &mut state,
+            "default".to_string(),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            super::bindings::wasi::keyvalue::store::Error::AccessDenied
+        ));
+    }
+
+    #[test]
+    fn git_calls_denied_without_git_toy_grant() {
+        let mut state = host_state_with_grants(GrantedCapabilities::default());
+        let err = <HostState as super::bindings::patina::git::git::Host>::diff_stat(&mut state)
+            .unwrap_err();
+        assert!(err.contains("git toy not granted"), "got: {}", err);
     }
 }

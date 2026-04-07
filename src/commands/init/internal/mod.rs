@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use patina::environment::Environment;
 use patina::layer::Layer;
 
-// Note: backup functions moved to 'adapter refresh' command
+// Note: backup functions moved to 'interface refresh' command
 use self::config::{create_project_config, handle_version_manifest};
 use self::patterns::copy_core_patterns_safe;
 use self::validation::validate_environment;
@@ -58,8 +58,8 @@ pub fn execute_init(name: String, force: bool, local: bool, no_commit: bool) -> 
 
     // === STEP 2: SAFE TO PROCEED WITH DESTRUCTIVE CHANGES ===
 
-    // Note: We don't backup .claude/ here - that's handled by 'adapter refresh'
-    // Init only creates skeleton (.patina/, layer/), not adapter directories
+    // Note: We don't backup .claude/ here - that's handled by 'interface refresh'
+    // Init only creates skeleton (.patina/, layer/), not interface directories
     // Devcontainer generation is handled by 'patina yolo', not init
 
     // Check for nested project
@@ -153,7 +153,7 @@ pub fn execute_init(name: String, force: bool, local: bool, no_commit: bool) -> 
     // Initialize navigation index
     initialize_navigation(&project_path)?;
 
-    // Note: Component updates for adapters are handled by 'adapter refresh'
+    // Note: Component updates for interfaces are handled by 'interface refresh'
 
     // Validate environment
     if let Some(warnings) = validate_environment(&environment)? {
@@ -188,7 +188,7 @@ pub fn execute_init(name: String, force: bool, local: bool, no_commit: bool) -> 
     }
 
     // Note: scrape and oxidize are now separate commands
-    // Run 'patina scrape' and 'patina oxidize' after adding an adapter
+    // Run 'patina scrape' and 'patina oxidize' after adding an interface
 
     // Suggest tool installation if needed
     suggest_missing_tools(&environment)?;
@@ -268,7 +268,7 @@ fn initialize_navigation(project_path: &Path) -> Result<()> {
     Ok(())
 }
 
-// Note: Component update functions moved to 'adapter refresh' command
+// Note: Component update functions moved to 'interface refresh' command
 
 fn suggest_missing_tools(environment: &Environment) -> Result<()> {
     use crate::commands::init::tool_installer;

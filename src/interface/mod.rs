@@ -20,7 +20,9 @@ pub use internal::bundle::{
 pub use internal::checkin::{
     check_in, session_writer_action, CheckInResult, InterfaceCapabilities, InterfaceCheckIn,
 };
-pub use internal::launcher::{derive_interface_session_name, launch_interface_cli};
+pub use internal::launcher::{
+    derive_interface_session_name, launch_interface_cli, teardown_interface_tmux_lane,
+};
 pub use internal::surface::{
     ensure_ai_project_config, ensure_ai_surface, prepare_ai_bundle, resolve_preferred_ai_interface,
     set_project_default_interface, AiProjectConfigResult, AiSurfaceRequest, AiSurfaceResult,

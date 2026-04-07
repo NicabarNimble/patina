@@ -12,6 +12,8 @@ pub struct RouteTable {
     pub get_secrets_cache: RouteHandler,
     pub post_secrets_cache: RouteHandler,
     pub post_secrets_lock: RouteHandler,
+    pub post_pando_registry_init: RouteHandler,
+    pub get_pando_list: RouteHandler,
     pub child_request: RouteHandler,
 }
 
@@ -60,6 +62,20 @@ impl Router {
                     json_error(401, "Unauthorized")
                 } else {
                     (self.routes.post_secrets_lock)(request)
+                }
+            }
+            ("POST", "/api/pando/registry/init") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_pando_registry_init)(request)
+                }
+            }
+            ("GET", "/api/pando/list") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_pando_list)(request)
                 }
             }
             _ if request.path.starts_with("/child/") => {

@@ -1,0 +1,22 @@
+package patina:events-stream@0.1.0;
+
+/// Patina delta: this interface covers event consumption (subscribe/ack), which
+/// children cannot implement from pure compute because stream cursors and broker
+/// state live at Mother.
+/// WASI overlap: `wasi:messaging` currently standardizes producer-side publish,
+/// but does not define the consumer/ack flow this toy needs.
+/// Proposal mirroring: event payload shape stays messaging-like (topic/type/data
+/// metadata model) where possible while retaining explicit cursor semantics.
+
+interface events-stream {
+    record event {
+        stream-name: string,
+        offset: u64,
+        event-type: string,
+        payload: string,
+        occurred-at: string,
+    }
+
+    subscribe: func(stream-name: string, after: option<u64>, limit: u32) -> result<list<event>, string>;
+    ack: func(stream-name: string, offset: u64) -> result<_, string>;
+}

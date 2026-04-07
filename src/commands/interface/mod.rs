@@ -1,4 +1,7 @@
 mod internal;
+pub(crate) mod manage;
+
+pub use manage::{execute, InterfaceManageCommands};
 
 use anyhow::Result;
 
