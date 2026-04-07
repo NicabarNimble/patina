@@ -32,6 +32,10 @@ exit_criteria:
     text: "`folder-text-to-parquet` has a `pando.toml` and is managed by Mother as a pando. No CLI commands — pipeline pando, proves basic pando lifecycle (register, list, health)."
     checked: true
 
+  - id: pp5c1-ready-live-lifecycle
+    text: "Pando lifecycle distinguishes readiness from runtime activity: `ready` means all required children are installed/resolvable; `live` means all required children are loaded in Mother. Missing children is not `error` for valid manifests."
+    checked: false
+
   - id: pp6-slate-child-built
     text: "Slate-manager child exists as a proper WASM child using the SDK. Uses toys: `wasi:filesystem`, `patina:keyvalue`, `patina:logging`, `patina:git`. Handles all spec lifecycle actions (list, show, check, create, promote, complete, abandon, pause, resume, block, archive, rename, reopen, set, next, history, split, prompt, handoff)."
     checked: false
@@ -468,28 +472,31 @@ Every pando in the registry has a status:
 
 | State | Meaning |
 |---|---|
-| `registered` | `pando.toml` parsed, namespace claimed. Children not yet loaded. |
-| `loaded` | All children in the pando are instantiated and ready. |
-| `degraded` | At least one child loaded, but one or more children unavailable. |
-| `error` | Manifest or registry failure. Pando is not usable. |
+| `registered` | `pando.toml` parsed, namespace claimed. Waiting for required children to be installed/resolvable. |
+| `ready` | All required children are installed/resolvable for this pando, but not yet live in the running Mother instance. |
+| `live` | All required children are instantiated and healthy in the running Mother instance. |
+| `degraded` | Some required children are live but not all, or only a subset are installed. |
+| `error` | Manifest/registry failure (parse failure, schema violation, namespace collision). |
 
-The boundary rule: **`degraded` means partial child availability;
-`error` means the pando itself is invalid.**
+The boundary rule: **`error` means manifest/registry invalidity, not simple dependency absence.**
 
-- `degraded` — the `pando.toml` is valid, the namespace is claimed, but not
-  all children could be instantiated. Commands routing to a missing child fail
-  individually; commands routing to a healthy child still work. Mother retries
-  failed children on a backoff schedule.
-- `error` — the `pando.toml` could not be parsed, the namespace collides, or
-  required fields are missing. The pando is not registered in the command
-  namespace. Nothing works. Mother does not retry — the manifest must be fixed.
+- `registered` — valid manifest and namespace, but required children are not fully
+  installed/resolvable yet.
+- `ready` — all required children are installed/resolvable, but runtime has not
+  loaded them all into the current Mother process.
+- `live` — all required children are loaded/healthy.
+- `degraded` — partial runtime/installation coverage: some children are live, or
+  some are installed while others are missing.
+- `error` — parse/schema/collision failure. Manifest must be fixed.
 
 State transitions:
-- `registered` → `loaded` when Mother instantiates all children.
-- `registered` → `degraded` when at least one child loads but others fail.
-- `registered` → `error` on collision, parse failure, or zero children loadable.
-- `loaded` → `degraded` if a child crashes at runtime.
-- `degraded` → `loaded` on successful child restart.
+- `registered` → `ready` when all required children are installed/resolvable.
+- `ready` → `live` when Mother instantiates all required children.
+- `ready` → `degraded` when only some required children become live.
+- `registered` → `degraded` when only a subset of required children are installed.
+- `live` → `degraded` if one or more children fail at runtime.
+- `degraded` → `live` when all required children are healthy.
+- `registered`/`ready`/`degraded` → `error` only on manifest/registry failure.
 - `error` is terminal for that run. Fix the manifest and restart Mother.
 
 Commandless pandos (pipelines like `folder-text-to-parquet`) follow the same
