@@ -34,7 +34,7 @@ exit_criteria:
 
   - id: pp5c1-ready-live-lifecycle
     text: "Pando lifecycle distinguishes readiness from runtime activity: `ready` means all required children are installed/resolvable; `live` means all required children are loaded in Mother. Missing children is not `error` for valid manifests."
-    checked: false
+    checked: true
 
   - id: pp6-slate-child-built
     text: "Slate-manager child exists as a proper WASM child using the SDK. Uses toys: `wasi:filesystem`, `patina:keyvalue`, `patina:logging`, `patina:git`. Handles all spec lifecycle actions (list, show, check, create, promote, complete, abandon, pause, resume, block, archive, rename, reopen, set, next, history, split, prompt, handoff)."
@@ -386,7 +386,7 @@ Mother responds with `PandoRegistryState`:
   "pandos": [
     {
       "name": "slate",
-      "status": "loaded",
+      "status": "live",
       "commands": ["list", "show", "check", "next", ...],
       "aliases": ["spec"]
     }
