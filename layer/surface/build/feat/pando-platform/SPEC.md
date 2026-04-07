@@ -26,7 +26,7 @@ exit_criteria:
 
   - id: pp2-mother-pando-registry
     text: "Mother reads `pando.toml` files, builds a pando registry, and maps command namespaces to pandos. Rejects registration when a command namespace collides with an existing pando or a native binary command."
-    checked: false
+    checked: true
 
   - id: pp3-cli-command-discovery
     text: "The `patina` binary asks Mother for registered pando commands. Unknown commands route to Mother for pando dispatch. `patina --help` shows native commands; `patina <pando> --help` shows pando commands served from the manifest."
