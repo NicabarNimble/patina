@@ -407,7 +407,7 @@ pub fn startup(runtime_store: &patina::mother::KnowledgeRuntimeStore) -> Federat
         Ok(conn) => conn,
         Err(error) => {
             emit_open_failure("open_db");
-            let reason = error.to_string();
+            let reason = format!("{error:#}");
             tracing::warn!(%reason, "federation unavailable");
             return unavailable(reason);
         }
@@ -560,7 +560,7 @@ fn build_table_allowlist(
         }
 
         let sql = format!(
-            "SELECT name FROM {}.sqlite_master WHERE type = 'table' ORDER BY name",
+            "SELECT name FROM {}.main.sqlite_master WHERE type = 'table' ORDER BY name",
             project.alias
         );
         let mut stmt = match connection.prepare(&sql) {
