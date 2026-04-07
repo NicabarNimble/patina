@@ -86,6 +86,10 @@ impl FederationRuntime {
     pub fn allowed_tables(&self) -> &[String] {
         &self.allowed_tables
     }
+
+    pub fn status_json(&self) -> serde_json::Value {
+        status_to_json(&self.status)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -189,9 +193,11 @@ impl FederationRuntime {
         };
 
         if let Err(error) = validate_query(sql) {
+            emit_query_error("query_validation");
             return FederationQueryResult::Error(error);
         }
         if let Err(error) = check_table_allowlist(sql, self.allowed_tables()) {
+            emit_query_error("query_allowlist");
             return FederationQueryResult::Error(error);
         }
 
@@ -219,24 +225,30 @@ impl FederationRuntime {
         let elapsed_ms = started.elapsed().as_millis() as u64;
 
         match query_result {
-            Ok((columns, rows)) => FederationQueryResult::Success(FederationQuerySuccess {
-                row_count: rows.len(),
-                columns,
-                rows,
-                truncated: false,
-                elapsed_ms,
-            }),
+            Ok((columns, rows)) => {
+                emit_query_latency(elapsed_ms as f64);
+                FederationQueryResult::Success(FederationQuerySuccess {
+                    row_count: rows.len(),
+                    columns,
+                    rows,
+                    truncated: false,
+                    elapsed_ms,
+                })
+            }
             Err(error) => {
                 let lowered = error.to_string().to_ascii_lowercase();
                 if elapsed_ms >= timeout
                     || lowered.contains("interrupt")
                     || lowered.contains("interrupted")
                 {
+                    emit_query_latency(elapsed_ms as f64);
+                    emit_query_error("query_timeout");
                     FederationQueryResult::Error(FederationQueryError::Timeout {
                         elapsed_ms,
                         limit_ms: timeout,
                     })
                 } else {
+                    emit_query_error("query_runtime");
                     FederationQueryResult::Error(FederationQueryError::Runtime {
                         reason: error.to_string(),
                     })
@@ -597,6 +609,41 @@ fn extract_table_references(sql: &str) -> Vec<String> {
         .collect()
 }
 
+fn status_to_json(status: &FederationStatus) -> serde_json::Value {
+    match &status.availability {
+        FederationAvailability::Unavailable { reason } => serde_json::json!({
+            "federation": "unavailable",
+            "reason": reason,
+        }),
+        FederationAvailability::Available => serde_json::json!({
+            "federation": "available",
+            "ducklake": if status.ducklake_loaded { "loaded" } else { "unavailable" },
+            "projects_attached": status.attached_count(),
+            "projects_failed": status.failed_count(),
+            "projects_stale": status.stale_count(),
+            "projects": status.projects.iter().map(|project| {
+                let mut value = serde_json::json!({
+                    "uid": project.uid,
+                    "alias": project.alias,
+                    "status": match project.state {
+                        ProjectAttachState::Attached => "attached",
+                        ProjectAttachState::Failed => "failed",
+                        ProjectAttachState::Stale => "stale",
+                    }
+                });
+
+                if let Some(version) = project.schema_version_major {
+                    value["schema_version"] = serde_json::Value::from(version);
+                }
+                if let Some(reason) = &project.reason {
+                    value["reason"] = serde_json::Value::String(reason.clone());
+                }
+                value
+            }).collect::<Vec<_>>()
+        }),
+    }
+}
+
 fn emit_open_failure(action: &str) {
     emit_metric("open_failure", "counter", 1.0, action);
 }
@@ -607,6 +654,14 @@ fn emit_attach_failure(action: &str) {
 
 fn emit_attach_count(value: f64) {
     emit_metric("attach_count", "gauge", value, "attach_summary");
+}
+
+fn emit_query_latency(value: f64) {
+    emit_metric("query_latency_ms", "gauge", value, "query");
+}
+
+fn emit_query_error(action: &str) {
+    emit_metric("query_error", "counter", 1.0, action);
 }
 
 fn emit_metric(name: &str, kind: &str, value: f64, action: &str) {
@@ -859,5 +914,20 @@ mod tests {
             FederationQueryResult::Error(FederationQueryError::Timeout { .. }) => {}
             other => panic!("expected timeout error, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn status_to_json_returns_unavailable_shape() {
+        let status = FederationStatus {
+            availability: FederationAvailability::Unavailable {
+                reason: "DuckLake extension not installed".to_string(),
+            },
+            ducklake_loaded: false,
+            projects: vec![],
+        };
+
+        let value = status_to_json(&status);
+        assert_eq!(value["federation"], "unavailable");
+        assert!(value.get("reason").is_some());
     }
 }

@@ -36,6 +36,12 @@ pub trait ApiRuntime {
         repo: Option<String>,
         all_repos: bool,
     ) -> Result<Vec<ScryHit>>;
+    fn federation_status(&self) -> Result<serde_json::Value>;
+    fn federation_refresh(&self) -> Result<serde_json::Value>;
+    fn federation_query(
+        &self,
+        payload: crate::protocol::FederationQueryPayload,
+    ) -> Result<serde_json::Value>;
     fn secrets_get(&self) -> Result<serde_json::Value>;
     fn secrets_cache(&self, payload: serde_json::Value) -> Result<serde_json::Value>;
     fn secrets_lock(&self) -> Result<serde_json::Value>;
@@ -62,6 +68,12 @@ pub struct HealthDetails {
     pub active_project_uid: Option<String>,
     pub active_project_databases: Option<ProjectDatabases>,
     pub state_db_bytes: Option<u64>,
+    pub federation_available: bool,
+    pub federation_reason: Option<String>,
+    pub federation_ducklake_loaded: bool,
+    pub federation_projects_attached: usize,
+    pub federation_projects_failed: usize,
+    pub federation_projects_stale: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -85,6 +97,13 @@ struct HealthResponse {
     active_project_databases: Option<ProjectDatabasesJson>,
     #[serde(skip_serializing_if = "Option::is_none")]
     state_db_bytes: Option<u64>,
+    federation_available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    federation_reason: Option<String>,
+    federation_ducklake_loaded: bool,
+    federation_projects_attached: usize,
+    federation_projects_failed: usize,
+    federation_projects_stale: usize,
 }
 
 #[derive(Serialize)]
@@ -130,6 +149,9 @@ struct ScryResultJson {
     timestamp: String,
 }
 
+#[derive(Deserialize, Default)]
+struct FederationNoopRequest {}
+
 pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
     let children: Vec<ChildHealthJson> = runtime
         .health_all()
@@ -145,6 +167,12 @@ pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
         active_project_uid: None,
         active_project_databases: None,
         state_db_bytes: None,
+        federation_available: false,
+        federation_reason: Some("federation status unavailable".to_string()),
+        federation_ducklake_loaded: false,
+        federation_projects_attached: 0,
+        federation_projects_failed: 0,
+        federation_projects_stale: 0,
     });
 
     let active_project_databases =
@@ -168,6 +196,12 @@ pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
             active_project_uid: details.active_project_uid,
             active_project_databases,
             state_db_bytes: details.state_db_bytes,
+            federation_available: details.federation_available,
+            federation_reason: details.federation_reason,
+            federation_ducklake_loaded: details.federation_ducklake_loaded,
+            federation_projects_attached: details.federation_projects_attached,
+            federation_projects_failed: details.federation_projects_failed,
+            federation_projects_stale: details.federation_projects_stale,
         },
     )
 }
@@ -223,6 +257,46 @@ pub fn handle_secrets_get(runtime: &dyn ApiRuntime) -> HttpResponse {
     match runtime.secrets_get() {
         Ok(payload) => HttpResponse::json(200, &payload),
         Err(_) => json_error(404, "No cached secrets"),
+    }
+}
+
+pub fn handle_federation_status(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
+    if !request.body.is_empty() {
+        if serde_json::from_slice::<FederationNoopRequest>(&request.body).is_err() {
+            return json_error(400, "Invalid JSON");
+        }
+    }
+    match runtime.federation_status() {
+        Ok(payload) => HttpResponse::json(200, &payload),
+        Err(error) => json_error(500, &error.to_string()),
+    }
+}
+
+pub fn handle_federation_refresh(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
+    if !request.body.is_empty() {
+        if serde_json::from_slice::<FederationNoopRequest>(&request.body).is_err() {
+            return json_error(400, "Invalid JSON");
+        }
+    }
+    match runtime.federation_refresh() {
+        Ok(payload) => HttpResponse::json(200, &payload),
+        Err(error) => json_error(500, &error.to_string()),
+    }
+}
+
+pub fn handle_federation_query(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
+    if request.body.is_empty() {
+        return json_error(400, "Missing request body");
+    }
+
+    let payload: crate::protocol::FederationQueryPayload =
+        match serde_json::from_slice(&request.body) {
+            Ok(v) => v,
+            Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
+        };
+    match runtime.federation_query(payload) {
+        Ok(payload) => HttpResponse::json(200, &payload),
+        Err(error) => json_error(500, &error.to_string()),
     }
 }
 
@@ -354,6 +428,9 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
     let health_runtime = Arc::clone(&runtime);
     let version_runtime = Arc::clone(&runtime);
     let scry_runtime = Arc::clone(&runtime);
+    let federation_status_runtime = Arc::clone(&runtime);
+    let federation_refresh_runtime = Arc::clone(&runtime);
+    let federation_query_runtime = Arc::clone(&runtime);
     let secrets_get_runtime = Arc::clone(&runtime);
     let secrets_cache_runtime = Arc::clone(&runtime);
     let secrets_lock_runtime = Arc::clone(&runtime);
@@ -365,6 +442,15 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
         get_health: Arc::new(move |_request| handle_health(&*health_runtime)),
         get_version: Arc::new(move |_request| handle_version(&*version_runtime)),
         post_scry: Arc::new(move |request| handle_scry(request, &*scry_runtime)),
+        post_federation_status: Arc::new(move |request| {
+            handle_federation_status(request, &*federation_status_runtime)
+        }),
+        post_federation_refresh: Arc::new(move |request| {
+            handle_federation_refresh(request, &*federation_refresh_runtime)
+        }),
+        post_federation_query: Arc::new(move |request| {
+            handle_federation_query(request, &*federation_query_runtime)
+        }),
         get_secrets_cache: Arc::new(move |_request| handle_secrets_get(&*secrets_get_runtime)),
         post_secrets_cache: Arc::new(move |request| {
             handle_secrets_cache(request, &*secrets_cache_runtime)
@@ -407,6 +493,12 @@ mod tests {
                     runtime_db_bytes: Some(512),
                 }),
                 state_db_bytes: Some(256),
+                federation_available: true,
+                federation_reason: None,
+                federation_ducklake_loaded: true,
+                federation_projects_attached: 2,
+                federation_projects_failed: 1,
+                federation_projects_stale: 1,
             })
         }
 
@@ -431,6 +523,23 @@ mod tests {
             _all_repos: bool,
         ) -> Result<Vec<ScryHit>> {
             Ok(vec![])
+        }
+
+        fn federation_status(&self) -> Result<serde_json::Value> {
+            Ok(serde_json::json!({"federation": "available"}))
+        }
+
+        fn federation_refresh(&self) -> Result<serde_json::Value> {
+            Ok(serde_json::json!({"federation": "available"}))
+        }
+
+        fn federation_query(
+            &self,
+            _payload: crate::protocol::FederationQueryPayload,
+        ) -> Result<serde_json::Value> {
+            Ok(
+                serde_json::json!({"columns":[], "rows":[], "row_count":0, "truncated":false, "elapsed_ms":1}),
+            )
         }
 
         fn secrets_get(&self) -> Result<serde_json::Value> {
@@ -517,5 +626,41 @@ mod tests {
                 .and_then(|v| v.as_u64()),
             Some(1024)
         );
+        assert_eq!(
+            json.get("federation_available").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            json.get("federation_projects_failed")
+                .and_then(|v| v.as_u64()),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn federation_routes_return_json_payloads() {
+        let status_request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/api/federation/status".to_string(),
+            headers: vec![],
+            body: vec![],
+        };
+        let status_response = handle_federation_status(&status_request, &StubRuntime);
+        assert_eq!(status_response.status, 200);
+
+        let query_request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/api/federation/query".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&serde_json::json!({
+                "sql": "SELECT 1",
+                "params": [],
+                "limit": 1,
+                "timeout_ms": 100
+            }))
+            .unwrap(),
+        };
+        let query_response = handle_federation_query(&query_request, &StubRuntime);
+        assert_eq!(query_response.status, 200);
     }
 }

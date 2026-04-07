@@ -22,6 +22,7 @@ use std::time::Instant;
 use patina::mother::ChildRequest;
 
 use super::adapters::{RetrievalScryBackend, ScryBackend};
+use super::federation::{FederationAvailability, FederationQueryResult, FederationRuntime};
 use super::registry::ChildRegistry;
 use mother_crate::http_api::ApiRuntime;
 use mother_crate::http_routes::Router;
@@ -37,6 +38,7 @@ pub struct ServerState {
     runtime_store: patina::mother::KnowledgeRuntimeStore,
     services: mother_crate::services::MotherServices,
     scry_backend: Arc<dyn ScryBackend>,
+    federation_runtime: Mutex<FederationRuntime>,
     pandos_root: PathBuf,
     pando_registry: Mutex<mother_crate::pando::PandoRegistry>,
     native_commands: Mutex<HashSet<String>>,
@@ -48,6 +50,7 @@ impl ServerState {
         token: String,
         registry: ChildRegistry,
         runtime_store: patina::mother::KnowledgeRuntimeStore,
+        federation_runtime: FederationRuntime,
     ) -> Self {
         let services_store = runtime_store.clone();
         let state = Self {
@@ -58,6 +61,7 @@ impl ServerState {
             runtime_store,
             services: mother_crate::services::MotherServices::new(services_store),
             scry_backend: Arc::new(RetrievalScryBackend),
+            federation_runtime: Mutex::new(federation_runtime),
             pandos_root: patina::paths::pando::pandos_dir(),
             pando_registry: Mutex::new(mother_crate::pando::PandoRegistry::default()),
             native_commands: Mutex::new(HashSet::new()),
@@ -251,11 +255,30 @@ impl ApiRuntime for ServerState {
             })
         });
 
+        let federation_status = self
+            .federation_runtime
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .status()
+            .clone();
+
         Ok(mother_crate::http_api::HealthDetails {
             registered_projects: registered_projects.len(),
             active_project_uid,
             active_project_databases,
             state_db_bytes,
+            federation_available: matches!(
+                federation_status.availability,
+                FederationAvailability::Available
+            ),
+            federation_reason: match &federation_status.availability {
+                FederationAvailability::Available => None,
+                FederationAvailability::Unavailable { reason } => Some(reason.clone()),
+            },
+            federation_ducklake_loaded: federation_status.ducklake_loaded,
+            federation_projects_attached: federation_status.attached_count(),
+            federation_projects_failed: federation_status.failed_count(),
+            federation_projects_stale: federation_status.stale_count(),
         })
     }
 
@@ -369,6 +392,43 @@ impl ApiRuntime for ServerState {
             &mother_crate::secrets_authority_backend::MotherSecretsAuthorityBackend,
         )
     }
+
+    fn federation_status(&self) -> anyhow::Result<serde_json::Value> {
+        let runtime = self
+            .federation_runtime
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        Ok(runtime.status_json())
+    }
+
+    fn federation_refresh(&self) -> anyhow::Result<serde_json::Value> {
+        let mut runtime = self
+            .federation_runtime
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        runtime.refresh(&self.runtime_store);
+        Ok(runtime.status_json())
+    }
+
+    fn federation_query(
+        &self,
+        payload: mother_crate::protocol::FederationQueryPayload,
+    ) -> anyhow::Result<serde_json::Value> {
+        let runtime = self
+            .federation_runtime
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let result = runtime.execute_query(
+            &payload.sql,
+            &payload.params,
+            payload.limit.unwrap_or(1000),
+            payload.timeout_ms.unwrap_or(30_000),
+        );
+        Ok(match result {
+            FederationQueryResult::Success(_) => result.into_json(),
+            FederationQueryResult::Error(_) => result.into_json(),
+        })
+    }
 }
 
 fn build_router(state: Arc<ServerState>, require_auth: bool) -> Router {
@@ -442,6 +502,10 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     let mut registry = ChildRegistry::new();
     let runtime = patina::mother::KnowledgeRuntimeStore::default();
     let startup_store = patina::mother::KnowledgeRuntimeStore::default();
+    run_startup_stage("state_db_open", &startup_store, || {
+        startup_store.list_registered_projects().map(|_| ())
+    })?;
+    let federation_runtime = super::federation::startup(&startup_store);
 
     // WASM children (discovered from ~/.patina/children/)
     let children_dir = patina::paths::child::children_dir();
@@ -464,7 +528,12 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     if let Some(ref host) = options.host {
         let (state, router) = run_startup_stage("router_build", &startup_store, || {
             let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
-            let state = Arc::new(ServerState::new(token, registry, runtime.clone()));
+            let state = Arc::new(ServerState::new(
+                token,
+                registry,
+                runtime.clone(),
+                federation_runtime,
+            ));
             let router = Arc::new(build_router(Arc::clone(&state), true));
             Ok((state, router))
         })?;
@@ -492,7 +561,12 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
 
     // Default: UDS path (no TCP, no token needed — file permissions are auth)
     let (state, router) = run_startup_stage("router_build", &startup_store, || {
-        let state = Arc::new(ServerState::new(String::new(), registry, runtime));
+        let state = Arc::new(ServerState::new(
+            String::new(),
+            registry,
+            runtime,
+            federation_runtime,
+        ));
         let router = Arc::new(build_router(Arc::clone(&state), false));
         Ok((state, router))
     })?;
