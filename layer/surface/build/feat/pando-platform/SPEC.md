@@ -11,8 +11,7 @@ beliefs:
   - "[[pando-is-composed-children]]"
   - "[[children-have-agency-toys-are-capabilities]]"
   - "[[wasi-is-foundation-not-option]]"
-blocked_by:
-  - mother-startup-observability
+blocked_by: []
 related:
   - layer/surface/build/feat/pando-platform-phase-a/SPEC.md
   - layer/surface/build/feat/child-construction-canon/SPEC.md
@@ -39,11 +38,11 @@ exit_criteria:
 
   - id: pp5c2-first-party-child-artifact-install
     text: "First-party child artifacts required by `folder-text-to-parquet` are installable into `~/.patina/children/` as compiled `.wasm + .toml` pairs, and Mother can transition the pando from `registered`/`ready` to `live` when artifacts are present and loaded."
-    checked: false
+    checked: true
 
   - id: pp5c3-shared-artifact-composition-model
     text: "Spec and design encode the portable artifact model: children are versioned reusable WASM artifacts, pandos are shareable compositions referencing those artifacts, and Mother separates artifact install/cache from runtime instances for future P2P sharing."
-    checked: false
+    checked: true
 
   - id: pp6-slate-child-built
     text: "Slate-manager child exists as a proper WASM child using the SDK. Uses toys: `wasi:filesystem`, `patina:keyvalue`, `patina:logging`, `patina:git`. Handles all spec lifecycle actions (list, show, check, create, promote, complete, abandon, pause, resume, block, archive, rename, reopen, set, next, history, split, prompt, handoff)."
