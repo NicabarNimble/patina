@@ -15,7 +15,7 @@ impl ProtocolVersion {
 }
 
 pub const CURRENT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V0_1;
-pub const PANDO_REGISTRY_PROTOCOL_VERSION: u32 = 1;
+pub const PANDO_REGISTRY_PROTOCOL_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PandoRegistryInit {
@@ -28,7 +28,8 @@ pub struct PandoRegistryInit {
 #[serde(rename_all = "snake_case")]
 pub enum PandoStatus {
     Registered,
-    Loaded,
+    Ready,
+    Live,
     Degraded,
     Error,
 }

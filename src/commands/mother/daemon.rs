@@ -72,7 +72,32 @@ impl ServerState {
         self.start_time.elapsed().as_secs()
     }
 
-    fn available_children(&self) -> HashSet<String> {
+    fn installed_children(&self) -> HashSet<String> {
+        let children_dir = patina::paths::child::children_dir();
+        if !children_dir.exists() {
+            return HashSet::new();
+        }
+
+        let mut installed = HashSet::new();
+        if let Ok(entries) = std::fs::read_dir(children_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|ext| ext.to_str()) != Some("wasm") {
+                    continue;
+                }
+                if !path.with_extension("toml").exists() {
+                    continue;
+                }
+                if let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) {
+                    installed.insert(stem.to_string());
+                }
+            }
+        }
+
+        installed
+    }
+
+    fn live_children(&self) -> HashSet<String> {
         self.registry
             .health_all()
             .into_iter()
@@ -86,12 +111,14 @@ impl ServerState {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
-        let available_children = self.available_children();
+        let installed_children = self.installed_children();
+        let live_children = self.live_children();
         let registry = mother_crate::pando::build_registry(
             &self.pandos_root,
             &native,
             &self.aliases,
-            &available_children,
+            &installed_children,
+            &live_children,
         )?;
         *self
             .pando_registry
@@ -118,8 +145,11 @@ impl ServerState {
                         mother_crate::pando::PandoLifecycleStatus::Registered => {
                             patina_protocol::PandoStatus::Registered
                         }
-                        mother_crate::pando::PandoLifecycleStatus::Loaded => {
-                            patina_protocol::PandoStatus::Loaded
+                        mother_crate::pando::PandoLifecycleStatus::Ready => {
+                            patina_protocol::PandoStatus::Ready
+                        }
+                        mother_crate::pando::PandoLifecycleStatus::Live => {
+                            patina_protocol::PandoStatus::Live
                         }
                         mother_crate::pando::PandoLifecycleStatus::Degraded => {
                             patina_protocol::PandoStatus::Degraded
