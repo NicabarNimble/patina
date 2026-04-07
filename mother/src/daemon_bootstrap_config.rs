@@ -22,7 +22,12 @@ fn mother_logs_dir() -> PathBuf {
 }
 
 #[cfg(not(test))]
-fn init_logging() -> Result<()> {
+pub fn ensure_logging_initialized() -> Result<()> {
+    static LOGGING_INITIALIZED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    if LOGGING_INITIALIZED.get().is_some() {
+        return Ok(());
+    }
+
     let log_dir = mother_logs_dir();
     std::fs::create_dir_all(&log_dir)?;
     let log_file = std::fs::OpenOptions::new()
@@ -36,8 +41,22 @@ fn init_logging() -> Result<()> {
         .with_writer(std::sync::Mutex::new(log_file))
         .finish();
 
-    tracing::subscriber::set_global_default(subscriber)
-        .map_err(|e| anyhow::anyhow!("failed to set tracing subscriber: {}", e))?;
+    if let Err(error) = tracing::subscriber::set_global_default(subscriber) {
+        let message = error.to_string();
+        if !message.contains("already been set") {
+            return Err(anyhow::anyhow!(
+                "failed to set tracing subscriber: {}",
+                error
+            ));
+        }
+    }
+
+    let _ = LOGGING_INITIALIZED.set(());
+    Ok(())
+}
+
+#[cfg(test)]
+pub fn ensure_logging_initialized() -> Result<()> {
     Ok(())
 }
 
@@ -70,8 +89,7 @@ pub struct DaemonBootstrapRuntime {
 
 #[allow(unreachable_code)]
 pub fn start(config: DaemonBootstrapConfig, runtime: DaemonBootstrapRuntime) -> Result<()> {
-    #[cfg(not(test))]
-    init_logging()?;
+    ensure_logging_initialized()?;
 
     crate::daemon_lifecycle::register_signal_handlers();
 
@@ -179,13 +197,13 @@ mod tests {
                     post_pando_registry_init: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(
                             200,
-                            &serde_json::json!({"protocol_version": 1, "pandos": []}),
+                            &serde_json::json!({"protocol_version": 2, "pandos": []}),
                         )
                     }),
                     get_pando_list: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(
                             200,
-                            &serde_json::json!({"protocol_version": 1, "pandos": []}),
+                            &serde_json::json!({"protocol_version": 2, "pandos": []}),
                         )
                     }),
                     child_request: Arc::new(|_| {
@@ -256,13 +274,13 @@ mod tests {
                     post_pando_registry_init: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(
                             200,
-                            &serde_json::json!({"protocol_version": 1, "pandos": []}),
+                            &serde_json::json!({"protocol_version": 2, "pandos": []}),
                         )
                     }),
                     get_pando_list: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(
                             200,
-                            &serde_json::json!({"protocol_version": 1, "pandos": []}),
+                            &serde_json::json!({"protocol_version": 2, "pandos": []}),
                         )
                     }),
                     child_request: Arc::new(|_| {

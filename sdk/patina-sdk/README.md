@@ -25,7 +25,7 @@ cargo generate --path children/template
 cargo build --target wasm32-wasip2
 ```
 
-3. Ensure `child.toml` uses `[needs].toys` and a `[provides]` child name.
+3. Ensure `child.toml` uses `[child].name` as canonical identity and `[needs].toys` for grants.
 
 4. Install the child artifact + manifest into Patina's children directory.
 

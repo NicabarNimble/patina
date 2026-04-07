@@ -185,9 +185,26 @@ impl ChildRegistry {
         for entry in &self.children {
             let mut child = entry.write().unwrap_or_else(|e| e.into_inner());
             let name = child.name().to_string();
+            tracing::info!(event = "startup.child.onload.begin", child = %name, "mother child on_load begin");
+            let started = Instant::now();
             host.log(&name, "loading");
-            child.on_load(host)?;
+            if let Err(error) = child.on_load(host) {
+                tracing::warn!(
+                    event = "startup.child.onload.failure",
+                    child = %name,
+                    duration_ms = started.elapsed().as_millis() as u64,
+                    %error,
+                    "mother child on_load failed"
+                );
+                return Err(error);
+            }
             host.log(&name, "loaded");
+            tracing::info!(
+                event = "startup.child.onload.success",
+                child = %name,
+                duration_ms = started.elapsed().as_millis() as u64,
+                "mother child on_load success"
+            );
         }
         Ok(())
     }

@@ -74,7 +74,8 @@ pub struct PandoManifest {
 #[serde(rename_all = "snake_case")]
 pub enum PandoLifecycleStatus {
     Registered,
-    Loaded,
+    Ready,
+    Live,
     Degraded,
     Error,
 }
@@ -127,7 +128,8 @@ pub fn build_registry(
     pandos_root: &Path,
     native_commands: &HashSet<String>,
     aliases: &HashMap<String, String>,
-    available_children: &HashSet<String>,
+    installed_children: &HashSet<String>,
+    live_children: &HashSet<String>,
 ) -> Result<PandoRegistry> {
     let mut entries = Vec::new();
     let mut claimed_namespaces: HashMap<String, String> = HashMap::new();
@@ -213,25 +215,36 @@ pub fn build_registry(
         let mut commands = manifest.commands.keys().cloned().collect::<Vec<_>>();
         commands.sort();
 
-        let loaded_children = manifest
+        let installed_count = manifest
             .children
             .iter()
-            .filter(|child| available_children.contains(&child.name))
+            .filter(|child| installed_children.contains(&child.name))
+            .count();
+        let live_count = manifest
+            .children
+            .iter()
+            .filter(|child| live_children.contains(&child.name))
             .count();
         let child_count = manifest.children.len();
 
-        let (status, error) = if loaded_children == child_count {
-            (PandoLifecycleStatus::Loaded, None)
-        } else if loaded_children > 0 {
+        let (status, error) = if installed_count == child_count {
+            if live_count == child_count {
+                (PandoLifecycleStatus::Live, None)
+            } else if live_count > 0 {
+                (
+                    PandoLifecycleStatus::Degraded,
+                    Some("partial child activity".to_string()),
+                )
+            } else {
+                (PandoLifecycleStatus::Ready, None)
+            }
+        } else if installed_count > 0 {
             (
                 PandoLifecycleStatus::Degraded,
-                Some("partial child availability".to_string()),
+                Some("partial child install".to_string()),
             )
         } else {
-            (
-                PandoLifecycleStatus::Error,
-                Some("no children available".to_string()),
-            )
+            (PandoLifecycleStatus::Registered, None)
         };
 
         entries.push(PandoRegistryEntry {
@@ -368,9 +381,9 @@ name = "slate-manager"
 
         let native = HashSet::from(["init".to_string()]);
         let aliases = HashMap::from([("spec".to_string(), "slate".to_string())]);
-        let available = HashSet::from(["slate-manager".to_string()]);
+        let installed = HashSet::from(["slate-manager".to_string()]);
 
-        let registry = build_registry(root, &native, &aliases, &available).unwrap();
+        let registry = build_registry(root, &native, &aliases, &installed, &installed).unwrap();
         assert_eq!(registry.pandos.len(), 2);
         assert!(registry
             .pandos
@@ -386,17 +399,32 @@ name = "slate-manager"
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();
 
-        std::fs::create_dir_all(root.join("loaded")).unwrap();
+        std::fs::create_dir_all(root.join("live")).unwrap();
         std::fs::write(
-            root.join("loaded/pando.toml"),
+            root.join("live/pando.toml"),
             r#"
 [pando]
-name = "loaded"
+name = "live"
 description = "all children available"
 version = "0.1.0"
 
 [[children]]
 name = "a"
+"#,
+        )
+        .unwrap();
+
+        std::fs::create_dir_all(root.join("ready")).unwrap();
+        std::fs::write(
+            root.join("ready/pando.toml"),
+            r#"
+[pando]
+name = "ready"
+description = "children installed but not active"
+version = "0.1.0"
+
+[[children]]
+name = "ready-a"
 "#,
         )
         .unwrap();
@@ -419,12 +447,12 @@ name = "b"
         )
         .unwrap();
 
-        std::fs::create_dir_all(root.join("error")).unwrap();
+        std::fs::create_dir_all(root.join("registered")).unwrap();
         std::fs::write(
-            root.join("error/pando.toml"),
+            root.join("registered/pando.toml"),
             r#"
 [pando]
-name = "error"
+name = "registered"
 description = "no children available"
 version = "0.1.0"
 
@@ -438,16 +466,24 @@ name = "missing"
             root,
             &HashSet::new(),
             &HashMap::new(),
+            &HashSet::from(["a".to_string(), "ready-a".to_string()]),
             &HashSet::from(["a".to_string()]),
         )
         .unwrap();
 
-        let loaded = registry
+        let live = registry
             .pandos
             .iter()
-            .find(|entry| entry.name == "loaded")
+            .find(|entry| entry.name == "live")
             .unwrap();
-        assert_eq!(loaded.status, PandoLifecycleStatus::Loaded);
+        assert_eq!(live.status, PandoLifecycleStatus::Live);
+
+        let ready = registry
+            .pandos
+            .iter()
+            .find(|entry| entry.name == "ready")
+            .unwrap();
+        assert_eq!(ready.status, PandoLifecycleStatus::Ready);
 
         let degraded = registry
             .pandos
@@ -456,11 +492,11 @@ name = "missing"
             .unwrap();
         assert_eq!(degraded.status, PandoLifecycleStatus::Degraded);
 
-        let error = registry
+        let registered = registry
             .pandos
             .iter()
-            .find(|entry| entry.name == "error")
+            .find(|entry| entry.name == "registered")
             .unwrap();
-        assert_eq!(error.status, PandoLifecycleStatus::Error);
+        assert_eq!(registered.status, PandoLifecycleStatus::Registered);
     }
 }

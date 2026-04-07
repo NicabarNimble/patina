@@ -457,7 +457,7 @@ mod tests {
 
         fn pando_list(&self) -> Result<patina_protocol::PandoRegistryState> {
             Ok(patina_protocol::PandoRegistryState {
-                protocol_version: 1,
+                protocol_version: patina_protocol::PANDO_REGISTRY_PROTOCOL_VERSION,
                 pandos: vec![],
             })
         }

@@ -1,0 +1,31 @@
+[pando]
+name = "folder-text-to-parquet"
+description = "Ingest local text files into parquet with provenance"
+version = "0.1.0"
+
+[[children]]
+name = "file-system-monitor"
+
+[[children]]
+name = "content-extractor"
+
+[[children]]
+name = "schema-enforcer"
+
+[[children]]
+name = "dedup-filter"
+
+[[children]]
+name = "record-writer"
+
+[[children]]
+name = "lakehouse-catalog"
+
+[composition]
+wiring = [
+  "file-system-monitor.file.found -> content-extractor",
+  "content-extractor.record.extracted -> schema-enforcer",
+  "schema-enforcer.record.validated -> dedup-filter",
+  "dedup-filter.record.ready -> record-writer",
+  "record-writer.file.written -> lakehouse-catalog",
+]

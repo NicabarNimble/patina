@@ -45,6 +45,7 @@ pub struct StatusReport {
     pub stale_pid_file: bool,
     pub health: Option<HealthInfo>,
     pub health_error: Option<String>,
+    pub startup_failure: Option<crate::StartupAttemptRecord>,
 }
 
 pub fn probe_status(pid_path: &Path, socket_path: &Path) -> Result<StatusReport> {
@@ -61,12 +62,17 @@ pub fn probe_status(pid_path: &Path, socket_path: &Path) -> Result<StatusReport>
         .map(|p| unsafe { libc::kill(p, 0) == 0 })
         .unwrap_or(false);
     if !running {
+        let startup_failure = crate::KnowledgeRuntimeStore::default()
+            .last_startup_failure()
+            .ok()
+            .flatten();
         return Ok(StatusReport {
             running: false,
             pid,
             stale_pid_file: pid.is_some(),
             health: None,
             health_error: None,
+            startup_failure,
         });
     }
 
@@ -77,6 +83,7 @@ pub fn probe_status(pid_path: &Path, socket_path: &Path) -> Result<StatusReport>
             stale_pid_file: false,
             health: Some(health),
             health_error: None,
+            startup_failure: None,
         }),
         Err(error) => Ok(StatusReport {
             running: true,
@@ -84,6 +91,7 @@ pub fn probe_status(pid_path: &Path, socket_path: &Path) -> Result<StatusReport>
             stale_pid_file: false,
             health: None,
             health_error: Some(error.to_string()),
+            startup_failure: None,
         }),
     }
 }

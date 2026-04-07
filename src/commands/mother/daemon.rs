@@ -72,7 +72,12 @@ impl ServerState {
         self.start_time.elapsed().as_secs()
     }
 
-    fn available_children(&self) -> HashSet<String> {
+    fn installed_children(&self) -> HashSet<String> {
+        let children_dir = patina::paths::child::children_dir();
+        installed_child_names_from_dir(&children_dir)
+    }
+
+    fn live_children(&self) -> HashSet<String> {
         self.registry
             .health_all()
             .into_iter()
@@ -86,12 +91,14 @@ impl ServerState {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
-        let available_children = self.available_children();
+        let installed_children = self.installed_children();
+        let live_children = self.live_children();
         let registry = mother_crate::pando::build_registry(
             &self.pandos_root,
             &native,
             &self.aliases,
-            &available_children,
+            &installed_children,
+            &live_children,
         )?;
         *self
             .pando_registry
@@ -118,8 +125,11 @@ impl ServerState {
                         mother_crate::pando::PandoLifecycleStatus::Registered => {
                             patina_protocol::PandoStatus::Registered
                         }
-                        mother_crate::pando::PandoLifecycleStatus::Loaded => {
-                            patina_protocol::PandoStatus::Loaded
+                        mother_crate::pando::PandoLifecycleStatus::Ready => {
+                            patina_protocol::PandoStatus::Ready
+                        }
+                        mother_crate::pando::PandoLifecycleStatus::Live => {
+                            patina_protocol::PandoStatus::Live
                         }
                         mother_crate::pando::PandoLifecycleStatus::Degraded => {
                             patina_protocol::PandoStatus::Degraded
@@ -154,6 +164,41 @@ fn read_current_project_uid() -> Option<String> {
 
 fn file_size_if_exists(path: &Path) -> Option<u64> {
     std::fs::metadata(path).ok().map(|m| m.len())
+}
+
+fn installed_child_names_from_dir(children_dir: &Path) -> HashSet<String> {
+    if !children_dir.exists() {
+        return HashSet::new();
+    }
+
+    let mut installed = HashSet::new();
+    if let Ok(entries) = std::fs::read_dir(children_dir) {
+        for entry in entries.flatten() {
+            let wasm_path = entry.path();
+            if wasm_path.extension().and_then(|ext| ext.to_str()) != Some("wasm") {
+                continue;
+            }
+            let manifest_path = wasm_path.with_extension("toml");
+            if !manifest_path.exists() {
+                continue;
+            }
+
+            match patina::child::engine::ChildManifest::from_path(&manifest_path) {
+                Ok(manifest) => {
+                    installed.insert(manifest.name);
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        manifest_path = %manifest_path.display(),
+                        %error,
+                        "failed to parse child manifest for installed-child identity"
+                    );
+                }
+            }
+        }
+    }
+
+    installed
 }
 
 // === Host capabilities ===
@@ -338,6 +383,48 @@ pub struct DaemonOptions {
     pub port: u16,
 }
 
+fn run_startup_stage<T, F>(
+    stage: &'static str,
+    startup_store: &patina::mother::KnowledgeRuntimeStore,
+    operation: F,
+) -> Result<T>
+where
+    F: FnOnce() -> Result<T>,
+{
+    let _ = startup_store.record_startup_attempt(stage, "running", None);
+    tracing::info!(
+        stage,
+        event = "startup.stage.begin",
+        "mother startup stage begin"
+    );
+    let started = Instant::now();
+    match operation() {
+        Ok(value) => {
+            tracing::info!(
+                stage,
+                event = "startup.stage.success",
+                duration_ms = started.elapsed().as_millis() as u64,
+                "mother startup stage success"
+            );
+            Ok(value)
+        }
+        Err(error) => {
+            let _ = startup_store.record_startup_attempt(stage, "failed", Some(&error.to_string()));
+            tracing::warn!(
+                stage,
+                event = "startup.stage.failure",
+                duration_ms = started.elapsed().as_millis() as u64,
+                error = %error,
+                "mother startup stage failure"
+            );
+            let log_path = patina::paths::patina_home().join("mother/logs/mother.jsonl");
+            eprintln!("Mother startup failed at stage '{}' ({})", stage, error);
+            eprintln!("See logs: {}", log_path.display());
+            Err(error)
+        }
+    }
+}
+
 impl Default for DaemonOptions {
     fn default() -> Self {
         Self {
@@ -349,27 +436,38 @@ impl Default for DaemonOptions {
 
 /// Run the mother daemon server
 pub fn run_server(options: DaemonOptions) -> Result<()> {
+    mother_crate::daemon_bootstrap_config::ensure_logging_initialized()?;
+
     // Build and load child registry
     let mut registry = ChildRegistry::new();
     let runtime = patina::mother::KnowledgeRuntimeStore::default();
+    let startup_store = patina::mother::KnowledgeRuntimeStore::default();
 
     // WASM children (discovered from ~/.patina/children/)
     let children_dir = patina::paths::child::children_dir();
-    mother_crate::daemon_bootstrap::load_children_from_dir(
-        &children_dir,
-        &mut registry,
-        &runtime,
-        super::loader::load_wasm_child,
-    );
+    run_startup_stage("child_discovery", &startup_store, || {
+        mother_crate::daemon_bootstrap::load_children_from_dir(
+            &children_dir,
+            &mut registry,
+            &runtime,
+            super::loader::load_wasm_child,
+        );
+        Ok(())
+    })?;
 
     let daemon_host = DaemonHost;
-    registry.load_all(&daemon_host)?;
+    run_startup_stage("registry_load_all", &startup_store, || {
+        registry.load_all(&daemon_host)
+    })?;
 
     // TCP opt-in path (--host flag) — requires bearer token
     if let Some(ref host) = options.host {
-        let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
-        let state = Arc::new(ServerState::new(token, registry, runtime.clone()));
-        let router = Arc::new(build_router(Arc::clone(&state), true));
+        let (state, router) = run_startup_stage("router_build", &startup_store, || {
+            let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
+            let state = Arc::new(ServerState::new(token, registry, runtime.clone()));
+            let router = Arc::new(build_router(Arc::clone(&state), true));
+            Ok((state, router))
+        })?;
         let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
             transport: mother_crate::daemon_bootstrap_config::TransportMode::TcpHttp {
                 host: host.clone(),
@@ -381,18 +479,23 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
             wal_checkpoint_interval_secs:
                 mother_crate::daemon_bootstrap_config::DEFAULT_WAL_CHECKPOINT_INTERVAL_SECS,
         };
-        return mother_crate::daemon_bootstrap_config::start(
-            config,
-            mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
-                registry: Arc::clone(&state.registry),
-                router,
-            },
-        );
+        return run_startup_stage("transport_bootstrap", &startup_store, || {
+            mother_crate::daemon_bootstrap_config::start(
+                config.clone(),
+                mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
+                    registry: Arc::clone(&state.registry),
+                    router: Arc::clone(&router),
+                },
+            )
+        });
     }
 
     // Default: UDS path (no TCP, no token needed — file permissions are auth)
-    let state = Arc::new(ServerState::new(String::new(), registry, runtime));
-    let router = Arc::new(build_router(Arc::clone(&state), false));
+    let (state, router) = run_startup_stage("router_build", &startup_store, || {
+        let state = Arc::new(ServerState::new(String::new(), registry, runtime));
+        let router = Arc::new(build_router(Arc::clone(&state), false));
+        Ok((state, router))
+    })?;
     let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
         transport: mother_crate::daemon_bootstrap_config::TransportMode::UdsHttp {
             run_dir: patina::paths::serve::run_dir(),
@@ -403,13 +506,15 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         wal_checkpoint_interval_secs:
             mother_crate::daemon_bootstrap_config::DEFAULT_WAL_CHECKPOINT_INTERVAL_SECS,
     };
-    mother_crate::daemon_bootstrap_config::start(
-        config,
-        mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
-            registry: Arc::clone(&state.registry),
-            router,
-        },
-    )
+    run_startup_stage("transport_bootstrap", &startup_store, || {
+        mother_crate::daemon_bootstrap_config::start(
+            config.clone(),
+            mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
+                registry: Arc::clone(&state.registry),
+                router: Arc::clone(&router),
+            },
+        )
+    })
 }
 
 #[cfg(test)]
@@ -468,5 +573,63 @@ mod tests {
         .unwrap();
 
         assert_eq!(registry.knowledge_len(), 1);
+    }
+
+    #[test]
+    fn startup_stage_failure_is_persisted_for_status_surface() {
+        let temp = tempfile::tempdir().unwrap();
+        let startup_store =
+            patina::mother::KnowledgeRuntimeStore::new(temp.path().join("state.db"));
+
+        let err = run_startup_stage::<(), _>("unit_test_stage", &startup_store, || {
+            anyhow::bail!("intentional startup failure")
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("intentional startup failure"));
+
+        let failure = startup_store.last_startup_failure().unwrap().unwrap();
+        assert_eq!(failure.stage, "unit_test_stage");
+        assert_eq!(failure.status, "failed");
+        assert!(failure
+            .error_excerpt
+            .as_deref()
+            .unwrap_or_default()
+            .contains("intentional startup failure"));
+    }
+
+    #[test]
+    fn successful_stage_does_not_create_failure_record() {
+        let temp = tempfile::tempdir().unwrap();
+        let startup_store =
+            patina::mother::KnowledgeRuntimeStore::new(temp.path().join("state.db"));
+
+        run_startup_stage("unit_test_stage_success", &startup_store, || Ok(())).unwrap();
+
+        assert!(startup_store.last_startup_failure().unwrap().is_none());
+    }
+
+    #[test]
+    fn installed_children_use_manifest_name_not_wasm_stem() {
+        let temp = tempfile::tempdir().unwrap();
+        let children_dir = temp.path();
+        std::fs::write(
+            children_dir.join("patina_ai_child_record_writer.wasm"),
+            b"wasm",
+        )
+        .unwrap();
+        std::fs::write(
+            children_dir.join("patina_ai_child_record_writer.toml"),
+            r#"
+[child]
+name = "record-writer"
+kind = "child"
+"#,
+        )
+        .unwrap();
+
+        let installed = installed_child_names_from_dir(children_dir);
+        assert!(installed.contains("record-writer"));
+        assert!(!installed.contains("patina_ai_child_record_writer"));
     }
 }
