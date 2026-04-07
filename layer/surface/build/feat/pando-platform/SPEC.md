@@ -1,44 +1,39 @@
 ---
 type: feat
 id: pando-platform
-status: complete
+status: active
 created: 2026-04-06
-parent: child-construction-canon
 sessions:
   origin: 20260405-133644-511306000
-beliefs:
-  - "[[pandos-are-products-children-are-compute]]"
-  - "[[pando-is-composed-children]]"
-  - "[[children-have-agency-toys-are-capabilities]]"
-  - "[[wasi-is-foundation-not-option]]"
-  - "[[children-are-portable-wasm-artifacts]]"
-  - "[[mother-manages-artifact-install-and-runtime]]"
-  - "[[pandos-are-shareable-compositions]]"
-blocked_by: []
 related:
-  - layer/surface/build/feat/pando-platform-phase-a/SPEC.md
-  - layer/surface/build/feat/slate-pando-migration/SPEC.md
-  - layer/surface/build/explore/mother-child-artifact-registry/SPEC.md
-  - resources/pandos/folder-text-to-parquet/pando.toml
-  - mother/src/pando.rs
-  - src/commands/pando.rs
-  - src/commands/mother/daemon.rs
+- layer/surface/build/feat/pando-platform-phase-a/SPEC.md
+- layer/surface/build/feat/slate-pando-migration/SPEC.md
+- layer/surface/build/explore/mother-child-artifact-registry/SPEC.md
+- resources/pandos/folder-text-to-parquet/pando.toml
+- mother/src/pando.rs
+- src/commands/pando.rs
+- src/commands/mother/daemon.rs
+beliefs:
+- '[[pandos-are-products-children-are-compute]]'
+- '[[pando-is-composed-children]]'
+- '[[children-have-agency-toys-are-capabilities]]'
+- '[[wasi-is-foundation-not-option]]'
+- '[[children-are-portable-wasm-artifacts]]'
+- '[[mother-manages-artifact-install-and-runtime]]'
+- '[[pandos-are-shareable-compositions]]'
 exit_criteria:
-  - id: pp5-folder-text-retrofit
-    text: "`folder-text-to-parquet` has a `pando.toml` and is managed by Mother as a pando. No CLI commands — pipeline pando, proves basic pando lifecycle (register, list, health)."
-    checked: true
-
-  - id: pp5c1-ready-live-lifecycle
-    text: "Pando lifecycle distinguishes readiness from runtime activity: `ready` means all required children are installed/resolvable; `live` means all required children are loaded in Mother. Missing children is not `error` for valid manifests."
-    checked: true
-
-  - id: pp5c2-first-party-child-artifact-install
-    text: "First-party child artifacts required by `folder-text-to-parquet` are installable into `~/.patina/children/` as compiled `.wasm + .toml` pairs, and Mother can transition the pando from `registered`/`ready` to `live` when artifacts are present and loaded."
-    checked: true
-
-  - id: pp5c3-shared-artifact-composition-model
-    text: "Spec and design encode the portable artifact model: children are versioned reusable WASM artifacts, pandos are shareable compositions referencing those artifacts, and Mother separates artifact install/cache from runtime instances for future P2P sharing."
-    checked: true
+- id: pp5-folder-text-retrofit
+  text: '`folder-text-to-parquet` has a `pando.toml` and is managed by Mother as a pando. No CLI commands — pipeline pando, proves basic pando lifecycle (register, list, health).'
+  checked: true
+- id: pp5c1-ready-live-lifecycle
+  text: 'Pando lifecycle distinguishes readiness from runtime activity: `ready` means all required children are installed/resolvable; `live` means all required children are loaded in Mother. Missing children is not `error` for valid manifests.'
+  checked: true
+- id: pp5c2-first-party-child-artifact-install
+  text: First-party child artifacts required by `folder-text-to-parquet` are installable into `~/.patina/children/` as compiled `.wasm + .toml` pairs, and Mother can transition the pando from `registered`/`ready` to `live` when artifacts are present and loaded.
+  checked: true
+- id: pp5c3-shared-artifact-composition-model
+  text: 'Spec and design encode the portable artifact model: children are versioned reusable WASM artifacts, pandos are shareable compositions referencing those artifacts, and Mother separates artifact install/cache from runtime instances for future P2P sharing.'
+  checked: true
 ---
 # feat: Pando Platform
 
