@@ -1,6 +1,6 @@
 # Patina
 
-> Context orchestration for AI-assisted development
+> Context management for AI-assisted development
 
 Patina is a local-first Rust CLI that turns a repository into a reusable knowledge system for humans and AI tools. It scrapes code, git history, layer artifacts, and optional external sources into a local store, builds semantic indices, and exposes commands for retrieval, structure queries, workflow tracking, and cross-project knowledge.
 
@@ -10,7 +10,7 @@ Patina is a local-first Rust CLI that turns a repository into a reusable knowled
 - Provides semantic search with `patina scry` and structural queries with `patina assay`
 - Captures project rules and decisions through `patina context`, specs, and epistemic beliefs
 - Supports cross-project knowledge via external repos, persona data, and the Mother daemon
-- Extends the system with adapters, schemas, and WASM children
+- Extends the system with WASM children built on the WASI component model and Patina SDK
 
 Patina is designed around a simple idea: project knowledge should compound instead of being re-explained every session.
 
@@ -26,8 +26,11 @@ patina setup grammars
 # Initialize a project
 patina init .
 
-# Allow an AI adapter in this repo
-patina adapter add claude
+# Allow an AI interface in this repo
+patina interface add claude
+
+# Start the Mother daemon
+patina mother start
 
 # Build the local knowledge base
 patina scrape
@@ -39,7 +42,7 @@ patina assay search "child engine"
 patina context --topic "testing"
 ```
 
-Once configured, running bare `patina` launches the default adapter.
+Once configured, running bare `patina` launches the default interface.
 
 ## Core Workflow
 
@@ -129,8 +132,12 @@ patina connect github                # Connect GitHub via OAuth device flow
 patina connect status
 
 patina mother start
+patina mother stop
+patina mother status
+patina mother install                # Install launchd supervisor (macOS)
 patina mother search "belief query"
 patina mother sources
+patina mother graph                  # Cross-project relationship graph
 
 patina model list
 patina model add e5-base-v2
@@ -139,11 +146,10 @@ patina model add e5-base-v2
 ### Setup, extension, and safety
 
 ```bash
-patina adapter list
-patina adapter add opencode
-patina adapter mcp
+patina interface list
+patina interface add opencode
 
-patina child list                  # Canonical (alias: `patina plugin list`)
+patina child list                    # Canonical (alias: `patina plugin list`)
 patina child init my-child --world task
 patina schema new my-schema
 patina schema build
@@ -160,14 +166,16 @@ patina yolo
 ## Architecture
 
 ```text
-Sources                         Storage / indices                  Query surface
--------                         -----------------                  -------------
-git history                 ->  .patina/local/data/patina.db   ->  scry
-code + grammar children     ->  .patina/local/data/events.db   ->  assay
-layer/ (specs, sessions,    ->  .patina/local/data/embeddings  ->  context
-beliefs, patterns)                                              ->  belief / report / measure
-external repos + sources
+Sources                         Storage / indices                        Query surface
+-------                         -----------------                        -------------
+git history                 ->  ~/.patina/mother/projects/{uid}/     ->  scry
+code + grammar children     ->    patina.db (projections)            ->  assay
+layer/ (specs, sessions,    ->    events.db (runtime events)         ->  context
+beliefs, patterns)          ->    runtime.db (child state)           ->  belief / report / measure
+external repos + sources    ->  .patina/local/cache/embeddings/      ->  eval / bench
 ```
+
+Mother owns per-project databases in `~/.patina/mother/projects/{uid}/`. The CLI opens these local files directly for core operations — no daemon required for scrape, scry, or assay. Mother adds child orchestration, cross-project queries, secrets management, and session coordination.
 
 Core ideas:
 
@@ -175,51 +183,61 @@ Core ideas:
 - `assay` is the factual and structural retrieval layer
 - `context` surfaces project rules, conventions, and beliefs for AI assistants
 - `rebuild` restores derived state from tracked project artifacts
-- Mother provides long-lived cross-project services, caching, and routing
+- Mother is the daemon — children are WASM components, pandos are composed groups of children that appear as user-facing products
+- Children use the WASI component model with Patina toy interfaces for sandboxed capability access
 
 ## Repository Layout
 
 ```text
 patina/
-├── src/                      # Rust CLI, retrieval, daemon, adapters, storage
+├── src/                      # Rust CLI, retrieval, storage, command surfaces
+├── mother/                   # Mother daemon crate (state, registry, children)
 ├── grammars/                 # Grammar child sources used by scrape pipeline
 ├── crates/                   # Shared internal crates
-├── children/                 # First-party child components
-├── wit/                      # WIT contracts (toys/) and compositions (worlds/)
-├── sdk/                      # SDK tiers: core, data, agent, umbrella
-├── layer/                    # Git-tracked project memory
-│   ├── core/                 # Stable principles and patterns
+├── children/                 # First-party child components (WASM)
+├── wit/                      # WIT contracts
+│   ├── toys/                 # Toy interfaces (per-capability packages)
+│   ├── child/                # Child world composition
+│   └── pipeline/             # Pipeline world composition
+├── sdk/                      # Patina SDK (umbrella crate with inline toy types)
+├── layer/                    # Git-tracked project memory (THE PRODUCT)
+│   ├── core/                 # Stable values, beliefs, and principles
 │   ├── surface/              # Active specs, beliefs, reports, architecture docs
 │   ├── sessions/             # Session archives
 │   └── dust/                 # Archived material
 └── .patina/
     ├── config.toml           # Project config
-    ├── uid                   # Project identity
+    ├── uid                   # Stable 8-hex project identity
     ├── oxidize.yaml          # Embedding recipe
-    ├── versions.json         # Version manifest
     └── local/
-        ├── data/
-        │   ├── patina.db     # Rebuildable project database
-        │   ├── events.db     # Runtime event store
-        │   └── embeddings/   # Vector indices and projections
-        └── backups/
+        └── cache/
+            └── embeddings/   # Vector indices (working-copy-local, branch-specific)
 
 ~/.patina/
 ├── config.toml               # Global config
 ├── registry.yaml             # Project and repo registry
-├── adapters/                 # Adapter templates
+├── interfaces/               # Interface templates (claude, opencode, gemini)
 ├── cache/repos/              # Cloned reference repos
 ├── pipeline/                 # Installed grammar child artifacts
-├── personas/                 # Cross-project persona events
-└── run/                      # Mother runtime files
+├── mother/
+│   ├── state.db              # Mother lifecycle (sessions, project registry, graph)
+│   ├── graph.db              # Cross-project belief graph
+│   └── projects/{uid}/       # Per-project databases
+│       ├── events.db         # Runtime events (irreplaceable, machine-local)
+│       ├── patina.db         # Scrape projections (rebuildable)
+│       └── runtime.db        # Child state for this project
+├── persona/                  # Cross-project persona (identity, beliefs)
+└── run/                      # Mother runtime files (pid, socket)
 ```
 
 ## Design Principles
 
 - Pure Rust runtime; no Python subprocess dependency chain
 - Local-first storage and rebuildable derived state
-- Git as memory for durable project knowledge
-- Adapter-based AI integration
+- Git as memory for durable project knowledge (`layer/` is the product)
+- Mother daemon manages databases, children, and cross-project coordination
+- WASI component model for sandboxed extensibility (children, toys, pandos)
+- Interface-based AI integration (Claude, OpenCode, Gemini)
 - Spec-driven workflow for larger changes
 - Extensible via schemas, children, and grammar pipelines
 
