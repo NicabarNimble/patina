@@ -310,6 +310,11 @@ pub mod mother {
         data_dir().join("state.db")
     }
 
+    /// Mother federation database: `~/.patina/mother/federation.duckdb`
+    pub fn federation_db() -> PathBuf {
+        data_dir().join("federation.duckdb")
+    }
+
     /// Per-project Mother database paths: `~/.patina/mother/projects/{project_uid}/`
     pub mod projects {
         use super::*;
@@ -630,6 +635,11 @@ mod tests {
             assert_eq!(
                 secrets::recipient_path(),
                 mother_paths::secrets::recipient_path()
+            );
+
+            assert_eq!(
+                mother::federation_db(),
+                expected_home.join("mother/federation.duckdb")
             );
         });
     }
