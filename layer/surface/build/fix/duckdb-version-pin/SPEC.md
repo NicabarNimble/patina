@@ -1,24 +1,23 @@
 ---
 type: fix
 id: duckdb-version-pin
-status: complete
+status: active
 created: 2026-04-03
 sessions:
   origin: 20260402-220939-443502000
-  active: 20260407-063612-748374000
 related:
 - .github/workflows/test.yml
 - Cargo.toml
 exit_criteria:
-  - id: dvp1-ci-updated
-    text: "All 4 'Install DuckDB' steps in .github/workflows/test.yml updated from v1.1.3 to v1.5.1. Asset libduckdb-linux-amd64.zip confirmed in v1.5.1 GitHub release."
-    checked: true
-  - id: dvp2-cargo-pinned
-    text: "Cargo.toml duckdb dependency updated to version = \"1.10501\". Cargo.lock resolves to duckdb 1.10501.0 and libduckdb-sys 1.10501.0. Crate 1.10501.0 encodes DuckDB v1.5.1 per the new duckdb-rs versioning scheme (1.MAJOR_MINOR_PATCH.crate_patch)."
-    checked: true
-  - id: dvp3-verify
-    text: "cargo check --workspace -q passes with the updated crate version."
-    checked: true
+- id: dvp1-ci-updated
+  text: All 4 'Install DuckDB' steps in .github/workflows/test.yml updated from v1.1.3 to v1.5.1. Asset libduckdb-linux-amd64.zip confirmed in v1.5.1 GitHub release.
+  checked: true
+- id: dvp2-cargo-pinned
+  text: Cargo.toml duckdb dependency updated to version = "1.10501". Cargo.lock resolves to duckdb 1.10501.0 and libduckdb-sys 1.10501.0. Crate 1.10501.0 encodes DuckDB v1.5.1 per the new duckdb-rs versioning scheme (1.MAJOR_MINOR_PATCH.crate_patch).
+  checked: true
+- id: dvp3-verify
+  text: cargo check --workspace -q passes with the updated crate version.
+  checked: true
 ---
 # fix: Align DuckDB prebuilt and Rust crate to v1.5.1
 
