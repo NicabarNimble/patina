@@ -41,6 +41,7 @@
 
 pub(crate) mod adapters;
 pub(crate) mod daemon;
+pub(crate) mod federation;
 pub(crate) mod graph;
 pub(crate) mod loader;
 pub(crate) mod toys;
@@ -152,6 +153,10 @@ pub enum MotherCommands {
     /// Toy registry operations
     #[command(subcommand)]
     Toys(ToysCommands),
+
+    /// Federation query surface operations
+    #[command(subcommand)]
+    Federation(FederationCommands),
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -177,6 +182,23 @@ pub enum ToysCommands {
         /// Pull WASI Preview 2 proposals as a unit
         #[arg(long)]
         preview2: bool,
+    },
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum FederationCommands {
+    /// Show federation availability and attached project state
+    Status,
+    /// Execute a read-only federation SQL query
+    Query {
+        /// SQL query string (SELECT-only)
+        sql: String,
+        /// Optional row limit (default 1000, max 10000)
+        #[arg(long)]
+        limit: Option<usize>,
+        /// Optional timeout in milliseconds (default 30000)
+        #[arg(long)]
+        timeout_ms: Option<u64>,
     },
 }
 
@@ -310,6 +332,7 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             println!("  patina mother uninstall Remove launchd supervisor");
             println!("  patina mother graph    Graph operations");
             println!("  patina mother toys     Toy registry operations");
+            println!("  patina mother federation Federation query surface");
             println!("  patina mother search   Cross-project belief search\n");
             println!("Run 'patina mother --help' for details.");
             Ok(())
@@ -367,6 +390,33 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
                 })?;
                 toys::toys_pull(&project_root, &name)
             }
+        }
+        Some(MotherCommands::Federation(command)) => execute_federation(command),
+    }
+}
+
+fn execute_federation(command: FederationCommands) -> Result<()> {
+    let client = patina::mother::control_plane_client();
+    match command {
+        FederationCommands::Status => {
+            let payload = client.federation_status()?;
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+            Ok(())
+        }
+        FederationCommands::Query {
+            sql,
+            limit,
+            timeout_ms,
+        } => {
+            let payload =
+                client.federation_query(mother_crate::protocol::FederationQueryPayload {
+                    sql,
+                    params: vec![],
+                    limit,
+                    timeout_ms,
+                })?;
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+            Ok(())
         }
     }
 }

@@ -5,6 +5,7 @@
 //! - Remote mother: TCP with bearer token via reqwest
 
 use anyhow::{Context, Result};
+use mother_crate::protocol::FederationQueryPayload;
 use patina_protocol::{
     BuiltinChildRequest, BuiltinChildResponse, PandoRegistryInit, PandoRegistryState,
 };
@@ -220,6 +221,79 @@ impl Client {
         response
             .json::<PandoRegistryState>()
             .with_context(|| "Failed to parse pando list response")
+    }
+
+    pub fn federation_status(&self) -> Result<Value> {
+        let payload = serde_json::json!({});
+        if self.try_uds {
+            let body = serde_json::to_vec(&payload)?;
+            if let Some((status, resp_body)) =
+                uds_request("POST", "/api/federation/status", Some(&body))
+            {
+                if (200..300).contains(&status) {
+                    return serde_json::from_slice(&resp_body)
+                        .context("Failed to parse federation status response from UDS");
+                }
+                let msg = String::from_utf8_lossy(&resp_body).to_string();
+                anyhow::bail!("federation status failed ({}): {}", status, msg);
+            }
+        }
+
+        let url = format!("{}/api/federation/status", self.base_url);
+        let mut req = self.http.post(&url).json(&payload);
+        if let Some(ref token) = self.token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let response = req.send().with_context(|| {
+            format!(
+                "Failed to send federation status request to {}",
+                self.base_url
+            )
+        })?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().unwrap_or_default();
+            anyhow::bail!("federation status failed ({}): {}", status, body);
+        }
+        response
+            .json::<Value>()
+            .with_context(|| "Failed to parse federation status response")
+    }
+
+    pub fn federation_query(&self, payload: FederationQueryPayload) -> Result<Value> {
+        if self.try_uds {
+            let body = serde_json::to_vec(&payload)?;
+            if let Some((status, resp_body)) =
+                uds_request("POST", "/api/federation/query", Some(&body))
+            {
+                if (200..300).contains(&status) {
+                    return serde_json::from_slice(&resp_body)
+                        .context("Failed to parse federation query response from UDS");
+                }
+                let msg = String::from_utf8_lossy(&resp_body).to_string();
+                anyhow::bail!("federation query failed ({}): {}", status, msg);
+            }
+        }
+
+        let url = format!("{}/api/federation/query", self.base_url);
+        let mut req = self.http.post(&url).json(&payload);
+        if let Some(ref token) = self.token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let response = req.send().with_context(|| {
+            format!(
+                "Failed to send federation query request to {}",
+                self.base_url
+            )
+        })?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().unwrap_or_default();
+            anyhow::bail!("federation query failed ({}): {}", status, body);
+        }
+        response
+            .json::<Value>()
+            .with_context(|| "Failed to parse federation query response")
     }
 }
 
