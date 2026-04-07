@@ -13,21 +13,13 @@ beliefs:
   - "[[wasi-is-foundation-not-option]]"
 blocked_by: []
 related:
+  - layer/surface/build/feat/pando-platform-phase-a/SPEC.md
   - layer/surface/build/feat/child-construction-canon/SPEC.md
   - children/spec-manager/
   - mother/src/builtin_children.rs
   - src/commands/spec/
   - src/main.rs
 exit_criteria:
-
-  - id: pp1-pando-manifest
-    text: "`pando.toml` format defined and parsed by Mother. Declares name, description, children, composition wiring, and commands."
-    checked: true
-
-  - id: pp2-mother-pando-registry
-    text: "Mother reads `pando.toml` files, builds a pando registry, and maps command namespaces to pandos. Rejects registration when a command namespace collides with an existing pando or a native binary command."
-    checked: true
-
   - id: pp3-cli-command-discovery
     text: "The `patina` binary asks Mother for registered pando commands. Unknown commands route to Mother for pando dispatch. `patina --help` shows native commands; `patina <pando> --help` shows pando commands served from the manifest."
     checked: false
@@ -83,6 +75,10 @@ to `patina`.
 Build the pando platform: composed groups of children that appear as one
 capability to the user. Mother manages the pando registry. The binary
 discovers and routes pando commands. Users install pandos, not children.
+
+Phase A (`pp1`, `pp2`) has been extracted and completed in
+`layer/surface/build/feat/pando-platform-phase-a/SPEC.md`. This spec now tracks
+remaining platform work from CLI routing onward.
 
 Prove it by building the slate pando — the first interactive pando that
 replaces the spec-manager builtin dispatch with a proper WASM child
@@ -306,12 +302,15 @@ Mother running. The migration contract:
 - Add tests proving child manifests with filesystem/keyvalue/sql scopes map to
   explicit runtime capabilities.
 
-### Phase A — pando.toml parser and Mother registry
+### Phase A — extracted
 
-- Define `pando.toml` schema (serde deserialization)
-- Mother reads pandos from `~/.patina/pandos/`
-- Mother builds command registry with collision detection
-- `patina pando list` shows registered pandos
+- Completed in `pando-platform-phase-a`.
+
+### Phase C — retrofit folder-text-to-parquet
+
+- Create `pando.toml` for folder-text-to-parquet
+- Mother registers it as a pando (no commands, pipeline only)
+- Proves basic pando lifecycle
 
 ### Phase B — CLI routing
 
@@ -319,12 +318,6 @@ Mother running. The migration contract:
 - Binary queries Mother for command schema (for `--help`)
 - Binary sends pando commands to Mother, prints response
 - Error handling when Mother isn't running
-
-### Phase C — retrofit folder-text-to-parquet
-
-- Create `pando.toml` for folder-text-to-parquet
-- Mother registers it as a pando (no commands, pipeline only)
-- Proves basic pando lifecycle
 
 ### Phase D — git toy additions
 
@@ -531,5 +524,6 @@ patina slate archive <id>
 
 ## Build Readiness
 
-Phase A is ready. No blockers. Existing children and toys cover the needs.
-`patina:git` needs two additions (Phase D) but those don't block Phase A-C.
+Phases C and B are ready to execute next (in that order). Existing children and
+toys cover the remaining platform wiring needs. `patina:git` additions remain
+Phase D and do not block C/B.
