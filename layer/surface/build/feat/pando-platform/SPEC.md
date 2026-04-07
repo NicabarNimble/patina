@@ -30,7 +30,7 @@ exit_criteria:
 
   - id: pp5-folder-text-retrofit
     text: "`folder-text-to-parquet` has a `pando.toml` and is managed by Mother as a pando. No CLI commands — pipeline pando, proves basic pando lifecycle (register, list, health)."
-    checked: false
+    checked: true
 
   - id: pp6-slate-child-built
     text: "Slate-manager child exists as a proper WASM child using the SDK. Uses toys: `wasi:filesystem`, `patina:keyvalue`, `patina:logging`, `patina:git`. Handles all spec lifecycle actions (list, show, check, create, promote, complete, abandon, pause, resume, block, archive, rename, reopen, set, next, history, split, prompt, handoff)."
