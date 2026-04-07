@@ -74,27 +74,7 @@ impl ServerState {
 
     fn installed_children(&self) -> HashSet<String> {
         let children_dir = patina::paths::child::children_dir();
-        if !children_dir.exists() {
-            return HashSet::new();
-        }
-
-        let mut installed = HashSet::new();
-        if let Ok(entries) = std::fs::read_dir(children_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|ext| ext.to_str()) != Some("wasm") {
-                    continue;
-                }
-                if !path.with_extension("toml").exists() {
-                    continue;
-                }
-                if let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) {
-                    installed.insert(stem.to_string());
-                }
-            }
-        }
-
-        installed
+        installed_child_names_from_dir(&children_dir)
     }
 
     fn live_children(&self) -> HashSet<String> {
@@ -184,6 +164,41 @@ fn read_current_project_uid() -> Option<String> {
 
 fn file_size_if_exists(path: &Path) -> Option<u64> {
     std::fs::metadata(path).ok().map(|m| m.len())
+}
+
+fn installed_child_names_from_dir(children_dir: &Path) -> HashSet<String> {
+    if !children_dir.exists() {
+        return HashSet::new();
+    }
+
+    let mut installed = HashSet::new();
+    if let Ok(entries) = std::fs::read_dir(children_dir) {
+        for entry in entries.flatten() {
+            let wasm_path = entry.path();
+            if wasm_path.extension().and_then(|ext| ext.to_str()) != Some("wasm") {
+                continue;
+            }
+            let manifest_path = wasm_path.with_extension("toml");
+            if !manifest_path.exists() {
+                continue;
+            }
+
+            match patina::child::engine::ChildManifest::from_path(&manifest_path) {
+                Ok(manifest) => {
+                    installed.insert(manifest.name);
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        manifest_path = %manifest_path.display(),
+                        %error,
+                        "failed to parse child manifest for installed-child identity"
+                    );
+                }
+            }
+        }
+    }
+
+    installed
 }
 
 // === Host capabilities ===
@@ -592,5 +607,29 @@ mod tests {
         run_startup_stage("unit_test_stage_success", &startup_store, || Ok(())).unwrap();
 
         assert!(startup_store.last_startup_failure().unwrap().is_none());
+    }
+
+    #[test]
+    fn installed_children_use_manifest_name_not_wasm_stem() {
+        let temp = tempfile::tempdir().unwrap();
+        let children_dir = temp.path();
+        std::fs::write(
+            children_dir.join("patina_ai_child_record_writer.wasm"),
+            b"wasm",
+        )
+        .unwrap();
+        std::fs::write(
+            children_dir.join("patina_ai_child_record_writer.toml"),
+            r#"
+[child]
+name = "record-writer"
+kind = "child"
+"#,
+        )
+        .unwrap();
+
+        let installed = installed_child_names_from_dir(children_dir);
+        assert!(installed.contains("record-writer"));
+        assert!(!installed.contains("patina_ai_child_record_writer"));
     }
 }
