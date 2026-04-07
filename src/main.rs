@@ -332,6 +332,12 @@ enum Commands {
         command: Option<commands::mother::MotherCommands>,
     },
 
+    /// Manage composed pando products
+    Pando {
+        #[command(subcommand)]
+        command: Option<commands::pando::PandoCommands>,
+    },
+
     /// Secure secret management with age encryption
     Secrets {
         #[command(subcommand)]
@@ -1540,6 +1546,7 @@ fn main() -> Result<()> {
         Some(Commands::Connect { command }) => commands::connect::execute_cli(command)?,
         Some(Commands::Lake { command }) => commands::lake::execute_cli(command)?,
         Some(Commands::Mother { command }) => commands::mother::execute_cli(command)?,
+        Some(Commands::Pando { command }) => commands::pando::execute_cli(command)?,
         Some(Commands::Secrets { command, flags }) => {
             commands::secrets::execute_cli(command, flags)?
         }
