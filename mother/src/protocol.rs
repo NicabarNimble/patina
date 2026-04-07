@@ -121,3 +121,20 @@ pub struct ScryPayload {
     pub limit: usize,
     pub min_score: f32,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FederationStatusPayload {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FederationRefreshPayload {}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FederationQueryPayload {
+    pub sql: String,
+    #[serde(default)]
+    pub params: Vec<String>,
+    #[serde(default)]
+    pub limit: Option<usize>,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
