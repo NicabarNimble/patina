@@ -149,6 +149,31 @@ action = "archive"
 # ... remaining commands follow same pattern
 ```
 
+Binding-oriented extension (migration target):
+
+```toml
+[[children]]
+name = "slate-manager"
+
+[children.bindings.filesystem.spec_root]
+guest_path = "/specs"
+host_path = "./layer/surface/build"
+mode = "read-write"
+
+[children.bindings.keyvalue.state]
+namespace = "slate"
+
+[children.bindings.git.repo]
+scope = "project"
+
+[children.bindings.http.github]
+domains = ["api.github.com"]
+```
+
+During migration, `needs.toys` remains the intent surface while bindings become
+the enforcement surface. The steady state is one-to-one resource bindings with
+explicit scopes and no umbrella capability labels.
+
 A pipeline pando with no CLI commands:
 
 ```toml
@@ -222,6 +247,15 @@ The binary is the native shell. It has:
 
 ## Solution Phases
 
+### Phase 0 — binding alignment guardrail
+
+- Keep `needs.toys` for compatibility.
+- Normalize runtime capability naming to one-to-one mappings
+  (`filesystem`→`host_filesystem`, `keyvalue`→`host_keyvalue`,
+  `sql`→`host_sql`) with aliases only as migration shims.
+- Add tests proving child manifests with filesystem/keyvalue/sql scopes map to
+  explicit runtime capabilities.
+
 ### Phase A — pando.toml parser and Mother registry
 
 - Define `pando.toml` schema (serde deserialization)
@@ -251,8 +285,8 @@ The binary is the native shell. It has:
 
 - Port spec logic from `src/commands/spec/internal/` to
   `children/slate-manager/src/lib.rs`
-- Child uses SDK with toys: `wasi:filesystem`, `wasi:keyvalue`,
-  `wasi:logging`, `patina:git`
+- Child uses SDK with toys: `wasi:filesystem`, `patina:keyvalue`,
+  `patina:logging`, `patina:git`
 - All 20 spec actions handled via `handle(action, payload)`
 - Tests against real spec files on disk
 
@@ -279,6 +313,18 @@ The binary is the native shell. It has:
   existing scripts and skills.
 - The slate pando is a single-child pando today. It may split later if natural
   seams emerge, but we don't force decomposition before the build proves it.
+
+## Binding-Oriented Direction
+
+Pandos are moving toward a binding-oriented resource model (Fastly/Cloudflare style)
+where child declarations name required resources and Mother provides scoped bindings
+at instantiate-time.
+
+- `needs.toys` remains the intent surface during migration.
+- Runtime enforcement shifts to explicit bindings (filesystem paths, sql connection
+  names, http domains, event streams) rather than umbrella capability labels.
+- Compatibility aliases remain during migration; new work should prefer explicit
+  one-to-one resource naming.
 
 ## Verification
 

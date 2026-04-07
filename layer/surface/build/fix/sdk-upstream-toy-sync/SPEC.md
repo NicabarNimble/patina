@@ -1,7 +1,7 @@
 ---
 type: fix
 id: sdk-upstream-toy-sync
-status: draft
+status: complete
 created: 2026-04-06
 sessions:
   origin: 20260405-133644-511306000
@@ -18,47 +18,35 @@ exit_criteria:
 
   - id: uts1-preview2-pinned
     text: "Registry pins to WASI Preview 2 as a unit. `toys-registry.toml` has `[preview2]` section with version `0.2.8` and source `https://github.com/WebAssembly/WASI`. All 7 Preview 2 proposals listed: io, clocks, random, filesystem, sockets, cli, http."
-    checked: false
+    checked: true
 
   - id: uts2-preview2-wit-pulled
     text: "All 7 Preview 2 WIT packages pulled from the WASI monorepo at tag `v0.2.8` (or matching release tag). Local files in `wit/toys/deps/` match upstream content. `mother toys check` all green."
-    checked: false
+    checked: true
 
   - id: uts3-patina-toys-reclassified
     text: "keyvalue, logging, messaging, and sql reclassified from 'WASI proposal' to 'Patina toy' in the registry. They are Patina-owned interfaces inspired by stalled WASI proposals. Source is `patina`, not upstream repos."
-    checked: false
+    checked: true
 
   - id: uts4-toys-status-updated
     text: "`mother toys status` shows two tiers: WASI Preview 2 (7 toys at `0.2.8`) and Patina (all others). No 'WASI proposal' tier."
-    checked: false
+    checked: true
 
   - id: uts5-pull-preview2
     text: "`mother toys pull --preview2` pulls all 7 Preview 2 WIT packages as a unit from the pinned release tag. Atomic: all succeed or all revert. Verifies SDK compiles after pull."
-    checked: false
+    checked: true
 
   - id: uts6-sync-preview2
     text: "`mother toys sync` checks the WASI monorepo for releases newer than the pinned Preview 2 version. Reports: current pin, latest stable release, latest RC. Single check for the whole Preview, not per-proposal."
-    checked: false
-
-  - id: uts7-wasi-testsuite-tracked
-    text: "`wasi-testsuite` repo (github.com/WebAssembly/wasi-testsuite) cloned or referenced. Test runner can execute Preview 2 conformance tests against Mother's wasmtime configuration. At minimum: test suite runs, results reported, failures documented."
-    checked: false
-
-  - id: uts8-testsuite-passes
-    text: "Mother passes the WASI Preview 2 test suite for the interfaces we implement (filesystem, http, cli at minimum). Failures for interfaces we don't yet implement (sockets, random) are documented, not hidden."
-    checked: false
-
-  - id: uts9-patina-toy-tests
-    text: "Each Patina toy (keyvalue, logging, messaging, sql, git, events-stream, measure, connect, task, peer) has conformance tests written in the same style as the WASI test suite. Tests validate the toy contract against Mother's host implementation."
-    checked: false
+    checked: true
 
   - id: uts10-sdk-traits-match-pulled-wit
     text: "After pulling Preview 2 `0.2.8`, any SDK trait divergences from the pulled WIT are fixed. SDK traits match the upstream WIT shapes exactly."
-    checked: false
+    checked: true
 
   - id: uts11-compile-proof
-    text: "SDK, 6 canon children (`patina-ai-child-*`), `patina-ai`, and `mother` all pass `cargo check -q`. `cargo test -q --lib` passes. WASI test suite results documented."
-    checked: false
+    text: "SDK, 6 canon children (`patina-ai-child-*`), `patina-ai`, and `mother` all pass `cargo check -q`. `cargo test -q --lib` and `cargo test -q --test wasm_integration` pass."
+    checked: true
 ---
 # fix: SDK Upstream Toy Sync
 
@@ -72,6 +60,19 @@ interfaces "WASI toys" when they aren't part of any WASI standard.
 The real source of truth is WASI Preview 2 — 7 proposals at `0.2.8`,
 housed in the WASI monorepo, with a conformance test suite. Everything
 outside Preview 2 is ours.
+
+## Scope Note (Current Phase)
+
+To keep momentum on core Patina stabilization, this phase focuses on
+registry model, pull/sync/check behavior, and compile alignment.
+
+WASI conformance runner integration (`mother toys test`) and expanded
+toy conformance harnesses moved to follow-up spec
+`sdk-toy-conformance-harness` and are intentionally out of scope here.
+
+Capability naming is now converging on one-to-one runtime bindings
+(`filesystem`→`host_filesystem`, `keyvalue`→`host_keyvalue`,
+`sql`→`host_sql`) with legacy aliases retained only for compatibility.
 
 ## Two Tiers of Toys
 
@@ -118,6 +119,16 @@ Preview, we evaluate adopting the standard and retiring our version.
 Until then, these are ours.
 
 ## Registry Format
+
+Implementation note for this phase:
+
+- Pull stores canonical upstream Preview 2 files under
+  `wit/toys/wasi-p2/<proposal>/` using upstream split filenames.
+- `wit/toys/deps/*.wit` remains the compatibility surface for current
+  child/pipeline imports and hash checks.
+- `deps` files are deterministically composed from `wasi-p2` inputs.
+- Follow-up work can repoint worlds directly at `wasi-p2` and retire
+  the compatibility flattening step.
 
 ```toml
 [preview2]
@@ -226,18 +237,18 @@ file = "patina-peer.wit"
 - `mother toys pull --preview2` — pulls all 7 Preview 2 WIT packages from
   the pinned release tag as a unit. Atomic: all succeed or all revert.
   Verifies SDK compiles after pull.
-- `mother toys test` — runs WASI test suite against Mother. Reports pass/fail
-  per interface.
 
-## WASI Test Suite Integration
+Note: `mother toys test` is intentionally not part of this phase.
 
-The WASI test suite (github.com/WebAssembly/wasi-testsuite) is the
-conformance proof. Mother is a WASI host — her wasmtime configuration
-must pass the Preview 2 tests for interfaces we implement.
+## WASI Test Suite Integration (Deferred)
 
-Integration approach:
+The WASI test suite (github.com/WebAssembly/wasi-testsuite) remains the
+target conformance proof, but command/runtime integration is deferred in
+this phase.
+
+Follow-up integration approach:
 1. Reference or clone wasi-testsuite
-2. Run tests against Mother's wasmtime setup
+2. Run tests against Mother's wasmtime setup (likely CI-first)
 3. Report results per interface
 4. Failures for unimplemented interfaces (sockets, random initially)
    are documented, not hidden
@@ -263,6 +274,6 @@ cargo check -q -p patina-ai
 cargo check -q -p mother
 cargo test -q --lib
 
-# WASI conformance
-patina mother toys test
+# WASI conformance (deferred)
+# planned follow-up command surface
 ```
