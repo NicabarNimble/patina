@@ -31,6 +31,6 @@ pub use runtime::{
 };
 pub use state::{
     KnowledgeRuntimeStore, LakeCursorUpdate, MotherSessionParticipant, MotherSessionRecord,
-    MotherSessionStatus, QueuedTask, RunStatus, TaskStatus,
+    MotherSessionStatus, QueuedTask, RunStatus, StartupAttemptRecord, TaskStatus,
 };
 pub use toys::{GrantedIngressSource, GrantedToys};

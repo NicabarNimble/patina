@@ -196,6 +196,14 @@ pub struct ProjectRegistration {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartupAttemptRecord {
+    pub stage: String,
+    pub status: String,
+    pub error_excerpt: Option<String>,
+    pub updated_at: String,
+}
+
 impl Default for KnowledgeRuntimeStore {
     fn default() -> Self {
         let home = std::env::var_os("PATINA_HOME")
@@ -377,6 +385,14 @@ impl KnowledgeRuntimeStore {
                 updated_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS mother_startup_attempts (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                stage TEXT NOT NULL,
+                status TEXT NOT NULL,
+                error_excerpt TEXT,
+                updated_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_project_registry_updated_at
             ON project_registry (updated_at DESC);
             "#,
@@ -482,6 +498,59 @@ impl KnowledgeRuntimeStore {
             params![project_uid.as_str(), path_text, now, now],
         )?;
         Ok(())
+    }
+
+    pub fn record_startup_attempt(
+        &self,
+        stage: &str,
+        status: &str,
+        error_excerpt: Option<&str>,
+    ) -> Result<()> {
+        let conn = self.open()?;
+        let now = Utc::now().to_rfc3339();
+        let excerpt = error_excerpt.map(|s| {
+            let mut value = s.to_string();
+            if value.len() > 280 {
+                value.truncate(280);
+            }
+            value
+        });
+
+        conn.execute(
+            r#"
+            INSERT INTO mother_startup_attempts (id, stage, status, error_excerpt, updated_at)
+            VALUES (1, ?1, ?2, ?3, ?4)
+            ON CONFLICT(id) DO UPDATE SET
+                stage = excluded.stage,
+                status = excluded.status,
+                error_excerpt = excluded.error_excerpt,
+                updated_at = excluded.updated_at
+            "#,
+            params![stage, status, excerpt, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn last_startup_failure(&self) -> Result<Option<StartupAttemptRecord>> {
+        let conn = self.open()?;
+        conn.query_row(
+            r#"
+            SELECT stage, status, error_excerpt, updated_at
+            FROM mother_startup_attempts
+            WHERE id = 1 AND status = 'failed'
+            "#,
+            [],
+            |row| {
+                Ok(StartupAttemptRecord {
+                    stage: row.get(0)?,
+                    status: row.get(1)?,
+                    error_excerpt: row.get(2)?,
+                    updated_at: row.get(3)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(Into::into)
     }
 
     pub fn list_registered_projects(&self) -> Result<Vec<ProjectRegistration>> {

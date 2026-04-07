@@ -687,6 +687,17 @@ fn show_status() -> Result<()> {
         if status.stale_pid_file {
             println!("   (stale PID file exists — run `patina mother stop` to clean up)");
         }
+        if let Some(failure) = status.startup_failure {
+            println!(
+                "   Last startup failure: stage '{}' at {}",
+                failure.stage, failure.updated_at
+            );
+            if let Some(error_excerpt) = failure.error_excerpt {
+                println!("   Error: {}", error_excerpt);
+            }
+            let log_path = paths::patina_home().join("mother/logs/mother.jsonl");
+            println!("   Logs: {}", log_path.display());
+        }
         println!("\n   Tip: broker source status lives under `patina mother sources`.");
         return Ok(());
     }

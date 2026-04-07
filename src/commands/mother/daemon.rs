@@ -368,10 +368,15 @@ pub struct DaemonOptions {
     pub port: u16,
 }
 
-fn run_startup_stage<T, F>(stage: &'static str, operation: F) -> Result<T>
+fn run_startup_stage<T, F>(
+    stage: &'static str,
+    startup_store: &patina::mother::KnowledgeRuntimeStore,
+    operation: F,
+) -> Result<T>
 where
     F: FnOnce() -> Result<T>,
 {
+    let _ = startup_store.record_startup_attempt(stage, "running", None);
     tracing::info!(
         stage,
         event = "startup.stage.begin",
@@ -389,6 +394,7 @@ where
             Ok(value)
         }
         Err(error) => {
+            let _ = startup_store.record_startup_attempt(stage, "failed", Some(&error.to_string()));
             tracing::warn!(
                 stage,
                 event = "startup.stage.failure",
@@ -396,6 +402,9 @@ where
                 error = %error,
                 "mother startup stage failure"
             );
+            let log_path = patina::paths::patina_home().join("mother/logs/mother.jsonl");
+            eprintln!("Mother startup failed at stage '{}' ({})", stage, error);
+            eprintln!("See logs: {}", log_path.display());
             Err(error)
         }
     }
@@ -412,13 +421,16 @@ impl Default for DaemonOptions {
 
 /// Run the mother daemon server
 pub fn run_server(options: DaemonOptions) -> Result<()> {
+    mother_crate::daemon_bootstrap_config::ensure_logging_initialized()?;
+
     // Build and load child registry
     let mut registry = ChildRegistry::new();
     let runtime = patina::mother::KnowledgeRuntimeStore::default();
+    let startup_store = patina::mother::KnowledgeRuntimeStore::default();
 
     // WASM children (discovered from ~/.patina/children/)
     let children_dir = patina::paths::child::children_dir();
-    run_startup_stage("child_discovery", || {
+    run_startup_stage("child_discovery", &startup_store, || {
         mother_crate::daemon_bootstrap::load_children_from_dir(
             &children_dir,
             &mut registry,
@@ -429,11 +441,13 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     })?;
 
     let daemon_host = DaemonHost;
-    run_startup_stage("registry_load_all", || registry.load_all(&daemon_host))?;
+    run_startup_stage("registry_load_all", &startup_store, || {
+        registry.load_all(&daemon_host)
+    })?;
 
     // TCP opt-in path (--host flag) — requires bearer token
     if let Some(ref host) = options.host {
-        let (state, router) = run_startup_stage("router_build", || {
+        let (state, router) = run_startup_stage("router_build", &startup_store, || {
             let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
             let state = Arc::new(ServerState::new(token, registry, runtime.clone()));
             let router = Arc::new(build_router(Arc::clone(&state), true));
@@ -450,7 +464,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
             wal_checkpoint_interval_secs:
                 mother_crate::daemon_bootstrap_config::DEFAULT_WAL_CHECKPOINT_INTERVAL_SECS,
         };
-        return run_startup_stage("transport_bootstrap", || {
+        return run_startup_stage("transport_bootstrap", &startup_store, || {
             mother_crate::daemon_bootstrap_config::start(
                 config.clone(),
                 mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
@@ -462,7 +476,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     }
 
     // Default: UDS path (no TCP, no token needed — file permissions are auth)
-    let (state, router) = run_startup_stage("router_build", || {
+    let (state, router) = run_startup_stage("router_build", &startup_store, || {
         let state = Arc::new(ServerState::new(String::new(), registry, runtime));
         let router = Arc::new(build_router(Arc::clone(&state), false));
         Ok((state, router))
@@ -477,7 +491,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         wal_checkpoint_interval_secs:
             mother_crate::daemon_bootstrap_config::DEFAULT_WAL_CHECKPOINT_INTERVAL_SECS,
     };
-    run_startup_stage("transport_bootstrap", || {
+    run_startup_stage("transport_bootstrap", &startup_store, || {
         mother_crate::daemon_bootstrap_config::start(
             config.clone(),
             mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
