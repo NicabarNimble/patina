@@ -162,17 +162,21 @@ pub enum ToysCommands {
     /// Check local toy WIT files against pinned versions
     Check,
 
-    /// Sync local toy WIT files against upstream WASI repos
+    /// Sync Preview 2 pin against WASI monorepo releases
     Sync,
 
-    /// Pull pinned upstream WIT for one toy
+    /// Pull pinned WIT for one toy or Preview 2 as a unit
     Pull {
         /// Toy id from registry (for example: wasi-http)
         name: Option<String>,
 
-        /// Pull all WASI toys at pinned versions
+        /// Pull all upstream toys at pinned versions (legacy alias)
         #[arg(long)]
         all: bool,
+
+        /// Pull WASI Preview 2 proposals as a unit
+        #[arg(long)]
+        preview2: bool,
     },
 }
 
@@ -346,14 +350,20 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
                 .context("`patina mother toys sync` must run in a Patina project")?;
             toys::toys_sync(&project_root)
         }
-        Some(MotherCommands::Toys(ToysCommands::Pull { name, all })) => {
+        Some(MotherCommands::Toys(ToysCommands::Pull {
+            name,
+            all,
+            preview2,
+        })) => {
             let project_root = SessionManager::find_project_root()
                 .context("`patina mother toys pull` must run in a Patina project")?;
-            if all {
-                toys::toys_pull_all(&project_root)
+            if preview2 || all {
+                toys::toys_pull_preview2(&project_root)
             } else {
                 let name = name.ok_or_else(|| {
-                    anyhow::anyhow!("`patina mother toys pull` needs a toy name, or use `--all`")
+                    anyhow::anyhow!(
+                        "`patina mother toys pull` needs a toy name, or use `--preview2`"
+                    )
                 })?;
                 toys::toys_pull(&project_root, &name)
             }
