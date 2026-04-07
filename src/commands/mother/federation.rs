@@ -60,13 +60,17 @@ impl FederationStatus {
 }
 
 pub struct FederationRuntime {
-    _connection: Option<duckdb::Connection>,
+    connection: Option<duckdb::Connection>,
     status: FederationStatus,
 }
 
 impl FederationRuntime {
     pub fn status(&self) -> &FederationStatus {
         &self.status
+    }
+
+    pub fn connection(&self) -> Option<&duckdb::Connection> {
+        self.connection.as_ref()
     }
 }
 
@@ -209,7 +213,7 @@ pub fn startup(runtime_store: &patina::mother::KnowledgeRuntimeStore) -> Federat
     );
 
     FederationRuntime {
-        _connection: Some(connection),
+        connection: Some(connection),
         status: FederationStatus {
             availability: FederationAvailability::Available,
             ducklake_loaded: true,
@@ -220,7 +224,7 @@ pub fn startup(runtime_store: &patina::mother::KnowledgeRuntimeStore) -> Federat
 
 fn unavailable(reason: String) -> FederationRuntime {
     FederationRuntime {
-        _connection: None,
+        connection: None,
         status: FederationStatus {
             availability: FederationAvailability::Unavailable { reason },
             ducklake_loaded: false,
