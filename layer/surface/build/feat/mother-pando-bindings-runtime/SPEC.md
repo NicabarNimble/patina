@@ -175,6 +175,56 @@ HTTP status matrix:
 The `error` field is a stable machine-readable code. `detail` is human-readable
 and may vary. `code` mirrors the HTTP status for consumers that parse the body.
 
+### Lifecycle HTTP endpoints and success schemas
+
+Three lifecycle routes, all `POST`, all require auth (Bearer on TCP, file
+permissions on UDS):
+
+**POST /api/lifecycle/load-pando**
+
+Request:
+```json
+{ "name": "slate" }
+```
+Success (200):
+```json
+{ "pando": "slate", "status": "loaded", "children_activated": 1 }
+```
+
+**POST /api/lifecycle/refresh**
+
+Request: `{}` or empty body
+
+Success (200):
+```json
+{
+  "pandos_loaded": 3,
+  "pandos_failed": 0,
+  "children_activated": 7,
+  "children_failed": 1,
+  "degraded": [{ "name": "lakehouse-catalog", "reason": "on_load failed" }]
+}
+```
+
+**POST /api/lifecycle/reload-child**
+
+Request:
+```json
+{ "name": "slate-manager" }
+```
+Success (200):
+```json
+{ "child": "slate-manager", "status": "reloaded", "previous_instance": "drained" }
+```
+Failure (200, reload failed but old instance still serving):
+```json
+{ "child": "slate-manager", "status": "reload_failed", "previous_instance": "active", "reason": "on_load failed: missing schema" }
+```
+
+Note: reload failure returns 200, not 500 — the operation completed
+deterministically (old instance kept active). The `status` field distinguishes
+success from failure. 500 is reserved for unexpected errors.
+
 ### CLI surfaces readiness in same phase as API
 
 `patina mother status` renders all readiness fields returned by the health
@@ -325,7 +375,7 @@ When this spec is complete, `mother-duckdb-ducklake-federation` can assume:
 
 - Reorder `daemon.rs:554` to move `child_discovery` and `registry_load_all`
   after transport bootstrap
-- Run Phase 2 in a background `tokio::spawn` (or thread) with progress reporting
+- Run Phase 2 in a background thread with progress reporting
 - Add readiness fields to `HealthDetails` and `HealthResponse`
 - Add per-child activation metrics
 - Test: health returns 200 before any child `on_load`
@@ -335,10 +385,11 @@ When this spec is complete, `mother-duckdb-ducklake-federation` can assume:
 - Add `MotherRuntime` trait to `mother/src/runtime.rs`
 - Implement `load_pando`, `refresh_pandos`, `reload_child`, `query_readiness`
 - Add per-child mutex for serialized lifecycle operations
-- Reload: load new → health check → swap or degrade
+- Reload: load new → on_load → swap if success, keep old if failure (see Resolved Decisions)
 - Add lifecycle metrics
-- Add HTTP endpoints for lifecycle operations
-- Add thin CLI commands
+- Add HTTP endpoints: `/api/lifecycle/load-pando`, `/api/lifecycle/refresh`,
+  `/api/lifecycle/reload-child` (schemas in Resolved Decisions)
+- Add thin CLI commands: `patina mother lifecycle load-pando`, `refresh`, `reload-child`
 
 ### Phase 3 — Proof and federation unblock
 
