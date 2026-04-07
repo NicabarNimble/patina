@@ -559,4 +559,38 @@ mod tests {
 
         assert_eq!(registry.knowledge_len(), 1);
     }
+
+    #[test]
+    fn startup_stage_failure_is_persisted_for_status_surface() {
+        let temp = tempfile::tempdir().unwrap();
+        let startup_store =
+            patina::mother::KnowledgeRuntimeStore::new(temp.path().join("state.db"));
+
+        let err = run_startup_stage::<(), _>("unit_test_stage", &startup_store, || {
+            anyhow::bail!("intentional startup failure")
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("intentional startup failure"));
+
+        let failure = startup_store.last_startup_failure().unwrap().unwrap();
+        assert_eq!(failure.stage, "unit_test_stage");
+        assert_eq!(failure.status, "failed");
+        assert!(failure
+            .error_excerpt
+            .as_deref()
+            .unwrap_or_default()
+            .contains("intentional startup failure"));
+    }
+
+    #[test]
+    fn successful_stage_does_not_create_failure_record() {
+        let temp = tempfile::tempdir().unwrap();
+        let startup_store =
+            patina::mother::KnowledgeRuntimeStore::new(temp.path().join("state.db"));
+
+        run_startup_stage("unit_test_stage_success", &startup_store, || Ok(())).unwrap();
+
+        assert!(startup_store.last_startup_failure().unwrap().is_none());
+    }
 }
