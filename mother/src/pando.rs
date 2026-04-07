@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -69,6 +70,31 @@ pub struct PandoManifest {
     pub composition: Option<PandoComposition>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PandoLifecycleStatus {
+    Registered,
+    Loaded,
+    Degraded,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PandoRegistryEntry {
+    pub name: String,
+    pub status: PandoLifecycleStatus,
+    pub commands: Vec<String>,
+    pub aliases: Vec<String>,
+    pub child_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct PandoRegistry {
+    pub pandos: Vec<PandoRegistryEntry>,
+}
+
 pub fn parse_manifest_path(path: &Path) -> Result<PandoManifest> {
     let raw = std::fs::read_to_string(path)
         .with_context(|| format!("reading pando manifest {}", path.display()))?;
@@ -95,6 +121,130 @@ pub fn parse_manifest_str(raw: &str) -> Result<PandoManifest> {
     }
 
     Ok(manifest)
+}
+
+pub fn build_registry(
+    pandos_root: &Path,
+    native_commands: &HashSet<String>,
+    aliases: &HashMap<String, String>,
+    available_children: &HashSet<String>,
+) -> Result<PandoRegistry> {
+    let mut entries = Vec::new();
+    let mut claimed_namespaces: HashMap<String, String> = HashMap::new();
+
+    if !pandos_root.exists() {
+        return Ok(PandoRegistry::default());
+    }
+
+    let mut dirs = std::fs::read_dir(pandos_root)
+        .with_context(|| format!("reading pando root {}", pandos_root.display()))?
+        .flatten()
+        .filter(|entry| entry.path().is_dir())
+        .collect::<Vec<_>>();
+    dirs.sort_by_key(|entry| entry.file_name());
+
+    for entry in dirs {
+        let dir_name = entry.file_name().to_string_lossy().to_string();
+        let manifest_path = entry.path().join("pando.toml");
+        if !manifest_path.exists() {
+            continue;
+        }
+
+        let manifest = match parse_manifest_path(&manifest_path) {
+            Ok(manifest) => manifest,
+            Err(error) => {
+                entries.push(PandoRegistryEntry {
+                    name: dir_name,
+                    status: PandoLifecycleStatus::Error,
+                    commands: Vec::new(),
+                    aliases: Vec::new(),
+                    child_count: 0,
+                    error: Some(error.to_string()),
+                });
+                continue;
+            }
+        };
+
+        let namespace = manifest.pando.name.clone();
+        if native_commands.contains(&namespace) {
+            entries.push(PandoRegistryEntry {
+                name: namespace.clone(),
+                status: PandoLifecycleStatus::Error,
+                commands: Vec::new(),
+                aliases: Vec::new(),
+                child_count: manifest.children.len(),
+                error: Some(format!("namespace '{}' is a native command", namespace)),
+            });
+            continue;
+        }
+
+        if let Some(owner) = aliases.get(&namespace) {
+            entries.push(PandoRegistryEntry {
+                name: namespace.clone(),
+                status: PandoLifecycleStatus::Error,
+                commands: Vec::new(),
+                aliases: Vec::new(),
+                child_count: manifest.children.len(),
+                error: Some(format!(
+                    "namespace '{}' is an alias for pando '{}'",
+                    namespace, owner
+                )),
+            });
+            continue;
+        }
+
+        if let Some(existing_owner) = claimed_namespaces.get(&namespace) {
+            entries.push(PandoRegistryEntry {
+                name: namespace.clone(),
+                status: PandoLifecycleStatus::Error,
+                commands: Vec::new(),
+                aliases: Vec::new(),
+                child_count: manifest.children.len(),
+                error: Some(format!(
+                    "namespace '{}' already registered by pando '{}'",
+                    namespace, existing_owner
+                )),
+            });
+            continue;
+        }
+
+        claimed_namespaces.insert(namespace.clone(), namespace.clone());
+
+        let mut commands = manifest.commands.keys().cloned().collect::<Vec<_>>();
+        commands.sort();
+
+        let loaded_children = manifest
+            .children
+            .iter()
+            .filter(|child| available_children.contains(&child.name))
+            .count();
+        let child_count = manifest.children.len();
+
+        let (status, error) = if loaded_children == child_count {
+            (PandoLifecycleStatus::Loaded, None)
+        } else if loaded_children > 0 {
+            (
+                PandoLifecycleStatus::Degraded,
+                Some("partial child availability".to_string()),
+            )
+        } else {
+            (
+                PandoLifecycleStatus::Error,
+                Some("no children available".to_string()),
+            )
+        };
+
+        entries.push(PandoRegistryEntry {
+            name: namespace,
+            status,
+            commands,
+            aliases: Vec::new(),
+            child_count,
+            error,
+        });
+    }
+
+    Ok(PandoRegistry { pandos: entries })
 }
 
 #[cfg(test)]
@@ -179,5 +329,138 @@ name = "slate-manager"
         assert!(err
             .chain()
             .any(|cause| cause.to_string().contains("unknown field")));
+    }
+
+    #[test]
+    fn registry_rejects_native_and_alias_collisions() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+
+        std::fs::create_dir_all(root.join("native-collision")).unwrap();
+        std::fs::write(
+            root.join("native-collision/pando.toml"),
+            r#"
+[pando]
+name = "init"
+description = "collides with native"
+version = "0.1.0"
+
+[[children]]
+name = "slate-manager"
+"#,
+        )
+        .unwrap();
+
+        std::fs::create_dir_all(root.join("alias-collision")).unwrap();
+        std::fs::write(
+            root.join("alias-collision/pando.toml"),
+            r#"
+[pando]
+name = "spec"
+description = "collides with alias"
+version = "0.1.0"
+
+[[children]]
+name = "slate-manager"
+"#,
+        )
+        .unwrap();
+
+        let native = HashSet::from(["init".to_string()]);
+        let aliases = HashMap::from([("spec".to_string(), "slate".to_string())]);
+        let available = HashSet::from(["slate-manager".to_string()]);
+
+        let registry = build_registry(root, &native, &aliases, &available).unwrap();
+        assert_eq!(registry.pandos.len(), 2);
+        assert!(registry
+            .pandos
+            .iter()
+            .any(|entry| entry.error.as_deref() == Some("namespace 'init' is a native command")));
+        assert!(registry.pandos.iter().any(|entry| {
+            entry.error.as_deref() == Some("namespace 'spec' is an alias for pando 'slate'")
+        }));
+    }
+
+    #[test]
+    fn registry_tracks_lifecycle_states() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+
+        std::fs::create_dir_all(root.join("loaded")).unwrap();
+        std::fs::write(
+            root.join("loaded/pando.toml"),
+            r#"
+[pando]
+name = "loaded"
+description = "all children available"
+version = "0.1.0"
+
+[[children]]
+name = "a"
+"#,
+        )
+        .unwrap();
+
+        std::fs::create_dir_all(root.join("degraded")).unwrap();
+        std::fs::write(
+            root.join("degraded/pando.toml"),
+            r#"
+[pando]
+name = "degraded"
+description = "partial child availability"
+version = "0.1.0"
+
+[[children]]
+name = "a"
+
+[[children]]
+name = "b"
+"#,
+        )
+        .unwrap();
+
+        std::fs::create_dir_all(root.join("error")).unwrap();
+        std::fs::write(
+            root.join("error/pando.toml"),
+            r#"
+[pando]
+name = "error"
+description = "no children available"
+version = "0.1.0"
+
+[[children]]
+name = "missing"
+"#,
+        )
+        .unwrap();
+
+        let registry = build_registry(
+            root,
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashSet::from(["a".to_string()]),
+        )
+        .unwrap();
+
+        let loaded = registry
+            .pandos
+            .iter()
+            .find(|entry| entry.name == "loaded")
+            .unwrap();
+        assert_eq!(loaded.status, PandoLifecycleStatus::Loaded);
+
+        let degraded = registry
+            .pandos
+            .iter()
+            .find(|entry| entry.name == "degraded")
+            .unwrap();
+        assert_eq!(degraded.status, PandoLifecycleStatus::Degraded);
+
+        let error = registry
+            .pandos
+            .iter()
+            .find(|entry| entry.name == "error")
+            .unwrap();
+        assert_eq!(error.status, PandoLifecycleStatus::Error);
     }
 }
