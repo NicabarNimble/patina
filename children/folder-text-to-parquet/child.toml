@@ -4,7 +4,7 @@ kind = "child"
 role = "app"
 
 [needs]
-toys = ["log", "state", "events", "measure"]
+toys = ["logging", "keyvalue", "events", "messaging", "measure", "filesystem"]
 
 [needs.scopes.events]
 subscribe = ["file.found"]

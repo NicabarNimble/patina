@@ -1,13 +1,13 @@
-package wasi:http@0.2.6;
+package wasi:http@0.2.8;
 
 /// This interface defines all of the types and methods for implementing
 /// HTTP Requests and Responses, both incoming and outgoing, as well as
 /// their headers, trailers, and bodies.
 interface types {
-  use wasi:clocks/monotonic-clock@0.2.6.{duration};
-  use wasi:io/streams@0.2.6.{input-stream, output-stream};
-  use wasi:io/error@0.2.6.{error as io-error};
-  use wasi:io/poll@0.2.6.{pollable};
+  use wasi:clocks/monotonic-clock@0.2.8.{duration};
+  use wasi:io/streams@0.2.8.{input-stream, output-stream};
+  use wasi:io/error@0.2.8.{error as io-error};
+  use wasi:io/poll@0.2.8.{pollable};
 
   /// This type corresponds to HTTP standard Methods.
   variant method {

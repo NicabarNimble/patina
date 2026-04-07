@@ -175,6 +175,61 @@ mod bindings {
         wasi::keyvalue::store::Error::Other(error.to_string())
     }
 
+    fn json_value_to_sql_data(value: serde_json::Value) -> wasi::sql::readwrite::DataType {
+        match value {
+            serde_json::Value::Null => wasi::sql::readwrite::DataType::Null,
+            serde_json::Value::Bool(v) => wasi::sql::readwrite::DataType::Flag(v),
+            serde_json::Value::Number(number) => {
+                if let Some(v) = number.as_i64() {
+                    if (i32::MIN as i64..=i32::MAX as i64).contains(&v) {
+                        wasi::sql::readwrite::DataType::Int32(v as i32)
+                    } else {
+                        wasi::sql::readwrite::DataType::Int64(v)
+                    }
+                } else {
+                    wasi::sql::readwrite::DataType::Float64(number.as_f64().unwrap_or_default())
+                }
+            }
+            serde_json::Value::String(v) => wasi::sql::readwrite::DataType::Text(v),
+            serde_json::Value::Array(values) => wasi::sql::readwrite::DataType::Text(
+                serde_json::to_string(&values).unwrap_or_default(),
+            ),
+            serde_json::Value::Object(values) => wasi::sql::readwrite::DataType::Text(
+                serde_json::to_string(&values).unwrap_or_default(),
+            ),
+        }
+    }
+
+    fn decode_sql_rows(result: &str) -> Vec<wasi::sql::readwrite::Row> {
+        let Ok(parsed) = serde_json::from_str::<serde_json::Value>(result) else {
+            return vec![wasi::sql::readwrite::Row {
+                values: vec![wasi::sql::readwrite::DataType::Text(result.to_string())],
+            }];
+        };
+        let Some(rows) = parsed.as_array() else {
+            return vec![wasi::sql::readwrite::Row {
+                values: vec![json_value_to_sql_data(parsed)],
+            }];
+        };
+        rows.iter()
+            .map(|row| {
+                let mut values = Vec::new();
+                if let Some(object) = row.as_object() {
+                    let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
+                    keys.sort_unstable();
+                    for key in keys {
+                        if let Some(value) = object.get(key) {
+                            values.push(json_value_to_sql_data(value.clone()));
+                        }
+                    }
+                } else {
+                    values.push(json_value_to_sql_data(row.clone()));
+                }
+                wasi::sql::readwrite::Row { values }
+            })
+            .collect()
+    }
+
     impl wasi::keyvalue::store::Host for HostState {
         fn open(
             &mut self,
@@ -366,9 +421,7 @@ mod bindings {
             let stmt = self.wasi_table.get(&s_rep).map_err(|e| e.to_string())?;
 
             let result = crate::child::toy_host::v2::store_query(&conn.conn, &stmt.query)?;
-            Ok(vec![wasi::sql::readwrite::Row {
-                values: vec![wasi::sql::readwrite::DataType::Text(result)],
-            }])
+            Ok(decode_sql_rows(&result))
         }
 
         fn exec(

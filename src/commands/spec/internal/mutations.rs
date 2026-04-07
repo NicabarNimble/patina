@@ -42,18 +42,18 @@ const CANONICAL_TOY_MAPPINGS: &[CanonicalToyMapping] = &[
     },
     CanonicalToyMapping {
         manifest: "state",
-        runtime: "state_enabled",
-        aliases: &[],
+        runtime: "host_keyvalue",
+        aliases: &["keyvalue"],
     },
     CanonicalToyMapping {
-        manifest: "layer",
-        runtime: "host_layer",
-        aliases: &[],
+        manifest: "filesystem",
+        runtime: "host_filesystem",
+        aliases: &["layer", "layer-fs", "fs"],
     },
     CanonicalToyMapping {
-        manifest: "layer-fs",
-        runtime: "layer_fs",
-        aliases: &["fs"],
+        manifest: "sql",
+        runtime: "host_sql",
+        aliases: &["store"],
     },
     CanonicalToyMapping {
         manifest: "git",
@@ -101,11 +101,6 @@ const CANONICAL_TOY_MAPPINGS: &[CanonicalToyMapping] = &[
         aliases: &[],
     },
     CanonicalToyMapping {
-        manifest: "emit",
-        runtime: "host_emit",
-        aliases: &[],
-    },
-    CanonicalToyMapping {
         manifest: "session",
         runtime: "toys.session",
         aliases: &[],
@@ -114,6 +109,11 @@ const CANONICAL_TOY_MAPPINGS: &[CanonicalToyMapping] = &[
         manifest: "events",
         runtime: "subscribed_streams",
         aliases: &[],
+    },
+    CanonicalToyMapping {
+        manifest: "messaging",
+        runtime: "toys.messaging",
+        aliases: &["emit"],
     },
     CanonicalToyMapping {
         manifest: "ingress",

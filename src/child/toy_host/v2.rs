@@ -1,4 +1,7 @@
-use crate::connect::{ConnectionRecord, InjectionStrategy};
+use crate::connect::{
+    AuthConfig, AuthMethod, ConnectionIdentity, ConnectionRecord, ConnectionScope,
+    InjectionStrategy,
+};
 use crate::mother::KnowledgeRuntimeStore;
 
 #[allow(dead_code)]
@@ -25,7 +28,17 @@ pub struct ConnectionHandle {
 }
 
 pub fn connect_resolve(name: &str) -> Result<ConnectionHandle, String> {
-    let record = crate::connect::load(name).map_err(|e| e.to_string())?;
+    let record = match crate::connect::load(name) {
+        Ok(record) => record,
+        Err(error) if name == "default" => {
+            tracing::debug!(
+                "connect_resolve default fallback engaged (connection not found: {})",
+                error
+            );
+            local_default_connection_record()
+        }
+        Err(error) => return Err(error.to_string()),
+    };
     let domain = record
         .auth
         .allowed_domains
@@ -37,6 +50,34 @@ pub fn connect_resolve(name: &str) -> Result<ConnectionHandle, String> {
         base_url: format!("https://{}", domain),
         record,
     })
+}
+
+fn local_default_connection_record() -> ConnectionRecord {
+    let now = chrono::Utc::now().to_rfc3339();
+    ConnectionRecord {
+        schema_version: 0,
+        identity: ConnectionIdentity {
+            name: "default".to_string(),
+            provider: "local".to_string(),
+            account_id: None,
+            auth_method: AuthMethod::Manual,
+            scopes: vec![],
+            is_default: true,
+            created_at: now.clone(),
+            updated_at: now,
+            last_validated: None,
+            scope: ConnectionScope::Global,
+        },
+        auth: AuthConfig {
+            injection: InjectionStrategy::InProcess,
+            secret_ref: "local:default".to_string(),
+            child: String::new(),
+            allowed_domains: vec!["local.patina".to_string()],
+            refresh_capable: false,
+            expires_at: None,
+            last_error: None,
+        },
+    }
 }
 
 #[allow(dead_code)]

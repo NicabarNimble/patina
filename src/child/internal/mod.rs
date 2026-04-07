@@ -75,6 +75,10 @@ impl ChildKind {
         match self {
             Self::Child => &[
                 "host_log",
+                "host_layer",
+                "host_filesystem",
+                "host_keyvalue",
+                "host_sql",
                 "host_query",
                 "host_http",
                 "host_measure",
@@ -137,6 +141,9 @@ impl ChildRole {
 pub(crate) const AUTO_GRANTED_CAPABILITIES: &[&str] = &[
     "host_log",
     "host_layer",
+    "host_filesystem",
+    "host_keyvalue",
+    "host_sql",
     "host_measure",
     "host_emit",
     "host_http",
@@ -577,12 +584,11 @@ impl ChildManifest {
             ("logging", "host_log"),
             ("query", "host_query"),
             ("http", "host_http"),
-            ("messaging", "host_emit"),
             ("emit", "host_emit"),
             ("measure", "host_measure"),
-            ("keyvalue", "host_layer"),
-            ("filesystem", "host_layer"),
-            ("sql", "host_layer"),
+            ("keyvalue", "host_keyvalue"),
+            ("filesystem", "host_filesystem"),
+            ("sql", "host_sql"),
             ("layer", "host_layer"),
         ] {
             if needs_toys.iter().any(|entry| entry == toy)

@@ -169,6 +169,10 @@ fn read_catalog_row_count() -> Result<u64, String> {
     }
 }
 
+fn catalog_entry_key(file_path: &str) -> String {
+    format!("catalog:file:{}", file_path)
+}
+
 impl LakehouseCatalogChild {
     fn register_written(&mut self, payload: &str) -> Result<String, String> {
         let payload_value = parse_payload(payload)?;
@@ -223,6 +227,15 @@ impl LakehouseCatalogChild {
             registered += 1;
         }
 
+        for entry in &entries {
+            state.put(
+                &catalog_entry_key(&entry.file_path),
+                &serde_json::to_string(entry).map_err(|e| e.to_string())?,
+            )?;
+        }
+
+        let catalog_keys = state.list_prefix("catalog:file:");
+
         let sql_inserted = append_catalog_entries(&entries)?;
         let catalog_rows = read_catalog_row_count()?;
 
@@ -238,6 +251,7 @@ impl LakehouseCatalogChild {
             "registered_files": registered,
             "sql_inserted_rows": sql_inserted,
             "entries": entries,
+            "catalog_keys": catalog_keys,
             "catalog_rows": catalog_rows,
             "schema_version": next_schema.version,
             "schema": next_schema,
