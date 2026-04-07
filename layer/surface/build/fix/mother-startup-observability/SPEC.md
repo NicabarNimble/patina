@@ -20,27 +20,27 @@ exit_criteria:
 
   - id: mso1-startup-stage-events
     text: "Mother startup emits structured stage events (begin/success/failure + duration) for pre-bootstrap phases: child discovery, child registration, child on_load, registry load_all, router build, transport bootstrap. Events are additive and logged through existing tracing JSON logs."
-    checked: false
+    checked: true
 
   - id: mso2-child-load-granularity
     text: "Per-child startup observability exists for discovery and on_load boundaries: child name, wasm path, manifest path, and elapsed time are logged. A blocked child can be identified from logs without a debugger."
-    checked: false
+    checked: true
 
   - id: mso3-prebootstrap-failure-surface
     text: "If startup fails before PID/socket creation, `patina mother start` prints a concise failure summary pointing to log location and last startup stage. No silent hangs."
-    checked: false
+    checked: true
 
   - id: mso4-additive-status-introspection
     text: "`patina mother status` includes additive startup diagnostics when daemon is not running but recent startup attempts failed (last stage, timestamp, error excerpt). Existing status output remains backward compatible."
-    checked: false
+    checked: true
 
   - id: mso5-no-telemetry-replacement
     text: "Existing telemetry surfaces are preserved: `mother.jsonl` tracing logs, `/health`, heartbeat logs, and `measure.metric` eventlog writes. New startup observability adds fields/events but does not replace sinks or formats."
-    checked: false
+    checked: true
 
   - id: mso6-regression-proof
     text: "`cargo check --workspace -q` and `cargo test -q --lib` pass. Added tests cover startup stage emission and pre-bootstrap failure reporting behavior."
-    checked: false
+    checked: true
 ---
 # fix: Mother Startup Observability
 
