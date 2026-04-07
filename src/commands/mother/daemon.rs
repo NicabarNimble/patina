@@ -368,6 +368,39 @@ pub struct DaemonOptions {
     pub port: u16,
 }
 
+fn run_startup_stage<T, F>(stage: &'static str, operation: F) -> Result<T>
+where
+    F: FnOnce() -> Result<T>,
+{
+    tracing::info!(
+        stage,
+        event = "startup.stage.begin",
+        "mother startup stage begin"
+    );
+    let started = Instant::now();
+    match operation() {
+        Ok(value) => {
+            tracing::info!(
+                stage,
+                event = "startup.stage.success",
+                duration_ms = started.elapsed().as_millis() as u64,
+                "mother startup stage success"
+            );
+            Ok(value)
+        }
+        Err(error) => {
+            tracing::warn!(
+                stage,
+                event = "startup.stage.failure",
+                duration_ms = started.elapsed().as_millis() as u64,
+                error = %error,
+                "mother startup stage failure"
+            );
+            Err(error)
+        }
+    }
+}
+
 impl Default for DaemonOptions {
     fn default() -> Self {
         Self {
@@ -385,21 +418,27 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
 
     // WASM children (discovered from ~/.patina/children/)
     let children_dir = patina::paths::child::children_dir();
-    mother_crate::daemon_bootstrap::load_children_from_dir(
-        &children_dir,
-        &mut registry,
-        &runtime,
-        super::loader::load_wasm_child,
-    );
+    run_startup_stage("child_discovery", || {
+        mother_crate::daemon_bootstrap::load_children_from_dir(
+            &children_dir,
+            &mut registry,
+            &runtime,
+            super::loader::load_wasm_child,
+        );
+        Ok(())
+    })?;
 
     let daemon_host = DaemonHost;
-    registry.load_all(&daemon_host)?;
+    run_startup_stage("registry_load_all", || registry.load_all(&daemon_host))?;
 
     // TCP opt-in path (--host flag) — requires bearer token
     if let Some(ref host) = options.host {
-        let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
-        let state = Arc::new(ServerState::new(token, registry, runtime.clone()));
-        let router = Arc::new(build_router(Arc::clone(&state), true));
+        let (state, router) = run_startup_stage("router_build", || {
+            let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
+            let state = Arc::new(ServerState::new(token, registry, runtime.clone()));
+            let router = Arc::new(build_router(Arc::clone(&state), true));
+            Ok((state, router))
+        })?;
         let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
             transport: mother_crate::daemon_bootstrap_config::TransportMode::TcpHttp {
                 host: host.clone(),
@@ -411,18 +450,23 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
             wal_checkpoint_interval_secs:
                 mother_crate::daemon_bootstrap_config::DEFAULT_WAL_CHECKPOINT_INTERVAL_SECS,
         };
-        return mother_crate::daemon_bootstrap_config::start(
-            config,
-            mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
-                registry: Arc::clone(&state.registry),
-                router,
-            },
-        );
+        return run_startup_stage("transport_bootstrap", || {
+            mother_crate::daemon_bootstrap_config::start(
+                config.clone(),
+                mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
+                    registry: Arc::clone(&state.registry),
+                    router: Arc::clone(&router),
+                },
+            )
+        });
     }
 
     // Default: UDS path (no TCP, no token needed — file permissions are auth)
-    let state = Arc::new(ServerState::new(String::new(), registry, runtime));
-    let router = Arc::new(build_router(Arc::clone(&state), false));
+    let (state, router) = run_startup_stage("router_build", || {
+        let state = Arc::new(ServerState::new(String::new(), registry, runtime));
+        let router = Arc::new(build_router(Arc::clone(&state), false));
+        Ok((state, router))
+    })?;
     let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
         transport: mother_crate::daemon_bootstrap_config::TransportMode::UdsHttp {
             run_dir: patina::paths::serve::run_dir(),
@@ -433,13 +477,15 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         wal_checkpoint_interval_secs:
             mother_crate::daemon_bootstrap_config::DEFAULT_WAL_CHECKPOINT_INTERVAL_SECS,
     };
-    mother_crate::daemon_bootstrap_config::start(
-        config,
-        mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
-            registry: Arc::clone(&state.registry),
-            router,
-        },
-    )
+    run_startup_stage("transport_bootstrap", || {
+        mother_crate::daemon_bootstrap_config::start(
+            config.clone(),
+            mother_crate::daemon_bootstrap_config::DaemonBootstrapRuntime {
+                registry: Arc::clone(&state.registry),
+                router: Arc::clone(&router),
+            },
+        )
+    })
 }
 
 #[cfg(test)]
