@@ -23,6 +23,11 @@ jobs:
     - name: Install Rust toolchain
       run: rustup show
 
+    # Prebuilt libduckdb installed in all CI jobs as system fallback. Default builds
+    # also use duckdb-bundled feature (compiles from C++ source), but prebuilt ensures
+    # non-bundled paths link correctly. Keep version aligned with Cargo.toml duckdb crate.
+    # Upgrade runbook: bump URL version in all 4 jobs + crate version in Cargo.toml
+    # (see version encoding note there). Verify with cargo check --workspace -q.
     - name: Install DuckDB
       run: |
         wget -q https://github.com/duckdb/duckdb/releases/download/v1.5.1/libduckdb-linux-amd64.zip
@@ -96,6 +101,7 @@ jobs:
     - name: Install Rust toolchain
       run: rustup show
 
+    # Version must match lint job — see upgrade runbook comment there.
     - name: Install DuckDB
       run: |
         wget -q https://github.com/duckdb/duckdb/releases/download/v1.5.1/libduckdb-linux-amd64.zip
@@ -178,6 +184,7 @@ jobs:
     - name: Install Rust toolchain
       run: rustup show
 
+    # Version must match lint job — see upgrade runbook comment there.
     - name: Install DuckDB
       run: |
         wget -q https://github.com/duckdb/duckdb/releases/download/v1.5.1/libduckdb-linux-amd64.zip
@@ -227,6 +234,7 @@ jobs:
     - name: Install Rust toolchain
       run: rustup show
 
+    # Version must match lint job — see upgrade runbook comment there.
     - name: Install DuckDB
       run: |
         wget -q https://github.com/duckdb/duckdb/releases/download/v1.5.1/libduckdb-linux-amd64.zip

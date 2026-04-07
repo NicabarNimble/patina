@@ -16,7 +16,7 @@ categories = ["command-line-utilities", "development-tools"]
 [features]
 default = ["bundled-doctor", "duckdb-bundled"]
 bundled-doctor = []  # Compiled-in doctor fallback — disable for smaller binary (WASM-only doctor)
-duckdb-bundled = ["duckdb/bundled"]  # Compile DuckDB C++ from source — disable when system libduckdb is available
+duckdb-bundled = ["duckdb/bundled"]  # Compile DuckDB from C++ source (~1.3GB debug). Default on for local dev (no system lib needed). CI always installs prebuilt libduckdb as a system fallback; bundled feature compiles from source regardless but prebuilt ensures non-bundled paths also link.
 dev = []  # Developer commands - not included in user builds
 
 [dependencies]
@@ -93,7 +93,12 @@ usearch = "2.21"                                                     # Fast vect
 safetensors = "0.7"                                                  # Standard weight format (MLX-compatible, HuggingFace)
 zerocopy = "0.7"                                                     # Efficient vector byte conversion
 regex = "1.12.2"
-duckdb = { version = "1.10501" }
+# DuckDB Rust crate version encoding (changed at v1.5.0):
+#   Before v1.5.0: crate version = DuckDB version (e.g. 1.4.4 = DuckDB v1.4.4)
+#   From v1.5.0:   1.{MAJOR}{MINOR_2d}{PATCH_2d}.{crate_patch} (e.g. 1.10501.0 = DuckDB v1.5.1)
+# To upgrade: find new crate version on crates.io, update here AND update CI prebuilt
+#   in .github/workflows/test.yml (wget URL) to the matching DuckDB release.
+duckdb = { version = "1.10501" }  # DuckDB v1.5.1
 
 # WASM plugin runtime
 wasmtime = { version = "=41", default-features = false, features = [
