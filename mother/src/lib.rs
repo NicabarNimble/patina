@@ -13,6 +13,7 @@ pub mod http_daemon;
 pub mod http_routes;
 pub mod lifecycle;
 pub mod microserver;
+pub mod pando;
 pub mod registry;
 pub mod runtime;
 pub mod secrets_authority_api;
