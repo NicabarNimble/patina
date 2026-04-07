@@ -1,8 +1,8 @@
 //! Child registry — loads, iterates, and provides access to children.
 //!
-//! Immutable after setup: children are registered before the daemon
-//! starts accepting connections. Individual children use per-child
-//! RwLock for concurrent handle() vs exclusive tick().
+//! Children can be registered during startup warmup while the daemon
+//! is already accepting control-plane connections. Individual children
+//! use per-child RwLock for concurrent handle() vs exclusive tick().
 
 use anyhow::Result;
 use chrono::Utc;
@@ -17,7 +17,14 @@ use crate::{
 
 /// Registry of Mother's children.
 pub struct ChildRegistry {
-    children: Vec<Arc<RwLock<Box<dyn Child>>>>,
+    children: RwLock<Vec<Arc<RwLock<Box<dyn Child>>>>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChildActivationResult {
+    pub name: String,
+    pub duration_ms: u64,
+    pub error: Option<String>,
 }
 
 impl Default for ChildRegistry {
@@ -28,7 +35,16 @@ impl Default for ChildRegistry {
 
 impl ChildRegistry {
     pub fn new() -> Self {
-        Self { children: vec![] }
+        Self {
+            children: RwLock::new(vec![]),
+        }
+    }
+
+    fn children_snapshot(&self) -> Vec<Arc<RwLock<Box<dyn Child>>>> {
+        self.children
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     fn read_project_uid(project_root: &std::path::Path) -> Option<String> {
@@ -164,17 +180,22 @@ impl ChildRegistry {
         response
     }
 
-    pub fn register_knowledge(&mut self, child: Box<dyn Child>) -> Result<()> {
+    pub fn register_knowledge(&self, child: Box<dyn Child>) -> Result<()> {
         let name = child.name().to_string();
         if self.child_name_exists(&name) {
             anyhow::bail!("duplicate child name: {}", name);
         }
-        self.children.push(Arc::new(RwLock::new(child)));
+        self.children
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(Arc::new(RwLock::new(child)));
         Ok(())
     }
 
     fn child_name_exists(&self, name: &str) -> bool {
         self.children
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
             .iter()
             .any(|child| child.read().unwrap_or_else(|e| e.into_inner()).name() == name)
     }
@@ -182,7 +203,7 @@ impl ChildRegistry {
     /// Load all children — calls on_load() for each in order.
     /// Fails fast if any child fails to load.
     pub fn load_all(&self, host: &dyn MotherHost) -> Result<()> {
-        for entry in &self.children {
+        for entry in self.children_snapshot() {
             let mut child = entry.write().unwrap_or_else(|e| e.into_inner());
             let name = child.name().to_string();
             tracing::info!(event = "startup.child.onload.begin", child = %name, "mother child on_load begin");
@@ -209,12 +230,56 @@ impl ChildRegistry {
         Ok(())
     }
 
+    pub fn activate_all(&self, host: &dyn MotherHost) -> Vec<ChildActivationResult> {
+        let mut results = Vec::new();
+        for entry in self.children_snapshot() {
+            let mut child = entry.write().unwrap_or_else(|e| e.into_inner());
+            let name = child.name().to_string();
+            tracing::info!(event = "startup.child.onload.begin", child = %name, "mother child on_load begin");
+            let started = Instant::now();
+            host.log(&name, "loading");
+            let result = child.on_load(host);
+            let duration_ms = started.elapsed().as_millis() as u64;
+            match result {
+                Ok(()) => {
+                    host.log(&name, "loaded");
+                    tracing::info!(
+                        event = "startup.child.onload.success",
+                        child = %name,
+                        duration_ms,
+                        "mother child on_load success"
+                    );
+                    results.push(ChildActivationResult {
+                        name,
+                        duration_ms,
+                        error: None,
+                    });
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        event = "startup.child.onload.failure",
+                        child = %name,
+                        duration_ms,
+                        %error,
+                        "mother child on_load failed"
+                    );
+                    results.push(ChildActivationResult {
+                        name,
+                        duration_ms,
+                        error: Some(error.to_string()),
+                    });
+                }
+            }
+        }
+        results
+    }
+
     pub fn run_knowledge_cycles(
         &self,
         runtime: &KnowledgeRuntimeStore,
         lease_owner: &str,
     ) -> Result<()> {
-        for entry in &self.children {
+        for entry in self.children_snapshot() {
             let mut child = entry.write().unwrap_or_else(|e| e.into_inner());
             let plugin_name = child.name().to_string();
             let run_id = runtime.record_run_start(&plugin_name)?;
@@ -276,7 +341,7 @@ impl ChildRegistry {
     /// Health check all children.
     pub fn health_all(&self) -> Vec<(String, ChildHealth)> {
         let mut statuses = Vec::new();
-        for child in &self.children {
+        for child in self.children_snapshot() {
             let child = match child.read() {
                 Ok(child) => child,
                 Err(_) => continue,
@@ -288,8 +353,8 @@ impl ChildRegistry {
 
     /// Route a request to a child by name.
     pub fn handle(&self, child_name: &str, request: &ChildRequest) -> Result<ChildResponse> {
-        if let Some(child) = self
-            .children
+        let children = self.children_snapshot();
+        if let Some(child) = children
             .iter()
             .find(|child| child.read().unwrap_or_else(|e| e.into_inner()).name() == child_name)
         {
@@ -301,8 +366,8 @@ impl ChildRegistry {
     }
 
     pub fn health(&self, child_name: &str) -> Result<ChildHealth> {
-        if let Some(child) = self
-            .children
+        let children = self.children_snapshot();
+        if let Some(child) = children
             .iter()
             .find(|child| child.read().unwrap_or_else(|e| e.into_inner()).name() == child_name)
         {
@@ -314,7 +379,10 @@ impl ChildRegistry {
     }
 
     pub fn knowledge_len(&self) -> usize {
-        self.children.len()
+        self.children
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .len()
     }
 }
 
@@ -425,7 +493,7 @@ mod tests {
 
     #[test]
     fn register_unique_names() {
-        let mut registry = ChildRegistry::new();
+        let registry = ChildRegistry::new();
         assert!(registry
             .register_knowledge(StubChild::boxed("alpha"))
             .is_ok());
@@ -437,7 +505,7 @@ mod tests {
 
     #[test]
     fn register_duplicate_name_rejected() {
-        let mut registry = ChildRegistry::new();
+        let registry = ChildRegistry::new();
         assert!(registry
             .register_knowledge(StubChild::boxed("alpha"))
             .is_ok());
@@ -454,7 +522,7 @@ mod tests {
 
     #[test]
     fn observed_handle_emits_success_metrics() {
-        let mut registry = ChildRegistry::new();
+        let registry = ChildRegistry::new();
         registry
             .register_knowledge(StubChild::boxed("observed-success"))
             .unwrap();
@@ -479,7 +547,7 @@ mod tests {
 
     #[test]
     fn observed_handle_emits_error_metrics() {
-        let mut registry = ChildRegistry::new();
+        let registry = ChildRegistry::new();
         registry
             .register_knowledge(ErrorStubChild::boxed("observed-error"))
             .unwrap();

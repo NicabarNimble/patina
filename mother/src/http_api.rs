@@ -74,6 +74,16 @@ pub struct HealthDetails {
     pub federation_projects_attached: usize,
     pub federation_projects_failed: usize,
     pub federation_projects_stale: usize,
+    pub control_plane_ready: bool,
+    pub children_ready_count: usize,
+    pub children_total: usize,
+    pub children_degraded: Vec<DegradedChild>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DegradedChild {
+    pub name: String,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone)]
@@ -104,6 +114,16 @@ struct HealthResponse {
     federation_projects_attached: usize,
     federation_projects_failed: usize,
     federation_projects_stale: usize,
+    control_plane_ready: bool,
+    children_ready_count: usize,
+    children_total: usize,
+    children_degraded: Vec<DegradedChildJson>,
+}
+
+#[derive(Serialize)]
+struct DegradedChildJson {
+    name: String,
+    reason: String,
 }
 
 #[derive(Serialize)]
@@ -173,6 +193,10 @@ pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
         federation_projects_attached: 0,
         federation_projects_failed: 0,
         federation_projects_stale: 0,
+        control_plane_ready: false,
+        children_ready_count: 0,
+        children_total: 0,
+        children_degraded: Vec::new(),
     });
 
     let active_project_databases =
@@ -183,6 +207,14 @@ pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
                 patina_db_bytes: db.patina_db_bytes,
                 runtime_db_bytes: db.runtime_db_bytes,
             });
+    let children_degraded = details
+        .children_degraded
+        .iter()
+        .map(|entry| DegradedChildJson {
+            name: entry.name.clone(),
+            reason: entry.reason.clone(),
+        })
+        .collect();
 
     HttpResponse::json(
         200,
@@ -202,6 +234,10 @@ pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
             federation_projects_attached: details.federation_projects_attached,
             federation_projects_failed: details.federation_projects_failed,
             federation_projects_stale: details.federation_projects_stale,
+            control_plane_ready: details.control_plane_ready,
+            children_ready_count: details.children_ready_count,
+            children_total: details.children_total,
+            children_degraded,
         },
     )
 }
@@ -499,6 +535,13 @@ mod tests {
                 federation_projects_attached: 2,
                 federation_projects_failed: 1,
                 federation_projects_stale: 1,
+                control_plane_ready: true,
+                children_ready_count: 1,
+                children_total: 2,
+                children_degraded: vec![DegradedChild {
+                    name: "catalog".to_string(),
+                    reason: "on_load failed".to_string(),
+                }],
             })
         }
 
@@ -634,6 +677,23 @@ mod tests {
             json.get("federation_projects_failed")
                 .and_then(|v| v.as_u64()),
             Some(1)
+        );
+        assert_eq!(
+            json.get("control_plane_ready").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            json.get("children_ready_count").and_then(|v| v.as_u64()),
+            Some(1)
+        );
+        assert_eq!(json.get("children_total").and_then(|v| v.as_u64()), Some(2));
+        assert_eq!(
+            json.get("children_degraded")
+                .and_then(|v| v.as_array())
+                .and_then(|items| items.first())
+                .and_then(|entry| entry.get("name"))
+                .and_then(|v| v.as_str()),
+            Some("catalog")
         );
     }
 

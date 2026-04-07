@@ -942,7 +942,7 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
             .instantiate_child(&catalog_component, &catalog_manifest, None)
             .unwrap();
 
-        let mut registry = ChildRegistry::new();
+        let registry = ChildRegistry::new();
         registry.register_knowledge(monitor_child).unwrap();
         registry.register_knowledge(extractor_child).unwrap();
         registry.register_knowledge(enforcer_child).unwrap();

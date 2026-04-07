@@ -771,6 +771,17 @@ fn show_status() -> Result<()> {
                 }
             );
             println!("   Registered projects: {}", health.registered_projects);
+            println!("   Control plane ready: {}", health.control_plane_ready);
+            println!(
+                "   Children readiness: {}/{}",
+                health.children_ready_count, health.children_total
+            );
+            if !health.children_degraded.is_empty() {
+                println!("   Children degraded:");
+                for entry in &health.children_degraded {
+                    println!("     {}: {}", entry.name, entry.reason);
+                }
+            }
             if let Some(state_db_bytes) = health.state_db_bytes {
                 println!("   State DB bytes: {}", state_db_bytes);
             }

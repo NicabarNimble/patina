@@ -20,7 +20,7 @@ fn loaded_child_name(loaded: &LoadedChild) -> &str {
 }
 
 pub fn register_loaded_child(
-    registry: &mut ChildRegistry,
+    registry: &ChildRegistry,
     runtime: &KnowledgeRuntimeStore,
     loaded: LoadedChild,
 ) -> Result<Option<String>> {
@@ -44,14 +44,16 @@ pub fn register_loaded_child(
 
 pub fn load_children_from_dir<F>(
     children_dir: &Path,
-    registry: &mut ChildRegistry,
+    registry: &ChildRegistry,
     runtime: &KnowledgeRuntimeStore,
     mut loader: F,
-) where
+) -> usize
+where
     F: FnMut(&Path, &Path) -> Result<LoadedChild>,
 {
+    let mut loaded_count = 0usize;
     if !children_dir.exists() {
-        return;
+        return loaded_count;
     }
 
     if let Ok(entries) = std::fs::read_dir(children_dir) {
@@ -70,23 +72,29 @@ pub fn load_children_from_dir<F>(
                     Ok(loaded) => {
                         let child_name = loaded_child_name(&loaded).to_string();
                         match register_loaded_child(registry, runtime, loaded) {
-                            Ok(Some(message)) => tracing::info!(
-                                event = "startup.child.discovery.success",
-                                child = %child_name,
-                                wasm_path = %path.display(),
-                                manifest_path = %manifest_path.display(),
-                                duration_ms = started.elapsed().as_millis() as u64,
-                                %message,
-                                "mother child discovery success"
-                            ),
-                            Ok(None) => tracing::info!(
-                                event = "startup.child.discovery.success",
-                                child = %child_name,
-                                wasm_path = %path.display(),
-                                manifest_path = %manifest_path.display(),
-                                duration_ms = started.elapsed().as_millis() as u64,
-                                "mother child discovery success"
-                            ),
+                            Ok(Some(message)) => {
+                                loaded_count += 1;
+                                tracing::info!(
+                                    event = "startup.child.discovery.success",
+                                    child = %child_name,
+                                    wasm_path = %path.display(),
+                                    manifest_path = %manifest_path.display(),
+                                    duration_ms = started.elapsed().as_millis() as u64,
+                                    %message,
+                                    "mother child discovery success"
+                                )
+                            }
+                            Ok(None) => {
+                                loaded_count += 1;
+                                tracing::info!(
+                                    event = "startup.child.discovery.success",
+                                    child = %child_name,
+                                    wasm_path = %path.display(),
+                                    manifest_path = %manifest_path.display(),
+                                    duration_ms = started.elapsed().as_millis() as u64,
+                                    "mother child discovery success"
+                                )
+                            }
                             Err(error) => {
                                 tracing::warn!(
                                     event = "startup.child.discovery.failure",
@@ -125,4 +133,6 @@ pub fn load_children_from_dir<F>(
             }
         }
     }
+
+    loaded_count
 }
