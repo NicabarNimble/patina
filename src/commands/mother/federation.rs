@@ -1,15 +1,20 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
+use duckdb::types::ValueRef;
 use regex::Regex;
 use rusqlite::{params, OptionalExtension};
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 const EXPECTED_PROJECT_SCHEMA_MAJOR: u32 = 3;
 const DUCKLAKE_INSTALL_DIAGNOSTIC: &str =
     "DuckLake extension not installed — run: patina mother federation install-extensions";
 const DEFAULT_QUERY_LIMIT: usize = 1000;
 const MAX_QUERY_LIMIT: usize = 10_000;
+const DEFAULT_QUERY_TIMEOUT_MS: u64 = 30_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FederationAvailability {
@@ -86,6 +91,9 @@ impl FederationRuntime {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FederationQueryError {
     Invalid { reason: String },
+    Timeout { elapsed_ms: u64, limit_ms: u64 },
+    Runtime { reason: String },
+    Unavailable { reason: String },
 }
 
 impl FederationQueryError {
@@ -98,7 +106,213 @@ impl FederationQueryError {
     pub fn reason(&self) -> &str {
         match self {
             Self::Invalid { reason } => reason,
+            Self::Runtime { reason } => reason,
+            Self::Unavailable { reason } => reason,
+            Self::Timeout { .. } => "federation_query_timeout",
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FederationQuerySuccess {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<serde_json::Value>>,
+    pub row_count: usize,
+    pub truncated: bool,
+    pub elapsed_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FederationQueryResult {
+    Success(FederationQuerySuccess),
+    Error(FederationQueryError),
+}
+
+impl FederationQueryResult {
+    pub fn into_json(self) -> serde_json::Value {
+        match self {
+            Self::Success(payload) => serde_json::json!({
+                "columns": payload.columns,
+                "rows": payload.rows,
+                "row_count": payload.row_count,
+                "truncated": payload.truncated,
+                "elapsed_ms": payload.elapsed_ms,
+            }),
+            Self::Error(FederationQueryError::Invalid { reason }) => serde_json::json!({
+                "error": "federation_query_invalid",
+                "reason": reason,
+            }),
+            Self::Error(FederationQueryError::Timeout {
+                elapsed_ms,
+                limit_ms,
+            }) => serde_json::json!({
+                "error": "federation_query_timeout",
+                "timeout": true,
+                "elapsed_ms": elapsed_ms,
+                "limit_ms": limit_ms,
+            }),
+            Self::Error(FederationQueryError::Runtime { reason }) => serde_json::json!({
+                "error": "federation_query_error",
+                "reason": reason,
+            }),
+            Self::Error(FederationQueryError::Unavailable { reason }) => serde_json::json!({
+                "error": "federation_unavailable",
+                "reason": reason,
+            }),
+        }
+    }
+}
+
+impl FederationRuntime {
+    pub fn refresh(&mut self, runtime_store: &patina::mother::KnowledgeRuntimeStore) {
+        *self = startup(runtime_store);
+    }
+
+    pub fn execute_query(
+        &self,
+        sql: &str,
+        params: &[String],
+        limit: usize,
+        timeout_ms: u64,
+    ) -> FederationQueryResult {
+        let connection = match self.connection() {
+            Some(conn) => conn,
+            None => {
+                let reason = match &self.status.availability {
+                    FederationAvailability::Unavailable { reason } => reason.clone(),
+                    FederationAvailability::Available => {
+                        "federation connection unavailable".to_string()
+                    }
+                };
+                return FederationQueryResult::Error(FederationQueryError::Unavailable { reason });
+            }
+        };
+
+        if let Err(error) = validate_query(sql) {
+            return FederationQueryResult::Error(error);
+        }
+        if let Err(error) = check_table_allowlist(sql, self.allowed_tables()) {
+            return FederationQueryResult::Error(error);
+        }
+
+        let limited_sql = enforce_limit(sql, limit);
+        let timeout = if timeout_ms == 0 {
+            DEFAULT_QUERY_TIMEOUT_MS
+        } else {
+            timeout_ms
+        };
+
+        let started = Instant::now();
+        let interrupt_handle = connection.interrupt_handle();
+        let done = Arc::new(AtomicBool::new(false));
+        let done_for_thread = Arc::clone(&done);
+        let timeout_thread = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(timeout));
+            if !done_for_thread.load(Ordering::SeqCst) {
+                interrupt_handle.interrupt();
+            }
+        });
+
+        let query_result = execute_query_inner(connection, &limited_sql, params);
+        done.store(true, Ordering::SeqCst);
+        let _ = timeout_thread.join();
+        let elapsed_ms = started.elapsed().as_millis() as u64;
+
+        match query_result {
+            Ok((columns, rows)) => FederationQueryResult::Success(FederationQuerySuccess {
+                row_count: rows.len(),
+                columns,
+                rows,
+                truncated: false,
+                elapsed_ms,
+            }),
+            Err(error) => {
+                let lowered = error.to_string().to_ascii_lowercase();
+                if elapsed_ms >= timeout
+                    || lowered.contains("interrupt")
+                    || lowered.contains("interrupted")
+                {
+                    FederationQueryResult::Error(FederationQueryError::Timeout {
+                        elapsed_ms,
+                        limit_ms: timeout,
+                    })
+                } else {
+                    FederationQueryResult::Error(FederationQueryError::Runtime {
+                        reason: error.to_string(),
+                    })
+                }
+            }
+        }
+    }
+}
+
+fn execute_query_inner(
+    connection: &duckdb::Connection,
+    sql: &str,
+    params: &[String],
+) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>)> {
+    let mut stmt = connection
+        .prepare(sql)
+        .with_context(|| "preparing federation query")?;
+    let mut rows = stmt
+        .query(duckdb::params_from_iter(params.iter()))
+        .with_context(|| "executing federation query")?;
+    let columns = rows
+        .as_ref()
+        .map(|statement| statement.column_names())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|name| name.to_string())
+        .collect::<Vec<_>>();
+
+    let mut out = Vec::new();
+    while let Some(row) = rows
+        .next()
+        .with_context(|| "iterating federation query rows")?
+    {
+        let mut values = Vec::with_capacity(columns.len());
+        for index in 0..columns.len() {
+            let value = row
+                .get_ref(index)
+                .map(value_ref_to_json)
+                .unwrap_or(serde_json::Value::Null);
+            values.push(value);
+        }
+        out.push(values);
+    }
+
+    Ok((columns, out))
+}
+
+fn value_ref_to_json(value: ValueRef<'_>) -> serde_json::Value {
+    match value {
+        ValueRef::Null => serde_json::Value::Null,
+        ValueRef::Boolean(v) => serde_json::Value::Bool(v),
+        ValueRef::TinyInt(v) => serde_json::Value::from(v),
+        ValueRef::SmallInt(v) => serde_json::Value::from(v),
+        ValueRef::Int(v) => serde_json::Value::from(v),
+        ValueRef::BigInt(v) => serde_json::Value::from(v),
+        ValueRef::HugeInt(v) => serde_json::Value::String(v.to_string()),
+        ValueRef::UTinyInt(v) => serde_json::Value::from(v),
+        ValueRef::USmallInt(v) => serde_json::Value::from(v),
+        ValueRef::UInt(v) => serde_json::Value::from(v),
+        ValueRef::UBigInt(v) => serde_json::Value::from(v),
+        ValueRef::Float(v) => serde_json::Value::from(v),
+        ValueRef::Double(v) => serde_json::Value::from(v),
+        ValueRef::Decimal(v) => serde_json::Value::String(v.to_string()),
+        ValueRef::Timestamp(_, v) => serde_json::Value::from(v),
+        ValueRef::Text(v) => serde_json::Value::String(String::from_utf8_lossy(v).to_string()),
+        ValueRef::Blob(v) => serde_json::Value::String(format!("blob:{}", v.len())),
+        ValueRef::Date32(v) => serde_json::Value::from(v),
+        ValueRef::Time64(_, v) => serde_json::Value::from(v),
+        ValueRef::Interval {
+            months,
+            days,
+            nanos,
+        } => {
+            serde_json::json!({ "months": months, "days": days, "nanos": nanos })
+        }
+        other => serde_json::Value::String(format!("{:?}", other)),
     }
 }
 
@@ -573,5 +787,77 @@ mod tests {
         ];
         assert!(check_table_allowlist("SELECT * FROM scrape_meta", &allowed).is_ok());
         assert!(check_table_allowlist("SELECT * FROM unknown_table", &allowed).is_err());
+    }
+
+    fn runtime_with_connection(
+        connection: duckdb::Connection,
+        allowed_tables: Vec<String>,
+    ) -> FederationRuntime {
+        FederationRuntime {
+            connection: Some(connection),
+            status: FederationStatus {
+                availability: FederationAvailability::Available,
+                ducklake_loaded: true,
+                projects: vec![],
+            },
+            allowed_tables,
+        }
+    }
+
+    #[test]
+    fn execute_query_returns_rows_for_valid_select() {
+        let conn = duckdb::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE test_table (id INTEGER, name VARCHAR);")
+            .unwrap();
+        conn.execute(
+            "INSERT INTO test_table VALUES (?1, ?2)",
+            duckdb::params![1_i32, "alpha"],
+        )
+        .unwrap();
+
+        let runtime = runtime_with_connection(
+            conn,
+            vec!["test_table".to_string(), "main.test_table".to_string()],
+        );
+        let result = runtime.execute_query("SELECT id, name FROM test_table", &[], 100, 30_000);
+
+        match result {
+            FederationQueryResult::Success(success) => {
+                assert_eq!(success.columns, vec!["id", "name"]);
+                assert_eq!(success.row_count, 1);
+            }
+            other => panic!("expected success, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn execute_query_rejects_invalid_statement_before_execution() {
+        let conn = duckdb::Connection::open_in_memory().unwrap();
+        let runtime = runtime_with_connection(conn, vec!["test_table".to_string()]);
+        let result = runtime.execute_query("DELETE FROM test_table", &[], 100, 30_000);
+
+        match result {
+            FederationQueryResult::Error(FederationQueryError::Invalid { reason }) => {
+                assert!(reason.contains("only SELECT statements allowed"));
+            }
+            other => panic!("expected invalid query error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn execute_query_returns_timeout_shape_on_interrupt() {
+        let conn = duckdb::Connection::open_in_memory().unwrap();
+        let runtime = runtime_with_connection(conn, vec!["range".to_string()]);
+        let result = runtime.execute_query(
+            "SELECT count(*) FROM range(100000000) t1, range(10000000) t2",
+            &[],
+            10,
+            5,
+        );
+
+        match result {
+            FederationQueryResult::Error(FederationQueryError::Timeout { .. }) => {}
+            other => panic!("expected timeout error, got {:?}", other),
+        }
     }
 }
