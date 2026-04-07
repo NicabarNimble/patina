@@ -143,7 +143,11 @@ impl KnowledgeChild for BeliefVerifierChild {
     }
 
     fn drain(&mut self, limit: u32) -> Result<Vec<PendingEvent>, String> {
-        let checkpoint_bucket = self.toys.state.open("checkpoints")?;
+        let checkpoint_bucket = self
+            .toys
+            .state
+            .open("checkpoints")
+            .map_err(|e| e.to_string())?;
         let checkpoint = checkpoint_bucket
             .get_string("belief.changed")
             .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())

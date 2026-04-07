@@ -185,7 +185,7 @@ pub fn teardown_interface_tmux_lane(project_path: &Path, adapter_name: &str) -> 
             .arg("kill-server")
             .status();
 
-        return Ok(true);
+        Ok(true)
     }
 
     #[cfg(not(unix))]
