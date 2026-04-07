@@ -7,37 +7,45 @@ making claims about how something was designed.
 
 ### Active
 - [child-construction-canon](feat/child-construction-canon/SPEC.md) — registry of reusable children, composition model, SDK extraction (ccc1-ccc2 checked, ccc3-ccc7 pending)
-- [spec-archive-db-path](fix/spec-archive-db-path/SPEC.md) — find_spec reads stale DB instead of frontmatter on disk
-
-### Draft
-- [interface-redesign](refactor/interface-redesign/SPEC.md) — Mother-managed interface registry, ephemeral projection, skill system (16 criteria)
-- [engine-consolidate](refactor/engine-consolidate/SPEC.md) — merge PipelineEngine + KnowledgeChildEngine
-- [duckdb-version-pin](fix/duckdb-version-pin/SPEC.md) — bump DuckDB prebuilt, align Cargo pin (blocked: crate versioning scheme changed)
-- [e2ee-multimother-chat](feat/e2ee-multimother-chat/SPEC.md) — child-construction-canon MVP 3
-- [multiproject-belief-share](feat/multiproject-belief-share/SPEC.md) — child-construction-canon MVP 2
-- [belief-system-hardening](feat/belief-system-hardening/SPEC.md) — staleness, verification, health scoring
-- [persona-lake-mvp1](feat/persona-lake-mvp1/SPEC.md) — persona-scoped knowledge lake
-- [mother-duckdb-ducklake-federation](feat/mother-duckdb-ducklake-federation/SPEC.md) — Mother DuckDB + DuckLake federation
-- [cloudflare-worker-child](feat/cloudflare-worker-child/SPEC.md) — Patina child as Cloudflare Worker
-- [patina-durable-backup](feat/patina-durable-backup/SPEC.md) — durable backup system
-- [mother-password-unlock](explore/mother-password-unlock/SPEC.md) — password-based vault unlock
-- [monty-patina-sandbox-alignment](explore/monty-patina-sandbox-alignment/SPEC.md) — monty/patina goal alignment
-- [spec-manager-wasm-child](explore/spec-manager-wasm-child/SPEC.md) — convert spec-manager from builtin to WASM child (explore: gaps identified, deferred)
+- [mother-startup-observability](fix/mother-startup-observability/SPEC.md) — improve Mother startup diagnostics and error reporting
 
 ### Complete (pending archive)
-- [ducklake-retirement](refactor/ducklake-retirement/SPEC.md) — DuckLake retired, lake queries via Mother
+- [sdk-upstream-toy-sync](fix/sdk-upstream-toy-sync/SPEC.md) — pull upstream WASI WIT files with release-based pin model (10/10)
+- [sdk-wasi-trait-alignment](fix/sdk-wasi-trait-alignment/SPEC.md) — align all toy traits to WASI shape (13/13)
+- [ducklake-retirement](refactor/ducklake-retirement/SPEC.md) — DuckLake runtime coupling removed (7/7)
 - [sdk-mother-child-retirement](refactor/sdk-mother-child-retirement/SPEC.md) — removed legacy MotherChild API
+
+### Draft
+- [mother-duckdb-ducklake-federation](feat/mother-duckdb-ducklake-federation/SPEC.md) — Mother DuckDB + DuckLake federation substrate (9 criteria, unblocked)
+- [persona-lake-mvp1](feat/persona-lake-mvp1/SPEC.md) — persona-scoped knowledge lake (blocked by mother-duckdb-ducklake-federation)
+- [multiproject-belief-share](feat/multiproject-belief-share/SPEC.md) — child-construction-canon MVP 2 (blocked by mother-duckdb-ducklake-federation)
+- [e2ee-multimother-chat](feat/e2ee-multimother-chat/SPEC.md) — child-construction-canon MVP 3
+- [slate-pando-migration](feat/slate-pando-migration/SPEC.md) — migrate spec-manager to slate pando via pando platform
+- [belief-system-hardening](feat/belief-system-hardening/SPEC.md) — staleness, verification, health scoring
+- [cloudflare-worker-child](feat/cloudflare-worker-child/SPEC.md) — Patina child as Cloudflare Worker
+- [patina-durable-backup](feat/patina-durable-backup/SPEC.md) — durable backup system
+- [engine-consolidate](refactor/engine-consolidate/SPEC.md) — merge PipelineEngine + KnowledgeChildEngine
+- [interface-redesign](refactor/interface-redesign/SPEC.md) — Mother-managed interface registry, ephemeral projection, skill system (16 criteria)
+- [duckdb-durable-execution](explore/duckdb-durable-execution/SPEC.md) — DuckDB + Mother for Absurd-style durable execution (explore)
+- [mother-child-artifact-registry](explore/mother-child-artifact-registry/SPEC.md) — Mother-managed child artifact distribution (explore)
+- [mother-password-unlock](explore/mother-password-unlock/SPEC.md) — password-based vault unlock (explore)
+- [monty-patina-sandbox-alignment](explore/monty-patina-sandbox-alignment/SPEC.md) — monty/patina goal alignment (explore)
+- [spec-manager-wasm-child](explore/spec-manager-wasm-child/SPEC.md) — convert spec-manager to WASM child (explore, deferred)
 
 ### Abandoned
 - [pando-vocabulary-alignment](refactor/pando-vocabulary-alignment/SPEC.md) — split into child-rename + engine-consolidate; pando vocabulary locked
 - [scrape-strategy-seam-exploration](refactor/scrape-strategy-seam-exploration/SPEC.md) — explore scrape strategy extraction
 - [spec-prompt-handoff](feat/spec-prompt-handoff/SPEC.md) — deferred in favor of core architecture
+- [sdk-toy-conformance-harness](fix/sdk-toy-conformance-harness/SPEC.md) — superseded by sdk-wasi-trait-alignment
 
 ## Archived (git tags)
 
-469 archived specs total. Browse all: `git tag -l "spec/*" | grep -v "\-start$" | sort`
+Read any archived spec: `git show spec/<name>:layer/surface/build/<type>/<name>/SPEC.md`
 
-Read any archived spec: `git show spec/<name>^:layer/surface/build/<type>/<name>/SPEC.md`
+### Recently Archived
+- `spec/pando-platform` — composed children as user-facing products, pando.toml, Mother registry, slate pando (Phase A complete)
+- `spec/duckdb-version-pin` — aligned DuckDB prebuilt (v1.5.1) and Rust crate (1.10501.0). See Cargo.toml for version encoding notes.
+- `spec/spec-archive-db-path` — fix mutation commands reading stale DB instead of frontmatter
 
 ### SDK and Toybox (how the SDK was designed)
 - `spec/sdk-contract-stabilization` — SDK stability tiers, shim removal gates, child-first API. Defines stable/experimental/internal classification.
@@ -68,6 +76,8 @@ Read any archived spec: `git show spec/<name>^:layer/surface/build/<type>/<name>
 - `spec/ai-launcher-surface-consolidation` — launcher surface consolidation
 
 ### Mother Architecture (how Mother was designed)
+- `spec/greenfield-mother-patina-data-platform` — Mother owns per-project databases, project sovereignty, DuckDB federation queued as future work
+- `spec/move-vault-to-mother` — vault crypto moved to Mother, CLI thinned to IPC-only (v0.45.8)
 - `spec/knowledge-system-architecture` — domain-agnostic knowledge system with persona federation. Split into forge-plugin, core-plugin, persona-federation.
 - `spec/interface-session-model` — per-interface session identity, auto-start, ghost elimination
 - `spec/session-handoff-enrichment` — LLM-generated handoff, parent linking
