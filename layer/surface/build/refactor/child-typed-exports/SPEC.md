@@ -16,39 +16,51 @@ related:
   - mother/src/pando.rs
 exit_criteria:
 
+  # Phase A: foundation (types + world + SDK + host)
   - id: cte1-record-wit
-    text: "A shared WIT interface package `patina:record@0.1.0` defines `record-envelope` with typed fields matching the current Record struct (record-id, source-path, source-hash, content-hash, content-type, content, encoding, schema-version, ingested-at, batch-id). No JSON serialization at this boundary."
+    text: "A shared WIT interface package `patina:record@0.1.0` defines typed records: `record-envelope` (record-id, source-path, source-hash, source-modified-at, source-size-bytes, content, content-hash, content-type, encoding, line-count, ingested-at, batch-id, schema-version), `file-found`, `file-written`, `rejected-record`, and `process-result` (accepted + rejected lists). WIT files placed in `wit/record/` with deps mirrored to `wit/child/deps/` and `sdk/patina-sdk/wit/child/deps/` per existing convention."
     checked: false
 
-  - id: cte2-child-world-additive
-    text: "The `patina:child@0.1.0` world is extended with an optional typed export interface for record processing. `handle` remains as a fallback — existing children compile without changes."
+  - id: cte2-separate-world
+    text: "A new `child-record-processor` world defined in `wit/child/` that includes all of `child` plus exports `patina:record/record-processor`. Children that process records target this world. Children that don't target the existing `child` world. Two worlds, not optional exports."
     checked: false
 
   - id: cte3-sdk-trait
-    text: "SDK provides a `RecordProcessor` trait (or equivalent) alongside the existing `Child` trait. Children that implement it get typed WIT exports wired automatically by the `register_child!` macro."
+    text: "SDK provides a `RecordProcessor` trait in `sdk/patina-sdk/src/record.rs` alongside the existing `Child` trait. A separate `register_record_processor!` macro generates both the Child lifecycle exports and the record-processor typed export. The existing `register_child!` macro is unchanged."
     checked: false
 
   - id: cte4-host-dispatch
-    text: "Host linker (`src/child/internal/child.rs`) detects typed exports at instantiation and dispatches through them when available, falling back to `handle` for children that don't export typed interfaces."
+    text: "Host linker in `src/child/internal/child.rs` supports both worlds: `child` (existing) and `child-record-processor` (new). World selection is declared in `child.toml` via a `world` field. When a child targets `child-record-processor`, Mother calls `process()` directly with typed records from the event stream — Mother owns subscribe/ack/emit for these children."
     checked: false
 
-  - id: cte5-two-children-migrated
-    text: "At least two canon children (schema-enforcer and dedup-filter) export the typed record-processing interface. They no longer hardcode event stream names — input/output streams are declared in their world imports, not in Rust source."
+  # Phase B: migrate two canon children as proof
+  - id: cte5a-schema-enforcer
+    text: "schema-enforcer targets `child-record-processor` world, implements `RecordProcessor`, uses `register_record_processor!`. No hardcoded stream names in source. `child.toml` declares `world = \"child-record-processor\"`. `cargo build -p patina-ai-child-schema-enforcer --target wasm32-wasip2` succeeds."
     checked: false
 
+  - id: cte5b-dedup-filter
+    text: "dedup-filter targets `child-record-processor` world, implements `RecordProcessor`, uses `register_record_processor!`. No hardcoded stream names in source. `child.toml` declares `world = \"child-record-processor\"`. `cargo build -p patina-ai-child-dedup-filter --target wasm32-wasip2` succeeds."
+    checked: false
+
+  # Phase C: pando wiring + backward compat
   - id: cte6-pando-type-validation
-    text: "Pando wiring can validate interface compatibility: Mother checks that the output type of one child matches the input type of the next child in the wiring chain at pando load time."
+    text: "Pando wiring is parsed into structured form (not just `Vec<String>`). At pando load time, Mother validates: source child exports `record-processor`, target child can receive those records. Type mismatches are rejected at load time with a clear error."
     checked: false
 
   - id: cte7-backward-compat
-    text: "All service children (belief-verifier, session-writer, spec-manager, doctor) continue to use `handle` without changes. `cargo check --workspace -q` and `cargo test -q --lib` pass."
+    text: "All service children (belief-verifier, session-writer, spec-manager, doctor) continue targeting the `child` world with `handle` and no changes. `cargo check --workspace -q`, `cargo test -q --lib`, and `cargo test --test wasm_integration` pass."
     checked: false
+
+  # Phase D: remaining canon children (future, not gated)
+  # Remaining 4 canon children (file-system-monitor, content-extractor,
+  # record-writer, lakehouse-catalog) migrate in a follow-up spec after
+  # Phase A-C proves the pattern.
 
 ---
 # refactor: Typed WIT exports for canon children
 
 > Replace handle(string, string) data path with typed WIT interfaces on
-> the 6 canon children. Keep handle for control-plane. Align child exports
+> canon children. Keep handle for control-plane. Align child exports
 > with component model standards.
 
 ## Why
@@ -91,87 +103,97 @@ needs are genuinely outside:
 - **Adaptation:** Mother as runtime coordinator (dynamic composition, event brokering, cursor/ack)
 - **Adaptation:** child lifecycle (on_load, tick, drain, health — no WASI equivalent for managed component lifecycle)
 
-## Design
+## Key Design Decisions
 
-### Split: control plane vs data plane
+### Two worlds, not optional exports
 
-| Concern | Mechanism | Standard? |
-|---------|-----------|-----------|
-| Lifecycle | `on_load`, `on_unload`, `health` | Patina adaptation (platform-specific) |
-| Control dispatch | `handle(action, payload)` | Patina adaptation (kept for service children) |
-| Periodic work | `tick() -> Vec<TaskIntent>` | Patina adaptation |
-| Event drain | `drain(limit) -> Vec<PendingEvent>` | Patina adaptation |
-| **Data processing** | **Typed WIT interface per domain** | **Component model standard** |
+WIT worlds require all exports to be satisfied. The component model does
+not support optional exports. Rather than fight this, we follow the
+standard: define two worlds.
 
-### Shared record type (WIT)
+- `child` — existing world. Lifecycle + `handle`. Service children use this.
+- `child-record-processor` — includes `child` plus exports `record-processor`.
+  Canon pipeline children that process records use this.
+
+Children declare their world in `child.toml` via `world = "child"` (default)
+or `world = "child-record-processor"`. This is explicit, not auto-detected.
+
+### Data-plane ownership shift
+
+This is the biggest runtime change. Today, children own the full data flow:
+
+```
+Child subscribes -> Child processes -> Child emits -> Child acks
+```
+
+After migration, Mother owns the data flow for record-processor children:
+
+```
+Mother subscribes -> Mother calls child.process(records) -> Mother emits -> Mother acks
+```
+
+The child becomes a pure transform: records in, results out. Mother handles
+stream wiring, cursor management, ack semantics, and backpressure. This is
+Wagner's "virtual platform layering" — the platform (Mother) owns IO, the
+component (child) owns compute.
+
+Children targeting the `child` world (service children) continue to manage
+their own stream IO via the events-stream and messaging toys.
+
+### Separate registration macro
+
+The `register_child!` macro stays unchanged — it generates exports for
+the `child` world. A new `register_record_processor!` macro generates
+exports for the `child-record-processor` world (lifecycle + typed export).
+
+Rust's macro system cannot detect trait implementations at expansion time.
+Auto-detection was proposed but is not feasible. Explicit macro selection
+is clearer and follows the pattern of explicit world targeting.
+
+### Output contract: process-result with accepted + rejected
 
 ```wit
-// package patina:record@0.1.0
-interface record-types {
-    record record-envelope {
-        record-id: string,
-        source-path: string,
-        source-hash: string,
-        source-modified-at: string,
-        source-size-bytes: u64,
-        content: string,
-        content-hash: string,
-        content-type: string,
-        encoding: string,
-        line-count: u64,
-        ingested-at: string,
-        batch-id: string,
-        schema-version: u32,
-    }
+record process-result {
+    accepted: list<record-envelope>,
+    rejected: list<rejected-record>,
 }
+
+process: func(records: list<record-envelope>) -> result<process-result, string>;
 ```
 
-This replaces the `Record` struct currently duplicated in 4 children's
-Rust source — eliminating JSON serialization at child boundaries.
+The `result` error case is for infrastructure failures (child trapped, etc).
+Business-level rejections (schema violations, duplicates) are returned in
+`rejected` — they are normal output, not errors.
 
-### Typed export interface
+### child.toml changes required
 
-```wit
-interface record-processor {
-    use record-types.{record-envelope};
-    process: func(records: list<record-envelope>) -> result<list<record-envelope>, string>;
-}
+The spec originally said "no child.toml changes." This was wrong. Migrated
+children need:
+
+```toml
+[child]
+world = "child-record-processor"
 ```
 
-Canon pipeline children export `record-processor`. Mother calls `process`
-directly with typed records instead of routing through `handle` with JSON.
+This replaces `[needs.scopes.events].subscribe` for record-processor
+children — they no longer subscribe to streams directly. Mother reads the
+world declaration and handles stream IO on their behalf.
 
-### Stream declaration (imports, not hardcoded)
+### Structured pando wiring
 
-Today children hardcode stream names in source:
-
-```rust
-subscribe("record.extracted", after_offset, limit)?;  // hardcoded
-emit("record.validated", ...)?;                        // hardcoded
-```
-
-After: stream bindings are declared in the child's world imports and
-configured by the pando wiring — not embedded in child code. The child
-says "I process records" and the pando says "your input is this stream,
-your output goes there."
-
-### Migration path
-
-| Phase | What | Children affected |
-|-------|------|-------------------|
-| 0 | Define `patina:record@0.1.0` WIT, add optional export to child world | 0 (additive) |
-| 1 | Add `RecordProcessor` SDK trait, update host dispatch | 0 (additive) |
-| 2 | Migrate schema-enforcer + dedup-filter | 2 |
-| 3 | Migrate remaining canon children | 4 |
-| Future | WASI 0.3 `stream<record-envelope>` when available | evolve |
+Pando wiring is currently `Vec<String>`. For type validation, wiring must
+be parsed into structured form with source child, event type, and target
+child as distinct fields. This enables Mother to check interface
+compatibility at pando load time.
 
 ## Non-Goals
 
 - Service children (belief-verifier, session-writer, spec-manager, doctor)
   keep using `handle` — they are control-plane, not data processors.
 - No replacement of Mother's event broker — it manages cursors, ack, backpressure.
-- No removal of `handle` from `patina:child@0.1.0` world — this is additive.
-- No `child.toml` manifest structure changes.
+- No removal of `handle` from `child` world — this is additive.
+- Remaining 4 canon children migrate in a follow-up spec after Phase A-C
+  proves the pattern.
 
 ## WASI 0.3 alignment note
 
@@ -179,7 +201,7 @@ WASI 0.3 adds `stream<T>` and `future<T>` as first-class WIT types.
 When available, `record-processor` naturally evolves from batch:
 
 ```wit
-process: func(records: list<record-envelope>) -> ...
+process: func(records: list<record-envelope>) -> result<process-result, string>;
 ```
 
 to streaming:
@@ -194,13 +216,28 @@ are correct today; only the transport changes when async streams land.
 ## Verification
 
 ```bash
+# Host compilation
 cargo check --workspace -q
+# Host tests
 cargo test -q --lib
+# WASM export generation (critical — host tests do not verify this)
+cargo build -p patina-ai-child-schema-enforcer --target wasm32-wasip2
+cargo build -p patina-ai-child-dedup-filter --target wasm32-wasip2
+# Integration tests
+cargo test --test wasm_integration
+# Spec check
 patina spec check child-typed-exports --json
 ```
 
 ## Build Readiness
 
-Ready. All prerequisite cleanup is done: children use canonical `Child`
-trait, `MotherRuntimeStore` renamed, monolith retired, SDK consolidated.
-The 6 canon children and the host linker are the implementation surface.
+**Not ready.** Prerequisites are complete (shims removed, naming clean,
+SDK consolidated, 728 tests passing). But three design decisions needed
+investigation and are now resolved in this spec:
+
+1. ~~Optional exports vs separate worlds~~ → **Two worlds** (resolved)
+2. ~~Macro auto-detection~~ → **Separate `register_record_processor!`** (resolved)
+3. ~~Data-plane ownership~~ → **Mother owns IO for record-processor children** (resolved)
+
+Remaining before build: review this spec with audit agents, then promote
+to active.

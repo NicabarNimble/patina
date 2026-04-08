@@ -63,12 +63,138 @@ components. Adapt only where Patina's needs are genuinely outside:
 - **Adaptation:** Mother as runtime coordinator (dynamic composition, event brokering, cursor/ack)
 - **Adaptation:** child lifecycle (on_load, tick, drain, health — no WASI equivalent for managed component lifecycle)
 
+## Resolved Decisions
+
+### 1. Two worlds, not optional exports
+
+WIT worlds require all exports to be satisfied. The component model does
+not support optional exports in a single world.
+
+**Decision:** Define two worlds in `wit/child/`:
+
+- `child` — existing world. Lifecycle + `handle`. Service children.
+- `child-record-processor` — includes `child` plus exports `record-processor`.
+
+Children declare their world in `child.toml` via `world` field. Host linker
+reads this to select the correct bindgen bindings and dispatch path.
+
+**Why not one world:** wasmtime's `bindgen!` generates Rust types for all
+exports in a world. If `record-processor` is in the world, all children
+must implement it or fail to instantiate. Separate worlds avoid this.
+
+### 2. Separate registration macro
+
+**Decision:** New `register_record_processor!` macro for children targeting
+`child-record-processor` world. Existing `register_child!` unchanged.
+
+**Why not auto-detect:** Rust macros expand before trait resolution. The
+macro cannot know at expansion time whether a type implements
+`RecordProcessor`. Explicit macro selection is clearer and matches the
+explicit world targeting in child.toml.
+
+### 3. Mother owns data-plane IO for record-processor children
+
+**Decision:** When a child targets `child-record-processor`, Mother handles
+subscribe/ack/emit. The child is a pure transform: `process(records) ->
+process-result`.
+
+Today (child manages own IO):
+```
+tick/handle called -> child subscribes -> child processes -> child emits -> child acks
+```
+
+After (Mother manages IO for record-processor children):
+```
+Mother subscribes -> Mother calls child.process(records) -> Mother emits accepted -> Mother acks
+```
+
+**Why this shift:** The typed interface `process(list<record-envelope>)`
+means the child receives records as function arguments, not by pulling from
+streams. Mother must be the one pulling from streams and passing records in.
+This is Wagner's "virtual platform layering" — the platform owns IO, the
+component owns compute.
+
+**Impact:** Migrated children lose direct access to events-stream and
+messaging toys for their data path. They may still use these toys for
+non-data-path concerns (e.g., health reporting), but the primary record
+flow is Mother-mediated.
+
+### 4. Output contract: process-result
+
+```wit
+record process-result {
+    accepted: list<record-envelope>,
+    rejected: list<rejected-record>,
+}
+
+process: func(records: list<record-envelope>) -> result<process-result, string>;
+```
+
+- `Ok(process-result)` — normal operation. Accepted records flow downstream,
+  rejected records are logged/routed separately.
+- `Err(string)` — infrastructure failure (child trapped, resource exhaustion).
+  Mother handles retry/dead-letter.
+
+**Why not just `list<record-envelope>`:** schema-enforcer produces both
+accepted and rejected records. Rejected records need a reason string.
+Collapsing this into a single list would lose the rejection reason or
+require a variant type, which is more complex than a flat result struct.
+
+### 5. Batch, not streaming (for now)
+
+**Decision:** `list<record-envelope>` in, `process-result` out.
+
+**Why not `stream<T>`:** WASI 0.3 is not yet shipped in wasmtime. When it
+lands, `list<record-envelope>` migrates naturally to `stream<record-envelope>`.
+The types are correct now; only the transport changes.
+
+### 6. child.toml declares world
+
+Migrated children add:
+
+```toml
+[child]
+world = "child-record-processor"
+```
+
+This replaces `[needs.scopes.events].subscribe` for these children — they
+no longer subscribe to streams directly. Mother reads the world declaration
+and manages stream IO. Default is `world = "child"` (backward compatible).
+
+### 7. Structured pando wiring
+
+`pando.toml` wiring is currently `Vec<String>`:
+
+```toml
+wiring = ["schema-enforcer.record.validated -> dedup-filter"]
+```
+
+For type validation, Mother must parse this into structured form:
+
+```rust
+struct WiringRule {
+    source_child: String,
+    event_type: String,
+    target_child: String,
+}
+```
+
+At pando load time, Mother checks:
+- Source child's world — does it export `record-processor`?
+- Target child's world — does it accept records?
+- Are the WIT types compatible?
+
+The wiring syntax stays the same in pando.toml; parsing becomes structured.
+
 ## Build Target
 
-### Phase 0: Define shared record type (cte1)
+### Phase A: Foundation
 
-**New file:** `wit/record/record.wit`
+#### A1: Define `patina:record@0.1.0` (cte1)
 
+**New files:**
+
+`wit/record/record.wit`:
 ```wit
 package patina:record@0.1.0;
 
@@ -107,22 +233,11 @@ interface record-types {
         envelope: record-envelope,
     }
 
-    /// Processing result — typed output from record processors
     record process-result {
         accepted: list<record-envelope>,
         rejected: list<rejected-record>,
     }
 }
-```
-
-This replaces the `Record`, `FileFoundEvent`, `FileWrittenEvent`, and
-`RejectedRecord` structs currently duplicated across children. One source
-of truth in WIT.
-
-**Also add:** `wit/record/processor.wit`
-
-```wit
-package patina:record@0.1.0;
 
 interface record-processor {
     use record-types.{record-envelope, process-result};
@@ -132,217 +247,205 @@ interface record-processor {
 }
 ```
 
-**Mirror to SDK:** `sdk/patina-sdk/wit/record/` (same files, SDK must
-mirror canonical WIT for bindgen).
+**WIT placement:** Following existing convention, the canonical source is
+`wit/record/`. Deps are mirrored to `wit/child/deps/patina-record.wit`
+and `sdk/patina-sdk/wit/child/deps/patina-record.wit` so that bindgen
+for both host and guest can resolve the package. The pre-push WIT
+consistency check (`resources/scripts/check-wit-consistency.sh`) must
+pass after mirroring.
 
-### Phase 1: Extend child world (cte2, cte3)
+#### A2: Define `child-record-processor` world (cte2)
 
 **Modify:** `wit/child/child.wit`
 
+Add after the existing `child` world:
+
 ```wit
-world child {
-    // ... existing imports unchanged ...
-
-    // Existing lifecycle exports (kept)
-    export init: func();
-    export name: func() -> string;
-    export on-load: func() -> result<_, string>;
-    export on-unload: func();
-    export health: func() -> child-health;
-    export handle: func(action: string, payload: string) -> result<string, string>;
-    export drain: func(limit: u32) -> result<list<pending-event>, string>;
-    export tick: func() -> list<task-intent>;
-
-    // NEW: optional typed data processing export
+world child-record-processor {
+    include child;
     export patina:record/record-processor;
 }
 ```
 
-**Open question:** WIT worlds require all exports to be satisfied. For
-optional exports, we may need a separate world (`child-record-processor`)
-that extends `child`, or use the component model's `include` mechanism.
-Investigate wasmtime support for optional exports vs separate worlds.
+This uses the component model's `include` mechanism — the new world
+inherits all imports and exports from `child`, then adds the typed export.
+Children targeting this world must satisfy all `child` exports PLUS
+`record-processor`.
 
-**SDK trait:** `sdk/patina-sdk/src/record.rs` (new file)
+#### A3: SDK RecordProcessor trait + macro (cte3)
+
+**New file:** `sdk/patina-sdk/src/record.rs`
 
 ```rust
+use crate::child::host::GuestHost;
+
+pub use crate::child::patina::record::record_types::{
+    RecordEnvelope, FileFound, FileWritten, RejectedRecord, ProcessResult,
+};
+
 pub trait RecordProcessor {
     fn process(&mut self, records: Vec<RecordEnvelope>) -> Result<ProcessResult, String>;
 }
 ```
 
-**SDK macro update:** `sdk/patina-sdk/src/child.rs`
+**New macro:** `register_record_processor!` in `sdk/patina-sdk/src/child.rs`
 
-The `register_child!` macro detects if the type implements `RecordProcessor`
-and generates the typed WIT export shim alongside the existing `handle` shim.
-If not implemented, only `handle` is exported.
+This macro generates:
+1. All `child` world exports (same as `register_child!`)
+2. The `record-processor` export shim that delegates to `RecordProcessor::process`
 
-### Phase 2: Host dispatch (cte4)
+The macro takes a type that implements both `Child` and `RecordProcessor`.
+
+#### A4: Host dispatch for both worlds (cte4)
 
 **Modify:** `src/child/internal/child.rs`
 
-The `bindgen!` macro at line 124 generates typed bindings from the child
-world. After adding `record-processor` export, it auto-generates
-`call_process()` alongside `call_handle()`.
-
-Dispatch in `WasmChild::handle()` (currently line ~1138):
-
+Two bindgen invocations:
 ```rust
-fn handle(&self, request: &ChildRequest) -> Result<ChildResponse> {
-    let inner = self.inner.lock()...;
-    let WasmChildInner { store, instance } = &mut *inner;
-
-    // Try typed dispatch first if child exports record-processor
-    if self.has_record_processor {
-        if let Some(records) = try_deserialize_records(&request.payload) {
-            let result = instance.call_process(store, &records)?;
-            return Ok(typed_result_to_response(result));
-        }
-    }
-
-    // Fallback: string dispatch
-    let payload_json = serde_json::to_string(&request.payload)?;
-    match instance.call_handle(store, &request.action, &payload_json)? { ... }
+mod bindings {
+    wasmtime::component::bindgen!({ path: "wit/child/", world: "child" });
+}
+mod record_bindings {
+    wasmtime::component::bindgen!({ path: "wit/child/", world: "child-record-processor" });
 }
 ```
 
-The `has_record_processor` flag is set at instantiation by checking if
-the component exports the `record-processor` interface.
+`ChildEngine` reads `child.toml` world field to select which bindings
+to use at instantiation. `WasmChild` struct gains an enum:
 
-### Phase 3: Migrate two children (cte5)
+```rust
+enum WasmChildInstance {
+    Standard { instance: bindings::Child },
+    RecordProcessor { instance: record_bindings::ChildRecordProcessor },
+}
+```
+
+When Mother's event broker has records for a `RecordProcessor` child,
+it calls `instance.call_process()` directly with typed records. No JSON
+serialization.
+
+**Data-plane ownership:** For `RecordProcessor` children, Mother:
+1. Subscribes to the input stream (per pando wiring)
+2. Deserializes events into `RecordEnvelope` (from JSON in event broker)
+3. Calls `child.process(records)` with typed data
+4. Emits `accepted` records to the output stream
+5. Logs/routes `rejected` records
+6. Acks the input stream offset
+
+This means the subscribe/ack/emit code currently in each child moves to
+Mother's pando execution path. The JSON boundary moves from child↔child
+to Mother↔event-broker (where it already exists).
+
+### Phase B: Migrate two children
+
+#### B1: schema-enforcer (cte5a)
 
 **Modify:** `children/schema-enforcer/src/lib.rs`
 
-Before:
-```rust
-impl Child for SchemaEnforcerChild {
-    fn handle(&mut self, action: &str, payload: &str) -> Result<String, String> {
-        match action {
-            "enforce-schema" => self.enforce_schema(payload),
-            ...
-        }
-    }
-}
+- Remove: `subscribe("record.extracted")`, `emit("record.validated")`, `ack()`
+- Remove: local `Record` struct (use WIT-generated `RecordEnvelope`)
+- Add: `impl RecordProcessor for SchemaEnforcerChild`
+- Change: `register_child!` → `register_record_processor!`
+
+**Modify:** `children/schema-enforcer/child.toml`
+
+```toml
+[child]
+world = "child-record-processor"
 ```
 
-After:
-```rust
-impl Child for SchemaEnforcerChild {
-    fn handle(&mut self, action: &str, payload: &str) -> Result<String, String> {
-        Err("use typed record-processor interface".to_string())
-    }
-}
+Remove `[needs.scopes.events].subscribe` and `[needs].toys` entries for
+events and messaging (data-plane IO is now Mother-managed).
 
-impl RecordProcessor for SchemaEnforcerChild {
-    fn process(&mut self, records: Vec<RecordEnvelope>) -> Result<ProcessResult, String> {
-        let mut accepted = Vec::new();
-        let mut rejected = Vec::new();
-        for record in records {
-            match validate_record(&record) {
-                Ok(()) => accepted.push(record),
-                Err(reason) => rejected.push(RejectedRecord { reason, envelope: record }),
-            }
-        }
-        Ok(ProcessResult { accepted, rejected })
-    }
-}
-```
+**Modify:** `children/schema-enforcer/Cargo.toml`
 
-No more `subscribe("record.extracted")` or `emit("record.validated")`
-inside the child. The child processes records — Mother handles the stream
-wiring based on pando.toml.
+Update `[package.metadata.component.target].world` to `child-record-processor`.
 
-**Same pattern for:** `children/dedup-filter/src/lib.rs`
+**Verify:** `cargo build -p patina-ai-child-schema-enforcer --target wasm32-wasip2`
 
-### Phase 4: Pando type validation (cte6)
+#### B2: dedup-filter (cte5b)
+
+Same pattern as schema-enforcer. Additionally, dedup-filter uses
+`wasi:keyvalue` for content-hash state — this toy stays (it's not
+data-plane IO, it's computation state).
+
+**Verify:** `cargo build -p patina-ai-child-dedup-filter --target wasm32-wasip2`
+
+### Phase C: Pando validation + backward compat
+
+#### C1: Structured pando wiring (cte6)
 
 **Modify:** `mother/src/pando.rs`
 
-At pando load time, after parsing wiring rules, Mother checks:
-- Does the source child export `record-processor`?
-- Does the target child import (or can process) the output type?
-- Are the WIT types compatible in the wiring chain?
+Parse `wiring` strings into `WiringRule` structs. At pando load time,
+for each wiring rule:
+- Look up source child's world from its `child.toml`
+- Look up target child's world from its `child.toml`
+- If target is `child-record-processor`, verify source emits compatible type
+- Reject incompatible wiring with descriptive error
 
-This is validation only — runtime dispatch still uses Mother's event
-broker. But type mismatches are caught at load time, not at runtime.
+#### C2: Backward compatibility verification (cte7)
+
+- Service children unchanged (child world, handle dispatch)
+- All existing tests pass
+- Integration tests verify end-to-end pando execution with mixed worlds
 
 ## Direct Code Targets
 
-### Phase 0 (new files)
-- `wit/record/record.wit` — new, shared record types
-- `wit/record/processor.wit` — new, record-processor interface
-- `sdk/patina-sdk/wit/record/` — mirror of canonical WIT
-
-### Phase 1 (additive changes)
-- `wit/child/child.wit:41-67` — add optional record-processor export
-- `sdk/patina-sdk/src/record.rs` — new RecordProcessor trait
-- `sdk/patina-sdk/src/child.rs:1027-1033` — register_child! macro expansion
+### Phase A (foundation)
+- `wit/record/record.wit` — new, shared record types + processor interface
+- `wit/child/deps/patina-record.wit` — mirror for child world bindgen
+- `sdk/patina-sdk/wit/child/deps/patina-record.wit` — mirror for SDK bindgen
+- `wit/child/child.wit` — add `child-record-processor` world
+- `sdk/patina-sdk/src/record.rs` — new RecordProcessor trait + type re-exports
+- `sdk/patina-sdk/src/child.rs` — new `register_record_processor!` macro
 - `sdk/patina-sdk/src/lib.rs` — re-export record module
+- `src/child/internal/child.rs:124` — second bindgen for new world
+- `src/child/internal/child.rs:1078` — WasmChildInstance enum
+- `src/child/internal/child.rs:1138` — dispatch split by world
+- `src/child/internal/mod.rs` — manifest parsing for world field
 
-### Phase 2 (host dispatch)
-- `src/child/internal/child.rs:124-127` — bindgen picks up new exports
-- `src/child/internal/child.rs:1078-1086` — WasmChild struct gets has_record_processor flag
-- `src/child/internal/child.rs:1138-1148` — dispatch with typed fallback
+### Phase B (child migration)
+- `children/schema-enforcer/src/lib.rs` — RecordProcessor impl
+- `children/schema-enforcer/child.toml` — world declaration, remove event scopes
+- `children/schema-enforcer/Cargo.toml` — world target
+- `children/dedup-filter/src/lib.rs` — RecordProcessor impl
+- `children/dedup-filter/child.toml` — world declaration, remove event scopes
+- `children/dedup-filter/Cargo.toml` — world target
 
-### Phase 3 (child migration)
-- `children/schema-enforcer/src/lib.rs` — implement RecordProcessor, remove stream hardcoding
-- `children/dedup-filter/src/lib.rs` — implement RecordProcessor, remove stream hardcoding
-
-### Phase 4 (pando validation)
-- `mother/src/pando.rs` — add type compatibility check at load time
-
-## Resolved Decisions
-
-1. **Batch, not streaming** — use `list<record-envelope>` for now. WASI 0.3
-   `stream<T>` is the future, but not yet available in wasmtime. Batch
-   is correct and migrates cleanly.
-
-2. **Separate world vs optional export** — needs investigation. If wasmtime
-   supports optional exports, use one world. If not, define a
-   `child-record-processor` world that includes `child` plus the typed export.
-
-3. **handle stays** — it's the control-plane dispatch for service children
-   and backward compatibility. Not removed.
-
-4. **record-envelope is the first typed contract** — other domains (beliefs,
-   sessions) get typed interfaces when they need them, not preemptively.
-
-## Open Questions
-
-1. Does wasmtime's `bindgen!` support optional exports in a single world,
-   or do we need separate worlds for children with/without record-processor?
-
-2. Should `file-found` and `file-written` be separate WIT types (as shown)
-   or variant cases of a union type? They serve different pipeline stages.
-
-3. How does Mother discover at instantiation whether a child exports
-   `record-processor`? Check the component's export list, or declare it
-   in `child.toml`?
+### Phase C (pando + compat)
+- `mother/src/pando.rs` — structured WiringRule, type validation
+- `tests/wasm_integration.rs` — add typed dispatch tests
 
 ## Commits
 
 1. `feat(wit): define patina:record@0.1.0 shared record types — CTE1`
-2. `feat(wit): add record-processor export to child world — CTE2`
-3. `feat(sdk): add RecordProcessor trait and macro support — CTE3`
-4. `feat(host): typed dispatch with handle fallback — CTE4`
-5. `refactor(children): migrate schema-enforcer to typed exports — CTE5`
-6. `refactor(children): migrate dedup-filter to typed exports — CTE5`
-7. `feat(pando): type-aware wiring validation at load time — CTE6`
-8. `test: verify backward compat for service children — CTE7`
+2. `feat(wit): add child-record-processor world — CTE2`
+3. `feat(sdk): add RecordProcessor trait and register_record_processor macro — CTE3`
+4. `feat(host): dual-world dispatch with typed record-processor path — CTE4`
+5. `refactor(children): migrate schema-enforcer to typed exports — CTE5a`
+6. `refactor(children): migrate dedup-filter to typed exports — CTE5b`
+7. `feat(pando): structured wiring rules with type validation — CTE6`
+8. `test: verify backward compat and wasm32 export generation — CTE7`
 
 ## Verification Plan
 
-- `cargo check --workspace -q` after each phase
-- `cargo test -q --lib` after each phase
-- Integration test: load pando with typed children, verify records flow
-- Backward compat test: service children unchanged, handle still works
+- `cargo check --workspace -q` after each commit
+- `cargo test -q --lib` after each commit (728+ tests)
+- `cargo build -p patina-ai-child-schema-enforcer --target wasm32-wasip2` (Phase B)
+- `cargo build -p patina-ai-child-dedup-filter --target wasm32-wasip2` (Phase B)
+- `cargo test --test wasm_integration` (Phase C — proves wasm export wiring)
+- Pre-push WIT consistency check passes
 - Type mismatch test: pando with incompatible wiring rejected at load
 
 ## Build Readiness
 
-Ready. Prerequisites complete:
-- Children use canonical `Child` trait (knowledge_child shims removed)
-- `MotherRuntimeStore` renamed (no legacy naming confusion)
-- Monolith and stub retired (clean children inventory)
-- SDK consolidated with accurate README
-- 728 tests passing, pre-push checks green
+**Ready after this review.** Prerequisites are complete (shims removed,
+naming clean, SDK consolidated, 728 tests passing). All three architectural
+forks are resolved:
+
+1. ~~Optional exports vs separate worlds~~ → **Two worlds** (resolved)
+2. ~~Macro auto-detection~~ → **Separate `register_record_processor!`** (resolved)
+3. ~~Data-plane ownership~~ → **Mother owns IO for record-processor children** (resolved)
+
+Promote to active after audit review confirms no remaining ambiguity.
