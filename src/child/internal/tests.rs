@@ -282,7 +282,7 @@ kind = "pipeline"
 }
 
 #[test]
-fn manifest_parses_knowledge_child_capabilities_and_toys() {
+fn manifest_parses_child_capabilities_and_toys() {
     let f = write_temp_manifest(
         r#"
 [child]
@@ -348,7 +348,7 @@ child = "source-router"
 }
 
 #[test]
-fn knowledge_child_rejects_unknown_event_stream() {
+fn child_rejects_unknown_event_stream() {
     let f = write_temp_manifest(
         r#"
 [child]
@@ -376,7 +376,7 @@ child = "bad-child"
 }
 
 #[test]
-fn knowledge_child_example_manifests_validate() {
+fn child_example_manifests_validate() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for path in [root.join("children/belief-verifier/child.toml")] {
         let manifest = ChildManifest::from_path(&path).unwrap();
@@ -390,7 +390,7 @@ fn knowledge_child_example_manifests_validate() {
 }
 
 #[test]
-fn knowledge_child_rejects_invalid_ingress_endpoint() {
+fn child_rejects_invalid_ingress_endpoint() {
     let f = write_temp_manifest(
         r#"
 [child]
@@ -2411,7 +2411,7 @@ child = "test"
     let m = ChildManifest::from_path(f.path()).unwrap();
 
     let top_level = check_capabilities(&m).is_ok();
-    let engine_level = KnowledgeChildEngine::check_capabilities(&m).is_ok();
+    let engine_level = ChildEngine::check_capabilities(&m).is_ok();
 
     assert_eq!(top_level, engine_level);
 }
@@ -2435,7 +2435,7 @@ child = "test"
     let m = ChildManifest::from_path(f.path()).unwrap();
 
     let top_level = check_capabilities(&m).is_ok();
-    let engine_level = KnowledgeChildEngine::check_capabilities(&m).is_ok();
+    let engine_level = ChildEngine::check_capabilities(&m).is_ok();
 
     assert_eq!(top_level, engine_level);
 }
@@ -2458,20 +2458,7 @@ child = "test"
     let m = ChildManifest::from_path(f.path()).unwrap();
 
     let top_level = check_capabilities(&m).is_ok();
-    let engine_level = KnowledgeChildEngine::check_capabilities(&m).is_ok();
+    let engine_level = ChildEngine::check_capabilities(&m).is_ok();
 
     assert_eq!(top_level, engine_level);
-}
-
-#[cfg(all(test, patina_compat_proof))]
-#[allow(deprecated)]
-#[test]
-fn compat_proof_deprecated_knowledge_child_aliases_compile() {
-    use crate::child::engine::KnowledgeChildEngine;
-    use crate::mother::KnowledgeChild;
-
-    fn accepts_legacy_trait(_child: &dyn KnowledgeChild) {}
-
-    let _ = std::any::TypeId::of::<KnowledgeChildEngine>();
-    let _ = accepts_legacy_trait as fn(&dyn KnowledgeChild);
 }

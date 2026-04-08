@@ -17,8 +17,6 @@ mod pipeline;
 mod tests;
 
 pub use child::ChildEngine;
-#[deprecated(since = "0.46.0", note = "use ChildEngine")]
-pub use child::ChildEngine as KnowledgeChildEngine;
 pub use child::FilesystemPreopen;
 pub use pipeline::PipelineEngine;
 
