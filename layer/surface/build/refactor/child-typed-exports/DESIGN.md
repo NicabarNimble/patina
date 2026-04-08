@@ -1,16 +1,67 @@
 # Design: Typed WIT exports for canon children
 
-## Why This Design
+## Why We Are Doing This
 
-Children are modular WASM compute blocks that compose into pandos. The
-component model's composition primitive is typed interfaces — components
-export and import WIT interfaces, and tooling can verify compatibility.
-Today all children export `handle(string, string)`, which hides data
-contracts inside Rust source as JSON strings with hardcoded stream names.
+Patina's mission is to provide modular, reusable WASM compute blocks that
+agents compose into pandos — higher-level products. We chose WASM and the
+component model because of the properties Luke Wagner and the Bytecode
+Alliance have designed into it: sandboxing, portability, typed interfaces,
+and composability without shared memory.
 
-This design restores component model type guarantees at the child boundary
-while keeping Mother's event broker for runtime coordination. Standard
-where standards exist, adapt where Patina's needs are outside.
+We are aligned with the Bytecode Alliance standards at every layer except
+one. Our toys (capabilities) are typed WIT interfaces — five standard WASI
+proposals plus Patina extensions that document the gaps they fill. Our
+binary format is the W3C component model. Our sandbox is deny-by-default
+with explicit grants via child.toml. All of this follows the standard.
+
+But our children's data processing boundary does not:
+
+```wit
+export handle: func(action: string, payload: string) -> result<string, string>;
+```
+
+This single untyped export collapses everything the component model gives
+us at the most important seam — where children connect to each other. The
+`Record` struct that flows between schema-enforcer, dedup-filter, and
+record-writer is defined identically in 4 separate Rust files as a serde
+struct, serialized to JSON, passed through Mother's event broker as a
+string, and deserialized on the other side. WIT never sees it. The
+component model cannot verify that one child's output matches another's
+input. Stream names are hardcoded in Rust source, making children
+non-reusable without modification.
+
+This is the gap between "uses WASM" and "is a component model citizen."
+Closing it matters for three reasons:
+
+1. **Composability** — pandos should compose children by matching typed
+   interfaces, not by hoping JSON shapes align at runtime. The component
+   model's toolchain (wasm-compose, WAC) can verify this at build time
+   if we give it types to work with.
+
+2. **Reusability** — the child-construction-canon's thesis is that children
+   are reusable across pandos by configuration. Today, reuse requires
+   reading source code to know what stream names a child hardcodes. With
+   typed exports, a child's contract is visible from its WIT alone.
+
+3. **Standards path** — WASI 0.3 adds `stream<T>` and `future<T>` as
+   first-class WIT types. When that lands, `list<record-envelope>` becomes
+   `stream<record-envelope>` — a natural evolution. But only if we have
+   `record-envelope` as a WIT type in the first place. Building typed
+   interfaces now creates the migration path to standard async streaming.
+
+Patina aspires to be a Bytecode Alliance member and contributor. That
+means our architecture should demonstrate the component model's value,
+not work around it. This refactor closes the last major alignment gap.
+
+## Design Philosophy
+
+Follow WASM/WASI/Component Model standards for typed interfaces between
+components. Adapt only where Patina's needs are genuinely outside:
+
+- **Standard:** typed WIT interfaces for data contracts (this is what WIT is for)
+- **Standard:** component-level import/export declarations
+- **Adaptation:** Mother as runtime coordinator (dynamic composition, event brokering, cursor/ack)
+- **Adaptation:** child lifecycle (on_load, tick, drain, health — no WASI equivalent for managed component lifecycle)
 
 ## Build Target
 

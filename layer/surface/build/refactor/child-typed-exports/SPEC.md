@@ -51,29 +51,45 @@ exit_criteria:
 > the 6 canon children. Keep handle for control-plane. Align child exports
 > with component model standards.
 
-## Problem
+## Why
 
-All children export the same untyped interface:
+Patina builds modular, reusable WASM compute blocks (children) that agents
+compose into pandos. We chose the Bytecode Alliance component model for
+sandboxing, portability, typed interfaces, and composability. We align
+with WASI for capability interfaces and aspire to BA membership.
+
+We are aligned at every layer except child data exports. Toys are typed
+WIT. The binary format is component model. The sandbox is deny-by-default.
+But the child-to-child data boundary is:
 
 ```wit
 export handle: func(action: string, payload: string) -> result<string, string>;
 ```
 
-This collapses the component model's type system at the child boundary.
-Data contracts between children (record schemas, event types) are invisible
-to WIT — they exist only as JSON strings inside Rust source code with
-hardcoded event stream names. The component model cannot verify composition,
-and children cannot be reused without reading their implementation.
+This collapses the component model's type system at the most important
+seam — where children connect. The `Record` struct is duplicated in 4
+children's Rust source, serialized to JSON, and deserialized on the other
+side. WIT never sees it. Stream names are hardcoded in child source,
+making reuse require reading implementation.
+
+Closing this gap matters for:
+
+1. **Composability** — pandos compose children by matching typed interfaces,
+   not by hoping JSON shapes align at runtime.
+2. **Reusability** — a child's contract is visible from WIT alone, no
+   source code reading required.
+3. **Standards path** — WASI 0.3 `stream<T>` is the natural evolution,
+   but only if we have typed records in WIT first.
 
 ## Principle
 
-Follow WASM/WASI/Component Model standards for typed interfaces between
-components. Adapt only where Patina's needs are outside the standard:
+Follow WASM/WASI/Component Model standards. Adapt only where Patina's
+needs are genuinely outside:
 
-- **Standard:** typed WIT interfaces for data contracts (this is what WIT is for)
+- **Standard:** typed WIT interfaces for data contracts between children
 - **Standard:** component-level import/export declarations
-- **Adaptation:** Mother as runtime coordinator (dynamic composition, event brokering)
-- **Adaptation:** child lifecycle (on_load, tick, drain, health — no WASI equivalent)
+- **Adaptation:** Mother as runtime coordinator (dynamic composition, event brokering, cursor/ack)
+- **Adaptation:** child lifecycle (on_load, tick, drain, health — no WASI equivalent for managed component lifecycle)
 
 ## Design
 
