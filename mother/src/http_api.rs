@@ -339,10 +339,10 @@ pub fn handle_secrets_get(runtime: &dyn ApiRuntime) -> HttpResponse {
 }
 
 pub fn handle_federation_status(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
-    if !request.body.is_empty() {
-        if serde_json::from_slice::<FederationNoopRequest>(&request.body).is_err() {
-            return json_error(400, "Invalid JSON");
-        }
+    if !request.body.is_empty()
+        && serde_json::from_slice::<FederationNoopRequest>(&request.body).is_err()
+    {
+        return json_error(400, "Invalid JSON");
     }
     match runtime.federation_status() {
         Ok(payload) => HttpResponse::json(200, &payload),
@@ -351,10 +351,10 @@ pub fn handle_federation_status(request: &HttpRequest, runtime: &dyn ApiRuntime)
 }
 
 pub fn handle_federation_refresh(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
-    if !request.body.is_empty() {
-        if serde_json::from_slice::<FederationNoopRequest>(&request.body).is_err() {
-            return json_error(400, "Invalid JSON");
-        }
+    if !request.body.is_empty()
+        && serde_json::from_slice::<FederationNoopRequest>(&request.body).is_err()
+    {
+        return json_error(400, "Invalid JSON");
     }
     match runtime.federation_refresh() {
         Ok(payload) => HttpResponse::json(200, &payload),
@@ -447,10 +447,10 @@ pub fn handle_lifecycle_load_pando(
 }
 
 pub fn handle_lifecycle_refresh(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
-    if !request.body.is_empty() {
-        if serde_json::from_slice::<LifecycleRefreshRequest>(&request.body).is_err() {
-            return lifecycle_error(400, "invalid_request", "invalid JSON");
-        }
+    if !request.body.is_empty()
+        && serde_json::from_slice::<LifecycleRefreshRequest>(&request.body).is_err()
+    {
+        return lifecycle_error(400, "invalid_request", "invalid JSON");
     }
     match runtime.lifecycle_refresh() {
         Ok(response) => HttpResponse::json(200, &response),
