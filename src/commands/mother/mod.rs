@@ -194,6 +194,8 @@ pub enum ToysCommands {
 pub enum FederationCommands {
     /// Show federation availability and attached project state
     Status,
+    /// Re-scan registry and refresh federation attach state
+    Refresh,
     /// Execute a read-only federation SQL query
     Query {
         /// SQL query string (SELECT-only)
@@ -205,6 +207,8 @@ pub enum FederationCommands {
         #[arg(long)]
         timeout_ms: Option<u64>,
     },
+    /// Install required federation extensions into DuckDB
+    InstallExtensions,
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -426,6 +430,11 @@ fn execute_federation(command: FederationCommands) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&payload)?);
             Ok(())
         }
+        FederationCommands::Refresh => {
+            let payload = client.federation_refresh()?;
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+            Ok(())
+        }
         FederationCommands::Query {
             sql,
             limit,
@@ -439,6 +448,11 @@ fn execute_federation(command: FederationCommands) -> Result<()> {
                     timeout_ms,
                 })?;
             println!("{}", serde_json::to_string_pretty(&payload)?);
+            Ok(())
+        }
+        FederationCommands::InstallExtensions => {
+            federation::install_extensions()?;
+            println!("Installed DuckLake extension for Mother federation.");
             Ok(())
         }
     }

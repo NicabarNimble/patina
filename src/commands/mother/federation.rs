@@ -169,7 +169,9 @@ impl FederationQueryResult {
 
 impl FederationRuntime {
     pub fn refresh(&mut self, runtime_store: &patina::mother::KnowledgeRuntimeStore) {
+        let started = Instant::now();
         *self = startup(runtime_store);
+        emit_refresh_latency(started.elapsed().as_millis() as f64);
     }
 
     pub fn execute_query(
@@ -256,6 +258,21 @@ impl FederationRuntime {
             }
         }
     }
+}
+
+pub fn install_extensions() -> Result<()> {
+    let federation_path = patina::paths::mother::federation_db();
+    if let Some(parent) = federation_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating federation directory {}", parent.display()))?;
+    }
+
+    let connection = duckdb::Connection::open(&federation_path)
+        .with_context(|| format!("opening federation db {}", federation_path.display()))?;
+    connection
+        .execute_batch("INSTALL ducklake; LOAD ducklake;")
+        .with_context(|| "installing/loading ducklake extension")?;
+    Ok(())
 }
 
 fn execute_query_inner(
@@ -654,6 +671,10 @@ fn emit_attach_failure(action: &str) {
 
 fn emit_attach_count(value: f64) {
     emit_metric("attach_count", "gauge", value, "attach_summary");
+}
+
+fn emit_refresh_latency(value: f64) {
+    emit_metric("refresh_latency_ms", "gauge", value, "refresh");
 }
 
 fn emit_query_latency(value: f64) {
