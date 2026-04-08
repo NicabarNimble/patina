@@ -1,6 +1,8 @@
 use anyhow::Result;
 use std::time::Instant;
 
+use super::integrity;
+
 pub(super) fn parse_relationship_listens(manifest_path: &std::path::Path) -> Result<Vec<String>> {
     let content = std::fs::read_to_string(manifest_path)?;
     let table: toml::Table = content.parse()?;
@@ -38,6 +40,8 @@ pub(super) fn load_wasm_child(
     );
 
     let parse_started = Instant::now();
+    integrity::verify_hash_file(manifest_path)?;
+    integrity::verify_hash_file(wasm_path)?;
     let manifest = patina::child::engine::ChildManifest::from_path(manifest_path)?;
     tracing::info!(
         event = "startup.child.loader.manifest.success",

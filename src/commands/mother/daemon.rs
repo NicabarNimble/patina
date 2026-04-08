@@ -483,6 +483,7 @@ impl MotherRuntime for ServerState {
             if !manifest_path.exists() {
                 anyhow::bail!("pando_not_found: no pando named '{}'", name);
             }
+            super::integrity::verify_pando_integrity(&self.pandos_root.join(name))?;
             let manifest = mother_crate::pando::parse_manifest_path(&manifest_path)
                 .map_err(|e| anyhow::anyhow!("invalid_request: {}", e))?;
             let mut children_activated = 0usize;
@@ -548,6 +549,10 @@ impl MotherRuntime for ServerState {
                 for dir in dirs {
                     let manifest_path = dir.path().join("pando.toml");
                     if !manifest_path.exists() {
+                        continue;
+                    }
+                    if super::integrity::verify_pando_integrity(&dir.path()).is_err() {
+                        pandos_failed += 1;
                         continue;
                     }
                     let manifest = match mother_crate::pando::parse_manifest_path(&manifest_path) {

@@ -43,6 +43,7 @@ pub(crate) mod adapters;
 pub(crate) mod daemon;
 pub(crate) mod federation;
 pub(crate) mod graph;
+pub(crate) mod integrity;
 pub(crate) mod loader;
 pub(crate) mod toys;
 
