@@ -803,6 +803,7 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     let mut commits = parse_git_log(since_sha.as_deref())?;
 
     if commits.is_empty() {
+        database::set_schema_version(&conn, "3")?;
         println!("  No new commits to process");
         return Ok(ScrapeStats {
             items_processed: 0,
@@ -873,6 +874,7 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
         update_last_sha(&conn, &latest.sha)?;
         database::set_last_processed(&conn, "co_changes", &latest.sha)?;
     }
+    database::set_schema_version(&conn, "3")?;
 
     // Populate commits FTS5 index for narrative search (incremental — append new only)
     let fts_count = database::populate_commits_fts5(&conn, full)?;

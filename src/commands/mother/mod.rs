@@ -41,7 +41,9 @@
 
 pub(crate) mod adapters;
 pub(crate) mod daemon;
+pub(crate) mod federation;
 pub(crate) mod graph;
+pub(crate) mod integrity;
 pub(crate) mod loader;
 pub(crate) mod toys;
 
@@ -152,6 +154,14 @@ pub enum MotherCommands {
     /// Toy registry operations
     #[command(subcommand)]
     Toys(ToysCommands),
+
+    /// Federation query surface operations
+    #[command(subcommand)]
+    Federation(FederationCommands),
+
+    /// Lifecycle operations
+    #[command(subcommand)]
+    Lifecycle(LifecycleCommands),
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -177,6 +187,43 @@ pub enum ToysCommands {
         /// Pull WASI Preview 2 proposals as a unit
         #[arg(long)]
         preview2: bool,
+    },
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum FederationCommands {
+    /// Show federation availability and attached project state
+    Status,
+    /// Re-scan registry and refresh federation attach state
+    Refresh,
+    /// Execute a read-only federation SQL query
+    Query {
+        /// SQL query string (SELECT-only)
+        sql: String,
+        /// Optional row limit (default 1000, max 10000)
+        #[arg(long)]
+        limit: Option<usize>,
+        /// Optional timeout in milliseconds (default 30000)
+        #[arg(long)]
+        timeout_ms: Option<u64>,
+    },
+    /// Install required federation extensions into DuckDB
+    InstallExtensions,
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum LifecycleCommands {
+    /// Load a pando composition
+    LoadPando {
+        /// Pando name
+        name: String,
+    },
+    /// Refresh all pando compositions
+    Refresh,
+    /// Reload a single child by canonical name
+    ReloadChild {
+        /// Child name
+        name: String,
     },
 }
 
@@ -310,6 +357,8 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             println!("  patina mother uninstall Remove launchd supervisor");
             println!("  patina mother graph    Graph operations");
             println!("  patina mother toys     Toy registry operations");
+            println!("  patina mother federation Federation query surface");
+            println!("  patina mother lifecycle Lifecycle operations");
             println!("  patina mother search   Cross-project belief search\n");
             println!("Run 'patina mother --help' for details.");
             Ok(())
@@ -367,6 +416,68 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
                 })?;
                 toys::toys_pull(&project_root, &name)
             }
+        }
+        Some(MotherCommands::Federation(command)) => execute_federation(command),
+        Some(MotherCommands::Lifecycle(command)) => execute_lifecycle(command),
+    }
+}
+
+fn execute_federation(command: FederationCommands) -> Result<()> {
+    let client = patina::mother::control_plane_client();
+    match command {
+        FederationCommands::Status => {
+            let payload = client.federation_status()?;
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+            Ok(())
+        }
+        FederationCommands::Refresh => {
+            let payload = client.federation_refresh()?;
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+            Ok(())
+        }
+        FederationCommands::Query {
+            sql,
+            limit,
+            timeout_ms,
+        } => {
+            let payload =
+                client.federation_query(mother_crate::protocol::FederationQueryPayload {
+                    sql,
+                    params: vec![],
+                    limit,
+                    timeout_ms,
+                })?;
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+            Ok(())
+        }
+        FederationCommands::InstallExtensions => {
+            federation::install_extensions()?;
+            println!("Installed DuckLake extension for Mother federation.");
+            Ok(())
+        }
+    }
+}
+
+fn execute_lifecycle(command: LifecycleCommands) -> Result<()> {
+    let client = patina::mother::control_plane_client();
+    match command {
+        LifecycleCommands::LoadPando { name } => {
+            let payload = client
+                .lifecycle_load_pando(mother_crate::protocol::LifecycleNamePayload { name })?;
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+            Ok(())
+        }
+        LifecycleCommands::Refresh => {
+            let payload =
+                client.lifecycle_refresh(mother_crate::protocol::LifecycleRefreshPayload {})?;
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+            Ok(())
+        }
+        LifecycleCommands::ReloadChild { name } => {
+            let payload = client
+                .lifecycle_reload_child(mother_crate::protocol::LifecycleNamePayload { name })?;
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+            Ok(())
         }
     }
 }
@@ -721,6 +832,17 @@ fn show_status() -> Result<()> {
                 }
             );
             println!("   Registered projects: {}", health.registered_projects);
+            println!("   Control plane ready: {}", health.control_plane_ready);
+            println!(
+                "   Children readiness: {}/{}",
+                health.children_ready_count, health.children_total
+            );
+            if !health.children_degraded.is_empty() {
+                println!("   Children degraded:");
+                for entry in &health.children_degraded {
+                    println!("     {}: {}", entry.name, entry.reason);
+                }
+            }
             if let Some(state_db_bytes) = health.state_db_bytes {
                 println!("   State DB bytes: {}", state_db_bytes);
             }

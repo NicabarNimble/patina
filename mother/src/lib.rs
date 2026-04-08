@@ -14,6 +14,7 @@ pub mod http_routes;
 pub mod lifecycle;
 pub mod microserver;
 pub mod pando;
+pub mod protocol;
 pub mod registry;
 pub mod runtime;
 pub mod secrets_authority_api;
@@ -26,7 +27,8 @@ pub mod tasks;
 pub mod toys;
 
 pub use runtime::{
-    Child, ChildHealth, ChildRequest, ChildResponse, MotherHost, PendingEvent, TaskIntent,
+    Child, ChildHealth, ChildReloadResult, ChildRequest, ChildResponse, DegradedChild, MotherHost,
+    MotherRuntime, PandoLoadResult, PandoRefreshResult, PendingEvent, ReadinessState, TaskIntent,
     TaskIntentKind, Toy,
 };
 pub use state::{

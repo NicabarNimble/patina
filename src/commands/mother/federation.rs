@@ -1,0 +1,945 @@
+use anyhow::{Context, Result};
+use chrono::Utc;
+use duckdb::types::ValueRef;
+use regex::Regex;
+use rusqlite::{params, OptionalExtension};
+use std::collections::HashSet;
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+const EXPECTED_PROJECT_SCHEMA_MAJOR: u32 = 3;
+const DUCKLAKE_INSTALL_DIAGNOSTIC: &str =
+    "DuckLake extension not installed — run: patina mother federation install-extensions";
+const DEFAULT_QUERY_LIMIT: usize = 1000;
+const MAX_QUERY_LIMIT: usize = 10_000;
+const DEFAULT_QUERY_TIMEOUT_MS: u64 = 30_000;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FederationAvailability {
+    Available,
+    Unavailable { reason: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectAttachState {
+    Attached,
+    Failed,
+    Stale,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectAttachStatus {
+    pub uid: String,
+    pub alias: String,
+    pub state: ProjectAttachState,
+    pub reason: Option<String>,
+    pub schema_version_major: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FederationStatus {
+    pub availability: FederationAvailability,
+    pub ducklake_loaded: bool,
+    pub projects: Vec<ProjectAttachStatus>,
+}
+
+impl FederationStatus {
+    pub fn attached_count(&self) -> usize {
+        self.projects
+            .iter()
+            .filter(|entry| entry.state == ProjectAttachState::Attached)
+            .count()
+    }
+
+    pub fn failed_count(&self) -> usize {
+        self.projects
+            .iter()
+            .filter(|entry| entry.state == ProjectAttachState::Failed)
+            .count()
+    }
+
+    pub fn stale_count(&self) -> usize {
+        self.projects
+            .iter()
+            .filter(|entry| entry.state == ProjectAttachState::Stale)
+            .count()
+    }
+}
+
+pub struct FederationRuntime {
+    connection: Option<duckdb::Connection>,
+    status: FederationStatus,
+    allowed_tables: Vec<String>,
+}
+
+impl FederationRuntime {
+    pub fn status(&self) -> &FederationStatus {
+        &self.status
+    }
+
+    pub fn connection(&self) -> Option<&duckdb::Connection> {
+        self.connection.as_ref()
+    }
+
+    pub fn allowed_tables(&self) -> &[String] {
+        &self.allowed_tables
+    }
+
+    pub fn status_json(&self) -> serde_json::Value {
+        status_to_json(&self.status)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FederationQueryError {
+    Invalid { reason: String },
+    Timeout { elapsed_ms: u64, limit_ms: u64 },
+    Runtime { reason: String },
+    Unavailable { reason: String },
+}
+
+impl FederationQueryError {
+    fn invalid(reason: impl Into<String>) -> Self {
+        Self::Invalid {
+            reason: reason.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FederationQuerySuccess {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<serde_json::Value>>,
+    pub row_count: usize,
+    pub truncated: bool,
+    pub elapsed_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FederationQueryResult {
+    Success(FederationQuerySuccess),
+    Error(FederationQueryError),
+}
+
+impl FederationQueryResult {
+    pub fn into_json(self) -> serde_json::Value {
+        match self {
+            Self::Success(payload) => serde_json::json!({
+                "columns": payload.columns,
+                "rows": payload.rows,
+                "row_count": payload.row_count,
+                "truncated": payload.truncated,
+                "elapsed_ms": payload.elapsed_ms,
+            }),
+            Self::Error(FederationQueryError::Invalid { reason }) => serde_json::json!({
+                "error": "federation_query_invalid",
+                "reason": reason,
+            }),
+            Self::Error(FederationQueryError::Timeout {
+                elapsed_ms,
+                limit_ms,
+            }) => serde_json::json!({
+                "error": "federation_query_timeout",
+                "timeout": true,
+                "elapsed_ms": elapsed_ms,
+                "limit_ms": limit_ms,
+            }),
+            Self::Error(FederationQueryError::Runtime { reason }) => serde_json::json!({
+                "error": "federation_query_error",
+                "reason": reason,
+            }),
+            Self::Error(FederationQueryError::Unavailable { reason }) => serde_json::json!({
+                "error": "federation_unavailable",
+                "reason": reason,
+            }),
+        }
+    }
+}
+
+impl FederationRuntime {
+    pub fn refresh(&mut self, runtime_store: &patina::mother::KnowledgeRuntimeStore) {
+        let started = Instant::now();
+        *self = startup(runtime_store);
+        emit_refresh_latency(started.elapsed().as_millis() as f64);
+    }
+
+    pub fn execute_query(
+        &self,
+        sql: &str,
+        params: &[String],
+        limit: usize,
+        timeout_ms: u64,
+    ) -> FederationQueryResult {
+        let connection = match self.connection() {
+            Some(conn) => conn,
+            None => {
+                let reason = match &self.status.availability {
+                    FederationAvailability::Unavailable { reason } => reason.clone(),
+                    FederationAvailability::Available => {
+                        "federation connection unavailable".to_string()
+                    }
+                };
+                return FederationQueryResult::Error(FederationQueryError::Unavailable { reason });
+            }
+        };
+
+        if let Err(error) = validate_query(sql) {
+            emit_query_error("query_validation");
+            return FederationQueryResult::Error(error);
+        }
+        if let Err(error) = check_table_allowlist(sql, self.allowed_tables()) {
+            emit_query_error("query_allowlist");
+            return FederationQueryResult::Error(error);
+        }
+
+        let limited_sql = enforce_limit(sql, limit);
+        let timeout = if timeout_ms == 0 {
+            DEFAULT_QUERY_TIMEOUT_MS
+        } else {
+            timeout_ms
+        };
+
+        let started = Instant::now();
+        let interrupt_handle = connection.interrupt_handle();
+        let done = Arc::new(AtomicBool::new(false));
+        let done_for_thread = Arc::clone(&done);
+        let timeout_thread = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(timeout));
+            if !done_for_thread.load(Ordering::SeqCst) {
+                interrupt_handle.interrupt();
+            }
+        });
+
+        let query_result = execute_query_inner(connection, &limited_sql, params);
+        done.store(true, Ordering::SeqCst);
+        let _ = timeout_thread.join();
+        let elapsed_ms = started.elapsed().as_millis() as u64;
+
+        match query_result {
+            Ok((columns, rows)) => {
+                emit_query_latency(elapsed_ms as f64);
+                FederationQueryResult::Success(FederationQuerySuccess {
+                    row_count: rows.len(),
+                    columns,
+                    rows,
+                    truncated: false,
+                    elapsed_ms,
+                })
+            }
+            Err(error) => {
+                let lowered = error.to_string().to_ascii_lowercase();
+                if elapsed_ms >= timeout
+                    || lowered.contains("interrupt")
+                    || lowered.contains("interrupted")
+                {
+                    emit_query_latency(elapsed_ms as f64);
+                    emit_query_error("query_timeout");
+                    FederationQueryResult::Error(FederationQueryError::Timeout {
+                        elapsed_ms,
+                        limit_ms: timeout,
+                    })
+                } else {
+                    emit_query_error("query_runtime");
+                    FederationQueryResult::Error(FederationQueryError::Runtime {
+                        reason: error.to_string(),
+                    })
+                }
+            }
+        }
+    }
+}
+
+pub fn install_extensions() -> Result<()> {
+    let federation_path = patina::paths::mother::federation_db();
+    if let Some(parent) = federation_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating federation directory {}", parent.display()))?;
+    }
+
+    let connection = duckdb::Connection::open(&federation_path)
+        .with_context(|| format!("opening federation db {}", federation_path.display()))?;
+    connection
+        .execute_batch("INSTALL ducklake; LOAD ducklake;")
+        .with_context(|| "installing/loading ducklake extension")?;
+    Ok(())
+}
+
+fn execute_query_inner(
+    connection: &duckdb::Connection,
+    sql: &str,
+    params: &[String],
+) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>)> {
+    let mut stmt = connection
+        .prepare(sql)
+        .with_context(|| "preparing federation query")?;
+    let mut rows = stmt
+        .query(duckdb::params_from_iter(params.iter()))
+        .with_context(|| "executing federation query")?;
+    let columns = rows
+        .as_ref()
+        .map(|statement| statement.column_names())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|name| name.to_string())
+        .collect::<Vec<_>>();
+
+    let mut out = Vec::new();
+    while let Some(row) = rows
+        .next()
+        .with_context(|| "iterating federation query rows")?
+    {
+        let mut values = Vec::with_capacity(columns.len());
+        for index in 0..columns.len() {
+            let value = row
+                .get_ref(index)
+                .map(value_ref_to_json)
+                .unwrap_or(serde_json::Value::Null);
+            values.push(value);
+        }
+        out.push(values);
+    }
+
+    Ok((columns, out))
+}
+
+fn value_ref_to_json(value: ValueRef<'_>) -> serde_json::Value {
+    match value {
+        ValueRef::Null => serde_json::Value::Null,
+        ValueRef::Boolean(v) => serde_json::Value::Bool(v),
+        ValueRef::TinyInt(v) => serde_json::Value::from(v),
+        ValueRef::SmallInt(v) => serde_json::Value::from(v),
+        ValueRef::Int(v) => serde_json::Value::from(v),
+        ValueRef::BigInt(v) => serde_json::Value::from(v),
+        ValueRef::HugeInt(v) => serde_json::Value::String(v.to_string()),
+        ValueRef::UTinyInt(v) => serde_json::Value::from(v),
+        ValueRef::USmallInt(v) => serde_json::Value::from(v),
+        ValueRef::UInt(v) => serde_json::Value::from(v),
+        ValueRef::UBigInt(v) => serde_json::Value::from(v),
+        ValueRef::Float(v) => serde_json::Value::from(v),
+        ValueRef::Double(v) => serde_json::Value::from(v),
+        ValueRef::Decimal(v) => serde_json::Value::String(v.to_string()),
+        ValueRef::Timestamp(_, v) => serde_json::Value::from(v),
+        ValueRef::Text(v) => serde_json::Value::String(String::from_utf8_lossy(v).to_string()),
+        ValueRef::Blob(v) => serde_json::Value::String(format!("blob:{}", v.len())),
+        ValueRef::Date32(v) => serde_json::Value::from(v),
+        ValueRef::Time64(_, v) => serde_json::Value::from(v),
+        ValueRef::Interval {
+            months,
+            days,
+            nanos,
+        } => {
+            serde_json::json!({ "months": months, "days": days, "nanos": nanos })
+        }
+        other => serde_json::Value::String(format!("{:?}", other)),
+    }
+}
+
+pub fn validate_query(sql: &str) -> std::result::Result<(), FederationQueryError> {
+    let trimmed = sql.trim();
+    if trimmed.is_empty() {
+        return Err(FederationQueryError::invalid("query must not be empty"));
+    }
+    if trimmed.contains(';') {
+        return Err(FederationQueryError::invalid(
+            "multiple statements are not allowed",
+        ));
+    }
+
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.starts_with("select") && !lower.starts_with("with") {
+        return Err(FederationQueryError::invalid(
+            "only SELECT statements allowed",
+        ));
+    }
+    Ok(())
+}
+
+pub fn enforce_limit(sql: &str, limit: usize) -> String {
+    let clamped = limit.clamp(1, MAX_QUERY_LIMIT);
+    let effective = if limit == 0 {
+        DEFAULT_QUERY_LIMIT
+    } else {
+        clamped
+    };
+    let limit_re = Regex::new(r"(?i)\blimit\s+(\d+)\b").expect("valid LIMIT regex");
+
+    if let Some(captures) = limit_re.captures(sql) {
+        if let Some(raw_limit) = captures.get(1).map(|v| v.as_str()) {
+            if let Ok(parsed) = raw_limit.parse::<usize>() {
+                let bounded = parsed.min(MAX_QUERY_LIMIT);
+                let replacement = format!("LIMIT {}", bounded);
+                return limit_re.replacen(sql, 1, replacement).to_string();
+            }
+        }
+    }
+
+    format!("{} LIMIT {}", sql.trim_end(), effective)
+}
+
+pub fn check_table_allowlist(
+    sql: &str,
+    allowed: &[String],
+) -> std::result::Result<(), FederationQueryError> {
+    let allowed_set: HashSet<String> = allowed.iter().map(|s| s.to_ascii_lowercase()).collect();
+    for table in extract_table_references(sql) {
+        if !allowed_set.contains(&table.to_ascii_lowercase()) {
+            return Err(FederationQueryError::invalid(format!(
+                "table '{}' not in federation allowlist",
+                table
+            )));
+        }
+    }
+    Ok(())
+}
+
+pub fn startup(runtime_store: &patina::mother::KnowledgeRuntimeStore) -> FederationRuntime {
+    let federation_path = patina::paths::mother::federation_db();
+    if let Some(parent) = federation_path.parent() {
+        if let Err(error) = std::fs::create_dir_all(parent) {
+            emit_open_failure("create_parent_dir");
+            let reason = format!(
+                "failed to create federation directory {}: {}",
+                parent.display(),
+                error
+            );
+            tracing::warn!(%reason, "federation unavailable");
+            return unavailable(reason);
+        }
+    }
+
+    let connection = match duckdb::Connection::open(&federation_path)
+        .with_context(|| format!("opening federation db {}", federation_path.display()))
+    {
+        Ok(conn) => conn,
+        Err(error) => {
+            emit_open_failure("open_db");
+            let reason = format!("{error:#}");
+            tracing::warn!(%reason, "federation unavailable");
+            return unavailable(reason);
+        }
+    };
+
+    if let Err(error) = connection.execute_batch("LOAD ducklake") {
+        emit_open_failure("load_ducklake");
+        tracing::warn!(error = %error, diagnostic = %DUCKLAKE_INSTALL_DIAGNOSTIC, "federation unavailable");
+        return unavailable(DUCKLAKE_INSTALL_DIAGNOSTIC.to_string());
+    }
+
+    let projects = match runtime_store.list_registered_projects() {
+        Ok(projects) => projects,
+        Err(error) => {
+            emit_open_failure("read_project_registry");
+            let reason = format!("failed to read project registry: {}", error);
+            tracing::warn!(%reason, "federation unavailable");
+            return unavailable(reason);
+        }
+    };
+
+    let mut project_statuses = Vec::with_capacity(projects.len());
+    for project in projects {
+        let alias = format!("p_{}", project.project_uid);
+        let patina_db = match patina::paths::mother::projects::patina_db(&project.project_uid) {
+            Ok(path) => path,
+            Err(error) => {
+                emit_attach_failure("resolve_path");
+                project_statuses.push(ProjectAttachStatus {
+                    uid: project.project_uid,
+                    alias,
+                    state: ProjectAttachState::Failed,
+                    reason: Some(error),
+                    schema_version_major: None,
+                });
+                continue;
+            }
+        };
+
+        if !patina_db.exists() {
+            project_statuses.push(ProjectAttachStatus {
+                uid: project.project_uid,
+                alias,
+                state: ProjectAttachState::Stale,
+                reason: Some(format!(
+                    "project database missing at {}",
+                    patina_db.display()
+                )),
+                schema_version_major: None,
+            });
+            continue;
+        }
+
+        let schema_major = match read_project_schema_major(&patina_db) {
+            Ok(major) => major,
+            Err(error) => {
+                emit_attach_failure("schema_unreadable");
+                project_statuses.push(ProjectAttachStatus {
+                    uid: project.project_uid,
+                    alias,
+                    state: ProjectAttachState::Failed,
+                    reason: Some(format!("schema version unreadable: {}", error)),
+                    schema_version_major: None,
+                });
+                continue;
+            }
+        };
+
+        if schema_major != EXPECTED_PROJECT_SCHEMA_MAJOR {
+            emit_attach_failure("schema_incompatible");
+            project_statuses.push(ProjectAttachStatus {
+                uid: project.project_uid.clone(),
+                alias,
+                state: ProjectAttachState::Failed,
+                reason: Some(incompatible_schema_reason(
+                    &project.project_uid,
+                    schema_major,
+                )),
+                schema_version_major: Some(schema_major),
+            });
+            continue;
+        }
+
+        let attach_sql = format!(
+            "ATTACH '{}' AS {} (TYPE SQLITE)",
+            escape_sql_literal(&patina_db.to_string_lossy()),
+            alias
+        );
+        if let Err(error) = connection.execute_batch(&attach_sql) {
+            emit_attach_failure("attach_error");
+            project_statuses.push(ProjectAttachStatus {
+                uid: project.project_uid,
+                alias,
+                state: ProjectAttachState::Failed,
+                reason: Some(format!("attach failed: {}", error)),
+                schema_version_major: Some(schema_major),
+            });
+            continue;
+        }
+
+        project_statuses.push(ProjectAttachStatus {
+            uid: project.project_uid,
+            alias,
+            state: ProjectAttachState::Attached,
+            reason: None,
+            schema_version_major: Some(schema_major),
+        });
+    }
+
+    emit_attach_count(
+        project_statuses
+            .iter()
+            .filter(|entry| entry.state == ProjectAttachState::Attached)
+            .count() as f64,
+    );
+
+    let allowed_tables = build_table_allowlist(&connection, &project_statuses);
+
+    FederationRuntime {
+        connection: Some(connection),
+        status: FederationStatus {
+            availability: FederationAvailability::Available,
+            ducklake_loaded: true,
+            projects: project_statuses,
+        },
+        allowed_tables,
+    }
+}
+
+fn unavailable(reason: String) -> FederationRuntime {
+    FederationRuntime {
+        connection: None,
+        status: FederationStatus {
+            availability: FederationAvailability::Unavailable { reason },
+            ducklake_loaded: false,
+            projects: Vec::new(),
+        },
+        allowed_tables: Vec::new(),
+    }
+}
+
+fn build_table_allowlist(
+    connection: &duckdb::Connection,
+    projects: &[ProjectAttachStatus],
+) -> Vec<String> {
+    let mut allowed = HashSet::new();
+    for project in projects {
+        if project.state != ProjectAttachState::Attached {
+            continue;
+        }
+
+        let sql = format!(
+            "SELECT name FROM {}.main.sqlite_master WHERE type = 'table' ORDER BY name",
+            project.alias
+        );
+        let mut stmt = match connection.prepare(&sql) {
+            Ok(stmt) => stmt,
+            Err(error) => {
+                tracing::warn!(alias = %project.alias, %error, "failed to prepare allowlist query");
+                continue;
+            }
+        };
+
+        let mut rows = match stmt.query([]) {
+            Ok(rows) => rows,
+            Err(error) => {
+                tracing::warn!(alias = %project.alias, %error, "failed to query sqlite_master for allowlist");
+                continue;
+            }
+        };
+
+        while let Ok(Some(row)) = rows.next() {
+            if let Ok(name) = row.get::<_, String>(0) {
+                let lowered = name.to_ascii_lowercase();
+                allowed.insert(lowered.clone());
+                allowed.insert(format!(
+                    "{}.{}",
+                    project.alias.to_ascii_lowercase(),
+                    lowered
+                ));
+            }
+        }
+    }
+
+    let mut values: Vec<String> = allowed.into_iter().collect();
+    values.sort();
+    values
+}
+
+fn extract_table_references(sql: &str) -> Vec<String> {
+    let table_re = Regex::new(r"(?i)\b(?:from|join)\s+([a-zA-Z_][\w]*(?:\.[a-zA-Z_][\w]*)?)")
+        .expect("valid table extraction regex");
+    table_re
+        .captures_iter(sql)
+        .filter_map(|caps| {
+            caps.get(1)
+                .map(|m| m.as_str().trim_matches('"').to_string())
+        })
+        .collect()
+}
+
+fn status_to_json(status: &FederationStatus) -> serde_json::Value {
+    match &status.availability {
+        FederationAvailability::Unavailable { reason } => serde_json::json!({
+            "federation": "unavailable",
+            "reason": reason,
+        }),
+        FederationAvailability::Available => serde_json::json!({
+            "federation": "available",
+            "ducklake": if status.ducklake_loaded { "loaded" } else { "unavailable" },
+            "projects_attached": status.attached_count(),
+            "projects_failed": status.failed_count(),
+            "projects_stale": status.stale_count(),
+            "projects": status.projects.iter().map(|project| {
+                let mut value = serde_json::json!({
+                    "uid": project.uid,
+                    "alias": project.alias,
+                    "status": match project.state {
+                        ProjectAttachState::Attached => "attached",
+                        ProjectAttachState::Failed => "failed",
+                        ProjectAttachState::Stale => "stale",
+                    }
+                });
+
+                if let Some(version) = project.schema_version_major {
+                    value["schema_version"] = serde_json::Value::from(version);
+                }
+                if let Some(reason) = &project.reason {
+                    value["reason"] = serde_json::Value::String(reason.clone());
+                }
+                value
+            }).collect::<Vec<_>>()
+        }),
+    }
+}
+
+fn emit_open_failure(action: &str) {
+    emit_metric("open_failure", "counter", 1.0, action);
+}
+
+fn emit_attach_failure(action: &str) {
+    emit_metric("attach_failure", "counter", 1.0, action);
+}
+
+fn emit_attach_count(value: f64) {
+    emit_metric("attach_count", "gauge", value, "attach_summary");
+}
+
+fn emit_refresh_latency(value: f64) {
+    emit_metric("refresh_latency_ms", "gauge", value, "refresh");
+}
+
+fn emit_query_latency(value: f64) {
+    emit_metric("query_latency_ms", "gauge", value, "query");
+}
+
+fn emit_query_error(action: &str) {
+    emit_metric("query_error", "counter", 1.0, action);
+}
+
+fn emit_metric(name: &str, kind: &str, value: f64, action: &str) {
+    let events_path = match patina::eventlog::events_db_path() {
+        Ok(path) => path,
+        Err(error) => {
+            tracing::warn!(metric = name, %error, "failed to resolve events path for federation metric");
+            return;
+        }
+    };
+
+    let conn = match rusqlite::Connection::open(&events_path) {
+        Ok(conn) => conn,
+        Err(error) => {
+            tracing::warn!(metric = name, path = %events_path.display(), %error, "failed to open events db for federation metric");
+            return;
+        }
+    };
+
+    if let Err(error) = mother_crate::eventlog_schema::prepare_events_db(&conn) {
+        tracing::warn!(metric = name, %error, "failed to initialize events schema for federation metric");
+        return;
+    }
+
+    let payload = serde_json::json!({
+        "name": format!("mother:federation:{}", name),
+        "kind": kind,
+        "value": value,
+        "labels": [
+            ["scope", "federation"],
+            ["action", action],
+        ],
+        "source": "mother",
+        "scope": "federation",
+    });
+
+    if let Err(error) = conn.execute(
+        "INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data, provenance)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            "measure.metric",
+            Utc::now().to_rfc3339(),
+            format!("mother:federation:{}", name),
+            Option::<String>::None,
+            payload.to_string(),
+            "local"
+        ],
+    ) {
+        tracing::warn!(metric = name, %error, "failed to emit federation metric");
+    }
+}
+
+fn read_project_schema_major(db_path: &Path) -> Result<u32> {
+    let conn = rusqlite::Connection::open(db_path)
+        .with_context(|| format!("opening project db {}", db_path.display()))?;
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM scrape_meta WHERE key = 'schema_version'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .with_context(|| "reading schema_version from scrape_meta")?;
+
+    match value {
+        Some(raw) => parse_schema_major(&raw),
+        None => Ok(0),
+    }
+}
+
+fn incompatible_schema_reason(project_uid: &str, schema_major: u32) -> String {
+    format!(
+        "project {} schema v{} incompatible, expected v{} — run patina scrape to upgrade",
+        project_uid, schema_major, EXPECTED_PROJECT_SCHEMA_MAJOR
+    )
+}
+
+fn parse_schema_major(value: &str) -> Result<u32> {
+    let major_text = value.trim().split('.').next().unwrap_or_default();
+    major_text
+        .parse::<u32>()
+        .with_context(|| format!("invalid schema version '{}'", value))
+}
+
+fn escape_sql_literal(input: &str) -> String {
+    input.replace('\'', "''")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_schema_major_accepts_int_and_semver() {
+        assert_eq!(parse_schema_major("3").unwrap(), 3);
+        assert_eq!(parse_schema_major("3.1.0").unwrap(), 3);
+    }
+
+    #[test]
+    fn parse_schema_major_rejects_invalid_value() {
+        assert!(parse_schema_major("alpha").is_err());
+    }
+
+    #[test]
+    fn escape_sql_literal_doubles_single_quotes() {
+        assert_eq!(escape_sql_literal("a'b"), "a''b");
+    }
+
+    #[test]
+    fn read_project_schema_major_returns_zero_when_missing() {
+        let temp = tempfile::tempdir().unwrap();
+        let db_path = temp.path().join("patina.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute(
+            "CREATE TABLE scrape_meta (key TEXT PRIMARY KEY, value TEXT)",
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(read_project_schema_major(&db_path).unwrap(), 0);
+    }
+
+    #[test]
+    fn read_project_schema_major_reads_present_value() {
+        let temp = tempfile::tempdir().unwrap();
+        let db_path = temp.path().join("patina.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute(
+            "CREATE TABLE scrape_meta (key TEXT PRIMARY KEY, value TEXT)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO scrape_meta (key, value) VALUES (?1, ?2)",
+            params!["schema_version", "3"],
+        )
+        .unwrap();
+
+        assert_eq!(read_project_schema_major(&db_path).unwrap(), 3);
+    }
+
+    #[test]
+    fn incompatible_schema_reason_includes_upgrade_guidance() {
+        let message = incompatible_schema_reason("2bdc808e", 0);
+        assert!(message.contains("schema v0 incompatible, expected v3"));
+        assert!(message.contains("run patina scrape to upgrade"));
+    }
+
+    #[test]
+    fn validate_query_accepts_select_and_cte() {
+        assert!(validate_query("SELECT * FROM p_2bdc808e.scrape_meta").is_ok());
+        assert!(validate_query("WITH t AS (SELECT 1) SELECT * FROM t").is_ok());
+    }
+
+    #[test]
+    fn validate_query_rejects_non_select_statements() {
+        assert!(validate_query("INSERT INTO x VALUES (1)").is_err());
+        assert!(validate_query("DELETE FROM x").is_err());
+        assert!(validate_query("DROP TABLE x").is_err());
+    }
+
+    #[test]
+    fn enforce_limit_adds_default_and_clamps_large_values() {
+        let with_default = enforce_limit("SELECT * FROM t", 0);
+        assert!(with_default.to_ascii_lowercase().contains("limit 1000"));
+
+        let clamped_existing = enforce_limit("SELECT * FROM t LIMIT 999999", 500);
+        assert!(clamped_existing
+            .to_ascii_lowercase()
+            .contains("limit 10000"));
+    }
+
+    #[test]
+    fn check_table_allowlist_rejects_unknown_references() {
+        let allowed = vec![
+            "p_2bdc808e.scrape_meta".to_string(),
+            "scrape_meta".to_string(),
+        ];
+        assert!(check_table_allowlist("SELECT * FROM scrape_meta", &allowed).is_ok());
+        assert!(check_table_allowlist("SELECT * FROM unknown_table", &allowed).is_err());
+    }
+
+    fn runtime_with_connection(
+        connection: duckdb::Connection,
+        allowed_tables: Vec<String>,
+    ) -> FederationRuntime {
+        FederationRuntime {
+            connection: Some(connection),
+            status: FederationStatus {
+                availability: FederationAvailability::Available,
+                ducklake_loaded: true,
+                projects: vec![],
+            },
+            allowed_tables,
+        }
+    }
+
+    #[test]
+    fn execute_query_returns_rows_for_valid_select() {
+        let conn = duckdb::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE test_table (id INTEGER, name VARCHAR);")
+            .unwrap();
+        conn.execute(
+            "INSERT INTO test_table VALUES (?1, ?2)",
+            duckdb::params![1_i32, "alpha"],
+        )
+        .unwrap();
+
+        let runtime = runtime_with_connection(
+            conn,
+            vec!["test_table".to_string(), "main.test_table".to_string()],
+        );
+        let result = runtime.execute_query("SELECT id, name FROM test_table", &[], 100, 30_000);
+
+        match result {
+            FederationQueryResult::Success(success) => {
+                assert_eq!(success.columns, vec!["id", "name"]);
+                assert_eq!(success.row_count, 1);
+            }
+            other => panic!("expected success, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn execute_query_rejects_invalid_statement_before_execution() {
+        let conn = duckdb::Connection::open_in_memory().unwrap();
+        let runtime = runtime_with_connection(conn, vec!["test_table".to_string()]);
+        let result = runtime.execute_query("DELETE FROM test_table", &[], 100, 30_000);
+
+        match result {
+            FederationQueryResult::Error(FederationQueryError::Invalid { reason }) => {
+                assert!(reason.contains("only SELECT statements allowed"));
+            }
+            other => panic!("expected invalid query error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn execute_query_returns_timeout_shape_on_interrupt() {
+        let conn = duckdb::Connection::open_in_memory().unwrap();
+        let runtime = runtime_with_connection(conn, vec!["range".to_string()]);
+        let result = runtime.execute_query(
+            "SELECT count(*) FROM range(100000000) t1, range(10000000) t2",
+            &[],
+            10,
+            5,
+        );
+
+        match result {
+            FederationQueryResult::Error(FederationQueryError::Timeout { .. }) => {}
+            other => panic!("expected timeout error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn status_to_json_returns_unavailable_shape() {
+        let status = FederationStatus {
+            availability: FederationAvailability::Unavailable {
+                reason: "DuckLake extension not installed".to_string(),
+            },
+            ducklake_loaded: false,
+            projects: vec![],
+        };
+
+        let value = status_to_json(&status);
+        assert_eq!(value["federation"], "unavailable");
+        assert!(value.get("reason").is_some());
+    }
+}

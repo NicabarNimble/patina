@@ -12,19 +12,28 @@
 //! - Opt-in: TCP at --host/--port (bearer token required)
 
 use anyhow::Result;
+use chrono::Utc;
+use rusqlite::params;
 use std::collections::{HashMap, HashSet};
+use std::io::{Read, Write};
+use std::net::TcpStream;
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::time::Instant;
+use std::sync::RwLock;
+use std::sync::TryLockError;
+use std::time::{Duration, Instant};
 
 use patina::mother::ChildRequest;
 
 use super::adapters::{RetrievalScryBackend, ScryBackend};
+use super::federation::{FederationAvailability, FederationQueryResult, FederationRuntime};
 use super::registry::ChildRegistry;
 use mother_crate::http_api::ApiRuntime;
 use mother_crate::http_routes::Router;
+use mother_crate::runtime::MotherRuntime;
 
 // === Server state ===
 
@@ -37,10 +46,13 @@ pub struct ServerState {
     runtime_store: patina::mother::KnowledgeRuntimeStore,
     services: mother_crate::services::MotherServices,
     scry_backend: Arc<dyn ScryBackend>,
+    federation_runtime: Mutex<FederationRuntime>,
     pandos_root: PathBuf,
     pando_registry: Mutex<mother_crate::pando::PandoRegistry>,
     native_commands: Mutex<HashSet<String>>,
+    refresh_lock: Mutex<()>,
     aliases: HashMap<String, String>,
+    readiness: Arc<RwLock<mother_crate::runtime::ReadinessState>>,
 }
 
 impl ServerState {
@@ -48,6 +60,8 @@ impl ServerState {
         token: String,
         registry: ChildRegistry,
         runtime_store: patina::mother::KnowledgeRuntimeStore,
+        federation_runtime: FederationRuntime,
+        readiness: Arc<RwLock<mother_crate::runtime::ReadinessState>>,
     ) -> Self {
         let services_store = runtime_store.clone();
         let state = Self {
@@ -58,10 +72,13 @@ impl ServerState {
             runtime_store,
             services: mother_crate::services::MotherServices::new(services_store),
             scry_backend: Arc::new(RetrievalScryBackend),
+            federation_runtime: Mutex::new(federation_runtime),
             pandos_root: patina::paths::pando::pandos_dir(),
             pando_registry: Mutex::new(mother_crate::pando::PandoRegistry::default()),
             native_commands: Mutex::new(HashSet::new()),
+            refresh_lock: Mutex::new(()),
             aliases: HashMap::new(),
+            readiness,
         };
 
         let _ = state.reload_pando_registry();
@@ -251,11 +268,46 @@ impl ApiRuntime for ServerState {
             })
         });
 
+        let federation_status = self
+            .federation_runtime
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .status()
+            .clone();
+        let readiness = self
+            .readiness
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+
         Ok(mother_crate::http_api::HealthDetails {
             registered_projects: registered_projects.len(),
             active_project_uid,
             active_project_databases,
             state_db_bytes,
+            federation_available: matches!(
+                federation_status.availability,
+                FederationAvailability::Available
+            ),
+            federation_reason: match &federation_status.availability {
+                FederationAvailability::Available => None,
+                FederationAvailability::Unavailable { reason } => Some(reason.clone()),
+            },
+            federation_ducklake_loaded: federation_status.ducklake_loaded,
+            federation_projects_attached: federation_status.attached_count(),
+            federation_projects_failed: federation_status.failed_count(),
+            federation_projects_stale: federation_status.stale_count(),
+            control_plane_ready: readiness.control_plane_ready,
+            children_ready_count: readiness.children_ready_count,
+            children_total: readiness.children_total,
+            children_degraded: readiness
+                .children_degraded
+                .iter()
+                .map(|entry| mother_crate::http_api::DegradedChild {
+                    name: entry.name.clone(),
+                    reason: entry.reason.clone(),
+                })
+                .collect(),
         })
     }
 
@@ -333,6 +385,21 @@ impl ApiRuntime for ServerState {
         Ok(self.current_pando_state())
     }
 
+    fn lifecycle_load_pando(&self, name: &str) -> anyhow::Result<mother_crate::PandoLoadResult> {
+        <Self as MotherRuntime>::load_pando(self, name)
+    }
+
+    fn lifecycle_refresh(&self) -> anyhow::Result<mother_crate::PandoRefreshResult> {
+        <Self as MotherRuntime>::refresh_pandos(self)
+    }
+
+    fn lifecycle_reload_child(
+        &self,
+        name: &str,
+    ) -> anyhow::Result<mother_crate::ChildReloadResult> {
+        <Self as MotherRuntime>::reload_child(self, name)
+    }
+
     fn builtin_spec_dispatch(
         &self,
         request: patina_protocol::SpecDispatchRequest,
@@ -369,6 +436,287 @@ impl ApiRuntime for ServerState {
             &mother_crate::secrets_authority_backend::MotherSecretsAuthorityBackend,
         )
     }
+
+    fn federation_status(&self) -> anyhow::Result<serde_json::Value> {
+        let runtime = self
+            .federation_runtime
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        Ok(runtime.status_json())
+    }
+
+    fn federation_refresh(&self) -> anyhow::Result<serde_json::Value> {
+        let mut runtime = self
+            .federation_runtime
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        runtime.refresh(&self.runtime_store);
+        Ok(runtime.status_json())
+    }
+
+    fn federation_query(
+        &self,
+        payload: mother_crate::protocol::FederationQueryPayload,
+    ) -> anyhow::Result<serde_json::Value> {
+        let runtime = self
+            .federation_runtime
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let result = runtime.execute_query(
+            &payload.sql,
+            &payload.params,
+            payload.limit.unwrap_or(1000),
+            payload.timeout_ms.unwrap_or(30_000),
+        );
+        Ok(match result {
+            FederationQueryResult::Success(_) => result.into_json(),
+            FederationQueryResult::Error(_) => result.into_json(),
+        })
+    }
+}
+
+impl MotherRuntime for ServerState {
+    fn load_pando(&self, name: &str) -> Result<mother_crate::runtime::PandoLoadResult> {
+        let started = Instant::now();
+        let result = (|| {
+            let manifest_path = self.pandos_root.join(name).join("pando.toml");
+            if !manifest_path.exists() {
+                anyhow::bail!("pando_not_found: no pando named '{}'", name);
+            }
+            super::integrity::verify_pando_integrity(&self.pandos_root.join(name))?;
+            let manifest = mother_crate::pando::parse_manifest_path(&manifest_path)
+                .map_err(|e| anyhow::anyhow!("invalid_request: {}", e))?;
+            let mut children_activated = 0usize;
+            for child in manifest.children {
+                let reload = self.reload_child(&child.name)?;
+                if reload.status == "reloaded" {
+                    children_activated += 1;
+                }
+            }
+            self.reload_pando_registry()?;
+
+            Ok(mother_crate::runtime::PandoLoadResult {
+                pando: name.to_string(),
+                status: "loaded".to_string(),
+                children_activated,
+            })
+        })();
+
+        emit_lifecycle_metric(
+            "load_pando_latency_ms",
+            "gauge",
+            started.elapsed().as_millis() as f64,
+            &[("action", "load_pando"), ("pando", name)],
+        );
+        if result.is_err() {
+            emit_lifecycle_metric(
+                "load_pando_failure",
+                "counter",
+                1.0,
+                &[("action", "load_pando"), ("pando", name)],
+            );
+        }
+
+        result
+    }
+
+    fn refresh_pandos(&self) -> Result<mother_crate::runtime::PandoRefreshResult> {
+        let started = Instant::now();
+        let result = (|| {
+            let _refresh_guard = match self.refresh_lock.try_lock() {
+                Ok(guard) => guard,
+                Err(TryLockError::WouldBlock) => {
+                    anyhow::bail!("operation_in_progress: refresh already running")
+                }
+                Err(TryLockError::Poisoned(_)) => {
+                    anyhow::bail!("internal_error: refresh lock poisoned")
+                }
+            };
+
+            let mut pandos_loaded = 0usize;
+            let mut pandos_failed = 0usize;
+            let mut children_activated = 0usize;
+            let mut children_failed = 0usize;
+            let mut degraded = Vec::new();
+
+            if self.pandos_root.exists() {
+                let mut dirs = std::fs::read_dir(&self.pandos_root)?
+                    .flatten()
+                    .filter(|entry| entry.path().is_dir())
+                    .collect::<Vec<_>>();
+                dirs.sort_by_key(|entry| entry.file_name());
+
+                for dir in dirs {
+                    let manifest_path = dir.path().join("pando.toml");
+                    if !manifest_path.exists() {
+                        continue;
+                    }
+                    if super::integrity::verify_pando_integrity(&dir.path()).is_err() {
+                        pandos_failed += 1;
+                        continue;
+                    }
+                    let manifest = match mother_crate::pando::parse_manifest_path(&manifest_path) {
+                        Ok(m) => m,
+                        Err(_) => {
+                            pandos_failed += 1;
+                            continue;
+                        }
+                    };
+                    pandos_loaded += 1;
+                    for child in manifest.children {
+                        match self.reload_child(&child.name) {
+                            Ok(outcome) if outcome.status == "reloaded" => {
+                                children_activated += 1;
+                            }
+                            Ok(outcome) => {
+                                children_failed += 1;
+                                degraded.push(mother_crate::runtime::DegradedChild {
+                                    name: child.name,
+                                    reason: outcome
+                                        .reason
+                                        .unwrap_or_else(|| "reload failed".to_string()),
+                                });
+                            }
+                            Err(error) => {
+                                children_failed += 1;
+                                degraded.push(mother_crate::runtime::DegradedChild {
+                                    name: child.name,
+                                    reason: error.to_string(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            self.reload_pando_registry()?;
+
+            Ok(mother_crate::runtime::PandoRefreshResult {
+                pandos_loaded,
+                pandos_failed,
+                children_activated,
+                children_failed,
+                degraded,
+            })
+        })();
+
+        emit_lifecycle_metric(
+            "refresh_latency_ms",
+            "gauge",
+            started.elapsed().as_millis() as f64,
+            &[("action", "refresh")],
+        );
+
+        result
+    }
+
+    fn reload_child(&self, name: &str) -> Result<mother_crate::runtime::ChildReloadResult> {
+        let started = Instant::now();
+        let result = (|| {
+            let reload_lock = self
+                .registry
+                .child_reload_lock(name)
+                .ok_or_else(|| anyhow::anyhow!("child_not_found: no child named '{}'", name))?;
+            let _guard = match reload_lock.try_lock() {
+                Ok(guard) => guard,
+                Err(TryLockError::WouldBlock) => {
+                    anyhow::bail!(
+                        "operation_in_progress: reload already running for '{}'",
+                        name
+                    )
+                }
+                Err(TryLockError::Poisoned(_)) => {
+                    anyhow::bail!("internal_error: reload lock poisoned for '{}'", name)
+                }
+            };
+
+            let (wasm_path, manifest_path) = self
+                .registry
+                .child_paths(name)
+                .ok_or_else(|| anyhow::anyhow!("child_not_found: no child named '{}'", name))?;
+
+            let loaded = super::loader::load_wasm_child(&wasm_path, &manifest_path)?;
+            let mut replacement = match loaded {
+                mother_crate::daemon_bootstrap::LoadedChild::Knowledge {
+                    child,
+                    name: loaded_name,
+                    ..
+                } => {
+                    if loaded_name != name {
+                        anyhow::bail!(
+                            "internal_error: manifest child '{}' does not match reload target '{}'",
+                            loaded_name,
+                            name
+                        );
+                    }
+                    child
+                }
+            };
+
+            let daemon_host = DaemonHost;
+            if let Err(error) = replacement.on_load(&daemon_host) {
+                return Ok(mother_crate::runtime::ChildReloadResult {
+                    child: name.to_string(),
+                    status: "reload_failed".to_string(),
+                    previous_instance: "active".to_string(),
+                    reason: Some(format!("on_load failed: {}", error)),
+                });
+            }
+
+            let mut previous = self.registry.swap_knowledge_child(name, replacement)?;
+            let _ = previous.drain(64);
+            previous.on_unload();
+
+            {
+                let mut readiness = self.readiness.write().unwrap_or_else(|e| e.into_inner());
+                let degraded_before = readiness.children_degraded.len();
+                readiness
+                    .children_degraded
+                    .retain(|entry| entry.name != name);
+                if readiness.children_degraded.len() < degraded_before
+                    && readiness.children_ready_count < readiness.children_total
+                {
+                    readiness.children_ready_count += 1;
+                }
+            }
+
+            Ok(mother_crate::runtime::ChildReloadResult {
+                child: name.to_string(),
+                status: "reloaded".to_string(),
+                previous_instance: "drained".to_string(),
+                reason: None,
+            })
+        })();
+
+        emit_lifecycle_metric(
+            "reload_child_latency_ms",
+            "gauge",
+            started.elapsed().as_millis() as f64,
+            &[("action", "reload_child"), ("child", name)],
+        );
+
+        let emit_failure = match &result {
+            Ok(payload) => payload.status == "reload_failed",
+            Err(_) => true,
+        };
+        if emit_failure {
+            emit_lifecycle_metric(
+                "reload_child_failure",
+                "counter",
+                1.0,
+                &[("action", "reload_child"), ("child", name)],
+            );
+        }
+
+        result
+    }
+
+    fn query_readiness(&self) -> mother_crate::runtime::ReadinessState {
+        self.readiness
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
 }
 
 fn build_router(state: Arc<ServerState>, require_auth: bool) -> Router {
@@ -400,29 +748,324 @@ where
     let started = Instant::now();
     match operation() {
         Ok(value) => {
+            let duration_ms = started.elapsed().as_millis() as u64;
             tracing::info!(
                 stage,
                 event = "startup.stage.success",
-                duration_ms = started.elapsed().as_millis() as u64,
+                duration_ms,
                 "mother startup stage success"
             );
+            emit_startup_metric("stage_latency_ms", "gauge", duration_ms as f64, stage);
             Ok(value)
         }
         Err(error) => {
             let _ = startup_store.record_startup_attempt(stage, "failed", Some(&error.to_string()));
+            let duration_ms = started.elapsed().as_millis() as u64;
             tracing::warn!(
                 stage,
                 event = "startup.stage.failure",
-                duration_ms = started.elapsed().as_millis() as u64,
+                duration_ms,
                 error = %error,
                 "mother startup stage failure"
             );
+            emit_startup_metric("stage_failure", "counter", 1.0, stage);
             let log_path = patina::paths::patina_home().join("mother/logs/mother.jsonl");
             eprintln!("Mother startup failed at stage '{}' ({})", stage, error);
             eprintln!("See logs: {}", log_path.display());
             Err(error)
         }
     }
+}
+
+fn emit_startup_metric(name: &str, kind: &str, value: f64, action: &str) {
+    emit_startup_metric_with_labels(name, kind, value, &[("action", action)]);
+}
+
+fn emit_lifecycle_metric(name: &str, kind: &str, value: f64, labels: &[(&str, &str)]) {
+    let mut metric_labels = vec![vec!["scope".to_string(), "lifecycle".to_string()]];
+    for (key, value) in labels {
+        metric_labels.push(vec![(*key).to_string(), (*value).to_string()]);
+    }
+
+    let events_path = match patina::eventlog::events_db_path() {
+        Ok(path) => path,
+        Err(error) => {
+            tracing::warn!(metric = name, %error, "failed to resolve events path for lifecycle metric");
+            return;
+        }
+    };
+
+    let conn = match rusqlite::Connection::open(&events_path) {
+        Ok(conn) => conn,
+        Err(error) => {
+            tracing::warn!(metric = name, path = %events_path.display(), %error, "failed to open events db for lifecycle metric");
+            return;
+        }
+    };
+
+    if let Err(error) = mother_crate::eventlog_schema::prepare_events_db(&conn) {
+        tracing::warn!(metric = name, %error, "failed to initialize events schema for lifecycle metric");
+        return;
+    }
+
+    let payload = serde_json::json!({
+        "name": format!("mother:lifecycle:{}", name),
+        "kind": kind,
+        "value": value,
+        "labels": metric_labels,
+        "source": "mother",
+        "scope": "lifecycle",
+    });
+
+    if let Err(error) = conn.execute(
+        "INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data, provenance)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            "measure.metric",
+            Utc::now().to_rfc3339(),
+            format!("mother:lifecycle:{}", name),
+            Option::<String>::None,
+            payload.to_string(),
+            "local"
+        ],
+    ) {
+        tracing::warn!(metric = name, %error, "failed to emit lifecycle metric");
+    }
+}
+
+fn emit_startup_metric_with_labels(name: &str, kind: &str, value: f64, labels: &[(&str, &str)]) {
+    let events_path = match patina::eventlog::events_db_path() {
+        Ok(path) => path,
+        Err(error) => {
+            tracing::warn!(metric = name, %error, "failed to resolve events path for startup metric");
+            return;
+        }
+    };
+
+    let conn = match rusqlite::Connection::open(&events_path) {
+        Ok(conn) => conn,
+        Err(error) => {
+            tracing::warn!(metric = name, path = %events_path.display(), %error, "failed to open events db for startup metric");
+            return;
+        }
+    };
+
+    if let Err(error) = mother_crate::eventlog_schema::prepare_events_db(&conn) {
+        tracing::warn!(metric = name, %error, "failed to initialize events schema for startup metric");
+        return;
+    }
+
+    let mut metric_labels = vec![vec!["scope".to_string(), "startup".to_string()]];
+    for (key, value) in labels {
+        metric_labels.push(vec![(*key).to_string(), (*value).to_string()]);
+    }
+
+    let payload = serde_json::json!({
+        "name": format!("mother:startup:{}", name),
+        "kind": kind,
+        "value": value,
+        "labels": metric_labels,
+        "source": "mother",
+        "scope": "startup",
+    });
+
+    if let Err(error) = conn.execute(
+        "INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data, provenance)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            "measure.metric",
+            Utc::now().to_rfc3339(),
+            format!("mother:startup:{}", name),
+            Option::<String>::None,
+            payload.to_string(),
+            "local"
+        ],
+    ) {
+        tracing::warn!(metric = name, %error, "failed to emit startup metric");
+    }
+}
+
+fn emit_child_activation_metric(name: &str, kind: &str, value: f64, child: &str) {
+    emit_startup_metric_with_labels(
+        name,
+        kind,
+        value,
+        &[("action", "child_activate"), ("child", child)],
+    );
+}
+
+fn set_control_plane_ready(readiness: &Arc<RwLock<mother_crate::runtime::ReadinessState>>) {
+    let mut guard = readiness.write().unwrap_or_else(|e| e.into_inner());
+    guard.control_plane_ready = true;
+}
+
+fn set_children_total(
+    readiness: &Arc<RwLock<mother_crate::runtime::ReadinessState>>,
+    total: usize,
+) {
+    let mut guard = readiness.write().unwrap_or_else(|e| e.into_inner());
+    guard.children_total = total;
+}
+
+fn record_child_activation(
+    readiness: &Arc<RwLock<mother_crate::runtime::ReadinessState>>,
+    child: &str,
+    error: Option<&str>,
+) {
+    let mut guard = readiness.write().unwrap_or_else(|e| e.into_inner());
+    match error {
+        Some(reason) => {
+            if let Some(existing) = guard
+                .children_degraded
+                .iter_mut()
+                .find(|entry| entry.name == child)
+            {
+                existing.reason = reason.to_string();
+            } else {
+                guard
+                    .children_degraded
+                    .push(mother_crate::runtime::DegradedChild {
+                        name: child.to_string(),
+                        reason: reason.to_string(),
+                    });
+            }
+        }
+        None => {
+            guard.children_ready_count += 1;
+            guard.children_degraded.retain(|entry| entry.name != child);
+        }
+    }
+}
+
+enum WarmupProbe {
+    Uds {
+        socket_path: PathBuf,
+    },
+    Tcp {
+        host: String,
+        port: u16,
+        token: String,
+    },
+}
+
+fn parse_http_status(response: &[u8]) -> Option<u16> {
+    let status_end = response.iter().position(|&b| b == b'\r')?;
+    let first_line = std::str::from_utf8(&response[..status_end]).ok()?;
+    first_line.split_whitespace().nth(1)?.parse().ok()
+}
+
+fn probe_health_uds(socket_path: &Path) -> bool {
+    let Ok(mut stream) = UnixStream::connect(socket_path) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(250)));
+    if stream
+        .write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        .is_err()
+    {
+        return false;
+    }
+    let mut response = Vec::new();
+    if stream.read_to_end(&mut response).is_err() {
+        return false;
+    }
+    parse_http_status(&response) == Some(200)
+}
+
+fn probe_health_tcp(host: &str, port: u16, token: &str) -> bool {
+    let Ok(mut stream) = TcpStream::connect(format!("{}:{}", host, port)) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(250)));
+    let auth_header = if token.is_empty() {
+        String::new()
+    } else {
+        format!("Authorization: Bearer {}\r\n", token)
+    };
+    let request =
+        format!("GET /health HTTP/1.1\r\nHost: {host}\r\n{auth_header}Connection: close\r\n\r\n");
+    if stream.write_all(request.as_bytes()).is_err() {
+        return false;
+    }
+    let mut response = Vec::new();
+    if stream.read_to_end(&mut response).is_err() {
+        return false;
+    }
+    parse_http_status(&response) == Some(200)
+}
+
+fn wait_for_health_200(probe: &WarmupProbe, timeout: Duration) -> bool {
+    let started = Instant::now();
+    while started.elapsed() < timeout {
+        let is_ready = match probe {
+            WarmupProbe::Uds { socket_path } => probe_health_uds(socket_path),
+            WarmupProbe::Tcp { host, port, token } => probe_health_tcp(host, *port, token),
+        };
+        if is_ready {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    false
+}
+
+fn spawn_child_warmup(
+    startup_store: patina::mother::KnowledgeRuntimeStore,
+    runtime: patina::mother::KnowledgeRuntimeStore,
+    registry: Arc<ChildRegistry>,
+    readiness: Arc<RwLock<mother_crate::runtime::ReadinessState>>,
+    probe: WarmupProbe,
+) {
+    let _ = std::thread::Builder::new()
+        .name("mother-child-warmup".to_string())
+        .spawn(move || {
+            if !wait_for_health_200(&probe, Duration::from_secs(30)) {
+                tracing::warn!("health endpoint was not reachable before child warmup");
+                return;
+            }
+
+            let children_dir = patina::paths::child::children_dir();
+            let discovered = match run_startup_stage("child_discovery", &startup_store, || {
+                Ok(mother_crate::daemon_bootstrap::load_children_from_dir(
+                    &children_dir,
+                    registry.as_ref(),
+                    &runtime,
+                    super::loader::load_wasm_child,
+                ))
+            }) {
+                Ok(count) => count,
+                Err(error) => {
+                    tracing::warn!(%error, "child discovery failed during background warmup");
+                    return;
+                }
+            };
+            set_children_total(&readiness, discovered);
+
+            let daemon_host = DaemonHost;
+            let _ = run_startup_stage("registry_load_all", &startup_store, || {
+                let activations = registry.activate_all(&daemon_host);
+                for activation in activations {
+                    emit_child_activation_metric(
+                        "child_activation_ms",
+                        "gauge",
+                        activation.duration_ms as f64,
+                        &activation.name,
+                    );
+                    if let Some(error) = activation.error.as_deref() {
+                        emit_child_activation_metric(
+                            "child_activation_failure",
+                            "counter",
+                            1.0,
+                            &activation.name,
+                        );
+                        record_child_activation(&readiness, &activation.name, Some(error));
+                    } else {
+                        record_child_activation(&readiness, &activation.name, None);
+                    }
+                }
+                Ok(())
+            });
+        });
 }
 
 impl Default for DaemonOptions {
@@ -438,36 +1081,42 @@ impl Default for DaemonOptions {
 pub fn run_server(options: DaemonOptions) -> Result<()> {
     mother_crate::daemon_bootstrap_config::ensure_logging_initialized()?;
 
-    // Build and load child registry
-    let mut registry = ChildRegistry::new();
+    // Build control-plane state first; child warmup runs in background.
+    let registry = ChildRegistry::new();
     let runtime = patina::mother::KnowledgeRuntimeStore::default();
     let startup_store = patina::mother::KnowledgeRuntimeStore::default();
-
-    // WASM children (discovered from ~/.patina/children/)
-    let children_dir = patina::paths::child::children_dir();
-    run_startup_stage("child_discovery", &startup_store, || {
-        mother_crate::daemon_bootstrap::load_children_from_dir(
-            &children_dir,
-            &mut registry,
-            &runtime,
-            super::loader::load_wasm_child,
-        );
-        Ok(())
+    let readiness = Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default()));
+    run_startup_stage("state_db_open", &startup_store, || {
+        startup_store.list_registered_projects().map(|_| ())
     })?;
-
-    let daemon_host = DaemonHost;
-    run_startup_stage("registry_load_all", &startup_store, || {
-        registry.load_all(&daemon_host)
-    })?;
+    let federation_runtime = super::federation::startup(&startup_store);
 
     // TCP opt-in path (--host flag) — requires bearer token
     if let Some(ref host) = options.host {
         let (state, router) = run_startup_stage("router_build", &startup_store, || {
             let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
-            let state = Arc::new(ServerState::new(token, registry, runtime.clone()));
+            let state = Arc::new(ServerState::new(
+                token,
+                registry,
+                runtime.clone(),
+                federation_runtime,
+                Arc::clone(&readiness),
+            ));
             let router = Arc::new(build_router(Arc::clone(&state), true));
             Ok((state, router))
         })?;
+        set_control_plane_ready(&readiness);
+        spawn_child_warmup(
+            startup_store.clone(),
+            runtime.clone(),
+            Arc::clone(&state.registry),
+            Arc::clone(&readiness),
+            WarmupProbe::Tcp {
+                host: host.clone(),
+                port: options.port,
+                token: state.token.clone(),
+            },
+        );
         let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
             transport: mother_crate::daemon_bootstrap_config::TransportMode::TcpHttp {
                 host: host.clone(),
@@ -492,14 +1141,31 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
 
     // Default: UDS path (no TCP, no token needed — file permissions are auth)
     let (state, router) = run_startup_stage("router_build", &startup_store, || {
-        let state = Arc::new(ServerState::new(String::new(), registry, runtime));
+        let state = Arc::new(ServerState::new(
+            String::new(),
+            registry,
+            runtime.clone(),
+            federation_runtime,
+            Arc::clone(&readiness),
+        ));
         let router = Arc::new(build_router(Arc::clone(&state), false));
         Ok((state, router))
     })?;
+    set_control_plane_ready(&readiness);
+    let socket_path = patina::paths::serve::socket_path();
+    spawn_child_warmup(
+        startup_store.clone(),
+        runtime,
+        Arc::clone(&state.registry),
+        Arc::clone(&readiness),
+        WarmupProbe::Uds {
+            socket_path: socket_path.clone(),
+        },
+    );
     let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
         transport: mother_crate::daemon_bootstrap_config::TransportMode::UdsHttp {
             run_dir: patina::paths::serve::run_dir(),
-            socket_path: patina::paths::serve::socket_path(),
+            socket_path,
             pid_path: patina::paths::serve::pid_path(),
         },
         max_connections: mother_crate::daemon_bootstrap_config::DEFAULT_MAX_CONNECTIONS,
@@ -521,6 +1187,8 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
 mod tests {
     use super::*;
     use patina::mother::{Child, ChildHealth, ChildRequest, ChildResponse, MotherHost};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc;
 
     struct StubKnowledge;
 
@@ -530,6 +1198,31 @@ mod tests {
         }
 
         fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
+            Ok(())
+        }
+
+        fn health(&self) -> ChildHealth {
+            ChildHealth::Healthy
+        }
+
+        fn handle(&self, _request: &ChildRequest) -> Result<ChildResponse> {
+            Ok(ChildResponse {
+                payload: serde_json::Value::Null,
+            })
+        }
+    }
+
+    struct NotifyingChild {
+        tx: mpsc::Sender<()>,
+    }
+
+    impl Child for NotifyingChild {
+        fn name(&self) -> &str {
+            "notifying"
+        }
+
+        fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
+            let _ = self.tx.send(());
             Ok(())
         }
 
@@ -566,6 +1259,8 @@ mod tests {
             mother_crate::daemon_bootstrap::LoadedChild::Knowledge {
                 child: Box::new(StubKnowledge),
                 name: "knowledge".into(),
+                wasm_path: std::path::PathBuf::from("knowledge.wasm"),
+                manifest_path: std::path::PathBuf::from("knowledge.toml"),
                 subscribed_streams: vec!["belief.changed".into()],
                 relationship_listens: vec![],
             },
@@ -631,5 +1326,35 @@ kind = "child"
         let installed = installed_child_names_from_dir(children_dir);
         assert!(installed.contains("record-writer"));
         assert!(!installed.contains("patina_ai_child_record_writer"));
+    }
+
+    #[test]
+    fn child_warmup_waits_for_health_before_on_load() {
+        let gate = Arc::new(AtomicBool::new(false));
+        let gate_for_probe = Arc::clone(&gate);
+        let (tx, rx) = mpsc::channel();
+        let registry = Arc::new(ChildRegistry::new());
+        registry
+            .register_knowledge(Box::new(NotifyingChild { tx }))
+            .unwrap();
+
+        let probe_thread = std::thread::spawn(move || {
+            while !gate_for_probe.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let host = DaemonHost;
+            let _ = registry.activate_all(&host);
+        });
+
+        assert!(
+            rx.recv_timeout(Duration::from_millis(100)).is_err(),
+            "on_load fired before health gate opened"
+        );
+        gate.store(true, Ordering::SeqCst);
+        assert!(
+            rx.recv_timeout(Duration::from_secs(1)).is_ok(),
+            "on_load did not fire after health gate opened"
+        );
+        probe_thread.join().unwrap();
     }
 }

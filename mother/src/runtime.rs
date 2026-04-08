@@ -124,3 +124,49 @@ pub struct Toy {
 pub trait MotherHost: Send + Sync {
     fn log(&self, child: &str, message: &str);
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DegradedChild {
+    pub name: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ReadinessState {
+    pub control_plane_ready: bool,
+    pub children_ready_count: usize,
+    pub children_total: usize,
+    pub children_degraded: Vec<DegradedChild>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PandoLoadResult {
+    pub pando: String,
+    pub status: String,
+    pub children_activated: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PandoRefreshResult {
+    pub pandos_loaded: usize,
+    pub pandos_failed: usize,
+    pub children_activated: usize,
+    pub children_failed: usize,
+    pub degraded: Vec<DegradedChild>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChildReloadResult {
+    pub child: String,
+    pub status: String,
+    pub previous_instance: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+pub trait MotherRuntime: Send + Sync {
+    fn load_pando(&self, name: &str) -> Result<PandoLoadResult>;
+    fn refresh_pandos(&self) -> Result<PandoRefreshResult>;
+    fn reload_child(&self, name: &str) -> Result<ChildReloadResult>;
+    fn query_readiness(&self) -> ReadinessState;
+}

@@ -21,6 +21,12 @@ pub struct ProjectDatabasesInfo {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct DegradedChildInfo {
+    pub name: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct HealthInfo {
     pub version: String,
     pub uptime_secs: u64,
@@ -36,6 +42,14 @@ pub struct HealthInfo {
     pub active_project_databases: Option<ProjectDatabasesInfo>,
     #[serde(default)]
     pub state_db_bytes: Option<u64>,
+    #[serde(default)]
+    pub control_plane_ready: bool,
+    #[serde(default)]
+    pub children_ready_count: usize,
+    #[serde(default)]
+    pub children_total: usize,
+    #[serde(default)]
+    pub children_degraded: Vec<DegradedChildInfo>,
 }
 
 #[derive(Debug, Clone)]
@@ -172,6 +186,10 @@ mod tests {
         assert_eq!(info.registered_projects, 0);
         assert!(info.active_project_uid.is_none());
         assert!(info.active_project_databases.is_none());
+        assert!(!info.control_plane_ready);
+        assert_eq!(info.children_ready_count, 0);
+        assert_eq!(info.children_total, 0);
+        assert!(info.children_degraded.is_empty());
     }
 
     #[test]
@@ -188,7 +206,11 @@ mod tests {
                 "patina_db_bytes":200,
                 "runtime_db_bytes":50
             },
-            "state_db_bytes":400
+            "state_db_bytes":400,
+            "control_plane_ready":true,
+            "children_ready_count":1,
+            "children_total":2,
+            "children_degraded":[{"name":"catalog","reason":"on_load failed"}]
         }"#;
         let info: HealthInfo = serde_json::from_str(json).unwrap();
         assert_eq!(info.child_count, 1);
@@ -201,5 +223,14 @@ mod tests {
             Some(100)
         );
         assert_eq!(info.state_db_bytes, Some(400));
+        assert!(info.control_plane_ready);
+        assert_eq!(info.children_ready_count, 1);
+        assert_eq!(info.children_total, 2);
+        assert_eq!(
+            info.children_degraded
+                .first()
+                .map(|entry| entry.name.as_str()),
+            Some("catalog")
+        );
     }
 }

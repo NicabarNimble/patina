@@ -8,7 +8,6 @@ sessions:
   origin: 20260327-104954-066673000
 blocked_by:
   - folder-text-to-parquet
-  - mother-duckdb-ducklake-federation
 beliefs:
   - "[[children-have-agency-toys-are-capabilities]]"
   - "[[patina-is-knowledge-layer]]"

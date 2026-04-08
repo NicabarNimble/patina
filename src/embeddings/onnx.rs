@@ -443,12 +443,18 @@ impl EmbeddingEngine for OnnxEmbedder {
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
-    use std::path::Path;
+    use std::path::PathBuf;
+    use std::sync::Mutex;
+
+    static ONNX_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn get_test_embedder() -> Option<OnnxEmbedder> {
+        let _guard = ONNX_TEST_LOCK.lock().ok()?;
+        let model_root =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/models/all-minilm-l6-v2");
         // Use all-minilm baseline model for consistent unit tests (384 dims)
-        let model_path = Path::new("resources/models/all-minilm-l6-v2/model_quantized.onnx");
-        let tokenizer_path = Path::new("resources/models/all-minilm-l6-v2/tokenizer.json");
+        let model_path = model_root.join("model_quantized.onnx");
+        let tokenizer_path = model_root.join("tokenizer.json");
 
         if !model_path.exists() || !tokenizer_path.exists() {
             eprintln!(
@@ -459,8 +465,8 @@ mod tests {
 
         Some(
             OnnxEmbedder::new_from_paths(
-                model_path,
-                tokenizer_path,
+                &model_path,
+                &tokenizer_path,
                 "all-MiniLM-L6-v2",
                 384,
                 None,
