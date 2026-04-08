@@ -3272,14 +3272,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-ai-child-lake-manager"
-version = "0.1.0"
-dependencies = [
- "patina-sdk",
- "serde_json",
-]
-
-[[package]]
 name = "patina-ai-child-lakehouse-catalog"
 version = "0.1.0"
 dependencies = [
