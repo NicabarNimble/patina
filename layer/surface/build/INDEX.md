@@ -9,14 +9,7 @@ making claims about how something was designed.
 - [child-construction-canon](feat/child-construction-canon/SPEC.md) — registry of reusable children, composition model, SDK extraction (ccc1-ccc2 checked, ccc3-ccc7 pending)
 - [mother-startup-observability](fix/mother-startup-observability/SPEC.md) — improve Mother startup diagnostics and error reporting
 
-### Complete (pending archive)
-- [sdk-upstream-toy-sync](fix/sdk-upstream-toy-sync/SPEC.md) — pull upstream WASI WIT files with release-based pin model (10/10)
-- [sdk-wasi-trait-alignment](fix/sdk-wasi-trait-alignment/SPEC.md) — align all toy traits to WASI shape (13/13)
-- [ducklake-retirement](refactor/ducklake-retirement/SPEC.md) — DuckLake runtime coupling removed (7/7)
-- [sdk-mother-child-retirement](refactor/sdk-mother-child-retirement/SPEC.md) — removed legacy MotherChild API
-
 ### Draft
-- [mother-duckdb-ducklake-federation](feat/mother-duckdb-ducklake-federation/SPEC.md) — Mother DuckDB + DuckLake federation substrate (9 criteria, unblocked)
 - [persona-lake-mvp1](feat/persona-lake-mvp1/SPEC.md) — persona-scoped knowledge lake (blocked by mother-duckdb-ducklake-federation)
 - [multiproject-belief-share](feat/multiproject-belief-share/SPEC.md) — child-construction-canon MVP 2 (blocked by mother-duckdb-ducklake-federation)
 - [e2ee-multimother-chat](feat/e2ee-multimother-chat/SPEC.md) — child-construction-canon MVP 3
@@ -43,6 +36,12 @@ making claims about how something was designed.
 Read any archived spec: `git show spec/<name>:layer/surface/build/<type>/<name>/SPEC.md`
 
 ### Recently Archived
+- `spec/ducklake-retirement` — DuckLake runtime coupling removed (7/7)
+- `spec/sdk-upstream-toy-sync` — pull upstream WASI WIT files with release-based pin model (10/10)
+- `spec/sdk-wasi-trait-alignment` — align all toy traits to WASI shape (13/13)
+- `spec/sdk-mother-child-retirement` — removed legacy MotherChild API (4/4)
+- `spec/mother-duckdb-ducklake-federation` — Mother DuckDB + DuckLake federation substrate (11 criteria)
+- `spec/mother-pando-bindings-runtime` — two-phase startup, MotherRuntime trait, lifecycle, manifest integrity (7/7)
 - `spec/pando-platform` — composed children as user-facing products, pando.toml, Mother registry, slate pando (Phase A complete)
 - `spec/duckdb-version-pin` — aligned DuckDB prebuilt (v1.5.1) and Rust crate (1.10501.0). See Cargo.toml for version encoding notes.
 - `spec/spec-archive-db-path` — fix mutation commands reading stale DB instead of frontmatter
