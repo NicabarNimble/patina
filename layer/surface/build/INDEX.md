@@ -23,6 +23,7 @@ making claims about how something was designed.
 - [mother-child-artifact-registry](explore/mother-child-artifact-registry/SPEC.md) — Mother-managed child artifact distribution (explore)
 - [mother-password-unlock](explore/mother-password-unlock/SPEC.md) — password-based vault unlock (explore)
 - [monty-patina-sandbox-alignment](explore/monty-patina-sandbox-alignment/SPEC.md) — monty/patina goal alignment (explore)
+- [child-component-composition](explore/child-component-composition/SPEC.md) — compose children via typed WIT + wasm-tools compose (explore)
 - [spec-manager-wasm-child](explore/spec-manager-wasm-child/SPEC.md) — convert spec-manager to WASM child (explore, deferred)
 
 ### Abandoned
