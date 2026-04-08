@@ -7,7 +7,6 @@ making claims about how something was designed.
 
 ### Active
 - [child-construction-canon](feat/child-construction-canon/SPEC.md) — registry of reusable children, composition model, SDK extraction (ccc1-ccc2 checked, ccc3-ccc7 pending)
-- [mother-startup-observability](fix/mother-startup-observability/SPEC.md) — improve Mother startup diagnostics and error reporting
 
 ### Draft
 - [persona-lake-mvp1](feat/persona-lake-mvp1/SPEC.md) — persona-scoped knowledge lake (blocked by mother-duckdb-ducklake-federation)
@@ -36,6 +35,7 @@ making claims about how something was designed.
 Read any archived spec: `git show spec/<name>:layer/surface/build/<type>/<name>/SPEC.md`
 
 ### Recently Archived
+- `spec/mother-startup-observability` — Mother startup diagnostics, per-child load telemetry, failure surface (6/6)
 - `spec/ducklake-retirement` — DuckLake runtime coupling removed (7/7)
 - `spec/sdk-upstream-toy-sync` — pull upstream WASI WIT files with release-based pin model (10/10)
 - `spec/sdk-wasi-trait-alignment` — align all toy traits to WASI shape (13/13)
