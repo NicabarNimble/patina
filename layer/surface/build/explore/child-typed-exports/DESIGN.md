@@ -1,5 +1,9 @@
 # Design: Typed WIT exports for canon children
 
+> **Status: explore** — This design work is preserved from session 20260408.
+> The analysis is valid but implementation was deferred. See SPEC.md for why
+> this moved from refactor to explore and when to revisit.
+
 ## Why We Are Doing This
 
 Patina's mission is to provide modular, reusable WASM compute blocks that
