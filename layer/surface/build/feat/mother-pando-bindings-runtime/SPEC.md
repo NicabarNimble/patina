@@ -29,15 +29,15 @@ exit_criteria:
 
   - id: mpbr2-bindings-contract
     text: "A `MotherRuntime` trait in `mother/src/runtime.rs` defines typed methods for pando-child-toy composition: `load_pando`, `refresh_pandos`, `reload_child`, `query_readiness`. Daemon internals call these methods, not CLI commands. CLI is a thin client over HTTP endpoints that invoke these same methods."
-    checked: false
+    checked: true
 
   - id: mpbr3-lifecycle-ops
     text: "Three lifecycle operations exist: `load_pando(name)` registers/activates a pando composition, `refresh_pandos()` rescans and reconciles all pandos, `reload_child(name)` drains the old instance and loads the new one. Reload keeps the previous instance serving until the new one passes health check; on failure, the old instance stays active with its existing health status (not degraded — the reload attempt failed, not the running instance). All three are idempotent: calling with same state produces same result. Concurrent operations on the same child are rejected with 409, not queued."
-    checked: false
+    checked: true
 
   - id: mpbr4-startup-observability
     text: "Per-stage startup metrics emitted as `measure.metric` events: `mother:startup:stage_latency_ms` (gauge, labels: scope=startup, action={stage}), `mother:startup:stage_failure` (counter). Per-child activation metrics: `mother:startup:child_activation_ms` (gauge, labels: scope=startup, action=child_activate, child={name}), `mother:startup:child_activation_failure` (counter). Lifecycle operation metrics: `mother:lifecycle:{op}_latency_ms` (gauge), `mother:lifecycle:{op}_failure` (counter)."
-    checked: false
+    checked: true
 
   - id: mpbr5-readiness-surface
     text: "Health endpoint response includes readiness fields with exact names: `control_plane_ready` (bool), `children_ready_count` (usize), `children_total` (usize), `children_degraded` (array of `{name, reason}` objects). Existing fields unchanged — additive only. State transitions: `control_plane_ready` false→true once, never reverts; `children_total` set after discovery, changes only on refresh; `children_ready_count` monotonically increases during warmup, can decrease on refresh (re-discovery); `children_degraded` entries added on activation failure, removed on successful reload. CLI `patina mother status` surfaces all readiness fields in the same phase as the API — no lag."
@@ -45,7 +45,7 @@ exit_criteria:
 
   - id: mpbr6-manifest-integrity
     text: "Mother computes SHA-256 of all pando and child artifacts at install/seed time: pando.toml, child.toml, and .wasm binaries. Hashes written alongside (e.g. pando.toml.sha256, child.toml.sha256, slate-manager.wasm.sha256). At load time, Mother recomputes and compares all hashes before granting any bindings or instantiating any WASM module. Any mismatch refuses to load with diagnostic. First-party pandos recompute hashes from binary's embedded copy during seeding."
-    checked: false
+    checked: true
 
   - id: mpbr7-proof
     text: "Proof passes: `cargo check --workspace -q`, `cargo test -q --lib`, and a startup test asserting health returns 200 with `control_plane_ready: true` before child activation begins. No hard timing SLA — the structural assertion is that transport is listening before `on_load` runs."
