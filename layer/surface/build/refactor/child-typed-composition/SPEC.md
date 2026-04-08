@@ -17,129 +17,104 @@ related:
   - layer/surface/build/explore/child-component-composition/
   - layer/surface/build/explore/child-typed-exports/
 exit_criteria:
-  - id: ctc1-shared-types
-    text: "Shared WIT type package exists with record-envelope, file-found, file-written, and pipeline result types. Used by all 6 canon children — no serde Record structs."
+  - id: ctc1-toy-package
+    text: "Shared toy package `patina:record@0.1.0` exists with types (record-envelope, file-found, file-written, etc.) and toy interfaces. All 6 canon children reference it — no duplicated serde Record structs."
     checked: false
-  - id: ctc2-typed-toys
-    text: "WIT toys defined for pipeline stages: source toy (scan → file-found), transform toy (records in → results out), write toy (records → file-written), catalog toy (file-written → catalog-entry). Children export these toys instead of handle(string,string)."
+  - id: ctc2-typed-children
+    text: "All 6 canon children export typed toys instead of handle(string,string). Each child's toybox (world) declares only the outside toys it needs and the inside toys it provides."
     checked: false
-  - id: ctc3-children-build
-    text: "All 6 canon children build as typed WASM components targeting wasm32-wasip2. wasm-tools component wit shows typed exports and only the toys each child needs as imports."
+  - id: ctc3-mother-composes
+    text: "Mother uses wac-graph at runtime to compose children per the pando blueprint. Children stay as individual .wasm files. Mother registers, instantiates, wires, validates, and logs."
     checked: false
-  - id: ctc4-composition-works
-    text: "wac plug composes the 6 children into one WASM component. Composed component imports only toys (merged). Internal child-to-child connections resolved."
+  - id: ctc4-security
+    text: "child.toml declares inside toy grants. Mother validates every grant at load time. Unauthorized connections rejected. All decisions logged."
     checked: false
-  - id: ctc5-mother-loads
-    text: "Mother loads the composed component, links toys, calls entry point. Pipeline runs end-to-end: folder in, parquet + catalog out."
+  - id: ctc5-end-to-end
+    text: "Composed folder-text-to-parquet runs end-to-end: folder in, parquet + catalog out. Mother provides outside toys, calls entry point."
     checked: false
-  - id: ctc6-both-lanes
-    text: "Handle-based children (service children) continue to work alongside typed children. Mother dispatches to both."
+  - id: ctc6-handle-children-work
+    text: "Handle-based service children (belief-verifier, session-writer, spec-manager, doctor) continue working unchanged alongside typed children."
     checked: false
   - id: ctc7-observability
-    text: "Each child inside the composition emits metrics via patina:measure toy. Mother sees per-child metrics from the composed component."
+    text: "Each child inside the composition emits metrics via patina:measure. Mother sees per-child metrics."
+    checked: false
+  - id: ctc8-reuse
+    text: "Same child package instantiated multiple times in a composition. Proven with test."
     checked: false
 ---
 # refactor: Typed WIT child composition
 
-> Migrate the 6 canon pipeline children from handle(string, string) +
-> event broker to typed WIT toys + wac composition. Align Patina's MCT
-> model with the Bytecode Alliance component model.
-
-## Problem
-
-All 6 canon children export the same generic `child` world:
-
-```wit
-export handle: func(action: string, payload: string) -> result<string, string>;
-```
-
-Data flows as JSON strings through Mother's event broker. This means:
-- The same `Record` serde struct is duplicated in 4 children
-- Data types are invisible — JSON strings hide the contracts
-- Composition is runtime-only — Mother routes events, can't verify at build time
-- Children can't be wired directly — Mother is always in the data path
-- The child pool isn't searchable by typed capability
-
-This contradicts the component model where components compose via typed
-interfaces verified at build time.
-
-## Goal
-
-Children export typed WIT toys. Children compose into one component via
-`wac plug`. Mother provides platform toys and lifecycle. Mother is NOT
-in the data path between children.
-
-```
-Today:   child → Mother event broker → child → Mother event broker → child
-After:   child → child → child (wac composition, typed, verified at build time)
-         Mother provides toys to all children
-```
+> Migrate the 6 canon children from handle(string, string) + event
+> broker to typed WIT toys composed by Mother at runtime using
+> wac-graph. Align Patina's MCT model with the BA component model.
 
 ## Vocabulary
 
-| Term | Meaning in this spec |
+These terms are used throughout this spec. No invented terms. Where
+a BA/component model term exists, we use it. Where Patina has its
+own term, we use ours.
+
+| Term | Definition |
 |---|---|
-| **Toy** | WIT interface — both imports (capabilities) and exports (contracts) |
-| **Connection** | Child-to-child data link — resolved by wac at build time |
-| **Platform toy** | Toy provided by Mother at runtime (logging, keyvalue, measure, filesystem, sql) |
-| **Pipeline toy** | Toy that describes data flow between children (scan, transform, write) |
-| **Source child** | Produces data from external world (needs platform toys for access) |
-| **Transform child** | Takes data, processes, returns data (may need platform toys for state) |
-| **Sink child** | Writes data to external world (needs platform toys for access) |
+| **Toy** | A WIT interface. A capability. Both imports and exports are toys. Follows `wasi:http` pattern — one package, types + interfaces together. |
+| **Outside toy** | A toy provided by Mother at runtime. Logging, keyvalue, filesystem, measure, sql. Mother implements these. |
+| **Inside toy** | A toy provided by another child through composition. The child doesn't know it comes from another child — Mother arranged it. |
+| **Toybox** | A child's world. The complete set of toys it needs (imports) and provides (exports). Each child has its own toybox. |
+| **Package** | `patina:DOMAIN` — where toy types and interfaces live. Named by domain, like `wasi:http`. Contains types + interfaces. Not separate. |
+| **Child** | A WASM component. Built to wasm32-wasip2. An individual .wasm file. |
+| **Pando** | A composition blueprint. Says which children, wired how. Mother reads it. |
+| **Composition** | Wiring children's exports to other children's imports. BA term. Mother does this at runtime using wac-graph. |
+| **Instance** | A running copy of a child. One child package can have many instances. Shared-nothing between instances. |
 
-## Current State
+## Problem
 
-```
-file-system-monitor   → content-extractor   → schema-enforcer
-  handle("scan")        handle("extract")      handle("enforce")
-  toys: log,measure,    toys: log,events,      toys: log,events,
-        filesystem,           messaging,             messaging,
-        messaging             filesystem             measure
-  emits: file.found     sub: file.found        sub: record.extracted
-                         emits: record.extracted emits: record.validated
+All 6 canon children export the same generic `child` world with
+`handle(string, string)`. The same `Record` serde struct is duplicated
+in 4 children. Data flows as JSON strings through Mother's event broker.
+Mother sits in every data path. Children can't be verified to fit
+together at build time. The child pool isn't searchable by capability.
 
-→ dedup-filter         → record-writer        → lakehouse-catalog
-  handle("filter")       handle("write")        handle("register")
-  toys: log,events,      toys: log,keyvalue,    toys: log,keyvalue,
-        messaging,              events,                events,sql
-        keyvalue,               messaging,
-        measure                 measure,
-                                filesystem
-  sub: record.validated  sub: record.ready      sub: file.written
-  emits: record.ready    emits: file.written
-```
+## Goal
 
-Every child: same Child trait, same handle dispatch, same event
-subscribe/ack/emit boilerplate, duplicated Record struct.
+Children export typed WIT toys. Mother composes them at runtime using
+wac-graph per the pando blueprint. Children stay as individual .wasm
+files — reusable, replaceable, independently optimizable. Mother
+provides outside toys and validates all grants. Inside toys are
+wired by Mother, logged, and auditable.
 
-## Target State
+## How Mother Composes (wac-graph)
+
+Mother reads the pando. For each child:
 
 ```
-file-system-monitor   → content-extractor   → schema-enforcer
-  exports: source toy    imports: source toy    imports: transform toy
-  platform toys:         exports: extract toy   exports: transform toy
-    log, measure,        platform toys:         platform toys:
-    filesystem             log, filesystem        log, measure
-
-→ dedup-filter         → record-writer        → lakehouse-catalog
-  imports: transform toy imports: transform toy imports: sink toy
-  exports: transform toy exports: sink toy      exports: catalog toy
-  platform toys:         platform toys:         platform toys:
-    log, keyvalue,         log, keyvalue,         log, keyvalue,
-    measure                measure, filesystem    sql
+1. register_package  — load child .wasm from pool, inspect its types
+2. validate grants   — check child.toml: are these toys authorized?
+3. log decision      — "granting schema-enforcer: logging, measure (outside),
+                        record/transform from content-extractor (inside)"
+4. instantiate       — create instance (shared-nothing)
+5. wire inside toys  — set_instantiation_argument: export → import
+6. export            — declare what the composition exposes to Mother
+7. encode            — produce composed component bytes
+8. load in wasmtime  — link outside toys, call entry point
 ```
 
-Connections (→) resolved by wac. Platform toys provided by Mother.
-Composed component: one .wasm, imports only platform toys, exports
-pipeline entry point.
+Children stay as individual .wasm files on disk. The pool is the
+inventory. The pando is the blueprint. Mother is the composer.
 
-## Shared WIT Types
+**Proven:** wac-graph spike successfully composed 2 components at
+runtime, loaded result in wasmtime. Second spike proved same package
+can be instantiated multiple times (reuse).
 
-One package. These types replace the duplicated serde structs.
+## Toy Package: `patina:record`
+
+One package for this pando's data domain. Types + interfaces together,
+like `wasi:http` has types + handlers. If types need to split out
+later (like `wasi:io` split from `wasi:http`), that happens naturally.
 
 ```wit
-package patina:pipeline@0.1.0;
+package patina:record@0.1.0;
 
+/// Shared types — the data vocabulary for this domain
 interface types {
     record file-found {
         source-path: string,
@@ -187,26 +162,7 @@ interface types {
         registered-at: string,
         schema-version: u32,
     }
-
-    record pipeline-result {
-        files-found: u32,
-        records-extracted: u32,
-        records-accepted: u32,
-        records-rejected: u32,
-        files-written: u32,
-        catalog-entries: u32,
-    }
 }
-```
-
-## Pipeline Toys
-
-These are the toys children export and import to connect to each other.
-The **same transform toy** is used by schema-enforcer AND dedup-filter —
-same shape, different implementation.
-
-```wit
-package patina:pipeline@0.1.0;
 
 /// Source toy — scan external world, produce file-found list
 interface source {
@@ -214,15 +170,15 @@ interface source {
     scan: func(folder: string) -> result<list<file-found>, string>;
 }
 
-/// Extract toy — turn file metadata into records
+/// Extract toy — file metadata to records
 interface extract {
     use types.{file-found, record-envelope};
     extract: func(files: list<file-found>) -> result<list<record-envelope>, string>;
 }
 
-/// Transform toy — records in, results out (validate, dedup, etc.)
-/// Same toy, multiple children. Schema-enforcer and dedup-filter
-/// both export this. wac chains them.
+/// Transform toy — records in, results out.
+/// Same toy used by schema-enforcer AND dedup-filter.
+/// Different implementations, same contract.
 interface transform {
     use types.{record-envelope, transform-result};
     transform: func(records: list<record-envelope>) -> result<transform-result, string>;
@@ -241,60 +197,61 @@ interface catalog {
 }
 ```
 
-## Per-Child Worlds
+## Per-Child Toyboxes (Worlds)
 
-Each child declares only what it needs (platform toys) and what it
-does (pipeline toys). No more shared `child` world.
+Each child declares its own toybox. Outside toys (from Mother) as
+imports. Inside toy (what it provides) as export. Inside toy (from
+upstream child) as import where needed.
 
-**file-system-monitor:**
+**file-system-monitor** — source child. Reads external world.
 ```wit
 world file-system-monitor {
+    // Outside toys (Mother provides)
     import wasi:logging/logging@0.1.0;
     import patina:measure/measure@0.1.0;
     import wasi:filesystem/types@0.2.8;
     import wasi:filesystem/preopens@0.2.8;
-    export patina:pipeline/source@0.1.0;
+    // Inside toy (what this child provides)
+    export patina:record/source@0.1.0;
 }
 ```
 
-**content-extractor:**
+**content-extractor** — takes file-found, reads files, produces records.
 ```wit
 world content-extractor {
+    // Outside toys
     import wasi:logging/logging@0.1.0;
     import wasi:filesystem/types@0.2.8;
     import wasi:filesystem/preopens@0.2.8;
-    import patina:pipeline/source@0.1.0;
-    export patina:pipeline/extract@0.1.0;
+    // Inside toy (from upstream child)
+    import patina:record/source@0.1.0;
+    // Inside toy (what this child provides)
+    export patina:record/extract@0.1.0;
 }
 ```
 
-**schema-enforcer:**
+**schema-enforcer** — validates records. Uses the transform toy.
 ```wit
 world schema-enforcer {
     import wasi:logging/logging@0.1.0;
     import patina:measure/measure@0.1.0;
-    import patina:pipeline/extract@0.1.0;
-    export patina:pipeline/transform@0.1.0;
+    import patina:record/extract@0.1.0;
+    export patina:record/transform@0.1.0;
 }
 ```
 
-**dedup-filter:**
+**dedup-filter** — deduplicates records. Same transform toy, different implementation.
 ```wit
 world dedup-filter {
     import wasi:logging/logging@0.1.0;
     import wasi:keyvalue/store@0.2.0;
     import patina:measure/measure@0.1.0;
-    import patina:pipeline/transform@0.1.0;
-    export patina:pipeline/transform@0.1.0;
+    import patina:record/transform@0.1.0;
+    export patina:record/transform@0.1.0;
 }
 ```
 
-Note: dedup-filter imports AND exports the same transform toy.
-It receives records from schema-enforcer's transform output and
-passes them downstream. wac chains same-shaped toys naturally —
-proven in the composition spike.
-
-**record-writer:**
+**record-writer** — writes records to parquet files.
 ```wit
 world record-writer {
     import wasi:logging/logging@0.1.0;
@@ -302,98 +259,51 @@ world record-writer {
     import patina:measure/measure@0.1.0;
     import wasi:filesystem/types@0.2.8;
     import wasi:filesystem/preopens@0.2.8;
-    import patina:pipeline/transform@0.1.0;
-    export patina:pipeline/write@0.1.0;
+    import patina:record/transform@0.1.0;
+    export patina:record/write@0.1.0;
 }
 ```
 
-**lakehouse-catalog:**
+**lakehouse-catalog** — registers files in catalog.
 ```wit
 world lakehouse-catalog {
     import wasi:logging/logging@0.1.0;
     import wasi:keyvalue/store@0.2.0;
     import wasi:sql/readwrite@0.1.0;
-    import patina:pipeline/write@0.1.0;
-    export patina:pipeline/catalog@0.1.0;
+    import patina:record/write@0.1.0;
+    export patina:record/catalog@0.1.0;
 }
 ```
 
-## Composition
-
-Build each child, then compose with wac:
-
-```bash
-# Build all 6
-for child in file-system-monitor content-extractor schema-enforcer \
-             dedup-filter record-writer lakehouse-catalog; do
-    cargo build -p "patina-ai-child-$child" --target wasm32-wasip2
-done
-
-# Compose: plug each child into the next
-# wac resolves: export of A matches import of B
-wac plug --plug file-system-monitor.wasm content-extractor.wasm -o step1.wasm
-wac plug --plug step1.wasm schema-enforcer.wasm -o step2.wasm
-wac plug --plug step2.wasm dedup-filter.wasm -o step3.wasm
-wac plug --plug step3.wasm record-writer.wasm -o step4.wasm
-wac plug --plug step4.wasm lakehouse-catalog.wasm -o pipeline.wasm
-```
-
-Result (`pipeline.wasm`):
-- **Imports:** logging, measure, keyvalue, filesystem, sql (merged platform toys)
-- **Exports:** `patina:pipeline/catalog` (the outermost child's export)
-- **Internal:** 6 children wired by typed connections, shared-nothing
-
-Mother calls: run the pipeline by calling the composed entry point.
-
-Open question: the composed component exports `catalog/register`
-but what Mother really wants to call is `source/scan` to trigger
-the pipeline. The composition wires source→extract→transform→...
-but the ENTRY POINT is the source, not the final sink. Need to
-verify: does wac expose intermediate interfaces, or only the
-outermost child's export? If only the outermost, we may need a
-thin wrapper child or a pipeline-level world.
-
 ## Child Code Changes
 
-For each child, the change is mechanical:
+For each child, mechanical:
 
-**Remove:**
-- `use patina_sdk::child::{Child, ChildHealth, ...};`
-- `register_child!` macro
-- `impl Child for ... { handle(), name(), health(), on_load() }`
-- serde `Record`, `FileFoundEvent`, etc. structs
-- `parse_payload()` JSON parsing
-- `emit()` messaging boilerplate
-- `events_stream::subscribe()` / `ack()` boilerplate
-- `serde`, `serde_json` dependencies
+**Remove:** serde Record struct, parse_payload(), emit() boilerplate,
+events_stream subscribe/ack, handle() dispatch, Child trait impl,
+register_child! macro, serde/serde_json deps.
 
-**Replace with:**
-- `wit_bindgen::generate!` pointing to per-child world
-- `export!()` macro from wit-bindgen
-- Typed export implementation (e.g., `transform(records) -> result`)
+**Replace with:** wit_bindgen::generate! pointing to per-child world,
+export!() macro, typed toy implementation.
 
-**Keep:**
-- Business logic (validate_record, provenance_complete, dedup hash check,
-  parquet write, catalog SQL)
-- Platform toy usage (log, measure, keyvalue, sql, filesystem) — but
-  through wit-bindgen generated bindings instead of patina-sdk wrappers
-- Metric emission via measure toy
+**Keep:** Business logic (validation, dedup hash, parquet write,
+catalog SQL), outside toy usage (log, measure, keyvalue, sql,
+filesystem) through wit-bindgen generated bindings.
 
-**Example: schema-enforcer after**
-
+**Example — schema-enforcer after:**
 ```rust
 wit_bindgen::generate!({
-    path: "../wit/worlds/schema-enforcer",
+    path: "wit/worlds/schema-enforcer",
     world: "schema-enforcer",
     generate_all,
 });
 
 struct SchemaEnforcer;
 
-impl exports::patina::pipeline::transform::Guest for SchemaEnforcer {
+impl exports::patina::record::transform::Guest for SchemaEnforcer {
     fn transform(
-        records: Vec<patina::pipeline::types::RecordEnvelope>,
-    ) -> Result<patina::pipeline::types::TransformResult, String> {
+        records: Vec<patina::record::types::RecordEnvelope>,
+    ) -> Result<patina::record::types::TransformResult, String> {
         let mut accepted = Vec::new();
         let mut rejected = Vec::new();
 
@@ -401,110 +311,104 @@ impl exports::patina::pipeline::transform::Guest for SchemaEnforcer {
             match validate_record(&record) {
                 Ok(()) => accepted.push(record),
                 Err(reason) => rejected.push(
-                    patina::pipeline::types::RejectedRecord {
-                        reason,
-                        envelope: record,
-                    }
+                    patina::record::types::RejectedRecord { reason, envelope: record }
                 ),
             }
         }
 
-        // Metrics via platform toy
-        wasi::logging::logging::log(
-            wasi::logging::logging::Level::Info,
-            "",
-            &format!("validated: {} accepted, {} rejected",
-                accepted.len(), rejected.len()),
-        );
+        // Metrics via outside toy (Mother provides)
+        patina::measure::measure::counter("validated_records", accepted.len() as f64)?;
 
-        Ok(patina::pipeline::types::TransformResult { accepted, rejected })
+        Ok(patina::record::types::TransformResult { accepted, rejected })
     }
 }
 
-fn validate_record(record: &patina::pipeline::types::RecordEnvelope) -> Result<(), String> {
-    // Same validation logic as today — unchanged
-    if record.record_id.is_empty() { return Err("missing record_id".into()); }
-    if record.source_path.is_empty() { return Err("missing source_path".into()); }
-    // ... etc
+fn validate_record(r: &patina::record::types::RecordEnvelope) -> Result<(), String> {
+    if r.record_id.is_empty() { return Err("missing record_id".into()); }
+    if r.source_path.is_empty() { return Err("missing source_path".into()); }
+    // ... same validation logic as today
     Ok(())
 }
 
 export!(SchemaEnforcer);
 ```
 
-~60 lines vs 228 today. Business logic unchanged. Boilerplate gone.
+~60 lines. Business logic unchanged. Boilerplate gone. wit-bindgen
+is the SDK — Luke Wagner's "SDKs for free."
+
+## Security and Audit
+
+Mother is the authority. Children only know Mother. wac-graph is
+Mother's tool — children don't know about composition.
+
+**child.toml gains inside toy grants:**
+```toml
+[child]
+name = "dedup-filter"
+
+[needs]
+toys = ["logging", "keyvalue", "measure"]
+
+[needs.inside]
+transform = { from = "schema-enforcer" }
+```
+
+**Mother validates at load time:**
+1. Load each child .wasm — `register_package`
+2. Read child.toml — check outside toy grants
+3. Read child.toml — check inside toy grants match pando wiring
+4. Reject if unauthorized — child B not allowed to receive from child A
+5. Log every decision:
+   ```
+   [GRANT] dedup-filter: logging (outside, Mother)
+   [GRANT] dedup-filter: keyvalue (outside, Mother)
+   [GRANT] dedup-filter: measure (outside, Mother)
+   [GRANT] dedup-filter: record/transform (inside, from schema-enforcer)
+   [DENY]  dedup-filter: sql (not declared in child.toml)
+   ```
+6. Wire inside toys — `set_instantiation_argument`
+7. Encode and load
+
+**Tamper verification:**
+- Composed bytes are produced by Mother from individual .wasm files
+- Mother can hash each child .wasm before composition
+- Pando declares expected children + versions
+- If a .wasm doesn't match expected hash, reject
+
+**Traceability:**
+- Every grant logged with timestamp, child name, toy name, source
+- Every composition logged: which children, which connections
+- Mother's audit log shows full history of what was granted to whom
 
 ## Mother Changes
 
-Follow the wasmtime model: separate bindgen per world, separate
-linker setup, same runtime.
+**Add wac-graph dependency.** Mother uses `CompositionGraph` at runtime.
 
-**Add second bindgen:**
-
-```rust
-// Existing — for handle-based children
-mod child_bindings {
-    wasmtime::component::bindgen!({
-        path: "wit/child/",
-        world: "child",
-    });
-}
-
-// New — for composed pipeline
-mod pipeline_bindings {
-    wasmtime::component::bindgen!({
-        path: "wit/worlds/pipeline/",
-        world: "pipeline",
-    });
-}
-```
-
-**Dispatch by world:**
-
-Mother reads child.toml (or the pando manifest). If the component
-targets the `child` world, dispatch through handle. If it targets
-a pipeline world, call the typed export.
-
+**New composition path alongside existing dispatch:**
 ```rust
 enum LoadedComponent {
+    /// Existing handle-based child
     HandleBased { instance: child_bindings::Child },
-    Pipeline { instance: pipeline_bindings::Pipeline },
+    /// Composed pando — Mother built this via wac-graph
+    Composed { instance: /* typed bindgen for composed world */ },
 }
 ```
 
-Service children (belief-verifier, session-writer, spec-manager,
-doctor) stay handle-based. The composed pipeline component uses
-the new dispatch path.
+**Follow wasmtime model:** separate bindgen per world type. The
+composed component has a different world than `child`. Mother needs
+bindgen for both. Like wasmtime has wasmtime-wasi and wasmtime-wasi-http
+as separate crates with separate linker setup.
 
-**Toy linking unchanged:**
-
-Mother's `link_wasi()`, `link_log()`, `link_state()`, etc. work
-the same — they add toy implementations to the linker. The composed
-component's merged platform toy imports get satisfied the same way
-individual children's imports do today.
+**Outside toy linking unchanged:** Mother's existing link_log(),
+link_state(), link_store() etc. work the same. They add toy
+implementations to the linker. The composed component's merged
+outside toy imports get satisfied the same way individual children's
+imports do today.
 
 ## Pando Changes
 
-Today:
-```toml
-[pando]
-name = "folder-text-to-parquet"
-version = "0.1.0"
-
-[[children]]
-name = "file-system-monitor"
-# ... 6 children
-
-[composition]
-wiring = [
-  "file-system-monitor.file.found -> content-extractor",
-  "content-extractor.record.extracted -> schema-enforcer",
-  # ...
-]
-```
-
-After: the wiring is done by wac at build time, not Mother at runtime.
-The pando becomes a build manifest:
+The pando becomes a composition blueprint that Mother reads and
+executes via wac-graph:
 
 ```toml
 [pando]
@@ -536,107 +440,106 @@ name = "lakehouse-catalog"
 world = "lakehouse-catalog"
 
 [composition]
-tool = "wac"
-output = "folder-text-to-parquet.wasm"
+# Mother reads this, builds the wac-graph, wires children
+# Wiring is typed — Mother verifies toys match
+entry = "source"
 ```
 
-Mother reads the composed .wasm — she doesn't need to know about
-individual children or wiring. The pando told wac how to build it.
-Mother loads the result and provides toys.
+Mother reads this, loads each child from the pool, builds the
+wac-graph, validates grants, composes, loads. The string wiring
+rules are gone — typed toys replace them.
 
 ## SDK Changes
 
-**wit-bindgen is the SDK for typed children.** Luke Wagner's "SDKs
-for free" — define WIT, generate bindings automatically.
+**Typed children:** use wit-bindgen directly. `wit_bindgen::generate!`
++ `export!()`. No patina-sdk dependency. The WIT IS the SDK.
 
-For typed pipeline children:
-- `wit_bindgen::generate!` generates types and export stubs
-- `export!()` macro wires the implementation
-- Platform toy calls use generated bindings directly
-- No patina-sdk dependency needed
+**Handle-based children:** patina-sdk with Child trait +
+register_child! + granted::* stays. Untouched.
 
-For handle-based service children:
-- `patina-sdk` with `Child` trait + `register_child!` stays
-- `granted::*` convenience wrappers stay
-- No changes
-
-The SDK splits into two paths:
-1. **Typed children** — use wit-bindgen directly. SDK not needed.
-2. **Handle children** — use patina-sdk as today. Untouched.
-
-Over time, as service children get typed interfaces, patina-sdk
-shrinks. The WIT definitions ARE the SDK.
+The SDK naturally splits: typed children use BA tools directly
+(SDKs for free), handle children use Patina SDK. Over time, as
+children get typed toys, patina-sdk shrinks.
 
 ## Observability
 
-Each child inside the composition imports `patina:measure` and
-`wasi:logging`. wac merges these imports — Mother provides one
-implementation. Every child emits metrics and logs through the
-platform toy.
+Every child inside the composition imports `patina:measure` and
+`wasi:logging`. These are outside toys — Mother provides one
+implementation. When schema-enforcer emits
+`counter("validated_records", 1.0)`, that call goes to Mother's
+measure implementation.
 
 Mother sees per-child metrics from inside the composition because
-each child identifies itself in metric names/log contexts. The
-measure toy is the observability channel.
+each child identifies itself in metric names and log contexts.
+The measure toy IS the observability channel.
 
-Connection-level observability (latency between children, data
-throughput) is a future enhancement — composable observer child
-that sits between pipeline stages. Not in scope for this spec.
+Connection-level observability (latency between children, throughput)
+is future work — a composable observer child that passes data through
+and emits metrics. Not in scope.
 
-## Risks and Open Questions
+## Service Children — Out of Scope
+
+Service children (belief-verifier, session-writer, spec-manager,
+doctor) stay handle-based. They are control-plane, not data-flow.
+They respond to actions like "verify this belief" — request-response
+where the action IS the interface. handle(string, string) is the
+right shape for them today.
+
+They may get typed toys later when their contracts stabilize. But
+that's a separate spec. This spec is about the 6 canon children
+in the folder-text-to-parquet pando.
+
+## Open Questions
 
 1. **Composition entry point** — The composed component's outermost
-   export is the last child's toy (catalog). But Mother wants to
-   trigger the pipeline from the first child (source/scan). Need to
-   verify how wac exposes the entry point or whether a thin wrapper
-   world is needed.
+   export is catalog's `register`. But Mother wants to call source's
+   `scan` to trigger the flow. Options: thin wrapper child as entry
+   point, or rethink how Mother drives the composed component.
 
-2. **wac chain of 6** — Spike proved 2. Need to verify 6 works via
-   sequential `wac plug` or a compose file.
+2. **State scoping** — dedup-filter and record-writer both import
+   keyvalue. Shared-nothing inside the composition should keep them
+   separate. Need to verify with wasmtime that each instance gets
+   its own keyvalue scope.
 
-3. **State scoping** — dedup-filter and record-writer both import
-   keyvalue. Shared-nothing should keep them separate inside the
-   composition. Need to verify with wasmtime.
+3. **Rejected records** — transform toy returns accepted + rejected.
+   Downstream gets only accepted. Child logs rejections via logging
+   toy. If routing rejected records is needed later, that's a
+   composable child — a seam.
 
-4. **Rejected records** — transform toy returns accepted + rejected.
-   Downstream child only gets accepted. Rejected records are logged
-   by the child via logging toy. If we need rejected record routing,
-   that's a future composable child.
-
-5. **WASI plumbing imports** — Compiled components pull in wasi:cli,
-   wasi:clocks, wasi:filesystem even if not needed (from the WASM
-   target). These merge in composition. Shouldn't cause issues but
-   adds unused imports.
+4. **WASI plumbing** — Compiled children pull in wasi:cli, wasi:clocks,
+   wasi:filesystem even if not needed (from wasm32-wasip2 target).
+   These merge in composition. Shouldn't break but adds unused imports.
 
 ## Implementation Order
 
-### Phase 1: WIT types + schema-enforcer (prove one child builds)
-1. Create `patina:pipeline@0.1.0` types and toy interfaces
-2. Create schema-enforcer world
+### Phase 1: Toy package + schema-enforcer (one child builds typed)
+1. Create `patina:record@0.1.0` WIT package
+2. Create schema-enforcer toybox (world)
 3. Rewrite schema-enforcer with wit-bindgen
 4. Build, inspect with `wasm-tools component wit`
-5. Verify: typed export visible, platform toy imports only
 
-### Phase 2: dedup-filter + composition (prove wac chains same toy)
-6. Create dedup-filter world (imports + exports transform toy)
-7. Rewrite dedup-filter with wit-bindgen
-8. Build both, compose with `wac plug`
-9. Verify: composed component has merged imports, resolved connection
+### Phase 2: dedup-filter + wac-graph composition
+5. Create dedup-filter toybox (same transform toy, different impl)
+6. Rewrite dedup-filter with wit-bindgen
+7. Mother composes both via wac-graph at runtime
+8. Verify: inside toy resolved, outside toys listed
 
-### Phase 3: All 6 children + full composition
-10. Create remaining 4 worlds and rewrite children
-11. Compose full 6-child pipeline
-12. Verify composed component shape
+### Phase 3: All 6 children
+9. Convert remaining 4 children
+10. Mother composes all 6 via wac-graph
+11. Verify composed component shape
 
-### Phase 4: Mother loads composed component
-13. Add pipeline bindgen to Mother
-14. Add dispatch enum (HandleBased vs Pipeline)
-15. Load composed component, link toys, call entry point
-16. Run end-to-end: folder → parquet → catalog
+### Phase 4: Mother end-to-end
+12. Add wac-graph to Mother's dependencies
+13. Add composition path + dispatch enum
+14. Load composed component, link outside toys, call entry point
+15. Run end-to-end: folder → parquet → catalog
 
-### Phase 5: Pando + both lanes
-17. Update pando.toml format for composition
+### Phase 5: Security + both lanes
+16. child.toml inside toy grants
+17. Mother validates and logs all grants
 18. Verify handle-based service children still work
-19. Full test suite passes
+19. Full test suite
 
 ## Verification
 
@@ -644,32 +547,26 @@ that sits between pipeline stages. Not in scope for this spec.
 # Phase 1
 cargo build -p patina-ai-child-schema-enforcer --target wasm32-wasip2
 wasm-tools component wit target/.../schema_enforcer.wasm
-# Expect: exports patina:pipeline/transform, imports log+measure only
+# Expect: exports patina:record/transform, imports outside toys only
 
-# Phase 2
-wac plug --plug schema-enforcer.wasm dedup-filter.wasm -o composed.wasm
-wasm-tools component wit composed.wasm
-# Expect: exports transform, imports log+measure+keyvalue, no internal connection visible
-
-# Phase 3
-# Full 6-child composition
-wasm-tools component wit pipeline.wasm
-# Expect: imports all platform toys (merged), exports pipeline entry
+# Phase 2 — Mother composes at runtime
+cargo test --test composition_spike
+# Expect: wac-graph composes, wasmtime loads, outside toys listed
 
 # Phase 4
-cargo check --workspace -q
-cargo test -q --lib
 cargo test --test wasm_integration
+# Expect: end-to-end pipeline runs
 
 # Phase 5
 cargo test -q --workspace
+cargo check --workspace -q
 ```
 
 ## Non-Goals
 
-- Not migrating service children (belief-verifier, session-writer,
-  spec-manager, doctor) — they keep handle(string, string)
-- Not building lifecycle toy yet — future work
+- Not migrating service children — they keep handle(string, string)
+- Not building lifecycle toy — future work
 - Not building observer children — future work
-- Not changing Mother's core (runtime store, registry) — only dispatch
-- Not implementing wac compose files — sequential plug is sufficient
+- Not pre-building giant .wasm files — Mother composes at runtime
+- Not changing Mother's core (runtime store, registry) — only adding
+  composition path
