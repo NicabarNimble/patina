@@ -3,8 +3,7 @@ type: feat
 id: mother-duckdb-ducklake-federation
 status: draft
 created: 2026-04-02
-blocked_by:
-- mother-pando-bindings-runtime
+blocked_by: []
 sessions:
   origin: 20260402-135124-249836000
 related:
