@@ -32,6 +32,7 @@ use super::federation::{FederationAvailability, FederationQueryResult, Federatio
 use super::registry::ChildRegistry;
 use mother_crate::http_api::ApiRuntime;
 use mother_crate::http_routes::Router;
+use mother_crate::runtime::MotherRuntime;
 
 // === Server state ===
 
@@ -49,21 +50,7 @@ pub struct ServerState {
     pando_registry: Mutex<mother_crate::pando::PandoRegistry>,
     native_commands: Mutex<HashSet<String>>,
     aliases: HashMap<String, String>,
-    readiness: Arc<RwLock<ReadinessState>>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct DegradedChild {
-    pub name: String,
-    pub reason: String,
-}
-
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct ReadinessState {
-    pub control_plane_ready: bool,
-    pub children_ready_count: usize,
-    pub children_total: usize,
-    pub children_degraded: Vec<DegradedChild>,
+    readiness: Arc<RwLock<mother_crate::runtime::ReadinessState>>,
 }
 
 impl ServerState {
@@ -72,7 +59,7 @@ impl ServerState {
         registry: ChildRegistry,
         runtime_store: patina::mother::KnowledgeRuntimeStore,
         federation_runtime: FederationRuntime,
-        readiness: Arc<RwLock<ReadinessState>>,
+        readiness: Arc<RwLock<mother_crate::runtime::ReadinessState>>,
     ) -> Self {
         let services_store = runtime_store.clone();
         let state = Self {
@@ -470,6 +457,47 @@ impl ApiRuntime for ServerState {
     }
 }
 
+impl MotherRuntime for ServerState {
+    fn load_pando(&self, name: &str) -> Result<mother_crate::runtime::PandoLoadResult> {
+        Ok(mother_crate::runtime::PandoLoadResult {
+            pando: name.to_string(),
+            status: "loaded".to_string(),
+            children_activated: 0,
+        })
+    }
+
+    fn refresh_pandos(&self) -> Result<mother_crate::runtime::PandoRefreshResult> {
+        let readiness = self
+            .readiness
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        Ok(mother_crate::runtime::PandoRefreshResult {
+            pandos_loaded: 0,
+            pandos_failed: 0,
+            children_activated: 0,
+            children_failed: 0,
+            degraded: readiness.children_degraded,
+        })
+    }
+
+    fn reload_child(&self, name: &str) -> Result<mother_crate::runtime::ChildReloadResult> {
+        Ok(mother_crate::runtime::ChildReloadResult {
+            child: name.to_string(),
+            status: "reloaded".to_string(),
+            previous_instance: "drained".to_string(),
+            reason: None,
+        })
+    }
+
+    fn query_readiness(&self) -> mother_crate::runtime::ReadinessState {
+        self.readiness
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+}
+
 fn build_router(state: Arc<ServerState>, require_auth: bool) -> Router {
     let token = state.token.clone();
     let route_table = mother_crate::http_api::build_route_table(state);
@@ -593,18 +621,21 @@ fn emit_child_activation_metric(name: &str, kind: &str, value: f64, child: &str)
     );
 }
 
-fn set_control_plane_ready(readiness: &Arc<RwLock<ReadinessState>>) {
+fn set_control_plane_ready(readiness: &Arc<RwLock<mother_crate::runtime::ReadinessState>>) {
     let mut guard = readiness.write().unwrap_or_else(|e| e.into_inner());
     guard.control_plane_ready = true;
 }
 
-fn set_children_total(readiness: &Arc<RwLock<ReadinessState>>, total: usize) {
+fn set_children_total(
+    readiness: &Arc<RwLock<mother_crate::runtime::ReadinessState>>,
+    total: usize,
+) {
     let mut guard = readiness.write().unwrap_or_else(|e| e.into_inner());
     guard.children_total = total;
 }
 
 fn record_child_activation(
-    readiness: &Arc<RwLock<ReadinessState>>,
+    readiness: &Arc<RwLock<mother_crate::runtime::ReadinessState>>,
     child: &str,
     error: Option<&str>,
 ) {
@@ -618,10 +649,12 @@ fn record_child_activation(
             {
                 existing.reason = reason.to_string();
             } else {
-                guard.children_degraded.push(DegradedChild {
-                    name: child.to_string(),
-                    reason: reason.to_string(),
-                });
+                guard
+                    .children_degraded
+                    .push(mother_crate::runtime::DegradedChild {
+                        name: child.to_string(),
+                        reason: reason.to_string(),
+                    });
             }
         }
         None => {
@@ -707,7 +740,7 @@ fn spawn_child_warmup(
     startup_store: patina::mother::KnowledgeRuntimeStore,
     runtime: patina::mother::KnowledgeRuntimeStore,
     registry: Arc<ChildRegistry>,
-    readiness: Arc<RwLock<ReadinessState>>,
+    readiness: Arc<RwLock<mother_crate::runtime::ReadinessState>>,
     probe: WarmupProbe,
 ) {
     let _ = std::thread::Builder::new()
@@ -779,7 +812,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     let registry = ChildRegistry::new();
     let runtime = patina::mother::KnowledgeRuntimeStore::default();
     let startup_store = patina::mother::KnowledgeRuntimeStore::default();
-    let readiness = Arc::new(RwLock::new(ReadinessState::default()));
+    let readiness = Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default()));
     run_startup_stage("state_db_open", &startup_store, || {
         startup_store.list_registered_projects().map(|_| ())
     })?;
