@@ -1,9 +1,8 @@
 ---
 type: feat
 id: mother-duckdb-ducklake-federation
-status: complete
+status: active
 created: 2026-04-02
-blocked_by: []
 sessions:
   origin: 20260402-135124-249836000
 related:
