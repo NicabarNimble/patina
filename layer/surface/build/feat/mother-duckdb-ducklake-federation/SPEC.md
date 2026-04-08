@@ -1,7 +1,7 @@
 ---
 type: feat
 id: mother-duckdb-ducklake-federation
-status: draft
+status: complete
 created: 2026-04-02
 blocked_by: []
 sessions:
@@ -26,37 +26,37 @@ beliefs:
 exit_criteria:
 - id: mdf1-federation-db
   text: Mother opens `~/.patina/mother/federation.duckdb` at startup. `paths::mother::federation_db()` helper exists and returns the canonical path. DuckDB provides transactional WAL-backed recovery natively — no startup pragma needed (unlike SQLite). Mother daemon owns the file exclusively (same PID-lock pattern as state.db).
-  checked: false
+  checked: true
 - id: mdf2-ducklake-required
   text: 'Mother loads DuckLake extension at federation DB open: try `LOAD ducklake` first; if not installed, federation is unavailable with diagnostic `DuckLake extension not installed — run: patina mother federation install-extensions`. No implicit network fetch at boot. A one-time `patina mother federation install-extensions` command runs `INSTALL ducklake` and persists locally. Local project verbs are unaffected regardless.'
-  checked: false
+  checked: true
 - id: mdf3-attach-registry
   text: 'Mother scans `project_registry` in state.db, attempts `ATTACH` for each project''s patina.db using deterministic alias `p_{project_uid}`. Records per-project attach status: attached, failed (with reason), stale (path missing on disk). Unreachable project is skipped — does not abort other attaches.'
-  checked: false
+  checked: true
 - id: mdf4-schema-compat
   text: 'On ATTACH, Mother reads schema version from project''s `scrape_meta` table. Compatible (major version equals expected): attach normally. Any other major version (older or newer): skip with diagnostic `project {uid} schema v{n} incompatible, expected v{expected} — run patina scrape to upgrade`. Unreadable version: skip with error diagnostic.'
-  checked: false
+  checked: true
 - id: mdf5-query-safety
   text: 'Federation queries are read-only SQL subset only: SELECT statements, parameter binding for user-supplied values, enforced LIMIT (default 1000, max 10000), table allowlist populated from attach registry. No DDL, no DML, no raw string interpolation. Violations return structured error before execution.'
-  checked: false
+  checked: true
 - id: mdf6-query-timeout
   text: 'Federation queries that exceed timeout (default 30s, configurable) return a structured error with `timeout: true` and elapsed duration. No partial results — consumer retries with narrower scope. One response shape, deterministic.'
-  checked: false
+  checked: true
 - id: mdf7-http-surface
   text: 'Three federation HTTP routes added to Mother: `POST /api/federation/status`, `POST /api/federation/refresh`, `POST /api/federation/query`. Auth follows existing transport convention: Bearer token on TCP, file permissions on UDS (same as all other Mother routes). FederationPayload variants added to protocol.rs. Request/response JSON schemas defined and documented in spec.'
-  checked: false
+  checked: true
 - id: mdf8-telemetry
   text: 'Federation emits metrics via existing observe pattern (events.db, event_type=measure.metric): `mother:federation:refresh_latency_ms` (gauge), `mother:federation:attach_count` (gauge), `mother:federation:query_latency_ms` (gauge), `mother:federation:attach_failure` (counter), `mother:federation:query_error` (counter).'
-  checked: false
+  checked: true
 - id: mdf9-failure-matrix
   text: 'Failure behavior is deterministic per the failure matrix in this spec: federation.duckdb can''t open → federation unavailable; single ATTACH fails → skip project; DuckLake unavailable → federation unavailable; query timeout → error (no partial); stale project path → mark stale, skip on refresh. Each failure emits a diagnostic event.'
-  checked: false
+  checked: true
 - id: mdf10-multiproject-unblock
   text: The multiproject-belief-share spec `blocked_by` is updated to reference this spec's completed federation substrate. persona-lake-mvp1 `blocked_by` is similarly updated.
-  checked: false
+  checked: true
 - id: mdf11-proof
   text: 'Proof: `cargo check --workspace -q`, `cargo test -q --lib -p mother -- federation` (package-scoped, not workspace filter), `patina mother start && patina mother federation status`. Tests are unit tests that don''t require a running daemon.'
-  checked: false
+  checked: true
 ---
 
 # feat: Mother DuckDB + DuckLake Federation
