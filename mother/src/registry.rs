@@ -8,7 +8,7 @@ use anyhow::Result;
 use chrono::Utc;
 use rusqlite::{params, Connection};
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 
 use crate::{
@@ -17,7 +17,14 @@ use crate::{
 
 /// Registry of Mother's children.
 pub struct ChildRegistry {
-    children: RwLock<Vec<Arc<RwLock<Box<dyn Child>>>>>,
+    children: RwLock<Vec<Arc<ChildEntry>>>,
+}
+
+struct ChildEntry {
+    child: Arc<RwLock<Box<dyn Child>>>,
+    wasm_path: PathBuf,
+    manifest_path: PathBuf,
+    reload_lock: Arc<Mutex<()>>,
 }
 
 #[derive(Debug, Clone)]
@@ -40,7 +47,7 @@ impl ChildRegistry {
         }
     }
 
-    fn children_snapshot(&self) -> Vec<Arc<RwLock<Box<dyn Child>>>> {
+    fn children_snapshot(&self) -> Vec<Arc<ChildEntry>> {
         self.children
             .read()
             .unwrap_or_else(|e| e.into_inner())
@@ -181,6 +188,15 @@ impl ChildRegistry {
     }
 
     pub fn register_knowledge(&self, child: Box<dyn Child>) -> Result<()> {
+        self.register_knowledge_with_paths(child, PathBuf::new(), PathBuf::new())
+    }
+
+    pub fn register_knowledge_with_paths(
+        &self,
+        child: Box<dyn Child>,
+        wasm_path: PathBuf,
+        manifest_path: PathBuf,
+    ) -> Result<()> {
         let name = child.name().to_string();
         if self.child_name_exists(&name) {
             anyhow::bail!("duplicate child name: {}", name);
@@ -188,8 +204,37 @@ impl ChildRegistry {
         self.children
             .write()
             .unwrap_or_else(|e| e.into_inner())
-            .push(Arc::new(RwLock::new(child)));
+            .push(Arc::new(ChildEntry {
+                child: Arc::new(RwLock::new(child)),
+                wasm_path,
+                manifest_path,
+                reload_lock: Arc::new(Mutex::new(())),
+            }));
         Ok(())
+    }
+
+    pub fn child_paths(&self, child_name: &str) -> Option<(PathBuf, PathBuf)> {
+        let children = self.children_snapshot();
+        children.iter().find_map(|entry| {
+            let guard = entry.child.read().unwrap_or_else(|e| e.into_inner());
+            if guard.name() == child_name {
+                Some((entry.wasm_path.clone(), entry.manifest_path.clone()))
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn child_reload_lock(&self, child_name: &str) -> Option<Arc<Mutex<()>>> {
+        let children = self.children_snapshot();
+        children.iter().find_map(|entry| {
+            let guard = entry.child.read().unwrap_or_else(|e| e.into_inner());
+            if guard.name() == child_name {
+                Some(Arc::clone(&entry.reload_lock))
+            } else {
+                None
+            }
+        })
     }
 
     fn child_name_exists(&self, name: &str) -> bool {
@@ -197,14 +242,14 @@ impl ChildRegistry {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .iter()
-            .any(|child| child.read().unwrap_or_else(|e| e.into_inner()).name() == name)
+            .any(|entry| entry.child.read().unwrap_or_else(|e| e.into_inner()).name() == name)
     }
 
     /// Load all children — calls on_load() for each in order.
     /// Fails fast if any child fails to load.
     pub fn load_all(&self, host: &dyn MotherHost) -> Result<()> {
         for entry in self.children_snapshot() {
-            let mut child = entry.write().unwrap_or_else(|e| e.into_inner());
+            let mut child = entry.child.write().unwrap_or_else(|e| e.into_inner());
             let name = child.name().to_string();
             tracing::info!(event = "startup.child.onload.begin", child = %name, "mother child on_load begin");
             let started = Instant::now();
@@ -233,7 +278,7 @@ impl ChildRegistry {
     pub fn activate_all(&self, host: &dyn MotherHost) -> Vec<ChildActivationResult> {
         let mut results = Vec::new();
         for entry in self.children_snapshot() {
-            let mut child = entry.write().unwrap_or_else(|e| e.into_inner());
+            let mut child = entry.child.write().unwrap_or_else(|e| e.into_inner());
             let name = child.name().to_string();
             tracing::info!(event = "startup.child.onload.begin", child = %name, "mother child on_load begin");
             let started = Instant::now();
@@ -280,7 +325,7 @@ impl ChildRegistry {
         lease_owner: &str,
     ) -> Result<()> {
         for entry in self.children_snapshot() {
-            let mut child = entry.write().unwrap_or_else(|e| e.into_inner());
+            let mut child = entry.child.write().unwrap_or_else(|e| e.into_inner());
             let plugin_name = child.name().to_string();
             let run_id = runtime.record_run_start(&plugin_name)?;
             let mut metrics = serde_json::Map::new();
@@ -342,7 +387,7 @@ impl ChildRegistry {
     pub fn health_all(&self) -> Vec<(String, ChildHealth)> {
         let mut statuses = Vec::new();
         for child in self.children_snapshot() {
-            let child = match child.read() {
+            let child = match child.child.read() {
                 Ok(child) => child,
                 Err(_) => continue,
             };
@@ -354,11 +399,10 @@ impl ChildRegistry {
     /// Route a request to a child by name.
     pub fn handle(&self, child_name: &str, request: &ChildRequest) -> Result<ChildResponse> {
         let children = self.children_snapshot();
-        if let Some(child) = children
-            .iter()
-            .find(|child| child.read().unwrap_or_else(|e| e.into_inner()).name() == child_name)
-        {
-            let child = child.read().unwrap_or_else(|e| e.into_inner());
+        if let Some(child) = children.iter().find(|entry| {
+            entry.child.read().unwrap_or_else(|e| e.into_inner()).name() == child_name
+        }) {
+            let child = child.child.read().unwrap_or_else(|e| e.into_inner());
             return Self::invoke_handle_observed(child_name, child.as_ref(), request);
         }
 
@@ -367,11 +411,10 @@ impl ChildRegistry {
 
     pub fn health(&self, child_name: &str) -> Result<ChildHealth> {
         let children = self.children_snapshot();
-        if let Some(child) = children
-            .iter()
-            .find(|child| child.read().unwrap_or_else(|e| e.into_inner()).name() == child_name)
-        {
-            let child = child.read().unwrap_or_else(|e| e.into_inner());
+        if let Some(child) = children.iter().find(|entry| {
+            entry.child.read().unwrap_or_else(|e| e.into_inner()).name() == child_name
+        }) {
+            let child = child.child.read().unwrap_or_else(|e| e.into_inner());
             return Ok(child.health());
         }
 

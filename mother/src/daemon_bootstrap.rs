@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use crate::{registry::ChildRegistry, Child, KnowledgeRuntimeStore};
@@ -8,6 +8,8 @@ pub enum LoadedChild {
     Knowledge {
         child: Box<dyn Child>,
         name: String,
+        wasm_path: PathBuf,
+        manifest_path: PathBuf,
         subscribed_streams: Vec<String>,
         relationship_listens: Vec<String>,
     },
@@ -28,6 +30,8 @@ pub fn register_loaded_child(
         LoadedChild::Knowledge {
             child,
             name,
+            wasm_path,
+            manifest_path,
             subscribed_streams,
             relationship_listens,
         } => {
@@ -36,7 +40,7 @@ pub fn register_loaded_child(
             routes.extend(relationship_listens);
             let routing_table = routes.into_iter().collect::<Vec<_>>();
             runtime.ensure_subscriptions(&name, &routing_table)?;
-            registry.register_knowledge(child)?;
+            registry.register_knowledge_with_paths(child, wasm_path, manifest_path)?;
             Ok(Some(format!("loaded knowledge WASM child: {}", name)))
         }
     }

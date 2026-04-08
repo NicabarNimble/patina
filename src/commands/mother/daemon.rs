@@ -1001,6 +1001,8 @@ mod tests {
             mother_crate::daemon_bootstrap::LoadedChild::Knowledge {
                 child: Box::new(StubKnowledge),
                 name: "knowledge".into(),
+                wasm_path: std::path::PathBuf::from("knowledge.wasm"),
+                manifest_path: std::path::PathBuf::from("knowledge.toml"),
                 subscribed_streams: vec!["belief.changed".into()],
                 relationship_listens: vec![],
             },
