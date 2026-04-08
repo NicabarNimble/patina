@@ -98,10 +98,13 @@ contracts stabilize. Separate spec.
 
 ### Phase 1: Toy package + schema-enforcer
 
+**Modified parsers (unblocks all phases):**
+- `mother/src/pando.rs` — add `Option<Vec<PandoWiring>>` to `PandoComposition`, add `Option<PandoEntry>` to composition. Old pandos still parse.
+- `src/child/internal/mod.rs` — add `Option<Vec<String>>` for `[needs.inside].accepts`. Old child.toml still parses.
+
 **New files:**
-- `wit/toys/patina/record.wit` — `patina:record@0.1.0` types + interfaces
-- `wit/worlds/schema-enforcer.wit` — schema-enforcer toybox
-- Deps copies in `children/schema-enforcer/wit/` (per self-contained parts pattern)
+- `wit/toys/patina/record.wit` — `patina:record@0.1.0` canonical types + interfaces
+- `children/schema-enforcer/wit/` — child's own WIT (world + deps, self-contained per wasmtime pattern)
 
 **Modified files:**
 - `children/schema-enforcer/src/lib.rs` — rewrite with wit-bindgen
@@ -143,10 +146,10 @@ cargo test --test composition_spike
 ### Phase 3: Remaining 4 children
 
 **New files:**
-- `wit/worlds/file-system-monitor.wit`
-- `wit/worlds/content-extractor.wit`
-- `wit/worlds/record-writer.wit`
-- `wit/worlds/lakehouse-catalog.wit`
+- `children/file-system-monitor/wit/` — self-contained WIT
+- `children/content-extractor/wit/` — self-contained WIT
+- `children/record-writer/wit/` — self-contained WIT
+- `children/lakehouse-catalog/wit/` — self-contained WIT
 
 **Modified files:**
 - `children/file-system-monitor/src/lib.rs`
@@ -189,7 +192,10 @@ enum LoadedComponent {
 ## Direct Code Targets
 
 ### Phase 1
-- `wit/toys/patina/record.wit` — new, toy package
+- `mother/src/pando.rs:48-60` — add Optional fields to PandoComposition, PandoChild
+- `src/child/internal/mod.rs:554` — add Optional inside accepts to manifest parser
+- `wit/toys/patina/record.wit` — new, canonical toy package
+- `children/schema-enforcer/wit/` — new, self-contained WIT
 - `children/schema-enforcer/src/lib.rs` — full rewrite
 - `children/schema-enforcer/Cargo.toml` — deps change
 
@@ -205,11 +211,12 @@ enum LoadedComponent {
 - `children/lakehouse-catalog/src/lib.rs` — full rewrite
 
 ### Phase 4
-- `Cargo.toml` — add wac-graph
-- `src/child/internal/child.rs:124` — add second bindgen
-- `src/child/internal/child.rs:837` — build_linker dispatch
-- `mother/src/pando.rs` — wac-graph composition logic
-- `mother/src/registry.rs` — LoadedComponent enum
+- `Cargo.toml` — add wac-graph dependency
+- `src/child/internal/child.rs:124` — add second bindgen for composed world
+- `src/child/internal/child.rs:837` — build_linker dispatch (LoadedComponent enum)
+- `src/child/internal/child.rs:867` — check_capabilities compatibility for both lanes
+- `mother/src/pando.rs` — wac-graph composition logic (read wiring, build graph)
+- `mother/src/registry.rs` — LoadedComponent enum, dual dispatch
 
 ### Phase 5
 - `children/*/child.toml` — add [needs.inside] sections

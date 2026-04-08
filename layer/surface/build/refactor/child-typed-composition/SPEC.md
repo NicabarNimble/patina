@@ -290,10 +290,15 @@ export!() macro, typed toy implementation.
 catalog SQL), outside toy usage (log, measure, keyvalue, sql,
 filesystem) through wit-bindgen generated bindings.
 
+**WIT file location:** Each child carries its own WIT, following the
+wasmtime pattern (each crate owns its wit/). The child's Cargo.toml
+points wit-bindgen at its local `wit/` directory. Mother never reads
+.wit files — she loads the compiled .wasm which has types baked in.
+
 **Example — schema-enforcer after:**
 ```rust
 wit_bindgen::generate!({
-    path: "wit/worlds/schema-enforcer",
+    path: "wit",  // children/schema-enforcer/wit/
     world: "schema-enforcer",
     generate_all,
 });
@@ -341,7 +346,11 @@ is the SDK — Luke Wagner's "SDKs for free."
 Mother is the authority. Children only know Mother. wac-graph is
 Mother's tool — children don't know about composition.
 
-**child.toml gains inside toy grants:**
+**child.toml gains inside toy acceptance:**
+
+The child declares what toy SHAPES it accepts from inside — not who
+provides them. The pando knows the wiring. Mother validates the match.
+
 ```toml
 [child]
 name = "dedup-filter"
@@ -350,24 +359,31 @@ name = "dedup-filter"
 toys = ["logging", "keyvalue", "measure"]
 
 [needs.inside]
-transform = { from = "schema-enforcer" }
+accepts = ["patina:record/transform"]
 ```
+
+The child says "I accept a transform toy from inside." The pando says
+"wire schema-enforcer's transform to dedup-filter." Mother validates:
+schema-enforcer exports transform, dedup-filter accepts transform,
+pando wiring matches — grant approved.
 
 **Mother validates at load time:**
 1. Load each child .wasm — `register_package`
 2. Read child.toml — check outside toy grants
-3. Read child.toml — check inside toy grants match pando wiring
-4. Reject if unauthorized — child B not allowed to receive from child A
-5. Log every decision:
+3. Read child.toml — check inside toy acceptance list
+4. Read pando — check wiring matches accepted toy shapes
+5. Reject if unauthorized — child accepts a toy shape the pando doesn't
+   wire, or pando wires a toy the child doesn't accept
+6. Log every decision:
    ```
    [GRANT] dedup-filter: logging (outside, Mother)
    [GRANT] dedup-filter: keyvalue (outside, Mother)
    [GRANT] dedup-filter: measure (outside, Mother)
-   [GRANT] dedup-filter: record/transform (inside, from schema-enforcer)
+   [GRANT] dedup-filter: patina:record/transform (inside, wired from schema-enforcer per pando)
    [DENY]  dedup-filter: sql (not declared in child.toml)
    ```
-6. Wire inside toys — `set_instantiation_argument`
-7. Encode and load
+7. Wire inside toys — `set_instantiation_argument`
+8. Encode and load
 
 **Tamper verification:**
 - Composed bytes are produced by Mother from individual .wasm files
@@ -417,37 +433,61 @@ version = "0.2.0"
 
 [[children]]
 name = "file-system-monitor"
-world = "file-system-monitor"
 
 [[children]]
 name = "content-extractor"
-world = "content-extractor"
 
 [[children]]
 name = "schema-enforcer"
-world = "schema-enforcer"
 
 [[children]]
 name = "dedup-filter"
-world = "dedup-filter"
 
 [[children]]
 name = "record-writer"
-world = "record-writer"
 
 [[children]]
 name = "lakehouse-catalog"
-world = "lakehouse-catalog"
 
 [composition]
-# Mother reads this, builds the wac-graph, wires children
-# Wiring is typed — Mother verifies toys match
-entry = "source"
+entry = { child = "file-system-monitor", toy = "patina:record/source" }
+
+[[composition.wiring]]
+from = "file-system-monitor"
+to = "content-extractor"
+toy = "patina:record/source"
+
+[[composition.wiring]]
+from = "content-extractor"
+to = "schema-enforcer"
+toy = "patina:record/extract"
+
+[[composition.wiring]]
+from = "schema-enforcer"
+to = "dedup-filter"
+toy = "patina:record/transform"
+
+[[composition.wiring]]
+from = "dedup-filter"
+to = "record-writer"
+toy = "patina:record/transform"
+
+[[composition.wiring]]
+from = "record-writer"
+to = "lakehouse-catalog"
+toy = "patina:record/write"
 ```
 
-Mother reads this, loads each child from the pool, builds the
-wac-graph, validates grants, composes, loads. The string wiring
-rules are gone — typed toys replace them.
+Typed wiring replaces string wiring. Each rule names the children
+and the toy that connects them. Mother reads this, loads each child,
+builds the wac-graph, validates grants against child.toml, wires,
+composes, loads.
+
+**Parser compatibility:** `PandoManifest` currently uses
+`deny_unknown_fields`. New fields (`[composition.wiring]`,
+`[composition].entry`) must be added as `Option<T>` to the parser
+in Phase 1 so old pandos still parse. The `[composition].wiring`
+string list format stays for handle-based pandos.
 
 ## SDK Changes
 
@@ -489,6 +529,38 @@ They may get typed toys later when their contracts stabilize. But
 that's a separate spec. This spec is about the 6 canon children
 in the folder-text-to-parquet pando.
 
+## Decision History
+
+The `child-typed-exports` explore (session 20260408-064526) deferred
+typed exports until a second domain (beliefs) provided a second
+example alongside records. That gate assumed we'd DESIGN typed
+interfaces from domain analysis.
+
+This spec overrides that gate because the approach changed:
+- We're not designing interfaces from theory — we're using the BA
+  component model's own composition mechanism (wac-graph)
+- The toy contracts come from WIT, not from domain analysis
+- The composition spike proved the mechanism works
+- The insight: composition IS the typing. Children declare what toys
+  they export and import. wac-graph wires them. The types emerge from
+  the toys, not from studying two domains.
+
+The explore's design work (record-envelope types, process-result
+shape, etc.) is still valid and informs this spec. What changed is
+HOW we get there, not WHAT we're building.
+
+## Compatibility
+
+Handle-based children must continue working. Mother's current loader
+checks child kind at `src/child/internal/child.rs:867`
+(`check_capabilities`). The new composition path must not break this.
+
+**Explicit compatibility contract:**
+- `child` world children: load via existing path. No changes.
+- Composed components: load via new composition path. New dispatch.
+- Mother checks manifest/pando to decide which path.
+- Integration tests cover both paths in the same test suite.
+
 ## Open Questions
 
 1. **Composition entry point** — The composed component's outermost
@@ -513,10 +585,12 @@ in the folder-text-to-parquet pando.
 ## Implementation Order
 
 ### Phase 1: Toy package + schema-enforcer (one child builds typed)
-1. Create `patina:record@0.1.0` WIT package
-2. Create schema-enforcer toybox (world)
-3. Rewrite schema-enforcer with wit-bindgen
-4. Build, inspect with `wasm-tools component wit`
+1. Update `PandoManifest` and `ChildManifest` parsers — add new
+   fields as `Option<T>` so old manifests still parse
+2. Create `patina:record@0.1.0` WIT package
+3. Create schema-enforcer toybox (world) in `children/schema-enforcer/wit/`
+4. Rewrite schema-enforcer with wit-bindgen
+5. Build, inspect with `wasm-tools component wit`
 
 ### Phase 2: dedup-filter + wac-graph composition
 5. Create dedup-filter toybox (same transform toy, different impl)
