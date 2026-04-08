@@ -6,10 +6,10 @@
 
 use mother_crate::registry::ChildRegistry;
 use patina::child::testing::{
-    events_subscribe, ChildKind, ChildManifest, ChildProvides, FilesystemAccessMode,
-    FilesystemPreopen, KnowledgeChildEngine, PipelineEngine,
+    events_subscribe, ChildEngine, ChildKind, ChildManifest, ChildProvides, FilesystemAccessMode,
+    FilesystemPreopen, PipelineEngine,
 };
-use patina::mother::{ChildHealth, ChildRequest, GrantedToys, KnowledgeChild};
+use patina::mother::{Child, ChildHealth, ChildRequest, GrantedToys};
 
 // =====================================================================
 // Helpers
@@ -168,14 +168,14 @@ fn lakehouse_catalog_component_path() -> Option<std::path::PathBuf> {
 }
 
 /// Helper: load repos.wasm fixture and instantiate child.
-fn load_repos_child() -> Option<Box<dyn KnowledgeChild>> {
+fn load_repos_child() -> Option<Box<dyn Child>> {
     let wasm_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/patina_plugin_repos.wasm");
     if !wasm_path.exists() {
         return None;
     }
 
-    let engine = KnowledgeChildEngine::new().unwrap();
+    let engine = ChildEngine::new().unwrap();
     let wasm_bytes = std::fs::read(&wasm_path).unwrap();
     let component = engine.load_component(&wasm_bytes).unwrap();
     let manifest = ChildManifest {
@@ -290,7 +290,7 @@ fn session_writer_component_instantiates_in_knowledge_child_engine() {
         return;
     };
 
-    let engine = KnowledgeChildEngine::new().unwrap();
+    let engine = ChildEngine::new().unwrap();
     let wasm_bytes = std::fs::read(&wasm_path).unwrap();
     let component = engine.load_component(&wasm_bytes).unwrap();
     let manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -315,7 +315,7 @@ fn folder_text_to_parquet_scan_contract_end_to_end() {
     };
 
     with_temp_patina_home(|_| {
-        let engine = KnowledgeChildEngine::new().unwrap();
+        let engine = ChildEngine::new().unwrap();
         let wasm_bytes = std::fs::read(&wasm_path).unwrap();
         let component = engine.load_component(&wasm_bytes).unwrap();
         let manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -693,7 +693,7 @@ fn folder_text_to_parquet_first_split_composes_via_events() {
     };
 
     with_temp_patina_home(|_| {
-        let engine = KnowledgeChildEngine::new().unwrap();
+        let engine = ChildEngine::new().unwrap();
 
         let monitor_wasm_bytes = std::fs::read(&monitor_wasm_path).unwrap();
         let monitor_component = engine.load_component(&monitor_wasm_bytes).unwrap();
@@ -848,7 +848,7 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
     };
 
     with_temp_patina_home(|_| {
-        let engine = KnowledgeChildEngine::new().unwrap();
+        let engine = ChildEngine::new().unwrap();
 
         let monitor_wasm_bytes = std::fs::read(&monitor_wasm_path).unwrap();
         let monitor_component = engine.load_component(&monitor_wasm_bytes).unwrap();
@@ -1409,7 +1409,7 @@ fn wasm_models_child_handle_roundtrip() {
         return;
     }
 
-    let engine = KnowledgeChildEngine::new().expect("KnowledgeChildEngine::new() failed");
+    let engine = ChildEngine::new().expect("ChildEngine::new() failed");
     let wasm_bytes = std::fs::read(&wasm_path).expect("failed to read .wasm fixture");
     let component = engine
         .load_component(&wasm_bytes)
@@ -1483,7 +1483,7 @@ fn wasm_models_child_health() {
         return; // Skip if fixture not available
     }
 
-    let engine = KnowledgeChildEngine::new().unwrap();
+    let engine = ChildEngine::new().unwrap();
     let wasm_bytes = std::fs::read(&wasm_path).unwrap();
     let component = engine.load_component(&wasm_bytes).unwrap();
     let manifest = ChildManifest {
@@ -1645,7 +1645,7 @@ fn wasm_repos_child_health_reflects_staleness() {
 // Benchmarks (C2) — Instant::now() instrumentation
 // =====================================================================
 
-/// Measure KnowledgeChildEngine::new(), Component::new(), instantiate_child(),
+/// Measure ChildEngine::new(), Component::new(), instantiate_child(),
 /// and handle() round-trip. Run with `cargo test -- --nocapture benchmark`.
 #[test]
 fn benchmark_plugin_performance() {
@@ -1658,14 +1658,14 @@ fn benchmark_plugin_performance() {
     }
 
     // Warm up the process-wide engine singleton (OnceLock).
-    // Without this, the first KnowledgeChildEngine::new() absorbs Engine::new()
+    // Without this, the first ChildEngine::new() absorbs Engine::new()
     // cold-start cost (~150ms cranelift JIT init), making the benchmark
     // flaky depending on test execution order.
-    let _ = KnowledgeChildEngine::new();
+    let _ = ChildEngine::new();
 
-    // 1. KnowledgeChildEngine::new() — spec threshold: <100ms
+    // 1. ChildEngine::new() — spec threshold: <100ms
     let t0 = Instant::now();
-    let engine = KnowledgeChildEngine::new().unwrap();
+    let engine = ChildEngine::new().unwrap();
     let engine_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
     // 2. Component::new() — document compilation time
@@ -1733,7 +1733,7 @@ fn benchmark_plugin_performance() {
     eprintln!();
     eprintln!("=== Plugin System Benchmarks (C2) ===");
     eprintln!(
-        "  KnowledgeChildEngine::new():     {:.2}ms (threshold: <100ms) {}",
+        "  ChildEngine::new():     {:.2}ms (threshold: <100ms) {}",
         engine_ms,
         if engine_ms < 100.0 { "PASS" } else { "FAIL" }
     );
@@ -1756,7 +1756,7 @@ fn benchmark_plugin_performance() {
     // Assert thresholds
     assert!(
         engine_ms < 100.0,
-        "KnowledgeChildEngine::new() took {:.2}ms, threshold is 100ms",
+        "ChildEngine::new() took {:.2}ms, threshold is 100ms",
         engine_ms
     );
     assert!(
@@ -1927,7 +1927,7 @@ fn wasm_trap_mother_child_panic_returns_error() {
         return;
     }
 
-    let engine = KnowledgeChildEngine::new().unwrap();
+    let engine = ChildEngine::new().unwrap();
     let wasm_bytes = std::fs::read(&wasm_path).unwrap();
     let component = engine.load_component(&wasm_bytes).unwrap();
     let manifest = ChildManifest {
