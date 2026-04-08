@@ -477,177 +477,233 @@ impl ApiRuntime for ServerState {
 
 impl MotherRuntime for ServerState {
     fn load_pando(&self, name: &str) -> Result<mother_crate::runtime::PandoLoadResult> {
-        let manifest_path = self.pandos_root.join(name).join("pando.toml");
-        if !manifest_path.exists() {
-            anyhow::bail!("pando_not_found: no pando named '{}'", name);
-        }
-
-        let manifest = mother_crate::pando::parse_manifest_path(&manifest_path)
-            .map_err(|e| anyhow::anyhow!("invalid_request: {}", e))?;
-        let mut children_activated = 0usize;
-        for child in manifest.children {
-            let reload = self.reload_child(&child.name)?;
-            if reload.status == "reloaded" {
-                children_activated += 1;
+        let started = Instant::now();
+        let result = (|| {
+            let manifest_path = self.pandos_root.join(name).join("pando.toml");
+            if !manifest_path.exists() {
+                anyhow::bail!("pando_not_found: no pando named '{}'", name);
             }
-        }
-        self.reload_pando_registry()?;
+            let manifest = mother_crate::pando::parse_manifest_path(&manifest_path)
+                .map_err(|e| anyhow::anyhow!("invalid_request: {}", e))?;
+            let mut children_activated = 0usize;
+            for child in manifest.children {
+                let reload = self.reload_child(&child.name)?;
+                if reload.status == "reloaded" {
+                    children_activated += 1;
+                }
+            }
+            self.reload_pando_registry()?;
 
-        Ok(mother_crate::runtime::PandoLoadResult {
-            pando: name.to_string(),
-            status: "loaded".to_string(),
-            children_activated,
-        })
+            Ok(mother_crate::runtime::PandoLoadResult {
+                pando: name.to_string(),
+                status: "loaded".to_string(),
+                children_activated,
+            })
+        })();
+
+        emit_lifecycle_metric(
+            "load_pando_latency_ms",
+            "gauge",
+            started.elapsed().as_millis() as f64,
+            &[("action", "load_pando"), ("pando", name)],
+        );
+        if result.is_err() {
+            emit_lifecycle_metric(
+                "load_pando_failure",
+                "counter",
+                1.0,
+                &[("action", "load_pando"), ("pando", name)],
+            );
+        }
+
+        result
     }
 
     fn refresh_pandos(&self) -> Result<mother_crate::runtime::PandoRefreshResult> {
-        let _refresh_guard = match self.refresh_lock.try_lock() {
-            Ok(guard) => guard,
-            Err(TryLockError::WouldBlock) => {
-                anyhow::bail!("operation_in_progress: refresh already running")
-            }
-            Err(TryLockError::Poisoned(_)) => {
-                anyhow::bail!("internal_error: refresh lock poisoned")
-            }
-        };
-
-        let mut pandos_loaded = 0usize;
-        let mut pandos_failed = 0usize;
-        let mut children_activated = 0usize;
-        let mut children_failed = 0usize;
-        let mut degraded = Vec::new();
-
-        if self.pandos_root.exists() {
-            let mut dirs = std::fs::read_dir(&self.pandos_root)?
-                .flatten()
-                .filter(|entry| entry.path().is_dir())
-                .collect::<Vec<_>>();
-            dirs.sort_by_key(|entry| entry.file_name());
-
-            for dir in dirs {
-                let manifest_path = dir.path().join("pando.toml");
-                if !manifest_path.exists() {
-                    continue;
+        let started = Instant::now();
+        let result = (|| {
+            let _refresh_guard = match self.refresh_lock.try_lock() {
+                Ok(guard) => guard,
+                Err(TryLockError::WouldBlock) => {
+                    anyhow::bail!("operation_in_progress: refresh already running")
                 }
-                let manifest = match mother_crate::pando::parse_manifest_path(&manifest_path) {
-                    Ok(m) => m,
-                    Err(_) => {
-                        pandos_failed += 1;
+                Err(TryLockError::Poisoned(_)) => {
+                    anyhow::bail!("internal_error: refresh lock poisoned")
+                }
+            };
+
+            let mut pandos_loaded = 0usize;
+            let mut pandos_failed = 0usize;
+            let mut children_activated = 0usize;
+            let mut children_failed = 0usize;
+            let mut degraded = Vec::new();
+
+            if self.pandos_root.exists() {
+                let mut dirs = std::fs::read_dir(&self.pandos_root)?
+                    .flatten()
+                    .filter(|entry| entry.path().is_dir())
+                    .collect::<Vec<_>>();
+                dirs.sort_by_key(|entry| entry.file_name());
+
+                for dir in dirs {
+                    let manifest_path = dir.path().join("pando.toml");
+                    if !manifest_path.exists() {
                         continue;
                     }
-                };
-                pandos_loaded += 1;
-                for child in manifest.children {
-                    match self.reload_child(&child.name) {
-                        Ok(outcome) if outcome.status == "reloaded" => {
-                            children_activated += 1;
+                    let manifest = match mother_crate::pando::parse_manifest_path(&manifest_path) {
+                        Ok(m) => m,
+                        Err(_) => {
+                            pandos_failed += 1;
+                            continue;
                         }
-                        Ok(outcome) => {
-                            children_failed += 1;
-                            degraded.push(mother_crate::runtime::DegradedChild {
-                                name: child.name,
-                                reason: outcome
-                                    .reason
-                                    .unwrap_or_else(|| "reload failed".to_string()),
-                            });
-                        }
-                        Err(error) => {
-                            children_failed += 1;
-                            degraded.push(mother_crate::runtime::DegradedChild {
-                                name: child.name,
-                                reason: error.to_string(),
-                            });
+                    };
+                    pandos_loaded += 1;
+                    for child in manifest.children {
+                        match self.reload_child(&child.name) {
+                            Ok(outcome) if outcome.status == "reloaded" => {
+                                children_activated += 1;
+                            }
+                            Ok(outcome) => {
+                                children_failed += 1;
+                                degraded.push(mother_crate::runtime::DegradedChild {
+                                    name: child.name,
+                                    reason: outcome
+                                        .reason
+                                        .unwrap_or_else(|| "reload failed".to_string()),
+                                });
+                            }
+                            Err(error) => {
+                                children_failed += 1;
+                                degraded.push(mother_crate::runtime::DegradedChild {
+                                    name: child.name,
+                                    reason: error.to_string(),
+                                });
+                            }
                         }
                     }
                 }
             }
-        }
 
-        self.reload_pando_registry()?;
+            self.reload_pando_registry()?;
 
-        Ok(mother_crate::runtime::PandoRefreshResult {
-            pandos_loaded,
-            pandos_failed,
-            children_activated,
-            children_failed,
-            degraded,
-        })
+            Ok(mother_crate::runtime::PandoRefreshResult {
+                pandos_loaded,
+                pandos_failed,
+                children_activated,
+                children_failed,
+                degraded,
+            })
+        })();
+
+        emit_lifecycle_metric(
+            "refresh_latency_ms",
+            "gauge",
+            started.elapsed().as_millis() as f64,
+            &[("action", "refresh")],
+        );
+
+        result
     }
 
     fn reload_child(&self, name: &str) -> Result<mother_crate::runtime::ChildReloadResult> {
-        let reload_lock = self
-            .registry
-            .child_reload_lock(name)
-            .ok_or_else(|| anyhow::anyhow!("child_not_found: no child named '{}'", name))?;
-        let _guard = match reload_lock.try_lock() {
-            Ok(guard) => guard,
-            Err(TryLockError::WouldBlock) => {
-                anyhow::bail!(
-                    "operation_in_progress: reload already running for '{}'",
-                    name
-                )
-            }
-            Err(TryLockError::Poisoned(_)) => {
-                anyhow::bail!("internal_error: reload lock poisoned for '{}'", name)
-            }
-        };
-
-        let (wasm_path, manifest_path) = self
-            .registry
-            .child_paths(name)
-            .ok_or_else(|| anyhow::anyhow!("child_not_found: no child named '{}'", name))?;
-
-        let loaded = super::loader::load_wasm_child(&wasm_path, &manifest_path)?;
-        let mut replacement = match loaded {
-            mother_crate::daemon_bootstrap::LoadedChild::Knowledge {
-                child,
-                name: loaded_name,
-                ..
-            } => {
-                if loaded_name != name {
+        let started = Instant::now();
+        let result = (|| {
+            let reload_lock = self
+                .registry
+                .child_reload_lock(name)
+                .ok_or_else(|| anyhow::anyhow!("child_not_found: no child named '{}'", name))?;
+            let _guard = match reload_lock.try_lock() {
+                Ok(guard) => guard,
+                Err(TryLockError::WouldBlock) => {
                     anyhow::bail!(
-                        "internal_error: manifest child '{}' does not match reload target '{}'",
-                        loaded_name,
+                        "operation_in_progress: reload already running for '{}'",
                         name
-                    );
+                    )
                 }
-                child
+                Err(TryLockError::Poisoned(_)) => {
+                    anyhow::bail!("internal_error: reload lock poisoned for '{}'", name)
+                }
+            };
+
+            let (wasm_path, manifest_path) = self
+                .registry
+                .child_paths(name)
+                .ok_or_else(|| anyhow::anyhow!("child_not_found: no child named '{}'", name))?;
+
+            let loaded = super::loader::load_wasm_child(&wasm_path, &manifest_path)?;
+            let mut replacement = match loaded {
+                mother_crate::daemon_bootstrap::LoadedChild::Knowledge {
+                    child,
+                    name: loaded_name,
+                    ..
+                } => {
+                    if loaded_name != name {
+                        anyhow::bail!(
+                            "internal_error: manifest child '{}' does not match reload target '{}'",
+                            loaded_name,
+                            name
+                        );
+                    }
+                    child
+                }
+            };
+
+            let daemon_host = DaemonHost;
+            if let Err(error) = replacement.on_load(&daemon_host) {
+                return Ok(mother_crate::runtime::ChildReloadResult {
+                    child: name.to_string(),
+                    status: "reload_failed".to_string(),
+                    previous_instance: "active".to_string(),
+                    reason: Some(format!("on_load failed: {}", error)),
+                });
             }
-        };
 
-        let daemon_host = DaemonHost;
-        if let Err(error) = replacement.on_load(&daemon_host) {
-            return Ok(mother_crate::runtime::ChildReloadResult {
-                child: name.to_string(),
-                status: "reload_failed".to_string(),
-                previous_instance: "active".to_string(),
-                reason: Some(format!("on_load failed: {}", error)),
-            });
-        }
+            let mut previous = self.registry.swap_knowledge_child(name, replacement)?;
+            let _ = previous.drain(64);
+            previous.on_unload();
 
-        let mut previous = self.registry.swap_knowledge_child(name, replacement)?;
-        let _ = previous.drain(64);
-        previous.on_unload();
-
-        {
-            let mut readiness = self.readiness.write().unwrap_or_else(|e| e.into_inner());
-            let degraded_before = readiness.children_degraded.len();
-            readiness
-                .children_degraded
-                .retain(|entry| entry.name != name);
-            if readiness.children_degraded.len() < degraded_before
-                && readiness.children_ready_count < readiness.children_total
             {
-                readiness.children_ready_count += 1;
+                let mut readiness = self.readiness.write().unwrap_or_else(|e| e.into_inner());
+                let degraded_before = readiness.children_degraded.len();
+                readiness
+                    .children_degraded
+                    .retain(|entry| entry.name != name);
+                if readiness.children_degraded.len() < degraded_before
+                    && readiness.children_ready_count < readiness.children_total
+                {
+                    readiness.children_ready_count += 1;
+                }
             }
+
+            Ok(mother_crate::runtime::ChildReloadResult {
+                child: name.to_string(),
+                status: "reloaded".to_string(),
+                previous_instance: "drained".to_string(),
+                reason: None,
+            })
+        })();
+
+        emit_lifecycle_metric(
+            "reload_child_latency_ms",
+            "gauge",
+            started.elapsed().as_millis() as f64,
+            &[("action", "reload_child"), ("child", name)],
+        );
+
+        let emit_failure = match &result {
+            Ok(payload) => payload.status == "reload_failed",
+            Err(_) => true,
+        };
+        if emit_failure {
+            emit_lifecycle_metric(
+                "reload_child_failure",
+                "counter",
+                1.0,
+                &[("action", "reload_child"), ("child", name)],
+            );
         }
 
-        Ok(mother_crate::runtime::ChildReloadResult {
-            child: name.to_string(),
-            status: "reloaded".to_string(),
-            previous_instance: "drained".to_string(),
-            reason: None,
-        })
+        result
     }
 
     fn query_readiness(&self) -> mother_crate::runtime::ReadinessState {
@@ -718,6 +774,58 @@ where
 
 fn emit_startup_metric(name: &str, kind: &str, value: f64, action: &str) {
     emit_startup_metric_with_labels(name, kind, value, &[("action", action)]);
+}
+
+fn emit_lifecycle_metric(name: &str, kind: &str, value: f64, labels: &[(&str, &str)]) {
+    let mut metric_labels = vec![vec!["scope".to_string(), "lifecycle".to_string()]];
+    for (key, value) in labels {
+        metric_labels.push(vec![(*key).to_string(), (*value).to_string()]);
+    }
+
+    let events_path = match patina::eventlog::events_db_path() {
+        Ok(path) => path,
+        Err(error) => {
+            tracing::warn!(metric = name, %error, "failed to resolve events path for lifecycle metric");
+            return;
+        }
+    };
+
+    let conn = match rusqlite::Connection::open(&events_path) {
+        Ok(conn) => conn,
+        Err(error) => {
+            tracing::warn!(metric = name, path = %events_path.display(), %error, "failed to open events db for lifecycle metric");
+            return;
+        }
+    };
+
+    if let Err(error) = mother_crate::eventlog_schema::prepare_events_db(&conn) {
+        tracing::warn!(metric = name, %error, "failed to initialize events schema for lifecycle metric");
+        return;
+    }
+
+    let payload = serde_json::json!({
+        "name": format!("mother:lifecycle:{}", name),
+        "kind": kind,
+        "value": value,
+        "labels": metric_labels,
+        "source": "mother",
+        "scope": "lifecycle",
+    });
+
+    if let Err(error) = conn.execute(
+        "INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data, provenance)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            "measure.metric",
+            Utc::now().to_rfc3339(),
+            format!("mother:lifecycle:{}", name),
+            Option::<String>::None,
+            payload.to_string(),
+            "local"
+        ],
+    ) {
+        tracing::warn!(metric = name, %error, "failed to emit lifecycle metric");
+    }
 }
 
 fn emit_startup_metric_with_labels(name: &str, kind: &str, value: f64, labels: &[(&str, &str)]) {
