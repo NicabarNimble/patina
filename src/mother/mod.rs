@@ -47,7 +47,7 @@ pub use crate::child::runtime::{
     TaskIntentKind, Toy,
 };
 pub use mother_crate::state::{
-    InterfaceKindId, KnowledgeRuntimeStore, LakeCursorUpdate, MotherSessionParticipant,
+    InterfaceKindId, LakeCursorUpdate, MotherRuntimeStore, MotherSessionParticipant,
     MotherSessionRecord, MotherSessionStatus, PersonaUid, ProjectUid, QueuedTask, RunStatus,
     TaskStatus,
 };

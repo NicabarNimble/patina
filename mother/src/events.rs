@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rusqlite::{params, Connection};
 
-use crate::{KnowledgeRuntimeStore, PendingEvent};
+use crate::{MotherRuntimeStore, PendingEvent};
 
 pub const KNOWN_STREAMS: &[&str] = &[
     "belief.changed",
@@ -101,7 +101,7 @@ fn pull_sessions(
 }
 
 pub fn ack_through(
-    store: &KnowledgeRuntimeStore,
+    store: &MotherRuntimeStore,
     plugin_name: &str,
     stream: &str,
     offset: u64,

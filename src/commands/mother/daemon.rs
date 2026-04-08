@@ -43,7 +43,7 @@ pub struct ServerState {
     version: String,
     token: String,
     pub(super) registry: Arc<ChildRegistry>,
-    runtime_store: patina::mother::KnowledgeRuntimeStore,
+    runtime_store: patina::mother::MotherRuntimeStore,
     services: mother_crate::services::MotherServices,
     scry_backend: Arc<dyn ScryBackend>,
     federation_runtime: Mutex<FederationRuntime>,
@@ -59,7 +59,7 @@ impl ServerState {
     fn new(
         token: String,
         registry: ChildRegistry,
-        runtime_store: patina::mother::KnowledgeRuntimeStore,
+        runtime_store: patina::mother::MotherRuntimeStore,
         federation_runtime: FederationRuntime,
         readiness: Arc<RwLock<mother_crate::runtime::ReadinessState>>,
     ) -> Self {
@@ -733,7 +733,7 @@ pub struct DaemonOptions {
 
 fn run_startup_stage<T, F>(
     stage: &'static str,
-    startup_store: &patina::mother::KnowledgeRuntimeStore,
+    startup_store: &patina::mother::MotherRuntimeStore,
     operation: F,
 ) -> Result<T>
 where
@@ -1010,8 +1010,8 @@ fn wait_for_health_200(probe: &WarmupProbe, timeout: Duration) -> bool {
 }
 
 fn spawn_child_warmup(
-    startup_store: patina::mother::KnowledgeRuntimeStore,
-    runtime: patina::mother::KnowledgeRuntimeStore,
+    startup_store: patina::mother::MotherRuntimeStore,
+    runtime: patina::mother::MotherRuntimeStore,
     registry: Arc<ChildRegistry>,
     readiness: Arc<RwLock<mother_crate::runtime::ReadinessState>>,
     probe: WarmupProbe,
@@ -1083,8 +1083,8 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
 
     // Build control-plane state first; child warmup runs in background.
     let registry = ChildRegistry::new();
-    let runtime = patina::mother::KnowledgeRuntimeStore::default();
-    let startup_store = patina::mother::KnowledgeRuntimeStore::default();
+    let runtime = patina::mother::MotherRuntimeStore::default();
+    let startup_store = patina::mother::MotherRuntimeStore::default();
     let readiness = Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default()));
     run_startup_stage("state_db_open", &startup_store, || {
         startup_store.list_registered_projects().map(|_| ())
@@ -1248,7 +1248,7 @@ mod tests {
     fn register_loaded_child_loads_knowledge_by_default() {
         let mut registry = ChildRegistry::new();
         let runtime_root = tempfile::tempdir().unwrap();
-        let runtime = patina::mother::KnowledgeRuntimeStore::new_with_project(
+        let runtime = patina::mother::MotherRuntimeStore::new_with_project(
             runtime_root.path().join("mother/state.db"),
             mother_crate::state::ProjectUid::new("2bdc808e").unwrap(),
         );
@@ -1273,8 +1273,7 @@ mod tests {
     #[test]
     fn startup_stage_failure_is_persisted_for_status_surface() {
         let temp = tempfile::tempdir().unwrap();
-        let startup_store =
-            patina::mother::KnowledgeRuntimeStore::new(temp.path().join("state.db"));
+        let startup_store = patina::mother::MotherRuntimeStore::new(temp.path().join("state.db"));
 
         let err = run_startup_stage::<(), _>("unit_test_stage", &startup_store, || {
             anyhow::bail!("intentional startup failure")
@@ -1296,8 +1295,7 @@ mod tests {
     #[test]
     fn successful_stage_does_not_create_failure_record() {
         let temp = tempfile::tempdir().unwrap();
-        let startup_store =
-            patina::mother::KnowledgeRuntimeStore::new(temp.path().join("state.db"));
+        let startup_store = patina::mother::MotherRuntimeStore::new(temp.path().join("state.db"));
 
         run_startup_stage("unit_test_stage_success", &startup_store, || Ok(())).unwrap();
 

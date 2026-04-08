@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crate::git;
 use crate::mother::{
-    InterfaceKindId, KnowledgeRuntimeStore, MotherSessionParticipant, MotherSessionRecord,
+    InterfaceKindId, MotherRuntimeStore, MotherSessionParticipant, MotherSessionRecord,
     MotherSessionStatus, PersonaUid, ProjectUid,
 };
 use crate::project;
@@ -34,7 +34,7 @@ pub struct LiveSessionHandle {
 }
 
 pub fn begin_session(project_root: &Path, request: BeginSessionRequest) -> Result<SessionStart> {
-    let store = KnowledgeRuntimeStore::default();
+    let store = MotherRuntimeStore::default();
     let project_uid = project::register_with_mother(project_root)?;
     let created_local = Local::now();
     let created_at = Utc::now().to_rfc3339();
@@ -140,7 +140,7 @@ pub fn sync_session_document(
     )?;
     let artifact_path =
         projection::write_durable_artifact(project_root, &record.file_id, &refreshed)?;
-    let store = KnowledgeRuntimeStore::default();
+    let store = MotherRuntimeStore::default();
     store.touch_mother_session(runtime_id, &updated_at)?;
     let Some(updated) = store.get_mother_session(runtime_id)? else {
         bail!("live session {} disappeared during sync", runtime_id);
@@ -168,7 +168,7 @@ pub fn archive_session(
     )?;
     let artifact_path =
         projection::write_durable_artifact(project_root, &record.file_id, &archived)?;
-    let store = KnowledgeRuntimeStore::default();
+    let store = MotherRuntimeStore::default();
     store.finish_mother_session(
         &request.runtime_id,
         MotherSessionStatus::Archived,
@@ -192,7 +192,7 @@ pub fn archive_session(
 }
 
 pub fn list_active_sessions(project_root: &Path) -> Result<Vec<LiveSessionHandle>> {
-    let store = KnowledgeRuntimeStore::default();
+    let store = MotherRuntimeStore::default();
     let Some(project_uid_raw) = project::get_uid(project_root) else {
         return Ok(Vec::new());
     };
@@ -217,7 +217,7 @@ pub fn find_active_interface_session(
     interface_kind: InterfaceKind,
     persona_uid: Option<&str>,
 ) -> Result<Option<LiveSessionHandle>> {
-    let store = KnowledgeRuntimeStore::default();
+    let store = MotherRuntimeStore::default();
     let Some(project_uid_raw) = project::get_uid(project_root) else {
         return Ok(None);
     };
@@ -260,7 +260,7 @@ pub fn load_session_by_file_id(
     project_root: &Path,
     file_id: &str,
 ) -> Result<Option<LiveSessionHandle>> {
-    let store = KnowledgeRuntimeStore::default();
+    let store = MotherRuntimeStore::default();
     let Some(record) = store.get_mother_session_by_file_id(file_id)? else {
         return Ok(None);
     };
@@ -338,7 +338,7 @@ fn read_compatibility_ids(project_root: &Path) -> Result<Option<(String, String)
 }
 
 fn load_record(runtime_id: &str) -> Result<Option<MotherSessionRecord>> {
-    KnowledgeRuntimeStore::default().get_mother_session(runtime_id)
+    MotherRuntimeStore::default().get_mother_session(runtime_id)
 }
 
 fn default_participant(interface_name: &str, interface_kind: InterfaceKind) -> SessionParticipant {

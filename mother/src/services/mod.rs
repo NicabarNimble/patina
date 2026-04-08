@@ -13,7 +13,7 @@ pub struct MotherServices {
 }
 
 impl MotherServices {
-    pub fn new(runtime_store: crate::KnowledgeRuntimeStore) -> Self {
+    pub fn new(runtime_store: crate::MotherRuntimeStore) -> Self {
         Self {
             health: HealthService::new(),
             secrets: SecretsService::new(),

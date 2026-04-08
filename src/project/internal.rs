@@ -403,7 +403,7 @@ pub fn get_uid(project_path: &Path) -> Option<String> {
 pub fn register_with_mother(project_path: &Path) -> Result<String> {
     let uid = create_uid_if_missing(project_path)?;
     let uid_typed = crate::mother::ProjectUid::new(uid.clone())?;
-    crate::mother::KnowledgeRuntimeStore::default().register_project(&uid_typed, project_path)?;
+    crate::mother::MotherRuntimeStore::default().register_project(&uid_typed, project_path)?;
 
     // Ensure default persona store structure exists (GMDP-G9).
     let _persona_dir =

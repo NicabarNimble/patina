@@ -39,7 +39,7 @@ fn run_truncate_checkpoint(db_path: &std::path::Path) -> anyhow::Result<()> {
 }
 
 fn checkpoint_all_project_databases_truncate() -> anyhow::Result<()> {
-    let runtime = crate::KnowledgeRuntimeStore::default();
+    let runtime = crate::MotherRuntimeStore::default();
     let state_parent = runtime
         .path()
         .parent()

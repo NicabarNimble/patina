@@ -32,7 +32,7 @@ pub use runtime::{
     TaskIntentKind, Toy,
 };
 pub use state::{
-    KnowledgeRuntimeStore, LakeCursorUpdate, MotherSessionParticipant, MotherSessionRecord,
+    LakeCursorUpdate, MotherRuntimeStore, MotherSessionParticipant, MotherSessionRecord,
     MotherSessionStatus, QueuedTask, RunStatus, StartupAttemptRecord, TaskStatus,
 };
 pub use toys::{GrantedIngressSource, GrantedToys};

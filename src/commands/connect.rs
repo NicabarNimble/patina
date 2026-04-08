@@ -116,7 +116,7 @@ pub fn execute_cli(command: Option<ConnectCommands>) -> Result<()> {
 }
 
 fn manage_binding(command: BindingCommands) -> Result<()> {
-    let runtime = patina::mother::KnowledgeRuntimeStore::default();
+    let runtime = patina::mother::MotherRuntimeStore::default();
     let plugin = "source-bindings";
 
     match command {

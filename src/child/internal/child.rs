@@ -26,7 +26,7 @@ mod bindings {
         pub grants: super::GrantedCapabilities,
         pub query_fn: Option<super::QueryDispatchFn>,
         pub http_client: reqwest::blocking::Client,
-        pub runtime: crate::mother::KnowledgeRuntimeStore,
+        pub runtime: crate::mother::MotherRuntimeStore,
         pub active_bindings: HashMap<u32, crate::child::toy_host::v2::ConnectionHandle>,
     }
 
@@ -1061,7 +1061,7 @@ impl ChildEngine {
             grants,
             query_fn,
             http_client,
-            runtime: crate::mother::KnowledgeRuntimeStore::default(),
+            runtime: crate::mother::MotherRuntimeStore::default(),
             active_bindings: std::collections::HashMap::new(),
         };
         let mut store = Store::new(wasm_engine(), host_state);
@@ -1228,7 +1228,7 @@ mod tests {
             grants,
             query_fn: None,
             http_client: reqwest::blocking::Client::new(),
-            runtime: crate::mother::KnowledgeRuntimeStore::default(),
+            runtime: crate::mother::MotherRuntimeStore::default(),
             active_bindings: std::collections::HashMap::new(),
         }
     }

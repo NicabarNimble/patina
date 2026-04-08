@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use duckdb::Connection;
 use std::path::{Path, PathBuf};
 
-use crate::mother::KnowledgeRuntimeStore;
+use crate::mother::MotherRuntimeStore;
 
 fn sanitize_table_name(table: &str) -> Result<String> {
     if table.is_empty()
@@ -50,7 +50,7 @@ pub fn ensure_lake(name: &str) -> Result<String> {
 
 #[allow(dead_code)]
 pub fn load_cursor(
-    store: &KnowledgeRuntimeStore,
+    store: &MotherRuntimeStore,
     lake: &str,
     source: &str,
     data_type: &str,
@@ -60,7 +60,7 @@ pub fn load_cursor(
 
 #[allow(dead_code)]
 pub fn save_cursor(
-    store: &KnowledgeRuntimeStore,
+    store: &MotherRuntimeStore,
     update: &crate::mother::state::LakeCursorUpdate<'_>,
 ) -> Result<()> {
     store.save_lake_cursor(update)
@@ -147,7 +147,7 @@ mod tests {
     fn lake_table_append_query_and_cursor_roundtrip() {
         with_temp_patina_home(|home| {
             let state_db = home.join("mother/state.db");
-            let store = KnowledgeRuntimeStore::new_with_project(
+            let store = MotherRuntimeStore::new_with_project(
                 state_db,
                 crate::mother::ProjectUid::new("2bdc808e").unwrap(),
             );

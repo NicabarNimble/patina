@@ -143,7 +143,7 @@ fn route_source_via_broker(
 
     if let Some(cursor_value) = max_cursor.as_deref() {
         save_broker_cursor(&conn, &source.name, cursor_value)?;
-        let runtime = crate::mother::KnowledgeRuntimeStore::default();
+        let runtime = crate::mother::MotherRuntimeStore::default();
         let lake_name = match &source.destination {
             Destination::Lake { name } => name.as_str(),
             Destination::Project => "project",

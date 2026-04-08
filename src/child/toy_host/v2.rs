@@ -2,7 +2,7 @@ use crate::connect::{
     AuthConfig, AuthMethod, ConnectionIdentity, ConnectionRecord, ConnectionScope,
     InjectionStrategy,
 };
-use crate::mother::KnowledgeRuntimeStore;
+use crate::mother::MotherRuntimeStore;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -209,7 +209,7 @@ pub fn store_mutate(
 }
 
 pub fn state_get(
-    runtime: &KnowledgeRuntimeStore,
+    runtime: &MotherRuntimeStore,
     plugin_name: &str,
     key: &str,
 ) -> Result<Option<String>, String> {
@@ -219,7 +219,7 @@ pub fn state_get(
 }
 
 pub fn state_set(
-    runtime: &KnowledgeRuntimeStore,
+    runtime: &MotherRuntimeStore,
     plugin_name: &str,
     key: &str,
     value: &str,
@@ -230,7 +230,7 @@ pub fn state_set(
 }
 
 pub fn state_delete(
-    runtime: &KnowledgeRuntimeStore,
+    runtime: &MotherRuntimeStore,
     plugin_name: &str,
     key: &str,
 ) -> Result<(), String> {
@@ -240,7 +240,7 @@ pub fn state_delete(
 }
 
 pub fn state_list_prefix(
-    runtime: &KnowledgeRuntimeStore,
+    runtime: &MotherRuntimeStore,
     plugin_name: &str,
     prefix: &str,
 ) -> Result<Vec<String>, String> {
@@ -259,7 +259,7 @@ pub struct EventRecord {
 }
 
 pub fn events_publish(
-    _runtime: &KnowledgeRuntimeStore,
+    _runtime: &MotherRuntimeStore,
     plugin_name: &str,
     stream_name: &str,
     event_type: &str,
@@ -317,7 +317,7 @@ pub fn events_subscribe(
 }
 
 pub fn events_ack(
-    runtime: &KnowledgeRuntimeStore,
+    runtime: &MotherRuntimeStore,
     plugin_name: &str,
     stream_name: &str,
     offset: u64,
@@ -333,7 +333,7 @@ pub fn events_ack(
 }
 
 pub fn task_enqueue(
-    runtime: &KnowledgeRuntimeStore,
+    runtime: &MotherRuntimeStore,
     plugin_name: &str,
     kind: &str,
     payload: &str,
@@ -355,7 +355,7 @@ pub fn task_enqueue(
 }
 
 pub fn peer_call(
-    runtime: &KnowledgeRuntimeStore,
+    runtime: &MotherRuntimeStore,
     plugin_name: &str,
     child: &str,
     action: &str,
@@ -459,7 +459,7 @@ type = "bearer"
     #[test]
     fn v2_state_round_trip() {
         with_temp_patina_home(|home| {
-            let runtime = KnowledgeRuntimeStore::new_with_project(
+            let runtime = MotherRuntimeStore::new_with_project(
                 home.join("mother/state.db"),
                 crate::mother::ProjectUid::new("2bdc808e").unwrap(),
             );
@@ -521,7 +521,7 @@ type = "bearer"
     #[test]
     fn v2_events_publish_subscribe_and_ack() {
         with_temp_patina_home(|home| {
-            let runtime = KnowledgeRuntimeStore::new_with_project(
+            let runtime = MotherRuntimeStore::new_with_project(
                 home.join("mother/state.db"),
                 crate::mother::ProjectUid::new("2bdc808e").unwrap(),
             );
@@ -544,7 +544,7 @@ type = "bearer"
     #[test]
     fn v2_task_and_peer_enqueue_native_jobs() {
         with_temp_patina_home(|home| {
-            let runtime = KnowledgeRuntimeStore::new_with_project(
+            let runtime = MotherRuntimeStore::new_with_project(
                 home.join("mother/state.db"),
                 crate::mother::ProjectUid::new("2bdc808e").unwrap(),
             );
