@@ -1,5 +1,5 @@
+use patina_sdk::child::{Child, ChildHealth, HealthStatus};
 use patina_sdk::granted::{self, Bundle as GrantedBundle};
-use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
 use patina_sdk::register_child;
 
 #[derive(Debug, Clone)]
@@ -36,7 +36,7 @@ impl LakeManagerChild {
     }
 }
 
-impl KnowledgeChild for LakeManagerChild {
+impl Child for LakeManagerChild {
     fn name(&self) -> String {
         "lake-manager".into()
     }

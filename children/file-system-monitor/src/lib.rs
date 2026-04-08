@@ -1,6 +1,6 @@
 use chrono::Utc;
+use patina_sdk::child::{Child, ChildHealth, HealthStatus};
 use patina_sdk::granted;
-use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
 use patina_sdk::register_child;
 use serde::Serialize;
 use serde_json::Value;
@@ -87,8 +87,8 @@ fn emit_metric_counter(
     delta: f64,
     labels: Vec<(String, String)>,
 ) -> Result<(), String> {
-    patina_sdk::knowledge_child::patina::measure::measure::emit(
-        &patina_sdk::knowledge_child::patina::measure::measure::Metric {
+    patina_sdk::child::patina::measure::measure::emit(
+        &patina_sdk::child::patina::measure::measure::Metric {
             name: name.to_string(),
             value: delta,
             labels,
@@ -215,7 +215,7 @@ impl FileSystemMonitorChild {
     }
 }
 
-impl KnowledgeChild for FileSystemMonitorChild {
+impl Child for FileSystemMonitorChild {
     fn name(&self) -> String {
         "file-system-monitor".to_string()
     }

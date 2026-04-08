@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 use parquet::arrow::ArrowWriter;
 use parquet::file::properties::WriterProperties;
+use patina_sdk::child::{Child, ChildHealth, HealthStatus};
 use patina_sdk::granted;
-use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
 use patina_sdk::register_child;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -120,8 +120,8 @@ fn emit_metric_counter(
     delta: f64,
     labels: Vec<(String, String)>,
 ) -> Result<(), String> {
-    patina_sdk::knowledge_child::patina::measure::measure::emit(
-        &patina_sdk::knowledge_child::patina::measure::measure::Metric {
+    patina_sdk::child::patina::measure::measure::emit(
+        &patina_sdk::child::patina::measure::measure::Metric {
             name: name.to_string(),
             value: delta,
             labels,
@@ -130,31 +130,31 @@ fn emit_metric_counter(
 }
 
 fn emit_metric_gauge(name: &str, value: f64) -> Result<(), String> {
-    patina_sdk::knowledge_child::patina::measure::measure::gauge(name, value)
+    patina_sdk::child::patina::measure::measure::gauge(name, value)
 }
 
 fn emit_file_found(event: &FileFoundEvent) -> Result<u64, String> {
     let payload = serde_json::to_string(event).map_err(|e| e.to_string())?;
-    let client = patina_sdk::knowledge_child::wasi::messaging::producer::connect("file.found")?;
-    let message = patina_sdk::knowledge_child::wasi::messaging::types::Message {
+    let client = patina_sdk::child::wasi::messaging::producer::connect("file.found")?;
+    let message = patina_sdk::child::wasi::messaging::types::Message {
         topic: "file.found".to_string(),
         content_type: Some("application/json".to_string()),
         data: payload.into_bytes(),
         metadata: vec![],
     };
-    patina_sdk::knowledge_child::wasi::messaging::producer::send(&client, &message)
+    patina_sdk::child::wasi::messaging::producer::send(&client, &message)
 }
 
 fn emit_file_written(event: &FileWrittenEvent) -> Result<u64, String> {
     let payload = serde_json::to_string(event).map_err(|e| e.to_string())?;
-    let client = patina_sdk::knowledge_child::wasi::messaging::producer::connect("file.written")?;
-    let message = patina_sdk::knowledge_child::wasi::messaging::types::Message {
+    let client = patina_sdk::child::wasi::messaging::producer::connect("file.written")?;
+    let message = patina_sdk::child::wasi::messaging::types::Message {
         topic: "file.written".to_string(),
         content_type: Some("application/json".to_string()),
         data: payload.into_bytes(),
         metadata: vec![],
     };
-    patina_sdk::knowledge_child::wasi::messaging::producer::send(&client, &message)
+    patina_sdk::child::wasi::messaging::producer::send(&client, &message)
 }
 
 fn write_records_parquet(records: &[Record], output_path: &Path) -> Result<(), String> {
@@ -351,7 +351,7 @@ impl FolderTextToParquetChild {
             .get("after_offset")
             .and_then(|value| value.as_u64());
 
-        let events = patina_sdk::knowledge_child::patina::events_stream::events_stream::subscribe(
+        let events = patina_sdk::child::patina::events_stream::events_stream::subscribe(
             "file.found",
             after_offset,
             limit,
@@ -393,10 +393,7 @@ impl FolderTextToParquetChild {
         }
 
         if let Some(offset) = last_offset {
-            patina_sdk::knowledge_child::patina::events_stream::events_stream::ack(
-                "file.found",
-                offset,
-            )?;
+            patina_sdk::child::patina::events_stream::events_stream::ack("file.found", offset)?;
         }
 
         for skipped_file in &skipped {
@@ -604,7 +601,7 @@ impl FolderTextToParquetChild {
     }
 }
 
-impl KnowledgeChild for FolderTextToParquetChild {
+impl Child for FolderTextToParquetChild {
     fn name(&self) -> String {
         "folder-text-to-parquet".to_string()
     }

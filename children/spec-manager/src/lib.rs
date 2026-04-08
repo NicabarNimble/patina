@@ -1,5 +1,5 @@
+use patina_sdk::child::{Child, ChildHealth, HealthStatus};
 use patina_sdk::granted::{self, Bundle as GrantedBundle};
-use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
 use patina_sdk::register_child;
 
 #[derive(Debug, Clone)]
@@ -44,7 +44,7 @@ impl SpecManagerChild {
     }
 }
 
-impl KnowledgeChild for SpecManagerChild {
+impl Child for SpecManagerChild {
     fn name(&self) -> String {
         "spec-manager".into()
     }

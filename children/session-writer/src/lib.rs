@@ -1,6 +1,6 @@
+use patina_sdk::child::{Child, ChildHealth, HealthStatus};
 use patina_sdk::granted::{self, Bundle as GrantedBundle};
 use patina_sdk::helpers::session as session_helpers;
-use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
 use patina_sdk::register_child;
 
 #[derive(Debug, Clone)]
@@ -34,7 +34,7 @@ impl Default for SessionWriterChild {
     }
 }
 
-impl KnowledgeChild for SessionWriterChild {
+impl Child for SessionWriterChild {
     fn name(&self) -> String {
         "session-writer".into()
     }
@@ -119,7 +119,7 @@ impl KnowledgeChild for SessionWriterChild {
                     .get("status")
                     .and_then(|v| v.as_str())
                     .unwrap_or("closed");
-                session_helpers::checkpoint::<patina_sdk::knowledge_child::host::GuestHost>(
+                session_helpers::checkpoint::<patina_sdk::child::host::GuestHost>(
                     "close", payload, status,
                 )?;
                 if let Some(tag) = value.get("tag").and_then(|v| v.as_str()) {
@@ -137,7 +137,7 @@ impl KnowledgeChild for SessionWriterChild {
                     .and_then(|v| v.as_str())
                     .unwrap_or(payload);
                 self.toys.session.write("crash-handoff", payload)?;
-                session_helpers::handoff::<patina_sdk::knowledge_child::host::GuestHost>(
+                session_helpers::handoff::<patina_sdk::child::host::GuestHost>(
                     modified_files,
                     summary,
                 )?;

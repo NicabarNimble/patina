@@ -1,6 +1,6 @@
 use chrono::Utc;
+use patina_sdk::child::{Child, ChildHealth, HealthStatus};
 use patina_sdk::granted;
-use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
 use patina_sdk::register_child;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -195,7 +195,7 @@ impl LakehouseCatalogChild {
             })
             .unwrap_or_default();
 
-        let events = patina_sdk::knowledge_child::patina::events_stream::events_stream::subscribe(
+        let events = patina_sdk::child::patina::events_stream::events_stream::subscribe(
             "file.written",
             after_offset,
             limit,
@@ -240,10 +240,7 @@ impl LakehouseCatalogChild {
         let catalog_rows = read_catalog_row_count()?;
 
         if let Some(offset) = last_offset {
-            patina_sdk::knowledge_child::patina::events_stream::events_stream::ack(
-                "file.written",
-                offset,
-            )?;
+            patina_sdk::child::patina::events_stream::events_stream::ack("file.written", offset)?;
         }
 
         Ok(serde_json::json!({
@@ -262,7 +259,7 @@ impl LakehouseCatalogChild {
     }
 }
 
-impl KnowledgeChild for LakehouseCatalogChild {
+impl Child for LakehouseCatalogChild {
     fn name(&self) -> String {
         "lakehouse-catalog".to_string()
     }

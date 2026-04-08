@@ -1,5 +1,5 @@
+use patina_sdk::child::{Child, ChildHealth, HealthStatus};
 use patina_sdk::granted;
-use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
 use patina_sdk::register_child;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -88,11 +88,11 @@ fn emit(topic: &str, payload_json: String) -> Result<u64, String> {
 }
 
 fn emit_metric_counter(name: &str, delta: f64) -> Result<(), String> {
-    patina_sdk::knowledge_child::patina::measure::measure::counter(name, delta)
+    patina_sdk::child::patina::measure::measure::counter(name, delta)
 }
 
 fn emit_metric_gauge(name: &str, value: f64) -> Result<(), String> {
-    patina_sdk::knowledge_child::patina::measure::measure::gauge(name, value)
+    patina_sdk::child::patina::measure::measure::gauge(name, value)
 }
 
 fn provenance_complete(record: &Record) -> bool {
@@ -117,7 +117,7 @@ impl SchemaEnforcerChild {
             .get("after_offset")
             .and_then(|value| value.as_u64());
 
-        let events = patina_sdk::knowledge_child::patina::events_stream::events_stream::subscribe(
+        let events = patina_sdk::child::patina::events_stream::events_stream::subscribe(
             "record.extracted",
             after_offset,
             limit,
@@ -173,7 +173,7 @@ impl SchemaEnforcerChild {
         emit_metric_gauge("provenance_completeness_pct", provenance_completeness_pct)?;
 
         if let Some(offset) = last_offset {
-            patina_sdk::knowledge_child::patina::events_stream::events_stream::ack(
+            patina_sdk::child::patina::events_stream::events_stream::ack(
                 "record.extracted",
                 offset,
             )?;
@@ -200,7 +200,7 @@ impl SchemaEnforcerChild {
     }
 }
 
-impl KnowledgeChild for SchemaEnforcerChild {
+impl Child for SchemaEnforcerChild {
     fn name(&self) -> String {
         "schema-enforcer".to_string()
     }

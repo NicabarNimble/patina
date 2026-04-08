@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
+use patina_sdk::child::{Child, ChildHealth, HealthStatus};
 use patina_sdk::granted;
-use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
 use patina_sdk::register_child;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -126,7 +126,7 @@ impl ContentExtractorChild {
             .get("after_offset")
             .and_then(|value| value.as_u64());
 
-        let events = patina_sdk::knowledge_child::patina::events_stream::events_stream::subscribe(
+        let events = patina_sdk::child::patina::events_stream::events_stream::subscribe(
             "file.found",
             after_offset,
             limit,
@@ -159,10 +159,7 @@ impl ContentExtractorChild {
         }
 
         if let Some(offset) = last_offset {
-            patina_sdk::knowledge_child::patina::events_stream::events_stream::ack(
-                "file.found",
-                offset,
-            )?;
+            patina_sdk::child::patina::events_stream::events_stream::ack("file.found", offset)?;
         }
 
         for skipped_file in &skipped {
@@ -183,7 +180,7 @@ impl ContentExtractorChild {
     }
 }
 
-impl KnowledgeChild for ContentExtractorChild {
+impl Child for ContentExtractorChild {
     fn name(&self) -> String {
         "content-extractor".to_string()
     }
