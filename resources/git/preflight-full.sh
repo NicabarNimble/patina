@@ -13,7 +13,6 @@ echo ""
 
 echo "[2/12] Build WASM children for integration tests..."
 cargo build -p patina-ai-child-file-system-monitor --target wasm32-wasip2
-cargo build -p patina-ai-child-folder-text-to-parquet --target wasm32-wasip2
 cargo build -p patina-ai-child-content-extractor --target wasm32-wasip2
 cargo build -p patina-ai-child-schema-enforcer --target wasm32-wasip2
 cargo build -p patina-ai-child-dedup-filter --target wasm32-wasip2

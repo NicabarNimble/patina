@@ -3272,21 +3272,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-ai-child-folder-text-to-parquet"
-version = "0.1.0"
-dependencies = [
- "arrow-array 55.2.0",
- "arrow-schema 55.2.0",
- "chrono",
- "parquet",
- "patina-sdk",
- "serde",
- "serde_json",
- "sha2",
- "uuid",
-]
-
-[[package]]
 name = "patina-ai-child-lake-manager"
 version = "0.1.0"
 dependencies = [
