@@ -1,6 +1,6 @@
 [workspace]
 members = [".", "mother", "sdk/patina-sdk", "children/belief-verifier", "children/session-writer", "children/spec-manager", "children/doctor", "children/file-system-monitor", "children/content-extractor", "children/schema-enforcer", "children/dedup-filter", "children/record-writer", "children/lakehouse-catalog", "crates/patina-core", "crates/patina-protocol"]
-exclude = ["layer/dust"]
+exclude = ["layer/dust", "sdk/template"]
 resolver = "2"
 
 [package]

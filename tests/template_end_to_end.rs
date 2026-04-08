@@ -17,7 +17,7 @@ fn cargo_generate_template_builds_for_wasm() {
     }
 
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let template_dir = repo_root.join("children/template");
+    let template_dir = repo_root.join("sdk/template");
     let sandbox = tempfile::tempdir().expect("create tempdir");
 
     let generate = Command::new("cargo")

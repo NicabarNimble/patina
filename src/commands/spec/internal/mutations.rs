@@ -25,7 +25,7 @@ const FRESHNESS_CONTRACT_PATHS: &[&str] = &[
     "src/child/internal/mod.rs",
     "mother/src/toys.rs",
     "resources/templates/child/",
-    "children/template/child.toml",
+    "sdk/template/child.toml",
 ];
 
 struct CanonicalToyMapping {
