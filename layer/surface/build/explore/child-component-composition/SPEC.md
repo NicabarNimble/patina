@@ -10,84 +10,129 @@ beliefs:
   - "[[children-have-agency-toys-are-capabilities]]"
 related:
   - wit/child/child.wit
+  - children/file-system-monitor/
+  - children/content-extractor/
   - children/schema-enforcer/
   - children/dedup-filter/
-  - layer/surface/build/explore/child-typed-exports/
+  - children/record-writer/
+  - children/lakehouse-catalog/
+  - resources/pandos/folder-text-to-parquet/pando.toml
+  - sdk/patina-sdk/
+  - src/child/internal/child.rs
 exit_criteria: []
 ---
-# explore: Compose children via typed WIT interfaces
+# explore: Typed WIT child composition
 
-> Can two Patina children be composed into a single component using
-> typed WIT interfaces and `wasm-tools compose`, with Mother providing
-> only toys?
+> Migrate the 6 canon children from handle(string, string) + event
+> broker to typed WIT interfaces + wac composition. Both the old
+> (handle) and new (typed) paths must work during migration.
 
-## Why This Matters
+## Spike Result
 
-Patina children are WASM components. The component model's composition
-mechanism (`wasm-tools compose`) can wire component exports to component
-imports, producing a new composed component. This is how the Bytecode
-Alliance intends components to be assembled — not through runtime message
-brokers, but through typed interface linking.
+Proven: two minimal components with typed WIT interfaces compose
+via `wac plug`. The composed component merges shared imports (WASI)
+and resolves internal typed links. Producer's export wires to
+consumer's import. Composed component exposes only the outer export
+and merged platform imports.
 
-Today, Patina children all export `handle(string, string)` and pass
-data as JSON through Mother's event broker. This means:
-- Data types are invisible (JSON strings)
-- Composition is runtime-only (Mother routes events)
-- Reuse is discoverable only by reading source code
-- Children can't be verified to fit together at build time
+## Current State
 
-If children export typed WIT interfaces and compose via `wasm-tools
-compose`, then:
-- Data types are visible in WIT
-- Composition is verifiable at build time
-- The child pool becomes a registry of typed contracts
-- Pandos become component composition blueprints
-- Mother provides toys and lifecycle only — not data routing
+6 canon children in folder-text-to-parquet pando. All export the
+same `child` world. Data flows as JSON strings through Mother's
+event broker.
 
-## What We're Testing
-
-Take two canon children from the folder-text-to-parquet pipeline:
-
-**schema-enforcer** → validates records against schema
-**dedup-filter** → deduplicates records by content hash
-
-Today they're connected by Mother's event broker:
 ```
+file-system-monitor          [scan]
+  toys: logging, messaging, measure, filesystem
+  subscribes: nothing
+  emits: file.found
+       ↓ event broker (JSON)
+content-extractor            [extract-found]
+  toys: logging, events, messaging, filesystem
+  subscribes: file.found
+  emits: record.extracted
+       ↓ event broker (JSON)
+schema-enforcer              [enforce-schema]
+  toys: logging, events, messaging, measure
+  subscribes: record.extracted
+  emits: record.validated, record.rejected
+       ↓ event broker (JSON)
+dedup-filter                 [filter-dedup]
+  toys: logging, events, messaging, keyvalue, measure
+  subscribes: record.validated
+  emits: record.ready, record.duplicate
+       ↓ event broker (JSON)
+record-writer                [write-records]
+  toys: logging, keyvalue, events, messaging, measure, filesystem
+  subscribes: record.ready
+  emits: file.written
+       ↓ event broker (JSON)
+lakehouse-catalog            [register-written]
+  toys: logging, keyvalue, events, sql
+  subscribes: file.written
+  emits: nothing
+```
+
+Every child: same serde `Record` struct (duplicated 4 times),
+same event subscribe/ack/emit boilerplate, same handle dispatch
+pattern, same lifecycle exports (none use tick or drain).
+
+## Target State
+
+6 children with typed WIT exports. Composed into one component
+via `wac plug`. Mother provides toys. Lifecycle is opt-in.
+
+```
+file-system-monitor
+  imports: logging, measure, filesystem
+  exports: patina:pipeline/file-source
+       ↓ wac composition (typed WIT)
+content-extractor
+  imports: patina:pipeline/file-source, logging, filesystem
+  exports: patina:pipeline/record-source
+       ↓ wac composition (typed WIT)
 schema-enforcer
-  subscribes to "record.extracted"
-  validates records
-  emits to "record.validated"
-      ↓ (Mother's event broker, JSON strings)
+  imports: patina:pipeline/record-source, logging, measure
+  exports: patina:pipeline/record-source (validated)
+       ↓ wac composition (typed WIT)
 dedup-filter
-  subscribes to "record.validated"
-  checks content_hash against state
-  emits to "record.ready"
+  imports: patina:pipeline/record-source, logging, keyvalue, measure
+  exports: patina:pipeline/record-source (deduplicated)
+       ↓ wac composition (typed WIT)
+record-writer
+  imports: patina:pipeline/record-source, logging, keyvalue, measure, filesystem
+  exports: patina:pipeline/file-sink
+       ↓ wac composition (typed WIT)
+lakehouse-catalog
+  imports: patina:pipeline/file-sink, logging, keyvalue, sql
+  exports: patina:pipeline/catalog-result
 ```
 
-We want to compose them directly:
-```
-schema-enforcer
-  exports: record-processor (typed WIT)
-      ↓ (wasm-tools compose, typed linking)
-dedup-filter
-  imports: record-source (typed WIT)
-  exports: record-processor (typed WIT)
-```
+Composed component:
+- imports: all toys (merged by wac)
+- exports: entry point to run the pipeline
+- lifecycle: optional — only if Mother needs to drive it
 
-The composed component is one unit that Mother loads. Mother provides
-toys (logging, keyvalue, measure). Data flows between children through
-typed WIT — no JSON, no event broker for the data path.
+## What Changes
 
-## Concrete Steps
+### 1. New WIT packages
 
-### 1. Define shared record types
+Define shared types that replace duplicated serde structs.
+Names below are working names — final names emerge from the build.
 
-New WIT package `patina:record@0.1.0`:
+**`wit/toys/patina/pipeline.wit`** (or split into multiple files):
 
 ```wit
-package patina:record@0.1.0;
+package patina:pipeline@0.1.0;
 
-interface record-types {
+interface types {
+    record file-found {
+        source-path: string,
+        source-hash: string,
+        source-size-bytes: u64,
+        discovered-at: string,
+    }
+
     record record-envelope {
         record-id: string,
         source-path: string,
@@ -113,142 +158,313 @@ interface record-types {
         accepted: list<record-envelope>,
         rejected: list<rejected-record>,
     }
+
+    record file-written {
+        file-path: string,
+        record-count: u64,
+        written-at: string,
+    }
+
+    record catalog-entry {
+        file-path: string,
+        record-count: u64,
+        written-at: string,
+        registered-at: string,
+        schema-version: u32,
+    }
 }
 
-interface record-processor {
-    use record-types.{record-envelope, process-result};
-    process: func(records: list<record-envelope>) -> result<process-result, string>;
+interface file-source {
+    use types.{file-found};
+    scan: func(folder: string) -> result<list<file-found>, string>;
+}
+
+interface record-extract {
+    use types.{file-found, record-envelope};
+    extract: func(files: list<file-found>) -> result<list<record-envelope>, string>;
+}
+
+interface record-validate {
+    use types.{record-envelope, process-result};
+    validate: func(records: list<record-envelope>) -> result<process-result, string>;
+}
+
+interface record-dedup {
+    use types.{record-envelope, process-result};
+    dedup: func(records: list<record-envelope>) -> result<process-result, string>;
+}
+
+interface record-write {
+    use types.{record-envelope, file-written};
+    write: func(records: list<record-envelope>) -> result<list<file-written>, string>;
+}
+
+interface catalog-register {
+    use types.{file-written, catalog-entry};
+    register: func(files: list<file-written>) -> result<list<catalog-entry>, string>;
 }
 ```
 
-This type already exists as a duplicated Rust `Record` struct in both
-`schema-enforcer/src/lib.rs` and `dedup-filter/src/lib.rs`. The WIT
-version replaces both copies.
+### 2. Per-child worlds
 
-### 2. Define per-child worlds
+Each child gets its own world. No more shared `child` world for
+pipeline children.
 
-**schema-enforcer world:**
 ```wit
-world schema-enforcer {
-    // Toys from Mother
+// wit/worlds/file-system-monitor.wit
+world file-system-monitor {
     import wasi:logging/logging@0.1.0;
     import patina:measure/measure@0.1.0;
-
-    // Typed data export
-    export patina:record/record-processor;
+    import wasi:filesystem/types@0.2.8;
+    import wasi:filesystem/preopens@0.2.8;
+    export patina:pipeline/file-source@0.1.0;
 }
 ```
 
-**dedup-filter world:**
 ```wit
+// wit/worlds/content-extractor.wit
+world content-extractor {
+    import wasi:logging/logging@0.1.0;
+    import wasi:filesystem/types@0.2.8;
+    import wasi:filesystem/preopens@0.2.8;
+    import patina:pipeline/file-source@0.1.0;
+    export patina:pipeline/record-extract@0.1.0;
+}
+```
+
+```wit
+// wit/worlds/schema-enforcer.wit
+world schema-enforcer {
+    import wasi:logging/logging@0.1.0;
+    import patina:measure/measure@0.1.0;
+    import patina:pipeline/record-extract@0.1.0;
+    export patina:pipeline/record-validate@0.1.0;
+}
+```
+
+```wit
+// wit/worlds/dedup-filter.wit
 world dedup-filter {
-    // Toys from Mother
     import wasi:logging/logging@0.1.0;
     import wasi:keyvalue/store@0.2.0;
     import patina:measure/measure@0.1.0;
-
-    // Typed data — in from schema-enforcer, out to next child
-    import patina:record/record-processor;  // gets records from upstream
-    export patina:record/record-processor;  // passes records downstream
+    import patina:pipeline/record-validate@0.1.0;
+    export patina:pipeline/record-dedup@0.1.0;
 }
 ```
 
-Note: both children import only the toys they actually need, not the
-full child world. This is the component model way — declare exactly
-what you need.
-
-### 3. Build both as WASM components
-
-Modify each child's `src/lib.rs` to:
-- Remove serde `Record` struct (use WIT-generated type)
-- Remove event subscribe/emit (data comes through typed interface)
-- Implement the `record-processor` export
-- Keep toy usage (logging, measure, keyvalue)
-
-Build with: `cargo build --target wasm32-wasip2`
-
-### 4. Compose with wasm-tools
-
-```bash
-wasm-tools compose \
-    schema-enforcer.wasm \
-    --definitions dedup-filter.wasm \
-    -o composed-pipeline.wasm
+```wit
+// wit/worlds/record-writer.wit
+world record-writer {
+    import wasi:logging/logging@0.1.0;
+    import wasi:keyvalue/store@0.2.0;
+    import patina:measure/measure@0.1.0;
+    import wasi:filesystem/types@0.2.8;
+    import wasi:filesystem/preopens@0.2.8;
+    import patina:pipeline/record-dedup@0.1.0;
+    export patina:pipeline/record-write@0.1.0;
+}
 ```
 
-This should wire schema-enforcer's `record-processor` export to
-dedup-filter's `record-processor` import. Toy imports (logging,
-keyvalue, measure) stay unsatisfied — Mother fills those at runtime.
+```wit
+// wit/worlds/lakehouse-catalog.wit
+world lakehouse-catalog {
+    import wasi:logging/logging@0.1.0;
+    import wasi:keyvalue/store@0.2.0;
+    import wasi:sql/readwrite@0.1.0;
+    import patina:pipeline/record-write@0.1.0;
+    export patina:pipeline/catalog-register@0.1.0;
+}
+```
 
-### 5. Load in Mother
+### 3. Child code changes
 
-Mother loads `composed-pipeline.wasm` as a single component. Links
-toys. Calls the outermost `record-processor` export to push records
-through the pipeline. Both children execute in sequence, typed,
-verified.
+For each child, the changes are mechanical:
 
-## What We're Proving
+**Remove:**
+- serde `Record`/`FileFoundEvent`/etc. structs (use WIT-generated types)
+- `parse_payload()` JSON parsing
+- `emit()` messaging boilerplate
+- `events_stream::subscribe()` / `events_stream::ack()` boilerplate
+- `handle()` action dispatch
+- `Child` trait impl (lifecycle: name, on_load, health)
+- `register_child!` macro
 
-1. **Typed WIT works for child data** — the duplicated `Record` serde
-   struct becomes a shared WIT type.
-2. **wasm-tools compose works for children** — two children can be
-   wired together at build time.
-3. **Mother only provides toys** — she's the platform, not the data
-   router.
-4. **The pando blueprint maps to component composition** — wiring
-   rules become composition instructions.
+**Replace with:**
+- WIT-generated types from `patina:pipeline`
+- Typed export implementation (e.g., `validate(records) -> process-result`)
+- Direct function — data comes in as arguments, goes out as return value
+- New `register_*!` macro or `export!()` macro from wit-bindgen
 
-## What We're NOT Doing
+**Keep:**
+- Business logic (validate_record, provenance check, dedup hash check, parquet write, catalog SQL)
+- Toy usage (logging, measure, keyvalue, sql, filesystem)
+- Metric emission
 
-- Not migrating all children — just schema-enforcer + dedup-filter
-- Not changing Mother's existing dispatch — composed component runs
-  alongside existing handle-based children
-- Not removing event broker — it stays for non-composed children
-- Not building the full pipeline — just two children as proof
+Schema-enforcer before: 228 lines with boilerplate.
+Schema-enforcer after: ~80 lines of validation logic + toy calls.
 
-## Known Unknowns
+### 4. Composition
 
-1. **Does wasm-tools compose handle shared toy imports?** Both
-   children import logging. Does the composition merge those imports
-   or conflict?
-2. **Can Mother load a composed component with its current bindgen?**
-   The composed component has a different world than `child`. Mother's
-   dispatch needs to handle this.
-3. **Does the same interface work for both import and export?** If
-   dedup-filter both imports and exports `record-processor`, does
-   wasm-tools compose wire the right direction?
-4. **Resource usage** — does the composed component get one linear
-   memory or two? (Should be two — shared nothing between children.)
-5. **How does keyvalue state scope work?** dedup-filter uses keyvalue
-   for hash state. In a composed component, Mother links it once — does
-   it scope correctly?
+Build each child:
+```bash
+cargo build -p patina-ai-child-schema-enforcer --target wasm32-wasip2
+# ... for each child
+```
+
+Compose with wac:
+```bash
+wac plug --plug file-system-monitor.wasm content-extractor.wasm
+wac plug --plug <previous>.wasm schema-enforcer.wasm
+wac plug --plug <previous>.wasm dedup-filter.wasm
+wac plug --plug <previous>.wasm record-writer.wasm
+wac plug --plug <previous>.wasm lakehouse-catalog.wasm
+# Or a wac compose file that does all at once
+```
+
+Result: one composed .wasm component that:
+- imports: all toys (merged)
+- exports: the pipeline entry point
+- internally: 6 children wired by typed interfaces
+
+### 5. Pando changes
+
+Today `pando.toml`:
+```toml
+[composition]
+wiring = [
+  "file-system-monitor.file.found -> content-extractor",
+  "content-extractor.record.extracted -> schema-enforcer",
+  ...
+]
+```
+
+After: pando.toml becomes a composition manifest:
+```toml
+[pando]
+name = "folder-text-to-parquet"
+version = "0.2.0"
+
+[[children]]
+name = "file-system-monitor"
+world = "file-system-monitor"
+
+[[children]]
+name = "content-extractor"
+world = "content-extractor"
+
+# ... etc
+
+[composition]
+tool = "wac"
+# wac resolves the wiring from typed interfaces
+# or explicit plug order if needed
+```
+
+Or even simpler: a wac composition file (`pando.wac`) that
+replaces string wiring with typed composition instructions.
+
+### 6. Mother changes
+
+**Dual dispatch during migration:**
+Mother reads the child manifest. If world is `child` (old), dispatch
+through handle. If world is a typed world, call the typed export.
+
+**For composed components:**
+Mother loads the single composed .wasm. Links toys. Calls the
+entry point. Doesn't need to know about the internal children.
+
+**Lifecycle:**
+Composed components that need tick (because file-system-monitor
+needs it) export `patina:lifecycle/manageable`. Mother calls tick
+on the composed component, which triggers the pipeline internally.
+
+Components without lifecycle needs don't export it. Mother doesn't
+call tick on pure request-response compositions.
+
+### 7. SDK changes
+
+**New macro:** `export!()` from wit-bindgen replaces `register_child!`.
+Or a Patina wrapper macro that generates the export shims.
+
+**New traits:** generated by wit-bindgen from the per-child worlds.
+No more single `Child` trait for everyone.
+
+**Keep old SDK:** `Child` trait + `register_child!` stay for
+handle-based children. Service children (belief-verifier,
+session-writer, spec-manager, doctor) keep using handle until
+they have typed interfaces too.
+
+## Build Order
+
+### Phase 1: WIT types + one child (prove it builds)
+1. Create `wit/toys/patina/pipeline.wit` with shared types
+2. Create world for schema-enforcer
+3. Modify schema-enforcer to implement typed export
+4. Build, inspect with `wasm-tools component wit`
+
+### Phase 2: Second child + composition (prove wac works)
+5. Create world for dedup-filter
+6. Modify dedup-filter to implement typed export + import
+7. Build both, compose with `wac plug`
+8. Inspect composed component
+
+### Phase 3: All 6 + pando (prove the pipeline)
+9. Convert remaining 4 children
+10. Compose full pipeline
+11. Update pando.toml format
+
+### Phase 4: Mother loads composed component
+12. Add dual dispatch to Mother (handle world vs typed world)
+13. Load composed component, link toys
+14. Run the pipeline end-to-end
+
+### Phase 5: Lifecycle + observability
+15. Define `patina:lifecycle/manageable` interface
+16. Add lifecycle wrapper for composed component
+17. Verify metrics flow through from internal children
+
+## What DOESN'T Change
+
+- **Service children** (belief-verifier, session-writer, spec-manager,
+  doctor) — keep handle(string, string). They're control-plane, not
+  data-pipeline.
+- **Toys** — WIT interfaces and Mother implementations unchanged.
+- **Mother's core** — runtime store, registry, engine. Only dispatch
+  code changes.
+- **Tests** — existing wasm_integration tests stay. New tests for
+  typed dispatch added alongside.
+
+## Risks
+
+1. **wac composition order matters** — unclear if wac can resolve a
+   full 6-child chain in one pass or needs sequential plugging.
+2. **Lifecycle for composed components** — need to design how tick
+   reaches file-system-monitor inside a composition.
+3. **Error propagation** — typed results need to carry errors through
+   the chain. Each child returns `result<T, string>` but composition
+   needs the chain to stop on error.
+4. **State scoping** — dedup-filter and record-writer both use keyvalue.
+   In a composed component, do they share state or get separate scopes?
+5. **Observable counters** — metrics from internal children need to
+   flow out through the composed component's merged measure import.
 
 ## Verification
 
 ```bash
-# Build both children
+# Phase 1
 cargo build -p patina-ai-child-schema-enforcer --target wasm32-wasip2
-cargo build -p patina-ai-child-dedup-filter --target wasm32-wasip2
+wasm-tools component wit target/.../schema_enforcer.wasm
 
-# Compose
-wasm-tools compose schema-enforcer.wasm -d dedup-filter.wasm -o composed.wasm
-
-# Inspect the result
+# Phase 2
+wac plug --plug schema-enforcer.wasm dedup-filter.wasm -o composed.wasm
 wasm-tools component wit composed.wasm
 
-# Verify it has the right shape
-# - imports: logging, keyvalue, measure (toys)
-# - exports: record-processor (data contract)
+# Phase 3
+# Full pipeline composition
+wasm-tools component wit full-pipeline.wasm
+
+# Phase 4
+cargo test --test wasm_integration
+cargo check --workspace -q
 ```
-
-## Relationship to child-typed-exports
-
-The `child-typed-exports` explore designed much of the WIT type system
-(record-envelope, process-result, etc.) and identified key decisions
-(two worlds, separate macros, data-plane ownership). That work informs
-this explore.
-
-The key difference: child-typed-exports assumed Mother mediates typed
-data (path 1). This explore tests direct child-to-child composition
-(path 2) — the component model way. If this works, path 1 is
-unnecessary.
