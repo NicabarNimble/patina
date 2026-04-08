@@ -23,6 +23,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
+use std::sync::TryLockError;
 use std::time::{Duration, Instant};
 
 use patina::mother::ChildRequest;
@@ -497,6 +498,73 @@ impl MotherRuntime for ServerState {
     }
 
     fn reload_child(&self, name: &str) -> Result<mother_crate::runtime::ChildReloadResult> {
+        let reload_lock = self
+            .registry
+            .child_reload_lock(name)
+            .ok_or_else(|| anyhow::anyhow!("child_not_found: no child named '{}'", name))?;
+        let _guard = match reload_lock.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::WouldBlock) => {
+                anyhow::bail!(
+                    "operation_in_progress: reload already running for '{}'",
+                    name
+                )
+            }
+            Err(TryLockError::Poisoned(_)) => {
+                anyhow::bail!("internal_error: reload lock poisoned for '{}'", name)
+            }
+        };
+
+        let (wasm_path, manifest_path) = self
+            .registry
+            .child_paths(name)
+            .ok_or_else(|| anyhow::anyhow!("child_not_found: no child named '{}'", name))?;
+
+        let loaded = super::loader::load_wasm_child(&wasm_path, &manifest_path)?;
+        let mut replacement = match loaded {
+            mother_crate::daemon_bootstrap::LoadedChild::Knowledge {
+                child,
+                name: loaded_name,
+                ..
+            } => {
+                if loaded_name != name {
+                    anyhow::bail!(
+                        "internal_error: manifest child '{}' does not match reload target '{}'",
+                        loaded_name,
+                        name
+                    );
+                }
+                child
+            }
+        };
+
+        let daemon_host = DaemonHost;
+        if let Err(error) = replacement.on_load(&daemon_host) {
+            return Ok(mother_crate::runtime::ChildReloadResult {
+                child: name.to_string(),
+                status: "reload_failed".to_string(),
+                previous_instance: "active".to_string(),
+                reason: Some(format!("on_load failed: {}", error)),
+            });
+        }
+
+        let mut previous = self.registry.swap_knowledge_child(name, replacement)?;
+        let _ = previous.drain(64);
+        previous.on_unload();
+
+        {
+            let mut readiness = self.readiness.write().unwrap_or_else(|e| e.into_inner());
+            let degraded_before = readiness.children_degraded.len();
+            readiness
+                .children_degraded
+                .retain(|entry| entry.name != name);
+            if readiness.children_degraded.len() < degraded_before
+                && readiness.children_ready_count < readiness.children_total
+            {
+                readiness.children_ready_count += 1;
+            }
+        }
+
         Ok(mother_crate::runtime::ChildReloadResult {
             child: name.to_string(),
             status: "reloaded".to_string(),

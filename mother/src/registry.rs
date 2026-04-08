@@ -237,6 +237,27 @@ impl ChildRegistry {
         })
     }
 
+    pub fn swap_knowledge_child(
+        &self,
+        child_name: &str,
+        replacement: Box<dyn Child>,
+    ) -> Result<Box<dyn Child>> {
+        let children = self.children_snapshot();
+        for entry in children {
+            let matches_name = {
+                let guard = entry.child.read().unwrap_or_else(|e| e.into_inner());
+                guard.name() == child_name
+            };
+            if matches_name {
+                let mut slot = entry.child.write().unwrap_or_else(|e| e.into_inner());
+                let previous = std::mem::replace(&mut *slot, replacement);
+                return Ok(previous);
+            }
+        }
+
+        Err(anyhow::anyhow!("unknown child: {}", child_name))
+    }
+
     fn child_name_exists(&self, name: &str) -> bool {
         self.children
             .read()
