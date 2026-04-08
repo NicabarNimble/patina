@@ -35,6 +35,14 @@ exit_criteria:
 > Replace hand-flattened single-file WASI copies in `deps/` with proper
 > upstream multi-file package directories. Patina extensions untouched.
 
+## Deprioritized
+
+Direction shifted during session 20260408-120617. The real BA alignment
+work is typed WIT at the child level (`child-component-composition`),
+not deps file structure. The io spike proved multi-file deps work, but
+the remaining packages are secondary. deps/ is per-crate by design
+(wasmtime does the same). Return to this after composition explore.
+
 ## Problem
 
 WASI Preview 2 interfaces that are naturally multi-file packages
