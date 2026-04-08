@@ -106,15 +106,6 @@ impl FederationQueryError {
             reason: reason.into(),
         }
     }
-
-    pub fn reason(&self) -> &str {
-        match self {
-            Self::Invalid { reason } => reason,
-            Self::Runtime { reason } => reason,
-            Self::Unavailable { reason } => reason,
-            Self::Timeout { .. } => "federation_query_timeout",
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
