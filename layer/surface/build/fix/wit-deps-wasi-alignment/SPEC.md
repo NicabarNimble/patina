@@ -34,6 +34,34 @@ exit_criteria:
 > Use proper WASI package structure for WIT dependencies. Stop
 > maintaining flattened copies of upstream interfaces.
 
+## Scope Narrowing (session 20260408-120617)
+
+Original spec scope covered all WIT deps (WASI + Patina extensions).
+Narrowed to: **WASI Preview 2 multi-file packages only**. Patina
+extension toys stay as flat single files — they're ours, not upstream,
+and don't benefit from multi-file structure.
+
+WASI packages that are actually multi-file (condensed from upstream):
+- `wasi:http` — types.wit + handler.wit
+- `wasi:io` — error.wit + poll.wit + streams.wit
+- `wasi:clocks` — monotonic-clock.wit + wall-clock.wit
+- `wasi:filesystem` — types.wit + preopens.wit
+
+Naturally single-file: logging, keyvalue, messaging, sql — stay as-is.
+
+### Spike: `wasi:io` multi-file resolution test
+
+Before restructuring all packages, validate that both
+`wasmtime::component::bindgen!` and `wit-bindgen::generate!` resolve
+multi-file WASI packages from `deps/io/` subdirectories.
+
+Test: replace `wit/child/deps/io.wit` with `wit/child/deps/io/{error,poll,streams}.wit`
+using upstream files from `wit/toys/wasi-p2/io/`. Mirror to SDK. Run
+`cargo check --workspace -q`.
+
+If this passes, the approach works for all 4 multi-file packages.
+If this fails, we learn what the resolver actually needs.
+
 ## Why
 
 Patina aspires to align with the Bytecode Alliance component model

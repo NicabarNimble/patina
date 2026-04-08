@@ -16,6 +16,7 @@ making claims about how something was designed.
 - [belief-system-hardening](feat/belief-system-hardening/SPEC.md) — staleness, verification, health scoring
 - [cloudflare-worker-child](feat/cloudflare-worker-child/SPEC.md) — Patina child as Cloudflare Worker
 - [patina-durable-backup](feat/patina-durable-backup/SPEC.md) — durable backup system
+- [wit-deps-wasi-alignment](fix/wit-deps-wasi-alignment/SPEC.md) — fix WIT dep management: single WASI source, proper package structure
 - [engine-consolidate](refactor/engine-consolidate/SPEC.md) — merge PipelineEngine + KnowledgeChildEngine
 - [interface-redesign](refactor/interface-redesign/SPEC.md) — Mother-managed interface registry, ephemeral projection, skill system (16 criteria)
 - [duckdb-durable-execution](explore/duckdb-durable-execution/SPEC.md) — DuckDB + Mother for Absurd-style durable execution (explore)
