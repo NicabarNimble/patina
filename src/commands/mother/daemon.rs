@@ -50,6 +50,7 @@ pub struct ServerState {
     pandos_root: PathBuf,
     pando_registry: Mutex<mother_crate::pando::PandoRegistry>,
     native_commands: Mutex<HashSet<String>>,
+    refresh_lock: Mutex<()>,
     aliases: HashMap<String, String>,
     readiness: Arc<RwLock<mother_crate::runtime::ReadinessState>>,
 }
@@ -75,6 +76,7 @@ impl ServerState {
             pandos_root: patina::paths::pando::pandos_dir(),
             pando_registry: Mutex::new(mother_crate::pando::PandoRegistry::default()),
             native_commands: Mutex::new(HashSet::new()),
+            refresh_lock: Mutex::new(()),
             aliases: HashMap::new(),
             readiness,
         };
@@ -475,25 +477,100 @@ impl ApiRuntime for ServerState {
 
 impl MotherRuntime for ServerState {
     fn load_pando(&self, name: &str) -> Result<mother_crate::runtime::PandoLoadResult> {
+        let manifest_path = self.pandos_root.join(name).join("pando.toml");
+        if !manifest_path.exists() {
+            anyhow::bail!("pando_not_found: no pando named '{}'", name);
+        }
+
+        let manifest = mother_crate::pando::parse_manifest_path(&manifest_path)
+            .map_err(|e| anyhow::anyhow!("invalid_request: {}", e))?;
+        let mut children_activated = 0usize;
+        for child in manifest.children {
+            let reload = self.reload_child(&child.name)?;
+            if reload.status == "reloaded" {
+                children_activated += 1;
+            }
+        }
+        self.reload_pando_registry()?;
+
         Ok(mother_crate::runtime::PandoLoadResult {
             pando: name.to_string(),
             status: "loaded".to_string(),
-            children_activated: 0,
+            children_activated,
         })
     }
 
     fn refresh_pandos(&self) -> Result<mother_crate::runtime::PandoRefreshResult> {
-        let readiness = self
-            .readiness
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
+        let _refresh_guard = match self.refresh_lock.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::WouldBlock) => {
+                anyhow::bail!("operation_in_progress: refresh already running")
+            }
+            Err(TryLockError::Poisoned(_)) => {
+                anyhow::bail!("internal_error: refresh lock poisoned")
+            }
+        };
+
+        let mut pandos_loaded = 0usize;
+        let mut pandos_failed = 0usize;
+        let mut children_activated = 0usize;
+        let mut children_failed = 0usize;
+        let mut degraded = Vec::new();
+
+        if self.pandos_root.exists() {
+            let mut dirs = std::fs::read_dir(&self.pandos_root)?
+                .flatten()
+                .filter(|entry| entry.path().is_dir())
+                .collect::<Vec<_>>();
+            dirs.sort_by_key(|entry| entry.file_name());
+
+            for dir in dirs {
+                let manifest_path = dir.path().join("pando.toml");
+                if !manifest_path.exists() {
+                    continue;
+                }
+                let manifest = match mother_crate::pando::parse_manifest_path(&manifest_path) {
+                    Ok(m) => m,
+                    Err(_) => {
+                        pandos_failed += 1;
+                        continue;
+                    }
+                };
+                pandos_loaded += 1;
+                for child in manifest.children {
+                    match self.reload_child(&child.name) {
+                        Ok(outcome) if outcome.status == "reloaded" => {
+                            children_activated += 1;
+                        }
+                        Ok(outcome) => {
+                            children_failed += 1;
+                            degraded.push(mother_crate::runtime::DegradedChild {
+                                name: child.name,
+                                reason: outcome
+                                    .reason
+                                    .unwrap_or_else(|| "reload failed".to_string()),
+                            });
+                        }
+                        Err(error) => {
+                            children_failed += 1;
+                            degraded.push(mother_crate::runtime::DegradedChild {
+                                name: child.name,
+                                reason: error.to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        self.reload_pando_registry()?;
+
         Ok(mother_crate::runtime::PandoRefreshResult {
-            pandos_loaded: 0,
-            pandos_failed: 0,
-            children_activated: 0,
-            children_failed: 0,
-            degraded: readiness.children_degraded,
+            pandos_loaded,
+            pandos_failed,
+            children_activated,
+            children_failed,
+            degraded,
         })
     }
 

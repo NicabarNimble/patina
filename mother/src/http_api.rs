@@ -183,6 +183,37 @@ struct LifecycleNameRequest {
 #[derive(Deserialize, Default)]
 struct LifecycleRefreshRequest {}
 
+fn lifecycle_error(status: u16, code: &str, detail: &str) -> HttpResponse {
+    HttpResponse::json(
+        status,
+        &serde_json::json!({
+            "error": code,
+            "code": status,
+            "detail": detail,
+        }),
+    )
+}
+
+fn lifecycle_error_from_anyhow(error: &anyhow::Error) -> HttpResponse {
+    let detail = error.to_string();
+    if let Some(value) = detail.strip_prefix("invalid_request: ") {
+        return lifecycle_error(400, "invalid_request", value);
+    }
+    if let Some(value) = detail.strip_prefix("child_not_found: ") {
+        return lifecycle_error(404, "child_not_found", value);
+    }
+    if let Some(value) = detail.strip_prefix("pando_not_found: ") {
+        return lifecycle_error(404, "pando_not_found", value);
+    }
+    if let Some(value) = detail.strip_prefix("operation_in_progress: ") {
+        return lifecycle_error(409, "operation_in_progress", value);
+    }
+    if let Some(value) = detail.strip_prefix("internal_error: ") {
+        return lifecycle_error(500, "internal_error", value);
+    }
+    lifecycle_error(500, "internal_error", &detail)
+}
+
 pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
     let children: Vec<ChildHealthJson> = runtime
         .health_all()
@@ -398,27 +429,32 @@ pub fn handle_lifecycle_load_pando(
     runtime: &dyn ApiRuntime,
 ) -> HttpResponse {
     if request.body.is_empty() {
-        return json_error(400, "Missing request body");
+        return lifecycle_error(400, "invalid_request", "missing request body");
     }
     let payload: LifecycleNameRequest = match serde_json::from_slice(&request.body) {
         Ok(v) => v,
-        Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
+        Err(e) => {
+            return lifecycle_error(400, "invalid_request", &format!("invalid JSON: {}", e));
+        }
     };
+    if payload.name.trim().is_empty() {
+        return lifecycle_error(400, "invalid_request", "name is required");
+    }
     match runtime.lifecycle_load_pando(&payload.name) {
         Ok(response) => HttpResponse::json(200, &response),
-        Err(e) => json_error(500, &e.to_string()),
+        Err(e) => lifecycle_error_from_anyhow(&e),
     }
 }
 
 pub fn handle_lifecycle_refresh(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
     if !request.body.is_empty() {
         if serde_json::from_slice::<LifecycleRefreshRequest>(&request.body).is_err() {
-            return json_error(400, "Invalid JSON");
+            return lifecycle_error(400, "invalid_request", "invalid JSON");
         }
     }
     match runtime.lifecycle_refresh() {
         Ok(response) => HttpResponse::json(200, &response),
-        Err(e) => json_error(500, &e.to_string()),
+        Err(e) => lifecycle_error_from_anyhow(&e),
     }
 }
 
@@ -427,15 +463,20 @@ pub fn handle_lifecycle_reload_child(
     runtime: &dyn ApiRuntime,
 ) -> HttpResponse {
     if request.body.is_empty() {
-        return json_error(400, "Missing request body");
+        return lifecycle_error(400, "invalid_request", "missing request body");
     }
     let payload: LifecycleNameRequest = match serde_json::from_slice(&request.body) {
         Ok(v) => v,
-        Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
+        Err(e) => {
+            return lifecycle_error(400, "invalid_request", &format!("invalid JSON: {}", e));
+        }
     };
+    if payload.name.trim().is_empty() {
+        return lifecycle_error(400, "invalid_request", "name is required");
+    }
     match runtime.lifecycle_reload_child(&payload.name) {
         Ok(response) => HttpResponse::json(200, &response),
-        Err(e) => json_error(500, &e.to_string()),
+        Err(e) => lifecycle_error_from_anyhow(&e),
     }
 }
 
@@ -818,5 +859,140 @@ mod tests {
         };
         let query_response = handle_federation_query(&query_request, &StubRuntime);
         assert_eq!(query_response.status, 200);
+    }
+
+    #[test]
+    fn lifecycle_reload_maps_operation_in_progress_to_409_envelope() {
+        struct BusyRuntime;
+
+        impl ApiRuntime for BusyRuntime {
+            fn version(&self) -> String {
+                "0.0.0-test".to_string()
+            }
+            fn uptime_secs(&self) -> u64 {
+                0
+            }
+            fn health_all(&self) -> Vec<(String, crate::ChildHealth)> {
+                vec![]
+            }
+            fn health_details(&self) -> Result<HealthDetails> {
+                Ok(HealthDetails {
+                    registered_projects: 0,
+                    active_project_uid: None,
+                    active_project_databases: None,
+                    state_db_bytes: None,
+                    federation_available: false,
+                    federation_reason: None,
+                    federation_ducklake_loaded: false,
+                    federation_projects_attached: 0,
+                    federation_projects_failed: 0,
+                    federation_projects_stale: 0,
+                    control_plane_ready: false,
+                    children_ready_count: 0,
+                    children_total: 0,
+                    children_degraded: vec![],
+                })
+            }
+            fn child_health(&self, _child_name: &str) -> Result<crate::ChildHealth> {
+                Ok(crate::ChildHealth::Healthy)
+            }
+            fn child_handle(
+                &self,
+                _child_name: &str,
+                _action: String,
+                _payload: serde_json::Value,
+            ) -> Result<serde_json::Value> {
+                Ok(serde_json::Value::Null)
+            }
+            fn scry_query(
+                &self,
+                _query: &str,
+                _limit: usize,
+                _repo: Option<String>,
+                _all_repos: bool,
+            ) -> Result<Vec<ScryHit>> {
+                Ok(vec![])
+            }
+            fn federation_status(&self) -> Result<serde_json::Value> {
+                Ok(serde_json::json!({}))
+            }
+            fn federation_refresh(&self) -> Result<serde_json::Value> {
+                Ok(serde_json::json!({}))
+            }
+            fn federation_query(
+                &self,
+                _payload: crate::protocol::FederationQueryPayload,
+            ) -> Result<serde_json::Value> {
+                Ok(serde_json::json!({}))
+            }
+            fn secrets_get(&self) -> Result<serde_json::Value> {
+                Ok(serde_json::json!({}))
+            }
+            fn secrets_cache(&self, payload: serde_json::Value) -> Result<serde_json::Value> {
+                Ok(payload)
+            }
+            fn secrets_lock(&self) -> Result<serde_json::Value> {
+                Ok(serde_json::json!({}))
+            }
+            fn pando_registry_init(
+                &self,
+                _request: patina_protocol::PandoRegistryInit,
+            ) -> Result<patina_protocol::PandoRegistryState> {
+                Ok(patina_protocol::PandoRegistryState {
+                    protocol_version: patina_protocol::PANDO_REGISTRY_PROTOCOL_VERSION,
+                    pandos: vec![],
+                })
+            }
+            fn pando_list(&self) -> Result<patina_protocol::PandoRegistryState> {
+                Ok(patina_protocol::PandoRegistryState {
+                    protocol_version: patina_protocol::PANDO_REGISTRY_PROTOCOL_VERSION,
+                    pandos: vec![],
+                })
+            }
+            fn lifecycle_load_pando(&self, _name: &str) -> Result<crate::PandoLoadResult> {
+                anyhow::bail!("operation_in_progress: load already running")
+            }
+            fn lifecycle_refresh(&self) -> Result<crate::PandoRefreshResult> {
+                anyhow::bail!("operation_in_progress: refresh already running")
+            }
+            fn lifecycle_reload_child(&self, _name: &str) -> Result<crate::ChildReloadResult> {
+                anyhow::bail!("operation_in_progress: reload already running")
+            }
+            fn builtin_spec_dispatch(
+                &self,
+                _request: patina_protocol::SpecDispatchRequest,
+            ) -> Result<serde_json::Value> {
+                Ok(serde_json::json!({}))
+            }
+            fn builtin_lake_dispatch(
+                &self,
+                _request: patina_protocol::LakeDispatchRequest,
+            ) -> Result<serde_json::Value> {
+                Ok(serde_json::json!({}))
+            }
+            fn builtin_doctor_run(&self) -> Result<patina_protocol::DoctorRunResult> {
+                Ok(patina_protocol::DoctorRunResult {
+                    data: serde_json::json!({}),
+                    exit_code: 0,
+                })
+            }
+            fn builtin_secrets_dispatch(&self, _payload: serde_json::Value) -> HttpResponse {
+                HttpResponse::json(200, &serde_json::json!({}))
+            }
+        }
+
+        let request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/api/lifecycle/reload-child".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&serde_json::json!({"name": "x"})).unwrap(),
+        };
+        let response = handle_lifecycle_reload_child(&request, &BusyRuntime);
+        assert_eq!(response.status, 409);
+        let json: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(
+            json.get("error").and_then(|v| v.as_str()),
+            Some("operation_in_progress")
+        );
     }
 }
