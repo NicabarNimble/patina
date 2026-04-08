@@ -138,3 +138,11 @@ pub struct FederationQueryPayload {
     #[serde(default)]
     pub timeout_ms: Option<u64>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LifecycleNamePayload {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LifecycleRefreshPayload {}

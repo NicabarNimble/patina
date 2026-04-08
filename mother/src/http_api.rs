@@ -50,6 +50,9 @@ pub trait ApiRuntime {
         request: patina_protocol::PandoRegistryInit,
     ) -> Result<patina_protocol::PandoRegistryState>;
     fn pando_list(&self) -> Result<patina_protocol::PandoRegistryState>;
+    fn lifecycle_load_pando(&self, name: &str) -> Result<crate::PandoLoadResult>;
+    fn lifecycle_refresh(&self) -> Result<crate::PandoRefreshResult>;
+    fn lifecycle_reload_child(&self, name: &str) -> Result<crate::ChildReloadResult>;
     fn builtin_spec_dispatch(
         &self,
         request: patina_protocol::SpecDispatchRequest,
@@ -171,6 +174,14 @@ struct ScryResultJson {
 
 #[derive(Deserialize, Default)]
 struct FederationNoopRequest {}
+
+#[derive(Deserialize)]
+struct LifecycleNameRequest {
+    name: String,
+}
+
+#[derive(Deserialize, Default)]
+struct LifecycleRefreshRequest {}
 
 pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
     let children: Vec<ChildHealthJson> = runtime
@@ -382,6 +393,52 @@ pub fn handle_pando_list(runtime: &dyn ApiRuntime) -> HttpResponse {
     }
 }
 
+pub fn handle_lifecycle_load_pando(
+    request: &HttpRequest,
+    runtime: &dyn ApiRuntime,
+) -> HttpResponse {
+    if request.body.is_empty() {
+        return json_error(400, "Missing request body");
+    }
+    let payload: LifecycleNameRequest = match serde_json::from_slice(&request.body) {
+        Ok(v) => v,
+        Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
+    };
+    match runtime.lifecycle_load_pando(&payload.name) {
+        Ok(response) => HttpResponse::json(200, &response),
+        Err(e) => json_error(500, &e.to_string()),
+    }
+}
+
+pub fn handle_lifecycle_refresh(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
+    if !request.body.is_empty() {
+        if serde_json::from_slice::<LifecycleRefreshRequest>(&request.body).is_err() {
+            return json_error(400, "Invalid JSON");
+        }
+    }
+    match runtime.lifecycle_refresh() {
+        Ok(response) => HttpResponse::json(200, &response),
+        Err(e) => json_error(500, &e.to_string()),
+    }
+}
+
+pub fn handle_lifecycle_reload_child(
+    request: &HttpRequest,
+    runtime: &dyn ApiRuntime,
+) -> HttpResponse {
+    if request.body.is_empty() {
+        return json_error(400, "Missing request body");
+    }
+    let payload: LifecycleNameRequest = match serde_json::from_slice(&request.body) {
+        Ok(v) => v,
+        Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
+    };
+    match runtime.lifecycle_reload_child(&payload.name) {
+        Ok(response) => HttpResponse::json(200, &response),
+        Err(e) => json_error(500, &e.to_string()),
+    }
+}
+
 pub fn handle_child_request(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
     let parts: Vec<&str> = request.path[1..].split('/').collect();
     if parts.len() != 3 {
@@ -472,6 +529,9 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
     let secrets_lock_runtime = Arc::clone(&runtime);
     let pando_registry_runtime = Arc::clone(&runtime);
     let pando_list_runtime = Arc::clone(&runtime);
+    let lifecycle_load_runtime = Arc::clone(&runtime);
+    let lifecycle_refresh_runtime = Arc::clone(&runtime);
+    let lifecycle_reload_runtime = Arc::clone(&runtime);
     let child_runtime = Arc::clone(&runtime);
 
     RouteTable {
@@ -496,6 +556,15 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
             handle_pando_registry_init(request, &*pando_registry_runtime)
         }),
         get_pando_list: Arc::new(move |_request| handle_pando_list(&*pando_list_runtime)),
+        post_lifecycle_load_pando: Arc::new(move |request| {
+            handle_lifecycle_load_pando(request, &*lifecycle_load_runtime)
+        }),
+        post_lifecycle_refresh: Arc::new(move |request| {
+            handle_lifecycle_refresh(request, &*lifecycle_refresh_runtime)
+        }),
+        post_lifecycle_reload_child: Arc::new(move |request| {
+            handle_lifecycle_reload_child(request, &*lifecycle_reload_runtime)
+        }),
         child_request: Arc::new(move |request| handle_child_request(request, &*child_runtime)),
     }
 }
@@ -611,6 +680,33 @@ mod tests {
             Ok(patina_protocol::PandoRegistryState {
                 protocol_version: patina_protocol::PANDO_REGISTRY_PROTOCOL_VERSION,
                 pandos: vec![],
+            })
+        }
+
+        fn lifecycle_load_pando(&self, name: &str) -> Result<crate::PandoLoadResult> {
+            Ok(crate::PandoLoadResult {
+                pando: name.to_string(),
+                status: "loaded".to_string(),
+                children_activated: 1,
+            })
+        }
+
+        fn lifecycle_refresh(&self) -> Result<crate::PandoRefreshResult> {
+            Ok(crate::PandoRefreshResult {
+                pandos_loaded: 1,
+                pandos_failed: 0,
+                children_activated: 1,
+                children_failed: 0,
+                degraded: vec![],
+            })
+        }
+
+        fn lifecycle_reload_child(&self, name: &str) -> Result<crate::ChildReloadResult> {
+            Ok(crate::ChildReloadResult {
+                child: name.to_string(),
+                status: "reloaded".to_string(),
+                previous_instance: "drained".to_string(),
+                reason: None,
             })
         }
 

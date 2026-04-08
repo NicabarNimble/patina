@@ -215,6 +215,15 @@ mod tests {
                             &serde_json::json!({"protocol_version": 2, "pandos": []}),
                         )
                     }),
+                    post_lifecycle_load_pando: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    post_lifecycle_refresh: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    post_lifecycle_reload_child: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
                     child_request: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(
                             404,
@@ -300,6 +309,15 @@ mod tests {
                             200,
                             &serde_json::json!({"protocol_version": 2, "pandos": []}),
                         )
+                    }),
+                    post_lifecycle_load_pando: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    post_lifecycle_refresh: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    post_lifecycle_reload_child: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
                     child_request: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(

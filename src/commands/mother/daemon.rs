@@ -382,6 +382,21 @@ impl ApiRuntime for ServerState {
         Ok(self.current_pando_state())
     }
 
+    fn lifecycle_load_pando(&self, name: &str) -> anyhow::Result<mother_crate::PandoLoadResult> {
+        <Self as MotherRuntime>::load_pando(self, name)
+    }
+
+    fn lifecycle_refresh(&self) -> anyhow::Result<mother_crate::PandoRefreshResult> {
+        <Self as MotherRuntime>::refresh_pandos(self)
+    }
+
+    fn lifecycle_reload_child(
+        &self,
+        name: &str,
+    ) -> anyhow::Result<mother_crate::ChildReloadResult> {
+        <Self as MotherRuntime>::reload_child(self, name)
+    }
+
     fn builtin_spec_dispatch(
         &self,
         request: patina_protocol::SpecDispatchRequest,

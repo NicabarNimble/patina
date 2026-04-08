@@ -17,6 +17,9 @@ pub struct RouteTable {
     pub post_secrets_lock: RouteHandler,
     pub post_pando_registry_init: RouteHandler,
     pub get_pando_list: RouteHandler,
+    pub post_lifecycle_load_pando: RouteHandler,
+    pub post_lifecycle_refresh: RouteHandler,
+    pub post_lifecycle_reload_child: RouteHandler,
     pub child_request: RouteHandler,
 }
 
@@ -100,6 +103,27 @@ impl Router {
                     json_error(401, "Unauthorized")
                 } else {
                     (self.routes.get_pando_list)(request)
+                }
+            }
+            ("POST", "/api/lifecycle/load-pando") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_lifecycle_load_pando)(request)
+                }
+            }
+            ("POST", "/api/lifecycle/refresh") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_lifecycle_refresh)(request)
+                }
+            }
+            ("POST", "/api/lifecycle/reload-child") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_lifecycle_reload_child)(request)
                 }
             }
             _ if request.path.starts_with("/child/") => {
