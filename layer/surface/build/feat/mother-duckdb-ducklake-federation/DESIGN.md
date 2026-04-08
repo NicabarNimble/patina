@@ -16,10 +16,11 @@ never writes to them.
 
 ## Build Target
 
-Phase A (substrate): open federation DB, load DuckLake, build attach registry,
-schema compatibility, telemetry. Phase B (query surface): HTTP routes, query
-safety, timeout handling. Phase C (integration): wire downstream specs, full
-failure matrix tests.
+Phase A (substrate) and most of Phase B (query surface) are now implemented:
+federation DB open, DuckLake load gate, attach registry, schema compatibility,
+HTTP routes, query validation/safety, and timeout handling. Remaining work is
+to close outstanding spec gates (notably install-extensions command, refresh
+telemetry shape, downstream unblock updates, and full proof matrix).
 
 ## Module Layout
 
@@ -87,14 +88,13 @@ pub struct FederationStatus {
 
 // Runtime holder — owns the DuckDB connection for daemon lifetime
 pub struct FederationRuntime {
-    _connection: Option<duckdb::Connection>,
+    connection: Option<duckdb::Connection>,
     status: FederationStatus,
 }
 ```
 
-`FederationRuntime` owns the DuckDB connection. The leading `_` on `_connection`
-is intentional — Phase A keeps it alive but doesn't expose query methods.
-Phase B adds query execution through this connection.
+`FederationRuntime` owns the DuckDB connection and query execution now uses this
+connection directly.
 
 ## Schema Version Contract
 
@@ -157,20 +157,17 @@ Populated from `FederationStatus` in daemon's `ServerState`.
    federation startup runs before the HTTP server is ready. Same direct-write
    pattern used by child observation in registry.rs.
 
-## Phase B Targets
+## Remaining Targets
 
-When Phase B begins, these are the direct code targets:
+The following items remain to close the spec cleanly:
 
-| File | Change |
-|------|--------|
-| `mother/src/protocol.rs` | Add `FederationPayload` variants (status, refresh, query) |
-| `mother/src/http_routes.rs` | Add 3 routes: `/api/federation/{status,refresh,query}` |
-| `src/commands/mother/federation.rs` | Add `query()`, `refresh()` methods on `FederationRuntime` |
-| `src/commands/mother/federation.rs` | Query safety: SELECT-only validation, LIMIT enforcement, table allowlist |
-| `src/commands/mother/daemon.rs` | Wire federation query through ServerState |
-| `src/commands/mother/mod.rs` | Add `federation` CLI subcommand (status, query, install-extensions) |
-
-The `_connection` field drops its `_` prefix when Phase B exposes query methods.
+| File | Remaining change |
+|------|------------------|
+| `src/commands/mother/mod.rs` | Add `federation install-extensions` CLI command (`INSTALL ducklake`) |
+| `src/commands/mother/federation.rs` | Emit `refresh_latency_ms` metric for explicit refresh operations |
+| `layer/surface/build/feat/multiproject-belief-share/SPEC.md` | Update `blocked_by` to reference completed federation substrate (mdf10) |
+| `layer/surface/build/feat/persona-lake-mvp1/SPEC.md` | Update `blocked_by` similarly (mdf10) |
+| Tests + proof commands | Run/record `cargo check`, federation package tests, daemon status proof (mdf11) |
 
 ## Verification Plan
 
