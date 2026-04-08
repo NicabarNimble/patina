@@ -157,6 +157,10 @@ pub enum MotherCommands {
     /// Federation query surface operations
     #[command(subcommand)]
     Federation(FederationCommands),
+
+    /// Lifecycle operations
+    #[command(subcommand)]
+    Lifecycle(LifecycleCommands),
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -199,6 +203,22 @@ pub enum FederationCommands {
         /// Optional timeout in milliseconds (default 30000)
         #[arg(long)]
         timeout_ms: Option<u64>,
+    },
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum LifecycleCommands {
+    /// Load a pando composition
+    LoadPando {
+        /// Pando name
+        name: String,
+    },
+    /// Refresh all pando compositions
+    Refresh,
+    /// Reload a single child by canonical name
+    ReloadChild {
+        /// Child name
+        name: String,
     },
 }
 
@@ -333,6 +353,7 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             println!("  patina mother graph    Graph operations");
             println!("  patina mother toys     Toy registry operations");
             println!("  patina mother federation Federation query surface");
+            println!("  patina mother lifecycle Lifecycle operations");
             println!("  patina mother search   Cross-project belief search\n");
             println!("Run 'patina mother --help' for details.");
             Ok(())
@@ -392,6 +413,7 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             }
         }
         Some(MotherCommands::Federation(command)) => execute_federation(command),
+        Some(MotherCommands::Lifecycle(command)) => execute_lifecycle(command),
     }
 }
 
@@ -415,6 +437,30 @@ fn execute_federation(command: FederationCommands) -> Result<()> {
                     limit,
                     timeout_ms,
                 })?;
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+            Ok(())
+        }
+    }
+}
+
+fn execute_lifecycle(command: LifecycleCommands) -> Result<()> {
+    let client = patina::mother::control_plane_client();
+    match command {
+        LifecycleCommands::LoadPando { name } => {
+            let payload = client
+                .lifecycle_load_pando(mother_crate::protocol::LifecycleNamePayload { name })?;
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+            Ok(())
+        }
+        LifecycleCommands::Refresh => {
+            let payload =
+                client.lifecycle_refresh(mother_crate::protocol::LifecycleRefreshPayload {})?;
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+            Ok(())
+        }
+        LifecycleCommands::ReloadChild { name } => {
+            let payload = client
+                .lifecycle_reload_child(mother_crate::protocol::LifecycleNamePayload { name })?;
             println!("{}", serde_json::to_string_pretty(&payload)?);
             Ok(())
         }

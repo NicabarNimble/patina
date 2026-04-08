@@ -5,7 +5,9 @@
 //! - Remote mother: TCP with bearer token via reqwest
 
 use anyhow::{Context, Result};
-use mother_crate::protocol::FederationQueryPayload;
+use mother_crate::protocol::{
+    FederationQueryPayload, LifecycleNamePayload, LifecycleRefreshPayload,
+};
 use patina_protocol::{
     BuiltinChildRequest, BuiltinChildResponse, PandoRegistryInit, PandoRegistryState,
 };
@@ -294,6 +296,114 @@ impl Client {
         response
             .json::<Value>()
             .with_context(|| "Failed to parse federation query response")
+    }
+
+    pub fn lifecycle_load_pando(&self, payload: LifecycleNamePayload) -> Result<Value> {
+        if self.try_uds {
+            let body = serde_json::to_vec(&payload)?;
+            if let Some((status, resp_body)) =
+                uds_request("POST", "/api/lifecycle/load-pando", Some(&body))
+            {
+                if (200..300).contains(&status) {
+                    return serde_json::from_slice(&resp_body)
+                        .context("Failed to parse lifecycle load-pando response from UDS");
+                }
+                let msg = String::from_utf8_lossy(&resp_body).to_string();
+                anyhow::bail!("lifecycle load-pando failed ({}): {}", status, msg);
+            }
+        }
+
+        let url = format!("{}/api/lifecycle/load-pando", self.base_url);
+        let mut req = self.http.post(&url).json(&payload);
+        if let Some(ref token) = self.token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let response = req.send().with_context(|| {
+            format!(
+                "Failed to send lifecycle load-pando request to {}",
+                self.base_url
+            )
+        })?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().unwrap_or_default();
+            anyhow::bail!("lifecycle load-pando failed ({}): {}", status, body);
+        }
+        response
+            .json::<Value>()
+            .with_context(|| "Failed to parse lifecycle load-pando response")
+    }
+
+    pub fn lifecycle_refresh(&self, payload: LifecycleRefreshPayload) -> Result<Value> {
+        if self.try_uds {
+            let body = serde_json::to_vec(&payload)?;
+            if let Some((status, resp_body)) =
+                uds_request("POST", "/api/lifecycle/refresh", Some(&body))
+            {
+                if (200..300).contains(&status) {
+                    return serde_json::from_slice(&resp_body)
+                        .context("Failed to parse lifecycle refresh response from UDS");
+                }
+                let msg = String::from_utf8_lossy(&resp_body).to_string();
+                anyhow::bail!("lifecycle refresh failed ({}): {}", status, msg);
+            }
+        }
+
+        let url = format!("{}/api/lifecycle/refresh", self.base_url);
+        let mut req = self.http.post(&url).json(&payload);
+        if let Some(ref token) = self.token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let response = req.send().with_context(|| {
+            format!(
+                "Failed to send lifecycle refresh request to {}",
+                self.base_url
+            )
+        })?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().unwrap_or_default();
+            anyhow::bail!("lifecycle refresh failed ({}): {}", status, body);
+        }
+        response
+            .json::<Value>()
+            .with_context(|| "Failed to parse lifecycle refresh response")
+    }
+
+    pub fn lifecycle_reload_child(&self, payload: LifecycleNamePayload) -> Result<Value> {
+        if self.try_uds {
+            let body = serde_json::to_vec(&payload)?;
+            if let Some((status, resp_body)) =
+                uds_request("POST", "/api/lifecycle/reload-child", Some(&body))
+            {
+                if (200..300).contains(&status) {
+                    return serde_json::from_slice(&resp_body)
+                        .context("Failed to parse lifecycle reload-child response from UDS");
+                }
+                let msg = String::from_utf8_lossy(&resp_body).to_string();
+                anyhow::bail!("lifecycle reload-child failed ({}): {}", status, msg);
+            }
+        }
+
+        let url = format!("{}/api/lifecycle/reload-child", self.base_url);
+        let mut req = self.http.post(&url).json(&payload);
+        if let Some(ref token) = self.token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let response = req.send().with_context(|| {
+            format!(
+                "Failed to send lifecycle reload-child request to {}",
+                self.base_url
+            )
+        })?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().unwrap_or_default();
+            anyhow::bail!("lifecycle reload-child failed ({}): {}", status, body);
+        }
+        response
+            .json::<Value>()
+            .with_context(|| "Failed to parse lifecycle reload-child response")
     }
 }
 
