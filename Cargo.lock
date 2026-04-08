@@ -3171,7 +3171,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "patina-ai"
-version = "0.47.1"
+version = "0.48.0"
 dependencies = [
  "anyhow",
  "approx",
