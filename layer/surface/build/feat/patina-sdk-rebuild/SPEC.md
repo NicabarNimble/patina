@@ -16,19 +16,19 @@ beliefs:
 - '[[compiler-enforced-safety]]'
 exit_criteria:
 - id: cs1-crate-exists
-  text: sdk/patina-sdk/ crate exists with patina:records types re-exported as Rust types. Children depend on patina-sdk instead of running wit_bindgen against raw WIT.
+  text: sdk/patina-sdk/ crate exists with patina:records types re-exported as Rust types. Children add patina-sdk as a dependency alongside wit_bindgen (which they keep for world declaration).
   checked: false
 - id: cs2-toy-helpers
   text: 'Outside toy helpers exist: toys::log (info/warn/error), toys::keyvalue (open/get/set/exists with error mapping), toys::measure (counter/gauge), toys::config (get). No raw WIT binding calls needed in child code.'
   checked: false
 - id: cs3-config-toy
-  text: patina:config@0.1.0 toy is defined in WIT, implemented in Mother, and accessible via toys::config::get(key) in the SDK.
+  text: "Existing patina:config@0.1.0 toy (WIT + Mother impl from pando-execution-mvp) is wrapped in SDK as toys::config::get(key). No new WIT or host code — SDK surface only."
   checked: false
 - id: cs4-template
   text: sdk/template/ exists. cargo generate produces a buildable push-pure child with correct wit/ structure, Cargo.toml (wasm32-wasip2), child.toml, and a skeleton process() function.
   checked: false
 - id: cs5-children-migrated
-  text: All 6 children depend on patina-sdk instead of running wit_bindgen directly. Duplicated helpers (keyvalue_error_to_string, etc.) removed from individual children.
+  text: "All 6 children (file-system-monitor, content-extractor, schema-enforcer, dedup-filter, record-writer, lakehouse-catalog) add patina-sdk dependency and use toys::* helpers. Duplicated keyvalue_error_to_string removed from dedup-filter, record-writer, and lakehouse-catalog."
   checked: false
 - id: cs6-legacy-documented
   text: 'patina-sdk README updated: handle-based child path marked as legacy. Points developers to patina-sdk for new children.'
@@ -95,8 +95,13 @@ pub use types::{
 };
 ```
 
-Children import these instead of depending on raw WIT paths. When types
-change, one crate update propagates to all children.
+**Type identity note:** Each child still runs `wit_bindgen::generate!` against
+its own WIT world, producing local types (e.g., `patina::records::types::RecordEnvelope`).
+SDK re-exports are convenience aliases for use in helper functions and shared
+code — not replacements for the WIT-generated types in trait impl signatures.
+Children use their local WIT types in `impl Guest` and SDK types in business logic
+where the types are structurally identical. When types change, update the shared
+WIT deps and the SDK in lockstep.
 
 ### 2. Outside Toy Helpers
 
@@ -147,18 +152,12 @@ sdk/template/
 
 ### 4. Config Toy
 
-New `patina:config@0.1.0` WIT interface:
+`patina:config@0.1.0` already exists (landed in pando-execution-mvp):
+- WIT: `wit/pando/deps/patina-config.wit`
+- Mother host impl: `src/commands/mother/daemon.rs` composed_bindings
 
-```wit
-package patina:config@0.1.0;
-
-interface config {
-    get: func(key: string) -> result<string, string>;
-}
-```
-
-Mother implements this — reads from pando `[config]` section or child-specific
-config. The SDK wraps it as `toys::config::get(key)`.
+The SDK wraps the existing toy as `toys::config::get(key)`. No new WIT or
+Mother code needed — this criterion is about SDK surface only.
 
 ## What a Child Looks Like With the SDK
 
@@ -223,13 +222,17 @@ sdk/
 ```
 
 Legacy children (belief-verifier, session-writer, spec-manager, doctor)
-update their Cargo.toml to depend on `patina-sdk-legacy`. No code changes.
+update their Cargo.toml path to `sdk/patina-sdk-legacy/` but keep `package`
+alias so Rust code still imports `patina_sdk::*` without code changes:
+```toml
+patina-sdk = { package = "patina-sdk-legacy", path = "../../sdk/patina-sdk-legacy", features = ["child", ...] }
+```
 
 ## Implementation Order
 
 1. Create `sdk/patina-sdk/` crate with type re-exports from patina:records WIT
 2. Add outside toy helpers (log, keyvalue, measure) wrapping raw bindings
-3. Add patina:config WIT + Mother implementation + `toys::config` helper
+3. Wrap existing patina:config toy as `toys::config` helper in SDK
 4. Create `sdk/template/` with cargo-generate config
 5. Migrate 6 children to use patina-sdk (remove duplicated helpers)
 6. Update patina-sdk README — mark handle-based as legacy
