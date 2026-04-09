@@ -7,19 +7,12 @@ wit_bindgen::generate!({
 use chrono::Utc;
 use parquet::arrow::ArrowWriter;
 use parquet::file::properties::WriterProperties;
+use patina_sdk::toys;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
 struct RecordWriter;
-
-fn keyvalue_error_to_string(err: wasi::keyvalue::store::Error) -> String {
-    match err {
-        wasi::keyvalue::store::Error::NoSuchStore => "no-such-store".to_string(),
-        wasi::keyvalue::store::Error::AccessDenied => "access-denied".to_string(),
-        wasi::keyvalue::store::Error::Other(msg) => format!("other({msg})"),
-    }
-}
 
 fn write_records_parquet(
     records: &[patina::records::types::RecordEnvelope],
@@ -179,24 +172,20 @@ impl exports::patina::records::write::Guest for RecordWriter {
 
         let output_path = resolve_output_path()?;
 
-        let bucket = wasi::keyvalue::store::open("patina:record-writer")
-            .map_err(keyvalue_error_to_string)?;
+        let bucket = toys::keyvalue::open("patina:record-writer")?;
         let write_start = Instant::now();
         for record in &accepted {
             let key = format!("record:{}", record.source_hash);
-            bucket
-                .set(&key, record.content.as_bytes())
-                .map_err(keyvalue_error_to_string)?;
+            bucket.set(&key, record.content.as_bytes())?;
         }
         let write_latency_ms = write_start.elapsed().as_secs_f64() * 1000.0;
 
         write_records_parquet(&accepted, &output_path)?;
-        patina::measure::measure::counter("records_written", accepted.len() as f64)?;
-        patina::measure::measure::gauge("batch_size", accepted.len() as f64)?;
-        patina::measure::measure::gauge("write_latency_ms", write_latency_ms)?;
+        toys::measure::counter("records_written", accepted.len() as f64)?;
+        toys::measure::gauge("batch_size", accepted.len() as f64)?;
+        toys::measure::gauge("write_latency_ms", write_latency_ms)?;
 
-        wasi::logging::logging::log(
-            wasi::logging::logging::Level::Info,
+        toys::log::info(
             "record-writer",
             &format!(
                 "wrote {} records to {}",

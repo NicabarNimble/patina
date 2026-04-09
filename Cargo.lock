@@ -3284,6 +3284,7 @@ name = "patina-ai-child-content-extractor"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "patina-sdk",
  "sha2",
  "uuid",
  "wit-bindgen 0.41.0",
@@ -3293,6 +3294,7 @@ dependencies = [
 name = "patina-ai-child-dedup-filter"
 version = "0.1.0"
 dependencies = [
+ "patina-sdk",
  "wit-bindgen 0.41.0",
 ]
 
@@ -3309,6 +3311,7 @@ name = "patina-ai-child-file-system-monitor"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "patina-sdk",
  "sha2",
  "wit-bindgen 0.41.0",
 ]
@@ -3318,6 +3321,7 @@ name = "patina-ai-child-lakehouse-catalog"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "patina-sdk",
  "wit-bindgen 0.41.0",
 ]
 
@@ -3329,6 +3333,7 @@ dependencies = [
  "arrow-schema 55.2.0",
  "chrono",
  "parquet",
+ "patina-sdk",
  "wit-bindgen 0.41.0",
 ]
 
@@ -3336,6 +3341,7 @@ dependencies = [
 name = "patina-ai-child-schema-enforcer"
 version = "0.1.0"
 dependencies = [
+ "patina-sdk",
  "wit-bindgen 0.41.0",
 ]
 
