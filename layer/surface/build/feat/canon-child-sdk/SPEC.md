@@ -16,7 +16,7 @@ related:
   - sdk/patina-sdk
 exit_criteria:
   - id: cs1-crate-exists
-    text: "sdk/patina-canon/ crate exists with patina:records types re-exported as Rust types. Children depend on patina-canon instead of running wit_bindgen against raw WIT."
+    text: "sdk/patina-sdk/ crate exists with patina:records types re-exported as Rust types. Children depend on patina-sdk instead of running wit_bindgen against raw WIT."
     checked: false
   - id: cs2-toy-helpers
     text: "Outside toy helpers exist: toys::log (info/warn/error), toys::keyvalue (open/get/set/exists with error mapping), toys::measure (counter/gauge), toys::config (get). No raw WIT binding calls needed in child code."
@@ -28,24 +28,24 @@ exit_criteria:
     text: "sdk/template-canon/ exists. cargo generate produces a buildable push-pure child with correct wit/ structure, Cargo.toml (wasm32-wasip2), child.toml, and a skeleton process() function."
     checked: false
   - id: cs5-canon-children-migrated
-    text: "All 6 canon children depend on patina-canon instead of running wit_bindgen directly. Duplicated helpers (keyvalue_error_to_string, etc.) removed from individual children."
+    text: "All 6 canon children depend on patina-sdk instead of running wit_bindgen directly. Duplicated helpers (keyvalue_error_to_string, etc.) removed from individual children."
     checked: false
   - id: cs6-legacy-documented
-    text: "patina-sdk README updated: handle-based child path marked as legacy service lane. Points developers to patina-canon for new children."
+    text: "patina-sdk README updated: handle-based child path marked as legacy service lane. Points developers to patina-sdk for new children."
     checked: false
   - id: cs7-decision-tree
-    text: "SDK README or AGENTS.md contains decision tree: canon child (patina-canon) vs legacy service child (patina-sdk) vs grammar pipeline (patina-sdk pipeline feature)."
+    text: "SDK README or AGENTS.md contains decision tree: canon child (patina-sdk) vs legacy service child (patina-sdk) vs grammar pipeline (patina-sdk pipeline feature)."
     checked: false
   - id: cs8-proof
-    text: "cargo check --workspace passes. All 6 canon children build to wasm32-wasip2 using patina-canon. cargo nextest run passes (existing tests + new SDK tests)."
+    text: "cargo check --workspace passes. All 6 canon children build to wasm32-wasip2 using patina-sdk. cargo nextest run passes (existing tests + new SDK tests)."
     checked: false
 ---
 # feat: Canon Child SDK
 
 ## Problem
 
-The existing `patina-sdk` crate serves legacy handle-based children (`Child` trait,
-`register_child!`, `handle(string, string)`). This is the right SDK for service
+The current `patina-sdk` crate serves legacy handle-based children (`Child` trait,
+`register_child!`, `handle(string, string)`). This is the old model for service
 children (belief-verifier, session-writer, spec-manager, doctor).
 
 But Patina's canonical child model is now push-pure (Fix 2): typed WIT interfaces,
@@ -53,7 +53,7 @@ no upstream imports, composed via pando adapters. The 6 canon children in
 folder-text-to-parquet use `wit_bindgen::generate!` directly with no SDK support.
 
 This means:
-- Developers building new canon children have zero guidance or tooling
+- Developers building new children have zero guidance or tooling
 - Common patterns are duplicated across children (keyvalue error mapping, logging
   calls, measure emission)
 - Each child independently manages its WIT deps directory structure
@@ -62,14 +62,17 @@ This means:
 
 ## Goal
 
-Create `patina-canon` — the SDK for canonical push-pure children. It provides:
+`patina-sdk` becomes the canonical child SDK. The current handle-based crate
+is renamed to `patina-sdk-legacy` (internal use only, service children).
+
+The new `patina-sdk` provides:
 
 1. Shared type re-exports from `patina:records`
 2. Ergonomic outside toy helpers (log, keyvalue, measure, config)
-3. A `cargo generate` template for new canon children
+3. A `cargo generate` template for new children
 4. The `patina:config` toy (new, needed for composed execution)
 
-The existing `patina-sdk` stays for legacy service children. Both coexist.
+`patina-sdk` is what you use to build a child. Period.
 
 ## Non-Goals
 
@@ -80,12 +83,12 @@ The existing `patina-sdk` stays for legacy service children. Both coexist.
 - Replacing patina-sdk — the legacy crate stays for handle-based children.
 - Auto-generating child.toml or adapters — future tooling, not this spec.
 
-## What patina-canon Provides
+## What patina-sdk Provides
 
 ### 1. Type Re-exports
 
 ```rust
-// patina-canon re-exports patina:records types as Rust structs
+// patina-sdk re-exports patina:records types as Rust structs
 pub use types::{
     RecordEnvelope, FileFound, TransformResult, 
     RejectedRecord, FileWritten, CatalogEntry,
@@ -131,7 +134,7 @@ gives every child a clean, testable interface to outside toys.
 ```
 sdk/template-canon/
 ├── cargo-generate.toml
-├── Cargo.toml          # depends on patina-canon, targets wasm32-wasip2
+├── Cargo.toml          # depends on patina-sdk, targets wasm32-wasip2
 ├── child.toml          # [child] name/kind/role, [needs].toys
 ├── wit/
 │   ├── world.wit       # skeleton world importing outside toys + exporting one interface
@@ -201,48 +204,49 @@ export!(SchemaEnforcer);
 
 Clean. No raw WIT calls. No duplicated error mapping. Types from SDK.
 
-## Relationship to Existing SDK
+## SDK Layout After
 
 ```
 sdk/
-├── patina-sdk/          # Legacy: handle-based service children
+├── patina-sdk/          # NEW: canonical child SDK (push-pure)
+│   ├── src/lib.rs       #   Type re-exports + prelude
+│   ├── src/toys/        #   log, keyvalue, measure, config helpers
+│   └── src/types.rs     #   Re-exported patina:records types
+│
+├── patina-sdk-legacy/   # RENAMED: handle-based service children (internal only)
 │   ├── src/child.rs     #   Child trait, register_child!, handle(string,string)
 │   ├── src/toys.rs      #   17 toy implementations for handle world
 │   └── src/pipeline.rs  #   Grammar pipeline lane
 │
-├── patina-canon/        # NEW: push-pure canon children
-│   ├── src/lib.rs       #   Type re-exports + toy helpers
-│   ├── src/toys/        #   log, keyvalue, measure, config helpers
-│   └── src/types.rs     #   Re-exported patina:records types
-│
-├── template/            # Legacy template (handle-based)
-└── template-canon/      # NEW: canon child template
+├── template/            # NEW: canonical child template
+└── template-legacy/     # RENAMED: handle-based template (internal)
 ```
 
-Both crates coexist. No migration required for existing children.
+Service children (belief-verifier, session-writer, spec-manager, doctor)
+update their Cargo.toml to depend on `patina-sdk-legacy`. No code changes.
 
 ## Implementation Order
 
-1. Create `sdk/patina-canon/` crate with type re-exports from patina:records WIT
+1. Create `sdk/patina-sdk/` crate with type re-exports from patina:records WIT
 2. Add outside toy helpers (log, keyvalue, measure) wrapping raw bindings
 3. Add patina:config WIT + Mother implementation + `toys::config` helper
 4. Create `sdk/template-canon/` with cargo-generate config
-5. Migrate 6 canon children to use patina-canon (remove duplicated helpers)
+5. Migrate 6 canon children to use patina-sdk (remove duplicated helpers)
 6. Update patina-sdk README — mark handle-based as legacy service lane
 7. Add decision tree to AGENTS.md or SDK README
 8. Tests
 
 ## Resolved Decisions
 
-- **Crate name**: `patina-canon` — clear distinction from `patina-sdk`
-- **patina-sdk stays**: Not deprecated, not removed. Service children need it.
+- **Crate name**: `patina-sdk` takes the canonical name. The old crate becomes `patina-sdk-legacy`.
+- **Legacy crate stays**: Renamed, not removed. Service children update their dependency name.
 - **wit_bindgen stays in children**: The SDK doesn't wrap or replace it.
   Children still declare their world via `wit_bindgen::generate!`.
   The SDK provides types and helpers alongside, not instead of.
 - **Config toy is new WIT**: `patina:config@0.1.0` with `get(key) → result<string, string>`.
   Minimal, read-only, matches the config injection pattern from Fix 2.
 - **Adapters don't use SDK**: Pando adapters are 16 lines of glue.
-  They may import patina-canon types but don't need framework support.
+  They may import patina-sdk types but don't need framework support.
 
 ## Verification
 
@@ -250,7 +254,7 @@ Both crates coexist. No migration required for existing children.
 cargo check --workspace -q
 cargo nextest run
 
-# All 6 canon children build with patina-canon:
+# All 6 canon children build with patina-sdk:
 for child in file-system-monitor content-extractor schema-enforcer \
              dedup-filter record-writer lakehouse-catalog; do
   cargo build -p "patina-ai-child-${child}" --target wasm32-wasip2
