@@ -11,37 +11,31 @@ references:
   - persona-is-a-patina-instance
 related:
   - feat/multiproject-belief-share
-  - feat/persona-lake-mvp1
+  - feat/voice-lake-mvp1
 exit_criteria:
   - id: vr1
-    text: "CLI command is `patina voice` (persona removed from CLI surface)"
+    text: "Mother protocol type renamed: VoiceUid (was PersonaUid)"
     checked: false
   - id: vr2
-    text: "All Rust types renamed: VoiceUid, VoiceEvent, VoiceResult, VoiceStatus"
+    text: "ConnectPayload.voice field (was .persona)"
     checked: false
   - id: vr3
-    text: "Module path is src/commands/voice/mod.rs"
+    text: "Session binding uses voice_uid, requested_voice, voice_matches() throughout checkin and artifact code"
     checked: false
   - id: vr4
-    text: "Filesystem paths use voice: ~/.patina/voices/, ~/.patina/mother/voice/"
+    text: "Mother-side paths use voice: ~/.patina/mother/voice/{uid}/ (was mother/persona/)"
     checked: false
   - id: vr5
-    text: "Mother protocol fields renamed: ConnectPayload.voice, ScryPayload.include_voice"
+    text: "Project binding file is .patina/voice (was .patina/persona)"
     checked: false
   - id: vr6
-    text: "Session binding uses voice_uid throughout checkin and artifact code"
+    text: "Mother state.db column renamed voice_uid (was persona_uid)"
     checked: false
   - id: vr7
-    text: "Scry routing uses include_voice flag and [VOICE] source label"
+    text: "Three persona beliefs updated to voice terminology in belief content"
     checked: false
   - id: vr8
-    text: "Three persona beliefs updated: voice-is-a-patina-namespace, voice-keypair-is-node-identity, beliefs-live-at-two-levels"
-    checked: false
-  - id: vr9
     text: "cargo check passes, all tests pass"
-    checked: false
-  - id: vr10
-    text: "Existing data migrated: ~/.patina/personas/ content moved to ~/.patina/voices/"
     checked: false
 ---
 # refactor: voice-rename
@@ -50,87 +44,91 @@ exit_criteria:
 
 "Persona" accumulated three incompatible meanings across Patina's evolution:
 
-- **Era 1 (Oct 2025):** Persona as interpretive lens — a single belief system with Prolog-style when/unless/weight. This is what the current `patina persona` CLI implements (JSONL oracle with E5 embeddings).
-- **Era 2 (Mar 2, 2026):** Persona as sovereign Patina instance — each persona is a full separate system. Captured as belief, then scoped.
-- **Era 3 (Mar 20-21, 2026):** Persona as cryptographic namespace within Mother — not a separate instance, but a keypair-scoped identity that owns beliefs, signs them, and spans machines.
+- **Era 1 (Oct 2025):** Persona as interpretive lens — the knowledge oracle. This is what the current `patina persona` CLI implements (JSONL notes, E5 embeddings, vector search). This stays as-is.
+- **Era 2 (Mar 2, 2026):** Persona as sovereign Patina instance. Captured as belief, then scoped down.
+- **Era 3 (Mar 20-21, 2026):** Persona as cryptographic namespace within Mother — a keypair-scoped identity that owns beliefs, signs them, and spans machines. This is the current architecture, and "persona" is a misname for it.
 
-Era 3 is the current architecture. But the code still says "persona" everywhere, conflating the old oracle implementation with the new identity concept. The multiproject-belief-share and voice-lake specs need a clean foundation — building on "persona" means building on naming debt.
+Era 3's identity namespace concept was called "persona" because it evolved from the persona oracle. But they're different things. The oracle is a knowledge notebook. The identity namespace is the WHO — who owns beliefs, who signs them, who they federate for. Building voice-lake-mvp1 and multiproject-belief-share on top of a misnamed concept creates confusion.
 
 ## Goal
 
-Rename "persona" to "voice" everywhere it represents the Era 3 concept (cryptographic identity namespace). Voice is the WHO in Patina's vocabulary: Mother=WHERE, Project=WHAT, Child=HOW, Toy=CAN, Pando=PRODUCT, Voice=WHO.
+Rename "persona" to "voice" **only where it represents the Era 3 identity namespace concept**. The Era 1 persona oracle (`patina persona` CLI, oracle module, JSONL storage) stays untouched — it will be retired later when voice subsumes its functionality.
+
+Voice is the WHO in Patina's vocabulary: Mother=WHERE, Project=WHAT, Child=HOW, Toy=CAN, Pando=PRODUCT, Voice=WHO.
 
 ## Status
 
-Draft. Ready to build — scope is mechanical rename with clear boundaries.
+Draft. Ready to build — scope is small and mechanical.
 
 ## Non-Goals
 
-- Implementing crypto keypair generation (that's voice-lake or belief-system-hardening)
-- Building the voice belief database schema (that's voice-lake-mvp1)
-- P2P federation of voices (that's multiproject-belief-share)
-- Changing what the oracle commands do — only renaming them
-- Migrating the 280 `persona: architect` fields in belief YAML (deferred, batch later)
+- Renaming Era 1 persona oracle commands or module (stays as `patina persona`)
+- Renaming `PersonaEvent`, `PersonaResult`, `PersonaStatus` (Era 1 oracle types)
+- Moving `~/.patina/personas/` or `~/.patina/cache/personas/` (Era 1 oracle data)
+- Changing `include_persona` scry flag or `[PERSONA]` routing label (queries the Era 1 oracle)
+- Changing `collect_persona_values()` / `parse_persona_value()` in Mother graph (reads Era 1 data)
+- Migrating the 280 `persona: architect` fields in belief YAML
+- Implementing crypto keypair generation, voice belief schema, or P2P federation
+- Building any new voice functionality — rename only
 
-## Current State
+## What Changes (Era 3 identity namespace)
 
-- CLI: `patina persona {note,query,list,materialize,status}`
-- Types: `PersonaUid`, `PersonaEvent`, `PersonaResult`, `PersonaStatus`
-- Module: `src/commands/persona/mod.rs`
-- Paths: `~/.patina/personas/`, `~/.patina/mother/persona/`, `.patina/persona`
-- Protocol: `ConnectPayload.persona`, `ScryPayload.include_persona`
-- Session: `requested_persona`, `persona_uid`, `persona_matches()`
-- Routing: `include_persona` flag, `[PERSONA]` source label
-- Graph: `collect_persona_values()`, `parse_persona_value()`
+| Location | Current | Target |
+|---|---|---|
+| `mother/src/protocol.rs` | `PersonaUid` | `VoiceUid` |
+| `mother/src/protocol.rs` | `ConnectPayload.persona` | `ConnectPayload.voice` |
+| `mother/src/state.rs` | `PersonaUid`, `persona_uid` column | `VoiceUid`, `voice_uid` column |
+| `src/interface/internal/checkin.rs` | `requested_persona`, `persona_uid`, `persona_matches()` | `requested_voice`, `voice_uid`, `voice_matches()` |
+| `src/session/internal/live.rs` | persona metadata fields | voice metadata fields |
+| `src/session/internal/artifact.rs` | persona context | voice context |
+| `mother/src/services/sessions.rs` | `persona_uid` parameter | `voice_uid` parameter |
+| `src/paths.rs:370-411` | `mother::persona` module | `mother::voice` module |
+| `src/paths.rs:525-527` | `persona_path()` → `.patina/persona` | `voice_path()` → `.patina/voice` |
+| `src/workspace/internal.rs` | creates `mother/persona/` dir | creates `mother/voice/` dir |
+| Three belief files | persona terminology | voice terminology |
 
-## Target State
+## What Stays (Era 1 oracle)
 
-- CLI: `patina voice {note,query,list,materialize,status}`
-- Types: `VoiceUid`, `VoiceEvent`, `VoiceResult`, `VoiceStatus`
-- Module: `src/commands/voice/mod.rs`
-- Paths: `~/.patina/voices/`, `~/.patina/mother/voice/`, `.patina/voice`
-- Protocol: `ConnectPayload.voice`, `ScryPayload.include_voice`
-- Session: `requested_voice`, `voice_uid`, `voice_matches()`
-- Routing: `include_voice` flag, `[VOICE]` source label
-- Graph: `collect_voice_values()`, `parse_voice_value()`
+| Location | Why it stays |
+|---|---|
+| `src/commands/persona/mod.rs` | Era 1 oracle module — different concept |
+| `patina persona` CLI subcommand | Era 1 oracle commands |
+| `PersonaEvent`, `PersonaResult`, `PersonaStatus` | Era 1 oracle types |
+| `~/.patina/personas/`, `~/.patina/cache/personas/` | Era 1 oracle data |
+| `include_persona` scry flag, `[PERSONA]` label | Controls Era 1 oracle queries |
+| `collect_persona_values()` in graph | Reads Era 1 oracle data |
+| `.gemini/commands/epistemic-beliefs.toml` | References Era 1 oracle |
 
 ## Solution
 
-Mechanical rename in four phases: types/module → CLI surface → paths/migration → beliefs/docs. Each phase is one commit, each commit compiles.
-
-## Implementation Order
-
-1. **Types + Module rename** — Rename structs, move module directory
-2. **CLI surface** — Rename subcommand, enum variants, help text, flags
-3. **Protocol + Session + Routing** — Mother protocol fields, checkin binding, scry routing
-4. **Filesystem paths + migration** — Path functions, add migration helper for existing data
-5. **Beliefs** — Update three persona beliefs to use voice terminology
-6. **Graph + config** — Mother graph source labels, gemini config templates
+Three commits: protocol/session types → paths/migration → beliefs. Each compiles.
 
 ## Resolved Decisions
 
-- **Name**: "voice" — short, epistemic, self-documenting for LLMs, fits vocabulary system
-- **Scope**: Rename only, no new functionality
-- **Belief metadata**: The `persona: architect` field in 280 belief files is deferred — can batch-rename later without blocking this spec
-- **Database migration**: Mother state.db `persona_uid` column → `voice_uid` via schema migration
-- **Backward compat**: No compatibility shim — clean break, Patina is pre-v1
+- **Scope boundary**: Era 3 (identity) renames. Era 1 (oracle) untouched.
+- **Name**: "voice" — short, epistemic, self-documenting, fits vocabulary system
+- **Database migration**: ALTER TABLE rename `persona_uid` → `voice_uid` in state.db
+- **Backward compat**: No shim — pre-v1 clean break
+- **Belief YAML `persona:` field**: Deferred — batch later, not blocking
 
 ## Verification
 
 ```bash
 cargo check
 cargo nextest run
-patina voice status
-patina voice list
-ls ~/.patina/voices/
+# Verify Era 1 oracle still works:
+patina persona status
+# Verify Era 3 identity paths exist:
+ls ~/.patina/mother/voice/default/
 ```
 
 ## Exit Criteria
 
-See frontmatter (vr1-vr10).
+See frontmatter (vr1-vr8).
 
 ## Build Readiness
 
-- All code targets identified by audit
+- All code targets identified
 - No external dependencies
 - No blockers — this is a leaf refactor
+- Small scope: ~10 files, ~80 lines changed

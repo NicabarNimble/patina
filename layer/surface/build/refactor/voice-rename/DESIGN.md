@@ -2,77 +2,60 @@
 
 ## Why This Design
 
-Mechanical rename with no behavioral changes. Pre-v1 so no backward compatibility needed. Clean break avoids dual-naming confusion when building voice-lake-mvp1 and multiproject-belief-share.
+Era 3 used "persona" to mean the crypto-namespace identity concept. That was a
+misname — "persona" already means the Era 1 knowledge oracle. We fix the misname
+by renaming only the Era 3 identity plumbing to "voice." The Era 1 oracle stays
+untouched under `patina persona` until it's naturally retired later.
 
 ## Build Target
 
-All six commits land on `patina` branch. Each commit compiles independently.
+Three commits on `patina` branch. Each compiles independently.
 
 ## Resolved Decisions
 
-- No serde aliases for old field names — clean break
-- Database column rename via ALTER TABLE (SQLite supports this since 3.25)
-- Filesystem migration: move directories, not copy (atomic on same filesystem)
-- Belief YAML `persona:` field deferred to separate batch commit
+- No serde aliases for old field names — clean break, pre-v1
+- Database column rename via ALTER TABLE (SQLite 3.25+)
+- Filesystem: rename `~/.patina/mother/persona/` → `~/.patina/mother/voice/` at startup
+- Era 1 oracle paths (`~/.patina/personas/`) are NOT touched
+- Belief YAML `persona:` metadata field deferred — batch later
 
 ## Commits
 
-1. `refactor(voice): rename types and module persona → voice` — Move `src/commands/persona/` to `src/commands/voice/`, rename PersonaUid → VoiceUid, PersonaEvent → VoiceEvent, PersonaResult → VoiceResult, PersonaStatus → VoiceStatus in all files
+1. `refactor(voice): rename Era 3 identity types and protocol fields` — PersonaUid → VoiceUid in protocol.rs and state.rs. ConnectPayload.persona → .voice. Session binding: requested_persona → requested_voice, persona_uid → voice_uid, persona_matches → voice_matches in checkin, live, artifact, and sessions service. ALTER TABLE for state.db column.
 
-2. `refactor(voice): rename CLI subcommand persona → voice` — Update main.rs enum (Persona → Voice, PersonaCommands → VoiceCommands), help text, --no-persona → --no-voice flag
+2. `refactor(voice): rename Mother-side voice paths and project binding` — paths.rs: mother::persona → mother::voice module (persona_dir → voice_dir, ensure_persona_dir → ensure_voice_dir, identity_age, beliefs_db). persona_path() → voice_path() for project binding (.patina/persona → .patina/voice). workspace init creates mother/voice/ dir. Startup migration moves old mother/persona/ to mother/voice/ if it exists.
 
-3. `refactor(voice): rename protocol, session, and routing fields` — ConnectPayload.persona → .voice, ScryPayload.include_persona → .include_voice, checkin requested_persona → requested_voice, persona_uid → voice_uid, persona_matches → voice_matches, [PERSONA] → [VOICE] label
-
-4. `refactor(voice): rename filesystem paths and add migration` — Path module persona → voice, directory paths personas/ → voices/, mother/persona/ → mother/voice/, .patina/persona → .patina/voice. Add startup migration that moves old paths to new if they exist.
-
-5. `refactor(voice): update three persona beliefs to voice terminology` — Rename belief files, update content to use "voice" where it means the Era 3 concept. Keep provenance accurate (note rename in revision log).
-
-6. `refactor(voice): rename graph labels and config templates` — collect_persona_values → collect_voice_values, parse_persona_value → parse_voice_value, gemini config persona references
+3. `refactor(voice): update three beliefs to voice terminology` — Rename belief files and update content where "persona" means the Era 3 identity concept. Add revision log entries noting the rename. Keep provenance and evidence references accurate.
 
 ## Direct Code Targets
 
-### Commit 1: Types + Module
-- `src/commands/persona/mod.rs` → `src/commands/voice/mod.rs` (entire module rename)
-- `mother/src/protocol.rs:16-24` — PersonaUid → VoiceUid
-- `mother/src/state.rs:118-145` — PersonaUid → VoiceUid + validation
-- `src/commands/voice/mod.rs:29` — PersonaEvent → VoiceEvent
-- `src/commands/voice/mod.rs:45` — PersonaResult → VoiceResult
-- `src/commands/voice/mod.rs:354` — PersonaStatus → VoiceStatus
+### Commit 1: Protocol + Session (Era 3 identity plumbing)
+- `mother/src/protocol.rs:16-24` — `PersonaUid` → `VoiceUid`
+- `mother/src/protocol.rs:72-76` — `ConnectPayload.persona` → `.voice`, comment update
+- `mother/src/state.rs` — `PersonaUid` → `VoiceUid`, validation fn, `persona_uid` → `voice_uid` column
+- `mother/src/services/sessions.rs` — `persona_uid` parameter → `voice_uid`
+- `src/interface/internal/checkin.rs` — `InterfaceCheckIn.requested_persona` → `.requested_voice`, `CheckInResult.persona_uid` → `.voice_uid`, `persona_matches()` → `voice_matches()`
+- `src/session/internal/live.rs` — persona metadata fields → voice
+- `src/session/internal/artifact.rs` — persona context → voice
 
-### Commit 2: CLI Surface
-- `src/main.rs:284` — Persona { command } → Voice { command }
-- `src/main.rs:819-870` — PersonaCommands → VoiceCommands, all variant help text
-- `src/main.rs:1347-1370` — match arm Persona → Voice
-- `src/main.rs:216-218` — --no-persona → --no-voice in scry
+### Commit 2: Mother-side paths + project binding
+- `src/paths.rs:370-411` — `mother::persona` mod → `mother::voice`, `validate_persona_uid` → `validate_voice_uid`, `persona_dir()` → `voice_dir()`, `ensure_persona_dir()` → `ensure_voice_dir()`
+- `src/paths.rs:525-527` — `persona_path()` → `voice_path()`
+- `src/workspace/internal.rs` — init creates `mother/voice/` dir, migration for old `mother/persona/`
+- Tests in paths.rs — update `test_mother_persona_paths` → `test_mother_voice_paths`
 
-### Commit 3: Protocol + Session + Routing
-- `mother/src/protocol.rs:76` — ConnectPayload.persona → .voice
-- `mother/src/protocol.rs:120` — ScryPayload.include_persona → .include_voice
-- `src/interface/internal/checkin.rs:~40 lines` — requested_persona, persona_uid, persona_matches
-- `src/session/internal/live.rs:~9 lines` — persona metadata fields
-- `src/session/internal/artifact.rs:~4 lines` — persona context
-- `src/commands/scry/internal/routing.rs:224-233` — include_persona, [PERSONA] label
-- `src/commands/scry/mod.rs:~3 lines` — flag name
-- `mother/src/state.rs:344` — DB schema persona_uid column
-- `mother/src/services/sessions.rs:~3 lines` — query parameter
+### Commit 3: Beliefs
+- `layer/surface/epistemic/beliefs/persona-is-a-patina-instance.md` — update Era 3 references to voice (sovereignty = voice namespace, not "persona namespace")
+- `layer/surface/epistemic/beliefs/persona-keypair-is-node-identity.md` → `voice-keypair-is-node-identity.md` (rename file, update content)
+- `layer/surface/epistemic/beliefs/beliefs-live-at-two-levels.md` — update "persona-level beliefs" → "voice-level beliefs" in content
 
-### Commit 4: Filesystem Paths
-- `src/paths.rs:83-95` — pub mod persona → pub mod voice, events_dir, cache_dir
-- `src/paths.rs:371-413` — mother::persona → mother::voice, persona_dir, identity_age, beliefs_db
-- `src/paths.rs:525-528` — persona_path → voice_path
-- `src/workspace/internal.rs` — init creates voice dirs, migration moves old persona dirs
-
-### Commit 5: Beliefs
-- `layer/surface/epistemic/beliefs/persona-is-a-patina-instance.md` → rename/update to voice terminology
-- `layer/surface/epistemic/beliefs/persona-keypair-is-node-identity.md` → voice-keypair-is-node-identity.md
-- `layer/surface/epistemic/beliefs/beliefs-live-at-two-levels.md` → update persona references to voice
-
-### Commit 6: Graph + Config
-- `src/commands/mother/graph.rs:150-161` — collect_persona_values → collect_voice_values
-- `src/commands/mother/graph.rs:523-571` — parse_persona_value → parse_voice_value
-- `src/commands/mother/graph.rs:848-900` — display "persona" → "voice"
-- `.gemini/commands/epistemic-beliefs.toml` — persona references
-- `resources/gemini/epistemic-beliefs.toml` — persona references
+### NOT touched (Era 1 oracle — stays as persona)
+- `src/commands/persona/mod.rs` — entire oracle module
+- `src/main.rs` — `Persona` CLI subcommand, `PersonaCommands` enum
+- `src/paths.rs:83-93` — `persona::events_dir()`, `persona::cache_dir()`
+- `src/commands/scry/` — `include_persona` flag, `[PERSONA]` label
+- `src/commands/mother/graph.rs` — `collect_persona_values()`, `parse_persona_value()`
+- `.gemini/commands/epistemic-beliefs.toml` — references Era 1 oracle
 
 ## Verification Plan
 
@@ -84,16 +67,18 @@ cargo check
 After all commits:
 ```bash
 cargo nextest run
-patina voice status
-patina voice list
-grep -r "persona" src/ mother/src/ --include="*.rs" | grep -v "// persona" | grep -v test
+# Verify Era 1 oracle untouched:
+patina persona status
+# Verify Era 3 paths renamed:
+ls ~/.patina/mother/voice/default/
+# Verify no stray Era 3 "persona" in identity code:
+grep -n "persona" mother/src/protocol.rs src/interface/internal/checkin.rs
+# ^ should return zero matches
 ```
-
-The final grep confirms no stray persona references remain (except in comments noting the rename and in test names which can be cleaned up).
 
 ## Build Readiness
 
-- Audit complete: 364 occurrences in .rs, 4 in .toml, scope fully mapped
+- Scope is small: ~10 files, ~80 lines changed
 - No external dependencies
 - No blockers
 - Pre-v1: no backward compatibility needed
