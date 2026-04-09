@@ -1,17 +1,8 @@
 [child]
-name = "{{ package_name }}"
+name = "{{ child_name }}"
 version = "0.1.0"
 description = "{{ description }}"
-kind = "child"
-role = "app"
-patina_min = "0.41.0"
+kind = "{{ child_kind }}"
 
 [needs]
 toys = ["log"]
-
-[provides]
-child = "{{ child_name }}"
-
-[relationships]
-emits = []
-listens = []

@@ -1,33 +1,23 @@
-use patina_sdk::granted;
-use patina_sdk::child::{ChildHealth, HealthStatus, Child};
-use patina_sdk::register_child;
+use patina_sdk::toys;
 
-#[derive(Default)]
+wit_bindgen::generate!({
+    path: "wit",
+    world: "{{ child_name }}",
+    generate_all,
+});
+
 struct Child;
 
-impl Child for Child {
-    fn name(&self) -> String {
-        "{{ child_name }}".into()
-    }
-
-    fn on_load(&mut self) -> Result<(), String> {
-        granted::log().info("{{ child_name }} loaded");
-        Ok(())
-    }
-
-    fn health(&self) -> ChildHealth {
-        ChildHealth {
-            status: HealthStatus::Healthy,
-            reason: None,
-        }
-    }
-
-    fn handle(&mut self, action: &str, payload: &str) -> Result<String, String> {
-        match action {
-            "ping" => Ok(serde_json::json!({"pong": payload}).to_string()),
-            other => Err(format!("{{ child_name }}: unknown action '{}'", other)),
-        }
+impl exports::patina::records::transform::Guest for Child {
+    fn transform(
+        records: Vec<patina::records::types::RecordEnvelope>,
+    ) -> Result<patina::records::types::TransformResult, String> {
+        toys::log::info("{{ child_name }}", "processing record batch");
+        Ok(patina::records::types::TransformResult {
+            accepted: records,
+            rejected: Vec::new(),
+        })
     }
 }
 
-register_child!(Child);
+export!(Child);
