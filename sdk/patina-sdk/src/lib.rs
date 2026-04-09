@@ -1,3 +1,4 @@
+pub mod toys;
 pub mod types;
 
 pub use types::{
