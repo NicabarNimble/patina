@@ -1,7 +1,7 @@
 ---
 type: feat
 id: pando-execution-mvp
-status: draft
+status: complete
 created: 2026-04-09
 sessions:
   origin: 20260409-090238-892748000
