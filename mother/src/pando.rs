@@ -64,6 +64,15 @@ pub struct PandoTypedWiring {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum PandoWiring {
+    /// Legacy string wiring for handle-based pandos.
+    Legacy(String),
+    /// Typed toy wiring for composed pandos.
+    Typed(PandoTypedWiring),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct PandoEntry {
     pub child: String,
@@ -73,12 +82,14 @@ pub struct PandoEntry {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct PandoComposition {
-    /// Legacy string wiring for handle-based pandos.
-    #[serde(default)]
-    pub wiring: Vec<String>,
-    /// Typed toy wiring for composed pandos.
-    #[serde(default)]
-    pub typed: Vec<PandoTypedWiring>,
+    /// Supports both legacy string wiring and typed wiring rules.
+    ///
+    /// Supported shapes:
+    /// - `[composition] wiring = ["a.out -> b.in"]` (legacy)
+    /// - `[[composition.wiring]] from = "a"; to = "b"; toy = "patina:record/x"` (typed)
+    /// - `[[composition.typed]] ...` (temporary compatibility alias)
+    #[serde(default, alias = "typed")]
+    pub wiring: Vec<PandoWiring>,
     /// Entry point for the composed component.
     #[serde(default)]
     pub entry: Option<PandoEntry>,
@@ -333,6 +344,85 @@ wiring = ["a.out -> b.in"]
         assert_eq!(
             manifest.commands["check"].args[0].arg_type,
             PandoArgType::String
+        );
+        assert_eq!(
+            manifest.composition.unwrap().wiring,
+            vec![PandoWiring::Legacy("a.out -> b.in".to_string())]
+        );
+    }
+
+    #[test]
+    fn parses_typed_wiring_under_composition_wiring() {
+        let raw = r#"
+[pando]
+name = "typed"
+description = "Typed composition"
+version = "0.2.0"
+
+[[children]]
+name = "schema-enforcer"
+
+[[children]]
+name = "dedup-filter"
+
+[composition]
+entry = { child = "schema-enforcer", toy = "patina:record/transform" }
+
+[[composition.wiring]]
+from = "schema-enforcer"
+to = "dedup-filter"
+toy = "patina:record/transform"
+"#;
+
+        let manifest = parse_manifest_str(raw).unwrap();
+        let composition = manifest.composition.unwrap();
+        assert_eq!(
+            composition.entry,
+            Some(PandoEntry {
+                child: "schema-enforcer".to_string(),
+                toy: "patina:record/transform".to_string(),
+            })
+        );
+        assert_eq!(
+            composition.wiring,
+            vec![PandoWiring::Typed(PandoTypedWiring {
+                from: "schema-enforcer".to_string(),
+                to: "dedup-filter".to_string(),
+                toy: "patina:record/transform".to_string(),
+            })]
+        );
+    }
+
+    #[test]
+    fn parses_typed_wiring_under_composition_typed_alias() {
+        let raw = r#"
+[pando]
+name = "typed-alias"
+description = "Typed composition alias"
+version = "0.2.0"
+
+[[children]]
+name = "schema-enforcer"
+
+[[children]]
+name = "dedup-filter"
+
+[composition]
+
+[[composition.typed]]
+from = "schema-enforcer"
+to = "dedup-filter"
+toy = "patina:record/transform"
+"#;
+
+        let manifest = parse_manifest_str(raw).unwrap();
+        assert_eq!(
+            manifest.composition.unwrap().wiring,
+            vec![PandoWiring::Typed(PandoTypedWiring {
+                from: "schema-enforcer".to_string(),
+                to: "dedup-filter".to_string(),
+                toy: "patina:record/transform".to_string(),
+            })]
         );
     }
 

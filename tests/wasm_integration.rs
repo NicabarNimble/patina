@@ -210,6 +210,7 @@ fn load_repos_child() -> Option<Box<dyn Child>> {
         belief_read: false,
         belief_write_actions: vec![],
         toys: GrantedToys::default(),
+        inside_accepts: vec![],
     };
 
     match engine.instantiate_child(&component, &manifest, None) {
@@ -264,6 +265,7 @@ fn echo_pipeline_manifest() -> ChildManifest {
         belief_read: false,
         belief_write_actions: vec![],
         toys: GrantedToys::default(),
+        inside_accepts: vec![],
     }
 }
 
@@ -1448,6 +1450,7 @@ fn wasm_models_child_handle_roundtrip() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: GrantedToys::default(),
+        inside_accepts: vec![],
     };
 
     let child = match engine.instantiate_child(&component, &manifest, None) {
@@ -1518,6 +1521,7 @@ fn wasm_models_child_health() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: GrantedToys::default(),
+        inside_accepts: vec![],
     };
 
     let child = match engine.instantiate_child(&component, &manifest, None) {
@@ -1707,6 +1711,7 @@ fn benchmark_plugin_performance() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: GrantedToys::default(),
+        inside_accepts: vec![],
     };
     let t2 = Instant::now();
     let child = match engine.instantiate_child(&component, &manifest, None) {
@@ -1897,6 +1902,7 @@ fn wasm_trap_pipeline_panic_returns_error() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: GrantedToys::default(),
+        inside_accepts: vec![],
     };
 
     let request = r#"{"op":"echo","version":"1","payload":{}}"#;
@@ -1961,6 +1967,7 @@ fn wasm_trap_mother_child_panic_returns_error() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: GrantedToys::default(),
+        inside_accepts: vec![],
     };
 
     // Instantiation with wrong world should fail cleanly
