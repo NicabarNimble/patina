@@ -3235,11 +3235,9 @@ name = "patina-ai-child-content-extractor"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "patina-sdk",
- "serde",
- "serde_json",
  "sha2",
  "uuid",
+ "wit-bindgen 0.41.0",
 ]
 
 [[package]]
