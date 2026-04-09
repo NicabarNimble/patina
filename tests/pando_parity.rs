@@ -719,6 +719,21 @@ impl dedup_child_bindings::wasi::keyvalue::store::Host for PushDedupHost {
 }
 
 impl dedup_child_bindings::wasi::keyvalue::store::HostBucket for PushDedupHost {
+    fn get(
+        &mut self,
+        bucket: Resource<dedup_child_bindings::wasi::keyvalue::store::Bucket>,
+        key: String,
+    ) -> Result<Option<Vec<u8>>, dedup_child_bindings::wasi::keyvalue::store::Error> {
+        let handle_ref = Resource::<BucketHandle>::new_borrow(bucket.rep());
+        let handle = self.table.get(&handle_ref).map_err(|e| {
+            dedup_child_bindings::wasi::keyvalue::store::Error::Other(e.to_string())
+        })?;
+        Ok(self
+            .kv
+            .get(&format!("{}:{}", handle.identifier, key))
+            .cloned())
+    }
+
     fn set(
         &mut self,
         bucket: Resource<dedup_child_bindings::wasi::keyvalue::store::Bucket>,
@@ -1081,6 +1096,21 @@ impl write_child_bindings::wasi::keyvalue::store::Host for PushWriteHost {
 }
 
 impl write_child_bindings::wasi::keyvalue::store::HostBucket for PushWriteHost {
+    fn get(
+        &mut self,
+        bucket: Resource<write_child_bindings::wasi::keyvalue::store::Bucket>,
+        key: String,
+    ) -> Result<Option<Vec<u8>>, write_child_bindings::wasi::keyvalue::store::Error> {
+        let handle_ref = Resource::<BucketHandle>::new_borrow(bucket.rep());
+        let handle = self.table.get(&handle_ref).map_err(|e| {
+            write_child_bindings::wasi::keyvalue::store::Error::Other(e.to_string())
+        })?;
+        Ok(self
+            .kv
+            .get(&format!("{}:{}", handle.identifier, key))
+            .cloned())
+    }
+
     fn set(
         &mut self,
         bucket: Resource<write_child_bindings::wasi::keyvalue::store::Bucket>,
@@ -1094,6 +1124,20 @@ impl write_child_bindings::wasi::keyvalue::store::HostBucket for PushWriteHost {
         self.kv
             .insert(format!("{}:{}", handle.identifier, key), value);
         Ok(())
+    }
+
+    fn exists(
+        &mut self,
+        bucket: Resource<write_child_bindings::wasi::keyvalue::store::Bucket>,
+        key: String,
+    ) -> Result<bool, write_child_bindings::wasi::keyvalue::store::Error> {
+        let handle_ref = Resource::<BucketHandle>::new_borrow(bucket.rep());
+        let handle = self.table.get(&handle_ref).map_err(|e| {
+            write_child_bindings::wasi::keyvalue::store::Error::Other(e.to_string())
+        })?;
+        Ok(self
+            .kv
+            .contains_key(&format!("{}:{}", handle.identifier, key)))
     }
 
     fn drop(
@@ -1238,6 +1282,21 @@ impl catalog_child_bindings::wasi::keyvalue::store::Host for PushCatalogHost {
 }
 
 impl catalog_child_bindings::wasi::keyvalue::store::HostBucket for PushCatalogHost {
+    fn get(
+        &mut self,
+        bucket: Resource<catalog_child_bindings::wasi::keyvalue::store::Bucket>,
+        key: String,
+    ) -> Result<Option<Vec<u8>>, catalog_child_bindings::wasi::keyvalue::store::Error> {
+        let handle_ref = Resource::<BucketHandle>::new_borrow(bucket.rep());
+        let handle = self.table.get(&handle_ref).map_err(|e| {
+            catalog_child_bindings::wasi::keyvalue::store::Error::Other(e.to_string())
+        })?;
+        Ok(self
+            .kv
+            .get(&format!("{}:{}", handle.identifier, key))
+            .cloned())
+    }
+
     fn set(
         &mut self,
         bucket: Resource<catalog_child_bindings::wasi::keyvalue::store::Bucket>,
@@ -1251,6 +1310,20 @@ impl catalog_child_bindings::wasi::keyvalue::store::HostBucket for PushCatalogHo
         self.kv
             .insert(format!("{}:{}", handle.identifier, key), value);
         Ok(())
+    }
+
+    fn exists(
+        &mut self,
+        bucket: Resource<catalog_child_bindings::wasi::keyvalue::store::Bucket>,
+        key: String,
+    ) -> Result<bool, catalog_child_bindings::wasi::keyvalue::store::Error> {
+        let handle_ref = Resource::<BucketHandle>::new_borrow(bucket.rep());
+        let handle = self.table.get(&handle_ref).map_err(|e| {
+            catalog_child_bindings::wasi::keyvalue::store::Error::Other(e.to_string())
+        })?;
+        Ok(self
+            .kv
+            .contains_key(&format!("{}:{}", handle.identifier, key)))
     }
 
     fn drop(
