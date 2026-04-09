@@ -170,6 +170,10 @@ jobs:
       if: steps.changes.outputs.wasm == 'true' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
       run: cargo nextest run --test wasm_integration --profile ci
 
+    - name: Run typed composition seam locks
+      if: steps.changes.outputs.wasm == 'true' || github.event_name == 'workflow_dispatch'
+      run: cargo nextest run --test composition_spike --test interface_lock --profile ci
+
   # ==================================================================
   # Release — build + schema + install (PR/dispatch only, ~20 min cold)
   # ==================================================================

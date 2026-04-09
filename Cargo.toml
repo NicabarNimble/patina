@@ -130,7 +130,6 @@ libc = "0.2"
 # Testing utilities
 tempfile = "3.14"
 approx = "0.5"  # Testing similarity scores
-wac-graph = "0.9.0"
 
 [[bin]]
 name = "patina"
