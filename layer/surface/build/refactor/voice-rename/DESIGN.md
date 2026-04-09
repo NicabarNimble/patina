@@ -9,7 +9,7 @@ untouched under `patina persona` until it's naturally retired later.
 
 ## Build Target
 
-Three commits on `patina` branch. Each compiles independently.
+Two commits on `patina` branch. Each compiles independently.
 
 ## Resolved Decisions
 
