@@ -48,11 +48,18 @@ exit_criteria:
 - **Era 2 (Mar 2, 2026):** Persona as sovereign Patina instance. Captured as belief, then scoped down.
 - **Era 3 (Mar 20-21, 2026):** Persona as cryptographic namespace within Mother — a keypair-scoped identity that owns beliefs, signs them, and spans machines. This is the current architecture, and "persona" is a misname for it.
 
-Era 3's identity namespace concept was called "persona" because it evolved from the persona oracle. But they're different things. The oracle is a knowledge notebook. The identity namespace is the WHO — who owns beliefs, who signs them, who they federate for. Building voice-lake-mvp1 and multiproject-belief-share on top of a misnamed concept creates confusion.
+Era 3's identity namespace concept was called "persona" because it evolved from the persona oracle. But they are fundamentally different things:
+
+- **Persona (Era 1)** is a knowledge notebook — it captures notes, embeds them, and answers semantic queries. It's a tool for personal knowledge management within a single machine. The `patina persona` CLI, its JSONL storage, and its vector search are a complete, self-contained feature. "Persona" is the correct name for this.
+- **Persona (Era 3)** is a cryptographic identity namespace within Mother — it owns beliefs, signs them with a keypair, scopes knowledge across projects, and federates across machines. This is not a notebook. It's the WHO behind the knowledge system. "Persona" is a misname inherited from the oracle's evolution path.
+
+Era 2 (persona as sovereign instance) was an intermediate step that got scoped down into Era 3. It's captured in the `persona-is-a-patina-instance` belief (status: scoped) and doesn't have standalone code — its surviving ideas live in Era 3's design.
+
+This spec corrects the Era 3 misname. Era 1 persona keeps its name and its code. They will coexist until voice subsumes the oracle's functionality in a future spec.
 
 ## Goal
 
-Rename "persona" to "voice" **only where it represents the Era 3 identity namespace concept**. The Era 1 persona oracle (`patina persona` CLI, oracle module, JSONL storage) stays untouched — it will be retired later when voice subsumes its functionality.
+Rename "persona" to "voice" **only where it represents the Era 3 identity namespace concept**. The Era 1 persona oracle (`patina persona` CLI, oracle module, JSONL storage) is a different concept and stays untouched.
 
 Voice is the WHO in Patina's vocabulary: Mother=WHERE, Project=WHAT, Child=HOW, Toy=CAN, Pando=PRODUCT, Voice=WHO.
 
@@ -62,14 +69,18 @@ Draft. Ready to build — scope is small and mechanical.
 
 ## Non-Goals
 
-- Renaming Era 1 persona oracle commands or module (stays as `patina persona`)
-- Renaming `PersonaEvent`, `PersonaResult`, `PersonaStatus` (Era 1 oracle types)
-- Moving `~/.patina/personas/` or `~/.patina/cache/personas/` (Era 1 oracle data)
-- Changing `include_persona` scry flag or `[PERSONA]` routing label (queries the Era 1 oracle)
-- Changing `collect_persona_values()` / `parse_persona_value()` in Mother graph (reads Era 1 data)
-- Migrating the 280 `persona: architect` fields in belief YAML
+**Era 1 persona oracle is out of scope — it is a different concept, not a rename target:**
+- `patina persona` CLI commands and module (`src/commands/persona/`) — this is the knowledge notebook, correctly named
+- `PersonaEvent`, `PersonaResult`, `PersonaStatus` types — Era 1 oracle types
+- `~/.patina/personas/` and `~/.patina/cache/personas/` — Era 1 oracle data
+- `include_persona` scry flag and `[PERSONA]` routing label — controls Era 1 oracle queries
+- `collect_persona_values()` / `parse_persona_value()` in Mother graph — reads Era 1 data
+- `.gemini/commands/epistemic-beliefs.toml` — references Era 1 oracle
+
+**Other non-goals:**
+- Migrating the 280 `persona: architect` fields in belief YAML (deferred, batch later)
 - Implementing crypto keypair generation, voice belief schema, or P2P federation
-- Building any new voice functionality — rename only
+- Building any new voice functionality — this is a misname correction, not new feature work
 
 ## What Changes (Era 3 identity namespace)
 
