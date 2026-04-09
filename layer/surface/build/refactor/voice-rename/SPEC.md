@@ -15,28 +15,28 @@ references:
 exit_criteria:
 - id: vr1
   text: 'Mother protocol type renamed: VoiceUid (was PersonaUid)'
-  checked: false
+  checked: true
 - id: vr2
   text: ConnectPayload.voice field (was .persona)
-  checked: false
+  checked: true
 - id: vr3
   text: Session binding uses voice_uid, requested_voice, voice_matches() throughout checkin and artifact code
-  checked: false
+  checked: true
 - id: vr4
   text: 'Mother-side paths use voice: ~/.patina/mother/voice/{uid}/ (was mother/persona/)'
-  checked: false
+  checked: true
 - id: vr5
   text: Project binding file is .patina/voice (was .patina/persona)
-  checked: false
+  checked: true
 - id: vr6
   text: Mother state.db column renamed voice_uid (was persona_uid)
-  checked: false
+  checked: true
 - id: vr7
   text: Three persona beliefs updated to voice terminology in belief content
-  checked: false
+  checked: true
 - id: vr8
   text: cargo check passes, all tests pass
-  checked: false
+  checked: true
 validated_against_commit: 29f0e786
 last_freshness_check: 2026-04-09
 freshness_scope:
