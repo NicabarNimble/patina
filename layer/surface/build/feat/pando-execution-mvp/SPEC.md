@@ -128,8 +128,9 @@ PANDO ADAPTER (thin glue, no business logic):
 ### Special Cases
 
 **Source adapter**: No upstream `patina:pando/*` import. Imports push child
-`patina:records/source` + config capability. Injects folder path from config
-at instantiation, calls `source::scan(folder)`.
+`patina:records/source` + new `patina:config` toy (read-only key/value).
+Reads folder path from config, calls `source::scan(folder)`. WASI env is
+local-dev fallback only — `patina:config` is the primary injection mechanism.
 
 **Repeated transform stages**: schema-enforcer and dedup-filter both produce
 `patina:pando/transform`. Use explicit WAC instance aliases to avoid wiring
@@ -200,8 +201,10 @@ fn run() -> Result<TransformResult, String> {
 | record-writer.wasm | imports records/transform, calls upstream | Pure: no upstream import, write logic only |
 | Other 4 children | Already pure | No change to logic |
 | record-writer output | Hardcoded `/tmp/patina/` | Filesystem preopen, Mother-controlled |
-| Pando adapters | Don't exist | 6 new thin adapter components |
+| Pando adapters | Don't exist | 6 new adapter components in `~/.patina/pando-adapters/` |
 | `patina:pando` package | Doesn't exist | New WIT package: run() per stage |
+| `patina:config` toy | Doesn't exist | New minimal read-only key/value config toy |
+| Adapter crate structure | N/A | One crate per stage (6 crates) + optional adapters-common |
 | pando.toml | Legacy string wiring | Typed wiring referencing 12 components |
 | Mother composition | Validates only | Composes 12 components, encodes, loads, calls |
 

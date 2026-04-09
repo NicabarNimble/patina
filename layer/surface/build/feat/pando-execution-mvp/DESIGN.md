@@ -91,14 +91,18 @@ Size: wasm-tools print-size per artifact
 
 ## Open Questions
 
-1. **Config capability for source adapter** — Is there an existing config
-   toy in Patina's WIT? Or do we create a minimal one (key-value read)?
-   WASI env is fallback but config capability is preferred per design lock.
+None. All resolved.
 
-2. **Adapter crate structure** — One crate per adapter (6 crates) or one
-   crate with feature flags? Separate crates is cleaner (each has its own
-   WIT world), but adds Cargo.toml boilerplate.
+## Resolved (formerly open)
 
-3. **Where do adapter .wasm files live?** Same pool as push children
-   (`~/.patina/children/`) or separate location? Probably same pool since
-   Mother loads all components from one place.
+1. **Config capability**: New minimal `patina:config` toy (read-only key/value).
+   Not raw env as primary. Env is local-dev fallback only. Matches voice/pando
+   `[config]` direction. Explicit authority, testable.
+
+2. **Adapter crate structure**: One crate per stage (6 crates) + optional
+   shared `adapters-common` for any shared helper types. Cleaner WIT/world
+   isolation, simpler builds, simpler size attribution.
+
+3. **Adapter artifact location**: Separate namespace from children.
+   Children in `~/.patina/children/`, adapters in `~/.patina/pando-adapters/`.
+   Keeps "child" semantics clean, avoids muddying registries/lifecycle.
