@@ -1,44 +1,44 @@
 ---
 type: feat
-id: canon-child-sdk
+id: patina-sdk-rebuild
 status: draft
 created: 2026-04-09
 sessions:
   origin: 20260409-070410-485377000
-beliefs:
-  - "[[children-have-agency-toys-are-capabilities]]"
-  - "[[wasi-is-foundation-not-option]]"
-  - "[[compiler-enforced-safety]]"
 related:
-  - feat/pando-execution-mvp
-  - feat/voice-lake-mvp1
-  - refactor/child-typed-composition
-  - sdk/patina-sdk
+- feat/pando-execution-mvp
+- feat/voice-lake-mvp1
+- refactor/child-typed-composition
+- sdk/patina-sdk
+beliefs:
+- '[[children-have-agency-toys-are-capabilities]]'
+- '[[wasi-is-foundation-not-option]]'
+- '[[compiler-enforced-safety]]'
 exit_criteria:
-  - id: cs1-crate-exists
-    text: "sdk/patina-sdk/ crate exists with patina:records types re-exported as Rust types. Children depend on patina-sdk instead of running wit_bindgen against raw WIT."
-    checked: false
-  - id: cs2-toy-helpers
-    text: "Outside toy helpers exist: toys::log (info/warn/error), toys::keyvalue (open/get/set/exists with error mapping), toys::measure (counter/gauge), toys::config (get). No raw WIT binding calls needed in child code."
-    checked: false
-  - id: cs3-config-toy
-    text: "patina:config@0.1.0 toy is defined in WIT, implemented in Mother, and accessible via toys::config::get(key) in the SDK."
-    checked: false
-  - id: cs4-template
-    text: "sdk/template-canon/ exists. cargo generate produces a buildable push-pure child with correct wit/ structure, Cargo.toml (wasm32-wasip2), child.toml, and a skeleton process() function."
-    checked: false
-  - id: cs5-canon-children-migrated
-    text: "All 6 canon children depend on patina-sdk instead of running wit_bindgen directly. Duplicated helpers (keyvalue_error_to_string, etc.) removed from individual children."
-    checked: false
-  - id: cs6-legacy-documented
-    text: "patina-sdk README updated: handle-based child path marked as legacy service lane. Points developers to patina-sdk for new children."
-    checked: false
-  - id: cs7-decision-tree
-    text: "SDK README or AGENTS.md contains decision tree: canon child (patina-sdk) vs legacy service child (patina-sdk) vs grammar pipeline (patina-sdk pipeline feature)."
-    checked: false
-  - id: cs8-proof
-    text: "cargo check --workspace passes. All 6 canon children build to wasm32-wasip2 using patina-sdk. cargo nextest run passes (existing tests + new SDK tests)."
-    checked: false
+- id: cs1-crate-exists
+  text: sdk/patina-sdk/ crate exists with patina:records types re-exported as Rust types. Children depend on patina-sdk instead of running wit_bindgen against raw WIT.
+  checked: false
+- id: cs2-toy-helpers
+  text: 'Outside toy helpers exist: toys::log (info/warn/error), toys::keyvalue (open/get/set/exists with error mapping), toys::measure (counter/gauge), toys::config (get). No raw WIT binding calls needed in child code.'
+  checked: false
+- id: cs3-config-toy
+  text: patina:config@0.1.0 toy is defined in WIT, implemented in Mother, and accessible via toys::config::get(key) in the SDK.
+  checked: false
+- id: cs4-template
+  text: sdk/template-canon/ exists. cargo generate produces a buildable push-pure child with correct wit/ structure, Cargo.toml (wasm32-wasip2), child.toml, and a skeleton process() function.
+  checked: false
+- id: cs5-canon-children-migrated
+  text: All 6 canon children depend on patina-sdk instead of running wit_bindgen directly. Duplicated helpers (keyvalue_error_to_string, etc.) removed from individual children.
+  checked: false
+- id: cs6-legacy-documented
+  text: 'patina-sdk README updated: handle-based child path marked as legacy service lane. Points developers to patina-sdk for new children.'
+  checked: false
+- id: cs7-decision-tree
+  text: 'SDK README or AGENTS.md contains decision tree: canon child (patina-sdk) vs legacy service child (patina-sdk) vs grammar pipeline (patina-sdk pipeline feature).'
+  checked: false
+- id: cs8-proof
+  text: cargo check --workspace passes. All 6 canon children build to wasm32-wasip2 using patina-sdk. cargo nextest run passes (existing tests + new SDK tests).
+  checked: false
 ---
 # feat: Canon Child SDK
 
