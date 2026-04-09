@@ -1,17 +1,8 @@
 ---
 type: refactor
 id: voice-rename
-status: ready
+status: active
 created: 2026-04-09
-validated_against_commit: 29f0e786
-last_freshness_check: 2026-04-09
-freshness_scope:
-- mother/src/protocol.rs
-- mother/src/state.rs
-- src/interface/internal/checkin.rs
-- src/commands/ai/surface.rs
-- src/paths.rs
-- src/project/internal.rs
 sessions:
   origin: 20260409-070410-485377000
 related:
@@ -46,6 +37,15 @@ exit_criteria:
 - id: vr8
   text: cargo check passes, all tests pass
   checked: false
+validated_against_commit: 29f0e786
+last_freshness_check: 2026-04-09
+freshness_scope:
+- mother/src/protocol.rs
+- mother/src/state.rs
+- src/interface/internal/checkin.rs
+- src/commands/ai/surface.rs
+- src/paths.rs
+- src/project/internal.rs
 ---
 # refactor: voice-rename
 
