@@ -7,8 +7,7 @@ revised: 2026-04-09
 sessions:
   origin: 20260402-135124-249836000
   revised: 20260409-070410-485377000
-blocked_by:
-  - feat/pando-execution-mvp
+blocked_by: []
 beliefs:
   - "[[projects-are-sovereign-mother-coordinates]]"
   - "[[children-have-agency-toys-are-capabilities]]"
