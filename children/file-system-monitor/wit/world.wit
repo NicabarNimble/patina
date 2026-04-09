@@ -1,0 +1,7 @@
+package patina:file-system-monitor@0.1.0;
+
+world file-system-monitor {
+    import wasi:logging/logging@0.1.0;
+    import patina:measure/measure@0.1.0;
+    export patina:records/source@0.1.0;
+}

@@ -21,16 +21,67 @@ pub fn write_hash_file(path: &Path) -> Result<()> {
     Ok(())
 }
 
+pub fn write_pando_hashes(pando_dir: &Path) -> Result<usize> {
+    let pando_manifest = pando_dir.join("pando.toml");
+    if !pando_manifest.exists() {
+        anyhow::bail!("missing pando manifest at {}", pando_manifest.display());
+    }
+
+    let mut targets = HashSet::new();
+    targets.insert(pando_manifest);
+
+    if let Ok(entries) = std::fs::read_dir(pando_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            match path.extension().and_then(|ext| ext.to_str()) {
+                Some("toml") | Some("wasm") => {
+                    targets.insert(path);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    for target in &targets {
+        write_hash_file(target)?;
+    }
+    Ok(targets.len())
+}
+
+pub fn write_all_pando_hashes(pandos_root: &Path) -> Result<(usize, usize)> {
+    if !pandos_root.exists() {
+        return Ok((0, 0));
+    }
+
+    let mut pando_dirs = std::fs::read_dir(pandos_root)
+        .with_context(|| format!("reading pando root {}", pandos_root.display()))?
+        .flatten()
+        .filter(|entry| entry.path().is_dir())
+        .collect::<Vec<_>>();
+    pando_dirs.sort_by_key(|entry| entry.file_name());
+
+    let mut pando_count = 0usize;
+    let mut file_count = 0usize;
+    for entry in pando_dirs {
+        let written = write_pando_hashes(&entry.path())?;
+        pando_count += 1;
+        file_count += written;
+    }
+
+    Ok((pando_count, file_count))
+}
+
 pub fn verify_hash_file(path: &Path) -> Result<()> {
     let hash_path = hash_sidecar_path(path);
     if !hash_path.exists() {
-        write_hash_file(path)?;
-        tracing::info!(
-            path = %path.display(),
-            hash_path = %hash_path.display(),
-            "bootstrapped missing sha256 sidecar"
+        anyhow::bail!(
+            "missing hash sidecar for {} at {}",
+            path.display(),
+            hash_path.display()
         );
-        return Ok(());
     }
 
     let expected = std::fs::read_to_string(&hash_path)
@@ -131,7 +182,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_hash_file_bootstraps_missing_sidecar() {
+    fn verify_hash_file_fails_for_missing_sidecar() {
         let temp = tempfile::tempdir().unwrap();
         let file = temp.path().join("pando.toml");
         std::fs::write(
@@ -141,7 +192,25 @@ mod tests {
         .unwrap();
         let sidecar = hash_sidecar_path(&file);
         assert!(!sidecar.exists());
-        verify_hash_file(&file).unwrap();
-        assert!(sidecar.exists());
+        let error = verify_hash_file(&file).unwrap_err();
+        assert!(error.to_string().contains("missing hash sidecar"));
+    }
+
+    #[test]
+    fn write_pando_hashes_writes_sidecars_for_manifest_and_wasm() {
+        let temp = tempfile::tempdir().unwrap();
+        let pando_dir = temp.path().join("demo");
+        std::fs::create_dir_all(&pando_dir).unwrap();
+        std::fs::write(
+            pando_dir.join("pando.toml"),
+            "[pando]\nname='demo'\ndescription='d'\nversion='0.1.0'\n[[children]]\nname='x'\n",
+        )
+        .unwrap();
+        std::fs::write(pando_dir.join("x.wasm"), b"wasm-bytes").unwrap();
+
+        let count = write_pando_hashes(&pando_dir).unwrap();
+        assert!(count >= 2);
+        assert!(pando_dir.join("pando.toml.sha256").exists());
+        assert!(pando_dir.join("x.wasm.sha256").exists());
     }
 }

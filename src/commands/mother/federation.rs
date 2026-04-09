@@ -159,7 +159,7 @@ impl FederationQueryResult {
 }
 
 impl FederationRuntime {
-    pub fn refresh(&mut self, runtime_store: &patina::mother::KnowledgeRuntimeStore) {
+    pub fn refresh(&mut self, runtime_store: &patina::mother::MotherRuntimeStore) {
         let started = Instant::now();
         *self = startup(runtime_store);
         emit_refresh_latency(started.elapsed().as_millis() as f64);
@@ -394,7 +394,7 @@ pub fn check_table_allowlist(
     Ok(())
 }
 
-pub fn startup(runtime_store: &patina::mother::KnowledgeRuntimeStore) -> FederationRuntime {
+pub fn startup(runtime_store: &patina::mother::MotherRuntimeStore) -> FederationRuntime {
     let federation_path = patina::paths::mother::federation_db();
     if let Some(parent) = federation_path.parent() {
         if let Err(error) = std::fs::create_dir_all(parent) {

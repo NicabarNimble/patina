@@ -170,8 +170,12 @@ pub fn toys_check(project_root: &Path) -> Result<()> {
     println!("Checking toy WIT files against pinned versions:\n");
 
     for entry in entries {
-        let local_path = local_wit_path(project_root, &entry);
-        let local_hash = hash_file(&local_path)?;
+        let local_hash = if entry.tier == ToyTier::Patina {
+            let local_path = local_wit_path(project_root, &entry);
+            hash_file(&local_path)?
+        } else {
+            hash_bytes(compose_local_preview2_wit(project_root, &entry)?.as_bytes())
+        };
 
         if entry.tier == ToyTier::Patina {
             println!("ok   {:<22} local-only (patina delta)", entry.id);
@@ -290,28 +294,23 @@ where
         .ok_or_else(|| anyhow::anyhow!("unknown toy '{}'", toy_name))?;
     require_upstream(&entry)?;
 
-    let local_path = local_wit_path(project_root, &entry);
-    let old_local =
-        std::fs::read(&local_path).with_context(|| format!("reading {}", local_path.display()))?;
-    let registry_path = project_root.join(TOYS_REGISTRY_PATH);
-    let old_registry = std::fs::read(&registry_path)
-        .with_context(|| format!("reading {}", registry_path.display()))?;
+    let mut snapshot_targets = vec![project_root.join(TOYS_REGISTRY_PATH)];
+    if entry.tier == ToyTier::Preview2 {
+        snapshot_targets.push(preview2_local_deps_dir(project_root, &entry));
+        snapshot_targets.push(preview2_legacy_flat_path(project_root, &entry));
+    } else {
+        snapshot_targets.push(local_wit_path(project_root, &entry));
+    }
     let raw_dir = wasi_p2_raw_dir(project_root, &entry);
     let had_raw_dir = raw_dir.exists();
-    let raw_snapshot = if entry.tier == ToyTier::Preview2 {
-        Some(create_snapshot(
-            project_root,
-            std::slice::from_ref(&raw_dir),
-        )?)
-    } else {
-        None
-    };
+    if entry.tier == ToyTier::Preview2 {
+        snapshot_targets.push(raw_dir.clone());
+    }
+    let snapshot = create_snapshot(project_root, &snapshot_targets)?;
 
     let changed = pull_entry(project_root, client, &entry)?;
     if !changed {
-        if let Some(snapshot) = &raw_snapshot {
-            cleanup_snapshot(snapshot);
-        }
+        cleanup_snapshot(&snapshot);
         println!(
             "unchanged {:<22} hash matches pinned {}",
             entry.id, entry.version
@@ -321,25 +320,23 @@ where
 
     match run_check(project_root) {
         Ok(()) => {
-            if let Some(snapshot) = &raw_snapshot {
-                cleanup_snapshot(snapshot);
-            }
+            cleanup_snapshot(&snapshot);
+            let location = if entry.tier == ToyTier::Preview2 {
+                preview2_local_deps_dir(project_root, &entry)
+                    .display()
+                    .to_string()
+            } else {
+                local_wit_path(project_root, &entry).display().to_string()
+            };
             println!(
                 "pulled {:<22} updated {} and registry hash",
-                entry.id,
-                local_path.display()
+                entry.id, location
             );
             Ok(())
         }
         Err(error) => {
-            std::fs::write(&local_path, &old_local)
-                .with_context(|| format!("restoring {}", local_path.display()))?;
-            std::fs::write(&registry_path, &old_registry)
-                .with_context(|| format!("restoring {}", registry_path.display()))?;
-            if let Some(snapshot) = &raw_snapshot {
-                restore_snapshot(project_root, snapshot)?;
-                cleanup_snapshot(snapshot);
-            }
+            restore_snapshot(project_root, &snapshot)?;
+            cleanup_snapshot(&snapshot);
             if entry.tier == ToyTier::Preview2 && !had_raw_dir && raw_dir.exists() {
                 let _ = std::fs::remove_dir_all(&raw_dir);
             }
@@ -383,7 +380,8 @@ where
 
     let mut snapshot_targets = vec![project_root.join(TOYS_REGISTRY_PATH)];
     for entry in &wasi_entries {
-        snapshot_targets.push(local_wit_path(project_root, entry));
+        snapshot_targets.push(preview2_local_deps_dir(project_root, entry));
+        snapshot_targets.push(preview2_legacy_flat_path(project_root, entry));
     }
     let wasi_p2_root = project_root.join(TOYS_WASI_P2_PATH);
     let had_wasi_p2_root = wasi_p2_root.exists();
@@ -567,6 +565,71 @@ pub fn local_wit_path(project_root: &Path, entry: &ToyEntry) -> PathBuf {
     project_root.join(base).join(&entry.file)
 }
 
+fn preview2_local_deps_dir(project_root: &Path, entry: &ToyEntry) -> PathBuf {
+    project_root.join(TOYS_DEPS_PATH).join(&entry.registry_key)
+}
+
+fn preview2_legacy_flat_path(project_root: &Path, entry: &ToyEntry) -> PathBuf {
+    project_root.join(TOYS_DEPS_PATH).join(&entry.file)
+}
+
+fn preview2_file_order(entry: &ToyEntry) -> Vec<String> {
+    if entry.upstream_files.is_empty() {
+        vec![entry.file.clone()]
+    } else {
+        entry.upstream_files.clone()
+    }
+}
+
+fn compose_local_preview2_wit(project_root: &Path, entry: &ToyEntry) -> Result<String> {
+    let deps_dir = preview2_local_deps_dir(project_root, entry);
+    if deps_dir.exists() {
+        let mut parts = Vec::new();
+        for file in preview2_file_order(entry) {
+            let path = deps_dir.join(&file);
+            let content = std::fs::read_to_string(&path)
+                .with_context(|| format!("reading {}", path.display()))?;
+            parts.push(content);
+        }
+        return compose_upstream_wit(&parts);
+    }
+
+    let legacy = preview2_legacy_flat_path(project_root, entry);
+    let content = std::fs::read_to_string(&legacy)
+        .with_context(|| format!("reading {}", legacy.display()))?;
+    compose_upstream_wit(&[content])
+}
+
+fn write_preview2_local_deps(
+    project_root: &Path,
+    entry: &ToyEntry,
+    files: &[UpstreamFile],
+) -> Result<()> {
+    let deps_dir = preview2_local_deps_dir(project_root, entry);
+    if deps_dir.exists() {
+        std::fs::remove_dir_all(&deps_dir)
+            .with_context(|| format!("clearing {}", deps_dir.display()))?;
+    }
+    std::fs::create_dir_all(&deps_dir)
+        .with_context(|| format!("creating {}", deps_dir.display()))?;
+
+    for file in files {
+        let target = deps_dir.join(&file.relative_path);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating {}", parent.display()))?;
+        }
+        std::fs::write(&target, file.content.as_bytes())
+            .with_context(|| format!("writing {}", target.display()))?;
+    }
+
+    let legacy = preview2_legacy_flat_path(project_root, entry);
+    if legacy.exists() {
+        let _ = std::fs::remove_file(&legacy);
+    }
+    Ok(())
+}
+
 fn wasi_p2_raw_dir(project_root: &Path, entry: &ToyEntry) -> PathBuf {
     project_root
         .join(TOYS_WASI_P2_PATH)
@@ -592,6 +655,7 @@ fn pull_entry_without_compile(
     let upstream_files = fetch_upstream_pinned(client, entry)?;
     if entry.tier == ToyTier::Preview2 {
         write_wasi_p2_raw_files(project_root, entry, &upstream_files)?;
+        write_preview2_local_deps(project_root, entry, &upstream_files)?;
     }
     let composed_inputs: Vec<String> = upstream_files
         .iter()
@@ -608,9 +672,11 @@ fn pull_entry_without_compile(
         return Ok(false);
     }
 
-    let local_path = local_wit_path(project_root, entry);
-    std::fs::write(&local_path, composed.as_bytes())
-        .with_context(|| format!("writing {}", local_path.display()))?;
+    if entry.tier == ToyTier::Patina {
+        let local_path = local_wit_path(project_root, entry);
+        std::fs::write(&local_path, composed.as_bytes())
+            .with_context(|| format!("writing {}", local_path.display()))?;
+    }
     update_registry_hash(project_root, entry, &composed_hash)?;
     Ok(true)
 }

@@ -7,16 +7,8 @@ making claims about how something was designed.
 
 ### Active
 - [child-construction-canon](feat/child-construction-canon/SPEC.md) — registry of reusable children, composition model, SDK extraction (ccc1-ccc2 checked, ccc3-ccc7 pending)
-- [mother-startup-observability](fix/mother-startup-observability/SPEC.md) — improve Mother startup diagnostics and error reporting
-
-### Complete (pending archive)
-- [sdk-upstream-toy-sync](fix/sdk-upstream-toy-sync/SPEC.md) — pull upstream WASI WIT files with release-based pin model (10/10)
-- [sdk-wasi-trait-alignment](fix/sdk-wasi-trait-alignment/SPEC.md) — align all toy traits to WASI shape (13/13)
-- [ducklake-retirement](refactor/ducklake-retirement/SPEC.md) — DuckLake runtime coupling removed (7/7)
-- [sdk-mother-child-retirement](refactor/sdk-mother-child-retirement/SPEC.md) — removed legacy MotherChild API
 
 ### Draft
-- [mother-duckdb-ducklake-federation](feat/mother-duckdb-ducklake-federation/SPEC.md) — Mother DuckDB + DuckLake federation substrate (9 criteria, unblocked)
 - [persona-lake-mvp1](feat/persona-lake-mvp1/SPEC.md) — persona-scoped knowledge lake (blocked by mother-duckdb-ducklake-federation)
 - [multiproject-belief-share](feat/multiproject-belief-share/SPEC.md) — child-construction-canon MVP 2 (blocked by mother-duckdb-ducklake-federation)
 - [e2ee-multimother-chat](feat/e2ee-multimother-chat/SPEC.md) — child-construction-canon MVP 3
@@ -24,12 +16,14 @@ making claims about how something was designed.
 - [belief-system-hardening](feat/belief-system-hardening/SPEC.md) — staleness, verification, health scoring
 - [cloudflare-worker-child](feat/cloudflare-worker-child/SPEC.md) — Patina child as Cloudflare Worker
 - [patina-durable-backup](feat/patina-durable-backup/SPEC.md) — durable backup system
+- [wit-deps-wasi-alignment](fix/wit-deps-wasi-alignment/SPEC.md) — replace flattened WASI P2 deps with upstream multi-file packages (io done, http/clocks/filesystem pending)
 - [engine-consolidate](refactor/engine-consolidate/SPEC.md) — merge PipelineEngine + KnowledgeChildEngine
 - [interface-redesign](refactor/interface-redesign/SPEC.md) — Mother-managed interface registry, ephemeral projection, skill system (16 criteria)
 - [duckdb-durable-execution](explore/duckdb-durable-execution/SPEC.md) — DuckDB + Mother for Absurd-style durable execution (explore)
 - [mother-child-artifact-registry](explore/mother-child-artifact-registry/SPEC.md) — Mother-managed child artifact distribution (explore)
 - [mother-password-unlock](explore/mother-password-unlock/SPEC.md) — password-based vault unlock (explore)
 - [monty-patina-sandbox-alignment](explore/monty-patina-sandbox-alignment/SPEC.md) — monty/patina goal alignment (explore)
+- [child-component-composition](explore/child-component-composition/SPEC.md) — compose children via typed WIT + wasm-tools compose (explore)
 - [spec-manager-wasm-child](explore/spec-manager-wasm-child/SPEC.md) — convert spec-manager to WASM child (explore, deferred)
 
 ### Abandoned
@@ -43,6 +37,13 @@ making claims about how something was designed.
 Read any archived spec: `git show spec/<name>:layer/surface/build/<type>/<name>/SPEC.md`
 
 ### Recently Archived
+- `spec/mother-startup-observability` — Mother startup diagnostics, per-child load telemetry, failure surface (6/6)
+- `spec/ducklake-retirement` — DuckLake runtime coupling removed (7/7)
+- `spec/sdk-upstream-toy-sync` — pull upstream WASI WIT files with release-based pin model (10/10)
+- `spec/sdk-wasi-trait-alignment` — align all toy traits to WASI shape (13/13)
+- `spec/sdk-mother-child-retirement` — removed legacy MotherChild API (4/4)
+- `spec/mother-duckdb-ducklake-federation` — Mother DuckDB + DuckLake federation substrate (11 criteria)
+- `spec/mother-pando-bindings-runtime` — two-phase startup, MotherRuntime trait, lifecycle, manifest integrity (7/7)
 - `spec/pando-platform` — composed children as user-facing products, pando.toml, Mother registry, slate pando (Phase A complete)
 - `spec/duckdb-version-pin` — aligned DuckDB prebuilt (v1.5.1) and Rust crate (1.10501.0). See Cargo.toml for version encoding notes.
 - `spec/spec-archive-db-path` — fix mutation commands reading stale DB instead of frontmatter

@@ -3,7 +3,7 @@ name = "patina-sdk"
 version = "0.21.0"
 edition = "2021"
 license = "MIT"
-description = "SDK for building Patina WASM children (knowledge-child first)"
+description = "SDK for building Patina WASM children"
 repository = "https://github.com/NicabarNimble/patina"
 keywords = ["patina", "wasm", "child", "component-model"]
 categories = ["development-tools", "wasm"]
@@ -20,8 +20,6 @@ child = [
     "toy-log",
     "toy-state",
 ]
-# MIGRATION-SHIM: remove in v0.47.0
-knowledge-child = ["child"]
 toy-log = []
 toy-state = []
 toy-task = []

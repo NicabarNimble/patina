@@ -1,0 +1,7 @@
+package wasi:io@0.2.8;
+
+interface poll {
+    resource pollable {
+        ready: func() -> bool;
+    }
+}

@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use crate::{registry::ChildRegistry, Child, KnowledgeRuntimeStore};
+use crate::{registry::ChildRegistry, Child, MotherRuntimeStore};
 
 pub enum LoadedChild {
     Knowledge {
@@ -23,7 +23,7 @@ fn loaded_child_name(loaded: &LoadedChild) -> &str {
 
 pub fn register_loaded_child(
     registry: &ChildRegistry,
-    runtime: &KnowledgeRuntimeStore,
+    runtime: &MotherRuntimeStore,
     loaded: LoadedChild,
 ) -> Result<Option<String>> {
     match loaded {
@@ -49,7 +49,7 @@ pub fn register_loaded_child(
 pub fn load_children_from_dir<F>(
     children_dir: &Path,
     registry: &ChildRegistry,
-    runtime: &KnowledgeRuntimeStore,
+    runtime: &MotherRuntimeStore,
     mut loader: F,
 ) -> usize
 where

@@ -17,8 +17,6 @@ mod pipeline;
 mod tests;
 
 pub use child::ChildEngine;
-#[deprecated(since = "0.46.0", note = "use ChildEngine")]
-pub use child::ChildEngine as KnowledgeChildEngine;
 pub use child::FilesystemPreopen;
 pub use pipeline::PipelineEngine;
 
@@ -447,6 +445,9 @@ pub struct ChildManifest {
     pub belief_read: bool,
     pub belief_write_actions: Vec<String>,
     pub toys: crate::mother::GrantedToys,
+    /// Inside toy shapes this child accepts from composition.
+    /// Declared in [needs.inside].accepts. Empty for handle-based children.
+    pub inside_accepts: Vec<String>,
 }
 
 // =========================================================================
@@ -569,6 +570,18 @@ impl ChildManifest {
         let needs_connections = needs_table
             .and_then(|needs| needs.get("connections"))
             .and_then(|v| v.as_table());
+
+        let inside_accepts = needs_table
+            .and_then(|needs| needs.get("inside"))
+            .and_then(|v| v.as_table())
+            .and_then(|inside| inside.get("accepts"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(ToString::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
 
         // Parse capabilities
         let cap_table = table.get("capabilities").and_then(|v| v.as_table());
@@ -1048,6 +1061,7 @@ impl ChildManifest {
             belief_read,
             belief_write_actions,
             toys,
+            inside_accepts,
         })
     }
 

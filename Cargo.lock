@@ -1563,6 +1563,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 
 [[package]]
+name = "fixedbitset"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
+
+[[package]]
 name = "flatbuffers"
 version = "25.12.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3212,6 +3218,7 @@ dependencies = [
  "tracing-subscriber",
  "usearch",
  "uuid",
+ "wac-graph",
  "walkdir",
  "wasmtime",
  "wasmtime-wasi",
@@ -3235,21 +3242,16 @@ name = "patina-ai-child-content-extractor"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "patina-sdk",
- "serde",
- "serde_json",
  "sha2",
  "uuid",
+ "wit-bindgen 0.41.0",
 ]
 
 [[package]]
 name = "patina-ai-child-dedup-filter"
 version = "0.1.0"
 dependencies = [
- "chrono",
- "patina-sdk",
- "serde",
- "serde_json",
+ "wit-bindgen 0.41.0",
 ]
 
 [[package]]
@@ -3265,33 +3267,8 @@ name = "patina-ai-child-file-system-monitor"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "patina-sdk",
- "serde",
- "serde_json",
  "sha2",
-]
-
-[[package]]
-name = "patina-ai-child-folder-text-to-parquet"
-version = "0.1.0"
-dependencies = [
- "arrow-array 55.2.0",
- "arrow-schema 55.2.0",
- "chrono",
- "parquet",
- "patina-sdk",
- "serde",
- "serde_json",
- "sha2",
- "uuid",
-]
-
-[[package]]
-name = "patina-ai-child-lake-manager"
-version = "0.1.0"
-dependencies = [
- "patina-sdk",
- "serde_json",
+ "wit-bindgen 0.41.0",
 ]
 
 [[package]]
@@ -3299,9 +3276,7 @@ name = "patina-ai-child-lakehouse-catalog"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "patina-sdk",
- "serde",
- "serde_json",
+ "wit-bindgen 0.41.0",
 ]
 
 [[package]]
@@ -3312,18 +3287,14 @@ dependencies = [
  "arrow-schema 55.2.0",
  "chrono",
  "parquet",
- "patina-sdk",
- "serde",
- "serde_json",
+ "wit-bindgen 0.41.0",
 ]
 
 [[package]]
 name = "patina-ai-child-schema-enforcer"
 version = "0.1.0"
 dependencies = [
- "patina-sdk",
- "serde",
- "serde_json",
+ "wit-bindgen 0.41.0",
 ]
 
 [[package]]
@@ -3388,6 +3359,16 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
+
+[[package]]
+name = "petgraph"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4c5cc86750666a3ed20bdaf5ca2a0344f9c67674cae0515bec2da16fbaa47db"
+dependencies = [
+ "fixedbitset",
+ "indexmap",
+]
 
 [[package]]
 name = "pin-project"
@@ -5187,6 +5168,39 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
+name = "wac-graph"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c22d99cf996435bda507f323cca418cd513c3c604ca3157f5e4e79990b47378"
+dependencies = [
+ "anyhow",
+ "id-arena",
+ "indexmap",
+ "log",
+ "petgraph",
+ "semver",
+ "thiserror 1.0.69",
+ "wac-types",
+ "wasm-encoder 0.244.0",
+ "wasm-metadata 0.244.0",
+ "wasmparser 0.244.0",
+]
+
+[[package]]
+name = "wac-types"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c86d6f994ea751789cd416144648039ee9bdb385dffb6d890bd51a90e2f50778"
+dependencies = [
+ "anyhow",
+ "id-arena",
+ "indexmap",
+ "semver",
+ "wasm-encoder 0.244.0",
+ "wasmparser 0.244.0",
+]
+
+[[package]]
 name = "walkdir"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5344,7 +5358,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bb0e353e6a2fbdc176932bbaab493762eb1255a7900fe0fea1a2f96c296cc909"
 dependencies = [
  "anyhow",
+ "auditable-serde",
+ "flate2",
  "indexmap",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "spdx",
+ "url",
  "wasm-encoder 0.244.0",
  "wasmparser 0.244.0",
 ]
@@ -5384,6 +5405,7 @@ dependencies = [
  "hashbrown 0.15.5",
  "indexmap",
  "semver",
+ "serde",
 ]
 
 [[package]]

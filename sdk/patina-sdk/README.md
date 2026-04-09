@@ -2,21 +2,16 @@
 
 `patina-sdk` is the authoring surface for Patina WASM children.
 
-## SDK Tiers
+## SDK Crate
 
-- `patina-sdk-core`: child trait + core toys (`log`, `state`, substrate types)
-- `patina-sdk-data`: data toys (`lake`, `checkpoint`, `measure`, `github`)
-- `patina-sdk-agent`: agent/session toys (`query`, `emit`, `session`)
-- `patina-sdk`: umbrella crate that re-exports tier APIs
-
-Use the umbrella crate unless you are building advanced tooling around the tiers directly.
+`patina-sdk` is a single crate. Import it directly and enable toy features as needed.
 
 ## 5-Minute Onramp
 
 1. Generate a child from the template:
 
 ```sh
-cargo generate --path children/template
+cargo generate --path sdk/template
 ```
 
 2. Build the child (WASM):
@@ -45,7 +40,7 @@ Use this feature set for a minimal child:
 patina-sdk = { version = "0.21", features = ["child", "toy-log"] }
 ```
 
-Add toys incrementally (`toy-state`, `toy-checkpoint`, `toy-lake`, `toy-github`, `toy-session`, etc.)
+Add toys incrementally (`toy-state`, `toy-lake`, `toy-session`, `toy-git`, etc.)
 as your `child.toml` grants expand.
 
 ## World Features
@@ -54,10 +49,6 @@ Enable exactly one world feature per crate:
 
 - `child` (default path)
 - `pipeline` (experimental lane)
-- `task` (legacy compatibility scaffold)
-- `command` (legacy compatibility scaffold)
-
-M5 stabilization target in this repo is `child` plus tier crates.
 
 ## Stability Policy
 
@@ -65,20 +56,12 @@ M5 stabilization target in this repo is `child` plus tier crates.
 | --- | --- | --- |
 | `child` | stable | canonical child authoring surface |
 | `pipeline` | experimental | opt-in, no stability promises yet |
-| `task` | migration shim | compatibility-only, removal-gated |
-| `command` | migration shim | compatibility-only, removal-gated |
 
 ## Breaking Change (2026-03)
 
 - `mother-child` SDK feature is retired.
 - `MotherChild` trait and `register_mother_child!` are removed from `patina-sdk`.
-- Migrate child crates to `child` (preferred) or `task`/`command` where appropriate.
-
-Shim removal gates:
-
-1. SDK compatibility matrix compiles cleanly across supported lanes.
-2. Scaffold output parity remains green for child-first naming and manifests.
-3. Removal is spec-authorized with rollback-safe migration slices.
+- Migrate child crates to `child` (preferred) or `pipeline` where appropriate.
 
 ## Toy Definition
 
@@ -106,16 +89,9 @@ Canonical lock fields are tracked in `sdk-toybox-definition` design (`direction`
 
 Quick index by tier:
 
-- Core: `log`, `state`, `layer`, `layer-fs`, `git`, `peer`, `task`
-- Data: `lake`, `checkpoint`, `measure`, `github`, `connector`
-- Agent: `query`, `emit`, `session`, `events`, `ingress`, `http`, `belief`, `graph`
-- Boundary-deferred: `schema`
-- Support contract only: `types`
-
-Tier ownership note:
-
-- Canonical ownership sits in `patina-sdk-core` / `patina-sdk-data` / `patina-sdk-agent`.
-- `patina-sdk` may provide sdk-local wrapper toys for cross-tier ergonomics, but wrappers do not redefine toy authority boundaries.
+- Core: `log`, `state`, `git`, `peer`, `task`
+- Data: `lake`, `measure`, `connector`
+- Agent: `query`, `messaging`, `session`, `events`, `ingress`, `fetch`, `belief`, `graph`
 
 Treat this as finite platform surface. New toy proposals must pass the toy litmus test and spec-authorized migration policy.
 

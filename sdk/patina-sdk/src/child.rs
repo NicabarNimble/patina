@@ -1033,19 +1033,4 @@ macro_rules! register_child {
     };
 }
 
-#[macro_export]
-// MIGRATION-SHIM: remove in v0.47.0
-#[deprecated(since = "0.46.0", note = "use register_child!")]
-macro_rules! register_knowledge_child {
-    ($plugin_type:ty) => {
-        $crate::register_child!($plugin_type);
-    };
-}
-
 pub use Child as ChildPlugin;
-// MIGRATION-SHIM: remove in v0.47.0
-#[deprecated(since = "0.46.0", note = "use Child")]
-pub use Child as KnowledgeChild;
-// MIGRATION-SHIM: remove in v0.47.0
-#[deprecated(since = "0.46.0", note = "use ChildPlugin")]
-pub use ChildPlugin as KnowledgeChildPlugin;

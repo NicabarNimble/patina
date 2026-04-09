@@ -58,6 +58,55 @@ child = "test"
 }
 
 #[test]
+fn manifest_parses_inside_toy_accepts() {
+    let f = write_temp_manifest(
+        r#"
+[child]
+name = "dedup-filter"
+kind = "knowledge-child"
+
+[needs]
+toys = ["logging", "keyvalue", "measure"]
+
+[needs.inside]
+accepts = ["patina:record/transform", "patina:record/extract"]
+
+[provides]
+child = "dedup-filter"
+"#,
+    );
+
+    let m = ChildManifest::from_path(f.path()).unwrap();
+    assert_eq!(
+        m.inside_accepts,
+        vec![
+            "patina:record/transform".to_string(),
+            "patina:record/extract".to_string()
+        ]
+    );
+}
+
+#[test]
+fn manifest_inside_toy_accepts_defaults_empty() {
+    let f = write_temp_manifest(
+        r#"
+[child]
+name = "schema-enforcer"
+kind = "knowledge-child"
+
+[needs]
+toys = ["logging", "measure"]
+
+[provides]
+child = "schema-enforcer"
+"#,
+    );
+
+    let m = ChildManifest::from_path(f.path()).unwrap();
+    assert!(m.inside_accepts.is_empty());
+}
+
+#[test]
 fn manifest_valid_full() {
     let f = write_temp_manifest(
         r#"
@@ -282,7 +331,7 @@ kind = "pipeline"
 }
 
 #[test]
-fn manifest_parses_knowledge_child_capabilities_and_toys() {
+fn manifest_parses_child_capabilities_and_toys() {
     let f = write_temp_manifest(
         r#"
 [child]
@@ -348,7 +397,7 @@ child = "source-router"
 }
 
 #[test]
-fn knowledge_child_rejects_unknown_event_stream() {
+fn child_rejects_unknown_event_stream() {
     let f = write_temp_manifest(
         r#"
 [child]
@@ -376,7 +425,7 @@ child = "bad-child"
 }
 
 #[test]
-fn knowledge_child_example_manifests_validate() {
+fn child_example_manifests_validate() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for path in [root.join("children/belief-verifier/child.toml")] {
         let manifest = ChildManifest::from_path(&path).unwrap();
@@ -390,7 +439,7 @@ fn knowledge_child_example_manifests_validate() {
 }
 
 #[test]
-fn knowledge_child_rejects_invalid_ingress_endpoint() {
+fn child_rejects_invalid_ingress_endpoint() {
     let f = write_temp_manifest(
         r#"
 [child]
@@ -454,6 +503,7 @@ fn capabilities_all_granted() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
+        inside_accepts: vec![],
     };
     assert!(check_capabilities(&m).is_ok());
 }
@@ -492,6 +542,7 @@ fn capabilities_empty() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
+        inside_accepts: vec![],
     };
     assert!(check_capabilities(&m).is_ok());
 }
@@ -530,6 +581,7 @@ fn capabilities_denied() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
+        inside_accepts: vec![],
     };
     let err = check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
@@ -643,6 +695,7 @@ fn check_capabilities_rejects_unknown_query_kinds() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
+        inside_accepts: vec![],
     };
     let err = check_capabilities(&m).unwrap_err();
     assert!(
@@ -686,6 +739,7 @@ fn check_capabilities_accepts_known_query_kinds() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
+        inside_accepts: vec![],
     };
     assert!(check_capabilities(&m).is_ok());
 }
@@ -828,6 +882,7 @@ fn check_capabilities_rejects_empty_http_domain() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
+        inside_accepts: vec![],
     };
     let err = check_capabilities(&m).unwrap_err();
     assert!(err.to_string().contains("empty"), "got: {}", err);
@@ -867,6 +922,7 @@ fn check_capabilities_rejects_http_domain_with_path() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
+        inside_accepts: vec![],
     };
     let err = check_capabilities(&m).unwrap_err();
     assert!(err.to_string().contains("path"), "got: {}", err);
@@ -906,6 +962,7 @@ fn check_capabilities_accepts_valid_http_domains() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
+        inside_accepts: vec![],
     };
     assert!(check_capabilities(&m).is_ok());
 }
@@ -948,6 +1005,7 @@ fn granted_capabilities_includes_http_domains() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
+        inside_accepts: vec![],
     };
     let grants = m.granted_capabilities();
     assert!(grants.http_domains.contains("api.github.com"));
@@ -1112,6 +1170,7 @@ fn check_capabilities_rejects_pipeline_with_query() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
+        inside_accepts: vec![],
     };
     let err = check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
@@ -1156,6 +1215,7 @@ fn check_capabilities_rejects_pipeline_with_http() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
+        inside_accepts: vec![],
     };
     let err = check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
@@ -1400,6 +1460,7 @@ fn check_capabilities_rejects_host_secrets_domain_not_in_host_http() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
+        inside_accepts: vec![],
     };
     let err = check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
@@ -1452,6 +1513,7 @@ fn check_capabilities_accepts_host_secrets_with_matching_host_http() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
+        inside_accepts: vec![],
     };
     assert!(check_capabilities(&m).is_ok());
 }
@@ -1502,6 +1564,7 @@ fn granted_capabilities_includes_credential_mappings() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
+        inside_accepts: vec![],
     };
     let grants = m.granted_capabilities();
     assert!(grants.credential_mappings.contains_key("api.github.com"));
@@ -2309,6 +2372,7 @@ fn role_world_valid_combo_passes() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
+        inside_accepts: vec![],
     };
     // connector + mother-child is valid — check_capabilities should pass
     assert!(check_capabilities(&m).is_ok());
@@ -2349,6 +2413,7 @@ fn role_world_unusual_combo_still_passes() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
+        inside_accepts: vec![],
     };
     // Unusual combo warns but does NOT bail
     assert!(check_capabilities(&m).is_ok());
@@ -2389,6 +2454,7 @@ fn role_none_skips_validation() {
         belief_read: false,
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
+        inside_accepts: vec![],
     };
     assert!(check_capabilities(&m).is_ok());
 }
@@ -2411,7 +2477,7 @@ child = "test"
     let m = ChildManifest::from_path(f.path()).unwrap();
 
     let top_level = check_capabilities(&m).is_ok();
-    let engine_level = KnowledgeChildEngine::check_capabilities(&m).is_ok();
+    let engine_level = ChildEngine::check_capabilities(&m).is_ok();
 
     assert_eq!(top_level, engine_level);
 }
@@ -2435,7 +2501,7 @@ child = "test"
     let m = ChildManifest::from_path(f.path()).unwrap();
 
     let top_level = check_capabilities(&m).is_ok();
-    let engine_level = KnowledgeChildEngine::check_capabilities(&m).is_ok();
+    let engine_level = ChildEngine::check_capabilities(&m).is_ok();
 
     assert_eq!(top_level, engine_level);
 }
@@ -2458,20 +2524,7 @@ child = "test"
     let m = ChildManifest::from_path(f.path()).unwrap();
 
     let top_level = check_capabilities(&m).is_ok();
-    let engine_level = KnowledgeChildEngine::check_capabilities(&m).is_ok();
+    let engine_level = ChildEngine::check_capabilities(&m).is_ok();
 
     assert_eq!(top_level, engine_level);
-}
-
-#[cfg(all(test, patina_compat_proof))]
-#[allow(deprecated)]
-#[test]
-fn compat_proof_deprecated_knowledge_child_aliases_compile() {
-    use crate::child::engine::KnowledgeChildEngine;
-    use crate::mother::KnowledgeChild;
-
-    fn accepts_legacy_trait(_child: &dyn KnowledgeChild) {}
-
-    let _ = std::any::TypeId::of::<KnowledgeChildEngine>();
-    let _ = accepts_legacy_trait as fn(&dyn KnowledgeChild);
 }

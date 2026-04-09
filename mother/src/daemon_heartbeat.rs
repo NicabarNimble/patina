@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::{registry::ChildRegistry, KnowledgeRuntimeStore};
+use crate::{registry::ChildRegistry, MotherRuntimeStore};
 
 pub struct HeartbeatHandle {
     stop_requested: Arc<AtomicBool>,
@@ -36,7 +36,7 @@ fn run_passive_checkpoint(db_path: &std::path::Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn checkpoint_project_databases(runtime: &KnowledgeRuntimeStore) -> anyhow::Result<usize> {
+fn checkpoint_project_databases(runtime: &MotherRuntimeStore) -> anyhow::Result<usize> {
     let state_parent = runtime
         .path()
         .parent()
@@ -81,7 +81,7 @@ pub fn spawn_heartbeat(
     registry: Arc<ChildRegistry>,
     wal_checkpoint_interval_secs: u64,
 ) -> HeartbeatHandle {
-    let runtime = KnowledgeRuntimeStore::default();
+    let runtime = MotherRuntimeStore::default();
     let stop_requested = Arc::new(AtomicBool::new(false));
     let stop_flag = Arc::clone(&stop_requested);
     let checkpoint_interval_secs = if wal_checkpoint_interval_secs == 0 {
@@ -144,7 +144,7 @@ mod tests {
     #[test]
     fn checkpoint_cycle_scans_registered_project_databases() {
         let root = tempfile::tempdir().unwrap();
-        let runtime = KnowledgeRuntimeStore::new(root.path().join("mother/state.db"));
+        let runtime = MotherRuntimeStore::new(root.path().join("mother/state.db"));
         let uid = ProjectUid::new("2bdc808e").unwrap();
         runtime.register_project(&uid, root.path()).unwrap();
 

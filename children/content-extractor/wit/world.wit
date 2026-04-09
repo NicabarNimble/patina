@@ -1,0 +1,6 @@
+package patina:content-extractor@0.1.0;
+
+world content-extractor {
+    import wasi:logging/logging@0.1.0;
+    export patina:records/extract@0.1.0;
+}

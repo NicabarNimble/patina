@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 
 use crate::{
-    Child, ChildHealth, ChildRequest, ChildResponse, KnowledgeRuntimeStore, MotherHost, RunStatus,
+    Child, ChildHealth, ChildRequest, ChildResponse, MotherHost, MotherRuntimeStore, RunStatus,
 };
 
 /// Registry of Mother's children.
@@ -342,7 +342,7 @@ impl ChildRegistry {
 
     pub fn run_knowledge_cycles(
         &self,
-        runtime: &KnowledgeRuntimeStore,
+        runtime: &MotherRuntimeStore,
         lease_owner: &str,
     ) -> Result<()> {
         for entry in self.children_snapshot() {

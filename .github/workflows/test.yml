@@ -160,7 +160,6 @@ jobs:
       if: steps.changes.outputs.wasm == 'true' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
       run: |
         cargo build -p patina-ai-child-file-system-monitor --target wasm32-wasip2
-        cargo build -p patina-ai-child-folder-text-to-parquet --target wasm32-wasip2
         cargo build -p patina-ai-child-content-extractor --target wasm32-wasip2
         cargo build -p patina-ai-child-schema-enforcer --target wasm32-wasip2
         cargo build -p patina-ai-child-dedup-filter --target wasm32-wasip2
@@ -170,6 +169,10 @@ jobs:
     - name: Run WASM integration tests
       if: steps.changes.outputs.wasm == 'true' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
       run: cargo nextest run --test wasm_integration --profile ci
+
+    - name: Run typed composition seam locks
+      if: steps.changes.outputs.wasm == 'true' || github.event_name == 'workflow_dispatch'
+      run: cargo nextest run --test composition_spike --test interface_lock --profile ci
 
   # ==================================================================
   # Release — build + schema + install (PR/dispatch only, ~20 min cold)

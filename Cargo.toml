@@ -1,6 +1,6 @@
 [workspace]
-members = [".", "mother", "sdk/patina-sdk", "children/belief-verifier", "children/session-writer", "children/spec-manager", "children/doctor", "children/lake-manager", "children/folder-text-to-parquet", "children/file-system-monitor", "children/content-extractor", "children/schema-enforcer", "children/dedup-filter", "children/record-writer", "children/lakehouse-catalog", "crates/patina-core", "crates/patina-protocol"]
-exclude = ["layer/dust"]
+members = [".", "mother", "sdk/patina-sdk", "children/belief-verifier", "children/session-writer", "children/spec-manager", "children/doctor", "children/file-system-monitor", "children/content-extractor", "children/schema-enforcer", "children/dedup-filter", "children/record-writer", "children/lakehouse-catalog", "crates/patina-core", "crates/patina-protocol"]
+exclude = ["layer/dust", "sdk/template"]
 resolver = "2"
 
 [package]
@@ -110,6 +110,7 @@ wasmtime = { version = "=41", default-features = false, features = [
 # even for pure-computation code. p2 feature = WASIp2 component model.
 wasmtime-wasi = { version = "=41", default-features = false, features = ["p2"] }
 wasmtime-wasi-http = { version = "=41", default-features = false, features = ["default-send-request"] }
+wac-graph = "0.9.0"
 
 mother-crate = { package = "mother", path = "mother" }
 patina-core = { path = "crates/patina-core" }

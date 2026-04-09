@@ -8,4 +8,4 @@ This directory holds first-party Patina child components.
 
 Current first-party children include runtime services like `ducklake`, `session-writer`, `spec-manager`, and support components like `doctor` and `belief-verifier`.
 
-Use the project template in `children/template/` when scaffolding new child crates.
+Use the project template in `sdk/template/` when scaffolding new child crates.

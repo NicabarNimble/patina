@@ -1,0 +1,6 @@
+package demo:probe@0.1.0;
+
+world probe {
+    import wasi:io/streams@0.2.8;
+    export ping: func();
+}

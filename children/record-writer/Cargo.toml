@@ -8,10 +8,8 @@ description = "Write ready records to parquet batches"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-patina-sdk = { path = "../../sdk/patina-sdk", features = ["child", "toy-log", "toy-state", "toy-measure", "toy-messaging"] }
+wit-bindgen = "0.41.0"
 chrono = "0.4"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 arrow-array = "55"
 arrow-schema = "55"
 parquet = { version = "55", default-features = false, features = ["arrow"] }
@@ -20,5 +18,5 @@ parquet = { version = "55", default-features = false, features = ["arrow"] }
 package = "patina:record-writer"
 
 [package.metadata.component.target]
-path = "../../wit/child"
-world = "child"
+path = "wit"
+world = "record-writer"

@@ -1,0 +1,7 @@
+package patina:schema-enforcer@0.1.0;
+
+world schema-enforcer {
+    import wasi:logging/logging@0.1.0;
+    import patina:measure/measure@0.1.0;
+    export patina:records/transform@0.1.0;
+}

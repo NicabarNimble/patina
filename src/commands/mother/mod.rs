@@ -225,6 +225,12 @@ pub enum LifecycleCommands {
         /// Child name
         name: String,
     },
+    /// Write/refresh SHA-256 sidecars for strict integrity mode
+    SyncHashes {
+        /// Optional pando name (defaults to all installed pandos)
+        #[arg(long)]
+        pando: Option<String>,
+    },
 }
 
 /// Graph subcommands (nested under `patina mother graph`)
@@ -477,6 +483,25 @@ fn execute_lifecycle(command: LifecycleCommands) -> Result<()> {
             let payload = client
                 .lifecycle_reload_child(mother_crate::protocol::LifecycleNamePayload { name })?;
             println!("{}", serde_json::to_string_pretty(&payload)?);
+            Ok(())
+        }
+        LifecycleCommands::SyncHashes { pando } => {
+            let root = patina::paths::pando::pandos_dir();
+            if let Some(name) = pando {
+                let pando_dir = root.join(&name);
+                let written = integrity::write_pando_hashes(&pando_dir)?;
+                println!(
+                    "Refreshed {} SHA-256 sidecars for pando '{}'.",
+                    written, name
+                );
+                return Ok(());
+            }
+
+            let (pandos, files) = integrity::write_all_pando_hashes(&root)?;
+            println!(
+                "Refreshed {} SHA-256 sidecars across {} pando(s).",
+                files, pandos
+            );
             Ok(())
         }
     }

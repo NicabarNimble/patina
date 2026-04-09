@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::beliefs::Graph;
-use crate::mother::KnowledgeRuntimeStore;
+use crate::mother::MotherRuntimeStore;
 
 fn graph_conn() -> Result<Connection> {
     Ok(Connection::open(crate::paths::mother::graph_db())?)
@@ -101,7 +101,7 @@ pub fn query(kind: &str, params_json: &str) -> Result<String> {
 }
 
 pub fn mutate(
-    store: &KnowledgeRuntimeStore,
+    store: &MotherRuntimeStore,
     plugin_name: &str,
     action: &str,
     payload_json: &str,

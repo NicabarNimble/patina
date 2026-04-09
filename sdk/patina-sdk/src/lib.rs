@@ -47,18 +47,6 @@ pub mod helpers;
 #[cfg(feature = "child")]
 pub mod toys;
 #[cfg(feature = "child")]
-// MIGRATION-SHIM: remove in v0.47.0
-#[deprecated(since = "0.46.0", note = "use child")]
-pub use child as knowledge_child;
-#[cfg(feature = "child")]
-// MIGRATION-SHIM: remove in v0.47.0
-#[deprecated(since = "0.46.0", note = "use Child")]
-pub use child::Child as KnowledgeChild;
-#[cfg(feature = "child")]
-// MIGRATION-SHIM: remove in v0.47.0
-#[deprecated(since = "0.46.0", note = "use ChildPlugin")]
-pub use child::ChildPlugin as KnowledgeChildPlugin;
-#[cfg(feature = "child")]
 pub use child::{granted, substrate, Child, ChildPlugin};
 
 #[cfg(feature = "pipeline")]

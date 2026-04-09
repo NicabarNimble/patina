@@ -141,7 +141,7 @@ pub fn session_writer_action(
         payload,
     })?;
 
-    let runtime = crate::mother::KnowledgeRuntimeStore::default();
+    let runtime = crate::mother::MotherRuntimeStore::default();
     let key = format!("session:{}:child", handle.runtime_id);
     runtime.put_state(
         "session-writer",
@@ -299,7 +299,7 @@ fn select_reusable_session(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mother::{KnowledgeRuntimeStore, MotherSessionRecord, MotherSessionStatus};
+    use crate::mother::{MotherRuntimeStore, MotherSessionRecord, MotherSessionStatus};
     use std::fs;
     use std::path::PathBuf;
 
@@ -364,7 +364,7 @@ mod tests {
         let temp = tempfile::TempDir::new().unwrap();
         crate::test_support::with_temp_patina_home(|_| {
             let project_uid = project::create_uid_if_missing(temp.path()).unwrap();
-            let store = KnowledgeRuntimeStore::default();
+            let store = MotherRuntimeStore::default();
 
             let first = MotherSessionRecord {
                 runtime_id: "runtime-first".to_string(),
@@ -444,7 +444,7 @@ mod tests {
         let temp = tempfile::TempDir::new().unwrap();
         crate::test_support::with_temp_patina_home(|_| {
             let project_uid = project::create_uid_if_missing(temp.path()).unwrap();
-            let store = KnowledgeRuntimeStore::default();
+            let store = MotherRuntimeStore::default();
 
             let none_persona = MotherSessionRecord {
                 runtime_id: "runtime-none-persona".to_string(),
@@ -524,7 +524,7 @@ mod tests {
         let temp = tempfile::TempDir::new().unwrap();
         crate::test_support::with_temp_patina_home(|_| {
             let project_uid = project::create_uid_if_missing(temp.path()).unwrap();
-            let store = KnowledgeRuntimeStore::default();
+            let store = MotherRuntimeStore::default();
 
             let record = MotherSessionRecord {
                 runtime_id: "runtime-none-persona".to_string(),

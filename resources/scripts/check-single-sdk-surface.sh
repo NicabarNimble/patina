@@ -98,22 +98,24 @@ if [[ -z "$child_toml_refs" ]]; then
     exit 1
 fi
 
-# Check children/ and sdk/ for native Child trait impls that bypass the SDK.
-# src/ is excluded — host-side code (WASM runtime, test stubs) legitimately
-# implements Child to present WASM children to the host.
+# Check children/ and sdk/ for native host-side Child trait impls that bypass
+# the SDK. Children correctly use patina_sdk::child::Child via register_child!
+# macro — that's the SDK world, not the host trait. The old check triggered on
+# `impl KnowledgeChild for` which was unambiguous. Now that the trait is named
+# `Child` everywhere, we check for host-crate imports instead.
 if $has_rg; then
-    native_child_refs=$(rg -n "impl Child for" \
+    native_child_refs=$(rg -n "crate::child::runtime::Child|use crate::mother::Child" \
         --glob '!resources/scripts/check-single-sdk-surface.sh' \
         children sdk 2>/dev/null || true)
 else
-    native_child_refs=$(grep -RInE "impl Child for" \
+    native_child_refs=$(grep -RInE "crate::child::runtime::Child|use crate::mother::Child" \
         --exclude-dir=.git --exclude-dir=target \
         children sdk 2>/dev/null \
         | grep -v "resources/scripts/check-single-sdk-surface.sh" || true)
 fi
 if [[ -n "$native_child_refs" ]]; then
     echo "$native_child_refs"
-    echo "error: native Child trait usage found in children/sdk — use patina-sdk worlds"
+    echo "error: native host Child trait usage found in children/sdk — use patina-sdk worlds"
     exit 1
 fi
 

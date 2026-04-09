@@ -4,15 +4,15 @@ use crate::state::{
     InterfaceKindId, MotherSessionParticipant, MotherSessionRecord, MotherSessionStatus,
     PersonaUid, ProjectUid,
 };
-use crate::KnowledgeRuntimeStore;
+use crate::MotherRuntimeStore;
 
 #[derive(Clone)]
 pub struct SessionStateService {
-    store: KnowledgeRuntimeStore,
+    store: MotherRuntimeStore,
 }
 
 impl SessionStateService {
-    pub fn new(store: KnowledgeRuntimeStore) -> Self {
+    pub fn new(store: MotherRuntimeStore) -> Self {
         Self { store }
     }
 

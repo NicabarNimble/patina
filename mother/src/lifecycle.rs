@@ -76,7 +76,7 @@ pub fn probe_status(pid_path: &Path, socket_path: &Path) -> Result<StatusReport>
         .map(|p| unsafe { libc::kill(p, 0) == 0 })
         .unwrap_or(false);
     if !running {
-        let startup_failure = crate::KnowledgeRuntimeStore::default()
+        let startup_failure = crate::MotherRuntimeStore::default()
             .last_startup_failure()
             .ok()
             .flatten();

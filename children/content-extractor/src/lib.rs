@@ -1,44 +1,15 @@
+wit_bindgen::generate!({
+    path: "wit",
+    world: "content-extractor",
+    generate_all,
+});
+
 use chrono::{DateTime, Utc};
-use patina_sdk::granted;
-use patina_sdk::knowledge_child::{ChildHealth, HealthStatus, KnowledgeChild};
-use patina_sdk::register_child;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use uuid::Uuid;
 
-#[derive(Default)]
-struct ContentExtractorChild;
-
-#[derive(Debug, Clone, Deserialize)]
-struct FileFoundPayload {
-    source_path: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Record {
-    record_id: String,
-    source_path: String,
-    source_hash: String,
-    source_modified_at: String,
-    source_size_bytes: u64,
-    content: String,
-    content_hash: String,
-    content_type: String,
-    encoding: String,
-    line_count: u64,
-    ingested_at: String,
-    batch_id: String,
-    schema_version: u32,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct SkippedFile {
-    path: String,
-    reason: String,
-}
+struct ContentExtractor;
 
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
@@ -46,11 +17,11 @@ fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-fn content_type_for_extension(ext: &str) -> Option<&'static str> {
+fn content_type_for_extension(ext: &str) -> &'static str {
     match ext {
-        "txt" => Some("text/plain"),
-        "md" => Some("text/markdown"),
-        _ => None,
+        "txt" => "text/plain",
+        "md" => "text/markdown",
+        _ => "text/plain",
     }
 }
 
@@ -58,154 +29,73 @@ fn rfc3339_from_system_time(value: std::time::SystemTime) -> String {
     DateTime::<Utc>::from(value).to_rfc3339()
 }
 
-fn parse_payload(payload: &str) -> Result<Value, String> {
-    if payload.trim().is_empty() {
-        Ok(serde_json::json!({}))
-    } else {
-        serde_json::from_str(payload).map_err(|e| format!("invalid payload json: {}", e))
-    }
-}
-
-fn emit_record_extracted(record: &Record) -> Result<u64, String> {
-    let payload = serde_json::to_string(record).map_err(|e| e.to_string())?;
-    let messaging = granted::messaging();
-    let client = messaging.connect("record.extracted")?;
-    let message = patina_sdk::toys::MessagingMessage {
-        topic: "record.extracted".to_string(),
-        content_type: Some("application/json".to_string()),
-        data: payload.into_bytes(),
-        metadata: vec![],
-    };
-    messaging.send(&client, &message)
-}
-
-fn build_record_from_path(path: &Path, batch_id: &str) -> Result<Record, String> {
-    let bytes =
-        fs::read(path).map_err(|e| format!("failed to read file '{}': {}", path.display(), e))?;
+fn build_record(
+    file: patina::records::types::FileFound,
+) -> Result<patina::records::types::RecordEnvelope, String> {
+    let source_path = file.source_path;
+    let path = Path::new(&source_path);
+    let bytes = std::fs::read(path)
+        .map_err(|e| format!("failed to read file '{}': {}", path.display(), e))?;
     let content = String::from_utf8(bytes.clone())
         .map_err(|_| format!("file '{}' is not valid utf-8", path.display()))?;
-    let metadata = fs::metadata(path)
+    let metadata = std::fs::metadata(path)
         .map_err(|e| format!("failed to read metadata '{}': {}", path.display(), e))?;
-    let source_hash = sha256_hex(&bytes);
-    let content_hash = sha256_hex(content.as_bytes());
+    let extension = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
     let source_modified_at = metadata
         .modified()
         .map(rfc3339_from_system_time)
         .unwrap_or_else(|_| Utc::now().to_rfc3339());
 
-    Ok(Record {
+    Ok(patina::records::types::RecordEnvelope {
         record_id: Uuid::new_v4().to_string(),
-        source_path: path.to_string_lossy().to_string(),
-        source_hash,
+        source_path,
+        source_hash: if file.source_hash.is_empty() {
+            sha256_hex(&bytes)
+        } else {
+            file.source_hash
+        },
         source_modified_at,
-        source_size_bytes: bytes.len() as u64,
-        content_hash,
-        content_type: content_type_for_extension(
-            path.extension().and_then(|s| s.to_str()).unwrap_or(""),
-        )
-        .unwrap_or("text/plain")
-        .to_string(),
+        source_size_bytes: if file.source_size_bytes == 0 {
+            bytes.len() as u64
+        } else {
+            file.source_size_bytes
+        },
+        content: content.clone(),
+        content_hash: sha256_hex(content.as_bytes()),
+        content_type: content_type_for_extension(&extension).to_string(),
         encoding: "utf-8".to_string(),
         line_count: content.lines().count() as u64,
         ingested_at: Utc::now().to_rfc3339(),
-        batch_id: batch_id.to_string(),
+        batch_id: format!("scan-{}", Utc::now().format("%Y%m%d-%H%M%S")),
         schema_version: 1,
-        content,
     })
 }
 
-impl ContentExtractorChild {
-    fn extract_found(&mut self, payload: &str) -> Result<String, String> {
-        let payload_value = parse_payload(payload)?;
-        let limit = payload_value
-            .get("limit")
-            .and_then(|value| value.as_u64())
-            .unwrap_or(128)
-            .min(u32::MAX as u64) as u32;
-        let after_offset = payload_value
-            .get("after_offset")
-            .and_then(|value| value.as_u64());
-
-        let events = patina_sdk::knowledge_child::patina::events_stream::events_stream::subscribe(
-            "file.found",
-            after_offset,
-            limit,
-        )?;
-
-        let batch_id = format!("scan-{}", Utc::now().format("%Y%m%d-%H%M%S"));
+impl exports::patina::records::extract::Guest for ContentExtractor {
+    fn extract(
+        files: Vec<patina::records::types::FileFound>,
+    ) -> Result<Vec<patina::records::types::RecordEnvelope>, String> {
         let mut records = Vec::new();
-        let mut skipped = Vec::new();
-        let mut last_offset = None;
-        let log = granted::log();
 
-        for event in events {
-            last_offset = Some(event.offset);
-            let payload: FileFoundPayload = serde_json::from_str(&event.payload)
-                .map_err(|e| format!("invalid file.found payload: {}", e))?;
-            let path = PathBuf::from(&payload.source_path);
-
-            match build_record_from_path(&path, &batch_id) {
-                Ok(record) => {
-                    emit_record_extracted(&record)?;
-                    records.push(record);
-                }
+        for file in files {
+            match build_record(file) {
+                Ok(record) => records.push(record),
                 Err(error) => {
-                    skipped.push(SkippedFile {
-                        path: path.to_string_lossy().to_string(),
-                        reason: error,
-                    });
+                    wasi::logging::logging::log(
+                        wasi::logging::logging::Level::Warn,
+                        "content-extractor",
+                        &error,
+                    );
                 }
             }
         }
 
-        if let Some(offset) = last_offset {
-            patina_sdk::knowledge_child::patina::events_stream::events_stream::ack(
-                "file.found",
-                offset,
-            )?;
-        }
-
-        for skipped_file in &skipped {
-            log.info(&format!(
-                "content-extractor skipped {} ({})",
-                skipped_file.path, skipped_file.reason
-            ));
-        }
-
-        Ok(serde_json::json!({
-            "status": "ok",
-            "processed_records": records.len(),
-            "skipped_files": skipped,
-            "records": records,
-            "acked_through": last_offset,
-        })
-        .to_string())
+        Ok(records)
     }
 }
 
-impl KnowledgeChild for ContentExtractorChild {
-    fn name(&self) -> String {
-        "content-extractor".to_string()
-    }
-
-    fn on_load(&mut self) -> Result<(), String> {
-        granted::log().info("content-extractor loaded");
-        Ok(())
-    }
-
-    fn health(&self) -> ChildHealth {
-        ChildHealth {
-            status: HealthStatus::Healthy,
-            reason: None,
-        }
-    }
-
-    fn handle(&mut self, action: &str, payload: &str) -> Result<String, String> {
-        match action {
-            "extract-found" => self.extract_found(payload),
-            other => Err(format!("content-extractor: unknown action '{}'", other)),
-        }
-    }
-}
-
-register_child!(ContentExtractorChild);
+export!(ContentExtractor);

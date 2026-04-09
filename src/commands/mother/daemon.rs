@@ -25,6 +25,7 @@ use std::sync::Mutex;
 use std::sync::RwLock;
 use std::sync::TryLockError;
 use std::time::{Duration, Instant};
+use wac_graph::{types::Package, CompositionGraph, EncodeOptions};
 
 use patina::mother::ChildRequest;
 
@@ -43,7 +44,7 @@ pub struct ServerState {
     version: String,
     token: String,
     pub(super) registry: Arc<ChildRegistry>,
-    runtime_store: patina::mother::KnowledgeRuntimeStore,
+    runtime_store: patina::mother::MotherRuntimeStore,
     services: mother_crate::services::MotherServices,
     scry_backend: Arc<dyn ScryBackend>,
     federation_runtime: Mutex<FederationRuntime>,
@@ -59,7 +60,7 @@ impl ServerState {
     fn new(
         token: String,
         registry: ChildRegistry,
-        runtime_store: patina::mother::KnowledgeRuntimeStore,
+        runtime_store: patina::mother::MotherRuntimeStore,
         federation_runtime: FederationRuntime,
         readiness: Arc<RwLock<mother_crate::runtime::ReadinessState>>,
     ) -> Self {
@@ -161,6 +162,159 @@ impl ServerState {
                 })
                 .collect(),
         }
+    }
+
+    fn typed_interface_candidates(interface_name: &str) -> Vec<String> {
+        if interface_name.contains('@') {
+            vec![interface_name.to_string()]
+        } else {
+            vec![
+                interface_name.to_string(),
+                format!("{}@0.1.0", interface_name),
+            ]
+        }
+    }
+
+    fn resolve_child_instance<'a>(
+        manifest: &'a mother_crate::pando::PandoManifest,
+        instance: &str,
+    ) -> Option<&'a mother_crate::pando::PandoChild> {
+        manifest
+            .children
+            .iter()
+            .find(|child| child.id.as_deref().unwrap_or(&child.name) == instance)
+    }
+
+    fn validate_typed_composition(
+        &self,
+        manifest: &mother_crate::pando::PandoManifest,
+    ) -> Result<()> {
+        let Some(composition) = &manifest.composition else {
+            return Ok(());
+        };
+
+        let typed_rules = composition
+            .wiring
+            .iter()
+            .filter_map(|rule| match rule {
+                mother_crate::pando::PandoWiring::Typed(typed) => Some(typed),
+                mother_crate::pando::PandoWiring::Legacy(_) => None,
+            })
+            .collect::<Vec<_>>();
+        if typed_rules.is_empty() {
+            return Ok(());
+        }
+
+        let mut graph = CompositionGraph::new();
+        let mut instance_ids = HashMap::new();
+
+        for child in &manifest.children {
+            let instance_name = child.id.as_deref().unwrap_or(&child.name);
+            let (wasm_path, _) = self.registry.child_paths(&child.name).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "typed composition child '{}' is not installed/registered",
+                    child.name
+                )
+            })?;
+
+            let package_name = format!(
+                "patina:{}:{}",
+                manifest.pando.name,
+                child.id.as_deref().unwrap_or(&child.name)
+            );
+            let package = Package::from_file(&package_name, None, &wasm_path, graph.types_mut())
+                .map_err(|e| anyhow::anyhow!("loading typed child '{}': {}", child.name, e))?;
+            let package_id = graph
+                .register_package(package)
+                .map_err(|e| anyhow::anyhow!("registering typed child '{}': {}", child.name, e))?;
+            let instance_id = graph.instantiate(package_id);
+            instance_ids.insert(instance_name.to_string(), instance_id);
+        }
+
+        for rule in typed_rules {
+            let Some(from_id) = instance_ids.get(&rule.from) else {
+                anyhow::bail!(
+                    "typed composition wiring references unknown from instance '{}'",
+                    rule.from
+                );
+            };
+            let Some(to_id) = instance_ids.get(&rule.to) else {
+                anyhow::bail!(
+                    "typed composition wiring references unknown to instance '{}'",
+                    rule.to
+                );
+            };
+
+            let candidates = Self::typed_interface_candidates(&rule.toy);
+            let mut wired = false;
+            for candidate in &candidates {
+                let export_id = match graph.alias_instance_export(*from_id, candidate) {
+                    Ok(id) => id,
+                    Err(_) => continue,
+                };
+                if graph
+                    .set_instantiation_argument(*to_id, candidate, export_id)
+                    .is_ok()
+                {
+                    wired = true;
+                    break;
+                }
+            }
+            if !wired {
+                let from_child = Self::resolve_child_instance(manifest, &rule.from)
+                    .map(|child| child.name.clone())
+                    .unwrap_or_else(|| rule.from.clone());
+                let to_child = Self::resolve_child_instance(manifest, &rule.to)
+                    .map(|child| child.name.clone())
+                    .unwrap_or_else(|| rule.to.clone());
+                anyhow::bail!(
+                    "typed wiring failed for '{}' -> '{}' on '{}' (from child '{}', to child '{}')",
+                    rule.from,
+                    rule.to,
+                    rule.toy,
+                    from_child,
+                    to_child
+                );
+            }
+        }
+
+        if let Some(entry) = &composition.entry {
+            let Some(entry_id) = instance_ids.get(&entry.child) else {
+                anyhow::bail!(
+                    "typed composition entry references unknown child instance '{}'",
+                    entry.child
+                );
+            };
+            let candidates = Self::typed_interface_candidates(&entry.toy);
+            let mut exported = false;
+            for candidate in &candidates {
+                let export_id = match graph.alias_instance_export(*entry_id, candidate) {
+                    Ok(id) => id,
+                    Err(_) => continue,
+                };
+                if graph.export(export_id, candidate).is_ok() {
+                    exported = true;
+                    break;
+                }
+            }
+            if !exported {
+                anyhow::bail!(
+                    "typed composition entry export failed for instance '{}' toy '{}'",
+                    entry.child,
+                    entry.toy
+                );
+            }
+        }
+
+        graph.encode(EncodeOptions::default()).map_err(|e| {
+            anyhow::anyhow!(
+                "encoding typed composition '{}': {}",
+                manifest.pando.name,
+                e
+            )
+        })?;
+
+        Ok(())
     }
 }
 
@@ -486,6 +640,7 @@ impl MotherRuntime for ServerState {
             super::integrity::verify_pando_integrity(&self.pandos_root.join(name))?;
             let manifest = mother_crate::pando::parse_manifest_path(&manifest_path)
                 .map_err(|e| anyhow::anyhow!("invalid_request: {}", e))?;
+            self.validate_typed_composition(&manifest)?;
             let mut children_activated = 0usize;
             for child in manifest.children {
                 let reload = self.reload_child(&child.name)?;
@@ -562,6 +717,10 @@ impl MotherRuntime for ServerState {
                             continue;
                         }
                     };
+                    if self.validate_typed_composition(&manifest).is_err() {
+                        pandos_failed += 1;
+                        continue;
+                    }
                     pandos_loaded += 1;
                     for child in manifest.children {
                         match self.reload_child(&child.name) {
@@ -733,7 +892,7 @@ pub struct DaemonOptions {
 
 fn run_startup_stage<T, F>(
     stage: &'static str,
-    startup_store: &patina::mother::KnowledgeRuntimeStore,
+    startup_store: &patina::mother::MotherRuntimeStore,
     operation: F,
 ) -> Result<T>
 where
@@ -1010,8 +1169,8 @@ fn wait_for_health_200(probe: &WarmupProbe, timeout: Duration) -> bool {
 }
 
 fn spawn_child_warmup(
-    startup_store: patina::mother::KnowledgeRuntimeStore,
-    runtime: patina::mother::KnowledgeRuntimeStore,
+    startup_store: patina::mother::MotherRuntimeStore,
+    runtime: patina::mother::MotherRuntimeStore,
     registry: Arc<ChildRegistry>,
     readiness: Arc<RwLock<mother_crate::runtime::ReadinessState>>,
     probe: WarmupProbe,
@@ -1083,8 +1242,8 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
 
     // Build control-plane state first; child warmup runs in background.
     let registry = ChildRegistry::new();
-    let runtime = patina::mother::KnowledgeRuntimeStore::default();
-    let startup_store = patina::mother::KnowledgeRuntimeStore::default();
+    let runtime = patina::mother::MotherRuntimeStore::default();
+    let startup_store = patina::mother::MotherRuntimeStore::default();
     let readiness = Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default()));
     run_startup_stage("state_db_open", &startup_store, || {
         startup_store.list_registered_projects().map(|_| ())
@@ -1248,7 +1407,7 @@ mod tests {
     fn register_loaded_child_loads_knowledge_by_default() {
         let mut registry = ChildRegistry::new();
         let runtime_root = tempfile::tempdir().unwrap();
-        let runtime = patina::mother::KnowledgeRuntimeStore::new_with_project(
+        let runtime = patina::mother::MotherRuntimeStore::new_with_project(
             runtime_root.path().join("mother/state.db"),
             mother_crate::state::ProjectUid::new("2bdc808e").unwrap(),
         );
@@ -1273,8 +1432,7 @@ mod tests {
     #[test]
     fn startup_stage_failure_is_persisted_for_status_surface() {
         let temp = tempfile::tempdir().unwrap();
-        let startup_store =
-            patina::mother::KnowledgeRuntimeStore::new(temp.path().join("state.db"));
+        let startup_store = patina::mother::MotherRuntimeStore::new(temp.path().join("state.db"));
 
         let err = run_startup_stage::<(), _>("unit_test_stage", &startup_store, || {
             anyhow::bail!("intentional startup failure")
@@ -1296,8 +1454,7 @@ mod tests {
     #[test]
     fn successful_stage_does_not_create_failure_record() {
         let temp = tempfile::tempdir().unwrap();
-        let startup_store =
-            patina::mother::KnowledgeRuntimeStore::new(temp.path().join("state.db"));
+        let startup_store = patina::mother::MotherRuntimeStore::new(temp.path().join("state.db"));
 
         run_startup_stage("unit_test_stage_success", &startup_store, || Ok(())).unwrap();
 

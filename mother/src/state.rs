@@ -67,7 +67,7 @@ pub struct QueuedTask {
 }
 
 #[derive(Debug, Clone)]
-pub struct KnowledgeRuntimeStore {
+pub struct MotherRuntimeStore {
     state_path: PathBuf,
     project_uid: Option<ProjectUid>,
 }
@@ -204,7 +204,7 @@ pub struct StartupAttemptRecord {
     pub updated_at: String,
 }
 
-impl Default for KnowledgeRuntimeStore {
+impl Default for MotherRuntimeStore {
     fn default() -> Self {
         let home = std::env::var_os("PATINA_HOME")
             .map(PathBuf::from)
@@ -224,7 +224,7 @@ impl Default for KnowledgeRuntimeStore {
     }
 }
 
-impl KnowledgeRuntimeStore {
+impl MotherRuntimeStore {
     pub fn new(path: PathBuf) -> Self {
         Self {
             state_path: path,
@@ -1235,11 +1235,11 @@ fn map_mother_session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MotherSes
 mod tests {
     use super::*;
 
-    fn temp_store() -> KnowledgeRuntimeStore {
+    fn temp_store() -> MotherRuntimeStore {
         let root =
             std::env::temp_dir().join(format!("patina-knowledge-runtime-{}", uuid::Uuid::new_v4()));
         let path = root.join("mother/state.db");
-        KnowledgeRuntimeStore::new_with_project(path, ProjectUid::new("2bdc808e").unwrap())
+        MotherRuntimeStore::new_with_project(path, ProjectUid::new("2bdc808e").unwrap())
     }
 
     #[test]
@@ -1262,7 +1262,7 @@ mod tests {
             .ack_offset("belief-verifier", "belief.changed", 42)
             .unwrap();
 
-        let reopened = KnowledgeRuntimeStore::new_with_project(
+        let reopened = MotherRuntimeStore::new_with_project(
             store.path().clone(),
             ProjectUid::new("2bdc808e").unwrap(),
         );
@@ -1492,14 +1492,12 @@ mod tests {
     fn child_state_isolated_by_project_uid() {
         let temp = tempfile::tempdir().unwrap();
         let state_path = temp.path().join("mother/state.db");
-        let project_a = KnowledgeRuntimeStore::new_with_project(
+        let project_a = MotherRuntimeStore::new_with_project(
             state_path.clone(),
             ProjectUid::new("2bdc808e").unwrap(),
         );
-        let project_b = KnowledgeRuntimeStore::new_with_project(
-            state_path,
-            ProjectUid::new("1a2b3c4d").unwrap(),
-        );
+        let project_b =
+            MotherRuntimeStore::new_with_project(state_path, ProjectUid::new("1a2b3c4d").unwrap());
 
         project_a
             .put_state("ducklake", "shared-key", r#"{"project":"a"}"#)

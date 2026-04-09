@@ -26,7 +26,7 @@ mod bindings {
         pub grants: super::GrantedCapabilities,
         pub query_fn: Option<super::QueryDispatchFn>,
         pub http_client: reqwest::blocking::Client,
-        pub runtime: crate::mother::KnowledgeRuntimeStore,
+        pub runtime: crate::mother::MotherRuntimeStore,
         pub active_bindings: HashMap<u32, crate::child::toy_host::v2::ConnectionHandle>,
     }
 
@@ -1061,38 +1061,38 @@ impl ChildEngine {
             grants,
             query_fn,
             http_client,
-            runtime: crate::mother::KnowledgeRuntimeStore::default(),
+            runtime: crate::mother::MotherRuntimeStore::default(),
             active_bindings: std::collections::HashMap::new(),
         };
         let mut store = Store::new(wasm_engine(), host_state);
         let instance = bindings::Child::instantiate(&mut store, component, &linker)?;
         instance.call_init(&mut store)?;
         let name = instance.call_name(&mut store)?;
-        Ok(Box::new(WasmKnowledgeChild {
+        Ok(Box::new(WasmChild {
             name,
-            inner: Mutex::new(WasmKnowledgeChildInner { store, instance }),
+            inner: Mutex::new(WasmChildInner { store, instance }),
         }))
     }
 }
 
-struct WasmKnowledgeChild {
+struct WasmChild {
     name: String,
-    inner: Mutex<WasmKnowledgeChildInner>,
+    inner: Mutex<WasmChildInner>,
 }
 
-struct WasmKnowledgeChildInner {
+struct WasmChildInner {
     store: Store<HostState>,
     instance: bindings::Child,
 }
 
-impl Child for WasmKnowledgeChild {
+impl Child for WasmChild {
     fn name(&self) -> &str {
         &self.name
     }
 
     fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let WasmKnowledgeChildInner { store, instance } = &mut *inner;
+        let WasmChildInner { store, instance } = &mut *inner;
         match instance.call_on_load(store)? {
             Ok(()) => Ok(()),
             Err(e) => Err(anyhow::anyhow!("WASM on_load failed: {}", e)),
@@ -1101,13 +1101,13 @@ impl Child for WasmKnowledgeChild {
 
     fn on_unload(&mut self) {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let WasmKnowledgeChildInner { store, instance } = &mut *inner;
+        let WasmChildInner { store, instance } = &mut *inner;
         let _ = instance.call_on_unload(store);
     }
 
     fn health(&self) -> ChildHealth {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let WasmKnowledgeChildInner { store, instance } = &mut *inner;
+        let WasmChildInner { store, instance } = &mut *inner;
         match instance.call_health(store) {
             Ok(h) => {
                 let reason = h.reason.unwrap_or_default();
@@ -1137,7 +1137,7 @@ impl Child for WasmKnowledgeChild {
 
     fn handle(&self, request: &ChildRequest) -> Result<ChildResponse> {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let WasmKnowledgeChildInner { store, instance } = &mut *inner;
+        let WasmChildInner { store, instance } = &mut *inner;
         let payload_json = serde_json::to_string(&request.payload)?;
         match instance.call_handle(store, &request.action, &payload_json)? {
             Ok(json) => Ok(ChildResponse {
@@ -1149,7 +1149,7 @@ impl Child for WasmKnowledgeChild {
 
     fn drain(&mut self, limit: u32) -> Result<Vec<PendingEvent>> {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let WasmKnowledgeChildInner { store, instance } = &mut *inner;
+        let WasmChildInner { store, instance } = &mut *inner;
         match instance.call_drain(store, limit)? {
             Ok(events) => Ok(events
                 .into_iter()
@@ -1168,7 +1168,7 @@ impl Child for WasmKnowledgeChild {
 
     fn tick(&mut self) -> Vec<TaskIntent> {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let WasmKnowledgeChildInner { store, instance } = &mut *inner;
+        let WasmChildInner { store, instance } = &mut *inner;
         match instance.call_tick(store) {
             Ok(intents) => intents
                 .into_iter()
@@ -1228,7 +1228,7 @@ mod tests {
             grants,
             query_fn: None,
             http_client: reqwest::blocking::Client::new(),
-            runtime: crate::mother::KnowledgeRuntimeStore::default(),
+            runtime: crate::mother::MotherRuntimeStore::default(),
             active_bindings: std::collections::HashMap::new(),
         }
     }

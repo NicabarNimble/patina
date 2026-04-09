@@ -8,13 +8,11 @@ description = "Validate extracted records against schema"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-patina-sdk = { path = "../../sdk/patina-sdk", features = ["child", "toy-log", "toy-messaging", "toy-measure"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+wit-bindgen = "0.41.0"
 
 [package.metadata.component]
 package = "patina:schema-enforcer"
 
 [package.metadata.component.target]
-path = "../../wit/child"
-world = "child"
+path = "wit"
+world = "schema-enforcer"
