@@ -8,7 +8,7 @@ sessions:
   origin: 20260402-135124-249836000
   revised: 20260409-070410-485377000
 blocked_by:
-  - refactor/voice-rename
+  - feat/pando-execution-mvp
 beliefs:
   - "[[projects-are-sovereign-mother-coordinates]]"
   - "[[children-have-agency-toys-are-capabilities]]"
@@ -17,6 +17,7 @@ beliefs:
 related:
   - refactor/voice-rename
   - refactor/child-typed-composition
+  - feat/pando-execution-mvp
   - feat/multiproject-belief-share
   - feat/child-construction-canon
 exit_criteria:
@@ -194,11 +195,13 @@ but is not in scope for this spec.
 
 ## Build Readiness
 
-Blocked by `refactor/voice-rename`. Once voice vocabulary lands, this spec is
-buildable. All 6 children exist. Federation substrate exists. The work is:
-pando config injection, namespace paths, and federation voice aliasing.
+Blocked by `feat/pando-execution-mvp`. The pipeline must actually run end-to-end
+before we can layer voice scoping on top. voice-rename is complete (Apr 9).
+Once pando-execution-mvp lands, the work here is: pando config injection,
+namespace paths, and federation voice aliasing.
 
 ## Revision Log
 
 - 2026-04-02: Created as persona-lake-mvp1 with 8 exit criteria.
 - 2026-04-09: Revised to voice-lake-mvp1. Aligned with typed composition reality (Apr 8), federation v0.49.0, voice-rename spec. Removed source-fetcher/normalizer (don't exist), added actual 6 canon children. Changed record-envelope contract (voice scoping is namespace, not record field). Descoped parallel execution. Reduced to 7 focused exit criteria. Added pando config injection as core mechanism.
+- 2026-04-09: Changed blocker from voice-rename (complete) to pando-execution-mvp. Reality check found composition validation works but execution doesn't — pipeline has never run end-to-end. Must close execution gap before layering voice scoping.
