@@ -1,8 +1,4 @@
 package wasi:filesystem@0.2.8;
-    use wasi:io/streams@0.2.8.{input-stream, output-stream, error};
-    use wasi:clocks/wall-clock@0.2.8.{datetime};
-    use types.{descriptor};
-
 /// WASI filesystem is a filesystem API primarily intended to let users run WASI
 /// programs that access their files on their existing filesystems, without
 /// significant overhead.
@@ -30,7 +26,9 @@ package wasi:filesystem@0.2.8;
 @since(version = 0.2.0)
 interface types {
     @since(version = 0.2.0)
+    use wasi:io/streams@0.2.8.{input-stream, output-stream, error};
     @since(version = 0.2.0)
+    use wasi:clocks/wall-clock@0.2.8.{datetime};
 
     /// File size or length of a region within a file.
     @since(version = 0.2.0)
@@ -675,13 +673,4 @@ interface types {
     /// errors are filesystem-related errors.
     @since(version = 0.2.0)
     filesystem-error-code: func(err: borrow<error>) -> option<error-code>;
-}
-
-@since(version = 0.2.0)
-interface preopens {
-    @since(version = 0.2.0)
-
-    /// Return the set of preopened directories, and their paths.
-    @since(version = 0.2.0)
-    get-directories: func() -> list<tuple<descriptor, string>>;
 }
