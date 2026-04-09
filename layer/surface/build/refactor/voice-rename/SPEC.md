@@ -3,6 +3,7 @@ type: refactor
 id: voice-rename
 status: ready
 created: 2026-04-09
+validated_against_commit: 29f0e786
 sessions:
   origin: 20260409-070410-485377000
 related:
