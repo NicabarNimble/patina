@@ -76,14 +76,18 @@ directly. No patina-sdk wrapper needed.
 automatically. The WIT IS the SDK. patina-sdk stays for handle-based
 children only.
 
-### 6. child.toml declares inside toy grants
+### 6. child.toml declares accepted inside toy shapes
 
-**Decision:** child.toml gains `[needs.inside]` section declaring which
-inside toys a child accepts and from whom.
+**Decision:** child.toml gains `[needs.inside].accepts` listing toy
+shapes the child will accept from inside composition. The child does
+NOT name the source — only the toy shape. The pando names who provides
+what. Mother validates both match.
 
-**Why:** Mother validates every grant at load time. Without declared
-inside toy grants, Mother can't enforce deny-by-default for child-to-
-child connections. Same security model as outside toys, extended.
+**Why:** Mother validates every grant at load time. The child doesn't
+know about other children — it knows toy shapes. The pando is the
+wiring authority. Mother checks: child accepts this shape, pando wires
+it from a child that exports it, grant approved. Works for multi-
+instance reuse because identity is in the pando wiring, not child.toml.
 
 ### 7. Service children stay handle-based
 
@@ -127,7 +131,7 @@ Expect: exports `patina:record/transform@0.1.0`, imports only outside toys.
 ### Phase 2: dedup-filter + runtime composition
 
 **New files:**
-- `wit/worlds/dedup-filter.wit` — dedup-filter toybox
+- `children/dedup-filter/wit/` — self-contained WIT
 
 **Modified files:**
 - `children/dedup-filter/src/lib.rs` — rewrite with wit-bindgen
@@ -167,18 +171,19 @@ cargo test --test composition_spike
 - `mother/src/registry.rs` — support LoadedComponent enum
 
 **New in Mother:**
-```rust
-// Second bindgen for composed pipeline world
-mod composed_bindings {
-    wasmtime::component::bindgen!({
-        path: "wit/worlds/composed-pipeline",
-        world: "composed-pipeline",
-    });
-}
 
+The composed component's world is determined at runtime by wac-graph
+(it's whatever the composition produces). Mother uses wasmtime's
+lower-level component API or a second bindgen targeting the composed
+world. The exact approach depends on what wac-graph encodes — resolved
+during Phase 4.
+
+```rust
 enum LoadedComponent {
+    /// Existing handle-based child
     HandleBased { instance: child_bindings::Child },
-    Composed { instance: composed_bindings::ComposedPipeline },
+    /// Composed pando — Mother built via wac-graph
+    Composed { component: wasmtime::component::Component, /* typed dispatch TBD */ },
 }
 ```
 

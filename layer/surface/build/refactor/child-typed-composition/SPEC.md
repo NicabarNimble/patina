@@ -39,7 +39,7 @@ exit_criteria:
     text: "Each child inside the composition emits metrics via patina:measure. Mother sees per-child metrics."
     checked: false
   - id: ctc8-reuse
-    text: "Same child package instantiated multiple times in a composition. Proven with test."
+    text: "Same child package instantiated multiple times in a composition via instance IDs in pando wiring. Proven with test."
     checked: false
 ---
 # refactor: Typed WIT child composition
@@ -431,6 +431,9 @@ executes via wac-graph:
 name = "folder-text-to-parquet"
 version = "0.2.0"
 
+# Each child entry creates one instance. For multi-instance reuse,
+# add an `id` to disambiguate. Wiring references the id.
+# Example: { name = "dedup-filter", id = "dedup-1" }
 [[children]]
 name = "file-system-monitor"
 
@@ -563,10 +566,13 @@ checks child kind at `src/child/internal/child.rs:867`
 
 ## Open Questions
 
-1. **Composition entry point** — The composed component's outermost
-   export is catalog's `register`. But Mother wants to call source's
-   `scan` to trigger the flow. Options: thin wrapper child as entry
-   point, or rethink how Mother drives the composed component.
+1. **Composition entry point** — The pando declares
+   `entry = { child = "file-system-monitor", toy = "patina:record/source" }`.
+   Mother needs the composed component to expose this as its outer
+   export. wac-graph's `graph.export()` can control what gets exported.
+   Resolve during Phase 2: verify that wac-graph can expose an
+   intermediate child's toy as the composition's outer export, not
+   just the final child's.
 
 2. **State scoping** — dedup-filter and record-writer both import
    keyvalue. Shared-nothing inside the composition should keep them
