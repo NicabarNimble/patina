@@ -17,23 +17,29 @@ related:
   - src/commands/mother/daemon.rs
   - mother/src/pando.rs
 exit_criteria:
-  - id: pe1-compose-and-load
+  - id: pe1-worlds-complete
+    text: "All 6 children's world.wit files declare upstream toy imports so wac-graph can wire the full chain: content-extractor imports records/source, schema-enforcer imports records/extract, lakehouse-catalog imports records/write."
+    checked: false
+  - id: pe2-pando-typed-wiring
+    text: "folder-text-to-parquet/pando.toml uses typed wiring format ([[composition.wiring]] with from/to/toy) and declares composition.entry. Legacy string wiring removed."
+    checked: false
+  - id: pe3-compose-and-load
     text: "Mother builds a composed .wasm from the 6 canon children via wac-graph encode() and loads it in wasmtime's component API."
     checked: false
-  - id: pe2-outside-toys-linked
-    text: "Mother links outside toys (logging, keyvalue, filesystem, measure, sql) to the composed component. Children's outside toy imports are satisfied."
+  - id: pe4-outside-toys-linked
+    text: "Mother links outside toys (logging, keyvalue, measure) to the composed component using wasmtime component linker. Bindgen strategy is explicit (component::bindgen! for composed world)."
     checked: false
-  - id: pe3-entry-point
-    text: "Mother calls the composition's entry point (source.scan) with a folder path. Data flows through all 6 children: scan → extract → transform → transform → write → catalog."
+  - id: pe5-entry-point
+    text: "Mother calls the composition's entry point (records/source.scan) with a folder path. Data flows through all 6 children."
     checked: false
-  - id: pe4-output-exists
-    text: "After execution, parquet files and catalog entries exist on disk at a Mother-controlled path."
+  - id: pe6-output-exists
+    text: "After execution, output files exist at a Mother-controlled path (not hardcoded /tmp/patina/). record-writer uses filesystem preopen, not hardcoded path."
     checked: false
-  - id: pe5-handle-children-work
+  - id: pe7-handle-children-work
     text: "Handle-based service children (belief-verifier, session-writer, spec-manager, doctor) continue working unchanged alongside the composed pando."
     checked: false
-  - id: pe6-proof
-    text: "Integration test: ingest a test folder with known files through folder-text-to-parquet, verify parquet output contains expected record count. cargo check + cargo nextest run pass."
+  - id: pe8-proof
+    text: "Integration test: ingest a temp folder with 3 .txt files through folder-text-to-parquet, verify output parquet contains 3 records (no dedup collisions), verify catalog has entry. cargo check + cargo nextest run pass."
     checked: false
 ---
 # feat: Pando Execution MVP
@@ -41,127 +47,135 @@ exit_criteria:
 ## Problem
 
 All 6 canon children are compiled to typed WIT components. The pando manifest
-exists. wac-graph composition validation works — Mother can build the graph,
-check wiring, and encode composed bytes. But nobody has ever loaded the
-composed component in wasmtime, linked outside toys, called the entry point,
-or run data through the pipeline.
+exists. wac-graph composition validation works. But nobody has ever loaded the
+composed component, linked outside toys, called the entry point, or run data
+through the pipeline.
 
-The gap: composition VALIDATION works. Composition EXECUTION does not.
+Additionally, an audit reveals the children's worlds are INCOMPLETE for full
+composition — 4 of 6 are missing upstream toy imports. And the shipped pando.toml
+still uses legacy string wiring with no typed wiring or entry point.
 
-voice-lake-mvp1 and multiproject-belief-share depend on the pipeline actually
-running. This spec closes the execution gap for folder-text-to-parquet — our
-only pando.
+The gap is wider than "just load and call." It's: fix the worlds, update the
+pando, compose, load, link, call, and get output.
+
+## What's Wrong Today
+
+### 1. Incomplete child worlds
+
+The child-typed-composition SPEC describes worlds with upstream imports, but
+the actual world.wit files are missing them:
+
+| Child | Missing import | Has |
+|---|---|---|
+| content-extractor | `patina:records/source@0.1.0` | only logging |
+| schema-enforcer | `patina:records/extract@0.1.0` | only logging + measure |
+| lakehouse-catalog | `patina:records/write@0.1.0` | only logging + keyvalue |
+
+dedup-filter and record-writer DO have upstream imports (both import
+`patina:records/transform@0.1.0`). file-system-monitor is the source child
+and correctly has no upstream import.
+
+Without these imports, wac-graph cannot wire the full chain. Composition
+breaks at 3 points.
+
+### 2. Pando uses legacy wiring
+
+`resources/pandos/folder-text-to-parquet/pando.toml` uses legacy string
+wiring (`"file-system-monitor.file.found -> content-extractor"`) with no
+`[composition].entry` and no typed wiring rules. The typed composition
+validation code in daemon.rs returns early when no typed rules are found.
+
+### 3. Package name mismatch in docs
+
+The actual WIT package is `patina:records@0.1.0` (plural). The
+child-typed-composition SPEC says `patina:record@0.1.0` (singular).
+This spec uses the ACTUAL name: `patina:records`.
+
+### 4. record-writer hardcodes output path
+
+`children/record-writer/src/lib.rs:168` hardcodes `/tmp/patina/records-*.parquet`.
+Must be changed to use filesystem preopens for Mother-controlled output.
+
+### 5. Linker bindgen is world-coupled
+
+`src/child/internal/child.rs` uses `bindgen!({ world: "child" })`. The link_*()
+methods are generic, but the generated bindings are coupled to the handle-based
+child world. Composed components need their own bindgen — must use
+`component::bindgen!` or equivalent for the composed world.
 
 ## Goal
 
 Make folder-text-to-parquet run end-to-end: folder in, parquet + catalog out.
-Mother composes 6 typed children via wac-graph, loads the result in wasmtime,
-links outside toys, calls the entry point, and collects output.
-
-## Status
-
-Draft.
+Fix the prerequisite gaps (worlds, pando, output paths), then compose, load,
+link, call.
 
 ## Non-Goals
 
 - Pando config injection (`[config]` section) — that's voice-lake-mvp1.
 - Voice/namespace scoping — that's voice-lake-mvp1.
 - Federation query integration — that's voice-lake-mvp1.
-- Per-child metrics via patina:measure — desirable but not blocking execution.
-- Security audit logging (grant decisions) — important but not blocking execution.
-- child.toml inside toy grant validation — Mother currently validates composition
-  graph shape; formal grant enforcement is a hardening step.
-- Multi-instance reuse (same child, multiple instances) — proven in spike, not
-  needed for this pando.
-- Converting service children to typed — they stay handle-based.
-
-## What Exists Today
-
-| Component | Status |
-|---|---|
-| 6 canon children compiled to .wasm | Done — `~/.patina/children/*.wasm` |
-| Pando manifest parser | Done — `mother/src/pando.rs` |
-| Typed wiring parser (`PandoTypedWiring`) | Done |
-| wac-graph validation (`validate_typed_composition`) | Done — `daemon.rs:188-318` |
-| wac-graph `encode()` produces composed bytes | Done — `daemon.rs:309` |
-| Load composed .wasm in wasmtime component API | **NOT DONE** |
-| Link outside toys to composed component | **NOT DONE** |
-| Call entry point (source.scan) | **NOT DONE** |
-| Dispatch enum (HandleBased vs Composed) | **NOT DONE** |
-| Integration test with real data | **NOT DONE** |
-
-## What This Spec Builds
-
-1. **Composed component loading** — After wac-graph produces encoded bytes,
-   load them as a wasmtime Component. Generate or use bindgen for the
-   composed world's exports.
-
-2. **Outside toy linking** — The composed component imports outside toys
-   (logging, keyvalue, filesystem, measure, sql) that were originally
-   imported by individual children. Mother's existing link_*() functions
-   satisfy these imports on the wasmtime Linker. The merged import set of
-   the composed component should match the union of all children's outside
-   toy imports.
-
-3. **Entry point invocation** — The composition exports
-   `patina:record/source@0.1.0` (from file-system-monitor). Mother calls
-   `source.scan(folder)` on the composed component. Data flows through
-   the pipeline internally.
-
-4. **Output collection** — record-writer produces parquet files.
-   lakehouse-catalog registers them. Both use filesystem and keyvalue
-   toys. Mother provides these with paths pointing to a controlled
-   output directory.
-
-5. **Dispatch path** — Mother needs to know whether to use the existing
-   handle-based dispatch or the new composed dispatch. Pando manifest
-   already has `[composition]` section; presence of typed wiring
-   selects the composed path.
+- Per-child metrics via patina:measure — link the toy but don't require
+  metrics verification.
+- Security audit logging (grant decisions) — important but not blocking.
+- child.toml inside toy grant validation — future hardening.
+- Multi-instance reuse — not needed for this pando.
 
 ## Implementation Order
 
-1. Composed component loading — wasmtime Component::new from wac-graph bytes
-2. Bindgen for composed world — generate or manual typed interface for entry point
-3. Outside toy linker setup — reuse existing link_*() with composed component
-4. Entry point call — source.scan(folder) invocation
-5. Output path wiring — filesystem preopens for record-writer and lakehouse-catalog
-6. Dispatch enum — HandleBased vs Composed selection in registry
-7. Integration test — real folder, real execution, verify parquet output
+1. **Fix 3 child worlds** — Add upstream imports to content-extractor,
+   schema-enforcer, lakehouse-catalog. Rebuild .wasm for all 3.
+2. **Fix record-writer output** — Replace hardcoded `/tmp/patina/` with
+   filesystem preopen path. Rebuild .wasm.
+3. **Update pando.toml** — Replace legacy string wiring with typed wiring
+   (`[[composition.wiring]]` format). Add `[composition].entry`.
+4. **Bindgen for composed world** — Use `wasmtime::component::bindgen!`
+   targeting the composed component's exported interface.
+5. **Compose and load** — wac-graph encode() → Component::new().
+6. **Link outside toys** — Add logging, keyvalue, measure implementations
+   to the composed component's linker.
+7. **Call entry point** — source.scan(folder), collect results.
+8. **Dispatch enum** — HandleBased vs Composed selection in Mother registry.
+9. **Integration test** — temp folder with 3 .txt files, verify end-to-end.
 
 ## Resolved Decisions
 
-- **wac-graph at runtime, not build time** — Mother composes. Children stay
-  individual .wasm files. This is the resolved architecture from
-  child-typed-composition.
-- **Entry point is source.scan** — The composition's outermost export is
-  file-system-monitor's source toy. Mother calls scan(folder), everything
-  else flows internally.
-- **Outside toys are the union** — The composed component imports the union
-  of all 6 children's outside toys. Mother satisfies all of them.
-- **Handle-based children unaffected** — Existing dispatch path stays. New
-  path added alongside.
-- **Output to Mother-controlled directory** — Mother decides where parquet
-  and catalog land. For this spec, a reasonable default path. voice-lake-mvp1
-  adds voice-scoped namespacing on top.
+- **Package name**: `patina:records@0.1.0` (plural) — matches actual WIT.
+- **Bindgen strategy**: `wasmtime::component::bindgen!` macro against the
+  composed component's WIT. This gives typed Rust entry points. Not manual
+  `func_new_typed` — too fragile for 6-child composition surface.
+- **Output paths**: record-writer uses WASI filesystem preopens. Mother sets
+  the preopen directory. No more `/tmp/patina/` hardcode.
+- **Linker**: New linker setup for composed world alongside existing child
+  world linker. They don't share bindgen — different worlds, different types.
+- **Dispatch**: Pando with `[composition]` typed wiring → composed path.
+  Pando without (or with only legacy wiring) → existing handle-based path.
+- **Entry point**: The composition exports `patina:records/source@0.1.0`.
+  Mother calls `scan(folder)`. Everything else flows internally via wac-graph
+  wiring.
 
 ## Verification
 
 ```bash
 cargo check --workspace -q
 cargo nextest run
-# Specific integration test:
+
+# Verify children rebuild with updated worlds:
+cargo build -p patina-ai-child-content-extractor --target wasm32-wasip2
+cargo build -p patina-ai-child-schema-enforcer --target wasm32-wasip2
+cargo build -p patina-ai-child-lakehouse-catalog --target wasm32-wasip2
+cargo build -p patina-ai-child-record-writer --target wasm32-wasip2
+
+# Integration test:
 cargo test --test pando_execution -- folder_text_to_parquet
-# Expect: test creates temp folder with .txt files, runs composed pando,
-# verifies parquet files exist, verifies catalog entries, verifies record count.
+# Creates temp dir with 3 .txt files
+# Runs composed pando
+# Asserts: 3 records in parquet output
+# Asserts: catalog entry exists
+# Asserts: output NOT in /tmp/patina/ (Mother-controlled path)
 ```
 
 ## Build Readiness
 
-All prerequisites exist:
-- 6 children compiled to .wasm
-- wac-graph dependency in Cargo.toml
-- Composition graph builds and encodes
-- wasmtime component API available
-- Existing outside toy linker code in daemon.rs
-
-The work is: load the encoded bytes, link toys, call entry point, wire output.
+All prerequisites exist except the gaps documented above. The work is:
+fix worlds (3 children), fix output path (1 child), update pando manifest,
+bindgen + compose + load + link + call, integration test.
