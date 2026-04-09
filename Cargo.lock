@@ -3282,9 +3282,7 @@ dependencies = [
  "arrow-schema 55.2.0",
  "chrono",
  "parquet",
- "patina-sdk",
- "serde",
- "serde_json",
+ "wit-bindgen 0.41.0",
 ]
 
 [[package]]

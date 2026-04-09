@@ -1,0 +1,9 @@
+package patina:record-writer@0.1.0;
+
+world record-writer {
+    import wasi:logging/logging@0.1.0;
+    import wasi:keyvalue/store@0.2.0;
+    import patina:measure/measure@0.1.0;
+    import patina:records/transform@0.1.0;
+    export patina:records/write@0.1.0;
+}

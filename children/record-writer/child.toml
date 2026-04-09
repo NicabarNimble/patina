@@ -4,10 +4,10 @@ kind = "child"
 role = "app"
 
 [needs]
-toys = ["logging", "keyvalue", "events", "messaging", "measure", "filesystem"]
+toys = ["logging", "keyvalue", "measure", "filesystem"]
 
-[needs.scopes.events]
-subscribe = ["record.ready"]
+[needs.inside]
+accepts = ["patina:records/transform"]
 
 [needs.scopes.filesystem.output]
 path = "/tmp"

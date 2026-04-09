@@ -1,129 +1,30 @@
+wit_bindgen::generate!({
+    path: "wit",
+    world: "record-writer",
+    generate_all,
+});
+
 use chrono::Utc;
 use parquet::arrow::ArrowWriter;
 use parquet::file::properties::WriterProperties;
-use patina_sdk::child::{Child, ChildHealth, HealthStatus};
-use patina_sdk::granted;
-use patina_sdk::register_child;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-#[derive(Default)]
-struct RecordWriterChild;
+struct RecordWriter;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Record {
-    record_id: String,
-    source_path: String,
-    source_hash: String,
-    source_modified_at: String,
-    source_size_bytes: u64,
-    content: String,
-    content_hash: String,
-    content_type: String,
-    encoding: String,
-    line_count: u64,
-    ingested_at: String,
-    batch_id: String,
-    schema_version: u32,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct FileWrittenEvent {
-    file_path: String,
-    record_count: u64,
-    written_at: String,
-}
-
-fn parse_payload(payload: &str) -> Result<Value, String> {
-    if payload.trim().is_empty() {
-        Ok(serde_json::json!({}))
-    } else {
-        serde_json::from_str(payload).map_err(|e| format!("invalid payload json: {}", e))
+fn keyvalue_error_to_string(err: wasi::keyvalue::store::Error) -> String {
+    match err {
+        wasi::keyvalue::store::Error::NoSuchStore => "no-such-store".to_string(),
+        wasi::keyvalue::store::Error::AccessDenied => "access-denied".to_string(),
+        wasi::keyvalue::store::Error::Other(msg) => format!("other({msg})"),
     }
 }
 
-fn resolve_output_path(payload: &Value) -> Result<PathBuf, String> {
-    let output_root = payload
-        .get("output_root")
-        .and_then(|v| v.as_str())
-        .unwrap_or("/output");
-    if output_root.trim().is_empty() {
-        return Err("output_root cannot be empty".to_string());
-    }
-    let output_root = PathBuf::from(output_root);
-    if !output_root.is_absolute() {
-        return Err("output_root must be an absolute path".to_string());
-    }
-    if output_root
-        .components()
-        .any(|component| matches!(component, std::path::Component::ParentDir))
-    {
-        return Err("output_root cannot contain '..' segments".to_string());
-    }
-
-    let Some(output_path) = payload.get("output_path").and_then(|v| v.as_str()) else {
-        return Err("missing output_path in action payload".to_string());
-    };
-    if output_path.trim().is_empty() {
-        return Err("output_path cannot be empty".to_string());
-    }
-    let output = PathBuf::from(output_path);
-    let resolved = if output.is_absolute() {
-        output
-    } else {
-        output_root.join(output)
-    };
-    if !resolved.starts_with(&output_root) {
-        return Err(format!(
-            "output_path must stay under configured output_root '{}'",
-            output_root.display()
-        ));
-    }
-    if resolved
-        .components()
-        .any(|component| matches!(component, std::path::Component::ParentDir))
-    {
-        return Err("output_path cannot contain '..' segments".to_string());
-    }
-    Ok(resolved)
-}
-
-fn emit_metric_counter(
-    name: &str,
-    delta: f64,
-    labels: Vec<(String, String)>,
+fn write_records_parquet(
+    records: &[patina::records::types::RecordEnvelope],
+    output_path: &Path,
 ) -> Result<(), String> {
-    patina_sdk::child::patina::measure::measure::emit(
-        &patina_sdk::child::patina::measure::measure::Metric {
-            name: name.to_string(),
-            value: delta,
-            labels,
-        },
-    )
-}
-
-fn emit_metric_gauge(name: &str, value: f64) -> Result<(), String> {
-    patina_sdk::child::patina::measure::measure::gauge(name, value)
-}
-
-fn emit_file_written(event: &FileWrittenEvent) -> Result<u64, String> {
-    let payload = serde_json::to_string(event).map_err(|e| e.to_string())?;
-    let messaging = granted::messaging();
-    let client = messaging.connect("file.written")?;
-    let message = patina_sdk::toys::MessagingMessage {
-        topic: "file.written".to_string(),
-        content_type: Some("application/json".to_string()),
-        data: payload.into_bytes(),
-        metadata: vec![],
-    };
-    messaging.send(&client, &message)
-}
-
-fn write_records_parquet(records: &[Record], output_path: &Path) -> Result<(), String> {
     use arrow_array::{Int32Array, Int64Array, RecordBatch, StringArray};
     use arrow_schema::{DataType, Field, Schema};
 
@@ -229,7 +130,7 @@ fn write_records_parquet(records: &[Record], output_path: &Path) -> Result<(), S
     .map_err(|e| format!("failed to build parquet record batch: {}", e))?;
 
     if let Some(parent) = output_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
+        std::fs::create_dir_all(parent).map_err(|e| {
             format!(
                 "failed to create output directory '{}': {}",
                 parent.display(),
@@ -238,7 +139,7 @@ fn write_records_parquet(records: &[Record], output_path: &Path) -> Result<(), S
         })?;
     }
 
-    let file = fs::File::create(output_path).map_err(|e| {
+    let file = std::fs::File::create(output_path).map_err(|e| {
         format!(
             "failed to create parquet file '{}': {}",
             output_path.display(),
@@ -257,91 +158,50 @@ fn write_records_parquet(records: &[Record], output_path: &Path) -> Result<(), S
     Ok(())
 }
 
-impl RecordWriterChild {
-    fn write_records(&mut self, payload: &str) -> Result<String, String> {
-        let payload_value = parse_payload(payload)?;
-        let output_path = resolve_output_path(&payload_value)?;
-        let limit = payload_value
-            .get("limit")
-            .and_then(|value| value.as_u64())
-            .unwrap_or(128)
-            .min(u32::MAX as u64) as u32;
-        let after_offset = payload_value
-            .get("after_offset")
-            .and_then(|value| value.as_u64());
+impl exports::patina::records::write::Guest for RecordWriter {
+    fn write(
+        records: Vec<patina::records::types::RecordEnvelope>,
+    ) -> Result<Vec<patina::records::types::FileWritten>, String> {
+        let transformed = patina::records::transform::transform(&records)?;
+        let accepted = transformed.accepted;
 
-        let events = patina_sdk::child::patina::events_stream::events_stream::subscribe(
-            "record.ready",
-            after_offset,
-            limit,
-        )?;
+        let output_path = PathBuf::from(format!(
+            "/tmp/patina/records-{}.parquet",
+            Utc::now().format("%Y%m%d-%H%M%S")
+        ));
 
-        let state = granted::state();
-        let mut records = Vec::new();
-        let mut last_offset = None;
-
-        for event in events {
-            last_offset = Some(event.offset);
-            let record: Record = serde_json::from_str(&event.payload)
-                .map_err(|e| format!("invalid record.ready payload: {}", e))?;
-
+        let bucket = wasi::keyvalue::store::open("patina:record-writer")
+            .map_err(keyvalue_error_to_string)?;
+        let write_start = Instant::now();
+        for record in &accepted {
             let key = format!("record:{}", record.source_hash);
-            let state_json = serde_json::to_string(&record).map_err(|e| e.to_string())?;
-            let write_start = Instant::now();
-            state.put(&key, &state_json)?;
-            let write_latency_ms = write_start.elapsed().as_secs_f64() * 1000.0;
-
-            emit_metric_counter("records_written", 1.0, vec![])?;
-            emit_metric_gauge("write_latency_ms", write_latency_ms)?;
-            records.push(record);
+            bucket
+                .set(&key, record.content.as_bytes())
+                .map_err(keyvalue_error_to_string)?;
         }
+        let write_latency_ms = write_start.elapsed().as_secs_f64() * 1000.0;
 
-        if let Some(offset) = last_offset {
-            patina_sdk::child::patina::events_stream::events_stream::ack("record.ready", offset)?;
-        }
+        write_records_parquet(&accepted, &output_path)?;
+        patina::measure::measure::counter("records_written", accepted.len() as f64)?;
+        patina::measure::measure::gauge("batch_size", accepted.len() as f64)?;
+        patina::measure::measure::gauge("write_latency_ms", write_latency_ms)?;
 
-        write_records_parquet(&records, &output_path)?;
-        emit_metric_gauge("batch_size", records.len() as f64)?;
-        emit_file_written(&FileWrittenEvent {
+        wasi::logging::logging::log(
+            wasi::logging::logging::Level::Info,
+            "record-writer",
+            &format!(
+                "wrote {} records to {}",
+                accepted.len(),
+                output_path.display()
+            ),
+        );
+
+        Ok(vec![patina::records::types::FileWritten {
             file_path: output_path.to_string_lossy().to_string(),
-            record_count: records.len() as u64,
+            record_count: accepted.len() as u64,
             written_at: Utc::now().to_rfc3339(),
-        })?;
-
-        Ok(serde_json::json!({
-            "status": "ok",
-            "parquet_path": output_path.to_string_lossy(),
-            "processed_records": records.len(),
-            "state_keys": state.list_prefix("record:"),
-            "acked_through": last_offset,
-        })
-        .to_string())
+        }])
     }
 }
 
-impl Child for RecordWriterChild {
-    fn name(&self) -> String {
-        "record-writer".to_string()
-    }
-
-    fn on_load(&mut self) -> Result<(), String> {
-        granted::log().info("record-writer loaded");
-        Ok(())
-    }
-
-    fn health(&self) -> ChildHealth {
-        ChildHealth {
-            status: HealthStatus::Healthy,
-            reason: None,
-        }
-    }
-
-    fn handle(&mut self, action: &str, payload: &str) -> Result<String, String> {
-        match action {
-            "write-records" => self.write_records(payload),
-            other => Err(format!("record-writer: unknown action '{}'", other)),
-        }
-    }
-}
-
-register_child!(RecordWriterChild);
+export!(RecordWriter);
