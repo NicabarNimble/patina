@@ -1,0 +1,7 @@
+package patina:pando@0.1.0;
+
+interface source {
+    use patina:records/types@0.1.0.{file-found};
+
+    run: func() -> result<list<file-found>, string>;
+}

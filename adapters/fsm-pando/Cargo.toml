@@ -1,0 +1,18 @@
+[package]
+name = "patina-ai-adapter-fsm-pando"
+version = "0.1.0"
+edition = "2021"
+description = "Pando source adapter"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wit-bindgen = "0.41.0"
+
+[package.metadata.component]
+package = "patina:fsm-pando"
+
+[package.metadata.component.target]
+path = "wit"
+world = "fsm-pando"

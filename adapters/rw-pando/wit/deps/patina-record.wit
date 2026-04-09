@@ -1,0 +1,41 @@
+package patina:records@0.1.0;
+
+interface types {
+    record record-envelope {
+        record-id: string,
+        source-path: string,
+        source-hash: string,
+        source-modified-at: string,
+        source-size-bytes: u64,
+        content: string,
+        content-hash: string,
+        content-type: string,
+        encoding: string,
+        line-count: u64,
+        ingested-at: string,
+        batch-id: string,
+        schema-version: u32,
+    }
+
+    record rejected-record {
+        reason: string,
+        envelope: record-envelope,
+    }
+
+    record transform-result {
+        accepted: list<record-envelope>,
+        rejected: list<rejected-record>,
+    }
+
+    record file-written {
+        file-path: string,
+        record-count: u64,
+        written-at: string,
+    }
+}
+
+interface write {
+    use types.{record-envelope, file-written};
+
+    write: func(records: list<record-envelope>) -> result<list<file-written>, string>;
+}

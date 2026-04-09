@@ -1,0 +1,18 @@
+[package]
+name = "patina-ai-adapter-lc-pando"
+version = "0.1.0"
+edition = "2021"
+description = "Pando catalog adapter"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wit-bindgen = "0.41.0"
+
+[package.metadata.component]
+package = "patina:lc-pando"
+
+[package.metadata.component.target]
+path = "wit"
+world = "lc-pando"

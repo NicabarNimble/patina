@@ -1,0 +1,13 @@
+package patina:pando@0.1.0;
+
+interface extract {
+    use patina:records/types@0.1.0.{record-envelope};
+
+    run: func() -> result<list<record-envelope>, string>;
+}
+
+interface transform {
+    use patina:records/types@0.1.0.{transform-result};
+
+    run: func() -> result<transform-result, string>;
+}

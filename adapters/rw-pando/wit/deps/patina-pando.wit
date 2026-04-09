@@ -1,0 +1,13 @@
+package patina:pando@0.1.0;
+
+interface transform {
+    use patina:records/types@0.1.0.{transform-result};
+
+    run: func() -> result<transform-result, string>;
+}
+
+interface write {
+    use patina:records/types@0.1.0.{file-written};
+
+    run: func() -> result<list<file-written>, string>;
+}

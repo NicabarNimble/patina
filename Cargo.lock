@@ -3229,6 +3229,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "patina-ai-adapter-ce-pando"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
+name = "patina-ai-adapter-df-pando"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
+name = "patina-ai-adapter-fsm-pando"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
+name = "patina-ai-adapter-lc-pando"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
+name = "patina-ai-adapter-rw-pando"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
+name = "patina-ai-adapter-se-pando"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
 name = "patina-ai-child-belief-verifier"
 version = "0.1.0"
 dependencies = [

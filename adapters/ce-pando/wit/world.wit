@@ -1,0 +1,7 @@
+package patina:ce-pando@0.1.0;
+
+world ce-pando {
+    import patina:pando/source@0.1.0;
+    import patina:records/extract@0.1.0;
+    export patina:pando/extract@0.1.0;
+}

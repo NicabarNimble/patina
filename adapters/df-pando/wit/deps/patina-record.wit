@@ -1,0 +1,35 @@
+package patina:records@0.1.0;
+
+interface types {
+    record record-envelope {
+        record-id: string,
+        source-path: string,
+        source-hash: string,
+        source-modified-at: string,
+        source-size-bytes: u64,
+        content: string,
+        content-hash: string,
+        content-type: string,
+        encoding: string,
+        line-count: u64,
+        ingested-at: string,
+        batch-id: string,
+        schema-version: u32,
+    }
+
+    record rejected-record {
+        reason: string,
+        envelope: record-envelope,
+    }
+
+    record transform-result {
+        accepted: list<record-envelope>,
+        rejected: list<rejected-record>,
+    }
+}
+
+interface transform {
+    use types.{record-envelope, transform-result};
+
+    transform: func(records: list<record-envelope>) -> result<transform-result, string>;
+}
