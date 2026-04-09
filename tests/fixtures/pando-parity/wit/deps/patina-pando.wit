@@ -1,5 +1,11 @@
 package patina:pando@0.1.0;
 
+interface source {
+    use patina:records/types@0.1.0.{file-found};
+
+    run: func() -> result<list<file-found>, string>;
+}
+
 interface extract {
     use patina:records/types@0.1.0.{record-envelope};
 
@@ -10,4 +16,16 @@ interface transform {
     use patina:records/types@0.1.0.{transform-result};
 
     run: func() -> result<transform-result, string>;
+}
+
+interface write {
+    use patina:records/types@0.1.0.{file-written};
+
+    run: func() -> result<list<file-written>, string>;
+}
+
+interface catalog {
+    use patina:records/types@0.1.0.{catalog-entry};
+
+    run: func() -> result<list<catalog-entry>, string>;
 }
