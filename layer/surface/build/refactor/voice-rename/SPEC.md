@@ -119,15 +119,16 @@ Draft. Ready to build — scope is small and mechanical.
 
 ## Solution
 
-Three commits: protocol/session/AI-launch types → paths/migration → beliefs. Each compiles.
-Re-exports and downstream consumers must move in the same commit as their type definitions.
+Two commits: one for all code changes (types + paths + callers + migration), one for beliefs. Types, paths, callers, and re-exports are too coupled to split — intermediate states won't compile.
 
 ## Resolved Decisions
 
 - **Scope boundary**: Era 3 (identity) renames. Era 1 (oracle) untouched.
-- **Name**: "voice" — short, epistemic, self-documenting, fits vocabulary system
+- **Name**: "voice" — short, epistemic, self-documenting, fits vocabulary system.
+- **Commit structure**: One code commit, not three. `VoiceUid` type, `voice_path()` definition, callers, and re-exports must all move together or intermediate commits won't compile.
 - **Database migration**: Idempotent — check if column exists before ALTER TABLE. Fresh installs create `voice_uid` directly. Handle: already renamed (no-op), never created (fresh CREATE TABLE), failed mid-run (retry-safe).
-- **Filesystem migration**: At startup, if `mother/persona/{uid}/` exists and `mother/voice/{uid}/` does not, rename. If both exist, log warning and prefer `mother/voice/`. Project binding: if `.patina/persona` exists and `.patina/voice` does not, rename file.
+- **Filesystem migration trigger**: Migration runs in `resolve_voice_uid()` during every `patina ai` launch — not only during registration. This ensures already-registered projects get migrated on next use. Rules: if old path exists and new does not → rename. If both exist → log warning, prefer new.
+- **CLI flag**: `--persona` on `patina ai {claude,opencode,gemini}` is removed immediately and replaced with `--voice`. No alias, no deprecation period. Pre-v1, no external consumers.
 - **Backward compat**: No serde aliases — pre-v1 clean break.
 - **Belief YAML `persona:` metadata field**: Deferred — batch later, not blocking.
 - **Belief backlinks**: `[[persona-keypair-is-node-identity]]` reference in `host-proxied-io-is-the-security-model.md` must be updated when renaming the belief file. Session archives are historical records and not updated.

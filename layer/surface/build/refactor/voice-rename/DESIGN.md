@@ -23,15 +23,13 @@ Three commits on `patina` branch. Each compiles independently.
 
 ## Commits
 
-1. `refactor(voice): rename Era 3 identity types, protocol, session, and AI launch` — PersonaUid → VoiceUid in protocol.rs and state.rs. ConnectPayload.persona → .voice. Session binding: requested_persona → requested_voice, persona_uid → voice_uid, persona_matches → voice_matches in checkin, live, artifact, session mod, and sessions service. AI launch surface: resolve_persona_uid → resolve_voice_uid, PATINA_PERSONA_UID → PATINA_VOICE_UID, persona event payload key → voice_uid. AI mod: persona launch field → voice. Re-exports in mother/mod.rs and session/mod.rs. Project module: persona_path → voice_path, get_persona → get_voice. DB schema migration for state.db column.
+1. `refactor(voice): rename Era 3 identity types, paths, protocol, session, and AI launch` — ALL code changes in one commit. PersonaUid → VoiceUid. ConnectPayload.persona → .voice. paths.rs: mother::persona → mother::voice, persona_path → voice_path. Session binding. AI launch surface: resolve fn, env var, event key, --persona → --voice flag. Project module. Re-exports. DB migration. Workspace init + registration create voice dirs. Filesystem migration for existing dirs/files. One commit because types, paths, callers, and re-exports are coupled — splitting them creates intermediate states that won't compile.
 
-2. `refactor(voice): rename Mother-side voice paths, project binding, and workspace init` — paths.rs: mother::persona → mother::voice module (validate, dir, ensure_dir, identity_age, beliefs_db). persona_path() → voice_path() for project binding (.patina/persona → .patina/voice). workspace init creates mother/voice/ dir with migration for old mother/persona/. project/internal.rs registration creates mother/voice/default/. Filesystem migration with edge case handling.
-
-3. `refactor(voice): update beliefs and backlinks to voice terminology` — Rename persona-keypair-is-node-identity.md → voice-keypair-is-node-identity.md. Update content in persona-is-a-patina-instance.md and beliefs-live-at-two-levels.md where "persona" means Era 3 identity. Update backlink in host-proxied-io-is-the-security-model.md. Add revision log entries.
+2. `refactor(voice): update beliefs and backlinks to voice terminology` — Rename persona-keypair-is-node-identity.md → voice-keypair-is-node-identity.md. Update content in persona-is-a-patina-instance.md and beliefs-live-at-two-levels.md where "persona" means Era 3 identity. Update backlink in host-proxied-io-is-the-security-model.md. Add revision log entries.
 
 ## Direct Code Targets
 
-### Commit 1: Types + Protocol + Session + AI Launch
+### Commit 1: All code changes (types + paths + protocol + session + AI launch + migration)
 
 **Mother protocol (type definition):**
 - `mother/src/protocol.rs:16-24` — `PersonaUid` → `VoiceUid`
@@ -59,36 +57,42 @@ Three commits on `patina` branch. Each compiles independently.
 - `src/commands/ai/surface.rs:195` — `requested_persona` → `requested_voice`
 - `src/commands/ai/surface.rs:241` — `PATINA_PERSONA_UID` → `PATINA_VOICE_UID`
 - `src/commands/ai/surface.rs:290` — `"persona_uid"` event key → `"voice_uid"`
-- `src/commands/ai/surface.rs:306-315` — `resolve_persona_uid()` fn, reads `.patina/persona` → `.patina/voice`
+- `src/commands/ai/surface.rs:306-315` — `resolve_persona_uid()` fn + migration trigger (see below)
 - `src/commands/ai/surface.rs:413-429` — tests for resolve fn
-- `src/commands/ai/mod.rs:65,178,188,198` — `persona` field on launch request → `voice`
+- `src/commands/ai/mod.rs:64-65` — `--persona` CLI flag → `--voice` (removed immediately, no alias)
+- `src/commands/ai/mod.rs:178,188,198` — `persona` field on launch request → `voice`
+
+**Other call sites (struct literals that reference renamed fields):**
+- `src/commands/launch/internal.rs:88` — `AiLaunchRequest { persona: None }` → `{ voice: None }`
+- `src/commands/ai/internal.rs:378` — `LiveSessionHandle { persona_uid: None }` → `{ voice_uid: None }`
 
 **Project module:**
 - `src/project/mod.rs:127-134` — `persona_path()` → `voice_path()`, `get_persona()` → `get_voice()`
 - `src/project/internal.rs:345-352` — `persona_path()` → `voice_path()`, `get_persona()` → `get_voice()`
 
-### Commit 2: Paths + Migration + Workspace Init
-
-**Path functions:**
+**Path functions (must be in same commit — callers depend on them):**
 - `src/paths.rs:370-411` — `mother::persona` mod → `mother::voice`: `validate_persona_uid` → `validate_voice_uid`, `persona_dir()` → `voice_dir()`, `ensure_persona_dir()` → `ensure_voice_dir()`
 - `src/paths.rs:525-527` — `persona_path()` → `voice_path()`
 - Tests: `test_mother_persona_paths` → `test_mother_voice_paths`
 
 **Workspace init:**
 - `src/workspace/internal.rs:131-144` — creates `mother/voice/default/` (was `mother/persona/default/`)
-- Add migration: if old `mother/persona/` exists and `mother/voice/` does not, rename
 
 **Project registration:**
 - `src/project/internal.rs:408-414` — creates `mother/voice/default/` (was `mother/persona/default/`)
 - `src/project/internal.rs:816-838` — test: `test_register_with_mother_creates_default_voice_store`
-- Add migration: if `.patina/persona` exists and `.patina/voice` does not, rename file
 
-**Edge cases:**
-- Both `mother/persona/` and `mother/voice/` exist → log warning, prefer `mother/voice/`
-- Partial move (dir renamed but beliefs.db not) → rename at directory level (atomic on same FS)
-- Fresh install → create `mother/voice/` directly, no migration needed
+**Filesystem migration (guaranteed to run on every AI launch):**
+Migration lives in `resolve_voice_uid()` (formerly `resolve_persona_uid()`) in `ai/surface.rs`. This function runs on every `patina ai` launch, so already-registered projects get migrated on next use — not only during registration. Logic:
+- If `.patina/persona` exists and `.patina/voice` does not → rename file
+- If `~/.patina/mother/persona/{uid}/` exists and `~/.patina/mother/voice/{uid}/` does not → rename dir
+- If both old and new exist → log warning, prefer new
+- Fresh install → no migration needed
 
-### Commit 3: Beliefs + Backlinks
+**CLI compatibility:**
+- `--persona` flag on `patina ai {claude,opencode,gemini}` is **removed immediately**, not aliased. Pre-v1, no external consumers. The flag becomes `--voice`.
+
+### Commit 2: Beliefs + Backlinks
 
 **Belief file renames:**
 - `persona-keypair-is-node-identity.md` → `voice-keypair-is-node-identity.md` (rename file + update id in frontmatter)
