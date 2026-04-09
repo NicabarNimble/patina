@@ -30,7 +30,7 @@ exit_criteria:
     text: "Mother links outside toys (logging, keyvalue, measure) to the composed component using wasmtime component linker. Bindgen strategy is explicit (component::bindgen! for composed world)."
     checked: false
   - id: pe5-entry-point
-    text: "Mother calls the composition's entry point (records/source.scan) with a folder path. Data flows through all 6 children."
+    text: "Mother calls the composition's outermost export. Data cascades bottom-up through all 6 children via upstream import calls, ending at source.scan for the actual folder read."
     checked: false
   - id: pe6-output-exists
     text: "After execution, output files exist at a Mother-controlled path (not hardcoded /tmp/patina/). record-writer uses filesystem preopen, not hardcoded path."
@@ -39,7 +39,7 @@ exit_criteria:
     text: "Handle-based service children (belief-verifier, session-writer, spec-manager, doctor) continue working unchanged alongside the composed pando."
     checked: false
   - id: pe8-proof
-    text: "Integration test: ingest a temp folder with 3 .txt files through folder-text-to-parquet, verify output parquet contains 3 records (no dedup collisions), verify catalog has entry. cargo check + cargo nextest run pass."
+    text: "Integration test: 3 unique .txt files in, 3 accepted (0 rejected), 1 parquet at Mother-controlled path with 3 rows, 1 catalog entry. cargo check + cargo nextest run pass."
     checked: false
 ---
 # feat: Pando Execution MVP
@@ -137,21 +137,60 @@ link, call.
 8. **Dispatch enum** — HandleBased vs Composed selection in Mother registry.
 9. **Integration test** — temp folder with 3 .txt files, verify end-to-end.
 
+## Execution Model: Bottom-Up Cascading Calls
+
+The chain is NOT "Mother calls source.scan, then passes results to extract,
+then passes to transform..." — that would be Mother-orchestrated step-by-step.
+
+Instead, each child **calls its upstream import inside its own implementation**.
+This is proven by existing code:
+
+- dedup-filter's `transform()` calls `patina::records::transform::transform(&records)`
+  (its upstream import) FIRST, then dedup-filters the result (lib.rs:21)
+- record-writer's `write()` calls `patina::records::transform::transform(&records)`
+  (its upstream import) FIRST, then writes the result (lib.rs:165)
+
+wac-graph wires exports to imports at composition time. So at runtime:
+- record-writer calls `transform()` → resolves to dedup-filter
+- dedup-filter calls `transform()` → resolves to schema-enforcer
+- schema-enforcer calls `extract()` → resolves to content-extractor
+- content-extractor calls `source.scan()` → resolves to file-system-monitor
+
+This means the **entry point is the BOTTOM of the chain** (catalog.register
+or write.write), not the top (source.scan). Mother calls the outermost export,
+and the cascade unwinds upward through imports.
+
+**Composition entry = `patina:records/catalog@0.1.0`** (lakehouse-catalog).
+Mother calls `catalog.register(files)`. lakehouse-catalog calls upstream
+`write.write()`, which calls upstream `transform()`, which cascades all the
+way to `source.scan(folder)`.
+
+The `folder` argument must be threaded through the cascade. Each interface
+that needs it must accept it as a parameter, or it's injected via config/env
+at instantiation. This is an implementation detail resolved during pe1.
+
 ## Resolved Decisions
 
 - **Package name**: `patina:records@0.1.0` (plural) — matches actual WIT.
+  All docs, wiring, and tests use `patina:records/...` (plural). The
+  child-typed-composition SPEC uses singular `patina:record` — that's a
+  doc error, not the source of truth.
 - **Bindgen strategy**: `wasmtime::component::bindgen!` macro against the
   composed component's WIT. This gives typed Rust entry points. Not manual
   `func_new_typed` — too fragile for 6-child composition surface.
-- **Output paths**: record-writer uses WASI filesystem preopens. Mother sets
-  the preopen directory. No more `/tmp/patina/` hardcode.
+- **Output path contract**: record-writer uses WASI filesystem preopens.
+  Mother sets the preopen guest path `/output` mapped to a host directory
+  of Mother's choosing (e.g., `~/.patina/mother/pando-output/{pando-name}/`).
+  record-writer writes to `/output/records-{timestamp}.parquet`.
+  lakehouse-catalog stores metadata in keyvalue (no filesystem write).
 - **Linker**: New linker setup for composed world alongside existing child
   world linker. They don't share bindgen — different worlds, different types.
 - **Dispatch**: Pando with `[composition]` typed wiring → composed path.
   Pando without (or with only legacy wiring) → existing handle-based path.
-- **Entry point**: The composition exports `patina:records/source@0.1.0`.
-  Mother calls `scan(folder)`. Everything else flows internally via wac-graph
-  wiring.
+- **Execution model**: Bottom-up cascading calls. Entry point is the
+  outermost export of the composition (catalog or write). Each child calls
+  its upstream import inside its implementation. wac-graph resolves the
+  chain at composition time.
 
 ## Verification
 
@@ -165,13 +204,35 @@ cargo build -p patina-ai-child-schema-enforcer --target wasm32-wasip2
 cargo build -p patina-ai-child-lakehouse-catalog --target wasm32-wasip2
 cargo build -p patina-ai-child-record-writer --target wasm32-wasip2
 
-# Integration test:
+# Integration test (deterministic fixtures):
 cargo test --test pando_execution -- folder_text_to_parquet
-# Creates temp dir with 3 .txt files
-# Runs composed pando
-# Asserts: 3 records in parquet output
-# Asserts: catalog entry exists
-# Asserts: output NOT in /tmp/patina/ (Mother-controlled path)
+```
+
+### Integration Test Fixtures (pe8)
+
+**Input**: Temp directory with exactly 3 `.txt` files:
+- `alpha.txt` — "Hello Alpha" (unique content)
+- `beta.txt` — "Hello Beta" (unique content)
+- `gamma.txt` — "Hello Gamma" (unique content)
+
+All 3 have unique content hashes → no dedup rejections.
+All 3 have non-empty required fields → no schema rejections.
+
+**Expected output**:
+- 3 records accepted through schema-enforcer (0 rejected)
+- 3 records accepted through dedup-filter (0 rejected, unique hashes)
+- 1 parquet file at `{output_root}/records-*.parquet` containing 3 rows
+- 1 catalog entry in keyvalue referencing the parquet file
+- Output path is NOT `/tmp/patina/` — it's under Mother-controlled directory
+
+### Handle-Child Regression (pe7)
+
+```bash
+# Smoke test: at least one handle-based child responds
+patina mother start
+# Verify spec-manager responds (handle-based service child):
+patina spec list
+# If spec-manager is unavailable, pe7 fails
 ```
 
 ## Build Readiness
