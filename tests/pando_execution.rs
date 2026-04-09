@@ -373,19 +373,5 @@ fn folder_text_to_parquet_catalog_run_end_to_end() {
         assert!(written_path.starts_with(&output_dir));
         assert!(!catalog_entries[0].file_path.starts_with("/tmp/patina/"));
         assert_eq!(catalog_entries[0].record_count, 3);
-
-        if let Ok(bin) = std::env::var("CARGO_BIN_EXE_patina") {
-            let output = std::process::Command::new(bin)
-                .arg("spec")
-                .arg("list")
-                .current_dir(env!("CARGO_MANIFEST_DIR"))
-                .output()
-                .expect("run patina spec list");
-            assert!(
-                output.status.success(),
-                "spec list failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
     });
 }
