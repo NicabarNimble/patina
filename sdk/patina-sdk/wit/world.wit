@@ -5,9 +5,5 @@ world sdk-types {
     import wasi:keyvalue/store@0.2.0;
     import patina:measure/measure@0.1.0;
     import patina:config/config@0.1.0;
-    export patina:records/source@0.1.0;
-    export patina:records/extract@0.1.0;
-    export patina:records/transform@0.1.0;
-    export patina:records/write@0.1.0;
-    export patina:records/catalog@0.1.0;
+    import patina:records/types@0.1.0;
 }

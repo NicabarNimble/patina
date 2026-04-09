@@ -4,6 +4,4 @@ wit_bindgen::generate!({
     generate_all,
 });
 
-pub use patina::records::types::{
-    CatalogEntry, FileFound, FileWritten, RecordEnvelope, RejectedRecord, TransformResult,
-};
+pub use patina::records::types::*;
