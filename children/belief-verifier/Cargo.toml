@@ -8,7 +8,7 @@ description = "Belief verification knowledge child for Mother"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-patina-sdk = { path = "../../sdk/patina-sdk", features = ["child", "toy-log", "toy-state", "toy-task", "toy-measure", "toy-events", "toy-belief"] }
+patina-sdk = { package = "patina-sdk-legacy", path = "../../sdk/patina-sdk-legacy", features = ["child", "toy-log", "toy-state", "toy-task", "toy-measure", "toy-events", "toy-belief"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
