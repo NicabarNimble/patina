@@ -1,0 +1,16 @@
+package wasi:keyvalue@0.2.0;
+
+interface store {
+    variant error {
+        no-such-store,
+        access-denied,
+        other(string),
+    }
+
+    resource bucket {
+        set: func(key: string, value: list<u8>) -> result<_, error>;
+        exists: func(key: string) -> result<bool, error>;
+    }
+
+    open: func(identifier: string) -> result<bucket, error>;
+}
