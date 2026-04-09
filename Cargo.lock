@@ -3246,10 +3246,7 @@ dependencies = [
 name = "patina-ai-child-dedup-filter"
 version = "0.1.0"
 dependencies = [
- "chrono",
- "patina-sdk",
- "serde",
- "serde_json",
+ "wit-bindgen 0.41.0",
 ]
 
 [[package]]
@@ -3298,9 +3295,7 @@ dependencies = [
 name = "patina-ai-child-schema-enforcer"
 version = "0.1.0"
 dependencies = [
- "patina-sdk",
- "serde",
- "serde_json",
+ "wit-bindgen 0.41.0",
 ]
 
 [[package]]

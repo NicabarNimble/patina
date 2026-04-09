@@ -4,12 +4,11 @@ kind = "child"
 role = "app"
 
 [needs]
-toys = ["logging", "events", "messaging", "measure"]
-
-[needs.scopes.events]
-subscribe = ["record.extracted"]
+toys = ["logging", "measure"]
 
 [needs.metrics]
+validated_records = { type = "counter", labels = [] }
+rejected_records = { type = "counter", labels = [] }
 provenance_complete_records = { type = "counter", labels = [] }
 provenance_incomplete_records = { type = "counter", labels = [] }
 provenance_completeness_pct = { type = "gauge", labels = [] }
