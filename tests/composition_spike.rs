@@ -45,16 +45,20 @@ fn compose_schema_and_dedup_with_wac_graph() {
     let schema_inst = graph.instantiate(schema_pkg_id);
     let dedup_inst = graph.instantiate(dedup_pkg_id);
 
-    let schema_transform = graph
+    let dedup_imports = graph
+        .get_instantiation_arguments(dedup_inst)
+        .map(|(name, _)| name.to_string())
+        .collect::<Vec<_>>();
+    assert!(
+        !dedup_imports
+            .iter()
+            .any(|name| name == "patina:records/transform@0.1.0"),
+        "dedup-filter unexpectedly imports transform in push-pure model"
+    );
+
+    let _schema_transform = graph
         .alias_instance_export(schema_inst, "patina:records/transform@0.1.0")
         .expect("alias schema transform export");
-    graph
-        .set_instantiation_argument(
-            dedup_inst,
-            "patina:records/transform@0.1.0",
-            schema_transform,
-        )
-        .expect("wire schema transform into dedup import");
 
     let dedup_transform = graph
         .alias_instance_export(dedup_inst, "patina:records/transform@0.1.0")
