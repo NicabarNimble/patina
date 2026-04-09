@@ -62,7 +62,7 @@ pub struct AiLaunchArgs {
     session: Option<String>,
 
     #[arg(long)]
-    persona: Option<String>,
+    voice: Option<String>,
 
     #[arg(long)]
     path: Option<String>,
@@ -175,7 +175,7 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             interface_name: "claude".to_string(),
             title: launch.title,
             requested_session: launch.session,
-            persona: launch.persona,
+            voice: launch.voice,
             path: launch.path,
             set_default: launch.default,
             tmux: launch.tmux,
@@ -185,7 +185,7 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             interface_name: "opencode".to_string(),
             title: launch.title,
             requested_session: launch.session,
-            persona: launch.persona,
+            voice: launch.voice,
             path: launch.path,
             set_default: launch.default,
             tmux: launch.tmux,
@@ -195,7 +195,7 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             interface_name: "gemini".to_string(),
             title: launch.title,
             requested_session: launch.session,
-            persona: launch.persona,
+            voice: launch.voice,
             path: launch.path,
             set_default: launch.default,
             tmux: launch.tmux,

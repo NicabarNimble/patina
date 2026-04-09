@@ -52,7 +52,7 @@ pub struct BeginSessionRequest {
     pub title: String,
     pub interface_name: String,
     pub interface_kind: InterfaceKind,
-    pub persona_uid: Option<String>,
+    pub voice_uid: Option<String>,
     pub parent_runtime_id: Option<String>,
     pub handoff_from_runtime_id: Option<String>,
     pub participant: Option<SessionParticipant>,
@@ -120,13 +120,13 @@ pub fn find_active_interface_session(
     project_root: &Path,
     interface_name: &str,
     interface_kind: InterfaceKind,
-    persona_uid: Option<&str>,
+    voice_uid: Option<&str>,
 ) -> Result<Option<LiveSessionHandle>> {
     internal::live::find_active_interface_session(
         project_root,
         interface_name,
         interface_kind,
-        persona_uid,
+        voice_uid,
     )
 }
 

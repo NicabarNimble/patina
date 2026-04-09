@@ -167,7 +167,7 @@ pub(crate) fn start_session_value(
             title: request.title.clone(),
             interface_name: interface.clone(),
             interface_kind: mode.interface_kind(),
-            persona_uid: None,
+            voice_uid: None,
             parent_runtime_id: None,
             handoff_from_runtime_id: None,
             participant: Some(SessionParticipant {

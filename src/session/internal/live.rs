@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::git;
 use crate::mother::{
     InterfaceKindId, MotherRuntimeStore, MotherSessionParticipant, MotherSessionRecord,
-    MotherSessionStatus, PersonaUid, ProjectUid,
+    MotherSessionStatus, ProjectUid, VoiceUid,
 };
 use crate::project;
 use crate::session::{
@@ -23,7 +23,7 @@ pub struct LiveSessionHandle {
     pub title: String,
     pub interface_name: String,
     pub interface_kind: InterfaceKind,
-    pub persona_uid: Option<String>,
+    pub voice_uid: Option<String>,
     pub artifact_path: PathBuf,
     pub branch: String,
     pub starting_commit: String,
@@ -62,7 +62,7 @@ pub fn begin_session(project_root: &Path, request: BeginSessionRequest) -> Resul
         title: request.title.clone(),
         interface_name: request.interface_name.clone(),
         interface_kind: request.interface_kind,
-        persona_uid: request.persona_uid.clone(),
+        voice_uid: request.voice_uid.clone(),
         project_uid: project_uid.clone(),
         branch: branch.clone(),
         starting_commit: starting_commit.clone(),
@@ -81,7 +81,7 @@ pub fn begin_session(project_root: &Path, request: BeginSessionRequest) -> Resul
         project_uid,
         file_id: file_id.clone(),
         title: request.title.clone(),
-        persona_uid: request.persona_uid.clone(),
+        voice_uid: request.voice_uid.clone(),
         status: MotherSessionStatus::Active,
         interface_kind: request.interface_kind.as_str().to_string(),
         interface_name: request.interface_name.clone(),
@@ -215,15 +215,15 @@ pub fn find_active_interface_session(
     project_root: &Path,
     interface_name: &str,
     interface_kind: InterfaceKind,
-    persona_uid: Option<&str>,
+    voice_uid: Option<&str>,
 ) -> Result<Option<LiveSessionHandle>> {
     let store = MotherRuntimeStore::default();
     let Some(project_uid_raw) = project::get_uid(project_root) else {
         return Ok(None);
     };
     let project_uid = ProjectUid::new(project_uid_raw)?;
-    let persona_uid = match persona_uid {
-        Some(value) => Some(PersonaUid::new(value.to_string())?),
+    let voice_uid = match voice_uid {
+        Some(value) => Some(VoiceUid::new(value.to_string())?),
         None => None,
     };
     let interface_kind_id = InterfaceKindId::new(interface_kind.as_str().to_string())?;
@@ -231,7 +231,7 @@ pub fn find_active_interface_session(
         &project_uid,
         interface_name,
         &interface_kind_id,
-        persona_uid.as_ref(),
+        voice_uid.as_ref(),
     )?
     else {
         return Ok(None);
@@ -373,7 +373,7 @@ fn map_record(
         title: record.title,
         interface_name: record.interface_name,
         interface_kind: map_interface_kind(&record.interface_kind),
-        persona_uid: record.persona_uid,
+        voice_uid: record.voice_uid,
         artifact_path,
         branch: record.branch.unwrap_or_else(|| "none".to_string()),
         starting_commit,

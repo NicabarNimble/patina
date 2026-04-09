@@ -367,48 +367,48 @@ pub mod mother {
         }
     }
 
-    /// Persona storage: `~/.patina/mother/persona/{persona_uid}/`
-    pub mod persona {
+    /// Voice storage: `~/.patina/mother/voice/{voice_uid}/`
+    pub mod voice {
         use super::*;
 
-        fn validate_persona_uid(persona_uid: &str) -> Result<(), String> {
-            let valid = !persona_uid.is_empty()
-                && persona_uid.len() <= 64
-                && persona_uid
+        fn validate_voice_uid(voice_uid: &str) -> Result<(), String> {
+            let valid = !voice_uid.is_empty()
+                && voice_uid.len() <= 64
+                && voice_uid
                     .bytes()
                     .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
             if valid {
                 Ok(())
             } else {
                 Err(format!(
-                    "invalid persona uid '{}': expected 1-64 chars [a-zA-Z0-9_-]",
-                    persona_uid
+                    "invalid voice uid '{}': expected 1-64 chars [a-zA-Z0-9_-]",
+                    voice_uid
                 ))
             }
         }
 
-        /// Persona directory: `~/.patina/mother/persona/{persona_uid}/`
-        pub fn persona_dir(persona_uid: &str) -> Result<PathBuf, String> {
-            validate_persona_uid(persona_uid)?;
-            Ok(data_dir().join("persona").join(persona_uid))
+        /// Voice directory: `~/.patina/mother/voice/{voice_uid}/`
+        pub fn voice_dir(voice_uid: &str) -> Result<PathBuf, String> {
+            validate_voice_uid(voice_uid)?;
+            Ok(data_dir().join("voice").join(voice_uid))
         }
 
-        /// Ensure persona directory exists and return path.
-        pub fn ensure_persona_dir(persona_uid: &str) -> Result<PathBuf, String> {
-            let dir = persona_dir(persona_uid)?;
+        /// Ensure voice directory exists and return path.
+        pub fn ensure_voice_dir(voice_uid: &str) -> Result<PathBuf, String> {
+            let dir = voice_dir(voice_uid)?;
             std::fs::create_dir_all(&dir)
-                .map_err(|e| format!("failed to create persona dir '{}': {e}", dir.display()))?;
+                .map_err(|e| format!("failed to create voice dir '{}': {e}", dir.display()))?;
             Ok(dir)
         }
 
-        /// Persona key identity file: `~/.patina/mother/persona/{persona_uid}/identity.age`
-        pub fn identity_age(persona_uid: &str) -> Result<PathBuf, String> {
-            Ok(persona_dir(persona_uid)?.join("identity.age"))
+        /// Voice key identity file: `~/.patina/mother/voice/{voice_uid}/identity.age`
+        pub fn identity_age(voice_uid: &str) -> Result<PathBuf, String> {
+            Ok(voice_dir(voice_uid)?.join("identity.age"))
         }
 
-        /// Persona beliefs store: `~/.patina/mother/persona/{persona_uid}/beliefs.db`
-        pub fn beliefs_db(persona_uid: &str) -> Result<PathBuf, String> {
-            Ok(persona_dir(persona_uid)?.join("beliefs.db"))
+        /// Voice beliefs store: `~/.patina/mother/voice/{voice_uid}/beliefs.db`
+        pub fn beliefs_db(voice_uid: &str) -> Result<PathBuf, String> {
+            Ok(voice_dir(voice_uid)?.join("beliefs.db"))
         }
     }
 }
@@ -522,9 +522,9 @@ pub mod project {
         root.join(".patina/uid")
     }
 
-    /// Project persona binding file: `.patina/persona` (committed)
-    pub fn persona_path(root: &Path) -> PathBuf {
-        root.join(".patina/persona")
+    /// Project voice binding file: `.patina/voice` (committed)
+    pub fn voice_path(root: &Path) -> PathBuf {
+        root.join(".patina/voice")
     }
 
     /// Backup directory: `.patina/local/backups/`
@@ -562,7 +562,7 @@ mod tests {
     }
 
     #[test]
-    fn test_persona_paths() {
+    fn test_oracle_persona_storage_paths() {
         let events = persona::events_dir();
         let cache = persona::cache_dir();
 
@@ -686,22 +686,22 @@ mod tests {
     }
 
     #[test]
-    fn test_mother_persona_paths() {
+    fn test_mother_voice_paths() {
         with_temp_patina_home(|expected_home| {
             assert_eq!(
-                mother::persona::persona_dir("default").unwrap(),
-                expected_home.join("mother/persona/default")
+                mother::voice::voice_dir("default").unwrap(),
+                expected_home.join("mother/voice/default")
             );
             assert_eq!(
-                mother::persona::identity_age("default").unwrap(),
-                expected_home.join("mother/persona/default/identity.age")
+                mother::voice::identity_age("default").unwrap(),
+                expected_home.join("mother/voice/default/identity.age")
             );
             assert_eq!(
-                mother::persona::beliefs_db("default").unwrap(),
-                expected_home.join("mother/persona/default/beliefs.db")
+                mother::voice::beliefs_db("default").unwrap(),
+                expected_home.join("mother/voice/default/beliefs.db")
             );
-            assert!(mother::persona::persona_dir("../oops").is_err());
-            assert!(mother::persona::persona_dir("").is_err());
+            assert!(mother::voice::voice_dir("../oops").is_err());
+            assert!(mother::voice::voice_dir("").is_err());
         });
     }
 

@@ -15,9 +15,9 @@ impl ProjectUid {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(transparent)]
-pub struct PersonaUid(pub String);
+pub struct VoiceUid(pub String);
 
-impl PersonaUid {
+impl VoiceUid {
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -69,11 +69,11 @@ pub struct ConnectPayload {
     /// Optional human/debug path. Not authoritative for identity.
     #[serde(default, alias = "project")]
     pub project_root: Option<String>,
-    /// Persona namespace selector.
+    /// Voice namespace selector.
     ///
     /// Pre-v1 this is an opaque UID/string. Future phases will bind this to
-    /// cryptographic persona identity and capability verification.
-    pub persona: Option<PersonaUid>,
+    /// cryptographic voice identity and capability verification.
+    pub voice: Option<VoiceUid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

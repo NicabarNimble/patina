@@ -85,7 +85,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         interface_name,
         title: None,
         requested_session: None,
-        persona: None,
+        voice: None,
         path: Some(project_path.display().to_string()),
         set_default: false,
         tmux: false,

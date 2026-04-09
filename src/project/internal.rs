@@ -342,14 +342,14 @@ pub fn uid_path(project_path: &Path) -> PathBuf {
     crate::paths::project::uid_path(project_path)
 }
 
-/// Get the persona binding file path for a project
-pub fn persona_path(project_path: &Path) -> PathBuf {
-    crate::paths::project::persona_path(project_path)
+/// Get the voice binding file path for a project
+pub fn voice_path(project_path: &Path) -> PathBuf {
+    crate::paths::project::voice_path(project_path)
 }
 
-/// Get the project persona binding (returns None if not set)
-pub fn get_persona(project_path: &Path) -> Option<String> {
-    let path = persona_path(project_path);
+/// Get the project voice binding (returns None if not set)
+pub fn get_voice(project_path: &Path) -> Option<String> {
+    let path = voice_path(project_path);
     if !path.exists() {
         return None;
     }
@@ -405,13 +405,13 @@ pub fn register_with_mother(project_path: &Path) -> Result<String> {
     let uid_typed = crate::mother::ProjectUid::new(uid.clone())?;
     crate::mother::MotherRuntimeStore::default().register_project(&uid_typed, project_path)?;
 
-    // Ensure default persona store structure exists (GMDP-G9).
-    let _persona_dir =
-        crate::paths::mother::persona::ensure_persona_dir("default").map_err(anyhow::Error::msg)?;
+    // Ensure default voice store structure exists (GMDP-G9).
+    let _voice_dir =
+        crate::paths::mother::voice::ensure_voice_dir("default").map_err(anyhow::Error::msg)?;
     let beliefs_db =
-        crate::paths::mother::persona::beliefs_db("default").map_err(anyhow::Error::msg)?;
+        crate::paths::mother::voice::beliefs_db("default").map_err(anyhow::Error::msg)?;
     rusqlite::Connection::open(&beliefs_db)
-        .with_context(|| format!("initializing persona store at {}", beliefs_db.display()))?;
+        .with_context(|| format!("initializing voice store at {}", beliefs_db.display()))?;
 
     Ok(uid)
 }
@@ -813,7 +813,7 @@ mod tests {
     }
 
     #[test]
-    fn test_register_with_mother_creates_default_persona_store() {
+    fn test_register_with_mother_creates_default_voice_store() {
         let _guard = crate::test_support::env_test_mutex()
             .lock()
             .unwrap_or_else(|error| error.into_inner());
@@ -833,9 +833,9 @@ mod tests {
 
         register_with_mother(project.path()).unwrap();
 
-        let persona_dir = home.path().join("mother/persona/default");
-        assert!(persona_dir.exists());
-        assert!(persona_dir.join("beliefs.db").exists());
+        let voice_dir = home.path().join("mother/voice/default");
+        assert!(voice_dir.exists());
+        assert!(voice_dir.join("beliefs.db").exists());
 
         match old {
             Some(value) => unsafe { std::env::set_var("PATINA_HOME", value) },

@@ -375,7 +375,7 @@ mod tests {
             title: format!("{interface_name} session"),
             interface_name: interface_name.to_string(),
             interface_kind: session::InterfaceKind::from_interface_name(interface_name),
-            persona_uid: None,
+            voice_uid: None,
             artifact_path: PathBuf::from(format!("/tmp/{file_id}.md")),
             branch: "patina".to_string(),
             starting_commit: "deadbeef".to_string(),

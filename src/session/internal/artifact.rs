@@ -42,7 +42,7 @@ pub struct SessionFrontmatter {
     pub updated: String,
     pub start_timestamp: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub persona: Option<String>,
+    pub voice: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub participants: Vec<ArtifactParticipant>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -69,7 +69,7 @@ pub struct NewDocument {
     pub title: String,
     pub interface_name: String,
     pub interface_kind: InterfaceKind,
-    pub persona_uid: Option<String>,
+    pub voice_uid: Option<String>,
     pub project_uid: String,
     pub branch: String,
     pub starting_commit: String,
@@ -115,7 +115,7 @@ pub fn initial_document(request: NewDocument) -> Result<SessionDocument> {
         created: request.created_at.clone(),
         updated: request.created_at.clone(),
         start_timestamp: request.created_local.timestamp_millis(),
-        persona: request.persona_uid,
+        voice: request.voice_uid,
         interfaces: vec![request.interface_kind.as_str().to_string()],
         participants,
         parent_session: request.parent_session,
@@ -196,7 +196,7 @@ mod tests {
             title: "Build session layer".to_string(),
             interface_name: "opencode".to_string(),
             interface_kind: InterfaceKind::OpenCode,
-            persona_uid: None,
+            voice_uid: None,
             project_uid: "proj1234".to_string(),
             branch: "patina".to_string(),
             starting_commit: "abc123".to_string(),

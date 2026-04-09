@@ -124,14 +124,14 @@ pub fn uid_path(project_path: &Path) -> PathBuf {
     internal::uid_path(project_path)
 }
 
-/// Get the persona binding file path for a project
-pub fn persona_path(project_path: &Path) -> PathBuf {
-    internal::persona_path(project_path)
+/// Get the voice binding file path for a project
+pub fn voice_path(project_path: &Path) -> PathBuf {
+    internal::voice_path(project_path)
 }
 
-/// Get the project persona binding (returns None if not set)
-pub fn get_persona(project_path: &Path) -> Option<String> {
-    internal::get_persona(project_path)
+/// Get the project voice binding (returns None if not set)
+pub fn get_voice(project_path: &Path) -> Option<String> {
+    internal::get_voice(project_path)
 }
 
 /// Check if versioning is enabled for this project.
