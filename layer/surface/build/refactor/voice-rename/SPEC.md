@@ -89,13 +89,20 @@ Draft. Ready to build — scope is small and mechanical.
 | `mother/src/protocol.rs` | `PersonaUid` | `VoiceUid` |
 | `mother/src/protocol.rs` | `ConnectPayload.persona` | `ConnectPayload.voice` |
 | `mother/src/state.rs` | `PersonaUid`, `persona_uid` column | `VoiceUid`, `voice_uid` column |
+| `src/mother/mod.rs:51` | re-exports `PersonaUid` | re-exports `VoiceUid` |
 | `src/interface/internal/checkin.rs` | `requested_persona`, `persona_uid`, `persona_matches()` | `requested_voice`, `voice_uid`, `voice_matches()` |
+| `src/session/mod.rs:55` | `persona_uid` field | `voice_uid` field |
 | `src/session/internal/live.rs` | persona metadata fields | voice metadata fields |
 | `src/session/internal/artifact.rs` | persona context | voice context |
 | `mother/src/services/sessions.rs` | `persona_uid` parameter | `voice_uid` parameter |
+| `src/commands/ai/surface.rs` | `resolve_persona_uid()`, `PATINA_PERSONA_UID` env, `persona_uid` event key | `resolve_voice_uid()`, `PATINA_VOICE_UID`, `voice_uid` |
+| `src/commands/ai/mod.rs` | `persona` field on launch request | `voice` field |
+| `src/project/internal.rs` | `persona_path()`, `get_persona()`, creates `mother/persona/default/` | `voice_path()`, `get_voice()`, creates `mother/voice/default/` |
+| `src/project/mod.rs` | re-exports `persona_path()`, `get_persona()` | re-exports `voice_path()`, `get_voice()` |
 | `src/paths.rs:370-411` | `mother::persona` module | `mother::voice` module |
 | `src/paths.rs:525-527` | `persona_path()` → `.patina/persona` | `voice_path()` → `.patina/voice` |
 | `src/workspace/internal.rs` | creates `mother/persona/` dir | creates `mother/voice/` dir |
+| 1 belief backlink file | `[[persona-keypair-is-node-identity]]` | `[[voice-keypair-is-node-identity]]` |
 | Three belief files | persona terminology | voice terminology |
 
 ## What Stays (Era 1 oracle)
@@ -112,25 +119,36 @@ Draft. Ready to build — scope is small and mechanical.
 
 ## Solution
 
-Three commits: protocol/session types → paths/migration → beliefs. Each compiles.
+Three commits: protocol/session/AI-launch types → paths/migration → beliefs. Each compiles.
+Re-exports and downstream consumers must move in the same commit as their type definitions.
 
 ## Resolved Decisions
 
 - **Scope boundary**: Era 3 (identity) renames. Era 1 (oracle) untouched.
 - **Name**: "voice" — short, epistemic, self-documenting, fits vocabulary system
-- **Database migration**: ALTER TABLE rename `persona_uid` → `voice_uid` in state.db
-- **Backward compat**: No shim — pre-v1 clean break
-- **Belief YAML `persona:` field**: Deferred — batch later, not blocking
+- **Database migration**: Idempotent — check if column exists before ALTER TABLE. Fresh installs create `voice_uid` directly. Handle: already renamed (no-op), never created (fresh CREATE TABLE), failed mid-run (retry-safe).
+- **Filesystem migration**: At startup, if `mother/persona/{uid}/` exists and `mother/voice/{uid}/` does not, rename. If both exist, log warning and prefer `mother/voice/`. Project binding: if `.patina/persona` exists and `.patina/voice` does not, rename file.
+- **Backward compat**: No serde aliases — pre-v1 clean break.
+- **Belief YAML `persona:` metadata field**: Deferred — batch later, not blocking.
+- **Belief backlinks**: `[[persona-keypair-is-node-identity]]` reference in `host-proxied-io-is-the-security-model.md` must be updated when renaming the belief file. Session archives are historical records and not updated.
+- **Env var**: `PATINA_PERSONA_UID` → `PATINA_VOICE_UID`.
 
 ## Verification
 
 ```bash
 cargo check
 cargo nextest run
-# Verify Era 1 oracle still works:
+# Verify Era 1 oracle untouched:
 patina persona status
-# Verify Era 3 identity paths exist:
+# Verify Era 3 identity code renamed (should return zero matches):
+grep -rn "PersonaUid\|persona_uid\|requested_persona\|PATINA_PERSONA" \
+  mother/src/protocol.rs mother/src/state.rs \
+  src/interface/internal/checkin.rs src/commands/ai/surface.rs \
+  src/session/mod.rs src/mother/mod.rs src/project/
+# Verify Era 3 paths renamed:
 ls ~/.patina/mother/voice/default/
+# Verify event payload and env var use voice:
+grep -n "voice_uid\|PATINA_VOICE" src/commands/ai/surface.rs
 ```
 
 ## Exit Criteria
@@ -139,7 +157,6 @@ See frontmatter (vr1-vr8).
 
 ## Build Readiness
 
-- All code targets identified
+- All code targets identified (audit verified: ~17 files, ~120 lines)
 - No external dependencies
 - No blockers — this is a leaf refactor
-- Small scope: ~10 files, ~80 lines changed
