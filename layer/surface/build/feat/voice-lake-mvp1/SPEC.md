@@ -180,12 +180,17 @@ This namespace is canonical for MVP1 and must be idempotent across reruns.
 cargo check --workspace -q
 cargo nextest run
 # End-to-end smoke:
-patina voice status
 patina mother start
+ls ~/.patina/mother/voice/default/           # Voice identity dir exists
 # Ingest a test folder through folder-text-to-parquet pando
+ls voice/default/local-docs/records/         # Namespaced output exists
 patina mother federation query --voice default "SELECT count(*) FROM records"
 # Verify row count matches input files
 ```
+
+Note: There is no `patina voice` CLI command yet. Voice identity is managed
+through Mother protocol and paths. A `patina voice` CLI surface may come later
+but is not in scope for this spec.
 
 ## Build Readiness
 
