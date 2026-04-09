@@ -162,8 +162,7 @@ impl exports::patina::records::write::Guest for RecordWriter {
     fn write(
         records: Vec<patina::records::types::RecordEnvelope>,
     ) -> Result<Vec<patina::records::types::FileWritten>, String> {
-        let transformed = patina::records::transform::transform(&records)?;
-        let accepted = transformed.accepted;
+        let accepted = records;
 
         let output_path = PathBuf::from(format!(
             "/tmp/patina/records-{}.parquet",

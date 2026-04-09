@@ -18,16 +18,15 @@ impl exports::patina::records::transform::Guest for DedupFilter {
     fn transform(
         records: Vec<patina::records::types::RecordEnvelope>,
     ) -> Result<patina::records::types::TransformResult, String> {
-        let upstream = patina::records::transform::transform(&records)?;
         let bucket =
             wasi::keyvalue::store::open("patina:dedup-filter").map_err(keyvalue_error_to_string)?;
 
         let mut accepted = Vec::new();
-        let mut rejected = upstream.rejected;
+        let mut rejected = Vec::new();
         let mut duplicate_output_violations = 0_u64;
         let mut seen_output_hashes = std::collections::HashSet::new();
 
-        for record in upstream.accepted {
+        for record in records {
             let dedup_key = format!("dedup:{}", record.content_hash);
             let exists = bucket
                 .exists(&dedup_key)
