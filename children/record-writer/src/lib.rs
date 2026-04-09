@@ -158,16 +158,26 @@ fn write_records_parquet(
     Ok(())
 }
 
+fn resolve_output_path() -> Result<PathBuf, String> {
+    let output_root = ["/output", "/lake", "/input"]
+        .iter()
+        .map(Path::new)
+        .find(|path| path.exists() && path.is_dir())
+        .ok_or_else(|| "no filesystem preopen directory available".to_string())?;
+
+    Ok(output_root.join(format!(
+        "records-{}.parquet",
+        Utc::now().format("%Y%m%d-%H%M%S")
+    )))
+}
+
 impl exports::patina::records::write::Guest for RecordWriter {
     fn write(
         records: Vec<patina::records::types::RecordEnvelope>,
     ) -> Result<Vec<patina::records::types::FileWritten>, String> {
         let accepted = records;
 
-        let output_path = PathBuf::from(format!(
-            "/tmp/patina/records-{}.parquet",
-            Utc::now().format("%Y%m%d-%H%M%S")
-        ));
+        let output_path = resolve_output_path()?;
 
         let bucket = wasi::keyvalue::store::open("patina:record-writer")
             .map_err(keyvalue_error_to_string)?;
