@@ -25,6 +25,7 @@ use std::sync::Mutex;
 use std::sync::RwLock;
 use std::sync::TryLockError;
 use std::time::{Duration, Instant};
+use wac_graph::{types::Package, CompositionGraph, EncodeOptions};
 
 use patina::mother::ChildRequest;
 
@@ -161,6 +162,159 @@ impl ServerState {
                 })
                 .collect(),
         }
+    }
+
+    fn typed_interface_candidates(interface_name: &str) -> Vec<String> {
+        if interface_name.contains('@') {
+            vec![interface_name.to_string()]
+        } else {
+            vec![
+                interface_name.to_string(),
+                format!("{}@0.1.0", interface_name),
+            ]
+        }
+    }
+
+    fn resolve_child_instance<'a>(
+        manifest: &'a mother_crate::pando::PandoManifest,
+        instance: &str,
+    ) -> Option<&'a mother_crate::pando::PandoChild> {
+        manifest
+            .children
+            .iter()
+            .find(|child| child.id.as_deref().unwrap_or(&child.name) == instance)
+    }
+
+    fn validate_typed_composition(
+        &self,
+        manifest: &mother_crate::pando::PandoManifest,
+    ) -> Result<()> {
+        let Some(composition) = &manifest.composition else {
+            return Ok(());
+        };
+
+        let typed_rules = composition
+            .wiring
+            .iter()
+            .filter_map(|rule| match rule {
+                mother_crate::pando::PandoWiring::Typed(typed) => Some(typed),
+                mother_crate::pando::PandoWiring::Legacy(_) => None,
+            })
+            .collect::<Vec<_>>();
+        if typed_rules.is_empty() {
+            return Ok(());
+        }
+
+        let mut graph = CompositionGraph::new();
+        let mut instance_ids = HashMap::new();
+
+        for child in &manifest.children {
+            let instance_name = child.id.as_deref().unwrap_or(&child.name);
+            let (wasm_path, _) = self.registry.child_paths(&child.name).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "typed composition child '{}' is not installed/registered",
+                    child.name
+                )
+            })?;
+
+            let package_name = format!(
+                "patina:{}:{}",
+                manifest.pando.name,
+                child.id.as_deref().unwrap_or(&child.name)
+            );
+            let package = Package::from_file(&package_name, None, &wasm_path, graph.types_mut())
+                .map_err(|e| anyhow::anyhow!("loading typed child '{}': {}", child.name, e))?;
+            let package_id = graph
+                .register_package(package)
+                .map_err(|e| anyhow::anyhow!("registering typed child '{}': {}", child.name, e))?;
+            let instance_id = graph.instantiate(package_id);
+            instance_ids.insert(instance_name.to_string(), instance_id);
+        }
+
+        for rule in typed_rules {
+            let Some(from_id) = instance_ids.get(&rule.from) else {
+                anyhow::bail!(
+                    "typed composition wiring references unknown from instance '{}'",
+                    rule.from
+                );
+            };
+            let Some(to_id) = instance_ids.get(&rule.to) else {
+                anyhow::bail!(
+                    "typed composition wiring references unknown to instance '{}'",
+                    rule.to
+                );
+            };
+
+            let candidates = Self::typed_interface_candidates(&rule.toy);
+            let mut wired = false;
+            for candidate in &candidates {
+                let export_id = match graph.alias_instance_export(*from_id, candidate) {
+                    Ok(id) => id,
+                    Err(_) => continue,
+                };
+                if graph
+                    .set_instantiation_argument(*to_id, candidate, export_id)
+                    .is_ok()
+                {
+                    wired = true;
+                    break;
+                }
+            }
+            if !wired {
+                let from_child = Self::resolve_child_instance(manifest, &rule.from)
+                    .map(|child| child.name.clone())
+                    .unwrap_or_else(|| rule.from.clone());
+                let to_child = Self::resolve_child_instance(manifest, &rule.to)
+                    .map(|child| child.name.clone())
+                    .unwrap_or_else(|| rule.to.clone());
+                anyhow::bail!(
+                    "typed wiring failed for '{}' -> '{}' on '{}' (from child '{}', to child '{}')",
+                    rule.from,
+                    rule.to,
+                    rule.toy,
+                    from_child,
+                    to_child
+                );
+            }
+        }
+
+        if let Some(entry) = &composition.entry {
+            let Some(entry_id) = instance_ids.get(&entry.child) else {
+                anyhow::bail!(
+                    "typed composition entry references unknown child instance '{}'",
+                    entry.child
+                );
+            };
+            let candidates = Self::typed_interface_candidates(&entry.toy);
+            let mut exported = false;
+            for candidate in &candidates {
+                let export_id = match graph.alias_instance_export(*entry_id, candidate) {
+                    Ok(id) => id,
+                    Err(_) => continue,
+                };
+                if graph.export(export_id, candidate).is_ok() {
+                    exported = true;
+                    break;
+                }
+            }
+            if !exported {
+                anyhow::bail!(
+                    "typed composition entry export failed for instance '{}' toy '{}'",
+                    entry.child,
+                    entry.toy
+                );
+            }
+        }
+
+        graph.encode(EncodeOptions::default()).map_err(|e| {
+            anyhow::anyhow!(
+                "encoding typed composition '{}': {}",
+                manifest.pando.name,
+                e
+            )
+        })?;
+
+        Ok(())
     }
 }
 
@@ -486,6 +640,7 @@ impl MotherRuntime for ServerState {
             super::integrity::verify_pando_integrity(&self.pandos_root.join(name))?;
             let manifest = mother_crate::pando::parse_manifest_path(&manifest_path)
                 .map_err(|e| anyhow::anyhow!("invalid_request: {}", e))?;
+            self.validate_typed_composition(&manifest)?;
             let mut children_activated = 0usize;
             for child in manifest.children {
                 let reload = self.reload_child(&child.name)?;
@@ -562,6 +717,10 @@ impl MotherRuntime for ServerState {
                             continue;
                         }
                     };
+                    if self.validate_typed_composition(&manifest).is_err() {
+                        pandos_failed += 1;
+                        continue;
+                    }
                     pandos_loaded += 1;
                     for child in manifest.children {
                         match self.reload_child(&child.name) {
