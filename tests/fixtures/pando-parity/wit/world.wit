@@ -1,0 +1,16 @@
+package test:pando-parity@0.1.0;
+
+world schema-runner {
+    import patina:pando/extract@0.1.0;
+    import wasi:logging/logging@0.1.0;
+    import patina:measure/measure@0.1.0;
+    export patina:pando/transform@0.1.0;
+}
+
+world dedup-runner {
+    import patina:pando/extract@0.1.0;
+    import wasi:logging/logging@0.1.0;
+    import wasi:keyvalue/store@0.2.0;
+    import patina:measure/measure@0.1.0;
+    export patina:pando/transform@0.1.0;
+}
