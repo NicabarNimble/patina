@@ -3269,9 +3269,7 @@ name = "patina-ai-child-lakehouse-catalog"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "patina-sdk",
- "serde",
- "serde_json",
+ "wit-bindgen 0.41.0",
 ]
 
 [[package]]

@@ -1,0 +1,7 @@
+package patina:lakehouse-catalog@0.1.0;
+
+world lakehouse-catalog {
+    import wasi:logging/logging@0.1.0;
+    import wasi:keyvalue/store@0.2.0;
+    export patina:records/catalog@0.1.0;
+}
