@@ -1,42 +1,42 @@
 ---
 type: refactor
 id: voice-rename
-status: draft
+status: ready
 created: 2026-04-09
 sessions:
   origin: 20260409-070410-485377000
-references:
-  - beliefs-live-at-two-levels
-  - persona-keypair-is-node-identity
-  - persona-is-a-patina-instance
 related:
-  - feat/multiproject-belief-share
-  - feat/voice-lake-mvp1
+- feat/multiproject-belief-share
+- feat/voice-lake-mvp1
+references:
+- beliefs-live-at-two-levels
+- persona-keypair-is-node-identity
+- persona-is-a-patina-instance
 exit_criteria:
-  - id: vr1
-    text: "Mother protocol type renamed: VoiceUid (was PersonaUid)"
-    checked: false
-  - id: vr2
-    text: "ConnectPayload.voice field (was .persona)"
-    checked: false
-  - id: vr3
-    text: "Session binding uses voice_uid, requested_voice, voice_matches() throughout checkin and artifact code"
-    checked: false
-  - id: vr4
-    text: "Mother-side paths use voice: ~/.patina/mother/voice/{uid}/ (was mother/persona/)"
-    checked: false
-  - id: vr5
-    text: "Project binding file is .patina/voice (was .patina/persona)"
-    checked: false
-  - id: vr6
-    text: "Mother state.db column renamed voice_uid (was persona_uid)"
-    checked: false
-  - id: vr7
-    text: "Three persona beliefs updated to voice terminology in belief content"
-    checked: false
-  - id: vr8
-    text: "cargo check passes, all tests pass"
-    checked: false
+- id: vr1
+  text: 'Mother protocol type renamed: VoiceUid (was PersonaUid)'
+  checked: false
+- id: vr2
+  text: ConnectPayload.voice field (was .persona)
+  checked: false
+- id: vr3
+  text: Session binding uses voice_uid, requested_voice, voice_matches() throughout checkin and artifact code
+  checked: false
+- id: vr4
+  text: 'Mother-side paths use voice: ~/.patina/mother/voice/{uid}/ (was mother/persona/)'
+  checked: false
+- id: vr5
+  text: Project binding file is .patina/voice (was .patina/persona)
+  checked: false
+- id: vr6
+  text: Mother state.db column renamed voice_uid (was persona_uid)
+  checked: false
+- id: vr7
+  text: Three persona beliefs updated to voice terminology in belief content
+  checked: false
+- id: vr8
+  text: cargo check passes, all tests pass
+  checked: false
 ---
 # refactor: voice-rename
 
