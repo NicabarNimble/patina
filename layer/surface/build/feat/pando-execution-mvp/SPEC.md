@@ -19,37 +19,37 @@ related:
 exit_criteria:
   - id: pe1-push-children-pure
     text: "All 6 push children are pure transforms with no upstream imports. dedup-filter and record-writer lose their patina:records/transform import. Each child's push interface is a standalone function of its inputs."
-    checked: false
+    checked: true
   - id: pe2-pando-package
     text: "patina:pando@0.1.0 WIT package exists in wit/pando/ with composed run() interfaces per stage: source, extract, transform, write, catalog. No domain types — only references to patina:records types."
-    checked: false
+    checked: true
   - id: pe3-adapters-built
     text: "6 thin pando adapter components exist. Each imports upstream patina:pando/<prev-stage> + push child patina:records/<stage>, exports patina:pando/<stage>::run(). Source adapter is special: no upstream pando import, injects folder from config capability."
-    checked: false
+    checked: true
   - id: pe4-adapters-glue-only
     text: "Every adapter is strictly: pull upstream run(), call push child, return. Zero business logic. Verified by code review — no filtering, validation, or transformation in adapters."
-    checked: false
+    checked: true
   - id: pe5-compose-and-load
     text: "Mother composes 12 components (6 push + 6 adapters) via wac-graph at runtime, encodes, and loads in wasmtime. Explicit WAC instance aliases for repeated transform stages (schema-enforcer vs dedup-filter)."
-    checked: false
+    checked: true
   - id: pe6-single-entry
     text: "Mother calls patina:pando/catalog::run() as single entry point. Full chain executes: catalog→write→transform→transform→extract→source. Data cascades through adapters and push children."
-    checked: false
+    checked: true
   - id: pe7-output-exists
     text: "After execution, parquet output exists at Mother-controlled path (not /tmp/patina/). record-writer uses filesystem preopen."
-    checked: false
+    checked: true
   - id: pe8-handle-children-work
     text: "Handle-based service children (belief-verifier, session-writer, spec-manager, doctor) continue working. Regression: patina spec list returns results."
-    checked: false
+    checked: true
   - id: pe9-parity-tests
     text: "Per-stage parity: push(fixture_input) == composed.run() output for equivalent fixtures. Mock upstream for composed path. All 6 stages pass parity."
-    checked: false
+    checked: true
   - id: pe10-e2e-test
     text: "E2E: 3 unique .txt files in temp folder, Mother calls pando/catalog::run(), verify 3 accepted records, 0 rejected, 1 parquet at Mother-controlled path with 3 rows, 1 catalog entry."
-    checked: false
+    checked: true
   - id: pe11-size-tracking
     text: "Artifact size tracked per child + adapter .wasm. Baseline recorded before and after Fix 2. No unexplained bloat."
-    checked: false
+    checked: true
 ---
 # feat: Pando Execution MVP
 
