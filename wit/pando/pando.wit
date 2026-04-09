@@ -29,3 +29,11 @@ interface catalog {
 
     run: func() -> result<list<catalog-entry>, string>;
 }
+
+world catalog-runner {
+    import wasi:logging/logging@0.1.0;
+    import wasi:keyvalue/store@0.2.0;
+    import patina:measure/measure@0.1.0;
+    import patina:config/config@0.1.0;
+    export catalog;
+}

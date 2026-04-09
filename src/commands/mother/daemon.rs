@@ -26,6 +26,8 @@ use std::sync::RwLock;
 use std::sync::TryLockError;
 use std::time::{Duration, Instant};
 use wac_graph::{types::Package, CompositionGraph, EncodeOptions};
+use wasmtime::component::{Component, Linker, ResourceTable};
+use wasmtime::Store;
 
 use patina::mother::ChildRequest;
 
@@ -54,6 +56,164 @@ pub struct ServerState {
     refresh_lock: Mutex<()>,
     aliases: HashMap<String, String>,
     readiness: Arc<RwLock<mother_crate::runtime::ReadinessState>>,
+}
+
+enum LoadedComponent {
+    HandleBased,
+    Composed,
+}
+
+mod composed_bindings {
+    pub struct HostState {
+        pub wasi: wasmtime_wasi::WasiCtx,
+        pub wasi_table: wasmtime::component::ResourceTable,
+        pub runtime: mother_crate::MotherRuntimeStore,
+        pub config: std::collections::HashMap<String, String>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct StateBucketHandle {
+        pub identifier: String,
+    }
+
+    impl wasmtime_wasi::WasiView for HostState {
+        fn ctx(&mut self) -> wasmtime_wasi::WasiCtxView<'_> {
+            wasmtime_wasi::WasiCtxView {
+                ctx: &mut self.wasi,
+                table: &mut self.wasi_table,
+            }
+        }
+    }
+
+    wasmtime::component::bindgen!({
+        path: "wit/pando",
+        world: "catalog-runner",
+    });
+
+    impl wasi::logging::logging::Host for HostState {
+        fn log(&mut self, level: wasi::logging::logging::Level, context: String, message: String) {
+            let level = match level {
+                wasi::logging::logging::Level::Trace => "TRACE",
+                wasi::logging::logging::Level::Debug => "DEBUG",
+                wasi::logging::logging::Level::Info => "INFO",
+                wasi::logging::logging::Level::Warn => "WARN",
+                wasi::logging::logging::Level::Error => "ERROR",
+                wasi::logging::logging::Level::Critical => "CRITICAL",
+            };
+            eprintln!("[pando:{}:{}] {}", context, level, message);
+        }
+    }
+
+    impl wasi::keyvalue::store::Host for HostState {
+        fn open(
+            &mut self,
+            identifier: String,
+        ) -> Result<
+            wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+            wasi::keyvalue::store::Error,
+        > {
+            let handle = StateBucketHandle { identifier };
+            let rep = self
+                .wasi_table
+                .push(handle)
+                .map_err(|error| wasi::keyvalue::store::Error::Other(error.to_string()))?;
+            Ok(wasmtime::component::Resource::new_own(rep.rep()))
+        }
+    }
+
+    impl wasi::keyvalue::store::HostBucket for HostState {
+        fn get(
+            &mut self,
+            bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+            key: String,
+        ) -> Result<Option<Vec<u8>>, wasi::keyvalue::store::Error> {
+            let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
+            let handle = self
+                .wasi_table
+                .get(&rep)
+                .map_err(|error| wasi::keyvalue::store::Error::Other(error.to_string()))?;
+            let scoped = format!("{}:{}", handle.identifier, key);
+            let value = self
+                .runtime
+                .get_state("pando", &scoped)
+                .map_err(|error| wasi::keyvalue::store::Error::Other(error.to_string()))?;
+            let decoded = match value {
+                Some(raw) => Some(
+                    serde_json::from_str::<Vec<u8>>(&raw)
+                        .unwrap_or_else(|_| raw.as_bytes().to_vec()),
+                ),
+                None => None,
+            };
+            Ok(decoded)
+        }
+
+        fn set(
+            &mut self,
+            bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+            key: String,
+            value: Vec<u8>,
+        ) -> Result<(), wasi::keyvalue::store::Error> {
+            let rep = wasmtime::component::Resource::<StateBucketHandle>::new_borrow(bucket.rep());
+            let handle = self
+                .wasi_table
+                .get(&rep)
+                .map_err(|error| wasi::keyvalue::store::Error::Other(error.to_string()))?;
+            let scoped = format!("{}:{}", handle.identifier, key);
+            let encoded = serde_json::to_string(&value)
+                .map_err(|error| wasi::keyvalue::store::Error::Other(error.to_string()))?;
+            self.runtime
+                .put_state("pando", &scoped, &encoded)
+                .map_err(|error| wasi::keyvalue::store::Error::Other(error.to_string()))
+        }
+
+        fn exists(
+            &mut self,
+            bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+            key: String,
+        ) -> Result<bool, wasi::keyvalue::store::Error> {
+            Ok(self.get(bucket, key)?.is_some())
+        }
+
+        fn drop(
+            &mut self,
+            bucket: wasmtime::component::Resource<wasi::keyvalue::store::Bucket>,
+        ) -> anyhow::Result<()> {
+            let rep = wasmtime::component::Resource::<StateBucketHandle>::new_own(bucket.rep());
+            let _ = self.wasi_table.delete(rep)?;
+            Ok(())
+        }
+    }
+
+    impl patina::measure::measure::Host for HostState {
+        fn emit(&mut self, metric: patina::measure::measure::Metric) -> Result<(), String> {
+            eprintln!(
+                "[pando:measure] {}={} {:?}",
+                metric.name, metric.value, metric.labels
+            );
+            Ok(())
+        }
+
+        fn gauge(&mut self, name: String, value: f64) -> Result<(), String> {
+            eprintln!("[pando:measure] {}={}", name, value);
+            Ok(())
+        }
+
+        fn counter(&mut self, name: String, delta: f64) -> Result<(), String> {
+            eprintln!("[pando:measure] {}+={}", name, delta);
+            Ok(())
+        }
+    }
+
+    impl patina::config::config::Host for HostState {
+        fn get(&mut self, key: String) -> Result<String, String> {
+            self.config
+                .get(&key)
+                .cloned()
+                .ok_or_else(|| format!("missing config key '{}'", key))
+        }
+    }
+
+    impl patina::records::types::Host for HostState {}
 }
 
 impl ServerState {
@@ -192,6 +352,63 @@ impl ServerState {
         let Some(composition) = &manifest.composition else {
             return Ok(());
         };
+        if composition
+            .wiring
+            .iter()
+            .any(|rule| matches!(rule, mother_crate::pando::PandoWiring::Typed(_)))
+        {
+            let _ = self.compose_typed_component(manifest)?;
+        }
+        Ok(())
+    }
+
+    fn component_wasm_path(&self, name: &str) -> Result<PathBuf> {
+        if let Some((wasm_path, _)) = self.registry.child_paths(name) {
+            return Ok(wasm_path);
+        }
+
+        let stem = name.replace('-', "_");
+        let mut candidates = vec![
+            patina::paths::patina_home()
+                .join("children")
+                .join(format!("patina_ai_child_{stem}.wasm")),
+            patina::paths::patina_home()
+                .join("pando-adapters")
+                .join(format!("{name}.wasm")),
+            patina::paths::patina_home()
+                .join("pando-adapters")
+                .join(format!("patina_ai_adapter_{stem}.wasm")),
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("target/wasm32-wasip2/debug")
+                .join(format!("patina_ai_child_{stem}.wasm")),
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("target/wasm32-wasip2/debug")
+                .join(format!("patina_ai_adapter_{stem}.wasm")),
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("target/wasm32-wasip2/release")
+                .join(format!("patina_ai_child_{stem}.wasm")),
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("target/wasm32-wasip2/release")
+                .join(format!("patina_ai_adapter_{stem}.wasm")),
+        ];
+
+        candidates.dedup();
+        for candidate in candidates {
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+
+        anyhow::bail!("component wasm not found for '{}'", name)
+    }
+
+    fn compose_typed_component(
+        &self,
+        manifest: &mother_crate::pando::PandoManifest,
+    ) -> Result<Vec<u8>> {
+        let Some(composition) = &manifest.composition else {
+            anyhow::bail!("typed composition requested without [composition]");
+        };
 
         let typed_rules = composition
             .wiring
@@ -202,7 +419,7 @@ impl ServerState {
             })
             .collect::<Vec<_>>();
         if typed_rules.is_empty() {
-            return Ok(());
+            anyhow::bail!("typed composition requested without typed wiring rules");
         }
 
         let mut graph = CompositionGraph::new();
@@ -210,12 +427,7 @@ impl ServerState {
 
         for child in &manifest.children {
             let instance_name = child.id.as_deref().unwrap_or(&child.name);
-            let (wasm_path, _) = self.registry.child_paths(&child.name).ok_or_else(|| {
-                anyhow::anyhow!(
-                    "typed composition child '{}' is not installed/registered",
-                    child.name
-                )
-            })?;
+            let wasm_path = self.component_wasm_path(&child.name)?;
 
             let package_name = format!(
                 "patina:{}:{}",
@@ -312,9 +524,83 @@ impl ServerState {
                 manifest.pando.name,
                 e
             )
-        })?;
+        })
+    }
 
-        Ok(())
+    fn execute_typed_composition(
+        &self,
+        manifest: &mother_crate::pando::PandoManifest,
+    ) -> Result<()> {
+        let (engine, component) = self.load_typed_component(manifest)?;
+
+        let mut linker = Linker::new(&engine);
+        wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
+        composed_bindings::CatalogRunner::add_to_linker::<
+            composed_bindings::HostState,
+            wasmtime::component::HasSelf<composed_bindings::HostState>,
+        >(&mut linker, |state| state)?;
+
+        let source_host = std::env::var("PATINA_PANDO_FOLDER").unwrap_or_else(|_| {
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .to_string_lossy()
+                .to_string()
+        });
+        let output_host = std::env::var("PATINA_PANDO_OUTPUT").unwrap_or_else(|_| {
+            patina::paths::patina_home()
+                .join("pandos")
+                .join(&manifest.pando.name)
+                .join("output")
+                .to_string_lossy()
+                .to_string()
+        });
+        std::fs::create_dir_all(&output_host)?;
+
+        let mut wasi = wasmtime_wasi::WasiCtxBuilder::new();
+        wasi.preopened_dir(
+            Path::new(&source_host),
+            "/input",
+            wasmtime_wasi::DirPerms::READ,
+            wasmtime_wasi::FilePerms::READ,
+        )?;
+        wasi.preopened_dir(
+            Path::new(&output_host),
+            "/output",
+            wasmtime_wasi::DirPerms::READ | wasmtime_wasi::DirPerms::MUTATE,
+            wasmtime_wasi::FilePerms::READ | wasmtime_wasi::FilePerms::WRITE,
+        )?;
+
+        let mut pando_config = HashMap::new();
+        pando_config.insert("folder_path".to_string(), "/input".to_string());
+
+        let mut store = Store::new(
+            &engine,
+            composed_bindings::HostState {
+                wasi: wasi.build(),
+                wasi_table: ResourceTable::new(),
+                runtime: self.runtime_store.clone(),
+                config: pando_config,
+            },
+        );
+
+        let instance =
+            composed_bindings::CatalogRunner::instantiate(&mut store, &component, &linker)?;
+        let run_result = instance.patina_pando_catalog().call_run(&mut store)?;
+        run_result
+            .map(|_| ())
+            .map_err(|error| anyhow::anyhow!("typed pando execution failed: {}", error))
+    }
+
+    fn load_typed_component(
+        &self,
+        manifest: &mother_crate::pando::PandoManifest,
+    ) -> Result<(wasmtime::Engine, Component)> {
+        let composed_bytes = self.compose_typed_component(manifest)?;
+        let mut config = wasmtime::Config::new();
+        config.wasm_component_model(true);
+        let engine = wasmtime::Engine::new(&config)?;
+        let component = Component::new(&engine, &composed_bytes)?;
+        Ok((engine, component))
     }
 }
 
@@ -641,12 +927,33 @@ impl MotherRuntime for ServerState {
             let manifest = mother_crate::pando::parse_manifest_path(&manifest_path)
                 .map_err(|e| anyhow::anyhow!("invalid_request: {}", e))?;
             self.validate_typed_composition(&manifest)?;
+            let has_typed_wiring = manifest
+                .composition
+                .as_ref()
+                .map(|composition| {
+                    composition
+                        .wiring
+                        .iter()
+                        .any(|rule| matches!(rule, mother_crate::pando::PandoWiring::Typed(_)))
+                })
+                .unwrap_or(false);
+            let loaded_component = if has_typed_wiring {
+                LoadedComponent::Composed
+            } else {
+                LoadedComponent::HandleBased
+            };
             let mut children_activated = 0usize;
-            for child in manifest.children {
+            for child in &manifest.children {
+                if self.registry.child_paths(&child.name).is_none() {
+                    continue;
+                }
                 let reload = self.reload_child(&child.name)?;
                 if reload.status == "reloaded" {
                     children_activated += 1;
                 }
+            }
+            if matches!(loaded_component, LoadedComponent::Composed) {
+                self.execute_typed_composition(&manifest)?;
             }
             self.reload_pando_registry()?;
 
@@ -721,8 +1028,25 @@ impl MotherRuntime for ServerState {
                         pandos_failed += 1;
                         continue;
                     }
+                    let has_typed_wiring = manifest
+                        .composition
+                        .as_ref()
+                        .map(|composition| {
+                            composition.wiring.iter().any(|rule| {
+                                matches!(rule, mother_crate::pando::PandoWiring::Typed(_))
+                            })
+                        })
+                        .unwrap_or(false);
+                    let loaded_component = if has_typed_wiring {
+                        LoadedComponent::Composed
+                    } else {
+                        LoadedComponent::HandleBased
+                    };
                     pandos_loaded += 1;
-                    for child in manifest.children {
+                    for child in &manifest.children {
+                        if self.registry.child_paths(&child.name).is_none() {
+                            continue;
+                        }
                         match self.reload_child(&child.name) {
                             Ok(outcome) if outcome.status == "reloaded" => {
                                 children_activated += 1;
@@ -730,7 +1054,7 @@ impl MotherRuntime for ServerState {
                             Ok(outcome) => {
                                 children_failed += 1;
                                 degraded.push(mother_crate::runtime::DegradedChild {
-                                    name: child.name,
+                                    name: child.name.clone(),
                                     reason: outcome
                                         .reason
                                         .unwrap_or_else(|| "reload failed".to_string()),
@@ -739,11 +1063,16 @@ impl MotherRuntime for ServerState {
                             Err(error) => {
                                 children_failed += 1;
                                 degraded.push(mother_crate::runtime::DegradedChild {
-                                    name: child.name,
+                                    name: child.name.clone(),
                                     reason: error.to_string(),
                                 });
                             }
                         }
+                    }
+                    if matches!(loaded_component, LoadedComponent::Composed)
+                        && self.load_typed_component(&manifest).is_err()
+                    {
+                        pandos_failed += 1;
                     }
                 }
             }
