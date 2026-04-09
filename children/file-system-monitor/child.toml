@@ -4,7 +4,7 @@ kind = "child"
 role = "app"
 
 [needs]
-toys = ["logging", "messaging", "measure", "filesystem"]
+toys = ["logging", "measure", "filesystem"]
 
 [needs.scopes.filesystem]
 path = "/tmp"

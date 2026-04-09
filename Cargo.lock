@@ -3260,10 +3260,8 @@ name = "patina-ai-child-file-system-monitor"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "patina-sdk",
- "serde",
- "serde_json",
  "sha2",
+ "wit-bindgen 0.41.0",
 ]
 
 [[package]]
