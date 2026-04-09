@@ -2,88 +2,103 @@
 
 ## Why This Design
 
-Composition validation works. Execution doesn't. This spec closes the gap by
-fixing 4 prerequisite issues (incomplete worlds, legacy pando wiring, hardcoded
-output, missing bindgen) then wiring the execution path.
+Fix 2 (dual surface with pando adapters) was chosen over:
+- Fix 1 (parameterless pull) — loses standalone testability
+- Fix 3 (Mother orchestrates type boundaries) — Mother is inside the data flow
+- Two-worlds-per-child — couples children to composition concerns
+
+Pando adapters keep children push-pure and composition-ignorant. Adapters are
+thin glue components that handle the chain. Mother controls outside, adapters
+control inside.
 
 ## Build Target
 
-Single branch (`patina`). Commits grouped by concern: child world fixes,
-pando manifest update, Mother composition execution, integration test.
+Single branch (`patina`). Commits grouped by concern.
 
 ## Resolved Decisions
 
-- Bindgen: `wasmtime::component::bindgen!` against composed world — typed entry
-- Linker: New setup for composed world, separate from handle-based child linker
-- Output: WASI filesystem preopens, Mother sets directory
-- Dispatch: typed wiring presence in pando selects composed path
-- Package name: `patina:records@0.1.0` (plural, matches actual WIT)
+- **patina:pando** for composed interfaces (not patina:pipeline — reserved for grammar engine)
+- **Children stay push-pure** — no upstream composed imports, ever
+- **Adapters are glue-only** — pull upstream, call push child, return. Zero logic.
+- **Source adapter is special** — no upstream pando import, config injection for folder path
+- **Explicit WAC instance aliases** for repeated transform stages
+- **Bindgen**: `wasmtime::component::bindgen!` against composed component's WIT
+- **Folder injection**: config capability (preferred), WASI env as fallback
+- **Package name**: `patina:records@0.1.0` (plural, matches actual WIT)
 
 ## Commits
 
-1. `fix(children): add upstream toy imports to content-extractor, schema-enforcer, lakehouse-catalog` — Update 3 world.wit files to import upstream toys per child-typed-composition SPEC. Rebuild .wasm. content-extractor imports records/source, schema-enforcer imports records/extract, lakehouse-catalog imports records/write.
+1. `refactor(children): make dedup-filter and record-writer push-pure` — Remove upstream `patina:records/transform` import from both children's world.wit. Update implementations: dedup-filter processes records directly (no upstream call), record-writer writes records directly. Rebuild both .wasm.
 
-2. `fix(record-writer): use filesystem preopen instead of hardcoded /tmp/patina/` — Replace PathBuf::from("/tmp/patina/...") with WASI preopen directory lookup. Rebuild .wasm.
+2. `fix(record-writer): use filesystem preopen instead of /tmp/patina/` — Replace hardcoded PathBuf::from("/tmp/patina/...") with WASI preopen directory lookup. Rebuild .wasm.
 
-3. `refactor(pando): replace legacy string wiring with typed wiring in folder-text-to-parquet` — Update pando.toml: replace `[composition].wiring` string list with `[[composition.wiring]]` typed rules (from/to/toy). Add `[composition].entry = { child = "file-system-monitor", toy = "patina:records/source" }`.
+3. `feat(wit): create patina:pando@0.1.0 composed interfaces` — New wit/pando/ directory with run() interfaces per stage (source, extract, transform, write, catalog). Each returns stage-specific type from patina:records. No domain types in this package.
 
-4. `feat(mother): compose and load pando via wac-graph + wasmtime` — Add component::bindgen! for composed world. After wac-graph encode(), load Component::new(). Set up linker with outside toy implementations. Call source.scan(folder). Add LoadedComponent::Composed dispatch path alongside existing HandleBased.
+4. `feat(adapters): build 6 pando adapter components` — Each adapter: imports upstream pando/<prev-stage> + push child records/<stage>, exports pando/<stage>::run(). Source adapter imports config + records/source only. Each is ~10-15 lines of Rust. Build all 6 to .wasm.
 
-5. `test(pando): integration test for folder-text-to-parquet end-to-end` — Create temp dir with 3 .txt files, run composed pando, assert 3 records in parquet, assert catalog entry, assert output in Mother-controlled path.
+5. `refactor(pando): update folder-text-to-parquet to typed wiring with 12 components` — Replace legacy string wiring with [[composition.wiring]] typed rules for 12 components (6 push + 6 adapters). Add composition.entry pointing to lc-pando (pando/catalog). Add explicit instance aliases for schema-transform and dedup-transform.
+
+6. `feat(mother): compose 12 components via wac-graph and load in wasmtime` — After wac-graph encode(), Component::new(). Bindgen for composed world. Linker with outside toys. Call pando/catalog::run(). Add LoadedComponent::Composed dispatch path.
+
+7. `test(pando): parity tests per stage` — For each of 6 stages: push(fixture) vs composed.run() with mocked upstream returning same fixture. Assert identical output.
+
+8. `test(pando): e2e folder-text-to-parquet integration` — 3 unique .txt files, Mother calls pando/catalog::run(), assert 3 records, 1 parquet at controlled path, 1 catalog entry.
+
+9. `chore: record artifact size baselines` — Track .wasm size per child and adapter before/after.
 
 ## Direct Code Targets
 
-### Commit 1: Child world fixes
-- `children/content-extractor/wit/world.wit` — add `import patina:records/source@0.1.0;`
-- `children/schema-enforcer/wit/world.wit` — add `import patina:records/extract@0.1.0;`
-- `children/lakehouse-catalog/wit/world.wit` — add `import patina:records/write@0.1.0;`
-- `children/content-extractor/src/lib.rs` — update to call upstream source.scan or accept data via import
-- `children/schema-enforcer/src/lib.rs` — update to call upstream extract.extract or accept via import
-- `children/lakehouse-catalog/src/lib.rs` — update to call upstream write.write or accept via import
+### Commit 1: Push-pure children
+- `children/dedup-filter/wit/world.wit:7` — remove `import patina:records/transform@0.1.0;`
+- `children/dedup-filter/src/lib.rs:21` — remove `patina::records::transform::transform(&records)?` call, process records directly
+- `children/record-writer/wit/world.wit:7` — remove `import patina:records/transform@0.1.0;`
+- `children/record-writer/src/lib.rs:165` — remove upstream transform call, process records directly
 
-### Commit 2: record-writer output path
-- `children/record-writer/src/lib.rs:168` — replace hardcoded `/tmp/patina/` with WASI preopen directory
+### Commit 2: record-writer output
+- `children/record-writer/src/lib.rs:168-171` — replace `/tmp/patina/` with preopen path
 
-### Commit 3: Pando manifest
-- `resources/pandos/folder-text-to-parquet/pando.toml` — replace entire `[composition]` section
+### Commit 3: patina:pando WIT
+- New: `wit/pando/pando.wit` — package declaration + 5 interfaces (source, extract, transform, write, catalog), each with `run() → result<T, string>`, using types from patina:records
 
-### Commit 4: Mother composition execution
-- `src/commands/mother/daemon.rs` — after validate_typed_composition, add:
-  load composed component, bindgen, linker setup, entry point call
-- New file or section: composed component bindgen (component::bindgen! macro)
-- New file or section: composed linker setup (logging, keyvalue, measure, filesystem)
-- Registry: LoadedComponent enum (HandleBased | Composed)
+### Commit 4: Adapter components
+- New: `adapters/fsm-pando/` — source adapter (config + records/source → pando/source)
+- New: `adapters/ce-pando/` — extract adapter (pando/source + records/extract → pando/extract)
+- New: `adapters/se-pando/` — transform adapter (pando/extract + records/transform → pando/transform)
+- New: `adapters/df-pando/` — transform adapter (pando/transform + records/transform → pando/transform)
+- New: `adapters/rw-pando/` — write adapter (pando/transform + records/write → pando/write)
+- New: `adapters/lc-pando/` — catalog adapter (pando/write + records/catalog → pando/catalog)
 
-### Commit 5: Integration test
-- `tests/pando_execution.rs` — new test file
+### Commit 5: Pando manifest
+- `resources/pandos/folder-text-to-parquet/pando.toml` — full rewrite with 12 components + typed wiring
+
+### Commit 6: Mother composition execution
+- `src/commands/mother/daemon.rs` — compose path: wac-graph encode → Component::new → linker → call
+- New bindgen section for composed world
+- Registry: LoadedComponent enum
+
+### Commits 7-8: Tests
+- New: `tests/pando_parity.rs`
+- New: `tests/pando_execution.rs`
 
 ## Verification Plan
 
-After commits 1-2: `cargo build --target wasm32-wasip2` for all 4 updated children
-After commit 3: `cargo test` pando manifest parsing tests
-After commit 4: `cargo check --workspace`
-After commit 5: `cargo nextest run`
-
-## Build Readiness
-
-Prerequisites exist. Gaps documented and scoped.
+Per commit: `cargo check`
+After all: `cargo nextest run`
+Parity: per-stage push vs composed equivalence
+E2E: single pando/catalog::run() drives full chain
+Regression: `patina spec list` (handle-based child)
+Size: wasm-tools print-size per artifact
 
 ## Open Questions
 
-1. **Upstream import pattern** — When content-extractor imports records/source,
-   does it CALL source.scan() itself, or does wac-graph wire the data flow
-   implicitly? In BA component model, importing an interface means the
-   component can call it. In composition, Mother wires the export of one
-   component to the import of another. So content-extractor would call
-   `source::scan()` (its import), which at runtime is satisfied by
-   file-system-monitor's export. Need to verify this is how wac-graph works.
+1. **Config capability for source adapter** — Is there an existing config
+   toy in Patina's WIT? Or do we create a minimal one (key-value read)?
+   WASI env is fallback but config capability is preferred per design lock.
 
-2. **Composed world shape** — The composed component's outer world is the
-   union of all unresolved imports (outside toys) plus the entry export
-   (records/source from file-system-monitor). Need to verify wac-graph
-   produces this shape and that bindgen can target it.
+2. **Adapter crate structure** — One crate per adapter (6 crates) or one
+   crate with feature flags? Separate crates is cleaner (each has its own
+   WIT world), but adds Cargo.toml boilerplate.
 
-3. **Filesystem preopen scoping** — If multiple children need filesystem
-   (file-system-monitor for input, record-writer for output), do they get
-   the same preopen or separate ones? In composition, shared-nothing means
-   separate stores per instance — verify with wasmtime.
+3. **Where do adapter .wasm files live?** Same pool as push children
+   (`~/.patina/children/`) or separate location? Probably same pool since
+   Mother loads all components from one place.
