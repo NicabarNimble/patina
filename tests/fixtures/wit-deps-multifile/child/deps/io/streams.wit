@@ -1,0 +1,15 @@
+package wasi:io@0.2.8;
+
+interface streams {
+    use error.{error};
+    use poll.{pollable};
+
+    variant stream-error {
+        last-operation-failed(error),
+        closed,
+    }
+
+    resource input-stream {
+        subscribe: func() -> pollable;
+    }
+}
