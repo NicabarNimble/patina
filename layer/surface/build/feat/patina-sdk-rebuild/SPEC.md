@@ -31,7 +31,7 @@ exit_criteria:
   text: "All 6 children (file-system-monitor, content-extractor, schema-enforcer, dedup-filter, record-writer, lakehouse-catalog) add patina-sdk dependency and use toys::* helpers. Duplicated keyvalue_error_to_string removed from dedup-filter, record-writer, and lakehouse-catalog."
   checked: false
 - id: cs6-legacy-documented
-  text: 'patina-sdk README updated: handle-based child path marked as legacy. Points developers to patina-sdk for new children.'
+  text: 'patina-sdk-legacy README marks handle-based path as legacy. New patina-sdk README points developers to patina-sdk for new children.'
   checked: false
 - id: cs7-decision-tree
   text: 'SDK README or AGENTS.md contains decision tree: child (patina-sdk) vs legacy service child (patina-sdk-legacy) vs grammar pipeline (patina-sdk-legacy pipeline feature).'
@@ -70,7 +70,7 @@ The new `patina-sdk` provides:
 1. Shared type re-exports from `patina:records`
 2. Ergonomic outside toy helpers (log, keyvalue, measure, config)
 3. A `cargo generate` template for new children
-4. The `patina:config` toy (new, needed for composed execution)
+4. SDK wrapper for the existing `patina:config` toy
 
 `patina-sdk` is what you use to build a child. Period.
 
@@ -95,13 +95,18 @@ pub use types::{
 };
 ```
 
-**Type identity note:** Each child still runs `wit_bindgen::generate!` against
-its own WIT world, producing local types (e.g., `patina::records::types::RecordEnvelope`).
-SDK re-exports are convenience aliases for use in helper functions and shared
-code — not replacements for the WIT-generated types in trait impl signatures.
-Children use their local WIT types in `impl Guest` and SDK types in business logic
-where the types are structurally identical. When types change, update the shared
-WIT deps and the SDK in lockstep.
+**Type identity note:** Each child runs `wit_bindgen::generate!` against its own
+WIT world, producing local types (e.g., `patina::records::types::RecordEnvelope`).
+These WIT-local types are authoritative in `impl Guest` trait signatures — the
+Rust compiler requires them. SDK re-exports exist for toy helper signatures
+and standalone business logic functions. Since both the SDK crate and each child
+generate from the same WIT source (`wit/toys/deps/patina-record.wit`), the SDK
+should use `wit_bindgen::generate!` against the shared WIT and re-export those
+types. Children that need to pass data between their local WIT types and SDK
+helpers will use the same underlying WIT, keeping types compatible within a
+single `wit_bindgen::generate!` call. The practical pattern: SDK provides toy
+wrappers that accept/return WIT-generated types; children call those wrappers
+with their local types which are identical because they share the same WIT source.
 
 ### 2. Outside Toy Helpers
 
@@ -162,7 +167,6 @@ Mother code needed — this criterion is about SDK surface only.
 ## What a Child Looks Like With the SDK
 
 ```rust
-use patina_sdk::prelude::*;     // RecordEnvelope, TransformResult, etc.
 use patina_sdk::toys;            // log, keyvalue, measure, config
 
 wit_bindgen::generate!({
@@ -170,6 +174,9 @@ wit_bindgen::generate!({
     world: "schema-enforcer",
     generate_all,
 });
+
+// WIT-local types are authoritative in trait impls:
+use patina::records::types::{RecordEnvelope, TransformResult, RejectedRecord};
 
 struct SchemaEnforcer;
 
@@ -201,7 +208,8 @@ fn validate(r: &RecordEnvelope) -> Result<(), String> {
 export!(SchemaEnforcer);
 ```
 
-Clean. No raw WIT calls. No duplicated error mapping. Types from SDK.
+Clean. No raw WIT calls. No duplicated error mapping. Toys from SDK,
+types from WIT-local generation (same WIT source guarantees compatibility).
 
 ## SDK Layout After
 
@@ -246,8 +254,8 @@ patina-sdk = { package = "patina-sdk-legacy", path = "../../sdk/patina-sdk-legac
 - **wit_bindgen stays in children**: The SDK doesn't wrap or replace it.
   Children still declare their world via `wit_bindgen::generate!`.
   The SDK provides types and helpers alongside, not instead of.
-- **Config toy is new WIT**: `patina:config@0.1.0` with `get(key) → result<string, string>`.
-  Minimal, read-only, matches the config injection pattern from Fix 2.
+- **Config toy already exists**: `patina:config@0.1.0` landed in pando-execution-mvp.
+  SDK wraps it as `toys::config::get(key)`. No new WIT or Mother code.
 - **Adapters don't use SDK**: Pando adapters are 16 lines of glue.
   They may import patina-sdk types but don't need framework support.
 
