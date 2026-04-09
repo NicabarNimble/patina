@@ -49,13 +49,39 @@ pub struct PandoSection {
 #[serde(deny_unknown_fields)]
 pub struct PandoChild {
     pub name: String,
+    /// Instance identifier for multi-instance compositions.
+    /// Defaults to `name` if not set.
+    #[serde(default)]
+    pub id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PandoTypedWiring {
+    pub from: String,
+    pub to: String,
+    pub toy: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PandoEntry {
+    pub child: String,
+    pub toy: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct PandoComposition {
+    /// Legacy string wiring for handle-based pandos.
     #[serde(default)]
     pub wiring: Vec<String>,
+    /// Typed toy wiring for composed pandos.
+    #[serde(default)]
+    pub typed: Vec<PandoTypedWiring>,
+    /// Entry point for the composed component.
+    #[serde(default)]
+    pub entry: Option<PandoEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
