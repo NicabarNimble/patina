@@ -14,6 +14,7 @@ pub fn compute_file_hash(path: &Path) -> Result<String> {
     Ok(format!("{:x}", Sha256::digest(&bytes)))
 }
 
+#[allow(dead_code)]
 pub fn write_hash_file(path: &Path) -> Result<()> {
     let digest = compute_file_hash(path)?;
     std::fs::write(hash_sidecar_path(path), digest)
@@ -24,13 +25,11 @@ pub fn write_hash_file(path: &Path) -> Result<()> {
 pub fn verify_hash_file(path: &Path) -> Result<()> {
     let hash_path = hash_sidecar_path(path);
     if !hash_path.exists() {
-        write_hash_file(path)?;
-        tracing::info!(
-            path = %path.display(),
-            hash_path = %hash_path.display(),
-            "bootstrapped missing sha256 sidecar"
+        anyhow::bail!(
+            "missing hash sidecar for {} at {}",
+            path.display(),
+            hash_path.display()
         );
-        return Ok(());
     }
 
     let expected = std::fs::read_to_string(&hash_path)
@@ -131,7 +130,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_hash_file_bootstraps_missing_sidecar() {
+    fn verify_hash_file_fails_for_missing_sidecar() {
         let temp = tempfile::tempdir().unwrap();
         let file = temp.path().join("pando.toml");
         std::fs::write(
@@ -141,7 +140,7 @@ mod tests {
         .unwrap();
         let sidecar = hash_sidecar_path(&file);
         assert!(!sidecar.exists());
-        verify_hash_file(&file).unwrap();
-        assert!(sidecar.exists());
+        let error = verify_hash_file(&file).unwrap_err();
+        assert!(error.to_string().contains("missing hash sidecar"));
     }
 }
