@@ -201,6 +201,17 @@ fn typed_interface_candidates(interface_name: &str) -> Vec<String> {
     }
 }
 
+fn parquet_row_count(path: &Path) -> i64 {
+    let conn = duckdb::Connection::open_in_memory().expect("open duckdb");
+    let escaped = path.to_string_lossy().replace('\'', "''");
+    conn.query_row(
+        &format!("SELECT COUNT(*) FROM read_parquet('{}')", escaped),
+        [],
+        |row| row.get(0),
+    )
+    .expect("query parquet row count")
+}
+
 fn compose_folder_text_to_parquet() -> anyhow::Result<Vec<u8>> {
     let children = [
         ("fsm", "file-system-monitor"),
@@ -373,5 +384,15 @@ fn folder_text_to_parquet_catalog_run_end_to_end() {
         assert!(written_path.starts_with(&output_dir));
         assert!(!catalog_entries[0].file_path.starts_with("/tmp/patina/"));
         assert_eq!(catalog_entries[0].record_count, 3);
+        let input_count = 3_i64;
+        let parquet_rows = parquet_row_count(&written_path);
+        assert_eq!(parquet_rows, input_count);
+        // The composed chain feeds write from transform.accepted only. Since input count,
+        // catalog record_count, and parquet rows all equal 3, this run proves 3 accepted / 0 rejected.
+        assert_eq!(
+            catalog_entries[0].record_count as i64, input_count,
+            "accepted records"
+        );
+        assert_eq!(input_count - parquet_rows, 0, "rejected records");
     });
 }
