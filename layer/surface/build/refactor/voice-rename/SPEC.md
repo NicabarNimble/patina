@@ -121,6 +121,11 @@ Draft. Ready to build — scope is small and mechanical.
 
 Two commits: one for all code changes (types + paths + callers + migration), one for beliefs. Types, paths, callers, and re-exports are too coupled to split — intermediate states won't compile.
 
+## Implementation Order
+
+1. Rename Era 3 identity types, paths, protocol, session, and AI launch (single commit — all compile-affecting changes)
+2. Update beliefs and backlinks to voice terminology (beliefs-only commit)
+
 ## Resolved Decisions
 
 - **Scope boundary**: Era 3 (identity) renames. Era 1 (oracle) untouched.
