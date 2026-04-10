@@ -2,8 +2,11 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Write;
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -11,13 +14,12 @@ use walkdir::WalkDir;
 
 use crate::interface::internal::bundle::{interface_bundle, InterfaceBundle, ManagedPathKind};
 use crate::interface::{launch, runtime::templates};
+use crate::paths;
 use crate::project;
 
 const MANAGED_DIR_METADATA_FILE: &str = ".patina-managed.toml";
 const BACKUP_SUBDIR: &str = "interface";
 const SUFFIX_ALPHABET: &[u8; 32] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const INTERFACE_OPS_LOG_FILE: &str = ".patina/local/interface-ops.jsonl";
-const INTERFACE_OPS_LOCK_FILE: &str = ".patina/local/interface-ops.lock";
 const INTERFACE_OPS_LOCK_TIMEOUT: Duration = Duration::from_millis(1000);
 
 #[derive(Debug, Clone)]
@@ -100,12 +102,15 @@ struct InterfaceOpRecord {
 }
 
 struct InterfaceOpsLock {
-    lock_path: PathBuf,
+    file: File,
 }
 
 impl Drop for InterfaceOpsLock {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.lock_path);
+        #[cfg(unix)]
+        unsafe {
+            libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
+        }
     }
 }
 
@@ -535,18 +540,12 @@ fn append_interface_op_log(
     relative_path: &str,
     result: &str,
 ) -> Result<()> {
-    let lock = acquire_interface_ops_lock(project_root)?;
-    let log_path = project_root.join(INTERFACE_OPS_LOG_FILE);
+    let log_path = paths::project::interface_ops_log_path(project_root);
     if let Some(parent) = log_path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create {}", parent.display()))?;
     }
-
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-        .with_context(|| format!("Failed to open {}", log_path.display()))?;
+    let mut lock = acquire_interface_ops_lock(&log_path)?;
 
     let record = InterfaceOpRecord {
         ts: chrono::Utc::now().to_rfc3339(),
@@ -558,45 +557,65 @@ fn append_interface_op_log(
         result: result.to_string(),
     };
 
-    writeln!(file, "{}", serde_json::to_string(&record)?)
+    writeln!(lock.file, "{}", serde_json::to_string(&record)?)
         .with_context(|| format!("Failed writing {}", log_path.display()))?;
-    drop(lock);
     Ok(())
 }
 
-fn acquire_interface_ops_lock(project_root: &Path) -> Result<InterfaceOpsLock> {
-    let lock_path = project_root.join(INTERFACE_OPS_LOCK_FILE);
-    if let Some(parent) = lock_path.parent() {
+fn acquire_interface_ops_lock(log_path: &Path) -> Result<InterfaceOpsLock> {
+    if let Some(parent) = log_path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create {}", parent.display()))?;
     }
 
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .read(true)
+        .open(log_path)
+        .with_context(|| format!("Failed to open {}", log_path.display()))?;
+
     let start = Instant::now();
     loop {
-        match OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&lock_path)
-        {
-            Ok(mut lock_file) => {
-                writeln!(lock_file, "{}", std::process::id()).ok();
-                return Ok(InterfaceOpsLock { lock_path });
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+        match try_lock_exclusive(&file) {
+            Ok(true) => return Ok(InterfaceOpsLock { file }),
+            Ok(false) => {
                 if start.elapsed() >= INTERFACE_OPS_LOCK_TIMEOUT {
                     anyhow::bail!(
                         "Timed out waiting for interface operation-log lock (1000ms): {}",
-                        lock_path.display()
+                        log_path.display()
                     );
                 }
                 thread::sleep(Duration::from_millis(25));
             }
             Err(error) => {
                 return Err(error)
-                    .with_context(|| format!("Failed to acquire lock {}", lock_path.display()));
+                    .with_context(|| format!("Failed to acquire lock {}", log_path.display()));
             }
         }
     }
+}
+
+#[cfg(unix)]
+fn try_lock_exclusive(file: &File) -> Result<bool> {
+    let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    if rc == 0 {
+        return Ok(true);
+    }
+
+    let error = std::io::Error::last_os_error();
+    if let Some(code) = error.raw_os_error() {
+        if code == libc::EWOULDBLOCK || code == libc::EAGAIN {
+            return Ok(false);
+        }
+    }
+
+    Err(error.into())
+}
+
+#[cfg(not(unix))]
+fn try_lock_exclusive(_file: &File) -> Result<bool> {
+    Ok(true)
 }
 
 #[cfg(test)]

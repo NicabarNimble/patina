@@ -484,6 +484,11 @@ pub mod project {
         root.join(".patina/local")
     }
 
+    /// Interface operation log: `.patina/local/interface-ops.jsonl`
+    pub fn interface_ops_log_path(root: &Path) -> PathBuf {
+        local_dir(root).join("interface-ops.jsonl")
+    }
+
     /// Derived data directory: `.patina/local/data/`
     pub fn data_dir(root: &Path) -> PathBuf {
         root.join(".patina/local/data")
@@ -574,6 +579,16 @@ mod tests {
     fn test_repos_cache() {
         let repos = repos::cache_dir();
         assert!(repos.to_string_lossy().contains("cache/repos"));
+    }
+
+    #[test]
+    fn test_project_interface_ops_log_path() {
+        let root = Path::new("/tmp/patina-project");
+        let path = project::interface_ops_log_path(root);
+        assert_eq!(
+            path,
+            Path::new("/tmp/patina-project/.patina/local/interface-ops.jsonl")
+        );
     }
 
     #[test]
