@@ -1,0 +1,12 @@
+[[interface]]
+name = "pi"
+display_name = "PI Fixture"
+classification = "hitl"
+command = "true"
+detect_commands = ["true"]
+tmux_policy = "auto"
+version = "fixture"
+managed_paths = [
+  { relative_path = "AGENTS.md", kind = "file" },
+  { relative_path = ".pi", kind = "directory" },
+]
