@@ -23,13 +23,13 @@ exit_criteria:
   checked: false
 - id: mhid2-ai-command-stable
   text: '`patina ai <interface>` keeps current command contract: same command shape, no new required flags, existing flags still accepted (`--path`, `--force`, `--tmux`, `--no-tmux`), and launch/session wrapper flow preserved for claude|gemini|opencode|pi.'
-  checked: false
+  checked: true
 - id: mhid3-hitl-taxonomy
   text: Interface selection prompt reads 'Available HITL interfaces', and registry distinguishes HITL interfaces from non-HITL/agent runtime surfaces.
-  checked: false
+  checked: true
 - id: mhid4-pi-interface-added
   text: PI appears as a 4th HITL interface in the same selection and launch pathways as Claude/Gemini/OpenCode, sourced from registry metadata instead of hardcoded CLI lists. PI is the proof artifact that registry-based representation/launch works for a non-legacy interface.
-  checked: false
+  checked: true
 - id: mhid5-mother-registry-authority
   text: Mother becomes authority for interface package ownership/distribution (manifests, templates, skills references, bundle metadata). CLI reads interfaces from Mother-managed registry, not static arrays. Completion requires PI to be registry-defined and launchable without hardcoded interface additions.
   checked: false
@@ -56,7 +56,7 @@ exit_criteria:
   checked: false
 - id: mhid13-project-detection-unified
   text: 'Project detection uses one canonical predicate across launcher/session flows. Canonical Patina project test in this phase is: `.patina/config.toml` exists AND `layer/` directory exists.'
-  checked: false
+  checked: true
 - id: mhid14-bootstrap-decision-tree
   text: 'Detect/bootstrap behavior is deterministic: (1) picker lists detected HITL interfaces only, (2) explicit `patina ai <interface>` with detect failure hard-fails with install guidance, (3) vendor bootstrap files are projected only after detect succeeds and launch flow proceeds. No detect-fail auto-bootstrap retries in this phase.'
   checked: false
