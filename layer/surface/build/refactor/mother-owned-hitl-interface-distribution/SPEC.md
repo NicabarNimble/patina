@@ -67,6 +67,7 @@ exit_criteria:
   text: 'PI registry-proof is mechanically enforced: adding PI requires registry/package metadata only and no compile-time interface-name additions in static catalogs/enums. Verification requires an integration test that loads registry fixture data containing PI metadata and proves PI discovery/launch from registry wiring alone.'
   checked: false
 validated_against_commit: 22a5b25f0d99
+last_freshness_check: 2026-04-10
 ---
 # refactor: Mother-Owned HITL Interface Distribution
 
