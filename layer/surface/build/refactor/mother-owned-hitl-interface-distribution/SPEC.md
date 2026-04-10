@@ -35,7 +35,7 @@ exit_criteria:
   checked: true
 - id: mhid6-mother-skills-authority
   text: Mother-owned skills repository is the authoritative source for projected Patina/HITL skills. For built-in HITL interfaces, projected command surfaces include the existing wrapper commands (`/session-start`, `/session-update`, `/session-note`, `/session-end`).
-  checked: false
+  checked: true
 - id: mhid7-mother-session-authority
   text: 'Session lifecycle remains Mother-authoritative: start/update/note/end continue to produce tags, durable artifacts, and active interface pointers through existing wrapper/script flows.'
   checked: false
@@ -53,7 +53,7 @@ exit_criteria:
   checked: false
 - id: mhid12-skill-registry-model
   text: Skills are modeled as Mother-managed registry packages with interface-specific projection adapters. Registry remains intentionally small and opinionated for Patina client-infrastructure and MCT-adjacent workflows while preserving current wrapper command surfaces.
-  checked: false
+  checked: true
 - id: mhid13-project-detection-unified
   text: 'Project detection uses one canonical predicate across launcher/session flows. Canonical Patina project test in this phase is: `.patina/config.toml` exists AND `layer/` directory exists.'
   checked: true
