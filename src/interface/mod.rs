@@ -2,7 +2,7 @@ mod internal;
 pub mod launch;
 pub mod runtime;
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 use crate::session::InterfaceKind;
@@ -90,88 +90,25 @@ pub trait AiInterface {
 }
 
 pub fn interface(name: &str) -> Result<Box<dyn AiInterface>> {
-    match name {
-        "claude" => Ok(Box::new(ClaudeInterface)),
-        "opencode" => Ok(Box::new(OpenCodeInterface)),
-        "gemini" => Ok(Box::new(GeminiInterface)),
-        "pi" => Ok(Box::new(PiInterface)),
-        other => bail!("Unsupported ai interface: {}", other),
-    }
+    let bundle = interface_bundle(name)?;
+    Ok(Box::new(RegistryBackedInterface { bundle }))
 }
 
-struct ClaudeInterface;
+struct RegistryBackedInterface {
+    bundle: &'static InterfaceBundle,
+}
 
-impl AiInterface for ClaudeInterface {
+impl AiInterface for RegistryBackedInterface {
     fn name(&self) -> &'static str {
-        "claude"
+        self.bundle.name.as_str()
     }
 
     fn display_name(&self) -> &'static str {
-        "Claude Code"
+        self.bundle.display_name.as_str()
     }
 
     fn interface_kind(&self) -> InterfaceKind {
-        InterfaceKind::Claude
-    }
-
-    fn context_file(&self, project_root: &Path) -> PathBuf {
-        project_root.join("AGENTS.md")
-    }
-}
-
-struct OpenCodeInterface;
-
-impl AiInterface for OpenCodeInterface {
-    fn name(&self) -> &'static str {
-        "opencode"
-    }
-
-    fn display_name(&self) -> &'static str {
-        "OpenCode"
-    }
-
-    fn interface_kind(&self) -> InterfaceKind {
-        InterfaceKind::OpenCode
-    }
-
-    fn context_file(&self, project_root: &Path) -> PathBuf {
-        project_root.join("AGENTS.md")
-    }
-}
-
-struct GeminiInterface;
-
-struct PiInterface;
-
-impl AiInterface for GeminiInterface {
-    fn name(&self) -> &'static str {
-        "gemini"
-    }
-
-    fn display_name(&self) -> &'static str {
-        "Gemini CLI"
-    }
-
-    fn interface_kind(&self) -> InterfaceKind {
-        InterfaceKind::Gemini
-    }
-
-    fn context_file(&self, project_root: &Path) -> PathBuf {
-        project_root.join("AGENTS.md")
-    }
-}
-
-impl AiInterface for PiInterface {
-    fn name(&self) -> &'static str {
-        "pi"
-    }
-
-    fn display_name(&self) -> &'static str {
-        "PI"
-    }
-
-    fn interface_kind(&self) -> InterfaceKind {
-        InterfaceKind::Pi
+        InterfaceKind::from_interface_name(&self.bundle.name)
     }
 
     fn context_file(&self, project_root: &Path) -> PathBuf {

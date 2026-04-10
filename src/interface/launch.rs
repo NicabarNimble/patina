@@ -44,63 +44,6 @@ pub const CANONICAL_AGENTS_FILE: &str = "AGENTS.md";
 // Types
 // =============================================================================
 
-/// Interface identifier
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InterfaceKind {
-    Claude,
-    Gemini,
-    OpenCode,
-    Pi,
-}
-
-impl InterfaceKind {
-    pub fn name(&self) -> &'static str {
-        match self {
-            InterfaceKind::Claude => "claude",
-            InterfaceKind::Gemini => "gemini",
-            InterfaceKind::OpenCode => "opencode",
-            InterfaceKind::Pi => "pi",
-        }
-    }
-
-    pub fn display(&self) -> &'static str {
-        match self {
-            InterfaceKind::Claude => "Claude Code",
-            InterfaceKind::Gemini => "Gemini CLI",
-            InterfaceKind::OpenCode => "OpenCode",
-            InterfaceKind::Pi => "PI",
-        }
-    }
-
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name.to_lowercase().as_str() {
-            "claude" => Some(InterfaceKind::Claude),
-            "gemini" => Some(InterfaceKind::Gemini),
-            "opencode" => Some(InterfaceKind::OpenCode),
-            "pi" => Some(InterfaceKind::Pi),
-            _ => None,
-        }
-    }
-
-    pub fn bootstrap_file(&self) -> &'static str {
-        match self {
-            InterfaceKind::Claude => "CLAUDE.md",
-            InterfaceKind::Gemini => "GEMINI.md",
-            InterfaceKind::OpenCode => CANONICAL_AGENTS_FILE,
-            InterfaceKind::Pi => CANONICAL_AGENTS_FILE,
-        }
-    }
-
-    pub fn vendor_bootstrap_file(&self) -> Option<&'static str> {
-        match self {
-            InterfaceKind::Claude => Some("CLAUDE.md"),
-            InterfaceKind::Gemini => Some("GEMINI.md"),
-            InterfaceKind::OpenCode => None,
-            InterfaceKind::Pi => None,
-        }
-    }
-}
-
 /// Runtime interface info with detection status
 #[derive(Debug, Clone)]
 pub struct InterfaceInfo {
@@ -171,8 +114,7 @@ pub fn default_name() -> Result<String> {
 
 /// Set the default interface
 pub fn set_default_interface(name: &str) -> Result<()> {
-    let _ = InterfaceKind::from_name(name)
-        .ok_or_else(|| anyhow::anyhow!("Unknown interface: {}", name))?;
+    interface_bundle(name).map(|_| ())?;
 
     let mut config = workspace::config()?;
     config.interface.default = name.to_string();
@@ -614,54 +556,6 @@ mod tests {
             Ok(value) => value,
             Err(panic) => std::panic::resume_unwind(panic),
         }
-    }
-
-    #[test]
-    fn test_interface_names() {
-        assert_eq!(InterfaceKind::Claude.name(), "claude");
-        assert_eq!(InterfaceKind::Gemini.name(), "gemini");
-        assert_eq!(InterfaceKind::OpenCode.name(), "opencode");
-        assert_eq!(InterfaceKind::Pi.name(), "pi");
-    }
-
-    #[test]
-    fn test_interface_from_name() {
-        assert_eq!(
-            InterfaceKind::from_name("claude"),
-            Some(InterfaceKind::Claude)
-        );
-        assert_eq!(
-            InterfaceKind::from_name("CLAUDE"),
-            Some(InterfaceKind::Claude)
-        );
-        assert_eq!(
-            InterfaceKind::from_name("opencode"),
-            Some(InterfaceKind::OpenCode)
-        );
-        assert_eq!(
-            InterfaceKind::from_name("OpenCode"),
-            Some(InterfaceKind::OpenCode)
-        );
-        assert_eq!(InterfaceKind::from_name("pi"), Some(InterfaceKind::Pi));
-        assert_eq!(InterfaceKind::from_name("unknown"), None);
-    }
-
-    #[test]
-    fn test_bootstrap_files() {
-        assert_eq!(InterfaceKind::Claude.bootstrap_file(), "CLAUDE.md");
-        assert_eq!(InterfaceKind::Gemini.bootstrap_file(), "GEMINI.md");
-        assert_eq!(InterfaceKind::OpenCode.bootstrap_file(), "AGENTS.md");
-        assert_eq!(InterfaceKind::Pi.bootstrap_file(), "AGENTS.md");
-        assert_eq!(
-            InterfaceKind::Claude.vendor_bootstrap_file(),
-            Some("CLAUDE.md")
-        );
-        assert_eq!(
-            InterfaceKind::Gemini.vendor_bootstrap_file(),
-            Some("GEMINI.md")
-        );
-        assert_eq!(InterfaceKind::OpenCode.vendor_bootstrap_file(), None);
-        assert_eq!(InterfaceKind::Pi.vendor_bootstrap_file(), None);
     }
 
     #[test]
