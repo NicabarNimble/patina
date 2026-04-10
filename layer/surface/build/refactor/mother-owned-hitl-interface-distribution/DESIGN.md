@@ -189,6 +189,7 @@ Phase gates:
 - `src/commands/launch/internal.rs` — launcher flow, lost-project prompt text, interface selection source.
 - `src/commands/ai/surface.rs` — `patina ai <interface>` resolution path and launch orchestration invariants.
 - `src/interface/launch.rs` — remove static-list authority for runtime selection/discovery.
+- `src/interface/mod.rs` — remove CLI-side static interface factory/catalog wiring in favor of registry-backed adapter resolution.
 - `src/interface/internal/bundle.rs` — remove hardcoded bundle authority in favor of registry reads.
 - `src/interface/runtime/templates.rs` — package-root ownership for template/skill projection inputs.
 - `src/paths.rs` — centralized managed-path definitions/helpers used by projection/cleanup.

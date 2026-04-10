@@ -310,6 +310,13 @@ Cleanup remains explicit via current lifecycle commands.
   (`mother_sessions.status=active`) for project+interface+runtime_id.
 - **Liveness boundary:** no new heartbeat/orphan automation in this phase.
 - **Taxonomy boundary:** `hitl` classification only in this phase.
+- **SDK taxonomy boundary:** `patina_sdk::InterfaceKind` remains an SDK
+  classification type used by session records and is out of scope for this
+  spec. `mhid5`/`mhid16` apply only to CLI-side catalogs (`src/interface/launch.rs`,
+  `patina ai` dispatch, and interface factory wiring in `src/interface/mod.rs`).
+  SDK-level taxonomy decomposition is deferred to a future spec because Mother
+  shape is under active review for MCT/wasm direction and changing SDK taxonomy
+  now would be wasted motion before that redesign lands.
 
 ## Verification
 
