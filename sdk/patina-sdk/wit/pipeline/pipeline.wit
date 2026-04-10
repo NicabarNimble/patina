@@ -1,0 +1,24 @@
+package patina:pipeline@0.1.0;
+
+/// World for host-invoked pure-compute plugins.
+///
+/// Grammar parsers, chunkers, tokenizers. The plugin is a pure function —
+/// all side effects stay in the host. Log is the ONLY import.
+/// Compile-time isolation per [[separate-worlds-for-isolation]].
+world pipeline {
+    /// Import host logging (only capability)
+    import wasi:logging/logging@0.1.0;
+
+    /// Initialize plugin (host calls first, before any other export)
+    export init: func();
+
+    /// Plugin identity — used for dispatch and logging
+    export name: func() -> string;
+
+    /// Handle a request envelope (JSON). Returns JSON response or error.
+    ///
+    /// String dispatch via versioned envelope:
+    ///   {"op":"parse","version":"1","payload":{...}}
+    /// Single export avoids "stub tax" — plugins only handle ops they declare.
+    export handle: func(request: string) -> result<string, string>;
+}
