@@ -6,10 +6,13 @@
 //! Templates are embedded at compile time and extracted on first run.
 //! This allows user customization of templates in ~/.patina/interfaces/.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
+use std::borrow::Cow;
 use std::fs;
 use std::path::Path;
 
+use crate::interface::interface_bundle;
+use crate::mother::skills::{self, SkillContent, SkillContentMode};
 use crate::paths;
 
 // =============================================================================
@@ -41,70 +44,6 @@ fn wrapper_end(interface: &str) -> String {
 }
 
 // =============================================================================
-// Embedded Templates - Claude
-// =============================================================================
-
-mod claude_templates {
-    // Commands (markdown)
-    pub const SESSION_START_MD: &str = include_str!("../../../resources/claude/session-start.md");
-    pub const SESSION_UPDATE_MD: &str = include_str!("../../../resources/claude/session-update.md");
-    pub const SESSION_NOTE_MD: &str = include_str!("../../../resources/claude/session-note.md");
-    pub const SESSION_END_MD: &str = include_str!("../../../resources/claude/session-end.md");
-    pub const PATINA_REVIEW_MD: &str = include_str!("../../../resources/claude/patina-review.md");
-
-    // /spec skill
-    pub const SPEC_MD: &str = include_str!("../../../resources/claude/spec.md");
-
-    // Skills - epistemic-beliefs
-    pub const SKILL_EPISTEMIC_BELIEFS_MD: &str =
-        include_str!("../../../resources/claude/skills/epistemic-beliefs/SKILL.md");
-    pub const SKILL_EPISTEMIC_BELIEFS_CREATE_SH: &str =
-        include_str!("../../../resources/claude/skills/epistemic-beliefs/scripts/create-belief.sh");
-    pub const SKILL_EPISTEMIC_BELIEFS_EXAMPLE_MD: &str = include_str!(
-        "../../../resources/claude/skills/epistemic-beliefs/references/belief-example.md"
-    );
-    pub const SKILL_EPISTEMIC_BELIEFS_VERIFICATION_SCHEMA_MD: &str = include_str!(
-        "../../../resources/claude/skills/epistemic-beliefs/references/verification-schema.md"
-    );
-}
-
-// =============================================================================
-// Embedded Templates - Gemini
-// =============================================================================
-
-mod gemini_templates {
-    // Commands (TOML format for Gemini)
-    pub const SESSION_START_TOML: &str =
-        include_str!("../../../resources/gemini/session-start.toml");
-    pub const SESSION_UPDATE_TOML: &str =
-        include_str!("../../../resources/gemini/session-update.toml");
-    pub const SESSION_NOTE_TOML: &str = include_str!("../../../resources/gemini/session-note.toml");
-    pub const SESSION_END_TOML: &str = include_str!("../../../resources/gemini/session-end.toml");
-    pub const PATINA_REVIEW_TOML: &str =
-        include_str!("../../../resources/gemini/patina-review.toml");
-    pub const SPEC_TOML: &str = include_str!("../../../resources/gemini/spec.toml");
-    pub const EPISTEMIC_BELIEFS_TOML: &str =
-        include_str!("../../../resources/gemini/epistemic-beliefs.toml");
-}
-
-// =============================================================================
-// Embedded Templates - OpenCode
-// =============================================================================
-
-mod opencode_templates {
-    // Commands (markdown format, same as Claude)
-    pub const SESSION_START_MD: &str = include_str!("../../../resources/opencode/session-start.md");
-    pub const SESSION_UPDATE_MD: &str =
-        include_str!("../../../resources/opencode/session-update.md");
-    pub const SESSION_NOTE_MD: &str = include_str!("../../../resources/opencode/session-note.md");
-    pub const SESSION_END_MD: &str = include_str!("../../../resources/opencode/session-end.md");
-    pub const PATINA_REVIEW_MD: &str = include_str!("../../../resources/opencode/patina-review.md");
-    pub const SPEC_MD: &str = include_str!("../../../resources/opencode/spec.md");
-    pub const EPISTEMIC_BELIEFS_MD: &str =
-        include_str!("../../../resources/opencode/epistemic-beliefs.md");
-}
-
-// =============================================================================
 // Public API
 // =============================================================================
 
@@ -126,18 +65,45 @@ pub fn install_all(interfaces_dir: &Path) -> Result<()> {
 /// Copies the interface-specific directory (.claude/, .gemini/) from
 /// central templates to the project.
 pub fn copy_to_project(interface_name: &str, project_path: &Path) -> Result<()> {
-    let templates_dir = paths::interfaces_dir()
-        .join(interface_name)
-        .join("templates");
+    let bundle = interface_bundle(interface_name)?;
+    let iface_dir = project_path.join(format!(".{}", interface_name));
+    fs::create_dir_all(&iface_dir)?;
+    fs::create_dir_all(iface_dir.join("bin"))?;
 
-    let iface_dir_name = format!(".{}", interface_name);
-    let src = templates_dir.join(&iface_dir_name);
-    let dest = project_path.join(&iface_dir_name);
+    write_executable(
+        &iface_dir.join("bin/session-start.sh"),
+        &wrapper_start(interface_name),
+    )?;
+    write_executable(
+        &iface_dir.join("bin/session-update.sh"),
+        &wrapper_update(interface_name),
+    )?;
+    write_executable(
+        &iface_dir.join("bin/session-note.sh"),
+        &wrapper_note(interface_name),
+    )?;
+    write_executable(
+        &iface_dir.join("bin/session-end.sh"),
+        &wrapper_end(interface_name),
+    )?;
 
-    let interfaces = paths::interfaces_dir();
-    install_all(&interfaces)?;
+    let declared_skills = bundle
+        .skills
+        .as_ref()
+        .map(|skills| skills.include.as_slice())
+        .unwrap_or(&[]);
 
-    copy_dir_recursive(&src, &dest)?;
+    for skill in declared_skills {
+        let content = skills::skill_content(interface_name, skill).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Mother skill '{}' is not available for interface '{}'. Remove it from skills.include or add it to mother::skills.",
+                skill,
+                interface_name
+            )
+        })?;
+        write_skill_content(&iface_dir, interface_name, &content)?;
+    }
+
     Ok(())
 }
 
@@ -154,77 +120,7 @@ pub fn templates_installed(interface_name: &str) -> bool {
 // =============================================================================
 
 fn install_claude_templates(interfaces_dir: &Path) -> Result<()> {
-    let templates_dir = interfaces_dir.join("claude").join("templates");
-    // Create .claude/ structure inside templates/ so copy_to_project works correctly
-    let claude_dir = templates_dir.join(".claude");
-    let bin_dir = claude_dir.join("bin");
-    let commands_dir = claude_dir.join("commands");
-    let context_dir = claude_dir.join("context");
-    let skills_dir = claude_dir.join("skills");
-
-    // Create directories
-    fs::create_dir_all(&bin_dir)?;
-    fs::create_dir_all(&commands_dir)?;
-    fs::create_dir_all(&context_dir)?;
-    fs::create_dir_all(&skills_dir)?;
-
-    // Write wrapper scripts (forward to patina session commands)
-    write_executable(&bin_dir.join("session-start.sh"), &wrapper_start("claude"))?;
-    write_executable(
-        &bin_dir.join("session-update.sh"),
-        &wrapper_update("claude"),
-    )?;
-    write_executable(&bin_dir.join("session-note.sh"), &wrapper_note("claude"))?;
-    write_executable(&bin_dir.join("session-end.sh"), &wrapper_end("claude"))?;
-
-    // Write commands
-    fs::write(
-        commands_dir.join("session-start.md"),
-        claude_templates::SESSION_START_MD,
-    )?;
-    fs::write(
-        commands_dir.join("session-update.md"),
-        claude_templates::SESSION_UPDATE_MD,
-    )?;
-    fs::write(
-        commands_dir.join("session-note.md"),
-        claude_templates::SESSION_NOTE_MD,
-    )?;
-    fs::write(
-        commands_dir.join("session-end.md"),
-        claude_templates::SESSION_END_MD,
-    )?;
-    fs::write(
-        commands_dir.join("patina-review.md"),
-        claude_templates::PATINA_REVIEW_MD,
-    )?;
-    fs::write(commands_dir.join("spec.md"), claude_templates::SPEC_MD)?;
-
-    // Write skills - epistemic-beliefs
-    let epistemic_beliefs_dir = skills_dir.join("epistemic-beliefs");
-    let epistemic_scripts_dir = epistemic_beliefs_dir.join("scripts");
-    let epistemic_refs_dir = epistemic_beliefs_dir.join("references");
-    fs::create_dir_all(&epistemic_scripts_dir)?;
-    fs::create_dir_all(&epistemic_refs_dir)?;
-
-    fs::write(
-        epistemic_beliefs_dir.join("SKILL.md"),
-        claude_templates::SKILL_EPISTEMIC_BELIEFS_MD,
-    )?;
-    write_executable(
-        &epistemic_scripts_dir.join("create-belief.sh"),
-        claude_templates::SKILL_EPISTEMIC_BELIEFS_CREATE_SH,
-    )?;
-    fs::write(
-        epistemic_refs_dir.join("belief-example.md"),
-        claude_templates::SKILL_EPISTEMIC_BELIEFS_EXAMPLE_MD,
-    )?;
-    fs::write(
-        epistemic_refs_dir.join("verification-schema.md"),
-        claude_templates::SKILL_EPISTEMIC_BELIEFS_VERIFICATION_SCHEMA_MD,
-    )?;
-
-    Ok(())
+    install_interface_templates(interfaces_dir, "claude", true)
 }
 
 // =============================================================================
@@ -232,57 +128,7 @@ fn install_claude_templates(interfaces_dir: &Path) -> Result<()> {
 // =============================================================================
 
 fn install_gemini_templates(interfaces_dir: &Path) -> Result<()> {
-    let templates_dir = interfaces_dir.join("gemini").join("templates");
-    // Create .gemini/ structure inside templates/ so copy_to_project works correctly
-    let gemini_dir = templates_dir.join(".gemini");
-    let bin_dir = gemini_dir.join("bin");
-    let commands_dir = gemini_dir.join("commands");
-
-    // Create directories
-    fs::create_dir_all(&bin_dir)?;
-    fs::create_dir_all(&commands_dir)?;
-
-    // Write wrapper scripts (forward to patina session commands)
-    write_executable(&bin_dir.join("session-start.sh"), &wrapper_start("gemini"))?;
-    write_executable(
-        &bin_dir.join("session-update.sh"),
-        &wrapper_update("gemini"),
-    )?;
-    write_executable(&bin_dir.join("session-note.sh"), &wrapper_note("gemini"))?;
-    write_executable(&bin_dir.join("session-end.sh"), &wrapper_end("gemini"))?;
-
-    // Write commands (TOML format for Gemini)
-    fs::write(
-        commands_dir.join("session-start.toml"),
-        gemini_templates::SESSION_START_TOML,
-    )?;
-    fs::write(
-        commands_dir.join("session-update.toml"),
-        gemini_templates::SESSION_UPDATE_TOML,
-    )?;
-    fs::write(
-        commands_dir.join("session-note.toml"),
-        gemini_templates::SESSION_NOTE_TOML,
-    )?;
-    fs::write(
-        commands_dir.join("session-end.toml"),
-        gemini_templates::SESSION_END_TOML,
-    )?;
-    fs::write(
-        commands_dir.join("patina-review.toml"),
-        gemini_templates::PATINA_REVIEW_TOML,
-    )?;
-    fs::write(commands_dir.join("spec.toml"), gemini_templates::SPEC_TOML)?;
-    fs::write(
-        commands_dir.join("epistemic-beliefs.toml"),
-        gemini_templates::EPISTEMIC_BELIEFS_TOML,
-    )?;
-    write_executable(
-        &bin_dir.join("create-belief.sh"),
-        claude_templates::SKILL_EPISTEMIC_BELIEFS_CREATE_SH,
-    )?;
-
-    Ok(())
+    install_interface_templates(interfaces_dir, "gemini", true)
 }
 
 // =============================================================================
@@ -290,103 +136,73 @@ fn install_gemini_templates(interfaces_dir: &Path) -> Result<()> {
 // =============================================================================
 
 fn install_opencode_templates(interfaces_dir: &Path) -> Result<()> {
-    let templates_dir = interfaces_dir.join("opencode").join("templates");
-    // Create .opencode/ structure inside templates/ so copy_to_project works correctly
-    let opencode_dir = templates_dir.join(".opencode");
-    let bin_dir = opencode_dir.join("bin");
-    let commands_dir = opencode_dir.join("commands");
-
-    // Create directories
-    fs::create_dir_all(&bin_dir)?;
-    fs::create_dir_all(&commands_dir)?;
-
-    // Write wrapper scripts (forward to patina session commands)
-    write_executable(
-        &bin_dir.join("session-start.sh"),
-        &wrapper_start("opencode"),
-    )?;
-    write_executable(
-        &bin_dir.join("session-update.sh"),
-        &wrapper_update("opencode"),
-    )?;
-    write_executable(&bin_dir.join("session-note.sh"), &wrapper_note("opencode"))?;
-    write_executable(&bin_dir.join("session-end.sh"), &wrapper_end("opencode"))?;
-
-    // Write commands (markdown format, same as Claude)
-    fs::write(
-        commands_dir.join("session-start.md"),
-        opencode_templates::SESSION_START_MD,
-    )?;
-    fs::write(
-        commands_dir.join("session-update.md"),
-        opencode_templates::SESSION_UPDATE_MD,
-    )?;
-    fs::write(
-        commands_dir.join("session-note.md"),
-        opencode_templates::SESSION_NOTE_MD,
-    )?;
-    fs::write(
-        commands_dir.join("session-end.md"),
-        opencode_templates::SESSION_END_MD,
-    )?;
-    fs::write(
-        commands_dir.join("patina-review.md"),
-        opencode_templates::PATINA_REVIEW_MD,
-    )?;
-    fs::write(commands_dir.join("spec.md"), opencode_templates::SPEC_MD)?;
-    fs::write(
-        commands_dir.join("epistemic-beliefs.md"),
-        opencode_templates::EPISTEMIC_BELIEFS_MD,
-    )?;
-    write_executable(
-        &bin_dir.join("create-belief.sh"),
-        claude_templates::SKILL_EPISTEMIC_BELIEFS_CREATE_SH,
-    )?;
-
-    Ok(())
+    install_interface_templates(interfaces_dir, "opencode", true)
 }
 
 fn install_pi_templates(interfaces_dir: &Path) -> Result<()> {
-    let templates_dir = interfaces_dir.join("pi").join("templates");
-    let pi_dir = templates_dir.join(".pi");
-    let bin_dir = pi_dir.join("bin");
-    let commands_dir = pi_dir.join("commands");
-    let context_dir = pi_dir.join("context");
-
-    fs::create_dir_all(&bin_dir)?;
-    fs::create_dir_all(&commands_dir)?;
+    install_interface_templates(interfaces_dir, "pi", false)?;
+    let context_dir = interfaces_dir.join("pi/templates/.pi/context");
     fs::create_dir_all(&context_dir)?;
+    let review = skills::skill_content("opencode", "patina-review")
+        .and_then(|content| content.files.first().map(|file| file.bytes))
+        .unwrap_or_default()
+        .replace(".opencode/", ".pi/");
+    fs::write(context_dir.join("agent-instructions.md"), review)?;
+    Ok(())
+}
 
-    write_executable(&bin_dir.join("session-start.sh"), &wrapper_start("pi"))?;
-    write_executable(&bin_dir.join("session-update.sh"), &wrapper_update("pi"))?;
-    write_executable(&bin_dir.join("session-note.sh"), &wrapper_note("pi"))?;
-    write_executable(&bin_dir.join("session-end.sh"), &wrapper_end("pi"))?;
+const INSTALL_SKILLS: &[&str] = &[
+    "session-start",
+    "session-update",
+    "session-note",
+    "session-end",
+    "patina-review",
+    "spec",
+    "epistemic-beliefs",
+];
 
-    let session_start = opencode_templates::SESSION_START_MD.replace(".opencode/", ".pi/");
-    let session_update = opencode_templates::SESSION_UPDATE_MD.replace(".opencode/", ".pi/");
-    let session_note = opencode_templates::SESSION_NOTE_MD.replace(".opencode/", ".pi/");
-    let session_end = opencode_templates::SESSION_END_MD.replace(".opencode/", ".pi/");
-    let review = opencode_templates::PATINA_REVIEW_MD.replace(".opencode/", ".pi/");
+fn install_interface_templates(
+    interfaces_dir: &Path,
+    interface_name: &str,
+    fail_closed: bool,
+) -> Result<()> {
+    let interface_dir = interfaces_dir
+        .join(interface_name)
+        .join("templates")
+        .join(format!(".{}", interface_name));
+    fs::create_dir_all(&interface_dir)?;
+    fs::create_dir_all(interface_dir.join("bin"))?;
 
-    fs::write(commands_dir.join("session-start.md"), session_start)?;
-    fs::write(commands_dir.join("session-update.md"), session_update)?;
-    fs::write(commands_dir.join("session-note.md"), session_note)?;
-    fs::write(commands_dir.join("session-end.md"), session_end)?;
-    fs::write(commands_dir.join("patina-review.md"), review)?;
-    fs::write(commands_dir.join("spec.md"), opencode_templates::SPEC_MD)?;
-    fs::write(
-        commands_dir.join("epistemic-beliefs.md"),
-        opencode_templates::EPISTEMIC_BELIEFS_MD,
+    write_executable(
+        &interface_dir.join("bin/session-start.sh"),
+        &wrapper_start(interface_name),
     )?;
     write_executable(
-        &bin_dir.join("create-belief.sh"),
-        claude_templates::SKILL_EPISTEMIC_BELIEFS_CREATE_SH,
+        &interface_dir.join("bin/session-update.sh"),
+        &wrapper_update(interface_name),
+    )?;
+    write_executable(
+        &interface_dir.join("bin/session-note.sh"),
+        &wrapper_note(interface_name),
+    )?;
+    write_executable(
+        &interface_dir.join("bin/session-end.sh"),
+        &wrapper_end(interface_name),
     )?;
 
-    fs::write(
-        context_dir.join("agent-instructions.md"),
-        opencode_templates::PATINA_REVIEW_MD,
-    )?;
+    for skill in INSTALL_SKILLS {
+        match skills::skill_content(interface_name, skill) {
+            Some(content) => write_skill_content(&interface_dir, interface_name, &content)?,
+            None if fail_closed => {
+                anyhow::bail!(
+                    "Mother skill '{}' is not available for interface '{}'.",
+                    skill,
+                    interface_name
+                )
+            }
+            None => {}
+        }
+    }
 
     Ok(())
 }
@@ -404,6 +220,31 @@ fn write_interface_registry(interfaces_dir: &Path) -> Result<()> {
 // Helpers
 // =============================================================================
 
+fn write_skill_content(
+    base_dir: &Path,
+    interface_name: &str,
+    content: &SkillContent,
+) -> Result<()> {
+    for file in content.files {
+        let path = base_dir.join(file.projection_file);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let body: Cow<'_, str> = if interface_name == "pi" {
+            Cow::Owned(file.bytes.replace(".opencode/", ".pi/"))
+        } else {
+            Cow::Borrowed(file.bytes)
+        };
+
+        match file.mode {
+            SkillContentMode::Executable => write_executable(&path, &body)?,
+            SkillContentMode::Markdown | SkillContentMode::Toml => fs::write(&path, body.as_ref())?,
+        }
+    }
+    Ok(())
+}
+
 /// Write a file and make it executable
 fn write_executable(path: &Path, content: &str) -> Result<()> {
     fs::write(path, content)?;
@@ -419,48 +260,6 @@ fn write_executable(path: &Path, content: &str) -> Result<()> {
     Ok(())
 }
 
-/// Recursively copy a directory
-fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
-    if !src.exists() {
-        anyhow::bail!("Source directory does not exist: {}", src.display());
-    }
-
-    fs::create_dir_all(dest)
-        .with_context(|| format!("Failed to create directory: {}", dest.display()))?;
-
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let src_path = entry.path();
-        let dest_path = dest.join(entry.file_name());
-
-        if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dest_path)?;
-        } else {
-            fs::copy(&src_path, &dest_path).with_context(|| {
-                format!(
-                    "Failed to copy: {} -> {}",
-                    src_path.display(),
-                    dest_path.display()
-                )
-            })?;
-
-            // Preserve executable permissions
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let src_mode = fs::metadata(&src_path)?.permissions().mode();
-                if src_mode & 0o111 != 0 {
-                    let mut perms = fs::metadata(&dest_path)?.permissions();
-                    perms.set_mode(src_mode);
-                    fs::set_permissions(&dest_path, perms)?;
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -468,32 +267,52 @@ mod tests {
 
     #[test]
     fn test_claude_templates_compile() {
-        assert!(claude_templates::SESSION_START_MD.contains("session-start.sh"));
-        assert!(claude_templates::SESSION_END_MD.contains("session-end.sh"));
-        assert!(claude_templates::SPEC_MD.contains("patina spec"));
-        assert!(claude_templates::SKILL_EPISTEMIC_BELIEFS_MD.contains("belief"));
-        assert!(claude_templates::SKILL_EPISTEMIC_BELIEFS_CREATE_SH.contains("create-belief"));
-        assert!(claude_templates::SKILL_EPISTEMIC_BELIEFS_EXAMPLE_MD.contains("statement"));
-        assert!(
-            claude_templates::SKILL_EPISTEMIC_BELIEFS_VERIFICATION_SCHEMA_MD
-                .contains("verification")
-        );
+        let start = skills::skill_content("claude", "session-start").unwrap();
+        assert!(start.files[0].bytes.contains("session-start.sh"));
+        let end = skills::skill_content("claude", "session-end").unwrap();
+        assert!(end.files[0].bytes.contains("session-end.sh"));
+        let spec = skills::skill_content("claude", "spec").unwrap();
+        assert!(spec.files[0].bytes.contains("patina spec"));
+        let epistemic = skills::skill_content("claude", "epistemic-beliefs").unwrap();
+        assert!(epistemic.files.iter().any(|f| f.bytes.contains("belief")));
+        assert!(epistemic
+            .files
+            .iter()
+            .any(|f| f.bytes.contains("create-belief")));
     }
 
     #[test]
     fn test_gemini_templates_compile() {
-        assert!(gemini_templates::SESSION_START_TOML.contains("session-start.sh"));
-        assert!(gemini_templates::SPEC_TOML.contains("patina spec"));
-        assert!(gemini_templates::EPISTEMIC_BELIEFS_TOML.contains("create-belief.sh"));
+        let start = skills::skill_content("gemini", "session-start").unwrap();
+        assert!(start.files[0].bytes.contains("session-start.sh"));
+        let spec = skills::skill_content("gemini", "spec").unwrap();
+        assert!(spec.files[0].bytes.contains("patina spec"));
+        let beliefs = skills::skill_content("gemini", "epistemic-beliefs").unwrap();
+        assert!(beliefs
+            .files
+            .iter()
+            .any(|f| f.bytes.contains("create-belief.sh")));
     }
 
     #[test]
     fn test_opencode_templates_compile() {
-        assert!(opencode_templates::SESSION_START_MD.contains(".opencode/bin/session-start.sh"));
-        assert!(opencode_templates::SESSION_UPDATE_MD.contains(".opencode/bin/session-update.sh"));
-        assert!(opencode_templates::SESSION_END_MD.contains(".opencode/bin/session-end.sh"));
-        assert!(opencode_templates::SPEC_MD.contains("patina spec"));
-        assert!(opencode_templates::EPISTEMIC_BELIEFS_MD.contains("create-belief.sh"));
+        let start = skills::skill_content("opencode", "session-start").unwrap();
+        assert!(start.files[0]
+            .bytes
+            .contains(".opencode/bin/session-start.sh"));
+        let update = skills::skill_content("opencode", "session-update").unwrap();
+        assert!(update.files[0]
+            .bytes
+            .contains(".opencode/bin/session-update.sh"));
+        let end = skills::skill_content("opencode", "session-end").unwrap();
+        assert!(end.files[0].bytes.contains(".opencode/bin/session-end.sh"));
+        let spec = skills::skill_content("opencode", "spec").unwrap();
+        assert!(spec.files[0].bytes.contains("patina spec"));
+        let beliefs = skills::skill_content("opencode", "epistemic-beliefs").unwrap();
+        assert!(beliefs
+            .files
+            .iter()
+            .any(|f| f.bytes.contains("create-belief.sh")));
     }
 
     #[test]
