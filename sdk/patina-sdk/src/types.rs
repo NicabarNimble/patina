@@ -4,4 +4,5 @@ wit_bindgen::generate!({
     generate_all,
 });
 
+#[allow(unused_imports)]
 pub use patina::records::types::*;
