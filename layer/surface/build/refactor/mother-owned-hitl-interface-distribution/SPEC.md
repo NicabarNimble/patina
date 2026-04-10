@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: mother-owned-hitl-interface-distribution
-status: active
+status: complete
 created: 2026-04-10
 sessions:
   origin: 20260410-105046-075601000
@@ -66,7 +66,7 @@ exit_criteria:
 - id: mhid16-pi-registry-proof-hard
   text: 'PI registry-proof is mechanically enforced: adding PI requires registry/package metadata only and no compile-time interface-name additions in static catalogs/enums. Verification requires an integration test that loads registry fixture data containing PI metadata and proves PI discovery/launch from registry wiring alone.'
   checked: true
-validated_against_commit: 22a5b25f0d99
+validated_against_commit: bab1611a
 last_freshness_check: 2026-04-10
 freshness_scope:
 - src/commands/launch/internal.rs
