@@ -62,7 +62,7 @@ exit_criteria:
   checked: false
 - id: mhid15-operation-log-contract
   text: 'Managed-path operation log contract is explicit and testable: append-only JSONL at `.patina/local/interface-ops.jsonl`, one record per mutation with `{ts, interface, runtime_id, op, path, result}`, idempotent cleanup writes `result=skipped` when path already absent, and concurrent writes are serialized by file lock.'
-  checked: false
+  checked: true
 - id: mhid16-pi-registry-proof-hard
   text: 'PI registry-proof is mechanically enforced: adding PI requires registry/package metadata only and no compile-time interface-name additions in static catalogs/enums. Verification requires an integration test that loads registry fixture data containing PI metadata and proves PI discovery/launch from registry wiring alone.'
   checked: false
