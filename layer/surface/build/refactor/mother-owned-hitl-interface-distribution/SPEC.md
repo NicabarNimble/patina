@@ -38,19 +38,19 @@ exit_criteria:
   checked: true
 - id: mhid7-mother-session-authority
   text: 'Session lifecycle remains Mother-authoritative: start/update/note/end continue to produce tags, durable artifacts, and active interface pointers through existing wrapper/script flows.'
-  checked: false
+  checked: true
 - id: mhid8-init-existing-flows-preserved
   text: 'Both paths stay intact while ownership shifts: (a) new project bootstrap (`patina` lost-flow + init + launch), (b) existing project flows (`patina`, `patina ai`, `patina ai setup`).'
   checked: true
 - id: mhid9-no-age-eviction
   text: 'No time-based eviction in this phase: active HITL sessions are never auto-cleared due to age. Existing explicit lifecycle paths (`session-end` / `patina ai end`) remain the cleanup boundary while ownership moves to Mother.'
-  checked: false
+  checked: true
 - id: mhid10-compile-proof
   text: cargo check --workspace -q passes; launcher smoke checks pass for both `patina` and `patina ai <interface>` entry paths with unchanged UX semantics.
   checked: true
 - id: mhid11-managed-path-governance
   text: Managed interface paths are explicit metadata and centralized in runtime path handling (via Patina path utilities). Projection/cleanup operations only touch declared managed paths and write an operation log for deterministic cleanup auditing.
-  checked: false
+  checked: true
 - id: mhid12-skill-registry-model
   text: Skills are modeled as Mother-managed registry packages with interface-specific projection adapters. Registry remains intentionally small and opinionated for Patina client-infrastructure and MCT-adjacent workflows while preserving current wrapper command surfaces.
   checked: true
@@ -59,7 +59,7 @@ exit_criteria:
   checked: true
 - id: mhid14-bootstrap-decision-tree
   text: 'Detect/bootstrap behavior is deterministic: (1) picker lists detected HITL interfaces only, (2) explicit `patina ai <interface>` with detect failure hard-fails with install guidance, (3) vendor bootstrap files are projected only after detect succeeds and launch flow proceeds. No detect-fail auto-bootstrap retries in this phase.'
-  checked: false
+  checked: true
 - id: mhid15-operation-log-contract
   text: 'Managed-path operation log contract is explicit and testable: append-only JSONL at `.patina/local/interface-ops.jsonl`, one record per mutation with `{ts, interface, runtime_id, op, path, result}`, idempotent cleanup writes `result=skipped` when path already absent, and concurrent writes are serialized by file lock.'
   checked: true
