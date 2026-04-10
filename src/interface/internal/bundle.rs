@@ -25,6 +25,12 @@ pub struct InterfaceMcpConfig {
     pub config_candidates: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct InterfaceSkillsConfig {
+    #[serde(default)]
+    pub include: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BundleTmuxPolicy {
@@ -48,6 +54,8 @@ pub struct InterfaceBundle {
     pub vendor_bootstrap: Option<String>,
     #[serde(default)]
     pub mcp: Option<InterfaceMcpConfig>,
+    #[serde(default)]
+    pub skills: Option<InterfaceSkillsConfig>,
     pub managed_paths: Vec<ManagedPathSpec>,
     pub tmux_policy: BundleTmuxPolicy,
     pub version: String,
@@ -71,6 +79,7 @@ detect_commands = ["claude --version"]
 vendor_bootstrap = "CLAUDE.md"
 tmux_policy = "auto"
 version = "builtin"
+skills = { include = ["session-start", "session-update", "session-note", "session-end", "spec", "epistemic-beliefs"] }
 managed_paths = [
   { relative_path = "AGENTS.md", kind = "file" },
   { relative_path = "CLAUDE.md", kind = "file" },
@@ -85,6 +94,7 @@ command = "opencode"
 detect_commands = ["opencode --version"]
 tmux_policy = "auto"
 version = "builtin"
+skills = { include = ["session-start", "session-update", "session-note", "session-end", "spec", "epistemic-beliefs"] }
 mcp = { config_candidates = [
   "~/.config/opencode/config.json",
   "~/.config/opencode/opencode.json",
@@ -104,6 +114,7 @@ detect_commands = ["gemini --version"]
 vendor_bootstrap = "GEMINI.md"
 tmux_policy = "auto"
 version = "builtin"
+skills = { include = ["session-start", "session-update", "session-note", "session-end", "spec", "epistemic-beliefs"] }
 mcp = { config_candidates = [
   "~/.gemini/settings.json",
   "~/.config/gemini/settings.json",
@@ -123,6 +134,7 @@ command = "pi"
 detect_commands = ["pi --version"]
 tmux_policy = "auto"
 version = "builtin"
+skills = { include = ["session-start", "session-update", "session-note", "session-end", "spec", "epistemic-beliefs"] }
 managed_paths = [
   { relative_path = "AGENTS.md", kind = "file" },
   { relative_path = ".pi", kind = "directory" },
@@ -207,6 +219,20 @@ pub fn canonicalize_required_interface(name: &str) -> Result<&'static str> {
 mod tests {
     use super::*;
 
+    fn includes_wrapper_skills(bundle: &InterfaceBundle) -> bool {
+        let Some(skills) = bundle.skills.as_ref() else {
+            return false;
+        };
+        [
+            "session-start",
+            "session-update",
+            "session-note",
+            "session-end",
+        ]
+        .iter()
+        .all(|required| skills.include.iter().any(|entry| entry == required))
+    }
+
     #[test]
     fn bundle_catalog_lists_supported_interfaces() {
         let names = supported_ai_interfaces();
@@ -242,5 +268,16 @@ mod tests {
             .as_ref()
             .map(|mcp| !mcp.config_candidates.is_empty())
             .unwrap_or(false));
+    }
+
+    #[test]
+    fn builtins_declare_wrapper_skill_includes() {
+        for bundle in interface_bundle_catalog() {
+            assert!(
+                includes_wrapper_skills(bundle),
+                "bundle '{}' missing required wrapper skill includes",
+                bundle.name
+            );
+        }
     }
 }
