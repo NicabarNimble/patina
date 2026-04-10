@@ -137,13 +137,9 @@ mod composed_bindings {
                 .runtime
                 .get_state("pando", &scoped)
                 .map_err(|error| wasi::keyvalue::store::Error::Other(error.to_string()))?;
-            let decoded = match value {
-                Some(raw) => Some(
-                    serde_json::from_str::<Vec<u8>>(&raw)
-                        .unwrap_or_else(|_| raw.as_bytes().to_vec()),
-                ),
-                None => None,
-            };
+            let decoded = value.map(|raw| {
+                serde_json::from_str::<Vec<u8>>(&raw).unwrap_or_else(|_| raw.as_bytes().to_vec())
+            });
             Ok(decoded)
         }
 
