@@ -32,7 +32,7 @@ exit_criteria:
   checked: true
 - id: mhid5-mother-registry-authority
   text: Mother becomes authority for interface package ownership/distribution (manifests, templates, skills references, bundle metadata). CLI reads interfaces from Mother-managed registry, not static arrays. Completion requires PI to be registry-defined and launchable without hardcoded interface additions.
-  checked: false
+  checked: true
 - id: mhid6-mother-skills-authority
   text: Mother-owned skills repository is the authoritative source for projected Patina/HITL skills. For built-in HITL interfaces, projected command surfaces include the existing wrapper commands (`/session-start`, `/session-update`, `/session-note`, `/session-end`).
   checked: false
@@ -65,7 +65,7 @@ exit_criteria:
   checked: true
 - id: mhid16-pi-registry-proof-hard
   text: 'PI registry-proof is mechanically enforced: adding PI requires registry/package metadata only and no compile-time interface-name additions in static catalogs/enums. Verification requires an integration test that loads registry fixture data containing PI metadata and proves PI discovery/launch from registry wiring alone.'
-  checked: false
+  checked: true
 validated_against_commit: 22a5b25f0d99
 last_freshness_check: 2026-04-10
 freshness_scope:
