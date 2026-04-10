@@ -1,0 +1,165 @@
+# Canonical Bytecode Alliance and WebAssembly repositories Patina tracks.
+#
+# Each entry is registered via `patina repo add <url>` by sdk/ba/scripts/add-all.sh.
+# The script is idempotent — re-running skips already-registered repos.
+#
+# Priority levels:
+#   high   — Patina actively uses or directly extends this. Track changes closely.
+#   medium — Informs Patina design or covers adjacent territory. Track for awareness.
+#   low    — Watch list. Useful context but not load-bearing.
+#
+# Add to this list when the Patina–BA relationship deepens. Removal requires
+# justification in the commit message.
+
+# ============================================================================
+# Bytecode Alliance — host runtime, tooling, language SDKs
+# ============================================================================
+
+[[repos]]
+url = "https://github.com/bytecodealliance/wasmtime"
+priority = "high"
+purpose = "WASM runtime — Patina's host for executing components"
+
+[[repos]]
+url = "https://github.com/bytecodealliance/wit-bindgen"
+priority = "high"
+purpose = "Generates language bindings from WIT — Patina uses for Rust"
+
+[[repos]]
+url = "https://github.com/bytecodealliance/wac"
+priority = "high"
+purpose = "WebAssembly Composition — Patina uses wac-graph for runtime composition"
+
+[[repos]]
+url = "https://github.com/bytecodealliance/wasm-tools"
+priority = "high"
+purpose = "WASM toolchain (validation, transformation, component encoding)"
+
+[[repos]]
+url = "https://github.com/bytecodealliance/jco"
+priority = "medium"
+purpose = "JavaScript component bindings — informs cross-language design"
+
+[[repos]]
+url = "https://github.com/bytecodealliance/wasm-pkg-tools"
+priority = "medium"
+purpose = "WASM package tooling — relevant for child distribution"
+
+[[repos]]
+url = "https://github.com/bytecodealliance/wasi-rs"
+priority = "medium"
+purpose = "Rust WASI bindings"
+
+[[repos]]
+url = "https://github.com/bytecodealliance/componentize-py"
+priority = "low"
+purpose = "Python → component — informs language-binding patterns"
+
+[[repos]]
+url = "https://github.com/bytecodealliance/componentize-js"
+priority = "low"
+purpose = "JS → component — informs language-binding patterns"
+
+[[repos]]
+url = "https://github.com/bytecodealliance/wasi-virt"
+priority = "low"
+purpose = "WASI virtualization — relevant for sandboxing patterns"
+
+[[repos]]
+url = "https://github.com/bytecodealliance/governance"
+priority = "low"
+purpose = "BA governance — meeting cadence, SG structure, decision process"
+
+# ============================================================================
+# WebAssembly org — specs and proposals
+# ============================================================================
+
+[[repos]]
+url = "https://github.com/WebAssembly/component-model"
+priority = "high"
+purpose = "Component model specification — the substrate Patina bets on"
+
+[[repos]]
+url = "https://github.com/WebAssembly/WASI"
+priority = "high"
+purpose = "WASI umbrella — capability ecosystem index"
+
+[[repos]]
+url = "https://github.com/WebAssembly/wasi-keyvalue"
+priority = "high"
+purpose = "wasi:keyvalue interface — used by Patina dedup-filter, record-writer"
+
+[[repos]]
+url = "https://github.com/WebAssembly/wasi-http"
+priority = "high"
+purpose = "wasi:http interface — used for HTTP capability"
+
+[[repos]]
+url = "https://github.com/WebAssembly/wasi-clocks"
+priority = "high"
+purpose = "wasi:clocks interface — time capability"
+
+[[repos]]
+url = "https://github.com/WebAssembly/wasi-filesystem"
+priority = "high"
+purpose = "wasi:filesystem interface — used by Patina record-writer"
+
+[[repos]]
+url = "https://github.com/WebAssembly/wasi-io"
+priority = "high"
+purpose = "wasi:io interface — foundational stream/poll types"
+
+[[repos]]
+url = "https://github.com/WebAssembly/wasi-cli"
+priority = "high"
+purpose = "wasi:cli interface — process startup, env, stdio"
+
+[[repos]]
+url = "https://github.com/WebAssembly/wasi-logging"
+priority = "high"
+purpose = "wasi:logging interface — used by all 6 Patina children via toys::log"
+
+[[repos]]
+url = "https://github.com/WebAssembly/wasi-config"
+priority = "high"
+purpose = "wasi:config interface — informs Patina's patina:config toy design"
+
+[[repos]]
+url = "https://github.com/WebAssembly/wasi-random"
+priority = "medium"
+purpose = "wasi:random interface — randomness capability"
+
+[[repos]]
+url = "https://github.com/WebAssembly/wasi-sockets"
+priority = "medium"
+purpose = "wasi:sockets interface — networking capability"
+
+[[repos]]
+url = "https://github.com/WebAssembly/wasi-blob-store"
+priority = "medium"
+purpose = "wasi:blob-store interface — relevant for Patina's record-writer evolution"
+
+[[repos]]
+url = "https://github.com/WebAssembly/wasi-messaging"
+priority = "medium"
+purpose = "wasi:messaging interface — relevant for cross-mother messaging"
+
+[[repos]]
+url = "https://github.com/WebAssembly/wasi-sql"
+priority = "medium"
+purpose = "wasi:sql interface — relevant for federation database access"
+
+[[repos]]
+url = "https://github.com/WebAssembly/wasi-runtime-config"
+priority = "medium"
+purpose = "wasi:runtime-config interface — runtime parameter injection"
+
+[[repos]]
+url = "https://github.com/WebAssembly/wasi-nn"
+priority = "low"
+purpose = "wasi:nn interface — neural network inference (future Patina relevance)"
+
+[[repos]]
+url = "https://github.com/WebAssembly/spec"
+priority = "low"
+purpose = "Core WebAssembly specification — substrate beneath the component model"
