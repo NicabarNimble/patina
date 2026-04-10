@@ -7,6 +7,7 @@ sessions:
   origin: 20260409-143847-707078000
 related:
 - feat/patina-sdk-rebuild
+- feat/cloudflare-worker-child
 beliefs:
 - '[[compiler-enforced-safety]]'
 - '[[children-have-agency-toys-are-capabilities]]'
@@ -18,10 +19,16 @@ exit_criteria:
   text: "No public pub use types::* or public prelude re-export of patina:records types in patina-sdk."
   checked: false
 - id: spa3-clean-compile
-  text: "cargo check --workspace -q passes with zero warnings from SDK unused-import on dead public re-exports."
+  text: "cargo check --workspace 2>&1 | grep 'warning.*sdk/patina-sdk' returns empty. No SDK-originated warnings."
   checked: false
 - id: spa4-no-breakage
-  text: "Existing child builds (all 6 to wasm32-wasip2) and cargo nextest run pass without adding wit_bindgen with: mappings."
+  text: "All 6 children build to wasm32-wasip2 (patina-ai-child-{file-system-monitor,content-extractor,schema-enforcer,dedup-filter,record-writer,lakehouse-catalog}) and cargo nextest run passes. No wit_bindgen with: mappings added."
+  checked: false
+- id: spa5-docs-aligned
+  text: "sdk/patina-sdk/README.md no longer references prelude or type exports. Documents toy helpers as the public surface."
+  checked: false
+- id: spa6-stale-refs-cleaned
+  text: "No spec or doc on disk references patina_sdk::prelude or patina_sdk::types as consumer-facing API. Known stale ref: cloudflare-worker-child/SPEC.md."
   checked: false
 ---
 # fix: Align SDK Public Surface with Implementation Reality
@@ -31,8 +38,8 @@ exit_criteria:
 `patina-sdk-rebuild` (cs1) specified that the SDK re-exports `patina:records`
 types as public API via a `prelude` module. In practice, no consumer imports
 these types — children use their own WIT-local types from `wit_bindgen::generate!`
-in `impl Guest` signatures. The re-exports produce an unused-import warning that
-was suppressed with `#[allow(unused_imports)]`, masking dead public API.
+in `impl Guest` signatures. The re-exports produce an unused-import warning
+on `sdk/patina-sdk/src/types.rs:7` that is currently unsuppressed.
 
 ## Root Cause
 
@@ -70,13 +77,23 @@ This does not change Mother authority. Toy grants and enforcement still come
 from `child.toml` `[needs].toys` and the host runtime linker. The SDK wraps
 what Mother grants — it does not expand or restrict the grant surface.
 
+## Semver
+
+`patina-sdk` is v0.21.0 (pre-1.0) and consumed only within this workspace.
+Removing public exports is a breaking change under strict semver, but 0.x
+allows breaking changes by convention. No external consumers exist.
+
 ## Fix
 
-1. Change `sdk/patina-sdk/src/lib.rs`: `pub mod types` → `pub(crate) mod types`
-2. Remove `pub use types::*` and the `prelude` module
-3. Remove the `pub use patina::records::types::*` line from `types.rs`
-4. Verify: `cargo check --workspace -q` (zero warnings), all 6 children build,
-   `cargo nextest run` passes
+1. `sdk/patina-sdk/src/lib.rs`: `pub mod types` → `pub(crate) mod types`.
+   Remove `pub use types::*` and the `prelude` module.
+2. `sdk/patina-sdk/src/types.rs`: remove `pub use patina::records::types::*`.
+3. `sdk/patina-sdk/README.md`: remove prelude/type-export references. Document
+   toy helpers as the public surface.
+4. `layer/surface/build/feat/cloudflare-worker-child/SPEC.md`: update stale
+   `use patina_sdk::prelude::*` example to use WIT-local types + `patina_sdk::toys`.
+5. Verify: `cargo check --workspace` (grep for SDK warnings → empty), all 6
+   named children build to wasm32-wasip2, `cargo nextest run` passes.
 
 ## Future Note
 
