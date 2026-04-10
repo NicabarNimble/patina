@@ -412,6 +412,7 @@ fn map_interface_kind(kind: &str) -> InterfaceKind {
         "opencode" => InterfaceKind::OpenCode,
         "gemini" => InterfaceKind::Gemini,
         "claude" => InterfaceKind::Claude,
+        "pi" => InterfaceKind::Pi,
         _ => InterfaceKind::Unknown,
     }
 }

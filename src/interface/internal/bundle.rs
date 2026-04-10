@@ -1,102 +1,144 @@
 use anyhow::Result;
+use serde::Deserialize;
+use std::fs;
+use std::path::PathBuf;
+use std::sync::OnceLock;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use crate::paths;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ManagedPathKind {
     File,
     Directory,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ManagedPathSpec {
-    pub relative_path: &'static str,
+    pub relative_path: String,
     pub kind: ManagedPathKind,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InterfaceBundle {
-    pub name: &'static str,
-    pub display_name: &'static str,
-    pub vendor_bootstrap: Option<&'static str>,
-    pub managed_paths: &'static [ManagedPathSpec],
-    pub tmux_policy: BundleTmuxPolicy,
-    pub version: &'static str,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum BundleTmuxPolicy {
     Auto,
 }
 
-const OPENCODE_MANAGED_PATHS: &[ManagedPathSpec] = &[
-    ManagedPathSpec {
-        relative_path: "AGENTS.md",
-        kind: ManagedPathKind::File,
-    },
-    ManagedPathSpec {
-        relative_path: ".opencode",
-        kind: ManagedPathKind::Directory,
-    },
-];
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum InterfaceClassification {
+    Hitl,
+}
 
-const CLAUDE_MANAGED_PATHS: &[ManagedPathSpec] = &[
-    ManagedPathSpec {
-        relative_path: "AGENTS.md",
-        kind: ManagedPathKind::File,
-    },
-    ManagedPathSpec {
-        relative_path: "CLAUDE.md",
-        kind: ManagedPathKind::File,
-    },
-    ManagedPathSpec {
-        relative_path: ".claude",
-        kind: ManagedPathKind::Directory,
-    },
-];
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct InterfaceBundle {
+    pub name: String,
+    pub display_name: String,
+    pub classification: InterfaceClassification,
+    pub command: String,
+    pub detect_commands: Vec<String>,
+    #[serde(default)]
+    pub vendor_bootstrap: Option<String>,
+    pub managed_paths: Vec<ManagedPathSpec>,
+    pub tmux_policy: BundleTmuxPolicy,
+    pub version: String,
+}
 
-const GEMINI_MANAGED_PATHS: &[ManagedPathSpec] = &[
-    ManagedPathSpec {
-        relative_path: "AGENTS.md",
-        kind: ManagedPathKind::File,
-    },
-    ManagedPathSpec {
-        relative_path: "GEMINI.md",
-        kind: ManagedPathKind::File,
-    },
-    ManagedPathSpec {
-        relative_path: ".gemini",
-        kind: ManagedPathKind::Directory,
-    },
-];
+#[derive(Debug, Deserialize)]
+struct InterfaceRegistry {
+    #[serde(rename = "interface")]
+    interfaces: Vec<InterfaceBundle>,
+}
 
-const INTERFACE_BUNDLES: &[InterfaceBundle] = &[
-    InterfaceBundle {
-        name: "claude",
-        display_name: "Claude Code",
-        vendor_bootstrap: Some("CLAUDE.md"),
-        managed_paths: CLAUDE_MANAGED_PATHS,
-        tmux_policy: BundleTmuxPolicy::Auto,
-        version: env!("CARGO_PKG_VERSION"),
-    },
-    InterfaceBundle {
-        name: "opencode",
-        display_name: "OpenCode",
-        vendor_bootstrap: None,
-        managed_paths: OPENCODE_MANAGED_PATHS,
-        tmux_policy: BundleTmuxPolicy::Auto,
-        version: env!("CARGO_PKG_VERSION"),
-    },
-    InterfaceBundle {
-        name: "gemini",
-        display_name: "Gemini CLI",
-        vendor_bootstrap: Some("GEMINI.md"),
-        managed_paths: GEMINI_MANAGED_PATHS,
-        tmux_policy: BundleTmuxPolicy::Auto,
-        version: env!("CARGO_PKG_VERSION"),
-    },
-];
+static REGISTRY: OnceLock<Vec<InterfaceBundle>> = OnceLock::new();
+
+const BUILTIN_INTERFACE_REGISTRY: &str = r#"
+[[interface]]
+name = "claude"
+display_name = "Claude Code"
+classification = "hitl"
+command = "claude"
+detect_commands = ["claude --version"]
+vendor_bootstrap = "CLAUDE.md"
+tmux_policy = "auto"
+version = "builtin"
+managed_paths = [
+  { relative_path = "AGENTS.md", kind = "file" },
+  { relative_path = "CLAUDE.md", kind = "file" },
+  { relative_path = ".claude", kind = "directory" },
+]
+
+[[interface]]
+name = "opencode"
+display_name = "OpenCode"
+classification = "hitl"
+command = "opencode"
+detect_commands = ["opencode --version"]
+tmux_policy = "auto"
+version = "builtin"
+managed_paths = [
+  { relative_path = "AGENTS.md", kind = "file" },
+  { relative_path = ".opencode", kind = "directory" },
+]
+
+[[interface]]
+name = "gemini"
+display_name = "Gemini CLI"
+classification = "hitl"
+command = "gemini"
+detect_commands = ["gemini --version"]
+vendor_bootstrap = "GEMINI.md"
+tmux_policy = "auto"
+version = "builtin"
+managed_paths = [
+  { relative_path = "AGENTS.md", kind = "file" },
+  { relative_path = "GEMINI.md", kind = "file" },
+  { relative_path = ".gemini", kind = "directory" },
+]
+
+[[interface]]
+name = "pi"
+display_name = "PI"
+classification = "hitl"
+command = "pi"
+detect_commands = ["pi --version"]
+tmux_policy = "auto"
+version = "builtin"
+managed_paths = [
+  { relative_path = "AGENTS.md", kind = "file" },
+  { relative_path = ".pi", kind = "directory" },
+]
+"#;
+
+pub fn builtin_registry_toml() -> &'static str {
+    BUILTIN_INTERFACE_REGISTRY
+}
+
+fn registry_path() -> PathBuf {
+    paths::interfaces_dir().join("registry.toml")
+}
+
+fn parse_registry(content: &str) -> Option<Vec<InterfaceBundle>> {
+    let parsed: InterfaceRegistry = toml::from_str(content).ok()?;
+    if parsed.interfaces.is_empty() {
+        return None;
+    }
+    Some(parsed.interfaces)
+}
+
+fn load_registry() -> Vec<InterfaceBundle> {
+    if let Ok(content) = fs::read_to_string(registry_path()) {
+        if let Some(registry) = parse_registry(&content) {
+            return registry;
+        }
+    }
+
+    parse_registry(BUILTIN_INTERFACE_REGISTRY).unwrap_or_default()
+}
 
 pub fn interface_bundle_catalog() -> &'static [InterfaceBundle] {
-    INTERFACE_BUNDLES
+    REGISTRY.get_or_init(load_registry).as_slice()
 }
 
 pub fn interface_bundle(name: &str) -> Result<&'static InterfaceBundle> {
@@ -116,7 +158,8 @@ pub fn interface_bundle(name: &str) -> Result<&'static InterfaceBundle> {
 pub fn supported_ai_interfaces() -> Vec<&'static str> {
     interface_bundle_catalog()
         .iter()
-        .map(|bundle| bundle.name)
+        .filter(|bundle| bundle.classification == InterfaceClassification::Hitl)
+        .map(|bundle| bundle.name.as_str())
         .collect()
 }
 
@@ -129,7 +172,7 @@ pub fn canonical_interface_name(name: &str) -> Option<&'static str> {
     interface_bundle_catalog()
         .iter()
         .find(|bundle| bundle.name == normalized)
-        .map(|bundle| bundle.name)
+        .map(|bundle| bundle.name.as_str())
 }
 
 pub fn canonicalize_required_interface(name: &str) -> Result<&'static str> {
@@ -149,7 +192,7 @@ mod tests {
     #[test]
     fn bundle_catalog_lists_supported_interfaces() {
         let names = supported_ai_interfaces();
-        assert_eq!(names, vec!["claude", "opencode", "gemini"]);
+        assert_eq!(names, vec!["claude", "opencode", "gemini", "pi"]);
     }
 
     #[test]
@@ -157,13 +200,14 @@ mod tests {
         assert_eq!(canonical_interface_name("Claude"), Some("claude"));
         assert_eq!(canonical_interface_name("OPENCODE"), Some("opencode"));
         assert_eq!(canonical_interface_name("Gemini"), Some("gemini"));
+        assert_eq!(canonical_interface_name("PI"), Some("pi"));
         assert!(canonical_interface_name("codex").is_none());
     }
 
     #[test]
     fn bundle_metadata_tracks_vendor_bootstrap_and_managed_paths() {
         let claude = interface_bundle("claude").unwrap();
-        assert_eq!(claude.vendor_bootstrap, Some("CLAUDE.md"));
+        assert_eq!(claude.vendor_bootstrap.as_deref(), Some("CLAUDE.md"));
         assert!(claude
             .managed_paths
             .iter()

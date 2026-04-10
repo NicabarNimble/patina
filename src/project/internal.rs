@@ -422,7 +422,7 @@ pub fn register_with_mother(project_path: &Path) -> Result<String> {
 
 /// Check if a directory is a patina project
 pub fn is_patina_project(path: &Path) -> bool {
-    patina_dir(path).exists()
+    config_path(path).exists() && path.join("layer").is_dir()
 }
 
 /// Check if legacy config.json exists
@@ -703,6 +703,10 @@ mod tests {
         assert!(!is_patina_project(tmp.path()));
 
         fs::create_dir_all(patina_dir(tmp.path())).unwrap();
+        fs::write(config_path(tmp.path()), "").unwrap();
+        assert!(!is_patina_project(tmp.path()));
+
+        fs::create_dir_all(tmp.path().join("layer")).unwrap();
         assert!(is_patina_project(tmp.path()));
     }
 

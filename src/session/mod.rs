@@ -14,6 +14,7 @@ pub enum InterfaceKind {
     OpenCode,
     Gemini,
     Claude,
+    Pi,
     Unknown,
 }
 
@@ -24,6 +25,7 @@ impl InterfaceKind {
             Self::OpenCode => "opencode",
             Self::Gemini => "gemini",
             Self::Claude => "claude",
+            Self::Pi => "pi",
             Self::Unknown => "unknown",
         }
     }
@@ -33,6 +35,7 @@ impl InterfaceKind {
             "opencode" => Self::OpenCode,
             "gemini" => Self::Gemini,
             "claude" => Self::Claude,
+            "pi" => Self::Pi,
             _ => Self::Unknown,
         }
     }

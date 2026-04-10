@@ -14,8 +14,8 @@ pub use internal::bootstrap::{
     BundleDeploymentStatus, ProjectionMode,
 };
 pub use internal::bundle::{
-    interface_bundle, interface_bundle_catalog, is_supported_ai_interface, supported_ai_interfaces,
-    BundleTmuxPolicy, InterfaceBundle,
+    builtin_registry_toml, interface_bundle, interface_bundle_catalog, is_supported_ai_interface,
+    supported_ai_interfaces, BundleTmuxPolicy, InterfaceBundle,
 };
 pub use internal::checkin::{
     check_in, session_writer_action, CheckInResult, InterfaceCapabilities, InterfaceCheckIn,
@@ -94,6 +94,7 @@ pub fn interface(name: &str) -> Result<Box<dyn AiInterface>> {
         "claude" => Ok(Box::new(ClaudeInterface)),
         "opencode" => Ok(Box::new(OpenCodeInterface)),
         "gemini" => Ok(Box::new(GeminiInterface)),
+        "pi" => Ok(Box::new(PiInterface)),
         other => bail!("Unsupported ai interface: {}", other),
     }
 }
@@ -140,6 +141,8 @@ impl AiInterface for OpenCodeInterface {
 
 struct GeminiInterface;
 
+struct PiInterface;
+
 impl AiInterface for GeminiInterface {
     fn name(&self) -> &'static str {
         "gemini"
@@ -151,6 +154,24 @@ impl AiInterface for GeminiInterface {
 
     fn interface_kind(&self) -> InterfaceKind {
         InterfaceKind::Gemini
+    }
+
+    fn context_file(&self, project_root: &Path) -> PathBuf {
+        project_root.join("AGENTS.md")
+    }
+}
+
+impl AiInterface for PiInterface {
+    fn name(&self) -> &'static str {
+        "pi"
+    }
+
+    fn display_name(&self) -> &'static str {
+        "PI"
+    }
+
+    fn interface_kind(&self) -> InterfaceKind {
+        InterfaceKind::Pi
     }
 
     fn context_file(&self, project_root: &Path) -> PathBuf {

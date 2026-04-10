@@ -116,6 +116,8 @@ pub fn install_all(interfaces_dir: &Path) -> Result<()> {
     install_claude_templates(interfaces_dir)?;
     install_gemini_templates(interfaces_dir)?;
     install_opencode_templates(interfaces_dir)?;
+    install_pi_templates(interfaces_dir)?;
+    write_interface_registry(interfaces_dir)?;
     Ok(())
 }
 
@@ -341,6 +343,60 @@ fn install_opencode_templates(interfaces_dir: &Path) -> Result<()> {
         claude_templates::SKILL_EPISTEMIC_BELIEFS_CREATE_SH,
     )?;
 
+    Ok(())
+}
+
+fn install_pi_templates(interfaces_dir: &Path) -> Result<()> {
+    let templates_dir = interfaces_dir.join("pi").join("templates");
+    let pi_dir = templates_dir.join(".pi");
+    let bin_dir = pi_dir.join("bin");
+    let commands_dir = pi_dir.join("commands");
+    let context_dir = pi_dir.join("context");
+
+    fs::create_dir_all(&bin_dir)?;
+    fs::create_dir_all(&commands_dir)?;
+    fs::create_dir_all(&context_dir)?;
+
+    write_executable(&bin_dir.join("session-start.sh"), &wrapper_start("pi"))?;
+    write_executable(&bin_dir.join("session-update.sh"), &wrapper_update("pi"))?;
+    write_executable(&bin_dir.join("session-note.sh"), &wrapper_note("pi"))?;
+    write_executable(&bin_dir.join("session-end.sh"), &wrapper_end("pi"))?;
+
+    let session_start = opencode_templates::SESSION_START_MD.replace(".opencode/", ".pi/");
+    let session_update = opencode_templates::SESSION_UPDATE_MD.replace(".opencode/", ".pi/");
+    let session_note = opencode_templates::SESSION_NOTE_MD.replace(".opencode/", ".pi/");
+    let session_end = opencode_templates::SESSION_END_MD.replace(".opencode/", ".pi/");
+    let review = opencode_templates::PATINA_REVIEW_MD.replace(".opencode/", ".pi/");
+
+    fs::write(commands_dir.join("session-start.md"), session_start)?;
+    fs::write(commands_dir.join("session-update.md"), session_update)?;
+    fs::write(commands_dir.join("session-note.md"), session_note)?;
+    fs::write(commands_dir.join("session-end.md"), session_end)?;
+    fs::write(commands_dir.join("patina-review.md"), review)?;
+    fs::write(commands_dir.join("spec.md"), opencode_templates::SPEC_MD)?;
+    fs::write(
+        commands_dir.join("epistemic-beliefs.md"),
+        opencode_templates::EPISTEMIC_BELIEFS_MD,
+    )?;
+    write_executable(
+        &bin_dir.join("create-belief.sh"),
+        claude_templates::SKILL_EPISTEMIC_BELIEFS_CREATE_SH,
+    )?;
+
+    fs::write(
+        context_dir.join("agent-instructions.md"),
+        opencode_templates::PATINA_REVIEW_MD,
+    )?;
+
+    Ok(())
+}
+
+fn write_interface_registry(interfaces_dir: &Path) -> Result<()> {
+    fs::create_dir_all(interfaces_dir)?;
+    fs::write(
+        interfaces_dir.join("registry.toml"),
+        crate::interface::builtin_registry_toml(),
+    )?;
     Ok(())
 }
 

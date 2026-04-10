@@ -87,5 +87,6 @@ mod tests {
             .path()
             .join(".gemini/commands/session-start.toml")
             .exists());
+        assert!(temp.path().join(".pi/commands/session-start.md").exists());
     }
 }

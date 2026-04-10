@@ -29,11 +29,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::interface::assets as interface_assets;
+use crate::interface::internal::bundle::{
+    interface_bundle, interface_bundle_catalog, InterfaceClassification,
+};
 use crate::workspace;
 use crate::Environment;
 
-/// Available interface names
-pub const INTERFACES: &[&str] = &["claude", "gemini", "opencode"];
 /// Markers for Patina-managed section in bootstrap files
 const MARKER_START: &str = "<!-- PATINA:START -->";
 const MARKER_END: &str = "<!-- PATINA:END -->";
@@ -49,6 +50,7 @@ pub enum InterfaceKind {
     Claude,
     Gemini,
     OpenCode,
+    Pi,
 }
 
 impl InterfaceKind {
@@ -57,6 +59,7 @@ impl InterfaceKind {
             InterfaceKind::Claude => "claude",
             InterfaceKind::Gemini => "gemini",
             InterfaceKind::OpenCode => "opencode",
+            InterfaceKind::Pi => "pi",
         }
     }
 
@@ -65,6 +68,7 @@ impl InterfaceKind {
             InterfaceKind::Claude => "Claude Code",
             InterfaceKind::Gemini => "Gemini CLI",
             InterfaceKind::OpenCode => "OpenCode",
+            InterfaceKind::Pi => "PI",
         }
     }
 
@@ -73,6 +77,7 @@ impl InterfaceKind {
             "claude" => Some(InterfaceKind::Claude),
             "gemini" => Some(InterfaceKind::Gemini),
             "opencode" => Some(InterfaceKind::OpenCode),
+            "pi" => Some(InterfaceKind::Pi),
             _ => None,
         }
     }
@@ -82,6 +87,7 @@ impl InterfaceKind {
             InterfaceKind::Claude => "CLAUDE.md",
             InterfaceKind::Gemini => "GEMINI.md",
             InterfaceKind::OpenCode => CANONICAL_AGENTS_FILE,
+            InterfaceKind::Pi => CANONICAL_AGENTS_FILE,
         }
     }
 
@@ -90,14 +96,7 @@ impl InterfaceKind {
             InterfaceKind::Claude => Some("CLAUDE.md"),
             InterfaceKind::Gemini => Some("GEMINI.md"),
             InterfaceKind::OpenCode => None,
-        }
-    }
-
-    pub fn detect_commands(&self) -> &'static [&'static str] {
-        match self {
-            InterfaceKind::Claude => &["claude --version"],
-            InterfaceKind::Gemini => &["gemini --version"],
-            InterfaceKind::OpenCode => &["opencode --version"],
+            InterfaceKind::Pi => None,
         }
     }
 }
@@ -129,8 +128,11 @@ pub struct McpConfig {
 pub fn list() -> Result<Vec<InterfaceInfo>> {
     let mut interfaces = Vec::new();
 
-    for name in INTERFACES {
-        if let Ok(info) = get(name) {
+    for bundle in interface_bundle_catalog()
+        .iter()
+        .filter(|entry| entry.classification == InterfaceClassification::Hitl)
+    {
+        if let Ok(info) = get(&bundle.name) {
             interfaces.push(info);
         }
     }
@@ -140,17 +142,15 @@ pub fn list() -> Result<Vec<InterfaceInfo>> {
 
 /// Get info for a specific interface
 pub fn get(name: &str) -> Result<InterfaceInfo> {
-    let interface = InterfaceKind::from_name(name)
-        .ok_or_else(|| anyhow::anyhow!("Unknown interface: {}", name))?;
-
-    let (detected, version) = detect_cli(&interface);
+    let bundle = interface_bundle(name)?;
+    let (detected, version) = detect_cli(&bundle.detect_commands);
 
     Ok(InterfaceInfo {
-        name: interface.name().to_string(),
-        display: interface.display().to_string(),
+        name: bundle.name.clone(),
+        display: bundle.display_name.clone(),
         detected,
         version,
-        mcp: get_mcp_config(&interface),
+        mcp: get_mcp_config(&bundle.name),
     })
 }
 
@@ -197,19 +197,24 @@ pub fn canonical_agents_path(project_path: &Path) -> PathBuf {
 }
 
 pub fn vendor_bootstrap_path(name: &str, project_path: &Path) -> Result<Option<PathBuf>> {
-    let interface = InterfaceKind::from_name(name)
-        .ok_or_else(|| anyhow::anyhow!("Unknown interface: {}", name))?;
-    Ok(interface
-        .vendor_bootstrap_file()
+    let bundle = interface_bundle(name)?;
+    Ok(bundle
+        .vendor_bootstrap
+        .as_ref()
         .map(|file| project_path.join(file)))
 }
 
 pub fn generate_bootstrap(name: &str, project_path: &Path, force_rewrite: bool) -> Result<()> {
-    let interface = InterfaceKind::from_name(name)
-        .ok_or_else(|| anyhow::anyhow!("Unknown interface: {}", name))?;
+    let bundle = interface_bundle(name)?;
 
     write_canonical_agents(project_path, force_rewrite)?;
-    write_vendor_bootstrap(&interface, project_path, force_rewrite)?;
+    write_vendor_bootstrap(
+        &bundle.name,
+        &bundle.display_name,
+        bundle.vendor_bootstrap.as_deref(),
+        project_path,
+        force_rewrite,
+    )?;
 
     Ok(())
 }
@@ -246,7 +251,7 @@ pub fn interface_mcp_available(name: &str) -> Result<bool> {
     let interface = InterfaceKind::from_name(name)
         .ok_or_else(|| anyhow::anyhow!("Unknown interface: {}", name))?;
 
-    if let Some(config) = get_mcp_config(&interface) {
+    if let Some(config) = get_mcp_config(interface.name()) {
         return config_contains_patina_server(&config.config_path);
     }
 
@@ -262,6 +267,7 @@ pub fn interface_mcp_available(name: &str) -> Result<bool> {
             "~/.config/opencode/config.toml",
         ][..],
         InterfaceKind::Claude => &[][..],
+        InterfaceKind::Pi => &[][..],
     };
 
     for path in candidates {
@@ -283,8 +289,8 @@ pub fn configure_mcp(name: &str) -> Result<()> {
 
 /// Detect CLI version for an interface
 pub fn detect_version(name: &str) -> Option<String> {
-    let interface = InterfaceKind::from_name(name)?;
-    let (_, version) = detect_cli(&interface);
+    let bundle = interface_bundle(name).ok()?;
+    let (_, version) = detect_cli(&bundle.detect_commands);
     version
 }
 
@@ -304,10 +310,15 @@ pub fn select_interface(available: &[InterfaceInfo], preference: Option<&str>) -
 
     match available.len() {
         0 => {
+            let supported = interface_bundle_catalog()
+                .iter()
+                .filter(|entry| entry.classification == InterfaceClassification::Hitl)
+                .map(|entry| entry.name.as_str())
+                .collect::<Vec<_>>();
             anyhow::bail!(
                 "No AI interfaces detected on this system.\n\
                  Install one of: {}",
-                INTERFACES.join(", ")
+                supported.join(", ")
             );
         }
         1 => {
@@ -316,7 +327,7 @@ pub fn select_interface(available: &[InterfaceInfo], preference: Option<&str>) -
         }
         _ => {
             // Multiple interfaces - prompt user to choose
-            println!("\n📱 Available interfaces:");
+            println!("\n📱 Available HITL interfaces:");
 
             // Find which index should be default (1-based for display)
             let default_idx = preference
@@ -359,8 +370,8 @@ pub fn select_interface(available: &[InterfaceInfo], preference: Option<&str>) -
 // =============================================================================
 
 /// Detect if CLI is installed and get version
-fn detect_cli(interface: &InterfaceKind) -> (bool, Option<String>) {
-    for cmd in interface.detect_commands() {
+fn detect_cli(commands: &[String]) -> (bool, Option<String>) {
+    for cmd in commands {
         if let Some(version) = try_command(cmd) {
             return (true, Some(version));
         }
@@ -392,11 +403,13 @@ fn try_command(cmd: &str) -> Option<String> {
 }
 
 /// Get MCP config for an interface
-fn get_mcp_config(interface: &InterfaceKind) -> Option<McpConfig> {
-    match interface {
-        InterfaceKind::Claude => None,
-        InterfaceKind::Gemini => None,   // TBD
-        InterfaceKind::OpenCode => None, // TBD
+fn get_mcp_config(interface_name: &str) -> Option<McpConfig> {
+    match interface_name {
+        "claude" => None,
+        "gemini" => None,
+        "opencode" => None,
+        "pi" => None,
+        _ => None,
     }
 }
 
@@ -464,17 +477,16 @@ fn write_canonical_agents(project_path: &Path, force_rewrite: bool) -> Result<()
 }
 
 fn write_vendor_bootstrap(
-    interface: &InterfaceKind,
+    interface_name: &str,
+    display_name: &str,
+    vendor_bootstrap_file: Option<&str>,
     project_path: &Path,
     force_rewrite: bool,
 ) -> Result<()> {
-    let Some(bootstrap_path) = interface
-        .vendor_bootstrap_file()
-        .map(|file| project_path.join(file))
-    else {
+    let Some(bootstrap_path) = vendor_bootstrap_file.map(|file| project_path.join(file)) else {
         return Ok(());
     };
-    let section = vendor_shim_section(interface);
+    let section = vendor_shim_section(interface_name, display_name);
 
     let new_content = if bootstrap_path.exists() && !force_rewrite {
         let content = fs::read_to_string(&bootstrap_path)
@@ -482,10 +494,10 @@ fn write_vendor_bootstrap(
         if content.contains(MARKER_START) && content.contains(MARKER_END) {
             update_or_append_section(&content, &section)
         } else {
-            managed_shell(&format!("{} Instructions", interface.display()), &section)
+            managed_shell(&format!("{} Instructions", display_name), &section)
         }
     } else {
-        managed_shell(&format!("{} Instructions", interface.display()), &section)
+        managed_shell(&format!("{} Instructions", display_name), &section)
     };
 
     fs::write(&bootstrap_path, new_content)
@@ -572,16 +584,13 @@ Use CLI/native fallbacks instead:\n\
     format!("{header}{body}")
 }
 
-fn vendor_shim_section(interface: &InterfaceKind) -> String {
-    let template = match interface {
-        InterfaceKind::Claude => interface_assets::claude_shim_template(),
-        InterfaceKind::Gemini => interface_assets::gemini_shim_template(),
-        InterfaceKind::OpenCode => return String::new(),
+fn vendor_shim_section(interface_name: &str, display_name: &str) -> String {
+    let template = match interface_name {
+        "claude" => interface_assets::claude_shim_template(),
+        "gemini" => interface_assets::gemini_shim_template(),
+        _ => return String::new(),
     };
-    render_template(
-        &template,
-        &[("{{display_name}}", interface.display().to_string())],
-    )
+    render_template(&template, &[("{{display_name}}", display_name.to_string())])
 }
 
 #[cfg(test)]
@@ -618,6 +627,7 @@ mod tests {
         assert_eq!(InterfaceKind::Claude.name(), "claude");
         assert_eq!(InterfaceKind::Gemini.name(), "gemini");
         assert_eq!(InterfaceKind::OpenCode.name(), "opencode");
+        assert_eq!(InterfaceKind::Pi.name(), "pi");
     }
 
     #[test]
@@ -638,6 +648,7 @@ mod tests {
             InterfaceKind::from_name("OpenCode"),
             Some(InterfaceKind::OpenCode)
         );
+        assert_eq!(InterfaceKind::from_name("pi"), Some(InterfaceKind::Pi));
         assert_eq!(InterfaceKind::from_name("unknown"), None);
     }
 
@@ -646,6 +657,7 @@ mod tests {
         assert_eq!(InterfaceKind::Claude.bootstrap_file(), "CLAUDE.md");
         assert_eq!(InterfaceKind::Gemini.bootstrap_file(), "GEMINI.md");
         assert_eq!(InterfaceKind::OpenCode.bootstrap_file(), "AGENTS.md");
+        assert_eq!(InterfaceKind::Pi.bootstrap_file(), "AGENTS.md");
         assert_eq!(
             InterfaceKind::Claude.vendor_bootstrap_file(),
             Some("CLAUDE.md")
@@ -655,6 +667,7 @@ mod tests {
             Some("GEMINI.md")
         );
         assert_eq!(InterfaceKind::OpenCode.vendor_bootstrap_file(), None);
+        assert_eq!(InterfaceKind::Pi.vendor_bootstrap_file(), None);
     }
 
     #[test]
@@ -689,7 +702,7 @@ mod tests {
 
     #[test]
     fn vendor_shim_points_to_root_agents() {
-        let section = vendor_shim_section(&InterfaceKind::Gemini);
+        let section = vendor_shim_section("gemini", "Gemini CLI");
         assert!(section.contains("Read `AGENTS.md` first."));
         assert!(section.contains("compatibility shim"));
     }
@@ -711,10 +724,14 @@ mod tests {
 
     #[test]
     fn test_interfaces_list() {
-        assert!(INTERFACES.contains(&"claude"));
-        assert!(INTERFACES.contains(&"gemini"));
-        assert!(INTERFACES.contains(&"opencode"));
-        assert_eq!(INTERFACES.len(), 3);
+        let names = interface_bundle_catalog()
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"claude"));
+        assert!(names.contains(&"gemini"));
+        assert!(names.contains(&"opencode"));
+        assert!(names.contains(&"pi"));
     }
 
     #[test]
