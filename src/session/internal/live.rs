@@ -320,6 +320,15 @@ pub fn load_current_interface_session(
         return Ok(None);
     }
 
+    if record.status != MotherSessionStatus::Active {
+        projection::clear_native_interface_session(
+            project_root,
+            interface_name,
+            Some(&pointer.runtime_id),
+        )?;
+        return Ok(None);
+    }
+
     let artifact_path = projection::durable_session_path(project_root, &record.file_id);
     Ok(Some(map_record(
         record,
@@ -414,5 +423,100 @@ fn map_interface_kind(kind: &str) -> InterfaceKind {
         "claude" => InterfaceKind::Claude,
         "pi" => InterfaceKind::Pi,
         _ => InterfaceKind::Unknown,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::project::{self, ProjectConfig};
+    use tempfile::TempDir;
+
+    fn with_test_env<T>(f: impl FnOnce(&TempDir) -> T) -> T {
+        let _guard = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp = TempDir::new().unwrap();
+        let patina_home = temp.path().join("patina-home");
+        std::fs::create_dir_all(&patina_home).unwrap();
+
+        let old_home = std::env::var_os("HOME");
+        let old_patina_home = std::env::var_os("PATINA_HOME");
+        let old_cwd = std::env::current_dir().ok();
+        unsafe {
+            std::env::set_var("HOME", temp.path());
+            std::env::set_var("PATINA_HOME", &patina_home);
+        }
+        std::env::set_current_dir(temp.path()).unwrap();
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&temp)));
+
+        match old_home {
+            Some(value) => unsafe { std::env::set_var("HOME", value) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+        match old_patina_home {
+            Some(value) => unsafe { std::env::set_var("PATINA_HOME", value) },
+            None => unsafe { std::env::remove_var("PATINA_HOME") },
+        }
+        if let Some(path) = old_cwd {
+            let _ = std::env::set_current_dir(path);
+        }
+
+        match result {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
+    }
+
+    #[test]
+    fn load_current_interface_session_clears_non_active_pointer() {
+        with_test_env(|temp| {
+            let mut config = ProjectConfig::with_name("patina");
+            config.interfaces.allowed = vec!["opencode".to_string()];
+            config.interfaces.default = "opencode".to_string();
+            project::save(temp.path(), &config).unwrap();
+
+            let started = begin_session(
+                temp.path(),
+                BeginSessionRequest {
+                    title: "test".to_string(),
+                    interface_name: "opencode".to_string(),
+                    interface_kind: InterfaceKind::OpenCode,
+                    voice_uid: None,
+                    parent_runtime_id: None,
+                    handoff_from_runtime_id: None,
+                    participant: None,
+                },
+            )
+            .unwrap();
+
+            let markdown = std::fs::read_to_string(&started.handle.artifact_path).unwrap();
+            archive_session(
+                temp.path(),
+                ArchiveSessionRequest {
+                    runtime_id: started.handle.runtime_id.clone(),
+                    markdown,
+                    end_tag: Some("end-test".to_string()),
+                },
+            )
+            .unwrap();
+
+            projection::write_native_interface_session(
+                temp.path(),
+                "opencode",
+                &started.handle.runtime_id,
+                &started.handle.file_id,
+            )
+            .unwrap();
+
+            let loaded = load_current_interface_session(temp.path(), "opencode").unwrap();
+            assert!(loaded.is_none());
+            assert!(
+                projection::read_native_interface_session(temp.path(), "opencode")
+                    .unwrap()
+                    .is_none()
+            );
+        });
     }
 }

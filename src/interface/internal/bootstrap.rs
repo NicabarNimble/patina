@@ -143,7 +143,7 @@ pub fn ensure_bundle_projection(
         .map(|path| {
             (
                 path.relative_path.clone(),
-                project_root.join(&path.relative_path).exists(),
+                paths::project::managed_surface_path(project_root, &path.relative_path).exists(),
             )
         })
         .collect::<std::collections::HashMap<_, _>>();
@@ -160,7 +160,7 @@ pub fn ensure_bundle_projection(
     for managed in &bundle.managed_paths {
         let relative = managed.relative_path.as_str();
         let existed_before = before_exists.get(relative).copied().unwrap_or(false);
-        let exists_now = project_root.join(relative).exists();
+        let exists_now = paths::project::managed_surface_path(project_root, relative).exists();
         let (op, result) = match (existed_before, exists_now) {
             (false, true) => ("create", "ok"),
             (true, true) => ("update", "ok"),
@@ -192,7 +192,7 @@ pub fn bundle_deployment_status(
     let mut observed_version = None;
 
     for path in &bundle.managed_paths {
-        let absolute_path = project_root.join(&path.relative_path);
+        let absolute_path = paths::project::managed_surface_path(project_root, &path.relative_path);
         if !absolute_path.exists() {
             missing_paths.push(path.relative_path.to_string());
             continue;
@@ -243,7 +243,7 @@ fn sync_managed_templates(
     project_root: &Path,
     mode: ProjectionMode,
 ) -> Result<()> {
-    let iface_dir = project_root.join(format!(".{}", interface_name));
+    let iface_dir = paths::project::managed_interface_dir(project_root, interface_name);
     if mode == ProjectionMode::CreateMissing && iface_dir.exists() {
         return Ok(());
     }
@@ -281,7 +281,7 @@ fn reconcile_interface_surface(
     let mut entries = Vec::new();
 
     for path in &bundle.managed_paths {
-        let absolute_path = project_root.join(&path.relative_path);
+        let absolute_path = paths::project::managed_surface_path(project_root, &path.relative_path);
         if !absolute_path.exists() {
             if mode == ProjectionMode::ForceRewrite {
                 append_interface_op_log(
@@ -381,7 +381,7 @@ fn write_managed_directory_metadata(project_root: &Path, bundle: &InterfaceBundl
         return Ok(());
     };
 
-    let path = project_root.join(&directory.relative_path);
+    let path = paths::project::managed_surface_path(project_root, &directory.relative_path);
     fs::create_dir_all(&path)?;
     let metadata_path = path.join(MANAGED_DIR_METADATA_FILE);
     let metadata = ManagedDirectoryMetadata {

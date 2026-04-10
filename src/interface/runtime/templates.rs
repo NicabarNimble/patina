@@ -66,7 +66,7 @@ pub fn install_all(interfaces_dir: &Path) -> Result<()> {
 /// central templates to the project.
 pub fn copy_to_project(interface_name: &str, project_path: &Path) -> Result<()> {
     let bundle = interface_bundle(interface_name)?;
-    let iface_dir = project_path.join(format!(".{}", interface_name));
+    let iface_dir = paths::project::managed_interface_dir(project_path, interface_name);
     fs::create_dir_all(&iface_dir)?;
     fs::create_dir_all(iface_dir.join("bin"))?;
 

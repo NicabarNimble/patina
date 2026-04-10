@@ -488,4 +488,45 @@ mod tests {
         assert!(project::voice_path(temp.path()).exists());
         assert!(!temp.path().join(".patina/persona").exists());
     }
+
+    #[test]
+    fn launch_explicit_interface_hard_fails_when_detect_missing() {
+        let temp = setup_project();
+        let registry_path = temp.path().join("patina-home/interfaces/registry.toml");
+        fs::create_dir_all(registry_path.parent().unwrap()).unwrap();
+        fs::write(
+            &registry_path,
+            r#"[[interface]]
+name = "codex"
+display_name = "Codex"
+classification = "hitl"
+command = "codex"
+detect_commands = ["definitely-missing-codex-cli --version"]
+tmux_policy = "auto"
+version = "fixture"
+managed_paths = [
+  { relative_path = "AGENTS.md", kind = "file" },
+  { relative_path = ".codex", kind = "directory" },
+]
+"#,
+        )
+        .unwrap();
+
+        with_temp_env(&temp, || {
+            let result = launch(AiLaunchRequest {
+                interface_name: "codex".to_string(),
+                title: None,
+                requested_session: None,
+                voice: None,
+                path: Some(temp.path().display().to_string()),
+                set_default: false,
+                tmux: false,
+                no_tmux: false,
+            });
+
+            assert!(result.is_err());
+            let message = result.unwrap_err().to_string();
+            assert!(message.contains("Interface 'codex' (Codex) is not installed"));
+        });
+    }
 }

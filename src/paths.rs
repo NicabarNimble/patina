@@ -484,6 +484,16 @@ pub mod project {
         root.join(".patina/local")
     }
 
+    /// Managed surface path from interface metadata relative path.
+    pub fn managed_surface_path(root: &Path, relative_path: &str) -> PathBuf {
+        root.join(relative_path)
+    }
+
+    /// Managed interface directory path: `.{interface}`.
+    pub fn managed_interface_dir(root: &Path, interface_name: &str) -> PathBuf {
+        root.join(format!(".{}", interface_name))
+    }
+
     /// Interface operation log: `.patina/local/interface-ops.jsonl`
     pub fn interface_ops_log_path(root: &Path) -> PathBuf {
         local_dir(root).join("interface-ops.jsonl")
@@ -588,6 +598,19 @@ mod tests {
         assert_eq!(
             path,
             Path::new("/tmp/patina-project/.patina/local/interface-ops.jsonl")
+        );
+    }
+
+    #[test]
+    fn test_managed_surface_helpers() {
+        let root = Path::new("/tmp/patina-project");
+        assert_eq!(
+            project::managed_surface_path(root, ".opencode/commands/spec.md"),
+            Path::new("/tmp/patina-project/.opencode/commands/spec.md")
+        );
+        assert_eq!(
+            project::managed_interface_dir(root, "opencode"),
+            Path::new("/tmp/patina-project/.opencode")
         );
     }
 
