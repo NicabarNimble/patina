@@ -1,7 +1,7 @@
 ---
 type: feat
 id: patina-sdk-rebuild
-status: draft
+status: complete
 created: 2026-04-09
 sessions:
   origin: 20260409-070410-485377000
@@ -17,28 +17,28 @@ beliefs:
 exit_criteria:
 - id: cs1-crate-exists
   text: sdk/patina-sdk/ crate exists with patina:records types re-exported as Rust types. Children add patina-sdk as a dependency alongside wit_bindgen (which they keep for world declaration).
-  checked: false
+  checked: true
 - id: cs2-toy-helpers
   text: 'Outside toy helpers exist: toys::log (info/warn/error), toys::keyvalue (open/get/set/exists with error mapping), toys::measure (counter/gauge), toys::config (get). No raw WIT binding calls needed in child code.'
-  checked: false
+  checked: true
 - id: cs3-config-toy
   text: "Existing patina:config@0.1.0 toy (WIT + Mother impl from pando-execution-mvp) is wrapped in SDK as toys::config::get(key). No new WIT or host code — SDK surface only."
-  checked: false
+  checked: true
 - id: cs4-template
   text: sdk/template/ exists. cargo generate produces a buildable push-pure child with correct wit/ structure, Cargo.toml (wasm32-wasip2), child.toml, and a skeleton process() function.
-  checked: false
+  checked: true
 - id: cs5-children-migrated
   text: "All 6 children (file-system-monitor, content-extractor, schema-enforcer, dedup-filter, record-writer, lakehouse-catalog) add patina-sdk dependency and use toys::* helpers. Duplicated keyvalue_error_to_string removed from dedup-filter, record-writer, and lakehouse-catalog."
-  checked: false
+  checked: true
 - id: cs6-legacy-documented
   text: 'patina-sdk-legacy README marks handle-based path as legacy. New patina-sdk README points developers to patina-sdk for new children.'
-  checked: false
+  checked: true
 - id: cs7-decision-tree
   text: 'SDK README or AGENTS.md contains decision tree: child (patina-sdk) vs legacy service child (patina-sdk-legacy) vs grammar pipeline (patina-sdk-legacy pipeline feature).'
-  checked: false
+  checked: true
 - id: cs8-proof
   text: cargo check --workspace passes. All 6 children build to wasm32-wasip2 using patina-sdk. cargo nextest run passes (existing tests + new SDK tests).
-  checked: false
+  checked: true
 ---
 # feat: Patina SDK Rebuild
 
