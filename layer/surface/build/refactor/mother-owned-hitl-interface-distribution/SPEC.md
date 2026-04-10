@@ -20,7 +20,7 @@ beliefs:
 exit_criteria:
 - id: mhid1-launcher-ux-stable
   text: '`patina` with no subcommand keeps current launcher UX and behavior: if outside a Patina project, show ''Are you lost?'' flow; on accept, prompt interface selection and launch directly into the selected interface session.'
-  checked: false
+  checked: true
 - id: mhid2-ai-command-stable
   text: '`patina ai <interface>` keeps current command contract: same command shape, no new required flags, existing flags still accepted (`--path`, `--force`, `--tmux`, `--no-tmux`), and launch/session wrapper flow preserved for claude|gemini|opencode|pi.'
   checked: true
@@ -41,13 +41,13 @@ exit_criteria:
   checked: false
 - id: mhid8-init-existing-flows-preserved
   text: 'Both paths stay intact while ownership shifts: (a) new project bootstrap (`patina` lost-flow + init + launch), (b) existing project flows (`patina`, `patina ai`, `patina ai setup`).'
-  checked: false
+  checked: true
 - id: mhid9-no-age-eviction
   text: 'No time-based eviction in this phase: active HITL sessions are never auto-cleared due to age. Existing explicit lifecycle paths (`session-end` / `patina ai end`) remain the cleanup boundary while ownership moves to Mother.'
   checked: false
 - id: mhid10-compile-proof
   text: cargo check --workspace -q passes; launcher smoke checks pass for both `patina` and `patina ai <interface>` entry paths with unchanged UX semantics.
-  checked: false
+  checked: true
 - id: mhid11-managed-path-governance
   text: Managed interface paths are explicit metadata and centralized in runtime path handling (via Patina path utilities). Projection/cleanup operations only touch declared managed paths and write an operation log for deterministic cleanup auditing.
   checked: false
