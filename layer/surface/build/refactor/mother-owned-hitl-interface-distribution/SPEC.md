@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: mother-owned-hitl-interface-distribution
-status: ready
+status: active
 created: 2026-04-10
 sessions:
   origin: 20260410-105046-075601000
@@ -68,6 +68,15 @@ exit_criteria:
   checked: false
 validated_against_commit: 22a5b25f0d99
 last_freshness_check: 2026-04-10
+freshness_scope:
+- src/commands/launch/internal.rs
+- src/commands/ai/surface.rs
+- src/interface/launch.rs
+- src/interface/internal/bundle.rs
+- src/interface/runtime/templates.rs
+- src/session/internal/live.rs
+- src/session/internal/projection.rs
+- src/paths.rs
 ---
 # refactor: Mother-Owned HITL Interface Distribution
 
