@@ -19,6 +19,12 @@ pub struct ManagedPathSpec {
     pub kind: ManagedPathKind,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct InterfaceMcpConfig {
+    #[serde(default)]
+    pub config_candidates: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BundleTmuxPolicy {
@@ -40,6 +46,8 @@ pub struct InterfaceBundle {
     pub detect_commands: Vec<String>,
     #[serde(default)]
     pub vendor_bootstrap: Option<String>,
+    #[serde(default)]
+    pub mcp: Option<InterfaceMcpConfig>,
     pub managed_paths: Vec<ManagedPathSpec>,
     pub tmux_policy: BundleTmuxPolicy,
     pub version: String,
@@ -77,6 +85,11 @@ command = "opencode"
 detect_commands = ["opencode --version"]
 tmux_policy = "auto"
 version = "builtin"
+mcp = { config_candidates = [
+  "~/.config/opencode/config.json",
+  "~/.config/opencode/opencode.json",
+  "~/.config/opencode/config.toml",
+] }
 managed_paths = [
   { relative_path = "AGENTS.md", kind = "file" },
   { relative_path = ".opencode", kind = "directory" },
@@ -91,6 +104,11 @@ detect_commands = ["gemini --version"]
 vendor_bootstrap = "GEMINI.md"
 tmux_policy = "auto"
 version = "builtin"
+mcp = { config_candidates = [
+  "~/.gemini/settings.json",
+  "~/.config/gemini/settings.json",
+  "~/.config/google-gemini/settings.json",
+] }
 managed_paths = [
   { relative_path = "AGENTS.md", kind = "file" },
   { relative_path = "GEMINI.md", kind = "file" },
@@ -219,5 +237,10 @@ mod tests {
             .managed_paths
             .iter()
             .any(|path| path.relative_path == "AGENTS.md"));
+        assert!(opencode
+            .mcp
+            .as_ref()
+            .map(|mcp| !mcp.config_candidates.is_empty())
+            .unwrap_or(false));
     }
 }

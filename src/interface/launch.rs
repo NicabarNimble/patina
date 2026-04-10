@@ -30,7 +30,7 @@ use std::process::Command;
 
 use crate::interface::assets as interface_assets;
 use crate::interface::internal::bundle::{
-    interface_bundle, interface_bundle_catalog, InterfaceClassification,
+    interface_bundle, interface_bundle_catalog, InterfaceBundle, InterfaceClassification,
 };
 use crate::workspace;
 use crate::Environment;
@@ -150,7 +150,7 @@ pub fn get(name: &str) -> Result<InterfaceInfo> {
         display: bundle.display_name.clone(),
         detected,
         version,
-        mcp: get_mcp_config(&bundle.name),
+        mcp: get_mcp_config(bundle),
     })
 }
 
@@ -248,27 +248,17 @@ pub fn is_mcp_configured(name: &str) -> Result<bool> {
 /// config with a configured Patina MCP server, projection should assume MCP is
 /// unavailable and teach the JSON CLI fallback instead.
 pub fn interface_mcp_available(name: &str) -> Result<bool> {
-    let interface = InterfaceKind::from_name(name)
-        .ok_or_else(|| anyhow::anyhow!("Unknown interface: {}", name))?;
+    let bundle = interface_bundle(name)?;
 
-    if let Some(config) = get_mcp_config(interface.name()) {
+    if let Some(config) = get_mcp_config(bundle) {
         return config_contains_patina_server(&config.config_path);
     }
 
-    let candidates = match interface {
-        InterfaceKind::Gemini => &[
-            "~/.gemini/settings.json",
-            "~/.config/gemini/settings.json",
-            "~/.config/google-gemini/settings.json",
-        ][..],
-        InterfaceKind::OpenCode => &[
-            "~/.config/opencode/config.json",
-            "~/.config/opencode/opencode.json",
-            "~/.config/opencode/config.toml",
-        ][..],
-        InterfaceKind::Claude => &[][..],
-        InterfaceKind::Pi => &[][..],
-    };
+    let candidates = bundle
+        .mcp
+        .as_ref()
+        .map(|mcp| mcp.config_candidates.as_slice())
+        .unwrap_or(&[]);
 
     for path in candidates {
         if config_contains_patina_server(path)? {
@@ -403,14 +393,18 @@ fn try_command(cmd: &str) -> Option<String> {
 }
 
 /// Get MCP config for an interface
-fn get_mcp_config(interface_name: &str) -> Option<McpConfig> {
-    match interface_name {
-        "claude" => None,
-        "gemini" => None,
-        "opencode" => None,
-        "pi" => None,
-        _ => None,
-    }
+fn get_mcp_config(bundle: &InterfaceBundle) -> Option<McpConfig> {
+    let path = bundle
+        .mcp
+        .as_ref()
+        .and_then(|mcp| mcp.config_candidates.first())?
+        .clone();
+
+    Some(McpConfig {
+        config_path: path,
+        config_format: "json".to_string(),
+        config_template: None,
+    })
 }
 
 fn config_contains_patina_server(path: &str) -> Result<bool> {
