@@ -66,6 +66,7 @@ exit_criteria:
 - id: mhid16-pi-registry-proof-hard
   text: 'PI registry-proof is mechanically enforced: adding PI requires registry/package metadata only and no compile-time interface-name additions in static catalogs/enums. Verification requires an integration test that loads registry fixture data containing PI metadata and proves PI discovery/launch from registry wiring alone.'
   checked: false
+validated_against_commit: 22a5b25f0d99
 ---
 # refactor: Mother-Owned HITL Interface Distribution
 
