@@ -317,6 +317,13 @@ Cleanup remains explicit via current lifecycle commands.
   SDK-level taxonomy decomposition is deferred to a future spec because Mother
   shape is under active review for MCT/wasm direction and changing SDK taxonomy
   now would be wasted motion before that redesign lands.
+- **Skills authority vs storage:** Mother is the authoritative owner of skill
+  source content and projection selection in this phase. Storage mechanism
+  (embedded `include_str!`, filesystem under `~/.patina/skills/`, or wasm
+  packages) is implementation detail and intentionally flexible while Mother
+  shape is under review for MCT/wasm direction. Long-term vision is a small,
+  curated Mother skill registry (`skills.sh`-shaped at smaller scale);
+  `mhid6`/`mhid12` close on ownership/selection, not storage layout.
 
 ## Verification
 
