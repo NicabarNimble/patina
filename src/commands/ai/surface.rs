@@ -492,29 +492,15 @@ mod tests {
     #[test]
     fn launch_explicit_interface_hard_fails_when_detect_missing() {
         let temp = setup_project();
-        let registry_path = temp.path().join("patina-home/interfaces/registry.toml");
-        fs::create_dir_all(registry_path.parent().unwrap()).unwrap();
-        fs::write(
-            &registry_path,
-            r#"[[interface]]
-name = "codex"
-display_name = "Codex"
-classification = "hitl"
-command = "codex"
-detect_commands = ["definitely-missing-codex-cli --version"]
-tmux_policy = "auto"
-version = "fixture"
-managed_paths = [
-  { relative_path = "AGENTS.md", kind = "file" },
-  { relative_path = ".codex", kind = "directory" },
-]
-"#,
-        )
-        .unwrap();
 
         with_temp_env(&temp, || {
+            let old_path = std::env::var_os("PATH");
+            unsafe {
+                std::env::set_var("PATH", "/definitely/missing/path");
+            }
+
             let result = launch(AiLaunchRequest {
-                interface_name: "codex".to_string(),
+                interface_name: "claude".to_string(),
                 title: None,
                 requested_session: None,
                 voice: None,
@@ -526,7 +512,16 @@ managed_paths = [
 
             assert!(result.is_err());
             let message = result.unwrap_err().to_string();
-            assert!(message.contains("Interface 'codex' (Codex) is not installed"));
+            assert!(message.contains("Interface 'claude' (Claude Code) is not installed"));
+
+            match old_path {
+                Some(value) => unsafe {
+                    std::env::set_var("PATH", value);
+                },
+                None => unsafe {
+                    std::env::remove_var("PATH");
+                },
+            }
         });
     }
 }
