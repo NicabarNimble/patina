@@ -1,7 +1,7 @@
 ---
 type: feat
 id: sdk-vision-lock
-status: ready
+status: active
 created: 2026-04-11
 sessions:
   origin: 20260410-220235-028265000
