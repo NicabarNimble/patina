@@ -965,9 +965,12 @@ enum ChildCommands {
     Init {
         /// Child name (valid Rust crate name, e.g. "review-bot")
         name: String,
-        /// Child world: child, pipeline
-        #[arg(long)]
+        /// Child world: child, pipeline (default: child)
+        #[arg(long, default_value = "child")]
         world: String,
+        /// Use legacy scaffold lane (maintenance only)
+        #[arg(long)]
+        legacy: bool,
         /// Build the child after scaffolding
         #[arg(long)]
         build: bool,
@@ -1378,25 +1381,40 @@ fn main() -> Result<()> {
             ChildCommands::Init {
                 name,
                 world,
+                legacy,
                 build,
                 release,
             } => {
                 let world: patina::child::engine::ChildKind = world.parse()?;
+                let lane = if legacy {
+                    patina::child::scaffold::ScaffoldLane::Legacy
+                } else {
+                    patina::child::scaffold::ScaffoldLane::Typed
+                };
                 let cwd = std::env::current_dir()?;
-                let project_dir = patina::child::scaffold::scaffold(&cwd, &name, &world)?;
+                let project_dir = patina::child::scaffold::scaffold(&cwd, &name, &world, lane)?;
 
                 let profile = if release { "release" } else { "debug" };
                 let artifact = project_dir
                     .join(format!("target/wasm32-wasip2/{}", profile))
                     .join(format!("{}.wasm", name.replace('-', "_")));
 
-                println!("Created {} child: {}", world, project_dir.display());
+                println!(
+                    "Created {} {} child: {}",
+                    if legacy { "legacy" } else { "typed" },
+                    world,
+                    project_dir.display()
+                );
                 println!();
                 println!("  cd {}", name);
                 if release {
                     println!("  cargo build --target wasm32-wasip2 --release");
                 } else {
                     println!("  cargo build --target wasm32-wasip2");
+                }
+                if legacy {
+                    println!();
+                    println!("Legacy scaffold lane is maintenance-only. Prefer default typed lane for new children.");
                 }
                 println!();
                 println!("Artifact will be at: {}", artifact.display());

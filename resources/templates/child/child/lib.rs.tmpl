@@ -1,24 +1,25 @@
-use patina_sdk::child::{Child, ChildHealth, HealthStatus};
-use patina_sdk::register_child;
+use patina_sdk::toys;
 
-#[derive(Default)]
+wit_bindgen::generate!({
+    path: "wit",
+    world: "__NAME__",
+    generate_all,
+});
+
 struct __NAME_STRUCT__;
 
-impl Child for __NAME_STRUCT__ {
-    fn name(&self) -> String {
-        "__NAME__".into()
-    }
+impl exports::patina::records::transform::Guest for __NAME_STRUCT__ {
+    fn transform(
+        records: Vec<patina::records::types::RecordEnvelope>,
+    ) -> Result<patina::records::types::TransformResult, String> {
+        toys::log::info("__NAME__", "processing record batch");
+        toys::measure::counter("records_seen", records.len() as f64)?;
 
-    fn handle(&mut self, _action: &str, _payload: &str) -> Result<String, String> {
-        Ok("{}".into())
-    }
-
-    fn health(&self) -> ChildHealth {
-        ChildHealth {
-            status: HealthStatus::Healthy,
-            reason: None,
-        }
+        Ok(patina::records::types::TransformResult {
+            accepted: records,
+            rejected: Vec::new(),
+        })
     }
 }
 
-register_child!(__NAME_STRUCT__);
+export!(__NAME_STRUCT__);

@@ -1,0 +1,24 @@
+use patina_sdk::child::{Child, ChildHealth, HealthStatus};
+use patina_sdk::register_child;
+
+#[derive(Default)]
+struct __NAME_STRUCT__;
+
+impl Child for __NAME_STRUCT__ {
+    fn name(&self) -> String {
+        "__NAME__".into()
+    }
+
+    fn handle(&mut self, _action: &str, _payload: &str) -> Result<String, String> {
+        Ok("{}".into())
+    }
+
+    fn health(&self) -> ChildHealth {
+        ChildHealth {
+            status: HealthStatus::Healthy,
+            reason: None,
+        }
+    }
+}
+
+register_child!(__NAME_STRUCT__);

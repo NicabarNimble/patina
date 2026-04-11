@@ -2,12 +2,20 @@
 name = "__NAME__"
 version = "0.1.0"
 edition = "2021"
-description = "Patina child"
+description = "Patina typed child"
 
 [workspace]
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-patina-sdk = { version = "__SDK_VERSION__", features = ["child"] }
+patina-sdk = { path = "../sdk/patina-sdk" }
+wit-bindgen = "0.41.0"
+
+[package.metadata.component]
+package = "patina:__NAME__"
+
+[package.metadata.component.target]
+path = "wit"
+world = "__NAME__"

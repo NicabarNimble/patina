@@ -150,7 +150,8 @@ patina interface list
 patina interface add opencode
 
 patina child list                    # Canonical (alias: `patina plugin list`)
-patina child init my-child --world task
+patina child init my-child
+patina child init my-grammar --world pipeline --legacy
 patina schema new my-schema
 patina schema build
 
