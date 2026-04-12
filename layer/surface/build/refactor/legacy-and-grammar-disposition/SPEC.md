@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: legacy-and-grammar-disposition
-status: ready
+status: active
 created: 2026-04-11
 sessions:
   origin: 20260410-220235-028265000
@@ -36,6 +36,18 @@ exit_criteria:
 - id: lgd6-no-implicit-carryover
   text: No child remains in legacy/pipeline lane without documented disposition status; 'implicit carryover' is eliminated.
   checked: true
+validated_against_commit: 3c2156f0
+last_freshness_check: 2026-04-12
+freshness_scope:
+- layer/surface/build/refactor/legacy-and-grammar-disposition/SPEC.md
+- layer/surface/build/refactor/legacy-and-grammar-disposition/DESIGN.md
+- layer/surface/build/refactor/legacy-and-grammar-disposition/MATRIX.md
+- resources/scripts/check-legacy-disposition-matrix.sh
+- children/belief-verifier/child.toml
+- children/session-writer/child.toml
+- children/spec-manager/child.toml
+- children/doctor/child.toml
+- grammars/
 ---
 # refactor: Legacy service children + grammar lane disposition
 
