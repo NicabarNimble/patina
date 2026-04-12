@@ -83,6 +83,7 @@ patina context --topic "architecture"
 patina report                        # Generate project state report
 patina atlas --json                  # Spec + MCT visibility snapshot (local truth)
 patina atlas --html --output .tmp/atlas/spec-atlas.html
+patina atlas --serve --port 7417     # Local read-only dashboard server
 patina measure --full                # Health view from measurement data
 patina eval --combined               # Evaluate retrieval pipeline quality
 patina bench retrieval               # Benchmark retrieval quality

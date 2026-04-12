@@ -3,6 +3,8 @@ use chrono::Utc;
 use patina::spec::parse_spec_file;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashSet};
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 
 use super::AtlasOptions;
@@ -72,11 +74,19 @@ pub struct ToyNode {
 }
 
 pub fn generate(options: AtlasOptions) -> Result<()> {
+    let root = std::env::current_dir().context("resolve current directory")?;
+
+    if options.serve {
+        if options.html || options.json || options.output.is_some() {
+            anyhow::bail!("atlas --serve does not allow --json, --html, or --output");
+        }
+        return serve_dashboard(&root, &options.host, options.port);
+    }
+
     if options.html && options.json {
         anyhow::bail!("atlas flags conflict: choose one of --json or --html");
     }
 
-    let root = std::env::current_dir().context("resolve current directory")?;
     let snapshot = build_snapshot(&root)?;
 
     if options.html {
@@ -97,6 +107,143 @@ pub fn generate(options: AtlasOptions) -> Result<()> {
         println!("{}", json);
     }
 
+    Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct HttpResponse {
+    status: &'static str,
+    content_type: &'static str,
+    body: String,
+}
+
+fn serve_dashboard(root: &Path, host: &str, port: u16) -> Result<()> {
+    let addr = format!("{}:{}", host, port);
+    let listener = TcpListener::bind(&addr)
+        .with_context(|| format!("bind atlas server on http://{}", addr))?;
+
+    println!("Atlas server listening on http://{}", addr);
+    println!("Routes: /, /atlas.json, /health");
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(mut stream) => {
+                if let Err(error) = handle_connection(root, &mut stream) {
+                    eprintln!("atlas serve request error: {}", error);
+                }
+            }
+            Err(error) => eprintln!("atlas serve accept error: {}", error),
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_connection(root: &Path, stream: &mut TcpStream) -> Result<()> {
+    let mut buffer = [0_u8; 8192];
+    let read = stream.read(&mut buffer).context("read request")?;
+    if read == 0 {
+        return Ok(());
+    }
+
+    let request = String::from_utf8_lossy(&buffer[..read]);
+    let first_line = request.lines().next().unwrap_or("");
+
+    let response = match parse_request_line(first_line) {
+        Ok((method, path)) => route_request(root, method, path),
+        Err(_) => HttpResponse {
+            status: "400 Bad Request",
+            content_type: "text/plain; charset=utf-8",
+            body: "bad request".to_string(),
+        },
+    };
+
+    write_http_response(stream, response)
+}
+
+fn parse_request_line(line: &str) -> Result<(&str, &str)> {
+    let mut parts = line.split_whitespace();
+    let method = parts
+        .next()
+        .ok_or_else(|| anyhow!("malformed request line"))?;
+    let path = parts
+        .next()
+        .ok_or_else(|| anyhow!("malformed request line"))?;
+    let version = parts
+        .next()
+        .ok_or_else(|| anyhow!("malformed request line"))?;
+
+    if !version.starts_with("HTTP/") || parts.next().is_some() {
+        anyhow::bail!("malformed request line");
+    }
+
+    Ok((method, path))
+}
+
+fn route_request(root: &Path, method: &str, path: &str) -> HttpResponse {
+    if method != "GET" {
+        return HttpResponse {
+            status: "405 Method Not Allowed",
+            content_type: "text/plain; charset=utf-8",
+            body: "method not allowed".to_string(),
+        };
+    }
+
+    let clean_path = path.split('?').next().unwrap_or(path);
+
+    match clean_path {
+        "/" | "/index.html" => match build_snapshot(root)
+            .and_then(|snapshot| render_html_with_options(&snapshot, Some(3)))
+        {
+            Ok(html) => HttpResponse {
+                status: "200 OK",
+                content_type: "text/html; charset=utf-8",
+                body: html,
+            },
+            Err(error) => HttpResponse {
+                status: "500 Internal Server Error",
+                content_type: "text/plain; charset=utf-8",
+                body: format!("atlas render failure: {}", error),
+            },
+        },
+        "/atlas.json" => match build_snapshot(root).and_then(|snapshot| {
+            serde_json::to_string_pretty(&snapshot)
+                .map_err(|e| anyhow!("serialize atlas snapshot: {}", e))
+        }) {
+            Ok(json) => HttpResponse {
+                status: "200 OK",
+                content_type: "application/json; charset=utf-8",
+                body: json,
+            },
+            Err(error) => HttpResponse {
+                status: "500 Internal Server Error",
+                content_type: "text/plain; charset=utf-8",
+                body: format!("atlas snapshot failure: {}", error),
+            },
+        },
+        "/health" => HttpResponse {
+            status: "200 OK",
+            content_type: "text/plain; charset=utf-8",
+            body: "ok".to_string(),
+        },
+        _ => HttpResponse {
+            status: "404 Not Found",
+            content_type: "text/plain; charset=utf-8",
+            body: "not found".to_string(),
+        },
+    }
+}
+
+fn write_http_response(stream: &mut TcpStream, response: HttpResponse) -> Result<()> {
+    let body_len = response.body.as_bytes().len();
+    let payload = format!(
+        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n{}",
+        response.status, response.content_type, body_len, response.body
+    );
+    stream
+        .write_all(payload.as_bytes())
+        .context("write response")?;
+    stream.flush().context("flush response")?;
     Ok(())
 }
 
@@ -473,13 +620,25 @@ fn write_output(path: &Path, content: &str) -> Result<()> {
 }
 
 pub(crate) fn render_html(snapshot: &AtlasSnapshot) -> Result<String> {
+    render_html_with_options(snapshot, None)
+}
+
+fn render_html_with_options(
+    snapshot: &AtlasSnapshot,
+    refresh_seconds: Option<u32>,
+) -> Result<String> {
     let data = serde_json::to_string(snapshot)?;
+    let refresh_meta = refresh_seconds
+        .map(|seconds| format!("  <meta http-equiv=\"refresh\" content=\"{}\" />", seconds))
+        .unwrap_or_default();
+
     Ok(format!(
         r#"<!doctype html>
 <html lang=\"en\">
 <head>
   <meta charset=\"utf-8\" />
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+{refresh_meta}
   <title>Patina Atlas</title>
   <style>
     :root {{
@@ -692,7 +851,9 @@ pub(crate) fn render_html(snapshot: &AtlasSnapshot) -> Result<String> {
   </script>
 </body>
 </html>
-"#
+"#,
+        refresh_meta = refresh_meta,
+        data = data
     ))
 }
 
@@ -846,5 +1007,38 @@ source = "patina"
         assert!(html.contains("Patina Atlas"));
         assert!(html.contains("demo-spec"));
         assert!(html.contains("const DATA ="));
+    }
+
+    #[test]
+    fn parse_request_line_accepts_get_request() {
+        let (method, path) = parse_request_line("GET /atlas.json HTTP/1.1").unwrap();
+        assert_eq!(method, "GET");
+        assert_eq!(path, "/atlas.json");
+    }
+
+    #[test]
+    fn parse_request_line_rejects_malformed_request() {
+        let err = parse_request_line("GET /atlas.json").unwrap_err();
+        assert!(err.to_string().contains("malformed request line"));
+    }
+
+    #[test]
+    fn route_request_fails_closed_for_unknown_and_non_get() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let method_denied = route_request(tmp.path(), "POST", "/atlas.json");
+        assert_eq!(method_denied.status, "405 Method Not Allowed");
+
+        let unknown = route_request(tmp.path(), "GET", "/missing");
+        assert_eq!(unknown.status, "404 Not Found");
+    }
+
+    #[test]
+    fn route_request_serves_snapshot_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let response = route_request(tmp.path(), "GET", "/atlas.json");
+        assert_eq!(response.status, "200 OK");
+        assert_eq!(response.content_type, "application/json; charset=utf-8");
+        assert!(response.body.contains("\"summary\""));
     }
 }

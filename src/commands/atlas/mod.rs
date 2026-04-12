@@ -17,6 +17,12 @@ pub struct AtlasOptions {
     pub html: bool,
     /// Emit JSON snapshot.
     pub json: bool,
+    /// Run local read-only dashboard server.
+    pub serve: bool,
+    /// Host to bind when --serve is set.
+    pub host: String,
+    /// Port to bind when --serve is set.
+    pub port: u16,
 }
 
 /// Execute atlas command.
