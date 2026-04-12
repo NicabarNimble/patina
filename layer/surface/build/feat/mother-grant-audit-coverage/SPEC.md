@@ -1,7 +1,7 @@
 ---
 type: feat
 id: mother-grant-audit-coverage
-status: ready
+status: active
 created: 2026-04-11
 sessions:
   origin: 20260410-220235-028265000
@@ -37,6 +37,17 @@ exit_criteria:
 - id: mgac6-backward-safe
   text: Handle-based service children continue to load with equivalent fail-closed behavior; audit coverage adds observability without widening authority.
   checked: true
+validated_against_commit: 688796ac
+last_freshness_check: 2026-04-11
+freshness_scope:
+- src/commands/mother/audit.rs
+- src/commands/mother/loader.rs
+- src/commands/mother/daemon.rs
+- src/commands/mother/mod.rs
+- src/commands/events.rs
+- src/eventlog.rs
+- README.md
+- tests/mother_typed_fixture_conformance.rs
 ---
 # feat: Mother grant audit coverage for fail-closed composition
 
