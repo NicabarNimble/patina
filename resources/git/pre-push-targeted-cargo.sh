@@ -23,7 +23,11 @@ collect_changed_files() {
     fi
 }
 
-mapfile -t changed_files < <(collect_changed_files | sed '/^$/d')
+changed_files=()
+while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    changed_files+=("$line")
+done < <(collect_changed_files | sed '/^$/d')
 
 if [[ "${#changed_files[@]}" -eq 0 ]]; then
     echo "No changed files detected. Running full workspace checks (fail-closed)."
@@ -68,9 +72,26 @@ if [[ "$run_full_workspace" == true ]]; then
     cargo test --workspace --lib
 else
     metadata_json=$(cargo metadata --no-deps --format-version 1)
-    mapfile -t package_rows < <(jq -r '.packages[] | [.name, .manifest_path] | @tsv' <<<"$metadata_json")
+    package_rows=()
+    while IFS= read -r row; do
+        [[ -n "$row" ]] || continue
+        package_rows+=("$row")
+    done < <(jq -r '.packages[] | [.name, .manifest_path] | @tsv' <<<"$metadata_json")
 
-    declare -A impacted_packages=()
+    impacted_packages_list=""
+
+    add_impacted_package() {
+        local package="$1"
+        if [[ -z "$impacted_packages_list" ]]; then
+            impacted_packages_list="$package"
+            return
+        fi
+        if printf '%s\n' "$impacted_packages_list" | grep -Fxq "$package"; then
+            return
+        fi
+        impacted_packages_list+=$'\n'"$package"
+    }
+
     for file in "${changed_files[@]}"; do
         abs_file="$repo_root/$file"
         best_package=""
@@ -91,16 +112,20 @@ else
         done
 
         if [[ -n "$best_package" ]]; then
-            impacted_packages["$best_package"]=1
+            add_impacted_package "$best_package"
         fi
     done
 
-    if [[ "${#impacted_packages[@]}" -eq 0 ]]; then
+    if [[ -z "$impacted_packages_list" ]]; then
         echo "Could not resolve impacted package set. Escalating to full workspace checks."
         cargo clippy --workspace -- -D warnings
         cargo test --workspace --lib
     else
-        mapfile -t sorted_packages < <(printf '%s\n' "${!impacted_packages[@]}" | sort)
+        sorted_packages=()
+        while IFS= read -r package; do
+            [[ -n "$package" ]] || continue
+            sorted_packages+=("$package")
+        done < <(printf '%s\n' "$impacted_packages_list" | sort -u)
         echo "Impacted packages: ${sorted_packages[*]}"
         echo ""
         for package in "${sorted_packages[@]}"; do
