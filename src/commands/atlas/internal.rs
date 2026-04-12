@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
 use patina::spec::parse_spec_file;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use super::AtlasOptions;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AtlasSnapshot {
     pub generated_at: String,
     pub project_root: String,
@@ -20,7 +20,7 @@ pub struct AtlasSnapshot {
     pub toys: Vec<ToyNode>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AtlasSummary {
     pub spec_count: usize,
     pub status_counts: BTreeMap<String, usize>,
@@ -30,7 +30,7 @@ pub struct AtlasSummary {
     pub toy_count: usize,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpecNode {
     pub id: String,
     pub title: String,
@@ -46,14 +46,14 @@ pub struct SpecNode {
     pub related: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpecEdge {
     pub from: String,
     pub to: String,
     pub kind: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChildNode {
     pub folder: String,
     pub manifest_name: String,
@@ -65,7 +65,7 @@ pub struct ChildNode {
     pub handle_lane: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToyNode {
     pub id: String,
     pub file: Option<String>,
@@ -87,7 +87,7 @@ pub fn generate(options: AtlasOptions) -> Result<()> {
         anyhow::bail!("atlas flags conflict: choose one of --json or --html");
     }
 
-    let snapshot = build_snapshot(&root)?;
+    let snapshot = load_snapshot_with_mother_fallback(&root)?;
 
     if options.html {
         let html = render_html(&snapshot)?;
@@ -108,6 +108,30 @@ pub fn generate(options: AtlasOptions) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn load_snapshot_with_mother_fallback(root: &Path) -> Result<AtlasSnapshot> {
+    if should_try_mother_snapshot() {
+        match patina::mother::control_plane_client().atlas_snapshot() {
+            Ok(value) => match serde_json::from_value::<AtlasSnapshot>(value) {
+                Ok(snapshot) => return Ok(snapshot),
+                Err(error) => eprintln!(
+                    "atlas: mother snapshot decode failed, using local snapshot fallback: {}",
+                    error
+                ),
+            },
+            Err(error) => eprintln!(
+                "atlas: mother snapshot unavailable, using local snapshot fallback: {}",
+                error
+            ),
+        }
+    }
+
+    build_snapshot(root)
+}
+
+fn should_try_mother_snapshot() -> bool {
+    patina::mother::is_configured() || patina::paths::serve::socket_path().exists()
 }
 
 #[derive(Debug, Clone)]
@@ -192,7 +216,7 @@ fn route_request(root: &Path, method: &str, path: &str) -> HttpResponse {
     let clean_path = path.split('?').next().unwrap_or(path);
 
     match clean_path {
-        "/" | "/index.html" => match build_snapshot(root)
+        "/" | "/index.html" => match load_snapshot_with_mother_fallback(root)
             .and_then(|snapshot| render_html_with_options(&snapshot, Some(3)))
         {
             Ok(html) => HttpResponse {
@@ -206,7 +230,7 @@ fn route_request(root: &Path, method: &str, path: &str) -> HttpResponse {
                 body: format!("atlas render failure: {}", error),
             },
         },
-        "/atlas.json" => match build_snapshot(root).and_then(|snapshot| {
+        "/atlas.json" => match load_snapshot_with_mother_fallback(root).and_then(|snapshot| {
             serde_json::to_string_pretty(&snapshot)
                 .map_err(|e| anyhow!("serialize atlas snapshot: {}", e))
         }) {
@@ -623,7 +647,7 @@ pub(crate) fn render_html(snapshot: &AtlasSnapshot) -> Result<String> {
     render_html_with_options(snapshot, None)
 }
 
-fn render_html_with_options(
+pub(crate) fn render_html_with_options(
     snapshot: &AtlasSnapshot,
     refresh_seconds: Option<u32>,
 ) -> Result<String> {

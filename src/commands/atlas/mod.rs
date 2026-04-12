@@ -7,6 +7,7 @@
 mod internal;
 
 use anyhow::Result;
+use std::path::Path;
 
 /// Options for atlas generation.
 #[derive(Debug, Clone, Default)]
@@ -28,4 +29,9 @@ pub struct AtlasOptions {
 /// Execute atlas command.
 pub fn execute(options: AtlasOptions) -> Result<()> {
     internal::generate(options)
+}
+
+pub(crate) fn snapshot_json_for_root(root: &Path) -> Result<serde_json::Value> {
+    let snapshot = internal::build_snapshot(root)?;
+    serde_json::to_value(snapshot).map_err(Into::into)
 }

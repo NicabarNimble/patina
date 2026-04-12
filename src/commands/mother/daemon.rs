@@ -811,6 +811,13 @@ impl ApiRuntime for ServerState {
         Ok(self.registry.handle(child_name, &request)?.payload)
     }
 
+    fn atlas_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        let root = patina::session::SessionManager::find_project_root()
+            .or_else(|_| std::env::current_dir())
+            .map_err(|error| anyhow::anyhow!("resolve atlas project root: {}", error))?;
+        crate::commands::atlas::snapshot_json_for_root(&root)
+    }
+
     fn scry_query(
         &self,
         query: &str,

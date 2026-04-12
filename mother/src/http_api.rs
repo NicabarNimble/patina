@@ -29,6 +29,7 @@ pub trait ApiRuntime {
         action: String,
         payload: serde_json::Value,
     ) -> Result<serde_json::Value>;
+    fn atlas_snapshot(&self) -> Result<serde_json::Value>;
     fn scry_query(
         &self,
         query: &str,
@@ -292,6 +293,13 @@ pub fn handle_version(runtime: &dyn ApiRuntime) -> HttpResponse {
             "name": "patina-mother"
         }),
     )
+}
+
+pub fn handle_atlas_snapshot(runtime: &dyn ApiRuntime) -> HttpResponse {
+    match runtime.atlas_snapshot() {
+        Ok(snapshot) => HttpResponse::json(200, &snapshot),
+        Err(error) => json_error(500, &format!("atlas snapshot failed: {}", error)),
+    }
 }
 
 pub fn handle_scry(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
@@ -561,6 +569,7 @@ pub fn handle_child_request(request: &HttpRequest, runtime: &dyn ApiRuntime) -> 
 pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTable {
     let health_runtime = Arc::clone(&runtime);
     let version_runtime = Arc::clone(&runtime);
+    let atlas_runtime = Arc::clone(&runtime);
     let scry_runtime = Arc::clone(&runtime);
     let federation_status_runtime = Arc::clone(&runtime);
     let federation_refresh_runtime = Arc::clone(&runtime);
@@ -578,6 +587,7 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
     RouteTable {
         get_health: Arc::new(move |_request| handle_health(&*health_runtime)),
         get_version: Arc::new(move |_request| handle_version(&*version_runtime)),
+        get_atlas_snapshot: Arc::new(move |_request| handle_atlas_snapshot(&*atlas_runtime)),
         post_scry: Arc::new(move |request| handle_scry(request, &*scry_runtime)),
         post_federation_status: Arc::new(move |request| {
             handle_federation_status(request, &*federation_status_runtime)
@@ -666,6 +676,10 @@ mod tests {
             payload: serde_json::Value,
         ) -> Result<serde_json::Value> {
             Ok(payload)
+        }
+
+        fn atlas_snapshot(&self) -> Result<serde_json::Value> {
+            Ok(serde_json::json!({"summary": {"spec_count": 0}}))
         }
 
         fn scry_query(
@@ -835,6 +849,19 @@ mod tests {
     }
 
     #[test]
+    fn atlas_snapshot_route_returns_json_payload() {
+        let response = handle_atlas_snapshot(&StubRuntime);
+        assert_eq!(response.status, 200);
+        let json: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(
+            json.get("summary")
+                .and_then(|v| v.get("spec_count"))
+                .and_then(|v| v.as_u64()),
+            Some(0)
+        );
+    }
+
+    #[test]
     fn federation_routes_return_json_payloads() {
         let status_request = HttpRequest {
             method: "POST".to_string(),
@@ -904,6 +931,10 @@ mod tests {
             ) -> Result<serde_json::Value> {
                 Ok(serde_json::Value::Null)
             }
+            fn atlas_snapshot(&self) -> Result<serde_json::Value> {
+                Ok(serde_json::json!({"summary": {"spec_count": 0}}))
+            }
+
             fn scry_query(
                 &self,
                 _query: &str,

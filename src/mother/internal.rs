@@ -225,6 +225,36 @@ impl Client {
             .with_context(|| "Failed to parse pando list response")
     }
 
+    pub fn atlas_snapshot(&self) -> Result<Value> {
+        if self.try_uds {
+            if let Some((status, resp_body)) = uds_request("GET", "/api/atlas/snapshot", None) {
+                if (200..300).contains(&status) {
+                    return serde_json::from_slice(&resp_body)
+                        .context("Failed to parse atlas snapshot response from UDS");
+                }
+                let msg = String::from_utf8_lossy(&resp_body).to_string();
+                anyhow::bail!("atlas snapshot failed ({}): {}", status, msg);
+            }
+        }
+
+        let url = format!("{}/api/atlas/snapshot", self.base_url);
+        let mut req = self.http.get(&url);
+        if let Some(ref token) = self.token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let response = req
+            .send()
+            .with_context(|| format!("Failed to request atlas snapshot from {}", self.base_url))?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().unwrap_or_default();
+            anyhow::bail!("atlas snapshot failed ({}): {}", status, body);
+        }
+        response
+            .json::<Value>()
+            .with_context(|| "Failed to parse atlas snapshot response")
+    }
+
     pub fn federation_status(&self) -> Result<Value> {
         let payload = serde_json::json!({});
         if self.try_uds {
