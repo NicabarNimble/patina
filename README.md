@@ -97,6 +97,10 @@ patina oxidize                       # Build embeddings and projections
 patina rebuild                       # Rebuild local derived state from tracked sources
 patina events export                 # Export runtime events to JSONL replica
 patina events import layer/events.jsonl
+
+# Operator retrieval path for Mother grant audit events
+rg '"event_type":"mother.grant"' layer/events.jsonl
+# (or) sqlite3 .patina/local/data/events.db "select seq,timestamp,data from eventlog where event_type='mother.grant' order by seq desc limit 20;"
 ```
 
 ### Project workflow

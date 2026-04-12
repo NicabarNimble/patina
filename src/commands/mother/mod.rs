@@ -40,6 +40,7 @@
 //! ```
 
 pub(crate) mod adapters;
+pub(crate) mod audit;
 pub(crate) mod daemon;
 pub(crate) mod federation;
 pub(crate) mod graph;

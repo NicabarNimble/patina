@@ -32,6 +32,7 @@ use wasmtime::Store;
 use patina::mother::ChildRequest;
 
 use super::adapters::{RetrievalScryBackend, ScryBackend};
+use super::audit;
 use super::federation::{FederationAvailability, FederationQueryResult, FederationRuntime};
 use super::registry::ChildRegistry;
 use mother_crate::http_api::ApiRuntime;
@@ -441,12 +442,26 @@ impl ServerState {
 
         for rule in typed_rules {
             let Some(from_id) = instance_ids.get(&rule.from) else {
+                audit::emit_typed_wiring_audit(
+                    &rule.from,
+                    &rule.to,
+                    &rule.toy,
+                    "DENY",
+                    "unknown from instance",
+                );
                 anyhow::bail!(
                     "typed composition wiring references unknown from instance '{}'",
                     rule.from
                 );
             };
             let Some(to_id) = instance_ids.get(&rule.to) else {
+                audit::emit_typed_wiring_audit(
+                    &rule.from,
+                    &rule.to,
+                    &rule.toy,
+                    "DENY",
+                    "unknown to instance",
+                );
                 anyhow::bail!(
                     "typed composition wiring references unknown to instance '{}'",
                     rule.to
@@ -455,6 +470,7 @@ impl ServerState {
 
             let candidates = Self::typed_interface_candidates(&rule.toy);
             let mut wired = false;
+            let mut matched_interface: Option<String> = None;
             for candidate in &candidates {
                 let export_id = match graph.alias_instance_export(*from_id, candidate) {
                     Ok(id) => id,
@@ -465,6 +481,7 @@ impl ServerState {
                     .is_ok()
                 {
                     wired = true;
+                    matched_interface = Some((*candidate).to_string());
                     break;
                 }
             }
@@ -475,6 +492,13 @@ impl ServerState {
                 let to_child = Self::resolve_child_instance(manifest, &rule.to)
                     .map(|child| child.name.clone())
                     .unwrap_or_else(|| rule.to.clone());
+                audit::emit_typed_wiring_audit(
+                    &rule.from,
+                    &rule.to,
+                    &rule.toy,
+                    "DENY",
+                    "no compatible export/import interface found",
+                );
                 anyhow::bail!(
                     "typed wiring failed for '{}' -> '{}' on '{}' (from child '{}', to child '{}')",
                     rule.from,
@@ -484,10 +508,22 @@ impl ServerState {
                     to_child
                 );
             }
+
+            let grant_reason = matched_interface
+                .map(|interface| format!("wired via interface '{}'", interface))
+                .unwrap_or_else(|| "wired".to_string());
+            audit::emit_typed_wiring_audit(&rule.from, &rule.to, &rule.toy, "GRANT", &grant_reason);
         }
 
         if let Some(entry) = &composition.entry {
             let Some(entry_id) = instance_ids.get(&entry.child) else {
+                audit::emit_typed_wiring_audit(
+                    &entry.child,
+                    "__entry__",
+                    &entry.toy,
+                    "DENY",
+                    "entry references unknown child instance",
+                );
                 anyhow::bail!(
                     "typed composition entry references unknown child instance '{}'",
                     entry.child
@@ -502,10 +538,24 @@ impl ServerState {
                 };
                 if graph.export(export_id, candidate).is_ok() {
                     exported = true;
+                    audit::emit_typed_wiring_audit(
+                        &entry.child,
+                        "__entry__",
+                        &entry.toy,
+                        "GRANT",
+                        &format!("entry export via interface '{}'", candidate),
+                    );
                     break;
                 }
             }
             if !exported {
+                audit::emit_typed_wiring_audit(
+                    &entry.child,
+                    "__entry__",
+                    &entry.toy,
+                    "DENY",
+                    "entry export interface not found",
+                );
                 anyhow::bail!(
                     "typed composition entry export failed for instance '{}' toy '{}'",
                     entry.child,
@@ -1670,11 +1720,76 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::mother::federation;
     use patina::mother::{Child, ChildHealth, ChildRequest, ChildResponse, MotherHost};
+    use serde_json::Value;
+    use std::collections::BTreeMap;
+    use std::path::Path;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc;
 
+    fn with_temp_project<T>(f: impl FnOnce(&Path) -> T) -> T {
+        let _guard = patina::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp = tempfile::TempDir::new().unwrap();
+        let project_root = temp.path().join("project");
+        std::fs::create_dir_all(&project_root).unwrap();
+
+        let old_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&project_root).unwrap();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&project_root)));
+        std::env::set_current_dir(old_cwd).unwrap();
+
+        match result {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
+    }
+
+    fn latest_grant_payload() -> Value {
+        let conn = patina::eventlog::open_events_db().expect("open events db");
+        let data: String = conn
+            .query_row(
+                "SELECT data FROM eventlog WHERE event_type = 'mother.grant' ORDER BY seq DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query mother.grant event");
+        serde_json::from_str(&data).expect("parse mother.grant payload")
+    }
+
     struct StubKnowledge;
+
+    struct NamedStubKnowledge {
+        name: String,
+    }
+
+    impl Child for NamedStubKnowledge {
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
+            Ok(())
+        }
+
+        fn health(&self) -> ChildHealth {
+            ChildHealth::Healthy
+        }
+
+        fn handle(&self, _request: &ChildRequest) -> Result<ChildResponse> {
+            Ok(ChildResponse {
+                payload: serde_json::Value::Null,
+            })
+        }
+    }
+
+    fn fixture_wasm_path(name: &str) -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/mother-typed")
+            .join(name)
+    }
 
     impl Child for StubKnowledge {
         fn name(&self) -> &str {
@@ -1838,5 +1953,155 @@ kind = "child"
             "on_load did not fire after health gate opened"
         );
         probe_thread.join().unwrap();
+    }
+
+    #[test]
+    fn typed_wiring_unknown_from_emits_deny_audit_event() {
+        with_temp_project(|project_root| {
+            let runtime_store = patina::mother::MotherRuntimeStore::new(
+                project_root.join(".patina/local/data/mother-state.db"),
+            );
+            let state = ServerState::new(
+                "test-token".to_string(),
+                ChildRegistry::new(),
+                runtime_store.clone(),
+                federation::startup(&runtime_store),
+                Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+            );
+
+            let manifest = mother_crate::pando::PandoManifest {
+                pando: mother_crate::pando::PandoSection {
+                    name: "audit-deny".to_string(),
+                    description: "test".to_string(),
+                    version: "0.1.0".to_string(),
+                },
+                children: vec![],
+                commands: BTreeMap::new(),
+                composition: Some(mother_crate::pando::PandoComposition {
+                    wiring: vec![mother_crate::pando::PandoWiring::Typed(
+                        mother_crate::pando::PandoTypedWiring {
+                            from: "missing-from".to_string(),
+                            to: "missing-to".to_string(),
+                            toy: "patina:records/transform@0.1.0".to_string(),
+                        },
+                    )],
+                    entry: None,
+                }),
+            };
+
+            let err = state
+                .compose_typed_component(&manifest)
+                .expect_err("compose should fail for unknown from instance");
+            assert!(
+                err.to_string().contains("unknown from instance"),
+                "unexpected error: {}",
+                err
+            );
+
+            let payload = latest_grant_payload();
+            assert_eq!(payload["scope"], "inside-typed");
+            assert_eq!(payload["outcome"], "DENY");
+            assert_eq!(payload["from"], "missing-from");
+            assert_eq!(payload["to"], "missing-to");
+            assert_eq!(
+                payload["toy_or_capability"],
+                "patina:records/transform@0.1.0"
+            );
+            assert_eq!(payload["reason"], "unknown from instance");
+        });
+    }
+
+    #[test]
+    fn typed_wiring_success_emits_grant_audit_event() {
+        let schema_enforcer_wasm = fixture_wasm_path("schema-enforcer-child.wasm");
+        let schema_transform_wasm = fixture_wasm_path("se-pando-adapter.wasm");
+        assert!(
+            schema_enforcer_wasm.exists(),
+            "missing fixture {}",
+            schema_enforcer_wasm.display()
+        );
+        assert!(
+            schema_transform_wasm.exists(),
+            "missing fixture {}",
+            schema_transform_wasm.display()
+        );
+
+        with_temp_project(|project_root| {
+            let runtime_store = patina::mother::MotherRuntimeStore::new(
+                project_root.join(".patina/local/data/mother-state.db"),
+            );
+
+            let registry = ChildRegistry::new();
+            registry
+                .register_knowledge_with_paths(
+                    Box::new(NamedStubKnowledge {
+                        name: "schema-enforcer".to_string(),
+                    }),
+                    schema_enforcer_wasm,
+                    std::path::PathBuf::from("schema-enforcer.toml"),
+                )
+                .unwrap();
+            registry
+                .register_knowledge_with_paths(
+                    Box::new(NamedStubKnowledge {
+                        name: "schema-transform".to_string(),
+                    }),
+                    schema_transform_wasm,
+                    std::path::PathBuf::from("schema-transform.toml"),
+                )
+                .unwrap();
+
+            let state = ServerState::new(
+                "test-token".to_string(),
+                registry,
+                runtime_store.clone(),
+                federation::startup(&runtime_store),
+                Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+            );
+
+            let manifest = mother_crate::pando::PandoManifest {
+                pando: mother_crate::pando::PandoSection {
+                    name: "audit-grant".to_string(),
+                    description: "test".to_string(),
+                    version: "0.1.0".to_string(),
+                },
+                children: vec![
+                    mother_crate::pando::PandoChild {
+                        name: "schema-enforcer".to_string(),
+                        id: Some("se".to_string()),
+                    },
+                    mother_crate::pando::PandoChild {
+                        name: "schema-transform".to_string(),
+                        id: None,
+                    },
+                ],
+                commands: BTreeMap::new(),
+                composition: Some(mother_crate::pando::PandoComposition {
+                    wiring: vec![mother_crate::pando::PandoWiring::Typed(
+                        mother_crate::pando::PandoTypedWiring {
+                            from: "se".to_string(),
+                            to: "schema-transform".to_string(),
+                            toy: "patina:records/transform".to_string(),
+                        },
+                    )],
+                    entry: None,
+                }),
+            };
+
+            let _composed = state
+                .compose_typed_component(&manifest)
+                .expect("compose should succeed for known schema parity wiring");
+
+            let payload = latest_grant_payload();
+            assert_eq!(payload["scope"], "inside-typed");
+            assert_eq!(payload["outcome"], "GRANT");
+            assert_eq!(payload["from"], "se");
+            assert_eq!(payload["to"], "schema-transform");
+            assert_eq!(payload["toy_or_capability"], "patina:records/transform");
+            assert!(payload["reason"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("wired via interface"));
+        });
     }
 }

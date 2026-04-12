@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::time::Instant;
 
+use super::audit;
 use super::integrity;
 
 pub(super) fn parse_relationship_listens(manifest_path: &std::path::Path) -> Result<Vec<String>> {
@@ -50,6 +51,17 @@ pub(super) fn load_wasm_child(
         "mother child loader manifest parsed"
     );
 
+    for decision in
+        audit::evaluate_outside_capability_decisions(&manifest.world, &manifest.capabilities)
+    {
+        audit::emit_outside_capability_audit(
+            &manifest.name,
+            &decision.capability,
+            decision.outcome,
+            &decision.reason,
+        );
+    }
+
     let relationship_listens = parse_relationship_listens(manifest_path)?;
 
     let read_started = Instant::now();
@@ -83,7 +95,18 @@ pub(super) fn load_wasm_child(
             );
 
             let instantiate_started = Instant::now();
-            let child = engine.instantiate_child(&component, &manifest, None)?;
+            let child = match engine.instantiate_child(&component, &manifest, None) {
+                Ok(child) => child,
+                Err(error) => {
+                    audit::emit_outside_capability_audit(
+                        &manifest.name,
+                        "manifest.capability-check",
+                        "DENY",
+                        &error.to_string(),
+                    );
+                    return Err(error);
+                }
+            };
             tracing::info!(
                 event = "startup.child.loader.instantiate.success",
                 child = child_label,
@@ -111,6 +134,60 @@ pub(super) fn load_wasm_child(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
+    use std::path::Path;
+
+    fn with_temp_project<T>(f: impl FnOnce(&Path) -> T) -> T {
+        let _guard = patina::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp = tempfile::TempDir::new().unwrap();
+        let project_root = temp.path().join("project");
+        std::fs::create_dir_all(&project_root).unwrap();
+
+        let old_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&project_root).unwrap();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&project_root)));
+        std::env::set_current_dir(old_cwd).unwrap();
+
+        match result {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
+    }
+
+    fn latest_grant_payload() -> Value {
+        let conn = patina::eventlog::open_events_db().expect("open events db");
+        let data: String = conn
+            .query_row(
+                "SELECT data FROM eventlog WHERE event_type = 'mother.grant' ORDER BY seq DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query mother.grant event");
+        serde_json::from_str(&data).expect("parse mother.grant payload")
+    }
+
+    fn grant_payloads_for_child(child_name: &str) -> Vec<Value> {
+        let conn = patina::eventlog::open_events_db().expect("open events db");
+        let mut stmt = conn
+            .prepare("SELECT data FROM eventlog WHERE event_type = 'mother.grant' ORDER BY seq ASC")
+            .expect("prepare grant payload query");
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query grant payload rows");
+
+        rows.filter_map(|row| {
+            let data = row.ok()?;
+            let payload: Value = serde_json::from_str(&data).ok()?;
+            (payload.get("child").and_then(|v| v.as_str()) == Some(child_name)).then_some(payload)
+        })
+        .collect()
+    }
+
+    fn fixture_path(rel: &str) -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel)
+    }
 
     #[test]
     fn parse_relationship_listens_from_manifest() {
@@ -153,5 +230,192 @@ kind = "knowledge-child"
 
         let listens = parse_relationship_listens(&manifest).unwrap();
         assert!(listens.is_empty());
+    }
+
+    #[test]
+    fn load_wasm_child_emits_outside_deny_audit_for_disallowed_capability() {
+        with_temp_project(|project_root| {
+            let wasm_path = project_root.join("bad-child.wasm");
+            let manifest_path = project_root.join("bad-child.toml");
+
+            std::fs::write(&wasm_path, b"not-a-real-component").unwrap();
+            std::fs::write(
+                &manifest_path,
+                r#"
+[child]
+name = "bad-child"
+kind = "child"
+
+[capabilities]
+host_unknown = true
+"#,
+            )
+            .unwrap();
+            crate::commands::mother::integrity::write_hash_file(&wasm_path).unwrap();
+            crate::commands::mother::integrity::write_hash_file(&manifest_path).unwrap();
+
+            let err = match load_wasm_child(&wasm_path, &manifest_path) {
+                Ok(_) => panic!("load should fail for invalid capability"),
+                Err(error) => error,
+            };
+            assert!(
+                err.to_string().contains("failed to parse WebAssembly")
+                    || err.to_string().contains("not allowed for this world"),
+                "unexpected error: {}",
+                err
+            );
+
+            let payload = latest_grant_payload();
+            assert_eq!(payload["scope"], "outside");
+            assert_eq!(payload["outcome"], "DENY");
+            assert_eq!(payload["child"], "bad-child");
+            assert_eq!(payload["toy_or_capability"], "host_unknown");
+            assert!(payload["reason"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("not allowed"));
+        });
+    }
+
+    #[test]
+    fn load_wasm_child_emits_outside_grant_audit_for_allowed_capability() {
+        with_temp_project(|project_root| {
+            let wasm_path = project_root.join("grant-child.wasm");
+            let manifest_path = project_root.join("grant-child.toml");
+
+            std::fs::write(&wasm_path, b"not-a-real-component").unwrap();
+            std::fs::write(
+                &manifest_path,
+                r#"
+[child]
+name = "grant-child"
+kind = "child"
+
+[capabilities]
+host_log = true
+"#,
+            )
+            .unwrap();
+            crate::commands::mother::integrity::write_hash_file(&wasm_path).unwrap();
+            crate::commands::mother::integrity::write_hash_file(&manifest_path).unwrap();
+
+            let _ = load_wasm_child(&wasm_path, &manifest_path);
+
+            let payload = latest_grant_payload();
+            assert_eq!(payload["scope"], "outside");
+            assert_eq!(payload["outcome"], "GRANT");
+            assert_eq!(payload["child"], "grant-child");
+            assert_eq!(payload["toy_or_capability"], "host_log");
+            assert!(payload["reason"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("allowed for world"));
+        });
+    }
+
+    #[test]
+    fn handle_based_service_child_loads_with_allowed_capability() {
+        with_temp_project(|project_root| {
+            let wasm_path = project_root.join("belief-verifier-child.wasm");
+            let manifest_path = project_root.join("belief-verifier-child.toml");
+            let fixture_wasm =
+                fixture_path("tests/fixtures/mother-service/belief-verifier-child.wasm");
+            let fixture_manifest =
+                fixture_path("tests/fixtures/mother-service/belief-verifier-child.toml");
+            assert!(
+                fixture_wasm.exists(),
+                "missing fixture {}",
+                fixture_wasm.display()
+            );
+            assert!(
+                fixture_manifest.exists(),
+                "missing fixture {}",
+                fixture_manifest.display()
+            );
+            std::fs::copy(&fixture_wasm, &wasm_path).expect("copy belief-verifier fixture wasm");
+            let mut manifest = std::fs::read_to_string(&fixture_manifest)
+                .expect("read belief-verifier fixture manifest");
+            manifest.push_str("\n[capabilities]\nhost_log = true\n");
+            std::fs::write(&manifest_path, manifest).expect("write allowed manifest");
+            crate::commands::mother::integrity::write_hash_file(&wasm_path).unwrap();
+            crate::commands::mother::integrity::write_hash_file(&manifest_path).unwrap();
+
+            let loaded = load_wasm_child(&wasm_path, &manifest_path)
+                .expect("service child should still load with allowed capabilities");
+            match loaded {
+                mother_crate::daemon_bootstrap::LoadedChild::Knowledge { .. } => {}
+            }
+
+            let payload = latest_grant_payload();
+            assert_eq!(payload["scope"], "outside");
+            assert_eq!(payload["outcome"], "GRANT");
+            assert_eq!(payload["child"], "patina-belief-verifier");
+            assert_eq!(payload["toy_or_capability"], "host_log");
+        });
+    }
+
+    #[test]
+    fn handle_based_service_child_stays_fail_closed_for_disallowed_capability() {
+        with_temp_project(|project_root| {
+            let wasm_path = project_root.join("belief-verifier-child-deny.wasm");
+            let manifest_path = project_root.join("belief-verifier-child-deny.toml");
+            let fixture_wasm =
+                fixture_path("tests/fixtures/mother-service/belief-verifier-child.wasm");
+            let fixture_manifest =
+                fixture_path("tests/fixtures/mother-service/belief-verifier-child.toml");
+            assert!(
+                fixture_wasm.exists(),
+                "missing fixture {}",
+                fixture_wasm.display()
+            );
+            assert!(
+                fixture_manifest.exists(),
+                "missing fixture {}",
+                fixture_manifest.display()
+            );
+            std::fs::copy(&fixture_wasm, &wasm_path).expect("copy belief-verifier fixture wasm");
+            let mut manifest = std::fs::read_to_string(&fixture_manifest)
+                .expect("read belief-verifier fixture manifest");
+            manifest.push_str("\n[capabilities]\nhost_unknown = true\n");
+            std::fs::write(&manifest_path, manifest).expect("write deny manifest");
+            crate::commands::mother::integrity::write_hash_file(&wasm_path).unwrap();
+            crate::commands::mother::integrity::write_hash_file(&manifest_path).unwrap();
+
+            let err = match load_wasm_child(&wasm_path, &manifest_path) {
+                Ok(_) => panic!("service child should fail for disallowed capability"),
+                Err(error) => error,
+            };
+            assert!(
+                err.to_string().contains("not allowed for this world"),
+                "unexpected error: {}",
+                err
+            );
+
+            let payloads = grant_payloads_for_child("patina-belief-verifier");
+            assert!(
+                payloads.iter().any(|payload| {
+                    payload["scope"] == "outside"
+                        && payload["outcome"] == "DENY"
+                        && payload["toy_or_capability"] == "host_unknown"
+                        && payload["reason"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .contains("not allowed")
+                }),
+                "missing DENY payload for requested disallowed capability: {payloads:?}"
+            );
+            assert!(
+                payloads.iter().any(|payload| {
+                    payload["scope"] == "outside"
+                        && payload["outcome"] == "DENY"
+                        && payload["toy_or_capability"] == "manifest.capability-check"
+                        && payload["reason"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .contains("not allowed")
+                }),
+                "missing DENY payload for manifest capability check failure: {payloads:?}"
+            );
+        });
     }
 }
