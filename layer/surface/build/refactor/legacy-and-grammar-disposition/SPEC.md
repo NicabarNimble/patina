@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: legacy-and-grammar-disposition
-status: draft
+status: ready
 created: 2026-04-11
 sessions:
   origin: 20260410-220235-028265000
@@ -19,22 +19,22 @@ beliefs:
 - '[[wasi-is-foundation-not-option]]'
 exit_criteria:
 - id: lgd1-portfolio-inventory
-  text: "A committed disposition inventory exists listing: six typed baseline children, legacy service children, and grammar children with current runtime lane and risk notes."
+  text: 'A committed disposition inventory exists listing: six typed baseline children, legacy service children, and grammar children with current runtime lane and risk notes.'
   checked: true
 - id: lgd2-service-child-decisions
-  text: "Each legacy service child (belief-verifier, session-writer, spec-manager, doctor) has an explicit decision: keep legacy now, migrate by phase, or retire/replace, with rationale."
+  text: 'Each legacy service child (belief-verifier, session-writer, spec-manager, doctor) has an explicit decision: keep legacy now, migrate by phase, or retire/replace, with rationale.'
   checked: true
 - id: lgd3-grammar-lane-decision
-  text: "Grammar lane has explicit long-term contract: typed-composition integration plan or legacy pipeline containment plan, including constraints and target milestones."
+  text: 'Grammar lane has explicit long-term contract: typed-composition integration plan or legacy pipeline containment plan, including constraints and target milestones.'
   checked: true
 - id: lgd4-owner-deadline
-  text: "Every migrate/retire decision has owner + target window (release/spec milestone) and dependency notes."
+  text: Every migrate/retire decision has owner + target window (release/spec milestone) and dependency notes.
   checked: true
 - id: lgd5-spec-manager-path
-  text: "Spec-manager decision path is explicit (remain service-handle lane temporarily vs migrate to wasm child path) and linked to its governing spec(s)."
+  text: Spec-manager decision path is explicit (remain service-handle lane temporarily vs migrate to wasm child path) and linked to its governing spec(s).
   checked: true
 - id: lgd6-no-implicit-carryover
-  text: "No child remains in legacy/pipeline lane without documented disposition status; 'implicit carryover' is eliminated."
+  text: No child remains in legacy/pipeline lane without documented disposition status; 'implicit carryover' is eliminated.
   checked: true
 ---
 # refactor: Legacy service children + grammar lane disposition
@@ -50,6 +50,10 @@ single disposition artifact, these lanes drift by inertia.
 ## Goal
 
 Produce an explicit, approved child-portfolio disposition that answers:
+
+## Status
+
+Ready for promotion/completion: all exit criteria `lgd1..lgd6` are checked with passing verification.
 
 1. Which children are in the typed baseline set (already true for six baseline children).
 2. Which legacy service children stay temporarily, and why.
