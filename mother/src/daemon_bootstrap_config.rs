@@ -179,6 +179,11 @@ mod tests {
                             &serde_json::json!({"version": "test"}),
                         )
                     }),
+                    get_atlas_dashboard: Arc::new(|_| crate::http_daemon::HttpResponse {
+                        status: 200,
+                        headers: vec![("Content-Type".to_string(), "text/html".to_string())],
+                        body: b"<html>atlas</html>".to_vec(),
+                    }),
                     get_atlas_snapshot: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(
                             200,
@@ -285,6 +290,11 @@ mod tests {
                             200,
                             &serde_json::json!({"version": "test"}),
                         )
+                    }),
+                    get_atlas_dashboard: Arc::new(|_| crate::http_daemon::HttpResponse {
+                        status: 200,
+                        headers: vec![("Content-Type".to_string(), "text/html".to_string())],
+                        body: b"<html>atlas</html>".to_vec(),
                     }),
                     get_atlas_snapshot: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(

@@ -29,6 +29,7 @@ pub trait ApiRuntime {
         action: String,
         payload: serde_json::Value,
     ) -> Result<serde_json::Value>;
+    fn atlas_dashboard_html(&self) -> Result<String>;
     fn atlas_snapshot(&self) -> Result<serde_json::Value>;
     fn bridge_translate(
         &self,
@@ -297,6 +298,20 @@ pub fn handle_version(runtime: &dyn ApiRuntime) -> HttpResponse {
             "name": "patina-mother"
         }),
     )
+}
+
+pub fn handle_atlas_dashboard(runtime: &dyn ApiRuntime) -> HttpResponse {
+    match runtime.atlas_dashboard_html() {
+        Ok(html) => HttpResponse {
+            status: 200,
+            headers: vec![(
+                "Content-Type".to_string(),
+                "text/html; charset=utf-8".to_string(),
+            )],
+            body: html.into_bytes(),
+        },
+        Err(error) => json_error(500, &format!("atlas dashboard render failed: {}", error)),
+    }
 }
 
 pub fn handle_atlas_snapshot(runtime: &dyn ApiRuntime) -> HttpResponse {
@@ -589,6 +604,7 @@ pub fn handle_child_request(request: &HttpRequest, runtime: &dyn ApiRuntime) -> 
 pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTable {
     let health_runtime = Arc::clone(&runtime);
     let version_runtime = Arc::clone(&runtime);
+    let atlas_dashboard_runtime = Arc::clone(&runtime);
     let atlas_runtime = Arc::clone(&runtime);
     let bridge_runtime = Arc::clone(&runtime);
     let scry_runtime = Arc::clone(&runtime);
@@ -608,6 +624,9 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
     RouteTable {
         get_health: Arc::new(move |_request| handle_health(&*health_runtime)),
         get_version: Arc::new(move |_request| handle_version(&*version_runtime)),
+        get_atlas_dashboard: Arc::new(move |_request| {
+            handle_atlas_dashboard(&*atlas_dashboard_runtime)
+        }),
         get_atlas_snapshot: Arc::new(move |_request| handle_atlas_snapshot(&*atlas_runtime)),
         post_bridge_translate: Arc::new(move |request| {
             handle_bridge_translate(request, &*bridge_runtime)
@@ -700,6 +719,10 @@ mod tests {
             payload: serde_json::Value,
         ) -> Result<serde_json::Value> {
             Ok(payload)
+        }
+
+        fn atlas_dashboard_html(&self) -> Result<String> {
+            Ok("<html><body>atlas</body></html>".to_string())
         }
 
         fn atlas_snapshot(&self) -> Result<serde_json::Value> {
@@ -893,6 +916,14 @@ mod tests {
     }
 
     #[test]
+    fn atlas_dashboard_route_returns_html_payload() {
+        let response = handle_atlas_dashboard(&StubRuntime);
+        assert_eq!(response.status, 200);
+        let body = String::from_utf8(response.body).unwrap();
+        assert!(body.contains("atlas"));
+    }
+
+    #[test]
     fn bridge_translate_route_returns_allow_and_deny_payloads() {
         let allow_request = HttpRequest {
             method: "POST".to_string(),
@@ -1016,6 +1047,10 @@ mod tests {
             ) -> Result<serde_json::Value> {
                 Ok(serde_json::Value::Null)
             }
+            fn atlas_dashboard_html(&self) -> Result<String> {
+                Ok("<html><body>atlas</body></html>".to_string())
+            }
+
             fn atlas_snapshot(&self) -> Result<serde_json::Value> {
                 Ok(serde_json::json!({"summary": {"spec_count": 0}}))
             }

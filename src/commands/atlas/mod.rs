@@ -35,3 +35,8 @@ pub(crate) fn snapshot_json_for_root(root: &Path) -> Result<serde_json::Value> {
     let snapshot = internal::build_snapshot(root)?;
     serde_json::to_value(snapshot).map_err(Into::into)
 }
+
+pub(crate) fn dashboard_html_for_root(root: &Path, refresh_seconds: Option<u32>) -> Result<String> {
+    let snapshot = internal::build_snapshot(root)?;
+    internal::render_html_with_options(&snapshot, refresh_seconds)
+}

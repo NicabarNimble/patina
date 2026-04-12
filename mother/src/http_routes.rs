@@ -8,6 +8,7 @@ type RouteHandler = Arc<dyn Fn(&HttpRequest) -> HttpResponse + Send + Sync>;
 pub struct RouteTable {
     pub get_health: RouteHandler,
     pub get_version: RouteHandler,
+    pub get_atlas_dashboard: RouteHandler,
     pub get_atlas_snapshot: RouteHandler,
     pub post_bridge_translate: RouteHandler,
     pub post_scry: RouteHandler,
@@ -44,7 +45,14 @@ impl Router {
         let response = match (request.method.as_str(), request.path.as_str()) {
             ("GET", "/health") => (self.routes.get_health)(request),
             ("GET", "/version") => (self.routes.get_version)(request),
-            ("GET", "/api/atlas/snapshot") => {
+            ("GET", "/atlas") | ("GET", "/atlas/index.html") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_atlas_dashboard)(request)
+                }
+            }
+            ("GET", "/atlas/atlas.json") | ("GET", "/api/atlas/snapshot") => {
                 if self.require_auth && !self.check_auth(request) {
                     json_error(401, "Unauthorized")
                 } else {
