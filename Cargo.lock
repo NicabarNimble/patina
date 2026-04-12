@@ -3326,6 +3326,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "patina-ai-child-legacy-typed-bridge"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk",
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
 name = "patina-ai-child-record-writer"
 version = "0.1.0"
 dependencies = [

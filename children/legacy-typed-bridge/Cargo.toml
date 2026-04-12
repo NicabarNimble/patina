@@ -1,0 +1,19 @@
+[package]
+name = "patina-ai-child-legacy-typed-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "Typed bridge child for legacy-to-typed toy seam"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wit-bindgen = "0.41.0"
+patina-sdk = { path = "../../sdk/patina-sdk" }
+
+[package.metadata.component]
+package = "patina:legacy-typed-bridge"
+
+[package.metadata.component.target]
+path = "wit"
+world = "legacy-typed-bridge"
