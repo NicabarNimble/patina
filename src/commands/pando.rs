@@ -99,6 +99,7 @@ pub fn native_command_names() -> Vec<String> {
         "serve",
         "interface",
         "report",
+        "atlas",
         "measure",
         "ai",
         "hook",

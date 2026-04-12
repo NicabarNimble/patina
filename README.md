@@ -81,6 +81,8 @@ patina assay search "term"          # Ranked factual search via FTS5
 patina assay belief <belief-id>      # Ground a belief against code and facts
 patina context --topic "architecture"
 patina report                        # Generate project state report
+patina atlas --json                  # Spec + MCT visibility snapshot (local truth)
+patina atlas --html --output .tmp/atlas/spec-atlas.html
 patina measure --full                # Health view from measurement data
 patina eval --combined               # Evaluate retrieval pipeline quality
 patina bench retrieval               # Benchmark retrieval quality

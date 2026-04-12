@@ -408,6 +408,21 @@ enum Commands {
         json: bool,
     },
 
+    /// Build deterministic spec + MCT visibility atlas (JSON/HTML)
+    Atlas {
+        /// Output path. Defaults: stdout for JSON, layer/surface/reports/atlas/spec-atlas.html for HTML.
+        #[arg(long, short)]
+        output: Option<String>,
+
+        /// Emit standalone HTML dashboard
+        #[arg(long)]
+        html: bool,
+
+        /// Emit JSON snapshot
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Show project health from measurement data
     Measure {
         /// Show raw metrics and history (maintainer view)
@@ -1661,6 +1676,10 @@ fn main() -> Result<()> {
         Some(Commands::Report { output, repo, json }) => {
             let options = commands::report::ReportOptions { output, repo, json };
             commands::report::execute(options)?;
+        }
+        Some(Commands::Atlas { output, html, json }) => {
+            let options = commands::atlas::AtlasOptions { output, html, json };
+            commands::atlas::execute(options)?;
         }
         Some(Commands::Measure {
             system,
