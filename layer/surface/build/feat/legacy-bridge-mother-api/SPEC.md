@@ -15,19 +15,19 @@ beliefs:
 exit_criteria:
 - id: lbma1-route
   text: "Mother exposes authenticated bridge translate endpoint (`POST /api/bridge/translate`)."
-  checked: false
+  checked: true
 - id: lbma2-runtime
   text: "Mother runtime resolves bridge translate via mother-managed bridge module fail-closed policy."
-  checked: false
+  checked: true
 - id: lbma3-client
   text: "Mother client supports bridge translate over UDS first with TCP+token fallback."
-  checked: false
+  checked: true
 - id: lbma4-tests
   text: "Deterministic tests validate request parsing and response envelope for bridge translate route."
-  checked: false
+  checked: true
 - id: lbma5-demo
   text: "Demo includes UDS request showing allow and deny verdicts."
-  checked: false
+  checked: true
 ---
 # feat: Legacy Bridge Mother API
 
