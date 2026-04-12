@@ -4,6 +4,8 @@ use std::path::Path;
 const FOLDER_TEXT_TO_PARQUET_PANDO_NAME: &str = "folder-text-to-parquet";
 const FOLDER_TEXT_TO_PARQUET_MANIFEST: &str =
     include_str!("../../resources/pandos/folder-text-to-parquet/pando.toml");
+const ATLAS_PANDO_NAME: &str = "atlas";
+const ATLAS_PANDO_MANIFEST: &str = include_str!("../../resources/pandos/atlas/pando.toml");
 
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum PandoCommands {
@@ -65,12 +67,18 @@ pub fn execute_cli(command: Option<PandoCommands>) -> Result<()> {
 
 fn seed_first_party_pandos(pandos_root: &Path) -> Result<()> {
     std::fs::create_dir_all(pandos_root)?;
-    let pando_dir = pandos_root.join(FOLDER_TEXT_TO_PARQUET_PANDO_NAME);
-    std::fs::create_dir_all(&pando_dir)?;
+
+    let folder_text_to_parquet = pandos_root.join(FOLDER_TEXT_TO_PARQUET_PANDO_NAME);
+    std::fs::create_dir_all(&folder_text_to_parquet)?;
     std::fs::write(
-        pando_dir.join("pando.toml"),
+        folder_text_to_parquet.join("pando.toml"),
         FOLDER_TEXT_TO_PARQUET_MANIFEST,
     )?;
+
+    let atlas = pandos_root.join(ATLAS_PANDO_NAME);
+    std::fs::create_dir_all(&atlas)?;
+    std::fs::write(atlas.join("pando.toml"), ATLAS_PANDO_MANIFEST)?;
+
     Ok(())
 }
 
@@ -99,7 +107,8 @@ pub fn native_command_names() -> Vec<String> {
         "serve",
         "interface",
         "report",
-        "atlas",
+        // `atlas` namespace is intentionally pando-owned; native `patina atlas`
+        // remains an additive wrapper/fallback surface.
         "measure",
         "ai",
         "hook",
@@ -137,18 +146,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn seeds_folder_text_to_parquet_manifest() {
+    fn seeds_first_party_pando_manifests() {
         let temp = tempfile::tempdir().unwrap();
         seed_first_party_pandos(temp.path()).unwrap();
 
-        let manifest_path = temp
+        let folder_manifest_path = temp
             .path()
             .join(FOLDER_TEXT_TO_PARQUET_PANDO_NAME)
             .join("pando.toml");
-        let manifest = std::fs::read_to_string(manifest_path).unwrap();
-        assert!(manifest.contains("name = \"folder-text-to-parquet\""));
-        assert!(manifest.contains("[[children]]"));
-        assert!(manifest.contains("[composition]"));
+        let folder_manifest = std::fs::read_to_string(folder_manifest_path).unwrap();
+        assert!(folder_manifest.contains("name = \"folder-text-to-parquet\""));
+        assert!(folder_manifest.contains("[[children]]"));
+        assert!(folder_manifest.contains("[composition]"));
+
+        let atlas_manifest_path = temp.path().join(ATLAS_PANDO_NAME).join("pando.toml");
+        let atlas_manifest = std::fs::read_to_string(atlas_manifest_path).unwrap();
+        assert!(atlas_manifest.contains("name = \"atlas\""));
+        assert!(atlas_manifest.contains("[[children]]"));
+        assert!(atlas_manifest.contains("[composition]"));
     }
 
     #[test]
@@ -169,5 +184,13 @@ mod tests {
         let manifest = std::fs::read_to_string(pando_dir.join("pando.toml")).unwrap();
         assert!(manifest.contains("name = \"folder-text-to-parquet\""));
         assert!(!manifest.contains("broken"));
+    }
+
+    #[test]
+    fn native_command_names_reserve_all_except_atlas_namespace() {
+        let names = native_command_names();
+        assert!(names.iter().any(|name| name == "mother"));
+        assert!(names.iter().any(|name| name == "spec"));
+        assert!(!names.iter().any(|name| name == "atlas"));
     }
 }
