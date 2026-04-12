@@ -20,7 +20,7 @@ beliefs:
 exit_criteria:
 - id: lgd1-portfolio-inventory
   text: "A committed disposition inventory exists listing: six typed baseline children, legacy service children, and grammar children with current runtime lane and risk notes."
-  checked: false
+  checked: true
 - id: lgd2-service-child-decisions
   text: "Each legacy service child (belief-verifier, session-writer, spec-manager, doctor) has an explicit decision: keep legacy now, migrate by phase, or retire/replace, with rationale."
   checked: false
@@ -82,7 +82,7 @@ non-baseline child lane:
 
 ## Solution
 
-1. Create disposition matrix file (path decided in design phase).
+1. Create disposition matrix file at `layer/surface/build/refactor/legacy-and-grammar-disposition/MATRIX.md`.
 2. Fill per-child decisions for legacy service children.
 3. Fill per-grammar decision and lane contract.
 4. Link each decision to owning spec(s) and milestones.
@@ -106,6 +106,7 @@ non-baseline child lane:
 ```bash
 patina spec check legacy-and-grammar-disposition --json
 patina child list
+test -s layer/surface/build/refactor/legacy-and-grammar-disposition/MATRIX.md
 # plus matrix validation/check script added by implementation
 ```
 
