@@ -1,7 +1,7 @@
 ---
 type: feat
 id: mother-grant-audit-coverage
-status: draft
+status: ready
 created: 2026-04-11
 sessions:
   origin: 20260410-220235-028265000
@@ -20,22 +20,22 @@ beliefs:
 - '[[world-boundary-is-type-safety]]'
 exit_criteria:
 - id: mgac1-outside-grant-events
-  text: "Mother emits structured grant events for outside toy/capability decisions at child load (GRANT and DENY with child, toy/capability, reason)."
+  text: Mother emits structured grant events for outside toy/capability decisions at child load (GRANT and DENY with child, toy/capability, reason).
   checked: true
 - id: mgac2-typed-wiring-events
-  text: "Typed composition wiring decisions emit structured grant/audit events for each inside-toy link attempt (from, to, toy, outcome, reason)."
+  text: Typed composition wiring decisions emit structured grant/audit events for each inside-toy link attempt (from, to, toy, outcome, reason).
   checked: true
 - id: mgac3-fail-closed-deterministic
-  text: "Unauthorized or invalid grants/wiring fail closed with deterministic error messages and non-zero load outcome; no silent skips."
+  text: Unauthorized or invalid grants/wiring fail closed with deterministic error messages and non-zero load outcome; no silent skips.
   checked: true
 - id: mgac4-audit-surface
-  text: "Audit events are queryable through an existing Mother event/measure/log surface (documented retrieval path for operators)."
+  text: Audit events are queryable through an existing Mother event/measure/log surface (documented retrieval path for operators).
   checked: true
 - id: mgac5-test-coverage
-  text: "Tests cover positive and negative cases: denied toy grant, denied typed wiring, and expected audit event presence/shape."
+  text: 'Tests cover positive and negative cases: denied toy grant, denied typed wiring, and expected audit event presence/shape.'
   checked: true
 - id: mgac6-backward-safe
-  text: "Handle-based service children continue to load with equivalent fail-closed behavior; audit coverage adds observability without widening authority."
+  text: Handle-based service children continue to load with equivalent fail-closed behavior; audit coverage adds observability without widening authority.
   checked: true
 ---
 # feat: Mother grant audit coverage for fail-closed composition
@@ -53,6 +53,10 @@ This leaves a gap between actual safety behavior and operator visibility.
 ## Goal
 
 Provide full grant-audit coverage so operators can answer:
+
+## Status
+
+Ready for promotion/completion: all exit criteria `mgac1..mgac6` are checked with passing verification.
 
 1. What was requested?
 2. What was granted or denied?
