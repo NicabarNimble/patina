@@ -33,7 +33,7 @@ exit_criteria:
   text: SDK is canonical for all new first-party child authoring. `patina child init` and templates default to the typed SDK lane; legacy lane is maintenance-only via explicit allowlist.
   checked: false
 - id: svl3-typed-default
-  text: Default lane for new data-plane children is typed WIT toy exports/imports. The six canon children run in typed lane; `handle(action,payload)` remains legacy/control-plane lane only with explicit justification and migration note.
+  text: Default lane for new data-plane children is typed WIT toy exports/imports. The six typed baseline children run in typed lane; `handle(action,payload)` remains legacy/control-plane lane only with explicit justification and migration note.
   checked: false
 - id: svl4-world-layout-locked
   text: 'WIT/package layout for child authoring is locked and documented: toy contracts in wit/toys/deps, child-facing world contracts in wit/child (+ per-child toyboxes/worlds as needed), pipeline composition contracts aligned with typed composition plan.'
@@ -57,7 +57,7 @@ exit_criteria:
   text: At least one end-to-end pando path is proven under the locked vision using SDK-led authoring and Mother composition validation with passing compile/tests.
   checked: false
 - id: svl11-portfolio-disposition
-  text: 'Child portfolio disposition is documented and approved: six canon typed children locked as reference baseline, each legacy service child has a migration stance, and grammar lane has a declared long-term contract.'
+  text: 'Child portfolio disposition is documented and approved: six typed baseline children locked as reference baseline, each legacy service child has a migration stance, and grammar lane has a declared long-term contract.'
   checked: false
 ---
 # feat: SDK Vision Lock (BA/WASI Component-First)
@@ -131,7 +131,7 @@ Draft.
 
 ### 6) Child Portfolio Discipline
 
-- Six canon children are the typed baseline reference set.
+- Six typed baseline children are the typed reference set.
 - Legacy service children get explicit keep/migrate/retire decisions.
 - Grammar children get explicit lane decision (typed composition integration vs legacy pipeline containment), with owner and deadline.
 
@@ -153,7 +153,7 @@ Draft.
 ## Implementation Order
 
 1. **Ratify lock statements** (svl1) and record owner-approved constraints in this file.
-2. **Freeze portfolio baseline** (svl11) via `legacy-and-grammar-disposition`: six canon typed children + explicit disposition for legacy service + grammar lanes.
+2. **Freeze portfolio baseline** (svl11) via `legacy-and-grammar-disposition`: six typed baseline children + explicit disposition for legacy service + grammar lanes.
 3. **Align SDK surface policy** (svl2, svl7) via `child-init-typed-default` + `sdk-public-surface-alignment`.
 4. **Align typed composition safety + audit** (svl3, svl6) via `child-typed-composition` + `mother-grant-audit-coverage`.
 5. **Lock world/layout governance** (svl4, svl5) and update docs/templates.
@@ -169,13 +169,13 @@ Draft.
 4. **Mother is strict authority with fail-closed enforcement:** typed wiring validation exists now and audit logging must be completed to full coverage.
 5. **Legacy handle lane is transitional/control-plane:** not the preferred path for new data-plane work.
 6. **Drift is unacceptable:** spec/doc/template/runtime drift is treated as blocker-level correctness failure.
-7. **Portfolio reality is explicit:** six canon children are the typed baseline; legacy service children and grammars require explicit disposition, not implicit carryover.
+7. **Portfolio reality is explicit:** six typed baseline children are the typed baseline; legacy service children and grammars require explicit disposition, not implicit carryover.
 
 ## Resolved Decisions
 
 - This spec is an umbrella governance spec and should be referenced by downstream implementation specs.
 - “Spec drift” across SDK/composition docs/templates/runtime behavior is treated as a blocker, not editorial debt.
-- Canon baseline is six typed data-plane children; migration decisions for legacy service children and grammars are mandatory artifacts.
+- Typed baseline set is six data-plane children; migration decisions for legacy service children and grammars are mandatory artifacts.
 
 ## Verification
 
