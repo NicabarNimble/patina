@@ -29,13 +29,13 @@ exit_criteria:
   checked: true
 - id: lgd4-owner-deadline
   text: "Every migrate/retire decision has owner + target window (release/spec milestone) and dependency notes."
-  checked: false
+  checked: true
 - id: lgd5-spec-manager-path
   text: "Spec-manager decision path is explicit (remain service-handle lane temporarily vs migrate to wasm child path) and linked to its governing spec(s)."
-  checked: false
+  checked: true
 - id: lgd6-no-implicit-carryover
   text: "No child remains in legacy/pipeline lane without documented disposition status; 'implicit carryover' is eliminated."
-  checked: false
+  checked: true
 ---
 # refactor: Legacy service children + grammar lane disposition
 
@@ -107,7 +107,7 @@ non-baseline child lane:
 patina spec check legacy-and-grammar-disposition --json
 patina child list
 test -s layer/surface/build/refactor/legacy-and-grammar-disposition/MATRIX.md
-# plus matrix validation/check script added by implementation
+bash resources/scripts/check-legacy-disposition-matrix.sh
 ```
 
 ## Exit Criteria
