@@ -35,9 +35,11 @@ git checkouts available for direct reading.
 This folder is **not a parallel knowledge store**. It is:
 
 1. The orientation document (this README)
-2. The canonical list of BA repos to track (`repos.toml`)
-3. Scripts that wrap Patina's repo tools for BA-specific workflows (`scripts/`)
-4. Pointers to where BA-related knowledge actually lives (beliefs, specs, repos)
+2. Primitive and alignment contracts (`PRIMITIVES.md`, `ALIGNMENT.md`)
+3. Conference intake (`conferences/SOURCES.toml`, `conferences/catalog.jsonl`)
+4. Direction skill + outputs (`skills/discover-direction.md`, `DIRECTION.md`)
+5. Canonical tracked repos (`repos.toml`) and helper scripts (`scripts/`)
+6. Pointers to where BA-related knowledge actually lives (beliefs, specs, repos)
 
 ## Canonical BA Repo Set
 
@@ -106,15 +108,17 @@ Naming convention for BA-aligned beliefs:
 
 ## BA Skills
 
-The actual logic lives in `sdk/ba/scripts/` — portable shell scripts any LLM
-or human can invoke. Claude skill manifests in `.claude/skills/ba-*/` are
-optional thin wrappers (gitignored, local-only). Other LLM runtimes can wrap
-the scripts in whatever skill format they use.
+Direction logic lives in `sdk/ba/skills/discover-direction.md`.
 
-Current scripts:
+This is a portable skill spec (LLM/human executable contract), not a random note.
+It defines:
+- source priority tiers
+- reality filter (`source_confidence`, `status`, `decision_eligible`)
+- strict stop rules
+- output contract for `DIRECTION.md` and conference catalog updates
 
-- `add-all.sh` — register every canonical BA repo via `patina repo add`
-- More to come (status, refresh, alignment audit) — added as patterns emerge
+Current helper script:
+- `scripts/add-all.sh` — register canonical BA repos via `patina repo add`
 
 ## Constraints
 
