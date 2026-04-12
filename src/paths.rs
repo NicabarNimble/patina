@@ -98,9 +98,14 @@ pub mod persona {
 pub mod repos {
     use super::*;
 
-    /// Cloned repos (rebuildable): `~/.patina/cache/repos/`
+    /// Full-cloned repos (rebuildable): `~/.patina/cache/repos/`
     pub fn cache_dir() -> PathBuf {
         patina_cache().join("repos")
+    }
+
+    /// Sparse-cloned repos (rebuildable): `~/.patina/cache/repos-sparse/`
+    pub fn sparse_cache_dir() -> PathBuf {
+        patina_cache().join("repos-sparse")
     }
 }
 
@@ -589,6 +594,9 @@ mod tests {
     fn test_repos_cache() {
         let repos = repos::cache_dir();
         assert!(repos.to_string_lossy().contains("cache/repos"));
+
+        let sparse = repos::sparse_cache_dir();
+        assert!(sparse.to_string_lossy().contains("cache/repos-sparse"));
     }
 
     #[test]

@@ -14,22 +14,22 @@ beliefs:
 exit_criteria:
 - id: rsa1-cli-sparse-flag
   text: "`patina repo add <url> --sparse <path>` is supported (single or repeated flag), with help text using sparse terminology (no `--subdir` alias)."
-  checked: false
+  checked: true
 - id: rsa2-sparse-clone-behavior
   text: "Repo add uses sparse checkout + partial clone (`--filter=blob:none`) so working tree contains only requested sparse path(s), while git history remains upstream-valid."
-  checked: false
+  checked: true
 - id: rsa3-registry-shape
   text: "Registry stores sparse configuration in RepoEntry and preserves it across `repo update` / `repo show` / `repo list` surfaces."
-  checked: false
+  checked: true
 - id: rsa4-separate-storage-lane
   text: "Sparse entries are stored in deterministic, separate cache paths from full clones (same upstream URL can exist as full + sparse variants without collision)."
-  checked: false
+  checked: true
 - id: rsa5-fail-closed-validation
   text: "Sparse paths fail closed on empty, absolute, traversal (`..`), or `.git`-targeting values with explicit error messages."
-  checked: false
+  checked: true
 - id: rsa6-tests-proof
   text: "Deterministic tests cover CLI parsing, registry roundtrip, sparse path validation, and clone command construction; proof commands are documented."
-  checked: false
+  checked: true
 ---
 # fix: Add sparse repo intake for reference knowledge
 

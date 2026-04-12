@@ -297,6 +297,10 @@ enum Commands {
         /// Enable contribution mode (create fork for PRs)
         #[arg(long, requires = "url")]
         contrib: bool,
+
+        /// Sparse checkout path (repeatable; shorthand mode)
+        #[arg(long = "sparse", requires = "url", action = clap::ArgAction::Append)]
+        sparse: Vec<String>,
     },
 
     /// Manage embedding models in mother cache
@@ -1588,7 +1592,8 @@ fn main() -> Result<()> {
             command,
             url,
             contrib,
-        }) => commands::repo::execute_cli(command, url, contrib)?,
+            sparse,
+        }) => commands::repo::execute_cli(command, url, contrib, sparse)?,
         Some(Commands::Model { command }) => commands::model::execute_cli(command)?,
         Some(Commands::Connect { command }) => commands::connect::execute_cli(command)?,
         Some(Commands::Lake { command }) => commands::lake::execute_cli(command)?,

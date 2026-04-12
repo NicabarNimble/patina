@@ -5,6 +5,7 @@
 use anyhow::{bail, Context, Result};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -42,6 +43,9 @@ pub struct RepoEntry {
     pub name: String,
     pub path: String,
     pub github: String,
+    /// Sparse checkout paths (empty => full clone)
+    #[serde(default)]
+    pub sparse: Vec<String>,
     #[serde(default)]
     pub contrib: bool,
     #[serde(default)]
@@ -78,8 +82,12 @@ impl Registry {
             .with_context(|| format!("Failed to parse registry: {}", path.display()))?;
 
         // Validate repo paths against expected cache prefix
-        let cache_prefix = paths::repos::cache_dir();
         for (name, entry) in &registry.repos {
+            let cache_prefix = if entry.sparse.is_empty() {
+                paths::repos::cache_dir()
+            } else {
+                paths::repos::sparse_cache_dir()
+            };
             validate_repo_path(&entry.path, &cache_prefix, name)?;
         }
 
@@ -102,38 +110,39 @@ impl Registry {
 }
 
 /// Add a repository
-pub fn add_repo(url: &str, contrib: bool, no_oxidize: bool) -> Result<()> {
+pub fn add_repo(url: &str, contrib: bool, no_oxidize: bool, sparse: Vec<String>) -> Result<()> {
     // Parse GitHub URL
     let (owner, repo_name) = parse_github_url(url)?;
     let github = format!("{}/{}", owner, repo_name);
+    let sparse = normalize_sparse_paths(&sparse)?;
+    let repo_key = repo_registry_key(&github, &sparse);
 
-    println!("🚀 Adding repository: {}\n", github);
+    println!("🚀 Adding repository: {}\n", repo_key);
 
     // Check if already registered
     let mut registry = Registry::load()?;
-    if registry.repos.contains_key(&github) {
-        let existing = &registry.repos[&github];
+    if registry.repos.contains_key(&repo_key) {
+        let existing = &registry.repos[&repo_key];
         if contrib && !existing.contrib {
             println!("📌 Repository exists, upgrading to contributor mode...");
             // TODO: Add fork logic here
-            return upgrade_to_contrib(&github, &mut registry);
+            return upgrade_to_contrib(&repo_key, &mut registry);
         }
         bail!(
             "Repository '{}' already registered. Use 'patina repo update {}' to refresh.",
-            github,
-            github
+            repo_key,
+            repo_key
         );
     }
 
-    // Ensure repos cache directory exists
-    let repos_path = paths::repos::cache_dir();
-    fs::create_dir_all(&repos_path)?;
-
-    let repo_path = repos_path.join(&github);
+    let repo_path = repo_cache_path(&owner, &repo_name, &sparse)?;
+    if let Some(parent) = repo_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
 
     // Clone repository
     println!("📥 Cloning {}...", github);
-    clone_repo(url, &repo_path)?;
+    clone_repo(url, &repo_path, &sparse)?;
 
     // Create patina branch
     println!("🌿 Creating patina branch...");
@@ -176,7 +185,7 @@ pub fn add_repo(url: &str, contrib: bool, no_oxidize: bool) -> Result<()> {
                 println!("   ⚠️  Oxidize failed: {}. Semantic search unavailable.", e);
                 println!(
                     "      Run 'patina repo update {} --oxidize' to retry.",
-                    github
+                    repo_key
                 );
                 false
             }
@@ -189,11 +198,12 @@ pub fn add_repo(url: &str, contrib: bool, no_oxidize: bool) -> Result<()> {
     let synced_commit = get_head_sha(&repo_path);
 
     registry.repos.insert(
-        github.clone(),
+        repo_key.clone(),
         RepoEntry {
-            name: github.clone(),
+            name: repo_key.clone(),
             path: repo_path.to_string_lossy().to_string(),
             github: github.clone(),
+            sparse,
             contrib: fork.is_some(),
             fork,
             registered: timestamp,
@@ -212,11 +222,19 @@ pub fn add_repo(url: &str, contrib: bool, no_oxidize: bool) -> Result<()> {
 
     println!("\n✅ Repository added successfully!");
     println!("   Path: {}", repo_path.display());
+    println!(
+        "   Mode: {}",
+        if repo_key == github {
+            "full clone"
+        } else {
+            "sparse clone"
+        }
+    );
     println!("   Code events: {}", event_count);
     println!("   Search: {}", search_mode);
     println!(
         "\n   Query with: patina scry \"your query\" --repo {}",
-        github
+        repo_key
     );
 
     Ok(())
@@ -240,11 +258,12 @@ pub fn list_repos() -> Result<Vec<RepoEntry>> {
 /// Update a specific repository
 pub fn update_repo(name: &str, oxidize: bool) -> Result<()> {
     let mut registry = Registry::load()?;
-    let entry = registry
+    let mut entry = registry
         .repos
         .get(name)
         .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found", name))?
         .clone();
+    entry.name = name.to_string();
 
     let synced_commit = run_repo_refresh(&entry, oxidize, true)?;
 
@@ -423,6 +442,10 @@ fn run_repo_refresh(entry: &RepoEntry, oxidize: bool, verbose: bool) -> Result<O
 
     patina::project::create_uid_if_missing(repo_path)?;
 
+    if !entry.sparse.is_empty() {
+        ensure_sparse_checkout(repo_path, &entry.sparse)?;
+    }
+
     if verbose {
         println!("📥 Pulling latest changes...");
     }
@@ -487,6 +510,12 @@ pub fn show_repo(name: &str) -> Result<()> {
     println!("📚 Repository: {}\n", name);
     println!("  GitHub:     {}", entry.github);
     println!("  Path:       {}", entry.path);
+    if entry.sparse.is_empty() {
+        println!("  Mode:       full");
+    } else {
+        println!("  Mode:       sparse");
+        println!("  Sparse:     {}", entry.sparse.join(", "));
+    }
     println!("  Contrib:    {}", if entry.contrib { "Yes" } else { "No" });
     if let Some(fork) = &entry.fork {
         println!("  Fork:       {}", fork);
@@ -580,6 +609,121 @@ pub fn get_repo_path(name: &str) -> Result<std::path::PathBuf> {
 // Helper functions
 // ─────────────────────────────────────────────────────────────────────────────
 
+fn normalize_sparse_paths(paths: &[String]) -> Result<Vec<String>> {
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut normalized = Vec::with_capacity(paths.len());
+    for raw in paths {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            bail!("--sparse path cannot be empty");
+        }
+
+        if trimmed.starts_with('/') || Path::new(trimmed).is_absolute() {
+            bail!("--sparse path must be relative: {}", raw);
+        }
+
+        let path = trimmed.trim_matches('/').replace('\\', "/");
+        if path.is_empty() {
+            bail!("--sparse path cannot resolve to repository root");
+        }
+
+        for component in path.split('/') {
+            if component.is_empty() {
+                bail!("--sparse path has empty component: {}", raw);
+            }
+            if component == "." || component == ".." {
+                bail!("--sparse path cannot contain '.' or '..': {}", raw);
+            }
+            if component == ".git" {
+                bail!("--sparse path cannot target .git internals: {}", raw);
+            }
+        }
+
+        normalized.push(path);
+    }
+
+    normalized.sort();
+    normalized.dedup();
+    Ok(normalized)
+}
+
+fn sparse_label(paths: &[String]) -> String {
+    if paths.is_empty() {
+        return "full".to_string();
+    }
+
+    if paths.len() == 1 {
+        let mut slug = paths[0]
+            .chars()
+            .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+            .collect::<String>()
+            .trim_matches('-')
+            .to_lowercase();
+        while slug.contains("--") {
+            slug = slug.replace("--", "-");
+        }
+        if !slug.is_empty() {
+            return slug;
+        }
+    }
+
+    let mut hasher = Sha256::new();
+    for path in paths {
+        hasher.update(path.as_bytes());
+        hasher.update(b"\n");
+    }
+    let digest = hasher.finalize();
+    let short = format!("{:x}", digest);
+    format!("sparse-{}", &short[..8])
+}
+
+fn repo_registry_key(github: &str, sparse_paths: &[String]) -> String {
+    if sparse_paths.is_empty() {
+        github.to_string()
+    } else {
+        format!("{}::{}", github, sparse_label(sparse_paths))
+    }
+}
+
+fn repo_cache_path(
+    owner: &str,
+    repo_name: &str,
+    sparse_paths: &[String],
+) -> Result<std::path::PathBuf> {
+    if sparse_paths.is_empty() {
+        return Ok(paths::repos::cache_dir().join(owner).join(repo_name));
+    }
+
+    let label = sparse_label(sparse_paths);
+    Ok(paths::repos::sparse_cache_dir()
+        .join(owner)
+        .join(repo_name)
+        .join(label))
+}
+
+fn normalize_clone_url(url: &str) -> Result<String> {
+    let trimmed = url.trim();
+
+    if trimmed.starts_with("git@github.com:") {
+        let (owner, repo) = parse_github_url(trimmed)?;
+        return Ok(format!("git@github.com:{}/{}.git", owner, repo));
+    }
+
+    if trimmed.contains("github.com") {
+        let (owner, repo) = parse_github_url(trimmed)?;
+        return Ok(format!("https://github.com/{}/{}", owner, repo));
+    }
+
+    if !trimmed.contains("://") && !trimmed.contains('@') {
+        return Ok(format!("https://github.com/{}", trimmed));
+    }
+
+    Ok(trimmed.to_string())
+}
+
 /// Parse GitHub URL to extract owner and repo name
 fn parse_github_url(url: &str) -> Result<(String, String)> {
     // Handle various formats:
@@ -630,28 +774,58 @@ fn parse_github_url(url: &str) -> Result<(String, String)> {
 }
 
 /// Clone a repository
-fn clone_repo(url: &str, target: &Path) -> Result<()> {
+fn clone_repo(url: &str, target: &Path, sparse_paths: &[String]) -> Result<()> {
     if target.exists() {
         bail!("Target directory already exists: {}", target.display());
     }
 
-    // Convert short form (owner/repo) to full GitHub URL
-    let clone_url = if url.contains("://") || url.contains('@') {
-        url.to_string()
-    } else {
-        format!("https://github.com/{}", url)
-    };
+    let clone_url = normalize_clone_url(url)?;
 
-    // Full clone - we want commit history for knowledge extraction
-    // Commit messages are rich "why" context, especially in LLM-assisted codebases
+    // Commit history remains available; sparse mode limits working tree and blob transfer.
+    let clone_args = build_clone_args(&clone_url, target, sparse_paths);
     let output = Command::new("git")
-        .args(["clone", &clone_url, &target.to_string_lossy()])
+        .args(clone_args)
         .output()
         .context("Failed to execute git clone")?;
 
     if !output.status.success() {
         bail!(
             "git clone failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    if !sparse_paths.is_empty() {
+        ensure_sparse_checkout(target, sparse_paths)?;
+    }
+
+    Ok(())
+}
+
+fn build_clone_args(clone_url: &str, target: &Path, sparse_paths: &[String]) -> Vec<String> {
+    let mut args = vec!["clone".to_string()];
+    if !sparse_paths.is_empty() {
+        args.push("--filter=blob:none".to_string());
+        args.push("--sparse".to_string());
+    }
+    args.push(clone_url.to_string());
+    args.push(target.to_string_lossy().to_string());
+    args
+}
+
+fn ensure_sparse_checkout(repo_path: &Path, sparse_paths: &[String]) -> Result<()> {
+    if sparse_paths.is_empty() {
+        return Ok(());
+    }
+
+    let mut cmd = Command::new("git");
+    cmd.args(["sparse-checkout", "set"]);
+    cmd.args(sparse_paths);
+    let output = cmd.current_dir(repo_path).output()?;
+
+    if !output.status.success() {
+        bail!(
+            "git sparse-checkout set failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
     }
@@ -1196,10 +1370,95 @@ mod tests {
     }
 
     #[test]
+    fn test_normalize_clone_url_commit_path() {
+        let url = "https://github.com/WebAssembly/component-model/commits/main/design/mvp";
+        let normalized = normalize_clone_url(url).unwrap();
+        assert_eq!(normalized, "https://github.com/WebAssembly/component-model");
+    }
+
+    #[test]
     fn test_registry_default() {
         let registry = Registry::default();
         assert_eq!(registry.version, 0);
         assert!(registry.repos.is_empty());
+    }
+
+    #[test]
+    fn test_normalize_sparse_paths_valid() {
+        let paths = normalize_sparse_paths(&[
+            "design/mvp/".to_string(),
+            "design/mvp".to_string(),
+            "design/high-level".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(paths, vec!["design/high-level", "design/mvp"]);
+    }
+
+    #[test]
+    fn test_normalize_sparse_paths_rejects_invalid_values() {
+        assert!(normalize_sparse_paths(&["".to_string()]).is_err());
+        assert!(normalize_sparse_paths(&["/design/mvp".to_string()]).is_err());
+        assert!(normalize_sparse_paths(&["design/../mvp".to_string()]).is_err());
+        assert!(normalize_sparse_paths(&[".git".to_string()]).is_err());
+        assert!(normalize_sparse_paths(&["design/.git/config".to_string()]).is_err());
+    }
+
+    #[test]
+    fn test_sparse_registry_key_and_label_single_path() {
+        let key = repo_registry_key("WebAssembly/component-model", &["design/mvp".to_string()]);
+        assert_eq!(key, "WebAssembly/component-model::design-mvp");
+    }
+
+    #[test]
+    fn test_repo_cache_path_uses_sparse_lane() {
+        let full = repo_cache_path("WebAssembly", "component-model", &[]).unwrap();
+        assert!(full
+            .to_string_lossy()
+            .contains("cache/repos/WebAssembly/component-model"));
+
+        let sparse = repo_cache_path(
+            "WebAssembly",
+            "component-model",
+            &["design/mvp".to_string()],
+        )
+        .unwrap();
+        assert!(sparse
+            .to_string_lossy()
+            .contains("cache/repos-sparse/WebAssembly/component-model/design-mvp"));
+    }
+
+    #[test]
+    fn test_build_clone_args_sparse_includes_partial_flags() {
+        let target = Path::new("/tmp/component-model");
+        let args = build_clone_args(
+            "https://github.com/WebAssembly/component-model",
+            target,
+            &["design/mvp".to_string()],
+        );
+
+        assert_eq!(args[0], "clone");
+        assert!(args.contains(&"--filter=blob:none".to_string()));
+        assert!(args.contains(&"--sparse".to_string()));
+        assert_eq!(args.last().unwrap(), "/tmp/component-model");
+    }
+
+    #[test]
+    fn test_build_clone_args_full_clone_has_no_sparse_flags() {
+        let target = Path::new("/tmp/component-model");
+        let args = build_clone_args(
+            "https://github.com/WebAssembly/component-model",
+            target,
+            &[],
+        );
+
+        assert_eq!(
+            args,
+            vec![
+                "clone".to_string(),
+                "https://github.com/WebAssembly/component-model".to_string(),
+                "/tmp/component-model".to_string(),
+            ]
+        );
     }
 
     #[test]
