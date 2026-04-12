@@ -27,13 +27,16 @@ Auth policy follows existing Mother route posture:
 - when router requires auth, atlas web routes also require auth
 - UDS local mode remains no-token (file-permission boundary)
 
-## Slice C — always-on posture docs
+## Slice C — always-on posture docs + UI scaffold
 
 Document and demonstrate launchd supervisor flow:
 
 - `patina mother install`
 - `patina mother status`
 - atlas routes queried through Mother socket/address
+
+Add a lightweight Svelte scaffold under `ui/atlas/` that consumes Mother atlas JSON routes.
+This scaffold is additive and does not replace Mother-hosted fallback HTML in this slice.
 
 ## Direct code targets
 
@@ -45,3 +48,4 @@ Document and demonstrate launchd supervisor flow:
 - `src/commands/mother/daemon.rs`
 - `src/commands/atlas/mod.rs`
 - `README.md`
+- `ui/atlas/`

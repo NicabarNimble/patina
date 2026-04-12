@@ -17,22 +17,22 @@ beliefs:
 exit_criteria:
 - id: apmu1-atlas-pando-seeded
   text: "A first-party `atlas` pando manifest is seeded into Mother registry surfaces."
-  checked: false
+  checked: true
 - id: apmu2-atlas-namespace-policy
   text: "`atlas` namespace is owned by pando registration flow while CLI atlas remains additive fallback wrapper."
-  checked: false
+  checked: true
 - id: apmu3-mother-atlas-web-routes
   text: "Mother serves atlas dashboard and snapshot routes (`/atlas`, `/atlas/index.html`, `/atlas/atlas.json`) from the same normalized model."
-  checked: false
+  checked: true
 - id: apmu4-service-posture
   text: "Docs demonstrate always-on Mother posture via supervisor flow (`patina mother install`) instead of atlas-specific ad-hoc serve loops."
-  checked: false
+  checked: true
 - id: apmu5-tests
   text: "Deterministic tests cover pando seeding + atlas web route behavior and fail-closed path handling."
-  checked: false
+  checked: true
 - id: apmu6-hitl-demo
   text: "Demo includes Mother-started atlas dashboard/json retrieval and pando registry visibility checks."
-  checked: false
+  checked: true
 ---
 # feat: Atlas Pando Mother UI
 
