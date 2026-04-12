@@ -16,6 +16,10 @@ related:
 - layer/surface/build/fix/sdk-public-surface-alignment/SPEC.md
 - layer/surface/build/explore/spec-manager-wasm-child/SPEC.md
 - layer/surface/build/feat/ba-truths/SPEC.md
+- layer/surface/build/feat/child-init-typed-default/SPEC.md
+- layer/surface/build/refactor/legacy-and-grammar-disposition/SPEC.md
+- layer/surface/build/feat/mother-grant-audit-coverage/SPEC.md
+- layer/surface/build/feat/job-aligned-mct-backoffice/SPEC.md
 beliefs:
 - '[[sdk-is-mct-entry-point]]'
 - '[[wasi-is-foundation-not-option]]'
@@ -24,7 +28,7 @@ beliefs:
 exit_criteria:
 - id: svl1-vision-ratified
   text: 'SDK vision lock statements are explicitly ratified and recorded in this spec: BA/WASI/component-model-first, SDK as canonical child authoring surface, Mother as authority boundary, typed toy contracts over string payloads for new data-plane children.'
-  checked: false
+  checked: true
 - id: svl2-sdk-canonical-surface
   text: SDK is canonical for all new first-party child authoring. `patina child init` and templates default to the typed SDK lane; legacy lane is maintenance-only via explicit allowlist.
   checked: false
@@ -138,12 +142,20 @@ Draft.
 3. Align downstream specs and docs to this locked shape.
 4. Add CI/policy checks that encode the lock in build-time gates.
 
+## Slice Test Gate (applies to every execution slice)
+
+- Deterministic behavior test proving intended slice outcome.
+- Deterministic fail-closed/failure-path test for safety boundaries.
+- Fixture conformance lock test when checked-in fixtures are used.
+- HITL packet includes exact verification commands and results.
+- Default rule: no runtime dependence on local `target/` artifacts for behavior tests.
+
 ## Implementation Order
 
 1. **Ratify lock statements** (svl1) and record owner-approved constraints in this file.
-2. **Freeze portfolio baseline** (svl11): six canon typed children + explicit disposition for legacy service + grammar lanes.
-3. **Align SDK surface policy** (svl2, svl7) with `sdk-public-surface-alignment` + templates + `patina child init`.
-4. **Align typed composition policy** (svl3, svl6) with `child-typed-composition`.
+2. **Freeze portfolio baseline** (svl11) via `legacy-and-grammar-disposition`: six canon typed children + explicit disposition for legacy service + grammar lanes.
+3. **Align SDK surface policy** (svl2, svl7) via `child-init-typed-default` + `sdk-public-surface-alignment`.
+4. **Align typed composition safety + audit** (svl3, svl6) via `child-typed-composition` + `mother-grant-audit-coverage`.
 5. **Lock world/layout governance** (svl4, svl5) and update docs/templates.
 6. **Resolve contradictory spec guidance** (svl8).
 7. **Publish migration playbook** (svl9).

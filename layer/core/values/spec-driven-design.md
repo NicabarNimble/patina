@@ -19,3 +19,14 @@ Can you trace this code change back to a spec? If not, either the change is triv
 ## Consequence
 
 Specs prevent agentic drift. Every decision has provenance: code -> commit -> spec -> session -> beliefs. Without this chain, accumulated knowledge is just text.
+
+## Slice Test Gate (required)
+
+Every non-trivial implementation slice must carry explicit proof, not implied confidence.
+
+- One deterministic behavior test for the slice's intended outcome.
+- One deterministic failure-path test for fail-closed behavior.
+- If fixtures are used, one fixture-conformance lock test for interface/shape drift.
+- HITL packet lists exact verification commands and outputs.
+
+Default posture: avoid runtime dependence on local `target/` artifacts for behavior tests.
