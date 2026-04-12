@@ -185,6 +185,12 @@ mod tests {
                             &serde_json::json!({"summary": {"spec_count": 0}}),
                         )
                     }),
+                    post_bridge_translate: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(
+                            200,
+                            &serde_json::json!({"verdict": "allow"}),
+                        )
+                    }),
                     post_scry: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(
                             200,
@@ -284,6 +290,12 @@ mod tests {
                         crate::http_daemon::HttpResponse::json(
                             200,
                             &serde_json::json!({"summary": {"spec_count": 0}}),
+                        )
+                    }),
+                    post_bridge_translate: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(
+                            200,
+                            &serde_json::json!({"verdict": "allow"}),
                         )
                     }),
                     post_scry: Arc::new(|_| {

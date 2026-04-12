@@ -9,6 +9,7 @@ pub struct RouteTable {
     pub get_health: RouteHandler,
     pub get_version: RouteHandler,
     pub get_atlas_snapshot: RouteHandler,
+    pub post_bridge_translate: RouteHandler,
     pub post_scry: RouteHandler,
     pub post_federation_status: RouteHandler,
     pub post_federation_refresh: RouteHandler,
@@ -48,6 +49,13 @@ impl Router {
                     json_error(401, "Unauthorized")
                 } else {
                     (self.routes.get_atlas_snapshot)(request)
+                }
+            }
+            ("POST", "/api/bridge/translate") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_bridge_translate)(request)
                 }
             }
             ("POST", "/api/scry") => {

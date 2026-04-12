@@ -5,6 +5,7 @@
 //! - Remote mother: TCP with bearer token via reqwest
 
 use anyhow::{Context, Result};
+use mother_crate::bridge::{BridgeRequest, BridgeResponse};
 use mother_crate::protocol::{
     FederationQueryPayload, LifecycleNamePayload, LifecycleRefreshPayload,
 };
@@ -253,6 +254,39 @@ impl Client {
         response
             .json::<Value>()
             .with_context(|| "Failed to parse atlas snapshot response")
+    }
+
+    pub fn bridge_translate(&self, request: &BridgeRequest) -> Result<BridgeResponse> {
+        if self.try_uds {
+            let body = serde_json::to_vec(request)?;
+            if let Some((status, resp_body)) =
+                uds_request("POST", "/api/bridge/translate", Some(&body))
+            {
+                if (200..300).contains(&status) {
+                    return serde_json::from_slice(&resp_body)
+                        .context("Failed to parse bridge translate response from UDS");
+                }
+                let msg = String::from_utf8_lossy(&resp_body).to_string();
+                anyhow::bail!("bridge translate failed ({}): {}", status, msg);
+            }
+        }
+
+        let url = format!("{}/api/bridge/translate", self.base_url);
+        let mut req = self.http.post(&url).json(request);
+        if let Some(ref token) = self.token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let response = req.send().with_context(|| {
+            format!("Failed to request bridge translate from {}", self.base_url)
+        })?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().unwrap_or_default();
+            anyhow::bail!("bridge translate failed ({}): {}", status, body);
+        }
+        response
+            .json::<BridgeResponse>()
+            .with_context(|| "Failed to parse bridge translate response")
     }
 
     pub fn federation_status(&self) -> Result<Value> {

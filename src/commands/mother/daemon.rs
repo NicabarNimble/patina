@@ -818,6 +818,13 @@ impl ApiRuntime for ServerState {
         crate::commands::atlas::snapshot_json_for_root(&root)
     }
 
+    fn bridge_translate(
+        &self,
+        request: mother_crate::bridge::BridgeRequest,
+    ) -> anyhow::Result<mother_crate::bridge::BridgeResponse> {
+        Ok(mother_crate::bridge::evaluate_bridge_request(&request))
+    }
+
     fn scry_query(
         &self,
         query: &str,

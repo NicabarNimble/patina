@@ -30,6 +30,10 @@ pub trait ApiRuntime {
         payload: serde_json::Value,
     ) -> Result<serde_json::Value>;
     fn atlas_snapshot(&self) -> Result<serde_json::Value>;
+    fn bridge_translate(
+        &self,
+        request: crate::bridge::BridgeRequest,
+    ) -> Result<crate::bridge::BridgeResponse>;
     fn scry_query(
         &self,
         query: &str,
@@ -302,6 +306,22 @@ pub fn handle_atlas_snapshot(runtime: &dyn ApiRuntime) -> HttpResponse {
     }
 }
 
+pub fn handle_bridge_translate(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
+    if request.body.is_empty() {
+        return json_error(400, "Missing request body");
+    }
+
+    let bridge_request: crate::bridge::BridgeRequest = match serde_json::from_slice(&request.body) {
+        Ok(value) => value,
+        Err(error) => return json_error(400, &format!("Invalid JSON: {}", error)),
+    };
+
+    match runtime.bridge_translate(bridge_request) {
+        Ok(payload) => HttpResponse::json(200, &payload),
+        Err(error) => json_error(500, &format!("bridge translate failed: {}", error)),
+    }
+}
+
 pub fn handle_scry(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
     if request.body.is_empty() {
         return json_error(400, "Missing request body");
@@ -570,6 +590,7 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
     let health_runtime = Arc::clone(&runtime);
     let version_runtime = Arc::clone(&runtime);
     let atlas_runtime = Arc::clone(&runtime);
+    let bridge_runtime = Arc::clone(&runtime);
     let scry_runtime = Arc::clone(&runtime);
     let federation_status_runtime = Arc::clone(&runtime);
     let federation_refresh_runtime = Arc::clone(&runtime);
@@ -588,6 +609,9 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
         get_health: Arc::new(move |_request| handle_health(&*health_runtime)),
         get_version: Arc::new(move |_request| handle_version(&*version_runtime)),
         get_atlas_snapshot: Arc::new(move |_request| handle_atlas_snapshot(&*atlas_runtime)),
+        post_bridge_translate: Arc::new(move |request| {
+            handle_bridge_translate(request, &*bridge_runtime)
+        }),
         post_scry: Arc::new(move |request| handle_scry(request, &*scry_runtime)),
         post_federation_status: Arc::new(move |request| {
             handle_federation_status(request, &*federation_status_runtime)
@@ -680,6 +704,13 @@ mod tests {
 
         fn atlas_snapshot(&self) -> Result<serde_json::Value> {
             Ok(serde_json::json!({"summary": {"spec_count": 0}}))
+        }
+
+        fn bridge_translate(
+            &self,
+            request: crate::bridge::BridgeRequest,
+        ) -> Result<crate::bridge::BridgeResponse> {
+            Ok(crate::bridge::evaluate_bridge_request(&request))
         }
 
         fn scry_query(
@@ -862,6 +893,60 @@ mod tests {
     }
 
     #[test]
+    fn bridge_translate_route_returns_allow_and_deny_payloads() {
+        let allow_request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/api/bridge/translate".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&crate::bridge::BridgeRequest {
+                action: "dispatch".to_string(),
+                legacy_toys: vec!["log".to_string(), "state".to_string()],
+                payload: serde_json::Value::Null,
+            })
+            .unwrap(),
+        };
+        let allow_response = handle_bridge_translate(&allow_request, &StubRuntime);
+        assert_eq!(allow_response.status, 200);
+        let allow_json: serde_json::Value = serde_json::from_slice(&allow_response.body).unwrap();
+        assert_eq!(
+            allow_json.get("verdict").and_then(|v| v.as_str()),
+            Some("allow")
+        );
+
+        let deny_request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/api/bridge/translate".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&crate::bridge::BridgeRequest {
+                action: "dispatch".to_string(),
+                legacy_toys: vec!["log".to_string(), "nope".to_string()],
+                payload: serde_json::Value::Null,
+            })
+            .unwrap(),
+        };
+        let deny_response = handle_bridge_translate(&deny_request, &StubRuntime);
+        assert_eq!(deny_response.status, 200);
+        let deny_json: serde_json::Value = serde_json::from_slice(&deny_response.body).unwrap();
+        assert_eq!(
+            deny_json.get("verdict").and_then(|v| v.as_str()),
+            Some("deny")
+        );
+    }
+
+    #[test]
+    fn bridge_translate_route_rejects_invalid_json() {
+        let request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/api/bridge/translate".to_string(),
+            headers: vec![],
+            body: b"not-json".to_vec(),
+        };
+
+        let response = handle_bridge_translate(&request, &StubRuntime);
+        assert_eq!(response.status, 400);
+    }
+
+    #[test]
     fn federation_routes_return_json_payloads() {
         let status_request = HttpRequest {
             method: "POST".to_string(),
@@ -933,6 +1018,13 @@ mod tests {
             }
             fn atlas_snapshot(&self) -> Result<serde_json::Value> {
                 Ok(serde_json::json!({"summary": {"spec_count": 0}}))
+            }
+
+            fn bridge_translate(
+                &self,
+                request: crate::bridge::BridgeRequest,
+            ) -> Result<crate::bridge::BridgeResponse> {
+                Ok(crate::bridge::evaluate_bridge_request(&request))
             }
 
             fn scry_query(
