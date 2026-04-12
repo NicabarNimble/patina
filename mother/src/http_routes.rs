@@ -171,3 +171,73 @@ impl Router {
             .unwrap_or(false)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ok_json() -> HttpResponse {
+        HttpResponse::json(200, &serde_json::json!({"ok": true}))
+    }
+
+    fn test_routes() -> RouteTable {
+        RouteTable {
+            get_health: Arc::new(|_| ok_json()),
+            get_version: Arc::new(|_| ok_json()),
+            get_atlas_dashboard: Arc::new(|_| HttpResponse {
+                status: 200,
+                headers: vec![("Content-Type".to_string(), "text/html".to_string())],
+                body: b"<html>atlas</html>".to_vec(),
+            }),
+            get_atlas_snapshot: Arc::new(|_| ok_json()),
+            post_bridge_translate: Arc::new(|_| ok_json()),
+            post_scry: Arc::new(|_| ok_json()),
+            post_federation_status: Arc::new(|_| ok_json()),
+            post_federation_refresh: Arc::new(|_| ok_json()),
+            post_federation_query: Arc::new(|_| ok_json()),
+            get_secrets_cache: Arc::new(|_| ok_json()),
+            post_secrets_cache: Arc::new(|_| ok_json()),
+            post_secrets_lock: Arc::new(|_| ok_json()),
+            post_pando_registry_init: Arc::new(|_| ok_json()),
+            get_pando_list: Arc::new(|_| ok_json()),
+            post_lifecycle_load_pando: Arc::new(|_| ok_json()),
+            post_lifecycle_refresh: Arc::new(|_| ok_json()),
+            post_lifecycle_reload_child: Arc::new(|_| ok_json()),
+            child_request: Arc::new(|_| ok_json()),
+        }
+    }
+
+    fn request(method: &str, path: &str, auth: Option<&str>) -> HttpRequest {
+        HttpRequest {
+            method: method.to_string(),
+            path: path.to_string(),
+            headers: auth
+                .map(|value| vec![("Authorization".to_string(), value.to_string())])
+                .unwrap_or_default(),
+            body: vec![],
+        }
+    }
+
+    #[test]
+    fn atlas_routes_require_auth_when_router_requires_auth() {
+        let router = Router::new(true, "token-123".to_string(), test_routes());
+
+        let html = router.route(&request("GET", "/atlas", None));
+        assert_eq!(html.status, 401);
+
+        let json = router.route(&request("GET", "/atlas/atlas.json", None));
+        assert_eq!(json.status, 401);
+    }
+
+    #[test]
+    fn atlas_routes_allow_with_valid_auth_header() {
+        let router = Router::new(true, "token-123".to_string(), test_routes());
+        let header = "Bearer token-123";
+
+        let html = router.route(&request("GET", "/atlas", Some(header)));
+        assert_eq!(html.status, 200);
+
+        let json = router.route(&request("GET", "/atlas/atlas.json", Some(header)));
+        assert_eq!(json.status, 200);
+    }
+}
