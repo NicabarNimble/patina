@@ -1,3 +1,4 @@
+pub mod bridge;
 pub mod broker;
 pub mod builtin_children;
 pub mod checkpoint;
