@@ -23,10 +23,10 @@ exit_criteria:
   checked: true
 - id: lgd2-service-child-decisions
   text: "Each legacy service child (belief-verifier, session-writer, spec-manager, doctor) has an explicit decision: keep legacy now, migrate by phase, or retire/replace, with rationale."
-  checked: false
+  checked: true
 - id: lgd3-grammar-lane-decision
   text: "Grammar lane has explicit long-term contract: typed-composition integration plan or legacy pipeline containment plan, including constraints and target milestones."
-  checked: false
+  checked: true
 - id: lgd4-owner-deadline
   text: "Every migrate/retire decision has owner + target window (release/spec milestone) and dependency notes."
   checked: false
