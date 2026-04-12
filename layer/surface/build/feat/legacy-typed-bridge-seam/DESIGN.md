@@ -47,13 +47,10 @@ Any other alias is denied.
 
 ## Atlas visibility hook
 
-Atlas can consume the Mother bridge policy model to show:
+Atlas consumes the Mother bridge policy model (`bridge_exposure_for_toys`) to classify child lanes:
 
-- children requiring bridge lane
-- unknown/denied toy aliases
-- typed-only compliance status
-
-Implementation of Atlas policy rendering is a follow-up within the same spec.
+- `legacy-bridge-lane` when bridge mapping is required
+- `typed-manifest-lane` when no bridge seam is needed
 
 ## Initial code targets
 

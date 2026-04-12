@@ -14,22 +14,22 @@ beliefs:
 exit_criteria:
 - id: ltbs1-seam-contract
   text: "A bridge seam contract exists for legacy-to-typed toy translation with explicit fail-closed behavior."
-  checked: false
+  checked: true
 - id: ltbs2-mother-owned-policy
   text: "Mother-managed internal bridge module enforces allowlist mapping and rejects unknown legacy toys."
-  checked: false
+  checked: true
 - id: ltbs3-typed-bridge-child
   text: "A typed WIT bridge child exists and processes bridge requests through a stable interface."
-  checked: false
+  checked: true
 - id: ltbs4-no-direct-legacy-escalation
   text: "Bridge flow denies direct legacy capability escalation outside mapped seam."
-  checked: false
+  checked: true
 - id: ltbs5-atlas-visibility
   text: "Atlas visibility can report legacy seam exposure via deterministic bridge policy signals."
-  checked: false
+  checked: true
 - id: ltbs6-tests
   text: "Deterministic tests cover mapping success, unknown-toy denial, and bridge request/response shape."
-  checked: false
+  checked: true
 ---
 # feat: Legacy Typed Bridge Seam
 
@@ -59,7 +59,8 @@ This allows migration without rewriting all legacy children immediately, while p
 ## Verification
 
 ```bash
+cargo test -q -p mother bridge::tests
+cargo check -q -p patina-ai-child-legacy-typed-bridge
+cargo test -q atlas
 cargo check -q
-cargo test -q legacy_bridge
-patina atlas --json | jq '.summary'
 ```
