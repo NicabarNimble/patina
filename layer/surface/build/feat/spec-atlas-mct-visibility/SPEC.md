@@ -16,22 +16,22 @@ beliefs:
 exit_criteria:
 - id: samv1-atlas-command
   text: "`patina atlas` command exists and runs without Mother dependency, producing deterministic project visibility output from local repo truth."
-  checked: false
+  checked: true
 - id: samv2-spec-graph
   text: "Atlas output includes spec inventory with status, criteria progress, and dependency edges (`blocked_by` + resolvable `related`)."
-  checked: false
+  checked: true
 - id: samv3-mct-inventory
   text: "Atlas output includes child manifest/toy visibility (`[needs].toys`, kind/role lane hints) and toy registry visibility from `wit/toys/deps/toys-registry.toml`."
-  checked: false
+  checked: true
 - id: samv4-html-demo-surface
   text: "Atlas can render a standalone HTML dashboard from the same snapshot data so HITL can review spec sprawl and MCT shape visually."
-  checked: false
+  checked: true
 - id: samv5-fail-closed
   text: "Atlas fails closed on malformed SPEC frontmatter with deterministic error path tests."
-  checked: false
+  checked: true
 - id: samv6-proof-commands
   text: "Verification commands are documented and produce a demo artifact that can be walked through end-to-end."
-  checked: false
+  checked: true
 ---
 # feat: Spec Atlas + MCT Visibility
 
