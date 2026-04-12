@@ -554,9 +554,6 @@ fn scan_children(root: &Path) -> Result<Vec<ChildNode>> {
 
 fn infer_child_lane(toys: &[String]) -> String {
     let exposure = mother_crate::bridge::bridge_exposure_for_toys(toys);
-    if !exposure.denied_aliases.is_empty() {
-        return "legacy-invalid-lane".to_string();
-    }
     if exposure.requires_bridge {
         return "legacy-bridge-lane".to_string();
     }

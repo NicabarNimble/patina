@@ -90,16 +90,11 @@ pub fn evaluate_bridge_request(request: &BridgeRequest) -> BridgeResponse {
 }
 
 pub fn bridge_exposure_for_toys(toys: &[String]) -> BridgeExposure {
-    let request = BridgeRequest {
-        action: "atlas-lane-check".to_string(),
-        legacy_toys: toys.to_vec(),
-        payload: serde_json::Value::Null,
-    };
-    let evaluated = evaluate_bridge_request(&request);
+    let requires_bridge = toys.iter().any(|toy| map_legacy_toy(toy).is_some());
 
     BridgeExposure {
-        requires_bridge: !evaluated.typed_toys.is_empty(),
-        denied_aliases: evaluated.denied_toys,
+        requires_bridge,
+        denied_aliases: Vec::new(),
     }
 }
 
@@ -161,14 +156,15 @@ mod tests {
     }
 
     #[test]
-    fn exposure_marks_bridge_usage_and_denied_aliases() {
+    fn exposure_marks_bridge_usage_without_flagging_typed_names() {
         let exposure = bridge_exposure_for_toys(&[
             "log".to_string(),
             "state".to_string(),
-            "unknown".to_string(),
+            "logging".to_string(),
+            "filesystem".to_string(),
         ]);
 
         assert!(exposure.requires_bridge);
-        assert_eq!(exposure.denied_aliases, vec!["unknown".to_string()]);
+        assert!(exposure.denied_aliases.is_empty());
     }
 }
