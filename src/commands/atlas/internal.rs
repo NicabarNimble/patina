@@ -553,12 +553,12 @@ fn scan_children(root: &Path) -> Result<Vec<ChildNode>> {
 }
 
 fn infer_child_lane(toys: &[String]) -> String {
-    let legacy_aliases = ["log", "state", "store", "fs"];
-    if toys
-        .iter()
-        .any(|toy| legacy_aliases.contains(&toy.as_str()))
-    {
-        return "legacy-alias-lane".to_string();
+    let exposure = mother_crate::bridge::bridge_exposure_for_toys(toys);
+    if !exposure.denied_aliases.is_empty() {
+        return "legacy-invalid-lane".to_string();
+    }
+    if exposure.requires_bridge {
+        return "legacy-bridge-lane".to_string();
     }
 
     "typed-manifest-lane".to_string()
