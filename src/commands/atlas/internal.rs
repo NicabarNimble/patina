@@ -235,7 +235,7 @@ fn route_request(root: &Path, method: &str, path: &str) -> HttpResponse {
 }
 
 fn write_http_response(stream: &mut TcpStream, response: HttpResponse) -> Result<()> {
-    let body_len = response.body.as_bytes().len();
+    let body_len = response.body.len();
     let payload = format!(
         "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n{}",
         response.status, response.content_type, body_len, response.body
