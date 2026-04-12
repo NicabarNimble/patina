@@ -13,22 +13,22 @@ beliefs:
 exit_criteria:
 - id: sals1-serve-command
   text: "`patina atlas --serve` runs a local read-only HTTP dashboard server without requiring Mother."
-  checked: false
+  checked: true
 - id: sals2-dashboard-route
   text: "GET `/` serves atlas dashboard HTML backed by current project snapshot."
-  checked: false
+  checked: true
 - id: sals3-json-route
   text: "GET `/atlas.json` serves the same normalized snapshot model used by HTML rendering."
-  checked: false
+  checked: true
 - id: sals4-fail-closed-routes
   text: "Malformed HTTP request lines fail closed (400), unsupported methods fail closed (405), and unknown routes fail closed (404)."
-  checked: false
+  checked: true
 - id: sals5-deterministic-tests
   text: "Deterministic tests cover route parsing/routing behavior and failure paths."
-  checked: false
+  checked: true
 - id: sals6-demo-proof
   text: "Demo walkthrough shows server launch, route retrieval, and browser open command."
-  checked: false
+  checked: true
 ---
 # feat: Spec Atlas Live Server
 
