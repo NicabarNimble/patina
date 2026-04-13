@@ -55,12 +55,28 @@ pub struct PandoChild {
     pub id: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum PandoDeliveryPolicy {
+    Required,
+    BestEffort,
+    DeadLetter,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct PandoTypedWiring {
     pub from: String,
     pub to: String,
     pub toy: String,
+    #[serde(default)]
+    pub delivery: Option<PandoDeliveryPolicy>,
+}
+
+impl PandoTypedWiring {
+    pub fn delivery_policy(&self) -> PandoDeliveryPolicy {
+        self.delivery.unwrap_or(PandoDeliveryPolicy::Required)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -81,6 +97,14 @@ pub struct PandoEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
+pub struct PandoDeadLetter {
+    pub child: String,
+    #[serde(default)]
+    pub toy: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct PandoComposition {
     /// Supports both legacy string wiring and typed wiring rules.
     ///
@@ -93,6 +117,9 @@ pub struct PandoComposition {
     /// Entry point for the composed component.
     #[serde(default)]
     pub entry: Option<PandoEntry>,
+    /// Optional dead-letter destination used by `delivery = "dead-letter"` routes.
+    #[serde(default, rename = "dead-letter", alias = "dead_letter")]
+    pub dead_letter: Option<PandoDeadLetter>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -389,6 +416,7 @@ toy = "patina:record/transform"
                 from: "schema-enforcer".to_string(),
                 to: "dedup-filter".to_string(),
                 toy: "patina:record/transform".to_string(),
+                delivery: None,
             })]
         );
     }
@@ -422,8 +450,76 @@ toy = "patina:record/transform"
                 from: "schema-enforcer".to_string(),
                 to: "dedup-filter".to_string(),
                 toy: "patina:record/transform".to_string(),
+                delivery: None,
             })]
         );
+    }
+
+    #[test]
+    fn parses_typed_wiring_delivery_policy() {
+        let raw = r#"
+[pando]
+name = "typed-delivery"
+description = "Typed composition with delivery policy"
+version = "0.2.0"
+
+[[children]]
+name = "schema-enforcer"
+
+[[children]]
+name = "dedup-filter"
+
+[composition]
+
+[[composition.wiring]]
+from = "schema-enforcer"
+to = "dedup-filter"
+toy = "patina:record/transform"
+delivery = "best-effort"
+"#;
+
+        let manifest = parse_manifest_str(raw).unwrap();
+        let composition = manifest.composition.unwrap();
+        let typed = match &composition.wiring[0] {
+            PandoWiring::Typed(typed) => typed,
+            PandoWiring::Legacy(_) => panic!("expected typed wiring"),
+        };
+        assert_eq!(
+            typed.delivery,
+            Some(PandoDeliveryPolicy::BestEffort),
+            "delivery policy should parse from wiring"
+        );
+        assert_eq!(typed.delivery_policy(), PandoDeliveryPolicy::BestEffort);
+    }
+
+    #[test]
+    fn parses_composition_dead_letter_target() {
+        let raw = r#"
+[pando]
+name = "typed-dead-letter"
+description = "Typed composition with dead-letter"
+version = "0.2.0"
+
+[[children]]
+name = "schema-enforcer"
+id = "se"
+
+[[children]]
+name = "watch-null-sink"
+id = "dlq"
+
+[composition]
+
+[composition.dead-letter]
+child = "dlq"
+toy = "patina:watch/events"
+"#;
+
+        let manifest = parse_manifest_str(raw).unwrap();
+        let composition = manifest.composition.unwrap();
+        let dead_letter = composition.dead_letter.expect("dead-letter should parse");
+        assert_eq!(dead_letter.child, "dlq");
+        assert_eq!(dead_letter.toy.as_deref(), Some("patina:watch/events"));
     }
 
     #[test]

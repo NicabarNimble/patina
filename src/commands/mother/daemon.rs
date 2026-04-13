@@ -441,77 +441,237 @@ impl ServerState {
         }
 
         for rule in typed_rules {
+            let policy = rule.delivery_policy();
+            let policy_label = match policy {
+                mother_crate::pando::PandoDeliveryPolicy::Required => "required",
+                mother_crate::pando::PandoDeliveryPolicy::BestEffort => "best-effort",
+                mother_crate::pando::PandoDeliveryPolicy::DeadLetter => "dead-letter",
+            };
+
             let Some(from_id) = instance_ids.get(&rule.from) else {
                 audit::emit_typed_wiring_audit(
                     &rule.from,
                     &rule.to,
                     &rule.toy,
                     "DENY",
-                    "unknown from instance",
+                    &format!("unknown from instance (policy={})", policy_label),
                 );
-                anyhow::bail!(
-                    "typed composition wiring references unknown from instance '{}'",
-                    rule.from
-                );
+                if matches!(policy, mother_crate::pando::PandoDeliveryPolicy::Required) {
+                    anyhow::bail!(
+                        "typed composition wiring references unknown from instance '{}'",
+                        rule.from
+                    );
+                }
+                continue;
             };
-            let Some(to_id) = instance_ids.get(&rule.to) else {
+            let from_id = *from_id;
+            let mut try_wire = |target_id, toy: &str| -> Option<String> {
+                let candidates = Self::typed_interface_candidates(toy);
+                for candidate in &candidates {
+                    let export_id = match graph.alias_instance_export(from_id, candidate) {
+                        Ok(id) => id,
+                        Err(_) => continue,
+                    };
+                    if graph
+                        .set_instantiation_argument(target_id, candidate, export_id)
+                        .is_ok()
+                    {
+                        return Some((*candidate).to_string());
+                    }
+                }
+                None
+            };
+
+            let Some(to_id) = instance_ids.get(&rule.to).copied() else {
                 audit::emit_typed_wiring_audit(
                     &rule.from,
                     &rule.to,
                     &rule.toy,
                     "DENY",
-                    "unknown to instance",
+                    &format!("unknown to instance (policy={})", policy_label),
                 );
-                anyhow::bail!(
-                    "typed composition wiring references unknown to instance '{}'",
-                    rule.to
-                );
+                match policy {
+                    mother_crate::pando::PandoDeliveryPolicy::Required => {
+                        anyhow::bail!(
+                            "typed composition wiring references unknown to instance '{}'",
+                            rule.to
+                        );
+                    }
+                    mother_crate::pando::PandoDeliveryPolicy::BestEffort => continue,
+                    mother_crate::pando::PandoDeliveryPolicy::DeadLetter => {
+                        if let Some(dead_letter) = composition.dead_letter.as_ref() {
+                            if let Some(dead_letter_id) =
+                                instance_ids.get(&dead_letter.child).copied()
+                            {
+                                let dead_letter_toy =
+                                    dead_letter.toy.as_deref().unwrap_or(&rule.toy);
+                                let mut rerouted_interface: Option<String> = None;
+                                for candidate in &Self::typed_interface_candidates(dead_letter_toy)
+                                {
+                                    let export_id =
+                                        match graph.alias_instance_export(from_id, candidate) {
+                                            Ok(id) => id,
+                                            Err(_) => continue,
+                                        };
+                                    if graph
+                                        .set_instantiation_argument(
+                                            dead_letter_id,
+                                            candidate,
+                                            export_id,
+                                        )
+                                        .is_ok()
+                                    {
+                                        rerouted_interface = Some((*candidate).to_string());
+                                        break;
+                                    }
+                                }
+                                if let Some(interface) = rerouted_interface {
+                                    audit::emit_typed_wiring_audit(
+                                        &rule.from,
+                                        &dead_letter.child,
+                                        dead_letter_toy,
+                                        "GRANT",
+                                        &format!(
+                                            "dead-letter reroute succeeded via '{}' after unknown to instance",
+                                            interface
+                                        ),
+                                    );
+                                } else {
+                                    audit::emit_typed_wiring_audit(
+                                        &rule.from,
+                                        &dead_letter.child,
+                                        dead_letter_toy,
+                                        "DENY",
+                                        "dead-letter reroute failed after unknown to instance",
+                                    );
+                                }
+                            } else {
+                                audit::emit_typed_wiring_audit(
+                                    &rule.from,
+                                    &dead_letter.child,
+                                    &rule.toy,
+                                    "DENY",
+                                    "dead-letter policy requested but dead-letter child instance is unknown",
+                                );
+                            }
+                        } else {
+                            audit::emit_typed_wiring_audit(
+                                &rule.from,
+                                &rule.to,
+                                &rule.toy,
+                                "DENY",
+                                "dead-letter policy requested but [composition.dead-letter] is missing",
+                            );
+                        }
+                        continue;
+                    }
+                }
             };
 
-            let candidates = Self::typed_interface_candidates(&rule.toy);
-            let mut wired = false;
-            let mut matched_interface: Option<String> = None;
-            for candidate in &candidates {
-                let export_id = match graph.alias_instance_export(*from_id, candidate) {
-                    Ok(id) => id,
-                    Err(_) => continue,
-                };
-                if graph
-                    .set_instantiation_argument(*to_id, candidate, export_id)
-                    .is_ok()
-                {
-                    wired = true;
-                    matched_interface = Some((*candidate).to_string());
-                    break;
-                }
-            }
-            if !wired {
+            let matched_interface = try_wire(to_id, &rule.toy);
+            if matched_interface.is_none() {
                 let from_child = Self::resolve_child_instance(manifest, &rule.from)
                     .map(|child| child.name.clone())
                     .unwrap_or_else(|| rule.from.clone());
                 let to_child = Self::resolve_child_instance(manifest, &rule.to)
                     .map(|child| child.name.clone())
                     .unwrap_or_else(|| rule.to.clone());
-                audit::emit_typed_wiring_audit(
-                    &rule.from,
-                    &rule.to,
-                    &rule.toy,
-                    "DENY",
-                    "no compatible export/import interface found",
+                let reason = format!(
+                    "no compatible export/import interface found (policy={})",
+                    policy_label
                 );
-                anyhow::bail!(
-                    "typed wiring failed for '{}' -> '{}' on '{}' (from child '{}', to child '{}')",
-                    rule.from,
-                    rule.to,
-                    rule.toy,
-                    from_child,
-                    to_child
-                );
+                audit::emit_typed_wiring_audit(&rule.from, &rule.to, &rule.toy, "DENY", &reason);
+
+                match policy {
+                    mother_crate::pando::PandoDeliveryPolicy::Required => {
+                        anyhow::bail!(
+                            "typed wiring failed for '{}' -> '{}' on '{}' (from child '{}', to child '{}')",
+                            rule.from,
+                            rule.to,
+                            rule.toy,
+                            from_child,
+                            to_child
+                        );
+                    }
+                    mother_crate::pando::PandoDeliveryPolicy::BestEffort => continue,
+                    mother_crate::pando::PandoDeliveryPolicy::DeadLetter => {
+                        if let Some(dead_letter) = composition.dead_letter.as_ref() {
+                            if let Some(dead_letter_id) =
+                                instance_ids.get(&dead_letter.child).copied()
+                            {
+                                let dead_letter_toy =
+                                    dead_letter.toy.as_deref().unwrap_or(&rule.toy);
+                                let mut rerouted_interface: Option<String> = None;
+                                for candidate in &Self::typed_interface_candidates(dead_letter_toy)
+                                {
+                                    let export_id =
+                                        match graph.alias_instance_export(from_id, candidate) {
+                                            Ok(id) => id,
+                                            Err(_) => continue,
+                                        };
+                                    if graph
+                                        .set_instantiation_argument(
+                                            dead_letter_id,
+                                            candidate,
+                                            export_id,
+                                        )
+                                        .is_ok()
+                                    {
+                                        rerouted_interface = Some((*candidate).to_string());
+                                        break;
+                                    }
+                                }
+                                if let Some(interface) = rerouted_interface {
+                                    audit::emit_typed_wiring_audit(
+                                        &rule.from,
+                                        &dead_letter.child,
+                                        dead_letter_toy,
+                                        "GRANT",
+                                        &format!(
+                                            "dead-letter reroute succeeded via '{}' after primary route failure",
+                                            interface
+                                        ),
+                                    );
+                                } else {
+                                    audit::emit_typed_wiring_audit(
+                                        &rule.from,
+                                        &dead_letter.child,
+                                        dead_letter_toy,
+                                        "DENY",
+                                        "dead-letter reroute failed after primary route failure",
+                                    );
+                                }
+                            } else {
+                                audit::emit_typed_wiring_audit(
+                                    &rule.from,
+                                    &dead_letter.child,
+                                    &rule.toy,
+                                    "DENY",
+                                    "dead-letter policy requested but dead-letter child instance is unknown",
+                                );
+                            }
+                        } else {
+                            audit::emit_typed_wiring_audit(
+                                &rule.from,
+                                &rule.to,
+                                &rule.toy,
+                                "DENY",
+                                "dead-letter policy requested but [composition.dead-letter] is missing",
+                            );
+                        }
+                        continue;
+                    }
+                }
             }
 
             let grant_reason = matched_interface
-                .map(|interface| format!("wired via interface '{}'", interface))
-                .unwrap_or_else(|| "wired".to_string());
+                .map(|interface| {
+                    format!(
+                        "wired via interface '{}' (policy={})",
+                        interface, policy_label
+                    )
+                })
+                .unwrap_or_else(|| format!("wired (policy={})", policy_label));
             audit::emit_typed_wiring_audit(&rule.from, &rule.to, &rule.toy, "GRANT", &grant_reason);
         }
 
@@ -2014,9 +2174,11 @@ kind = "child"
                             from: "missing-from".to_string(),
                             to: "missing-to".to_string(),
                             toy: "patina:records/transform@0.1.0".to_string(),
+                            delivery: None,
                         },
                     )],
                     entry: None,
+                    dead_letter: None,
                 }),
             };
 
@@ -2038,7 +2200,109 @@ kind = "child"
                 payload["toy_or_capability"],
                 "patina:records/transform@0.1.0"
             );
-            assert_eq!(payload["reason"], "unknown from instance");
+            assert!(payload["reason"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("unknown from instance"));
+        });
+    }
+
+    #[test]
+    fn typed_wiring_dead_letter_reroutes_when_primary_target_missing() {
+        let schema_enforcer_wasm = fixture_wasm_path("schema-enforcer-child.wasm");
+        let schema_transform_wasm = fixture_wasm_path("se-pando-adapter.wasm");
+        assert!(
+            schema_enforcer_wasm.exists(),
+            "missing fixture {}",
+            schema_enforcer_wasm.display()
+        );
+        assert!(
+            schema_transform_wasm.exists(),
+            "missing fixture {}",
+            schema_transform_wasm.display()
+        );
+
+        with_temp_project(|project_root| {
+            let runtime_store = patina::mother::MotherRuntimeStore::new(
+                project_root.join(".patina/local/data/mother-state.db"),
+            );
+
+            let registry = ChildRegistry::new();
+            registry
+                .register_knowledge_with_paths(
+                    Box::new(NamedStubKnowledge {
+                        name: "schema-enforcer".to_string(),
+                    }),
+                    schema_enforcer_wasm,
+                    std::path::PathBuf::from("schema-enforcer.toml"),
+                )
+                .unwrap();
+            registry
+                .register_knowledge_with_paths(
+                    Box::new(NamedStubKnowledge {
+                        name: "schema-transform".to_string(),
+                    }),
+                    schema_transform_wasm,
+                    std::path::PathBuf::from("schema-transform.toml"),
+                )
+                .unwrap();
+
+            let state = ServerState::new(
+                "test-token".to_string(),
+                registry,
+                runtime_store.clone(),
+                federation::startup(&runtime_store),
+                Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+            );
+
+            let manifest = mother_crate::pando::PandoManifest {
+                pando: mother_crate::pando::PandoSection {
+                    name: "audit-dead-letter".to_string(),
+                    description: "test".to_string(),
+                    version: "0.1.0".to_string(),
+                },
+                children: vec![
+                    mother_crate::pando::PandoChild {
+                        name: "schema-enforcer".to_string(),
+                        id: Some("se".to_string()),
+                    },
+                    mother_crate::pando::PandoChild {
+                        name: "schema-transform".to_string(),
+                        id: Some("dlq".to_string()),
+                    },
+                ],
+                commands: BTreeMap::new(),
+                composition: Some(mother_crate::pando::PandoComposition {
+                    wiring: vec![mother_crate::pando::PandoWiring::Typed(
+                        mother_crate::pando::PandoTypedWiring {
+                            from: "se".to_string(),
+                            to: "missing-target".to_string(),
+                            toy: "patina:records/transform".to_string(),
+                            delivery: Some(mother_crate::pando::PandoDeliveryPolicy::DeadLetter),
+                        },
+                    )],
+                    entry: None,
+                    dead_letter: Some(mother_crate::pando::PandoDeadLetter {
+                        child: "dlq".to_string(),
+                        toy: Some("patina:records/transform".to_string()),
+                    }),
+                }),
+            };
+
+            let _composed = state
+                .compose_typed_component(&manifest)
+                .expect("compose should succeed by rerouting to dead-letter child");
+
+            let payload = latest_grant_payload();
+            assert_eq!(payload["scope"], "inside-typed");
+            assert_eq!(payload["outcome"], "GRANT");
+            assert_eq!(payload["from"], "se");
+            assert_eq!(payload["to"], "dlq");
+            assert_eq!(payload["toy_or_capability"], "patina:records/transform");
+            assert!(payload["reason"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("dead-letter reroute succeeded"));
         });
     }
 
@@ -2113,9 +2377,11 @@ kind = "child"
                             from: "se".to_string(),
                             to: "schema-transform".to_string(),
                             toy: "patina:records/transform".to_string(),
+                            delivery: None,
                         },
                     )],
                     entry: None,
+                    dead_letter: None,
                 }),
             };
 
