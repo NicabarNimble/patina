@@ -1,7 +1,7 @@
 ---
 type: feat
 id: mother-wit-dispatcher
-status: ready
+status: active
 created: 2026-04-13
 sessions:
   origin: 20260413-160000-000000000
@@ -33,7 +33,7 @@ exit_criteria:
     checked: true
   - id: mwd2-runtime-wit-dispatch-surface
     text: "Mother runtime exposes a typed invocation path that targets WIT exports by fully-qualified operation id (package/interface.function)."
-    checked: true
+    checked: false
   - id: mwd3-cli-wit-call-command
     text: "CLI adds a WIT invocation command (`patina child call ...`) and routes through Mother typed dispatch instead of `handle(action,payload)`."
     checked: true
@@ -42,7 +42,7 @@ exit_criteria:
     checked: true
   - id: mwd5-folder-watch-proof
     text: "folder-watch-actor business ops (`configure`, `status`, `scan-now`, `reset`) are invokable via WIT dispatch end-to-end."
-    checked: true
+    checked: false
   - id: mwd6-observability-parity
     text: "Mother emits invocation metrics for WIT dispatch with labels (`child`, `interface`, `function`, `outcome`) and keeps existing handle metrics during migration."
     checked: true
@@ -290,10 +290,10 @@ Files:
 
 Scope:
 - Set ingress mode and operation allowlist for watcher.
-- Demonstrate typed invocations for all four business ops.
+- Until generic runtime typed dispatcher exists, prove fail-closed behavior for direct `child call` on real components.
 
 Required proof:
-- command transcript showing success for allowed operations,
+- command transcript showing explicit fail-closed response for unsupported typed dispatcher path,
 - deny proof for disallowed operation.
 
 ## Verification
@@ -318,11 +318,10 @@ cp children/folder-watch-actor/child.toml ~/.patina/plugins/folder-watch-actor.t
 # Audit view: ingress mode + operations
 cargo run -q -- child list
 
-# Typed WIT calls (new surface from this spec)
+# Typed WIT call currently fails closed for real component lane
+# (generic runtime dispatcher pending)
 cargo run -q -- child call folder-watch-actor patina:watch/control.status '[]'
-cargo run -q -- child call folder-watch-actor patina:watch/control.configure '[{"watch-path":"/input","recursive":true,"emit-existing-on-start":true}, false]'
-cargo run -q -- child call folder-watch-actor patina:watch/control.scan-now '[]'
-cargo run -q -- child call folder-watch-actor patina:watch/control.reset '[]'
+# expect: typed call not implemented for child 'folder-watch-actor' operation ...
 
 # Compatibility lane still works where allowed (hybrid)
 cargo run -q -- child run folder-watch-actor -- status

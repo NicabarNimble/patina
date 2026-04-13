@@ -13,13 +13,6 @@ use crate::mother::{
     TaskIntent, TaskIntentKind,
 };
 
-mod watch_call_bindings {
-    wasmtime::component::bindgen!({
-        path: "children/folder-watch-actor/wit-contract",
-        world: "watch-contracts",
-    });
-}
-
 mod bindings {
     use std::collections::HashMap;
 
@@ -1072,19 +1065,12 @@ impl ChildEngine {
             active_bindings: std::collections::HashMap::new(),
         };
         let mut store = Store::new(wasm_engine(), host_state);
-        let raw_instance = linker.instantiate(&mut store, component)?;
-        let instance = bindings::Child::new(&mut store, &raw_instance)?;
-        let watch_instance =
-            watch_call_bindings::WatchContracts::new(&mut store, &raw_instance).ok();
+        let instance = bindings::Child::instantiate(&mut store, component, &linker)?;
         instance.call_init(&mut store)?;
         let name = instance.call_name(&mut store)?;
         Ok(Box::new(WasmChild {
             name,
-            inner: Mutex::new(WasmChildInner {
-                store,
-                instance,
-                watch_instance,
-            }),
+            inner: Mutex::new(WasmChildInner { store, instance }),
         }))
     }
 }
@@ -1097,7 +1083,6 @@ struct WasmChild {
 struct WasmChildInner {
     store: Store<HostState>,
     instance: bindings::Child,
-    watch_instance: Option<watch_call_bindings::WatchContracts>,
 }
 
 impl Child for WasmChild {
@@ -1171,127 +1156,11 @@ impl Child for WasmChild {
     }
 
     fn call(&self, request: &ChildCallRequest) -> Result<ChildResponse> {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let WasmChildInner {
-            store,
-            watch_instance,
-            ..
-        } = &mut *inner;
-
-        let watch = watch_instance.as_ref().ok_or_else(|| {
-            anyhow::anyhow!(
-                "typed call '{}' not supported by child '{}'",
-                request.operation_id,
-                self.name
-            )
-        })?;
-
-        let control = watch.patina_watch_control();
-
-        let payload = match request.operation_id.as_str() {
-            "patina:watch/control.status" => {
-                let stats = control.call_status(store)?;
-                serde_json::json!({
-                    "ticks": stats.ticks,
-                    "scans": stats.scans,
-                    "files_seen_total": stats.files_seen_total,
-                    "changes_detected_total": stats.changes_detected_total,
-                    "events_emitted_total": stats.events_emitted_total,
-                    "last_scan_at": stats.last_scan_at,
-                    "last_error": stats.last_error,
-                    "last_scan_duration_ms": stats.last_scan_duration_ms,
-                })
-            }
-            "patina:watch/control.scan-now" => {
-                let outcome = control.call_scan_now(store)?;
-                match outcome {
-                    Ok(scan) => serde_json::json!({
-                        "files_seen": scan.files_seen,
-                        "created": scan.created,
-                        "modified": scan.modified,
-                        "deleted": scan.deleted,
-                        "emitted": scan.emitted,
-                        "duration_ms": scan.duration_ms,
-                    }),
-                    Err(error) => return Err(anyhow::anyhow!(error)),
-                }
-            }
-            "patina:watch/control.reset" => {
-                let reset = control.call_reset(store)?;
-                match reset {
-                    Ok(()) => serde_json::json!({"status": "ok"}),
-                    Err(error) => return Err(anyhow::anyhow!(error)),
-                }
-            }
-            "patina:watch/control.configure" => {
-                let args = request
-                    .args
-                    .as_array()
-                    .ok_or_else(|| anyhow::anyhow!("typed call configure expects args array"))?;
-                let config = args.first().ok_or_else(|| {
-                    anyhow::anyhow!("typed call configure expects args[0] config")
-                })?;
-                let cfg = watch_call_bindings::patina::watch::types::WatcherConfig {
-                    watch_path: config
-                        .get("watch-path")
-                        .or_else(|| config.get("watch_path"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("/input")
-                        .to_string(),
-                    stream_name: config
-                        .get("stream-name")
-                        .or_else(|| config.get("stream_name"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("watch.folder")
-                        .to_string(),
-                    recursive: config
-                        .get("recursive")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(true),
-                    include_hidden: config
-                        .get("include-hidden")
-                        .or_else(|| config.get("include_hidden"))
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false),
-                    emit_existing_on_start: config
-                        .get("emit-existing-on-start")
-                        .or_else(|| config.get("emit_existing_on_start"))
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false),
-                    extensions: config
-                        .get("extensions")
-                        .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|v| v.as_str().map(ToString::to_string))
-                                .collect::<Vec<_>>()
-                        })
-                        .unwrap_or_default(),
-                };
-                let reset_snapshot = args.get(1).and_then(|v| v.as_bool()).unwrap_or(false);
-                let applied = control.call_configure(store, &cfg, reset_snapshot)?;
-                match applied {
-                    Ok(applied) => serde_json::json!({
-                        "watch_path": applied.watch_path,
-                        "stream_name": applied.stream_name,
-                        "recursive": applied.recursive,
-                        "include_hidden": applied.include_hidden,
-                        "emit_existing_on_start": applied.emit_existing_on_start,
-                        "extensions": applied.extensions,
-                    }),
-                    Err(error) => return Err(anyhow::anyhow!(error)),
-                }
-            }
-            other => {
-                anyhow::bail!(
-                    "typed call '{}' not implemented for child '{}'",
-                    other,
-                    self.name
-                )
-            }
-        };
-
-        Ok(ChildResponse { payload })
+        anyhow::bail!(
+            "typed call not implemented for child '{}' operation '{}'",
+            self.name,
+            request.operation_id
+        )
     }
 
     fn drain(&mut self, limit: u32) -> Result<Vec<PendingEvent>> {
