@@ -23,11 +23,12 @@ Target:
 
 ## Read-first code anchors
 
-- `mother/src/runtime.rs`: `Child` trait currently exposes only `handle` for business invocation.
+- `mother/src/runtime.rs`: `Child` trait exposes `handle` and `call`; default `call` is fail-closed.
 - `src/child/internal/child.rs`: `WasmChild::handle` bridges action+JSON payload into `instance.call_handle`.
-- `mother/src/registry.rs`: handle boundary metrics currently key off `action` labels.
-- `mother/src/http_api.rs`: child endpoint shape is `/child/{name}/{action}`.
-- `src/main.rs`: `ChildCommands::Run` is action+payload oriented.
+- `src/child/internal/child.rs`: `WasmChild::call` is fail-closed generic (no watcher-specific contract branch).
+- `mother/src/registry.rs`: enforces ingress policy on both handle and call and emits both metric families.
+- `mother/src/http_api.rs`: child endpoint shape remains `/child/{name}/{action}`, with `action == call` for typed lane.
+- `src/main.rs`: includes `ChildCommands::Run` and `ChildCommands::Call`.
 
 These anchors define the compatibility surface we must preserve while adding typed ingress.
 
@@ -101,9 +102,10 @@ At runtime abstraction level, add one typed call seam beside handle:
 ## Rollout
 
 1. Implement hybrid first.
-2. Prove on `folder-watch-actor`.
-3. Enable `wit-only` for selected children.
-4. Keep handle lane for service children until contracts stabilize.
+2. Keep runtime typed call fail-closed generic until generic dispatcher exists.
+3. Use `watch-null-sink` to validate typed event wiring without persistence.
+4. Enable `wit-only` for selected children once generic dispatch exists.
+5. Keep handle lane for service children until contracts stabilize.
 
 ## File touchpoints
 
@@ -118,3 +120,5 @@ At runtime abstraction level, add one typed call seam beside handle:
 
 WASI remains capability source of truth.
 Custom WIT is only for business-domain contracts not covered by WASI.
+
+Explicit anti-drift rule: Mother must not add per-domain typed binding branches (e.g. watcher-specific runtime fields). Domain behavior stays in children.

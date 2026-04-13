@@ -27,6 +27,8 @@ related:
   - src/main.rs
   - children/folder-watch-actor/wit-contract/watch.wit
   - layer/surface/build/feat/folder-watch-actor-child/SPEC.md
+  - children/watch-null-sink/
+  - layer/surface/build/feat/watch-null-sink-child/SPEC.md
 exit_criteria:
   - id: mwd1-manifest-ingress-mode
     text: "child.toml supports explicit ingress mode (`handle`, `hybrid`, `wit-only`) for child kind `child`; default remains backward-compatible."
@@ -103,14 +105,22 @@ Concretely:
 
 The following behavior is established in code and constrains this spec:
 
-1. `src/child/internal/child.rs` (`WasmChild::handle`) currently serializes JSON payload and calls `instance.call_handle(...)`.
-2. `mother/src/runtime.rs` `Child` trait exposes business ingress as `handle(&ChildRequest)` only.
-3. `mother/src/registry.rs` observes handle boundary metrics keyed by `action`.
-4. `mother/src/http_api.rs` exposes `/child/{name}/{action}` and `ApiRuntime::child_handle(...)`.
-5. `src/main.rs` `ChildCommands::Run` maps CLI args to action/payload and routes to handle.
-6. `src/child/internal/mod.rs` `ChildManifest` currently has no ingress-mode/operation-allowlist fields.
+1. `src/child/internal/child.rs` (`WasmChild::handle`) serializes JSON payload and calls `instance.call_handle(...)`.
+2. `mother/src/runtime.rs` `Child` trait now includes both `handle(&ChildRequest)` and `call(&ChildCallRequest)`; default `call` is fail-closed.
+3. `src/child/internal/child.rs` `WasmChild::call` is currently fail-closed generic (no watcher-specific typed binding branch in Mother runtime).
+4. `mother/src/registry.rs` enforces ingress policy for both `handle` and `call`, and emits both handle and WIT-call metrics.
+5. `mother/src/http_api.rs` serves typed calls through `/child/{name}/call` (special action in existing child route).
+6. `src/main.rs` provides both `ChildCommands::Run` and `ChildCommands::Call`.
+7. `src/child/internal/mod.rs` `ChildManifest` now parses ingress mode and operation allowlist.
 
 All implementation slices must preserve compatibility with this baseline unless a slice explicitly migrates one seam.
+
+## Findings Update (2026-04-13)
+
+- Removed watcher-specific typed binding from Mother runtime (`watch_call_bindings` and explicit `patina:watch/control.*` branch).
+- `WasmChild::call` is intentionally fail-closed generic again.
+- This keeps Mother from becoming domain-child logic and preserves strict separation: children own domain contracts, Mother owns orchestration/policy.
+- Added `watch-null-sink` child as an ephemeral typed event sink so connection testing can proceed without pushing watch-domain behavior into Mother.
 
 ## Architecture Rule (locked)
 
@@ -217,7 +227,8 @@ If omitted, behavior remains backward-compatible (`handle`).
 
 ### Phase 2 — First production child on WIT path
 - Enable hybrid for `folder-watch-actor`.
-- Prove all watcher business ops through WIT dispatch.
+- Keep runtime fail-closed until generic typed dispatcher lands.
+- Use `watch-null-sink` to validate child-to-child typed event wiring without persistence side effects.
 
 ### Phase 3 — Strict mode
 - Switch selected children to `wit-only`.
@@ -314,6 +325,11 @@ cargo test -q -p mother child_call_route_rejects_missing_operation_id
 cargo build --manifest-path children/folder-watch-actor/Cargo.toml --target wasm32-wasip2
 cp children/folder-watch-actor/target/wasm32-wasip2/debug/patina_ai_child_folder_watch_actor.wasm ~/.patina/plugins/folder-watch-actor.wasm
 cp children/folder-watch-actor/child.toml ~/.patina/plugins/folder-watch-actor.toml
+
+# Build and inspect null sink child (typed event sink, no persistence)
+cargo build --manifest-path children/watch-null-sink/Cargo.toml --target wasm32-wasip2
+wasm-tools component wit children/watch-null-sink/target/wasm32-wasip2/debug/patina_ai_child_watch_null_sink.wasm
+# expect: export patina:watch/events@0.1.0
 
 # Audit view: ingress mode + operations
 cargo run -q -- child list
