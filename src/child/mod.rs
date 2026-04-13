@@ -10,7 +10,7 @@ pub(crate) mod toy_host;
 #[doc(hidden)]
 pub mod testing {
     pub use super::internal::{
-        check_capabilities, ChildEngine, ChildKind, ChildManifest, ChildProvides,
+        check_capabilities, ChildEngine, ChildIngressMode, ChildKind, ChildManifest, ChildProvides,
         FilesystemAccessMode, FilesystemPreopen, PipelineEngine,
     };
     pub use super::toy_host::v2::{events_subscribe, EventRecord};

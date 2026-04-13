@@ -35,6 +35,9 @@ child = "test"
     assert_eq!(m.version, "0.0.0"); // default
     assert_eq!(m.capabilities, vec!["host_log"]);
     assert_eq!(m.provides.child.as_deref(), Some("test"));
+    assert_eq!(m.ingress_mode, ChildIngressMode::Handle);
+    assert_eq!(m.contract_default_operation, None);
+    assert!(m.contract_allow_operations.is_empty());
 }
 
 #[test]
@@ -104,6 +107,74 @@ child = "schema-enforcer"
 
     let m = ChildManifest::from_path(f.path()).unwrap();
     assert!(m.inside_accepts.is_empty());
+}
+
+#[test]
+fn manifest_parses_ingress_policy_and_contract_allowlist() {
+    let f = write_temp_manifest(
+        r#"
+[child]
+name = "folder-watch-actor"
+kind = "child"
+
+[child.ingress]
+mode = "hybrid"
+
+[child.contract]
+default = "patina:watch/control.status"
+allow = [
+  "patina:watch/control.configure",
+  "patina:watch/control.status",
+]
+
+[needs]
+toys = ["logging"]
+
+[provides]
+child = "folder-watch-actor"
+"#,
+    );
+
+    let m = ChildManifest::from_path(f.path()).unwrap();
+    assert_eq!(m.ingress_mode, ChildIngressMode::Hybrid);
+    assert_eq!(
+        m.contract_default_operation,
+        Some("patina:watch/control.status".to_string())
+    );
+    assert_eq!(
+        m.contract_allow_operations,
+        vec![
+            "patina:watch/control.configure".to_string(),
+            "patina:watch/control.status".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn manifest_rejects_unknown_ingress_mode() {
+    let f = write_temp_manifest(
+        r#"
+[child]
+name = "bad-ingress"
+kind = "child"
+
+[child.ingress]
+mode = "typed-only"
+
+[needs]
+toys = ["logging"]
+
+[provides]
+child = "bad-ingress"
+"#,
+    );
+
+    let err = ChildManifest::from_path(f.path()).unwrap_err();
+    assert!(
+        err.to_string().contains("unknown child ingress mode"),
+        "got: {}",
+        err
+    );
 }
 
 #[test]
@@ -504,6 +575,9 @@ fn capabilities_all_granted() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     assert!(check_capabilities(&m).is_ok());
 }
@@ -543,6 +617,9 @@ fn capabilities_empty() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     assert!(check_capabilities(&m).is_ok());
 }
@@ -582,6 +659,9 @@ fn capabilities_denied() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     let err = check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
@@ -696,6 +776,9 @@ fn check_capabilities_rejects_unknown_query_kinds() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     let err = check_capabilities(&m).unwrap_err();
     assert!(
@@ -740,6 +823,9 @@ fn check_capabilities_accepts_known_query_kinds() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     assert!(check_capabilities(&m).is_ok());
 }
@@ -883,6 +969,9 @@ fn check_capabilities_rejects_empty_http_domain() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     let err = check_capabilities(&m).unwrap_err();
     assert!(err.to_string().contains("empty"), "got: {}", err);
@@ -923,6 +1012,9 @@ fn check_capabilities_rejects_http_domain_with_path() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     let err = check_capabilities(&m).unwrap_err();
     assert!(err.to_string().contains("path"), "got: {}", err);
@@ -963,6 +1055,9 @@ fn check_capabilities_accepts_valid_http_domains() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     assert!(check_capabilities(&m).is_ok());
 }
@@ -1006,6 +1101,9 @@ fn granted_capabilities_includes_http_domains() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     let grants = m.granted_capabilities();
     assert!(grants.http_domains.contains("api.github.com"));
@@ -1171,6 +1269,9 @@ fn check_capabilities_rejects_pipeline_with_query() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     let err = check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
@@ -1216,6 +1317,9 @@ fn check_capabilities_rejects_pipeline_with_http() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     let err = check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
@@ -1461,6 +1565,9 @@ fn check_capabilities_rejects_host_secrets_domain_not_in_host_http() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     let err = check_capabilities(&m).unwrap_err();
     let msg = err.to_string();
@@ -1514,6 +1621,9 @@ fn check_capabilities_accepts_host_secrets_with_matching_host_http() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     assert!(check_capabilities(&m).is_ok());
 }
@@ -1565,6 +1675,9 @@ fn granted_capabilities_includes_credential_mappings() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     let grants = m.granted_capabilities();
     assert!(grants.credential_mappings.contains_key("api.github.com"));
@@ -2373,6 +2486,9 @@ fn role_world_valid_combo_passes() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     // connector + mother-child is valid — check_capabilities should pass
     assert!(check_capabilities(&m).is_ok());
@@ -2414,6 +2530,9 @@ fn role_world_unusual_combo_still_passes() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     // Unusual combo warns but does NOT bail
     assert!(check_capabilities(&m).is_ok());
@@ -2455,6 +2574,9 @@ fn role_none_skips_validation() {
         belief_write_actions: vec![],
         toys: crate::mother::GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     assert!(check_capabilities(&m).is_ok());
 }

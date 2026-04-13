@@ -6,8 +6,8 @@
 
 use mother_crate::registry::ChildRegistry;
 use patina::child::testing::{
-    events_subscribe, ChildEngine, ChildKind, ChildManifest, ChildProvides, FilesystemAccessMode,
-    FilesystemPreopen, PipelineEngine,
+    events_subscribe, ChildEngine, ChildIngressMode, ChildKind, ChildManifest, ChildProvides,
+    FilesystemAccessMode, FilesystemPreopen, PipelineEngine,
 };
 use patina::mother::{Child, ChildHealth, ChildRequest, GrantedToys};
 
@@ -135,13 +135,13 @@ fn dedup_filter_component_path() -> Option<std::path::PathBuf> {
     None
 }
 
-fn record_writer_component_path() -> Option<std::path::PathBuf> {
+fn parquet_writer_component_path() -> Option<std::path::PathBuf> {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for rel in [
-        "target/wasm32-wasip2/debug/patina_ai_child_record_writer.wasm",
-        "target/wasm32-wasip2/release/patina_ai_child_record_writer.wasm",
-        "target/wasm32-wasip1/debug/patina_ai_child_record_writer.wasm",
-        "target/wasm32-wasip1/release/patina_ai_child_record_writer.wasm",
+        "target/wasm32-wasip2/debug/patina_ai_child_parquet_writer.wasm",
+        "target/wasm32-wasip2/release/patina_ai_child_parquet_writer.wasm",
+        "target/wasm32-wasip1/debug/patina_ai_child_parquet_writer.wasm",
+        "target/wasm32-wasip1/release/patina_ai_child_parquet_writer.wasm",
     ] {
         let path = root.join(rel);
         if path.exists() {
@@ -211,6 +211,9 @@ fn load_repos_child() -> Option<Box<dyn Child>> {
         belief_write_actions: vec![],
         toys: GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
 
     match engine.instantiate_child(&component, &manifest, None) {
@@ -266,6 +269,9 @@ fn echo_pipeline_manifest() -> ChildManifest {
         belief_write_actions: vec![],
         toys: GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     }
 }
 
@@ -846,7 +852,7 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
     let Some(dedup_wasm_path) = dedup_filter_component_path() else {
         return;
     };
-    let Some(writer_wasm_path) = record_writer_component_path() else {
+    let Some(writer_wasm_path) = parquet_writer_component_path() else {
         return;
     };
     let Some(catalog_wasm_path) = lakehouse_catalog_component_path() else {
@@ -883,7 +889,7 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
         let writer_wasm_bytes = std::fs::read(&writer_wasm_path).unwrap();
         let writer_component = engine.load_component(&writer_wasm_bytes).unwrap();
         let writer_manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("children/record-writer/child.toml");
+            .join("children/parquet-writer/child.toml");
         let writer_manifest = ChildManifest::from_path(&writer_manifest_path).unwrap();
 
         let catalog_wasm_bytes = std::fs::read(&catalog_wasm_path).unwrap();
@@ -1096,7 +1102,7 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
 
         let writer_response = registry
             .handle(
-                "record-writer",
+                "parquet-writer",
                 &ChildRequest {
                     action: "write-records".into(),
                     payload: serde_json::json!({
@@ -1306,7 +1312,7 @@ fn folder_text_to_parquet_six_child_pipeline_composes_via_events() {
 
         let writer_rerun = registry
             .handle(
-                "record-writer",
+                "parquet-writer",
                 &ChildRequest {
                     action: "write-records".into(),
                     payload: serde_json::json!({
@@ -1481,6 +1487,9 @@ fn wasm_models_child_handle_roundtrip() {
         belief_write_actions: vec![],
         toys: GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
 
     let child = match engine.instantiate_child(&component, &manifest, None) {
@@ -1552,6 +1561,9 @@ fn wasm_models_child_health() {
         belief_write_actions: vec![],
         toys: GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
 
     let child = match engine.instantiate_child(&component, &manifest, None) {
@@ -1742,6 +1754,9 @@ fn benchmark_plugin_performance() {
         belief_write_actions: vec![],
         toys: GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
     let t2 = Instant::now();
     let child = match engine.instantiate_child(&component, &manifest, None) {
@@ -1933,6 +1948,9 @@ fn wasm_trap_pipeline_panic_returns_error() {
         belief_write_actions: vec![],
         toys: GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
 
     let request = r#"{"op":"echo","version":"1","payload":{}}"#;
@@ -1998,6 +2016,9 @@ fn wasm_trap_mother_child_panic_returns_error() {
         belief_write_actions: vec![],
         toys: GrantedToys::default(),
         inside_accepts: vec![],
+        ingress_mode: ChildIngressMode::Handle,
+        contract_default_operation: None,
+        contract_allow_operations: vec![],
     };
 
     // Instantiation with wrong world should fail cleanly
