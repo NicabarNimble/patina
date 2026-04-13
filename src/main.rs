@@ -992,6 +992,16 @@ enum ChildCommands {
         #[arg(last = true)]
         args: Vec<String>,
     },
+    /// Call a typed WIT business operation on a child
+    Call {
+        /// Child name (matches <name>.wasm in command-children dir)
+        name: String,
+        /// Fully-qualified operation id (`package:interface.function`)
+        operation_id: String,
+        /// JSON args payload (positional array)
+        #[arg(default_value = "[]")]
+        args_json: String,
+    },
     /// Create a new child project from template
     Init {
         /// Child name (valid Rust crate name, e.g. "review-bot")
@@ -1584,6 +1594,71 @@ fn main() -> Result<()> {
                         let component = engine.load_component(&wasm_bytes)?;
                         let response = engine.handle(&component, &name, request)?;
                         println!("{}", response);
+                    }
+                }
+            }
+            ChildCommands::Call {
+                name,
+                operation_id,
+                args_json,
+            } => {
+                let command_children_dir = patina::paths::child::command_children_dir();
+                let wasm_path = command_children_dir.join(format!("{}.wasm", name));
+                let toml_path = command_children_dir.join(format!("{}.toml", name));
+
+                if !wasm_path.exists() {
+                    anyhow::bail!(
+                        "child '{}' not found at {}\nInstall: cp {}.wasm {}",
+                        name,
+                        wasm_path.display(),
+                        name,
+                        command_children_dir.display()
+                    );
+                }
+
+                let manifest = if toml_path.exists() {
+                    patina::child::engine::ChildManifest::from_path(&toml_path)?
+                } else {
+                    anyhow::bail!(
+                        "child manifest not found at {}\nTyped child calls require a .toml manifest",
+                        toml_path.display()
+                    );
+                };
+
+                if manifest.world != patina::child::engine::ChildKind::Child {
+                    anyhow::bail!(
+                        "child '{}' is world '{}' and does not support typed child call",
+                        name,
+                        manifest.world
+                    );
+                }
+
+                let args: serde_json::Value = serde_json::from_str(&args_json)
+                    .map_err(|e| anyhow::anyhow!("invalid args_json: {}", e))?;
+
+                let wasm_bytes = std::fs::read(&wasm_path)?;
+                let engine = patina::child::engine::ChildEngine::new()?;
+                let component = engine.load_component(&wasm_bytes)?;
+                let query_fn = make_query_dispatch(&manifest);
+                let mut child = engine.instantiate_child(&component, &manifest, query_fn)?;
+
+                use patina::mother::MotherHost;
+                struct CliHost;
+                impl MotherHost for CliHost {
+                    fn log(&self, child: &str, message: &str) {
+                        eprintln!("[{}] {}", child, message);
+                    }
+                }
+                child.on_load(&CliHost)?;
+
+                let request = patina::mother::ChildCallRequest { operation_id, args };
+                match child.call(&request) {
+                    Ok(response) => {
+                        println!("{}", serde_json::to_string_pretty(&response.payload)?)
+                    }
+                    Err(e) => {
+                        eprintln!("error: {}", e);
+                        std::process::exit(1);
                     }
                 }
             }

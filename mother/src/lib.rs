@@ -28,9 +28,9 @@ pub mod tasks;
 pub mod toys;
 
 pub use runtime::{
-    Child, ChildHealth, ChildReloadResult, ChildRequest, ChildResponse, DegradedChild, MotherHost,
-    MotherRuntime, PandoLoadResult, PandoRefreshResult, PendingEvent, ReadinessState, TaskIntent,
-    TaskIntentKind, Toy,
+    Child, ChildCallRequest, ChildHealth, ChildReloadResult, ChildRequest, ChildResponse,
+    DegradedChild, MotherHost, MotherRuntime, PandoLoadResult, PandoRefreshResult, PendingEvent,
+    ReadinessState, TaskIntent, TaskIntentKind, Toy,
 };
 pub use state::{
     LakeCursorUpdate, MotherRuntimeStore, MotherSessionParticipant, MotherSessionRecord,

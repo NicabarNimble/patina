@@ -44,8 +44,8 @@ use patina_protocol::{
 
 // Child trait exports
 pub use crate::child::runtime::{
-    Child, ChildHealth, ChildRequest, ChildResponse, MotherHost, PendingEvent, TaskIntent,
-    TaskIntentKind, Toy,
+    Child, ChildCallRequest, ChildHealth, ChildRequest, ChildResponse, MotherHost, PendingEvent,
+    TaskIntent, TaskIntentKind, Toy,
 };
 pub use mother_crate::state::{
     InterfaceKindId, LakeCursorUpdate, MotherRuntimeStore, MotherSessionParticipant,

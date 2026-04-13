@@ -811,6 +811,16 @@ impl ApiRuntime for ServerState {
         Ok(self.registry.handle(child_name, &request)?.payload)
     }
 
+    fn child_call(
+        &self,
+        child_name: &str,
+        operation_id: String,
+        args: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        let request = patina::mother::ChildCallRequest { operation_id, args };
+        Ok(self.registry.call(child_name, &request)?.payload)
+    }
+
     fn atlas_dashboard_html(&self) -> anyhow::Result<String> {
         let root = patina::session::SessionManager::find_project_root()
             .or_else(|_| std::env::current_dir())
@@ -1927,23 +1937,23 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let children_dir = temp.path();
         std::fs::write(
-            children_dir.join("patina_ai_child_record_writer.wasm"),
+            children_dir.join("patina_ai_child_parquet_writer.wasm"),
             b"wasm",
         )
         .unwrap();
         std::fs::write(
-            children_dir.join("patina_ai_child_record_writer.toml"),
+            children_dir.join("patina_ai_child_parquet_writer.toml"),
             r#"
 [child]
-name = "record-writer"
+name = "parquet-writer"
 kind = "child"
 "#,
         )
         .unwrap();
 
         let installed = installed_child_names_from_dir(children_dir);
-        assert!(installed.contains("record-writer"));
-        assert!(!installed.contains("patina_ai_child_record_writer"));
+        assert!(installed.contains("parquet-writer"));
+        assert!(!installed.contains("patina_ai_child_parquet_writer"));
     }
 
     #[test]

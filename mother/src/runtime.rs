@@ -13,6 +13,17 @@ pub trait Child: Send + Sync {
 
     fn handle(&self, request: &ChildRequest) -> Result<ChildResponse>;
 
+    /// Typed business call seam.
+    ///
+    /// Default is fail-closed until a child/runtime provides operation bindings.
+    fn call(&self, request: &ChildCallRequest) -> Result<ChildResponse> {
+        anyhow::bail!(
+            "typed call not implemented for child '{}' operation '{}'",
+            self.name(),
+            request.operation_id
+        )
+    }
+
     fn drain(&mut self, _limit: u32) -> Result<Vec<PendingEvent>> {
         Ok(vec![])
     }
@@ -48,6 +59,12 @@ pub struct ChildRequest {
 #[derive(Debug, Clone)]
 pub struct ChildResponse {
     pub payload: serde_json::Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChildCallRequest {
+    pub operation_id: String,
+    pub args: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -169,4 +186,78 @@ pub trait MotherRuntime: Send + Sync {
     fn refresh_pandos(&self) -> Result<PandoRefreshResult>;
     fn reload_child(&self, name: &str) -> Result<ChildReloadResult>;
     fn query_readiness(&self) -> ReadinessState;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct NoopHost;
+
+    impl MotherHost for NoopHost {
+        fn log(&self, _child: &str, _message: &str) {}
+    }
+
+    struct StubChild;
+
+    impl Child for StubChild {
+        fn name(&self) -> &str {
+            "stub"
+        }
+
+        fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
+            Ok(())
+        }
+
+        fn health(&self) -> ChildHealth {
+            ChildHealth::Healthy
+        }
+
+        fn handle(&self, request: &ChildRequest) -> Result<ChildResponse> {
+            Ok(ChildResponse {
+                payload: serde_json::json!({
+                    "action": request.action,
+                    "payload": request.payload,
+                }),
+            })
+        }
+    }
+
+    #[test]
+    fn handle_path_still_roundtrips_request_payload() {
+        let mut child = StubChild;
+        child.on_load(&NoopHost).expect("stub load should succeed");
+
+        let request = ChildRequest {
+            action: "status".to_string(),
+            payload: serde_json::json!({"ok": true}),
+        };
+
+        let response = child.handle(&request).expect("handle should succeed");
+        assert_eq!(response.payload["action"], serde_json::json!("status"));
+        assert_eq!(response.payload["payload"], serde_json::json!({"ok": true}));
+    }
+
+    #[test]
+    fn typed_call_defaults_fail_closed_for_unknown_operation() {
+        let child = StubChild;
+        let err = child
+            .call(&ChildCallRequest {
+                operation_id: "patina:watch/control.status".to_string(),
+                args: serde_json::json!([]),
+            })
+            .unwrap_err();
+
+        let message = err.to_string();
+        assert!(
+            message.contains("typed call not implemented"),
+            "got: {}",
+            message
+        );
+        assert!(
+            message.contains("patina:watch/control.status"),
+            "got: {}",
+            message
+        );
+    }
 }

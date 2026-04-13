@@ -160,6 +160,14 @@ impl Client {
             .map_err(|e| anyhow::anyhow!("Failed to decode typed child response: {}", e))
     }
 
+    pub fn child_call(&self, child: &str, operation_id: &str, args: &Value) -> Result<Value> {
+        let payload = serde_json::json!({
+            "operation_id": operation_id,
+            "args": args,
+        });
+        self.child_action(child, "call", &payload)
+    }
+
     pub fn pando_registry_init(&self, request: &PandoRegistryInit) -> Result<PandoRegistryState> {
         if self.try_uds {
             let body = serde_json::to_vec(request)?;

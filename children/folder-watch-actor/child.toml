@@ -1,0 +1,28 @@
+[child]
+name = "folder-watch-actor"
+kind = "child"
+role = "app"
+
+[child.ingress]
+mode = "hybrid"
+
+[child.contract]
+default = "patina:watch/control.status"
+allow = [
+  "patina:watch/control.configure",
+  "patina:watch/control.status",
+  "patina:watch/control.scan-now",
+  "patina:watch/control.reset",
+]
+
+[needs]
+toys = ["logging", "keyvalue", "messaging", "measure", "filesystem"]
+
+[needs.scopes.filesystem]
+path = "/tmp"
+
+[needs.metrics]
+files_seen = { type = "counter", labels = [] }
+changes_detected = { type = "counter", labels = ["kind"] }
+events_emitted = { type = "counter", labels = [] }
+scan_duration_ms = { type = "gauge", labels = [] }

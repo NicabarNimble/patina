@@ -36,10 +36,10 @@ pub fn execute_list() -> Result<()> {
         command_children_dir.display()
     );
     println!(
-        "  {:<20} {:<10} {:<15} {:<12} STATUS",
-        "NAME", "VERSION", "KIND", "ROLE"
+        "  {:<20} {:<10} {:<15} {:<12} {:<10} {:<8} STATUS",
+        "NAME", "VERSION", "KIND", "ROLE", "INGRESS", "OPS"
     );
-    println!("  {}", "-".repeat(72));
+    println!("  {}", "-".repeat(120));
 
     for entry in &entries {
         let wasm_path = entry.path();
@@ -58,9 +58,20 @@ pub fn execute_list() -> Result<()> {
                         .as_ref()
                         .map(|r| r.to_string())
                         .unwrap_or_else(|| "-".into());
+                    let operations = if manifest.contract_allow_operations.is_empty() {
+                        "-".to_string()
+                    } else {
+                        manifest.contract_allow_operations.join(",")
+                    };
                     println!(
-                        "  {:<20} {:<10} {:<15} {:<12} {}",
-                        manifest.name, manifest.version, manifest.world, role_str, status
+                        "  {:<20} {:<10} {:<15} {:<12} {:<10} {:<8} {}",
+                        manifest.name,
+                        manifest.version,
+                        manifest.world,
+                        role_str,
+                        manifest.ingress_mode,
+                        operations,
+                        status
                     );
                 }
                 Err(e) => {

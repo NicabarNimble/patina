@@ -29,6 +29,12 @@ pub trait ApiRuntime {
         action: String,
         payload: serde_json::Value,
     ) -> Result<serde_json::Value>;
+    fn child_call(
+        &self,
+        child_name: &str,
+        operation_id: String,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value>;
     fn atlas_dashboard_html(&self) -> Result<String>;
     fn atlas_snapshot(&self) -> Result<serde_json::Value>;
     fn bridge_translate(
@@ -595,6 +601,25 @@ pub fn handle_child_request(request: &HttpRequest, runtime: &dyn ApiRuntime) -> 
         }
     };
 
+    if action == "call" {
+        let operation_id = payload
+            .get("operation_id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        if operation_id.is_empty() {
+            return json_error(400, "Missing operation_id for child typed call");
+        }
+        let args = payload
+            .get("args")
+            .cloned()
+            .unwrap_or(serde_json::json!([]));
+        return match runtime.child_call(child_name, operation_id, args) {
+            Ok(payload) => HttpResponse::json(200, &payload),
+            Err(e) => json_error(404, &e.to_string()),
+        };
+    }
+
     match runtime.child_handle(child_name, action.to_string(), payload) {
         Ok(payload) => HttpResponse::json(200, &payload),
         Err(e) => json_error(404, &e.to_string()),
@@ -719,6 +744,19 @@ mod tests {
             payload: serde_json::Value,
         ) -> Result<serde_json::Value> {
             Ok(payload)
+        }
+
+        fn child_call(
+            &self,
+            _child_name: &str,
+            operation_id: String,
+            args: serde_json::Value,
+        ) -> Result<serde_json::Value> {
+            Ok(serde_json::json!({
+                "operation_id": operation_id,
+                "args": args,
+                "typed": true,
+            }))
         }
 
         fn atlas_dashboard_html(&self) -> Result<String> {
@@ -924,6 +962,42 @@ mod tests {
     }
 
     #[test]
+    fn child_call_route_dispatches_typed_operation() {
+        let request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/child/folder-watch-actor/call".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&serde_json::json!({
+                "operation_id": "patina:watch/control.status",
+                "args": [],
+            }))
+            .unwrap(),
+        };
+
+        let response = handle_child_request(&request, &StubRuntime);
+        assert_eq!(response.status, 200);
+        let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(
+            payload.get("operation_id").and_then(|v| v.as_str()),
+            Some("patina:watch/control.status")
+        );
+        assert_eq!(payload.get("typed"), Some(&serde_json::json!(true)));
+    }
+
+    #[test]
+    fn child_call_route_rejects_missing_operation_id() {
+        let request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/child/folder-watch-actor/call".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&serde_json::json!({"args": []})).unwrap(),
+        };
+
+        let response = handle_child_request(&request, &StubRuntime);
+        assert_eq!(response.status, 400);
+    }
+
+    #[test]
     fn bridge_translate_route_returns_allow_and_deny_payloads() {
         let allow_request = HttpRequest {
             method: "POST".to_string(),
@@ -1046,6 +1120,18 @@ mod tests {
                 _payload: serde_json::Value,
             ) -> Result<serde_json::Value> {
                 Ok(serde_json::Value::Null)
+            }
+
+            fn child_call(
+                &self,
+                _child_name: &str,
+                operation_id: String,
+                args: serde_json::Value,
+            ) -> Result<serde_json::Value> {
+                Ok(serde_json::json!({
+                    "operation_id": operation_id,
+                    "args": args,
+                }))
             }
             fn atlas_dashboard_html(&self) -> Result<String> {
                 Ok("<html><body>atlas</body></html>".to_string())
