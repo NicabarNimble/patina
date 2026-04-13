@@ -1,0 +1,21 @@
+[package]
+name = "patina-ai-child-watch-null-sink"
+version = "0.1.0"
+edition = "2021"
+description = "Ephemeral sink for patina:watch/events that drops payloads after logging"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wit-bindgen = "0.41.0"
+patina-sdk = { path = "../../sdk/patina-sdk" }
+
+[package.metadata.component]
+package = "patina:watch-null-sink"
+
+[package.metadata.component.target]
+path = "wit"
+world = "watch-null-sink"
+
+[workspace]

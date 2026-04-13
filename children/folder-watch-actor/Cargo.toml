@@ -19,7 +19,7 @@ chrono = { version = "0.4", features = ["serde"] }
 package = "patina:folder-watch-actor"
 
 [package.metadata.component.target]
-path = "../../wit/child"
-world = "child"
+path = "wit"
+world = "folder-watch-actor"
 
 [workspace]
