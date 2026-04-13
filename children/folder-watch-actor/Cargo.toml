@@ -1,0 +1,25 @@
+[package]
+name = "patina-ai-child-folder-watch-actor"
+version = "0.1.0"
+edition = "2021"
+description = "Reusable folder watch child actor (polling delta emitter)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+patina-sdk = { path = "../../sdk/patina-sdk" }
+wit-bindgen = "0.41"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+chrono = { version = "0.4", features = ["serde"] }
+
+[package.metadata.component]
+package = "patina:folder-watch-actor"
+
+[package.metadata.component.target]
+path = "../../wit/child"
+world = "child"
+
+[workspace]
