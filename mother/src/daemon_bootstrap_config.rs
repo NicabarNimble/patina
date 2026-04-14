@@ -244,6 +244,9 @@ mod tests {
                     post_lifecycle_warmup_children: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
+                    post_rivet_dispatch: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
                     post_inspector_typed_calls: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
@@ -360,6 +363,9 @@ mod tests {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
                     post_lifecycle_warmup_children: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    post_rivet_dispatch: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
                     post_inspector_typed_calls: Arc::new(|_| {

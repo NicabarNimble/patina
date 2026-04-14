@@ -1299,6 +1299,28 @@ impl ApiRuntime for ServerState {
         self.warmup_children_now()
     }
 
+    fn rivet_dispatch(
+        &self,
+        request: mother_crate::http_api::RivetDispatchRequest,
+    ) -> anyhow::Result<serde_json::Value> {
+        if self.rivet_integration != RivetIntegrationProfile::Enabled {
+            anyhow::bail!("invalid_request: rivet integration is disabled")
+        }
+
+        let call = patina::mother::ChildCallRequest {
+            operation_id: request.operation_id.clone(),
+            args: request.args,
+            correlation: request.correlation,
+        };
+        let payload = self.registry.call(&request.child, &call)?.payload;
+        Ok(serde_json::json!({
+            "adapter": "rivet",
+            "child": request.child,
+            "operation_id": call.operation_id,
+            "payload": payload,
+        }))
+    }
+
     fn typed_call_history(&self, limit: usize) -> anyhow::Result<serde_json::Value> {
         let calls = self.registry.typed_call_history(limit);
         Ok(serde_json::json!({
@@ -2269,6 +2291,37 @@ mod tests {
         tx: mpsc::Sender<()>,
     }
 
+    struct TypedDispatchChild;
+
+    impl Child for TypedDispatchChild {
+        fn name(&self) -> &str {
+            "rivet-dispatch-child"
+        }
+
+        fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
+            Ok(())
+        }
+
+        fn health(&self) -> ChildHealth {
+            ChildHealth::Healthy
+        }
+
+        fn handle(&self, _request: &ChildRequest) -> Result<ChildResponse> {
+            Ok(ChildResponse {
+                payload: serde_json::Value::Null,
+            })
+        }
+
+        fn call(&self, request: &patina::mother::ChildCallRequest) -> Result<ChildResponse> {
+            Ok(ChildResponse {
+                payload: serde_json::json!({
+                    "typed": true,
+                    "operation_id": request.operation_id,
+                }),
+            })
+        }
+    }
+
     impl Child for NotifyingChild {
         fn name(&self) -> &str {
             "notifying"
@@ -2297,6 +2350,123 @@ mod tests {
         assert!(options.host.is_none());
         assert_eq!(options.profile, DaemonStartupProfile::Full);
         assert_eq!(options.rivet, RivetIntegrationProfile::Disabled);
+    }
+
+    #[test]
+    fn rivet_dispatch_denied_when_profile_disabled() {
+        with_temp_project(|project_root| {
+            let runtime_store = patina::mother::MotherRuntimeStore::new(
+                project_root.join(".patina/local/data/mother-state.db"),
+            );
+            let state = ServerState::new(
+                "test-token".to_string(),
+                DaemonStartupProfile::Core,
+                RivetIntegrationProfile::Disabled,
+                ChildRegistry::new(),
+                runtime_store.clone(),
+                runtime_store.clone(),
+                federation::startup(&runtime_store),
+                Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+            );
+
+            let err = state
+                .rivet_dispatch(mother_crate::http_api::RivetDispatchRequest {
+                    child: "rivet-dispatch-child".to_string(),
+                    operation_id: "patina:watch/control.status".to_string(),
+                    args: serde_json::json!([]),
+                    correlation: None,
+                })
+                .unwrap_err();
+            assert!(
+                err.to_string().contains("rivet integration is disabled"),
+                "got: {}",
+                err
+            );
+        });
+    }
+
+    #[test]
+    fn rivet_dispatch_enabled_routes_through_registry_typed_call() {
+        with_temp_project(|project_root| {
+            let runtime_store = patina::mother::MotherRuntimeStore::new(
+                project_root.join(".patina/local/data/mother-state.db"),
+            );
+
+            let manifest_path = project_root.join("rivet-dispatch-child.toml");
+            std::fs::write(
+                &manifest_path,
+                r#"[child]
+name = "rivet-dispatch-child"
+version = "0.1.0"
+world = "child"
+
+[child.ingress]
+mode = "hybrid"
+
+[child.contract]
+allow = ["patina:watch/control.status"]
+"#,
+            )
+            .expect("write manifest");
+
+            let registry = ChildRegistry::new();
+            registry
+                .register_knowledge_with_paths(
+                    Box::new(TypedDispatchChild),
+                    std::path::PathBuf::new(),
+                    manifest_path,
+                )
+                .expect("register typed dispatch child");
+
+            let state = ServerState::new(
+                "test-token".to_string(),
+                DaemonStartupProfile::Core,
+                RivetIntegrationProfile::Enabled,
+                registry,
+                runtime_store.clone(),
+                runtime_store.clone(),
+                federation::startup(&runtime_store),
+                Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+            );
+
+            let response = state
+                .rivet_dispatch(mother_crate::http_api::RivetDispatchRequest {
+                    child: "rivet-dispatch-child".to_string(),
+                    operation_id: "patina:watch/control.status".to_string(),
+                    args: serde_json::json!([]),
+                    correlation: Some(patina::mother::CallCorrelation {
+                        rivet_run_id: Some("run-rivet-1".to_string()),
+                        rivet_actor_id: Some("actor-1".to_string()),
+                        rivet_workflow_id: None,
+                        rivet_job_id: None,
+                    }),
+                })
+                .expect("rivet dispatch should use typed path");
+
+            assert_eq!(
+                response.get("adapter").and_then(|v| v.as_str()),
+                Some("rivet")
+            );
+            assert_eq!(
+                response
+                    .get("payload")
+                    .and_then(|v| v.get("typed"))
+                    .and_then(|v| v.as_bool()),
+                Some(true)
+            );
+
+            let history = state.registry.typed_call_history(10);
+            let first = history.first().expect("typed call observation expected");
+            assert_eq!(first.child, "rivet-dispatch-child");
+            assert_eq!(first.operation_id, "patina:watch/control.status");
+            assert_eq!(
+                first
+                    .correlation
+                    .as_ref()
+                    .and_then(|c| c.rivet_run_id.as_deref()),
+                Some("run-rivet-1")
+            );
+        });
     }
 
     #[test]

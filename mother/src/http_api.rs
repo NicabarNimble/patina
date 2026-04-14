@@ -67,6 +67,7 @@ pub trait ApiRuntime {
     fn lifecycle_refresh(&self) -> Result<crate::PandoRefreshResult>;
     fn lifecycle_reload_child(&self, name: &str) -> Result<crate::ChildReloadResult>;
     fn lifecycle_warmup_children(&self) -> Result<crate::ChildWarmupResult>;
+    fn rivet_dispatch(&self, request: RivetDispatchRequest) -> Result<serde_json::Value>;
     fn typed_call_history(&self, limit: usize) -> Result<serde_json::Value>;
     fn builtin_spec_dispatch(
         &self,
@@ -242,6 +243,20 @@ struct LifecycleRefreshRequest {}
 
 #[derive(Deserialize, Default)]
 struct LifecycleWarmupRequest {}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RivetDispatchRequest {
+    pub child: String,
+    pub operation_id: String,
+    #[serde(default = "default_rivet_dispatch_args")]
+    pub args: serde_json::Value,
+    #[serde(default)]
+    pub correlation: Option<crate::CallCorrelation>,
+}
+
+fn default_rivet_dispatch_args() -> serde_json::Value {
+    serde_json::json!([])
+}
 
 #[derive(Deserialize, Default)]
 struct TypedCallHistoryRequest {
@@ -651,6 +666,31 @@ pub fn handle_lifecycle_warmup_children(
     }
 }
 
+pub fn handle_rivet_dispatch(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
+    if request.body.is_empty() {
+        return lifecycle_error(400, "invalid_request", "missing request body");
+    }
+
+    let payload: RivetDispatchRequest = match serde_json::from_slice(&request.body) {
+        Ok(value) => value,
+        Err(error) => {
+            return lifecycle_error(400, "invalid_request", &format!("invalid JSON: {}", error));
+        }
+    };
+
+    if payload.child.trim().is_empty() {
+        return lifecycle_error(400, "invalid_request", "child is required");
+    }
+    if payload.operation_id.trim().is_empty() {
+        return lifecycle_error(400, "invalid_request", "operation_id is required");
+    }
+
+    match runtime.rivet_dispatch(payload) {
+        Ok(response) => HttpResponse::json(200, &response),
+        Err(error) => lifecycle_error_from_anyhow(&error),
+    }
+}
+
 pub fn handle_inspector_typed_calls(
     request: &HttpRequest,
     runtime: &dyn ApiRuntime,
@@ -846,6 +886,7 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
     let lifecycle_refresh_runtime = Arc::clone(&runtime);
     let lifecycle_reload_runtime = Arc::clone(&runtime);
     let lifecycle_warmup_runtime = Arc::clone(&runtime);
+    let rivet_dispatch_runtime = Arc::clone(&runtime);
     let inspector_typed_calls_runtime = Arc::clone(&runtime);
     let child_runtime = Arc::clone(&runtime);
 
@@ -889,6 +930,9 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
         }),
         post_lifecycle_warmup_children: Arc::new(move |request| {
             handle_lifecycle_warmup_children(request, &*lifecycle_warmup_runtime)
+        }),
+        post_rivet_dispatch: Arc::new(move |request| {
+            handle_rivet_dispatch(request, &*rivet_dispatch_runtime)
         }),
         post_inspector_typed_calls: Arc::new(move |request| {
             handle_inspector_typed_calls(request, &*inspector_typed_calls_runtime)
@@ -1091,6 +1135,16 @@ mod tests {
             })
         }
 
+        fn rivet_dispatch(&self, request: RivetDispatchRequest) -> Result<serde_json::Value> {
+            Ok(serde_json::json!({
+                "child": request.child,
+                "operation_id": request.operation_id,
+                "args": request.args,
+                "correlation": request.correlation,
+                "adapter": "rivet"
+            }))
+        }
+
         fn typed_call_history(&self, limit: usize) -> Result<serde_json::Value> {
             Ok(serde_json::json!({
                 "count": limit.min(1),
@@ -1264,6 +1318,39 @@ mod tests {
             Some("run-123")
         );
         assert_eq!(payload.get("typed"), Some(&serde_json::json!(true)));
+    }
+
+    #[test]
+    fn rivet_dispatch_route_translates_to_typed_call_shape() {
+        let request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/api/rivet/dispatch".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&serde_json::json!({
+                "child": "folder-watch-actor",
+                "operation_id": "patina:watch/control.status",
+                "args": [],
+                "correlation": {
+                    "rivet_run_id": "run-123"
+                }
+            }))
+            .unwrap(),
+        };
+
+        let response = handle_rivet_dispatch(&request, &StubRuntime);
+        assert_eq!(response.status, 200);
+        let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(
+            payload.get("adapter").and_then(|v| v.as_str()),
+            Some("rivet")
+        );
+        assert_eq!(
+            payload
+                .get("correlation")
+                .and_then(|v| v.get("rivet_run_id"))
+                .and_then(|v| v.as_str()),
+            Some("run-123")
+        );
     }
 
     #[test]
@@ -1568,6 +1655,9 @@ mod tests {
             fn lifecycle_warmup_children(&self) -> Result<crate::ChildWarmupResult> {
                 anyhow::bail!("resource_exhausted: memory pressure high; warmup denied")
             }
+            fn rivet_dispatch(&self, _request: RivetDispatchRequest) -> Result<serde_json::Value> {
+                anyhow::bail!("invalid_request: rivet integration is disabled")
+            }
             fn typed_call_history(&self, _limit: usize) -> Result<serde_json::Value> {
                 Ok(serde_json::json!({"count": 0, "calls": []}))
             }
@@ -1620,6 +1710,25 @@ mod tests {
         assert_eq!(
             warmup_json.get("error").and_then(|v| v.as_str()),
             Some("resource_exhausted")
+        );
+
+        let rivet_request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/api/rivet/dispatch".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&serde_json::json!({
+                "child": "folder-watch-actor",
+                "operation_id": "patina:watch/control.status",
+                "args": []
+            }))
+            .unwrap(),
+        };
+        let rivet_response = handle_rivet_dispatch(&rivet_request, &BusyRuntime);
+        assert_eq!(rivet_response.status, 400);
+        let rivet_json: serde_json::Value = serde_json::from_slice(&rivet_response.body).unwrap();
+        assert_eq!(
+            rivet_json.get("error").and_then(|v| v.as_str()),
+            Some("invalid_request")
         );
     }
 }
