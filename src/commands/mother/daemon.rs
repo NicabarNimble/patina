@@ -1307,18 +1307,84 @@ impl ApiRuntime for ServerState {
             anyhow::bail!("invalid_request: rivet integration is disabled")
         }
 
+        let delivery = request.delivery_policy();
+        let operation_id = request.operation_id.clone();
+        let args = request.args.clone();
+        let correlation = request.correlation.clone();
         let call = patina::mother::ChildCallRequest {
-            operation_id: request.operation_id.clone(),
-            args: request.args,
-            correlation: request.correlation,
+            operation_id: operation_id.clone(),
+            args: args.clone(),
+            correlation: correlation.clone(),
         };
-        let payload = self.registry.call(&request.child, &call)?.payload;
-        Ok(serde_json::json!({
-            "adapter": "rivet",
-            "child": request.child,
-            "operation_id": call.operation_id,
-            "payload": payload,
-        }))
+
+        let map_primary_error = |error: anyhow::Error| {
+            let detail = error.to_string();
+            if let Some(child) = detail.strip_prefix("unknown child: ") {
+                anyhow::anyhow!("child_not_found: {}", child)
+            } else {
+                anyhow::anyhow!(detail)
+            }
+        };
+
+        match self.registry.call(&request.child, &call) {
+            Ok(response) => Ok(serde_json::json!({
+                "adapter": "rivet",
+                "child": request.child,
+                "operation_id": operation_id,
+                "delivery": delivery,
+                "status": "delivered",
+                "payload": response.payload,
+            })),
+            Err(primary_error) => match delivery {
+                mother_crate::pando::PandoDeliveryPolicy::Required => {
+                    Err(map_primary_error(primary_error))
+                }
+                mother_crate::pando::PandoDeliveryPolicy::BestEffort => Ok(serde_json::json!({
+                    "adapter": "rivet",
+                    "child": request.child,
+                    "operation_id": operation_id,
+                    "delivery": delivery,
+                    "status": "best-effort-skipped",
+                    "error": primary_error.to_string(),
+                })),
+                mother_crate::pando::PandoDeliveryPolicy::DeadLetter => {
+                    let dead_letter = request.dead_letter.ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "invalid_request: dead-letter policy requires dead-letter target"
+                        )
+                    })?;
+                    let dead_letter_operation = dead_letter
+                        .operation_id
+                        .clone()
+                        .unwrap_or_else(|| operation_id.clone());
+                    let dead_letter_call = patina::mother::ChildCallRequest {
+                        operation_id: dead_letter_operation.clone(),
+                        args,
+                        correlation,
+                    };
+                    match self.registry.call(&dead_letter.child, &dead_letter_call) {
+                        Ok(dead_response) => Ok(serde_json::json!({
+                            "adapter": "rivet",
+                            "child": request.child,
+                            "operation_id": operation_id,
+                            "delivery": delivery,
+                            "status": "dead-letter-delivered",
+                            "primary_error": primary_error.to_string(),
+                            "dead_letter": {
+                                "child": dead_letter.child,
+                                "operation_id": dead_letter_operation,
+                            },
+                            "payload": dead_response.payload,
+                        })),
+                        Err(dead_error) => Err(anyhow::anyhow!(
+                            "dead_letter_failed: primary='{}'; dead_letter='{}'",
+                            primary_error,
+                            dead_error
+                        )),
+                    }
+                }
+            },
+        }
     }
 
     fn typed_call_history(&self, limit: usize) -> anyhow::Result<serde_json::Value> {
@@ -2375,6 +2441,8 @@ mod tests {
                     operation_id: "patina:watch/control.status".to_string(),
                     args: serde_json::json!([]),
                     correlation: None,
+                    delivery: None,
+                    dead_letter: None,
                 })
                 .unwrap_err();
             assert!(
@@ -2440,6 +2508,8 @@ allow = ["patina:watch/control.status"]
                         rivet_workflow_id: None,
                         rivet_job_id: None,
                     }),
+                    delivery: None,
+                    dead_letter: None,
                 })
                 .expect("rivet dispatch should use typed path");
 
@@ -2465,6 +2535,164 @@ allow = ["patina:watch/control.status"]
                     .as_ref()
                     .and_then(|c| c.rivet_run_id.as_deref()),
                 Some("run-rivet-1")
+            );
+        });
+    }
+
+    #[test]
+    fn rivet_dispatch_required_maps_unknown_child_to_not_found() {
+        with_temp_project(|project_root| {
+            let runtime_store = patina::mother::MotherRuntimeStore::new(
+                project_root.join(".patina/local/data/mother-state.db"),
+            );
+            let state = ServerState::new(
+                "test-token".to_string(),
+                DaemonStartupProfile::Core,
+                RivetIntegrationProfile::Enabled,
+                ChildRegistry::new(),
+                runtime_store.clone(),
+                runtime_store.clone(),
+                federation::startup(&runtime_store),
+                Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+            );
+
+            let err = state
+                .rivet_dispatch(mother_crate::http_api::RivetDispatchRequest {
+                    child: "missing-primary".to_string(),
+                    operation_id: "patina:watch/control.status".to_string(),
+                    args: serde_json::json!([]),
+                    correlation: None,
+                    delivery: Some(mother_crate::pando::PandoDeliveryPolicy::Required),
+                    dead_letter: None,
+                })
+                .unwrap_err();
+            assert!(err.to_string().contains("child_not_found: missing-primary"));
+        });
+    }
+
+    #[test]
+    fn rivet_dispatch_best_effort_skips_primary_error() {
+        with_temp_project(|project_root| {
+            let runtime_store = patina::mother::MotherRuntimeStore::new(
+                project_root.join(".patina/local/data/mother-state.db"),
+            );
+            let state = ServerState::new(
+                "test-token".to_string(),
+                DaemonStartupProfile::Core,
+                RivetIntegrationProfile::Enabled,
+                ChildRegistry::new(),
+                runtime_store.clone(),
+                runtime_store.clone(),
+                federation::startup(&runtime_store),
+                Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+            );
+
+            let response = state
+                .rivet_dispatch(mother_crate::http_api::RivetDispatchRequest {
+                    child: "missing-primary".to_string(),
+                    operation_id: "patina:watch/control.status".to_string(),
+                    args: serde_json::json!([]),
+                    correlation: None,
+                    delivery: Some(mother_crate::pando::PandoDeliveryPolicy::BestEffort),
+                    dead_letter: None,
+                })
+                .expect("best-effort should not fail request");
+
+            assert_eq!(
+                response.get("status").and_then(|v| v.as_str()),
+                Some("best-effort-skipped")
+            );
+            assert_eq!(
+                response.get("delivery").and_then(|v| v.as_str()),
+                Some("best-effort")
+            );
+        });
+    }
+
+    #[test]
+    fn rivet_dispatch_dead_letter_reroutes_primary_error() {
+        with_temp_project(|project_root| {
+            let runtime_store = patina::mother::MotherRuntimeStore::new(
+                project_root.join(".patina/local/data/mother-state.db"),
+            );
+
+            let manifest_path = project_root.join("rivet-dispatch-child.toml");
+            std::fs::write(
+                &manifest_path,
+                r#"[child]
+name = "rivet-dispatch-child"
+version = "0.1.0"
+world = "child"
+
+[child.ingress]
+mode = "hybrid"
+
+[child.contract]
+allow = ["patina:watch/control.status"]
+"#,
+            )
+            .expect("write manifest");
+
+            let registry = ChildRegistry::new();
+            registry
+                .register_knowledge_with_paths(
+                    Box::new(TypedDispatchChild),
+                    std::path::PathBuf::new(),
+                    manifest_path,
+                )
+                .expect("register typed dispatch child");
+
+            let state = ServerState::new(
+                "test-token".to_string(),
+                DaemonStartupProfile::Core,
+                RivetIntegrationProfile::Enabled,
+                registry,
+                runtime_store.clone(),
+                runtime_store.clone(),
+                federation::startup(&runtime_store),
+                Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+            );
+
+            let response = state
+                .rivet_dispatch(mother_crate::http_api::RivetDispatchRequest {
+                    child: "missing-primary".to_string(),
+                    operation_id: "patina:watch/control.status".to_string(),
+                    args: serde_json::json!([]),
+                    correlation: Some(patina::mother::CallCorrelation {
+                        rivet_run_id: Some("run-rivet-dead-letter".to_string()),
+                        rivet_actor_id: None,
+                        rivet_workflow_id: None,
+                        rivet_job_id: None,
+                    }),
+                    delivery: Some(mother_crate::pando::PandoDeliveryPolicy::DeadLetter),
+                    dead_letter: Some(mother_crate::http_api::RivetDispatchDeadLetter {
+                        child: "rivet-dispatch-child".to_string(),
+                        operation_id: None,
+                    }),
+                })
+                .expect("dead-letter should reroute primary failure");
+
+            assert_eq!(
+                response.get("status").and_then(|v| v.as_str()),
+                Some("dead-letter-delivered")
+            );
+            assert_eq!(
+                response
+                    .get("dead_letter")
+                    .and_then(|v| v.get("child"))
+                    .and_then(|v| v.as_str()),
+                Some("rivet-dispatch-child")
+            );
+
+            let history = state.registry.typed_call_history(10);
+            let first = history.first().expect("typed call observation expected");
+            assert_eq!(first.child, "rivet-dispatch-child");
+            assert_eq!(
+                first
+                    .correlation
+                    .as_ref()
+                    .and_then(|c| c.rivet_run_id.as_deref()),
+                Some("run-rivet-dead-letter")
             );
         });
     }

@@ -252,6 +252,24 @@ pub struct RivetDispatchRequest {
     pub args: serde_json::Value,
     #[serde(default)]
     pub correlation: Option<crate::CallCorrelation>,
+    #[serde(default)]
+    pub delivery: Option<crate::pando::PandoDeliveryPolicy>,
+    #[serde(default, rename = "dead-letter", alias = "dead_letter")]
+    pub dead_letter: Option<RivetDispatchDeadLetter>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RivetDispatchDeadLetter {
+    pub child: String,
+    #[serde(default)]
+    pub operation_id: Option<String>,
+}
+
+impl RivetDispatchRequest {
+    pub fn delivery_policy(&self) -> crate::pando::PandoDeliveryPolicy {
+        self.delivery
+            .unwrap_or(crate::pando::PandoDeliveryPolicy::Required)
+    }
 }
 
 fn default_rivet_dispatch_args() -> serde_json::Value {
@@ -683,6 +701,21 @@ pub fn handle_rivet_dispatch(request: &HttpRequest, runtime: &dyn ApiRuntime) ->
     }
     if payload.operation_id.trim().is_empty() {
         return lifecycle_error(400, "invalid_request", "operation_id is required");
+    }
+    if matches!(
+        payload.delivery_policy(),
+        crate::pando::PandoDeliveryPolicy::DeadLetter
+    ) {
+        let Some(dead_letter) = payload.dead_letter.as_ref() else {
+            return lifecycle_error(
+                400,
+                "invalid_request",
+                "dead-letter policy requires dead-letter target",
+            );
+        };
+        if dead_letter.child.trim().is_empty() {
+            return lifecycle_error(400, "invalid_request", "dead-letter child is required");
+        }
     }
 
     match runtime.rivet_dispatch(payload) {
@@ -1141,6 +1174,8 @@ mod tests {
                 "operation_id": request.operation_id,
                 "args": request.args,
                 "correlation": request.correlation,
+                "delivery": request.delivery_policy(),
+                "dead_letter": request.dead_letter,
                 "adapter": "rivet"
             }))
         }
@@ -1350,6 +1385,34 @@ mod tests {
                 .and_then(|v| v.get("rivet_run_id"))
                 .and_then(|v| v.as_str()),
             Some("run-123")
+        );
+        assert_eq!(
+            payload.get("delivery").and_then(|v| v.as_str()),
+            Some("required")
+        );
+    }
+
+    #[test]
+    fn rivet_dispatch_route_rejects_dead_letter_without_target() {
+        let request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/api/rivet/dispatch".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&serde_json::json!({
+                "child": "folder-watch-actor",
+                "operation_id": "patina:watch/control.status",
+                "args": [],
+                "delivery": "dead-letter"
+            }))
+            .unwrap(),
+        };
+
+        let response = handle_rivet_dispatch(&request, &StubRuntime);
+        assert_eq!(response.status, 400);
+        let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(
+            payload.get("error").and_then(|v| v.as_str()),
+            Some("invalid_request")
         );
     }
 

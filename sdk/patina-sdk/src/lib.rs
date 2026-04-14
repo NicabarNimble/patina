@@ -1,3 +1,9 @@
+//! Patina SDK for backend-neutral WASI/component children.
+//!
+//! Child business contracts remain WIT + toys based. Orchestration backends
+//! (Rivet, future alternates) are integrated at Mother adapter boundaries, not
+//! inside child business code.
+
 pub mod toys;
 pub mod types;
 

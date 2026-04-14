@@ -22,6 +22,18 @@ SDK provides ergonomic outside toy helpers and convenience type exports.
 - `toys::config::get`
 - `prelude` and root exports for shared SDK-facing types
 
+## Backend-neutral contract (required)
+
+Children authored with `patina-sdk` must remain orchestration-backend neutral.
+
+- ✅ Author business contracts in WIT (`patina:*` interfaces/worlds).
+- ✅ Use toys/WASI capabilities only (`log`, `measure`, `config`, `keyvalue`, etc.).
+- ✅ Accept orchestration metadata only as normal contract inputs when needed.
+- ❌ Do **not** import Rivet/queue/workflow SDKs in child business code.
+- ❌ Do **not** encode orchestrator IDs into WIT package/interface naming.
+
+Mother (or other orchestrators) may adapt external triggers into typed calls, but child logic stays portable.
+
 ## Child Pattern
 
 ```rust

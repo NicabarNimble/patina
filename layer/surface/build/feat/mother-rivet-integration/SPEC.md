@@ -26,6 +26,8 @@ related:
   - layer/surface/build/feat/mother-wit-dispatcher/SPEC.md
   - layer/surface/build/feat/mother-typed-invocation-driver/SPEC.md
   - layer/surface/build/feat/pando-delivery-policy/SPEC.md
+  - layer/surface/build/feat/mother-rivet-integration/PORTABILITY-SEAM.md
+  - sdk/patina-sdk/README.md
 exit_criteria:
   - id: mri1-integration-profile
     text: "Mother has an explicit runtime profile for Rivet integration (enabled/disabled) with no behavior change when disabled."
@@ -38,7 +40,7 @@ exit_criteria:
     checked: true
   - id: mri4-delivery-policy-mapping
     text: "`required|best-effort|dead-letter` delivery semantics are mapped consistently onto Rivet-triggered execution paths."
-    checked: false
+    checked: true
   - id: mri5-observability-join
     text: "Mother typed call observations are correlated with Rivet execution identifiers for inspector/debugging workflows."
     checked: true
@@ -47,10 +49,10 @@ exit_criteria:
     checked: false
   - id: mri7-sdk-guidance
     text: "patina-sdk guidance remains backend-neutral: child authors target WIT + toys only, not Rivet-specific APIs."
-    checked: false
+    checked: true
   - id: mri8-portability-seam
     text: "A minimal orchestration seam is documented so future non-Rivet backends can be added without changing business contracts."
-    checked: false
+    checked: true
 ---
 # feat: Mother Rivet integration
 
@@ -118,6 +120,30 @@ patina spec check mother-wit-dispatcher --json
 patina spec check mother-typed-invocation-driver --json
 patina spec check pando-delivery-policy --json
 ```
+
+## Completeness gates (hard)
+
+To avoid MVP theater, each criterion is only marked checked when code + tests + runtime proof are all present.
+
+- **mri1** requires: `--rivet` profile flag, `/health.rivet_integration`, CLI status rendering, and one live start probe in each mode.
+- **mri2** requires: Rivet path invokes `ChildCallRequest` through Mother registry typed-call path (no direct child bypass), with unit test proof.
+- **mri3** requires: one explicit Rivet adapter ingress (`/api/rivet/dispatch`) translating payload -> typed call request, with route + handler tests.
+- **mri4** requires: `required|best-effort|dead-letter` behavior implemented on Rivet dispatch path, including dead-letter reroute semantics, with targeted tests.
+- **mri5** requires: correlation metadata persisted on typed call observations and queriable via inspector filters.
+- **mri6** requires: live folder-watch flow dispatched via Rivet adapter (`/api/rivet/dispatch`) with successful typed response and inspector correlation evidence.
+- **mri7** requires: SDK guidance explicitly states backend-neutral authoring (WIT + toys), and rejects orchestrator-specific child APIs.
+- **mri8** requires: minimal orchestration seam doc listing the only backend-specific boundary objects/routes so a second backend can be added without contract edits.
+
+## Completeness audit snapshot (2026-04-14)
+
+- **mri1**: complete — CLI flag + health/status surface + tests.
+- **mri2**: complete — Rivet ingress uses `ChildCallRequest` through registry typed-call path.
+- **mri3**: complete — single Rivet ingress adapter route/handler wired and tested.
+- **mri4**: complete — adapter implements `required|best-effort|dead-letter` mapping with targeted tests.
+- **mri5**: complete — correlation metadata persisted + inspector filter support.
+- **mri6**: **open** — live `folder-watch-actor` flow through Rivet adapter still pending.
+- **mri7**: complete — SDK docs now explicitly lock backend-neutral authoring model.
+- **mri8**: complete — portability seam frozen in `PORTABILITY-SEAM.md`.
 
 ## Notes
 

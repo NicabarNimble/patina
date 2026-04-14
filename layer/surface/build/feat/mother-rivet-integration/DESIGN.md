@@ -39,6 +39,16 @@ Wasmtime component child (WIT business export)
 - Typed call observations continue to be emitted from Mother as source of truth.
 - Child code remains unchanged by orchestration backend (SDK guidance remains backend-neutral).
 
+## Rivet dispatch delivery-policy mapping (mri4)
+
+Rivet adapter requests map delivery semantics to runtime behavior:
+
+- `required` (default): primary typed call failure returns error.
+- `best-effort`: primary failure is surfaced as non-fatal `best-effort-skipped` result.
+- `dead-letter`: on primary failure, reroute to configured dead-letter child (optional operation override); fail only if reroute fails.
+
+This mirrors existing Patina policy language while keeping Mother registry call authority unchanged.
+
 ## Minimal seams (only three)
 
 ### 1) Rivet ingress adapter
