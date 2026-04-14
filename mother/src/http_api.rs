@@ -93,6 +93,7 @@ pub struct HealthDetails {
     pub federation_projects_failed: usize,
     pub federation_projects_stale: usize,
     pub startup_profile: String,
+    pub rivet_integration: String,
     pub child_warmup: ChildWarmupState,
     pub memory: MemoryStatus,
     pub control_plane_ready: bool,
@@ -151,6 +152,7 @@ struct HealthResponse {
     federation_projects_failed: usize,
     federation_projects_stale: usize,
     startup_profile: String,
+    rivet_integration: String,
     child_warmup: ChildWarmupStateJson,
     memory: MemoryStatusJson,
     control_plane_ready: bool,
@@ -324,6 +326,7 @@ pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
         federation_projects_failed: 0,
         federation_projects_stale: 0,
         startup_profile: "unknown".to_string(),
+        rivet_integration: "disabled".to_string(),
         child_warmup: ChildWarmupState {
             mode: "unknown".to_string(),
             state: "unknown".to_string(),
@@ -388,6 +391,7 @@ pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
             federation_projects_failed: details.federation_projects_failed,
             federation_projects_stale: details.federation_projects_stale,
             startup_profile: details.startup_profile,
+            rivet_integration: details.rivet_integration,
             child_warmup,
             memory,
             control_plane_ready: details.control_plane_ready,
@@ -929,6 +933,7 @@ mod tests {
                 federation_projects_failed: 1,
                 federation_projects_stale: 1,
                 startup_profile: "full".to_string(),
+                rivet_integration: "disabled".to_string(),
                 child_warmup: ChildWarmupState {
                     mode: "auto".to_string(),
                     state: "complete".to_string(),
@@ -1179,6 +1184,10 @@ mod tests {
         assert_eq!(
             json.get("startup_profile").and_then(|v| v.as_str()),
             Some("full")
+        );
+        assert_eq!(
+            json.get("rivet_integration").and_then(|v| v.as_str()),
+            Some("disabled")
         );
         assert_eq!(
             json.get("child_warmup")
@@ -1444,6 +1453,7 @@ mod tests {
                     federation_projects_failed: 0,
                     federation_projects_stale: 0,
                     startup_profile: "core".to_string(),
+                    rivet_integration: "disabled".to_string(),
                     child_warmup: ChildWarmupState {
                         mode: "manual".to_string(),
                         state: "pending".to_string(),

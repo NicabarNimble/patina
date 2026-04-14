@@ -75,6 +75,8 @@ pub struct HealthInfo {
     #[serde(default)]
     pub startup_profile: Option<String>,
     #[serde(default)]
+    pub rivet_integration: Option<String>,
+    #[serde(default)]
     pub child_warmup: Option<ChildWarmupInfo>,
     #[serde(default)]
     pub memory: Option<MemoryInfo>,
@@ -219,6 +221,7 @@ mod tests {
         assert_eq!(info.children_total, 0);
         assert!(info.children_degraded.is_empty());
         assert!(info.startup_profile.is_none());
+        assert!(info.rivet_integration.is_none());
         assert!(info.child_warmup.is_none());
         assert!(info.memory.is_none());
     }
@@ -243,6 +246,7 @@ mod tests {
             "children_total":2,
             "children_degraded":[{"name":"catalog","reason":"on_load failed"}],
             "startup_profile":"core",
+            "rivet_integration":"disabled",
             "child_warmup":{"mode":"manual","state":"pending"},
             "memory":{"max_rss_bytes":1024,"soft_limit_bytes":2048,"pressure":"ok"}
         }"#;
@@ -267,6 +271,7 @@ mod tests {
             Some("catalog")
         );
         assert_eq!(info.startup_profile.as_deref(), Some("core"));
+        assert_eq!(info.rivet_integration.as_deref(), Some("disabled"));
         assert_eq!(
             info.child_warmup
                 .as_ref()

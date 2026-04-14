@@ -61,7 +61,7 @@ use patina::paths;
 use patina::session::SessionManager;
 
 // Re-export daemon option types for use in main.rs
-pub use daemon::{DaemonOptions, DaemonStartupProfile};
+pub use daemon::{DaemonOptions, DaemonStartupProfile, RivetIntegrationProfile};
 
 /// Mother CLI subcommands
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -82,6 +82,10 @@ pub enum MotherCommands {
         /// Startup profile: `full` auto-warms children, `core` keeps control-plane only
         #[arg(long, value_enum, default_value_t = DaemonStartupProfile::Full)]
         profile: DaemonStartupProfile,
+
+        /// Rivet integration profile (`disabled` preserves current behavior)
+        #[arg(long, value_enum, default_value_t = RivetIntegrationProfile::Disabled)]
+        rivet: RivetIntegrationProfile,
 
         /// Run as MCP server (JSON-RPC over stdio) instead of HTTP
         #[arg(long)]
@@ -380,6 +384,7 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             host,
             port,
             profile,
+            rivet,
             mcp,
         }) => {
             if mcp {
@@ -389,6 +394,7 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
                     host,
                     port,
                     profile,
+                    rivet,
                 };
                 daemon::run_server(options)
             }
@@ -882,6 +888,9 @@ fn show_status() -> Result<()> {
             if let Some(profile) = &health.startup_profile {
                 println!("   Startup profile: {}", profile);
             }
+            if let Some(rivet_integration) = &health.rivet_integration {
+                println!("   Rivet integration: {}", rivet_integration);
+            }
             if let Some(warmup) = &health.child_warmup {
                 if warmup.mode.is_empty() && warmup.state.is_empty() {
                     println!("   Child warmup: unavailable");
@@ -1019,6 +1028,7 @@ mod tests {
             host: None,
             port: 50051,
             profile: DaemonStartupProfile::Full,
+            rivet: RivetIntegrationProfile::Disabled,
             mcp: false,
         };
         assert!(matches!(start, MotherCommands::Start { .. }));

@@ -47,6 +47,7 @@ pub struct ServerState {
     version: String,
     token: String,
     startup_profile: DaemonStartupProfile,
+    rivet_integration: RivetIntegrationProfile,
     pub(super) registry: Arc<ChildRegistry>,
     runtime_store: patina::mother::MotherRuntimeStore,
     startup_store: patina::mother::MotherRuntimeStore,
@@ -222,6 +223,7 @@ impl ServerState {
     fn new(
         token: String,
         startup_profile: DaemonStartupProfile,
+        rivet_integration: RivetIntegrationProfile,
         registry: ChildRegistry,
         runtime_store: patina::mother::MotherRuntimeStore,
         startup_store: patina::mother::MotherRuntimeStore,
@@ -239,6 +241,7 @@ impl ServerState {
             version: env!("CARGO_PKG_VERSION").to_string(),
             token,
             startup_profile,
+            rivet_integration,
             registry: Arc::new(registry),
             runtime_store,
             startup_store,
@@ -1150,6 +1153,7 @@ impl ApiRuntime for ServerState {
             federation_projects_failed: federation_status.failed_count(),
             federation_projects_stale: federation_status.stale_count(),
             startup_profile: self.startup_profile.as_str().to_string(),
+            rivet_integration: self.rivet_integration.as_str().to_string(),
             child_warmup,
             memory,
             control_plane_ready: readiness.control_plane_ready,
@@ -1723,11 +1727,28 @@ impl DaemonStartupProfile {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+#[value(rename_all = "kebab-case")]
+pub enum RivetIntegrationProfile {
+    Disabled,
+    Enabled,
+}
+
+impl RivetIntegrationProfile {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::Enabled => "enabled",
+        }
+    }
+}
+
 /// Options for starting the daemon
 pub struct DaemonOptions {
     pub host: Option<String>,
     pub port: u16,
     pub profile: DaemonStartupProfile,
+    pub rivet: RivetIntegrationProfile,
 }
 
 fn run_startup_stage<T, F>(
@@ -2033,6 +2054,7 @@ impl Default for DaemonOptions {
             host: None,
             port: 50051,
             profile: DaemonStartupProfile::Full,
+            rivet: RivetIntegrationProfile::Disabled,
         }
     }
 }
@@ -2051,6 +2073,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     })?;
     let federation_runtime = super::federation::startup(&startup_store);
     let profile = options.profile;
+    let rivet = options.rivet;
 
     // TCP opt-in path (--host flag) — requires bearer token
     if let Some(ref host) = options.host {
@@ -2059,6 +2082,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
             let state = Arc::new(ServerState::new(
                 token,
                 profile,
+                rivet,
                 registry,
                 runtime.clone(),
                 startup_store.clone(),
@@ -2106,6 +2130,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         let state = Arc::new(ServerState::new(
             String::new(),
             profile,
+            rivet,
             registry,
             runtime.clone(),
             startup_store.clone(),
@@ -2271,6 +2296,7 @@ mod tests {
         assert_eq!(options.port, 50051);
         assert!(options.host.is_none());
         assert_eq!(options.profile, DaemonStartupProfile::Full);
+        assert_eq!(options.rivet, RivetIntegrationProfile::Disabled);
     }
 
     #[test]
@@ -2394,6 +2420,7 @@ kind = "child"
             let state = ServerState::new(
                 "test-token".to_string(),
                 DaemonStartupProfile::Full,
+                RivetIntegrationProfile::Disabled,
                 ChildRegistry::new(),
                 runtime_store.clone(),
                 runtime_store.clone(),
@@ -2491,6 +2518,7 @@ kind = "child"
             let state = ServerState::new(
                 "test-token".to_string(),
                 DaemonStartupProfile::Full,
+                RivetIntegrationProfile::Disabled,
                 registry,
                 runtime_store.clone(),
                 runtime_store.clone(),
@@ -2592,6 +2620,7 @@ kind = "child"
             let state = ServerState::new(
                 "test-token".to_string(),
                 DaemonStartupProfile::Full,
+                RivetIntegrationProfile::Disabled,
                 registry,
                 runtime_store.clone(),
                 runtime_store.clone(),

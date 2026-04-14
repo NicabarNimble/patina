@@ -1772,6 +1772,7 @@ fn main() -> Result<()> {
                     host,
                     port,
                     profile: commands::mother::DaemonStartupProfile::Full,
+                    rivet: commands::mother::RivetIntegrationProfile::Disabled,
                 };
                 commands::mother::daemon::run_server(options)?;
             }
