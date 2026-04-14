@@ -181,10 +181,20 @@ pub struct ChildReloadResult {
     pub reason: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChildWarmupResult {
+    pub status: String,
+    pub discovered: usize,
+    pub activated: usize,
+    pub failed: usize,
+    pub degraded: Vec<DegradedChild>,
+}
+
 pub trait MotherRuntime: Send + Sync {
     fn load_pando(&self, name: &str) -> Result<PandoLoadResult>;
     fn refresh_pandos(&self) -> Result<PandoRefreshResult>;
     fn reload_child(&self, name: &str) -> Result<ChildReloadResult>;
+    fn warmup_children(&self) -> Result<ChildWarmupResult>;
     fn query_readiness(&self) -> ReadinessState;
 }
 

@@ -46,8 +46,12 @@ pub struct ServerState {
     start_time: Instant,
     version: String,
     token: String,
+    startup_profile: DaemonStartupProfile,
     pub(super) registry: Arc<ChildRegistry>,
     runtime_store: patina::mother::MotherRuntimeStore,
+    startup_store: patina::mother::MotherRuntimeStore,
+    child_warmup_lock: Arc<Mutex<()>>,
+    child_warmup_state: Arc<RwLock<mother_crate::http_api::ChildWarmupState>>,
     services: mother_crate::services::MotherServices,
     scry_backend: Arc<dyn ScryBackend>,
     federation_runtime: Mutex<FederationRuntime>,
@@ -216,18 +220,33 @@ mod composed_bindings {
 impl ServerState {
     fn new(
         token: String,
+        startup_profile: DaemonStartupProfile,
         registry: ChildRegistry,
         runtime_store: patina::mother::MotherRuntimeStore,
+        startup_store: patina::mother::MotherRuntimeStore,
         federation_runtime: FederationRuntime,
         readiness: Arc<RwLock<mother_crate::runtime::ReadinessState>>,
     ) -> Self {
         let services_store = runtime_store.clone();
+        let child_warmup_mode = if startup_profile.auto_warmup() {
+            "auto"
+        } else {
+            "manual"
+        };
         let state = Self {
             start_time: Instant::now(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             token,
+            startup_profile,
             registry: Arc::new(registry),
             runtime_store,
+            startup_store,
+            child_warmup_lock: Arc::new(Mutex::new(())),
+            child_warmup_state: Arc::new(RwLock::new(mother_crate::http_api::ChildWarmupState {
+                mode: child_warmup_mode.to_string(),
+                state: "pending".to_string(),
+                last_error: None,
+            })),
             services: mother_crate::services::MotherServices::new(services_store),
             scry_backend: Arc::new(RetrievalScryBackend),
             federation_runtime: Mutex::new(federation_runtime),
@@ -245,6 +264,116 @@ impl ServerState {
 
     fn uptime_secs(&self) -> u64 {
         self.start_time.elapsed().as_secs()
+    }
+
+    fn set_child_warmup_state(&self, state: &str, last_error: Option<String>) {
+        let mut guard = self
+            .child_warmup_state
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
+        guard.state = state.to_string();
+        guard.last_error = last_error;
+    }
+
+    fn execute_child_warmup_once(&self) -> Result<mother_crate::runtime::ChildWarmupResult> {
+        let discovered = run_startup_stage("child_discovery", &self.startup_store, || {
+            Ok(mother_crate::daemon_bootstrap::load_children_from_dir(
+                &patina::paths::child::children_dir(),
+                self.registry.as_ref(),
+                &self.runtime_store,
+                super::loader::load_wasm_child,
+            ))
+        })?;
+
+        set_children_total(&self.readiness, self.registry.knowledge_len());
+        {
+            let mut readiness = self.readiness.write().unwrap_or_else(|e| e.into_inner());
+            readiness.children_ready_count = 0;
+            readiness.children_degraded.clear();
+        }
+
+        let daemon_host = DaemonHost;
+        let activations = self.registry.activate_all(&daemon_host);
+        let mut activated = 0usize;
+        let mut failed = 0usize;
+        let mut degraded = Vec::new();
+        for activation in activations {
+            emit_child_activation_metric(
+                "child_activation_ms",
+                "gauge",
+                activation.duration_ms as f64,
+                &activation.name,
+            );
+            if let Some(error) = activation.error.as_deref() {
+                emit_child_activation_metric(
+                    "child_activation_failure",
+                    "counter",
+                    1.0,
+                    &activation.name,
+                );
+                failed += 1;
+                degraded.push(mother_crate::runtime::DegradedChild {
+                    name: activation.name.clone(),
+                    reason: error.to_string(),
+                });
+                record_child_activation(&self.readiness, &activation.name, Some(error));
+            } else {
+                activated += 1;
+                record_child_activation(&self.readiness, &activation.name, None);
+            }
+        }
+
+        Ok(mother_crate::runtime::ChildWarmupResult {
+            status: if failed == 0 {
+                "warmed".to_string()
+            } else {
+                "warmed-with-failures".to_string()
+            },
+            discovered,
+            activated,
+            failed,
+            degraded,
+        })
+    }
+
+    fn warmup_children_now(&self) -> Result<mother_crate::runtime::ChildWarmupResult> {
+        if self
+            .child_warmup_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .state
+            == "complete"
+        {
+            return Ok(mother_crate::runtime::ChildWarmupResult {
+                status: "already-warmed".to_string(),
+                discovered: 0,
+                activated: 0,
+                failed: 0,
+                degraded: vec![],
+            });
+        }
+
+        let _guard = match self.child_warmup_lock.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::WouldBlock) => {
+                anyhow::bail!("operation_in_progress: warmup already running")
+            }
+            Err(TryLockError::Poisoned(_)) => {
+                anyhow::bail!("internal_error: warmup lock poisoned")
+            }
+        };
+
+        self.set_child_warmup_state("running", None);
+        match self.execute_child_warmup_once() {
+            Ok(result) => {
+                self.set_child_warmup_state("complete", None);
+                Ok(result)
+            }
+            Err(error) => {
+                self.set_child_warmup_state("failed", Some(error.to_string()));
+                Err(error)
+            }
+        }
     }
 
     fn installed_children(&self) -> HashSet<String> {
@@ -925,6 +1054,11 @@ impl ApiRuntime for ServerState {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
+        let child_warmup = self
+            .child_warmup_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
 
         Ok(mother_crate::http_api::HealthDetails {
             registered_projects: registered_projects.len(),
@@ -943,6 +1077,8 @@ impl ApiRuntime for ServerState {
             federation_projects_attached: federation_status.attached_count(),
             federation_projects_failed: federation_status.failed_count(),
             federation_projects_stale: federation_status.stale_count(),
+            startup_profile: self.startup_profile.as_str().to_string(),
+            child_warmup,
             control_plane_ready: readiness.control_plane_ready,
             children_ready_count: readiness.children_ready_count,
             children_total: readiness.children_total,
@@ -1075,6 +1211,10 @@ impl ApiRuntime for ServerState {
         name: &str,
     ) -> anyhow::Result<mother_crate::ChildReloadResult> {
         <Self as MotherRuntime>::reload_child(self, name)
+    }
+
+    fn lifecycle_warmup_children(&self) -> anyhow::Result<mother_crate::ChildWarmupResult> {
+        self.warmup_children_now()
     }
 
     fn typed_call_history(&self, limit: usize) -> anyhow::Result<serde_json::Value> {
@@ -1467,6 +1607,10 @@ impl MotherRuntime for ServerState {
         result
     }
 
+    fn warmup_children(&self) -> Result<mother_crate::runtime::ChildWarmupResult> {
+        self.warmup_children_now()
+    }
+
     fn query_readiness(&self) -> mother_crate::runtime::ReadinessState {
         self.readiness
             .read()
@@ -1481,10 +1625,31 @@ fn build_router(state: Arc<ServerState>, require_auth: bool) -> Router {
     Router::new(require_auth, token, route_table)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+#[value(rename_all = "kebab-case")]
+pub enum DaemonStartupProfile {
+    Full,
+    Core,
+}
+
+impl DaemonStartupProfile {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::Core => "core",
+        }
+    }
+
+    pub fn auto_warmup(self) -> bool {
+        matches!(self, Self::Full)
+    }
+}
+
 /// Options for starting the daemon
 pub struct DaemonOptions {
     pub host: Option<String>,
     pub port: u16,
+    pub profile: DaemonStartupProfile,
 }
 
 fn run_startup_stage<T, F>(
@@ -1765,62 +1930,22 @@ fn wait_for_health_200(probe: &WarmupProbe, timeout: Duration) -> bool {
     false
 }
 
-fn spawn_child_warmup(
-    startup_store: patina::mother::MotherRuntimeStore,
-    runtime: patina::mother::MotherRuntimeStore,
-    registry: Arc<ChildRegistry>,
-    readiness: Arc<RwLock<mother_crate::runtime::ReadinessState>>,
-    probe: WarmupProbe,
-) {
+fn spawn_child_warmup(state: Arc<ServerState>, probe: WarmupProbe) {
     let _ = std::thread::Builder::new()
         .name("mother-child-warmup".to_string())
         .spawn(move || {
             if !wait_for_health_200(&probe, Duration::from_secs(30)) {
                 tracing::warn!("health endpoint was not reachable before child warmup");
+                state.set_child_warmup_state(
+                    "failed",
+                    Some("health probe timeout before warmup".to_string()),
+                );
                 return;
             }
 
-            let children_dir = patina::paths::child::children_dir();
-            let discovered = match run_startup_stage("child_discovery", &startup_store, || {
-                Ok(mother_crate::daemon_bootstrap::load_children_from_dir(
-                    &children_dir,
-                    registry.as_ref(),
-                    &runtime,
-                    super::loader::load_wasm_child,
-                ))
-            }) {
-                Ok(count) => count,
-                Err(error) => {
-                    tracing::warn!(%error, "child discovery failed during background warmup");
-                    return;
-                }
-            };
-            set_children_total(&readiness, discovered);
-
-            let daemon_host = DaemonHost;
-            let _ = run_startup_stage("registry_load_all", &startup_store, || {
-                let activations = registry.activate_all(&daemon_host);
-                for activation in activations {
-                    emit_child_activation_metric(
-                        "child_activation_ms",
-                        "gauge",
-                        activation.duration_ms as f64,
-                        &activation.name,
-                    );
-                    if let Some(error) = activation.error.as_deref() {
-                        emit_child_activation_metric(
-                            "child_activation_failure",
-                            "counter",
-                            1.0,
-                            &activation.name,
-                        );
-                        record_child_activation(&readiness, &activation.name, Some(error));
-                    } else {
-                        record_child_activation(&readiness, &activation.name, None);
-                    }
-                }
-                Ok(())
-            });
+            if let Err(error) = state.warmup_children_now() {
+                tracing::warn!(%error, "child warmup failed during background warmup");
+            }
         });
 }
 
@@ -1829,6 +1954,7 @@ impl Default for DaemonOptions {
         Self {
             host: None,
             port: 50051,
+            profile: DaemonStartupProfile::Full,
         }
     }
 }
@@ -1837,7 +1963,7 @@ impl Default for DaemonOptions {
 pub fn run_server(options: DaemonOptions) -> Result<()> {
     mother_crate::daemon_bootstrap_config::ensure_logging_initialized()?;
 
-    // Build control-plane state first; child warmup runs in background.
+    // Build control-plane state first; child warmup runs in background in full profile.
     let registry = ChildRegistry::new();
     let runtime = patina::mother::MotherRuntimeStore::default();
     let startup_store = patina::mother::MotherRuntimeStore::default();
@@ -1846,6 +1972,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
         startup_store.list_registered_projects().map(|_| ())
     })?;
     let federation_runtime = super::federation::startup(&startup_store);
+    let profile = options.profile;
 
     // TCP opt-in path (--host flag) — requires bearer token
     if let Some(ref host) = options.host {
@@ -1853,8 +1980,10 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
             let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
             let state = Arc::new(ServerState::new(
                 token,
+                profile,
                 registry,
                 runtime.clone(),
+                startup_store.clone(),
                 federation_runtime,
                 Arc::clone(&readiness),
             ));
@@ -1862,17 +1991,16 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
             Ok((state, router))
         })?;
         set_control_plane_ready(&readiness);
-        spawn_child_warmup(
-            startup_store.clone(),
-            runtime.clone(),
-            Arc::clone(&state.registry),
-            Arc::clone(&readiness),
-            WarmupProbe::Tcp {
-                host: host.clone(),
-                port: options.port,
-                token: state.token.clone(),
-            },
-        );
+        if profile.auto_warmup() {
+            spawn_child_warmup(
+                Arc::clone(&state),
+                WarmupProbe::Tcp {
+                    host: host.clone(),
+                    port: options.port,
+                    token: state.token.clone(),
+                },
+            );
+        }
         let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
             transport: mother_crate::daemon_bootstrap_config::TransportMode::TcpHttp {
                 host: host.clone(),
@@ -1899,8 +2027,10 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     let (state, router) = run_startup_stage("router_build", &startup_store, || {
         let state = Arc::new(ServerState::new(
             String::new(),
+            profile,
             registry,
             runtime.clone(),
+            startup_store.clone(),
             federation_runtime,
             Arc::clone(&readiness),
         ));
@@ -1909,15 +2039,14 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     })?;
     set_control_plane_ready(&readiness);
     let socket_path = patina::paths::serve::socket_path();
-    spawn_child_warmup(
-        startup_store.clone(),
-        runtime,
-        Arc::clone(&state.registry),
-        Arc::clone(&readiness),
-        WarmupProbe::Uds {
-            socket_path: socket_path.clone(),
-        },
-    );
+    if profile.auto_warmup() {
+        spawn_child_warmup(
+            Arc::clone(&state),
+            WarmupProbe::Uds {
+                socket_path: socket_path.clone(),
+            },
+        );
+    }
     let config = mother_crate::daemon_bootstrap_config::DaemonBootstrapConfig {
         transport: mother_crate::daemon_bootstrap_config::TransportMode::UdsHttp {
             run_dir: patina::paths::serve::run_dir(),
@@ -2063,6 +2192,7 @@ mod tests {
         let options = DaemonOptions::default();
         assert_eq!(options.port, 50051);
         assert!(options.host.is_none());
+        assert_eq!(options.profile, DaemonStartupProfile::Full);
     }
 
     #[test]
@@ -2185,7 +2315,9 @@ kind = "child"
             );
             let state = ServerState::new(
                 "test-token".to_string(),
+                DaemonStartupProfile::Full,
                 ChildRegistry::new(),
+                runtime_store.clone(),
                 runtime_store.clone(),
                 federation::startup(&runtime_store),
                 Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
@@ -2280,7 +2412,9 @@ kind = "child"
 
             let state = ServerState::new(
                 "test-token".to_string(),
+                DaemonStartupProfile::Full,
                 registry,
+                runtime_store.clone(),
                 runtime_store.clone(),
                 federation::startup(&runtime_store),
                 Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
@@ -2379,7 +2513,9 @@ kind = "child"
 
             let state = ServerState::new(
                 "test-token".to_string(),
+                DaemonStartupProfile::Full,
                 registry,
+                runtime_store.clone(),
                 runtime_store.clone(),
                 federation::startup(&runtime_store),
                 Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),

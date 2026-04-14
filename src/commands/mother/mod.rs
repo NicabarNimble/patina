@@ -60,8 +60,8 @@ use std::process::Command;
 use patina::paths;
 use patina::session::SessionManager;
 
-// Re-export DaemonOptions for use in main.rs
-pub use daemon::DaemonOptions;
+// Re-export daemon option types for use in main.rs
+pub use daemon::{DaemonOptions, DaemonStartupProfile};
 
 /// Mother CLI subcommands
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -78,6 +78,10 @@ pub enum MotherCommands {
         /// TCP port (only used with --host)
         #[arg(long, default_value = "50051")]
         port: u16,
+
+        /// Startup profile: `full` auto-warms children, `core` keeps control-plane only
+        #[arg(long, value_enum, default_value_t = DaemonStartupProfile::Full)]
+        profile: DaemonStartupProfile,
 
         /// Run as MCP server (JSON-RPC over stdio) instead of HTTP
         #[arg(long)]
@@ -226,6 +230,8 @@ pub enum LifecycleCommands {
         /// Child name
         name: String,
     },
+    /// Warm up children explicitly (primarily used with `--profile core`)
+    WarmupChildren,
     /// Write/refresh SHA-256 sidecars for strict integrity mode
     SyncHashes {
         /// Optional pando name (defaults to all installed pandos)
@@ -370,11 +376,20 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             println!("Run 'patina mother --help' for details.");
             Ok(())
         }
-        Some(MotherCommands::Start { host, port, mcp }) => {
+        Some(MotherCommands::Start {
+            host,
+            port,
+            profile,
+            mcp,
+        }) => {
             if mcp {
                 bail!("MCP server path has been retired; start daemon without --mcp")
             } else {
-                let options = DaemonOptions { host, port };
+                let options = DaemonOptions {
+                    host,
+                    port,
+                    profile,
+                };
                 daemon::run_server(options)
             }
         }
@@ -483,6 +498,12 @@ fn execute_lifecycle(command: LifecycleCommands) -> Result<()> {
         LifecycleCommands::ReloadChild { name } => {
             let payload = client
                 .lifecycle_reload_child(mother_crate::protocol::LifecycleNamePayload { name })?;
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+            Ok(())
+        }
+        LifecycleCommands::WarmupChildren => {
+            let payload = client
+                .lifecycle_warmup_children(mother_crate::protocol::LifecycleWarmupPayload {})?;
             println!("{}", serde_json::to_string_pretty(&payload)?);
             Ok(())
         }
@@ -968,6 +989,7 @@ mod tests {
         let start = MotherCommands::Start {
             host: None,
             port: 50051,
+            profile: DaemonStartupProfile::Full,
             mcp: false,
         };
         assert!(matches!(start, MotherCommands::Start { .. }));

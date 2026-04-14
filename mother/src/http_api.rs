@@ -65,6 +65,7 @@ pub trait ApiRuntime {
     fn lifecycle_load_pando(&self, name: &str) -> Result<crate::PandoLoadResult>;
     fn lifecycle_refresh(&self) -> Result<crate::PandoRefreshResult>;
     fn lifecycle_reload_child(&self, name: &str) -> Result<crate::ChildReloadResult>;
+    fn lifecycle_warmup_children(&self) -> Result<crate::ChildWarmupResult>;
     fn typed_call_history(&self, limit: usize) -> Result<serde_json::Value>;
     fn builtin_spec_dispatch(
         &self,
@@ -90,10 +91,19 @@ pub struct HealthDetails {
     pub federation_projects_attached: usize,
     pub federation_projects_failed: usize,
     pub federation_projects_stale: usize,
+    pub startup_profile: String,
+    pub child_warmup: ChildWarmupState,
     pub control_plane_ready: bool,
     pub children_ready_count: usize,
     pub children_total: usize,
     pub children_degraded: Vec<DegradedChild>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChildWarmupState {
+    pub mode: String,
+    pub state: String,
+    pub last_error: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -130,6 +140,8 @@ struct HealthResponse {
     federation_projects_attached: usize,
     federation_projects_failed: usize,
     federation_projects_stale: usize,
+    startup_profile: String,
+    child_warmup: ChildWarmupStateJson,
     control_plane_ready: bool,
     children_ready_count: usize,
     children_total: usize,
@@ -147,6 +159,14 @@ struct ProjectDatabasesJson {
     events_db_bytes: Option<u64>,
     patina_db_bytes: Option<u64>,
     runtime_db_bytes: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct ChildWarmupStateJson {
+    mode: String,
+    state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_error: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -195,6 +215,9 @@ struct LifecycleNameRequest {
 
 #[derive(Deserialize, Default)]
 struct LifecycleRefreshRequest {}
+
+#[derive(Deserialize, Default)]
+struct LifecycleWarmupRequest {}
 
 #[derive(Deserialize, Default)]
 struct TypedCallHistoryRequest {
@@ -258,6 +281,12 @@ pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
         federation_projects_attached: 0,
         federation_projects_failed: 0,
         federation_projects_stale: 0,
+        startup_profile: "unknown".to_string(),
+        child_warmup: ChildWarmupState {
+            mode: "unknown".to_string(),
+            state: "unknown".to_string(),
+            last_error: Some("health details unavailable".to_string()),
+        },
         control_plane_ready: false,
         children_ready_count: 0,
         children_total: 0,
@@ -280,6 +309,11 @@ pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
             reason: entry.reason.clone(),
         })
         .collect();
+    let child_warmup = ChildWarmupStateJson {
+        mode: details.child_warmup.mode.clone(),
+        state: details.child_warmup.state.clone(),
+        last_error: details.child_warmup.last_error.clone(),
+    };
 
     HttpResponse::json(
         200,
@@ -299,6 +333,8 @@ pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
             federation_projects_attached: details.federation_projects_attached,
             federation_projects_failed: details.federation_projects_failed,
             federation_projects_stale: details.federation_projects_stale,
+            startup_profile: details.startup_profile,
+            child_warmup,
             control_plane_ready: details.control_plane_ready,
             children_ready_count: details.children_ready_count,
             children_total: details.children_total,
@@ -540,6 +576,22 @@ pub fn handle_lifecycle_reload_child(
     }
 }
 
+pub fn handle_lifecycle_warmup_children(
+    request: &HttpRequest,
+    runtime: &dyn ApiRuntime,
+) -> HttpResponse {
+    if !request.body.is_empty()
+        && serde_json::from_slice::<LifecycleWarmupRequest>(&request.body).is_err()
+    {
+        return lifecycle_error(400, "invalid_request", "invalid JSON");
+    }
+
+    match runtime.lifecycle_warmup_children() {
+        Ok(response) => HttpResponse::json(200, &response),
+        Err(e) => lifecycle_error_from_anyhow(&e),
+    }
+}
+
 pub fn handle_inspector_typed_calls(
     request: &HttpRequest,
     runtime: &dyn ApiRuntime,
@@ -677,6 +729,7 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
     let lifecycle_load_runtime = Arc::clone(&runtime);
     let lifecycle_refresh_runtime = Arc::clone(&runtime);
     let lifecycle_reload_runtime = Arc::clone(&runtime);
+    let lifecycle_warmup_runtime = Arc::clone(&runtime);
     let inspector_typed_calls_runtime = Arc::clone(&runtime);
     let child_runtime = Arc::clone(&runtime);
 
@@ -717,6 +770,9 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
         }),
         post_lifecycle_reload_child: Arc::new(move |request| {
             handle_lifecycle_reload_child(request, &*lifecycle_reload_runtime)
+        }),
+        post_lifecycle_warmup_children: Arc::new(move |request| {
+            handle_lifecycle_warmup_children(request, &*lifecycle_warmup_runtime)
         }),
         post_inspector_typed_calls: Arc::new(move |request| {
             handle_inspector_typed_calls(request, &*inspector_typed_calls_runtime)
@@ -760,6 +816,12 @@ mod tests {
                 federation_projects_attached: 2,
                 federation_projects_failed: 1,
                 federation_projects_stale: 1,
+                startup_profile: "full".to_string(),
+                child_warmup: ChildWarmupState {
+                    mode: "auto".to_string(),
+                    state: "complete".to_string(),
+                    last_error: None,
+                },
                 control_plane_ready: true,
                 children_ready_count: 1,
                 children_total: 2,
@@ -894,6 +956,16 @@ mod tests {
             })
         }
 
+        fn lifecycle_warmup_children(&self) -> Result<crate::ChildWarmupResult> {
+            Ok(crate::ChildWarmupResult {
+                status: "warmed".to_string(),
+                discovered: 2,
+                activated: 2,
+                failed: 0,
+                degraded: vec![],
+            })
+        }
+
         fn typed_call_history(&self, limit: usize) -> Result<serde_json::Value> {
             Ok(serde_json::json!({
                 "count": limit.min(1),
@@ -978,6 +1050,16 @@ mod tests {
             Some(1)
         );
         assert_eq!(json.get("children_total").and_then(|v| v.as_u64()), Some(2));
+        assert_eq!(
+            json.get("startup_profile").and_then(|v| v.as_str()),
+            Some("full")
+        );
+        assert_eq!(
+            json.get("child_warmup")
+                .and_then(|v| v.get("state"))
+                .and_then(|v| v.as_str()),
+            Some("complete")
+        );
         assert_eq!(
             json.get("children_degraded")
                 .and_then(|v| v.as_array())
@@ -1176,6 +1258,12 @@ mod tests {
                     federation_projects_attached: 0,
                     federation_projects_failed: 0,
                     federation_projects_stale: 0,
+                    startup_profile: "core".to_string(),
+                    child_warmup: ChildWarmupState {
+                        mode: "manual".to_string(),
+                        state: "pending".to_string(),
+                        last_error: None,
+                    },
                     control_plane_ready: false,
                     children_ready_count: 0,
                     children_total: 0,
@@ -1274,6 +1362,9 @@ mod tests {
             fn lifecycle_reload_child(&self, _name: &str) -> Result<crate::ChildReloadResult> {
                 anyhow::bail!("operation_in_progress: reload already running")
             }
+            fn lifecycle_warmup_children(&self) -> Result<crate::ChildWarmupResult> {
+                anyhow::bail!("operation_in_progress: warmup already running")
+            }
             fn typed_call_history(&self, _limit: usize) -> Result<serde_json::Value> {
                 Ok(serde_json::json!({"count": 0, "calls": []}))
             }
@@ -1311,6 +1402,20 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
         assert_eq!(
             json.get("error").and_then(|v| v.as_str()),
+            Some("operation_in_progress")
+        );
+
+        let warmup_request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/api/lifecycle/warmup-children".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&serde_json::json!({})).unwrap(),
+        };
+        let warmup_response = handle_lifecycle_warmup_children(&warmup_request, &BusyRuntime);
+        assert_eq!(warmup_response.status, 409);
+        let warmup_json: serde_json::Value = serde_json::from_slice(&warmup_response.body).unwrap();
+        assert_eq!(
+            warmup_json.get("error").and_then(|v| v.as_str()),
             Some("operation_in_progress")
         );
     }

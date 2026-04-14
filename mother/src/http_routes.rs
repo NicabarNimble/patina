@@ -23,6 +23,7 @@ pub struct RouteTable {
     pub post_lifecycle_load_pando: RouteHandler,
     pub post_lifecycle_refresh: RouteHandler,
     pub post_lifecycle_reload_child: RouteHandler,
+    pub post_lifecycle_warmup_children: RouteHandler,
     pub post_inspector_typed_calls: RouteHandler,
     pub child_request: RouteHandler,
 }
@@ -151,6 +152,13 @@ impl Router {
                     (self.routes.post_lifecycle_reload_child)(request)
                 }
             }
+            ("POST", "/api/lifecycle/warmup-children") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_lifecycle_warmup_children)(request)
+                }
+            }
             ("POST", "/api/inspector/typed-calls") => {
                 if self.require_auth && !self.check_auth(request) {
                     json_error(401, "Unauthorized")
@@ -211,6 +219,7 @@ mod tests {
             post_lifecycle_load_pando: Arc::new(|_| ok_json()),
             post_lifecycle_refresh: Arc::new(|_| ok_json()),
             post_lifecycle_reload_child: Arc::new(|_| ok_json()),
+            post_lifecycle_warmup_children: Arc::new(|_| ok_json()),
             post_inspector_typed_calls: Arc::new(|_| ok_json()),
             child_request: Arc::new(|_| ok_json()),
         }
@@ -248,5 +257,12 @@ mod tests {
 
         let json = router.route(&request("GET", "/atlas/atlas.json", Some(header)));
         assert_eq!(json.status, 200);
+    }
+
+    #[test]
+    fn lifecycle_warmup_route_is_wired() {
+        let router = Router::new(false, "token-123".to_string(), test_routes());
+        let response = router.route(&request("POST", "/api/lifecycle/warmup-children", None));
+        assert_eq!(response.status, 200);
     }
 }

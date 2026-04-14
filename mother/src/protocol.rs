@@ -146,3 +146,6 @@ pub struct LifecycleNamePayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct LifecycleRefreshPayload {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LifecycleWarmupPayload {}
