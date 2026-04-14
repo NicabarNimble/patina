@@ -7,6 +7,7 @@ making claims about how something was designed.
 
 ### Active
 - [child-construction-canon](feat/child-construction-canon/SPEC.md) — registry of reusable children, composition model, SDK extraction (ccc1-ccc2 checked, ccc3-ccc7 pending)
+- [mother-core-worker-topology](feat/mother-core-worker-topology/SPEC.md) — always-on core control plane with profile-gated warmup activation
 - [mother-rivet-integration](feat/mother-rivet-integration/SPEC.md) — Rivet-first orchestration integration while keeping Mother/WASI typed execution authority
 - [mother-typed-invocation-driver](feat/mother-typed-invocation-driver/SPEC.md) — invocation driver seam + generic typed operation routing + inspectable call history
 - [mother-wit-dispatcher](feat/mother-wit-dispatcher/SPEC.md) — typed Mother WIT dispatcher for business ingress (`handle` → WIT migration)
