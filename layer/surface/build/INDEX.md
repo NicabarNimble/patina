@@ -16,6 +16,8 @@ making claims about how something was designed.
 - [pando-delivery-policy](feat/pando-delivery-policy/SPEC.md) — per-edge typed wiring delivery semantics (`required`, `best-effort`, `dead-letter`)
 - [spec-cross-project-dispatch](feat/spec-cross-project-dispatch/SPEC.md) — create specs into another project (`--project`) with session lock + provenance link
 - [watch-null-sink-child](feat/watch-null-sink-child/SPEC.md) — ephemeral typed `patina:watch/events` sink for connection testing
+- [durable-rust-unix-realignment-program](refactor/durable-rust-unix-realignment-program/SPEC.md) — umbrella program for durable-rust/unix realignment (HITL-gated slices)
+- [spec-archive-read-path](fix/spec-archive-read-path/SPEC.md) — restore archived spec show/check from tag-backed source
 
 ### Draft
 - [persona-lake-mvp1](feat/persona-lake-mvp1/SPEC.md) — persona-scoped knowledge lake (blocked by mother-duckdb-ducklake-federation)
@@ -28,6 +30,11 @@ making claims about how something was designed.
 - [wit-deps-wasi-alignment](fix/wit-deps-wasi-alignment/SPEC.md) — replace flattened WASI P2 deps with upstream multi-file packages (io done, http/clocks/filesystem pending)
 - [engine-consolidate](refactor/engine-consolidate/SPEC.md) — merge PipelineEngine + KnowledgeChildEngine
 - [interface-redesign](refactor/interface-redesign/SPEC.md) — Mother-managed interface registry, ephemeral projection, skill system (16 criteria)
+- [main-command-router-split](refactor/main-command-router-split/SPEC.md) — decompose top-level CLI dispatch into command-family modules
+- [mother-daemon-module-split](refactor/mother-daemon-module-split/SPEC.md) — split mother daemon startup/dispatch/composition/health modules
+- [mother-http-api-module-split](refactor/mother-http-api-module-split/SPEC.md) — split mother HTTP API by endpoint domains
+- [child-typed-conversion-boundary](refactor/child-typed-conversion-boundary/SPEC.md) — extract and lock JSON↔component typed conversion boundary
+- [typed-operation-identity-hardening](refactor/typed-operation-identity-hardening/SPEC.md) — enforce exact typed export identity and fail-closed operation validation
 - [duckdb-durable-execution](explore/duckdb-durable-execution/SPEC.md) — DuckDB + Mother for Absurd-style durable execution (explore)
 - [mother-child-artifact-registry](explore/mother-child-artifact-registry/SPEC.md) — Mother-managed child artifact distribution (explore)
 - [mother-password-unlock](explore/mother-password-unlock/SPEC.md) — password-based vault unlock (explore)
