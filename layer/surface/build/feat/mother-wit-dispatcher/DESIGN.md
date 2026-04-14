@@ -71,6 +71,8 @@ These anchors define the compatibility surface we must preserve while adding typ
 
 ## Observability
 
+Primary model: follow **Rivet / agent-os style** operational visibility.
+
 Add WIT-call metrics in Mother eventlog:
 - `mother_wit_call_latency_ms` (gauge)
 - `mother_wit_call_throughput` (counter)
@@ -81,6 +83,13 @@ Required labels:
 - interface
 - function
 - outcome
+
+Incremental expansion (Rivet-inspired):
+- startup/lifecycle timing buckets for typed dispatcher path
+- per-operation deny-reason counters
+- inspector-friendly query surface for recent typed calls and policy outcomes
+
+`whamm` remains exploratory for deep low-level Wasm instrumentation and is not a prerequisite for this spec completion.
 
 Keep handle metrics during migration.
 

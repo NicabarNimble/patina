@@ -122,6 +122,12 @@ All implementation slices must preserve compatibility with this baseline unless 
 - This keeps Mother from becoming domain-child logic and preserves strict separation: children own domain contracts, Mother owns orchestration/policy.
 - Added `watch-null-sink` child as an ephemeral typed event sink so connection testing can proceed without pushing watch-domain behavior into Mother.
 
+## Observability Direction Update (2026-04-13)
+
+- Primary reference model: **Rivet / agent-os observability patterns** (structured metrics, lifecycle timing, queue/schedule visibility, inspector-style runtime surfaces).
+- Secondary exploration: **whamm** as a deep Wasm instrumentation candidate for targeted experiments.
+- Scope lock: `mother-wit-dispatcher` delivery should not depend on whamm integration; first complete Rivet-style Mother-native telemetry and inspection surfaces.
+
 ## Architecture Rule (locked)
 
 Two planes, two rules:
