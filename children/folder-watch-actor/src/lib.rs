@@ -603,19 +603,51 @@ impl exports::patina::watch::control::Guest for FolderWatchActor {
 }
 
 fn handle_configure(payload: &str) -> Result<String, String> {
-    let patch: ConfigurePatch = if payload.trim().is_empty() || payload.trim() == "{}" {
-        ConfigurePatch {
-            watch_path: None,
-            stream_name: None,
-            recursive: None,
-            include_hidden: None,
-            emit_existing_on_start: None,
-            extensions: None,
-            reset_snapshot: None,
-        }
+    let parsed: serde_json::Value = if payload.trim().is_empty() {
+        serde_json::json!({})
     } else {
         serde_json::from_str(payload)
             .map_err(|e| format!("folder-watch-actor configure payload invalid: {}", e))?
+    };
+
+    let patch: ConfigurePatch = match parsed {
+        serde_json::Value::Object(_) => serde_json::from_value(parsed)
+            .map_err(|e| format!("folder-watch-actor configure payload invalid: {}", e))?,
+        serde_json::Value::Array(values) => {
+            if values.is_empty() || values.len() > 2 {
+                return Err(
+                    "folder-watch-actor configure typed args must be [config] or [config, reset-snapshot]"
+                        .to_string(),
+                );
+            }
+
+            let config_value = values
+                .first()
+                .cloned()
+                .ok_or_else(|| "folder-watch-actor configure missing config argument".to_string())?;
+            let config: watch_types::WatcherConfig = serde_json::from_value(config_value)
+                .map_err(|e| format!("folder-watch-actor configure config arg invalid: {}", e))?;
+            let reset_snapshot = values
+                .get(1)
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
+            ConfigurePatch {
+                watch_path: Some(config.watch_path),
+                stream_name: Some(config.stream_name),
+                recursive: Some(config.recursive),
+                include_hidden: Some(config.include_hidden),
+                emit_existing_on_start: Some(config.emit_existing_on_start),
+                extensions: Some(config.extensions),
+                reset_snapshot: Some(reset_snapshot),
+            }
+        }
+        _ => {
+            return Err(
+                "folder-watch-actor configure payload must be an object patch or typed args array"
+                    .to_string(),
+            );
+        }
     };
 
     let mut stored = load_config();

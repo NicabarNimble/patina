@@ -9,7 +9,7 @@ use patina::child::testing::{
     events_subscribe, ChildEngine, ChildIngressMode, ChildKind, ChildManifest, ChildProvides,
     FilesystemAccessMode, FilesystemPreopen, PipelineEngine,
 };
-use patina::mother::{Child, ChildHealth, ChildRequest, GrantedToys};
+use patina::mother::{Child, ChildCallRequest, ChildHealth, ChildRequest, GrantedToys};
 
 // =====================================================================
 // Helpers
@@ -167,6 +167,22 @@ fn lakehouse_catalog_component_path() -> Option<std::path::PathBuf> {
     None
 }
 
+fn folder_watch_actor_component_path() -> Option<std::path::PathBuf> {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for rel in [
+        "target/wasm32-wasip2/debug/patina_ai_child_folder_watch_actor.wasm",
+        "target/wasm32-wasip2/release/patina_ai_child_folder_watch_actor.wasm",
+        "target/wasm32-wasip1/debug/patina_ai_child_folder_watch_actor.wasm",
+        "target/wasm32-wasip1/release/patina_ai_child_folder_watch_actor.wasm",
+    ] {
+        let path = root.join(rel);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    None
+}
+
 /// Helper: load repos.wasm fixture and instantiate child.
 fn load_repos_child() -> Option<Box<dyn Child>> {
     let wasm_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -310,6 +326,96 @@ fn session_writer_component_instantiates_in_knowledge_child_engine() {
         result.is_ok(),
         "session-writer should instantiate in knowledge-child engine"
     );
+}
+
+// =====================================================================
+// folder-watch-actor — typed call bridge proof (mwd5)
+// =====================================================================
+
+#[test]
+fn folder_watch_actor_typed_call_contracts_end_to_end() {
+    let Some(wasm_path) = folder_watch_actor_component_path() else {
+        return;
+    };
+
+    with_temp_patina_home(|_| {
+        let engine = ChildEngine::new().unwrap();
+        let wasm_bytes = std::fs::read(&wasm_path).unwrap();
+        let component = engine.load_component(&wasm_bytes).unwrap();
+        let manifest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("children/folder-watch-actor/child.toml");
+        let manifest = ChildManifest::from_path(&manifest_path).unwrap();
+
+        let child = engine
+            .instantiate_child(&component, &manifest, None)
+            .expect("folder-watch-actor should instantiate");
+
+        let status_response = child
+            .call(&ChildCallRequest {
+                operation_id: "patina:watch/control.status".to_string(),
+                args: serde_json::json!([]),
+            })
+            .expect("typed status call should succeed");
+        assert_eq!(
+            status_response
+                .payload
+                .get("status_contract")
+                .and_then(|v| v.as_str()),
+            Some("patina:watch/control.status")
+        );
+
+        let configure_response = child
+            .call(&ChildCallRequest {
+                operation_id: "patina:watch/control.configure".to_string(),
+                args: serde_json::json!([
+                    {
+                        "watch_path": "/tmp",
+                        "stream_name": "watch.folder",
+                        "recursive": true,
+                        "include_hidden": false,
+                        "emit_existing_on_start": false,
+                        "extensions": ["txt"]
+                    },
+                    true
+                ]),
+            })
+            .expect("typed configure call should succeed");
+        assert_eq!(
+            configure_response
+                .payload
+                .get("configure_contract")
+                .and_then(|v| v.as_str()),
+            Some("patina:watch/control.configure")
+        );
+
+        let scan_response = child
+            .call(&ChildCallRequest {
+                operation_id: "patina:watch/control.scan-now".to_string(),
+                args: serde_json::json!([]),
+            })
+            .expect("typed scan-now call should succeed");
+        assert_eq!(
+            scan_response
+                .payload
+                .get("scan_contract")
+                .and_then(|v| v.as_str()),
+            Some("patina:watch/control.scan-now")
+        );
+
+        let reset_response = child
+            .call(&ChildCallRequest {
+                operation_id: "patina:watch/control.reset".to_string(),
+                args: serde_json::json!([]),
+            })
+            .expect("typed reset call should succeed");
+        assert_eq!(
+            reset_response
+                .payload
+                .get("reset_contract")
+                .and_then(|v| v.as_str()),
+            Some("patina:watch/control.reset")
+        );
+    });
 }
 
 // =====================================================================
