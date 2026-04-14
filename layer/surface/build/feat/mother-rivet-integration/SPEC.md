@@ -46,7 +46,7 @@ exit_criteria:
     checked: true
   - id: mri6-folder-watch-rivet-proof
     text: "folder-watch-actor flow runs through Rivet-triggered orchestration and preserves typed contract behavior end-to-end."
-    checked: false
+    checked: true
   - id: mri7-sdk-guidance
     text: "patina-sdk guidance remains backend-neutral: child authors target WIT + toys only, not Rivet-specific APIs."
     checked: true
@@ -141,7 +141,7 @@ To avoid MVP theater, each criterion is only marked checked when code + tests + 
 - **mri3**: complete — single Rivet ingress adapter route/handler wired and tested.
 - **mri4**: complete — adapter implements `required|best-effort|dead-letter` mapping with targeted tests.
 - **mri5**: complete — correlation metadata persisted + inspector filter support.
-- **mri6**: **open** — live `folder-watch-actor` flow through Rivet adapter still pending.
+- **mri6**: complete — live proof captured (with required integrity sidecars in `~/.patina/children`): warmup discovered/activated `folder-watch-actor`, `/api/rivet/dispatch` returned typed status payload, inspector filter by `rivet_run_id` returned correlated observation.
 - **mri7**: complete — SDK docs now explicitly lock backend-neutral authoring model.
 - **mri8**: complete — portability seam frozen in `PORTABILITY-SEAM.md`.
 
