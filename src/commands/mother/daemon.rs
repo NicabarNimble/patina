@@ -1314,10 +1314,14 @@ impl MotherRuntime for ServerState {
                             }
                         }
                     }
-                    if matches!(loaded_component, LoadedComponent::Composed)
-                        && self.load_typed_component(&manifest).is_err()
-                    {
-                        pandos_failed += 1;
+                    if matches!(loaded_component, LoadedComponent::Composed) {
+                        if let Err(error) = self.execute_typed_composition(&manifest) {
+                            pandos_failed += 1;
+                            degraded.push(mother_crate::runtime::DegradedChild {
+                                name: manifest.pando.name.clone(),
+                                reason: format!("typed composition execution failed: {}", error),
+                            });
+                        }
                     }
                 }
             }
