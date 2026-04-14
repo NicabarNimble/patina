@@ -34,8 +34,8 @@ exit_criteria:
     text: "child.toml supports explicit ingress mode (`handle`, `hybrid`, `wit-only`) for child kind `child`; default remains backward-compatible."
     checked: true
   - id: mwd2-runtime-wit-dispatch-surface
-    text: "Mother runtime exposes a typed invocation path that targets WIT exports by fully-qualified operation id (package/interface.function)."
-    checked: false
+    text: "Mother runtime exposes a typed invocation path addressed by fully-qualified operation id (`<package>:<interface>.<function>`) through a generic invocation driver seam (fail-closed + bridge implementation)."
+    checked: true
   - id: mwd3-cli-wit-call-command
     text: "CLI adds a WIT invocation command (`patina child call ...`) and routes through Mother typed dispatch instead of `handle(action,payload)`."
     checked: true
@@ -43,8 +43,8 @@ exit_criteria:
     text: "When ingress mode is `wit-only`, `handle` business operations are rejected at runtime with clear remediation; lifecycle functions (`on-load`, `tick`, `health`, `drain`) remain available."
     checked: true
   - id: mwd5-folder-watch-proof
-    text: "folder-watch-actor business ops (`configure`, `status`, `scan-now`, `reset`) are invokable via WIT dispatch end-to-end."
-    checked: false
+    text: "folder-watch-actor business ops (`configure`, `status`, `scan-now`, `reset`) are invokable end-to-end through `patina child call` operation-id routing without watcher-specific Mother runtime branches."
+    checked: true
   - id: mwd6-observability-parity
     text: "Mother emits invocation metrics for WIT dispatch with labels (`child`, `interface`, `function`, `outcome`) and keeps existing handle metrics during migration."
     checked: true
@@ -127,6 +127,16 @@ All implementation slices must preserve compatibility with this baseline unless 
 - Primary reference model: **Rivet / agent-os observability patterns** (structured metrics, lifecycle timing, queue/schedule visibility, inspector-style runtime surfaces).
 - Secondary exploration: **whamm** as a deep Wasm instrumentation candidate for targeted experiments.
 - Scope lock: `mother-wit-dispatcher` delivery should not depend on whamm integration; first complete Rivet-style Mother-native telemetry and inspection surfaces.
+
+## Runtime Update (2026-04-13, late)
+
+- Added a generic `InvocationDriver` seam in WASM child runtime with two implementations:
+  - `FailClosedInvocationDriver`
+  - `HandleBridgeInvocationDriver`
+- Operation ids are now resolved and validated generically (`<package>:<interface>.<function>`), with strict error taxonomy.
+- Mother now records typed call outcomes (`success/error/denied`), deny reasons, and policy/invoke timing metrics.
+- Added inspector route `POST /api/inspector/typed-calls` for recent typed-call visibility.
+- `folder-watch-actor` now supports typed-args array payload shape for `configure`, enabling operation-id call path proof without watcher-specific Mother binding code.
 
 ## Architecture Rule (locked)
 
@@ -307,10 +317,10 @@ Files:
 
 Scope:
 - Set ingress mode and operation allowlist for watcher.
-- Until generic runtime typed dispatcher exists, prove fail-closed behavior for direct `child call` on real components.
+- Prove operation-id typed calls for watcher ops through generic invocation driver path on real components.
 
 Required proof:
-- command transcript showing explicit fail-closed response for unsupported typed dispatcher path,
+- deterministic typed-call success proof for `status`, `configure`, `scan-now`, and `reset`,
 - deny proof for disallowed operation.
 
 ## Verification
@@ -326,6 +336,10 @@ cargo test -q -p mother wit_only_denies_business_handle_calls
 cargo test -q -p mother handle_mode_denies_typed_call
 cargo test -q -p mother child_call_route_dispatches_typed_operation
 cargo test -q -p mother child_call_route_rejects_missing_operation_id
+cargo test -q -p mother inspector_typed_calls_route_returns_history
+cargo test -q -p patina-ai resolve_typed_operation_
+cargo test -q -p patina-ai encode_typed_args_for_handle_
+cargo test -q -p patina-ai folder_watch_actor_typed_call_contracts_end_to_end
 
 # Build and install watcher child
 cargo build --manifest-path children/folder-watch-actor/Cargo.toml --target wasm32-wasip2
@@ -340,10 +354,11 @@ wasm-tools component wit children/watch-null-sink/target/wasm32-wasip2/debug/pat
 # Audit view: ingress mode + operations
 cargo run -q -- child list
 
-# Typed WIT call currently fails closed for real component lane
-# (generic runtime dispatcher pending)
+# Typed call succeeds through operation-id invocation driver lane
 cargo run -q -- child call folder-watch-actor patina:watch/control.status '[]'
-# expect: typed call not implemented for child 'folder-watch-actor' operation ...
+
+# configure via typed args array
+cargo run -q -- child call folder-watch-actor patina:watch/control.configure '[{"watch_path":"/tmp","stream_name":"watch.folder","recursive":true,"include_hidden":false,"emit_existing_on_start":false,"extensions":["txt"]},true]'
 
 # Compatibility lane still works where allowed (hybrid)
 cargo run -q -- child run folder-watch-actor -- status

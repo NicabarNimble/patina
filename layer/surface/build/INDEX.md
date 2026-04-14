@@ -7,6 +7,7 @@ making claims about how something was designed.
 
 ### Active
 - [child-construction-canon](feat/child-construction-canon/SPEC.md) — registry of reusable children, composition model, SDK extraction (ccc1-ccc2 checked, ccc3-ccc7 pending)
+- [mother-typed-invocation-driver](feat/mother-typed-invocation-driver/SPEC.md) — invocation driver seam + generic typed operation routing + inspectable call history
 - [mother-wit-dispatcher](feat/mother-wit-dispatcher/SPEC.md) — typed Mother WIT dispatcher for business ingress (`handle` → WIT migration)
 - [pando-delivery-policy](feat/pando-delivery-policy/SPEC.md) — per-edge typed wiring delivery semantics (`required`, `best-effort`, `dead-letter`)
 - [watch-null-sink-child](feat/watch-null-sink-child/SPEC.md) — ephemeral typed `patina:watch/events` sink for connection testing

@@ -25,7 +25,7 @@ Target:
 
 - `mother/src/runtime.rs`: `Child` trait exposes `handle` and `call`; default `call` is fail-closed.
 - `src/child/internal/child.rs`: `WasmChild::handle` bridges action+JSON payload into `instance.call_handle`.
-- `src/child/internal/child.rs`: `WasmChild::call` is fail-closed generic (no watcher-specific contract branch).
+- `src/child/internal/child.rs`: `WasmChild::call` delegates through `InvocationDriver` (fail-closed + handle-bridge variants; still no watcher-specific contract branch).
 - `mother/src/registry.rs`: enforces ingress policy on both handle and call and emits both metric families.
 - `mother/src/http_api.rs`: child endpoint shape remains `/child/{name}/{action}`, with `action == call` for typed lane.
 - `src/main.rs`: includes `ChildCommands::Run` and `ChildCommands::Call`.
@@ -111,10 +111,11 @@ At runtime abstraction level, add one typed call seam beside handle:
 ## Rollout
 
 1. Implement hybrid first.
-2. Keep runtime typed call fail-closed generic until generic dispatcher exists.
-3. Use `watch-null-sink` to validate typed event wiring without persistence.
-4. Enable `wit-only` for selected children once generic dispatch exists.
-5. Keep handle lane for service children until contracts stabilize.
+2. Keep fail-closed driver available and default-deny policy gates in Mother.
+3. Use operation-id invocation driver for generic typed call routing; keep domain behavior in children.
+4. Use `watch-null-sink` to validate typed event wiring without persistence.
+5. Enable `wit-only` for selected children once migration confidence is established.
+6. Keep handle lane for service children until contracts stabilize.
 
 ## File touchpoints
 
