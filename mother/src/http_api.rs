@@ -65,6 +65,7 @@ pub trait ApiRuntime {
     fn lifecycle_load_pando(&self, name: &str) -> Result<crate::PandoLoadResult>;
     fn lifecycle_refresh(&self) -> Result<crate::PandoRefreshResult>;
     fn lifecycle_reload_child(&self, name: &str) -> Result<crate::ChildReloadResult>;
+    fn typed_call_history(&self, limit: usize) -> Result<serde_json::Value>;
     fn builtin_spec_dispatch(
         &self,
         request: patina_protocol::SpecDispatchRequest,
@@ -194,6 +195,16 @@ struct LifecycleNameRequest {
 
 #[derive(Deserialize, Default)]
 struct LifecycleRefreshRequest {}
+
+#[derive(Deserialize, Default)]
+struct TypedCallHistoryRequest {
+    #[serde(default = "default_typed_history_limit")]
+    limit: usize,
+}
+
+fn default_typed_history_limit() -> usize {
+    100
+}
 
 fn lifecycle_error(status: u16, code: &str, detail: &str) -> HttpResponse {
     HttpResponse::json(
@@ -529,6 +540,28 @@ pub fn handle_lifecycle_reload_child(
     }
 }
 
+pub fn handle_inspector_typed_calls(
+    request: &HttpRequest,
+    runtime: &dyn ApiRuntime,
+) -> HttpResponse {
+    let body = if request.body.is_empty() {
+        TypedCallHistoryRequest::default()
+    } else {
+        match serde_json::from_slice::<TypedCallHistoryRequest>(&request.body) {
+            Ok(value) => value,
+            Err(error) => {
+                return json_error(400, &format!("Invalid JSON: {}", error));
+            }
+        }
+    };
+
+    let limit = body.limit.min(MAX_LIMIT).max(1);
+    match runtime.typed_call_history(limit) {
+        Ok(payload) => HttpResponse::json(200, &payload),
+        Err(error) => json_error(500, &format!("typed call history failed: {}", error)),
+    }
+}
+
 pub fn handle_child_request(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
     let parts: Vec<&str> = request.path[1..].split('/').collect();
     if parts.len() != 3 {
@@ -644,6 +677,7 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
     let lifecycle_load_runtime = Arc::clone(&runtime);
     let lifecycle_refresh_runtime = Arc::clone(&runtime);
     let lifecycle_reload_runtime = Arc::clone(&runtime);
+    let inspector_typed_calls_runtime = Arc::clone(&runtime);
     let child_runtime = Arc::clone(&runtime);
 
     RouteTable {
@@ -683,6 +717,9 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
         }),
         post_lifecycle_reload_child: Arc::new(move |request| {
             handle_lifecycle_reload_child(request, &*lifecycle_reload_runtime)
+        }),
+        post_inspector_typed_calls: Arc::new(move |request| {
+            handle_inspector_typed_calls(request, &*inspector_typed_calls_runtime)
         }),
         child_request: Arc::new(move |request| handle_child_request(request, &*child_runtime)),
     }
@@ -857,6 +894,17 @@ mod tests {
             })
         }
 
+        fn typed_call_history(&self, limit: usize) -> Result<serde_json::Value> {
+            Ok(serde_json::json!({
+                "count": limit.min(1),
+                "calls": [{
+                    "child": "folder-watch-actor",
+                    "operation_id": "patina:watch/control.status",
+                    "outcome": "success"
+                }]
+            }))
+        }
+
         fn builtin_spec_dispatch(
             &self,
             _request: patina_protocol::SpecDispatchRequest,
@@ -995,6 +1043,30 @@ mod tests {
 
         let response = handle_child_request(&request, &StubRuntime);
         assert_eq!(response.status, 400);
+    }
+
+    #[test]
+    fn inspector_typed_calls_route_returns_history() {
+        let request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/api/inspector/typed-calls".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&serde_json::json!({"limit": 10})).unwrap(),
+        };
+
+        let response = handle_inspector_typed_calls(&request, &StubRuntime);
+        assert_eq!(response.status, 200);
+        let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(payload.get("count").and_then(|v| v.as_u64()), Some(1));
+        assert_eq!(
+            payload
+                .get("calls")
+                .and_then(|v| v.as_array())
+                .and_then(|items| items.first())
+                .and_then(|v| v.get("operation_id"))
+                .and_then(|v| v.as_str()),
+            Some("patina:watch/control.status")
+        );
     }
 
     #[test]
@@ -1201,6 +1273,9 @@ mod tests {
             }
             fn lifecycle_reload_child(&self, _name: &str) -> Result<crate::ChildReloadResult> {
                 anyhow::bail!("operation_in_progress: reload already running")
+            }
+            fn typed_call_history(&self, _limit: usize) -> Result<serde_json::Value> {
+                Ok(serde_json::json!({"count": 0, "calls": []}))
             }
             fn builtin_spec_dispatch(
                 &self,

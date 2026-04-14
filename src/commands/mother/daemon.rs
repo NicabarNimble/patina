@@ -1077,6 +1077,14 @@ impl ApiRuntime for ServerState {
         <Self as MotherRuntime>::reload_child(self, name)
     }
 
+    fn typed_call_history(&self, limit: usize) -> anyhow::Result<serde_json::Value> {
+        let calls = self.registry.typed_call_history(limit);
+        Ok(serde_json::json!({
+            "count": calls.len(),
+            "calls": calls,
+        }))
+    }
+
     fn builtin_spec_dispatch(
         &self,
         request: patina_protocol::SpecDispatchRequest,

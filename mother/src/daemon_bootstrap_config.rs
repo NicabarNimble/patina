@@ -241,6 +241,9 @@ mod tests {
                     post_lifecycle_reload_child: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
+                    post_inspector_typed_calls: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
                     child_request: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(
                             404,
@@ -351,6 +354,9 @@ mod tests {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
                     post_lifecycle_reload_child: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    post_inspector_typed_calls: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
                     child_request: Arc::new(|_| {
