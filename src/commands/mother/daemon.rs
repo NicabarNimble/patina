@@ -1089,6 +1089,25 @@ impl ApiRuntime for ServerState {
         &self,
         request: patina_protocol::SpecDispatchRequest,
     ) -> anyhow::Result<serde_json::Value> {
+        #[derive(serde::Deserialize)]
+        struct SpecDispatchEnvelope {
+            command: patina::spec::SpecCommands,
+            #[serde(default)]
+            project: Option<String>,
+            #[serde(default)]
+            origin_project: Option<String>,
+        }
+
+        if let Ok(envelope) =
+            serde_json::from_value::<SpecDispatchEnvelope>(request.command.clone())
+        {
+            return patina::spec::execute_command_value_with_route(
+                envelope.command,
+                envelope.project,
+                envelope.origin_project,
+            );
+        }
+
         let command: patina::spec::SpecCommands = serde_json::from_value(request.command)
             .map_err(|e| anyhow::anyhow!("Invalid spec-manager command payload: {}", e))?;
         patina::spec::execute_command_value(command)

@@ -484,6 +484,10 @@ enum Commands {
 
     /// Manage spec lifecycle (archive completed specs)
     Spec {
+        /// Target Patina project path or project UID for cross-project spec operations
+        #[arg(long)]
+        project: Option<String>,
+
         #[command(subcommand)]
         command: commands::spec::SpecCommands,
     },
@@ -1713,8 +1717,8 @@ fn main() -> Result<()> {
                 commands::setup::execute_grammars(options)?;
             }
         },
-        Some(Commands::Spec { command }) => {
-            commands::spec::execute(command)?;
+        Some(Commands::Spec { project, command }) => {
+            commands::spec::execute(command, project)?;
         }
         Some(Commands::Schema { command }) => match command {
             commands::schema::SchemaCommands::Install { path } => {

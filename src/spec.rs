@@ -22,6 +22,9 @@ use crate::commands::spec::internal;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::cell::RefCell;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[derive(Debug, Clone, clap::Subcommand, serde::Serialize, serde::Deserialize)]
 pub enum SpecCommands {
@@ -36,6 +39,17 @@ pub enum SpecCommands {
         blocked_by: Vec<String>,
         #[arg(long)]
         related: Vec<String>,
+        /// Target Patina project path or project UID (8-hex) where the spec should live
+        #[arg(long)]
+        project: Option<String>,
+        /// Allow creating in another project even when that target has no active session
+        #[arg(long, default_value_t = false)]
+        #[serde(default)]
+        force_cross_project: bool,
+        /// Internal: source project root used for cross-project provenance linking
+        #[arg(long, hide = true)]
+        #[serde(default)]
+        origin_project: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -203,7 +217,179 @@ impl SpecCommands {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+struct SpecRouteContext {
+    project: Option<String>,
+    origin_project: Option<String>,
+}
+
+thread_local! {
+    static SPEC_ROUTE_CONTEXT: RefCell<Option<SpecRouteContext>> = const { RefCell::new(None) };
+}
+
+pub fn execute_command_value_with_route(
+    command: SpecCommands,
+    project: Option<String>,
+    origin_project: Option<String>,
+) -> Result<Value> {
+    let previous = SPEC_ROUTE_CONTEXT.with(|slot| {
+        slot.replace(Some(SpecRouteContext {
+            project,
+            origin_project,
+        }))
+    });
+    let result = execute_command_value(command);
+    SPEC_ROUTE_CONTEXT.with(|slot| {
+        slot.replace(previous);
+    });
+    result
+}
+
+fn current_route_context() -> SpecRouteContext {
+    SPEC_ROUTE_CONTEXT
+        .with(|slot| slot.borrow().clone())
+        .unwrap_or_default()
+}
+
+fn looks_like_project_uid(value: &str) -> bool {
+    value.len() == 8
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+}
+
+fn canonical_project_root(path: &Path) -> Result<PathBuf> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    absolute
+        .canonicalize()
+        .with_context(|| format!("Project path not found: {}", absolute.display()))
+}
+
+fn resolve_project_uid_to_path(uid: &str) -> Result<PathBuf> {
+    let store = crate::mother::MotherRuntimeStore::default();
+    let projects = store.list_registered_projects()?;
+    let Some(project) = projects.into_iter().find(|entry| entry.project_uid == uid) else {
+        anyhow::bail!(
+            "Unknown project uid '{}'. Register it first by running `patina init .` in that project.",
+            uid
+        );
+    };
+    canonical_project_root(Path::new(&project.project_path))
+}
+
+fn ensure_patina_project(path: &Path) -> Result<()> {
+    if !crate::project::is_patina_project(path) {
+        anyhow::bail!(
+            "Target is not a Patina project: {}\nRun `patina init .` in that directory first.",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+fn resolve_target_project_root(selector: Option<&str>) -> Result<(PathBuf, String)> {
+    let root = match selector.map(str::trim).filter(|value| !value.is_empty()) {
+        None => std::env::current_dir()?,
+        Some(value) if looks_like_project_uid(value) && !Path::new(value).exists() => {
+            resolve_project_uid_to_path(value)?
+        }
+        Some(value) => canonical_project_root(Path::new(value))?,
+    };
+
+    ensure_patina_project(&root)?;
+    let uid = crate::project::register_with_mother(&root)?;
+    Ok((root, uid))
+}
+
+fn resolve_origin_project_root(origin_project: Option<&str>) -> Result<PathBuf> {
+    let root = match origin_project
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(value) => canonical_project_root(Path::new(value))?,
+        None => std::env::current_dir()?,
+    };
+    ensure_patina_project(&root)?;
+    Ok(root)
+}
+
+fn strip_routing_from_command(command: &SpecCommands) -> SpecCommands {
+    match command.clone() {
+        SpecCommands::Create {
+            r#type,
+            id,
+            title,
+            description,
+            blocked_by,
+            related,
+            json,
+            ..
+        } => SpecCommands::Create {
+            r#type,
+            id,
+            title,
+            description,
+            blocked_by,
+            related,
+            project: None,
+            force_cross_project: false,
+            origin_project: None,
+            json,
+        },
+        other => other,
+    }
+}
+
+fn execute_spec_command_in_project(project_root: &Path, command: &SpecCommands) -> Result<Value> {
+    let exe = std::env::current_exe().context("Failed to resolve patina executable path")?;
+    let serialized = serde_json::to_string(&strip_routing_from_command(command))?;
+
+    let output = Command::new(exe)
+        .current_dir(project_root)
+        .env("PATINA_SPEC_DIRECT", "1")
+        .env("PATINA_SPEC_DIRECT_COMMAND_JSON", serialized)
+        .args(["spec", "next", "--json"])
+        .output()
+        .with_context(|| {
+            format!(
+                "Failed to execute spec command in project {}",
+                project_root.display()
+            )
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let detail = if stderr.trim().is_empty() {
+            stdout.trim().to_string()
+        } else {
+            stderr.trim().to_string()
+        };
+        anyhow::bail!(
+            "Cross-project spec dispatch failed in {}: {}",
+            project_root.display(),
+            detail
+        );
+    }
+
+    let stdout = String::from_utf8(output.stdout)
+        .map_err(|e| anyhow::anyhow!("Failed to decode subprocess output: {}", e))?;
+    serde_json::from_str(stdout.trim())
+        .map_err(|e| anyhow::anyhow!("Failed to parse subprocess JSON output: {}", e))
+}
+
 pub fn execute_command_value(command: SpecCommands) -> Result<Value> {
+    let route = current_route_context();
+
+    if route.project.is_some() && !matches!(&command, SpecCommands::Create { .. }) {
+        let (target_root, _) = resolve_target_project_root(route.project.as_deref())?;
+        return execute_spec_command_in_project(&target_root, &command);
+    }
+
     let json_mode = command.wants_json();
     let (text, data) = match command {
         SpecCommands::Create {
@@ -212,20 +398,68 @@ pub fn execute_command_value(command: SpecCommands) -> Result<Value> {
             title,
             description,
             blocked_by,
-            related,
+            mut related,
+            project,
+            force_cross_project,
+            origin_project,
             ..
-        } => (
-            Some(format!("Created spec '{}'", id)),
-            serde_json::to_value(internal::create_spec_value(
+        } => {
+            let selected_project = project.or(route.project.clone());
+            let selected_origin = origin_project.or(route.origin_project.clone());
+
+            let origin_root = resolve_origin_project_root(selected_origin.as_deref())?;
+            let origin_uid = crate::project::register_with_mother(&origin_root)?;
+            let (target_root, target_uid) =
+                resolve_target_project_root(selected_project.as_deref())?;
+            let cross_project = origin_uid != target_uid;
+
+            if cross_project {
+                let origin_link = format!("origin-project:{}", origin_uid);
+                if !related.iter().any(|entry| entry == &origin_link) {
+                    related.push(origin_link);
+                }
+
+                if !force_cross_project
+                    && crate::session::current_session_file_id(&target_root)?.is_none()
+                {
+                    anyhow::bail!(
+                        "Cross-project spec create denied: target project '{}' has no active session.\n\
+                         Remediation: run `patina ai pi --path {} --title \"spec-init\"` first,\n\
+                         or re-run with --force-cross-project.",
+                        target_uid,
+                        target_root.display()
+                    );
+                }
+            }
+
+            let mut created = internal::create_spec_value_for_project(
+                &target_root,
+                Some(&target_uid),
                 &r#type,
                 &id,
                 title.as_deref(),
                 description.as_deref(),
                 blocked_by,
                 related,
-            )?)
-            .ok(),
-        ),
+            )?;
+            created.cross_project = cross_project;
+            if cross_project {
+                created.origin_project_uid = Some(origin_uid);
+            }
+
+            (
+                Some(format!(
+                    "Created spec '{}'{}",
+                    id,
+                    if cross_project {
+                        " (cross-project)"
+                    } else {
+                        ""
+                    }
+                )),
+                serde_json::to_value(created).ok(),
+            )
+        }
         SpecCommands::Archive { id, dry_run, stale } => {
             if stale {
                 internal::archive_stale_specs(dry_run)?;

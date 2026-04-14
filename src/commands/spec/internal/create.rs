@@ -2,12 +2,9 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use serde::Serialize;
 use std::path::Path;
+use std::process::Command;
 
 use patina::spec::{serialize_spec_file, Sessions, SpecFrontmatter, SpecStatus, SpecType};
-
-use super::db_path;
-use super::mutations::git_stage_and_commit;
-use super::queue::tag_exists;
 
 /// Typed result for spec create command.
 #[derive(Debug, Serialize)]
@@ -19,6 +16,14 @@ pub struct CreateResult {
     pub path: String,
     pub directory: String,
     pub session_origin: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_uid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_root: Option<String>,
+    #[serde(default)]
+    pub cross_project: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin_project_uid: Option<String>,
 }
 
 /// Body template for each spec type.
@@ -48,10 +53,9 @@ fn design_template(title: &str) -> String {
     )
 }
 
-/// Detect active session ID from .patina/local/active-session.md frontmatter.
-fn active_session_id() -> Option<String> {
-    let project_root = patina::session::SessionManager::find_project_root().ok()?;
-    patina::session::current_session_file_id(&project_root)
+/// Detect active session ID for a project root.
+fn active_session_id(project_root: &Path) -> Option<String> {
+    patina::session::current_session_file_id(project_root)
         .ok()
         .flatten()
 }
@@ -69,8 +73,10 @@ fn is_valid_id(id: &str) -> bool {
     chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
-/// Create a new spec draft and return structured result (for MCP).
-pub fn create_spec_value(
+/// Create a new spec draft in a target project root and return structured result (for MCP).
+pub fn create_spec_value_for_project(
+    project_root: &Path,
+    project_uid: Option<&str>,
     type_str: &str,
     id: &str,
     title: Option<&str>,
@@ -96,8 +102,10 @@ pub fn create_spec_value(
     let type_str = spec_type.as_str();
     let directory = format!("layer/surface/build/{}/{}", type_str, id);
     let spec_path = format!("{}/SPEC.md", directory);
+    let directory_abs = project_root.join(&directory);
+    let spec_path_abs = project_root.join(&spec_path);
 
-    if Path::new(&directory).exists() {
+    if directory_abs.exists() {
         anyhow::bail!(
             "Directory already exists: {}\n  \
              Spec '{}' may already be created. Check with: patina spec list",
@@ -108,21 +116,22 @@ pub fn create_spec_value(
 
     // 4. Check archive tag doesn't exist (prevents collision with archived specs)
     let archive_tag = format!("spec/{}", id);
-    if tag_exists(&archive_tag)? {
+    if git_tag_exists_at(project_root, &archive_tag)? {
         anyhow::bail!(
             "Tag '{}' already exists. A spec with this id was previously archived.\n  \
-             Recover: git show {}:SPEC.md",
+             Recover: git -C {} show {}:SPEC.md",
             archive_tag,
+            project_root.display(),
             archive_tag
         );
     }
 
     // 5. Create directory
-    std::fs::create_dir_all(&directory)
-        .with_context(|| format!("Failed to create directory {}", directory))?;
+    std::fs::create_dir_all(&directory_abs)
+        .with_context(|| format!("Failed to create directory {}", directory_abs.display()))?;
 
-    // 6. Detect active session
-    let session_origin = active_session_id();
+    // 6. Detect active session in target project
+    let session_origin = active_session_id(project_root);
 
     // 7. Build frontmatter
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
@@ -156,25 +165,25 @@ pub fn create_spec_value(
 
     // 9. Write SPEC.md
     let content = serialize_spec_file(&frontmatter, &body)?;
-    std::fs::write(&spec_path, &content)
-        .with_context(|| format!("Failed to write {}", spec_path))?;
+    std::fs::write(&spec_path_abs, &content)
+        .with_context(|| format!("Failed to write {}", spec_path_abs.display()))?;
 
     // 9b. Write DESIGN.md for feat and refactor types
     if needs_design_doc(spec_type) {
-        let design_path = format!("{}/DESIGN.md", directory);
+        let design_path_abs = directory_abs.join("DESIGN.md");
         let design_content = design_template(display_title);
-        std::fs::write(&design_path, &design_content)
-            .with_context(|| format!("Failed to write {}", design_path))?;
+        std::fs::write(&design_path_abs, &design_content)
+            .with_context(|| format!("Failed to write {}", design_path_abs.display()))?;
     }
 
     // 10. Git commit (stage directory to include both SPEC.md and DESIGN.md)
     let commit_msg = format!("spec: draft {}", id);
-    git_stage_and_commit(&directory, &commit_msg)?;
+    git_stage_and_commit_at(project_root, &directory, &commit_msg)?;
 
-    // 11. Update database
-    let db_path = db_path()?;
-    if db_path.exists() {
-        let conn = Connection::open(&db_path).context("Failed to open database")?;
+    // 11. Update target project database
+    let target_db_path = patina::eventlog::resolve_patina_db_path(project_root);
+    if target_db_path.exists() {
+        let conn = Connection::open(&target_db_path).context("Failed to open database")?;
         conn.execute(
             "INSERT OR REPLACE INTO patterns (id, title, layer, status, file_path) VALUES (?1, ?2, ?3, ?4, ?5)",
             rusqlite::params![id, display_title, "surface", SpecStatus::Draft.as_str(), spec_path],
@@ -189,7 +198,85 @@ pub fn create_spec_value(
         path: spec_path,
         directory,
         session_origin,
+        project_uid: project_uid.map(ToString::to_string),
+        project_root: Some(project_root.display().to_string()),
+        cross_project: false,
+        origin_project_uid: None,
     })
+}
+
+/// Backward-compatible create helper for current process project.
+pub fn create_spec_value(
+    type_str: &str,
+    id: &str,
+    title: Option<&str>,
+    description: Option<&str>,
+    blocked_by: Vec<String>,
+    related: Vec<String>,
+) -> Result<CreateResult> {
+    let project_root = std::env::current_dir().context("Failed to resolve current directory")?;
+    create_spec_value_for_project(
+        &project_root,
+        None,
+        type_str,
+        id,
+        title,
+        description,
+        blocked_by,
+        related,
+    )
+}
+
+fn run_git(project_root: &Path, args: &[&str]) -> Result<std::process::Output> {
+    Command::new("git")
+        .arg("-C")
+        .arg(project_root)
+        .args(args)
+        .output()
+        .with_context(|| format!("Failed to run git -C {} {:?}", project_root.display(), args))
+}
+
+fn git_tag_exists_at(project_root: &Path, tag: &str) -> Result<bool> {
+    let output = run_git(
+        project_root,
+        &[
+            "show-ref",
+            "--verify",
+            "--quiet",
+            &format!("refs/tags/{}", tag),
+        ],
+    )?;
+    Ok(output.status.success())
+}
+
+fn git_stage_and_commit_at(project_root: &Path, rel_path: &str, message: &str) -> Result<()> {
+    // Use -f so spec paths still stage when users have broad global ignores.
+    let add = run_git(project_root, &["add", "-f", rel_path])?;
+    if !add.status.success() {
+        anyhow::bail!(
+            "git add failed in {}: {}",
+            project_root.display(),
+            String::from_utf8_lossy(&add.stderr)
+        );
+    }
+
+    let staged = run_git(
+        project_root,
+        &["diff", "--cached", "--quiet", "--exit-code"],
+    )?;
+    if staged.status.success() {
+        return Ok(());
+    }
+
+    let commit = run_git(project_root, &["commit", "-m", message])?;
+    if !commit.status.success() {
+        anyhow::bail!(
+            "git commit failed in {}: {}",
+            project_root.display(),
+            String::from_utf8_lossy(&commit.stderr)
+        );
+    }
+    Ok(())
 }
 
 #[cfg(test)]
