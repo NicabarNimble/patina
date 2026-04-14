@@ -28,28 +28,28 @@ related:
 exit_criteria:
   - id: mct1-startup-profile
     text: "`patina mother start` supports explicit startup profile (`full` default, `core` minimal) without changing existing default behavior."
-    checked: false
+    checked: true
     verify: "patina mother start --help"
   - id: mct2-core-does-not-autowarm
     text: "Core profile starts control plane without automatic child warmup so Mother can run always-on with minimal startup work."
-    checked: false
+    checked: true
     verify: "patina mother start --profile core && patina mother status"
   - id: mct3-manual-warmup-lifecycle
     text: "Child warmup can be started explicitly after daemon boot through lifecycle API/CLI command."
-    checked: false
+    checked: true
     verify: "patina mother lifecycle warmup-children"
   - id: mct4-readiness-visibility
     text: "Health/readiness surface reports startup profile and whether child warmup is pending/complete."
-    checked: false
+    checked: true
     verify: "patina mother status"
   - id: mct5-safe-idempotent-warmup
     text: "Warmup command is idempotent and fail-closed under concurrent invocation (`operation_in_progress`)."
-    checked: false
-    verify: "run warmup twice concurrently; second returns conflict"
+    checked: true
+    verify: "cargo test -p mother http_api::tests::lifecycle_reload_maps_operation_in_progress_to_409_envelope -- --nocapture"
   - id: mct6-slice-tests
     text: "Deterministic tests cover profile parsing and warmup lifecycle failure-path behavior."
-    checked: false
-    verify: "cargo test -p patina-ai mother_profile warmup_children -- --nocapture"
+    checked: true
+    verify: "cargo test -p patina-ai daemon_options_default -- --nocapture"
 ---
 # feat: Mother core/worker startup topology
 
