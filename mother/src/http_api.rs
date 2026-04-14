@@ -93,6 +93,7 @@ pub struct HealthDetails {
     pub federation_projects_stale: usize,
     pub startup_profile: String,
     pub child_warmup: ChildWarmupState,
+    pub memory: MemoryStatus,
     pub control_plane_ready: bool,
     pub children_ready_count: usize,
     pub children_total: usize,
@@ -104,6 +105,14 @@ pub struct ChildWarmupState {
     pub mode: String,
     pub state: String,
     pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MemoryStatus {
+    pub rss_bytes: Option<u64>,
+    pub max_rss_bytes: Option<u64>,
+    pub soft_limit_bytes: Option<u64>,
+    pub pressure: String,
 }
 
 #[derive(Debug, Clone)]
@@ -142,6 +151,7 @@ struct HealthResponse {
     federation_projects_stale: usize,
     startup_profile: String,
     child_warmup: ChildWarmupStateJson,
+    memory: MemoryStatusJson,
     control_plane_ready: bool,
     children_ready_count: usize,
     children_total: usize,
@@ -167,6 +177,17 @@ struct ChildWarmupStateJson {
     state: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     last_error: Option<String>,
+}
+
+#[derive(Serialize)]
+struct MemoryStatusJson {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rss_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_rss_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    soft_limit_bytes: Option<u64>,
+    pressure: String,
 }
 
 #[derive(Serialize)]
@@ -254,6 +275,9 @@ fn lifecycle_error_from_anyhow(error: &anyhow::Error) -> HttpResponse {
     if let Some(value) = detail.strip_prefix("operation_in_progress: ") {
         return lifecycle_error(409, "operation_in_progress", value);
     }
+    if let Some(value) = detail.strip_prefix("resource_exhausted: ") {
+        return lifecycle_error(429, "resource_exhausted", value);
+    }
     if let Some(value) = detail.strip_prefix("internal_error: ") {
         return lifecycle_error(500, "internal_error", value);
     }
@@ -287,6 +311,12 @@ pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
             state: "unknown".to_string(),
             last_error: Some("health details unavailable".to_string()),
         },
+        memory: MemoryStatus {
+            rss_bytes: None,
+            max_rss_bytes: None,
+            soft_limit_bytes: None,
+            pressure: "unknown".to_string(),
+        },
         control_plane_ready: false,
         children_ready_count: 0,
         children_total: 0,
@@ -314,6 +344,12 @@ pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
         state: details.child_warmup.state.clone(),
         last_error: details.child_warmup.last_error.clone(),
     };
+    let memory = MemoryStatusJson {
+        rss_bytes: details.memory.rss_bytes,
+        max_rss_bytes: details.memory.max_rss_bytes,
+        soft_limit_bytes: details.memory.soft_limit_bytes,
+        pressure: details.memory.pressure.clone(),
+    };
 
     HttpResponse::json(
         200,
@@ -335,6 +371,7 @@ pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
             federation_projects_stale: details.federation_projects_stale,
             startup_profile: details.startup_profile,
             child_warmup,
+            memory,
             control_plane_ready: details.control_plane_ready,
             children_ready_count: details.children_ready_count,
             children_total: details.children_total,
@@ -822,6 +859,12 @@ mod tests {
                     state: "complete".to_string(),
                     last_error: None,
                 },
+                memory: MemoryStatus {
+                    rss_bytes: Some(8 * 1024 * 1024),
+                    max_rss_bytes: Some(12 * 1024 * 1024),
+                    soft_limit_bytes: Some(64 * 1024 * 1024),
+                    pressure: "ok".to_string(),
+                },
                 control_plane_ready: true,
                 children_ready_count: 1,
                 children_total: 2,
@@ -1061,6 +1104,12 @@ mod tests {
             Some("complete")
         );
         assert_eq!(
+            json.get("memory")
+                .and_then(|v| v.get("pressure"))
+                .and_then(|v| v.as_str()),
+            Some("ok")
+        );
+        assert_eq!(
             json.get("children_degraded")
                 .and_then(|v| v.as_array())
                 .and_then(|items| items.first())
@@ -1233,7 +1282,7 @@ mod tests {
     }
 
     #[test]
-    fn lifecycle_reload_maps_operation_in_progress_to_409_envelope() {
+    fn lifecycle_warmup_maps_resource_exhausted_to_429_envelope() {
         struct BusyRuntime;
 
         impl ApiRuntime for BusyRuntime {
@@ -1263,6 +1312,12 @@ mod tests {
                         mode: "manual".to_string(),
                         state: "pending".to_string(),
                         last_error: None,
+                    },
+                    memory: MemoryStatus {
+                        rss_bytes: Some(32 * 1024 * 1024),
+                        max_rss_bytes: Some(64 * 1024 * 1024),
+                        soft_limit_bytes: Some(16 * 1024 * 1024),
+                        pressure: "high".to_string(),
                     },
                     control_plane_ready: false,
                     children_ready_count: 0,
@@ -1363,7 +1418,7 @@ mod tests {
                 anyhow::bail!("operation_in_progress: reload already running")
             }
             fn lifecycle_warmup_children(&self) -> Result<crate::ChildWarmupResult> {
-                anyhow::bail!("operation_in_progress: warmup already running")
+                anyhow::bail!("resource_exhausted: memory pressure high; warmup denied")
             }
             fn typed_call_history(&self, _limit: usize) -> Result<serde_json::Value> {
                 Ok(serde_json::json!({"count": 0, "calls": []}))
@@ -1412,11 +1467,11 @@ mod tests {
             body: serde_json::to_vec(&serde_json::json!({})).unwrap(),
         };
         let warmup_response = handle_lifecycle_warmup_children(&warmup_request, &BusyRuntime);
-        assert_eq!(warmup_response.status, 409);
+        assert_eq!(warmup_response.status, 429);
         let warmup_json: serde_json::Value = serde_json::from_slice(&warmup_response.body).unwrap();
         assert_eq!(
             warmup_json.get("error").and_then(|v| v.as_str()),
-            Some("operation_in_progress")
+            Some("resource_exhausted")
         );
     }
 }

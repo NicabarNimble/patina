@@ -50,6 +50,7 @@ pub struct ServerState {
     pub(super) registry: Arc<ChildRegistry>,
     runtime_store: patina::mother::MotherRuntimeStore,
     startup_store: patina::mother::MotherRuntimeStore,
+    memory_soft_limit_bytes: Option<u64>,
     child_warmup_lock: Arc<Mutex<()>>,
     child_warmup_state: Arc<RwLock<mother_crate::http_api::ChildWarmupState>>,
     services: mother_crate::services::MotherServices,
@@ -241,6 +242,7 @@ impl ServerState {
             registry: Arc::new(registry),
             runtime_store,
             startup_store,
+            memory_soft_limit_bytes: resolve_memory_soft_limit_bytes(),
             child_warmup_lock: Arc::new(Mutex::new(())),
             child_warmup_state: Arc::new(RwLock::new(mother_crate::http_api::ChildWarmupState {
                 mode: child_warmup_mode.to_string(),
@@ -273,6 +275,40 @@ impl ServerState {
             .unwrap_or_else(|e| e.into_inner());
         guard.state = state.to_string();
         guard.last_error = last_error;
+    }
+
+    fn current_memory_status(&self) -> mother_crate::http_api::MemoryStatus {
+        let max_rss_bytes = process_max_rss_bytes();
+        let soft_limit_bytes = self.memory_soft_limit_bytes;
+        let usage = max_rss_bytes;
+
+        let pressure = match (usage, soft_limit_bytes) {
+            (Some(used), Some(limit)) if used > limit => "high".to_string(),
+            (Some(_), _) => "ok".to_string(),
+            (None, Some(_)) => "unknown".to_string(),
+            (None, None) => "ok".to_string(),
+        };
+
+        mother_crate::http_api::MemoryStatus {
+            rss_bytes: None,
+            max_rss_bytes,
+            soft_limit_bytes,
+            pressure,
+        }
+    }
+
+    fn ensure_memory_allows_warmup(&self) -> Result<()> {
+        let memory = self.current_memory_status();
+        if memory.pressure == "high" {
+            let used = memory.max_rss_bytes.or(memory.rss_bytes).unwrap_or(0);
+            let limit = memory.soft_limit_bytes.unwrap_or(0);
+            anyhow::bail!(
+                "resource_exhausted: memory pressure high (usage={} limit={}); warmup denied",
+                used,
+                limit
+            );
+        }
+        Ok(())
     }
 
     fn execute_child_warmup_once(&self) -> Result<mother_crate::runtime::ChildWarmupResult> {
@@ -352,6 +388,8 @@ impl ServerState {
                 degraded: vec![],
             });
         }
+
+        self.ensure_memory_allows_warmup()?;
 
         let _guard = match self.child_warmup_lock.try_lock() {
             Ok(guard) => guard,
@@ -958,6 +996,39 @@ fn file_size_if_exists(path: &Path) -> Option<u64> {
     std::fs::metadata(path).ok().map(|m| m.len())
 }
 
+fn env_u64(name: &str) -> Option<u64> {
+    std::env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.parse::<u64>().ok())
+}
+
+fn resolve_memory_soft_limit_bytes() -> Option<u64> {
+    env_u64("PATINA_MOTHER_MEMORY_SOFT_LIMIT_BYTES").or_else(|| {
+        env_u64("PATINA_MOTHER_MEMORY_SOFT_LIMIT_MB").map(|mb| mb.saturating_mul(1024 * 1024))
+    })
+}
+
+fn process_max_rss_bytes() -> Option<u64> {
+    let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
+    let result = unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) };
+    if result != 0 {
+        return None;
+    }
+    let usage = unsafe { usage.assume_init() };
+    #[cfg(target_os = "linux")]
+    let bytes = (usage.ru_maxrss as i128).saturating_mul(1024) as u64;
+    #[cfg(not(target_os = "linux"))]
+    let bytes = usage.ru_maxrss as u64;
+
+    if bytes == 0 {
+        None
+    } else {
+        Some(bytes)
+    }
+}
+
 fn installed_child_names_from_dir(children_dir: &Path) -> HashSet<String> {
     if !children_dir.exists() {
         return HashSet::new();
@@ -1059,6 +1130,7 @@ impl ApiRuntime for ServerState {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
+        let memory = self.current_memory_status();
 
         Ok(mother_crate::http_api::HealthDetails {
             registered_projects: registered_projects.len(),
@@ -1079,6 +1151,7 @@ impl ApiRuntime for ServerState {
             federation_projects_stale: federation_status.stale_count(),
             startup_profile: self.startup_profile.as_str().to_string(),
             child_warmup,
+            memory,
             control_plane_ready: readiness.control_plane_ready,
             children_ready_count: readiness.children_ready_count,
             children_total: readiness.children_total,

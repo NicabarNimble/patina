@@ -879,6 +879,35 @@ fn show_status() -> Result<()> {
                 }
             );
             println!("   Registered projects: {}", health.registered_projects);
+            if let Some(profile) = &health.startup_profile {
+                println!("   Startup profile: {}", profile);
+            }
+            if let Some(warmup) = &health.child_warmup {
+                if warmup.mode.is_empty() && warmup.state.is_empty() {
+                    println!("   Child warmup: unavailable");
+                } else {
+                    println!(
+                        "   Child warmup: mode={} state={}",
+                        warmup.mode, warmup.state
+                    );
+                    if let Some(error) = &warmup.last_error {
+                        println!("   Child warmup last error: {}", error);
+                    }
+                }
+            }
+            if let Some(memory) = &health.memory {
+                let pressure = memory.pressure.as_deref().unwrap_or("unknown");
+                println!("   Memory pressure: {}", pressure);
+                if let Some(bytes) = memory.rss_bytes {
+                    println!("   Memory RSS bytes: {}", bytes);
+                }
+                if let Some(bytes) = memory.max_rss_bytes {
+                    println!("   Memory max RSS bytes: {}", bytes);
+                }
+                if let Some(bytes) = memory.soft_limit_bytes {
+                    println!("   Memory soft limit bytes: {}", bytes);
+                }
+            }
             println!("   Control plane ready: {}", health.control_plane_ready);
             println!(
                 "   Children readiness: {}/{}",
